@@ -494,3 +494,27 @@ workbench。
 租约窗口接线、`sync.json`（zh/en）`errors.leaseHeld`、`sync_r11_lease.rs`
 新文件、ARCHITECTURE 本节、本文件本节。不改 `sync_manager.rs` / notes / chat /
 `ftp.rs`。
+
+### R11-delta（分支 `cursor/cloud-sync-sota-delta-b343`，只做调研与手动合成基准）
+
+交付：
+
+- [DELTA-R11.md](./DELTA-R11.md)：核实当前全量 staging → DEFLATE ZIP → 可选整包
+  DSBK → 单个 `backups/<version>.zip` `put_file` 路径；明确当前**不能**宣称增量传输、
+  内容去重或 CDC；
+- 对内容寻址 objects、manifest 级未变对象跳过、CDC 三条路线逐一分析
+  dumb-storage 无 CAS 与 DSBK 随机加密下的可行性、泄露面和恢复语义；
+- 推荐先做「完整 snapshot descriptor + 未变逻辑文件 direct ref 复用」，不建
+  parent/delta 恢复链；给出 v1/v2 双 namespace、每设备 10 版过渡与
+  manifest-first + 两遍候选 GC 顺序；
+- 新增手动脚本 `src-tauri/tests/cloud_sync_delta_benchmark.py`：只用临时合成数据、
+  不读用户目录、不联网、不进入 Cargo/Vitest 门禁。实跑的 161.824 MiB profile
+  在零用户数据变化和 SQLite 一行变化时都仍产生约 144.953 MiB ZIP，证明当前整包
+  PUT 没有网络增量性；耗时与外推边界见文档；
+- 下一轮拆成 format / inventory / backup lease / upload / restore / GC /
+  integration 七个文件面独占任务，CDC 仅保留离线实验路。
+
+**文件面认领（独占）**：`DELTA-R11.md` 新文件、
+`src-tauri/tests/cloud_sync_delta_benchmark.py` 新手动脚本、README 索引一行、本节。
+不改任何生产代码，不改 `version.ts` / pdfium，不碰 notes / chat / workbench /
+`ftp.rs`。
