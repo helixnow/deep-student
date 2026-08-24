@@ -24,7 +24,7 @@
 
 - **names2 / 增量备份调研**：可逆文件名与 `DELTA-R11` 未合。
 - **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。
-- **基线遗留红灯**：tombstone 场景非法短 hash；明文遗留下载 `downloaded=0`（勿为绿灯放松 fail-closed）。
+- **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。未放松 fail-closed。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
 - **CI / Rust 门禁**：前端相关 Vitest 5 文件 38 例通过。本机（Rust 1.95）`sync_android_device_switch` 9、`sync_android_restart` 10、`sync_r11_history` 9、`sync_r11_lease` 7 全过；并发租约测试栅栏已从 pending PUT 改到空 LIST。完整 `cargo test` / CI 未宣称全绿。
 
