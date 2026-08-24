@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 78（2026-08-24）— 技能展示名 + CI 分片断言
+
+1. [x] zh-CN / en-US `builtinNames` / `builtinDescriptions` 补 `generative-ui`
+2. [x] mindmap / active-skill i18n mock 补 `initReactI18next` / `i18next.use`
+3. [x] Style Lab 库存合同改为读取已提交 `scan-data.json`
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 77（2026-08-24）— 未知块类型 e2e
 
 1. [x] `execute_rejects_unknown_block_type`：未知 type 失败且只发 `generative_ui` error

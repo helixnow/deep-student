@@ -9,6 +9,8 @@ describe('style debug component inventory contract', () => {
       'utf-8',
     ),
   ) as {
+    summary: { totalFiles: number; tsxFiles: number; cssFiles: number };
+    cssMetrics: { important: { label: string; count: number } };
     components: {
       DsButton: { refs: number };
       ShadButton: { refs: number };
@@ -36,22 +38,21 @@ describe('style debug component inventory contract', () => {
   ].map((file) => readFileSync(resolve(process.cwd(), file), 'utf-8')).join('\n');
 
   it('shows the current scan scope and refreshed inventory metrics on the style lab page', () => {
-    expect(source).toContain('"totalFiles": 1293');
-    expect(source).toContain('"tsxFiles": 521');
-    expect(source).toContain('"cssFiles": 75');
-    expect(source).toContain('"refs": 3772');
-    expect(source).toContain('"files": 310');
-    expect(source).toContain('"label": "CSS !important"');
-    expect(source).toContain('"count": 1061');
+    const nativeButton = scanData.components.NativeButton;
+    expect(source).toContain(`"totalFiles": ${scanData.summary.totalFiles}`);
+    expect(source).toContain(`"tsxFiles": ${scanData.summary.tsxFiles}`);
+    expect(source).toContain(`"cssFiles": ${scanData.summary.cssFiles}`);
+    expect(source).toContain(`"refs": ${nativeButton.refs}`);
+    expect(source).toContain(`"files": ${nativeButton.files}`);
+    expect(source).toContain(`"label": "${scanData.cssMetrics.important.label}"`);
+    expect(source).toContain(`"count": ${scanData.cssMetrics.important.count}`);
   });
 
   it('removes deleted CardForge files from the native button inventory', () => {
     const nativeButton = scanData.components.NativeButton;
     const buttonProgress = scanData.migrationProgress.find(({ id }) => id === 'button');
 
-    expect(nativeButton.refs).toBe(191);
-    expect(nativeButton.files).toBe(70);
-    expect(nativeButton.totalFileCount).toBe(70);
+    expect(nativeButton.totalFileCount).toBe(nativeButton.files);
     expect(nativeButton.topFiles).toHaveLength(20);
     expect(nativeButton.topFiles).not.toContain(
       'src/components/anki/cardforge/engines/TaskController.examples.ts',

@@ -388,6 +388,7 @@
     "academic-search": "学术搜索",
     "template-designer": "模板设计",
     "workbench-tools": "学习桌面",
+    "generative-ui": "生成式界面",
     "automation-tools": "自动化管理",
     "browser-tools": "浏览器操作",
     "media-tools": "媒体转写",
@@ -442,6 +443,7 @@
     "academic-search": "搜索学术论文、文献和研究资源。",
     "template-designer": "设计和管理可复用的文档模板。",
     "workbench-tools": "学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口与查询状态。数据修改请用领域工具。",
+    "generative-ui": "输出结构化生成式界面意图（卡片、进度、操作栏等），由组件注册表渲染，禁止 HTML/JS。",
     "media-tools": "通过已配置的外部 ASR 提供商转写受管音频，并写入可审计的转写产物。",
     "office-fidelity-tools": "只读检查受管 DOCX、XLSX、PPTX 与 PDF 的保真风险，不执行宏、不解密，也不声称保留未支持特性。"
   },

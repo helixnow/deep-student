@@ -180,14 +180,15 @@
 29. ~~**Round 75 Rust 块类型白名单**~~ — ✅ executor 入口只接受 18 种内置 `type`
 30. ~~**Round 76 CI 8 路分片**~~ — ✅ `--shard=N/8 --maxWorkers=1`，避免单 fork 6GiB OOM
 31. ~~**Round 77 未知块 e2e**~~ — ✅ Tauri harness 拒绝 `unknown-widget` 且发 error phase
-32. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+32. ~~**Round 78 技能展示名**~~ — ✅ `generative-ui` 进入 skills builtinNames；分片 7 i18n mock
+33. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–77 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–78 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

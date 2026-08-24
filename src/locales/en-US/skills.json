@@ -388,6 +388,7 @@
     "academic-search": "Academic Search",
     "template-designer": "Template Designer",
     "workbench-tools": "Learning Desktop",
+    "generative-ui": "Generative UI",
     "automation-tools": "Automation Management",
     "browser-tools": "Browser Controls",
     "media-tools": "Media Transcription",
@@ -442,6 +443,7 @@
     "academic-search": "Search academic papers, literature, and research resources.",
     "template-designer": "Design and manage reusable document templates.",
     "workbench-tools": "Workbench window control: list windows, open/focus apps, send window commands, close windows, and query state. Use domain tools for data edits.",
+    "generative-ui": "Emit structured generative UI intents (cards, progress, action bars) rendered by the component registry. No HTML/JS.",
     "media-tools": "Transcribe managed audio through the configured external ASR provider and write an auditable transcript artifact.",
     "office-fidelity-tools": "Inspect managed DOCX, XLSX, PPTX, and PDF files for fidelity risks without executing macros, decrypting files, or claiming unsupported preservation."
   },
