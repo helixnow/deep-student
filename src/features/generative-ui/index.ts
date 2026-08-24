@@ -173,16 +173,9 @@ export {
   RESEARCH_REPORT_CITATION_PATTERN,
 } from './utils/parseResearchReportCitations';
 export {
-  extractFlashcardsFromIntent,
-  flashcardPreviewToAnkiCards,
-} from './utils/extractFlashcardsFromIntent';
-export { createFlashcardSaveActionHandlers } from './handlers/flashcardActionHandlers';
-export type { FlashcardSaveContext, FlashcardActionLabels } from './handlers/flashcardActionHandlers';
-export {
   resolveGenerativeUIChatActionHandlers,
   collectGenerativeUIActionIds,
   NOTE_EDIT_ACTION_IDS,
-  FLASHCARD_ACTION_IDS,
   RESEARCH_ACTION_IDS,
 } from './bridge/resolveGenerativeUIChatActionHandlers';
 export { createResearchBriefingActionHandlers } from './handlers/researchBriefingActionHandlers';
