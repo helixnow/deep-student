@@ -899,7 +899,7 @@ function SegmentedCompareSection() {
 
       {/* 遗留形态 — 迁移基线，视觉弱化 */}
       <details className="rounded-[var(--radius-shell-row)] border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface-muted)]/50 px-4 py-3 group">
-        <summary className="cursor-pointer list-none text-[11px] text-[color:var(--text-muted)] flex items-center gap-2">
+        <summary className="cursor-pointer list-none text-[11px] text-[color:var(--text-muted)] flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--text-muted)]" />
           <span>遗留形态（手写 div + button，禁止新增）</span>
           <span className="ml-auto text-[10px] opacity-60 group-open:hidden">展开查看</span>

@@ -171,7 +171,7 @@ export const MigrationStatusBanner: React.FC = () => {
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-11"
+            className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11"
             onClick={openDataGovernance}
           >
             {t('data:governance.toast_view_details')}
@@ -182,7 +182,7 @@ export const MigrationStatusBanner: React.FC = () => {
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11"
+            className="h-7 px-2.5 text-xs text-muted-foreground [@media(pointer:coarse)]:!h-11"
             onClick={dismiss}
           >
             {t('common:actions.later')}
@@ -217,7 +217,7 @@ const CopyDiagnosticButton: React.FC = () => {
     <DsButton
       variant="ghost"
       size="sm"
-      className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:h-11"
+      className="h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11"
       onClick={handleCopy}
     >
       <Copy size={12} className="mr-1" />

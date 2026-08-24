@@ -397,7 +397,8 @@ const SnappySliderValue = React.forwardRef<
         inputMode="decimal"
         style={{ width: `${valueCh}ch` }}
         className={cn(
-          'min-w-0 border-none bg-transparent text-right text-xs text-primary outline-none',
+          // 触屏（coarse）16px：iOS 对 <16px 输入聚焦时会强制放大页面（宽度按 ch 自适应字号）
+          'min-w-0 border-none bg-transparent text-right text-xs text-primary outline-none [@media(pointer:coarse)]:text-[16px]',
           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
           'dark:text-primary/90',
           className,

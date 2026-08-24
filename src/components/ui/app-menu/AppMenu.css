@@ -534,4 +534,14 @@
   .app-menu-item {
     min-height: 44px;
   }
+
+  /* 选项组按钮不复用 .app-menu-item（16px 标签 + 10px 描述 ≈ 34px），单独补 44 */
+  .app-menu-option-item {
+    min-height: 44px;
+  }
+
+  /* iOS 对 <16px 输入聚焦时会强制放大页面（token 基线 13px） */
+  .app-menu-search-input {
+    font-size: 16px;
+  }
 }
