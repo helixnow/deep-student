@@ -28,7 +28,7 @@ const SKILL_BLOCK_TYPES = [
   'table',
 ];
 
-const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit', 'save-to-library'];
+const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit'];
 
 describe('generativeUiSkill contract', () => {
   it('skill content lists every registered block type', () => {
