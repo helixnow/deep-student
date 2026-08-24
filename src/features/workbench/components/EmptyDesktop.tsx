@@ -7,8 +7,14 @@
  * - 「跳过」仅本会话隐藏；「不再显示」/「完成」写入 localStorage 永久消隐；
  * - 整层 pointer-events: none，仅 CTA / tour 控件恢复指针，
  *   不拦截桌面右键 / 双击手势。
+ *
+ * 2026-08 打磨：
+ * - 再入口：关闭后可从快捷键速查表底部「重新播放快速上手」重看
+ *   （replayEmptyDesktopTour 清持久化位并广播事件，本组件监听后复位）；
+ * - 不指向隐藏项：菜单栏 autohide 开启时状态栏不可见，跳过 statusBar 步
+ *   （步数与进度随之收缩），tour 不再指向一个看不见的目标。
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppWindow,
@@ -20,11 +26,29 @@ import {
 } from '@phosphor-icons/react';
 import { isMacOS } from '@/utils/platform';
 import { workbenchBus } from '../core/workbenchBus';
+import { useMenuBarAutohide } from './menuBarAutohideStore';
 import '../styles/workbench.css';
 import './EmptyDesktop.css';
 
 /** 首次使用 onboarding 的记忆位（本地 UI 偏好，不进设置后端/快照） */
 export const EMPTY_DESKTOP_ONBOARDING_KEY = 'workbench.emptyDesktop.onboardingDismissed';
+
+/** tour 再入口广播事件（速查表「重新播放快速上手」触发） */
+export const EMPTY_DESKTOP_TOUR_REPLAY_EVENT = 'workbench:empty-tour-replay';
+
+/**
+ * 重新播放空桌面 tour：清持久化消隐位并通知已挂载的 EmptyDesktop 复位。
+ * 桌面上仍有窗口时 EmptyDesktop 未挂载——此时只清标记，
+ * 下次桌面清空时 tour 自然重新出现。
+ */
+export function replayEmptyDesktopTour(): void {
+  try {
+    localStorage.removeItem(EMPTY_DESKTOP_ONBOARDING_KEY);
+  } catch {
+    /* 存储不可用时仅广播事件 */
+  }
+  window.dispatchEvent(new CustomEvent(EMPTY_DESKTOP_TOUR_REPLAY_EVENT));
+}
 
 const TOUR_STEP_IDS = ['dock', 'search', 'statusBar', 'agent'] as const;
 export type EmptyDesktopTourStepId = (typeof TOUR_STEP_IDS)[number];
@@ -58,6 +82,13 @@ export const EmptyDesktop: React.FC = React.memo(() => {
   const [sessionSkipped, setSessionSkipped] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
 
+  // 菜单栏 autohide 时状态栏不可见：tour 跳过 statusBar 步（不指向隐藏项）
+  const menuBarHidden = useMenuBarAutohide();
+  const steps = useMemo<readonly EmptyDesktopTourStepId[]>(
+    () => (menuBarHidden ? TOUR_STEP_IDS.filter((id) => id !== 'statusBar') : TOUR_STEP_IDS),
+    [menuBarHidden],
+  );
+
   const dismissForever = useCallback(() => {
     setOnboardingDismissed(true);
     persistOnboardingDismissed();
@@ -69,13 +100,24 @@ export const EmptyDesktop: React.FC = React.memo(() => {
 
   const goNext = useCallback(() => {
     setStepIndex((prev) => {
-      if (prev >= TOUR_STEP_IDS.length - 1) {
+      if (prev >= steps.length - 1) {
         dismissForever();
         return prev;
       }
       return prev + 1;
     });
-  }, [dismissForever]);
+  }, [dismissForever, steps.length]);
+
+  // 再入口：速查表「重新播放快速上手」→ 复位 tour（含仅会话跳过的场景）
+  useEffect(() => {
+    const onReplay = () => {
+      setOnboardingDismissed(false);
+      setSessionSkipped(false);
+      setStepIndex(0);
+    };
+    window.addEventListener(EMPTY_DESKTOP_TOUR_REPLAY_EVENT, onReplay);
+    return () => window.removeEventListener(EMPTY_DESKTOP_TOUR_REPLAY_EVENT, onReplay);
+  }, []);
 
   const launch = useCallback((typeId: string) => {
     workbenchBus.launch({ typeId, reason: 'api' });
@@ -87,8 +129,10 @@ export const EmptyDesktop: React.FC = React.memo(() => {
 
   if (onboardingDismissed || sessionSkipped) return null;
 
-  const stepId = TOUR_STEP_IDS[stepIndex] ?? TOUR_STEP_IDS[0];
-  const isLast = stepIndex >= TOUR_STEP_IDS.length - 1;
+  // autohide 中途切换可能让 index 越界：夹取到最后一步
+  const clampedIndex = Math.min(stepIndex, steps.length - 1);
+  const stepId = steps[clampedIndex] ?? steps[0];
+  const isLast = clampedIndex >= steps.length - 1;
   const searchShortcut = isMacOS() ? '⌘K' : 'Ctrl+K';
 
   return (
@@ -132,8 +176,8 @@ export const EmptyDesktop: React.FC = React.memo(() => {
             </span>
             <span className="wb-empty-tour-progress" data-testid="wb-empty-tour-progress">
               {t('workbench:emptyDesktop.tourStep', {
-                current: stepIndex + 1,
-                total: TOUR_STEP_IDS.length,
+                current: clampedIndex + 1,
+                total: steps.length,
               })}
             </span>
           </div>
@@ -155,11 +199,11 @@ export const EmptyDesktop: React.FC = React.memo(() => {
           </div>
 
           <div className="wb-empty-tour-dots" aria-hidden="true">
-            {TOUR_STEP_IDS.map((id, index) => (
+            {steps.map((id, index) => (
               <span
                 key={id}
                 className="wb-empty-tour-dot"
-                data-active={index === stepIndex ? 'true' : undefined}
+                data-active={index === clampedIndex ? 'true' : undefined}
               />
             ))}
           </div>

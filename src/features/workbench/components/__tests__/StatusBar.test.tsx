@@ -257,6 +257,20 @@ describe('StatusBar 信号项可见性', () => {
     const btn = screen.getByTestId('wb-menubar-pomodoro');
     expect(btn.getAttribute('aria-label')).toContain('休息剩余');
     expect(btn.getAttribute('aria-label')).toMatch(/4:00/);
+    expect(btn.getAttribute('data-status')).toBe('break');
+  });
+
+  it('番茄暂停态文案为「已暂停」（data-status=paused 供 CSS 压暗）', () => {
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'paused',
+      timeLeft: 600, // 10:00
+    });
+    render(<StatusBar />);
+    const btn = screen.getByTestId('wb-menubar-pomodoro');
+    expect(btn.getAttribute('aria-label')).toContain('已暂停');
+    expect(btn.getAttribute('aria-label')).toMatch(/10:00/);
+    expect(btn.getAttribute('data-status')).toBe('paused');
   });
 
   it('due>0 显示闪卡数字，点击 activate flashcards due session', async () => {
