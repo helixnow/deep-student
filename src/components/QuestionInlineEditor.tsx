@@ -1275,10 +1275,21 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           {t('common:actions.preview')}
         </DsButton>
         <div className="flex items-center gap-2">
-          <DsButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCancelRequest}
+            disabled={isSaving}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton size="sm" onClick={handleSave} disabled={isSaving} className="ui-press">
+          <DsButton
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="ui-press [@media(pointer:coarse)]:min-h-11"
+          >
             {isSaving ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
             ) : (
