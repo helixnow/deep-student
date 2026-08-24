@@ -416,7 +416,12 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       <p className="text-sm">{t('knowledgeRadar.noData')}</p>
       <p className="mt-1 text-xs text-muted-foreground/70">{t('knowledgeRadar.noDataHint')}</p>
       {onRefresh && (
-        <DsButton variant="ghost" size="sm" className="mt-3" onClick={onRefresh}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="mt-3 [@media(pointer:coarse)]:min-h-11"
+          onClick={onRefresh}
+        >
           <ArrowsClockwise size={14} />
           {t('knowledgeRadar.refreshData')}
         </DsButton>
