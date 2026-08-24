@@ -22,11 +22,16 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 34（2026-08-24）— 仓库 CI 全局排队
+
+- [x] migration 静态 gate + build config contracts 51/51 本地通过
+- [ ] CI run `32693778400`（head `7694c6f7`）— 12 jobs **queued**（~8min+，仓库最近 20 条 run 无 in_progress/success）
+- **策略**：不 push，等待 runner 分配；已订阅 CI 通知
+
 ## Round 33（2026-08-24）— Pod 恢复 + 本地 gate 复验
 
 - [x] 环境恢复：`npm ci` 后全 gate 复验通过（tsc / lint 0 err / licenses / fmt / vite build / 210 vitest）
-- [ ] CI run `32691393068` — 持续 **queued**（~40min+，仓库多 agent 并发 cancel 严重）
-- **策略**：不再 push，保持 queue 位次
+- [x] 推送 `7694c6f7`；新 run `32693778400` 触发（旧 run `32691393068` 取消）
 
 ## Round 32（2026-08-24）— CI 等待 + 本地全 gate 复验
 
