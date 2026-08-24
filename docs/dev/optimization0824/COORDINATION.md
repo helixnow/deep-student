@@ -20,7 +20,8 @@
 | R0 | ✅ | — | 初始化分支、Goal、协调文档 | — |
 | R1 | ✅ | 10 | P0 构建快速 wins（WI-1/2/3/5/8/10 + CI 降频） | 本 PR |
 | R2 | ✅ | 10 | P0 WI-4 + P1 静态资源/前端/Agent schema | 本 PR |
-| R3 | 🔄 | 10 | mobile-slim CI、deps 清理、vite7/tsgo、Agent P2 前置 | — |
+| R3 | ✅ | 10 | deps/CI/Agent schema/P2 前置 | 本 PR |
+| R4 | 🔄 | 10 | tsgo 落地、WI-12 实现、WI-11 Phase1 | — |
 | … | ⏳ | … | 持续至 ≥R20 | — |
 
 ## Work Item 总表（来源：初始调研 WI-1..13）
