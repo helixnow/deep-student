@@ -87,3 +87,40 @@ cargo check --manifest-path src-tauri/Cargo.toml --lib
 - `useMessageActions.ts`：#176 删除 vs #268 修改，保留产品能力后迁到 #176 新结构。
 - legacy notes：#172 删除，#176 若只改了其中小补丁可弃补丁、跟删除。
 - package-lock / THIRD_PARTY_NOTICES：合并后用项目脚本重生成。
+
+## 8. 第二轮执行记录
+
+### Step 1：已合入 E optimization（#213）+ C generative-ui（#214）
+
+日期：2026-08-24。直接以两仓远程 tip 合入本分支（未等主题仓）：
+
+- `origin/cursor/optimization0824-5575` @ `65bad3ed` → merge commit `6f636ad5`，零冲突。
+- `origin/Generative-UI-0824` @ `c16a4fbd` → merge commit `23090166`，冲突 2 处。
+
+冲突与解法（按「构建结构听 #213、Generative UI 产品代码全留」）：
+
+- `public/legal/THIRD_PARTY_NOTICES.txt`（modify/delete）：采纳 #213 的 WI-9 结构
+  ——唯一权威路径为 `legal/THIRD_PARTY_NOTICES.txt`，删除 public/ 旧址副本。
+- `package-lock.json`（content）：先取 #213 侧，再在合并后的 `package.json`
+  上 `npm install` 重生成；`zod@4.4.3`（#214 新增）从 dev 传递依赖提升为直接
+  生产依赖，lock 净变化仅此一项。
+- `legal/THIRD_PARTY_NOTICES.txt`：`npm run licenses:generate` 重生成
+  （1848 组件，含 zod）。
+- `package.json`、`src-tauri/src/chat_v2/pipeline.rs`、`src-tauri/src/lib.rs`
+  由 git 自动合并成功。
+
+额外修复（`82fc755a`）：#214 tip 的 CI 从未跑完，
+`src-tauri/src/chat_v2/tools/generative_ui_executor.rs` 带入一处 E0716
+（`extract_question_from_intent(...)` 返回的 `Option<String>` 临时值在语句末被
+释放，`hpias_question` 仍借用它）。改为先绑定局部变量再 `.as_deref()`，行为不变。
+
+编译门禁结果（全部通过）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages |
+| `npm run typecheck` | ✅（需先 `npm run version:generate` 生成 gitignored 的 `src/version.ts`，与 prebuild 行为一致） |
+| `npx vite build` | ✅ 1m14s，仅 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（22 条，均为两仓自带） |
+
+待办：H/A/B/D/F/G 各主题仓按第 5 节顺序继续合入。
