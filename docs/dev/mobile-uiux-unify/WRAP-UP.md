@@ -4,21 +4,17 @@
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 - **基线**：`main`
 - **停止条件**：不再派 fable 无限轮；文档齐、工作树干净、契约 19/19、无 P0 后标为可审。不能 `gh merge`。
+- **交付**：工作树干净，PR #172 已标可审。GitHub CI 若仍排队，失败只修本分支引入的问题。
 
 ## 已齐
 
-- Round 2–90 代码与文档（见 `PROGRESS.md`、`ROUND-90-FIXES.md`）
+- Round 2–90 代码与文档（见 `PROGRESS.md`、`ROUND-90-FIXES.md`），含设置残留 `5c21c5d7`
 - 16 个 `CurrentView` 均注册 `useMobileHeader`
 - 契约测试 19/19（本机 `vitest` mobile-uiux + MessageSearchBar + migrationFoundation）
 - #166 / #161 边界未误改
 - `buttonPrimitiveContract.ts` 未改
 - 死代码 NotesHome / VideoPreview / AudioPreview 已删；NotesCrepeEditor / NotesContextPanel / 学习中心播放器仍存活（有意）
-
-## 待关（本文件会在干净后改「可审」）
-
-- 设置 3 文件（`CloudStorageSection` / `VendorSidebar` / `BackupTab`）若仍脏：等对应子代理自己提交，父代理不 `git add`
-- GitHub CI 对最新 push 仍可能排队；失败只修本分支引入的问题
-- PR 仍为 draft，直到工作树干净且文档覆盖全部已 push 提交后再 `draft=false`
+- 工作树干净，无未提交业务改动
 
 ## 不要再当新活
 

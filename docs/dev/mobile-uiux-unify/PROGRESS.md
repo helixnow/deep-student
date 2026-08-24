@@ -99,11 +99,11 @@
 | 87 | claude-fable-5-thinking-xhigh ×10 | 整区域打包：Todo 自动化、恢复中心、导图 TSX、图片查看器真洞、标签导航、通知/兜底、学习中心 Input、番茄钟·debug | 见 ROUND-87-FIXES.md |
 | 88 | claude-fable-5-thinking-xhigh ×10 | 整区域打包：SelectItem 原语、debug 原生、工作台 CSS、聊天/共享/学习中心原生、拖拽把手、PDF 菜单项、快捷助手 | 见 ROUND-88-FIXES.md |
 | 89 | claude-fable-5-thinking-xhigh ×11 | 整区域打包：侧栏非活动行、题库虚列表、设置 Label/16px、分段原语 `!`、Crepe 勾选/图控、聊天插件 inset、工作台 CSS 层叠 | 见 ROUND-89-FIXES.md |
-| 90 | fable 残留 + sol 收尾 | 死 CSS、6b 合同、Label/16px、640–767 chrome、侧栏/subagent 重叠、共享/学习中心/笔记 | 见 ROUND-90-FIXES.md、WRAP-UP.md |
+| 90 | fable 残留 + sol 收尾 | 死 CSS、6b 合同、Label/16px、640–767 chrome、侧栏/subagent 重叠、共享/学习中心/笔记/设置 | 见 ROUND-90-FIXES.md、WRAP-UP.md |
 
 ## 收尾队列
 
-- **不再派 fable 无限轮**。设置 3 文件若仍脏，等对应子代理提交后再把 PR #172 标为可审
+- **收尾完成，不再派 fable。** PR #172 可审。有意折衷如下，勿当新洞。
 - 内联引用 chip 设计未决；MiniCalendar/TabBar 宽 28 有意折衷
 - FinderToolbar 视觉 40 + 伪元素 48：标题栏约束，勿再硬叠 44 视觉
 - ShortcutSettings 属 #166 不碰
