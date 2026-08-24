@@ -43,6 +43,10 @@ function extractRawBlocks(input: string | object): unknown[] {
     return Array.isArray(blocks) ? blocks : [];
   }
 
+  if (typeof input !== 'string') {
+    return [];
+  }
+
   const sanitized = sanitizeGenerativeJsonBuffer(input);
   try {
     const parsed = JSON.parse(sanitized) as { blocks?: unknown };
