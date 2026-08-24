@@ -1336,6 +1336,20 @@ pub struct AnkiGenerationOptions {
     /// 与 `output_protocol` 同一条 wire 契约。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enable_qa_pass: Option<bool>,
+
+    // ===== LLM critic 与 Sidekick 模型路由扩展 =====
+    /// 是否启用生成后 LLM critic；`None` 表示默认关闭。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_critic_pass: Option<bool>,
+    /// `enable_critic_pass` 的兼容别名；任一开关为 true 即启用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_llm_critic: Option<bool>,
+    /// critic prompt 的 token 预算覆盖；`None` 使用模块默认值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critic_token_budget: Option<u32>,
+    /// Sidekick 模型路由模式：`auto` / `single`；`None` 表示 auto。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidekick_model_routing: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

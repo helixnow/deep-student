@@ -145,6 +145,10 @@ impl EnhancedAnkiService {
             user_review_profile: None,
             output_protocol: None,
             enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         });
 
         // ===== FSRS 复习数据回流（Round 3 #5）=====
@@ -1096,6 +1100,10 @@ mod tests {
             user_review_profile: None,
             output_protocol: None,
             enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(
@@ -1179,6 +1187,10 @@ mod tests {
             user_review_profile: None,
             output_protocol: None,
             enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(

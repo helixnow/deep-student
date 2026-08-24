@@ -10676,6 +10676,10 @@ fn build_generation_options(
         // StreamingAnkiService 经 anki_protocol::StructuredOutputOptions 读取。
         output_protocol: tuning.output_protocol.clone(),
         enable_qa_pass: tuning.enable_qa_pass,
+        enable_critic_pass: None,
+        enable_llm_critic: None,
+        critic_token_budget: None,
+        sidekick_model_routing: None,
     }
 }
 
