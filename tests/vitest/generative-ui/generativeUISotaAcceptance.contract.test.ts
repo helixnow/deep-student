@@ -498,6 +498,21 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ]),
   },
   {
+    id: 'round71-e2e-avoids-private-context',
+    check: () => {
+      const e2e = readRepo('src-tauri/tests/generative_ui_executor_e2e.rs');
+      return (
+        !e2e.includes('chat_v2::context') &&
+        fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+          'block_type_mapping_for_render_generative_ui_is_generative_ui',
+        ]) &&
+        fileContains('.github/workflows/ci.yml', [
+          "NODE_OPTIONS: '--max-old-space-size=6144'",
+        ])
+      );
+    },
+  },
+  {
     id: 'round70-skip-link-lands-on-action-bar',
     check: () =>
       fileContains('src/features/generative-ui/utils/collectUnregisteredActionIds.ts', [

@@ -23,6 +23,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('Rust executor tool name matches frontend skill builtin tool', () => {
     expect(executorSrc).toContain('const TOOL_NAME: &str = "render_generative_ui"');
+    expect(executorSrc).toContain('block_type_mapping_for_render_generative_ui_is_generative_ui');
   });
 
   it('Rust executor accepts intent version 1 and 1.1, rejects unknown', () => {

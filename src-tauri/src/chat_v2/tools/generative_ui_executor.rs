@@ -445,6 +445,19 @@ mod tests {
     }
 
     #[test]
+    fn block_type_mapping_for_render_generative_ui_is_generative_ui() {
+        use crate::chat_v2::context::PipelineContext;
+        use crate::chat_v2::types::block_types;
+        for tool_name in ["render_generative_ui", "builtin-render_generative_ui"] {
+            assert_eq!(
+                PipelineContext::get_block_type_for_tool_static(tool_name),
+                block_types::GENERATIVE_UI,
+                "unexpected block type for {tool_name}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_intent_accepts_object() {
         let args = json!({
             "intent": {
