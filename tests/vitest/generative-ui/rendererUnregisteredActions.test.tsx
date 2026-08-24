@@ -83,6 +83,7 @@ describe('GenerativeUIRenderer unregistered action-bar ids', () => {
     );
     expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ghost' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
     expect(unregisteredHint()).not.toBeNull();
   });
 });

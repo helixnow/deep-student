@@ -1,5 +1,11 @@
 # Generative UI 进度日志
 
+## Round 67（2026-08-24）— 空 ActionBar 不渲染 toolbar
+
+1. [x] 强制注册表且没有可见按钮 / undo 时，不输出空 `role="toolbar"`
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 66（2026-08-24）— 隐藏未注册 ActionBar
 
 1. [x] 提供 handler 注册表时，未注册按钮不进入 DOM，只留 Renderer 溢出提示
