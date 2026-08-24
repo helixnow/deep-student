@@ -235,3 +235,18 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **测试**：改写 `tests/vitest/data-governance/r07-cloud-only-delete-conflict.test.tsx` 锁定新行为——cloud-only「保留本地」可点、确认拒绝不执行、resolve 的 expectedConflictIds 仅含 cloud 行 id、批量 keep_local 包含 cloud-only 组且仍走确认。
 
 **文件面认领（独占）**：`RecordConflictsPanel.tsx`、`data.json`（zh/en，仅 governance 新增两键）、`r07-cloud-only-delete-conflict.test.tsx`、`FINDINGS-R07.md` P1-1 回写、本节。
+
+## Round 11 回传（增量登记）
+
+### R11-check（分支 `cursor/cloud-sync-sota-r11-check-b343`，云端仓库巡检一整包）
+
+模型 claude-fable-5-thinking-high。restic `check` 档的云端仓库巡检，**只读不修**。交付：
+
+- **实现**：新文件 `cloud_storage/repo_check.rs`——遍历所有 manifest（per-device + 旧版 `manifest.json`/`.bak`）引用的 `backups/<id>.zip` 对象，核对存在性 / 整对象 SHA256 / DSBK 加密头可解（v1/v2 头结构、Argon2 参数、分块大小、按对象总长判截断），报孤儿对象与 `manifests/` 下 `.tmp` 残留、损坏 manifest、清单条目冲突、加密标记损坏、加密仓库明文混布、密文对象缺标记。诚实性契约：任一列表截断或对象读取失败 → 结论 `incomplete`，**绝不给全绿**；manifests 列表截断时跳过孤儿判定（防误报）。**不改 `sync_manager.rs`**（R11-lease 独占），布局/DSBK 常量按稳定存储格式在新文件内复制并注明。
+- **命令**：`commands_sync.rs` 末尾新增独立命令 `data_governance_repo_check`（只读，不加 DataGovernanceOperationGuard），未改任何既有函数签名；注册于 `lib.rs` invoke handler、`data_governance/mod.rs` re-export、`permissions/application-commands.toml`。
+- **UI**：`CloudStorageSection.tsx` 新增独立「云端仓库巡检」区域（连接成功后可见）：只读说明与流量预告、三态结论徽标（全绿 / 发现 N 个问题 / 巡检不完整）、问题清单（类别 i18n + 版本 ID + 对象 key + 细节）、「发现坏对象后该做什么」人话指引（坏对象→先出新完整版本再删坏版本；孤儿→网盘工具手动删、巡检绝不代删；清单类→最近上传设备重传；不完整→重试且不当灾备）。
+- **locale**：`cloudStorage.json`（zh/en）新增 `repoCheck.*`（含 `problemKind.*` 11 键与 `guidance.*`）。
+- **测试**：新文件 `src-tauri/tests/sync_r11_repo_check.rs`——好库全绿（明文/加密各一）、缺对象（指明版本 ID、不波及健康版本）、坏密文（SHA256 不匹配 + DSBK 头不可解）、明文混布、孤儿 + tmp 残留 + **只读快照断言**（巡检前后云端逐字节一致）、损坏 manifest 不中断巡检、截断列表拒绝全绿、截断时孤儿判定被抑制；`repo_check.rs` 内另有 DSBK 头解析单测 4 例。
+- **文档**：用户指南 16 新增「云端仓库巡检（只读体检）」小节。
+
+**文件面认领（独占）**：`cloud_storage/repo_check.rs` 新文件、`cloud_storage/mod.rs`（仅 `pub mod repo_check;` 一行）、`commands_sync.rs` 巡检命令段（只加不改）、`lib.rs` 注册一行、`data_governance/mod.rs` re-export 一行、`permissions/application-commands.toml` 一行、`CloudStorageSection.tsx` 巡检区、`cloudStorage.json`（zh/en）`repoCheck.*`、`sync_r11_repo_check.rs` 新文件、用户指南 16 巡检小节、本节。与 R11-lease 的 `sync_manager.rs`、R11-unsynced-ui 的 `commands_sync.rs` 查询段无交叠（各自只加新段，推前 rebase 消解）。

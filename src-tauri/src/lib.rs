@@ -2617,6 +2617,8 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_purge_resolved_conflicts
             // Prune 断层检测
             ,crate::data_governance::commands_sync::data_governance_detect_prune_gap
+            // [R11-check] 云端仓库巡检（只读）
+            ,crate::data_governance::commands_sync::data_governance_repo_check
             // 任务恢复命令（断点续传支持）
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
