@@ -237,7 +237,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                   )}
                 >
                   <CollapsibleTrigger
-                    className="flex items-center gap-2 min-w-0 flex-1"
+                    className="flex items-center gap-2 min-w-0 flex-1 [@media(pointer:coarse)]:min-h-11"
                   >
                     {isExpanded ? (
                       <CaretDown size={14} className="text-muted-foreground flex-shrink-0" />
@@ -283,7 +283,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         placeholder="builtin-example_tool"
                         disabled={disabled}
                         className={cn(
-                          'h-8 max-lg:h-11 text-sm font-mono bg-muted/30 border-transparent',
+                          'h-8 max-lg:h-11 [@media(pointer:coarse)]:h-11 text-sm font-mono bg-muted/30 border-transparent',
                           !tool.name && 'border-amber-500/50'
                         )}
 />
