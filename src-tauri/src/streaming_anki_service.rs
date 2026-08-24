@@ -3353,6 +3353,29 @@ mod tests {
         (StreamingAnkiService::new(db, llm), dir)
     }
 
+    /// 需要真实 Anki 入库的测试必须先走生产 Mistakes 迁移；`Database::new`
+    /// 只开连接、不建表，不能复用上面的纯解析轻量 fixture。
+    fn make_persisted_test_service() -> (StreamingAnkiService, tempfile::TempDir) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("mistakes migrations");
+        let db = Arc::new(
+            Database::new(&dir.path().join("mistakes.db")).expect("create migrated test database"),
+        );
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(dir.path().to_path_buf())
+                .expect("create file manager"),
+        );
+        let llm = Arc::new(LLMManager::new(db.clone(), file_manager).expect("create llm manager"));
+        (StreamingAnkiService::new(db, llm), dir)
+    }
+
     fn make_rule_with_default(
         is_required: bool,
         field_type: FieldType,
@@ -4286,7 +4309,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_front_across_segments_flagged_and_still_saved() {
-        let (svc, _dir) = make_test_service();
+        let (svc, _dir) = make_persisted_test_service();
         let document_id = format!("doc-fp-dup-{}", uuid::Uuid::new_v4());
         crate::anki_qa_lint::release_document_tracker(&document_id);
         // 同文档两个不同 segment task —— tracker 必须跨 task 共享，不能每 task 重置
@@ -4344,7 +4367,7 @@ mod tests {
 
     #[tokio::test]
     async fn near_duplicate_front_flagged_but_not_dropped() {
-        let (svc, _dir) = make_test_service();
+        let (svc, _dir) = make_persisted_test_service();
         let document_id = format!("doc-fp-near-{}", uuid::Uuid::new_v4());
         crate::anki_qa_lint::release_document_tracker(&document_id);
         seed_task(&svc.db, "fp-near-task", &document_id, 0);
@@ -4391,7 +4414,7 @@ mod tests {
 
     #[tokio::test]
     async fn fingerprint_state_isolated_between_documents() {
-        let (svc, _dir) = make_test_service();
+        let (svc, _dir) = make_persisted_test_service();
         let doc_a = format!("doc-fp-iso-a-{}", uuid::Uuid::new_v4());
         let doc_b = format!("doc-fp-iso-b-{}", uuid::Uuid::new_v4());
         crate::anki_qa_lint::release_document_tracker(&doc_a);
@@ -4439,7 +4462,7 @@ mod tests {
 
     #[tokio::test]
     async fn vlm_occlusion_draft_is_merged_into_extra_fields_without_rewriting_card() {
-        let (svc, _dir) = make_test_service();
+        let (svc, _dir) = make_persisted_test_service();
         let document_id = format!("doc-occlusion-{}", uuid::Uuid::new_v4());
         crate::anki_qa_lint::release_document_tracker(&document_id);
         seed_task(&svc.db, "occlusion-task", &document_id, 0);
