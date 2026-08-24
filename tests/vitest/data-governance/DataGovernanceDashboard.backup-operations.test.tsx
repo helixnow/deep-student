@@ -95,6 +95,7 @@ vi.mock('@/utils/tauriApi', () => ({
 vi.mock('@/utils/cloudStorageApi', () => ({
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({

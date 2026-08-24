@@ -10,6 +10,9 @@ import { getErrorMessage } from './errorUtils';
 
 export const FTP_UNSUPPORTED_ON_ANDROID_CODE = 'E_FTP_UNSUPPORTED_ON_ANDROID';
 export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
+export const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT';
+export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
+  'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
 
 type ErrorWithCode = Error & { code?: string };
 
@@ -49,6 +52,16 @@ export function getCloudStorageErrorCode(error: unknown): string | undefined {
     : null;
   if (typeof details?.code === 'string') return details.code;
   if (typeof details?.errorCode === 'string') return details.errorCode;
+  return codeFromDiagnosticText(getErrorMessage(error));
+}
+
+function codeFromDiagnosticText(text: string): string | undefined {
+  if (text.includes(CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE)) {
+    return CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE;
+  }
+  if (text.includes(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE)) {
+    return STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE;
+  }
   return undefined;
 }
 
@@ -66,6 +79,10 @@ export type CloudPlatformErrorI18nKey =
   | 'cloudStorage:errors.ftpDisabledAndroid'
   | 'cloudStorage:errors.s3DisabledInBuild';
 
+export type CloudEncryptionErrorI18nKey =
+  | 'cloudStorage:encryption.tooShort'
+  | 'cloudStorage:encryption.storedPasswordRequired';
+
 /** Platform capability errors are localized exclusively by stable backend code. */
 export function getCloudPlatformErrorI18nKey(
   error: unknown,
@@ -75,6 +92,20 @@ export function getCloudPlatformErrorI18nKey(
       return 'cloudStorage:errors.ftpDisabledAndroid';
     case S3_UNSUPPORTED_IN_BUILD_CODE:
       return 'cloudStorage:errors.s3DisabledInBuild';
+    default:
+      return undefined;
+  }
+}
+
+/** Short-password / stored-password refusals prefer stable code, then message token. */
+export function getCloudEncryptionErrorI18nKey(
+  error: unknown,
+): CloudEncryptionErrorI18nKey | undefined {
+  switch (getCloudStorageErrorCode(error)) {
+    case CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE:
+      return 'cloudStorage:encryption.tooShort';
+    case STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE:
+      return 'cloudStorage:encryption.storedPasswordRequired';
     default:
       return undefined;
   }

@@ -80,6 +80,7 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY: 'cloud_storage_config_v2',
   CLOUD_STORAGE_LEGACY_STORAGE_KEY: 'cloud_storage_config',
   CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY: 'cloud_storage_ssot_migrated_v1',
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/api/dataGovernance', () => ({

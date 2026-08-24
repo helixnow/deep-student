@@ -50,6 +50,9 @@ pub enum SecureStoreError {
     EncryptionError(String),
     #[error("其他错误: {0}")]
     Other(String),
+    /// 云端 E2EE 密码短于最小 Unicode 码点数；不是密钥库故障。
+    #[error("{0}")]
+    CloudEncryptionPasswordTooShort(String),
 }
 
 impl SecureStoreError {
@@ -63,6 +66,7 @@ impl SecureStoreError {
             Self::AccessDenied(_) => "SECURE_STORE_ACCESS_DENIED",
             Self::SerializationError(_) => "SECURE_STORE_DATA_INVALID",
             Self::EncryptionError(_) => "SECURE_STORE_CRYPTO_ERROR",
+            Self::CloudEncryptionPasswordTooShort(_) => CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
             Self::Other(_) => "SECURE_STORE_INTERNAL",
         }
     }
@@ -1905,6 +1909,8 @@ pub struct CloudStorageCredentials {
 /// 与 ZIP 全保真导出 `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。
 /// 短于此长度的密码不能导出加密全保真包，禁止写入安全存储冒充「已配置」。
 pub const MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS: usize = 8;
+/// 短密码拒绝的稳定 IPC code。前端只按 code 分派，文案可改语言。
+pub const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE: &str = "E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT";
 
 pub(crate) fn cloud_encryption_password_too_short(password: Option<&str>) -> bool {
     password
@@ -1915,8 +1921,8 @@ pub(crate) fn cloud_encryption_password_too_short(password: Option<&str>) -> boo
 
 pub fn cloud_encryption_password_too_short_message() -> String {
     format!(
-        "云端端到端加密密码至少需要 {} 个字符（不能为空白）",
-        MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
+        "[{}] 云端端到端加密密码至少需要 {} 个字符（不能为空白）",
+        CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE, MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
     )
 }
 
@@ -2056,7 +2062,7 @@ impl SecureStore {
         update: &CloudStorageCredentials,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
         if cloud_encryption_password_too_short(update.encryption_password.as_deref()) {
-            return Err(SecureStoreError::Other(
+            return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
                 cloud_encryption_password_too_short_message(),
             ));
         }
@@ -2554,6 +2560,14 @@ mod cloud_hydration_tests {
                 ..Default::default()
             })
             .expect_err("短于 8 字符的云端加密密码必须拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            error.stable_code(),
+            CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE
+        );
         assert!(
             error
                 .to_string()

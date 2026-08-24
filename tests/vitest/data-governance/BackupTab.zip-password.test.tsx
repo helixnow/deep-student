@@ -46,7 +46,7 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: (...args: unknown[]) => mockShowGlobalNotification(...args),
 }));
 
-import { BackupTab } from '@/features/settings';
+import { BackupTab } from '@/features/settings/components/data-governance/BackupTab';
 import type { BackupInfoResponse } from '@/types/dataGovernance';
 
 // ============================================================================
@@ -123,6 +123,43 @@ describe('BackupTab E2EE export password', () => {
     fireEvent.click(screen.getByRole('button', { name: exportButtonName }));
 
     expect(props.onBackupAndExportZip).not.toHaveBeenCalled();
+    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+      'warning',
+      'data:governance.e2ee_password_too_short'
+    );
+  });
+
+  it('blocks export when 4 emoji look like 8 UTF-16 units but are only 4 code points', () => {
+    const props = makeProps();
+    render(<BackupTab {...props} />);
+
+    fireEvent.change(screen.getByLabelText(passwordInputLabel), {
+      target: { value: '😀😀😀😀' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: exportButtonName }));
+
+    expect(props.onBackupAndExportZip).not.toHaveBeenCalled();
+    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+      'warning',
+      'data:governance.e2ee_password_too_short'
+    );
+  });
+
+  it('blocks per-backup export when the password is too short', async () => {
+    const props = makeProps();
+    render(<BackupTab {...props} />);
+
+    fireEvent.change(screen.getByLabelText(passwordInputLabel), {
+      target: { value: 'short' },
+    });
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'data:governance.export_zip' })[0]
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'data:governance.export' }));
+
+    await waitFor(() => {
+      expect(props.onExportZip).not.toHaveBeenCalled();
+    });
     expect(mockShowGlobalNotification).toHaveBeenCalledWith(
       'warning',
       'data:governance.e2ee_password_too_short'
