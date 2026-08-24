@@ -56,7 +56,10 @@ Stylelint 配置链消费，因此未做机械删除。
 
 ```text
 Wrote legal/THIRD_PARTY_NOTICES.txt (1847 components).
+[license-compliance] OK
 ```
 
 生成前需用 Rust stable（本次为 1.98.0）执行 `cargo fetch --locked`；仓库默认
-Rust 1.83.0 无法解析锁文件中依赖使用的 edition 2024。许可证合规门禁在提交后复验。
+Rust 1.83.0 无法解析锁文件中依赖使用的 edition 2024。提交后在最终合并分支执行
+`RUSTUP_TOOLCHAIN=stable npm run licenses:generate && npm run licenses:check`，
+生成物保持无 diff，许可证合规门禁通过。
