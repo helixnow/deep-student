@@ -12,7 +12,9 @@ describe('AppearanceTab macOS font smoothing source contract', () => {
     expect(source).toContain("settings:theme.font_smoothing_description");
     expect(source).toContain('setMacosNativeFontSmoothingEnabled');
     expect(source).toContain("save_setting', {");
-    expect(source).toContain('window.dispatchEvent');
+    // 设置变更广播已从裸 window.dispatchEvent 收敛到类型化的
+    // dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, …)。
+    expect(source).toContain('dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {');
     expect(source).toContain('macosFontSmoothing: true');
     expect(source).toContain('settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY');
   });
