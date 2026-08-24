@@ -74,5 +74,27 @@
         "dark_light": "暗色/亮色主题自适应"
       }
     }
+  },
+  "dstu_essay": {
+    "list_sessions": "获取作文批改会话列表",
+    "get_session_detail": "获取作文会话详情",
+    "delete_session": "删除作文会话",
+    "get_session": "获取作文会话",
+    "toggle_favorite": "切换收藏状态",
+    "set_favorite": "设置收藏状态",
+    "get_full_session": "获取完整作文会话",
+    "create_session": "创建作文会话",
+    "update_session_metadata": "更新会话元数据"
+  },
+  "dstu_translation": {
+    "list_history": "获取翻译历史列表",
+    "get_detail": "获取翻译详情",
+    "delete_translation": "删除翻译记录",
+    "get_translation": "获取翻译记录",
+    "toggle_favorite": "切换收藏状态",
+    "set_favorite": "设置收藏状态",
+    "create_record": "创建翻译记录",
+    "persist_settings": "保存翻译设置",
+    "update_record": "更新翻译记录"
   }
 }
