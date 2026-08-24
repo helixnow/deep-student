@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import zhCN from '@/locales/zh-CN/graph_conflict.json';
 import enUS from '@/locales/en-US/graph_conflict.json';
 
 const source = readFileSync(
-  new URL('../createFromWikilink.ts', import.meta.url),
+  resolve(process.cwd(), 'src/features/notes/createFromWikilink.ts'),
   'utf8',
 );
 
