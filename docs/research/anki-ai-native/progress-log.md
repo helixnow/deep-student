@@ -73,17 +73,21 @@
   - 用户指南 12 章对齐现码：29 工具、transform 试运行→确认→应用、fill_missing_llm 自动补字段、plan_route 智能路由、质检标记；无 CardForge 主路径残留描述
   - `round3/00-round3-summary.md` + `round3/10-preference-memory.md`
 
-**进行中（以各子代理最终 commit 为准）：**
-- [ ] 子代理 #1：chatanki_transform 打磨 + `docs/anki-agent-tools.md` transform 专节
-- [ ] 子代理 #2：原生 Structured Output（路线图 #1，`anki_protocol.rs`）
-- [ ] 子代理 #5：FSRS 复习数据回流制卡（路线图 #14，`anki_fsrs_feedback.rs`）
-- [ ] 子代理 #6：Multi-agent card-coordinator 档案深化
-- [ ] 子代理 #7：APKG 导入/导出加固
-- [ ] 子代理 #8：transform 沙箱脚本模式探索（`chatanki_transform_script.rs`）
+**后续均已交付（Round 5 复核补记）：**
+- [x] 子代理 #1：transform **script 模式生产化**（`26307d82`，`chatanki_transform_script.rs`）——
+  沙箱 python/node 执行 + `CHATANKI_INPUT/OUTPUT` I/O 合同 + 结构化错误码 + CAS 写回，
+  超越原「探索」定位直接落地
+- [x] 子代理 #2：原生 Structured Output（`d4c3e296`，路线图 #1，`anki_protocol.rs`）——
+  delimiter / json_object / json_schema 三协议 + auto 按供应商能力解析，81 测通过
+- [x] 子代理 #5：FSRS 复习数据回流制卡（`283dbd52`，路线图 #14，`anki_fsrs_feedback.rs`）——
+  用户复习画像 + 语义干扰预警 + 拆卡建议，默认开启可关
+- [x] 子代理 #6：文档分段服务加固 24 测 + 真实边界修复（`b6800b13`）
+- [x] 子代理 #7：APKG 媒体完整导入/导出闭环 + 结构化 mediaReport（`8497dcfa`，路线图相关）
+- [x] cloze 扫描器 UTF-8 边界修复（`ad2367be`）
 
 ---
 
-## Round 3 — 深化与编排（进行中）
+## Round 3 — 深化与编排（已完成）
 
 - [x] 子代理 #7：`chatanki_analyze` 与管线路由同源 + Multi-agent Phase 1
   （详见 `round3/07-analyze-and-multiagent.md`）
@@ -103,8 +107,13 @@
 
 ---
 
-## Round 4 — 能力扩展（进行中）
+## Round 4 — 能力扩展（已收尾，状态盘点见 `round4/00-round4-status.md`）
 
+部分子代理因环境中断未回传报告，但代码已入库；Round 5 #8 已逐项复核接线状态。
+
+- [x] 子代理 #2：LLM critic 生成后终审（`anki_critic.rs` + streaming 收尾）——
+  opt-in（`enable_critic_pass`，默认关），模型/解析失败一律降级全 keep，
+  成功派发 `CriticSummary` 事件；尚未暴露为 chatanki 工具参数
 - [x] 子代理 #5：AI 图像遮挡制卡首版（详见 `round4/05-image-occlusion.md`）
   - 新增 `anki_image_occlusion.rs` 纯函数层：`OcclusionSpec{imageRef, boxes}`
     归一化坐标（0-1）校验（越界/重叠 IoU/空盒/零序号 结构化拒绝）、
@@ -114,7 +123,44 @@
   - 前端最小渲染：`utils/imageOcclusion.ts`（解析/换算与 Rust 镜像）+
     `ImageOcclusionOverlay.tsx`（百分比定位、同 clozeIndex 组揭开、受控/非受控）
   - 不动 chatanki_executor 管线与 builtin-templates.json；VlmFull 接线
-    与 VLM grounding 升级路径见文档 §7；Rust 测试 ×19 + vitest ×11
+    与 VLM grounding 升级路径见文档 §7；Rust 测试 ×19 + vitest ×11；
+    **接线（VLM 路径 + 预览块渲染）遗留给 Round 5**
+- [x] 子代理 #7：Sidekick 模型分层路由（`anki_model_routing.rs`）——
+  `plan_routing` 产出 Planner/Generator/Critic/Vlm 四角色计划，
+  流式生成路径消费 Generator 槽；三角色真正分槽遗留给 Round 5
+- [x] 子代理 #8：transform ops 安全加固（`c9b9e86e`）——regex 增长炸弹逐卡拦截 +
+  tag 长度上限
+- [x] 子代理 #9：前端预览块展示 `_qa_flags` 摘要与 mediaReport 跳过原因
+  （`028b1eb0` + `4bba4688`，详见 `round4/09-preview-ui.md`）——
+  卡片级质检徽标（severity 图标 + 展开详情）、块级摘要条、APKG 媒体导入报告，
+  28 个前端测试，无障碍不只靠颜色
+- [x] 子代理 #10：金标挖掘纯函数（`anki_gold_set.rs`）+ eval lint 契约对照表
+  （`d9bb7a83`，详见 `round4/10-gold-set.md`）；critic grounded 接线遗留给 Round 5
+- [x] 其余入库项：run/start 生成调优参数 Rust 侧、偏好记忆 retrieve 注入
+  （写入侧未接）、FingerprintTracker 接入流式、Phase 2 只读四工具白名单
+
+---
+
+## Round 5 — 接线收口与对齐（进行中，2026-08-24）
+
+已知交付（其余子代理并行进行中，以最终 commit 为准，详见 `round5/00-round5-summary.md`）：
+
+- [x] 子代理 #1：run/start skill schema 补齐生成调优参数（`d1b827d9`，
+  详见 `round5/01-skill-params.md`）——outputProtocol / visualHint / contentFormat /
+  enableQaPass / enableFsrsFeedback / enablePreferenceMemory / maxImages 全暴露 +
+  选用指南 + Round 5 契约测试；关闭 Round 4 状态盘点的第一优先缺口
+- [x] 子代理 #10：eval lint 与 anki_qa_lint 完全对齐（`9da66ebd`，
+  详见 `round5/10-eval-align.md`）——`anki_qa_lint::codes` 稳定常量导出 +
+  JS 三分区表名值双对齐 + 6 边界 fixture，good 集 0 误伤
+- [x] 子代理 #8：文档/进度/i18n/用户指南对齐当前代码（本提交）
+  - `round4/00-round4-status.md` 逐项复核修订；`round5/00-round5-summary.md` 创建
+  - `02-ai-native-gap-analysis.md` 评分重算 6.5 → **8.0/10**；
+    `03-optimization-roadmap.md` 勾选完成项（P0 7/7、P1 6/6、P2 5/7）
+  - 用户指南 12 章补：脚本级批量变换、质检标记徽标、APKG 媒体报告、
+    FSRS 复习画像回流、生成调优参数（critic/遮挡未接线不写入，避免文档先行）
+  - i18n：修复 `AnkiQaFlagBadge` 文案 key 引用不一致（`qaFlags` 提升为
+    anki.json 顶层块）；script 模式文案替换过时的 `scriptModeUnimplemented`；
+    新增 generation/critic/fsrsFeedback/occlusion 文案；中英 key 对称
 
 ---
 
@@ -126,3 +172,6 @@
 | 2026-08-24 | 1 | Round 1 汇总 + P0 bugfix | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 2 | extraRequirements / fill_missing_llm / plan_route / transform ops + 切卡器 + QA flags / Multi-agent 档案 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 3 | qa lint / eval harness / CardForge 清理 / 偏好记忆 + 文档 i18n 收口 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；文档/i18n/用户指南对齐 + 评分复核 8.0/10（其余接线收口进行中） | [#215](https://github.com/helixnow/deep-student/pull/215) |

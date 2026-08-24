@@ -11,7 +11,7 @@
 | #1 run/start skill schema 补齐生成调优参数（outputProtocol/visualHint/contentFormat/QA/FSRS/偏好/maxImages 全暴露 + 选用指南 + 契约测试） | ✅ `d1b827d9` |
 | #8 文档/进度/i18n/用户指南对齐当前代码 | ✅ 本文件对应提交 |
 | #10 eval lint 与 anki_qa_lint 完全对齐（`anki_qa_lint::codes` 稳定常量导出 + JS ALIGNED/RUST_ONLY/EVAL_ONLY 三分区表名值双对齐 + answer_leak 码点/cloze u32 语义对齐 + 6 边界 fixture，good 集仍 0 误伤，详见 `10-eval-align.md`） | ✅ `9da66ebd` |
-| 偏好记忆写入侧持久化、遮挡接线、critic × 金标 grounded、Sidekick 分槽、Phase 2 豁免测试、跨模块集成测试、eval 扩容等 | ⏳ 并行进行中（工作树可见未提交改动涉及 `anki_critic.rs` / `anki_gold_set.rs` / `anki_model_routing.rs` / `anki_preference_memory.rs` / `streaming_anki_service.rs` / eval fixtures 等），**以各子代理最终 commit 为准，此处不预记** |
+| 偏好记忆写入侧持久化、遮挡接线、critic × 金标 grounded、Sidekick 分槽、Phase 2 豁免测试、跨模块集成测试等 | ⏳ 并行进行中（工作树可见未提交改动涉及 `anki_critic.rs` / `anki_gold_set.rs` / `anki_model_routing.rs` / `anki_preference_memory.rs` / `streaming_anki_service.rs` 等），**以各子代理最终 commit 为准，此处不预记** |
 
 ## #8 已交付（文档/i18n 对齐）
 
@@ -29,9 +29,9 @@
 4. **`README.md` / `progress-log.md`**：核心结论、能力对照表、轮次日志
    与变更记录同步到 Round 5。
 5. **用户指南 12 章**：补脚本级批量变换（沙箱审批语义）、质检标记徽标 UI、
-   APKG 媒体导入报告、FSRS 复习画像回流、AI 质检终审（critic）说明；
-   偏好记忆表述与"读取已接/抽取未接"现状对齐；图像遮挡不写入用户指南
-  （尚未接线，避免文档先行）。
+   APKG 媒体导入报告、FSRS 复习画像回流、生成过程精细控制（调优参数面）；
+   偏好记忆表述与"读取已接/抽取未接"现状对齐；critic 与图像遮挡**不写入**
+   用户指南（critic 未暴露为用户可触达开关、遮挡未接线，避免文档先行）。
 6. **i18n（zh-CN/en-US `anki.json`）**：
    - **修复真实 UI bug**：`AnkiQaFlagBadge` 组件以 `useTranslation('anki')` +
      `t('qaFlags.*')` 取文案，而文案原挂在 `agent.qaFlags.*` 下（无 keyPrefix），
