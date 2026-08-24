@@ -236,7 +236,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
                       variant="ghost"
                       size="sm"
                       onClick={openToolPermissionSettings}
-                      className="!flex !h-auto !w-full !min-w-0 !items-start !justify-start !gap-2 rounded-[5px] !border-none !bg-transparent !px-2 !py-1.5 text-left !shadow-none hover:!bg-[color:var(--interactive-hover)]"
+                      className="!flex !h-auto !w-full !min-w-0 !items-start !justify-start !gap-2 rounded-[5px] !border-none !bg-transparent !px-2 !py-1.5 text-left !shadow-none hover:!bg-[color:var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                       title={t('agentPanel.authorizationTitle', {
                         label: item.error || item.label,
                         action: t('agentPanel.goAuthorize'),
