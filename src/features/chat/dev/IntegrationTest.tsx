@@ -416,7 +416,7 @@ export const IntegrationTest: React.FC = () => {
                     onClick={runAllTests}
                     disabled={isRunningTests}
                     className={cn(
-                      'px-2 py-1 text-xs rounded-md',
+                      'px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-md',
                       'bg-primary text-primary-foreground',
                       'hover:bg-primary/90 transition-colors',
                       isRunningTests && 'opacity-50 cursor-not-allowed'

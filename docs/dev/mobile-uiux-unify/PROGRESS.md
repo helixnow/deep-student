@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–35 已落地；当前队列见下。
+- **轮次**：Round 2–36 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -45,14 +45,14 @@
 | 33 | claude-fable-5-thinking-xhigh ×10 | 填空 40→44、TabBar 更多关闭加高、paperSave、EmbeddedTools、聊天展开、闪卡搜索 | 见 ROUND-33-FIXES.md |
 | 34 | claude-fable-5-thinking-xhigh ×10 | DeepSeek 刷新、复习重做、日历关闭、模型钉、标签建议、导图 Aa/ab、备份勾选 | 见 ROUND-34-FIXES.md |
 | 35 | claude-fable-5-thinking-xhigh ×10 | 滑轨/chip/展开、MCP 勾选、Workspace、标签云、复习/自动化残留 | 见 ROUND-35-FIXES.md |
+| 36 | claude-fable-5-thinking-xhigh ×10 | DEV 测试/Playground、作文去图、制卡 min-h-10、外搜/侧栏/壁纸滑轨 | 见 ROUND-36-FIXES.md |
 
-## 进行中的修复队列（Round 36+）
+## 进行中的修复队列（Round 37+）
 
-- DEV：TestControls 28–32；PlaygroundControlPanel tab ~26
-- 作文去图徽章 40；ankiCardsBlock min-h-10；外搜 top-k h-8；侧栏重命名 h-7
-- WorkbenchSettingsSection 非统一滑轨
+- PlaygroundControlPanel 渲染模式钮仍 py-0.5
 - 内联引用 chip 设计未决；MiniCalendar/TabBar 宽 28 有意折衷
 - ShortcutSettings 属 #166 不碰
+- Epub / ImmersiveFocus / Workbench dock 滑轨已覆盖，勿重做
 
 ## 已落地
 

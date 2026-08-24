@@ -299,7 +299,7 @@ const TagGroupCard: React.FC<{
               size="icon"
               iconOnly
               onClick={(e) => { e.stopPropagation(); onRenameStart(); }}
-              className="!h-5 !w-5 !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-5 !w-5 !p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               aria-label={t('learningHub:exam.library.renameTag')}
               title={t('learningHub:exam.library.renameTag')}
             >

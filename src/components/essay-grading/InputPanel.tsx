@@ -46,9 +46,9 @@ const COARSE_HIT =
 const COARSE_HIT_SM =
   "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
 
-/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ~40px */
+/** 缩略图角标删除钮（16px、absolute 定位）：命中区扩到 ≥44px */
 const COARSE_HIT_BADGE =
-  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']";
+  "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']";
 
 /** Unicode 字符计数（避免 UTF-16 length 偏差，与父级统计口径一致） */
 const getUnicodeCharCount = (text: string): number => Array.from(text).length;

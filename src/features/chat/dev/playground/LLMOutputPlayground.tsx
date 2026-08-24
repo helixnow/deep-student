@@ -174,7 +174,7 @@ export const LLMOutputPlayground: React.FC = () => {
           <button
             onClick={() => setCompareMode((v) => !v)}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
               compareMode
                 ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
                 : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -185,14 +185,14 @@ export const LLMOutputPlayground: React.FC = () => {
           </button>
           <button
             onClick={handleReset}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title="重置 (Ctrl+Shift+R)"
           >
             <ArrowCounterClockwise size={14} />
           </button>
           <button
             onClick={handleToggleDarkMode}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title="切换主题 (Ctrl+Shift+D)"
           >
             {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
@@ -200,7 +200,7 @@ export const LLMOutputPlayground: React.FC = () => {
           <button
             onClick={() => setShowPanel((v) => !v)}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
               showPanel
                 ? 'bg-primary/10 text-primary'
                 : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -310,7 +310,7 @@ const CompareView: React.FC<CompareViewProps> = ({
             key={s.id}
             type="button"
             onClick={() => onTrigger(s.id)}
-            className="px-2 py-0.5 rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors"
+            className="px-2 py-0.5 rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors [@media(pointer:coarse)]:min-h-11"
           >
             {s.label}
           </button>
@@ -365,7 +365,7 @@ const ComparePane: React.FC<ComparePaneProps> = ({
               onClick={() => onPresetChange(p)}
               title={getStreamingPresetHint(p)}
               className={cn(
-                'px-1.5 py-0.5 text-2xs rounded transition-colors',
+                'px-1.5 py-0.5 text-2xs rounded transition-colors [@media(pointer:coarse)]:min-h-11',
                 preset === p
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted hover:bg-muted/80 text-muted-foreground',

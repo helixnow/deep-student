@@ -431,7 +431,8 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
                   <span className="wb-wpm-adjust-label">{t('wallpaperManager.blur')}</span>
                   <input
                     type="range"
-                    className="wb-wpm-slider"
+                    // 触屏命中区 ≥44px：原生 appearance 轨道垂直居中渲染，加高盒不改轨道视觉
+                    className="wb-wpm-slider [@media(pointer:coarse)]:min-h-11"
                     min={0}
                     max={40}
                     step={1}
@@ -451,7 +452,8 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
                   <span className="wb-wpm-adjust-label">{t('wallpaperManager.dim')}</span>
                   <input
                     type="range"
-                    className="wb-wpm-slider"
+                    // 触屏命中区 ≥44px：原生 appearance 轨道垂直居中渲染，加高盒不改轨道视觉
+                    className="wb-wpm-slider [@media(pointer:coarse)]:min-h-11"
                     min={0}
                     max={0.6}
                     step={0.05}

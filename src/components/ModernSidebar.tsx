@@ -1061,7 +1061,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             onBlur={() => {
               if (!isRenaming) void saveRecentSessionRename(session.id);
             }}
-            className="h-7 w-full rounded-[10px] border-[color:var(--ring)]/45 bg-[color:var(--surface-elevated)] px-2 text-[13px] leading-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-7 w-full rounded-[10px] border-[color:var(--ring)]/45 bg-[color:var(--surface-elevated)] px-2 text-[13px] leading-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
           />
           {recentRenameError ? (
             <p className="mt-1 px-1 text-[11px] leading-tight text-destructive" role="alert">

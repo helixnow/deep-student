@@ -335,8 +335,8 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
                 }
               }}
               autoFocus
-              // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大
-              className="flex-1 h-8 [@media(pointer:coarse)]:text-[16px]"
+              // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大 + 44px 触控高度
+              className="flex-1 h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               placeholder={t('page.sessionNamePlaceholder')}
             />
             <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
@@ -755,7 +755,8 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                  className="w-full h-9 pl-9 pr-3"
+                  // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大 + 44px 触控高度
+                  className="w-full h-9 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </div>
             </div>
