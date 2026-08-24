@@ -224,3 +224,14 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 | `tests/vitest/data-governance/r10-ux-backup-restore-confirm.test.tsx` | 恢复 warning / 删除 danger / 导出 primary 变体分级 |
 
 **遗留（未在本包处理）**：P2-LOCALE-PLATFORM-MSG 的机制统一半边——FTP（英文常量）与 S3（中文常量）仍靠字符串正则映射，后端引入稳定错误码后应改为按 code 匹配（两处映射与 `syncE2eeErrorMapping.ts` 一并迁移）。
+
+### R10-conflict-ui（FINDINGS-R07 P1-1 关闭：cloud-only 冲突「保留本地」前端可达）
+
+分支 `cursor/cloud-sync-sota-r10-conflict-ui-b343`，模型 claude-fable-5-thinking-high。纯前端 + vitest，不动 Rust 后端 / SyncTab 错误映射。交付：
+
+- **P1-1 关闭**：`RecordConflictsPanel.tsx` 单条「保留本地」不再因缺 local 快照禁用（后端 `data_governance_resolve_record_conflict` 自 R06 起缺 local 侧回退当前业务表行）；语义 = 驳回云端败方 DELETE/覆盖、保留本地胜方。cloud-only 组的单条 keep_local 走 `unifiedConfirm` 两击确认，不静默执行；批量 keep_local 不再过滤 `pair.locals.length > 0`，cloud-only 组纳入（批量确认对话框保持不变）。
+- **人话空状态**：local 侧「无」时新增说明——这是云端单侧冲突，「保留本地」= 驳回云端变更；同文案挂在单条按钮 `title` 上。
+- **文案**：`src/locales/{zh-CN,en-US}/data.json` 新增 `governance.conflict_cloud_only_hint` / `governance.conflict_keep_local_cloud_only_confirm` 两键。
+- **测试**：改写 `tests/vitest/data-governance/r07-cloud-only-delete-conflict.test.tsx` 锁定新行为——cloud-only「保留本地」可点、确认拒绝不执行、resolve 的 expectedConflictIds 仅含 cloud 行 id、批量 keep_local 包含 cloud-only 组且仍走确认。
+
+**文件面认领（独占）**：`RecordConflictsPanel.tsx`、`data.json`（zh/en，仅 governance 新增两键）、`r07-cloud-only-delete-conflict.test.tsx`、`FINDINGS-R07.md` P1-1 回写、本节。

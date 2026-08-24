@@ -1155,6 +1155,8 @@
     "conflict_bulk_confirm": "确定对已加载的 {{count}} 组冲突执行“{{action}}”吗？该操作会覆盖数据。",
     "conflict_bulk_success": "已处理 {{count}} 组已加载冲突",
     "conflict_bulk_partial": "已处理 {{resolved}} 组，{{failed}} 组失败。首个错误：{{error}}",
+    "conflict_cloud_only_hint": "本地侧没有落败快照：这是云端单侧冲突（通常来自云端过期的删除或覆盖）。「保留本地」会驳回该云端变更，当前本地数据保持不变。",
+    "conflict_keep_local_cloud_only_confirm": "确定驳回云端变更并保留本地吗？{{table}}/{{record}} 是云端单侧冲突：本地当前数据保持不变，云端败方记录将标记为已解决。",
     "keep_local": "保留本地",
     "use_cloud": "采用云端",
     "use_cloud_latest": "采用云端{{suffix}}",

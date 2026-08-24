@@ -16,7 +16,7 @@ R06 已合入部分**基本属实、质量合格**：单侧 DELETE 冲突后端�
 
 文件级明文上传（P0-1）是已知未交付项（R07-asset-e2ee 在途），本文按复审职责留档并给出验收要点。
 
-> **父代理回写（基线之后）**：复审基于 `871528a3`。随后已合入 `r07-file-e2ee`（P0-1 文件级 DSBK）与 `r07-record-verifier`（P1-2 记录级上传走带密码校验子入口）。**P1-1 仍开**：`RecordConflictsPanel` 对 cloud-only 组禁用「保留本地」。`r07-autosync` 已合入默认关调度，R07-tests 里的 autosync `todo`/`ignore` 占位可能过时。
+> **父代理回写（基线之后）**：复审基于 `871528a3`。随后已合入 `r07-file-e2ee`（P0-1 文件级 DSBK）与 `r07-record-verifier`（P1-2 记录级上传走带密码校验子入口）。P1-1（`RecordConflictsPanel` 对 cloud-only 组禁用「保留本地」）已由 R10-conflict-ui 关闭，见下方 P1-1 条目回写。`r07-autosync` 已合入默认关调度，R07-tests 里的 autosync `todo`/`ignore` 占位可能过时。
 
 ---
 
@@ -44,6 +44,8 @@ R06 已合入部分**基本属实、质量合格**：单侧 DELETE 冲突后端�
 - **现状**：LWW 门败方 DELETE（`sync/mod.rs` ~L7664）与 UPSERT SkipStale（~L7818）都只落 `side='cloud'` 单行，没有 local 行。后端 `data_governance_resolve_record_conflict` 已放宽（缺 local 侧回退当前业务表行，`commands_sync.rs` L4448-4462），但该文件自 R02 后未再更新：单侧组的 `latestLocal` 为 undefined → 「保留本地」灰、批量 keep_local 跳过。用户界面上只剩「采用云端」（= 执行删除/覆盖本地胜方行！）或手动合并（合并基底恰是 cloud 的 `null`）。修复的主目标场景「驳回过期删除、保留本地胜方」不可达，冲突徽章事实上仍需以危险操作或曲折操作才能清除。
 - **复现**：慢钟设备发 DELETE 输掉 LWW → 冲突面板出现 cloud-only 组 → 「保留本地」按钮禁用；批量「全部保留本地」跳过该组。
 - **建议修复**：单侧 cloud-only 组放开 keep_local（语义=驳回云端败方，后端已支持并有测试钉住）；批量过滤同步放开；补 vitest 断言单侧组按钮可用。落点纯前端 + `tests/vitest/data-governance/`，与 R07 在途各代理文件面不冲突，建议下一空档新派（如 R08-conflict-ui）或并入 R07-vitest 的 data-governance 文件面（需先在 FIX-QUEUE 登记）。
+
+> **R10-conflict-ui 回写（已关）**：分支 `cursor/cloud-sync-sota-r10-conflict-ui-b343` 已放开 `RecordConflictsPanel` 的单条与批量「保留本地」——单条按钮不再因缺 local 快照禁用（cloud-only 组点击先走 `unifiedConfirm` 两击确认，语义 = 驳回云端败方 DELETE/覆盖、保留本地胜方），批量 keep_local 不再按 `locals.length > 0` 过滤；local 侧「无」补人话空状态说明；文案 zh/en 落 `data.json`（`governance.conflict_cloud_only_hint` / `conflict_keep_local_cloud_only_confirm`）；`r07-cloud-only-delete-conflict.test.tsx` 已改写为锁定新行为（可点、确认拒绝不执行、expectedConflictIds 正确、批量包含 cloud-only 组）。
 
 ### P1-2 记录级上传仍走 bool 策略入口，错密码设备可向同一 root 写入无法互解的记录级密文（`7e090429` 半闭环）
 
