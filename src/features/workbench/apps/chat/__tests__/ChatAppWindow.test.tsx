@@ -118,14 +118,23 @@ describe('ChatAppWindow', () => {
   });
 
   it('disconnects the titlebar observer as soon as its slot is found', async () => {
-    let callback: MutationCallback | null = null;
-    const observe = vi.fn();
-    const disconnect = vi.fn();
+    const observers: Array<{
+      callback: MutationCallback;
+      disconnect: ReturnType<typeof vi.fn>;
+      options?: MutationObserverInit;
+    }> = [];
     const MockMutationObserver = vi.fn(function (this: MutationObserver, cb: MutationCallback) {
-      callback = cb;
+      const record = {
+        callback: cb,
+        disconnect: vi.fn(),
+        options: undefined as MutationObserverInit | undefined,
+      };
+      observers.push(record);
       Object.assign(this, {
-        observe,
-        disconnect,
+        observe: vi.fn((_target: Node, options?: MutationObserverInit) => {
+          record.options = options;
+        }),
+        disconnect: record.disconnect,
         takeRecords: () => [],
       });
     });
@@ -133,18 +142,19 @@ describe('ChatAppWindow', () => {
 
     try {
       render(<ChatAppWindow {...makeProps()} />);
-      expect(observe).toHaveBeenCalledOnce();
+      const titlebarObserver = observers.find((observer) => observer.options?.childList);
+      expect(titlebarObserver).toBeDefined();
 
       const titlebarSlot = document.createElement('div');
       titlebarSlot.dataset.wbTitlebarSlot = '';
       titlebarSlot.dataset.windowId = 'chat-window';
       document.body.appendChild(titlebarSlot);
       act(() => {
-        callback?.([], {} as MutationObserver);
+        titlebarObserver?.callback([], {} as MutationObserver);
       });
 
       expect(await screen.findByRole('button', { name: '切换边栏' })).toBeInTheDocument();
-      expect(disconnect).toHaveBeenCalledOnce();
+      expect(titlebarObserver?.disconnect).toHaveBeenCalledOnce();
     } finally {
       vi.unstubAllGlobals();
     }
