@@ -1354,7 +1354,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const studyUiButtonSizeIconClassName =
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
-    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
+    'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
   const studyUiBlackActionButtonClass =
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
