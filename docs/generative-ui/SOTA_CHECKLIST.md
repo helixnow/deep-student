@@ -1,6 +1,6 @@
 # Generative UI SOTA 验收清单
 
-> 分支 `Generative-UI-0824` · Round 41/42 · 对照目标态「结构化意图 + 组件注册表」
+> 分支 `Generative-UI-0824` · Round 41/42/43 · 对照目标态「结构化意图 + 组件注册表」
 
 ## 架构核心
 
@@ -24,6 +24,11 @@
 | i18n 完整合同 | `generativeUiI18n.parity.contract.test.ts` | ✅ Round 42 |
 | 18 块 testid 合同 | `data-generative-block` | ✅ Round 42 |
 | v1 → v1.1 migrate | `migrateIntentToV11` | ✅ Round 42 |
+| export | `buildResearchExportMarkdown` / 通用 intent 导出合同 | ⏳ Round 43 进行中 |
+| reduced-motion | `prefers-reduced-motion` 流式/图表/过渡降级 | ⏳ Round 43 进行中 |
+| normalize | `normalizeIntent` 公开契约 | ⏳ Round 43 进行中 |
+| color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ Round 43 进行中 |
+| buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ Round 43 进行中 |
 
 ## Chat 桥接
 
@@ -62,6 +67,16 @@
 | last-good 持久化 | `generativeUIStreamPersistence` | ✅ |
 | SOTA 文档补洞 | 本清单 + ARCHITECTURE / ROADMAP / PROGRESS | ✅ |
 
+## Round 43 进行中
+
+| 项 | 证据 / 落点 | 状态 |
+|----|-------------|------|
+| export | `buildResearchExportMarkdown` / 通用 intent 导出合同 | ⏳ |
+| reduced-motion | `prefers-reduced-motion` 流式/图表/过渡降级 | ⏳ |
+| normalize | `normalizeIntent` 公开契约 | ⏳ |
+| color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ |
+| buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ |
+
 ## HPIAS 后端
 
 | 要求 | 证据 | 状态 |
@@ -89,16 +104,17 @@
 ## 距 SOTA 完整态剩余项
 
 1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
-2. **合并 main** — 待 CI 绿 + 人工 approve（Goal 未标 complete）
+2. **合并 main** — 待 CI 绿 + 人工 approve（仍 ⏳，Goal 未标 complete）
 3. ~~**Round 42 补洞**~~ — ✅ 本地完成（未 push，保护 CI）
-4. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+4. **Round 43 契约加固** — export / reduced-motion / normalize / color contract / buffer cap（⏳ 进行中）
+5. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41/42） |
-| 多轮迭代至 SOTA | Round 6–42；R42 补洞未收口 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–43；R43 export/reduced-motion/normalize/color/buffer 未收口 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 43（2026-08-24）— 10 子代理：SOTA 契约加固
+
+在 Round 42 compact / i18n / testid / migrate 之上并行 10 项（文档先行，运行时未改；合入 main 仍 ⏳，**不标 Goal complete**）：
+
+1. [ ] export — 通用 intent / 研究报告导出（clipboard + markdown）合同
+2. [ ] reduced-motion — `prefers-reduced-motion` 降级（流式 / 图表 / 过渡）
+3. [ ] normalize — `normalizeIntent` 公开契约 + 测试
+4. [ ] color contract — 语义色枚举 / 禁裸 hex
+5. [ ] buffer cap — parser `MAX_BUFFER_BYTES` 上限合同
+6. [ ] spacing token 合同（宪法 §2：4/8/12/16/24）
+7. [ ] font-size 合同（宪法 §3：禁裸 px）
+8. [ ] 主题明暗色合同（token 单一来源）
+9. [ ] 块数上限 / overflow 合同（`MAX_GENERATIVE_UI_BLOCKS`）
+10. [x] SOTA 文档对齐（PROGRESS 本小节 + CHECKLIST 五行；不标 Goal complete）
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 42（2026-08-24）— 10 子代理：SOTA 补洞
 
 在 Round 41 已落地「18 块接宿主 + 隔离 + 消毒 + v1.1 Rust」之上并行 10 项（已本地完成，**未 push** 以免 cancel CI `32701178039`）：
