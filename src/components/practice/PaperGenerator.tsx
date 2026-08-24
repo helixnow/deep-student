@@ -252,12 +252,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 <DsButton
                   variant="outline"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   onClick={() => setShowPreview(false)}
                 >
                   {t('paper.back')}
                 </DsButton>
                 {exportFormat !== 'preview' && (
-                  <DsButton size="sm" onClick={handleExport}>
+                  <DsButton size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleExport}>
                     <Download size={16} className="mr-1" />
                     {t('paper.export')}
                   </DsButton>
@@ -454,7 +455,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 variant="ghost" size="sm"
                 onClick={() => setExportFormat(key)}
                 className={cn(
-                  '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
+                  '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg [@media(pointer:coarse)]:!min-h-11 border',
                   exportFormat === key
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border hover:bg-[var(--interactive-hover)]'
