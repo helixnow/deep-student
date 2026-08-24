@@ -171,7 +171,7 @@
       "subtitle": "Configure your AI model endpoints and base settings",
       "protocol_label": "OpenAI Protocol",
       "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
-      "responses_unavailable": "OpenAI Responses is not available for this provider or model (e.g. DeepSeek supports it for the V4 series only, not V3.x).",
+      "responses_unavailable": "OpenAI Responses is not available for this provider or model (e.g. DeepSeek only supports it for the official endpoint's listed V4 models: v4-flash / v4-pro / v4-flash-vision-exp; V3.x and reverse-proxy endpoints fall back to OpenAI Chat).",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
