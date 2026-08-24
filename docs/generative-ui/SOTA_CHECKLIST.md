@@ -20,10 +20,10 @@
 | 流式 last-good 恢复 | `coercePartialIntent` + Renderer fallback | ✅ Round 40 |
 | Action telemetry + undo | `actionTelemetry.ts` / `actionUndoStack.ts` | ✅ Round 40 |
 | A11y landmarks | `generativeUIA11y.contract.test.tsx` | ✅ Round 40/41 |
-| 移动端 compact | density/variant compact + 窄屏布局 | ⏳ Round 42 进行中 |
-| i18n 完整合同 | zh-CN / en-US 块词条 + builder labels | ⏳ Round 42 进行中 |
-| 18 块 testid 合同 | `data-generative-block` / `data-testid` 全覆盖 | ⏳ Round 42 进行中 |
-| v1 → v1.1 migrate | `migrateToV11` 兼容升级 | ⏳ Round 42 进行中 |
+| 移动端 compact | `useGenerativeUICompact` 窄屏强制 stack | ✅ Round 42 |
+| i18n 完整合同 | `generativeUiI18n.parity.contract.test.ts` | ✅ Round 42 |
+| 18 块 testid 合同 | `data-generative-block` | ✅ Round 42 |
+| v1 → v1.1 migrate | `migrateIntentToV11` | ✅ Round 42 |
 
 ## Chat 桥接
 
