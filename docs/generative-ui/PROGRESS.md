@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 32（2026-08-24）— CI 等待 + 本地全 gate 复验
+
+- [x] commit `13585efd` 本地 gate 全绿：tsc / lint(0 err) / licenses / fmt / vite build / 210 generative-ui vitest
+- [x] vitest 4 分片本地模拟启动（shard 1/4 运行中）
+- [ ] PR #214 CI run `32689455852` — 12 jobs 持续 **queued**（GitHub runner 排队，非代码问题）
+- **策略**：本轮不再 push，避免 cancel 正在排队的 run
+
 ## Round 31（2026-08-24）— Frontend licenses:check
 
 - [x] 预检发现 `package-lock.json`（Round 1 添加 zod 生产依赖）未同步 `THIRD_PARTY_NOTICES.txt`
