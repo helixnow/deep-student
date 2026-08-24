@@ -531,5 +531,11 @@
   "stepper": {
     "decrease": "减少「{{label}}」数量",
     "increase": "增加「{{label}}」数量"
+  },
+  "preview_persist": {
+    "save_progress": "保存阅读进度",
+    "save_bookmarks": "保存书签",
+    "save_bookmarks_failed": "保存书签失败",
+    "flush_unsaved": "保存未持久化的阅读进度/书签"
   }
 }

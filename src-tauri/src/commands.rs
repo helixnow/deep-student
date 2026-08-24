@@ -3104,8 +3104,13 @@ pub async fn pdfstream_check_access(
         Err(e) => return Ok(denied(&format!("文件不存在或不可读: {}", e))),
     };
 
+    // #59：与协议处理器使用同一 path_is_within 比较（Windows \\?\ verbatim 归一化），
+    // 避免探测与实际加载结果不一致。
     let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(&app);
-    if !allowed_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+    if !allowed_dirs
+        .iter()
+        .any(|dir| crate::pdf_protocol::path_is_within(&canonical, dir))
+    {
         return Ok(denied("路径不在 pdfstream 白名单目录内"));
     }
 

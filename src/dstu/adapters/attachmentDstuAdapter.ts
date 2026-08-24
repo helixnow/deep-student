@@ -199,7 +199,7 @@ export const attachmentDstuAdapter = {
     if (typeFilter) {
       const result = await dstu.list(path, { ...options, typeFilter });
       if (!result.ok) {
-        reportError(result.error, 'List attachments');
+        reportError(result.error, i18next.t('mcp:dstu_attachment.listAttachments', { defaultValue: 'List attachments' }));
       }
       return result;
     }
@@ -226,18 +226,18 @@ export const attachmentDstuAdapter = {
     // 处理错误情况
     if (!imageResult.ok && !fileResult.ok) {
       // 两者都失败，返回第一个错误
-      reportError(imageResult.error, 'List image attachments');
+      reportError(imageResult.error, i18next.t('mcp:dstu_attachment.listImageAttachments', { defaultValue: 'List image attachments' }));
       return imageResult;
     }
 
     if (!imageResult.ok) {
-      reportError(imageResult.error, 'List image attachments');
+      reportError(imageResult.error, i18next.t('mcp:dstu_attachment.listImageAttachments', { defaultValue: 'List image attachments' }));
       // 只返回文件列表
       return fileResult;
     }
 
     if (!fileResult.ok) {
-      reportError(fileResult.error, 'List file attachments');
+      reportError(fileResult.error, i18next.t('mcp:dstu_attachment.listFileAttachments', { defaultValue: 'List file attachments' }));
       // 只返回图片列表
       return imageResult;
     }
@@ -292,7 +292,7 @@ export const attachmentDstuAdapter = {
     console.log(LOG_PREFIX, 'get via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, 'Get attachment detail');
+      reportError(result.error, i18next.t('mcp:dstu_attachment.getAttachmentDetail', { defaultValue: 'Get attachment detail' }));
     }
     return result;
   },
@@ -307,7 +307,7 @@ export const attachmentDstuAdapter = {
     console.log(LOG_PREFIX, 'delete via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, 'Delete attachment');
+      reportError(result.error, i18next.t('mcp:dstu_attachment.deleteAttachment', { defaultValue: 'Delete attachment' }));
     }
     return result;
   },
@@ -353,7 +353,7 @@ export const attachmentDstuAdapter = {
     });
 
     if (!result.ok) {
-      reportError(result.error, 'Create attachment');
+      reportError(result.error, i18next.t('mcp:dstu_attachment.createAttachment', { defaultValue: 'Create attachment' }));
     }
     return result;
   },
@@ -372,17 +372,17 @@ export const attachmentDstuAdapter = {
     console.log(LOG_PREFIX, 'updateMetadata via DSTU:', path);
     const setResult = await dstu.setMetadata(path, metadata);
     if (!setResult.ok) {
-      reportError(setResult.error, 'Update attachment metadata');
+      reportError(setResult.error, i18next.t('mcp:dstu_attachment.updateAttachmentMetadata', { defaultValue: 'Update attachment metadata' }));
       return err(setResult.error);
     }
     const getResult = await dstu.get(path);
     if (!getResult.ok) {
-      reportError(getResult.error, 'Get updated attachment');
+      reportError(getResult.error, i18next.t('mcp:dstu_attachment.getUpdatedAttachment', { defaultValue: 'Get updated attachment' }));
       return err(getResult.error);
     }
     if (!getResult.value) {
       const error = toVfsError(new Error(`Attachment not found: ${attachmentId}`), i18next.t('dstu:adapters.attachment.attachmentNotFound'));
-      reportError(error, 'Get updated attachment');
+      reportError(error, i18next.t('mcp:dstu_attachment.getUpdatedAttachment', { defaultValue: 'Get updated attachment' }));
       return err(error);
     }
     return ok(getResult.value);
@@ -399,7 +399,7 @@ export const attachmentDstuAdapter = {
     console.log(LOG_PREFIX, 'setFavorite via DSTU:', path, isFavorite);
     const result = await dstu.setFavorite(path, isFavorite);
     if (!result.ok) {
-      reportError(result.error, 'Set attachment favorite');
+      reportError(result.error, i18next.t('mcp:dstu_attachment.setAttachmentFavorite', { defaultValue: 'Set attachment favorite' }));
     }
     return result;
   },
@@ -434,7 +434,7 @@ export const attachmentDstuAdapter = {
     if (typeFilter) {
       const result = await dstu.list(path, { search: query, limit, typeFilter });
       if (!result.ok) {
-        reportError(result.error, 'Search attachments');
+        reportError(result.error, i18next.t('mcp:dstu_attachment.searchAttachments', { defaultValue: 'Search attachments' }));
       }
       return result;
     }
@@ -447,17 +447,17 @@ export const attachmentDstuAdapter = {
 
     // 处理错误情况
     if (!imageResult.ok && !fileResult.ok) {
-      reportError(imageResult.error, 'Search image attachments');
+      reportError(imageResult.error, i18next.t('mcp:dstu_attachment.searchImageAttachments', { defaultValue: 'Search image attachments' }));
       return imageResult;
     }
 
     if (!imageResult.ok) {
-      reportError(imageResult.error, 'Search image attachments');
+      reportError(imageResult.error, i18next.t('mcp:dstu_attachment.searchImageAttachments', { defaultValue: 'Search image attachments' }));
       return fileResult;
     }
 
     if (!fileResult.ok) {
-      reportError(fileResult.error, 'Search file attachments');
+      reportError(fileResult.error, i18next.t('mcp:dstu_attachment.searchFileAttachments', { defaultValue: 'Search file attachments' }));
       return imageResult;
     }
 

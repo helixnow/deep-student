@@ -143,6 +143,16 @@
     "resources": "Loading resources...",
     "content": "Loading content..."
   },
+  "ai_edit": {
+    "append_content_empty": "追加内容为空",
+    "search_pattern_empty": "搜索模式为空",
+    "invalid_regex": "无效的正则表达式: {{message}}",
+    "regex_syntax_error": "语法错误",
+    "replace_target_not_found": "未找到要替换的内容",
+    "unknown_operation": "未知的操作类型: {{operation}}",
+    "section_not_found": "未找到章节: {{section}}",
+    "user_rejected": "用户拒绝修改"
+  },
   "error": {
     "loadFailed": "Failed to load",
     "retry": "Retry",
@@ -1397,5 +1407,16 @@
     "lanceHasPageIndex": "has pageIndex",
     "lanceSampleMetadata": "Sample metadata",
     "lanceRows": "rows"
+  },
+  "agent": {
+    "unsupported_hint": "Use the resource/DSTU domain tools to modify file data; this driver only supports navigation ops (openFolder)",
+    "pause_check_failed": "Pause check failed: {{error}}",
+    "pacing_failed": "Pacing control failed: {{error}}",
+    "op_missing_folder_id": "{{label}} (missing folderId)",
+    "op_failed": "{{label}} (failed: {{error}})",
+    "open_folder_label": "Open folder {{folderId}}",
+    "nav_aborted": "Files navigation aborted",
+    "run_not_found": "Files run does not exist or has already finished",
+    "run_ended": "Run already finished"
   }
 }

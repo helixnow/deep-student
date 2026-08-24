@@ -76,10 +76,16 @@ const virtualQuestionListSource = readFileSync(
   'utf-8',
 );
 
+// 测试夹具与 node 产物不会承载产品样式/组件，扫描它们只会放大 CI 耗时。
+const skippedScanDirectories = new Set(['__tests__', '__mocks__', 'node_modules']);
+
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const absolutePath = resolve(directory, entry.name);
-    return entry.isDirectory() ? collectSourceFiles(absolutePath) : absolutePath;
+    if (entry.isDirectory()) {
+      return skippedScanDirectories.has(entry.name) ? [] : collectSourceFiles(absolutePath);
+    }
+    return absolutePath;
   });
 }
 
@@ -103,13 +109,19 @@ const embeddedDocumentScrollbarExemptions = new Set([
   'features/learning-hub/apps/views/epubReaderModel.ts',
 ]);
 
+// 违规判定必然要求源码中连续出现下列标记之一（空白折叠不会拼接非空白字符，
+// 所以规范化后的选择器含 '::-webkit-scrollbar' 蕴含源码原文同样包含它）。
+// 绝大多数文件不含任何标记，先做一次线性预筛即可跳过昂贵的逐块解析。
+const scrollbarRecipeMarker = /::-webkit-scrollbar|scrollbar-width|scrollbar-color/;
+
 function findPrivateVisibleScrollbarRecipes(): string[] {
   const violations = new Set<string>();
 
   for (const { file, source } of scrollbarSourceEntries) {
     if (
       file === 'styles/native-feel/scrollbars.css' ||
-      embeddedDocumentScrollbarExemptions.has(file)
+      embeddedDocumentScrollbarExemptions.has(file) ||
+      !scrollbarRecipeMarker.test(source)
     ) {
       continue;
     }
@@ -288,9 +300,14 @@ describe('repository-wide scrollbar integration contract', () => {
     ).toContain('.scrollbar-none [class~="os-scrollbar"] {');
   });
 
-  it('does not introduce feature-private visible scrollbar recipes', () => {
-    expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
-  });
+  it(
+    'does not introduce feature-private visible scrollbar recipes',
+    () => {
+      expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
+    },
+    // 全量扫描 src 在冷缓存的 CI 分片上可能超过默认 5s，显式放宽兜底。
+    30_000,
+  );
 
   it('does not let chat depend on the mindmap custom-scrollbar selector', () => {
     const chatCustomScrollbarUses = scrollbarSourceEntries

@@ -143,6 +143,16 @@
     "resources": "加载资源中...",
     "content": "加载内容中..."
   },
+  "ai_edit": {
+    "append_content_empty": "追加内容为空",
+    "search_pattern_empty": "搜索模式为空",
+    "invalid_regex": "无效的正则表达式: {{message}}",
+    "regex_syntax_error": "语法错误",
+    "replace_target_not_found": "未找到要替换的内容",
+    "unknown_operation": "未知的操作类型: {{operation}}",
+    "section_not_found": "未找到章节: {{section}}",
+    "user_rejected": "用户拒绝修改"
+  },
   "error": {
     "loadFailed": "加载失败",
     "retry": "重试",
@@ -1397,5 +1407,16 @@
     "lanceHasPageIndex": "有 pageIndex",
     "lanceSampleMetadata": "抽样 metadata",
     "lanceRows": "行"
+  },
+  "agent": {
+    "unsupported_hint": "请用资源/DSTU 领域工具修改文件数据；本驱动仅支持导航类 op（openFolder）",
+    "pause_check_failed": "暂停检查失败：{{error}}",
+    "pacing_failed": "节奏控制失败：{{error}}",
+    "op_missing_folder_id": "{{label}}（缺少 folderId）",
+    "op_failed": "{{label}}（失败: {{error}}）",
+    "open_folder_label": "打开文件夹 {{folderId}}",
+    "nav_aborted": "files 导航已中止",
+    "run_not_found": "files run 不存在或已结束",
+    "run_ended": "run 已结束"
   }
 }

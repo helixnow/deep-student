@@ -68,6 +68,12 @@ const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'XHigh' },
 ];
 
+/** GPT-5.6 在 xhigh 之上原生支持 max 档，不能复用 codex 档位表。 */
+const GPT56_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+  ...OPENAI_CODEX_EFFORT_OPTIONS,
+  { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
+];
+
 const LOW_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
@@ -170,8 +176,11 @@ function isGemini3FlashModelId(modelId: string): boolean {
 }
 
 function getGemini3DefaultEffort(modelId: string): DeepSeekReasoningOptionValue {
+  // flash-lite 必须先于 gemini-3.5-flash 匹配：
+  // "gemini-3.5-flash-lite" 包含子串 "gemini-3.5-flash"，
+  // 若顺序颠倒会被误判为 Flash 默认 "medium"（与后端 gemini.rs 对齐，覆盖 3.5/3.1 lite）
+  if (modelId.includes('flash-lite')) return 'minimal';
   if (modelId.includes('gemini-3.5-flash')) return 'medium';
-  if (modelId.includes('gemini-3.1-flash-lite')) return 'minimal';
   if (modelId.includes('gemini-3-flash')) return 'high';
   return modelId.includes('flash') ? 'low' : 'high';
 }
@@ -276,6 +285,21 @@ function isLegacyKimiForcedThinkingModelId(modelId: string): boolean {
   );
 }
 
+/**
+ * Kimi K3+：后端 moonshot 适配器固定发送 `reasoning_effort: "max"`，推理不可关闭
+ * （registry quirk：不得发送 K2.x thinking 对象）。前端必须视为 forced（canDisable=false）。
+ *
+ * 版本解析与后端 `MoonshotAdapter::parse_k_version` 对齐：取模型名中首个
+ * `k<major>` 版本号，且 `k` 前必须是开头或非字母数字边界（避免 `grok`、`128k`
+ * 之类误判）。后端适配器仅在 moonshot 供应商下生效，前端没有供应商上下文，
+ * 因此额外要求模型名包含 kimi/moonshot。
+ */
+function isKimiK3OrLaterModelId(modelId: string): boolean {
+  if (!modelId.includes('kimi') && !modelId.includes('moonshot')) return false;
+  const match = modelId.match(/(?:^|[^a-z0-9])k(\d+)/);
+  return !!match && Number(match[1]) >= 3;
+}
+
 function isForcedThinkingModelId(modelId: string): boolean {
   if (
     isGemini3ModelId(modelId) ||
@@ -289,6 +313,7 @@ function isForcedThinkingModelId(modelId: string): boolean {
     /gpt-5(?:\.[0-9]+)?-pro(?:[.\-_/]|$)/.test(modelId)
   ) return true;
   if (
+    isKimiK3OrLaterModelId(modelId) ||
     (modelId.includes('kimi-k2.7') && modelId.includes('code')) ||
     isLegacyKimiForcedThinkingModelId(modelId)
   ) return true;
@@ -332,6 +357,13 @@ function resolveOpenAiEffortControl(
       kind: 'openai-effort',
       options: MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
       canDisable: false,
+    });
+  }
+  if (/gpt-5\.6(?:[.\-_/]|$)/.test(modelId)) {
+    return finalize({
+      kind: 'openai-effort',
+      options: GPT56_EFFORT_OPTIONS,
+      canDisable: true,
     });
   }
   if (/gpt-5\.[45](?:[.\-_/]|$)/.test(modelId)) {

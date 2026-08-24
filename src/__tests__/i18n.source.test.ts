@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(new URL('../i18n.ts', import.meta.url), 'utf8');
+// jsdom 环境下 import.meta.url 不是 file: scheme，new URL 相对定位会抛
+// "The URL must be of scheme file"；与其他 source 契约测试一致改用 cwd 解析。
+const source = readFileSync(resolve(process.cwd(), 'src/i18n.ts'), 'utf8');
 
 describe('i18n lazy-loading source contract', () => {
   it('refreshes React bindings when resource bundles are added', () => {

@@ -12,7 +12,7 @@ export const vfsMemorySkill: SkillDefinition = {
   id: 'vfs-memory',
   name: 'vfs-memory',
   description: 'VFS 记忆管理能力组，包含记忆读取、写入、列表、更新、删除等工具。你应主动使用这些工具：回答前检索相关记忆以个性化回复，发现用户偏好/背景/目标时主动保存，用户纠正信息时更新旧记忆。',
-  version: '2.2.0',
+  version: '2.3.0',
   author: 'Deep Student',
   priority: 3,
   location: 'builtin',
@@ -94,6 +94,10 @@ export const vfsMemorySkill: SkillDefinition = {
 画像与普通记忆的分工：画像是**策展的长期层**（随会话自动注入，总量 ≤4000 字符，宁精勿滥）；
 普通记忆是可检索的事实库。发现**反复出现**的错误模式、明确的偏好/目标变化时才更新画像；
 单次做题流水不要写画像（系统会自动记入每日学习日志，可用 builtin-memory_search 检索"学习日志"）。
+
+**注意画像的覆盖范围**：自动注入的画像只含薄弱知识点/学习偏好/学习目标/近期状态，
+**不含**学习阶段/年级/专业方向等身份事实（它们存于"偏好/个人背景"的 fact 记忆）。
+回答知识/概念问题前应检索这些阶段事实来校准讲解深度，不要因为"画像已注入"就跳过检索。
 
 ## 记忆分类
 

@@ -536,5 +536,10 @@
     "description_required": "Please enter a description",
     "description_too_long": "Description cannot exceed 1024 characters",
     "description_too_short": "Description should be at least 50 characters for better LLM discovery"
+  },
+
+  "storage": {
+    "save_requires_tauri": "Cannot save customization outside the Tauri runtime",
+    "reset_requires_tauri": "Cannot reset customization outside the Tauri runtime"
   }
 }

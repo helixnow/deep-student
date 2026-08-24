@@ -25,7 +25,7 @@ use serde_json::{json, Map, Value};
 /// 处理标准 OpenAI Chat Completions API 格式的推理参数：
 /// - `reasoning_effort`: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"（顶级参数）
 /// - `verbosity`: "low" | "medium" | "high"（顶级参数）
-/// - 供应商侧的 enabled/disabled/adaptive/max 会归一到标准 effort
+/// - 供应商侧的 enabled/disabled/adaptive/max 会归一到标准 effort（GPT-5.6 原生支持 max，保留透传）
 /// - toggle-only 配置会归一为 medium/none，避免向反代发送供应商原生字段
 pub struct GenericOpenAIAdapter;
 
@@ -88,6 +88,26 @@ impl GenericOpenAIAdapter {
             "xhigh" | "max" => Some("xhigh"),
             _ => None,
         }
+    }
+
+    /// GPT-5.6 家族（gpt-5.6 / gpt-5.6-sol|terra|luna，含 `vendor/` 前缀形态）。
+    /// 尾部必须是版本边界，避免误伤未来的 gpt-5.60 之类 id。
+    fn is_gpt56_model(config: &ApiConfig) -> bool {
+        let model = config.model.trim().to_lowercase();
+        model
+            .rsplit('/')
+            .next()
+            .and_then(|segment| segment.strip_prefix("gpt-5.6"))
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '-', '_']))
+    }
+
+    /// GPT-5.6 原生支持高于 xhigh 的 max 档，必须透传；
+    /// 其他模型仍将 max 归一为标准 xhigh。
+    fn normalize_effort_for_model(config: &ApiConfig, effort: &str) -> Option<&'static str> {
+        if effort.trim().eq_ignore_ascii_case("max") && Self::is_gpt56_model(config) {
+            return Some("max");
+        }
+        Self::normalize_standard_effort(effort)
     }
 
     fn effort_from_budget(budget: i32) -> &'static str {
@@ -276,7 +296,7 @@ impl RequestAdapter for GenericOpenAIAdapter {
                     body.remove("reasoning_effort");
                     body.remove("reasoning");
                     early_return = true;
-                } else if let Some(normalized) = Self::normalize_standard_effort(effort) {
+                } else if let Some(normalized) = Self::normalize_effort_for_model(config, effort) {
                     if normalized == "none" {
                         // 显式关闭语义必须透传 none；Responses 适配器会保留嵌套格式。
                         Self::insert_reasoning_effort(body, config, "none");
@@ -463,6 +483,94 @@ mod tests {
             };
             let mut body = Map::new();
             adapter.apply_reasoning_config(&mut body, &config, None);
+            assert_eq!(
+                body.get("reasoning_effort"),
+                Some(&json!(expected)),
+                "input={input}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpt56_preserves_max_reasoning_effort() {
+        let adapter = GenericOpenAIAdapter;
+
+        for model in ["gpt-5.6", "gpt-5.6-sol", "openai/gpt-5.6", "GPT-5.6-Terra"] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                reasoning_effort: Some("max".to_string()),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+            body.insert("temperature".to_string(), json!(0.7));
+
+            adapter.apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body.get("reasoning_effort"),
+                Some(&json!("max")),
+                "model={model}"
+            );
+            // max 仍是启用推理的档位，采样参数照常移除
+            assert!(!body.contains_key("temperature"), "model={model}");
+        }
+    }
+
+    #[test]
+    fn test_gpt56_openrouter_nested_dialect_preserves_max() {
+        let adapter = GenericOpenAIAdapter;
+        let config = ApiConfig {
+            provider_type: Some("openrouter".to_string()),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model: "openai/gpt-5.6".to_string(),
+            reasoning_effort: Some("max".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body["reasoning"]["effort"], json!("max"));
+        assert!(!body.contains_key("reasoning_effort"));
+    }
+
+    #[test]
+    fn test_non_gpt56_models_still_normalize_max_to_xhigh() {
+        let adapter = GenericOpenAIAdapter;
+
+        // gpt-5.60 是版本边界护栏用例，不属于 5.6 家族
+        for model in ["gpt-5.5", "gpt-5.4-mini", "gpt-5.60", "o3"] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                reasoning_effort: Some("max".to_string()),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            adapter.apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body.get("reasoning_effort"),
+                Some(&json!("xhigh")),
+                "model={model}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpt56_non_max_efforts_keep_standard_normalization() {
+        let adapter = GenericOpenAIAdapter;
+
+        for (input, expected) in [("xhigh", "xhigh"), ("adaptive", "medium"), ("high", "high")] {
+            let config = ApiConfig {
+                model: "gpt-5.6".to_string(),
+                reasoning_effort: Some(input.to_string()),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            adapter.apply_reasoning_config(&mut body, &config, None);
+
             assert_eq!(
                 body.get("reasoning_effort"),
                 Some(&json!(expected)),

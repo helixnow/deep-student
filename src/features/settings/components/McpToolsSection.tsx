@@ -54,6 +54,7 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { ApiKeyField } from './ApiKeyField';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -438,11 +439,11 @@ function ServerListItem({
                 <div className="h-7" style={{ width: isBuiltin ? 28 : 124 }} aria-hidden="true" />
               ) : (
               <>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label={t('settings:mcp_descriptions.action_preview')}>
                 <Eye className="w-3.5 h-3.5" />
               </DsButton>
               {!isBuiltin && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label={t('settings:mcp_descriptions.action_test')}>
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
@@ -944,7 +945,7 @@ function ServerEditPanel({
                               className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
-                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                               <Trash className="w-3.5 h-3.5" />
                             </DsButton>
                           </div>
@@ -1413,7 +1414,7 @@ function NewServerEditItem({
                                 className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
-                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                                 <Trash className="w-3.5 h-3.5" />
                               </DsButton>
                             </div>
@@ -1510,8 +1511,8 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-// 操作菜单组件
-function ActionMenu({
+// 操作菜单组件（导出供窄屏视口契约测试使用，见 #46）
+export function ActionMenu({
   onReconnect,
   onRefresh,
   onHealthCheck,
@@ -1555,38 +1556,55 @@ function ActionMenu({
     </>
   );
 
-  return (
-    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <DsButton
-        variant="ghost"
-        size="sm"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
-      >
-        <DotsThree className="w-4 h-4" />
-        {t('settings:mcp_descriptions.quick_actions')}
-      </DsButton>
+  // 移动端：按钮下方内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）
+  if (isSmallScreen) {
+    return (
+      <div className={cn('relative', isOpen && 'w-full')}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
+        >
+          <DotsThree className="w-4 h-4" />
+          {t('settings:mcp_descriptions.quick_actions')}
+        </DsButton>
 
-      {isOpen && (
-        isSmallScreen ? (
-          // 移动端：按钮下方内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）
+        {isOpen && (
           <div className="mt-1 w-full rounded-lg border border-border bg-popover p-1.5 ui-zoom-fade-in motion-reduce:animate-none">
             {menuItems}
           </div>
-        ) : (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setIsOpen(false)}
-            />
-            <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
-              {menuItems}
-            </div>
-          </>
-        )
-      )}
-    </div>
+        )}
+      </div>
+    );
+  }
+
+  // 桌面/平板（含安卓横屏 ≥768px）：Portal + fixed 定位（#46）。
+  // 旧实现是 `absolute right-0` + z-50：在窄视口下会超出屏幕左缘，
+  // 且被设置内容滚动容器裁切、被侧栏 stacking context 压住。
+  // Popover 原语自带视口碰撞钳制（resolvePopoverPosition）与 Z_INDEX.popover 层级。
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
+        >
+          <DotsThree className="w-4 h-4" />
+          {t('settings:mcp_descriptions.quick_actions')}
+        </DsButton>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="max-w-[calc(100vw-1rem)]"
+        data-testid="mcp-quick-actions-menu"
+      >
+        {menuItems}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1860,25 +1878,24 @@ export function PresetServerSelector({
     </>
   );
 
-  return (
-    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
-      <DsButton
-        ref={addPresetBtnRef}
-        onClick={() => setIsOpen(!isOpen)}
-        variant="default"
-        size="sm"
-        aria-haspopup={isSmallScreen ? undefined : 'dialog'}
-        aria-expanded={isOpen}
-        data-testid="mcp-preset-add-btn"
-      >
-        <Package className="w-4 h-4 mr-1" aria-hidden="true" />
-        {t('settings:mcp_presets.add_preset')}
-      </DsButton>
+  // P0-3 移动端：内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）。
+  // 选中预置后列表让位给权限确认卡，取消则回到列表。
+  if (isSmallScreen) {
+    return (
+      <div className={cn('relative', isOpen && 'w-full')}>
+        <DsButton
+          ref={addPresetBtnRef}
+          onClick={() => setIsOpen(!isOpen)}
+          variant="default"
+          size="sm"
+          aria-expanded={isOpen}
+          data-testid="mcp-preset-add-btn"
+        >
+          <Package className="w-4 h-4 mr-1" aria-hidden="true" />
+          {t('settings:mcp_presets.add_preset')}
+        </DsButton>
 
-      {isOpen && (
-        isSmallScreen ? (
-          // P0-3 移动端：内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）。
-          // 选中预置后列表让位给权限确认卡，取消则回到列表。
+        {isOpen && (
           pendingPreset ? (
             <div
               className="mt-1 w-full space-y-4 rounded-lg border border-border bg-popover p-4 text-sm ui-zoom-fade-in motion-reduce:animate-none mcp-preset-permission-drawer"
@@ -1913,71 +1930,94 @@ export function PresetServerSelector({
               {selectorContent}
             </CustomScrollArea>
           )
-        ) : (
-          <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={closeSelector}
-              aria-hidden="true"
-              data-testid="mcp-preset-selector-backdrop"
-            />
-            <CustomScrollArea
-              ref={selectorPanelRef}
-              className="absolute right-0 top-full z-50 mt-1 h-[min(60dvh,30rem)] w-[380px] max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover shadow-lg ui-zoom-fade-in mcp-preset-selector"
-              viewportClassName="p-2"
-              trackOffsetTop={4}
-              trackOffsetBottom={4}
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('settings:mcp_presets.title')}
-              tabIndex={-1}
-              data-testid="mcp-preset-selector"
-            >
-              {selectorContent}
-            </CustomScrollArea>
-          </>
-        )
-      )}
+        )}
+      </div>
+    );
+  }
+
+  // 桌面/平板（含安卓横屏 ≥768px）：Portal + fixed 定位（#46）。
+  // 旧实现是 `absolute right-0` + z-50：预置弹层在窄视口下向左溢出屏幕、
+  // 被设置内容滚动容器裁切、被侧栏 stacking context 压住。
+  // Popover 原语自带视口碰撞钳制（resolvePopoverPosition）与 Z_INDEX.popover 层级。
+  return (
+    <div className="relative">
+      <Popover
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (open) setIsOpen(true);
+          else closeSelector();
+        }}
+      >
+        <PopoverTrigger asChild>
+          <DsButton
+            ref={addPresetBtnRef}
+            variant="default"
+            size="sm"
+            aria-haspopup="dialog"
+            data-testid="mcp-preset-add-btn"
+          >
+            <Package className="w-4 h-4 mr-1" aria-hidden="true" />
+            {t('settings:mcp_presets.add_preset')}
+          </DsButton>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={4}
+          aria-modal="true"
+          aria-label={t('settings:mcp_presets.title')}
+          data-testid="mcp-preset-selector"
+          className="w-[380px] max-w-[calc(100vw-1.5rem)] overflow-hidden !p-0"
+        >
+          <CustomScrollArea
+            ref={selectorPanelRef}
+            className="h-[min(60dvh,30rem)] w-full mcp-preset-selector"
+            viewportClassName="p-2"
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
+            tabIndex={-1}
+          >
+            {selectorContent}
+          </CustomScrollArea>
+        </PopoverContent>
+      </Popover>
 
       {/* 桌面端：安装前权限确认保留 Sheet；移动端由上方内联卡承载（P0-3） */}
-      {!isSmallScreen && (
-        <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
-          <SheetContent
-            side="right"
-            className="flex min-h-0 w-full flex-col overflow-hidden sm:max-w-md mcp-preset-permission-drawer"
-            data-testid="mcp-preset-permission-drawer"
-            aria-describedby="mcp-preset-permission-summary"
-            onWheel={(event) => event.stopPropagation()}
-          >
-            {pendingPreset && (
-              <>
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    <Shield className="w-5 h-5" aria-hidden="true" />
-                    {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
-                  </SheetTitle>
-                  <SheetDescription>
-                    {t(pendingPreset.descriptionKey)}
-                  </SheetDescription>
-                </SheetHeader>
-                <CustomScrollArea
-                  className="mt-4 min-h-0 flex-1"
-                  viewportClassName="pr-2 text-sm"
-                  trackOffsetTop={4}
-                  trackOffsetBottom={4}
-                >
-                  <div className="space-y-4">
-                    {permissionBody}
-                  </div>
-                </CustomScrollArea>
-                <SheetFooter className="mt-6 shrink-0 flex gap-2 sm:justify-end">
-                  {permissionFooterButtons}
-                </SheetFooter>
-              </>
-            )}
-          </SheetContent>
-        </Sheet>
-      )}
+      <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
+        <SheetContent
+          side="right"
+          className="flex min-h-0 w-full flex-col overflow-hidden sm:max-w-md mcp-preset-permission-drawer"
+          data-testid="mcp-preset-permission-drawer"
+          aria-describedby="mcp-preset-permission-summary"
+          onWheel={(event) => event.stopPropagation()}
+        >
+          {pendingPreset && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" aria-hidden="true" />
+                  {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
+                </SheetTitle>
+                <SheetDescription>
+                  {t(pendingPreset.descriptionKey)}
+                </SheetDescription>
+              </SheetHeader>
+              <CustomScrollArea
+                className="mt-4 min-h-0 flex-1"
+                viewportClassName="pr-2 text-sm"
+                trackOffsetTop={4}
+                trackOffsetBottom={4}
+              >
+                <div className="space-y-4">
+                  {permissionBody}
+                </div>
+              </CustomScrollArea>
+              <SheetFooter className="mt-6 shrink-0 flex gap-2 sm:justify-end">
+                {permissionFooterButtons}
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

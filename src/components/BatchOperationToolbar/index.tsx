@@ -319,7 +319,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
               className="search-input"
 />
             {searchQuery && (
-              <DsButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
+              <DsButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                 <X size={14} />
               </DsButton>
             )}
@@ -396,7 +396,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           </DsButton>
           
           <div className="dropdown-container" ref={moreMenuRef}>
-            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
+            <DsButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label={t('common:more', { defaultValue: 'More' })} aria-expanded={showMoreMenu}>
               <DotsThreeVertical size={18} />
             </DsButton>
             

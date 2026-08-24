@@ -252,6 +252,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         role="dialog"
         aria-modal="true"
         aria-labelledby="welcome-onboarding-title"
+        aria-describedby="welcome-onboarding-subtitle"
         tabIndex={-1}
         className={cn(
           'outline-none',
@@ -276,7 +277,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
                 {t('welcome_onboarding.title')}
               </h1>
-              <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">
+              <p
+                id="welcome-onboarding-subtitle"
+                className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed"
+              >
                 {t('welcome_onboarding.subtitle')}
               </p>
             </div>

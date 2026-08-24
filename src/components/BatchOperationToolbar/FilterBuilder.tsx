@@ -99,7 +99,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
             <FilterIcon size={20} />
             {t('filter_builder_title')}
           </h3>
-          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label={t('close', { defaultValue: 'Close' })}>
             <X size={20} />
           </DsButton>
         </div>
@@ -179,7 +179,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       </>
                     )}
                     
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn" title={t('remove_filter')} aria-label={t('remove_filter')}>
                       <X size={16} />
                     </DsButton>
                   </div>

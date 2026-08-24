@@ -25,7 +25,7 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
-import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { useHostFinderStore, FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 import { useNotesOptional } from '@/features/notes/NotesContext';
 import { lazy, Suspense } from 'react';
 
@@ -210,8 +210,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // 移动端：分组已关联资源 ID 集合（用于右面板高亮显示）
   const [groupPinnedIds, setGroupPinnedIds] = useState<Set<string>>(new Set());
   // 📱 移动端资源库面包屑导航（用于应用顶栏）
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
+  // ★ LH-HOST Step2：读画布自己的 finder 桶，别再拿学习中心那一桶的落点
+  const useCanvasFinder = useHostFinderStore(FINDER_HOST_IDS.canvas);
+  const finderCurrentPath = useCanvasFinder(state => state.currentPath);
+  const finderJumpToBreadcrumb = useCanvasFinder(state => state.jumpToBreadcrumb);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const [isLoading, setIsLoading] = useState(false);
   // 🔧 防闪烁：首次加载会话列表期间为 true，避免短暂显示全空状态

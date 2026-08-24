@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   convertApiConfigToProfile,
   convertProfileToApiConfig,
+  defaultApiProtocolForProvider,
   getAllowedApiProtocolsForModelAdapter,
   inferProviderTypeFromBaseUrl,
   normalizeApiProtocolForModelAdapter,
+  normalizeApiProtocolForProviderType,
 } from '../modelConverters';
 import type { ApiConfig, ModelProfile, VendorConfig } from '@/types';
 
@@ -401,6 +403,95 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       baseUrl: 'https://api.deepseek.com/v1',
     });
     expect(vendorLevel).toContain('openai_responses');
+  });
+});
+
+describe('settings modelConverters official native-host protocol override', () => {
+  const officialHosts = [
+    { baseUrl: 'https://api.anthropic.com', native: 'anthropic_messages' as const, adapter: 'anthropic' as const },
+    {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      native: 'google_generate_content' as const,
+      adapter: 'google' as const,
+    },
+  ];
+
+  it('keeps official Anthropic/Gemini hosts on native protocols despite mislabeled providerType', () => {
+    // providerType 误配为 custom/openai 时 allowed 只含 OpenAI 兼容协议，
+    // 不得把 resolvePreferredProtocol 选出的官方原生协议钳回 openai_chat_completions。
+    for (const { baseUrl, native } of officialHosts) {
+      for (const providerType of ['custom', 'openai']) {
+        expect(
+          defaultApiProtocolForProvider(providerType, { baseUrl }),
+          `default ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+        expect(
+          normalizeApiProtocolForProviderType(undefined, providerType, { baseUrl }),
+          `normalize ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+        // 旧版被钳制后持久化的显式 openai_chat_completions 也按官方 host 纠正。
+        expect(
+          normalizeApiProtocolForProviderType('openai_chat_completions', providerType, { baseUrl }),
+          `normalize explicit ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+      }
+    }
+  });
+
+  it('exposes only the native protocol option for official hosts under a mislabeled providerType', () => {
+    for (const { baseUrl, native, adapter } of officialHosts) {
+      expect(getAllowedApiProtocolsForModelAdapter(adapter, { providerType: 'custom', baseUrl })).toEqual([native]);
+      expect(
+        normalizeApiProtocolForModelAdapter('openai_chat_completions', adapter, 'custom', { baseUrl }),
+      ).toBe(native);
+    }
+  });
+
+  it('round-trips official-host profiles to native protocols despite providerType=custom', () => {
+    for (const { baseUrl, native, adapter } of officialHosts) {
+      const vendor: VendorConfig = {
+        ...baseVendor,
+        id: `vendor-official-${adapter}`,
+        providerType: 'custom',
+        baseUrl,
+        apiProtocol: undefined,
+      };
+      const profile: ModelProfile = {
+        ...baseProfile,
+        vendorId: vendor.id,
+        model: adapter === 'anthropic' ? 'claude-sonnet-4-6' : 'gemini-3.1-pro-preview',
+        providerScope: 'custom',
+        modelAdapter: adapter,
+        apiProtocol: undefined,
+      };
+
+      const api = convertProfileToApiConfig(profile, vendor);
+      expect(api.apiProtocol, baseUrl).toBe(native);
+      expect(convertApiConfigToProfile(api, vendor.id).apiProtocol, baseUrl).toBe(native);
+    }
+  });
+
+  it('keeps non-official and relay hosts on OpenAI-compatible protocols', () => {
+    const relayBaseUrls = [
+      'https://proxy.example.com/v1',
+      // path 携带官方域名与子域伪造都不得命中官方 host 特例。
+      'https://myproxy.com/api.anthropic.com/v1',
+      'https://api.anthropic.com.evil.example/v1',
+      'https://myproxy.com/generativelanguage.googleapis.com/v1beta',
+      'https://generativelanguage.googleapis.com.evil.example/v1beta',
+    ];
+    for (const baseUrl of relayBaseUrls) {
+      expect(defaultApiProtocolForProvider('custom', { baseUrl }), baseUrl).toBe('openai_chat_completions');
+      expect(
+        normalizeApiProtocolForProviderType('openai_chat_completions', 'custom', { baseUrl }),
+        baseUrl,
+      ).toBe('openai_chat_completions');
+      for (const adapter of ['anthropic', 'google'] as const) {
+        expect(getAllowedApiProtocolsForModelAdapter(adapter, { providerType: 'custom', baseUrl }), baseUrl).toEqual([
+          'openai_chat_completions',
+        ]);
+      }
+    }
   });
 });
 

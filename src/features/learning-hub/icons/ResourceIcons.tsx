@@ -21,18 +21,36 @@ export interface ResourceIconProps {
 const defaultSize = 48;
 
 // Color Palette (Matte & Pastel)
-// Adjusted for v4: Slightly more vibrant for dark mode visibility, but still matte
+// 色值本体是 token（定义见 src/styles/theme-colors.css 的 --resource-icon-*）：
+// 原先写死的浅色 hex 在 .dark 下是一块块刺眼的亮斑，改走 token 后底色随卡片表面
+// 变沉、前景往 --foreground 提亮。fallback 保留亮色原值，token 层缺失时不至于失色。
+const tone = (hue: string, bg: string, fg: string, border: string) => ({
+  bg: `var(--resource-icon-${hue}-bg, ${bg})`,
+  fg: `var(--resource-icon-${hue}-fg, ${fg})`,
+  border: `var(--resource-icon-${hue}-border, ${border})`,
+});
+
 const palette = {
-  gray:   { bg: '#F1F0EF', fg: '#787774', border: '#E0E0E0' },
-  brown:  { bg: '#F4EEEE', fg: '#976D57', border: '#E8DCD5' },
-  orange: { bg: '#FBECDD', fg: '#CC782F', border: '#F5CCAA' },
-  yellow: { bg: '#FBF3DB', fg: '#CF9232', border: '#F9E2AF' },
-  green:  { bg: '#EDF3EC', fg: '#4F9779', border: '#C6E3C6' },
-  blue:   { bg: '#E7F3F8', fg: '#2B59C3', border: '#B8D6E8' },
-  purple: { bg: '#F6F3F9', fg: '#9A6DD7', border: '#D9CBE4' },
-  pink:   { bg: '#FBF2F5', fg: '#D65C9D', border: '#ECD0DE' },
-  red:    { bg: '#FDEBEC', fg: '#D44C47', border: '#FFD1CA' },
+  gray:   tone('gray',   '#F1F0EF', '#787774', '#E0E0E0'),
+  brown:  tone('brown',  '#F4EEEE', '#976D57', '#E8DCD5'),
+  orange: tone('orange', '#FBECDD', '#CC782F', '#F5CCAA'),
+  yellow: tone('yellow', '#FBF3DB', '#CF9232', '#F9E2AF'),
+  green:  tone('green',  '#EDF3EC', '#4F9779', '#C6E3C6'),
+  blue:   tone('blue',   '#E7F3F8', '#2B59C3', '#B8D6E8'),
+  purple: tone('purple', '#F6F3F9', '#9A6DD7', '#D9CBE4'),
+  pink:   tone('pink',   '#FBF2F5', '#D65C9D', '#ECD0DE'),
+  red:    tone('red',    '#FDEBEC', '#D44C47', '#FFD1CA'),
 };
+
+// 中性插画色：纸面、折角高光/暗角、文件夹三层色。同样在 .dark 下翻转。
+const paper = 'var(--resource-icon-paper, #FFFFFF)';
+const paperVeil = 'var(--resource-icon-paper-veil, rgba(255, 255, 255, 0.35))';
+const foldHighlight = 'var(--resource-icon-fold-highlight, rgba(255, 255, 255, 0.5))';
+const foldShade = 'var(--resource-icon-fold-shade, rgba(0, 0, 0, 0.05))';
+const folderBack = 'var(--resource-icon-folder-back, #E8B849)';
+const folderTab = 'var(--resource-icon-folder-tab, #D4A53A)';
+const folderFront = 'var(--resource-icon-folder-front, #F5C85C)';
+const folderHighlight = 'var(--resource-icon-folder-highlight, rgba(255, 255, 255, 0.4))';
 
 // ============================================================================
 // 基础组件：文档形状 (Flat Paper)
@@ -73,13 +91,11 @@ const DocBase: React.FC<{
       {/* 折角 - 纯色 */}
       <path
         d="M30 4V13C30 13.5523 30.4477 14 31 14H40"
-        fill="#FFFFFF"
-        fillOpacity="0.5"
+        fill={foldHighlight}
       />
       <path
         d="M30 4L40 14H31C30.4477 14 30 13.5523 30 13V4Z"
-        fill="black"
-        fillOpacity="0.05"
+        fill={foldShade}
       />
       
       {/* 内容区域 */}
@@ -203,7 +219,7 @@ export const ExamIcon: React.FC<ResourceIconProps> = React.memo(({
     <g style={{ transformOrigin: '8px 44px', transform: 'rotate(-8deg)' }}>
       <path
         d="M8 6C6.89543 6 6 6.89543 6 8V40C6 41.1046 6.89543 42 7 42H31C32.1046 42 33 41.1046 33 40V12L25 6H8Z"
-        fill="#FFFFFF"
+        fill={paper}
         stroke={palette.purple.fg}
         strokeWidth="1.5"
       />
@@ -295,7 +311,7 @@ export const TranslationIcon: React.FC<ResourceIconProps> = React.memo(({
       width="20"
       height="24"
       rx="3"
-      fill="#FFFFFF"
+      fill={paper}
       stroke={palette.blue.fg}
       strokeWidth="1.5"
     />
@@ -372,34 +388,33 @@ export const FolderIcon: React.FC<ResourceIconProps> = React.memo(({
     {/* 后层 - 文件夹背板 */}
     <path
       d="M6 10C6 8.89543 6.89543 8 8 8H18L21 11H40C41.1046 11 42 11.8954 42 13V39C42 40.1046 41.1046 41 40 41H8C6.89543 41 6 40.1046 6 39V10Z"
-      fill="#E8B849"
+      fill={folderBack}
     />
     
     {/* 标签页凸起 */}
     <path
       d="M6 10C6 8.89543 6.89543 8 8 8H17C17.5523 8 18 8.44772 18 9V11H6V10Z"
-      fill="#D4A53A"
+      fill={folderTab}
     />
 
     {/* 前盖 - 主体 */}
     <path
       d="M6 15C6 13.8954 6.89543 13 8 13H40C41.1046 13 42 13.8954 42 15V39C42 40.1046 41.1046 41 40 41H8C6.89543 41 6 40.1046 6 39V15Z"
-      fill="#F5C85C"
+      fill={folderFront}
     />
     
     {/* 顶部高光 - 增加质感 */}
     <path
       d="M7 15C7 14.4477 7.44772 14 8 14H40C40.5523 14 41 14.4477 41 15"
-      stroke="white"
+      stroke={folderHighlight}
       strokeWidth="1"
-      strokeOpacity="0.4"
       fill="none"
     />
     
     {/* 底部微暗 - 增加立体感 */}
     <path
       d="M6 37H42V39C42 40.1046 41.1046 41 40 41H8C6.89543 41 6 40.1046 6 39V37Z"
-      fill="#E8B849"
+      fill={folderBack}
       fillOpacity="0.5"
     />
   </svg>
@@ -681,7 +696,7 @@ export const RecentIcon: React.FC<ResourceIconProps> = React.memo(({ className, 
     <circle cx="12" cy="20.5" r="0.8" fill={symbolColor} fillOpacity="0.4"/>
     <circle cx="3.5" cy="12" r="0.8" fill={symbolColor} fillOpacity="0.4"/>
     {/* 时钟内圈 */}
-    <circle cx="12" cy="12" r="7" fill="white" fillOpacity="0.35" stroke={symbolColor} strokeWidth="0.8" strokeOpacity="0.25"/>
+    <circle cx="12" cy="12" r="7" fill={paperVeil} stroke={symbolColor} strokeWidth="0.8" strokeOpacity="0.25"/>
     {/* 时针 */}
     <path d="M12 12V8" stroke={symbolColor} strokeWidth="1.8" strokeLinecap="round"/>
     {/* 分针 */}

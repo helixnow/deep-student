@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { ArrowLeft, Copy, Check } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '../crepe';
@@ -12,6 +13,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 export const CrepeDemoPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+  const { t } = useTranslation();
   const { isSmallScreen } = useBreakpoint();
   const [markdown, setMarkdown] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -106,7 +108,7 @@ greeting('Crepe');
         <div className="flex items-center justify-between mb-6 p-6 pb-0">
           <div className="flex items-center gap-4">
             {onBack && (
-              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置">
+              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label={t('common:back', '返回')}>
                 <ArrowLeft size={20} />
               </DsButton>
             )}

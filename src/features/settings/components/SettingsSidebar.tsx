@@ -181,6 +181,9 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                   <WorkbenchSidebarRow
                     rowType="nav"
                     isActive={isActive}
+                    // 收起态（以及任何只剩图标的窄形态）下标签文字不渲染，
+                    // 没有 aria-label 读屏就只念「按钮」
+                    aria-label={item.label}
                     aria-current={isActive ? 'page' : undefined}
                     onClick={isActive ? undefined : () => {
                       setActiveTab(item.value as any);

@@ -46,6 +46,10 @@
     "export_selected_count": "已选 {{count}} 个",
     "panel_close": "收起面板"
   },
+  "preview_ref": {
+    "get_node": "获取引用节点",
+    "get_content": "获取引用内容"
+  },
   "manager_title": "卡片模板管理",
   "manager_subtitle": "管理模板、创建新模板或让 AI 直接生成",
   "refresh": "刷新",

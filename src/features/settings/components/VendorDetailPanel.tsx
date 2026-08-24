@@ -530,6 +530,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   onClick={() => handleToggleFavorite(profile)}
                   disabled={vendorBusy}
                   title={t('settings:api_config.toggle_favorite')}
+                  aria-label={t('settings:api_config.toggle_favorite')}
                 >
                   <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
                 </DsButton>
@@ -541,6 +542,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   onClick={() => void testApiConnection(api)}
                   disabled={testingApi === api.id || vendorBusy}
                   title={t('settings:api_config.test_button')}
+                  aria-label={t('settings:api_config.test_button')}
                 >
                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                 </DsButton>

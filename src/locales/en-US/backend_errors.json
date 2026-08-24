@@ -128,5 +128,19 @@
   "metrics": {
     "parse_addr_failed": "Failed to parse DSTU_METRICS_ADDR",
     "server_error": "Metrics server error"
+  },
+  "note_content": {
+    "load_note_failed": "Failed to load note content",
+    "load_note_action": "Load note content",
+    "deleted_with_unsaved_changes": "The resource has been deleted; this window keeps your unsaved content, please copy it before closing.",
+    "save_note_action": "Save note",
+    "update_title_action": "Update title",
+    "update_tags_action": "Update tags",
+    "stale_editor_write_rejected": "Note instance has switched; refusing to write to a stale editor",
+    "editor_readonly": "Note editor is read-only",
+    "full_write_occ_failed": "Note content has changed; full-document write failed OCC validation",
+    "full_replace_not_confirmed": "Editor did not confirm the full-document replacement",
+    "flush_capability_missing": "Editor does not provide persistence confirmation capability",
+    "full_replace_persist_failed": "Full-document replacement failed persistence verification"
   }
 }

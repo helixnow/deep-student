@@ -359,12 +359,24 @@ impl ChatV2Pipeline {
                 enable_thinking,
                 ctx.options.enable_thinking
             );
+            let wrap_token_policy = self
+                .resolve_active_api_config(ctx)
+                .await
+                .map(|config| {
+                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                        config.provider_type.as_deref(),
+                        config.provider_scope.as_deref(),
+                        &config.model,
+                    )
+                })
+                .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
             let adapter = Arc::new(ChatV2LLMAdapter::new(
                 emitter.clone(),
                 ctx.assistant_message_id.clone(),
                 enable_thinking,
                 ctx.options.skill_state_version,
                 Some(format!("tool-round-{}", recursion_depth)),
+                wrap_token_policy,
             ));
 
             // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容

@@ -520,7 +520,7 @@
       "paste_failed": "Pasted image processing failed: {{error}}",
       "success": "Image inserted",
       "command_failed": "Slash image upload failed: {{error}}",
-      "too_large": "Image exceeds 10MB limit",
+      "too_large": "Image exceeds 50MB limit",
       "placeholder": "Click or drag to upload image",
       "placeholder_touch": "Tap to upload image",
       "upload_button": "Upload image",

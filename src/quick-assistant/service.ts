@@ -46,13 +46,10 @@ function tt(key: string, options?: Record<string, unknown>): string {
   return String(i18n.t(`quickAssistant:${key}`, options));
 }
 
-const ACTION_PROMPTS: Record<QuickLearningAction, string> = {
-  ask: '请直接回答下面的问题。先给结论，再给必要解释；如果信息不足，请明确指出。',
-  explain: '请把下面内容讲明白。用直观语言说明核心概念、关键关系和一个简短例子，避免无关展开。',
-  translate: '请判断原文语言并翻译成中文；如果原文是中文，则翻译成自然英文。保留术语、公式和段落结构，只输出译文。',
-  summarize: '请总结下面内容，输出：一句话主旨、3-5 个要点、值得记忆的关键词。',
-  hint: '把下面内容视为一道学习题。不要直接给最终答案，先指出考点，再给分层提示和下一步思路。',
-};
+// 发送时按当前语言取 prompt，不能在模块加载时冻结（语言切换后会过期）。
+function actionPrompt(action: QuickLearningAction): string {
+  return tt(`prompts.${action}`);
+}
 
 function compactTitle(text: string, fallback: string): string {
   const first = text.replace(/\s+/g, ' ').trim();
@@ -191,7 +188,7 @@ export async function startQuickLearningAction(
       await invoke<string>('chat_v2_send_message', {
         request: {
           sessionId,
-          content: `${ACTION_PROMPTS[action]}\n\n--- 学习内容 ---\n${content}`,
+          content: `${actionPrompt(action)}\n\n${tt('prompts.content_separator')}\n${content}`,
           options: { maxTokens: 1600, enableThinking: false },
           userMessageId: null,
           assistantMessageId: null,

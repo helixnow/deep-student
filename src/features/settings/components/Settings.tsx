@@ -160,13 +160,16 @@ const ShortcutSettings = React.lazy(() => import('@/command-palette/components/S
 const DataImportExport = React.lazy(() => import('@/components/DataImportExport').then((module) => ({ default: module.DataImportExport })));
 const AboutTab = React.lazy(() => import('./AboutTab').then((module) => ({ default: module.AboutTab })));
 
-const SettingsTabFallback = () => (
-  <div
-    className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
-    role="status"
-    aria-label="Loading settings"
-  />
-);
+const SettingsTabFallback = () => {
+  const { t } = useTranslation(['settings']);
+  return (
+    <div
+      className="wb-sys-skeleton min-h-[360px] w-full rounded-xl bg-muted/20"
+      role="status"
+      aria-label={t('settings:loading', { defaultValue: 'Loading settings' })}
+    />
+  );
+};
 
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);

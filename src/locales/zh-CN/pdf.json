@@ -23,6 +23,10 @@
     "description": "选择一个 PDF 文件开始阅读",
     "select_button": "选择 PDF 文件"
   },
+  "preview": {
+    "empty_content": "内容为空",
+    "decode_failed": "内容解码失败"
+  },
   "errors": {
     "invalid_file": "请选择有效的 PDF 文件",
     "load_failed": "PDF 加载失败，请重试",
