@@ -38,6 +38,69 @@ const UNREADABLE_FRAGMENT_MSG: &str = "UNREADABLE_CARD_FRAGMENT";
 /// 仅在卡片上留痕供 QA/前端复查，值为 JSON 数组字符串。
 pub const QA_FLAGS_FIELD: &str = "_qa_flags";
 
+/// 已知会泄漏进制卡流的模型包装 token（issue #58 / PR #187）。
+///
+/// 这些值也可能作为协议示例出现在卡片正文中，因此只能丢弃纯 token 残片，
+/// 或剥离完整卡片 JSON 外侧的纯 token 包装，不能做全局字符串替换。
+const MODEL_SPECIAL_TOKENS: &[&str] = &[
+    "<|begin_of_box|>",
+    "<|end_of_box|>",
+    "<|im_start|>",
+    "<|im_end|>",
+    "<|endoftext|>",
+];
+
+fn contains_only_model_special_tokens(text: &str) -> bool {
+    let mut remaining = text.trim();
+    let mut consumed_token = false;
+
+    while !remaining.is_empty() {
+        let Some(rest) = MODEL_SPECIAL_TOKENS
+            .iter()
+            .find_map(|token| remaining.strip_prefix(token))
+        else {
+            return false;
+        };
+        remaining = rest.trim_start();
+        consumed_token = true;
+    }
+
+    consumed_token
+}
+
+/// 丢弃纯 token 残片，或剥离完整卡片 JSON 外侧的纯 token 包装。
+///
+/// #268 对 #187 的最终语义要求保留正文中的字面 token；尤其是截断 JSON，
+/// 不能因为其中出现 `<|im_end|>` 等值就删除用户内容。
+fn strip_model_special_tokens(text: &str) -> String {
+    if contains_only_model_special_tokens(text) {
+        return String::new();
+    }
+
+    let trimmed = text.trim();
+    if let (Some(json_start), Some(json_end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        let prefix = &trimmed[..json_start];
+        let suffix = &trimmed[json_end + 1..];
+        let prefix_is_token = contains_only_model_special_tokens(prefix);
+        let suffix_is_token = contains_only_model_special_tokens(suffix);
+        let prefix_is_noise = prefix.trim().is_empty() || prefix_is_token;
+        let suffix_is_noise = suffix.trim().is_empty() || suffix_is_token;
+
+        if (prefix_is_token || suffix_is_token) && prefix_is_noise && suffix_is_noise {
+            return trimmed[json_start..=json_end].to_string();
+        }
+    }
+
+    text.to_string()
+}
+
+/// 纯模型 token 错误卡无法通过重试修复，只会反复生成同一错误卡。
+fn error_content_is_repairable(content: &str) -> bool {
+    strip_model_special_tokens(content)
+        .chars()
+        .any(|c| c.is_alphanumeric())
+}
+
 /// 单个任务流式生成的统计结果（仅新增上报口径，不影响既有事件契约）。
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StreamStats {
@@ -1378,7 +1441,16 @@ impl StreamingAnkiService {
             // 模型经常遗漏最后一张卡之后的分隔符，残留内容大概率是一张合法卡片；
             // 先尝试正常解析入库，失败且不像 JSON（纯收尾客套话）则丢弃，
             // 只有"像卡片但解析失败"才降级为错误卡。
-            let residual = buffer.trim().to_string();
+            // GLM 系可能在最后一张卡后泄漏 box token；使用 #268 的保守清理，
+            // 仅去掉纯 token 残片/JSON 外包装，不删除卡片正文里的字面 token。
+            let residual_raw = buffer.trim().to_string();
+            let residual = strip_model_special_tokens(&residual_raw).trim().to_string();
+            if residual.is_empty() && !residual_raw.is_empty() {
+                info!(
+                    "[ANKI_CARD_DEBUG] 流收尾残留仅含模型特殊token，已丢弃（{} 字符）",
+                    residual_raw.chars().count()
+                );
+            }
             if !residual.is_empty() {
                 // 结构化协议下收尾残留可能是完整的 {"cards": [...]} wrapper
                 // （例如整段响应在 flush 阶段才到达）：先尝试展开为逐卡 payload。
@@ -1674,8 +1746,18 @@ impl StreamingAnkiService {
         qa_pass_enabled: bool,
         occlusion_fields: Option<&crate::anki_image_occlusion::OcclusionCardFields>,
     ) -> Result<Option<AnkiCard>, AppError> {
+        // 纯包装 token 残片按不可读内容丢弃，不再落为错误卡并进入重试循环。
+        // 完整卡片 JSON 的外层包装可剥离，正文 token 则由保守清理原样保留。
+        let stripped = strip_model_special_tokens(card_json);
+        if stripped.trim().is_empty() {
+            return Err(AppError::validation(format!(
+                "{}: 残片仅含模型特殊token，已丢弃",
+                UNREADABLE_FRAGMENT_MSG
+            )));
+        }
+
         // 清理JSON字符串
-        let cleaned_json = self.clean_json_string(card_json);
+        let cleaned_json = self.clean_json_string(&stripped);
 
         // 解析JSON：serde 失败后尝试一次轻量修复（去尾逗号/补括号/截尾垃圾），
         // 仍失败才降级为错误卡，保留原始错误语义
@@ -3056,8 +3138,15 @@ impl StreamingAnkiService {
             for c in cards.into_iter() {
                 if c.is_error_card {
                     if let Some(ec) = &c.error_content {
-                        if !ec.trim().is_empty() && !ec.starts_with(RETRY_ASSIGNMENT_MARK) {
+                        // 纯模型包装 token 无实质内容，喂回模型只会形成错误卡循环。
+                        if !ec.starts_with(RETRY_ASSIGNMENT_MARK) && error_content_is_repairable(ec)
+                        {
                             error_cards.push(c);
+                        } else if !ec.starts_with(RETRY_ASSIGNMENT_MARK) {
+                            warn!(
+                                "跳过不可修复的错误卡（无实质内容，疑似模型特殊token泄漏）: card_id={}",
+                                c.id
+                            );
                         }
                     }
                 }
@@ -3337,6 +3426,65 @@ mod tests {
         assert!(find_rule(Some(&rules), "FRONT").is_some());
         assert!(find_rule(Some(&rules), "back").is_none());
         assert!(find_rule(None, "front").is_none());
+    }
+
+    // ===== issue #58 / PR #187 回归：包装 token 不得落错误卡或误删正文 =====
+
+    #[test]
+    fn strip_model_special_tokens_removes_box_wrapper() {
+        let input = "<|begin_of_box|>{\"front\":\"Q\",\"back\":\"A\"}<|end_of_box|>";
+        assert_eq!(
+            strip_model_special_tokens(input),
+            "{\"front\":\"Q\",\"back\":\"A\"}"
+        );
+    }
+
+    #[test]
+    fn strip_model_special_tokens_yields_empty_for_pure_token_fragment() {
+        assert!(strip_model_special_tokens("<|end_of_box|>")
+            .trim()
+            .is_empty());
+        assert!(strip_model_special_tokens("\n <|end_of_box|> \n")
+            .trim()
+            .is_empty());
+        assert!(strip_model_special_tokens("<|im_end|><|endoftext|>")
+            .trim()
+            .is_empty());
+    }
+
+    #[test]
+    fn strip_model_special_tokens_keeps_non_whitelisted_content() {
+        let input = "{\"front\":\"何为 <|自定义|> 标记？\"}";
+        assert_eq!(strip_model_special_tokens(input), input);
+    }
+
+    #[test]
+    fn strip_model_special_tokens_preserves_literal_tokens_in_card_body() {
+        let input =
+            "{\"front\":\"<|im_end|> 是什么？\",\"back\":\"它是模型协议的字面量 <|endoftext|>。\"}";
+        assert_eq!(strip_model_special_tokens(input), input);
+
+        let wrapped = format!("<|begin_of_box|>{input}<|end_of_box|>");
+        assert_eq!(strip_model_special_tokens(&wrapped), input);
+
+        let truncated = "{\"front\":\"正文以字面量 <|im_end|>";
+        assert_eq!(strip_model_special_tokens(truncated), truncated);
+    }
+
+    #[test]
+    fn error_content_is_repairable_rejects_pure_special_token() {
+        assert!(!error_content_is_repairable("<|end_of_box|>"));
+        assert!(!error_content_is_repairable("  \n<|end_of_box|>\n  "));
+        assert!(!error_content_is_repairable(""));
+        assert!(!error_content_is_repairable("   "));
+    }
+
+    #[test]
+    fn error_content_is_repairable_accepts_truncated_card_fragment() {
+        assert!(error_content_is_repairable("{\"front\": \"什么是流式解析"));
+        assert!(error_content_is_repairable(
+            "<|begin_of_box|>{\"front\": \"未闭合的卡片"
+        ));
     }
 
     // ==================== 解析内环测试包（Round 2 #8） ====================
