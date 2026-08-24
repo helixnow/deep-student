@@ -1001,6 +1001,8 @@
       "script": {
         "sandboxUnavailable": "Sandboxed script execution is not supported on this device; use declarative ops (regex replace / tag add-remove) instead",
         "interpreterUnavailable": "No usable script interpreter (python3/python or node) was found on this machine",
+        "environmentUnavailable": "The current runtime cannot start a sandboxed script; no changes were written",
+        "setupFailed": "The sandboxed script environment failed to initialize; no changes were written",
         "timedOut": "Script timed out; the process was terminated with no writes",
         "failed": "Script failed (non-zero exit); no writes were made",
         "outputMissing": "Script did not write an output file; no writes were made",
@@ -1011,6 +1013,10 @@
         "emptyField": "The script emptied this field; the card was rejected",
         "invalidFieldType": "The script emitted an invalid field type; the card was rejected",
         "invalidClozeText": "The modified cloze text lacks a valid cloze marker (c1:: syntax); the card was rejected",
+        "fieldGrowthExceeded": "The script expanded a field by an unsafe amount; the card was rejected",
+        "fieldTooLarge": "The script emitted a field over the character limit; the card was rejected",
+        "tagTooLarge": "The script emitted a tag over the character limit; the card was rejected",
+        "tagsLimitExceeded": "The script emitted too many tags; the card was rejected",
         "unknownOutputField": "The script emitted a field outside the contract; the card was rejected",
         "unknownCardIds": "The script emitted card IDs outside the snapshot; those entries were ignored"
       }
@@ -1048,7 +1054,11 @@
     "preferenceMemory": {
       "label": "Card-making preference memory",
       "appliedHint": "Injected {{count}} preferences learned from your past card-making sessions",
-      "conflictHint": "When this request conflicts with remembered preferences, this request wins"
+      "conflictHint": "When this request conflicts with remembered preferences, this request wins",
+      "savedHint": "Learned {{added}} new preferences and reinforced {{reinforced}} existing preferences from this session",
+      "saveFailed": "Preferences from this session could not be saved, but the card operation completed",
+      "invalidStore": "Invalid stored card-making preferences were safely ignored",
+      "disabledHint": "Preference memory was neither read nor written for this run"
     },
     "generation": {
       "title": "Generation tuning",
@@ -1088,7 +1098,13 @@
     },
     "occlusion": {
       "title": "Image occlusion",
+      "previewBadge": "Image occlusion",
+      "draftHint": "This is an automatically generated occlusion draft; check mask placement and answers before exporting",
+      "imageAlt": "Image occlusion card",
+      "imageUnavailable": "The occlusion image could not be loaded; text content was preserved",
+      "invalidSpec": "Invalid occlusion data was ignored and the card is shown normally",
       "revealBox": "Reveal occluded area {{index}}",
+      "revealedBox": "Occluded area {{index}} revealed: {{label}}",
       "revealAll": "Reveal all",
       "hideAll": "Hide all",
       "issue": {

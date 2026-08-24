@@ -1001,6 +1001,8 @@
       "script": {
         "sandboxUnavailable": "当前设备不支持沙箱脚本执行，请改用声明式操作（正则替换 / 标签增删）",
         "interpreterUnavailable": "未在本机找到可用的脚本解释器（python3/python 或 node）",
+        "environmentUnavailable": "当前运行环境无法启动沙箱脚本，未写库",
+        "setupFailed": "沙箱脚本运行环境初始化失败，未写库",
         "timedOut": "脚本执行超时，进程已终止，未写库",
         "failed": "脚本执行失败（非零退出），未写库",
         "outputMissing": "脚本未写出结果文件，未写库",
@@ -1011,6 +1013,10 @@
         "emptyField": "脚本把该字段改成了空内容，此卡被拒绝",
         "invalidFieldType": "脚本输出的字段类型不合法，此卡被拒绝",
         "invalidClozeText": "脚本修改后的挖空文本缺少合法的挖空标记（c1:: 语法），此卡被拒绝",
+        "fieldGrowthExceeded": "脚本导致字段内容异常膨胀，此卡被拒绝",
+        "fieldTooLarge": "脚本输出的字段超过字符数上限，此卡被拒绝",
+        "tagTooLarge": "脚本输出的单个标签超过字符数上限，此卡被拒绝",
+        "tagsLimitExceeded": "脚本输出的标签数量超过上限，此卡被拒绝",
         "unknownOutputField": "脚本输出了约定之外的字段，此卡被拒绝",
         "unknownCardIds": "脚本输出了快照之外的卡片 ID，这些条目已被忽略"
       }
@@ -1048,7 +1054,11 @@
     "preferenceMemory": {
       "label": "制卡偏好记忆",
       "appliedHint": "已根据你过往的制卡习惯注入 {{count}} 条偏好",
-      "conflictHint": "本次要求与历史偏好冲突时，以本次要求为准"
+      "conflictHint": "本次要求与历史偏好冲突时，以本次要求为准",
+      "savedHint": "本次制卡已记住 {{added}} 条新偏好，并强化 {{reinforced}} 条已有偏好",
+      "saveFailed": "本次偏好未能保存，但卡片操作已正常完成",
+      "invalidStore": "历史制卡偏好数据无效，已安全忽略",
+      "disabledHint": "本次制卡未读取或写入偏好记忆"
     },
     "generation": {
       "title": "生成调优",
@@ -1088,7 +1098,13 @@
     },
     "occlusion": {
       "title": "图像遮挡",
+      "previewBadge": "图像遮挡",
+      "draftHint": "这是自动生成的遮挡草稿，请在导出前检查遮挡位置和答案",
+      "imageAlt": "图像遮挡卡片",
+      "imageUnavailable": "无法加载遮挡卡图片，已保留文字内容",
+      "invalidSpec": "遮挡数据无效，已按普通卡片显示",
       "revealBox": "揭开遮挡区域 {{index}}",
+      "revealedBox": "已揭开遮挡区域 {{index}}：{{label}}",
       "revealAll": "全部揭开",
       "hideAll": "全部遮住",
       "issue": {

@@ -753,6 +753,12 @@
       "retryFailedSegments": "Retry failed segments",
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
+      "occlusion": {
+        "badge": "Image occlusion",
+        "draftHint": "Automatically generated occlusion draft; check it before exporting",
+        "imageAlt": "Image occlusion card",
+        "imageUnavailable": "The occlusion image could not be loaded; text content was preserved"
+      },
       "syncStatus": {
         "pending": "Pending",
         "syncing": "Syncing...",
@@ -857,6 +863,9 @@
       },
       "warnings": {
         "generationRecovered": "Automatic generation encountered a problem; the fallback path supplied {{count}} usable cards.",
+        "maxCardsClamped": "Requested {{requested}} cards; the per-run limit reduced this to {{applied}}. Split the material into multiple runs for more cards.",
+        "preferenceMemoryPersistFailed": "Card-making preferences from this session could not be saved; generated cards and edits were not affected.",
+        "preferenceMemoryStoreInvalid": "Invalid stored card-making preferences were ignored and generation continued.",
         "imageTruncated": "Only the first {{shown}} of {{total}} images were used (limit {{limit}}). Split attachments and retry if needed.",
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
