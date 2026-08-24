@@ -359,10 +359,10 @@ export function FolderPickerDialog({
         </div>
 
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:min-h-11">
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading} className="[@media(pointer:coarse)]:min-h-11">
             {t('finder.folderPicker.confirm')}
           </DsButton>
         </DsDialogFooter>
