@@ -51,15 +51,22 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
   const navigationVisible = compact ? drawerOpen : !sidebarCollapsed;
 
   useLayoutEffect(() => {
+    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
+    // slot 在窗口壳内时查询范围收窄到壳节点；仅测试等无壳环境回退全文档
+    const queryRoot: ParentNode = shell ?? document;
+    let currentTarget: HTMLElement | null = null;
     const findTarget = () => {
-      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+      // 已定位且仍在文档中：直接返回。流式渲染期间的高频 mutation
+      // 不再触发 document 级 querySelectorAll（回调收敛为 O(1) 检查）。
+      if (currentTarget && currentTarget.isConnected) return;
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
         .find((element) => element.dataset.windowId === windowId) ?? null;
+      currentTarget = target;
       setTitlebarTarget((current) => current === target ? current : target);
     };
     findTarget();
     const observer = new MutationObserver(findTarget);
-    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
-    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
     observer.observe(shell ?? document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [windowId]);
