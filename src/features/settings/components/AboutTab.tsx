@@ -317,7 +317,7 @@ export const AboutTab: React.FC = () => {
                       size="sm"
                       onClick={() => updater.downloadAndInstall()}
                       disabled={updater.downloading}
-                      className="ml-3 flex-shrink-0"
+                      className="ml-3 flex-shrink-0 [@media(pointer:coarse)]:min-h-11"
                     >
                       <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
                       {updater.downloading
