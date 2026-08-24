@@ -8,26 +8,28 @@
 ## 结论
 
 - `cargo check --lib` 通过。
-- `chat_v2::pipeline`、`chat_v2::session_export`、reasoning policy 与现有
-  provider quirk 等价用例全部通过，合计 301 个 passed、0 个 failed。
+- `chat_v2::pipeline`、`chat_v2::session_export`、provider quirks 与
+  reasoning policy 用例全部通过，合计 298 个 passed、0 个 failed。
 - 未发现本分支引入的 Rust 编译或测试失败，因此没有修改生产代码。
-- `src-tauri/src/chat_v2/pipeline/tool_loop.rs` 未修改。
+- 本验收未编辑或重构 `src-tauri/src/chat_v2/pipeline/tool_loop.rs`。
 
 ## 验证结果
 
 | 命令 | 结果 |
 | --- | --- |
 | `cargo check --lib` | 通过；0 error，22 个既有 warning |
-| `cargo test --lib chat_v2::pipeline` | 248 passed，0 failed，5 ignored |
+| `cargo test --lib chat_v2::pipeline` | 250 passed，0 failed，5 ignored |
 | `cargo test --lib chat_v2::session_export` | 11 passed，0 failed |
+| `cargo test --lib llm_manager::provider_quirks` | 4 passed，0 failed |
 | `cargo test --lib reasoning_policy` | 33 passed，0 failed |
-| `cargo test --lib mimo` | 9 passed，0 failed |
 
 Cargo 一次只接受一个测试过滤串，因此 LLM 范围拆开执行。
-`llm_manager::provider_quirks` 过滤串本身匹配 0 个测试：本分支没有
-`src-tauri/src/llm_manager/provider_quirks.rs`，这与既有 optimization0824
-最终报告中 WI-11 未落地的结论一致。作为等价覆盖，补跑当前代码中实际存在的
-MiMo provider 判定、adapter、token 字段和 reasoning 参数用例，共 9 个，全部通过。
+`llm_manager::provider_quirks` 覆盖 provider 判定矩阵、endpoint、runtime
+reasoning pattern 与 Phase 1 snapshot；`reasoning_policy` 覆盖 33 个模型策略用例。
+
+验收期间远端同分支并发新增 WI-11/provider quirks 与 chat pipeline 变更；本报告统计
+来自合并后的最终 HEAD。并发提交对 `tool_loop.rs` 的改动只通过 Git 合并带入，本验收
+没有继续修改该文件。
 
 ## 环境说明
 
