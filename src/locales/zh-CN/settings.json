@@ -1019,6 +1019,9 @@
   "sidebar": {
     "search_placeholder": "搜索设置...",
     "no_results": "未找到匹配的设置",
+    "no_results_hint": "换个关键词试试，或直接浏览左侧分类",
+    "search_empty_prompt": "输入关键词以搜索设置",
+    "clear_search": "清空搜索",
     "expand": "展开",
     "collapse": "收起",
     "back_to_home": "返回首页",

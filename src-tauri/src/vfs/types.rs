@@ -331,6 +331,13 @@ pub struct VfsNote {
     /// 删除时间（软删除）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<String>,
+
+    /// 自定义键值属性（JSON 对象；见 V20260824__note_props.sql）
+    ///
+    /// None 表示无自定义属性；Some 时保证是非空 JSON 对象
+    /// （由 `VfsNoteRepo::set_note_props` 校验后写入）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub props: Option<serde_json::Value>,
 }
 
 impl VfsNote {
@@ -2965,6 +2972,7 @@ mod tests {
             created_at: "2025-01-01".to_string(),
             updated_at: "2025-01-01".to_string(),
             deleted_at: None,
+            props: None,
         };
         let json = serde_json::to_string(&note).unwrap();
         assert!(json.contains("\"resourceId\""));

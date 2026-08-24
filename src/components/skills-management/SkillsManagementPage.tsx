@@ -92,6 +92,13 @@ interface SkillsManagementPageProps {
   className?: string;
   /** Workbench 窗口 id：提供时注册 skills agent 观察/操作面（ACR 4.0 A3） */
   workbenchWindowId?: string;
+  /**
+   * Workbench 窗口内容区尺寸分级（data-wb-sys-size 同源，SkillsAppWindow 下传）。
+   * 页面自身的 viewport 断点在窗口里恒为桌面大屏；非 wide 档时工具栏的
+   * 七个次级操作收进「⋯」溢出菜单，避免窄窗横向溢出。legacy 页面不传，
+   * 维持纯 viewport 断点行为。
+   */
+  windowSizeClass?: 'compact' | 'medium' | 'wide';
 }
 
 // ============================================================================
@@ -188,11 +195,15 @@ const InlineConfirmSection: React.FC<InlineConfirmSectionProps> = ({
 export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   className,
   workbenchWindowId,
+  windowSizeClass,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
+  // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
+  const collapseToolbarActions =
+    isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -218,6 +229,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<SkillDefinition | null>(null);
   const [inlineDeleting, setInlineDeleting] = useState(false);
+
+  // 恢复内置默认确认状态（丢弃全部自定义且不可撤销 → 与删除同级的风险确认）
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [skillToReset, setSkillToReset] = useState<SkillDefinition | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   // 导入覆盖确认状态
   const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
@@ -576,26 +592,42 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     await reloadSkills();
   }, [editingSkill, t]);
 
-  // 恢复内置技能默认值
-  const handleResetToDefault = useCallback(async (skill: SkillDefinition) => {
+  // 请求恢复内置技能默认值（风险操作：先经列表顶部行内确认横幅，再真正执行）
+  const handleRequestResetToDefault = useCallback((skill: SkillDefinition) => {
     if (!skill.isBuiltin) return;
+    setSkillToReset(skill);
+    setResetConfirmOpen(true);
+  }, []);
 
+  const handleCancelResetToDefault = useCallback(() => {
+    setResetConfirmOpen(false);
+    setSkillToReset(null);
+  }, []);
+
+  // 确认恢复内置技能默认值（丢弃全部自定义，不可撤销）
+  const handleConfirmResetToDefault = useCallback(async () => {
+    if (!skillToReset) return;
+    setResetting(true);
     try {
-      await resetBuiltinSkillCustomization(skill.id);
+      await resetBuiltinSkillCustomization(skillToReset.id);
       showGlobalNotification(
         'success',
         t('skills:management.reset_success')
       );
       // 刷新列表
       await reloadSkills();
+      setResetConfirmOpen(false);
+      setSkillToReset(null);
     } catch (error) {
       console.error('[SkillsManagement] 恢复默认失败:', error);
       showGlobalNotification(
         'error',
         t('skills:management.reset_failed')
       );
+    } finally {
+      setResetting(false);
     }
-  }, [t]);
+  }, [skillToReset, t]);
 
   // 确认删除
   const handleConfirmDelete = useCallback(async () => {
@@ -1051,10 +1083,49 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setSkillToDelete(null);
   }, []);
 
+  // ========== / 聚焦搜索（非输入态） ==========
+  // 门禁与 TodoMainPanel 同范式：workbench 窗口承载（祖先带
+  // data-wb-sys-app="skills"）时要求所在窗口聚焦（data-focused）且事件
+  // 发生在窗内；legacy 页面承载时要求页面可见（离场层 visibility:hidden 不消费）。
+  const pageRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const root = pageRootRef.current;
+      if (!root || !root.isConnected) return;
+      const target = e.target as HTMLElement | null;
+      const wbHost = root.closest<HTMLElement>('[data-wb-sys-app="skills"]');
+      if (wbHost) {
+        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+        const scope = windowShell ?? wbHost;
+        if (!target || !scope.contains(target)) return;
+      } else if (root.getClientRects().length === 0) {
+        return;
+      }
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const input = root.querySelector<HTMLInputElement>('[data-skills-search]');
+      if (!input) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
   const anyInlineConfirmOpen =
-    updateConfirmOpen || zipConfirmOpen ||
+    updateConfirmOpen || zipConfirmOpen || resetConfirmOpen ||
     deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
     if (!anyInlineConfirmOpen) return;
@@ -1283,7 +1354,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               </>
             )}
 
-            {!isSmallScreen ? (
+            {!collapseToolbarActions ? (
               <>
                 <DsButton
                   variant="ghost"
@@ -1365,15 +1436,15 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 </DsButton>
               </>
             ) : (
-              /* 移动端：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
-                 主操作（搜索/筛选在下一行，新建在应用顶栏）保持直达 */
+              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
+                 主操作（搜索/筛选在下一行，新建在应用顶栏或本行首）保持直达 */
               <AppMenu>
                 <AppMenuTrigger asChild>
                   <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="!h-11 !w-11 text-muted-foreground"
+                    className={cn('text-muted-foreground', isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
                     aria-label={t('common:more')}
                     title={t('common:more')}
                   >
@@ -1435,6 +1506,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder')}
+              data-skills-search
               className={cn(
                 'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
                 // 移动端加高到触控目标标准，桌面保持紧凑
@@ -1505,7 +1577,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onEdit={handleEdit}
             onDelete={handleDelete}
             onToggleDefault={handleToggleDefault}
-            onResetToOriginal={handleResetToDefault}
+            onResetToOriginal={handleRequestResetToDefault}
             onExport={handleExport}
             onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
             cardRefsMap={cardRefsMap}
@@ -1848,6 +1920,48 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           </InlineConfirmSection>
         )}
 
+        {resetConfirmOpen && skillToReset && (
+          <InlineConfirmSection
+            label={t('skills:management.reset_confirm_title')}
+            onCancel={() => {
+              if (!resetting) handleCancelResetToDefault();
+            }}
+            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+          >
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <ArrowCounterClockwise size={16} className="text-amber-600 dark:text-amber-400" />
+              {t('skills:management.reset_confirm_title')}
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('skills:management.reset_confirm_desc', {
+                name: getLocalizedSkillName(skillToReset.id, skillToReset.name, t),
+              })}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelResetToDefault}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </DsButton>
+              <DsButton
+                variant="primary"
+                size="sm"
+                onClick={() => void handleConfirmResetToDefault()}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {resetting
+                  ? t('skills:management.resetting')
+                  : t('skills:management.reset_confirm_action')}
+              </DsButton>
+            </div>
+          </InlineConfirmSection>
+        )}
+
         {importOverwriteOpen && pendingImport && (
           <InlineConfirmSection
             label={t('skills:management.import_overwrite_title')}
@@ -1920,7 +2034,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
           sidebar={
             // 本页无页内工具，抽屉只承载统一应用导航；
@@ -1963,7 +2077,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 桌面端布局 ==========
   return (
     <LayoutGroup>
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
         {/* 桌面端编辑器：页面容器内的内联全区编辑视图（absolute 于本页面内，不逃出 OS 窗口）。

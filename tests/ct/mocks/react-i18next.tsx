@@ -75,15 +75,30 @@ export const i18n = {
   t,
 };
 
-export const useTranslation = (ns?: string | string[]) => ({
-  t: (key: string, options?: any) => {
-    // Preserve i18next string-default signature: t(key, 'fallback')
-    if (typeof options === 'string') return t(key, options);
-    const defaultNs = Array.isArray(ns) ? ns[0] : ns;
-    return t(key, defaultNs ? { ...options, ns: options?.ns ?? defaultNs } : options);
-  },
-  i18n,
-});
+// ⚠️ 返回值必须按 ns 缓存：真实 react-i18next 的 t 引用是稳定的（memoized）。
+// 若每次渲染都返回新 t，所有把 t 放进 useEffect/useCallback 依赖并在其中
+// setState 的组件（如 NotesWorkspaceApp.loadResources）会陷入
+// 「渲染 → 新 t → effect 重跑 → setState → 渲染」的无限异步循环，
+// 表现为 vitest worker 挂死直至 4GB 堆 OOM（CI 分片超时的元凶之一）。
+const useTranslationCache = new Map<string, { t: (key: string, options?: any) => any; i18n: typeof i18n }>();
+
+export const useTranslation = (ns?: string | string[]) => {
+  const cacheKey = Array.isArray(ns) ? ns.join('|') : (ns ?? '');
+  let cached = useTranslationCache.get(cacheKey);
+  if (!cached) {
+    cached = {
+      t: (key: string, options?: any) => {
+        // Preserve i18next string-default signature: t(key, 'fallback')
+        if (typeof options === 'string') return t(key, options);
+        const defaultNs = Array.isArray(ns) ? ns[0] : ns;
+        return t(key, defaultNs ? { ...options, ns: options?.ns ?? defaultNs } : options);
+      },
+      i18n,
+    };
+    useTranslationCache.set(cacheKey, cached);
+  }
+  return cached;
+};
 
 export const initReactI18next = {
   type: '3rdParty' as const,

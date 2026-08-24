@@ -9,7 +9,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { RealPathBreadcrumbItem } from './types/navigation';
-import { useFinderStore } from './stores/finderStore';
+import { useActiveFinderState } from './stores/finderStore';
 
 // ============================================================================
 // 📱 全局导航 Ref（解决 App.tsx 无法访问 Context 的问题）
@@ -96,7 +96,7 @@ export const LearningHubNavigationProvider: React.FC<{ children: React.ReactNode
     currentPath,
     enterFolder,
     jumpToBreadcrumb,
-  } = useFinderStore(
+  } = useActiveFinderState(
     useShallow((state) => ({
       historyIndex: state.historyIndex,
       historyLength: state.history.length,

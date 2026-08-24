@@ -106,14 +106,15 @@ describe('tiling — active pair 单槽缓存', () => {
 });
 
 describe('tiling — hasDockObstructedWindow（Dock 强制自动隐藏判定）', () => {
-  it('触底受管模式（maximized / 左右平铺 / 下半四分屏）触发', () => {
-    for (const mode of ['maximized', 'tiled-left', 'tiled-right', 'tiled-bl', 'tiled-br'] as const) {
+  it('触底受管模式（maximized / 左右平铺 / 下半四分屏 / 下半屏）触发', () => {
+    const modes = ['maximized', 'tiled-left', 'tiled-right', 'tiled-bl', 'tiled-br', 'tiled-bottom'] as const;
+    for (const mode of modes) {
       expect(hasDockObstructedWindow([makeWin({ displayMode: mode })])).toBe(true);
     }
   });
 
-  it('不触底模式（floating / 上半四分屏）不触发', () => {
-    for (const mode of ['floating', 'tiled-tl', 'tiled-tr'] as const) {
+  it('不触底模式（floating / 上半四分屏 / 上半屏）不触发', () => {
+    for (const mode of ['floating', 'tiled-tl', 'tiled-tr', 'tiled-top'] as const) {
       expect(hasDockObstructedWindow([makeWin({ displayMode: mode })])).toBe(false);
     }
   });

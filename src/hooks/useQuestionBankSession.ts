@@ -202,6 +202,8 @@ export function useQuestionBankSession({
   const localOrderRef = useRef<string[]>([]);
   // 提交防重入：isSubmitting state 在同一帧内读到的是旧值，连点会触发双提交
   const submitInFlightRef = useRef(false);
+  // 每题最近一次提交 id（本会话内）：自评改判时传给后端定位要改判的提交
+  const lastSubmissionIdsRef = useRef<Map<string, string>>(new Map());
   examIdRef.current = examId;
   currentQuestionIdRef.current = currentQuestionId;
   localOrderRef.current = localOrder;
@@ -332,6 +334,7 @@ export function useQuestionBankSession({
   useEffect(() => {
     sessionEpochRef.current += 1;
     const epoch = sessionEpochRef.current;
+    lastSubmissionIdsRef.current.clear();
     if (examId) {
       setLocalQuestions(new Map());
       setLocalOrder([]);
@@ -458,12 +461,18 @@ export function useQuestionBankSession({
     const currentExamId = examIdRef.current;
     setIsSubmitting(true);
     try {
+      // 自评改判：该题最近一次提交出自本会话时带上其 id，后端对该提交改判
+      // 而非新插作答记录，避免"我答对了/我答错了"把 attempt_count 双计。
+      const regradeSubmissionId = isCorrectOverride !== undefined
+        ? lastSubmissionIdsRef.current.get(questionId) ?? null
+        : null;
       const result = await invoke<SubmitAnswerResult>('qbank_submit_answer', {
         request: {
           question_id: questionId,
           user_answer: answer,
           is_correct_override: isCorrectOverride,
           client_request_id: generateClientRequestId(),
+          regrade_submission_id: regradeSubmissionId,
         },
       });
       if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) {
@@ -477,6 +486,7 @@ export function useQuestionBankSession({
         return next;
       });
       setLocalStats(result.updated_stats);
+      lastSubmissionIdsRef.current.set(questionId, result.submission_id);
 
       return {
         isCorrect: result.is_correct,

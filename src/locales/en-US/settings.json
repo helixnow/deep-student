@@ -1019,6 +1019,9 @@
   "sidebar": {
     "search_placeholder": "Search settings...",
     "no_results": "No matching settings found",
+    "no_results_hint": "Try a different keyword, or browse the categories on the left",
+    "search_empty_prompt": "Type a keyword to search settings",
+    "clear_search": "Clear search",
     "expand": "Expand",
     "collapse": "Collapse",
     "back_to_home": "Back to Home",

@@ -212,6 +212,18 @@
     "noAnswerRecorded": "No answer recorded",
     "redo": "Redo",
     "explanation": "Explanation",
+    "generateCards": "Generate cards ({{count}})",
+    "generateCardsRunning": "Submitting…",
+    "generateCardsNeedSelection": "Select the questions you want cards for",
+    "generateCardsTooShort": "The selected questions have too little content to make useful cards",
+    "generateCardsFailed": "Failed to start card generation",
+    "generateCardsStarted": "Card generation started. Track progress in the task dashboard.",
+    "openTaskDashboard": "Open task dashboard",
+    "cardSource": {
+      "question": "Question",
+      "deckName": "Missed questions",
+      "requirements": "Build memory cards from each question stem, its correct answer and explanation. Focus on the knowledge the learner got wrong, and never copy their incorrect answer as the answer side."
+    },
     "sortLabel": "Sort",
     "sortDefault": "Default",
     "sortByErrors": "Most errors",

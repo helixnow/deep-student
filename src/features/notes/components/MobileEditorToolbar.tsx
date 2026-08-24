@@ -35,6 +35,7 @@ import {
   DotsThreeOutline,
   MagnifyingGlass,
   SquaresFour,
+  Cards,
   ArrowCounterClockwise,
   ArrowClockwise,
 } from '@phosphor-icons/react';
@@ -73,6 +74,11 @@ export type MobileEditorToolbarCommands = {
    * 触屏无 hover 块句柄，此入口为块操作的移动端替代；未注入时按钮不渲染。
    */
   openBlockActions?: () => void;
+  /**
+   * 可选：把当前笔记正文送进共享制卡入口（generateCardsFromText）。
+   * 未注入时按钮不渲染，保持旧宿主的工具条形态不变。
+   */
+  generateCards?: () => void;
 };
 
 /** 可选激活态；宿主可按选区 marks/节点透传，未传则不亮 */
@@ -305,8 +311,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         },
       ],
     },
-    // 工具入口：块操作（触屏替代 hover 块句柄）/ 查找，均按宿主是否接线渲染
-    ...(commands.openFind || commands.openBlockActions
+    // 工具入口：块操作（触屏替代 hover 块句柄）/ 查找 / 生成卡片，均按宿主是否接线渲染
+    ...(commands.openFind || commands.openBlockActions || commands.generateCards
       ? [{
           id: 'tools',
           items: [
@@ -326,6 +332,15 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
                   defaultLabel: '查找',
                   icon: <MagnifyingGlass size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
                   onAction: () => commands.openFind?.(),
+                }]
+              : []),
+            ...(commands.generateCards
+              ? [{
+                  id: 'generateCards',
+                  labelKey: 'notes:mobileToolbar.generateCards',
+                  defaultLabel: '生成卡片',
+                  icon: <Cards size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+                  onAction: () => commands.generateCards?.(),
                 }]
               : []),
           ],

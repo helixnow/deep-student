@@ -21,6 +21,7 @@ vi.mock('../api', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: vi.fn() },
     useTranslation: () => ({
         t: (key: string) => key,
     }),

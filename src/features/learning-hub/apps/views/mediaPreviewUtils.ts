@@ -88,6 +88,19 @@ const LIKELY_UNSUPPORTED_VIDEO = new Set([
   '3g2',
 ]);
 
+/**
+ * 音/视频扩展名集合 —— 直接由 MIME 映射表键派生的单一真源。
+ * `inferFilePreviewTypeFromName`（learning-hub/types.ts）等推断逻辑一律
+ * 引用这里，禁止另行内联扩展名数组：两处漂移会导致"可播放但被判为
+ * 不可预览"或反之。注意 'ts' 等与文本扩展名撞车的键由调用方先行判定文本。
+ */
+export const AUDIO_PREVIEW_EXTENSIONS: ReadonlySet<string> = new Set(
+  Object.keys(AUDIO_EXT_MIME),
+);
+export const VIDEO_PREVIEW_EXTENSIONS: ReadonlySet<string> = new Set(
+  Object.keys(VIDEO_EXT_MIME),
+);
+
 function getExtension(fileName: string): string {
   const trimmed = fileName.trim();
   const idx = trimmed.lastIndexOf('.');

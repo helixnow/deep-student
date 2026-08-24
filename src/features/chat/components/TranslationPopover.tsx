@@ -56,6 +56,10 @@ import type {
 } from './translationTypes';
 import { createNdjsonParser, parseAlignedFallback } from './translationNdjsonParser';
 import { buildCacheKey, readCache, writeCache } from './translationCache';
+import {
+  SOURCE_TRANSLATION_LANGUAGES,
+  TRANSLATION_LANGUAGES,
+} from '@/translation/languages';
 
 // ============================================================================
 // 类型
@@ -83,23 +87,9 @@ export interface TranslationPopoverProps {
 /** 流式兜底超时：超过该时长没有收到任何新 chunk 视为失败 */
 const STREAM_STALL_TIMEOUT_MS = 90_000;
 
-const SOURCE_LANGUAGES = [
-  { code: 'auto', label: 'translation:languages.auto' },
-  { code: 'zh-CN', label: 'translation:languages.zh-CN' },
-  { code: 'en', label: 'translation:languages.en' },
-  { code: 'ja', label: 'translation:languages.ja' },
-  { code: 'ko', label: 'translation:languages.ko' },
-  { code: 'fr', label: 'translation:languages.fr' },
-  { code: 'de', label: 'translation:languages.de' },
-  { code: 'es', label: 'translation:languages.es' },
-  { code: 'ru', label: 'translation:languages.ru' },
-  { code: 'pt', label: 'translation:languages.pt' },
-  { code: 'it', label: 'translation:languages.it' },
-  { code: 'vi', label: 'translation:languages.vi' },
-  { code: 'th', label: 'translation:languages.th' },
-];
-
-const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter((l) => l.code !== 'auto');
+// 语言列表与翻译工作台共享（src/translation/languages.ts），保持两处可选语言一致
+const SOURCE_LANGUAGES = SOURCE_TRANSLATION_LANGUAGES;
+const TARGET_LANGUAGES = TRANSLATION_LANGUAGES;
 
 const HIGHLIGHT_ACTIVE = { bg: 'bg-primary/10', text: 'text-primary' };
 
@@ -736,8 +726,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     setCollapsed((prev) => !prev);
   }, []);
 
-  const srcOptions = SOURCE_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
-  const tgtOptions = TARGET_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
+  const srcOptions = SOURCE_LANGUAGES.map((l) => ({ value: l.code, label: t(l.labelKey) }));
+  const tgtOptions = TARGET_LANGUAGES.map((l) => ({ value: l.code, label: t(l.labelKey) }));
 
   const hasContent =
     settings.mode === 'aligned' ? segments !== null && segments.length > 0 : streamingText.length > 0;

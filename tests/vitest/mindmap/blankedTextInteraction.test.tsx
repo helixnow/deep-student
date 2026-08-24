@@ -5,6 +5,8 @@ import { BlankedText } from '@/features/mindmap/components/shared/BlankedText';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+  // 传导链（utils/node/create → src/i18n.ts）需要最小 3rdParty 插件面
+  initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
 
 describe('BlankedText recite interaction', () => {

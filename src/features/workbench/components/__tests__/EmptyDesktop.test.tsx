@@ -1,22 +1,33 @@
 /**
- * EmptyDesktop 测试：4 步 tour、跳过（会话）与不再显示（持久化）。
+ * EmptyDesktop 测试：4 步 tour、跳过（会话）与不再显示（持久化）、
+ * 速查表再入口（replayEmptyDesktopTour）、菜单栏 autohide 时跳过 statusBar 步。
  */
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { workbenchBus } from '../../core/workbenchBus';
-import { EmptyDesktop, EMPTY_DESKTOP_ONBOARDING_KEY } from '../EmptyDesktop';
+import {
+  EmptyDesktop,
+  EMPTY_DESKTOP_ONBOARDING_KEY,
+  replayEmptyDesktopTour,
+} from '../EmptyDesktop';
+import {
+  resetMenuBarAutohideForTests,
+  useMenuBarAutohideStore,
+} from '../menuBarAutohideStore';
 
 let launchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   localStorage.clear();
+  resetMenuBarAutohideForTests();
   launchSpy = vi.spyOn(workbenchBus, 'launch').mockReturnValue(null);
 });
 
 afterEach(() => {
   launchSpy.mockRestore();
+  resetMenuBarAutohideForTests();
 });
 
 describe('引导卡渲染', () => {
@@ -67,10 +78,12 @@ describe('4 步 tour', () => {
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
-  it('不再显示 → 隐藏并写入 localStorage', () => {
+  it('不再显示 → 只隐藏 tour，主 CTA 常驻并写入 localStorage', () => {
     render(<EmptyDesktop />);
     fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
-    expect(screen.queryByText('你的学习桌面')).toBeNull();
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(screen.getByText('你的学习桌面')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
@@ -85,10 +98,56 @@ describe('4 步 tour', () => {
     expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
   });
 
-  it('已关闭过 → 重新挂载不再展示', () => {
+  it('已关闭过 → 重新挂载不展示 tour，但主 CTA 常驻', () => {
     localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
     render(<EmptyDesktop />);
-    expect(screen.queryByText('你的学习桌面')).toBeNull();
-    expect(screen.queryByRole('button', { name: /打开资源库/ })).toBeNull();
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(screen.getByText('你的学习桌面')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
+  });
+});
+
+describe('再入口（速查表「重新播放快速上手」）', () => {
+  it('不再显示后 replayEmptyDesktopTour → 清持久化位并复位到第一步', () => {
+    render(<EmptyDesktop />);
+    fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
+
+    act(() => {
+      replayEmptyDesktopTour();
+    });
+    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
+    const tour = screen.getByTestId('wb-empty-tour');
+    expect(tour).toHaveAttribute('data-tour-step', 'dock');
+  });
+
+  it('会话跳过后 replay 同样复位', () => {
+    render(<EmptyDesktop />);
+    fireEvent.click(screen.getByTestId('wb-empty-tour-skip'));
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+
+    act(() => {
+      replayEmptyDesktopTour();
+    });
+    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
+  });
+});
+
+describe('隐藏状态项规避', () => {
+  it('菜单栏 autohide 开启时跳过 statusBar 步（3 步：dock → search → agent）', () => {
+    act(() => {
+      useMenuBarAutohideStore.getState().setSettingEnabled(true);
+    });
+    render(<EmptyDesktop />);
+    const tour = screen.getByTestId('wb-empty-tour');
+    expect(screen.getByTestId('wb-empty-tour-progress').textContent).toMatch(/1 \/ 3/);
+
+    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
+    expect(tour).toHaveAttribute('data-tour-step', 'search');
+
+    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
+    expect(tour).toHaveAttribute('data-tour-step', 'agent');
+    expect(screen.getByTestId('wb-empty-tour-next').textContent).toMatch(/完成/);
   });
 });

@@ -10,7 +10,13 @@ export const LIST_ITEM_HEIGHT_TOUCH = 48;
 export const LIST_PADDING_TOP = 4; // py-1
 
 export const GRID_ITEM_WIDTH = 88;
+/** 网格虚拟行槽高（行步距 = GRID_ROW_HEIGHT + GRID_GAP，与 FinderFileList 虚拟滚动同源） */
 export const GRID_ROW_HEIGHT = 120;
+/**
+ * 网格卡片内容实高（FinderFileItem 网格卡片 h-[100px]）。
+ * 行槽（120px）底部约 20px 是留白：框选只应命中卡片本体，不含行槽尾部空隙。
+ */
+export const GRID_ITEM_HEIGHT = 100;
 export const GRID_GAP = 8;
 
 export type ClientRect = {
@@ -33,7 +39,13 @@ export type GridLayout = {
   itemCount: number;
   columns: number;
   itemWidth: number;
+  /** 行槽高：行步距 = rowHeight + gap（与虚拟滚动 estimateSize 同源） */
   rowHeight: number;
+  /**
+   * 卡片内容实高（≤ rowHeight）。缺省回退 rowHeight（把整个行槽当卡片）。
+   * 与 rowHeight 分离：行步距决定卡片落点，itemHeight 决定命中盒。
+   */
+  itemHeight?: number;
   gap: number;
   padLeft: number;
   padTop: number;
@@ -103,7 +115,7 @@ export function hitTestListSelection(box: ClientRect, layout: ListLayout): numbe
 
 /**
  * Grid 命中：返回与选择框相交的单元格索引。
- * gap 空隙不计命中——对单元格内容矩形 (itemWidth × rowHeight) 再做 AABB。
+ * gap 空隙不计命中——对单元格内容矩形 (itemWidth × itemHeight) 再做 AABB。
  */
 export function hitTestGridSelection(box: ClientRect, layout: GridLayout): number[] {
   const {
@@ -119,8 +131,12 @@ export function hitTestGridSelection(box: ClientRect, layout: GridLayout): numbe
     viewportTop,
     viewportLeft,
   } = layout;
+  // 内容高不得超过行槽高（防调用侧传入异常值把命中盒撑进下一行）
+  const itemHeight = Math.min(layout.itemHeight ?? rowHeight, rowHeight);
 
-  if (itemCount <= 0 || columns <= 0 || itemWidth <= 0 || rowHeight <= 0) return [];
+  if (itemCount <= 0 || columns <= 0 || itemWidth <= 0 || rowHeight <= 0 || itemHeight <= 0) {
+    return [];
+  }
 
   const content = toContentRect(box, viewportTop, viewportLeft, scrollTop, scrollLeft);
   const x0 = content.left - padLeft;
@@ -143,9 +159,11 @@ export function hitTestGridSelection(box: ClientRect, layout: GridLayout): numbe
   r1 = clamp(r1, 0, rowCount - 1);
 
   if (c0 > c1 || r0 > r1) return [];
-  // 框完全在 padding / 内容外
+  // 框完全在 padding / 内容外（右缘/下缘以最后一列/行的卡片内容边界为准）
   if (x1 <= 0 || y1 <= 0) return [];
-  if (x0 >= columns * cellW - gap || y0 >= rowCount * cellH - gap) return [];
+  if (x0 >= (columns - 1) * cellW + itemWidth || y0 >= (rowCount - 1) * cellH + itemHeight) {
+    return [];
+  }
 
   const contentBox: ClientRect = {
     left: x0,
@@ -161,7 +179,7 @@ export function hitTestGridSelection(box: ClientRect, layout: GridLayout): numbe
         left: c * cellW,
         top: r * cellH,
         right: c * cellW + itemWidth,
-        bottom: r * cellH + rowHeight,
+        bottom: r * cellH + itemHeight,
       };
       if (!rectsIntersect(contentBox, cellContent)) continue;
       const idx = r * columns + c;
