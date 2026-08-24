@@ -253,7 +253,7 @@ const LogEntry: React.FC<{
       }`}
     >
       <div
-        className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50"
+        className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 [@media(pointer:coarse)]:min-h-11"
         onClick={onToggle}
       >
         {levelIcon}

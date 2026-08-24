@@ -553,12 +553,12 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
           </select>
         </div>
         
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
           <Switch size="sm" checked={onlyActive} onCheckedChange={setOnlyActive} /> 
           当前流
         </label>
         
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
           <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 
           仅错误
         </label>

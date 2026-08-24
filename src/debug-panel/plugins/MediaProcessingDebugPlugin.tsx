@@ -157,7 +157,7 @@ const EventEntry: React.FC<{
 
   return (
     <div
-      className="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors"
+      className="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11"
       onClick={onToggle}
     >
       <div className="flex items-center gap-2">

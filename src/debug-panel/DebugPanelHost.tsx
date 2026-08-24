@@ -1006,7 +1006,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                     value={searchQuery}
                     onChange={ev => setSearchQuery(ev.target.value)}
                     placeholder={t('debug_panel.search_placeholder', '搜索插件或描述...')}
-                    className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] text-[hsl(var(--foreground))] text-sm px-3 py-2 pr-9 placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.4)] focus:border-[hsl(var(--primary)/0.4)] transition-shadow"
+                    className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] text-[hsl(var(--foreground))] text-sm px-3 py-2 pr-9 [@media(pointer:coarse)]:min-h-11 placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary)/0.4)] focus:border-[hsl(var(--primary)/0.4)] transition-shadow"
                   />
                   {searchQuery ? (
                     <button
@@ -1073,7 +1073,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               ev.stopPropagation();
                               toggleFavorite(plugin.id);
                             }}
-                            className={`absolute right-2.5 top-2.5 text-[13px] transition-colors ${
+                            className={`absolute right-2.5 top-2.5 text-[13px] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${
                               favoriteIds.has(plugin.id)
                                 ? 'text-warning drop-shadow-sm'
                                 : 'text-[hsl(var(--muted-foreground)/0.5)] hover:text-[hsl(var(--muted-foreground))]'

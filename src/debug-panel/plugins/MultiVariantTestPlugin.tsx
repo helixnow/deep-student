@@ -395,7 +395,7 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 return (
                   <div key={r.step} className={`border rounded-lg overflow-hidden ${r.status === 'failed' ? 'border-red-300 dark:border-red-700' : 'border-border'}`}>
                     {/* 摘要行 */}
-                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm"
+                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm [@media(pointer:coarse)]:min-h-11"
                       onClick={() => setExpandedStep(isExpanded ? null : r.step)}>
                       {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {stepStatusIcon(r.status)}

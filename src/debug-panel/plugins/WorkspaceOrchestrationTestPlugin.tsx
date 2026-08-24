@@ -399,7 +399,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 const expanded = expandedScenario === r.scenario;
                 return (
                   <div key={r.scenario} className={`border rounded-lg overflow-hidden ${r.status === 'failed' ? 'border-red-300 dark:border-red-700' : 'border-border'}`}>
-                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm" onClick={() => setExpandedScenario(expanded ? null : r.scenario)}>
+                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm [@media(pointer:coarse)]:min-h-11" onClick={() => setExpandedScenario(expanded ? null : r.scenario)}>
                       {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {scenarioStatusIcon(r.status)}
                       <span className="font-medium flex-1">{SCENARIO_LABELS[r.scenario]}</span>

@@ -473,7 +473,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
 
       <div className="dbg-toolbar" style={{ padding: '4px 6px', borderBottom: '1px solid #1e293b', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
         {Object.keys(channelFilter).map(ch => (
-          <label key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+          <label key={ch} className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
             <Checkbox checked={!!channelFilter[ch]} onCheckedChange={() => setChannelFilter(state => ({ ...state, [ch]: !state[ch] }))} /> {ch}
           </label>
         ))}
@@ -490,10 +490,10 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
             <option value="failed">失败</option>
           </select>
         </div>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <Switch size="sm" checked={onlyCurrent} onCheckedChange={setOnlyCurrent} /> 只看当前流
         </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 仅错误
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>

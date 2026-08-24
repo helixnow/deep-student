@@ -580,7 +580,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         {stats.warnings > 0 && <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚠ {stats.warnings}</span>}
         {stats.anomalies > 0 && <span style={{ color: '#f97316', fontWeight: 600 }}>🔀 {stats.anomalies} 异常</span>}
         <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
@@ -659,6 +659,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
               >
                 {/* 主行 */}
                 <div
+                  className="[@media(pointer:coarse)]:min-h-11"
                   style={{ display: 'flex', alignItems: 'flex-start', gap: 4, cursor: hasDetail ? 'pointer' : 'default' }}
                   onClick={() => hasDetail && toggleExpand(entry.id)}
                 >

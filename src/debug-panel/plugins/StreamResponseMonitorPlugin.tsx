@@ -210,6 +210,7 @@ const StreamResponseMonitorPlugin: React.FC<StreamResponseMonitorPluginProps> = 
           清空
         </button>
         <label
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'inline-flex',
             alignItems: 'center',

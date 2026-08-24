@@ -301,6 +301,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
           {copySuccess ? '✓ 已复制' : '复制日志'}
         </button>
         <label
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
