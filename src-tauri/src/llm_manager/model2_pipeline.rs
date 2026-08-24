@@ -23,7 +23,8 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    build_provider_adapter, is_official_deepseek_config, normalize_nonstream_response_to_openai,
+    parser,
     provider_quirks::{resolve_endpoint_quirks, resolve_quirks, MaxTokensField, ProviderQuirks},
     request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
     ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
@@ -528,16 +529,19 @@ fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
 /// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
 /// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
 /// - 必须是官方 DeepSeek 端点
+/// - 模型支持工具
+///   （以上三条已收敛进 `ProviderQuirks::server_side_web_search`，见
+///   `provider_quirks::resolve_quirks`）
 /// - 模型必须在官方 web_search 列名（仅 flash 系列；Responses 门控已放开
 ///   v4-pro，不能再依赖「上游保证仅 flash」，见
 ///   `deepseek_model_supports_server_side_web_search`）
-/// - 模型支持工具
 /// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
 ///
 /// 启用后本地 function 版 web_search 会被替换为服务端原生工具，避免双重搜索。
 #[inline]
 fn server_side_web_search_enabled(
     quirks: &ProviderQuirks,
+    config: &ApiConfig,
     llm_context: &HashMap<String, Value>,
 ) -> bool {
     if !quirks.server_side_web_search {
@@ -1085,7 +1089,10 @@ mod tests {
         assert_eq!(stable_prompt_cache_key(Some("translation")), "translation");
         // 空输入回落到固定常量而非随机 UUID：同一输入必须得到同一 key
         assert_eq!(stable_prompt_cache_key(None), FALLBACK_PROMPT_CACHE_KEY);
-        assert_eq!(stable_prompt_cache_key(Some("   ")), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(
+            stable_prompt_cache_key(Some("   ")),
+            FALLBACK_PROMPT_CACHE_KEY
+        );
         assert_eq!(stable_prompt_cache_key(None), stable_prompt_cache_key(None));
     }
 
@@ -1734,6 +1741,7 @@ mod tests {
 
         assert!(server_side_web_search_enabled(
             &resolve_quirks(&base),
+            &base,
             &enabled_context
         ));
 
@@ -1742,6 +1750,7 @@ mod tests {
         disabled_context.insert("web_search_enabled".to_string(), json!(false));
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&base),
+            &base,
             &disabled_context
         ));
 
@@ -1750,6 +1759,7 @@ mod tests {
         chat_config.api_protocol = Some("openai_chat_completions".to_string());
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&chat_config),
+            &chat_config,
             &enabled_context
         ));
 
@@ -1760,6 +1770,7 @@ mod tests {
         third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&third_party),
+            &third_party,
             &enabled_context
         ));
 
@@ -1767,13 +1778,18 @@ mod tests {
         let mut proxy = base.clone();
         proxy.base_url = "https://myproxy.example.com/v1".to_string();
         proxy.api_protocol = Some("openai_responses".to_string());
-        assert!(!server_side_web_search_enabled(&proxy, &enabled_context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&proxy),
+            &proxy,
+            &enabled_context
+        ));
 
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
         no_tools.supports_tools = false;
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&no_tools),
+            &no_tools,
             &enabled_context
         ));
     }
@@ -1802,19 +1818,27 @@ mod tests {
             should_use_openai_responses_for_config(&pro),
             "v4-pro 应走 Responses 协议（前置条件）"
         );
-        assert!(!server_side_web_search_enabled(&pro, &context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&pro),
+            &pro,
+            &context
+        ));
 
         // flash 系列（含官方文档列名的 vision-exp）→ 注入
         let mut vision_exp = base.clone();
         vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
-        assert!(server_side_web_search_enabled(&vision_exp, &context));
+        assert!(server_side_web_search_enabled(
+            &resolve_quirks(&vision_exp),
+            &vision_exp,
+            &context
+        ));
 
         // legacy 别名（官方映射到 flash）→ 注入
         for alias in ["deepseek-chat", "deepseek-reasoner"] {
             let mut legacy = base.clone();
             legacy.model = alias.to_string();
             assert!(
-                server_side_web_search_enabled(&legacy, &context),
+                server_side_web_search_enabled(&resolve_quirks(&legacy), &legacy, &context),
                 "legacy 别名 {alias} 应放行"
             );
         }
@@ -2244,7 +2268,11 @@ mod tests {
         merge_consecutive_user_messages_respecting_transients(&mut with, &guard);
 
         assert_eq!(with[0]["content"], skill_content, "技能消息不得被合并改写");
-        assert_eq!(&with[1..], &without[..], "非技能 user 合并结果必须与无技能时一致");
+        assert_eq!(
+            &with[1..],
+            &without[..],
+            "非技能 user 合并结果必须与无技能时一致"
+        );
     }
 
     /// P1-8：瞬态技能/锚点消息永不与邻接 user 合并；
@@ -2264,7 +2292,10 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["content"], "u1", "屏障前的 user 不得跨屏障合并");
         assert_eq!(messages[1]["content"], skill_content);
-        assert_eq!(messages[2]["content"], "u2\n\nu3", "屏障后的连续 user 照常合并");
+        assert_eq!(
+            messages[2]["content"], "u2\n\nu3",
+            "屏障后的连续 user 照常合并"
+        );
     }
 
     // ============================================================
@@ -2434,7 +2465,10 @@ mod tests {
             "原有 image block 字节不变"
         );
         assert_eq!(arr[2]["type"], "text");
-        assert!(arr[2]["text"].as_str().unwrap().contains("<injected_context>"));
+        assert!(arr[2]["text"]
+            .as_str()
+            .unwrap()
+            .contains("<injected_context>"));
     }
 
     /// 找不到可承载的 user 消息时：追加独立 user 尾段，绝不触碰 system
@@ -2469,7 +2503,11 @@ mod tests {
             json!({"role": "user", "content": "q"}),
         ];
         let before = serde_json::to_string(&messages).unwrap();
-        LLMManager::append_injection_to_current_user_message(&mut messages, "   ", &no_transients());
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "   ",
+            &no_transients(),
+        );
         assert_eq!(serde_json::to_string(&messages).unwrap(), before);
     }
 }
@@ -3876,7 +3914,7 @@ impl LLMManager {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
             let mut tools = custom_tools.unwrap_or_default();
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, context) {
+            if server_side_web_search_enabled(&quirks, &config, context) {
                 apply_server_side_web_search_tool(&mut tools);
                 debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
             }
@@ -3898,7 +3936,7 @@ impl LLMManager {
             // 构建工具列表，包含本地工具和 MCP 工具
             let mut tools = self.build_tools_with_mcp(&window).await;
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, context) {
+            if server_side_web_search_enabled(&quirks, &config, context) {
                 if let Some(tools_array) = tools.as_array_mut() {
                     apply_server_side_web_search_tool(tools_array);
                     debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
