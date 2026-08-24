@@ -125,10 +125,7 @@ impl ProviderAdapter for OpenAIAdapter {
         // 该字段对 Responses/部分官方端点不合法，不在此发送）。
         // 调用方已显式设置 stream_options 时尊重原值。
         if let Some(obj) = sanitized_body.as_object_mut() {
-            let is_stream = obj
-                .get("stream")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
+            let is_stream = obj.get("stream").and_then(Value::as_bool).unwrap_or(false);
             if is_stream && !obj.contains_key("stream_options") {
                 obj.insert(
                     "stream_options".to_string(),
@@ -664,7 +661,10 @@ impl OpenAIResponsesAdapter {
         let Some(minor_part) = after_major.strip_prefix('.') else {
             return false;
         };
-        let minor_digits: String = minor_part.chars().take_while(char::is_ascii_digit).collect();
+        let minor_digits: String = minor_part
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
         minor_digits
             .parse::<u32>()
             .map(|minor| minor >= 6)
@@ -1423,8 +1423,7 @@ impl OpenAIResponsesAdapter {
                         .and_then(Value::as_array)
                     {
                         for item in items {
-                            if item.get("type").and_then(Value::as_str) == Some("web_search_call")
-                            {
+                            if item.get("type").and_then(Value::as_str) == Some("web_search_call") {
                                 input_blocks.push(item.clone());
                             }
                         }
@@ -4882,9 +4881,7 @@ mod tests {
             .expect("assistant message should be present");
         assert!(replay_index < assistant_index);
         // 非 web_search_call 类型不得混入
-        assert!(!input
-            .iter()
-            .any(|item| item["id"] == json!("not_a_search")));
+        assert!(!input.iter().any(|item| item["id"] == json!("not_a_search")));
     }
 
     /// P2-12：GPT-5.6+ 稳定指令改放 input 首位的 developer input_text 并打
@@ -4940,9 +4937,9 @@ mod tests {
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5"));
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.5"));
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-4o"));
-        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint(
-            "deepseek-v4-flash"
-        ));
+        assert!(
+            !OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("deepseek-v4-flash")
+        );
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("qwen3.7-plus"));
     }
 
@@ -5314,7 +5311,10 @@ mod tests {
         let request_json = serde_json::to_value(request).expect("serialize");
 
         // 顶层 automatic cache_control 保留
-        assert_eq!(request_json["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
 
         // system 为 block 数组，尾块带显式断点
         let system = request_json["system"]
@@ -5329,10 +5329,7 @@ mod tests {
         let tools = request_json["tools"].as_array().expect("tools array");
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
-        assert_eq!(
-            tools[1]["cache_control"],
-            json!({ "type": "ephemeral" })
-        );
+        assert_eq!(tools[1]["cache_control"], json!({ "type": "ephemeral" }));
     }
 
     /// P2-11：调用方已打的块级 cache_control（稳定段尾标记）必须原样保留，
@@ -5860,10 +5857,7 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
         let request = adapter
             .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
             .expect("request should build");
-        assert_eq!(
-            request.body["stream_options"]["include_usage"],
-            json!(true)
-        );
+        assert_eq!(request.body["stream_options"]["include_usage"], json!(true));
 
         // 非流式请求不加
         let body = json!({

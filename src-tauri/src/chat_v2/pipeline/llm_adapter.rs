@@ -1467,7 +1467,11 @@ mod response_reasoning_pairing_tests {
         adapter.on_tool_call_start("call_2", "tool_b");
 
         let items = adapter.get_response_reasoning_items();
-        assert_eq!(items.len(), 2, "两个 reasoning item 都应保留（禁止单值覆盖）");
+        assert_eq!(
+            items.len(),
+            2,
+            "两个 reasoning item 都应保留（禁止单值覆盖）"
+        );
         assert_eq!(items[0], (Some("call_1".to_string()), r1));
         assert_eq!(items[1], (Some("call_2".to_string()), r2));
     }

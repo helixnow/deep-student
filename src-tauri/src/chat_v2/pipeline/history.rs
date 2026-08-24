@@ -479,10 +479,9 @@ impl ChatV2Pipeline {
             // 出站 assistant 消息 metadata（键名与 meta 持久化键一致），由
             // attach_web_search_replay_items 附着后原样回传 Responses input
             let mut history_metadata = serde_json::Map::new();
-            if let Some(parts) = canonical_content_for_history(
-                &message,
-                active_variant_artifacts.get(&message.id),
-            ) {
+            if let Some(parts) =
+                canonical_content_for_history(&message, active_variant_artifacts.get(&message.id))
+            {
                 history_metadata.insert("canonicalContent".to_string(), serde_json::json!(parts));
             }
             if role == "assistant" {
@@ -509,10 +508,8 @@ impl ChatV2Pipeline {
                         items.get(crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY)
                     })
                 {
-                    history_metadata.insert(
-                        "openai_responses_reasoning_item".to_string(),
-                        item.clone(),
-                    );
+                    history_metadata
+                        .insert("openai_responses_reasoning_item".to_string(), item.clone());
                 }
             }
 
@@ -1137,8 +1134,8 @@ pub(super) mod replay_test_support {
     use std::sync::Arc;
 
     /// 构建带完整迁移（含 V20260806 三列）的真实 ChatV2Pipeline
-    pub(in crate::chat_v2::pipeline) fn replay_test_pipeline(
-    ) -> (tempfile::TempDir, ChatV2Pipeline) {
+    pub(in crate::chat_v2::pipeline) fn replay_test_pipeline() -> (tempfile::TempDir, ChatV2Pipeline)
+    {
         use crate::chat_v2::database::ChatV2Database;
         use crate::data_governance::migration::coordinator::MigrationCoordinator;
         use crate::data_governance::schema_registry::DatabaseId;
@@ -1684,8 +1681,11 @@ mod replay_consistency_tests {
         assistant_msg.block_ids = vec!["blk_wsi_inject".to_string(), "blk_wsi_c1".to_string()];
         ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
 
-        let mut injection_block =
-            MessageBlock::new("msg_wsi_a1".to_string(), block_types::WORKSPACE_INJECTION, 0);
+        let mut injection_block = MessageBlock::new(
+            "msg_wsi_a1".to_string(),
+            block_types::WORKSPACE_INJECTION,
+            0,
+        );
         injection_block.id = "blk_wsi_inject".to_string();
         injection_block.status = block_status::SUCCESS.to_string();
         injection_block.content = Some("[来自工作区] 主代理插话：优先处理 A".to_string());
@@ -1814,9 +1814,7 @@ mod replay_consistency_tests {
             &conn,
             "blk_edit_u1",
             &BlockReplayData {
-                llm_content: Some(
-                    "<user_query>\n编辑前的问题\n</user_query>".to_string(),
-                ),
+                llm_content: Some("<user_query>\n编辑前的问题\n</user_query>".to_string()),
                 ..Default::default()
             },
         )
@@ -1846,7 +1844,8 @@ mod replay_consistency_tests {
             .live_user_llm_content()
             .expect("compiled current user message");
         assert!(live_wrapped.contains("编辑后的新问题"));
-        edit_ctx.interleaved_blocks = vec![content_block("msg_edit_a1", "blk_edit_a1", "新回答", 0)];
+        edit_ctx.interleaved_blocks =
+            vec![content_block("msg_edit_a1", "blk_edit_a1", "新回答", 0)];
 
         pipeline.save_intermediate_results(&edit_ctx).await.unwrap();
 
