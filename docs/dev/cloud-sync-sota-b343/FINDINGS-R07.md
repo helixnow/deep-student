@@ -1,5 +1,20 @@
 # FINDINGS-R07 — R06 合入独立复审结论
 
+> **R10-protocol 状态表回写（基线 `f96a09a9`，逐条证据见 [PROTOCOL-R10](./PROTOCOL-R10.md)；下方正文为 R07 复审历史留档，不删改）**
+>
+> | 条目 | 状态 | 关闭方 / 备注 |
+> |---|---|---|
+> | P0-1 文件级明文上传 | **已关** | r07-file-e2ee；验收 a/b/c 三要点全过（含「部分覆盖」文案回收） |
+> | P1-1 冲突面板 cloud-only「保留本地」不可达 | **已关** | R10-conflict-ui；单条/批量可达 + 两击确认 + 锁定测改写 |
+> | P1-2 记录级 bool 策略入口 | **已关** | r07-record-verifier；四入口写前拦截，附带缺口（首建 v2 标记）同关 |
+> | P2-1 升级信任第一台带密码设备 | **部分** | 代码信任边界未变；R09-restore-ops 运维解锁指南为唯一缓解，`sync_r10_protocol_locks.rs` 钉住指南不失效 |
+> | P2-2 校验子 KDF 参数无上限 | **仍开** | 无钳制；`sync_r10_protocol_locks.rs` 三用例锁定现状，建议 R11-verifier-clamp |
+> | P2-3 resolve 快速路径事务外快照读 | **仍开** | 事务内仅重验 generation；`sync_r10_protocol_locks.rs` 源码锁定，建议并入 R11 sync 面 |
+> | P2-4 keep_cloud 多候选 | **已关（豁免）** | UI 披露「最新/N」，按 R07 原判「不修亦可」结案 |
+> | 开放项：autosync / 资产文件名 / Android | **已关** | r07-autosync / R09-names（长度残余另跟踪）/ R09-android |
+> | 开放项：CI 红灯三项 | **未复核** | 修复已合入；基线最近 runs 均 cancelled/queued，待完整 CI run 确认 |
+> | 开放项：`ftp.rs` 合 main 必冲突 | **仍开（留档）** | 非本枝可修，持续留档 |
+
 - 复审代理：R07-review（`claude-fable-5-thinking-high`，xhigh 不可用明示降级，非静默）
 - 基线：`origin/cursor/cloud-sync-sota-b343` @ `871528a3`
 - 方式：只读代码复审 + git 历史对照；未运行 CI（CI 红灯由 R07-contract / R07-vitest / R07-archive 在途处理，本文不重复展开）
