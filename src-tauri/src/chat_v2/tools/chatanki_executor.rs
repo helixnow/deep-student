@@ -1216,6 +1216,9 @@ const CHATANKI_RETEMPLATE_CARD_LIMIT: usize = 100;
 enum ChatAnkiRetemplateStrategy {
     MapOnly,
     FillMissing,
+    /// 两阶段策略：Phase 1 与 `fill_missing` 完全相同（同一事务内映射 + 换模板），
+    /// Phase 2 对仍有缺失字段的卡批量调用 LLM 生成字段值并逐卡 CAS 写回。
+    FillMissingLlm,
 }
 
 impl ChatAnkiRetemplateStrategy {
@@ -1223,6 +1226,7 @@ impl ChatAnkiRetemplateStrategy {
         match self {
             Self::MapOnly => "map_only",
             Self::FillMissing => "fill_missing",
+            Self::FillMissingLlm => "fill_missing_llm",
         }
     }
 }

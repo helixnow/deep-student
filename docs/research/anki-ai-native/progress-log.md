@@ -48,7 +48,7 @@
 **计划：**
 - Structured Output / 括号深度切卡器
 - 确定性质检 lint
-- extraRequirements 参数暴露
+- [x] extraRequirements 参数暴露（run/start args → build_chatanki_requirements 追加；skill schema + 系统提示文档 + Rust 测试）
 - chatanki_transform 工具落地
 - Multi-agent Phase 0 档案
 

@@ -256,6 +256,11 @@ export const chatAnkiSkill: SkillDefinition = {
             maximum: 100,
             description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
           },
+          extraRequirements: {
+            type: 'string',
+            description:
+              '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
+          },
           debug: { type: 'boolean', description: '可选：输出更多调试信息（路由决策/分块统计等）' },
         },
         required: ['goal', 'maxCards', 'templateMode'],
@@ -299,6 +304,11 @@ export const chatAnkiSkill: SkillDefinition = {
             minimum: 1,
             maximum: 100,
             description: '必需：本批卡片数量上限（"至多 N 张"，不是精确数量；取值 1~100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户目标超过 100 张时必须拆成多批，不得传入更大数字依赖系统截断。',
+          },
+          extraRequirements: {
+            type: 'string',
+            description:
+              '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
           },
           debug: { type: 'boolean', description: '可选：输出更多调试信息' },
         },
@@ -1014,6 +1024,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - **先预览后交付**：默认输出预览块，鼓励用户审核后再导出/同步。
 - **自动路由**：不传 \`route\` 时由系统自动选择：\`simple_text\` / \`vlm_light\` / \`vlm_full\`。
 - **可覆盖路由**：当用户明确知道材料形态时，可传 \`route\` 强制走指定路线。
+- **附加生成要求走 extraRequirements**：用户对卡片风格/语言/格式有明确附加约束（如“答案全部用英文”“每张卡背面附一个例句”）时，把这些约束放进 run/start 的可选参数 \`extraRequirements\`（后端会作为高优先级规则注入生成提示）；学习目标仍放 \`goal\`，不要把两者混写。
 - **禁止输出占位标签**：不要在回答正文输出 \`<anki_cards ... />\` 或任何“块标签”。预览块由系统事件自动渲染。
 - **观测后再修改**：用户说“第 N 张卡有问题”时，先用 \`builtin-chatanki_get_cards\` 定位真实 cardId/version，再调用 \`builtin-chatanki_update_card\`；除非用户明确要求，禁止整批重跑。
 - **删除使用双乐观锁**：调用 \`builtin-chatanki_delete_card\` 前必须重新用 \`builtin-chatanki_get_cards\` 取得同一卡片最新 \`cardId/version/reviewState\`，同时传 \`expectedVersion\` 与 \`expectedReviewVersion\`；未入队时后者显式传 \`null\`。任何 \`version_conflict\` / \`review_state_conflict\` 后都重新读取，不得复用旧 token。
