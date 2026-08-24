@@ -217,6 +217,8 @@ jobs:
         run: node scripts/generate-version.mjs
 
       - name: Run vitest shard
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
         run: npx vitest run --shard=${{ matrix.shard }}/4
 
   # ============================================
