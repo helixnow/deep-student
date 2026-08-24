@@ -262,7 +262,7 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <div className="space-y-1.5">
               {GROUP_LABELS.map(({ label, steps }) => (
                 <div key={label}>
-                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                     onClick={(e) => { e.preventDefault(); toggleGroup(steps); }}>
                     <Checkbox
                       checked={steps.every(s => skipSteps.has(s)) ? false : steps.every(s => !skipSteps.has(s)) ? true : 'indeterminate'}
@@ -272,7 +272,7 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   </label>
                   <div className="grid grid-cols-2 gap-0.5 ml-5">
                     {steps.map(step => (
-                      <label key={step} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                      <label key={step} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                         title={STEP_DESCRIPTIONS[step]}>
                         <Checkbox checked={!skipSteps.has(step)}
                           onCheckedChange={() => toggleSkipStep(step)} disabled={status === 'running'} />
