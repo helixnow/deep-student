@@ -1365,7 +1365,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         key={folder.id}
                         variant="ghost" size="sm"
                         className={cn(
-                          'w-full !justify-start !px-2.5 !py-1.5 text-xs',
+                          'w-full !justify-start !px-2.5 !py-1.5 text-xs [@media(pointer:coarse)]:!min-h-11',
                           folder.id === config.memoryRootFolderId && 'bg-primary/10 text-primary'
                         )}
                         onClick={() => handleSelectRootFolder(folder.id)}
