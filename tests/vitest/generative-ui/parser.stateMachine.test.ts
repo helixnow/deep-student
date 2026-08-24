@@ -52,12 +52,12 @@ describe('GenerativeUIStreamParser state machine', () => {
   });
 
   it('marks overflow when buffer exceeds cap', () => {
-    const parser = new GenerativeUIStreamParser();
-    const huge = 'x'.repeat(300 * 1024);
-    const snap = parser.appendChunk(
-      `{"version":"1","blocks":[{"type":"text","props":{"body":"${huge}"}}]}`,
-    );
+    const cap = 128;
+    const parser = new GenerativeUIStreamParser(cap);
+    const snap = parser.appendChunk('x'.repeat(cap + 1));
     const phases: GenerativeUIStreamPhase[] = ['overflow', 'streaming'];
     expect(phases).toContain(snap.phase);
+    expect(snap.phase).toBe('overflow');
+    expect(snap.warnings).toContain('stream-buffer-capped');
   });
 });
