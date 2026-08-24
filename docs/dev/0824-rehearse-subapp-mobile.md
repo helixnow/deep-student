@@ -144,3 +144,37 @@ merge 最新 F（合并提交 `f1927e4b`），不重开分支。
   `deep-student` lib 仅报告既存 warning。本轮 VM 额外需要 `protobuf-compiler`
   （`lance-encoding` 构建脚本依赖 `protoc`），其余环境准备与首轮一致，
   门禁结束后同样清理了 pdfium 二进制并还原 license 文本。
+
+## 第六轮复查（ec8a2524）
+
+对更新后的分支头做独立复核，未发现缺失，无需修补：
+
+- **F 祖先关系**：`git merge-base --is-ancestor` 确认 `575fee7f` 已是分支祖先。
+- **合并保真**：用 `git merge-tree --write-tree ce7f14db 575fee7f` 机械重放合并，
+  与实际合并树逐文件比对，差异恰好只有三个已记录的冲突文件
+  （`DesktopContextMenu.css` / `EmptyDesktop.css` 取 F 规则，
+  `PracticeModeSelector.tsx` 跟随 F 删除），无任何未记录的手工偏差。
+- **第四轮修正**：`FinderToolbar.tsx` compact 触发器伪元素热区、
+  `EnhancedPdfViewer.tsx` 书签/批注移动 tab 的 `!min-h-11`，与修正提交
+  `ce7f14db` 逐字节一致。
+- **#160/#161 能力抽查**：`generateCardsFromText`（错题本 + 作文批改）、
+  卡库手动新建与 `.apkg` 导入、`questionBankStore` 连对/已答持久化、
+  `requestCloseAnimated` 关窗拦截、Slash 兜底移除、`listWorkbenchShortcuts`、
+  `ImmersiveHint`、空桌面 tour 解耦均在位。注意 #160 PR 自带的
+  `todayScreenEmptyLibrary.test.tsx` / `AnkiTasksApp.loadError.test.tsx`
+  并未被摘入 F（`575fee7f` 本身即无），预演分支与 F 基线一致，不算缺失。
+- **门禁复跑**（`ec8a2524` 相对 `f1927e4b` 仅多本 docs 文件、代码零差异）：
+  `npm ci` / `typecheck` / `npx vite build` 复跑通过（仅既存大 chunk 警告）；
+  F 新增的 `workbench-shell-ux` / `windowCloseGuard` / `EmptyDesktop` /
+  `StatusBar` / `shortcuts` 五个测试套件 81 用例全绿。
+  Rust 侧 `src-tauri` 与已通过 cargo check 的 `f1927e4b` 零差异，结论沿用。
+
+### 正式最后合 G 的复用方式
+
+- 若正式合并时 F 仍为 `575fee7f`、G 仍为 `4ab24435`：直接把本预演分支
+  （`f1927e4b` 及其上的 docs 提交）作为合并结果采用——merge 本分支或
+  fast-forward 到它均可，不要在 F 上重新 merge G 后手工重解冲突。
+  重要原因：第四轮修正 `ce7f14db` 只存在于预演分支，既不在 F 也不在 G，
+  重新裸合 F×G 会丢掉 Finder compact 热区与 PDF tab 44px 两处修复。
+- 若 F 或 G 在正式合并前再次前进：沿用第五轮做法，把新头 merge 进本预演分支、
+  按本文档已固化的取舍原则解冲突、复跑门禁，再整体采用预演分支。
