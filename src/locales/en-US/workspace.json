@@ -138,6 +138,17 @@
     }
   },
   "agent": {
-    "you": "You"
+    "you": "You",
+    "pomodoro": {
+      "run_aborted": "Run aborted",
+      "pause_check_failed": "Pause check failed ({{error}})",
+      "start_noop": "{{label}} (nothing to start or resume in the current state)",
+      "pause_noop": "{{label}} (cannot pause in the current state)",
+      "resume_noop": "{{label}} (nothing to resume in the current state)",
+      "stop_noop": "{{label}} (no pomodoro is currently running)",
+      "unsupported_op": "Unsupported pomodoro op: {{kind}}",
+      "persist_failed": "Failed to save backend records: {{error}}",
+      "pacing_failed": "Pacing control failed: {{error}}"
+    }
   }
 }
