@@ -80,6 +80,7 @@ pub mod constants;
 pub mod context_compiler;
 pub mod helpers;
 pub mod history;
+pub mod hooks; // WI-13: 流水线钩子（审批准入 + 审计记录内置 hook）
 pub mod llm_adapter;
 pub mod multi_variant;
 #[cfg(test)]
@@ -96,6 +97,7 @@ pub use authority_mode::*;
 pub use compaction::*;
 pub(crate) use constants::*;
 pub(crate) use helpers::*;
+pub use hooks::*;
 pub use llm_adapter::*;
 pub(crate) use variant_adapter::*;
 
@@ -171,6 +173,8 @@ pub struct ChatV2Pipeline {
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
     memory_flush_next_retry_at_ms: Arc<AtomicI64>,
+    /// WI-13: 流水线钩子链（默认注册 ApprovalGateHook + TaskAuditHook）。
+    hooks: Arc<Vec<Arc<dyn PipelineHook>>>,
 }
 
 impl ChatV2Pipeline {
@@ -213,7 +217,17 @@ impl ChatV2Pipeline {
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
             memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
             memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
+            hooks: hooks::default_pipeline_hooks(),
         }
+    }
+
+    /// WI-13: 追加自定义流水线钩子（内置审批/审计钩子始终保留在链首，
+    /// 追加钩子按注册顺序在其后执行）。
+    pub(crate) fn with_pipeline_hook(mut self, hook: Arc<dyn PipelineHook>) -> Self {
+        let mut hooks = self.hooks.as_ref().clone();
+        hooks.push(hook);
+        self.hooks = Arc::new(hooks);
+        self
     }
 
     /// 设置审批管理器
