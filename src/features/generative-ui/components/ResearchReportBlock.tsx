@@ -36,7 +36,7 @@ function renderBodyWithCitations(body: string, citationAriaLabel: (label: string
       <Badge
         key={`cite-${start}`}
         variant="secondary"
-        className="mx-0.5 align-baseline text-[10px] font-normal"
+        className="mx-0.5 align-baseline text-xs font-normal"
         role="link"
         tabIndex={0}
         aria-label={citationAriaLabel(fullMatch)}
