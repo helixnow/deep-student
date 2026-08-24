@@ -349,7 +349,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         {!isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
-            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground [@media(pointer:coarse)]:min-h-11">
               <ArrowLeft size={16} /> {tCommon('actions.back')}
             </DsButton>
           )}
@@ -374,7 +374,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             >
               {t('auto_refresh_label')} {isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}
             </Badge>
-            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1">
+            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1 [@media(pointer:coarse)]:min-h-11">
               <DownloadSimple size={16} /> {t('export_stats_button')}
             </DsButton>
           </div>
