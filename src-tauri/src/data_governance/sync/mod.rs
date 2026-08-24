@@ -7652,6 +7652,10 @@ impl SyncManager {
                                 // __sync_conflicts（side='cloud'），用户可见、可手动采纳。
                                 // 本地行已 tombstone 时删除意图已达成（纯回声），不记录；
                                 // 重复投递由 (table, record, side, data_hash) 部分唯一索引去重。
+                                //
+                                // [R06] 同时补齐胜方本地快照（side='local'）：resolve 命令
+                                // 按 local+cloud 双侧裁决，此前只落 cloud 单侧会让该冲突
+                                // 永远无法采纳（徽章永久占位）。
                                 let already_tombstoned = local_data
                                     .get("deleted_at")
                                     .map(|v| !v.is_null())
@@ -7664,6 +7668,17 @@ impl SyncManager {
                                             record_id: &change.record_id,
                                             side: conflict_resolver::ConflictSide::Cloud,
                                             data: &serde_json::Value::Null,
+                                            winning_device_id: None,
+                                            losing_device_id: change.source_device_id.as_deref(),
+                                        },
+                                    )?;
+                                    conflict_resolver::ConflictResolver::save_conflict_record(
+                                        conn,
+                                        conflict_resolver::ConflictRecordToSave {
+                                            table_name: &change.table_name,
+                                            record_id: &change.record_id,
+                                            side: conflict_resolver::ConflictSide::Local,
+                                            data: &local_data,
                                             winning_device_id: None,
                                             losing_device_id: change.source_device_id.as_deref(),
                                         },
@@ -7800,16 +7815,22 @@ impl SyncManager {
                             // __sync_conflicts（side='cloud'），用户可见、可手动采纳。
                             // 与本地语义等价的回声（纯时间戳差异）不记录；重复投递由
                             // (table, record, side, data_hash) 部分唯一索引去重。
-                            let is_semantic_echo = Self::get_record_data(
+                            //
+                            // [R06] 同时补齐胜方本地快照（side='local'）：resolve 命令
+                            // 按 local+cloud 双侧裁决，此前只落 cloud 单侧会让该冲突
+                            // 永远无法采纳（徽章永久占位）。
+                            let local_snapshot = Self::get_record_data(
                                 conn,
                                 &change.table_name,
                                 &change.record_id,
                                 id_column,
-                            )?
-                            .map(|local_data| {
-                                Self::records_semantically_equal_for_sync(&local_data, data)
-                            })
-                            .unwrap_or(false);
+                            )?;
+                            let is_semantic_echo = local_snapshot
+                                .as_ref()
+                                .map(|local_data| {
+                                    Self::records_semantically_equal_for_sync(local_data, data)
+                                })
+                                .unwrap_or(false);
                             if !is_semantic_echo {
                                 conflict_resolver::ConflictResolver::save_conflict_record(
                                     conn,
@@ -7822,6 +7843,19 @@ impl SyncManager {
                                         losing_device_id: change.source_device_id.as_deref(),
                                     },
                                 )?;
+                                if let Some(local_data) = local_snapshot.as_ref() {
+                                    conflict_resolver::ConflictResolver::save_conflict_record(
+                                        conn,
+                                        conflict_resolver::ConflictRecordToSave {
+                                            table_name: &change.table_name,
+                                            record_id: &change.record_id,
+                                            side: conflict_resolver::ConflictSide::Local,
+                                            data: local_data,
+                                            winning_device_id: None,
+                                            losing_device_id: change.source_device_id.as_deref(),
+                                        },
+                                    )?;
+                                }
                             }
                             return Ok(false);
                         }
@@ -13188,18 +13222,32 @@ mod tests {
             .unwrap();
         assert_eq!(content, "newer-local", "本地较新值保持不变");
 
-        let (count, side, data_json, losing_device): (i64, String, String, Option<String>) = conn
+        let (count, data_json, losing_device): (i64, String, Option<String>) = conn
             .query_row(
-                "SELECT COUNT(*), side, data_json, losing_device_id FROM __sync_conflicts
-                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                "SELECT COUNT(*), data_json, losing_device_id FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND side='cloud'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
         assert_eq!(count, 1, "慢钟败方写入应入冲突表且重复投递被去重");
-        assert_eq!(side, "cloud");
         assert!(data_json.contains("slow-clock-write"), "败方 payload 可见");
         assert_eq!(losing_device.as_deref(), Some("device-slow"));
+
+        // [R06] 胜方本地快照必须同步补齐（side='local'），否则 resolve 命令
+        // 找不到 local side、冲突无法裁决。
+        let (local_count, local_json): (i64, String) = conn
+            .query_row(
+                "SELECT COUNT(*), data_json FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND side='local'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(local_count, 1, "胜方本地快照应入冲突表且重复投递被去重");
+        assert!(local_json.contains("newer-local"), "本地快照可见");
     }
 
     #[test]
@@ -13308,18 +13356,32 @@ mod tests {
             .unwrap();
         assert_eq!(survivors, 1, "更新的本地行保留");
 
-        let (count, side, data_json, losing_device): (i64, String, String, Option<String>) = conn
+        let (count, data_json, losing_device): (i64, String, Option<String>) = conn
             .query_row(
-                "SELECT COUNT(*), side, data_json, losing_device_id FROM __sync_conflicts
-                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                "SELECT COUNT(*), data_json, losing_device_id FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND side='cloud'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
         assert_eq!(count, 1, "败方 DELETE 应入冲突表且重复投递被去重");
-        assert_eq!(side, "cloud");
         assert_eq!(data_json, "null", "DELETE 败方以 Null payload 表示（与 resolve_one 一致）");
         assert_eq!(losing_device.as_deref(), Some("device-slow"));
+
+        // [R06] 胜方本地快照必须同步补齐（side='local'），否则 resolve 命令
+        // 找不到 local side、冲突无法裁决（徽章永久占位）。
+        let (local_count, local_json): (i64, String) = conn
+            .query_row(
+                "SELECT COUNT(*), data_json FROM __sync_conflicts
+                 WHERE table_name='test_records' AND record_id='delete-version-record'
+                   AND side='local'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(local_count, 1, "胜方本地快照应入冲突表且重复投递被去重");
+        assert!(local_json.contains("newer-local"), "本地快照可见");
     }
 
     #[test]

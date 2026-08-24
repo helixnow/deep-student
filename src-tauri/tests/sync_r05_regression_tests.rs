@@ -130,17 +130,16 @@ fn r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts() {
         .unwrap();
     assert_eq!(content, "newer-local", "本地内容不得被慢钟 DELETE 影响");
 
-    let (count, side, data_json, losing_device, resolved_at): (
+    let (count, data_json, losing_device, resolved_at): (
         i64,
-        String,
         String,
         Option<String>,
         Option<String>,
     ) = conn
         .query_row(
-            "SELECT COUNT(*), side, data_json, losing_device_id, resolved_at
+            "SELECT COUNT(*), data_json, losing_device_id, resolved_at
              FROM __sync_conflicts
-             WHERE table_name='items' AND record_id='rec-1'",
+             WHERE table_name='items' AND record_id='rec-1' AND side='cloud'",
             [],
             |row| {
                 Ok((
@@ -148,16 +147,30 @@ fn r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts() {
                     row.get(1)?,
                     row.get(2)?,
                     row.get(3)?,
-                    row.get(4)?,
                 ))
             },
         )
         .unwrap();
     assert_eq!(count, 1, "败方 DELETE 应入冲突表且重复投递被去重");
-    assert_eq!(side, "cloud", "败方是云端删除意图");
     assert_eq!(data_json, "null", "DELETE 败方以 Null payload 表示");
     assert_eq!(losing_device.as_deref(), Some("device-slow"));
     assert!(resolved_at.is_none(), "新冲突应处于未解决状态，供 UI 处理");
+
+    // [R06] 胜方本地快照必须同步补齐（side='local'）：resolve 命令按
+    // local+cloud 双侧裁决，单侧冲突会让徽章永久占位、无法采纳。
+    let (local_count, local_json): (i64, String) = conn
+        .query_row(
+            "SELECT COUNT(*), data_json FROM __sync_conflicts
+             WHERE table_name='items' AND record_id='rec-1' AND side='local'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(local_count, 1, "胜方本地快照应入冲突表且重复投递被去重");
+    assert!(
+        local_json.contains("newer-local"),
+        "本地快照应完整可见: {local_json}"
+    );
 }
 
 /// 本地有 pending 修改（resolve_one 冲突路径）：KeepLatest 下慢钟 DELETE 输给

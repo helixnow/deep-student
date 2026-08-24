@@ -195,8 +195,10 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const handleBulkResolve = useCallback(async (
     resolution: 'keep_local' | 'keep_cloud',
   ) => {
+    // keep_local 不再要求存在 local side 行：单侧冲突（LWW 败方 DELETE/UPSERT
+    // 只落 cloud 侧的存量数据）后端会以当前业务行充当 local 快照回退。
     const targets = pairs.filter((pair) =>
-      resolution === 'keep_local' ? pair.locals.length > 0 : pair.clouds.length > 0
+      resolution === 'keep_local' ? true : pair.clouds.length > 0
     );
     if (targets.length === 0) return;
     // Tauri WebView（尤其 Android）不保证实现阻塞式 window.confirm（可能直接返回 false
@@ -375,11 +377,12 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   <span className="font-semibold">{p.recordId}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {/* 无 local side 行的单侧冲突同样可"保留本地"：后端以当前业务行充当 local 快照 */}
                   <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
-                    disabled={isResolving || isEditing || !latestLocal}
+                    disabled={isResolving || isEditing}
                     className="h-7 text-xs [@media(pointer:coarse)]:h-10"
                   >
                     {t('data:governance.keep_local')}

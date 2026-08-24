@@ -4376,13 +4376,6 @@ pub async fn data_governance_resolve_record_conflict(
         .try_acquire_owned()
         .map_err(|_| "其他备份、恢复或同步操作正在进行，请刷新冲突后重试".to_string())?;
 
-    if expected_conflict_ids.is_empty() {
-        return Err("缺少冲突版本标识，请刷新冲突列表后重试".to_string());
-    }
-    let mut expected_ids = expected_conflict_ids;
-    expected_ids.sort_unstable();
-    expected_ids.dedup();
-
     let active_dir = get_active_data_dir(&app)?;
 
     // 找对应数据库
@@ -4395,6 +4388,37 @@ pub async fn data_governance_resolve_record_conflict(
 
     let conn = open_sync_connection(&db_path)
         .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+
+    resolve_record_conflict_on_conn(
+        &conn,
+        &database_name,
+        &table_name,
+        &record_id,
+        &resolution,
+        merged_data_json,
+        expected_conflict_ids,
+    )
+}
+
+/// [R06] 冲突裁决核心：在已打开的业务库连接上执行单条 (table, record) 冲突裁决。
+///
+/// 从 `data_governance_resolve_record_conflict` 抽出，不依赖 Tauri runtime，
+/// 供命令包装层与集成测试共用。语义与参数含义见命令文档。
+pub fn resolve_record_conflict_on_conn(
+    conn: &rusqlite::Connection,
+    database_name: &str,
+    table_name: &str,
+    record_id: &str,
+    resolution: &str,
+    merged_data_json: Option<String>,
+    expected_conflict_ids: Vec<i64>,
+) -> Result<(), String> {
+    if expected_conflict_ids.is_empty() {
+        return Err("缺少冲突版本标识，请刷新冲突列表后重试".to_string());
+    }
+    let mut expected_ids = expected_conflict_ids;
+    expected_ids.sort_unstable();
+    expected_ids.dedup();
 
     let mut current_ids = {
         let mut stmt = conn
@@ -4438,29 +4462,41 @@ pub async fn data_governance_resolve_record_conflict(
 
     let id_column_map = build_id_column_map();
     let id_column = id_column_map
-        .get(&table_name)
+        .get(table_name)
         .map(String::as_str)
         .unwrap_or("id");
     let current_local_snapshot =
-        SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
+        SyncManager::get_record_data(conn, table_name, record_id, id_column)
             .map_err(|e| format!("读取当前本地记录失败: {}", e))?;
-    let recorded_local_raw =
-        get_side_data("local")?.ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?;
-    let recorded_cloud_raw =
-        get_side_data("cloud")?.ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?;
-    let recorded_local_snapshot = {
-        let value: serde_json::Value = serde_json::from_str(&recorded_local_raw)
-            .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
-        (!value.is_null()).then_some(value)
+    // [R06] 单侧冲突兼容：LWW 败方 DELETE/UPSERT 历史上只落 side='cloud' 一行
+    // （本地胜方行未被改写），此前对缺失的 local side 直接报错，导致这类冲突
+    // 永远无法裁决（徽章永久占位）。落表路径现已双侧写入；对存量单侧冲突，
+    // 以当前业务行充当 local 快照回退（本地胜出即意味着业务行未被该冲突改写）。
+    let recorded_local_snapshot = match get_side_data("local")? {
+        Some(raw) => {
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
+            (!value.is_null()).then_some(value)
+        }
+        None => current_local_snapshot.clone(),
     };
-    let recorded_cloud_snapshot = {
-        let value: serde_json::Value = serde_json::from_str(&recorded_cloud_raw)
-            .map_err(|e| format!("解析冲突中的云端快照失败: {}", e))?;
-        (!value.is_null()).then_some(value)
+    // cloud side 缺失（理论上仅历史遗留的 local 单侧行）时：keep_cloud 无数据
+    // 可采纳必须报错，其余裁决不依赖云端快照。外层 Option 区分"未记录该侧"
+    // 与"记录为 Null（云端删除意图）"。
+    let recorded_cloud_snapshot: Option<Option<serde_json::Value>> = match get_side_data("cloud")?
+    {
+        Some(raw) => {
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("解析冲突中的云端快照失败: {}", e))?;
+            Some((!value.is_null()).then_some(value))
+        }
+        None => None,
     };
     if resolution != "keep_local" {
         let current_matches_recorded_side = current_local_snapshot == recorded_local_snapshot
-            || current_local_snapshot == recorded_cloud_snapshot;
+            || recorded_cloud_snapshot
+                .as_ref()
+                .is_some_and(|cloud| current_local_snapshot == *cloud);
         if !current_matches_recorded_side {
             return Err(
                 "本地记录在冲突生成后已再次变化，拒绝用旧冲突覆盖；请重新同步或手动合并"
@@ -4468,11 +4504,13 @@ pub async fn data_governance_resolve_record_conflict(
             );
         }
     }
-    let (operation, mut data) = match resolution.as_str() {
+    let (operation, mut data) = match resolution {
         "keep_local" => {
             // 若云端曾获胜并已写入业务表，“保留本地”恢复面板中的 local side；
             // 若业务表已不同于两端快照，则视为冲突后的新本地编辑，保留当前值。
-            let selected = if current_local_snapshot == recorded_cloud_snapshot
+            let selected = if recorded_cloud_snapshot
+                .as_ref()
+                .is_some_and(|cloud| current_local_snapshot == *cloud)
                 && current_local_snapshot != recorded_local_snapshot
             {
                 recorded_local_snapshot.clone()
@@ -4488,7 +4526,10 @@ pub async fn data_governance_resolve_record_conflict(
             }
         }
         "keep_cloud" => {
-            if let Some(value) = recorded_cloud_snapshot.clone() {
+            let recorded_cloud_snapshot = recorded_cloud_snapshot
+                .clone()
+                .ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?;
+            if let Some(value) = recorded_cloud_snapshot {
                 (
                     crate::data_governance::sync::ChangeOperation::Update,
                     Some(value),
@@ -4516,7 +4557,7 @@ pub async fn data_governance_resolve_record_conflict(
 
     let now = chrono::Utc::now().to_rfc3339();
     if let Some(obj) = data.as_mut().and_then(serde_json::Value::as_object_mut) {
-        if table_has_column(&conn, &table_name, "updated_at") {
+        if table_has_column(conn, table_name, "updated_at") {
             let current = obj.get("updated_at");
             let refreshed = if matches!(current, Some(serde_json::Value::Number(_))) {
                 serde_json::Value::Number(chrono::Utc::now().timestamp_millis().into())
@@ -4529,30 +4570,30 @@ pub async fn data_governance_resolve_record_conflict(
 
     // 通过同步链路回写：构造一条 suppress=false 的 Update change 走 force 精确应用路径
     let change = SyncChangeWithData {
-        table_name: table_name.clone(),
-        record_id: record_id.clone(),
+        table_name: table_name.to_string(),
+        record_id: record_id.to_string(),
         operation,
         data,
         changed_at: now.clone(),
         change_log_id: None,
-        database_name: Some(database_name.clone()),
+        database_name: Some(database_name.to_string()),
         // 冲突手动解决后**要走 change_log**，让其他设备能看到此次决策
         suppress_change_log: Some(false),
         source_device_id: None,
         source_seq: None,
     };
 
-    let preflight_table = table_name.clone();
-    let preflight_record = record_id.clone();
+    let preflight_table = table_name.to_string();
+    let preflight_record = record_id.to_string();
     let preflight_id_column = id_column.to_string();
     let preflight_snapshot = current_local_snapshot;
     let final_expected_ids = expected_ids.clone();
-    let final_table = table_name.clone();
-    let final_record = record_id.clone();
-    let final_resolution = resolution.clone();
+    let final_table = table_name.to_string();
+    let final_record = record_id.to_string();
+    let final_resolution = resolution.to_string();
     let final_now = now.clone();
     let apply_result = SyncManager::apply_downloaded_changes_force_exact_with_hooks(
-        &conn,
+        conn,
         &[change],
         None,
         move |transaction_conn| {
