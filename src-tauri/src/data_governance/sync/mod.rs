@@ -6991,7 +6991,11 @@ impl SyncManager {
                                 // 胜出的本地行：否则"本地胜的一端只剩本地 tag、云端胜的一端已并集"，
                                 // 两台设备会永久分叉。折叠写入不抑制 change log，随下一轮上传收敛。
                                 // [R04] 折叠受策略门约束：Manual/KeepLocal 下不自动改写本地行。
-                                Self::fold_safe_field_merge_into_local(conn, &change_to_apply, policy)?;
+                                Self::fold_safe_field_merge_into_local(
+                                    conn,
+                                    &change_to_apply,
+                                    policy,
+                                )?;
                                 conflict_result.rejected += 1;
                                 apply_result.skipped_count += 1;
                             }
@@ -11162,7 +11166,10 @@ mod tests {
             .decode_payload(br#"{"hello":"world"}"#)
             .expect_err("本机启用加密时必须拒绝无 DSBK 头的明文 payload");
         let message = error.to_string();
-        assert!(message.contains("已启用同步加密"), "错误应说明原因: {message}");
+        assert!(
+            message.contains("已启用同步加密"),
+            "错误应说明原因: {message}"
+        );
         assert!(
             message.contains("DSBK"),
             "错误应指出缺少 DSBK 加密头: {message}"
@@ -12852,7 +12859,10 @@ mod tests {
         .unwrap();
     }
 
-    fn notes_update_change_for_r02(tags: serde_json::Value, updated_at: &str) -> SyncChangeWithData {
+    fn notes_update_change_for_r02(
+        tags: serde_json::Value,
+        updated_at: &str,
+    ) -> SyncChangeWithData {
         SyncChangeWithData {
             table_name: "notes".to_string(),
             record_id: "note-r02".to_string(),
@@ -13259,7 +13269,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(quarantined, 1, "fail-closed 的 DELETE 必须落隔离区（可见、可处理）");
+        assert_eq!(
+            quarantined, 1,
+            "fail-closed 的 DELETE 必须落隔离区（可见、可处理）"
+        );
     }
 
     #[test]
@@ -13318,7 +13331,10 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1, "败方 DELETE 应入冲突表且重复投递被去重");
         assert_eq!(side, "cloud");
-        assert_eq!(data_json, "null", "DELETE 败方以 Null payload 表示（与 resolve_one 一致）");
+        assert_eq!(
+            data_json, "null",
+            "DELETE 败方以 Null payload 表示（与 resolve_one 一致）"
+        );
         assert_eq!(losing_device.as_deref(), Some("device-slow"));
     }
 

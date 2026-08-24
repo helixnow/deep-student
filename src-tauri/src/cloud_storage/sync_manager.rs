@@ -1238,10 +1238,7 @@ mod device_id_tests {
         let first = resolve_or_create_device_id(Some(&primary), &[]);
         assert!(first.persisted, "新生成的 ID 必须成功写入主路径");
         assert!(!first.id.is_empty());
-        assert_eq!(
-            std::fs::read_to_string(&primary).unwrap().trim(),
-            first.id
-        );
+        assert_eq!(std::fs::read_to_string(&primary).unwrap().trim(), first.id);
 
         let second = resolve_or_create_device_id(Some(&primary), &[]);
         assert_eq!(second.id, first.id, "再次解析必须读回同一身份");
@@ -1572,7 +1569,10 @@ mod tests {
             upgraded.created_by_device, "device-legacy",
             "升级不得改写首次写入者"
         );
-        assert_eq!(upgraded.created_at, legacy.created_at, "升级不得改写首次写入时间");
+        assert_eq!(
+            upgraded.created_at, legacy.created_at,
+            "升级不得改写首次写入时间"
+        );
         assert!(upgraded.key_verifier.is_some());
 
         // 升级后：同密码放行、错密码被拦

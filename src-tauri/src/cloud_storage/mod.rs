@@ -259,10 +259,7 @@ pub async fn cloud_sync_upload(
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
 
-    let encryption_password = config
-        .encryption_password
-        .clone()
-        .filter(|s| !s.is_empty());
+    let encryption_password = config.encryption_password.clone().filter(|s| !s.is_empty());
 
     // [R02-e2ee][R06-e2ee-verifier] 上传前执行端到端加密一致性策略：
     // - 有密码：校验云端加密标记（.encryption-marker）中的不可逆密码校验子——
@@ -278,8 +275,7 @@ pub async fn cloud_sync_upload(
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
     let mut encrypted_temp: Option<tempfile::TempPath> = None;
-    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = encryption_password.as_deref()
-    {
+    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = encryption_password.as_deref() {
         tracing::info!("[CloudSync] 端到端加密已启用，流式加密上传...");
         // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
         // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。

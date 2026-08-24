@@ -1869,7 +1869,10 @@ mod tests {
             .expect("单条坏时钟 tombstone 不得中止整批（DoS）");
         assert_eq!(affected, vec![good_hash], "只有有效条目被应用");
         assert!(!good_file.exists(), "有效 tombstone 照常删除本地文件");
-        assert!(future_file.exists(), "超前时钟条目必须被跳过，不删除本地文件");
+        assert!(
+            future_file.exists(),
+            "超前时钟条目必须被跳过，不删除本地文件"
+        );
     }
 
     #[tokio::test]

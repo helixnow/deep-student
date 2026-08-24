@@ -67,10 +67,7 @@ const FIELD_MERGE_REGISTRY: &[(&str, &[&str])] = &[
     // 2. 二者是每次作答原子更新的关联对（attempt+1，答对时 correct+1），逐列独立取
     //    max 会撕裂配对（A 设备 5/2、B 设备 4/4 → max 得 5/4，对应不存在的做题历史，
     //    虚增正确率）。冲突时走行级 LWW，整对以同一侧为准。
-    (
-        "questions",
-        &["is_favorite", "is_bookmarked", "tags"],
-    ),
+    ("questions", &["is_favorite", "is_bookmarked", "tags"]),
     ("notes", &["tags", "is_favorite"]),
     ("files", &["tags_json", "is_favorite"]),
     // [R02] interval_days / consecutive_failures 故意缺席：二者都不是单调计数——

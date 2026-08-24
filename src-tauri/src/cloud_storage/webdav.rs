@@ -1228,8 +1228,8 @@ mod tests {
             }
         });
 
-        let server = hyper::Server::bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0)))
-            .serve(make_svc);
+        let server =
+            hyper::Server::bind(&std::net::SocketAddr::from(([127, 0, 0, 1], 0))).serve(make_svc);
         let endpoint = format!("http://{}/", server.local_addr());
         tokio::spawn(server);
         (endpoint, log)
@@ -1269,7 +1269,11 @@ mod tests {
     }
 
     fn count_method(log: &RequestLog, method: &str) -> usize {
-        log.lock().unwrap().iter().filter(|(m, _)| m == method).count()
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, _)| m == method)
+            .count()
     }
 
     // ---------- 重试与 Retry-After ----------
@@ -1309,7 +1313,11 @@ mod tests {
         for status in [423u16, 429, 500, 502, 503, 504] {
             let responder: Responder = Arc::new(move |_method, _path, idx| {
                 if idx == 0 {
-                    (status, vec![("Retry-After", "0".to_string())], String::new())
+                    (
+                        status,
+                        vec![("Retry-After", "0".to_string())],
+                        String::new(),
+                    )
                 } else {
                     (200, vec![], "payload".to_string())
                 }
@@ -1322,7 +1330,11 @@ mod tests {
                 .await
                 .unwrap_or_else(|e| panic!("status={status} 应重试后成功: {e}"));
             assert_eq!(data, Some(b"payload".to_vec()), "status={status}");
-            assert_eq!(count_method(&log, "GET"), 2, "status={status} 应恰好重试一次");
+            assert_eq!(
+                count_method(&log, "GET"),
+                2,
+                "status={status} 应恰好重试一次"
+            );
         }
     }
 
@@ -1423,10 +1435,9 @@ mod tests {
             let (endpoint, log) = spawn_fake_dav(responder).await;
             let storage = storage_for(&endpoint, "sync");
 
-            let err = storage
-                .check_connection()
-                .await
-                .expect_err(&format!("MKCOL {mkcol_status} + PROPFIND 404 不得报连接成功"));
+            let err = storage.check_connection().await.expect_err(&format!(
+                "MKCOL {mkcol_status} + PROPFIND 404 不得报连接成功"
+            ));
             assert!(
                 err.to_string().contains("无法创建"),
                 "mkcol_status={mkcol_status} 错误信息应说明目录无法创建: {err}"

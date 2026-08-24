@@ -55,19 +55,26 @@
 
 **未交付**：R05-guide（用户指南 16 回写）未见合入，「密码入口将在后续版本开放」段仍过时，转入 Round 06（R06-guide）。计划中的 clock / idempotent / provider / schema / mobile / restore 六路极端测试仅由 `r05-tests` 部分覆盖，剩余场景并入 R06 各测试代理。
 
-## Round 06（认领中）
+## Round 06（已合入部分）
 
-任务定义见 [ROUND-06](./ROUND-06.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。R06-key-verify 与 R06-asset-e2ee 若需对齐 `.encryption-marker` 新格式接口，先在此登记再动。
+实际合入与计划认领表有出入。已合入：`r06-e2ee-honest` / `r06-del-resolve` / `r06-e2ee-verifier` / `r06-tests` / `r06-e2ee-copy` / `r06-debug-redact` / `r06-guide` / `r06-class-doc` / `r06-docs`。
+
+**未交付转入 R07**：R06-review（无 FINDINGS-R06）、R06-asset-e2ee、R06-autosync、R06-asset-names、R06-android。
+
+## Round 07（认领中）
+
+任务定义见 [ROUND-07](./ROUND-07.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
 
 | 代理 | 模型 | 范围 | 文件面（独占） |
 |---|---|---|---|
-| R06-review | claude-fable-5-thinking-xhigh | 只读复审 R05 合入结果，产出 FINDINGS-R06 | 只读（产出文档归父代理/本目录） |
-| R06-del-badge | claude-fable-5-thinking-high | 单侧（cloud-only）冲突可解决，败方 DELETE 徽章不永久占位 | `commands_sync.rs` resolve 路径、`conflict_resolver.rs`、`SyncTab.tsx`/Dashboard 徽章调用处、`sync.json`（zh/en）+ 相关测试 |
-| R06-asset-e2ee | claude-fable-5-thinking-high | 附件/工作区库上传尊重加密标记（加密或拒传+诚实文案） | `sync_manager.rs` 资产/工作区库上传路径、`cloudStorage.json`（zh/en）+ 相关测试 |
-| R06-key-verify | claude-fable-5-thinking-high | 加密标记密钥校验子，错密码 fail-fast 不污染 root（旧标记向后兼容） | `cloud_storage/mod.rs` 标记格式与读写、`crypto/backup_crypto.rs` + 相关测试 |
-| R06-autosync | claude-fable-5-thinking-high | 最小自动同步触发（默认关）+ 状态可见 | `data_governance/sync/` 新文件优先、`SyncSettingsSection.tsx`、`syncStatusStore.ts`；locale 键若需 `sync.json` 先在此登记 |
-| R06-asset-names | claude-fable-5-thinking-high | 资产文件名跨平台（Win 非法字符、大小写、NFC/NFD）测试与必要净化 | `src-tauri/tests/` 新文件；净化实现落点先在此登记 |
-| R06-android | claude-fable-5-thinking-high | Android 换机/重启语义测试（`mobile-slim`） | `src-tauri/tests/` 新文件 + 必要 cfg 门测试 |
-| R06-tests | claude-fable-5-thinking-high | 错密码污染、单侧冲突解决、自动同步幂等回归 | `src-tauri/tests/` 与 `tests/vitest/data-governance/` 新文件 |
-| R06-guide | claude-fable-5-thinking-high | 用户指南 16 回写（R05 未交付接续 + E2EE 覆盖面诚实说明） | `docs/user-guide/16-数据管理与云同步.md` |
-| R06-docs | claude-fable-5-thinking-high | 本目录进度文档 | `docs/dev/cloud-sync-sota-b343/**`（本枝已推送） |
+| R07-review | claude-fable-5-thinking-xhigh | 只读复审 R06 合入，产出 FINDINGS-R07 | 只读（产出文档归父代理/本目录） |
+| R07-sota | claude-fable-5-thinking-xhigh | 市面 SOTA 对照与剩余缺口 | 只读（产出文档归本目录） |
+| R07-restore | claude-fable-5-thinking-xhigh | 跨版本恢复矩阵只读 | 只读（产出文档归本目录） |
+| R07-contract | claude-fable-5-thinking-high | Cloud Provider Contract Gate | `src-tauri/tests/sync_provider_contract_tests.rs` + 必要的 `webdav.rs`/`ftp.rs`/`s3.rs` 契约对齐（先登记再动实现） |
+| R07-vitest | claude-fable-5-thinking-high | Vitest shard 4 | `tests/vitest/data-governance/**`、相关 locale；不改引擎 |
+| R07-archive | claude-fable-5-thinking-high | Rust Tests · Build Archive exit 143 | 编译修复优先；禁止大范围重构 |
+| R07-asset-e2ee | claude-fable-5-thinking-high | 文件级对象尊重加密标记 | `data_governance/sync/mod.rs` 的 `sync_vfs_blobs*` / `sync_asset_directories*` / workspace 上传；`cloudStorage.json`（zh/en） |
+| R07-autosync | claude-fable-5-thinking-high | 最小自动同步（默认关）+ 状态可见 | `data_governance/sync/` 新文件优先、`SyncSettingsSection.tsx`、`syncStatusStore.ts`；locale 键若需 `sync.json` 先在此登记 |
+| R07-asset-names | claude-fable-5-thinking-high | 资产文件名跨平台 | `src-tauri/tests/` 新文件；净化实现落点先在此登记 |
+| R07-android | claude-fable-5-thinking-high | Android 换机/重启语义 | `src-tauri/tests/` 新文件 + 必要 cfg 门测试 |
+| R07-tests | claude-fable-5-thinking-high | 本轮极端回归 | `src-tauri/tests/` 与 `tests/vitest/data-governance/` **各自新文件** |

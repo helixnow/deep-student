@@ -490,8 +490,7 @@ pub fn check_password_verifier(password: &str, verifier: &PasswordVerifier) -> R
     if verifier.kdf != PASSWORD_VERIFIER_KDF_ARGON2ID {
         return Err(anyhow!("未知的加密标记校验子 KDF: {}", verifier.kdf));
     }
-    let salt =
-        hex::decode(&verifier.salt).map_err(|e| anyhow!("校验子 salt 无法解析: {}", e))?;
+    let salt = hex::decode(&verifier.salt).map_err(|e| anyhow!("校验子 salt 无法解析: {}", e))?;
     let expected =
         hex::decode(&verifier.digest).map_err(|e| anyhow!("校验子摘要无法解析: {}", e))?;
     if expected.len() != 32 {

@@ -2817,7 +2817,8 @@ pub async fn data_governance_run_sync_with_progress(
     // 加密一致性策略：有密码先落云端 .encryption-marker；无密码但 root 已有
     // 标记则拒绝明文上传。
     if sync_direction != SyncDirection::Download {
-        if let Err(e) = enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
+        if let Err(e) =
+            enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
         {
             emitter.emit_failed(&e).await;
             return Err(e);
@@ -4530,9 +4531,9 @@ pub async fn data_governance_resolve_record_conflict(
         (crate::data_governance::sync::ChangeOperation::Delete, _) => {
             current_local_snapshot.is_none()
         }
-        (_, Some(desired)) => current_local_snapshot
-            .as_ref()
-            .is_some_and(|current| SyncManager::records_semantically_equal_for_sync(current, desired)),
+        (_, Some(desired)) => current_local_snapshot.as_ref().is_some_and(|current| {
+            SyncManager::records_semantically_equal_for_sync(current, desired)
+        }),
         (_, None) => false,
     };
     if already_in_desired_state {
@@ -4555,7 +4556,8 @@ pub async fn data_governance_resolve_record_conflict(
                     })
                     .map_err(|e| format!("提交前查询冲突 generation 失败: {}", e))?;
                 for row in rows {
-                    current.push(row.map_err(|e| format!("提交前解析冲突 generation 失败: {}", e))?);
+                    current
+                        .push(row.map_err(|e| format!("提交前解析冲突 generation 失败: {}", e))?);
                 }
             }
             current.sort_unstable();
@@ -4897,14 +4899,17 @@ mod tests {
             &self,
             key: &str,
         ) -> crate::cloud_storage::Result<Option<crate::cloud_storage::FileInfo>> {
-            Ok(self.files.lock().unwrap().get(key).map(|data| {
-                crate::cloud_storage::FileInfo {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .get(key)
+                .map(|data| crate::cloud_storage::FileInfo {
                     key: key.to_string(),
                     size: data.len() as u64,
                     last_modified: chrono::Utc::now(),
                     etag: None,
-                }
-            }))
+                }))
         }
     }
 

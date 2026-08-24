@@ -76,8 +76,9 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R03 复审 | 已完成 | xhigh 独立只读复审，产出 [FINDINGS-R03](./FINDINGS-R03.md)：新增 2 P0 / 6 P1 / 2 P2 |
 | R04 修复落地 | 已合入 | 七路修复分支合入本枝，FINDINGS-R03 十项关九项；P1-ANDROID-FTP-SSOT 未交付转 R05，见 [ROUND-04](./ROUND-04.md) |
 | R05 极端测试与复审 | 已合入 | 五路分支合入本枝（android-ftp / ftp-i18n / tests / zip-resume / webdav-1k，另含直接提交）；R05-guide 未交付转 R06，见 [FINDINGS-R05](./FINDINGS-R05.md) |
-| R06 E2EE 闭环与跨平台资产 | 进行中 | 单侧冲突可解、资产 E2EE、加密标记校验子、自动同步、Android 语义、指南回写，见 [ROUND-06](./ROUND-06.md) |
-| R07+ 继续打磨 | 未开始 | 按 FINDINGS-R06 输出决定 |
+| R06 E2EE 闭环与跨平台资产 | 部分合入 | 校验子 / 单侧 DELETE 可解 / 指南回写已合；资产文件级 E2EE、自动同步、跨平台文件名、Android 语义未交付，见 [ROUND-06](./ROUND-06.md) |
+| R07 CI 收口与文件级 E2EE | 进行中 | CI 红灯 + 文件级加密 + 自动同步 + 跨平台文件名 + Android 语义 + FINDINGS-R07，见 [ROUND-07](./ROUND-07.md) |
+| R08+ 继续打磨 | 未开始 | 按 FINDINGS-R07 输出决定 |
 
 ## 文档索引
 
@@ -89,5 +90,6 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [ROUND-05.md](./ROUND-05.md) — 第五轮极端测试、复审与残留补做
 - [FINDINGS-R05.md](./FINDINGS-R05.md) — R05 合入结论与复审残留（R06 输入）
 - [ROUND-06.md](./ROUND-06.md) — 第六轮 E2EE 闭环、单侧冲突可解与跨平台资产
+- [ROUND-07.md](./ROUND-07.md) — 第七轮 CI 收口、文件级 E2EE、自动同步与跨平台资产
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图

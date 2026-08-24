@@ -43,5 +43,16 @@
 
 | 代理 | 状态 | 说明 |
 |---|---|---|
-| R06-docs | 分支已推送 | 仅本目录文档 |
-| 其余九路 | 未开始 | — |
+| R06-docs | 已合入 | 仅本目录文档 |
+| R06-guide | 已合入 | `r06-guide-b343` |
+| R06-del-badge / del-resolve | 已合入 | `b31ee744` 单侧 DELETE 冲突可解决 |
+| R06-key-verify | 已合入 | `7e090429` `.encryption-marker` 不可逆校验子 |
+| R06-e2ee-copy / honest | 已合入 | UI 诚实披露文件级仍明文 |
+| R06-tests | 已合入 | `r06-tests-b343` |
+| R06-debug-redact | 已合入 | 凭据 Debug 脱敏 |
+| R06-class-doc | 已合入 | questions 计数合并注释 |
+| R06-review | 未交付 | 无 FINDINGS-R06，转入 R07-review |
+| R06-asset-e2ee | 未交付 | `sync_vfs_blobs` 仍 `put_file` 明文，转入 R07 |
+| R06-autosync | 未交付 | 转入 R07 |
+| R06-asset-names | 未交付 | 转入 R07 |
+| R06-android | 未交付 | 转入 R07 |
