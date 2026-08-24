@@ -227,6 +227,42 @@ function mergeCardsUnique(currentCards: AnkiCard[], incomingCards: AnkiCard[]): 
   return result;
 }
 
+/**
+ * 收尾快照通常与流式卡片同 ID。默认保留前端当前值，避免旧快照覆盖用户编辑；
+ * 但 critic 的 CAS 写回会递增 `updated_at`，此时必须采用较新的后端卡片，
+ * 才能把 revise 后的正文及 `_qa_flags` 审计条目带进预览块。
+ */
+function mergeFinalCardsWithCurrent(
+  finalCards: AnkiCard[],
+  currentCards: AnkiCard[],
+): AnkiCard[] {
+  const currentById = new Map(
+    currentCards
+      .filter((card): card is AnkiCard & { id: string } => Boolean(card.id))
+      .map((card) => [card.id, card]),
+  );
+  const finalIds = new Set(finalCards.map((card) => card.id).filter(Boolean));
+  const resolvedFinalCards = finalCards.map((finalCard) => {
+    const currentCard = finalCard.id ? currentById.get(finalCard.id) : undefined;
+    if (!currentCard) return finalCard;
+
+    const finalUpdatedAt = finalCard.updated_at ? Date.parse(finalCard.updated_at) : Number.NaN;
+    const currentUpdatedAt = currentCard.updated_at
+      ? Date.parse(currentCard.updated_at)
+      : Number.NaN;
+    if (
+      Number.isFinite(finalUpdatedAt) &&
+      Number.isFinite(currentUpdatedAt) &&
+      finalUpdatedAt > currentUpdatedAt
+    ) {
+      return finalCard;
+    }
+    return currentCard;
+  });
+  const currentOnlyCards = currentCards.filter((card) => !card.id || !finalIds.has(card.id));
+  return mergeCardsUnique(resolvedFinalCards, currentOnlyCards);
+}
+
 function isTerminalBlockStatus(status?: string): boolean {
   return status === 'success' || status === 'error';
 }
@@ -674,15 +710,14 @@ const ankiCardsEventHandler: EventHandler = {
       const resultObj = result as Record<string, unknown>;
       const resultCards = Array.isArray(resultObj.cards) ? (resultObj.cards as AnkiCard[]) : undefined;
       // 🔧 修复：onEnd 中 result.cards 的处理策略
-      // - 如果后端返回了卡片列表，以 resultCards 为基础，但用 currentCards 覆盖同 ID 卡片
-      //   这样用户在流式过程中对卡片的编辑不会被后端原始数据覆盖
+      // - 如果后端返回了卡片列表，默认用 currentCards 覆盖同 ID 卡片；
+      //   若后端 `updated_at` 更新（critic CAS revise/flag），采用较新的后端版本
       // - 如果后端未返回卡片（null/undefined），保留前端流式累积的卡片
-      // mergeCardsUnique(base, overlay): overlay 中同 ID 的卡片会覆盖 base 中的
       const filteredResultCards = resultCards?.filter(
         (card) => !card.id || !deletedCardIds.has(card.id),
       );
       const finalCards = filteredResultCards
-        ? mergeCardsUnique(filteredResultCards, currentCards)
+        ? mergeFinalCardsWithCurrent(filteredResultCards, currentCards)
         : mergeCardsUnique([], currentCards);
 
       const { cards: _cardsIgnored, status, error, ...rest } = resultObj;

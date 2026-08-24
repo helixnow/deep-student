@@ -2,7 +2,7 @@
  * ChatAnki 卡片质检标记（`extra_fields._qa_flags`）类型化解析。
  *
  * 后端契约（src-tauri/src/anki_qa_lint.rs）：
- * - lint 条目：`{code, field, message, severity}`（severity: info/warn/error）
+ * - lint / critic 条目：`{code, field, message, severity}`（severity: info/warn/error）
  * - 字段规则校验旧条目：`{field, rule, message}`（无 severity，视为 warn）
  * - 值本身是 JSON 数组字符串；后端遇到不可解析的旧值会包装为
  *   `{code: "legacy_flags_unparsed"}` 条目保留原文。
@@ -15,6 +15,12 @@ import type { AnkiCard } from '@/types';
 
 /** 与后端 `QA_FLAGS_FIELD` 保持一致的键名。 */
 export const QA_FLAGS_FIELD = '_qa_flags';
+
+/** 与 `anki_critic.rs` 的审计 code 保持一致。两者沿用标准 lint 条目形状。 */
+export const CRITIC_QA_FLAG_CODES = {
+  flagged: 'llm_critic',
+  revised: 'llm_critic_revised',
+} as const;
 
 export type QaFlagSeverity = 'info' | 'warn' | 'error';
 

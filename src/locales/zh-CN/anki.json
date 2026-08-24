@@ -1086,6 +1086,7 @@
     "critic": {
       "title": "AI 质检终审",
       "summary": "已评审 {{examined}} 张：保留 {{kept}}、修订 {{revised}}、标记 {{flagged}}",
+      "flaggedFlag": "该卡被 AI 终审标记，建议人工复查",
       "revisedFlag": "该卡由 AI 终审自动修订，建议复查",
       "skippedOverBudget": "{{count}} 张卡因预算限制未评审",
       "goldReferences": "本次评审参照了 {{count}} 组金标卡对",

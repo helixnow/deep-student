@@ -15,6 +15,7 @@ import { CaretDown, Info, Warning, WarningOctagon } from '@phosphor-icons/react'
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import {
+  CRITIC_QA_FLAG_CODES,
   maxFlagSeverity,
   type QaFlagEntry,
   type QaFlagSeverity,
@@ -33,6 +34,12 @@ const LEGACY_RULE_LABEL_KEYS: Record<string, string> = {
   maxLength: 'qaFlags.rules.maxLength',
   allowedValues: 'qaFlags.rules.allowedValues',
   validationPattern: 'qaFlags.rules.validationPattern',
+};
+
+/** critic 后端 message 当前为中文；按稳定 code 解析，避免英文界面泄漏未本地化文案。 */
+const CRITIC_FLAG_LABEL_KEYS: Record<string, string> = {
+  [CRITIC_QA_FLAG_CODES.flagged]: 'agent.critic.flaggedFlag',
+  [CRITIC_QA_FLAG_CODES.revised]: 'agent.critic.revisedFlag',
 };
 
 const SeverityIcon: React.FC<{ severity: QaFlagSeverity; size?: number; className?: string }> = ({
@@ -72,6 +79,8 @@ export const AnkiQaFlagBadge: React.FC<{
   const severityLabel = severity ? t(SEVERITY_LABEL_KEYS[severity]) : '';
 
   const resolveFlagMessage = (flag: QaFlagEntry): string => {
+    const criticKey = CRITIC_FLAG_LABEL_KEYS[flag.code];
+    if (criticKey) return t(criticKey);
     if (flag.message) return flag.message;
     const legacyKey = LEGACY_RULE_LABEL_KEYS[flag.code];
     if (legacyKey) return t(legacyKey);

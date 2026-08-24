@@ -38,6 +38,8 @@ vi.mock('react-i18next', () => ({
         'qaFlags.flaggedCards': '{{count}} cards carry QA flags',
         'qaFlags.hint': 'Review flagged cards before exporting',
         'qaFlags.rules.maxLength': 'Exceeds the maximum length',
+        'agent.critic.flaggedFlag': 'This card was flagged by the AI final review; please review it manually',
+        'agent.critic.revisedFlag': 'This card was auto-revised by the AI final review; please double-check',
         'blocks.ankiCards.progress.media.summary':
           'Media: {{imported}}/{{declared}} imported, {{skipped}} skipped',
         'blocks.ankiCards.progress.media.skipReasonLine': '{{reason}} × {{count}}',
@@ -260,6 +262,52 @@ describe('AnkiCardsBlock QA flags', () => {
     const details = screen.getByTestId('chatanki-qa-flag-details');
     expect(details).toHaveTextContent('Field: Question');
     expect(details).toHaveTextContent('Exceeds the maximum length');
+  });
+
+  it('renders critic revise/flag audit codes with localized preview messages', () => {
+    const criticCard = {
+      id: 'card-critic',
+      front: 'Q-critic',
+      back: 'A-critic',
+      extra_fields: {
+        _qa_flags: JSON.stringify([
+          {
+            code: 'llm_critic',
+            field: 'card',
+            message: 'LLM critic 标记：与另一张卡重复',
+            severity: 'warn',
+          },
+          {
+            code: 'llm_critic_revised',
+            field: 'card',
+            message: 'LLM critic 修订：答案与源材料矛盾',
+            severity: 'info',
+          },
+        ]),
+      },
+    } as any;
+
+    render(
+      <AnkiCardsBlock
+        block={{ ...createBlock(), toolOutput: createData({ cards: [criticCard] }) }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('anki-preview'));
+
+    const badge = screen.getByTestId('chatanki-qa-flag-badge');
+    expect(badge).toHaveTextContent('QA 2');
+    expect(badge).toHaveAttribute('data-severity', 'warn');
+    fireEvent.click(badge);
+
+    const details = screen.getByTestId('chatanki-qa-flag-details');
+    expect(details).toHaveTextContent(
+      'This card was flagged by the AI final review; please review it manually',
+    );
+    expect(details).toHaveTextContent(
+      'This card was auto-revised by the AI final review; please double-check',
+    );
+    expect(details).not.toHaveTextContent('LLM critic 标记');
+    expect(details).not.toHaveTextContent('LLM critic 修订');
   });
 
   it('shows a block-level flagged summary chip in both collapsed and expanded layouts', () => {

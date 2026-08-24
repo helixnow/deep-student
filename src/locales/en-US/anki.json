@@ -1086,6 +1086,7 @@
     "critic": {
       "title": "AI final review",
       "summary": "Reviewed {{examined}} cards: {{kept}} kept, {{revised}} revised, {{flagged}} flagged",
+      "flaggedFlag": "This card was flagged by the AI final review; please review it manually",
       "revisedFlag": "This card was auto-revised by the AI final review; please double-check",
       "skippedOverBudget": "{{count}} cards were skipped due to the review budget",
       "goldReferences": "This review referenced {{count}} gold-standard card pairs",

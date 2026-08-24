@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  CRITIC_QA_FLAG_CODES,
   QA_FLAGS_FIELD,
   isInternalAnkiField,
   maxFlagSeverity,
@@ -74,6 +75,42 @@ describe('parseCardQaFlags', () => {
       },
     });
     expect(flags.map((f) => f.severity)).toEqual(['warn', 'info']);
+  });
+
+  it('recognizes the exact revise and flag audit entries written by the critic', () => {
+    const flags = parseCardQaFlags({
+      extra_fields: {
+        [QA_FLAGS_FIELD]: JSON.stringify([
+          {
+            code: CRITIC_QA_FLAG_CODES.flagged,
+            field: 'card',
+            message: 'LLM critic 标记：与另一张卡重复',
+            severity: 'warn',
+          },
+          {
+            code: CRITIC_QA_FLAG_CODES.revised,
+            field: 'card',
+            message: 'LLM critic 修订：答案与源材料矛盾',
+            severity: 'info',
+          },
+        ]),
+      },
+    });
+
+    expect(flags).toEqual([
+      {
+        code: 'llm_critic',
+        field: 'card',
+        message: 'LLM critic 标记：与另一张卡重复',
+        severity: 'warn',
+      },
+      {
+        code: 'llm_critic_revised',
+        field: 'card',
+        message: 'LLM critic 修订：答案与源材料矛盾',
+        severity: 'info',
+      },
+    ]);
   });
 });
 
