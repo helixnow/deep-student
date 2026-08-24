@@ -195,6 +195,7 @@ function CopyButton({
         variant="ghost"
         size="icon"
         iconOnly
+        className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         aria-label={stateLabel}
         title={stateLabel}
         onClick={handleCopy}
@@ -453,6 +454,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   disabled={busy}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -469,6 +471,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   disabled={busy}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -485,6 +488,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   onClick={(event) => {
                     event.stopPropagation();
                     onOpenSession(run.sessionId as string);
@@ -683,6 +687,7 @@ export function AutomationRunHistory({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => {
                 setAutomationFilter('all');
                 setStatusFilter('all');
@@ -735,6 +740,7 @@ export function AutomationRunHistory({
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:min-h-11"
                 onClick={() => setVisibleCount((count) => count + VISIBLE_STEP)}
               >
                 {t('todo:automation.history.showMore', {
