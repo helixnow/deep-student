@@ -328,3 +328,5 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **台账**：FINDINGS-R07 顶部状态表与 P2-2 正文回写、PROTOCOL-R10 结论摘要处补回写块（历史行留档不改）、用户指南 16 解锁小节补一句本机记忆说明。
 
 **文件面认领（独占）**：`crypto/backup_crypto.rs`（上限 + 记忆存储 + 单测）、`cloud_storage/sync_manager.rs` 最小接线（结构体字段/默认构造/两处策略入口/明文门禁；不动 R11-lease 关注的上传/下载/manifest 段）、`src-tauri/tests/sync_r10_verifier.rs` 新文件、`sync_r10_protocol_locks.rs` 2/3 号用例、FINDINGS-R07 / PROTOCOL-R10 回写、用户指南 16 一句、本节。不改 RecordConflictsPanel / ftp.rs / notes / chat / workbench。KEY-ROTATION-R11 §7 的 T1（R12-kdf-clamp）中「前端错误映射 + locale 新键」半边未做（后端错误文案已直接面向用户），错误码机制统一仍归 R11-android2 交付物 ④。
+
+**顺带发现的基线遗留红灯（非本包引入，已在基线 `d46eff78` 上复现确认）**：① `sync_file_level_e2ee.rs::r07_legacy_plaintext_blob_downloads_but_substitution_is_rejected` 失败（`downloaded=0`，历史明文 blob 未被下载——疑与近期合入改动了明文遗留下载语义有关，待认领排查）；② `sync_r11_repo_check.rs` 编译失败（E0117 孤儿规则：`impl CloudStorage for Arc<MemoryStorage>`，需按其他测试文件的 newtype 模式修复，归 R11-check 文件面）。

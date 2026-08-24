@@ -840,8 +840,7 @@ impl EncryptedRootMemory {
             .map_err(|e| anyhow!("序列化本机加密目录记忆失败: {e}"))?;
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, &data).map_err(|e| anyhow!("写入本机加密目录记忆失败: {e}"))?;
-        std::fs::rename(&tmp, &self.path)
-            .map_err(|e| anyhow!("保存本机加密目录记忆失败: {e}"))?;
+        std::fs::rename(&tmp, &self.path).map_err(|e| anyhow!("保存本机加密目录记忆失败: {e}"))?;
         Ok(())
     }
 
@@ -1096,7 +1095,14 @@ mod tests {
         assert!(DEFAULT_T_COST <= KDF_MAX_T_COST);
         assert!(DEFAULT_P_COST <= KDF_MAX_P_COST);
         // 默认参数派生必须照常工作
-        assert!(derive_key("pw", &[7u8; 16], DEFAULT_M_COST, DEFAULT_T_COST, DEFAULT_P_COST).is_ok());
+        assert!(derive_key(
+            "pw",
+            &[7u8; 16],
+            DEFAULT_M_COST,
+            DEFAULT_T_COST,
+            DEFAULT_P_COST
+        )
+        .is_ok());
     }
 
     #[test]
@@ -1108,8 +1114,8 @@ mod tests {
             (8, 1, KDF_MAX_P_COST + 1, "p_cost 超限"),
         ] {
             let start = std::time::Instant::now();
-            let err = derive_key("pw", &[7u8; 16], m, t, p)
-                .expect_err(&format!("{label} 必须被拒绝"));
+            let err =
+                derive_key("pw", &[7u8; 16], m, t, p).expect_err(&format!("{label} 必须被拒绝"));
             assert!(
                 start.elapsed() < std::time::Duration::from_millis(200),
                 "{label} 必须在派生开始前拒绝（亚秒返回），实际耗时 {:?}",

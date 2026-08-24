@@ -123,7 +123,10 @@ fn p2_2_kdf_cost_upper_bound_now_enforced() {
 
     // 上限覆盖默认写入面（默认参数校验子照常工作）
     let default = create_password_verifier("pw").expect("默认参数必须可生成校验子");
-    assert!(default.m_cost <= KDF_MAX_M_COST_KIB, "上限不得低于默认 m_cost");
+    assert!(
+        default.m_cost <= KDF_MAX_M_COST_KIB,
+        "上限不得低于默认 m_cost"
+    );
     assert!(default.t_cost <= KDF_MAX_T_COST, "上限不得低于默认 t_cost");
     assert!(default.p_cost <= KDF_MAX_P_COST, "上限不得低于默认 p_cost");
     assert!(check_password_verifier("pw", &default).unwrap());

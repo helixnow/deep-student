@@ -22,8 +22,8 @@ use chrono::{DateTime, Utc};
 use deep_student_lib::cloud_storage::{CloudStorage, CloudSyncManager, FileInfo};
 use deep_student_lib::crypto::backup_crypto::{
     check_password_verifier, create_password_verifier, decrypt_backup, decrypt_backup_file,
-    encrypt_backup, encrypt_backup_file, EncryptedRootMemory, PasswordVerifier,
-    KDF_MAX_M_COST_KIB, KDF_MAX_P_COST, KDF_MAX_T_COST, PASSWORD_VERIFIER_KDF_ARGON2ID,
+    encrypt_backup, encrypt_backup_file, EncryptedRootMemory, PasswordVerifier, KDF_MAX_M_COST_KIB,
+    KDF_MAX_P_COST, KDF_MAX_T_COST, PASSWORD_VERIFIER_KDF_ARGON2ID,
 };
 use deep_student_lib::models::AppError;
 
@@ -291,14 +291,10 @@ async fn upload_precheck_oversized_params_fails_closed_without_write() {
             "digest": "22".repeat(32),
         },
     });
-    storage
-        .files
-        .lock()
-        .unwrap()
-        .insert(
-            ".encryption-marker".to_string(),
-            (serde_json::to_vec_pretty(&marker).unwrap(), Utc::now()),
-        );
+    storage.files.lock().unwrap().insert(
+        ".encryption-marker".to_string(),
+        (serde_json::to_vec_pretty(&marker).unwrap(), Utc::now()),
+    );
     let snapshot = storage.byte_snapshot();
 
     let device = manager(&storage, "device-a");
@@ -390,8 +386,11 @@ async fn deleted_marker_does_not_allow_plaintext_upload_from_this_machine() {
     // 诚实边界：另一台无记忆的设备在标记被删期间不受本机记忆保护
     storage.remove(".encryption-marker");
     let fresh_memory = tempfile::tempdir().unwrap();
-    let device_b =
-        manager_with_memory(&storage, "device-b", &fresh_memory.path().join("roots.json"));
+    let device_b = manager_with_memory(
+        &storage,
+        "device-b",
+        &fresh_memory.path().join("roots.json"),
+    );
     device_b
         .ensure_plaintext_upload_allowed()
         .await
