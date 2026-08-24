@@ -42,7 +42,19 @@
 
 ## 合入状态（父代理填写）
 
+云端异步 VM 上限为 3；其余在隔离 worktree（best-of-n-runner）并行。R07-asset-names 因异步子代理上限 10 未发出，下一空档补派。
+
 | 代理 | 状态 | 说明 |
 |---|---|---|
-| 父代理 rustfmt | 本枝已推送 | 纯格式，Backend Format check |
-| 十一路 | 已派出 | 等子代理回传后再合 |
+| 父代理 rustfmt | 本枝已推送 `4296437a` | 纯格式，Backend Format check |
+| R07-asset-e2ee | 云端运行中 | `bc-5808704e-a9ea-5bf3-bd73-3210c5db9b1f` |
+| R07-android | 云端运行中 | `bc-4eab10ff-d120-500e-8864-daa7a06c4c69` |
+| R07-tests | 云端运行中 | `bc-77087866-213f-59db-80e5-5501b91eb272` |
+| R07-review | 隔离 worktree 运行中 | `bc-731f4f46-530d-5539-b9d7-e0d6f3219f15` |
+| R07-sota | 隔离 worktree 运行中 | `bc-576242f0-2ca8-5c01-ae6b-5653203d0ca8` |
+| R07-restore | 隔离 worktree 运行中 | `bc-1d02b7e6-9590-578d-9064-f8a054a83f4d` |
+| R07-contract | 隔离 worktree 运行中 | `bc-25767e3b-3ab2-5c26-bd26-2c7d0e50fa6c` |
+| R07-vitest | 隔离 worktree 运行中 | `bc-136b0c1a-abfc-5b5d-9f8b-1e71a8f88e64` |
+| R07-archive | 隔离 worktree 运行中 | `bc-e7a97113-f70f-5b78-bc94-1f63ea4fa6f9` |
+| R07-autosync | 隔离 worktree 运行中 | `bc-25021b16-762c-564b-a4f0-1a65f4ee2ea1` |
+| R07-asset-names | 待补派 | 异步上限，下一空档 |
