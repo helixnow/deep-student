@@ -184,7 +184,11 @@ async function runNav(
     const userEditedInFlight = draftNow !== draftAtStart;
     set(
       applySnapshot(snapshot, {
-        loading: false,
+        // Rust owns the page lifecycle: command completion only means the
+        // native WebView accepted the navigation. Keep snapshot.loading=true
+        // until browser:navigated reports PageLoadEvent::Finished (or the
+        // user explicitly stops/redirects), otherwise the stop control
+        // disappears as soon as invoke returns.
         ...(userEditedInFlight ? { addressDraft: draftNow } : {}),
         ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
       }),
