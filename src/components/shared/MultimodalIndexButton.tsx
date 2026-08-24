@@ -219,7 +219,8 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
           disabled={disabled || status === 'indexing'}
           className={cn(
             status === 'success' && 'border-green-500/50',
-            status === 'error' && 'border-red-500/50'
+            status === 'error' && 'border-red-500/50',
+            '[@media(pointer:coarse)]:min-h-11'
           )}
         >
           {getIcon()}
