@@ -12,8 +12,9 @@
 //! 对应仍开项（详见 PROTOCOL-R10.md「仍开清单」）：
 //!
 //! - **P2-2（FINDINGS-R07）/ R01-P2**：校验子与 DSBK 头的 Argon2 参数来自
-//!   不受信任云端，无上限钳制（超大而结构合法的 m_cost 可致上传前校验
-//!   OOM/长时间挂起）；
+//!   不受信任云端——**已由 R10-verifier 关闭**（`derive_key` 应用级上限，
+//!   超限在派生前 fail-closed）；本文件 3 号用例已按台账要求改写为断言
+//!   钳制边界（详见 `sync_r10_verifier.rs` 的完整验收测试）；
 //! - **P2-3（FINDINGS-R07）**：resolve 快速路径的业务行快照读在事务外，
 //!   窗口内纯本地编辑可被按旧快照误标 resolved；
 //! - **P2-1（FINDINGS-R07，部分）**：v1 旧标记升级无条件信任第一台带密码
@@ -74,15 +75,13 @@ fn p2_2_structurally_invalid_kdf_params_fail_closed() {
     }
 }
 
-/// 仍开缺口的行为锁定：标记里的 KDF 参数被**原样采用**参与复算，而不是
-/// 钳制/回退到本机默认值。用一个非默认但 CI 可承受的 m_cost（128 MiB，
-/// 默认为 64 MiB）驱动复算路径：返回 `Ok(false)`（摘要不匹配）即证明
-/// KDF 真的按标记参数跑过。
+/// 行为锁定：**上限内**的标记 KDF 参数被原样采用参与复算，而不是钳制/回退到
+/// 本机默认值。用一个非默认但 CI 可承受的 m_cost（128 MiB，默认为 64 MiB）
+/// 驱动复算路径：返回 `Ok(false)`（摘要不匹配）即证明 KDF 真的按标记参数跑过。
 ///
-/// 这是 P2-2 的**根因**：同一机制对 GiB 级 m_cost 同样照单全收，被控云端
-/// 可借此让客户端在上传前校验时 OOM/长时间挂起（DoS，不涉机密性）。
-/// GiB 级参数无法在测试里执行（会真的 OOM），上限钳制落地后本用例
-/// 128 MiB 仍应低于任何合理上限、继续通过。
+/// [R10-verifier 回写] P2-2 的上限钳制已落地（超限 fail-closed，见下一用例），
+/// 128 MiB 低于上限（1 GiB），本用例语义不变、继续锁定「合法历史参数必须照常
+/// 执行」这半边。
 #[test]
 fn p2_2_marker_kdf_params_are_honored_not_clamped_to_default() {
     let verifier = verifier_with_params(131072, 1, 1);
@@ -94,35 +93,43 @@ fn p2_2_marker_kdf_params_are_honored_not_clamped_to_default() {
     );
 }
 
-/// 源码锁定（诚实仍开）：`check_password_verifier` 目前对 `m_cost/t_cost/p_cost`
-/// **没有任何上限钳制**。若本用例失败，说明有人给校验子参数加了钳制——
-/// 这是好事，请同步：
-/// 1. 更新本用例为断言钳制边界（超限必须 `Err` fail-closed，而非 `Ok(false)`）；
-/// 2. 回写 `PROTOCOL-R10.md` 仍开清单与 FIX-QUEUE 的 P2-2 登记；
-/// 3. 检查 DSBK 解密头（`decrypt_backup*`）是否一并钳制——两处同根。
+/// [R10-verifier 回写] P2-2 已关闭：`derive_key` 对 `m_cost/t_cost/p_cost` 施加
+/// 应用级上限（`KDF_MAX_*`），校验子与 DSBK 解密头两条路径共用同一入口，超限
+/// 在派生开始前 `Err`（fail-closed）。本用例按原 3 号用例的文档要求改写为
+/// **断言钳制边界**：
+/// - 超限参数必须 `Err`（无法校验），不得与 `Ok(false)`（密码不一致）混淆；
+/// - 上限必须始终覆盖自家默认写入面（收紧上限会拒收自家旧备份，视为回归）。
+///
+/// 完整验收测试（亚秒返回、DSBK 头同拒、上传零写入）见 `sync_r10_verifier.rs`。
 #[test]
-fn p2_2_kdf_cost_upper_bound_still_missing_source_lock() {
-    let source = read_repo_file("src/crypto/backup_crypto.rs");
-    let start = source
-        .find("pub fn check_password_verifier")
-        .expect("check_password_verifier 函数应存在于 backup_crypto.rs");
-    let end = source[start..]
-        .find("#[cfg(test)]")
-        .map(|i| start + i)
-        .unwrap_or(source.len());
-    let body = &source[start..end];
+fn p2_2_kdf_cost_upper_bound_now_enforced() {
+    use deep_student_lib::crypto::backup_crypto::{
+        create_password_verifier, KDF_MAX_M_COST_KIB, KDF_MAX_P_COST, KDF_MAX_T_COST,
+    };
 
-    assert!(
-        body.contains("verifier.m_cost"),
-        "复算应仍直接采用标记里的 m_cost；若已改为钳制/常量，请按用例文档回写台账"
-    );
-    for marker in ["clamp", "MAX_VERIFIER", "COST_LIMIT", "上限"] {
+    // 超限 fail-closed（Err，而非 Ok(false)）
+    for (m, t, p, label) in [
+        (KDF_MAX_M_COST_KIB + 1, 1u32, 1u32, "m_cost 超限"),
+        (u32::MAX, 1, 1, "m_cost 极大"),
+        (8, KDF_MAX_T_COST + 1, 1, "t_cost 超限"),
+        (8, 1, KDF_MAX_P_COST + 1, "p_cost 超限"),
+    ] {
+        let verifier = verifier_with_params(m, t, p);
         assert!(
-            !body.contains(marker),
-            "检测到疑似参数钳制（`{marker}`）：P2-2 可能已被修复，\
-             请更新本用例为断言钳制边界，并回写 PROTOCOL-R10 / FIX-QUEUE"
+            check_password_verifier("any-password", &verifier).is_err(),
+            "{label} 必须 Err（fail-closed）而非 Ok"
         );
     }
+
+    // 上限覆盖默认写入面（默认参数校验子照常工作）
+    let default = create_password_verifier("pw").expect("默认参数必须可生成校验子");
+    assert!(
+        default.m_cost <= KDF_MAX_M_COST_KIB,
+        "上限不得低于默认 m_cost"
+    );
+    assert!(default.t_cost <= KDF_MAX_T_COST, "上限不得低于默认 t_cost");
+    assert!(default.p_cost <= KDF_MAX_P_COST, "上限不得低于默认 p_cost");
+    assert!(check_password_verifier("pw", &default).unwrap());
 }
 
 // ============================================================================

@@ -351,3 +351,15 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 **跨代理契约（→ R11-lease）**：自动同步以稳定错误码 **`E_SYNC_LEASE_HELD`** 识别「租约被占」——R11-lease 落地 sync target 租约时，其「租约被占」错误文案**必须包含该 token**（建议格式 `[E_SYNC_LEASE_HELD] 同步租约被其他设备持有…`），否则自动同步会把租约冲突误计为失败进入退避。`sync_r11_autosync.rs` 与 vitest 均已钉死前端半边；R11-lease 合入后请在其集成测试中补后端半边（错误文案含 token）断言。
 
 **文件面认领（独占）**：`src/stores/syncStatusStore.ts`、`src/stores/__tests__/autoSyncStore.test.ts`（仅持久化断言一处）、`SyncSettingsSection.tsx` 自动同步区、`sync.json`（zh/en）`autoSync.*`、`src-tauri/tests/sync_r11_autosync.rs` 新文件、`tests/vitest/data-governance/r11-autosync-intervals-failclose.test.tsx` 新文件、本节。不改 RecordConflictsPanel / repo_check / notes / chat / workbench，不动任何 Rust 生产代码。
+### R10-verifier（第三次派出，分支 `cursor/cloud-sync-sota-r10-verifier-b343`）
+
+模型 claude-fable-5-thinking-high。关闭 FINDINGS-R07 P2-2 / R01-P2 同根项（KDF 参数无上限，FINDINGS-R07 · PROTOCOL-R10 · KEY-ROTATION-R11 §6 三方共同确认），并补「云端标记被删后不得默许明文上传」的本机第二道门禁。交付：
+
+- **KDF 参数应用级上限（P2-2 关闭）**：`crypto/backup_crypto.rs` 新增 `KDF_MAX_M_COST_KIB = 1 GiB` / `KDF_MAX_T_COST = 16` / `KDF_MAX_P_COST = 8`（取值依据注释在常量处：默认写入面 64 MiB/3/4 的 16×/5×/2×，只许向上放宽），`ensure_kdf_params_within_app_limits` 作为 `derive_key` 第一步——校验子复算、DSBK v1/v2 解密头、`FileCipherSession` 全部经此单一入口，超限在派生开始前 `Err`（fail-closed，与未知 KDF 同路），错误为用户级文案 `KDF_PARAMS_REJECTED_MESSAGE`（不含内部参数值、不提内部实现）。
+- **本机「云端目录曾经加密」记忆**：`backup_crypto.rs` 新增 `EncryptedRootMemory`——按 `instance_binding_hint` 的域分隔 SHA-256 指纹（本地不落明文 endpoint/用户名）记录该云 root 曾加密，默认落 `<app_data_dir>/.cloud-encrypted-roots.json`；`sync_manager.rs` 最小接线（两处策略入口成功后登记 + `ensure_plaintext_upload_allowed` 在云端标记缺失时查询本机记忆，命中即拒明文并给出可操作文案）。语义边界：只影响本机明文上传判定，不影响加密上传（标记缺失时照常用本机密码重新登记）与其他设备。记忆文件损坏按「曾加密」处理（fail-closed）。
+- **测试**：新文件 `src-tauri/tests/sync_r10_verifier.rs`（合法默认/历史参数照常、三参数超限派生前亚秒 Err、DSBK v1/v2 头超限拒且不建输出文件、标记内超限校验子上传前失败且云端零写入、删标记后本机明文被拒/重启仍拒/加密照常/按 root 隔离/明文拦截补写记忆）；`backup_crypto.rs` 内联单测 6 例；`sync_r10_protocol_locks.rs` 3 号用例按其自述改写为断言钳制边界（2 号用例语义不变）。
+- **台账**：FINDINGS-R07 顶部状态表与 P2-2 正文回写、PROTOCOL-R10 结论摘要处补回写块（历史行留档不改）、用户指南 16 解锁小节补一句本机记忆说明。
+
+**文件面认领（独占）**：`crypto/backup_crypto.rs`（上限 + 记忆存储 + 单测）、`cloud_storage/sync_manager.rs` 最小接线（结构体字段/默认构造/两处策略入口/明文门禁；不动 R11-lease 关注的上传/下载/manifest 段）、`src-tauri/tests/sync_r10_verifier.rs` 新文件、`sync_r10_protocol_locks.rs` 2/3 号用例、FINDINGS-R07 / PROTOCOL-R10 回写、用户指南 16 一句、本节。不改 RecordConflictsPanel / ftp.rs / notes / chat / workbench。KEY-ROTATION-R11 §7 的 T1（R12-kdf-clamp）中「前端错误映射 + locale 新键」半边未做（后端错误文案已直接面向用户），错误码机制统一仍归 R11-android2 交付物 ④。
+
+**顺带发现的基线遗留红灯（非本包引入，已在基线 `d46eff78` 上复现确认）**：① `sync_file_level_e2ee.rs::r07_legacy_plaintext_blob_downloads_but_substitution_is_rejected` 失败（`downloaded=0`，历史明文 blob 未被下载——疑与近期合入改动了明文遗留下载语义有关，待认领排查）；② `sync_r11_repo_check.rs` 编译失败（E0117 孤儿规则：`impl CloudStorage for Arc<MemoryStorage>`，需按其他测试文件的 newtype 模式修复，归 R11-check 文件面）。

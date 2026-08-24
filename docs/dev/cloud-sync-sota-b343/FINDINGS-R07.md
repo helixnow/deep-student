@@ -8,7 +8,7 @@
 > | P1-1 冲突面板 cloud-only「保留本地」不可达 | **已关** | R10-conflict-ui；单条/批量可达 + 两击确认 + 锁定测改写 |
 > | P1-2 记录级 bool 策略入口 | **已关** | r07-record-verifier；四入口写前拦截，附带缺口（首建 v2 标记）同关 |
 > | P2-1 升级信任第一台带密码设备 | **部分** | 代码信任边界未变；R09-restore-ops 运维解锁指南为唯一缓解，`sync_r10_protocol_locks.rs` 钉住指南不失效 |
-> | P2-2 校验子 KDF 参数无上限 | **仍开** | 无钳制；`sync_r10_protocol_locks.rs` 三用例锁定现状，建议 R11-verifier-clamp |
+> | P2-2 校验子 KDF 参数无上限 | **已关** | R10-verifier：`derive_key` 应用级上限（1 GiB / t≤16 / p≤8），校验子与 DSBK 头共用同一入口，超限派生前 fail-closed；另补本机「目录曾加密」记忆防删标记后明文上传。验收测 `sync_r10_verifier.rs`；锁定测 3 号已改写为断言边界 |
 > | P2-3 resolve 快速路径事务外快照读 | **仍开** | 事务内仅重验 generation；`sync_r10_protocol_locks.rs` 源码锁定，建议并入 R11 sync 面 |
 > | P2-4 keep_cloud 多候选 | **已关（豁免）** | UI 披露「最新/N」，按 R07 原判「不修亦可」结案 |
 > | 开放项：autosync / 资产文件名 / Android | **已关** | r07-autosync / R09-names（长度残余另跟踪）/ R09-android |
@@ -81,6 +81,7 @@ R06 已合入部分**基本属实、质量合格**：单侧 DELETE 冲突后端�
 
 - **文件**：`crypto/backup_crypto.rs` `check_password_verifier` L489-512
 - 复算摘要直接采用标记里的 `m_cost/t_cost/p_cost`。被控云端可写入超大 `m_cost`（GiB 级）使客户端在上传前校验时 OOM/长时间挂起（DoS，不涉机密性）。建议对三参数设硬上限（如 m_cost ≤ 1 GiB、t_cost ≤ 16、p_cost ≤ 8），超限按「无法校验」fail-closed。
+- **回写（R10-verifier，已关）**：按上述建议值落地——`derive_key` 第一步执行 `ensure_kdf_params_within_app_limits`（`KDF_MAX_M_COST_KIB = 1 GiB`、`KDF_MAX_T_COST = 16`、`KDF_MAX_P_COST = 8`），校验子复算、DSBK v1/v2 解密头、`FileCipherSession` 全部经由该入口，超限在派生开始前 `Err`（用户级文案，不含内部参数值）；默认写入面（64 MiB/3/4）与历史合法参数（128 MiB 等）不受影响。验收测试 `src-tauri/tests/sync_r10_verifier.rs`；`sync_r10_protocol_locks.rs` 3 号用例已按其自述改写为断言钳制边界。
 
 ### P2-3 resolve 快速路径的业务行快照读在事务外
 

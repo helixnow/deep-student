@@ -172,6 +172,19 @@ pub struct CloudSyncManager {
     storage: Box<dyn CloudStorage>,
     device_id: String,
     max_versions: usize,
+    /// [R10-verifier] 本机「该云端目录曾经加密」记忆（第二道明文上传门禁）。
+    /// `None` = 本机数据目录不可用（如未初始化的测试环境），退化为仅云端标记判定。
+    encryption_memory: Option<crate::crypto::backup_crypto::EncryptedRootMemory>,
+}
+
+/// [R10-verifier] 默认记忆文件：`<app_data_dir>/.cloud-encrypted-roots.json`
+/// （与 `.device_id` 同根）。
+fn default_encryption_root_memory() -> Option<crate::crypto::backup_crypto::EncryptedRootMemory> {
+    crate::data_space::get_data_space_manager().map(|manager| {
+        crate::crypto::backup_crypto::EncryptedRootMemory::at(
+            manager.base_dir().join(".cloud-encrypted-roots.json"),
+        )
+    })
 }
 
 impl CloudSyncManager {
@@ -181,6 +194,7 @@ impl CloudSyncManager {
             storage,
             device_id: normalize_device_id(&device_id),
             max_versions: DEFAULT_MAX_VERSIONS,
+            encryption_memory: default_encryption_root_memory(),
         }
     }
 
@@ -188,6 +202,39 @@ impl CloudSyncManager {
     pub fn with_max_versions(mut self, max: usize) -> Self {
         self.max_versions = max.max(1); // 至少保留 1 个版本
         self
+    }
+
+    /// [R10-verifier] 注入本机加密目录记忆存储（测试钩子；生产走 [`Self::new`] 默认路径）。
+    pub fn with_encryption_root_memory(
+        mut self,
+        memory: crate::crypto::backup_crypto::EncryptedRootMemory,
+    ) -> Self {
+        self.encryption_memory = Some(memory);
+        self
+    }
+
+    /// [R10-verifier] 本机登记「该云端目录曾经加密」（幂等，失败只警告不阻断：
+    /// 记忆是第二道防线，云端标记仍是第一道门禁）。
+    fn remember_encrypted_root(&self) {
+        if let Some(memory) = &self.encryption_memory {
+            let fingerprint = crate::crypto::backup_crypto::EncryptedRootMemory::fingerprint(
+                &self.storage.instance_binding_hint(),
+            );
+            if let Err(error) = memory.remember(&fingerprint) {
+                tracing::warn!("登记本机加密目录记忆失败（不阻断本次操作）: {error}");
+            }
+        }
+    }
+
+    /// [R10-verifier] 本机是否记得该云端目录曾经加密。
+    fn encrypted_root_remembered_locally(&self) -> bool {
+        self.encryption_memory.as_ref().is_some_and(|memory| {
+            memory.was_encrypted(
+                &crate::crypto::backup_crypto::EncryptedRootMemory::fingerprint(
+                    &self.storage.instance_binding_hint(),
+                ),
+            )
+        })
     }
 
     /// 获取设备 ID
@@ -562,11 +609,24 @@ impl CloudSyncManager {
     }
 
     /// 明文上传前置检查：该云 root 出现过加密备份（存在标记）时拒绝。
+    ///
+    /// [R10-verifier] 云端标记缺失时还要过本机记忆这道门：本机曾确认该目录
+    /// 加密而云端标记现已消失（被删/丢失）的，同样拒绝明文上传（fail-closed），
+    /// 不默许把明文混进曾经加密的恢复链。
     pub async fn ensure_plaintext_upload_allowed(&self) -> Result<()> {
         if self.read_encryption_marker().await?.is_some() {
+            self.remember_encrypted_root();
             return Err(AppError::configuration(
                 "该云端目录已存在端到端加密备份，为避免明文/密文混布，已拒绝未加密上传。\
                  请在云存储配置里填写相同的加密密码后重试。"
+                    .to_string(),
+            ));
+        }
+        if self.encrypted_root_remembered_locally() {
+            return Err(AppError::configuration(
+                "本机记录显示该云端目录曾启用端到端加密，但云端的加密标记现已缺失（可能被删除）。\
+                 为避免向同一目录混入未加密备份，已拒绝本次上传。请在云存储配置里填写原加密密码\
+                 后重试；若确认要改用未加密备份，请换一个新的云端目录。"
                     .to_string(),
             ));
         }
@@ -585,7 +645,9 @@ impl CloudSyncManager {
         encryption_enabled: bool,
     ) -> Result<()> {
         if encryption_enabled {
-            self.persist_encryption_marker().await.map(|_| ())
+            self.persist_encryption_marker().await?;
+            self.remember_encrypted_root();
+            Ok(())
         } else {
             self.ensure_plaintext_upload_allowed().await
         }
@@ -600,10 +662,12 @@ impl CloudSyncManager {
         encryption_password: Option<&str>,
     ) -> Result<()> {
         match encryption_password {
-            Some(password) => self
-                .verify_encryption_password_before_upload(password)
-                .await
-                .map(|_| ()),
+            Some(password) => {
+                self.verify_encryption_password_before_upload(password)
+                    .await?;
+                self.remember_encrypted_root();
+                Ok(())
+            }
             None => self.ensure_plaintext_upload_allowed().await,
         }
     }
