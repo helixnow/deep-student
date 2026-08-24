@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "没有可复制的 AI 回复",
+    "continueBusy": "正在回复中，请稍候",
+    "continueEmpty": "没有可继续的 AI 回复"
+  },
   "error": {
     "loadFailed": "加载失败",
     "retry": "重试",
@@ -1176,6 +1181,7 @@
     "renameSession": "重命名线程",
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
+    "openInNewWindow": "在新窗口打开",
     "pinGroup": "置顶分组",
     "unpinGroup": "取消置顶分组",
     "archiveSession": "归档线程",

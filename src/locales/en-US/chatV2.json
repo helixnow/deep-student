@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "No AI response to copy",
+    "continueBusy": "A response is in progress, please wait",
+    "continueEmpty": "No AI response to continue"
+  },
   "error": {
     "loadFailed": "Load failed",
     "retry": "Retry",
@@ -1176,6 +1181,7 @@
     "renameSession": "Rename Thread",
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
+    "openInNewWindow": "Open in New Window",
     "pinGroup": "Pin group",
     "unpinGroup": "Unpin group",
     "archiveSession": "Archive Thread",

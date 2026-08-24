@@ -209,6 +209,10 @@
       "loading": "正在加载会话…",
       "sessionNav": "会话导航"
     },
+    "chatSession": {
+      "name": "会话窗口",
+      "missingSession": "该窗口未绑定会话，请从会话列表打开"
+    },
     "system": {
       "todoNav": "待办导航",
       "settingsNav": "设置导航",

@@ -209,6 +209,10 @@
       "loading": "Loading session…",
       "sessionNav": "Session navigation"
     },
+    "chatSession": {
+      "name": "Session Window",
+      "missingSession": "This window is not bound to a session. Open one from the session list."
+    },
     "system": {
       "todoNav": "Todo navigation",
       "settingsNav": "Settings navigation",

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { extractMessageContentFromBlocks } from '../components/message/messageItemUtils';
 import { pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { sessionManager } from '../core/session/sessionManager';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
@@ -640,6 +642,66 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           } catch (error) {
             console.error('[ChatV2Page] Failed to bookmark session:', getErrorMessage(error));
           }
+        }
+      },
+      // 复制最后一条 AI 回复（幽灵命令补活：chat.copy-last-response）
+      [COMMAND_EVENTS.CHAT_COPY_LAST_RESPONSE]: async () => {
+        console.log('[ChatV2Page] CHAT_COPY_LAST_RESPONSE triggered');
+        const store = getCurrentStore();
+        if (!store) return;
+        const state = store.getState();
+        const lastAssistantId = [...state.messageOrder]
+          .reverse()
+          .find((id) => state.messageMap.get(id)?.role === 'assistant');
+        if (!lastAssistantId) {
+          showGlobalNotification('info', t('commands.copyLastEmpty'));
+          return;
+        }
+        // 与消息级复制一致：取显示中的变体块，content 优先、thinking/mcp_tool 兜底
+        const blocks = state
+          .getDisplayBlockIds(lastAssistantId)
+          .map((blockId) => state.blocks.get(blockId))
+          .filter((block): block is NonNullable<typeof block> => Boolean(block));
+        const text = extractMessageContentFromBlocks(blocks);
+        if (!text) {
+          showGlobalNotification('info', t('commands.copyLastEmpty'));
+          return;
+        }
+        try {
+          await copyTextToClipboard(text);
+          showGlobalNotification('success', t('messageItem.actions.copySuccess'));
+        } catch (error) {
+          console.error('[ChatV2Page] Copy last response failed:', getErrorMessage(error));
+          showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+        }
+      },
+      // AI 继续（幽灵命令补活：chat.ai-continue）——继续最后一条 AI 回复，
+      // 复用消息级 continueMessage（后端同消息继续，失败自动 fallback sendMessage）
+      [COMMAND_EVENTS.CHAT_AI_CONTINUE]: async () => {
+        console.log('[ChatV2Page] CHAT_AI_CONTINUE triggered');
+        const store = getCurrentStore();
+        if (!store) return;
+        const state = store.getState();
+        const isLocked = state.sessionStatus === 'sending'
+          || state.sessionStatus === 'streaming'
+          || state.sessionStatus === 'aborting'
+          || state.activeBlockIds.size > 0;
+        if (isLocked) {
+          showGlobalNotification('info', t('commands.continueBusy'));
+          return;
+        }
+        const lastAssistantId = [...state.messageOrder]
+          .reverse()
+          .find((id) => state.messageMap.get(id)?.role === 'assistant');
+        if (!lastAssistantId) {
+          showGlobalNotification('info', t('commands.continueEmpty'));
+          return;
+        }
+        try {
+          await state.continueMessage(lastAssistantId);
+        } catch (error) {
+          console.error('[ChatV2Page] AI continue failed:', getErrorMessage(error));
+          showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.continueFailed'));
         }
       },
     },
