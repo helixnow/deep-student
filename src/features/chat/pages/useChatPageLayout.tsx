@@ -266,6 +266,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     rightActions: (
       <DsButton
         variant="primary"
+        className="[@media(pointer:coarse)]:min-h-11"
         onClick={() => groupEditorSubmitRef.current?.()}
       >
         {t('common:save')}
