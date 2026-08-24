@@ -387,7 +387,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                   handleOpenNote();
                 }
               }}
-              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10"
+              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
               title={t('timeline.noteTool.openNote')}
             >
               <ArrowSquareOut size={14} className="text-muted-foreground hover:text-foreground" />

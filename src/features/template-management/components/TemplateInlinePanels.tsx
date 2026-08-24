@@ -65,6 +65,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           disabled={isImporting}
           aria-label={t('templateMgmt.panel_close')}
           title={t('templateMgmt.panel_close')}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <X size={14} />
         </DsButton>
@@ -214,6 +215,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             disabled={isExporting}
             aria-label={t('templateMgmt.panel_close')}
             title={t('templateMgmt.panel_close')}
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           >
             <X size={14} />
           </DsButton>

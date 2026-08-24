@@ -664,7 +664,7 @@ export const TodoItemDetail: React.FC<{
                 aria-expanded={calendarOpen}
                 title={dueDate || undefined}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[var(--radius-shell-control)] px-2 py-1 text-left text-sm',
+                  'flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[var(--radius-shell-control)] px-2 py-1 text-left text-sm [@media(pointer:coarse)]:min-h-11',
                   'transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]',
                   dueDate ? 'text-foreground' : 'text-muted-foreground/70',

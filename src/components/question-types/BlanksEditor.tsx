@@ -81,7 +81,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
       onClick={() => updateBlank(index, { [field]: !active } as Partial<FillBlankSpec>)}
       className={cn(
         'rounded px-1.5 py-0.5 text-[10px] transition-colors',
-        '[@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:py-1.5',
+        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:py-1.5',
         active
           ? 'bg-primary/10 text-primary'
           : 'bg-muted/40 text-muted-foreground hover:bg-[var(--interactive-hover)]'

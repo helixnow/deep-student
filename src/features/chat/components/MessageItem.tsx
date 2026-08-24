@@ -1269,6 +1269,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         disabled={isReadOnlySession || isLocked}
                         className={cn(
                           '!h-auto !px-1.5 !py-0.5 mr-1',
+                          '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!px-3',
                           'text-[11px] text-muted-foreground/70',
                           'hover:text-foreground'
                         )}

@@ -236,8 +236,9 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               'truncate block text-ui font-normal',
               isSelected ? 'text-primary-foreground' : 'text-foreground/90'
             )}
-            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
-            inputClassName="h-6 text-ui [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!text-[16px]"
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放；
+            // h-11 满足 44px 触达；-my-1 抵消超出行内容区的 8px，保持 48px 虚拟行槽几何
+            inputClassName="h-6 text-ui [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-my-1 [@media(pointer:coarse)]:!text-[16px]"
           />
           {isFavorite && (
             <Star size={12} className="text-yellow-500 shrink-0" />
@@ -367,8 +368,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             selectNameOnly={item.type !== 'folder'}
             autoSize
             className="mx-auto text-center"
-            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框相应调高）
-            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!text-[16px]"
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框调高到 44px 触达）
+            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-[16px]"
           />
         ) : (
           <span className={cn(

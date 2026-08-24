@@ -805,7 +805,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder={t('settings:gradingMode.placeholderModeName')}
                       className={cn(
-                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30",
+                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]",
                         showValidation && nameInvalid && "border-destructive/50 focus-visible:ring-destructive/30"
                       )}
                     />

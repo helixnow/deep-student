@@ -668,7 +668,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                                     role="option"
                                                     aria-selected={tagHighlightIndex === index}
                                                     className={cn(
-                                                        'flex cursor-pointer items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none',
+                                                        'flex cursor-pointer items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
                                                         tagHighlightIndex === index
                                                             ? 'bg-[var(--interactive-hover)] text-foreground'
                                                             : 'hover:bg-[var(--interactive-hover)]',

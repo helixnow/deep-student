@@ -369,6 +369,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 size="icon"
                 onClick={handleCloseRequest}
                 aria-label={t('common:actions.close')}
+                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
               >
                 <X size={18} />
               </DsButton>

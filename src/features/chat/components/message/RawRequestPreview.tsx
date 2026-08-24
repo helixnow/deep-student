@@ -368,7 +368,7 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
                 type="button"
                 aria-pressed={i === activeIdx}
                 onClick={() => setSelectedRound(i + 1)}
-                className={`px-2 py-0.5 text-2xs rounded transition-colors ${
+                className={`px-2 py-0.5 text-2xs rounded transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${
                   i === activeIdx
                     ? 'bg-primary/10 text-primary font-medium'
                     : 'text-muted-foreground/60 hover:bg-[var(--interactive-hover)]'

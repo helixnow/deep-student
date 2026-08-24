@@ -111,7 +111,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           <div key={sessionId} className="space-y-1">
             <button
               onClick={() => onSelectResult(sessionId)}
-              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors group"
+              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors group [@media(pointer:coarse)]:min-h-11"
             >
               <Chat size={14} className="text-muted-foreground/60 shrink-0" />
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
@@ -126,7 +126,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
                 <button
                   key={item.blockId}
                   onClick={() => onSelectResult(item.sessionId)}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-[var(--interactive-hover)] transition-colors"
+                  className="w-full text-left px-2 py-1 rounded hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center"
                 >
                   <div className="flex items-start gap-1.5">
                     {item.role === 'user' ? (

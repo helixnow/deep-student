@@ -235,6 +235,10 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
           // 触屏 pr-12：为常显的「更多 + 关闭」两个入口留出空间
           'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[38px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
+          // 触屏热区补足 44px：上下各伸出 3px（吃掉 my-[3px]）；用上下两条伪元素而非整面
+          // after:-inset-y，避免伪元素盖住常显的「更多/关闭」按钮抢走点击
+          '[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:bottom-full [@media(pointer:coarse)]:before:h-[3px] [@media(pointer:coarse)]:before:content-[""]',
+          '[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:top-full [@media(pointer:coarse)]:after:h-[3px] [@media(pointer:coarse)]:after:content-[""]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
           'transition-[background-color,color,opacity] duration-150',
           isActive

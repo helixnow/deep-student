@@ -65,8 +65,8 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
               key={tag}
               onClick={() => onToggleTag(tag)}
               className={cn(
-                // min-h-7 保证触屏可点（面板现已在移动端可达）
-                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors',
+                // min-h-7 桌面紧凑；coarse 指针下抬到 44px 触控目标
+                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
                 isSelected
                   ? 'bg-primary/10 border-primary/50 text-primary'
                   : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-[var(--interactive-hover)]'

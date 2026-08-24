@@ -416,7 +416,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={() => handleGetDiagnostic()}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
               {t('diagnostic.getDiagnostic')}
@@ -426,7 +426,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleIndexWithDiagnostic}
               disabled={isLoading}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={14} className="mr-1" />
               {t('diagnostic.indexWithDiag')}
@@ -436,7 +436,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetDisabled}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetDisabled')}
@@ -446,7 +446,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleResetIndexedWithoutEmb}
               disabled={isLoading}
-              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-warning [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetNoEmbed')}
@@ -456,7 +456,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleDiagnoseLanceSchema}
               disabled={isLoading}
-              className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-cyan-600 [@media(pointer:coarse)]:!min-h-11"
             >
               <Bug size={14} className="mr-1" />
               Lance Schema
@@ -467,7 +467,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleCopyLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Copy size={14} className="mr-1" />
               {t('diagnostic.copyLogs')}
@@ -477,7 +477,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               variant="ghost"
               onClick={handleClearLogs}
               disabled={logs.length === 0}
-              className="h-7 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-10"
+              className="h-7 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
             >
               <Trash size={14} className="mr-1" />
               {t('diagnostic.clearLogs')}

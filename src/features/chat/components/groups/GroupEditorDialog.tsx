@@ -656,7 +656,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                                     key={skill.id}
                                     onClick={() => toggleSkill(skill.id)}
                                     className={cn(
-                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm border cursor-pointer transition-colors select-none",
+                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm border cursor-pointer transition-colors select-none [@media(pointer:coarse)]:min-h-11",
                                         checked 
                                           ? "bg-primary/10 text-primary border-primary/20" 
                                           : "bg-background border-border hover:bg-[var(--interactive-hover)] text-muted-foreground"

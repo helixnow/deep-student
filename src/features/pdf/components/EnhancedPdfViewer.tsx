@@ -205,7 +205,9 @@ const PdfPasswordPrompt: React.FC<{
       <Input
         ref={inputRef}
         type="password"
-        className="ds-pdf__password-input"
+        // 触屏：32px → 44px 触控高度；16px 防 iOS 聚焦自动缩放（同 .ds-search-input coarse 规则，
+        // CSS coarse 块漏掉了该输入框；!important 对冲 .ds-pdf__password-input 的 height/font-size）
+        className="ds-pdf__password-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
         placeholder={t('pdf:password.placeholder')}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -2791,10 +2793,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {showHighlightMenu && isMobileLike && (
         <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlight')}>
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          {/* 色板 36px（bar 内 CSS 特异性高于 coarse 全局 32px）：伪元素扩命中区到 44px
+              （36 + 2×4；bar gap 10px，相邻命中区不重叠），视觉尺寸不变 */}
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
           <DsButton
             variant="ghost"
             size="icon"
