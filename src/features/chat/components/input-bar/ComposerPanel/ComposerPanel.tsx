@@ -143,6 +143,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               onClick={onClose}
               aria-label={resolvedCloseAriaLabel}
               title={resolvedCloseAriaLabel}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <X size={16} />
             </DsButton>
