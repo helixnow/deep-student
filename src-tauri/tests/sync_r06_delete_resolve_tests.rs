@@ -190,10 +190,8 @@ fn active_data_dir() -> &'static PathBuf {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let base = std::env::temp_dir().join(format!(
-            "ds-r06-del-resolve-{}-{nonce}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("ds-r06-del-resolve-{}-{nonce}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         deep_student_lib::data_space::init_data_space_manager(base)
             .expect("初始化测试 DataSpaceManager 失败");
@@ -209,7 +207,8 @@ fn open_active_vfs_db() -> Connection {
     let db_path = active_data_dir().join("databases").join("vfs.db");
     std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
     let conn = Connection::open(&db_path).unwrap();
-    conn.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
     ensure_schema(&conn);
     conn
 }
@@ -217,8 +216,17 @@ fn open_active_vfs_db() -> Connection {
 /// 无窗口 tauri App（默认 runtime）。生产命令签名是具体的
 /// `tauri::AppHandle`（Wry），mock runtime 的 handle 类型不兼容，
 /// 只能走默认 Builder —— 与 `tool_pack_integration_tests.rs` 相同的先例。
+///
+/// Linux/Windows 上用 `any_thread()`：libtest 默认在工作线程跑测试，
+/// tao 事件循环要求主线程会直接 panic（nextest 单测试单进程 +
+/// `--test-threads=1` 在主线程执行所以 CI 不受影响，但本地
+/// `cargo test` 需要 any_thread 才能跑）。macOS 无此逃生口，
+/// 请用 nextest 或 `--test-threads=1` 运行本文件。
 fn build_headless_app() -> tauri::App {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(any(target_os = "linux", windows))]
+    let builder = builder.any_thread();
+    builder
         .build(tauri::generate_context!())
         .expect("构建无窗口 tauri App 失败")
 }
@@ -345,10 +353,9 @@ fn r06_one_sided_delete_conflict_should_be_resolvable() {
         "keep_local 后本地行必须保留"
     );
 
-    let listed = tauri::async_runtime::block_on(data_governance_list_record_conflicts(
-        handle, None, None,
-    ))
-    .expect("列出冲突不应失败");
+    let listed =
+        tauri::async_runtime::block_on(data_governance_list_record_conflicts(handle, None, None))
+            .expect("列出冲突不应失败");
     assert!(
         !listed
             .iter()
