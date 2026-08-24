@@ -1167,6 +1167,19 @@
     "latest": "Latest",
     "merge_hint": "Edit the JSON, then click Write Back. The final value will be submitted as a normal UPDATE and pushed to the cloud during the next sync.",
     "write_back": "Write Back",
-    "json_invalid": "Invalid JSON: {{error}}"
+    "json_invalid": "Invalid JSON: {{error}}",
+    "snapshot_section_title": "Automatic Snapshots (Undoable)",
+    "snapshot_section_desc": "Before bulk conflict resolution or a database-wide policy override, the affected records are automatically snapshotted on this device (never uploaded). Made the wrong call? Find the batch below and click \"Roll Back This Batch\" — the records return to their pre-operation state, and other devices are informed on the next sync.",
+    "snapshot_reason_conflict_resolve": "Conflict resolution",
+    "snapshot_reason_policy_override": "Database-wide policy override",
+    "snapshot_reason_rollback_undo": "Rollback undo point",
+    "snapshot_records_count": "{{count}} record(s)",
+    "snapshot_rolled_back_label": "Rolled back",
+    "snapshot_rollback_button": "Roll Back This Batch",
+    "snapshot_rollback_confirm": "Restore these {{count}} record(s) to their snapshot state? Rolling back overwrites their current values (an undo point is saved first, so the rollback itself can also be undone).",
+    "snapshot_rollback_success": "Batch rolled back: {{restored}} restored, {{deleted}} deleted, {{skipped}} unchanged",
+    "snapshot_rollback_failed": "Rollback failed: {{error}}",
+    "snapshot_load_failed": "Failed to load automatic snapshots: {{error}}",
+    "snapshot_empty": "No automatic snapshots yet. They are created automatically before bulk conflict resolution or a database-wide policy override."
   }
 }

@@ -106,7 +106,8 @@
     "create_resource_failed": "Failed to create resource: {{error}}"
   },
   "record_conflict_panel": {
-    "title": "Record Conflicts ({{count}})"
+    "title": "Record Conflicts ({{count}})",
+    "undoable_hint": "You can act with confidence: before bulk resolution or a database-wide policy override, the affected records are automatically snapshotted on this device (never uploaded). If something goes wrong, roll back with one click in the Automatic Snapshots section below."
   },
   "conflict_type": {
     "schema_mismatch": "Schema Version Mismatch",

@@ -106,7 +106,8 @@
     "create_resource_failed": "创建资源失败: {{error}}"
   },
   "record_conflict_panel": {
-    "title": "记录级冲突（{{count}}）"
+    "title": "记录级冲突（{{count}}）",
+    "undoable_hint": "放心操作：批量解决和库级策略覆盖执行前，系统都会先在本机自动快照受影响的记录（不上云）。误操作后可在下方「自动快照」区一键回退。"
   },
   "conflict_type": {
     "schema_mismatch": "Schema 版本不匹配",
