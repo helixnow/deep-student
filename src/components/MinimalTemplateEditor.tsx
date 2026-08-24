@@ -656,13 +656,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   const renderCodeSubTabs = () => (
     <>
       <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
           {t('front_template_title')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
           {t('back_template_title')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
+        <DsButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
           {t('css_style_title')}
         </DsButton>
       </div>
