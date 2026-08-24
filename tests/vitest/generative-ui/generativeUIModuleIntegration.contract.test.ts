@@ -69,6 +69,7 @@ const BUILDER_UTILS = [
   'utils/buildPaperDigestIntent.ts',
   'utils/mergeTranslationBriefingMetrics.ts',
   'utils/buildResearchExportMarkdown.ts',
+  'utils/buildIntentExportMarkdown.ts',
   'utils/extractResearchContentFromIntent.ts',
   'utils/extractResearchSessionId.ts',
   'utils/buildMarkdownIntent.ts',
@@ -168,7 +169,7 @@ describe('generativeUIModuleIntegration contract', () => {
   it('action id registries cover note/flashcard/research handler sets', () => {
     expect(NOTE_EDIT_ACTION_IDS).toContain('apply-note-edit');
     expect(FLASHCARD_ACTION_IDS).toContain('save-to-library');
-    expect(RESEARCH_ACTION_IDS).toEqual(['copy-report', 'export-plan']);
+    expect(RESEARCH_ACTION_IDS).toEqual(['copy-report', 'export-plan', 'export-intent']);
   });
 
   it('translation stream bridge module exists for live briefing', () => {

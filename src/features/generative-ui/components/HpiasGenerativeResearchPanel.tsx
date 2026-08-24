@@ -84,6 +84,7 @@ export function HpiasGenerativeResearchPanel({
       citationStatTitle: t('research.report.citation_stat'),
       copyReport: t('research.actions.copy_report'),
       exportPlan: t('research.actions.export_plan'),
+      exportIntent: t('research.actions.export_intent'),
       stepsListTitle: t('research.hpias.steps_list_title'),
       stepStatusPending: t('research.hpias.step_status_pending'),
       stepStatusActive: t('research.hpias.step_status_active'),
@@ -122,19 +123,24 @@ export function HpiasGenerativeResearchPanel({
     [dashboardLabels.planTitle, dashboardLabels.roundLabel, question, snapshot, stepLabels],
   );
 
+  const getIntent = useCallback(() => intent, [intent]);
+
   const actionHandlers = useMemo(
     () =>
       createResearchBriefingActionHandlers(
-        { getReportBody, getExportMarkdown },
+        { getReportBody, getExportMarkdown, getIntent },
         {
           copyReport: dashboardLabels.copyReport,
           exportPlan: dashboardLabels.exportPlan,
+          exportIntent: dashboardLabels.exportIntent,
         },
       ),
     [
       dashboardLabels.copyReport,
+      dashboardLabels.exportIntent,
       dashboardLabels.exportPlan,
       getExportMarkdown,
+      getIntent,
       getReportBody,
     ],
   );

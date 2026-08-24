@@ -117,6 +117,7 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
             actions: [
               { id: 'copy-report', label: 'Copy', riskLevel: 'low' as const },
               { id: 'export-plan', label: 'Export', riskLevel: 'medium' as const },
+              { id: 'export-intent', label: 'Export intent', riskLevel: 'low' as const },
             ],
           },
         },
@@ -126,11 +127,18 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
     const handlers = resolveGenerativeUIChatActionHandlers({ intent });
     expect(handlers['copy-report']).toBeDefined();
     expect(handlers['export-plan']).toBeDefined();
+    expect(handlers['export-intent']).toBeDefined();
 
     await handlers['export-plan'].handler({} as never);
     expect(mockedLaunch).not.toHaveBeenCalled();
     expect(mockedCopy).toHaveBeenCalled();
     const exported = mockedCopy.mock.calls[0]?.[0] as string;
     expect(exported).toContain('Summary [paper-1]');
+
+    mockedCopy.mockClear();
+    await handlers['export-intent'].handler({} as never);
+    expect(mockedCopy).toHaveBeenCalled();
+    const intentExport = mockedCopy.mock.calls[0]?.[0] as string;
+    expect(intentExport).toContain('Summary [paper-1]');
   });
 });

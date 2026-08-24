@@ -24,6 +24,7 @@ const dashboardLabels = {
   citationStatTitle: 'Citations',
   copyReport: 'Copy',
   exportPlan: 'Export',
+  exportIntent: 'Export intent',
 };
 
 describe('hpiasEventBridge integration', () => {
@@ -60,7 +61,7 @@ describe('hpiasEventBridge integration', () => {
 
     const actionBar = intent!.blocks.find((b) => b.type === 'action-bar');
     const actions = (actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? [];
-    expect(actions.map((a) => a.id)).toEqual(['copy-report', 'export-plan']);
+    expect(actions.map((a) => a.id)).toEqual(['copy-report', 'export-plan', 'export-intent']);
   });
 
   it('omitResearchBlocksFromIntent preserves non-research blocks for Chat dedup', () => {

@@ -209,6 +209,7 @@ const HPIAS_LABELS = {
   citationStatTitle: 'Citations',
   copyReport: 'Copy report',
   exportPlan: 'Export plan',
+  exportIntent: 'Export all intents',
   stepsBlockTitle: 'Pipeline',
 };
 

@@ -27,6 +27,7 @@ const dashboardLabels = {
   citationStatTitle: 'Citations',
   copyReport: 'Copy report',
   exportPlan: 'Export plan',
+  exportIntent: 'Export all intents',
 };
 
 describe('mapHpiasStoreToResearchPlanSteps', () => {
@@ -105,6 +106,11 @@ describe('buildHpiasResearchDashboardIntent', () => {
     expect(intent!.blocks.some((b) => b.type === 'list')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'paper-digest')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'action-bar')).toBe(true);
+    const actionBar = intent!.blocks.find((b) => b.type === 'action-bar');
+    const actionIds = ((actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? []).map(
+      (a) => a.id,
+    );
+    expect(actionIds).toContain('export-intent');
     const stepsBlock = intent!.blocks.find((b) => b.type === 'steps');
     expect(stepsBlock).toBeDefined();
     expect(stepsBlockPropsSchema.safeParse(stepsBlock?.props).success).toBe(true);

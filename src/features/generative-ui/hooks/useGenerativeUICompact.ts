@@ -8,7 +8,7 @@ export const GENERATIVE_UI_COMPACT_MAX_WIDTH = BREAKPOINTS.sm;
 /** `(max-width: 639px)`，与 `getMediaQuery('sm', 'max')` 同源 */
 export const GENERATIVE_UI_COMPACT_MEDIA_QUERY = getMediaQuery('sm', 'max');
 
-/** 根节点可选 class：窄屏强制 stack + 更紧凑间距 */
+/** 根节点 compact class：间距走 `generative-ui.css` 的 4/8/12 token */
 export const GENERATIVE_UI_COMPACT_CLASS = 'generative-ui-compact';
 
 export function isGenerativeUICompactViewport(

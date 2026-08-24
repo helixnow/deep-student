@@ -18,6 +18,10 @@ import { buildHpiasResearchDashboardIntent } from '@/features/generative-ui/util
 import { createResearchBriefingActionHandlers } from '@/features/generative-ui/handlers/researchBriefingActionHandlers';
 import { createFlashcardSaveActionHandlers } from '@/features/generative-ui/handlers/flashcardActionHandlers';
 import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
+import {
+  COPY_INTENT_ACTION_ID,
+  createCopyIntentActionHandlers,
+} from '@/features/generative-ui/handlers/copyIntentActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -265,13 +269,31 @@ describe('generativeUI actionHandlerSync contract', () => {
         citationStatTitle: 'Citations',
         copyReport: 'Copy',
         exportPlan: 'Export',
+        exportIntent: 'Export intent',
       },
     });
     expect(intent).not.toBeNull();
     const handlers = createResearchBriefingActionHandlers(
-      { getReportBody: () => 'Finding', getExportMarkdown: () => '# export' },
-      { copyReport: 'Copy', exportPlan: 'Export' },
+      { getReportBody: () => 'Finding', getExportMarkdown: () => '# export', getIntent: () => intent },
+      { copyReport: 'Copy', exportPlan: 'Export', exportIntent: 'Export intent' },
     );
     expectActionIdsRegistered(intent!, handlers, 'buildHpiasResearchDashboardIntent');
+  });
+
+  it('copy-intent action id exists in createCopyIntentActionHandlers as low risk', () => {
+    const intent: GenerativeUIIntent = {
+      version: '1',
+      blocks: [
+        {
+          type: 'action-bar',
+          props: {
+            actions: [{ id: COPY_INTENT_ACTION_ID, label: 'Copy intent', riskLevel: 'low' }],
+          },
+        },
+      ],
+    };
+    const handlers = createCopyIntentActionHandlers(intent, { copyIntent: 'Copy intent' });
+    expectActionIdsRegistered(intent, handlers, 'copy-intent');
+    expect(handlers[COPY_INTENT_ACTION_ID]?.riskLevel).toBe('low');
   });
 });

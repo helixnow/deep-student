@@ -105,6 +105,7 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
       researchLabels: {
         copyReport: t('research.actions.copy_report'),
         exportPlan: t('research.actions.export_plan'),
+        exportIntent: t('research.actions.export_intent'),
       },
     });
   }, [block.id, block.toolInput, block.toolOutput, canvasNoteId, extracted, store, t]);

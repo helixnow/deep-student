@@ -17,7 +17,8 @@
     "confirm_execute": "Confirm",
     "unregistered_hint": "This action is not registered and cannot run",
     "undo": "Undo",
-    "undo_empty": "Nothing to undo"
+    "undo_empty": "Nothing to undo",
+    "copy_intent": "Copy intent"
   },
   "flashcard": {
     "preview_title": "Flashcard preview",
@@ -303,7 +304,8 @@
     },
     "actions": {
       "copy_report": "Copy report",
-      "export_plan": "Export plan"
+      "export_plan": "Export plan",
+      "export_intent": "Export all intents"
     }
   }
 }

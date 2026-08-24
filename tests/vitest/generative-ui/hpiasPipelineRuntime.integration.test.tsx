@@ -39,6 +39,7 @@ const dashboardLabels = {
   citationStatTitle: 'Citations',
   copyReport: 'Copy',
   exportPlan: 'Export',
+  exportIntent: 'Export intent',
 };
 
 function pickSnapshot() {

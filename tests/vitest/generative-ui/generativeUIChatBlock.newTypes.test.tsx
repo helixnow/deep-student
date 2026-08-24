@@ -65,6 +65,7 @@ vi.mock('react-i18next', () => ({
         'flashcard.save_to_library': '保存到词库',
         'research.actions.copy_report': '复制报告',
         'research.actions.export_plan': '导出计划',
+        'research.actions.export_intent': '导出全部意图',
       };
       return map[key] ?? key;
     },

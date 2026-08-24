@@ -1,7 +1,10 @@
 /**
  * 窄屏 compact：matchMedia / innerWidth < sm → 单列 stack + data-compact
+ * 间距 token 在 `.generative-ui-compact` / generative-ui.css（仅 4/8/12）
  * 桌面端保持 v1.1 sm:grid-cols-* token
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, renderHook } from '@testing-library/react';
 import React from 'react';
@@ -161,7 +164,7 @@ describe('GenerativeUIRenderer compact root', () => {
     const root = container.querySelector('[data-generative-ui]');
     expect(root).toHaveAttribute('data-compact', 'true');
     expect(root?.className).toContain(GENERATIVE_UI_COMPACT_CLASS);
-    expect(root?.className).toContain('space-y-2');
+    expect(root?.className).not.toContain('space-y-2');
     expect(root?.className).not.toContain('space-y-3');
 
     const layout = container.querySelector('[data-layout-mode="grid"]');
@@ -202,5 +205,45 @@ describe('GenerativeUIRenderer compact root', () => {
     expect(root).toHaveAttribute('data-streaming');
     expect(root).toHaveAttribute('data-compact', 'true');
     expect(root?.className).toContain(GENERATIVE_UI_COMPACT_CLASS);
+  });
+});
+
+describe('generative-ui compact CSS token contract', () => {
+  const cssPath = path.join(process.cwd(), 'src/features/generative-ui/generative-ui.css');
+
+  it('ships generative-ui.css with .generative-ui-compact 4/8/12 tokens', () => {
+    expect(fs.existsSync(cssPath)).toBe(true);
+    const css = fs.readFileSync(cssPath, 'utf8');
+    expect(css).toContain('.generative-ui-compact');
+    expect(css).toMatch(/--generative-ui-space-1:\s*4px/);
+    expect(css).toMatch(/--generative-ui-space-2:\s*8px/);
+    expect(css).toMatch(/--generative-ui-space-3:\s*12px/);
+    const compactRules = [...css.matchAll(/\.generative-ui-compact[^{]*\{[^}]+\}/g)]
+      .map((m) => m[0])
+      .join('\n');
+    expect(compactRules.length).toBeGreaterThan(0);
+    expect(compactRules).not.toMatch(/16px|24px/);
+  });
+
+  it('maps compact via class only (spacing lives in CSS, not temporary utilities)', () => {
+    const rendererSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/features/generative-ui/GenerativeUIRenderer.tsx'),
+      'utf8',
+    );
+    expect(rendererSrc).toContain("import './generative-ui.css'");
+    expect(rendererSrc).toContain('GENERATIVE_UI_COMPACT_CLASS');
+    expect(rendererSrc).not.toContain('space-y-2');
+    expect(rendererSrc).not.toContain('[&_[data-block-type]>div]:p-2');
+  });
+
+  it('documents .generative-ui-compact in DESIGN_CONSTITUTION spacing section', () => {
+    const constitution = fs.readFileSync(
+      path.join(process.cwd(), 'docs/generative-ui/DESIGN_CONSTITUTION.md'),
+      'utf8',
+    );
+    const spacingSection = constitution.split('## 3.')[0];
+    expect(spacingSection).toContain('## 2. 间距');
+    expect(spacingSection).toContain('.generative-ui-compact');
+    expect(spacingSection).toContain('generative-ui.css');
   });
 });

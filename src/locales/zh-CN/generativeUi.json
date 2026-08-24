@@ -17,7 +17,8 @@
     "confirm_execute": "确认执行",
     "unregistered_hint": "该操作未注册，无法执行",
     "undo": "撤销",
-    "undo_empty": "没有可撤销的操作"
+    "undo_empty": "没有可撤销的操作",
+    "copy_intent": "复制意图"
   },
   "flashcard": {
     "preview_title": "闪卡预览",
@@ -303,7 +304,8 @@
     },
     "actions": {
       "copy_report": "复制报告",
-      "export_plan": "导出计划"
+      "export_plan": "导出计划",
+      "export_intent": "导出全部意图"
     }
   }
 }
