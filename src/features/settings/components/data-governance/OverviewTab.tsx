@@ -157,7 +157,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </p>
               </div>
             </div>
-            <DsButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0">
+            <DsButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0 [@media(pointer:coarse)]:min-h-11">
               <Archive className="h-3.5 w-3.5" />
               {t('data:governance.archive_overview_action')}
             </DsButton>
