@@ -108,7 +108,7 @@ function slotBase(
 afterEach(() => {
   unregisterIsolationBlocks();
   probeRenderCount = 0;
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe('GenerativeUIRenderer isolation — error boundary', () => {
