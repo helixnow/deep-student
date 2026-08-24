@@ -1,5 +1,17 @@
 # Generative UI 进度日志
 
+## Round 50（2026-08-24）— 收尾剩余缺口
+
+用户要求继续。4 个子代理已落地并推到 `c16a4fbd`。本地门禁 **121 / 806**。当前 CI `32711020815` queued，**文档本轮不 push**。
+
+1. [x] 流式 object intent 走 256k cap，且 cap 前才有 snapshot 资格
+2. [x] `omitResearchBlocksFromIntent` 去掉孤儿研究 action-bar
+3. [x] Chart 跟随 `usePrefersReducedMotion`；Mistake/日历/digest/meta/ActionBar `dir=auto`
+4. [x] 笔记 HITL 拒 regex、限制输入/输出体积
+5. [x] 导出 Markdown 可选 i18n labels
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Wrap-up（2026-08-24）— 收尾审查与修复
 
 CI `32704302688` 仍 queued，**本轮不 push**。早期并行 `cursor/*` 分支的独立功能已由主线 refined 实现覆盖，**不再 merge 旧 tip**（避免回退）。

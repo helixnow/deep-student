@@ -158,14 +158,15 @@
 7. ~~**Round 48 Chat 接线 / Rust 32 / 宿主 i18n**~~ — ✅ 本地完成
 8. ~~**Round 49 快照 diff / 流式 / HPIAS**~~ — ✅ 本地完成
 9. ~~**Wrap-up 收尾审查**~~ — ✅ 本地完成（leftover `cursor/*` 已覆盖，不 merge 旧 tip）
-10. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+10. ~~**Round 50 剩余缺口**~~ — ✅ object cap / HPIAS 孤儿 action-bar / motion+dir / note HITL / export i18n
+11. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–49 + Wrap-up 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–50 + Wrap-up 已推远程；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
