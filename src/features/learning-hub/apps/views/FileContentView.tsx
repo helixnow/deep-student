@@ -26,14 +26,14 @@ import { usePdfLoader } from '@/hooks/usePdfLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 import {
   base64ToBlob,
-  base64ToUint8Array,
   estimateBase64Size,
   LARGE_FILE_THRESHOLD,
   uint8ArrayToBase64,
 } from '@/utils/base64FileUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
+import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 // PDF 预览组件
@@ -389,61 +389,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   }, []);
 
   // ★ L-008 修复：文件过大时提供"保存到本地"操作
+  // 共享双通道（saveResourceToDevice）：blob 直拷贝优先，legacy 内联回退 base64
   const handleSaveFile = useCallback(async () => {
     setIsSaving(true);
     try {
-      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
-      const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
-      if (blobPath) {
-        const saveResult = await fileManager.saveFromSource({
-          sourcePath: blobPath,
-          defaultFileName: node.name,
-          filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
-        });
-        if (!saveResult.canceled && saveResult.path) {
-          showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
-          try {
-            const { openPath } = await import('@tauri-apps/plugin-opener');
-            await openPath(saveResult.path);
-          } catch {
-            // The file was saved successfully; opening it is best-effort.
-          }
-        }
-        return;
-      }
-
-      // Compatibility path for legacy inline resources without a blob file.
-      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
-        attachmentId: node.id,
+      const saveResult = await saveResourceToDevice({
+        nodeId: node.id,
+        fileName: node.name,
+        filters: saveFiltersForFileName(node.name),
+        notFoundMessage: t('learningHub:file.loadFailed'),
+        openAfterSave: true,
       });
-
-      if (!result?.found || !result?.content) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed'));
-        return;
-      }
-
-      const bytes = base64ToUint8Array(result.content);
-      if (!bytes) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed'));
-        return;
-      }
-
-      // 从文件名推断扩展名
-      const saveResult = await fileManager.saveBinaryFile({
-        data: bytes,
-        defaultFileName: node.name,
-        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
-      });
-
       if (!saveResult.canceled && saveResult.path) {
         showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
-        // 保存成功后用系统默认应用打开
-        try {
-          const { openPath } = await import('@tauri-apps/plugin-opener');
-          await openPath(saveResult.path);
-        } catch {
-          // 打开失败不阻塞，文件已保存
-        }
       }
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err));
@@ -606,9 +564,9 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             contentHash,
           });
           if (!isMounted) return;
-          // 仅当返回的是清单文本时展示（区别于 "[文档: xxx]" 等注入占位）
-          if (manifest && manifest.startsWith('[压缩包清单]')) {
-            setTextContent(manifest);
+          // 仅当返回的是清单文本时展示（识别走机器标记，含 legacy 中文前缀兼容）
+          if (manifest && isArchiveManifestText(manifest)) {
+            setTextContent(archiveManifestDisplayText(manifest));
           }
         } catch (archiveErr: unknown) {
           console.warn('[FileContentView] load archive manifest failed:', archiveErr);

@@ -2416,6 +2416,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return () => container.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, showHighlightMenu, goToPage, abortSearchTask, handleRotate, handleRotateCcw, handleZoomIn, handleZoomOut, handleZoomModeSelect]);
 
+  // ========== 壳层搜索转发 ==========
+  // 文件预览窗（FilePreviewAppWindow）的 Cmd/Ctrl+F 通过自定义事件转发到
+  // 本组件的全文搜索，与 EPUB 的 epub-preview-open-search 同构。
+  // 依赖 file：无文档时根节点走空态分支、containerRef 为 null，文档就绪后再绑。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const openSearch = () => {
+      setShowSearch(true);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+    container.addEventListener('pdf-preview-open-search', openSearch);
+    return () => container.removeEventListener('pdf-preview-open-search', openSearch);
+  }, [file]);
+
   // ========== 键盘焦点保障 ==========
   // 快捷键监听挂在容器上，需要容器持有焦点。文档就绪后自动 focus 容器
   // （仅当前焦点不在任何输入类元素时），保证 ←→/±/Ctrl+F 开箱即用。
@@ -2981,6 +2996,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', ...style }}
       ref={containerRef}
       tabIndex={0}
+      data-pdf-preview
       onPointerDown={handleRootPointerDown}
     >
       {/* 搜索栏 */}

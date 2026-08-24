@@ -78,6 +78,7 @@ import {
 } from './window-shell/workbenchPointerAdapter';
 import { installImeScrollContainment } from '../core/imeScrollContainment';
 import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
+import { QuickLookHost } from '../apps/preview/quickLook';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -610,6 +611,8 @@ export const WorkbenchDesktop: React.FC = () => {
 
       {devPanel && <WorkbenchDevPanel />}
       <ContentCloseConfirmationHost />
+      {/* Quick Look 浮层宿主：requestQuickLook(resourceId) 即开即用（O 系空格速览的复用基座） */}
+      <QuickLookHost />
     </div>
   );
 };

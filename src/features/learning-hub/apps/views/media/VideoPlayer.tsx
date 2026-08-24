@@ -29,7 +29,7 @@ import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
-import { isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
 
@@ -175,6 +175,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // 组合键留给壳层/系统（⌘F 搜索、⌘M 最小化、⌘R 刷新等）
+      if (hasShortcutModifier(event)) return;
       const onControl = isInteractiveShortcutTarget(event.target);
       switch (event.key) {
         case ' ':

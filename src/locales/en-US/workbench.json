@@ -1055,7 +1055,10 @@
     "printUnsupported": "This file type can't be printed from the preview. Open it with a system app to print.",
     "searchUnavailable": "Text search isn't available for this file type",
     "moreActions": "More actions",
-    "closeSearch": "Close search"
+    "closeSearch": "Close search",
+    "quickLook": "Quick Look",
+    "quickLookHint": "Space or Esc to close",
+    "quickLookClose": "Close Quick Look"
   },
   "pomodoro": {
     "modes": {
