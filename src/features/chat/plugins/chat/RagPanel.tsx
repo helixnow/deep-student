@@ -134,7 +134,14 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             {t('chat_host:rag.panel.vfs_subtitle')}
           </span>
         </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onClose}
+          aria-label={t('common:actions.cancel')}
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
           <X size={16} />
         </DsButton>
       </div>
