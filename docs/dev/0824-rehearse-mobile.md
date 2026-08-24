@@ -24,9 +24,11 @@ The conflict mixed the base branch's extracted dnd-kit `SortableVendorRow` imple
 
 ## Verification gates
 
-The final rehearsal commit records the results for:
+| Gate | Result |
+| --- | --- |
+| `npm ci` | Passed; 1,192 packages installed from the lockfile. |
+| `npm run typecheck` | Passed after `npm run version:generate` created the gitignored `src/version.ts` required by the repository's CI flow. |
+| `npx vite build` | Passed in 1m 6s; emitted only existing chunk/circular-import warnings. |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | Passed with 22 existing Rust warnings. |
 
-1. `npm ci`
-2. `npm run typecheck`
-3. `npx vite build`
-4. `cargo check --manifest-path src-tauri/Cargo.toml --lib`
+The Rust gate required environment prerequisites rather than source fixes: stable Rust 1.98 (the initial Cargo 1.83 cannot parse the locked Rust 2024 dependencies), the Linux packages listed by the repository's CI workflow, and `bash scripts/download-pdfium.sh linux-x64` for the gitignored PDFium shared library. No dependency lockfile or application source was changed for these prerequisites.
