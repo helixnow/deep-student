@@ -63,9 +63,11 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
   availableModels,
   onClose,
 }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common', 'notes']);
   const clickInputRef = useRef<HTMLInputElement>(null);
-  const maxImageSize = 10 * 1024 * 1024;
+  // 50MB - 与后端图片上限（attachment_repo.rs MAX_IMAGE_BYTES）保持一致
+  const maxImageSizeMB = 50;
+  const maxImageSize = maxImageSizeMB * 1024 * 1024;
   // 测试所有已配置的引擎（不按 engineType 去重，支持同类型多引擎对比）
   const engineModels = availableModels;
   
@@ -87,7 +89,8 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
     }
 
     if (file.size > maxImageSize) {
-      showGlobalNotification('warning', t('settings:ocr.image_too_large'));
+      // settings:ocr.image_too_large 文案写死 10MB，改用带 {{limit}} 插值的 key
+      showGlobalNotification('warning', t('notes:upload.image_too_large', { limit: maxImageSizeMB }));
       return;
     }
 

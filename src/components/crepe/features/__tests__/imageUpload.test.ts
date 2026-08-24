@@ -108,3 +108,72 @@ describe('createImageUploader', () => {
     expect(result).toBe('data:image/png;base64,aW1hZ2U=');
   });
 });
+
+describe('createImageUploader size limit (50MB, aligned with backend notes_save_asset)', () => {
+  const MB = 1024 * 1024;
+
+  /** 小内容 + 伪造 size，避免在测试里真的分配几十 MB 内存 */
+  const makeImageFile = (size: number, name = 'photo.jpg'): File => {
+    const file = new File(['x'], name, { type: 'image/jpeg' });
+    Object.defineProperty(file, 'size', { value: size });
+    return file;
+  };
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    notificationMock.mockReset();
+  });
+
+  it('accepts a 25MB photo instead of rejecting it at the old 10MB limit', async () => {
+    invokeMock.mockResolvedValueOnce({
+      absolute_path: '/data/notes_assets/_global/note-1/photo.jpg',
+      relative_path: 'notes_assets/_global/note-1/photo.jpg',
+    });
+    const upload = createImageUploader('note-1');
+
+    const result = await upload(makeImageFile(25 * MB));
+
+    expect(result).toBe('notes_assets/_global/note-1/photo.jpg');
+    expect(invokeMock).toHaveBeenCalledWith('notes_save_asset', expect.objectContaining({
+      note_id: 'note-1',
+    }));
+    expect(notificationMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a file just above the old 10MB limit', async () => {
+    invokeMock.mockResolvedValueOnce({
+      absolute_path: '/data/notes_assets/_global/note-1/photo.jpg',
+      relative_path: 'notes_assets/_global/note-1/photo.jpg',
+    });
+    const upload = createImageUploader('note-1');
+
+    const result = await upload(makeImageFile(10 * MB + 1));
+
+    expect(result).toBe('notes_assets/_global/note-1/photo.jpg');
+    expect(notificationMock).not.toHaveBeenCalled();
+  });
+
+  it('still rejects a file just above the 50MB backend limit', async () => {
+    const upload = createImageUploader('note-1');
+
+    const result = await upload(makeImageFile(50 * MB + 1));
+
+    expect(result).toBe('');
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(notificationMock).toHaveBeenCalledTimes(1);
+    expect(notificationMock).toHaveBeenCalledWith('warning', expect.any(String));
+  });
+
+  it('accepts a file at exactly 50MB', async () => {
+    invokeMock.mockResolvedValueOnce({
+      absolute_path: '/data/notes_assets/_global/note-1/photo.jpg',
+      relative_path: 'notes_assets/_global/note-1/photo.jpg',
+    });
+    const upload = createImageUploader('note-1');
+
+    const result = await upload(makeImageFile(50 * MB));
+
+    expect(result).toBe('notes_assets/_global/note-1/photo.jpg');
+    expect(notificationMock).not.toHaveBeenCalled();
+  });
+});

@@ -144,7 +144,7 @@ function createStructuredDraft(question?: Question | null): StructuredDraft {
 }
 
 const MAX_IMAGES = 10;
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50MB - 与后端 vfs_upload_attachment 的 MAX_IMAGE_BYTES 保持一致
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 
 const MAX_OPTIONS = 26; // A-Z
@@ -327,7 +327,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           continue;
         }
         if (file.size > MAX_IMAGE_SIZE) {
-          showGlobalNotification('warning', `${file.name}: ${t('exam_sheet:image.max_size', { size: '10MB' })}`);
+          showGlobalNotification('warning', `${file.name}: ${t('exam_sheet:image.max_size', { size: '50MB' })}`);
           continue;
         }
 
