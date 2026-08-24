@@ -1,5 +1,16 @@
 # Generative UI 进度日志
 
+## Round 59（2026-08-24）— 合同与防御纵深
+
+1. [x] `intent.meta.researchSessionId` 进入 Zod，Rust 顶层优先、meta 回退
+2. [x] HPIAS 过滤孤儿 `copy-block` action-bar
+3. [x] `collectUnregisteredActionIds` 使用 `Object.hasOwn`
+4. [x] Markdown `[text](url)` / 图片链接走 URL 消毒
+5. [x] Rust `noteEdit` 只接受字符串字段；skip-link 仅在有 action-bar 时出现
+6. [x] `parser.stateMachine` 不再分配 300KiB 大串
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 58（2026-08-24）— 修复 CI 红灯并 push
 
 远程 head `c16a4fbd` 的 run `32711020815` 失败：Rust 生命周期、ESLint `no-control-regex`、Vitest shard OOM。本轮修复并连同 R51–57 未推送提交一起 push。

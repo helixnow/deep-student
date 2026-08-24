@@ -375,6 +375,22 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'isRegex: z.literal(false)',
       ]),
   },
+  {
+    id: 'round59-meta-research-session-id',
+    check: () =>
+      fileContains('src/features/generative-ui/schema.ts', ['researchSessionId']) &&
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        '/meta/researchSessionId',
+      ]),
+  },
+  {
+    id: 'round59-markdown-link-sanitize',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/sanitizeGenerativeMarkdown.ts', [
+        'sanitizeMarkdownLinks',
+        'MD_LINK_RE',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {

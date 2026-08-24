@@ -97,6 +97,23 @@ describe('hpiasEventBridge', () => {
     expect(omitResearchBlocksFromIntent(intent).blocks).toEqual([]);
   });
 
+  it('drops orphaned copy-block action bars when live panel takes over', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'research-report', props: { body: 'Done' } },
+        {
+          type: 'action-bar',
+          props: {
+            actions: [{ id: 'copy-block', label: 'Copy block' }],
+          },
+        },
+      ],
+    };
+
+    expect(omitResearchBlocksFromIntent(intent).blocks).toEqual([]);
+  });
+
   it('preserves action bars containing non-research actions', () => {
     const mixedActionBar = {
       type: 'action-bar',

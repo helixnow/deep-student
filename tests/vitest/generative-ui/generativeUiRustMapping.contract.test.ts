@@ -77,7 +77,10 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('researchSessionId');
     expect(executorSrc).toContain('MAX_RESEARCH_SESSION_ID_LENGTH');
     expect(executorSrc).toContain('parse_research_session_id_rejects_unsafe_or_oversized');
+    expect(executorSrc).toContain('parse_research_session_id_falls_back_to_intent_meta');
+    expect(executorSrc).toContain('/meta/researchSessionId');
     expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
+    expect(executorSrc).toContain('parse_note_edit_rejects_non_string_fields');
     expect(executorSrc).toContain('emit_hpias_session_started_if_needed');
   });
 

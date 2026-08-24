@@ -59,6 +59,7 @@ export interface GenerativeUIIntent {
   meta?: {
     title?: string;
     description?: string;
+    researchSessionId?: string;
   };
 }
 
