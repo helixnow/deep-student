@@ -141,7 +141,7 @@ function ButtonCompareSection() {
                   <button
                     type="button"
                     disabled={disabled}
-                    className="px-3 py-1.5 rounded border text-xs disabled:opacity-50"
+                    className="px-3 py-1.5 rounded border text-xs disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                   >
                     {v.label}
                   </button>
@@ -216,7 +216,7 @@ function FormControlsCompareSection() {
                   onChange={e => setInputValue(e.target.value)}
                   placeholder="native <input>"
                   disabled={disabled}
-                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50"
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
 />
               </td>
             </tr>
@@ -243,7 +243,7 @@ function FormControlsCompareSection() {
                   onChange={e => setTextareaValue(e.target.value)}
                   placeholder="native <textarea>"
                   disabled={disabled}
-                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y"
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y [@media(pointer:coarse)]:min-h-11"
 />
               </td>
             </tr>
@@ -366,7 +366,7 @@ function FormControlsCompareSection() {
                   value={selectValue}
                   onChange={e => setSelectValue(e.target.value)}
                   disabled={disabled}
-                  className="w-full px-2 py-1.5 rounded border text-sm disabled:opacity-50"
+                  className="w-full px-2 py-1.5 rounded border text-sm disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                 >
                   <option value="a">选项 A</option>
                   <option value="b">选项 B</option>
