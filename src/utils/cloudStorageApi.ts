@@ -17,6 +17,7 @@ export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_L
 export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
+export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
 
 type ErrorWithCode = Error & { code?: string };
 
@@ -78,6 +79,9 @@ function codeFromDiagnosticText(text: string): string | undefined {
   }
   if (text.includes(SYNC_E2EE_PASSWORD_REQUIRED_CODE)) {
     return SYNC_E2EE_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE)) {
+    return PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE;
   }
   return undefined;
 }

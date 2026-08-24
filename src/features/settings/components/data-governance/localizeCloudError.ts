@@ -69,6 +69,12 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   if (/无法整槽恢复的便携归档当成加密全保真/.test(raw)) {
     return t('cloudStorage:encryption.storedPasswordRequired');
   }
+  if (
+    readCloudStorageErrorCode(error) === 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE' ||
+    /备份不能用于完整恢复|不是可替换数据槽的完整快照|partial archive 不能替换数据槽/.test(raw)
+  ) {
+    return t('cloudStorage:errors.partialArchiveNotSlotable');
+  }
   if (/Missing WebDAV configuration/.test(raw)) {
     return t('cloudStorage:errors.missingWebdavConfig');
   }

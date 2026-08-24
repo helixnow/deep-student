@@ -570,6 +570,14 @@ function localizeBackupJobError(
   if (message === INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE) {
     return t('data:governance.restore_incremental_not_supported');
   }
+  if (
+    message.includes('E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE') ||
+    /备份不能用于完整恢复|不是可替换数据槽的完整快照|partial archive 不能替换数据槽/.test(
+      message,
+    )
+  ) {
+    return t('data:governance.restore_partial_archive_refused');
+  }
   return message;
 }
 

@@ -16,6 +16,7 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
 
 import {
   CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+  PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
   STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
   SYNC_E2EE_WRONG_PASSWORD_CODE,
 } from '@/utils/cloudStorageApi';
@@ -90,6 +91,34 @@ describe('localizeCloudStorageError', () => {
         t,
       ),
     ).toBe('cloudStorage:encryption.storedPasswordRequired');
+  });
+
+  it('maps portable/partial slot-restore refusals by stable code and Chinese fallback', () => {
+    expect(
+      localizeCloudStorageError(
+        { code: PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE, message: 'rewritten partial archive' },
+        t,
+      ),
+    ).toBe('cloudStorage:errors.partialArchiveNotSlotable');
+    expect(
+      localizeCloudStorageError(
+        new Error('备份不能用于完整恢复: 备份不是可替换数据槽的完整快照: PartialOverlay'),
+        t,
+      ),
+    ).toBe('cloudStorage:errors.partialArchiveNotSlotable');
+  });
+
+  it('Rust and TypeScript share the partial-archive slot-restore code', () => {
+    const rust = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/mod.rs'),
+      'utf-8',
+    );
+    expect(rust).toContain(`"${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}"`);
+    const restore = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/data_governance/commands_restore.rs'),
+      'utf-8',
+    );
+    expect(restore).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
   });
 
   it('maps rewritten E2EE diagnostics by stable code', () => {
