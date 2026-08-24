@@ -1212,6 +1212,7 @@ mod tests {
             writable_roots: vec![writable.to_path_buf()],
             protected_read_roots: Vec::new(),
             protected_write_roots: Vec::new(),
+            restrict_read_to_roots: false,
             allow_network: false,
         }
     }

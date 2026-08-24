@@ -1,6 +1,6 @@
 # Anki Agent 工具面说明
 
-本文档说明 ChatV2 中对 Agent 开放的 28 个 `builtin-chatanki_*` 工具。内容以当前工具 Schema、Rust 执行器和服务实现为准，供技能编排、联调和故障排查使用。
+本文档说明 ChatV2 中对 Agent 开放的 29 个 `builtin-chatanki_*` 工具。内容以当前工具 Schema、Rust 执行器和服务实现为准，供技能编排、联调和故障排查使用。
 
 实现入口：
 
@@ -35,11 +35,12 @@
 | `builtin-chatanki_undo_library_last_review` | 按复习版本撤销库卡片最后评分 | 全库 | 是 |
 | `builtin-chatanki_delete_library_card` | 按内容及复习版本删除库卡片 | 全库 | 是 |
 | `builtin-chatanki_retemplate` | 乐观锁批量换模板 | 当前会话的文档或卡片 | 是 |
+| `builtin-chatanki_transform` | 批量程序化变换（ops 声明式 / script 沙箱脚本），dry_run 出 diff、apply 乐观锁写回 | 当前会话的 `documentId` 或选择集 | 是（dry_run 否） |
 | `builtin-chatanki_control` | 暂停、恢复、重试或取消生成 | 当前会话的 `documentId` | 是 |
 | `builtin-chatanki_export` | 导出 APKG 或 JSON | 当前会话的 `documentId` | 是，写文件 |
 | `builtin-chatanki_sync` | 通过 AnkiConnect 同步到桌面 Anki | 当前会话的 `documentId` | 是，写外部 Anki |
 | `builtin-chatanki_list_templates` | 列出本地模板及字段契约 | 库级 | 否 |
-| `builtin-chatanki_analyze` | 预分析文本密度，不生成卡片 | 当前调用内容 | 否 |
+| `builtin-chatanki_analyze` | 预分析材料并给出与管线同源的路由/参数预估，不生成卡片 | 当前调用内容/引用元数据 | 否 |
 | `builtin-chatanki_check_anki_connect` | 检查 AnkiConnect 可用性 | 本机环境 | 否 |
 
 ## 通用契约
@@ -153,11 +154,39 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
   "documentId": "apkg-...",
   "importedCards": 146,
   "importedTemplates": 0,
-  "mediaSkipped": 2
+  "mediaImported": 12,
+  "mediaSkipped": 2,
+  "mediaReport": {
+    "declared": 14,
+    "imported": 12,
+    "skipped": 2,
+    "skips": [
+      { "reason": "entry_missing", "count": 2, "filenames": ["a.png", "b.mp3"] }
+    ],
+    "mediaDir": "/app-data/anki_media"
+  },
+  "warnings": ["媒体清单声明的条目在包内缺失，已跳过: 3 (a.png)"]
 }
 ```
 
-当前实现不导入 APKG 模板，故 `importedTemplates` 为 `0`。本应用导出的 APKG 会在 model 中携带模板 ID 元数据，重新导入时该 ID 会写回卡片，因此只要本地仍有对应模板即可直接再次导出，无需先 `retemplate`；无此元数据的外部 APKG 保持 `templateId=null`。导出 Cloze 时，每个唯一且有效的 `{{cN::答案}}` 会写入一条 `ord=N-1` 的 Anki card row；Basic 始终只有一条 `ord=0`。自有包还携带 Cloze 折叠元数据，导回时同一 note 的多个 ord 只恢复成一张内部内容卡，反复导入/导出不会倍增；无该元数据的外部包仍按每条 Anki card row 导入。媒体文件会统计但不落库，`mediaSkipped` 是媒体 manifest 声明项和数字媒体项的去重计数。导入成功后应立即用返回的 `documentId` 分页 `get_cards`。
+当前实现不导入 APKG 模板，故 `importedTemplates` 为 `0`。本应用导出的 APKG 会在 model 中携带模板 ID 元数据，重新导入时该 ID 会写回卡片，因此只要本地仍有对应模板即可直接再次导出，无需先 `retemplate`；无此元数据的外部 APKG 保持 `templateId=null`。导出 Cloze 时，每个唯一且有效的 `{{cN::答案}}` 会写入一条 `ord=N-1` 的 Anki card row；Basic 始终只有一条 `ord=0`。自有包还携带 Cloze 折叠元数据，导回时同一 note 的多个 ord 只恢复成一张内部内容卡，反复导入/导出不会倍增；无该元数据的外部包仍按每条 Anki card row 导入。导入成功后应立即用返回的 `documentId` 分页 `get_cards`。
+
+**媒体导入**：包内媒体（图片与音频，legacy JSON 清单和现代 anki21b zstd+protobuf 清单均支持）会按清单文件名解出到应用数据目录下的 `anki_media/`（`mediaReport.mediaDir`）。字段 HTML 保留 Anki 原生引用（`src="name.png"`、`[sound:name.mp3]`，不改写，保证再导出后桌面 Anki 可直接解析）；被引用且成功落盘的媒体以绝对路径写入卡片 `images`，`images` 中的路径与字段引用按 basename 一一对应，这也是 `chatanki_export(apkg)` 把媒体打回 zip 的依据——导入→导出构成完整媒体往返。
+
+`mediaImported` 是成功落盘（或按文件名复用已有文件）的数量；`mediaSkipped` 是声明但未落盘的数量。任何跳过都必须出现在结构化的 `mediaReport.skips` 中（按 `reason` 分组，`count` 为全量计数，`filenames` 最多采样 20 个），不存在静默丢弃。稳定 `reason` 码：
+
+| reason | 含义 |
+|---|---|
+| `entry_missing` | 清单声明的条目在包内缺失 |
+| `unsafe_filename` | 文件名含路径穿越/反斜杠/盘符/控制字符，被安全策略拒绝 |
+| `entry_oversized` | 解压后超过单条目 256 MiB 上限（解压炸弹防护），半成品已删除 |
+| `io_error` | 落盘或解压失败 |
+| `orphan_entry` | 包内数字条目未出现在 media 清单（无文件名可用，按 zip 键列出） |
+| `manifest_unparsed` | 现代包媒体清单无法解析，全部媒体跳过（卡片导入不受影响） |
+| `media_dir_unavailable` | 媒体目录创建失败 |
+| `media_import_disabled` | 调用方未启用媒体目录（旧行为兼容路径） |
+
+包内无媒体且无任何跳过时不返回 `mediaReport` 与 `warnings` 字段。zip 条目名的路径穿越（zip slip）在解析阶段即整包拒绝（`apkg_invalid_archive`）；清单文件名只取 basename 落盘，任何情况下不会写出媒体目录之外。向用户汇报导入结果时应包含媒体统计与跳过原因。
 
 失败时 `output.error` 是结构化 `AppError`，稳定错误码位于 `output.error.details.errorCode`：
 
@@ -193,9 +222,20 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
 | `resourceIds` | 否 | 指定多个资源；实现会与 `resourceId` 合并并去重 |
 | `deckName` | 否 | 后续导出/同步默认牌组；默认取设置或 `Default` |
 | `noteType` | 否 | 后续导出/同步默认笔记类型；默认取设置或 `Basic` |
+| `extraRequirements` | 否 | 附加生成要求（卡片风格/语言/格式类约束），作为高优先级规则注入生成提示；学习目标仍放 `goal` |
+| `outputProtocol` | 否 | 流式输出协议：`auto`（默认，管线按模型能力自选）、`delimiter`、`json_object`、`json_schema`。非法值在启动前被 `normalize_output_protocol_arg` 直接拒绝，不会静默回退成 `delimiter` |
+| `visualHint` | 否 | 视觉重点提示（"看图看哪里"）。仅 VLM 路由（`vlm_light`/`vlm_full`）生效，以数据分隔符包裹注入 VLM prompt（非指令）；`simple_text` 路由忽略 |
+| `contentFormat` | 否 | 材料形态覆盖：`auto`（默认，启发式判定）、`glossary`（词汇表/术语清单，逐条条目制卡）、`prose`（叙述性文章）。与 `analyze` 的 `routing.glossaryMode` 对应 |
+| `enableQaPass` | 否 | 字段 QA 校验留痕开关；缺省 = `true`（产出 `_qa_flags` 留痕） |
+| `enableCriticPass` | 否 | 生成后 grounded LLM critic 质检/复审开关；缺省 = `false`。仅当用户明确要求“质检/复审/critic”时传 `true` |
+| `enableFsrsFeedback` | 否 | FSRS 复习画像回流开关；缺省 = `true` |
+| `maxImages` | 否 | VLM 单次调用图片数上限，整数 `1..12`（默认 `vlm_light` 6 / `vlm_full` 12）；超出范围被 clamp 到 `1..=12`，仅 VLM 路由生效 |
+| `enablePreferenceMemory` | 否 | 历史制卡偏好记忆注入开关；缺省 = `true` |
 | `debug` | 否 | 是否在预览块中附加路由和资源诊断信息 |
 
 `templateMode=all` 使用全部激活模板；若目标明确是选择题，实现可能收敛到匹配的单模板。Schema 已强制 `maxCards<=100`，超过 100 张必须拆批，不应依赖执行器的兼容性截断。
+
+调优参数中，`enableCriticPass` 默认关闭，只有用户明确要求质检、复审或 critic 时才开启；其余参数默认 auto/开启，绝大多数调用不需要传。参数名与 Rust `ChatAnkiRunArgs` 的 serde camelCase 字段一一对应，Rust 解析层同时兼容 snake_case alias（`enableCriticPass` 对应 `enable_critic_pass`）。Schema 已声明 `additionalProperties: false`：`temperature`、`segmentOverlapSize` 等 `analyze` 预估参数不是 run/start 参数，不得传入。
 
 立即返回，不等待后台完成：
 
@@ -218,10 +258,13 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
 
 从已经准备好的纯文本或 Markdown 直接启动制卡，跳过文件解析并固定走文本路径。
 
-参数与 `run` 的模板、牌组、卡数和 `debug` 参数相同，但有两点不同：
+参数与 `run` 的模板、牌组、卡数和 `debug` 参数相同，但有三点不同：
 
 - `content` 必填且应为实际材料正文；
-- 不接受 `route`、`resourceId` 或 `resourceIds`。
+- 不接受 `route`、`resourceId` 或 `resourceIds`；
+- 固定纯文本路径、永不触发 VLM，因此也没有 `visualHint` 和 `maxImages`（Rust `ChatAnkiStartArgs` 无这两个字段）。
+
+其余调优参数与 `run` 一致：`extraRequirements`、`outputProtocol`（非法值同样在启动前被拒绝）、`contentFormat`、`enableQaPass`、`enableCriticPass`（默认关闭，仅响应用户明确质检/复审要求）、`enableFsrsFeedback`、`enablePreferenceMemory`。
 
 成功返回与 `run` 相同：`status=started`、真实 `ankiBlockId`、预分配的真实 `documentId` 和后台启动消息。参数/模板/运行环境失败语义也与 `run` 相同。
 
@@ -790,10 +833,26 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
 | `documentId` | 与 `cardIds` 二选一 | 选择当前文档全部 live 卡片 |
 | `cardIds` | 与 `documentId` 二选一 | `1..100` 个不重复真实 ID，且必须来自同一文档 |
 | `targetTemplateId` | 是 | 来自 `list_templates` 的激活模板 |
-| `strategy` | 是 | `map_only` 或 `fill_missing` |
+| `strategy` | 是 | `map_only`、`fill_missing` 或 `fill_missing_llm` |
 | `expectedVersions` | 是 | `cardId -> version`，必须与本次完整选择精确一致 |
 
 `map_only` 映射已有同名/别名字段并报告缺失字段。`fill_missing` 仍不会调用 LLM 或自动填值，只会在缺字段卡片上额外返回 `source`，供后续 `update_card` 使用。
+
+`fill_missing_llm` 是两阶段策略：
+
+- **Phase 1** 与 `fill_missing` 完全相同——同一 `IMMEDIATE` 事务内校验选择集与全部版本并换模板，任何冲突都不会写入部分结果；LLM 不可用时在写库前即以工具失败返回。
+- **Phase 2** 在 Phase 1 提交后，对仍有 `missingFields` 的卡按批（每批至多 8 张）调用后台模型生成字段值，只允许填该卡列出的缺失字段，然后以 Phase 1 之后的新 `version` 逐卡 CAS 写回。Phase 2 失败**不回滚 Phase 1**：换模板已生效，失败卡只体现在 `fillStatus` 上。
+
+`fill_missing_llm` 的逐卡返回额外携带 `fillStatus` 与 `filledFields`；顶层追加 `fill` 汇总：
+
+| `fillStatus` | 含义 |
+|---|---|
+| `filled` | 全部缺失字段已生成并 CAS 写回，`version` 已再次前进 |
+| `partial` | 部分字段写回，剩余留在 `missingFields`，需 `update_card` 补齐 |
+| `skipped` | LLM 未返回该卡可用字段值，未写库 |
+| `conflict` | Phase 2 CAS 版本冲突（Phase 1 后另有写入），未写库；重新 `get_cards` |
+| `failed` | LLM 调用/解析或写库失败，未写库，`fillError` 给出原因 |
+| `not_needed` | 该卡 Phase 1 后没有缺失字段，无需补齐 |
 
 成功返回：
 
@@ -821,6 +880,23 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
 }
 ```
 
+`strategy=fill_missing_llm` 时逐卡追加 `fillStatus`/`filledFields`（失败时含 `fillError`），顶层追加：
+
+```json
+{
+  "fill": {
+    "attempted": 2,
+    "filled": 1,
+    "partial": 0,
+    "skipped": 0,
+    "conflicts": 0,
+    "failed": 1
+  }
+}
+```
+
+`missingCards` 与逐卡 `missingFields`/`version` 均为 Phase 2 之后的终态。
+
 结构化拒绝/冲突：
 
 | `error` | `status` | 含义与处理 |
@@ -835,6 +911,130 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
 目标模板不存在/未激活分别以工具失败消息 `target_template_not_found`、`target_template_inactive` 返回。成功写入后也可能出现 `status=partial`，含义与其他写卡工具相同。
 
 当前会话没有该文档的预览块时，换模板仍会在完整的 Anki 所有权与乐观锁校验后写入，`uiSync.status=not_required` 且 `eventAttempted=false`。
+
+### `builtin-chatanki_transform`
+
+对选中卡片执行批量程序化变换（批量挖空、术语替换、格式清洗、批量增删标签）。快照直接出自数据库全文（**无 2000 字符截断视图**，不存在截断毒化，无需 `allowTruncatedSource`），写回逐卡复用与 `batch_update_cards` 同源的乐观锁原语，成功项汇总为一次预览块 patch + `fsrs://changed`。
+
+两种互斥的变换定义（`transform.script` 与 `transform.ops` 必须且只能提供一个）：
+
+| 模式 | 能力 | 执行面 | 敏感度 | 平台 |
+|---|---|---|---|---|
+| `ops` | 声明式安全子集（`regex_replace` / `tag_add` / `tag_remove`，≤20 个按序应用） | 纯 Rust（regex crate，无回溯灾难） | Medium | 全平台（含移动端） |
+| `script` | Agent 现写 python/node 脚本（能力全集） | 平台硬沙箱（macOS Seatbelt / Linux bwrap / Windows AppContainer），网络恒禁、仅 job 目录可写 | **High**（审批卡完整展示脚本正文） | 仅桌面端；移动端/缺沙箱/缺解释器结构化拒绝 |
+
+参数：
+
+| 参数 | 必填 | 约束 |
+|---|---|---|
+| `documentId` | 是 | 当前会话拥有的制卡任务 |
+| `selection` | 否 | `cardIds`（1..500 个真实 ID）与 `filter`（`all`/`edited_only`/`error_only`）互斥；缺省为文档全部 live 非诊断卡 |
+| `mode` | 否 | `dry_run`（默认，只出 diff 不写库）或 `apply` |
+| `transform.ops` | 与 script 二选一 | 声明式操作序列；正则 pattern ≤1024、replacement ≤4096、单 op tags ≤50 |
+| `transform.script` | 与 ops 二选一 | `language`（`python`/`node`）+ `code`（≤65536 字符）+ `timeoutMs`（1000..120000，默认 30000） |
+| `expectedVersions` | apply 必填 | `cardId -> version` 完整映射，必须与选择集精确一致（与 `retemplate` 相同 CAS 语义）；dry_run 忽略 |
+| `purpose` | 否 | 一句话目的说明，进入审批卡与审计 |
+
+#### ops 模式契约
+
+- 全部正则一次性编译，任一失败整批返回 `error=invalid_pattern`（`blocked`，附 `opIndex`/`pattern`/`detail`），不写库。
+- `regex_replace` 作用于 `front`/`back`/`text`（`text=null` 的卡自动跳过），替换串支持 `$1`/`$name` 捕获组引用；`tag_add` 去重追加，`tag_remove` 精确删除。
+
+#### script 模式契约（I/O 合同）
+
+执行链：DB 无截断快照 → 会话 temp root 的 job 目录（`runtime-root://temp/chatanki_transform/job-<ts>-<seq>`，保留至会话清理供审计）→ 平台硬沙箱运行脚本 → 输出严格校验 → 与 ops 模式**同一条** CAS 写回路径。
+
+脚本从环境变量 `CHATANKI_INPUT` 指向的 UTF-8 JSON 文件读输入：
+
+```json
+{
+  "documentId": "…",
+  "cards": [
+    {
+      "id": "…",
+      "index": 1,
+      "front": "全文，无 2000 字符截断",
+      "back": "…",
+      "text": null,
+      "tags": ["…"],
+      "templateId": "design-swiss",
+      "extraFields": {},
+      "version": "2026-08-24T…Z"
+    }
+  ]
+}
+```
+
+把结果写到 `CHATANKI_OUTPUT` 指向的路径（≤32 MiB）：
+
+```json
+{
+  "cards": [
+    { "id": "…", "text": "变换后的 {{c1::术语}} 全文" },
+    { "id": "…", "front": "更新的问题", "tags": ["生物", "重点"] }
+  ]
+}
+```
+
+输出校验规则（违反者**逐卡**拒绝，不整批失败）：
+
+| 规则 | 违反时逐卡 `error` |
+|---|---|
+| 只允许 `front`/`back`/`text`/`tags` 更新键；输入合同键（`id`/`version`/`index`/`templateId`/`extraFields`）回显被静默忽略；其余键拒绝 | `unknown_output_field` |
+| `null`/缺省 = 不修改；字符串字段 trim 后必须非空（v1 不支持清空字段）；tags 元素非空 | `empty_field` |
+| 字段类型必须匹配（字符串/字符串数组） | `invalid_field_type` |
+| 修改 `text` 必须携带合法 `{{cN::答案}}` 挖空标记（N ≥ 1，答案非空，允许 `::hint`） | `invalid_cloze_text` |
+| 单卡 tags 去重后 ≤100 | `tags_limit_exceeded` |
+
+不可绕过的硬防线：
+
+- **`version` 回传一律忽略**：CAS 只认快照时 Rust 记录的版本，脚本篡改无效；`apply` 还要求显式携带 `expectedVersions` 双保险。
+- **v1 禁止脚本增删卡**：输出中快照之外的 `id` 记入顶层 `unknownCardIds`（不写库、不整批失败）；输出未提及的卡不修改。增删卡走 `add_cards`/`delete_cards` 正门。
+- **网络恒禁**（无豁免参数）、只挂载 job 目录可写、环境变量白名单（仅 `CHATANKI_INPUT`/`CHATANKI_OUTPUT`/净化 PATH/UTF-8 locale 等，python 以 `-I` 隔离模式运行）。
+- stdout/stderr 仅承载日志，各保留末尾 16KB 进 `script.stdoutTail`/`stderrTail`。
+
+顶层合同违规（非 JSON / 缺 `cards` / 条目缺字符串 `id` / 重复 `id` / 超 32 MiB）整批返回 `error=invalid_script_output`（`failed`），不写库。
+
+#### 返回值
+
+dry_run 返回逐卡 `diff`（before/after 仅展示用途截断；`Invalid` 计划以 `invalid: true` 条目呈现）；apply 返回逐卡 `results`（`ok`/`unchanged`/`invalid`/`conflict`/`not_found`/`failed`，语义与 `batch_update_cards` 一致）。script 模式两者均追加：
+
+```json
+{
+  "script": {
+    "language": "python",
+    "exitCode": 0,
+    "timedOut": false,
+    "timeoutMs": 30000,
+    "durationMs": 812,
+    "stdoutTail": "…",
+    "stderrTail": "",
+    "sandbox": "linux_bwrap",
+    "interpreter": "/usr/bin/python3"
+  },
+  "jobPath": "runtime-root://temp/chatanki_transform/job-1756005600000-0001",
+  "unknownCardIds": []
+}
+```
+
+结构化拒绝/失败（均 `mutationApplied=false`，不写库）：
+
+| `error` | `status` | 含义与处理 |
+|---|---|---|
+| `invalid_pattern` | `blocked` | ops 正则编译失败；按 `opIndex` 修正 |
+| `selection_changed` / `selection_too_large` | `conflict` / `blocked` | 与 ops 模式共用的选择集防线 |
+| `expected_versions_mismatch` | `conflict` | apply 前置校验（script 模式在沙箱执行**之前** fail-fast） |
+| `script_sandbox_unavailable` | `rejected` | 移动端 / Linux 缺 bwrap / macOS 缺 sandbox-exec；改用 ops |
+| `script_environment_unavailable` | `rejected` | 无窗口环境无法解析会话 temp root；改用 ops |
+| `interpreter_unavailable` | `rejected` | 本机无 python3/python 或 node；装解释器、换 language 或改用 ops |
+| `script_setup_failed` | `failed` | job 目录/命令构造/spawn 基础设施失败 |
+| `script_timed_out` | `failed` | 超时，进程组已终止；提高 `timeoutMs` 或缩小选择集 |
+| `script_failed` | `failed` | 非零退出（含被信号杀死 `exitCode=null`）；看 `stderrTail` |
+| `script_output_missing` | `failed` | 0 退出但未写 `$CHATANKI_OUTPUT` |
+| `script_output_too_large` | `failed` | 输出超 32 MiB；只回传变更卡与变更字段 |
+| `invalid_script_output` | `failed` | 顶层输出合同违规，见 `detail` |
+
+敏感度：`transform.ops` Medium；`transform.script` **High**（`sensitivity_level_for_call` 按参数动态分级，对齐 shell script-runner 恒 High 的纪律）。审批卡展示的参数对 chatanki 工具原样透传，因此脚本正文完整可见。技能层纪律：首次变换必须先 dry_run；apply 影响超过 3 张卡先 `ask_user`。
 
 ### `builtin-chatanki_control`
 
@@ -892,11 +1092,14 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
   "deckName": "Default",
   "noteType": "Basic",
   "cardsCount": 20,
-  "hiddenOverLimitCount": 3
+  "hiddenOverLimitCount": 3,
+  "exportedMedia": 2
 }
 ```
 
 导出包含库中该文档的全部非错误卡，含因 `maxCards` 超限保留、未展示在预览块的卡；`hiddenOverLimitCount` 表示其中的隐藏卡数量，因此 `cardsCount` 可能大于块内可见数，应向用户说明。
+
+APKG 导出会把卡片 `images` 引用的本地媒体（图片与音频，含 `import_apkg` 落盘的媒体）按 Anki 规范打回包内（清单键 `"0","1",...` 指向文件名），`exportedMedia` 是实际打包数。磁盘缺失或超过 256 MiB 单文件上限的媒体不会中断导出：路径列入 `missingMedia` 数组、细节写入 `mediaWarnings`；两个字段仅在非空时返回，出现时必须向用户如实汇报，不得静默忽略。`format=json` 不打包媒体，也没有这三个字段。
 
 APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某些卡无模板，优先使用显式 `templateId`，其次使用整批唯一模板；仍无法解析时返回 `blocks.ankiCards.errors.templateNotFound`。
 
@@ -967,14 +1170,17 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 
 ### `builtin-chatanki_analyze`
 
-对直接文本做轻量启发式分析，不创建卡片。
+预分析学习材料，不创建卡片。路由决策与制卡管线共用同一决策函数
+（forced > 高置信度 LLM 路由计划 > 引用类型启发式），不再固定推荐 `simple_text`。
 
 参数：
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `content` | 是 | 非空文本/Markdown |
-| `goal` | 否 | 原样回显，供调用方关联学习目标 |
+| `content` | 二选一 | 文本/Markdown；传 `resourceIds` 时可省略 |
+| `resourceId` / `resourceIds` | 二选一 | 要预分析的资源 ID；解析出引用元数据后走与 `chatanki_run` 相同的 LLM 路由规划（失败/低置信度回退启发式）。解析失败 fail-open：降级为纯文本分析并写入 `warnings[].code=analyze_refs_unresolved` |
+| `goal` | 否 | 进入路由规划提示词参与决策（不再只是回显） |
+| `route` | 否 | 预演强制路由（`simple_text/vlm_light/vlm_full`）；非法值直接失败 |
 
 成功返回：
 
@@ -983,21 +1189,34 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
   "status": "ok",
   "goal": null,
   "metrics": {
-    "chars": 1200,
-    "nonEmptyLines": 60,
-    "entryLikeLines": 45
+    "chars": 1200, "nonEmptyLines": 60, "entryLikeLines": 45,
+    "refTotal": 2, "refFiles": 1, "refImages": 1, "refOthers": 0
+  },
+  "routing": {
+    "route": "vlm_light",
+    "routeSource": "llm",
+    "confidence": 0.85,
+    "glossaryMode": true,
+    "reason": "少量图表需要视觉补充"
   },
   "recommended": {
-    "route": "simple_text",
+    "route": "vlm_light",
+    "maxCards": 50,
     "glossaryMode": true,
     "segmentOverlapSize": 0,
     "maxOutputTokensOverride": 2400,
-    "temperature": 0.2
+    "temperature": 0.2,
+    "pipelineDefaultMaxCards": 0
   }
 }
 ```
 
-当前实现只对术语表形态做启发式推荐，`recommended.route` 固定为 `simple_text`；它不会读取上传文件，也不会估出精确卡数。失败为参数解析错误或 `content is required`。
+- `routing.routeSource ∈ {forced, llm, heuristic}`；`confidence` 仅 `llm` 来源非 null；`metrics.ref*` 仅引用解析成功时出现。
+- **可回传 `chatanki_run` 的参数**：`recommended.route`（作 `route` 强制，通常不必传——管线会自己再跑同一条决策链）与 `recommended.maxCards`（1..=100；词汇表 = 条目数 + 余量，封顶 100）。
+- **管线内自算、run/start 没有对应参数**（仅供解释预估）：`temperature`、`maxOutputTokensOverride`、`segmentOverlapSize` 来自与 `build_generation_options` 共享的词汇表旋钮函数；`pipelineDefaultMaxCards` 是未显式传 `maxCards` 时的内部默认（`0` 表示词汇表模式不设数值上限）。
+- `glossaryMode` 与管线相同取「高置信度 LLM 提示 ∪ 内容启发式」并集。
+
+失败为参数解析错误、`content or resourceIds is required` 或非法 `route`。
 
 ### `builtin-chatanki_check_anki_connect`
 
@@ -1033,7 +1252,7 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 2. `get_cards` 分页读完完整选择，构造每张卡的 `cardId -> version`。
 3. 用户确认后调用 `retemplate(strategy=map_only)`。
 4. 检查每张卡的 `missingFields`。若目标为 Cloze，先用 `update_card` 写入有效 `{{cN::...}}` 文本。
-5. 按卡调用 `update_card` 补齐字段；`fill_missing` 只提供源内容，不会自动填值。
+5. 按卡调用 `update_card` 补齐字段；`fill_missing` 只提供源内容，不会自动填值。用户明确要求自动补齐时可改用 `fill_missing_llm`，之后按逐卡 `fillStatus` 对 `partial/skipped/conflict/failed` 的卡走 `update_card` 兜底。
 6. 再次分页 `get_cards` 验收。任何版本冲突都要刷新完整选择和全部版本，不得复用旧映射。
 
 ### APKG 加工闭环
@@ -1075,9 +1294,9 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 ## 已知边界与后续工作
 
 - `batch_update_cards` / `delete_cards` 逐卡使用既有 `IMMEDIATE` 事务 CAS 原语，不是整批单事务原子提交：冲突卡跳过、成功卡生效（与逐卡报告语义一致）。若未来需要整批原子性，应在 database 层新增批量事务原语。
-- APKG 媒体当前只统计并跳过，不导入附件内容；APKG 模板当前不落入本地模板库，`importedTemplates=0`。
+- APKG 媒体会按清单导入本地 `anki_media/` 并在再导出时打回包内；无法安全落盘的媒体按结构化原因统计并跳过。APKG 模板当前不落入本地模板库，`importedTemplates=0`。
 - 统一失败分段重试不会自动删除旧错误诊断卡；必须在 `get_cards` 验收替代卡后显式删除，避免部分修复时误删证据。
 - FSRS 目前使用默认牌组，不提供每日新卡上限或 Agent 牌组管理工具。
-- `analyze` 是文本启发式工具，不解析上传文件，也不提供精确卡数预测。
+- `analyze` 与制卡管线共用路由决策函数（Round 3 #7），但引用解析是元数据轻量版（不展开 VFS 存储的完整 ref data），复合引用计数可能与 run 管线有出入；它仍不提供精确卡数预测，`recommended.maxCards` 只是与 skill 口径一致的建议上限。
 - `sync` 依赖本机 Anki 和 AnkiConnect；本工具面不改变 AnkiConnect 协议。
 - 聊天输入栏不提供模板选择 UI，模板选择由 Agent 工具参数和现有模板管理界面承担。

@@ -1,0 +1,2 @@
+{"front": "What is the difference between TCP and UDP?", "back": "TCP 面向连接、可靠有序；UDP 无连接、低开销、不保证交付。", "tags": ["网络"]}
+<<<ANKI_CARD_JSON_END>>>

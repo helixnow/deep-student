@@ -6629,6 +6629,28 @@ impl LLMManager {
         Ok(config)
     }
 
+    /// 只读能力探测：Anki Sidekick 模型分层路由的槽位快照（Round 4 #7）。
+    ///
+    /// 仅读取现有模型分配与 API 配置，不发起任何网络调用、不写任何状态。
+    /// 任何读取失败都返回空槽位（调用侧回退单模型旧路径），绝不阻断制卡。
+    pub async fn probe_anki_routing_slots(&self) -> crate::anki_model_routing::AnkiRoutingSlots {
+        let assignments = match self.get_model_assignments().await {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取模型分配失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        let configs = match self.get_api_configs().await {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取 API 配置失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        crate::anki_model_routing::build_slots(&assignments, &configs)
+    }
+
     /// 统一模型选择函数
     ///
     /// 参数：

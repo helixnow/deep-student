@@ -110,6 +110,12 @@ src-tauri/.target-local/
 *.apk
 *.aab
 
+# Downloaded PDFium runtime binaries (scripts/download-pdfium.sh)
+src-tauri/resources/pdfium/libpdfium.so
+src-tauri/resources/pdfium/libpdfium.dylib
+src-tauri/resources/pdfium/pdfium.dll
+src-tauri/resources/pdfium/libpdfium_android_*.so
+
 # Cargo build logs and outputs (should not be versioned)
 /cargo-full.txt
 /cargo-check.txt

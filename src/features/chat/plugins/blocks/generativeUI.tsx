@@ -97,13 +97,6 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
         applyEdit: t('notes.edit_apply'),
         dismissSuggestion: t('notes.edit_dismiss'),
       },
-      flashcardLabels: {
-        saveToLibrary: t('flashcard.save_to_library'),
-      },
-      flashcardContext: {
-        blockId: block.id,
-        businessSessionId: store?.getState().sessionId,
-      },
       researchLabels: {
         copyReport: t('research.actions.copy_report'),
         exportPlan: t('research.actions.export_plan'),

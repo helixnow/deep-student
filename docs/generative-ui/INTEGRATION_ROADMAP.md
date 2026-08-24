@@ -8,9 +8,9 @@
 |------|--------|-----------------|
 | 复习概览 | stat-card + progress + list | `start-review` → `fsrsReviewStore.startDueSession` |
 | 错题诊断 | mistake-analysis + list | `open-qbank` → qbankDriver |
-| 闪卡预览 | flashcard-preview（已落地） | `save-to-library` → `saveCardsToLibrary` ✅ |
+| 闪卡预览 | flashcard-preview（已落地） | 只读展示；保存统一走 `anki_cards` QA/critic 管线 |
 
-**原则**：不重写 `anki_cards` 专用块；generative-ui 做轻量摘要入口。
+**原则**：不重写 `anki_cards` 专用块；generative-ui 只做轻量摘要与展示入口。
 
 ## Research / Translation（#7）
 
