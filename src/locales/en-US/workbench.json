@@ -493,7 +493,9 @@
     "missingResource": "Missing resource identifier; this window cannot be opened",
     "missingResourceHint": "Reopen from Files, or check that the resource still exists.",
     "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?",
-    "unsavedTitle": "You have unsaved changes. Leave anyway?"
+    "unsavedTitle": "You have unsaved changes. Leave anyway?",
+    "saveAndClose": "Save & Close",
+    "saveAndCloseFailed": "Save failed; the window stays open. Check the error and retry."
   },
   "mindmap": {
     "loading": "Loading mind map…",

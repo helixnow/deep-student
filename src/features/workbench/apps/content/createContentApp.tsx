@@ -16,9 +16,10 @@ import type {
   Size,
 } from '../../core/types';
 import type { ContentAppTypeId } from './typeMap';
-import { isContentDirty } from './contentDirtyRegistry';
-import { requestContentCloseConfirmation } from './ContentCloseConfirmation';
+import { hasContentSaveHandler, isContentDirty, saveContentNow } from './contentDirtyRegistry';
+import { requestContentCloseDecision } from './ContentCloseConfirmation';
 import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 export interface CreateContentAppOptions {
   typeId: ContentAppTypeId;
@@ -59,9 +60,21 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
             : null
         );
         if (!isContentDirty(typeId, dirtyResourceId)) return true;
-        return requestContentCloseConfirmation({
+        // 有保存挂点时提供「保存并关闭」（translation 等编辑视图注册）
+        const offerSave = hasContentSaveHandler(typeId, dirtyResourceId);
+        const decision = await requestContentCloseDecision({
           description: i18next.t('workbench:content.confirmCloseUnsaved'),
+          offerSave,
         });
+        if (decision === 'save') {
+          const saved = await saveContentNow(typeId, dirtyResourceId);
+          if (!saved) {
+            // 保存失败不放行关闭；轻提示 + 视图侧错误 UI 展示细节
+            showGlobalNotification('error', i18next.t('workbench:content.saveAndCloseFailed'));
+          }
+          return saved;
+        }
+        return decision === 'discard';
       }
     : undefined;
 

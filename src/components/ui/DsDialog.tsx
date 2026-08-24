@@ -369,6 +369,12 @@ export interface DsAlertDialogProps {
   onConfirm?: () => void;
   /** 取消回调（不传则关闭弹窗） */
   onCancel?: () => void;
+  /** 次要动作按钮文字（如「保存并关闭」）；不传则不渲染第三个按钮 */
+  secondaryText?: string;
+  /** 次要动作回调 */
+  onSecondary?: () => void;
+  /** 次要动作按钮变体，默认 primary */
+  secondaryVariant?: DsButtonVariant;
   /** 确认按钮 loading */
   loading?: boolean;
   /** 确认按钮 disabled */
@@ -390,6 +396,9 @@ export function DsAlertDialog({
   confirmSize = 'sm',
   onConfirm,
   onCancel,
+  secondaryText,
+  onSecondary,
+  secondaryVariant = 'primary',
   loading = false,
   disabled = false,
   children,
@@ -472,10 +481,20 @@ export function DsAlertDialog({
           {children && <div className="mt-3 min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
 
           {/* 按钮行 */}
-          <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
+          <div className="mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2">
             <DsButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
               {resolvedCancelText}
             </DsButton>
+            {secondaryText && (
+              <DsButton
+                variant={secondaryVariant}
+                size={confirmSize}
+                onClick={onSecondary}
+                disabled={disabled || loading}
+              >
+                {secondaryText}
+              </DsButton>
+            )}
             <DsButton
               variant={confirmVariant}
               size={confirmSize}
