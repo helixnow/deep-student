@@ -269,12 +269,17 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         </div>
         <p className="text-sm text-destructive text-center max-w-md px-4">{state.message}</p>
         <div className="flex gap-2">
-          <DsButton variant="primary" size="sm" onClick={() => void loadTranslation()}>
+          <DsButton
+            variant="primary"
+            size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
+            onClick={() => void loadTranslation()}
+          >
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('common:actions.retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           )}
@@ -336,7 +341,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
           {viewModeControl}
           {onClose && (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           )}
