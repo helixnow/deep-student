@@ -96,6 +96,32 @@ describe('dispatchCanvasAIEditRequest', () => {
     expect(result).toMatchObject({ claimed: false });
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it('never forwards isRegex on a successful dispatch', () => {
+    let detail: Record<string, unknown> | undefined;
+    const listener = (event: Event) => {
+      detail = (event as CustomEvent).detail as Record<string, unknown>;
+      const onLocalDisposition = detail.onLocalDisposition as
+        | ((d: { accepted: boolean }) => void)
+        | undefined;
+      onLocalDisposition?.({ accepted: true });
+    };
+    window.addEventListener('canvas:ai-edit-request', listener);
+
+    const result = dispatchCanvasAIEditRequest({
+      requestId: 'req-no-regex-field',
+      noteId: 'note-1',
+      operation: 'replace',
+      search: 'old',
+      replace: 'new',
+      isRegex: false,
+    });
+
+    window.removeEventListener('canvas:ai-edit-request', listener);
+    expect(result.claimed).toBe(true);
+    expect(detail).toBeDefined();
+    expect(detail).not.toHaveProperty('isRegex');
+  });
 });
 
 describe('Generative UI note edit size safety', () => {
