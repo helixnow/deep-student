@@ -194,9 +194,11 @@ describe('NotesBacklinksPanel', () => {
     expect(screen.getByText('Gamma alias')).toBeInTheDocument();
     expect(screen.getByText('[[missing]]')).toBeInTheDocument();
     expect(screen.getByText('反向链接')).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: /出链/ }))
-      .getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
-    expect(screen.queryByText('Alpha alias')).toBeNull();
+    const outgoing = screen.getByRole('region', { name: /出链/ });
+    expect(within(outgoing).getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
+    // 'Alpha alias' 是 Beta→Alpha 入链使用的别名：入链区域的上下文片段会渲染它
+    // （见下方 shows inbound context snippets 用例），但不应泄漏进出链区域。
+    expect(within(outgoing).queryByText('Alpha alias')).toBeNull();
   });
 
   it('prefers the backend note_links graph and skips the candidate search scan', async () => {

@@ -3,9 +3,15 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BlankedText } from '@/features/mindmap/components/shared/BlankedText';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}));
+// 保留模块其余导出（initReactI18next 等）：src/i18n.ts 在模块加载时消费它们，
+// 只导出 useTranslation 会让本文件在收集阶段崩溃。t 需跨渲染身份稳定。
+vi.mock('react-i18next', async (importOriginal) => {
+  const t = (key: string) => key;
+  return {
+    ...(await importOriginal<typeof import('react-i18next')>()),
+    useTranslation: () => ({ t }),
+  };
+});
 
 describe('BlankedText recite interaction', () => {
   afterEach(() => {

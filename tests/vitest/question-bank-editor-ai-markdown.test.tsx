@@ -12,20 +12,28 @@ vi.mock('@/hooks/useBreakpoint', () => ({
   useIsTablet: () => false,
 }));
 
-vi.mock('@/hooks/useQbankAiGrading', () => ({
-  useQbankAiGrading: () => ({
-    state: {
-      isGrading: false,
-      feedback: '',
-      verdict: null,
-      score: null,
-      error: null,
-    },
-    resetState: vi.fn(),
-    startGrading: vi.fn(),
-    cancelGrading: vi.fn(),
-  }),
-}));
+// 回调必须跨渲染身份稳定：QuestionBankEditor 的切题重置 effect 依赖
+// resetState（resetAiGrading），若每次渲染返回新 vi.fn()，effect 会在每次
+// 渲染后重跑并 setState(new Set())，形成无限渲染循环（测试挂起 + 堆增长）。
+vi.mock('@/hooks/useQbankAiGrading', () => {
+  const resetState = vi.fn();
+  const startGrading = vi.fn();
+  const cancelGrading = vi.fn();
+  return {
+    useQbankAiGrading: () => ({
+      state: {
+        isGrading: false,
+        feedback: '',
+        verdict: null,
+        score: null,
+        error: null,
+      },
+      resetState,
+      startGrading,
+      cancelGrading,
+    }),
+  };
+});
 
 describe('QuestionBankEditor AI markdown rendering', () => {
   it('renders cached ai_feedback as markdown after submit', async () => {
