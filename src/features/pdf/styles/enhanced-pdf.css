@@ -454,6 +454,12 @@
   color: hsl(var(--destructive));
 }
 
+/* 增量搜索扫描进度（命中实时展示，此处只标注扫描位置） */
+.ds-search-progress {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
 /* ============================================================================
    主容器（侧边栏 + 内容）
    ============================================================================ */
@@ -495,10 +501,62 @@
     border-right-color: var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
   }
 
-  .ds-pdf__outline,
-  .ds-pdf__thumbnails-panel {
+  .ds-pdf__sidebar-inner {
     width: 200px;
   }
+}
+
+/* 侧栏内层：tab 头 + 当前面板（固定宽度，开合过渡中内容不挤压重排） */
+.ds-pdf__sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 侧栏 tab 头：目录/缩略图/书签/批注同域互斥切换（原独立浮层合并至此） */
+.ds-pdf__sidebar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px 7px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.ds-pdf__sidebar-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.ds-pdf__sidebar-tab:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__sidebar-tab.active {
+  background: var(--interactive-selected, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__sidebar-tab-count {
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-pdf__sidebar-close {
+  margin-left: auto;
 }
 
 /* 大纲跳转失败的轻提示 */
@@ -511,11 +569,12 @@
 }
 
 
-/* 目录样式 */
+/* 目录样式（侧栏 tab 头下方的当前面板，占满剩余高度） */
 .ds-pdf__outline {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .ds-outline-header {
@@ -567,11 +626,12 @@
   background: var(--interactive-selected, hsl(var(--accent)));
 }
 
-/* 缩略图面板 */
+/* 缩略图面板（同为侧栏 tab 面板） */
 .ds-pdf__thumbnails-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .ds-thumbnails-content {
@@ -745,23 +805,7 @@
   opacity: 0.5;
 }
 
-/* 批注列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
-.ds-pdf__highlights-panel {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
-  width: 280px;
-  max-height: 400px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
+/* 批注列表（原右下浮动面板已并入侧栏批注 tab，占满剩余高度） */
 .ds-highlights-list {
   flex: 1;
   min-height: 0;
@@ -1348,23 +1392,7 @@
   margin-left: 2px;
 }
 
-/* 书签列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
-.ds-pdf__bookmarks-panel {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
-  width: 300px;
-  max-height: 450px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
+/* 书签列表（原右下浮动面板已并入侧栏书签 tab，占满剩余高度） */
 .ds-bookmarks-list {
   flex: 1;
   min-height: 0;
@@ -1517,25 +1545,14 @@
    ============================================================================ */
 
 @media (max-width: 767.98px) {
-  /* 浮动面板（640–767.98 区间仍使用）：收窄并贴边；
-     底部避让已由基础规则从 --ds-pdf-toolbar-h / safe-area 派生；
-     dvh 跟随移动端动态视口（地址栏/键盘收放） */
-  .ds-pdf__highlights-panel,
-  .ds-pdf__bookmarks-panel {
-    right: 8px;
-    width: calc(100vw - 16px);
-    max-width: 320px;
-    max-height: 50dvh;
-  }
-
-  /* 目录/缩略图侧栏：640–767.98 区间加宽（≤640 已改为全屏内联子屏）。
-     宽度规则只作用于打开态，避免覆盖收起态的 width: 0。 */
+  /* 侧栏（含目录/缩略图/书签/批注 tab）：640–767.98 区间加宽
+     （≤640 已改为全屏内联子屏）。宽度规则只作用于打开态，
+     避免覆盖收起态的 width: 0。 */
   .ds-pdf__sidebar--open {
     width: min(280px, 82vw);
   }
 
-  .ds-pdf__sidebar--open .ds-pdf__outline,
-  .ds-pdf__sidebar--open .ds-pdf__thumbnails-panel {
+  .ds-pdf__sidebar--open .ds-pdf__sidebar-inner {
     width: min(280px, 82vw);
   }
 }
@@ -1737,16 +1754,21 @@
   gap: 4px;
   padding: 3px;
   margin: 0 auto;
-  max-width: 260px;
+  /* 4 个分段（目录/缩略图/书签/批注）需要比原双分段更宽的可用空间 */
+  max-width: 340px;
+  min-width: 0;
   border-radius: 10px;
   background: hsl(var(--muted) / 0.5);
 }
 
 .ds-pdf__mobile-panel-tab {
   flex: 1;
+  min-width: 0;
   min-height: 34px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -1910,6 +1932,7 @@
   .ds-pdf__progress-fill,
   .ds-thumbnail-item,
   .ds-outline-item,
+  .ds-pdf__sidebar-tab,
   .ds-pdf__mobile-panel-tab {
     transition: none;
   }
