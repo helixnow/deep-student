@@ -895,7 +895,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 size="sm"
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="gap-1.5"
+                className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
               >
                 <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
                 <span>{t('skills:selector.refresh')}</span>
@@ -905,14 +905,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleOpenSkillMarket}
-              className="gap-1.5"
+              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
             >
               <Storefront size={14} />
               <span>{t('skills:selector.installMore')}</span>
             </DsButton>
           </span>
           {onClose ? (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" onClick={onClose} className="[@media(pointer:coarse)]:min-h-11">
               {t('common:actions.close')}
             </DsButton>
           ) : null}
