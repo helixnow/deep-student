@@ -10,6 +10,18 @@
  * 落库 readingProgress.page / bookmarks；node_converters.rs 在 textbook 与 file
  * 的 metadata 中回读 readingProgress / bookmarks。）
  *
+ * ★ 进度通道白名单：本控制器的 setMetadata payload 只允许携带
+ * readingProgress / bookmarks 两个字段。禁止把 node metadata 里的
+ * highlights / annotationRevision / title 等字段透传进来——
+ * 后端 textbook 分支一旦看到 highlights 就切换到批注 OCC 通道并要求
+ * expected_updated_at，进度写入会直接 CONFLICT 失败；stale 的 title
+ * 透传则会回滚并发重命名。
+ *
+ * ★ metadata 在控制器创建时快照（sanitize 后深拷贝所属字段）。
+ * dispose()/flush() 不得回读组件层的活 ref：node 切换时 ref 已指向
+ * 新 node，旧控制器的收尾 flush 若读活 ref 会把新 node 的数据串写进
+ * 旧 node 的路径。
+ *
  * 防抖契约：阅读进度防抖只在本层做一次（默认 1s），Viewer 包装层
  * （TextbookPdfViewer）为直通上报——不要再在调用侧叠加防抖。
  * 关 tab / 切换 node 时由 dispose() 内的 flush 兜底落盘。
@@ -29,8 +41,47 @@ export interface PreviewPersistTarget {
   kind: PreviewPersistKind;
   nodeId: string;
   nodePath: string;
-  /** 始终读最新 metadata，供 merge，避免覆盖并发字段 */
-  getMetadata: () => Record<string, unknown> | undefined | null;
+  /**
+   * 创建时的 node metadata 快照（只会提取 readingProgress / bookmarks）。
+   * 不要传"始终读最新值"的 getter：见文件头「metadata 快照」说明。
+   */
+  metadata?: Record<string, unknown> | null;
+}
+
+/** 进度通道允许写入的字段快照（创建时 sanitize + 拷贝，与源对象解耦） */
+interface ProgressChannelSnapshot {
+  readingProgress?: { page: number; lastReadAt?: number };
+  bookmarks?: Bookmark[];
+}
+
+/**
+ * 从 node metadata 中提取进度通道白名单字段（readingProgress / bookmarks）。
+ * 返回值为拷贝，调用方后续修改源对象不影响快照。
+ */
+export function sanitizeProgressChannelMetadata(
+  metadata: Record<string, unknown> | undefined | null,
+): ProgressChannelSnapshot {
+  const snapshot: ProgressChannelSnapshot = {};
+  if (!metadata || typeof metadata !== 'object') return snapshot;
+
+  const progress = metadata.readingProgress as
+    | { page?: unknown; lastReadAt?: unknown }
+    | undefined;
+  if (progress && typeof progress === 'object' && typeof progress.page === 'number') {
+    snapshot.readingProgress = {
+      page: progress.page,
+      ...(typeof progress.lastReadAt === 'number'
+        ? { lastReadAt: progress.lastReadAt }
+        : {}),
+    };
+  }
+
+  const bookmarks = metadata.bookmarks;
+  if (Array.isArray(bookmarks)) {
+    snapshot.bookmarks = (bookmarks as Bookmark[]).slice();
+  }
+
+  return snapshot;
 }
 
 export interface PreviewPersistOptions {
@@ -71,17 +122,25 @@ export function createPreviewPersistController(
   let writeChain: Promise<void> = Promise.resolve();
 
   const currentTarget = { ...target };
+  // ★ 创建时快照（白名单字段深拷贝）：dispose flush 不再回读任何组件层活 ref
+  const metadataSnapshot = sanitizeProgressChannelMetadata(target.metadata);
 
+  /**
+   * ★ 白名单 merge：payload 只含 readingProgress / bookmarks。
+   * 本控制器写过的值（latest*）优先，其次取创建时快照；
+   * highlights / annotationRevision 等其余字段一律不进进度通道。
+   */
   const mergeBase = (): Record<string, unknown> => {
-    const meta = currentTarget.getMetadata();
-    const merged = meta && typeof meta === 'object' ? { ...meta } : {};
-    if (latestProgress) {
+    const merged: Record<string, unknown> = {};
+    const progress = latestProgress ?? metadataSnapshot.readingProgress ?? null;
+    if (progress) {
       merged.readingProgress = {
-        page: latestProgress.page,
-        lastReadAt: latestProgress.lastReadAt,
+        page: progress.page,
+        lastReadAt: progress.lastReadAt,
       };
     }
-    if (latestBookmarks) merged.bookmarks = latestBookmarks;
+    const bookmarks = latestBookmarks ?? metadataSnapshot.bookmarks ?? null;
+    if (bookmarks) merged.bookmarks = bookmarks;
     return merged;
   };
 
