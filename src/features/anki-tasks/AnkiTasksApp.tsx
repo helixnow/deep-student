@@ -68,6 +68,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   const [sessions, setSessions] = useState<DocumentSession[]>([]);
   const [stats, setStats] = useState<AnkiStats | null>(null);
   const [loading, setLoading] = useState(true);
+  // 主加载失败必须与「暂无任务」区分开：空列表是事实，加载失败是未知
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 会话列表滚动视口：长列表（上限可到数百行）虚拟化，压低常驻 DOM 规模
@@ -224,8 +226,12 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       hasActiveRef.current = nextHasActive;
       setSessions(s);
       setStats(st);
+      setLoadError(null);
     } catch (err: unknown) {
       debugLog.error('[AnkiTasks] load failed:', err);
+      if (generation !== loadGenerationRef.current) return;
+      // 不吞错：列表保持上一次已知数据，同时暴露错误态 + 重试
+      setLoadError(getErrorMessage(err));
     } finally {
       if (generation === loadGenerationRef.current) {
         setLoading(false);
@@ -655,6 +661,24 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           </DsButton>
         )}
 
+        {/* 刷新失败但仍有上一次数据：标明数据可能已过时，而不是静默沿用 */}
+        {loadError && sessions.length > 0 && (
+          <div
+            role="status"
+            data-testid="anki-tasks-stale-banner"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/10 px-3 py-2 text-xs"
+          >
+            <Warning size={14} className="text-[color:hsl(var(--warning))]" />
+            <span className="min-w-0 break-words text-muted-foreground">
+              {t('taskDashboard.refreshFailedStale')}
+            </span>
+            <DsButton size="sm" variant="utility" className="ml-auto" onClick={load}>
+              <ArrowsClockwise size={13} />
+              {t('taskDashboard.retry')}
+            </DsButton>
+          </div>
+        )}
+
         {/* ======== 任务列表 ======== */}
         <div className="wb-at-list">
           {/* 筛选 tabs + 搜索 + 计数（移动端补充操作按钮） */}
@@ -734,7 +758,22 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             )}
           </div>
 
-          {sessions.length === 0 ? (
+          {loadError && sessions.length === 0 ? (
+            /* 加载失败 ≠ 没有任务：显式错误态 + 重试 */
+            <div className="wb-at-empty" role="alert" data-testid="anki-tasks-load-error">
+              <Warning size={28} className="text-[color:hsl(var(--warning))]" />
+              <p className="font-medium text-foreground text-[13px]">
+                {t('taskDashboard.loadFailed')}
+              </p>
+              <p className="max-w-md break-words text-xs text-muted-foreground/70">
+                {loadError}
+              </p>
+              <DsButton size="sm" variant="primary" className="mt-2" onClick={load}>
+                <ArrowsClockwise size={14} />
+                {t('taskDashboard.retry')}
+              </DsButton>
+            </div>
+          ) : sessions.length === 0 ? (
             /* 空状态 + 双引导：去聊天发起制卡（主）/ 打开模板库先备好模板（次） */
             <div className="wb-at-empty">
               <FileText size={28} className="text-muted-foreground/30" />
