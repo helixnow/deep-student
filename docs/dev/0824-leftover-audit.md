@@ -100,4 +100,16 @@ F @ `115b202a` 与第四轮核验时 tip 一致，以下缺口仍成立：
 
 ## 门禁
 
-构建与测试结果在 clean 分支首次 push 后记录。
+| 门禁 | 结果 |
+|---|---|
+| `npm run build` | ✅ prebuild 的 license/typecheck + Vite production build 全过，仅既有 chunk 警告 |
+| 变更测试全量（`git diff 0824..HEAD` 的 55 个 `*.test.ts(x)`） | ✅ 55 files / 484 tests |
+| `node --test scripts/__tests__/provider-contract-config.test.mjs` | ✅ 3/3 |
+| `cargo +stable check --manifest-path src-tauri/Cargo.toml --lib` | ✅ Rust 1.98.0；24 条既有 warning |
+| `cargo +stable test --lib parse_note_edit_accepts_append_payload` | ✅ 1/1；验证唯一冲突的 Rust test target 可编译并通过 |
+| `cargo +stable test --test generative_ui_executor_e2e` | ⚠️ target 编译成功；1/9 通过，另外 8 项在进入断言前被 Linux Tao 拒绝从 libtest worker thread 创建 event loop；`--test-threads=1` 结果相同 |
+
+额外扩大到 193 个相关 Vitest 文件时，190 files / 1332 tests 通过；剩余 3
+files / 8 tests 失败。把完全相同的 3 个文件切到 0824 基线 `eec20398` 单独
+复跑，得到相同的 8 项失败（DSTU/Todo 旧描述契约与 SPSS skill 装载），且这些
+文件及对应实现相对 clean 分支无 diff，因此不是本分支回归。
