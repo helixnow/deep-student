@@ -101,9 +101,10 @@ describe("phase 9 memory tool contracts", () => {
     expect(schema.properties.page.minimum).toBe(1);
     expect(schema.properties.page_size.maximum).toBe(20);
     expect(exportTool.description).toContain("High");
-    expect(exportTool.description).toContain("2000");
     expect(vfsMemorySkill.content).toContain("memory://changed");
     expect(vfsMemorySkill.content).toContain("OCC");
-    expect(vfsMemorySkill.content).toContain("content_truncated=true");
+    expect(vfsMemorySkill.content).toMatch(
+      /超过 2000 字符.*content_truncated=true/,
+    );
   });
 });
