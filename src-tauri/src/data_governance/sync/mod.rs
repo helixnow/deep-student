@@ -42,6 +42,7 @@ pub mod classification;
 pub mod conflict_resolver;
 pub mod emitter;
 pub mod field_merge;
+pub mod history;
 pub mod hlc;
 pub mod pomodoro_counts;
 pub mod progress;
