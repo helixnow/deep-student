@@ -108,7 +108,7 @@ greeting('Crepe');
         <div className="flex items-center justify-between mb-6 p-6 pb-0">
           <div className="flex items-center gap-4">
             {onBack && (
-              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置">
+              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置" className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
                 <ArrowLeft size={20} />
               </DsButton>
             )}
