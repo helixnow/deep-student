@@ -72,7 +72,9 @@ function makeStore(canvasNoteId?: string) {
 
 describe('GenerativeUIBlockComponent chat action handlers', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    // clearAllMocks：勿 restoreAllMocks，否则会拆掉 vitest.setup 的 matchMedia mock，
+    // Renderer 的 useGenerativeUICompact → useMediaQuery 会读到 undefined.matches。
+    vi.clearAllMocks();
     mockedUseHpiasEventBridge.mockClear();
     useHpiasStore.getState().actions.clear();
   });
