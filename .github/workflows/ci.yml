@@ -690,6 +690,17 @@ jobs:
           path: ${{ runner.temp }}/migration-reports/
           retention-days: 14
 
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (migration-gate)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ============================================
   # 供应链安全审计
   #
