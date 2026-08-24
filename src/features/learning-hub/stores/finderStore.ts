@@ -672,7 +672,7 @@ export const useFinderStore = create<FinderState>()(
       }),
       
       executeSearch: async (opts) => {
-        const { searchQuery, getDstuListOptions, currentPath } = get();
+        const { searchQuery, getDstuListOptions, currentPath, sortBy, sortOrder } = get();
         const options = getDstuListOptions();
         const silent = opts?.silent === true;
 
@@ -770,6 +770,9 @@ export const useFinderStore = create<FinderState>()(
         }
 
         if (result.ok) {
+          // type / size 会在后端查询参数中降级为 name，且 recent / trash
+          // 也不保证返回当前排序；所有搜索结果统一在前端按 Finder 规则重排。
+          const sortedItems = sortItems(result.value, sortBy, sortOrder);
           const { selectedIds, lastSelectedId, items: previousItems } = get();
           const truncated = currentPath.viewKind === 'trash'
             ? resultsTruncated
@@ -777,7 +780,7 @@ export const useFinderStore = create<FinderState>()(
           const searchMeta = { truncated, limit: effectiveLimit };
 
           // 列表无差异时尽量跳过写入；仅同步 searchMeta / loading 收尾
-          if (areFinderItemsEquivalent(previousItems, result.value)) {
+          if (areFinderItemsEquivalent(previousItems, sortedItems)) {
             const prevMeta = get().searchMeta;
             const metaUnchanged =
               prevMeta?.truncated === searchMeta.truncated &&
@@ -792,11 +795,11 @@ export const useFinderStore = create<FinderState>()(
             return;
           }
 
-          const pruned = pruneSelectionAgainstItems(selectedIds, result.value, lastSelectedId, {
+          const pruned = pruneSelectionAgainstItems(selectedIds, sortedItems, lastSelectedId, {
             preserveLastSelectedIfWasSelected: true,
           });
           set({
-            items: result.value,
+            items: sortedItems,
             isSearching: true,
             isLoading: false,
             selectedIds: pruned.selectedIds,
@@ -924,18 +927,20 @@ export const useFinderStore = create<FinderState>()(
 
         const { currentPath, queryItemsForPath } = get();
         const result = await queryItemsForPath(currentPath);
+
+        // 查询期间若已有更新请求，成功和失败结果都必须丢弃。旧实现只在成功
+        // 分支检查，导致迟到的失败会清空新视图列表并覆盖其 loading / error。
+        if (get()._currentRequestId !== requestId) {
+          console.log('[finderStore] loadItems 请求已过期，丢弃结果', { requestId, current: get()._currentRequestId });
+          return;
+        }
+
         if (!result.ok && 'error' in result) {
           reportError(result.error, '加载列表');
           failLoad(result.error.message);
           return;
         }
         let items = result.value;
-
-        // ★ 检查请求是否已过期（有更新的请求发起）
-        if (get()._currentRequestId !== requestId) {
-          console.log('[finderStore] loadItems 请求已过期，丢弃结果', { requestId, current: get()._currentRequestId });
-          return;
-        }
 
         // 应用前端排序
         const { sortBy, sortOrder, selectedIds, lastSelectedId, items: previousItems } = get();
