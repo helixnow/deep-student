@@ -702,7 +702,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 className={cn(
                                     "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
                                     "px-1.5 h-6 transition-colors",
-                                    "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
+                                    "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5"
                                 )}
                                 onClick={() => setIsAddingTag(true)}
                             >
