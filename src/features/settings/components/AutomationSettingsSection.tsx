@@ -392,10 +392,10 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={() => void handleSubmit()}>
+        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={() => void handleSubmit()}>
           {saving && <CircleNotch className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {mode === 'create' ? t('settings:automation.create.submit') : t('common:save')}
         </DsButton>
@@ -742,7 +742,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {t('settings:automation.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteId(null)}>
+              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => setConfirmingDeleteId(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton
@@ -750,7 +750,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 variant="danger"
                 disabled={deleteBusy}
                 onClick={() => void handleConfirmDelete(automation)}
-                className="min-h-11 sm:min-h-0"
+                className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
               >
                 {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {t('settings:automation.delete.confirm')}
@@ -981,7 +981,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 setActionError(null);
                 void refresh();
               }}
-              className="min-h-11 sm:min-h-0"
+              className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('settings:automation.actions.retry')}
             </DsButton>
@@ -1069,7 +1069,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                       size="sm"
                       variant="ghost"
                       onClick={() => setConfirmingBackgroundOff(false)}
-                      className="min-h-11 sm:min-h-0"
+                      className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('common:cancel')}
                     </DsButton>
@@ -1078,7 +1078,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                       variant="danger"
                       disabled={backgroundBusy}
                       onClick={() => void applyBackgroundEnabled(false)}
-                      className="min-h-11 sm:min-h-0"
+                      className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {backgroundBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                       {t('settings:automation.background.confirm')}
@@ -1127,7 +1127,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               <DsButton
                 variant="primary"
                 size="sm"
-                className="mt-4 min-h-11 sm:min-h-0"
+                className="mt-4 min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 onClick={handleRequestCreate}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
