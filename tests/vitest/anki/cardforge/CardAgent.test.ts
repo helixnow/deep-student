@@ -256,7 +256,9 @@ describe('CardAgent', () => {
         }),
       })
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.error).toContain('生成空闲超时');
     expect(result.cards).toHaveLength(0);
     expect(result.paused).toBe(false);
   });

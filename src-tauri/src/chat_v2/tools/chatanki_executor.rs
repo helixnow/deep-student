@@ -6704,6 +6704,12 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     (route, combined, debug_ref, warnings, content_error_key)
                 }
                 ChatAnkiRoute::VlmFull => {
+                    let extract_result =
+                        extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
+                    if extract_result.truncated {
+                        warnings.push(text_truncated_warning(&extract_result));
+                    }
+                    let text = merge_with_extra(extract_result.text);
                     let image_payloads = collect_image_payloads(
                         &vfs_conn,
                         vfs_db.blobs_dir(),
@@ -6712,12 +6718,6 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     );
                     add_truncation_warning(&mut warnings, &image_payloads, 12);
                     if image_payloads.payloads.is_empty() {
-                        let extract_result =
-                            extract_text_from_refs(&vfs_conn, vfs_db.blobs_dir(), &merged_ref_data);
-                        if extract_result.truncated {
-                            warnings.push(text_truncated_warning(&extract_result));
-                        }
-                        let merged_text = merge_with_extra(extract_result.text);
                         let fallback_route = ChatAnkiRoute::SimpleText;
                         emit_anki_cards_chunk(
                             &params.emitter,
@@ -6726,7 +6726,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         );
                         break 'vfs_block (
                             fallback_route,
-                            merged_text,
+                            text,
                             debug_ref,
                             warnings,
                             content_error_key,
@@ -6748,7 +6748,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         )
                         .await
                         .map_err(|e| e.to_string())?;
-                    let combined = merge_with_extra(output.assistant_message);
+                    let visual_md = output.assistant_message;
+                    let combined = if text.trim().is_empty() {
+                        visual_md
+                    } else if visual_md.trim().is_empty() {
+                        text
+                    } else {
+                        format!("{text}\n\n# 视觉补充\n\n{visual_md}")
+                    };
                     (route, combined, debug_ref, warnings, content_error_key)
                 }
             }

@@ -4,7 +4,9 @@ import { chatAnkiSkill } from '@/features/chat/skills/builtin';
 const requiredTools = [
   'builtin-chatanki_get_cards',
   'builtin-chatanki_update_card',
+  'builtin-chatanki_batch_update_cards',
   'builtin-chatanki_delete_card',
+  'builtin-chatanki_delete_cards',
   'builtin-chatanki_add_cards',
   'builtin-chatanki_enqueue_review',
   'builtin-chatanki_review_stats',
@@ -33,8 +35,11 @@ describe('ChatAnki agent acceptance loop', () => {
       .filter((name) => name.startsWith('builtin-chatanki_'));
     const embeddedChatAnkiTools = (chatAnkiSkill.embeddedTools ?? [])
       .filter((tool) => tool.name.startsWith('builtin-chatanki_'));
-    expect(allowedChatAnkiTools).toHaveLength(26);
-    expect(embeddedChatAnkiTools).toHaveLength(26);
+    const expectedChatAnkiToolNames = embeddedChatAnkiTools
+      .map((tool) => tool.name)
+      .sort();
+    expect(allowedChatAnkiTools.sort()).toEqual(expectedChatAnkiToolNames);
+    expect(embeddedChatAnkiTools).toHaveLength(28);
     for (const name of requiredTools) {
       expect(chatAnkiSkill.allowedTools).toContain(name);
       expect(chatAnkiSkill.embeddedTools?.some((tool) => tool.name === name)).toBe(true);
