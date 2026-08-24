@@ -334,7 +334,9 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     disabled={searchDisabled}
                     className={cn(
                       'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
-                      '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
+                      // 📱 16px 输入契约：.text-ui（typography.css 在 Tailwind 后加载）12px 会压过
+                      // 非 important 的 coarse text-base，须带 ! 防 iOS 聚焦缩放（同 FinderToolbar）
+                      '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!text-[16px]',
                       'pl-8 pr-8 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                       'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                       '[&::-webkit-search-cancel-button]:hidden'
@@ -356,7 +358,9 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     disabled={searchDisabled}
-                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:!h-11"
+                    // 📱 16px 输入契约：.text-ui 12px 会压过 Input 外壳的非 important coarse
+                    // text-base（typography.css 在 Tailwind 后加载），须带 ! 防 iOS 聚焦缩放
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui [@media(pointer:coarse)]:!text-[16px] placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:!h-11"
                   />
                 )}
                 {searchQuery && (
