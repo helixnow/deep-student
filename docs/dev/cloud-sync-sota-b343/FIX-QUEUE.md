@@ -80,6 +80,31 @@
 | R08-e2ee-tests | high | 文件级 E2EE 极端测 | `src-tauri/tests/sync_r08_*.rs` 新文件 |
 | R08-legacy-ux | high | 明文遗留拒收人话 | `SyncTab.tsx` / locale `sync.json`；不改引擎 |
 
+## Round 09（进行中）
+
+| 代理 | 模型 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| R09-e2ee | claude-fable-5-thinking | 文件级 E2EE 闭环可运维：集成测试、前端错误人话、上传入口审计、P2-1 运维文档 | `src-tauri/tests/sync_r09_file_e2ee.rs` 新文件、`data-governance/syncE2eeErrorMapping.ts` 新文件、`SyncTab.tsx` 错误展示、`CloudStorageSection.tsx` 的 `localizeCloudError`、`cloudStorage.json`（zh/en）新增 `errors.e2ee*` 三键、`tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 新文件、`docs/user-guide/16-数据管理与云同步.md`、`RESTORE-MATRIX-R07.md` P2-1 回写 |
+
+### R09-e2ee 审计结论：记录级四个上传入口
+
+复审 `commands_sync.rs` 全部会写云端的记录级入口，确认均在任何云端写入前执行
+`enforce_record_upload_encryption_policy_for_config`（内部走
+`enforce_encryption_policy_before_upload_with_password`，错密码/明文降级在写入前拦截）：
+
+1. `data_governance_run_sync`（`commands_sync.rs:1648`，direction != Download 时）；
+2. `data_governance_run_sync_with_progress`（`commands_sync.rs:2820-2825`，同上）；
+3. `data_governance_mark_blob_deleted`（`commands_sync.rs:3846`，tombstone 写入前）；
+4. `data_governance_mark_asset_deleted`（`commands_sync.rs:3880`，tombstone 写入前）。
+
+其余命令核实为非上传路径：`resolve_conflicts` 已停用（fail-fast）、`import/export_sync_data`
+只动本地文件、`detect_conflicts` 对云端只读、quarantine/conflict 系列只写本地库。
+**无漏网，无需补丁**；策略助手本身已有单元测试（`commands_sync.rs:4934-5031`），
+R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-closed 行为。
+
+另：工作区 `src-tauri/src/data_governance/sync/auto.rs` 为未被任何 `mod` 引用的
+未跟踪孤儿文件（疑似前轮代理遗留草稿），R09 不提交、不引用。
+
 ## Round 07 原认领表（后派出）
 
 任务定义见 [ROUND-07](./ROUND-07.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
