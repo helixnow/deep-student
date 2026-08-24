@@ -42,7 +42,9 @@ impl GenerativeUiExecutor {
             return Err("intent 必须是 JSON 对象".to_string());
         }
 
-        if raw.as_str().is_some_and(|text| text.len() > MAX_GENERATIVE_UI_INTENT_CHARS)
+        if raw
+            .as_str()
+            .is_some_and(|text| text.len() > MAX_GENERATIVE_UI_INTENT_CHARS)
             || serde_json::to_string(&intent)
                 .ok()
                 .is_some_and(|encoded| encoded.len() > MAX_GENERATIVE_UI_INTENT_CHARS)
@@ -107,8 +109,7 @@ impl GenerativeUiExecutor {
             return None;
         }
         let valid = trimmed.chars().enumerate().all(|(index, ch)| {
-            ch.is_ascii_alphanumeric()
-                || ((ch == '.' || ch == '_' || ch == '-') && index > 0)
+            ch.is_ascii_alphanumeric() || ((ch == '.' || ch == '_' || ch == '-') && index > 0)
         });
         valid.then(|| trimmed.to_string())
     }
@@ -138,13 +139,18 @@ impl GenerativeUiExecutor {
         const MAX_NOTE_EDIT_INPUT_BYTES: usize = 256 * 1024;
         const MAX_NOTE_EDIT_SECTION_LEN: usize = 1024;
         let field_len = |key: &str| -> usize {
-            raw.get(key).and_then(Value::as_str).map(str::len).unwrap_or(0)
+            raw.get(key)
+                .and_then(Value::as_str)
+                .map(str::len)
+                .unwrap_or(0)
         };
         if field_len("section") > MAX_NOTE_EDIT_SECTION_LEN {
             return Err("noteEdit.section 过长".to_string());
         }
-        let total_bytes =
-            field_len("content") + field_len("search") + field_len("replace") + field_len("section");
+        let total_bytes = field_len("content")
+            + field_len("search")
+            + field_len("replace")
+            + field_len("section");
         if total_bytes > MAX_NOTE_EDIT_INPUT_BYTES {
             return Err(format!(
                 "noteEdit 内容超过 {} 字节",
@@ -153,7 +159,10 @@ impl GenerativeUiExecutor {
         }
 
         let mut sanitized = serde_json::Map::new();
-        sanitized.insert("operation".to_string(), Value::String(operation.to_string()));
+        sanitized.insert(
+            "operation".to_string(),
+            Value::String(operation.to_string()),
+        );
         for key in ["content", "search", "replace", "section"] {
             if let Some(value) = raw.get(key).cloned() {
                 sanitized.insert(key.to_string(), value);
@@ -613,13 +622,11 @@ mod tests {
         let args = json!({
             "noteEdit": { "operation": "append", "content": "## Summary" }
         });
-        let note_edit = GenerativeUiExecutor::parse_note_edit(&args).expect("parse");
-        assert!(note_edit.is_some());
+        let note_edit = GenerativeUiExecutor::parse_note_edit(&args)
+            .expect("parse")
+            .expect("present");
         assert_eq!(
-            note_edit
-                .as_ref()
-                .and_then(|v| v.get("operation"))
-                .and_then(Value::as_str),
+            note_edit.get("operation").and_then(Value::as_str),
             Some("append")
         );
     }
@@ -664,7 +671,10 @@ mod tests {
             .expect("present");
         let obj = note_edit.as_object().expect("object");
         assert_eq!(obj.get("operation").and_then(Value::as_str), Some("append"));
-        assert_eq!(obj.get("content").and_then(Value::as_str), Some("## Summary"));
+        assert_eq!(
+            obj.get("content").and_then(Value::as_str),
+            Some("## Summary")
+        );
         assert!(!obj.contains_key("className"));
         assert!(!obj.contains_key("isRegex"));
     }

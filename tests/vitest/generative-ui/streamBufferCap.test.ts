@@ -20,6 +20,8 @@ import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const LAST_GOOD_PREFIX =
   '{"version":"1","blocks":[{"type":"text","props":{"body":"keep"}}';
+/** CI shard 上不要分配 256KiB 大串；parser/registry/schema 走可注入上限。 */
+const TEST_STREAM_CAP = 128;
 
 describe('streamBufferGuard', () => {
   it('exposes the 256_000 character hard cap', () => {
@@ -78,14 +80,14 @@ describe('streamBufferGuard', () => {
   });
 
   it('counts JSON escapes when guarding object payloads', () => {
-    const escapedBody = '\u0000'.repeat(Math.ceil(MAX_GENERATIVE_UI_STREAM_CHARS / 6));
+    const escapedBody = '\u0000'.repeat(Math.ceil(TEST_STREAM_CAP / 6));
     const intent = {
       version: '1',
       blocks: [{ type: 'text', props: { body: escapedBody } }],
     };
 
-    expect(escapedBody.length).toBeLessThan(MAX_GENERATIVE_UI_STREAM_CHARS);
-    expect(isSerializedStreamValueOverCap(intent)).toBe(true);
+    expect(escapedBody.length).toBeLessThan(TEST_STREAM_CAP);
+    expect(isSerializedStreamValueOverCap(intent, TEST_STREAM_CAP)).toBe(true);
   });
 });
 
@@ -101,23 +103,23 @@ describe('GenerativeUIStreamParser stream-buffer-capped', () => {
   });
 
   it('stops append, keeps last-good, and records stream-buffer-capped', () => {
-    const parser = new GenerativeUIStreamParser();
+    const parser = new GenerativeUIStreamParser(TEST_STREAM_CAP);
     parser.appendChunk(LAST_GOOD_PREFIX);
     const before = parser.getBuffer();
 
-    const snap = parser.appendChunk('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS));
+    const snap = parser.appendChunk('x'.repeat(TEST_STREAM_CAP));
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
     expect(snap.phase).toBe('overflow');
     expect(snap.intent?.blocks[0]?.props?.body).toBe('keep');
     expect(parser.getBuffer()).toBe(before);
     expect(snap.bufferLength).toBe(before.length);
-    expect(snap.bufferLength).toBeLessThanOrEqual(MAX_GENERATIVE_UI_STREAM_CHARS);
+    expect(snap.bufferLength).toBeLessThanOrEqual(TEST_STREAM_CAP);
   });
 
   it('ignores later chunks after the buffer is capped', () => {
-    const parser = new GenerativeUIStreamParser();
+    const parser = new GenerativeUIStreamParser(TEST_STREAM_CAP);
     parser.appendChunk(LAST_GOOD_PREFIX);
-    parser.appendChunk('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS));
+    parser.appendChunk('x'.repeat(TEST_STREAM_CAP));
     const frozen = parser.getBuffer();
 
     const snap = parser.appendChunk(',{"type":"stat-card","props":{"title":"T","value":1}}]');
@@ -127,19 +129,19 @@ describe('GenerativeUIStreamParser stream-buffer-capped', () => {
   });
 
   it('does not ingest a first chunk that already exceeds the cap', () => {
-    const parser = new GenerativeUIStreamParser();
-    const snap = parser.appendChunk('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS + 1));
+    const parser = new GenerativeUIStreamParser(TEST_STREAM_CAP);
+    const snap = parser.appendChunk('x'.repeat(TEST_STREAM_CAP + 1));
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
     expect(snap.phase).toBe('overflow');
     expect(snap.intent).toBeNull();
     expect(parser.getBuffer()).toBe('');
-    expect(tryParsePartialIntent('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS + 1))).toBeNull();
+    expect(tryParsePartialIntent('x'.repeat(TEST_STREAM_CAP + 1), TEST_STREAM_CAP)).toBeNull();
   });
 
   it('finalize after cap still returns last-good', () => {
-    const parser = new GenerativeUIStreamParser();
+    const parser = new GenerativeUIStreamParser(TEST_STREAM_CAP);
     parser.appendChunk(LAST_GOOD_PREFIX);
-    parser.appendChunk('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS));
+    parser.appendChunk('x'.repeat(TEST_STREAM_CAP));
     expect(parser.finalize()?.blocks[0]?.props?.body).toBe('keep');
   });
 });
@@ -151,9 +153,10 @@ describe('generativeUIStreamRegistry stream-buffer-capped', () => {
 
   it('caps overflowing fullContent and keeps last-good', () => {
     const blockId = 'blk-stream-cap';
-    appendGenerativeUIStreamContent(blockId, LAST_GOOD_PREFIX);
-    const overflow = LAST_GOOD_PREFIX + 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS);
-    const snap = appendGenerativeUIStreamContent(blockId, overflow);
+    const options = { maxChars: TEST_STREAM_CAP };
+    appendGenerativeUIStreamContent(blockId, LAST_GOOD_PREFIX, options);
+    const overflow = LAST_GOOD_PREFIX + 'x'.repeat(TEST_STREAM_CAP);
+    const snap = appendGenerativeUIStreamContent(blockId, overflow, options);
 
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
     expect(snap.phase).toBe('overflow');
@@ -165,11 +168,12 @@ describe('generativeUIStreamRegistry stream-buffer-capped', () => {
 
   it('does not grow the parser buffer on subsequent over-cap appends', () => {
     const blockId = 'blk-stream-cap-sticky';
-    appendGenerativeUIStreamContent(blockId, LAST_GOOD_PREFIX);
-    const first = LAST_GOOD_PREFIX + 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS);
-    appendGenerativeUIStreamContent(blockId, first);
+    const options = { maxChars: TEST_STREAM_CAP };
+    appendGenerativeUIStreamContent(blockId, LAST_GOOD_PREFIX, options);
+    const first = LAST_GOOD_PREFIX + 'x'.repeat(TEST_STREAM_CAP);
+    appendGenerativeUIStreamContent(blockId, first, options);
     const second = first + 'yyyy';
-    const snap = appendGenerativeUIStreamContent(blockId, second);
+    const snap = appendGenerativeUIStreamContent(blockId, second, options);
 
     expect(snap.bufferLength).toBe(LAST_GOOD_PREFIX.length);
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
@@ -179,8 +183,8 @@ describe('generativeUIStreamRegistry stream-buffer-capped', () => {
 
 describe('parseGenerativeUIIntent size cap', () => {
   it('rejects a complete JSON string over the stream character cap', () => {
-    const raw = `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS)}"}}]}`;
-    const parsed = parseGenerativeUIIntent(raw);
+    const raw = `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(TEST_STREAM_CAP)}"}}]}`;
+    const parsed = parseGenerativeUIIntent(raw, TEST_STREAM_CAP);
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) {
       expect(parsed.errors).toContain(STREAM_BUFFER_CAPPED_WARNING);
