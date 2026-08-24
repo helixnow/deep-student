@@ -20,6 +20,10 @@ const MANIFESTS_DIR: &str = "manifests";
 const BACKUPS_DIR: &str = "backups";
 /// 默认保留版本数
 const DEFAULT_MAX_VERSIONS: usize = 10;
+/// [R12-neutral-names] 新备份对象名：22 位随机字母数字，不含时间、不含设备短 ID。
+const NEUTRAL_VERSION_ID_LEN: usize = 22;
+/// [R12-neutral-names] per-device manifest 文件名与新写入 `createdByDevice` 的短哈希长度。
+const DEVICE_ID_SHORT_HASH_LEN: usize = 16;
 /// 云端加密标记对象（相对云 root 的路径）。
 ///
 /// 一旦某个云 root 出现过端到端加密（DSBK）备份，就写入此标记；此后未配置
@@ -47,11 +51,36 @@ pub(crate) fn normalize_device_id(device_id: &str) -> String {
     format!("device-{}", hex::encode(hasher.finalize()))
 }
 
+/// [R12-neutral-names] 设备 ID 短哈希（SHA256 hex 前缀）。
+///
+/// 用于 `manifests/<hash>.json` 与新写入的 `.encryption-marker.createdByDevice`。
+/// 完整 device_id 仍写在 manifest 内容的 `deviceId` 字段；旧 `manifests/<device_id>.json`
+/// 读取侧继续兼容。调用方应传入已经 [`normalize_device_id`] 过的值。
+pub fn device_id_short_hash(device_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(device_id.as_bytes());
+    hex::encode(hasher.finalize())
+        .chars()
+        .take(DEVICE_ID_SHORT_HASH_LEN)
+        .collect()
+}
+
+/// [R12-neutral-names] 新备份版本 ID：纯随机，不编码时间或设备。
+fn generate_neutral_version_id() -> String {
+    let mut id = String::with_capacity(NEUTRAL_VERSION_ID_LEN);
+    while id.len() < NEUTRAL_VERSION_ID_LEN {
+        id.push_str(&Uuid::new_v4().simple().to_string());
+    }
+    id.truncate(NEUTRAL_VERSION_ID_LEN);
+    id
+}
+
 /// 备份版本信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupVersion {
-    /// 版本 ID（时间戳格式：YYYYMMDD-HHMMSS）
+    /// 版本 ID。新上传为 22 位随机字母数字；历史版本可能仍是
+    /// `YYYYMMDD-HHMMSS-毫秒-设备短ID-nonce`。下载/裁剪按 manifest `id` 查找，不解析文件名。
     pub id: String,
     /// 创建时间
     pub timestamp: DateTime<Utc>,
@@ -245,8 +274,33 @@ impl CloudSyncManager {
         &self.device_id
     }
 
+    /// [R12-neutral-names] 新写入的 per-device manifest 文件名用短哈希，不再暴露完整 device_id。
     fn device_manifest_key(&self) -> String {
+        format!(
+            "{}/{}.json",
+            MANIFESTS_DIR,
+            device_id_short_hash(&self.device_id)
+        )
+    }
+
+    /// 旧客户端写下的 `manifests/<device_id>.json`。读取时与新名合并，写入成功后删除。
+    fn device_manifest_legacy_key(&self) -> String {
         format!("{}/{}.json", MANIFESTS_DIR, self.device_id)
+    }
+
+    /// 读取本设备清单：新短哈希名优先，并入旧 device_id 文件名，避免升级后从空清单再写造成双源分叉。
+    async fn load_own_device_manifests(
+        &self,
+    ) -> Result<(Option<CloudManifest>, Option<CloudManifest>)> {
+        let new_key = self.device_manifest_key();
+        let legacy_key = self.device_manifest_legacy_key();
+        let current = self.read_manifest_key(&new_key).await?;
+        let legacy = if new_key == legacy_key {
+            None
+        } else {
+            self.read_manifest_key(&legacy_key).await?
+        };
+        Ok((current, legacy))
     }
 
     fn merge_manifest(target: &mut CloudManifest, incoming: CloudManifest) {
@@ -384,17 +438,45 @@ impl CloudSyncManager {
     }
 
     async fn get_device_manifest(&self) -> Result<CloudManifest> {
-        if let Some(manifest) = self.read_manifest_key(&self.device_manifest_key()).await? {
-            Ok(manifest)
-        } else {
-            Ok(CloudManifest::default())
+        match self.load_own_device_manifests().await? {
+            (Some(mut current), Some(legacy)) => {
+                Self::merge_manifest(&mut current, legacy);
+                Ok(current)
+            }
+            (Some(current), None) => Ok(current),
+            (None, Some(legacy)) => Ok(legacy),
+            (None, None) => Ok(CloudManifest::default()),
         }
     }
 
-    /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）
+    /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）。
+    /// 写入短哈希文件名后删除旧 `manifests/<device_id>.json`，完成一次性迁移。
     async fn save_manifest(&self, manifest: &CloudManifest) -> Result<()> {
-        self.save_manifest_at_key(&self.device_manifest_key(), manifest)
-            .await
+        let new_key = self.device_manifest_key();
+        self.save_manifest_at_key(&new_key, manifest).await?;
+        let legacy_key = self.device_manifest_legacy_key();
+        if legacy_key != new_key {
+            match self.storage.stat(&legacy_key).await {
+                Ok(Some(_)) => {
+                    if let Err(error) = self.storage.delete(&legacy_key).await {
+                        tracing::warn!(
+                            "迁移设备 manifest 后删除旧对象 {} 失败（新清单已发布）: {}",
+                            legacy_key,
+                            error
+                        );
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        "迁移设备 manifest 时探测旧对象 {} 失败: {}",
+                        legacy_key,
+                        error
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn save_manifest_at_key(&self, key: &str, manifest: &CloudManifest) -> Result<()> {
@@ -428,12 +510,14 @@ impl CloudSyncManager {
         match self.storage.check_connection().await {
             Ok(_) => match self.get_manifest().await {
                 Ok(manifest) => {
-                    let device_last_sync = self
-                        .read_manifest_key(&self.device_manifest_key())
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|m| m.updated_at);
+                    let device_last_sync = match self.load_own_device_manifests().await {
+                        Ok((Some(current), Some(legacy))) => {
+                            Some(current.updated_at.max(legacy.updated_at))
+                        }
+                        Ok((Some(current), None)) => Some(current.updated_at),
+                        Ok((None, Some(legacy))) => Some(legacy.updated_at),
+                        Ok((None, None)) | Err(_) => None,
+                    };
                     let latest = manifest
                         .latest
                         .as_ref()
@@ -524,7 +608,7 @@ impl CloudSyncManager {
         }
         let marker = EncryptionMarker {
             version: 1,
-            created_by_device: self.device_id.clone(),
+            created_by_device: device_id_short_hash(&self.device_id),
             created_at: Utc::now(),
             key_verifier: None,
         };
@@ -552,7 +636,7 @@ impl CloudSyncManager {
                     .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
                 let marker = EncryptionMarker {
                     version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
-                    created_by_device: self.device_id.clone(),
+                    created_by_device: device_id_short_hash(&self.device_id),
                     created_at: Utc::now(),
                     key_verifier: Some(verifier),
                 };
@@ -814,26 +898,9 @@ impl CloudSyncManager {
             file_size as f64 / 1024.0 / 1024.0
         );
 
-        // 生成版本 ID（毫秒 + 设备短 ID + 随机 nonce，避免同秒并发冲突）
+        // [R12-neutral-names] 版本 ID 纯随机，时间与设备只写在 manifest 字段。
         let now = Utc::now();
-        let device_short = self
-            .device_id
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .take(6)
-            .collect::<String>();
-        let nonce = Uuid::new_v4()
-            .to_string()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .take(8)
-            .collect::<String>();
-        let version_id = format!(
-            "{}-{}-{}",
-            now.format("%Y%m%d-%H%M%S-%3f"),
-            device_short,
-            nonce
-        );
+        let version_id = generate_neutral_version_id();
         Self::validate_version_id(&version_id)?;
         let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
 
@@ -1716,7 +1783,7 @@ mod tests {
         );
         // 标记本身保持不变
         let marker = manager.read_encryption_marker().await.unwrap().unwrap();
-        assert_eq!(marker.created_by_device, "device-a");
+        assert_eq!(marker.created_by_device, device_id_short_hash("device-a"));
     }
 
     #[tokio::test]
@@ -1731,7 +1798,7 @@ mod tests {
             .expect("有密码时上传前策略应放行");
         let first = manager.read_encryption_marker().await.unwrap().unwrap();
         assert_eq!(first.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
-        assert_eq!(first.created_by_device, "device-a");
+        assert_eq!(first.created_by_device, device_id_short_hash("device-a"));
         assert!(
             first.key_verifier.is_some(),
             "新登记的标记必须携带密码校验子"
@@ -1816,7 +1883,8 @@ mod tests {
             .expect("旧标记应被一次性升级而不是拒绝");
         assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
         assert_eq!(
-            upgraded.created_by_device, "device-legacy",
+            upgraded.created_by_device,
+            device_id_short_hash("device-legacy"),
             "升级不得改写首次写入者"
         );
         assert_eq!(
@@ -2028,6 +2096,37 @@ mod tests {
                 .as_ref()
                 .and_then(|version| version.recovery_kind.as_deref()),
             Some("partial_archive")
+        );
+    }
+
+    #[test]
+    fn new_version_id_is_22_hex_and_not_a_timestamp() {
+        let id = generate_neutral_version_id();
+        assert_eq!(id.len(), NEUTRAL_VERSION_ID_LEN);
+        assert!(
+            id.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "中性版本 ID 必须是字母数字: {id}"
+        );
+        assert!(!id.contains('-'), "中性版本 ID 不得再带时间戳分段: {id}");
+        let another = generate_neutral_version_id();
+        assert_ne!(id, another, "连续生成的中性 ID 不得碰撞");
+    }
+
+    #[test]
+    fn device_manifest_key_uses_short_hash_not_raw_device_id() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-a");
+        assert_eq!(
+            manager.device_manifest_key(),
+            format!("manifests/{}.json", device_id_short_hash("device-a"))
+        );
+        assert_eq!(
+            manager.device_manifest_legacy_key(),
+            "manifests/device-a.json"
+        );
+        assert_ne!(
+            manager.device_manifest_key(),
+            manager.device_manifest_legacy_key()
         );
     }
 

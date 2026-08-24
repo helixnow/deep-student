@@ -45,9 +45,9 @@ pub use config::{
 };
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
-    generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
-    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
-    EncryptionMarker, SyncStatus, UploadResult,
+    device_id_short_hash, generate_device_id_after_restore, get_device_id,
+    persist_device_id_after_restore, rotate_device_id_after_restore, BackupVersion, CloudManifest,
+    CloudSyncManager, DownloadResult, EncryptionMarker, SyncStatus, UploadResult,
 };
 pub use traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,

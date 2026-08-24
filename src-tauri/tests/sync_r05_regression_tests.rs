@@ -418,7 +418,10 @@ async fn r05_record_upload_with_marker_but_no_password_is_rejected() {
         .await
         .unwrap()
         .expect("加密上传后云端必须可见 .encryption-marker");
-    assert_eq!(marker.created_by_device, "device-a");
+    assert_eq!(
+        marker.created_by_device,
+        deep_student_lib::cloud_storage::device_id_short_hash("device-a")
+    );
 
     // 设备 B：同一 root、未配置密码 → 明文记录级上传必须被拒绝
     let device_b = manager_on(&storage, "device-b");
@@ -443,7 +446,8 @@ async fn r05_record_upload_with_marker_but_no_password_is_rejected() {
         .unwrap()
         .expect("拒绝路径不得删除加密标记");
     assert_eq!(
-        marker_after.created_by_device, "device-a",
+        marker_after.created_by_device,
+        deep_student_lib::cloud_storage::device_id_short_hash("device-a"),
         "标记归属不得被无密码设备改写"
     );
 }
