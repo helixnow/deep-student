@@ -65,7 +65,7 @@ export const InlineConfirmDelete: React.FC<{
               variant="danger"
               size="sm"
               onClick={onConfirm}
-              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
+              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
             >
               <Trash size={14} />
               {confirmLabel}
@@ -75,7 +75,7 @@ export const InlineConfirmDelete: React.FC<{
               variant="utility"
               size="sm"
               onClick={() => setConfirming(false)}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {cancelLabel}
             </DsButton>
@@ -92,7 +92,7 @@ export const InlineConfirmDelete: React.FC<{
               variant="danger"
               size="sm"
               onClick={() => setConfirming(true)}
-              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
+              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
             >
               <Trash size={16} />
               {label}

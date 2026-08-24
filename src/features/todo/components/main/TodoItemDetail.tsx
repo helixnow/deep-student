@@ -574,7 +574,7 @@ export const TodoItemDetail: React.FC<{
               title={t('todo:actions.startFocusSession')}
               aria-label={t('todo:actions.startFocusSession')}
               // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
-              className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <Play size={16} />
             </DsButton>
@@ -587,7 +587,7 @@ export const TodoItemDetail: React.FC<{
               onClick={onClose}
               aria-label={t('common:actions.close')}
               // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
-              className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <X size={16} />
             </DsButton>
@@ -694,7 +694,7 @@ export const TodoItemDetail: React.FC<{
                   onClick={clearDueDate}
                   aria-label={t('todo:reschedule.clear')}
                   title={t('todo:reschedule.clear')}
-                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <X size={13} />
                 </DsButton>
@@ -770,7 +770,7 @@ export const TodoItemDetail: React.FC<{
                   iconOnly
                   onClick={() => applyReminder('')}
                   aria-label={t('todo:reminder.clear')}
-                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <X size={13} />
                 </DsButton>

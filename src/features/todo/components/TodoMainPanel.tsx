@@ -950,7 +950,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               disabled={filter.view === 'completed'}
               data-selected={filter.showCompleted}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 filter.showCompleted &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -969,7 +969,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               aria-label={t('todo:bulk.selectMode', '选择')}
               title={t('todo:bulk.selectMode', '选择')}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 checkMode &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}

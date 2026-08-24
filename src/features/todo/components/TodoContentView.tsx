@@ -231,7 +231,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 aria-label={t('common:actions.refresh')}
                 disabled={automationRefreshing}
                 onClick={handleAutomationRefresh}
@@ -245,7 +245,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 aria-label={t('todo:automation.new')}
                 disabled={automationCapacityFull}
                 onClick={() => requestAutomationCreate()}

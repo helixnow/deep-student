@@ -330,7 +330,7 @@ export const TodoQuickAdd: React.FC<{
             variant="shell"
             size="sm"
             onClick={handleSubmit}
-            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-4"
+            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-4"
           >
             {t('todo:actions.add')}
           </DsButton>

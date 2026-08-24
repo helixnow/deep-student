@@ -596,7 +596,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
             variant="ghost"
             size="icon"
             iconOnly
-            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('common:actions.refresh')}
             title={t('common:actions.refresh')}
             disabled={refreshing}
@@ -610,7 +610,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
               ref={newTaskButtonRef}
               variant="primary"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               aria-expanded={createOpen}
               aria-controls={CREATE_PANEL_ID}
               disabled={capacityFull && !createOpen}
@@ -636,7 +636,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-destructive [@media(pointer:coarse)]:min-h-11"
+                className="shrink-0 text-destructive [@media(pointer:coarse)]:!min-h-11"
                 onClick={handleRefresh}
               >
                 <ArrowsClockwise size={14} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
@@ -780,7 +780,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                      className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       disabled={creating}
                       aria-label={t('common:actions.close')}
                       title={t('common:actions.close')}
@@ -827,7 +827,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       <DsButton
                         variant="secondary"
                         size="sm"
-                        className="w-full shrink-0 sm:w-auto [@media(pointer:coarse)]:min-h-11"
+                        className="w-full shrink-0 sm:w-auto [@media(pointer:coarse)]:!min-h-11"
                         disabled={!nlResult || creating}
                         onClick={applyNlResult}
                       >
@@ -1188,8 +1188,8 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                     </div>
 
                     <div className="flex items-center justify-end gap-2">
-                      <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
-                      <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
+                      <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
+                      <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
                         {creating
                           ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
                           : <CalendarBlank size={15} />}
@@ -1214,7 +1214,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 <DsButton
                   variant="primary"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     setTemplatesOpen(true);
                     openCreate();
@@ -1223,7 +1223,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                   <Sparkle size={15} />
                   {t('todo:automation.emptyTemplate')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={openCreate}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
                   <Plus size={15} />
                   {t('todo:automation.new')}
                 </DsButton>
