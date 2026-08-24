@@ -10,6 +10,7 @@
 |------|------|
 | #1 run/start skill schema 补齐生成调优参数（outputProtocol/visualHint/contentFormat/QA/FSRS/偏好/maxImages 全暴露 + 选用指南 + 契约测试） | ✅ `d1b827d9` |
 | #8 文档/进度/i18n/用户指南对齐当前代码 | ✅ 本文件对应提交 |
+| #10 eval lint 与 anki_qa_lint 完全对齐（`anki_qa_lint::codes` 稳定常量导出 + JS ALIGNED/RUST_ONLY/EVAL_ONLY 三分区表名值双对齐 + answer_leak 码点/cloze u32 语义对齐 + 6 边界 fixture，good 集仍 0 误伤，详见 `10-eval-align.md`） | ✅ `9da66ebd` |
 | 偏好记忆写入侧持久化、遮挡接线、critic × 金标 grounded、Sidekick 分槽、Phase 2 豁免测试、跨模块集成测试、eval 扩容等 | ⏳ 并行进行中（工作树可见未提交改动涉及 `anki_critic.rs` / `anki_gold_set.rs` / `anki_model_routing.rs` / `anki_preference_memory.rs` / `streaming_anki_service.rs` / eval fixtures 等），**以各子代理最终 commit 为准，此处不预记** |
 
 ## #8 已交付（文档/i18n 对齐）
