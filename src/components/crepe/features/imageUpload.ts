@@ -95,9 +95,14 @@ export const createImageUploader = (
   blobRegistry?: TransientBlobUrlRegistry
 ): ((file: File) => Promise<string>) => {
   return async (file: File): Promise<string> => {
-    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+    // 50MB - 与后端 notes_save_asset（file_manager.rs）的资产上限保持一致
+    const MAX_IMAGE_SIZE_MB = 50;
+    const MAX_IMAGE_SIZE = MAX_IMAGE_SIZE_MB * 1024 * 1024;
     if (file.size > MAX_IMAGE_SIZE) {
-      showGlobalNotification('warning', i18next.t('notes:editor.image_upload.too_large'));
+      showGlobalNotification(
+        'warning',
+        i18next.t('notes:upload.image_too_large', { limit: MAX_IMAGE_SIZE_MB })
+      );
       return '';
     }
 
