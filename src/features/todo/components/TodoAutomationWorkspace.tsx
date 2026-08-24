@@ -1186,8 +1186,8 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                     </div>
 
                     <div className="flex items-center justify-end gap-2">
-                      <DsButton variant="ghost" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
-                      <DsButton variant="primary" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
+                      <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
+                      <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
                         {creating
                           ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
                           : <CalendarBlank size={15} />}
