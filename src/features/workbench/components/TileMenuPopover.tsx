@@ -6,7 +6,8 @@
  *   左半 / 居中 / 右半
  *   左下 / 恢复 / 右下
  * 网格下方追加整行「进入沉浸模式」项（P2：绿灯默认动作的菜单入口）。
- * 按住 ⌥ Option：Fill ⇄ Center 互换（Sequoia+ 的 Option 排布变体）。
+ * 按住 ⌥ Option（Sequoia+ 的 Option 排布变体）：中列换成
+ * 上半屏 / 填满 / 下半屏（Fill 移到中心格，Center/Restore 松开 ⌥ 即回）。
  * 方向键在网格与沉浸行间循环移动，Enter/Space 选择，Esc 关闭。
  * 材质一律走 wb-glass 类名契约；进出动画 animationend + 超时兜底卸载。
  */
@@ -43,6 +44,8 @@ const ACTION_LABEL_KEYS: Record<TileMenuAction, string> = {
   'tiled-bl': 'workbench:tile.bottomLeft',
   restore: 'workbench:tile.restore',
   'tiled-br': 'workbench:tile.bottomRight',
+  'tiled-top': 'workbench:tile.top',
+  'tiled-bottom': 'workbench:tile.bottom',
   immersive: 'workbench:tile.immersive',
 };
 
@@ -88,6 +91,16 @@ function glyphCellsFor(action: TileMenuAction): GlyphCell[] {
         { slot: 'cell-tr', active: false },
         { slot: 'cell-bl', active: false },
         { slot: 'cell-br', active: true },
+      ];
+    case 'tiled-top':
+      return [
+        { slot: 'cell-top', active: true },
+        { slot: 'cell-bottom', active: false },
+      ];
+    case 'tiled-bottom':
+      return [
+        { slot: 'cell-top', active: false },
+        { slot: 'cell-bottom', active: true },
       ];
     case 'maximized':
       return [{ slot: 'cell-fill', active: true }];
@@ -153,7 +166,8 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
 
   /**
    * ⌥ Option 变体（对标 macOS Sequoia+：按住 Option 菜单项换排布）：
-   * 顶行中格 Fill(maximized) ⇄ 中心格 Center 互换。开菜单期间监听全局
+   * 中列换成 上半屏 / 填满 / 下半屏（Fill 移到中心格；Center/Restore
+   * 在 ⌥ 视图暂时让位，松开即回）。开菜单期间监听全局
    * Alt 按放；指针带 altKey 进入弹层时也同步（Option 先于菜单打开被按下）。
    */
   const [altHeld, setAltHeld] = useState(false);
@@ -182,9 +196,13 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
   const grid = useMemo<TileMenuAction[][]>(() => {
     if (!altHeld) return TILE_MENU_GRID;
     return TILE_MENU_GRID.map((row) =>
-      row.map((action) =>
-        action === 'maximized' ? 'center' : action === 'center' ? 'maximized' : action,
-      ),
+      row.map((action): TileMenuAction => {
+        // 中列 ⌥ 变体：上半屏 / 填满 / 下半屏
+        if (action === 'maximized') return 'tiled-top';
+        if (action === 'center') return 'maximized';
+        if (action === 'restore') return 'tiled-bottom';
+        return action;
+      }),
     );
   }, [altHeld]);
 

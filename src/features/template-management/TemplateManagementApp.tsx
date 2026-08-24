@@ -69,6 +69,7 @@ import {
 } from './components/TemplateInlinePanels';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import {
+  classifyTemplateImportError,
   filterAndSortTemplates,
   hasActiveFilters,
   persistViewMode,
@@ -475,20 +476,50 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }
   };
 
+  // 导入失败可读化：按信号词归类 → 「怎么办」级主文案 + 原始报错降级为技术细节附注
+  const buildImportFailureMessage = useCallback((error: unknown): string => {
+    const raw = getErrorMessage(error);
+    const kind = classifyTemplateImportError(raw);
+    if (kind === 'unknown') {
+      return formatErrorMessage(t('import_external_failed'), error);
+    }
+    return `${t(`templateMgmt.import_error_${kind}`)}\n${t('templateMgmt.import_error_detail', { detail: raw })}`;
+  }, [t]);
+
   const handleConfirmImportExternal = async () => {
     if (!selectedImportFile) return;
     setIsImporting(true);
     setImportResult(null);
+
+    let text: string;
     try {
-      const text = await selectedImportFile.text();
-      let strictBuiltin = true;
-      try {
-        const parsed = JSON.parse(text);
-        const items = Array.isArray(parsed) ? parsed : [parsed];
-        strictBuiltin = items.every(item => item && typeof item === 'object' && ('fields_json' in item || 'field_extraction_rules_json' in item));
-      } catch {
-        strictBuiltin = false;
-      }
+      text = await selectedImportFile.text();
+    } catch (err: unknown) {
+      logError(t('import_external_failed'), err);
+      setImportResult({
+        ok: false,
+        message: `${t('templateMgmt.import_error_read_file')}\n${t('templateMgmt.import_error_detail', { detail: getErrorMessage(err) })}`,
+      });
+      setIsImporting(false);
+      return;
+    }
+
+    // JSON 语法错误在前端即可确定：直接给可读错误，不再把坏文件送去后端
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err: unknown) {
+      setImportResult({
+        ok: false,
+        message: `${t('templateMgmt.import_error_invalid_json')}\n${t('templateMgmt.import_error_detail', { detail: getErrorMessage(err) })}`,
+      });
+      setIsImporting(false);
+      return;
+    }
+
+    try {
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const strictBuiltin = items.every(item => item && typeof item === 'object' && ('fields_json' in item || 'field_extraction_rules_json' in item));
       // 后端签名为 request: TemplateBulkImportRequest，必须包一层 request
       const result = await invoke<string>('import_custom_templates_bulk', {
         request: {
@@ -502,7 +533,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       await loadTemplates();
     } catch (err: unknown) {
       logError(t('import_external_failed'), err);
-      setImportResult({ ok: false, message: formatErrorMessage(t('import_external_failed'), err) });
+      setImportResult({ ok: false, message: buildImportFailureMessage(err) });
     } finally {
       setIsImporting(false);
     }

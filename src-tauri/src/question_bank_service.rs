@@ -515,6 +515,9 @@ impl QuestionBankService {
         // 若该题最近一次提交仍未判定（is_correct IS NULL）且答案相同，则按
         // "对该次提交改判"处理（与 AI 评判 qbank_grading/pipeline.rs 的落库口径一致），
         // 不新增作答记录、不重复递增 attempt_count。
+        // 已判定提交的换判（如 AI 评判后用户不认可）走显式的 regrade_submission，
+        // 此处不做启发式扩展：带 override 重复提交同一答案也可能是真实的重复作答
+        // （Agent 批量练习路径），启发式会把它们误并成一次。
         if let Some(override_val) = is_correct_override {
             let latest_submission = VfsQuestionRepo::get_submissions_with_conn(&tx, question_id, 1)
                 .map_err(|e| AppError::database(e.to_string()))?
@@ -522,7 +525,7 @@ impl QuestionBankService {
                 .next();
             if let Some(latest) = latest_submission {
                 if latest.is_correct.is_none() && latest.user_answer == user_answer {
-                    return self.regrade_pending_submission_in_tx(
+                    return self.regrade_submission_in_tx(
                         tx,
                         question,
                         latest,
@@ -660,15 +663,58 @@ impl QuestionBankService {
         })
     }
 
-    /// 对"待人工批改"的最近一次提交做改判落库（submit_answer 的手动改判去重分支）。
+    /// 对最近一次提交做显式改判（UI 自评按钮"我答对了/我答错了"的唯一后端入口）。
+    ///
+    /// 与 submit_answer 的关键差异：改判永远不新增作答记录、不递增 attempt_count。
+    /// 覆盖两类场景：
+    /// - 待判定提交（is_correct IS NULL）的首次人工判定；
+    /// - 已判定提交（AI 评判/上次自评）的换判——此前该场景会插入第二条
+    ///   submission 并把 attempt_count 再 +1，做题次数与正确率被双计。
+    pub fn regrade_submission(
+        &self,
+        question_id: &str,
+        submission_id: &str,
+        is_correct: bool,
+    ) -> Result<SubmitAnswerResult, AppError> {
+        let mut conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        let question = VfsQuestionRepo::get_question_with_conn(&tx, question_id)
+            .map_err(|e| AppError::database(e.to_string()))?
+            .ok_or_else(|| AppError::not_found(format!("Question not found: {}", question_id)))?;
+
+        // 只允许改判最近一次提交：更早的提交已沉淀进统计口径，
+        // 改判它们会让 question.is_correct（最近一次作答结果）失真。
+        let latest = VfsQuestionRepo::get_submissions_with_conn(&tx, question_id, 1)
+            .map_err(|e| AppError::database(e.to_string()))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::validation("该题还没有作答记录，无法改判"))?;
+        if latest.id != submission_id {
+            return Err(AppError::validation(
+                "要改判的作答已不是最近一次提交，请刷新后重试",
+            ));
+        }
+
+        self.regrade_submission_in_tx(tx, question, latest, is_correct)
+    }
+
+    /// 改判落库主体（submit_answer 待判定去重分支与 regrade_submission 共用）。
     ///
     /// 语义与 AI 评判管线（qbank_grading/pipeline.rs 的 persist 段）保持一致：
     /// - 更新既有 submission 的 is_correct/grading_method，不新插记录；
-    /// - 题目侧不重复递增 attempt_count；correct_count 仅在此前未判定时按改判结果补记；
+    /// - 题目侧不重复递增 attempt_count；correct_count 按前后判定差值增减
+    ///   （未判定→对 +1，对→错 -1，错→对 +1，其余不变）；
     /// - 状态转换与 submit_answer_with_conn 同口径（错→review，correct_count>=2→mastered）；
-    /// - 同事务内补记 mastery 事件（以 submission_id 为幂等键）并刷新统计；
+    /// - 同事务内补记 mastery 事件（以 submission_id 为幂等键；换判时该键已存在，
+    ///   事件不会重复插入，但也不回改首判信号——掌握度按事件流只增不改）；
     /// - 提交后：改判为"错"时确保存在 SM-2 复习计划（与自动判分路径的 I1 修复对称）。
-    fn regrade_pending_submission_in_tx(
+    fn regrade_submission_in_tx(
         &self,
         tx: rusqlite::Transaction<'_>,
         question: Question,
@@ -676,8 +722,40 @@ impl QuestionBankService {
         is_correct: bool,
     ) -> Result<SubmitAnswerResult, AppError> {
         let question_id = question.id.clone();
+
+        // 同向改判幂等短路：连点两次"我答对了"不产生任何写入
+        if submission.is_correct == Some(is_correct) {
+            let updated_question = VfsQuestionRepo::get_question_with_conn(&tx, &question_id)
+                .map_err(|e| AppError::database(e.to_string()))?
+                .ok_or_else(|| {
+                    AppError::not_found(format!("Question not found: {}", question_id))
+                })?;
+            let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+                .map_err(|e| AppError::database(e.to_string()))?;
+            tx.commit().map_err(|e| AppError::database(e.to_string()))?;
+            return Ok(SubmitAnswerResult {
+                is_correct: Some(is_correct),
+                correct_answer: question.answer,
+                needs_manual_grading: false,
+                message: if is_correct {
+                    "回答正确！".to_string()
+                } else {
+                    "回答错误".to_string()
+                },
+                updated_question,
+                updated_stats,
+                submission_id: submission.id,
+            });
+        }
+
         let now = chrono::Utc::now().to_rfc3339();
         let is_correct_val: i32 = if is_correct { 1 } else { 0 };
+        // correct_count 差值：未判定/错 → 对 +1；对 → 错 -1；其余不变
+        let correct_delta: i64 = match (submission.is_correct, is_correct) {
+            (Some(true), false) => -1,
+            (None, true) | (Some(false), true) => 1,
+            _ => 0,
+        };
 
         tx.execute(
             "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'manual' \
@@ -686,25 +764,21 @@ impl QuestionBankService {
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
-        // correct_count 仅在题目当前仍未判定（is_correct IS NULL）时补记，防重复计数；
         // 状态转换与 submit_answer_with_conn / pipeline.rs 保持同一 CASE 口径。
         tx.execute(
             r#"
             UPDATE questions SET
                 is_correct = ?1,
-                correct_count = CASE
-                    WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1
-                    ELSE correct_count
-                END,
+                correct_count = MAX(0, correct_count + ?4),
                 status = CASE
                     WHEN ?1 = 0 THEN 'review'
-                    WHEN (CASE WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1 ELSE correct_count END) >= 2 THEN 'mastered'
+                    WHEN MAX(0, correct_count + ?4) >= 2 THEN 'mastered'
                     ELSE 'in_progress'
                 END,
                 updated_at = ?2
             WHERE id = ?3 AND deleted_at IS NULL
             "#,
-            rusqlite::params![is_correct_val, now, question_id],
+            rusqlite::params![is_correct_val, now, question_id, correct_delta],
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
@@ -720,7 +794,8 @@ impl QuestionBankService {
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
-        // 首次提交因未判定跳过了 mastery 事件，这里以 submission_id 为幂等键补记
+        // 首次判定补记 mastery 事件（submission_id 为幂等键）；换判时该键已存在，
+        // ON CONFLICT DO NOTHING 保证不重复计数
         let mastery_state = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
             .record_qbank_answer_with_conn(
                 &tx,
@@ -759,8 +834,8 @@ impl QuestionBankService {
         }
 
         info!(
-            "[QuestionBankService] Regraded pending submission id={} for question id={}, is_correct={}",
-            submission.id, question_id, is_correct
+            "[QuestionBankService] Regraded submission id={} for question id={}, {:?} -> {}",
+            submission.id, question_id, submission.is_correct, is_correct
         );
 
         Ok(SubmitAnswerResult {
@@ -2452,8 +2527,16 @@ impl QuestionBankService {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let target_count = count as usize;
 
-        // M-031: 使用 SQL 层随机抽取各类别题目，避免全量加载
+        // 当日真实进度：此前 completed_count 硬编码 0，练完回到面板进度条
+        // 恒为 0/target，完成庆祝永不出现。口径与打卡日历一致（按题去重，
+        // answer_submissions 为主、存量无提交记录的题按 last_attempt_at 兜底）。
+        let (answered_today_ids, correct_today) = self.query_daily_progress(exam_id, &today)?;
+        let completed_today = answered_today_ids.len() as u32;
+
+        // M-031: 使用 SQL 层随机抽取各类别题目，避免全量加载。
+        // 今天已答过的题不再进入推荐（"继续练"应给剩余题，而非重复已答题）。
         let mut selected_ids: Vec<String> = Vec::new();
+        let mut exclude_ids: Vec<String> = answered_today_ids.clone();
 
         // 1. 优先选择错题（status = review），最多占一半
         let mistake_filters = QuestionFilters {
@@ -2464,12 +2547,13 @@ impl QuestionBankService {
             &self.vfs_db,
             exam_id,
             &mistake_filters,
-            &[],
+            &exclude_ids,
             None,
             (count / 2).max(1),
         )
         .map_err(|e| AppError::database(e.to_string()))?;
-        selected_ids.extend(mistake_ids);
+        selected_ids.extend(mistake_ids.iter().cloned());
+        exclude_ids.extend(mistake_ids);
         let mistake_count = selected_ids.len() as u32;
 
         // 2. 其次选择新题（status = new）
@@ -2483,12 +2567,13 @@ impl QuestionBankService {
                 &self.vfs_db,
                 exam_id,
                 &new_filters,
-                &selected_ids,
+                &exclude_ids,
                 None,
                 remaining,
             )
             .map_err(|e| AppError::database(e.to_string()))?;
-            selected_ids.extend(new_ids);
+            selected_ids.extend(new_ids.iter().cloned());
+            exclude_ids.extend(new_ids);
         }
         let new_count = (selected_ids.len() as u32).saturating_sub(mistake_count);
 
@@ -2504,21 +2589,39 @@ impl QuestionBankService {
                 &self.vfs_db,
                 exam_id,
                 &mastered_filters,
-                &selected_ids,
+                &exclude_ids,
                 Some(&seven_days_ago),
                 remaining,
             )
             .map_err(|e| AppError::database(e.to_string()))?;
-            selected_ids.extend(review_ids);
+            selected_ids.extend(review_ids.iter().cloned());
+            exclude_ids.extend(review_ids);
         }
         let review_count = (selected_ids.len() as u32)
             .saturating_sub(mistake_count)
             .saturating_sub(new_count);
 
-        // 4. 如果还不够，随机补充（不限状态）
+        // 4. 如果还不够，随机补充（不限状态，仍排除今天已答的题）
         if selected_ids.len() < target_count {
             let remaining = (target_count - selected_ids.len()) as u32;
             let fill_ids = VfsQuestionRepo::random_question_ids(
+                &self.vfs_db,
+                exam_id,
+                &QuestionFilters::default(),
+                &exclude_ids,
+                None,
+                remaining,
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+            selected_ids.extend(fill_ids.iter().cloned());
+            exclude_ids.extend(fill_ids);
+        }
+
+        // 5. 题库里未答的题不足（今天几乎都练过）时，允许重练今天已答的题补齐，
+        //    保证"再练一组"仍有题可练；仅排除本轮已选的题。
+        if selected_ids.len() < target_count && !answered_today_ids.is_empty() {
+            let remaining = (target_count - selected_ids.len()) as u32;
+            let repeat_ids = VfsQuestionRepo::random_question_ids(
                 &self.vfs_db,
                 exam_id,
                 &QuestionFilters::default(),
@@ -2527,7 +2630,7 @@ impl QuestionBankService {
                 remaining,
             )
             .map_err(|e| AppError::database(e.to_string()))?;
-            selected_ids.extend(fill_ids);
+            selected_ids.extend(repeat_ids);
         }
 
         if selected_ids.is_empty() {
@@ -2539,14 +2642,14 @@ impl QuestionBankService {
             exam_id: exam_id.to_string(),
             question_ids: selected_ids.clone(),
             daily_target: count,
-            completed_count: 0,
-            correct_count: 0,
+            completed_count: completed_today,
+            correct_count: correct_today,
             source_distribution: DailySourceDistribution {
                 mistake_count,
                 new_count,
                 review_count,
             },
-            is_completed: false,
+            is_completed: completed_today >= count,
         };
 
         info!(
@@ -2555,6 +2658,66 @@ impl QuestionBankService {
         );
 
         Ok(result)
+    }
+
+    /// 查询某题目集在指定日期的做题进度（按题去重）。
+    ///
+    /// 口径与 get_check_in_calendar / get_activity_heatmap 一致：
+    /// answer_submissions 为主，存量无提交记录的题按 last_attempt_at 兜底，
+    /// DATE(…, 'localtime') 对齐本地日界线；正确数按"当日该题任一次答对"计。
+    fn query_daily_progress(
+        &self,
+        exam_id: &str,
+        date: &str,
+    ) -> Result<(Vec<String>, u32), AppError> {
+        let conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        let sql = r#"
+            SELECT question_id, MAX(correct) as correct FROM (
+                SELECT
+                    s.question_id as question_id,
+                    CASE WHEN s.is_correct = 1 THEN 1 ELSE 0 END as correct
+                FROM answer_submissions s
+                INNER JOIN questions q ON q.id = s.question_id
+                WHERE q.exam_id = ?1 AND q.deleted_at IS NULL
+                    AND DATE(s.submitted_at, 'localtime') = ?2
+                UNION ALL
+                SELECT
+                    q.id as question_id,
+                    CASE WHEN q.is_correct = 1 THEN 1 ELSE 0 END as correct
+                FROM questions q
+                WHERE q.exam_id = ?1 AND q.deleted_at IS NULL
+                    AND q.last_attempt_at IS NOT NULL
+                    AND DATE(q.last_attempt_at, 'localtime') = ?2
+                    AND NOT EXISTS (SELECT 1 FROM answer_submissions s2 WHERE s2.question_id = q.id)
+            )
+            GROUP BY question_id
+        "#;
+
+        let mut stmt = conn
+            .prepare(sql)
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let mut rows = stmt
+            .query(rusqlite::params![exam_id, date])
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        let mut answered_ids: Vec<String> = Vec::new();
+        let mut correct_count = 0u32;
+        while let Some(row) = rows.next().map_err(|e| AppError::database(e.to_string()))? {
+            let question_id: String = row.get(0).unwrap_or_default();
+            let correct: i64 = row.get(1).unwrap_or(0);
+            if question_id.is_empty() {
+                continue;
+            }
+            if correct == 1 {
+                correct_count += 1;
+            }
+            answered_ids.push(question_id);
+        }
+        Ok((answered_ids, correct_count))
     }
 
     /// 生成试卷
@@ -2671,11 +2834,14 @@ impl QuestionBankService {
     /// * `exam_id` - 题目集 ID（可选，为空表示全局）
     /// * `year` - 年份
     /// * `month` - 月份
+    /// * `daily_target` - 达标判定用的每日目标题数（可选；缺省 10）。
+    ///   此前阈值硬编码 10：目标设 5 做满 5 题不达标、设 20 做 10 题反而达标。
     pub fn get_check_in_calendar(
         &self,
         exam_id: Option<&str>,
         year: i32,
         month: u32,
+        daily_target: Option<u32>,
     ) -> Result<CheckInCalendar, AppError> {
         if !(1..=12).contains(&month) {
             return Err(AppError::validation("月份必须在 1-12 之间"));
@@ -2683,6 +2849,7 @@ impl QuestionBankService {
         if !(1970..=9999).contains(&year) {
             return Err(AppError::validation("年份无效"));
         }
+        let target = daily_target.unwrap_or(10).max(1);
 
         let conn = self
             .vfs_db
@@ -2759,8 +2926,8 @@ impl QuestionBankService {
                 exam_id: exam_id.map(|s| s.to_string()),
                 question_count: question_count as u32,
                 correct_count: correct_count as u32,
-                study_duration_seconds: 0,             // 暂不支持时长统计
-                target_achieved: question_count >= 10, // 默认每日目标 10 题
+                study_duration_seconds: 0, // 暂不支持时长统计
+                target_achieved: question_count as u32 >= target,
             });
         }
 
@@ -3873,6 +4040,211 @@ mod tests {
         assert_eq!(streak(&["2026-08-02", "2026-08-01", "2026-07-30"]), 2);
         // 重复日期（防御）不应重复计数
         assert_eq!(streak(&["2026-08-02", "2026-08-02", "2026-08-01"]), 2);
+    }
+
+    /// 在同一题目集内造 n 道填空题（答案均为 "2"），返回 (exam_id, question_ids)
+    fn seed_exam_with_questions(vfs_db: &VfsDatabase, n: usize) -> (String, Vec<String>) {
+        let exam_id = format!("exam_{}", nanoid::nanoid!(6));
+        let conn = vfs_db.get_conn_safe().expect("conn");
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES (?1, 'daily practice test', 'completed', ?2, '{}', '{}', ?3, ?3)",
+            params![exam_id, format!("temp_{exam_id}"), "2020-01-01T00:00:00Z"],
+        )
+        .expect("exam");
+        drop(conn);
+        let mut ids = Vec::with_capacity(n);
+        for i in 0..n {
+            let id = VfsQuestionRepo::create_question(
+                vfs_db,
+                &CreateQuestionParams {
+                    exam_id: exam_id.clone(),
+                    card_id: None,
+                    question_label: Some(format!("Q{i}")),
+                    content: format!("question {i}?"),
+                    options: None,
+                    answer: Some("2".into()),
+                    explanation: None,
+                    structured_data: None,
+                    question_type: Some(QuestionType::FillBlank),
+                    difficulty: None,
+                    tags: None,
+                    source_type: None,
+                    source_ref: None,
+                    images: None,
+                    parent_id: None,
+                },
+            )
+            .expect("create question")
+            .id;
+            ids.push(id);
+        }
+        (exam_id, ids)
+    }
+
+    /// B1 修复回归：每日一练进度必须反映当日真实作答（此前 completed_count 恒 0），
+    /// 且推荐题目排除今天已答过的题。
+    #[test]
+    fn daily_practice_progress_reflects_todays_submissions() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (exam_id, qids) = seed_exam_with_questions(&vfs_db, 8);
+
+        // 今天答 2 题：1 对 1 错
+        qbank
+            .submit_answer(&qids[0], "2", Some(true), Some("dp-1"))
+            .expect("submit correct");
+        qbank
+            .submit_answer(&qids[1], "x", Some(false), Some("dp-2"))
+            .expect("submit wrong");
+
+        let daily = qbank.get_daily_practice(&exam_id, 5).expect("daily");
+        assert_eq!(daily.completed_count, 2, "当日进度按题去重推导");
+        assert_eq!(daily.correct_count, 1);
+        assert!(!daily.is_completed, "2 < 5 未达标");
+        assert_eq!(daily.daily_target, 5);
+        assert_eq!(daily.question_ids.len(), 5);
+        assert!(
+            !daily.question_ids.contains(&qids[0]) && !daily.question_ids.contains(&qids[1]),
+            "今天已答过的题不应再进推荐"
+        );
+    }
+
+    /// B1 修复回归：目标达成后 is_completed=true，且"再练一组"仍能拿到题
+    /// （未答题不足时允许回补今天已答过的题）。
+    #[test]
+    fn daily_practice_marks_completed_and_supports_another_round() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (exam_id, qids) = seed_exam_with_questions(&vfs_db, 3);
+
+        for (i, qid) in qids.iter().enumerate() {
+            qbank
+                .submit_answer(qid, "2", Some(true), Some(&format!("dc-{i}")))
+                .expect("submit");
+        }
+
+        let daily = qbank.get_daily_practice(&exam_id, 2).expect("daily");
+        assert_eq!(daily.completed_count, 3);
+        assert_eq!(daily.correct_count, 3);
+        assert!(daily.is_completed, "3 >= 2 达标");
+        assert!(
+            !daily.question_ids.is_empty(),
+            "题库题目全部答完时回补已答题，保证再练一组有题可练"
+        );
+    }
+
+    /// B2 修复回归：打卡"达标"判定必须跟随用户目标，而非硬编码 10 题。
+    #[test]
+    fn check_in_calendar_target_follows_user_goal() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (exam_id, qids) = seed_exam_with_questions(&vfs_db, 2);
+        qbank
+            .submit_answer(&qids[0], "2", Some(true), Some("cal-1"))
+            .expect("submit");
+
+        let now = chrono::Local::now();
+        let (year, month) = (now.format("%Y").to_string(), now.format("%m").to_string());
+        let year: i32 = year.parse().unwrap();
+        let month: u32 = month.parse().unwrap();
+        let today = now.format("%Y-%m-%d").to_string();
+
+        let low_target = qbank
+            .get_check_in_calendar(Some(&exam_id), year, month, Some(1))
+            .expect("calendar target=1");
+        let today_row = low_target
+            .days
+            .iter()
+            .find(|d| d.date == today)
+            .expect("today check-in exists");
+        assert!(today_row.target_achieved, "做 1 题、目标 1 → 达标");
+
+        let default_target = qbank
+            .get_check_in_calendar(Some(&exam_id), year, month, None)
+            .expect("calendar default");
+        let today_row = default_target
+            .days
+            .iter()
+            .find(|d| d.date == today)
+            .expect("today check-in exists");
+        assert!(!today_row.target_achieved, "缺省目标 10：1 题不达标");
+    }
+
+    /// B3 修复回归：自评改判（含 AI 评判后的换判）修正最近一次提交，
+    /// 不新增作答记录、不双计 attempt_count；correct_count 按差值增减。
+    #[test]
+    fn regrade_submission_flips_latest_without_double_counting() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (exam_id, qids) = seed_exam_with_questions(&vfs_db, 1);
+        let qid = &qids[0];
+
+        // 已判定为错的提交（模拟 AI 评判/首次自评后的状态）
+        let first = qbank
+            .submit_answer(qid, "my answer", Some(false), Some("rg-1"))
+            .expect("initial submit");
+        assert_eq!(first.updated_question.attempt_count, 1);
+        assert_eq!(first.updated_question.correct_count, 0);
+
+        let count_submissions = |db: &VfsDatabase| -> i64 {
+            db.get_conn_safe()
+                .unwrap()
+                .query_row(
+                    "SELECT COUNT(*) FROM answer_submissions WHERE question_id = ?1",
+                    params![qid],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(count_submissions(&vfs_db), 1);
+
+        // 换判 错 → 对：改原提交，不插新记录
+        let flipped = qbank
+            .regrade_submission(qid, &first.submission_id, true)
+            .expect("regrade to correct");
+        assert_eq!(flipped.is_correct, Some(true));
+        assert_eq!(flipped.submission_id, first.submission_id, "改判同一条提交");
+        assert_eq!(flipped.updated_question.attempt_count, 1, "attempt 不双计");
+        assert_eq!(flipped.updated_question.correct_count, 1, "错→对 correct_count +1");
+        assert_eq!(count_submissions(&vfs_db), 1, "不新增作答记录");
+
+        // 同向改判幂等：无写入、无副作用
+        let idem = qbank
+            .regrade_submission(qid, &first.submission_id, true)
+            .expect("idempotent regrade");
+        assert_eq!(idem.updated_question.correct_count, 1);
+        assert_eq!(count_submissions(&vfs_db), 1);
+
+        // 换判 对 → 错：correct_count 回退，状态回 review
+        let back = qbank
+            .regrade_submission(qid, &first.submission_id, false)
+            .expect("regrade to wrong");
+        assert_eq!(back.is_correct, Some(false));
+        assert_eq!(back.updated_question.correct_count, 0, "对→错 correct_count -1");
+        assert_eq!(back.updated_question.status, QuestionStatus::Review);
+        assert_eq!(count_submissions(&vfs_db), 1);
+        let _ = exam_id;
+    }
+
+    /// B3 边界：只能改判最近一次提交；提交了新答案后旧提交拒绝改判。
+    #[test]
+    fn regrade_submission_rejects_stale_submission() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (_exam_id, qids) = seed_exam_with_questions(&vfs_db, 1);
+        let qid = &qids[0];
+
+        let first = qbank
+            .submit_answer(qid, "old", Some(false), Some("st-1"))
+            .expect("first submit");
+        qbank
+            .submit_answer(qid, "new", Some(false), Some("st-2"))
+            .expect("second submit");
+
+        let err = qbank
+            .regrade_submission(qid, &first.submission_id, true)
+            .expect_err("stale submission must be rejected");
+        assert!(
+            err.to_string().contains("最近一次提交"),
+            "错误信息应说明只能改判最近一次提交，实际：{err}"
+        );
     }
 
     /// M-5：题型切换后旧 structured_data 的清空规则

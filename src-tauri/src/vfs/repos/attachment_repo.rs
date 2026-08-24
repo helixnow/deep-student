@@ -266,6 +266,11 @@ fn archive_kind_from_magic(data: &[u8]) -> Option<ArchiveKind> {
 /// ZIP 清单条目上限（防注入内容过长 / 存储膨胀）
 const ZIP_MANIFEST_MAX_ENTRIES: usize = 200;
 
+/// 清单首行机器标记 —— 与前端 `archiveManifest.ts` 的 `ARCHIVE_MANIFEST_MARKER`
+/// 严格对齐。语言中立：前端据此识别清单文本，不再依赖自然语言前缀
+/// （历史数据的 `[压缩包清单]` 前缀由前端做只读兼容识别）。
+pub(crate) const ARCHIVE_MANIFEST_MARKER: &str = "[#archive-manifest]";
+
 fn format_manifest_size(bytes: u64) -> String {
     if bytes >= 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
@@ -294,9 +299,11 @@ pub(crate) fn build_zip_manifest_text(name: &str, data: &[u8]) -> Option<String>
     };
     let total = archive.len();
     let shown = total.min(ZIP_MANIFEST_MAX_ENTRIES);
-    let mut lines: Vec<String> = Vec::with_capacity(shown + 2);
+    let mut lines: Vec<String> = Vec::with_capacity(shown + 3);
+    // 首行为机器标记（前端识别用，展示时剥除）；人类可读摘要保留在第二行
+    lines.push(ARCHIVE_MANIFEST_MARKER.to_string());
     lines.push(format!(
-        "[压缩包清单] {}：共 {} 个条目{}",
+        "压缩包 {}：共 {} 个条目{}",
         name,
         total,
         if total > shown {

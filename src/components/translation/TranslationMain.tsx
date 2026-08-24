@@ -7,6 +7,7 @@ import { LanguageSelect } from './LanguageSelect';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { TRANSLATION_LANGUAGES } from '@/translation/languages';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '../ui/shad/Switch';
@@ -70,35 +71,6 @@ interface TranslationMainProps {
   onExportTranslation: () => void;
   onRateTranslation: (rating: number) => void;
 }
-
-const LANGUAGES = [
-  { code: 'auto', label: 'translation:languages.auto' },
-  { code: 'zh-CN', label: 'translation:languages.zh-CN' },
-  { code: 'zh-TW', label: 'translation:languages.zh-TW' },
-  { code: 'en', label: 'translation:languages.en' },
-  { code: 'ja', label: 'translation:languages.ja' },
-  { code: 'ko', label: 'translation:languages.ko' },
-  { code: 'fr', label: 'translation:languages.fr' },
-  { code: 'de', label: 'translation:languages.de' },
-  { code: 'es', label: 'translation:languages.es' },
-  { code: 'ru', label: 'translation:languages.ru' },
-  { code: 'ar', label: 'translation:languages.ar' },
-  { code: 'pt', label: 'translation:languages.pt' },
-  { code: 'pt-BR', label: 'translation:languages.pt-BR' },
-  { code: 'it', label: 'translation:languages.it' },
-  { code: 'vi', label: 'translation:languages.vi' },
-  { code: 'th', label: 'translation:languages.th' },
-  { code: 'hi', label: 'translation:languages.hi' },
-  { code: 'tr', label: 'translation:languages.tr' },
-  { code: 'pl', label: 'translation:languages.pl' },
-  { code: 'nl', label: 'translation:languages.nl' },
-  { code: 'sv', label: 'translation:languages.sv' },
-  { code: 'la', label: 'translation:languages.la' },
-  { code: 'el', label: 'translation:languages.el' },
-  { code: 'uk', label: 'translation:languages.uk' },
-  { code: 'id', label: 'translation:languages.id' },
-  { code: 'ms', label: 'translation:languages.ms' },
-];
 
 type LayoutMode = 'split' | 'stacked';
 
@@ -277,9 +249,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   // ========== 顶部工具栏 ==========
   const languageOptions = useMemo(
     () =>
-      LANGUAGES.filter((lang) => lang.code !== 'auto').map((lang) => ({
+      TRANSLATION_LANGUAGES.map((lang) => ({
         code: lang.code,
-        label: t(lang.label),
+        label: t(lang.labelKey),
       })),
     [t]
   );
@@ -561,6 +533,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                 initial={0.4}
                 minTop={0.2}
                 minBottom={0.3}
+                storageKey="translation.workbench.stackedRatio"
                 className="bg-background"
                 top={sourcePanelNode}
                 bottom={targetPanelNode}
@@ -570,6 +543,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
                 initial={0.5}
                 minLeft={0.3}
                 minRight={0.3}
+                storageKey="translation.workbench.splitRatio"
                 className="bg-background"
                 left={sourcePanelNode}
                 right={targetPanelNode}

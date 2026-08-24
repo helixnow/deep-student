@@ -1,12 +1,12 @@
 /**
  * 聊天划词制卡 — 将选中文本送入 CardForge 生成 Anki 卡片。
  *
- * Phase A MVP：最短链路 SelectionToolbar → ChatV2AnkiAdapter.generateCards。
+ * 统一走 cardAgent API，避免依赖已废弃的聊天专用适配器。
  */
 
 import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ChatV2AnkiAdapter, cardAgent } from '@/components/anki/cardforge';
+import { cardAgent } from '@/components/anki/cardforge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -109,15 +109,16 @@ export async function generateCardsFromSelection(
   const maxCards = input.maxCards ?? DEFAULT_SELECTION_MAX_CARDS;
 
   try {
-    await cardAgent.waitForReady();
-
-    const result = await ChatV2AnkiAdapter.generateCards(content, {
+    const result = await cardAgent.generateCards({
+      content,
       maxCards,
-      deckName: t('selectionToolbar.makeCardsDeckName'),
-      customRequirements: t(
-        'selectionToolbar.makeCardsRequirements',
-        '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
-      ),
+      options: {
+        deckName: t('selectionToolbar.makeCardsDeckName'),
+        customRequirements: t(
+          'selectionToolbar.makeCardsRequirements',
+          '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
+        ),
+      },
     });
 
     if (!result.ok) {

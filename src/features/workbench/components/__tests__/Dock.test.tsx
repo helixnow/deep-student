@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor, act, within } from '@testing-librar
 
 import type { AppDefinition, AppWindowProps } from '../../core/types';
 import { appRegistry } from '../../core/appRegistry';
+import { notifyAppBadgeChanged } from '../../core/badgeBus';
 import { useWindowStore } from '../../core/windowStore';
 import { workbenchBus } from '../../core/workbenchBus';
 import { Dock } from '../Dock';
@@ -275,7 +276,7 @@ describe('DockContextMenu 右键菜单', () => {
 });
 
 describe('badge 与运行指示点', () => {
-  it('badgeSource 计数角标，2s 内反映变化，源清空后消失', () => {
+  it('badgeSource 计数角标：badgeBus 推送即时反映，30s 兜底轮询对账，源清空后消失', () => {
     vi.useFakeTimers();
     let value: number | null = 3;
     appRegistry.register(
@@ -288,15 +289,23 @@ describe('badge 与运行指示点', () => {
 
     expect(screen.getByTestId('wb-dock-badge-tasks')).toHaveTextContent('3');
 
+    // 推送通道：数据源变化后 notify，无需等轮询即更新
     value = 5;
     act(() => {
-      vi.advanceTimersByTime(2000);
+      notifyAppBadgeChanged('tasks');
     });
     expect(screen.getByTestId('wb-dock-badge-tasks')).toHaveTextContent('5');
 
+    // 低频兜底：事件丢失时 30s 轮询仍能对账
+    value = 7;
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByTestId('wb-dock-badge-tasks')).toHaveTextContent('7');
+
     value = null;
     act(() => {
-      vi.advanceTimersByTime(2000);
+      notifyAppBadgeChanged('tasks');
     });
     expect(screen.queryByTestId('wb-dock-badge-tasks')).not.toBeInTheDocument();
   });

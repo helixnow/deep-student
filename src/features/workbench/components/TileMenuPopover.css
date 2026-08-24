@@ -158,6 +158,21 @@
   width: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
 }
 
+/* 上/下半屏 */
+.wb-tilemenu-glyph-cell.cell-top {
+  left: var(--wb-tilemenu-m);
+  right: var(--wb-tilemenu-m);
+  top: var(--wb-tilemenu-m);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
+.wb-tilemenu-glyph-cell.cell-bottom {
+  left: var(--wb-tilemenu-m);
+  right: var(--wb-tilemenu-m);
+  bottom: var(--wb-tilemenu-m);
+  height: calc(50% - var(--wb-tilemenu-m) - var(--wb-tilemenu-gap) / 2);
+}
+
 /* 四分屏 */
 .wb-tilemenu-glyph-cell.cell-tl {
   left: var(--wb-tilemenu-m);

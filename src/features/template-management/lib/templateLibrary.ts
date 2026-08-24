@@ -116,6 +116,61 @@ export function persistViewMode(mode: TemplateViewMode): void {
   }
 }
 
+/* ── 导入失败可读化 ──
+ * 后端（serde/fs）与前端 JSON.parse 的原始报错对用户不可读；
+ * 按信号词归类为可翻译的失败类别，UI 侧给出「怎么办」级别的文案，
+ * 原始报错降级为技术细节附注。纯函数，便于单测。 */
+
+export type TemplateImportErrorKind =
+  | 'invalid_json'
+  | 'not_template'
+  | 'permission'
+  | 'unknown';
+
+const IMPORT_PERMISSION_SIGNALS = [
+  'permission denied',
+  'access denied',
+  'forbidden path',
+  'not allowed',
+];
+
+/** serde 结构校验类报错：JSON 合法但不是模板导出格式 */
+const IMPORT_SCHEMA_SIGNALS = [
+  'missing field',
+  'invalid type',
+  'unknown field',
+  'duplicate field',
+  'invalid value',
+];
+
+/** JSON 语法级报错（前端 JSON.parse 与 serde 语法错误的常见措辞） */
+const IMPORT_JSON_SYNTAX_SIGNALS = [
+  'unexpected token',
+  'unexpected end of json',
+  'is not valid json',
+  'expected value',
+  'eof while parsing',
+  'trailing characters',
+  'key must be a string',
+  'control character',
+  'invalid json',
+  'json parse',
+];
+
+export function classifyTemplateImportError(message: string): TemplateImportErrorKind {
+  const normalized = message.toLowerCase();
+  if (IMPORT_PERMISSION_SIGNALS.some((signal) => normalized.includes(signal))) {
+    return 'permission';
+  }
+  if (IMPORT_SCHEMA_SIGNALS.some((signal) => normalized.includes(signal))) {
+    return 'not_template';
+  }
+  if (IMPORT_JSON_SYNTAX_SIGNALS.some((signal) => normalized.includes(signal))) {
+    return 'invalid_json';
+  }
+  return 'unknown';
+}
+
 /** 格式化更新时间为本地短日期；无效日期返回空串 */
 export function formatTemplateDate(value: string | undefined, locale?: string): string {
   const time = safeTime(value);

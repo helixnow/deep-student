@@ -2901,8 +2901,8 @@ function App() {
       {/* 命令面板 */}
       <CommandPalette />
 
-      {/* Global Pomodoro Timer */}
-      <GlobalPomodoroWidget />
+      {/* Global Pomodoro Timer（workbench 激活时药丸让位给菜单栏/番茄窗投射） */}
+      <GlobalPomodoroWidget workbenchActive={workbenchActive} />
 
       {/* 🆕 首启欢迎引导（协议同意后、未配置 AI 服务时展示一次） */}
       {welcomeOnboardingOpen && (

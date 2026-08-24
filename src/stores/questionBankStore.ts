@@ -484,6 +484,12 @@ export interface DailyPracticeResult {
   correct_count: number;
   source_distribution: DailySourceDistribution;
   is_completed: boolean;
+  /**
+   * 本会话内已作答的推荐题 ID（前端补充字段，仅用于进度去重，不回传后端）。
+   * 后端在 get_daily_practice 时会按当日 answer_submissions 重算全量进度，
+   * 该列表只负责会话内实时增量的幂等。
+   */
+  answered_question_ids?: string[];
 }
 
 export type QbankPracticeHandoffMode = 'timed' | 'mock_exam' | 'daily';
@@ -715,7 +721,9 @@ export function validateQbankPracticeHandoff(
     !date
     || handoffId !== date
     || !/^\d{4}-\d{2}-\d{2}$/.test(date)
-    || practiceInteger(session.daily_target, 1, 20) == null
+    // 上限与 UI 每日目标范围（5..=50）及 Agent 工具 schema（1..=50）对齐；
+    // 此前 20 的上限会把用户目标 21-50 的合法交接误判为无效
+    || practiceInteger(session.daily_target, 1, 50) == null
     || practiceInteger(session.completed_count, 0, questionIds.length) !== 0
     || practiceInteger(session.correct_count, 0, questionIds.length) !== 0
     || !practiceRecord(session.source_distribution)
@@ -807,6 +815,23 @@ let checkInCalendarRequestSeq = 0;
 // ============================================================================
 // Store 状态
 // ============================================================================
+
+/** 本轮做题进度（仅内存，跨视图切换保留，不跨进程） */
+export interface PracticeSessionProgress {
+  examId: string | null;
+  /** 连续答对数（明确答错清零；主观题待判定不中断） */
+  streakCount: number;
+  totalCorrectCount: number;
+  /** 真实作答过的题目 ID（"访问过"不计入，完成判定以此为准） */
+  answeredIds: string[];
+}
+
+const EMPTY_PRACTICE_SESSION: PracticeSessionProgress = {
+  examId: null,
+  streakCount: 0,
+  totalCorrectCount: 0,
+  answeredIds: [],
+};
 
 interface QuestionBankState {
   // 数据
@@ -900,8 +925,39 @@ interface QuestionBankState {
   submitMockExam: (session: MockExamSession) => Promise<MockExamScoreCard>;
   getDailyPractice: (examId: string, count: number) => Promise<DailyPracticeResult>;
   generatePaper: (examId: string, config: PaperConfig) => Promise<GeneratedPaper>;
-  getCheckInCalendar: (examId: string | undefined, year: number, month: number) => Promise<CheckInCalendar>;
+  getCheckInCalendar: (
+    examId: string | undefined,
+    year: number,
+    month: number,
+    dailyTarget?: number,
+  ) => Promise<CheckInCalendar>;
+  /**
+   * 练习会话进度回写：把一次真实作答同步进 timedSession / dailyPractice。
+   * 真实答题路径是 useQuestionBankSession（窗口本地），这些全局会话对象
+   * 没有其他写入方——不调用本方法练习进度会恒为 0。
+   * 会话内每题只计首答（answered_question_ids 幂等），跨题目集/非会话题目忽略。
+   */
+  recordPracticeAnswer: (
+    examId: string,
+    questionId: string,
+    isCorrect: boolean | null,
+  ) => void;
   
+  /**
+   * 做题会话的即时进度（连对 / 已作答集合）。
+   * 提到 store 是为了让「做题 → 错题本 → 回做题」不清零；
+   * 未持久化，所以进程重启后仍然从零开始。
+   */
+  practiceSession: PracticeSessionProgress;
+  /** 切换题集时重置本轮进度；examId 未变则原样保留。 */
+  ensurePracticeSession: (examId: string | null) => void;
+  /** 记录一次作答，返回更新后的快照（调用方需要同帧读到新连对数）。 */
+  recordPracticeSessionAnswer: (
+    questionId: string,
+    isCorrect: boolean | null,
+  ) => PracticeSessionProgress;
+  resetPracticeSession: (examId?: string | null) => void;
+
   // 练习模式状态
   timedSession: TimedPracticeSession | null;
   mockExamSession: MockExamSession | null;
@@ -969,6 +1025,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       // 并发防护：请求 ID，确保只有最新请求的结果会被应用
       loadRequestId: 0,
       
+      practiceSession: EMPTY_PRACTICE_SESSION,
+
       // 练习模式状态（2026-01 新增）
       timedSession: null,
       mockExamSession: null,
@@ -991,6 +1049,32 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setDateRange: (range) => set({ selectedDateRange: range }),
       
       resetFilters: () => set({ filters: {} }),
+
+      ensurePracticeSession: (examId) => {
+        if (get().practiceSession.examId === examId) return;
+        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId } });
+      },
+
+      recordPracticeSessionAnswer: (questionId, isCorrect) => {
+        const previous = get().practiceSession;
+        const next: PracticeSessionProgress = {
+          examId: previous.examId,
+          // null（主观题待判定）既不加连对也不中断
+          streakCount: isCorrect === true
+            ? previous.streakCount + 1
+            : isCorrect === false ? 0 : previous.streakCount,
+          totalCorrectCount: previous.totalCorrectCount + (isCorrect === true ? 1 : 0),
+          answeredIds: previous.answeredIds.includes(questionId)
+            ? previous.answeredIds
+            : [...previous.answeredIds, questionId],
+        };
+        set({ practiceSession: next });
+        return next;
+      },
+
+      resetPracticeSession: (examId = get().practiceSession.examId) => {
+        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId: examId ?? null } });
+      },
 
       // API Actions
       loadQuestions: async (examId, filters, page = 1) => {
@@ -1468,28 +1552,12 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             };
           });
           
-          // 限时练习进度同步（2026-07 修复）：此前 answered_count / correct_count
-          // 没有任何写入方，限时面板的进度与正确率恒为 0。会话内每题只计首答。
-          const timed = get().timedSession;
-          if (
-            timed
-            && !timed.is_submitted
-            && !timed.is_timeout
-            && timed.exam_id === result.updated_question.exam_id
-            && timed.question_ids.includes(questionId)
-          ) {
-            const answeredIds = timed.answered_question_ids ?? [];
-            if (!answeredIds.includes(questionId)) {
-              set({
-                timedSession: {
-                  ...timed,
-                  answered_question_ids: [...answeredIds, questionId],
-                  answered_count: Math.min(timed.question_count, timed.answered_count + 1),
-                  correct_count: timed.correct_count + (result.is_correct === true ? 1 : 0),
-                },
-              });
-            }
-          }
+          // 练习会话进度同步（限时 + 每日一练），会话内每题只计首答
+          get().recordPracticeAnswer(
+            result.updated_question.exam_id,
+            questionId,
+            result.is_correct,
+          );
           
           return result;
         } catch (err: unknown) {
@@ -1746,6 +1814,54 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setMockExamSession: (session) => set({ mockExamSession: session }),
       setDailyPractice: (result) => set({ dailyPractice: result }),
       setGeneratedPaper: (paper) => set({ generatedPaper: paper }),
+
+      // 2026-08 修复（R1-06 B1/B5 同源）：此前限时进度回写挂在本 store 的
+      // submitAnswer 上，但真实答题路径是 useQuestionBankSession（本地 hook），
+      // 该 action 无人调用 → 限时/每日面板进度恒为 0。现在由 ExamContentView
+      // 的提交回调统一调用此方法。
+      recordPracticeAnswer: (examId, questionId, isCorrect) => {
+        const timed = get().timedSession;
+        if (
+          timed
+          && !timed.is_submitted
+          && !timed.is_timeout
+          && timed.exam_id === examId
+          && timed.question_ids.includes(questionId)
+        ) {
+          const answeredIds = timed.answered_question_ids ?? [];
+          if (!answeredIds.includes(questionId)) {
+            set({
+              timedSession: {
+                ...timed,
+                answered_question_ids: [...answeredIds, questionId],
+                answered_count: Math.min(timed.question_count, timed.answered_count + 1),
+                correct_count: timed.correct_count + (isCorrect === true ? 1 : 0),
+              },
+            });
+          }
+        }
+
+        const daily = get().dailyPractice;
+        if (
+          daily
+          && daily.exam_id === examId
+          && daily.question_ids.includes(questionId)
+        ) {
+          const answeredIds = daily.answered_question_ids ?? [];
+          if (!answeredIds.includes(questionId)) {
+            const completed = daily.completed_count + 1;
+            set({
+              dailyPractice: {
+                ...daily,
+                answered_question_ids: [...answeredIds, questionId],
+                completed_count: completed,
+                correct_count: daily.correct_count + (isCorrect === true ? 1 : 0),
+                is_completed: completed >= daily.daily_target,
+              },
+            });
+          }
+        }
+      },
       hydratePracticeHandoff: (value, expectedExamId) => {
         const validated = validateQbankPracticeHandoff(value, expectedExamId);
         if ('ok' in validated) return validated;
@@ -1877,7 +1993,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         }
       },
 
-      getCheckInCalendar: async (examId, year, month) => {
+      getCheckInCalendar: async (examId, year, month, dailyTarget) => {
         const requestId = ++checkInCalendarRequestSeq;
         set({ isLoadingPractice: true, error: null });
         
@@ -1887,6 +2003,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               exam_id: examId,
               year,
               month,
+              // 达标判定跟随用户目标（缺省后端按 10 题判定）
+              daily_target: dailyTarget,
             },
           });
           

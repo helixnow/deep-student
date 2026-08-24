@@ -202,6 +202,24 @@ describe('ReviewSessionScreen interactions', () => {
     }));
   });
 
+  it('only handles global review shortcuts while its desktop window is active', () => {
+    useFsrsReviewStore.setState({
+      queue: [
+        { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
+      ],
+      queueIndex: 0,
+      flipped: false,
+    });
+
+    const view = render(<ReviewSessionScreen isActive={false} />);
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    expect(useFsrsReviewStore.getState().flipped).toBe(false);
+
+    view.rerender(<ReviewSessionScreen isActive />);
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    expect(useFsrsReviewStore.getState().flipped).toBe(true);
+  });
+
   it('shows emptyQueue copy when the session has no cards', () => {
     useFsrsReviewStore.setState({
       queue: [],

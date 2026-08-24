@@ -181,6 +181,20 @@
   background: var(--wb-glass-border);
 }
 
+/* 触控/笔指针：菜单行放大到 44px 命中高度（Apple HIG 最小可点区），
+   顶栏菜单（StatusBarMenu）与桌面右键菜单共用 .wb-desk-menu-item 契约 */
+@media (pointer: coarse) {
+  .wb-desk-menu-item {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .wb-desk-menu-sep {
+    margin: 6px 8px;
+  }
+}
+
 /* ==== 子菜单 ============================================================= */
 
 .wb-desk-menu-subwrap {
