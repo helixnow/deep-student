@@ -206,7 +206,12 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
             </p>
           </div>
           {!isSmallScreen && (
-            <DsButton variant="ghost" size="sm" onClick={onBack}>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
+              onClick={onBack}
+            >
               <ArrowLeft className="w-4 h-4 mr-1" />
               {t('settings:plugins.back_to_list')}
             </DsButton>
@@ -266,6 +271,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               <DsButton
                 variant="secondary"
                 size="sm"
+                className="[@media(pointer:coarse)]:min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -308,6 +314,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                 <DsButton
                   size="sm"
                   variant="danger"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   disabled={busy}
                   onClick={() => setUnbindOpen(true)}
                 >
@@ -591,7 +598,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="gap-1.5 text-foreground/80"
+                      className="gap-1.5 text-foreground/80 [@media(pointer:coarse)]:min-h-11"
                       onClick={() => setSelectedId(p.id)}
                     >
                       <GearSix className="size-4" aria-hidden="true" />
