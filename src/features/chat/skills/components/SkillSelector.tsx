@@ -850,7 +850,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       ? t('skills:selector.disabled_hint')
                       : undefined
                   }
-                  className="w-full"
+                  className="w-full [@media(pointer:coarse)]:min-h-11"
                 >
                   {isSkillActive(selectedSkill.id) ? (
                     <>
