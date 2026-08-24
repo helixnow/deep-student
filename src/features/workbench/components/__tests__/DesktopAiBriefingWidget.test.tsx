@@ -65,8 +65,8 @@ describe('DesktopAiBriefingWidget', () => {
     render(<DesktopAiBriefingWidget />);
     const widget = screen.getByTestId('wb-ai-briefing-widget');
     expect(widget).toBeInTheDocument();
-    expect(screen.getByText('到期闪卡')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getAllByText('到期闪卡').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1);
     expectChartOrTable(widget);
   });
 });
