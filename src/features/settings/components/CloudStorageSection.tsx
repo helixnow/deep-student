@@ -26,6 +26,10 @@ import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
+import {
+  classifySyncE2eeError,
+  SYNC_E2EE_ERROR_I18N_KEYS,
+} from './data-governance/syncE2eeErrorMapping';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -112,6 +116,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const localizeCloudError = useCallback(
     (error: unknown): string => {
       const raw = getErrorMessage(error);
+      // [R09-e2ee] 端到端加密三类失败（明文遗留拒收 / 错密码 / 标记损坏）
+      // 映射为可操作人话；原文附在后面供排查与关键字搜索。
+      const e2eeKind = classifySyncE2eeError(raw);
+      if (e2eeKind) {
+        return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
+      }
       if (/FTP\/FTPS storage is not available on Android/i.test(raw)) {
         return t('cloudStorage:errors.ftpDisabledAndroid');
       }
