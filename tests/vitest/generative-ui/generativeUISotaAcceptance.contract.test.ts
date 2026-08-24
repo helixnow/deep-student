@@ -391,6 +391,30 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'MD_LINK_RE',
       ]),
   },
+  {
+    id: 'round60-hpias-requires-session-id',
+    check: () =>
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'const shouldBridgeHpias = Boolean(researchSessionId);',
+      ]),
+  },
+  {
+    id: 'round60-panel-action-guards',
+    check: () =>
+      fileContains('src/features/generative-ui/components/GenerativeUIPanel.tsx', [
+        'withGenerativeActionInstrumentation',
+      ]),
+  },
+  {
+    id: 'round60-markdown-ref-autolink-srcset',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/sanitizeGenerativeMarkdown.ts', [
+        'MD_REF_DEF_RE',
+        'MD_AUTOLINK_RE',
+        'SRCSET_ATTR_RE',
+        'isMarkdownAutolinkTag',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {

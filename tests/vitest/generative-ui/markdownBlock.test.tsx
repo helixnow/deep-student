@@ -133,6 +133,22 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(sanitized).not.toMatch(/file:/);
     expect(sanitized).toContain('[keep](javascript:alert(1))');
   });
+
+  it('rewrites markdown reference definitions, autolinks, and srcset/poster', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      [
+        '[go][evil]',
+        '[evil]: javascript:alert(1)',
+        'See <javascript:alert(1)> and <https://ok.test>',
+        '<img srcset="javascript:alert(1) 1x, https://ok.test/a.png 2x" poster="file:///x">',
+      ].join('\n'),
+    );
+    expect(sanitized).toContain('[evil]: #');
+    expect(sanitized).not.toMatch(/javascript:/);
+    expect(sanitized).not.toMatch(/file:/);
+    expect(sanitized).toContain('<https://ok.test>');
+    expect(sanitized).toContain('https://ok.test/a.png');
+  });
 });
 
 describe('MarkdownBlock', () => {
