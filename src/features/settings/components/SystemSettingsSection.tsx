@@ -95,7 +95,7 @@ const SelectDropdown = ({ value, onChange, options }: {
   <select
     value={value}
     onChange={(e) => onChange(e.target.value)}
-    className="rounded-lg border border-input bg-muted px-4 py-2 text-sm text-foreground transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+    className="rounded-lg border border-input bg-muted px-4 py-2 text-sm text-foreground transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
   >
     {options.map(option => (
       <option key={option.value} value={option.value}>

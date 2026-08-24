@@ -68,7 +68,7 @@ type FormDraft = {
 };
 
 const inputClassName = cn(
-  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9 [@media(pointer:coarse)]:min-h-11',
+  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]',
   'outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/20',
   'disabled:cursor-not-allowed disabled:opacity-50',
 );

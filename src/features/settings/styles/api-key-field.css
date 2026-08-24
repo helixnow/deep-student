@@ -122,6 +122,11 @@
     min-height: var(--touch-target-size);
   }
 
+  /* iOS 对 <16px 输入聚焦时会强制放大页面 */
+  .api-key-field__input {
+    font-size: 16px;
+  }
+
   .api-key-field__action,
   .api-key-field__toggle {
     flex-basis: var(--touch-target-size);
