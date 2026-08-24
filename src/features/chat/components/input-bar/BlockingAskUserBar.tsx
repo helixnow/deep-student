@@ -272,7 +272,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                   <label
                     key={index}
                     className={cn(
-                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-11',
                       isChecked
                         ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                       : isRecommended
@@ -307,7 +307,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                 <div
                   key={index}
                   className={cn(
-                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none',
+                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none [@media(pointer:coarse)]:min-h-11',
                     isChecked
                       ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                     : isRecommended
