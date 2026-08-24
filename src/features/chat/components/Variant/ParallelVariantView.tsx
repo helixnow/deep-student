@@ -933,9 +933,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                     }}
                     className={cn(
                       '!rounded-full flex-shrink-0 !p-0',
-                      // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ≥40px；
+                      // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ±17px → 10+34=44px；
                       // ★ 低-10：gap 提到 16px 后横向可外扩到 ±8px 而不压相邻点，横向命中约 26px）
-                      'relative after:absolute after:content-[\'\'] after:-inset-x-2 after:-inset-y-4',
+                      'relative after:absolute after:content-[\'\'] after:-inset-x-2 after:-inset-y-[17px]',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
                         : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
