@@ -731,7 +731,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 }
               }}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
+                'w-full flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
                 !onMobileBrowse && pickerOpen
                   ? 'border-primary/40 bg-primary/5 text-foreground'
                   : 'border-border/60 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border'

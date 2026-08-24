@@ -227,6 +227,10 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 }}
                 className={cn(
                   'text-destructive cursor-pointer',
+                  // 触屏扩大命中区至 44px 高：truncate 的 overflow-hidden 会裁剪
+                  // after:-inset 覆盖层，故改用 padding + 负 margin（不撑高状态行）
+                  '[@media(pointer:coarse)]:py-3.5 [@media(pointer:coarse)]:-my-3.5',
+                  '[@media(pointer:coarse)]:px-1.5 [@media(pointer:coarse)]:-mx-1.5',
                   showFullError
                     ? 'min-w-0 max-w-full whitespace-normal break-words'
                     : 'truncate max-w-[100px]'

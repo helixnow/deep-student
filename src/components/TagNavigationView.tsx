@@ -344,7 +344,7 @@ const TagGroupCard: React.FC<{
           {/* 操作按钮 - 内联式 */}
           <div className="flex items-center gap-2 py-1.5 mb-1">
             {onStartPractice && (
-              <DsButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
+              <DsButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5">
                 <Play size={12} />
                 {t('tagNav.practice')}
               </DsButton>
@@ -659,7 +659,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('tagNav.searchPlaceholder')}
             className={cn(
-              'pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+              'pl-9 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
               '[&::-webkit-search-cancel-button]:hidden',
               searchQuery && 'pr-8'
             )}
@@ -729,7 +729,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                 ? t('learningHub:exam.library.noMatchFor', { query: searchQuery.trim() })
                 : t('tagNav.noResults')}
             </p>
-            <DsButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5">
               {t('common:clear')}
             </DsButton>
           </div>
@@ -748,7 +748,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                     onClick={() => setCloudSelectedTag(isActive ? null : group.tag)}
                     style={{ ...staggerStyle(index), fontSize: `${Math.round(12 + ratio * 8)}px` }}
                     className={cn(
-                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border',
+                      'ui-rise-in ui-state-colors !h-auto !rounded-full !px-2.5 !py-1 border [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3.5',
                       isActive
                         ? 'border-primary/50 bg-primary/10 text-primary font-medium'
                         : 'border-border/60 text-foreground/80 hover:border-primary/40 hover:bg-primary/5'

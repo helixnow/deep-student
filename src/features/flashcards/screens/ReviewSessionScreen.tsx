@@ -503,7 +503,7 @@ export const ReviewSessionScreen: React.FC = () => {
       ) : null}
 
       <div className="flex items-center justify-between gap-2">
-        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
+        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:min-h-11">
           <ArrowLeft size={14} />
           {t('session.exit')}
         </DsButton>
@@ -544,6 +544,7 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
       </div>
 
+      {/* DsButton 在 lg 断点后压缩到 30px，宽屏触屏平板会跌破触控基线，coarse 兜底 ≥44px（与 library.css .fc-lib-row-actions 同基线） */}
       <div className="flex items-center justify-end gap-1">
         <DsButton
           type="button"
@@ -555,6 +556,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.undo')}
           aria-keyshortcuts="Z Control+Z Meta+Z"
           title={`${t('session.undo')} · Z`}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
@@ -568,6 +570,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => void resumeLastSuspended()}
             aria-label={t('session.resume')}
             title={t('session.resume')}
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           >
             <Play size={16} />
           </DsButton>
@@ -582,6 +585,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.edit')}
           aria-keyshortcuts="E"
           title={`${t('session.edit')} · E`}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <PencilSimple size={16} />
         </DsButton>
@@ -595,6 +599,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('review.skip')}
           aria-keyshortcuts="S"
           title={`${t('review.skip')} · S`}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <SkipForward size={16} />
         </DsButton>
@@ -607,6 +612,7 @@ export const ReviewSessionScreen: React.FC = () => {
           onClick={() => void suspendCurrent()}
           aria-label={t('session.suspend')}
           title={t('session.suspend')}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <Pause size={16} />
         </DsButton>

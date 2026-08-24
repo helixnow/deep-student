@@ -350,8 +350,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           type="button"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
-          // 伪元素扩大触控命中区（视觉保持 18/20px 方块）
-          className={cn(indicatorClass, 'mt-0.5 relative after:absolute after:-inset-2.5 after:content-[\'\']', disabled && 'cursor-not-allowed')}
+          // 伪元素扩大触控命中区（视觉保持 18/20px 方块）；coarse 指针 -inset-[13px] 使命中区 ≥44px（18+13×2）
+          className={cn(indicatorClass, 'mt-0.5 relative after:absolute after:-inset-2.5 [@media(pointer:coarse)]:after:-inset-[13px] after:content-[\'\']', disabled && 'cursor-not-allowed')}
         >
           {isSelected && <Check size={12} />}
         </button>

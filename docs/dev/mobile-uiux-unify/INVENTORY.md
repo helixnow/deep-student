@@ -31,4 +31,4 @@
 - Settings 小屏标题、GradingMain 640–767：Round 3 已修；Sheet 底安全区 / overlay 返回：Round 10–11 已修。
 - 引擎分区触控、数据治理宽表操作钮、Todo 嵌入 workbench 的 header enabled、消息搜索条测试与返回键：Round 4 已修。
 - 导图工具条 40→44、热力图年份/刷新 coarse 44、`shad/Table` 横滚：Round 11 已修。
-- **仍开**：OCR/PDF 滑轨、fc-lib-chip 40、paperSave 错误展开、内联引用 chip。
+- **仍开**：DEV TestControls/Playground tab、作文去图徽章 40、ankiCardsBlock min-h-10、外搜 top-k、侧栏重命名、Workbench 非统一滑轨、内联引用 chip。

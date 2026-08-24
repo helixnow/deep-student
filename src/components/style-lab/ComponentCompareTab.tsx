@@ -100,7 +100,7 @@ function ButtonCompareSection() {
             <button
               key={s}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', size === s ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', size === s ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setSize(s)}
             >
               {s.toUpperCase()}
@@ -410,7 +410,7 @@ function TooltipCompareSection() {
             <button
               key={p}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', position === p ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', position === p ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setPosition(p)}
             >
               {p}
@@ -423,7 +423,7 @@ function TooltipCompareSection() {
             <button
               key={t}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', theme === t ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', theme === t ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setTheme(t)}
             >
               {t}
@@ -532,7 +532,7 @@ function ToastCompareSection() {
             <button
               key={opt.label}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', iconIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', iconIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setIconIdx(idx)}
             >
               {opt.label}
@@ -545,7 +545,7 @@ function ToastCompareSection() {
             <button
               key={opt.label}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', progressIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', progressIdx === idx ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setProgressIdx(idx)}
             >
               {opt.label}
@@ -558,7 +558,7 @@ function ToastCompareSection() {
             <button
               key={b ?? 'auto'}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', borderTone === b ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', borderTone === b ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setBorderTone(b)}
             >
               {b ?? 'auto'}
@@ -746,7 +746,7 @@ function PopupCompareSection() {
             <button
               key={side}
               type="button"
-              className={cn('px-2 py-0.5 rounded text-xs', sheetSide === side ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              className={cn('px-2 py-0.5 rounded text-xs [@media(pointer:coarse)]:min-h-11', sheetSide === side ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
               onClick={() => setSheetSide(side)}
             >
               {side}
@@ -919,7 +919,7 @@ function SegmentedCompareSection() {
                   aria-checked={selected}
                   onClick={() => setLegacyThemeMode(mode)}
                   className={cn(
-                    'px-3 py-1 rounded-full text-xs transition-colors',
+                    'px-3 py-1 rounded-full text-xs transition-colors [@media(pointer:coarse)]:min-h-11',
                     selected
                       ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]'
                       : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]',
@@ -980,7 +980,7 @@ export function ComponentCompareTab() {
             key={s.id}
             type="button"
             className={cn(
-              'px-3 py-1.5 text-xs rounded-t-md transition-colors -mb-px border-b-2',
+              'px-3 py-1.5 text-xs rounded-t-md transition-colors -mb-px border-b-2 [@media(pointer:coarse)]:min-h-11',
               activeSection === s.id
                 ? 'border-[color:var(--button-primary-foreground)] text-[color:var(--text-primary)] bg-[color:var(--surface-elevated)]'
                 : 'border-transparent text-[color:var(--text-muted)] hover:text-[color:var(--text-secondary)]',

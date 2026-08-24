@@ -1122,7 +1122,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         ? () => setScreenPosition('center')
         : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />
       </DsButton>
     ) : undefined,

@@ -1723,11 +1723,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-4">
           <div className="space-y-4">
             {/* 广告所有工具 */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
               <Checkbox
                 id="advertiseAll"
                 checked={mcpPolicyModal.advertiseAll}
                 onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: checked === true }))}
+                className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               />
               <label htmlFor="advertiseAll" className="text-sm font-medium cursor-pointer">
                 {t('settings:sections.advertise_all')}

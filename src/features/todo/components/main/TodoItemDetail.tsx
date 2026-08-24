@@ -585,7 +585,8 @@ export const TodoItemDetail: React.FC<{
               iconOnly
               onClick={onClose}
               aria-label={t('common:actions.close')}
-              className="!p-1.5"
+              // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+              className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             >
               <X size={16} />
             </DsButton>

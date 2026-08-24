@@ -2452,11 +2452,12 @@ function ShellCommandRulesSection() {
             <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
             <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
           </div>
-          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">
+          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
                       checked={allVisibleSelected ? true : selectedRuleIds.size > 0 ? 'indeterminate' : false}
               onCheckedChange={checked => selectVisibleRules(checked === true)}
               aria-label={t('settings:tool_permissions.shell_rules.select_visible')}
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
             />
             <span className="text-xs text-muted-foreground">
               {selectedRuleIds.size > 0
@@ -2484,6 +2485,7 @@ function ShellCommandRulesSection() {
                       return next;
                     })}
                     aria-label={t('settings:tool_permissions.shell_rules.select_rule', { pattern: rule.pattern })}
+                    className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -3575,11 +3577,12 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                     </div>
 
                     {filteredTools.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/20 border border-border/30 rounded-t-md">
+                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/20 border border-border/30 rounded-t-md [@media(pointer:coarse)]:min-h-11">
                         <Checkbox
                           checked={allVisibleSelected ? true : selectedVisibleCount > 0 ? 'indeterminate' : false}
                           onCheckedChange={checked => selectVisibleTools(checked === true)}
                           aria-label={t('settings:tool_permissions.select_visible')}
+                          className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                         />
                         <span className="text-xs text-muted-foreground">
                           {selectedTools.size > 0
@@ -3632,7 +3635,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                                     checked={selectedTools.has(tool.id)}
                                     onCheckedChange={checked => toggleToolSelection(tool.id, checked === true)}
                                     aria-label={t('settings:tool_permissions.select_tool', { name: tool.display })}
-                                    className="mt-0.5"
+                                    className="mt-0.5 relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                                   />
                                   <span className={cn(
                                     'mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0',

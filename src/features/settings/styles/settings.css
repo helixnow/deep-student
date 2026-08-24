@@ -859,6 +859,18 @@ body .settings-mobile-sheet-scroll-viewport {
 }
 
 @media (pointer: coarse) {
+  /*
+   * 触屏命中区扩大到 ≥44px：视觉轨道由 input 自身背景绘制（h-1.5 = 6px），
+   * 用垂直 padding 撑开命中区、background-clip 把背景钳在内容盒，
+   * 轨道视觉高度保持 6px 不变（不改 token 文件，仅本 feature CSS）。
+   */
+  .settings-range-slider {
+    box-sizing: border-box;
+    min-height: var(--touch-target-size, 44px);
+    padding-block: calc((var(--touch-target-size, 44px) - 0.375rem) / 2);
+    background-clip: content-box;
+  }
+
   .settings-range-slider::-webkit-slider-thumb {
     width: 22px;
     height: 22px;

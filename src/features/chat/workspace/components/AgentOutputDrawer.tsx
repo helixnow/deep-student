@@ -254,7 +254,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             onToggle();
           }
         }}
-        className="flex w-full flex-wrap items-center justify-between gap-y-1 p-2.5 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex w-full flex-wrap items-center justify-between gap-y-1 p-2.5 [@media(pointer:coarse)]:min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (

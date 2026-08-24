@@ -114,7 +114,9 @@ function defaultsForKind(kind: AutomationScheduleKind, previous: AutomationSched
 }
 
 const fieldClassName = cn(
+  // 触屏：36px 输入框不足触控标准，统一升到 44px（对照时区搜索框的处理）
   'h-9 w-full rounded-[var(--radius-shell-control)] border border-[color:var(--border-soft)]',
+  '[@media(pointer:coarse)]:h-11',
   'bg-transparent px-3 text-sm text-foreground outline-none',
   'transition-colors duration-150 motion-reduce:transition-none',
   'focus:border-[color:hsl(var(--primary))] disabled:cursor-not-allowed disabled:opacity-50',
@@ -644,6 +646,8 @@ export function AutomationScheduleEditor({
                           className={cn(
                             'flex w-full items-center gap-1.5 rounded-[calc(var(--radius-shell-control)-2px)]',
                             'px-2.5 py-1.5 text-left text-xs transition-colors duration-150',
+                            // 触屏：候选行升到 44px 命中高度（对照 TagsEditor 下拉项）
+                            '[@media(pointer:coarse)]:min-h-11',
                             'motion-reduce:transition-none',
                             selected
                               ? 'bg-[color:hsl(var(--primary))]/10 font-medium text-foreground'

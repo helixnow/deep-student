@@ -1031,7 +1031,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               return (
                 <div key={sessionGroup.id}>
                   <div
-                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    className="mb-4 flex items-center gap-2 [@media(pointer:coarse)]:min-h-11 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse(sessionGroup.id)}
                   >
                     <CaretDown size={14} className={cn(
@@ -1083,7 +1083,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               return (
                 <div>
                   <div
-                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    className="mb-4 flex items-center gap-2 [@media(pointer:coarse)]:min-h-11 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse('__ungrouped__')}
                   >
                     <CaretDown className={cn(

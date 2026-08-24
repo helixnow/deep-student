@@ -492,7 +492,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleStartPracticeByTag(tag)}
-                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10"
+                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Tag size={14} className="shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">{label}</span>
