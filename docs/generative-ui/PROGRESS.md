@@ -1,5 +1,12 @@
 # Generative UI 进度日志
 
+## Round 72（2026-08-24）— Markdown ping/background + 宿主 i18n
+
+1. [x] `sanitizeGenerativeMarkdown` 把 `ping` / `background` 当 URL 属性消毒
+2. [x] Learning Hub / Workbench 简报去掉已有 key 上的 `defaultValue`，避免对象当 React 子节点
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 71（2026-08-24）— CI：Rust E0603 / Vitest 分片
 
 1. [x] `generative_ui_executor_e2e` 不再引用 `pub(crate) chat_v2::context`；块类型断言改到 crate 内单测
