@@ -362,6 +362,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           disabled={disabled}
           className={cn(
             'min-w-0 flex-1 !h-auto !flex-col !items-start !justify-start !gap-0.5 !whitespace-normal !px-0 !py-0 text-left',
+            // coarse 指针下 !h-auto !py-0 会把单行标签压到 ~20px，min-h 保证 ≥44px 触控命中
+            '[@media(pointer:coarse)]:min-h-11',
             '!bg-transparent dark:!bg-transparent !hover:bg-transparent dark:!hover:bg-transparent !active:bg-transparent',
             '!text-inherit hover:!text-inherit dark:hover:!text-inherit active:!text-inherit',
             isMobile && '!gap-0',
