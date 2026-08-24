@@ -119,6 +119,17 @@ describe('hitTestSnapZone — 上/下半屏热区', () => {
   it('⌥ 中途松开：top-half 立即切回 top-maximize（raw 命中优先于滞回）', () => {
     expect(hitTestSnapZone({ x: 800, y: 10 }, D, 'top-half')).toBe('top-maximize');
   });
+
+  it('修饰键在顶缘滞回带内切换时同步切换语义，不粘住旧 zone', () => {
+    // 普通 edge=24、hysteresis=14：松开 ⌥ 后 y=30 仍在 Fill 滞回带内。
+    expect(hitTestSnapZone({ x: 800, y: 30 }, D, 'top-half')).toBe('top-maximize');
+    expect(hitTestSnapZone({ x: 800, y: 39 }, D, 'top-half')).toBeNull();
+
+    // ⌥ edge=48、hysteresis=14：即使刚脱离基础热区，也应切成 top-half。
+    expect(
+      hitTestSnapZone({ x: 800, y: 50 }, D, 'top-maximize', { altKey: true }),
+    ).toBe('top-half');
+  });
 });
 
 describe('hitTestSnapZone — 滞回', () => {

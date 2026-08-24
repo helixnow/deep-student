@@ -152,6 +152,17 @@ export function hitTestSnapZone(
 
   const raw = rawHitTest(pointer, desktopSize, altKey);
   if (raw !== null || !activeZone) return raw;
+  // top-half 的语义依赖 ⌥。修饰键在滞回带内切换时，不能把旧语义粘住：
+  // 松开 ⌥ 应退回 Fill，按下 ⌥ 应切到上半屏。raw 已命中时由上方直接切换；
+  // 这里只处理刚脱离基础热区、仍处于滞回扩张区的帧。
+  const hysteresisZone =
+    activeZone === 'top-half' && !altKey
+      ? 'top-maximize'
+      : activeZone === 'top-maximize' && altKey
+        ? 'top-half'
+        : activeZone;
   // raw 脱离但仍在已命中区的滞回带内 → 保持，防止边缘抖动闪烁
-  return withinHysteresis(pointer, desktopSize, activeZone, altKey) ? activeZone : null;
+  return withinHysteresis(pointer, desktopSize, hysteresisZone, altKey)
+    ? hysteresisZone
+    : null;
 }

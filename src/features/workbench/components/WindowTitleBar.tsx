@@ -159,6 +159,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const rippleIdRef = useRef(0);
   /** 标题栏拖拽视觉态启动阈值（与 pointerEngine MOVE_ARM_THRESHOLD_PX 对齐） */
   const dragArmRef = useRef<{ x: number; y: number; armed: boolean } | null>(null);
+  /** 本轮视觉拖拽监听清理；失焦 / 重入 / 卸载均须摘掉，避免 class 卡住 */
+  const dragArmCleanupRef = useRef<(() => void) | null>(null);
 
   const clearTimers = useCallback(() => {
     if (openTimer.current) {
@@ -324,6 +326,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
+      dragArmCleanupRef.current?.();
       // 视觉 dragging 过 3px 阈值才挂 class（DOM 直写，避免 React 重渲染抢首帧）
       const startX = e.clientX;
       const startY = e.clientY;
@@ -351,14 +354,20 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onUp);
+        window.removeEventListener('blur', onUp);
+        if (dragArmCleanupRef.current === onUp) dragArmCleanupRef.current = null;
       };
+      dragArmCleanupRef.current = onUp;
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
+      window.addEventListener('blur', onUp);
       onMovePointerDown?.(e);
     },
     [onMovePointerDown],
   );
+
+  useEffect(() => () => dragArmCleanupRef.current?.(), []);
 
   /** 悬停预提升壳层合成层（wb-shell-lift）；离开后短延迟拆除，避免划过 thrash */
   const liftLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
