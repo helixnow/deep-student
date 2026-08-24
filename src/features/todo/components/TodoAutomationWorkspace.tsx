@@ -936,6 +936,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       <SegmentedControl
                         ariaLabel={t('todo:automation.action')}
                         size="compact"
+                        itemClassName="[@media(pointer:coarse)]:!min-h-11"
                         value={draft.actionType}
                         onValueChange={(value) => setField('actionType', value)}
                         // 提交中锁定未选中项（保留选中项以维持滑块显示），避免中途改动作类型
@@ -1007,6 +1008,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                           <SegmentedControl
                             ariaLabel={t('todo:automation.sessionMode')}
                             size="compact"
+                            itemClassName="[@media(pointer:coarse)]:!min-h-11"
                             value={draft.sessionMode}
                             onValueChange={(value) => setField('sessionMode', value)}
                             options={[
