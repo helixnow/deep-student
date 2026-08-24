@@ -16,6 +16,8 @@ R06 已合入部分**基本属实、质量合格**：单侧 DELETE 冲突后端�
 
 文件级明文上传（P0-1）是已知未交付项（R07-asset-e2ee 在途），本文按复审职责留档并给出验收要点。
 
+> **父代理回写（基线之后）**：复审基于 `871528a3`。随后已合入 `r07-file-e2ee`（P0-1 文件级 DSBK）与 `r07-record-verifier`（P1-2 记录级上传走带密码校验子入口）。**P1-1 仍开**：`RecordConflictsPanel` 对 cloud-only 组禁用「保留本地」。`r07-autosync` 已合入默认关调度，R07-tests 里的 autosync `todo`/`ignore` 占位可能过时。
+
 ---
 
 ## P0
