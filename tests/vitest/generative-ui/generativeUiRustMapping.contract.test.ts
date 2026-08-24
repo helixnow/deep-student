@@ -144,4 +144,9 @@ describe('generativeUI Rust dual-mapping contract', () => {
       expect(payloadsSrc).toContain(eventType);
     }
   });
+
+  it('Rust executor requires MAX_GENERATIVE_UI_BLOCKS of 32', () => {
+    expect(executorSrc).toContain('MAX_GENERATIVE_UI_BLOCKS');
+    expect(executorSrc).toContain('32');
+  });
 });

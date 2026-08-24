@@ -137,8 +137,18 @@ describe('GenerativeUIDemoTab', () => {
     expect(panel).toBeInTheDocument();
     expect(panel).toHaveAttribute('data-lint-ok', 'true');
     expect(panel).toHaveAttribute('data-lint-count', '0');
+    expect(panel).toHaveAttribute('data-lint-action-gated', 'true');
     expect(panel).toHaveTextContent('Intent diagnostics');
     expect(panel).toHaveTextContent('No issues');
+  });
+
+  it('flags unknown-action when showcase invents an unregistered action id', async () => {
+    const user = userEvent.setup();
+    render(<GenerativeUIDemoTab />);
+    await user.click(screen.getByTestId('generative-ui-demo-showcase'));
+    const panel = screen.getByTestId('generative-ui-demo-lint');
+    expect(panel).toHaveAttribute('data-lint-action-gated', 'true');
+    expect(panel.querySelector('[data-lint-code="unknown-action"]')).toBeTruthy();
   });
 
   it('shows intent fingerprint for the default static intent', () => {

@@ -16,6 +16,7 @@ import {
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
 import { coercePartialIntent } from './utils/coercePartialIntent';
+import { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
@@ -199,6 +200,10 @@ export function GenerativeUIRenderer({
   const showTruncatedHint =
     resolved.warnings.includes(BLOCKS_TRUNCATED_WARNING) ||
     positiveCount(resolved.truncatedCount) !== undefined;
+  const unregisteredActionIds = useMemo(
+    () => (displayIntent ? collectUnregisteredActionIds(displayIntent, actionHandlers) : []),
+    [actionHandlers, displayIntent],
+  );
 
   useEffect(() => {
     if (!displayIntent) return;
@@ -340,6 +345,17 @@ export function GenerativeUIRenderer({
           <AlertDescription>
             {t('overflow.truncated', { max: MAX_GENERATIVE_UI_BLOCKS })}
           </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {unregisteredActionIds.length > 0 ? (
+        <Alert
+          variant="warning"
+          role="status"
+          data-unregistered-actions
+          data-unregistered-count={unregisteredActionIds.length}
+        >
+          <AlertDescription>{t('overflow.unregistered_actions')}</AlertDescription>
         </Alert>
       ) : null}
     </div>

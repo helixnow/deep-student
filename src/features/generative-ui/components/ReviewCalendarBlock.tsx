@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { z } from 'zod';
+import { formatGenerativeDate } from '../utils/formatGenerativeDate';
+import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
 
 export const reviewCalendarPropsSchema = z.object({
   id: z.string().optional(),
@@ -47,17 +49,28 @@ export function ReviewCalendarBlock({ title, days }: ReviewCalendarProps) {
               })}
             >
               <div className="min-w-0">
-                <time className="font-medium" dateTime={toDateTime(day.date)}>
-                  {day.date}
+                <time className="font-medium" dateTime={toDateTime(day.date)} dir="auto">
+                  {formatGenerativeDate(day.date)}
                 </time>
-                {day.label ? <div className="text-xs text-muted-foreground">{day.label}</div> : null}
+                {day.label ? (
+                  <div className="text-xs text-muted-foreground" dir="auto">
+                    {day.label}
+                  </div>
+                ) : null}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                <Badge variant={day.dueCount > 0 ? 'default' : 'secondary'} className="text-xs">
+                <Badge
+                  variant={day.dueCount > 0 ? 'default' : 'secondary'}
+                  className="text-xs"
+                  data-due-count={formatGenerativeNumber(day.dueCount)}
+                >
                   {t('review_calendar.due', { count: day.dueCount })}
                 </Badge>
                 {day.completedCount != null ? (
-                  <span className="text-xs text-muted-foreground">
+                  <span
+                    className="text-xs text-muted-foreground"
+                    data-completed-count={formatGenerativeNumber(day.completedCount)}
+                  >
                     {t('review_calendar.completed', { count: day.completedCount })}
                   </span>
                 ) : null}

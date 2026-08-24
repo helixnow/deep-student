@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
 import { CheckCircle, Circle, CircleNotch } from '@phosphor-icons/react';
+import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
 
 export const researchPlanStepSchema = z.object({
   label: z.string().min(1).max(200),
@@ -38,6 +39,10 @@ export function ResearchPlanBlock({ title, round, steps }: ResearchPlanBlockProp
   const { t } = useTranslation('generativeUi');
   const titleId = React.useId();
   const doneCount = steps.filter((s) => s.status === 'done').length;
+  const progressLabel = t('research.plan.progress', {
+    done: formatGenerativeNumber(doneCount),
+    total: formatGenerativeNumber(steps.length),
+  });
 
   return (
     <div
@@ -47,10 +52,10 @@ export function ResearchPlanBlock({ title, round, steps }: ResearchPlanBlockProp
       aria-labelledby={titleId}
     >
       <div className="flex items-center justify-between gap-2">
-        <h4 id={titleId} className="text-sm font-semibold">{title}</h4>
+        <h4 id={titleId} dir="auto" className="text-sm font-semibold">{title}</h4>
         {typeof round === 'number' ? (
           <span className="text-xs text-muted-foreground">
-            {t('research.plan.round', { round })}
+            {t('research.plan.round', { round: formatGenerativeNumber(round) })}
           </span>
         ) : null}
       </div>
@@ -60,9 +65,9 @@ export function ResearchPlanBlock({ title, round, steps }: ResearchPlanBlockProp
         aria-valuenow={doneCount}
         aria-valuemin={0}
         aria-valuemax={steps.length}
-        aria-label={t('research.plan.progress', { done: doneCount, total: steps.length })}
+        aria-label={progressLabel}
       >
-        {t('research.plan.progress', { done: doneCount, total: steps.length })}
+        {progressLabel}
       </div>
       <ol className="space-y-2">
         {steps.map((step, index) => {
@@ -78,7 +83,7 @@ export function ResearchPlanBlock({ title, round, steps }: ResearchPlanBlockProp
             >
               <StepIcon status={status} />
               <span className="sr-only">{t(STEP_STATUS_KEY[status])}</span>
-              <span className="min-w-0 flex-1">{step.label}</span>
+              <span className="min-w-0 flex-1" dir="auto">{step.label}</span>
             </li>
           );
         })}

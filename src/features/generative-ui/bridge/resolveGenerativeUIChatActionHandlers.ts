@@ -29,11 +29,21 @@ import {
   createCopyIntentActionHandlers,
   type CopyIntentActionLabels,
 } from '../handlers/copyIntentActionHandlers';
+import {
+  COPY_BLOCK_ACTION_ID,
+  createCopyBlockActionHandlers,
+  type CopyBlockActionLabels,
+} from '../handlers/copyBlockActionHandlers';
+import {
+  EXPORT_INTENT_ACTION_ID,
+  createExportIntentActionHandlers,
+} from '../handlers/exportIntentActionHandlers';
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
 export const FLASHCARD_ACTION_IDS = ['save-to-library'] as const;
 export const RESEARCH_ACTION_IDS = ['copy-report', 'export-plan', 'export-intent'] as const;
 export const COPY_INTENT_ACTION_IDS = [COPY_INTENT_ACTION_ID] as const;
+export const COPY_BLOCK_ACTION_IDS = [COPY_BLOCK_ACTION_ID] as const;
 
 export function collectGenerativeUIActionIds(intent: GenerativeUIIntent): string[] {
   return intent.blocks
@@ -54,6 +64,7 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   flashcardContext?: FlashcardSaveContext;
   researchLabels?: ResearchBriefingActionLabels;
   copyIntentLabels?: CopyIntentActionLabels;
+  copyBlockLabels?: CopyBlockActionLabels;
 }
 
 /**
@@ -134,6 +145,26 @@ export function resolveGenerativeUIChatActionHandlers(
         input.intent,
         input.copyIntentLabels ?? { copyIntent: '复制意图' },
       ),
+    );
+  }
+
+  const needsCopyBlock = COPY_BLOCK_ACTION_IDS.some((id) => actionIds.has(id));
+  if (needsCopyBlock) {
+    Object.assign(
+      handlers,
+      createCopyBlockActionHandlers(
+        input.intent,
+        input.copyBlockLabels ?? { copyBlock: '复制该组件' },
+      ),
+    );
+  }
+
+  if (actionIds.has(EXPORT_INTENT_ACTION_ID) && !handlers[EXPORT_INTENT_ACTION_ID]) {
+    Object.assign(
+      handlers,
+      createExportIntentActionHandlers(input.intent, {
+        exportMarkdown: input.researchLabels?.exportIntent ?? '导出全部意图',
+      }),
     );
   }
 

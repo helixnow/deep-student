@@ -49,7 +49,8 @@
     "empty": "No AI UI content"
   },
   "overflow": {
-    "truncated": "Block limit reached; only the first {{max}} are shown"
+    "truncated": "Block limit reached; only the first {{max}} are shown",
+    "unregistered_actions": "Some actions are unregistered and their buttons are disabled"
   },
   "a11y": {
     "region_label": "AI generated interface",

@@ -28,6 +28,20 @@ type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap' | 'research-hpias'
 
 const DEMO_NOTE_ID = 'style-lab-note-demo';
 
+/** Style Lab lint gate: registered workbench + notes + research + copy/export ids. */
+const STYLE_LAB_REGISTERED_ACTION_IDS = [
+  'start-review',
+  'open-qbank',
+  'copy-intent',
+  'export-intent',
+  'apply-note-edit',
+  'dismiss-note-suggestion',
+  'save-to-library',
+  'copy-report',
+  'export-plan',
+  'copy-block',
+] as const;
+
 const MINDMAP_DEMO_INTENT: GenerativeUIIntent = {
   version: '1',
   meta: { title: '知识图谱预览', description: 'Style Lab — mindmap-embed 块演示' },
@@ -142,7 +156,10 @@ export function GenerativeUIDemoTab() {
   }, [mode, recipeId, noteEditIntent, stream.intent]);
 
   const lintResult = useMemo(
-    () => (displayedIntent ? lintGenerativeUIIntent(displayedIntent) : null),
+    () =>
+      displayedIntent
+        ? lintGenerativeUIIntent(displayedIntent, { actionIds: [...STYLE_LAB_REGISTERED_ACTION_IDS] })
+        : null,
     [displayedIntent],
   );
 
@@ -328,6 +345,7 @@ export function GenerativeUIDemoTab() {
           data-testid="generative-ui-demo-lint"
           data-lint-ok={lintResult.ok ? 'true' : 'false'}
           data-lint-count={lintResult.issues.length}
+          data-lint-action-gated="true"
         >
           <p className="font-medium text-foreground">{t('demo.lint_title')}</p>
           {lintResult.ok && lintResult.issues.length === 0 ? (

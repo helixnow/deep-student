@@ -141,4 +141,46 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
     const intentExport = mockedCopy.mock.calls[0]?.[0] as string;
     expect(intentExport).toContain('Summary [paper-1]');
   });
+
+  it('includes copy-block handler and copies block JSON to clipboard', async () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        {
+          type: 'stat-card' as const,
+          props: { title: 'Coverage', value: 87 },
+        },
+        {
+          type: 'action-bar' as const,
+          props: {
+            actions: [{ id: 'copy-block', label: 'Copy block', riskLevel: 'low' as const }],
+          },
+        },
+      ],
+    };
+    const handlers = resolveGenerativeUIChatActionHandlers({ intent });
+    expect(handlers['copy-block']).toBeDefined();
+    await handlers['copy-block'].handler({} as never);
+    expect(mockedCopy).toHaveBeenCalled();
+  });
+
+  it('includes generic export-intent handler when only a text block is present', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        {
+          type: 'text' as const,
+          props: { title: 'Summary', body: 'Hello' },
+        },
+        {
+          type: 'action-bar' as const,
+          props: {
+            actions: [{ id: 'export-intent', label: 'Export intent', riskLevel: 'low' as const }],
+          },
+        },
+      ],
+    };
+    const handlers = resolveGenerativeUIChatActionHandlers({ intent });
+    expect(handlers['export-intent']).toBeDefined();
+  });
 });

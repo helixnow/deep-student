@@ -49,7 +49,8 @@
     "empty": "暂无 AI 界面内容"
   },
   "overflow": {
-    "truncated": "组件数量超过上限，仅显示前 {{max}} 个"
+    "truncated": "组件数量超过上限，仅显示前 {{max}} 个",
+    "unregistered_actions": "有操作未注册，对应按钮已禁用"
   },
   "a11y": {
     "region_label": "AI 生成界面",

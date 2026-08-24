@@ -271,6 +271,7 @@ export {
   formatGenerativeNumber,
   formatGenerativeStatValue,
 } from './utils/formatGenerativeNumber';
+export { formatGenerativeDate } from './utils/formatGenerativeDate';
 export {
   isDangerousGenerativeUrl,
   isAllowedGenerativeUrl,
@@ -295,6 +296,7 @@ export type {
   GenerativeUIParseErrorCode,
   ClassifiedGenerativeUIParseError,
 } from './utils/classifyGenerativeUIParseErrors';
+export { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
 
 // 注册内置块
 import './blocks';

@@ -17,6 +17,7 @@ use crate::hpias::{
 };
 
 const TOOL_NAME: &str = "render_generative_ui";
+const MAX_GENERATIVE_UI_BLOCKS: usize = 32;
 
 pub struct GenerativeUiExecutor;
 
@@ -51,6 +52,14 @@ impl GenerativeUiExecutor {
 
         if blocks.is_empty() {
             return Err("intent.blocks 不能为空".to_string());
+        }
+
+        if blocks.len() > MAX_GENERATIVE_UI_BLOCKS {
+            return Err(format!(
+                "intent.blocks 超过上限 {}（收到 {}）",
+                MAX_GENERATIVE_UI_BLOCKS,
+                blocks.len()
+            ));
         }
 
         Ok(intent)
@@ -461,6 +470,21 @@ mod tests {
     fn parse_intent_rejects_empty_blocks() {
         let args = json!({ "intent": { "version": "1", "blocks": [] } });
         assert!(GenerativeUiExecutor::parse_intent(&args).is_err());
+    }
+
+    #[test]
+    fn parse_intent_rejects_too_many_blocks() {
+        let blocks: Vec<Value> = (0..33)
+            .map(|i| json!({ "type": "text", "props": { "text": format!("block-{i}") } }))
+            .collect();
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": blocks
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("too many blocks");
+        assert!(err.contains("32") || err.contains("上限"));
     }
 
     #[test]

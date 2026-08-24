@@ -6,8 +6,8 @@ export function AlertBlock({ variant, title, description }: AlertBlockProps) {
   const titleId = React.useId();
   return (
     <Alert variant={variant} role="alert" aria-labelledby={titleId}>
-      <AlertTitle id={titleId}>{title}</AlertTitle>
-      {description ? <AlertDescription>{description}</AlertDescription> : null}
+      <AlertTitle id={titleId} dir="auto">{title}</AlertTitle>
+      {description ? <AlertDescription dir="auto">{description}</AlertDescription> : null}
     </Alert>
   );
 }

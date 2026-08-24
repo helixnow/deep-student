@@ -363,6 +363,8 @@ describe('generativeUISotaAcceptance contract', () => {
       'classifyGenerativeUIParseErrors',
       'usePrefersContrast',
       'createCopyBlockActionHandlers',
+      'collectUnregisteredActionIds',
+      'formatGenerativeDate',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }
