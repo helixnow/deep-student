@@ -42,19 +42,27 @@
 
 ## 合入状态（父代理填写）
 
-云端异步 VM 上限为 3；其余在隔离 worktree（best-of-n-runner）并行。R07-asset-names 因异步子代理上限 10 未发出，下一空档补派。
+先合入本轮更早完成、已推远端的七路（与后派出的 10 路并行，不互相 PR）：
+
+| 已合入分支 | 覆盖 |
+|---|---|
+| `r07-class-plans` | `review_plans` merge_notes 过时注释 |
+| `r07-filename-tests` | Win 非法字符 / 大小写 / NFC-NFD 资产 key 回归测 |
+| `r07-autosync` | 默认关自动同步 + 失败退避 + SyncTab/设置开关 |
+| `r07-record-verifier` | 记录级上传走带校验子的加密一致性策略 |
+| `r07-file-e2ee` | workspace db / VFS blob / 资产 DSBK 文件级加密 |
+| `r07-webdav-409` | 整链 MKCOL 409 探活漏报、423/429 文案 |
+| `r07-webdav-comment` | 截断启发式重复注释合并 |
+
+后派出的 10 路（云端 VM 上限 3 + 隔离 worktree）仍在跑，回传后再验：
 
 | 代理 | 状态 | 说明 |
 |---|---|---|
-| 父代理 rustfmt | 本枝已推送 `4296437a` | 纯格式，Backend Format check |
-| R07-asset-e2ee | 云端运行中 | `bc-5808704e-a9ea-5bf3-bd73-3210c5db9b1f` |
+| 父代理 rustfmt | 已推 | Backend Format check |
+| R07-asset-e2ee（后派） | 云端运行中 | 可能与已合入 `r07-file-e2ee` 重叠，回传后只收增量 |
 | R07-android | 云端运行中 | `bc-4eab10ff-d120-500e-8864-daa7a06c4c69` |
 | R07-tests | 云端运行中 | `bc-77087866-213f-59db-80e5-5501b91eb272` |
-| R07-review | 隔离 worktree 运行中 | `bc-731f4f46-530d-5539-b9d7-e0d6f3219f15` |
-| R07-sota | 隔离 worktree 运行中 | `bc-576242f0-2ca8-5c01-ae6b-5653203d0ca8` |
-| R07-restore | 隔离 worktree 运行中 | `bc-1d02b7e6-9590-578d-9064-f8a054a83f4d` |
-| R07-contract | 隔离 worktree 运行中 | `bc-25767e3b-3ab2-5c26-bd26-2c7d0e50fa6c` |
-| R07-vitest | 隔离 worktree 运行中 | `bc-136b0c1a-abfc-5b5d-9f8b-1e71a8f88e64` |
-| R07-archive | 隔离 worktree 运行中 | `bc-e7a97113-f70f-5b78-bc94-1f63ea4fa6f9` |
-| R07-autosync | 隔离 worktree 运行中 | `bc-25021b16-762c-564b-a4f0-1a65f4ee2ea1` |
-| R07-asset-names | 待补派 | 异步上限，下一空档 |
+| R07-review / sota / restore | worktree 运行中 | 只读文档 |
+| R07-contract / vitest / archive | worktree 运行中 | CI 红灯 |
+| R07-autosync（后派） | worktree 运行中 | 已合入远端枝，回传后只收增量 |
+| R07-asset-names | 待补派 | 文件名测试枝已合入；净化实现仍缺 |

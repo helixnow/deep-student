@@ -1572,7 +1572,11 @@ mod tests {
         for (status, keyword) in [(423u16, "锁定"), (429, "限流")] {
             let responder: Responder = Arc::new(move |method, _path, _idx| match method {
                 // Retry-After: 0 让有界重试立即耗尽，避免测试等退避
-                "MKCOL" => (status, vec![("Retry-After", "0".to_string())], String::new()),
+                "MKCOL" => (
+                    status,
+                    vec![("Retry-After", "0".to_string())],
+                    String::new(),
+                ),
                 "PROPFIND" => (404, vec![], String::new()),
                 _ => (500, vec![], String::new()),
             });

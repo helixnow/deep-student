@@ -195,7 +195,10 @@ async fn r07_windows_reserved_chars_flow_into_keys_unescaped_and_roundtrip_on_li
 
     let manager_a = SyncManager::new(unique_device("dev-a"));
     let out_a = sync_bidirectional(&manager_a, &storage, &active_a, &app_a).await;
-    assert_eq!(out_a.uploaded, 2, "两个含非法字符的文件都应上传成功（Linux）");
+    assert_eq!(
+        out_a.uploaded, 2,
+        "两个含非法字符的文件都应上传成功（Linux）"
+    );
     assert!(!out_a.has_failures(), "{:?}", out_a.failure_summary());
 
     let keys = all_manifest_keys(&storage);
@@ -285,7 +288,10 @@ async fn r07_single_asset_download_failure_is_soft_and_only_visible_in_outcome()
         "调用方唯一的发现渠道是 has_failures()/failure_summary()"
     );
     assert!(
-        !active_b.path().join("images/broken:on-windows.png").exists(),
+        !active_b
+            .path()
+            .join("images/broken:on-windows.png")
+            .exists(),
         "失败的资产不应留下半成品文件"
     );
 }
@@ -323,8 +329,14 @@ async fn r07_case_only_variants_are_distinct_keys_and_coexist_on_case_sensitive_
     assert!(!out_b.has_failures(), "{:?}", out_b.failure_summary());
 
     let keys = all_manifest_keys(&storage);
-    assert!(keys.contains(&"active/images/Logo.png".to_string()), "{keys:?}");
-    assert!(keys.contains(&"active/images/logo.png".to_string()), "{keys:?}");
+    assert!(
+        keys.contains(&"active/images/Logo.png".to_string()),
+        "{keys:?}"
+    );
+    assert!(
+        keys.contains(&"active/images/logo.png".to_string()),
+        "{keys:?}"
+    );
 
     // 第三台设备（Linux，大小写敏感）：两个文件都物化且内容各自正确
     let active_c = TempDir::new().unwrap();
@@ -439,7 +451,8 @@ async fn r07_nfc_and_nfd_filenames_split_into_duplicate_assets() {
     // 云端清单也分裂为两个条目
     let keys = all_manifest_keys(&storage);
     assert!(
-        keys.contains(&format!("active/{nfc_name}")) && keys.contains(&format!("active/{nfd_name}")),
+        keys.contains(&format!("active/{nfc_name}"))
+            && keys.contains(&format!("active/{nfd_name}")),
         "同一逻辑文件在清单中分裂为 NFC/NFD 两个条目: {keys:?}"
     );
 }

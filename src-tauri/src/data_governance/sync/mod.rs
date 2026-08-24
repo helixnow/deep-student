@@ -811,7 +811,11 @@ impl SyncManager {
         &self,
     ) -> Result<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>, SyncError>
     {
-        let Some(password) = self.encryption_password.as_deref().filter(|s| !s.is_empty()) else {
+        let Some(password) = self
+            .encryption_password
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        else {
             return Ok(None);
         };
         let mut guard = self
@@ -10409,8 +10413,7 @@ impl SyncManager {
                         // 遗留清单里时间戳更新的明文条目会盖掉迁移后的密文条目。
                         if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() {
                             true
-                        } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none()
-                        {
+                        } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none() {
                             false
                         } else {
                             Self::timestamp_after(&entry.updated_at, &current.updated_at)
@@ -15894,10 +15897,9 @@ mod tests {
     }
 
     fn read_workspace_note(active_dir: &std::path::Path, ws_id: &str) -> String {
-        let conn = rusqlite::Connection::open(
-            active_dir.join("workspaces").join(format!("{}.db", ws_id)),
-        )
-        .unwrap();
+        let conn =
+            rusqlite::Connection::open(active_dir.join("workspaces").join(format!("{}.db", ws_id)))
+                .unwrap();
         conn.query_row("SELECT content FROM notes WHERE id = 'n1'", [], |row| {
             row.get(0)
         })
@@ -15925,9 +15927,15 @@ mod tests {
         assert!(is_dsbk(&object), "工作区对象必须是 DSBK 密文");
 
         // 清单条目必须登记密文哈希/大小，且与对象一致；对象 key 仍是明文快照哈希
-        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
         let entry = manifest.entries.get("ws_e2ee_rt").unwrap();
-        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
         assert_eq!(entry.cipher_size, Some(object.len() as u64));
         assert!(
             object_keys[0].contains(&entry.sha256),
@@ -15946,7 +15954,10 @@ mod tests {
             .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
             .await
             .unwrap();
-        assert_eq!(read_workspace_note(dir_b.path(), "ws_e2ee_rt"), "encrypted note");
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_e2ee_rt"),
+            "encrypted note"
+        );
     }
 
     #[cfg(feature = "data_governance")]
@@ -15969,7 +15980,10 @@ mod tests {
         let object = storage.object(&object_keys[0]).unwrap();
         assert!(!is_dsbk(&object), "明文模式对象不得带 DSBK 头");
 
-        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
         let entry = manifest.entries.get("ws_plain_rt").unwrap();
         assert!(entry.cipher_sha256.is_none());
         assert!(entry.cipher_size.is_none());
@@ -15979,7 +15993,10 @@ mod tests {
             .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
             .await
             .unwrap();
-        assert_eq!(read_workspace_note(dir_b.path(), "ws_plain_rt"), "plain note");
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_plain_rt"),
+            "plain note"
+        );
     }
 
     /// 在（已加密的）清单里手工登记一个明文遗留 workspace 条目 + 明文对象，
@@ -15995,7 +16012,12 @@ mod tests {
         let bytes = std::fs::read(&db_path).unwrap();
         let sha256 = sha256_hex(&bytes);
         let size = bytes.len() as u64;
-        let object_key = format!("{}/{}/{}.db", SyncManager::WORKSPACES_CLOUD_PREFIX, ws_id, sha256);
+        let object_key = format!(
+            "{}/{}/{}.db",
+            SyncManager::WORKSPACES_CLOUD_PREFIX,
+            ws_id,
+            sha256
+        );
         storage.put_raw(&object_key, bytes);
 
         let mut manifest = WorkspacesManifest::default();
@@ -16043,11 +16065,18 @@ mod tests {
             .await
             .expect_err("本端启用加密时必须拒收明文遗留 workspace 对象")
             .to_string();
-        assert!(error.contains("cipher_sha256"), "错误应指出缺少密文哈希: {error}");
+        assert!(
+            error.contains("cipher_sha256"),
+            "错误应指出缺少密文哈希: {error}"
+        );
         assert!(error.contains("拒绝下载"), "错误应明确拒收行为: {error}");
         assert!(error.contains("加密密码"), "错误应给出可操作指引: {error}");
         assert!(
-            !dir_b.path().join("workspaces").join("ws_legacy.db").exists(),
+            !dir_b
+                .path()
+                .join("workspaces")
+                .join("ws_legacy.db")
+                .exists(),
             "被拒收的明文对象不得落地"
         );
     }
@@ -16104,7 +16133,10 @@ mod tests {
             .await
             .unwrap();
 
-        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let manifest = manager_a
+            .download_workspaces_manifest(&storage)
+            .await
+            .unwrap();
         let entry = manifest.entries.get("ws_migrate").unwrap();
         assert!(
             entry.cipher_sha256.is_some(),
@@ -16122,7 +16154,10 @@ mod tests {
             .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
             .await
             .unwrap();
-        assert_eq!(read_workspace_note(dir_b.path(), "ws_migrate"), "note to migrate");
+        assert_eq!(
+            read_workspace_note(dir_b.path(), "ws_migrate"),
+            "note to migrate"
+        );
     }
 
     #[cfg(feature = "data_governance")]
@@ -16154,7 +16189,10 @@ mod tests {
 
         let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
         let entry = manifest.entries.get(&hash).unwrap();
-        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
         assert_eq!(entry.cipher_size, Some(object.len() as u64));
         assert_eq!(entry.size, payload.len() as u64, "size 字段保持明文大小");
 
@@ -16239,12 +16277,21 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.uploaded, 1, "明文遗留对象应被重新加密上传");
         let migrated = storage
-            .object(&format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, legacy_relative))
+            .object(&format!(
+                "{}/{}",
+                SyncManager::BLOBS_CLOUD_PREFIX,
+                legacy_relative
+            ))
             .unwrap();
         assert!(is_dsbk(&migrated), "迁移后 blob 对象必须是 DSBK 密文");
         let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
         assert!(
-            manifest.entries.get(&legacy_hash).unwrap().cipher_sha256.is_some(),
+            manifest
+                .entries
+                .get(&legacy_hash)
+                .unwrap()
+                .cipher_sha256
+                .is_some(),
             "迁移后清单条目必须升级为密文条目"
         );
 
@@ -16254,7 +16301,10 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.downloaded, 1);
         assert!(!outcome.has_failures());
-        assert_eq!(std::fs::read(blobs_b.join(&legacy_relative)).unwrap(), legacy_payload);
+        assert_eq!(
+            std::fs::read(blobs_b.join(&legacy_relative)).unwrap(),
+            legacy_payload
+        );
     }
 
     #[cfg(feature = "data_governance")]
@@ -16276,19 +16326,29 @@ mod tests {
         // 资产对象必须是密文；对象 key 保持明文哈希（去重）
         let plain_sha = sha256_hex(b"png bytes here");
         let object_key = format!("{}/{}", SyncManager::ASSET_OBJECTS_PREFIX, plain_sha);
-        let object = storage.object(&object_key).expect("对象 key 应保持明文哈希");
+        let object = storage
+            .object(&object_key)
+            .expect("对象 key 应保持明文哈希");
         assert!(is_dsbk(&object), "资产对象必须是 DSBK 密文");
 
         let manifest = manager_a.download_assets_manifest(&storage).await.unwrap();
         let entry = manifest.entries.get("active/images/pic.png").unwrap();
-        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(
+            entry.cipher_sha256.as_deref(),
+            Some(sha256_hex(&object).as_str())
+        );
         assert_eq!(entry.sha256, plain_sha);
 
         // 同密码设备 B 下载
         let dir_b = tempfile::tempdir().unwrap();
         let manager_b = encrypted_manager("device-asset-b", "shared-pw");
         let outcome = manager_b
-            .sync_asset_directories(&storage, dir_b.path(), dir_b.path(), SyncDirection::Download)
+            .sync_asset_directories(
+                &storage,
+                dir_b.path(),
+                dir_b.path(),
+                SyncDirection::Download,
+            )
             .await
             .unwrap();
         assert_eq!(outcome.downloaded, 1);
@@ -16330,7 +16390,12 @@ mod tests {
             .unwrap();
 
         let outcome = manager_b
-            .sync_asset_directories(&storage, dir_b.path(), dir_b.path(), SyncDirection::Download)
+            .sync_asset_directories(
+                &storage,
+                dir_b.path(),
+                dir_b.path(),
+                SyncDirection::Download,
+            )
             .await
             .unwrap();
         assert_eq!(

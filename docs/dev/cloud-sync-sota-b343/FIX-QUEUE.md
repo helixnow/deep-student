@@ -61,7 +61,13 @@
 
 **未交付转入 R07**：R06-review（无 FINDINGS-R06）、R06-asset-e2ee、R06-autosync、R06-asset-names、R06-android。
 
-## Round 07（认领中）
+## Round 07（部分合入）
+
+已合入远端枝：`r07-class-plans` / `r07-filename-tests` / `r07-autosync` / `r07-record-verifier` / `r07-file-e2ee` / `r07-webdav-409` / `r07-webdav-comment`。`sync.json` 自动同步文案由 `r07-autosync` 改过。
+
+后派出的 10 路仍在跑（见 [ROUND-07](./ROUND-07.md)）。
+
+## Round 07 原认领表（后派出）
 
 任务定义见 [ROUND-07](./ROUND-07.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
 
