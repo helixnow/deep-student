@@ -5,8 +5,14 @@
  * @see docs/generative-ui/NOTES_INTEGRATION.md
  */
 
+import i18n from '@/i18n';
 import type { CanvasEditOperation } from '@/features/notes/hooks/useAIEditState';
 import { noteEditPayloadSchema } from './extractNoteEditPayload';
+
+/** 派发护栏文案走 generativeUi:notes.*；defaultValue 兜底延迟命名空间加载窗口。 */
+function dispatchReason(key: string, defaultValue: string): string {
+  return String(i18n.t(`generativeUi:notes.${key}`, { defaultValue }));
+}
 
 export interface CanvasAIEditDispatchPayload {
   requestId: string;
@@ -42,19 +48,25 @@ export function dispatchCanvasAIEditRequest(
   options?: { onSettled?: () => void },
 ): CanvasAIEditDispatchResult {
   if (typeof window === 'undefined') {
-    return { claimed: false, reason: '当前环境没有可用的建议面板' };
+    return {
+      claimed: false,
+      reason: dispatchReason('edit_dispatch_no_panel', '当前环境没有可用的建议面板'),
+    };
   }
 
   // Defense in depth for direct handler callers that bypass extractNoteEditPayload.
   // In particular, never forward model-controlled regular expressions to the editor.
   const validation = noteEditPayloadSchema.safeParse(payload);
   if (!validation.success) {
-    return { claimed: false, reason: '笔记编辑建议无效或内容过大' };
+    return {
+      claimed: false,
+      reason: dispatchReason('edit_dispatch_invalid', '笔记编辑建议无效或内容过大'),
+    };
   }
 
   let result: CanvasAIEditDispatchResult = {
     claimed: false,
-    reason: '没有匹配的笔记编辑器认领建议',
+    reason: dispatchReason('edit_dispatch_unclaimed', '没有匹配的笔记编辑器认领建议'),
   };
 
   window.dispatchEvent(
