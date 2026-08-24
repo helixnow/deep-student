@@ -39,6 +39,9 @@
   "panel": {
     "empty": "No AI UI content"
   },
+  "overflow": {
+    "truncated": "Block limit reached; only the first {{max}} are shown"
+  },
   "a11y": {
     "region_label": "AI generated interface",
     "action_bar_label": "Actions",
@@ -306,6 +309,34 @@
       "copy_report": "Copy report",
       "export_plan": "Export plan",
       "export_intent": "Export all intents"
+    }
+  },
+  "demo": {
+    "recipes": {
+      "learning_dashboard": {
+        "title": "Learning dashboard",
+        "description": "Chart + table + steps"
+      },
+      "research_briefing": {
+        "title": "Research briefing",
+        "description": "Markdown + research plan"
+      },
+      "translation_chart": {
+        "title": "Translation throughput",
+        "description": "Chart"
+      },
+      "mistake_table": {
+        "title": "Mistake diagnosis",
+        "description": "Table + mistake analysis"
+      },
+      "empty_markdown": {
+        "title": "Empty state",
+        "description": "Markdown"
+      },
+      "v11_grid_two_col": {
+        "title": "v1.1 two-column",
+        "description": "Two-column grid layout"
+      }
     }
   }
 }

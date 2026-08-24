@@ -28,6 +28,18 @@ vi.mock('react-i18next', () => ({
         'action.confirm_desc': '描述',
         'action.confirm_execute': '确认执行',
         'action.unregistered_hint': '未注册',
+        'demo.recipes.learning_dashboard.title': 'i18n-learning-dashboard',
+        'demo.recipes.learning_dashboard.description': 'i18n-learning-dashboard-desc',
+        'demo.recipes.research_briefing.title': 'i18n-research-briefing',
+        'demo.recipes.research_briefing.description': 'i18n-research-briefing-desc',
+        'demo.recipes.translation_chart.title': 'i18n-translation-chart',
+        'demo.recipes.translation_chart.description': 'i18n-translation-chart-desc',
+        'demo.recipes.mistake_table.title': 'i18n-mistake-table',
+        'demo.recipes.mistake_table.description': 'i18n-mistake-table-desc',
+        'demo.recipes.empty_markdown.title': 'i18n-empty-markdown',
+        'demo.recipes.empty_markdown.description': 'i18n-empty-markdown-desc',
+        'demo.recipes.v11_grid_two_col.title': 'i18n-v11-grid-two-col',
+        'demo.recipes.v11_grid_two_col.description': 'i18n-v11-grid-two-col-desc',
       };
       return map[key] ?? key;
     },
@@ -74,8 +86,31 @@ describe('GenerativeUIDemoTab', () => {
     expect(screen.getByTestId('generative-ui-demo-recipe-mistake-table')).toBeInTheDocument();
     expect(screen.getByTestId('generative-ui-demo-recipe-empty-markdown')).toBeInTheDocument();
     expect(screen.getByTestId('generative-ui-demo-recipe-v11-grid-two-col')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-learning-dashboard')).toHaveTextContent(
+      'i18n-learning-dashboard',
+    );
+    expect(screen.getByTestId('generative-ui-demo-recipe-research-briefing')).toHaveTextContent(
+      'i18n-research-briefing',
+    );
+    expect(screen.getByTestId('generative-ui-demo-recipe-translation-chart')).toHaveTextContent(
+      'i18n-translation-chart',
+    );
+    expect(screen.getByTestId('generative-ui-demo-recipe-mistake-table')).toHaveTextContent(
+      'i18n-mistake-table',
+    );
+    expect(screen.getByTestId('generative-ui-demo-recipe-empty-markdown')).toHaveTextContent(
+      'i18n-empty-markdown',
+    );
+    expect(screen.getByTestId('generative-ui-demo-recipe-v11-grid-two-col')).toHaveTextContent(
+      'i18n-v11-grid-two-col',
+    );
+    expect(screen.queryByText('学习仪表盘')).not.toBeInTheDocument();
+    expect(screen.queryByText('研究简报')).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId('generative-ui-demo-recipe-learning-dashboard'));
+    expect(screen.getByTestId('generative-ui-demo-recipe-desc')).toHaveTextContent(
+      'i18n-learning-dashboard — i18n-learning-dashboard-desc',
+    );
     expect(screen.getByText('本周复习节奏')).toBeInTheDocument();
     expect(screen.getByText('每日复习量')).toBeInTheDocument();
   });

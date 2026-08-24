@@ -39,6 +39,9 @@
   "panel": {
     "empty": "暂无 AI 界面内容"
   },
+  "overflow": {
+    "truncated": "组件数量超过上限，仅显示前 {{max}} 个"
+  },
   "a11y": {
     "region_label": "AI 生成界面",
     "action_bar_label": "操作栏",
@@ -306,6 +309,34 @@
       "copy_report": "复制报告",
       "export_plan": "导出计划",
       "export_intent": "导出全部意图"
+    }
+  },
+  "demo": {
+    "recipes": {
+      "learning_dashboard": {
+        "title": "学习仪表盘",
+        "description": "图表 + 表格 + 步骤"
+      },
+      "research_briefing": {
+        "title": "研究简报",
+        "description": "Markdown + 研究计划"
+      },
+      "translation_chart": {
+        "title": "翻译吞吐",
+        "description": "图表"
+      },
+      "mistake_table": {
+        "title": "错题诊断",
+        "description": "表格 + 错题分析"
+      },
+      "empty_markdown": {
+        "title": "空态说明",
+        "description": "Markdown"
+      },
+      "v11_grid_two_col": {
+        "title": "v1.1 两列",
+        "description": "两列栅格布局"
+      }
     }
   }
 }

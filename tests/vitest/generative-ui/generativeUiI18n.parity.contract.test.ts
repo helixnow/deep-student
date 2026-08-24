@@ -2,11 +2,12 @@
  * generativeUi 中英 key 对齐合同
  *
  * 规则：zh-CN / en-US 叶子 key 集合必须相等；
- * blocks.markdown / chart / steps / table 与 a11y.* 必须存在且非空。
+ * blocks.markdown / chart / steps / table、a11y.*、demo.recipes.* 必须存在且非空。
  */
 import { describe, expect, it } from 'vitest';
 import zh from '@/locales/zh-CN/generativeUi.json';
 import en from '@/locales/en-US/generativeUi.json';
+import { INTENT_RECIPES } from '@/features/generative-ui/demo/intentRecipes';
 
 function collectKeyPaths(obj: Record<string, unknown>, prefix = ''): string[] {
   const paths: string[] = [];
@@ -88,6 +89,21 @@ const REQUIRED_A11Y_KEYS = [
   'a11y.retry',
 ] as const;
 
+const REQUIRED_DEMO_RECIPE_KEYS = [
+  'demo.recipes.learning_dashboard.title',
+  'demo.recipes.learning_dashboard.description',
+  'demo.recipes.research_briefing.title',
+  'demo.recipes.research_briefing.description',
+  'demo.recipes.translation_chart.title',
+  'demo.recipes.translation_chart.description',
+  'demo.recipes.mistake_table.title',
+  'demo.recipes.mistake_table.description',
+  'demo.recipes.empty_markdown.title',
+  'demo.recipes.empty_markdown.description',
+  'demo.recipes.v11_grid_two_col.title',
+  'demo.recipes.v11_grid_two_col.description',
+] as const;
+
 describe('generativeUi i18n parity contract (zh-CN / en-US)', () => {
   const zhKeys = collectKeyPaths(zh as Record<string, unknown>);
   const enKeys = collectKeyPaths(en as Record<string, unknown>);
@@ -141,6 +157,28 @@ describe('generativeUi i18n parity contract (zh-CN / en-US)', () => {
     for (const key of REQUIRED_A11Y_KEYS) {
       expect(zhKeySet.has(key), `zh-CN missing required a11y key: ${key}`).toBe(true);
       expect(enKeySet.has(key), `en-US missing required a11y key: ${key}`).toBe(true);
+    }
+  });
+
+  it('requires demo.recipes.* title/description for Style Lab recipe buttons', () => {
+    const zhDemo = zhKeys.filter((k) => k.startsWith('demo.recipes.'));
+    const enDemo = enKeys.filter((k) => k.startsWith('demo.recipes.'));
+
+    expect(zhDemo.length, 'demo.recipes.* must exist in zh-CN').toBeGreaterThan(0);
+    expect(enDemo).toEqual(zhDemo);
+
+    for (const key of REQUIRED_DEMO_RECIPE_KEYS) {
+      expect(zhKeySet.has(key), `zh-CN missing required demo recipe key: ${key}`).toBe(true);
+      expect(enKeySet.has(key), `en-US missing required demo recipe key: ${key}`).toBe(true);
+    }
+
+    for (const recipe of INTENT_RECIPES) {
+      expect(recipe.i18nKey.startsWith('demo.recipes.')).toBe(true);
+      for (const field of ['title', 'description'] as const) {
+        const key = `${recipe.i18nKey}.${field}`;
+        expect(zhKeySet.has(key), `zh-CN missing ${key} for recipe ${recipe.id}`).toBe(true);
+        expect(enKeySet.has(key), `en-US missing ${key} for recipe ${recipe.id}`).toBe(true);
+      }
     }
   });
 

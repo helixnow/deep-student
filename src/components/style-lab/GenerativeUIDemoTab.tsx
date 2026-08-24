@@ -191,7 +191,7 @@ export function GenerativeUIDemoTab() {
         return (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground" data-testid="generative-ui-demo-recipe-desc">
-              {recipe.title} — {recipe.description}
+              {t(`${recipe.i18nKey}.title`)} — {t(`${recipe.i18nKey}.description`)}
             </p>
             <GenerativeUIRenderer intent={recipe.intent} showChrome={false} />
           </div>
@@ -283,7 +283,7 @@ export function GenerativeUIDemoTab() {
                 }}
                 data-testid={`generative-ui-demo-recipe-${recipe.id}`}
               >
-                {recipe.title}
+                {t(`${recipe.i18nKey}.title`)}
               </DsButton>
             ))}
           </div>

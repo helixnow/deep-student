@@ -19,8 +19,8 @@ export type IntentRecipeId = (typeof INTENT_RECIPE_IDS)[number];
 
 export interface IntentRecipe {
   id: IntentRecipeId;
-  title: string;
-  description: string;
+  /** generativeUi namespace key, e.g. demo.recipes.learning_dashboard */
+  i18nKey: `demo.recipes.${string}`;
   requiredTypes: readonly string[];
   intent: GenerativeUIIntent;
 }
@@ -202,43 +202,37 @@ const V11_GRID_TWO_COL_RECIPE_INTENT: GenerativeUIIntent = {
 export const INTENT_RECIPES: readonly IntentRecipe[] = [
   {
     id: 'learning-dashboard',
-    title: '学习仪表盘',
-    description: 'chart + table + steps',
+    i18nKey: 'demo.recipes.learning_dashboard',
     requiredTypes: ['chart', 'table', 'steps'],
     intent: LEARNING_DASHBOARD_RECIPE_INTENT,
   },
   {
     id: 'research-briefing',
-    title: '研究简报',
-    description: 'markdown + research-plan',
+    i18nKey: 'demo.recipes.research_briefing',
     requiredTypes: ['markdown', 'research-plan'],
     intent: buildStyleLabHpiasResearchIntent(),
   },
   {
     id: 'translation-chart',
-    title: '翻译吞吐',
-    description: 'chart',
+    i18nKey: 'demo.recipes.translation_chart',
     requiredTypes: ['chart'],
     intent: TRANSLATION_CHART_RECIPE_INTENT,
   },
   {
     id: 'mistake-table',
-    title: '错题诊断',
-    description: 'table + mistake-analysis',
+    i18nKey: 'demo.recipes.mistake_table',
     requiredTypes: ['table', 'mistake-analysis'],
     intent: MISTAKE_TABLE_RECIPE_INTENT,
   },
   {
     id: 'empty-markdown',
-    title: '空态说明',
-    description: 'markdown',
+    i18nKey: 'demo.recipes.empty_markdown',
     requiredTypes: ['markdown'],
     intent: EMPTY_MARKDOWN_RECIPE_INTENT,
   },
   {
     id: 'v11-grid-two-col',
-    title: 'v1.1 两列',
-    description: 'layout.grid columns=2',
+    i18nKey: 'demo.recipes.v11_grid_two_col',
     requiredTypes: ['stat-card', 'chart'],
     intent: V11_GRID_TWO_COL_RECIPE_INTENT,
   },
