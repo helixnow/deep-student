@@ -278,7 +278,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'light' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('light')}
-                    className={themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
+                    className={`[@media(pointer:coarse)]:min-h-11 ${themeMode === 'light' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}`}
                     title={t('settings:system_settings.general.theme_light')}
                   >
                     <Sun size={16} />
@@ -289,7 +289,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'dark' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('dark')}
-                    className={themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
+                    className={`[@media(pointer:coarse)]:min-h-11 ${themeMode === 'dark' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}`}
                     title={t('settings:system_settings.general.theme_dark')}
                   >
                     <Moon size={16} />
@@ -300,7 +300,7 @@ export const SystemSettingsSection: React.FC = () => {
                     variant={themeMode === 'auto' ? 'primary' : 'default'}
                     size="sm"
                     onClick={() => setThemeMode('auto')}
-                    className={themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}
+                    className={`[@media(pointer:coarse)]:min-h-11 ${themeMode === 'auto' ? 'border-2 border-primary shadow-sm' : 'border border-transparent ring-1 ring-border/40'}`}
                     title={t('settings:system_settings.general.theme_follow_title', { 
                       system: isSystemDark ? t('settings:system_settings.general.theme_dark') : t('settings:system_settings.general.theme_light')
                     })}
@@ -439,7 +439,7 @@ export const SystemSettingsSection: React.FC = () => {
         {/* 操作按钮 */}
         {!isAutoSaveEnabled && (
           <div className="mt-8 flex gap-4 justify-center">
-            <DsButton onClick={handleSaveAll} disabled={saving} variant="primary">
+            <DsButton onClick={handleSaveAll} disabled={saving} variant="primary" className="[@media(pointer:coarse)]:min-h-11">
               <FloppyDisk size={14} />
               {saving ? t('common:status.saving') : t('settings:developer.save_all_settings')}
             </DsButton>
@@ -448,6 +448,7 @@ export const SystemSettingsSection: React.FC = () => {
               variant="ghost"
               onClick={handleReset}
               disabled={saving}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               <ArrowCounterClockwise size={14} />
               {t('common:actions.reset')}
