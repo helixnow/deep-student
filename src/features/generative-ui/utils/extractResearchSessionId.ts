@@ -5,7 +5,7 @@
 export const MAX_RESEARCH_SESSION_ID_LENGTH = 128;
 const RESEARCH_SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
-function sanitizeResearchSessionId(value: unknown): string | null {
+export function sanitizeResearchSessionId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > MAX_RESEARCH_SESSION_ID_LENGTH) return null;

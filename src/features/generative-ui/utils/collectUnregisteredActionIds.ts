@@ -28,5 +28,5 @@ export function collectUnregisteredActionIds(
   actionHandlers?: Record<string, unknown>,
 ): string[] {
   if (actionHandlers == null) return [];
-  return actionBarActionIds(intent).filter((id) => actionHandlers[id] == null);
+  return actionBarActionIds(intent).filter((id) => !Object.hasOwn(actionHandlers, id));
 }

@@ -16,6 +16,7 @@ const RESEARCH_SURFACE_ACTION_IDS = new Set([
   'export-plan',
   'export-intent',
   'copy-intent',
+  'copy-block',
 ]);
 
 function isResearchOnlyActionBar(block: { type: string; props?: unknown }): boolean {
