@@ -55,11 +55,26 @@ jobs:
 
   # ============================================
   # 前端编译检查 + 产物构建
+  #
+  # R3 wall-clock 优化：typecheck / eslint / vite build 三个门禁互不依赖，
+  # 此前在单 job 内串行（关键路径 = 安装 + 全部步骤之和）。现拆为 matrix
+  # 三 leg 并行，每 leg 独立 checkout + npm ci（npm 缓存命中时安装远小于
+  # 省下的串行等待），关键路径降为 max(单 leg)。
+  #
+  # 门禁完整性不变（只并行，不删减）：
+  #   - licenses:check 与 npm audit 只依赖依赖树、不依赖 dist，
+  #     挂在最短的 lint leg 平衡三 leg 时长
+  #   - bundle 体积门禁依赖 vite 产物，跟随 build leg
+  #   - fail-fast: false —— 一个 leg 失败不取消其余门禁的信号
   # ============================================
-  frontend:
-    name: Frontend
+  frontend-checks:
+    name: Frontend · ${{ matrix.task }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [lint, typecheck, build]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -70,22 +85,26 @@ jobs:
 
       - run: npm ci --legacy-peer-deps
 
-      - name: Verify third-party license notices
-        run: npm run licenses:check
-
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
       - name: Type check
+        if: matrix.task == 'typecheck'
         run: npx tsc --noEmit
 
       - name: Lint (ESLint, errors block merge)
+        if: matrix.task == 'lint'
         run: npm run lint
+
+      - name: Verify third-party license notices
+        if: matrix.task == 'lint'
+        run: npm run licenses:check
 
       # 审查 F13：tsc 通过不代表 vite build 能过（rollup 解析、动态 import、
       # 资源引用、chunk 配置）。此前第一次构建产物发生在合并 Release PR 之后
       # 的全平台发布里 —— 失败即阻塞发布。左移到 PR。
       - name: Build production bundle
+        if: matrix.task == 'build'
         run: npx vite build
 
       # WI-8：bundle 体积门禁。阈值 = 2026-08-24 基线 gzip +5%
@@ -93,12 +112,14 @@ jobs:
       # 引入期先跑 warn 模式：超限打 ::warning:: 注解 + job summary，
       # exit 0 不阻塞；观察两周（至 ~2026-09-07）后去掉 --warn-only 转阻塞。
       - name: Bundle size check (warn mode)
+        if: matrix.task == 'build'
         run: node scripts/check-bundle-size.mjs --warn-only
 
       # 审查 F11：此前 `npm audit || true` 永远绿灯且无人看日志。
       # 保持非阻塞（npm 无 audit.toml 式忽略清单，深层传递依赖难以升级），
       # 但结果写入 job summary，红字可见。
       - name: Security audit (npm, informational)
+        if: matrix.task == 'lint'
         run: |
           set +e
           npm audit --omit=dev --audit-level=high > "$RUNNER_TEMP/npm-audit.txt" 2>&1
@@ -115,6 +136,26 @@ jobs:
           if [ "$CODE" -ne 0 ]; then
             echo "::warning::npm audit found high+ vulnerabilities (informational, see job summary)"
           fi
+
+  # main-protection ruleset 要求的 required status check context 恰为
+  # "Frontend"（Actions integration）。matrix leg 的 check 名带任务后缀，
+  # 命中不了该 context —— 本聚合 job 以原名收敛三 leg 结果，保住合并门禁。
+  #
+  # if: always() + 显式断言是有意的 fail-closed：若依赖失败时靠隐式
+  # success() 跳过本 job，skipped 的 required check 会被 ruleset 视为
+  # 满足（假绿）。任一 leg failure/cancelled 都必须让本 job 转红。
+  frontend:
+    name: Frontend
+    needs: [frontend-checks]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert every frontend gate passed
+        run: |
+          RESULT="${{ needs.frontend-checks.result }}"
+          echo "frontend-checks combined result: $RESULT"
+          test "$RESULT" = "success"
 
   # ============================================
   # 前端单元测试（Vitest）
