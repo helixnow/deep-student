@@ -108,8 +108,14 @@ describe('auto sync interval presets (R11-autosync2)', () => {
 
     it('re-evaluates the interval on every (re)schedule', async () => {
       let preset: AutoSyncIntervalPreset = '15m';
+      let finishSecondRun!: (outcome: AutoSyncOutcome) => void;
+      const secondRun = new Promise<AutoSyncOutcome>((resolve) => {
+        finishSecondRun = resolve;
+      });
       const run = vi
         .fn<[], Promise<AutoSyncOutcome>>()
+        .mockResolvedValueOnce('success')
+        .mockImplementationOnce(() => secondRun)
         .mockResolvedValue('success');
       const scheduler = createAutoSyncScheduler({
         isEnabled: () => true,
@@ -129,6 +135,8 @@ describe('auto sync interval presets (R11-autosync2)', () => {
 
       // 第二轮结束前切到 1h 档：本轮结束时的排程即用新间隔
       preset = '1h';
+      finishSecondRun('success');
+      await vi.advanceTimersByTimeAsync(0);
       expect(scheduler.computeNextDelayMs()).toBe(60 * 60_000);
       await vi.advanceTimersByTimeAsync(15 * 60_000);
       expect(run).toHaveBeenCalledTimes(2);
