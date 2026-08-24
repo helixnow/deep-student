@@ -274,6 +274,8 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       className={cn(
         // 单元格随七列网格收缩，min-h-9 兜底触控高度（aspect-square 下实际接近方形命中区）
         '!p-0.5 sm:!p-1 !h-auto !rounded-md aspect-square relative min-h-9 min-w-0 sm:min-h-10',
+        // 粗指针：::after 向四周扩 4px 命中区（36px 视觉 → ~44px 命中），不改变视觉尺寸与七列网格
+        "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']",
         'ui-state-colors border transition-[background-color,border-color,box-shadow] duration-150 ease-standard motion-reduce:transition-none',
         getHeatmapColor(count),
         // 边框层级：选中 > 今日 > 常态细边框
