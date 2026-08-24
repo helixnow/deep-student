@@ -40,7 +40,7 @@
 | `builtin-chatanki_export` | 导出 APKG 或 JSON | 当前会话的 `documentId` | 是，写文件 |
 | `builtin-chatanki_sync` | 通过 AnkiConnect 同步到桌面 Anki | 当前会话的 `documentId` | 是，写外部 Anki |
 | `builtin-chatanki_list_templates` | 列出本地模板及字段契约 | 库级 | 否 |
-| `builtin-chatanki_analyze` | 预分析文本密度，不生成卡片 | 当前调用内容 | 否 |
+| `builtin-chatanki_analyze` | 预分析材料并给出与管线同源的路由/参数预估，不生成卡片 | 当前调用内容/引用元数据 | 否 |
 | `builtin-chatanki_check_anki_connect` | 检查 AnkiConnect 可用性 | 本机环境 | 否 |
 
 ## 通用契约
@@ -1125,14 +1125,17 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 
 ### `builtin-chatanki_analyze`
 
-对直接文本做轻量启发式分析，不创建卡片。
+预分析学习材料，不创建卡片。路由决策与制卡管线共用同一决策函数
+（forced > 高置信度 LLM 路由计划 > 引用类型启发式），不再固定推荐 `simple_text`。
 
 参数：
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `content` | 是 | 非空文本/Markdown |
-| `goal` | 否 | 原样回显，供调用方关联学习目标 |
+| `content` | 二选一 | 文本/Markdown；传 `resourceIds` 时可省略 |
+| `resourceId` / `resourceIds` | 二选一 | 要预分析的资源 ID；解析出引用元数据后走与 `chatanki_run` 相同的 LLM 路由规划（失败/低置信度回退启发式）。解析失败 fail-open：降级为纯文本分析并写入 `warnings[].code=analyze_refs_unresolved` |
+| `goal` | 否 | 进入路由规划提示词参与决策（不再只是回显） |
+| `route` | 否 | 预演强制路由（`simple_text/vlm_light/vlm_full`）；非法值直接失败 |
 
 成功返回：
 
@@ -1141,21 +1144,34 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
   "status": "ok",
   "goal": null,
   "metrics": {
-    "chars": 1200,
-    "nonEmptyLines": 60,
-    "entryLikeLines": 45
+    "chars": 1200, "nonEmptyLines": 60, "entryLikeLines": 45,
+    "refTotal": 2, "refFiles": 1, "refImages": 1, "refOthers": 0
+  },
+  "routing": {
+    "route": "vlm_light",
+    "routeSource": "llm",
+    "confidence": 0.85,
+    "glossaryMode": true,
+    "reason": "少量图表需要视觉补充"
   },
   "recommended": {
-    "route": "simple_text",
+    "route": "vlm_light",
+    "maxCards": 50,
     "glossaryMode": true,
     "segmentOverlapSize": 0,
     "maxOutputTokensOverride": 2400,
-    "temperature": 0.2
+    "temperature": 0.2,
+    "pipelineDefaultMaxCards": 0
   }
 }
 ```
 
-当前实现只对术语表形态做启发式推荐，`recommended.route` 固定为 `simple_text`；它不会读取上传文件，也不会估出精确卡数。失败为参数解析错误或 `content is required`。
+- `routing.routeSource ∈ {forced, llm, heuristic}`；`confidence` 仅 `llm` 来源非 null；`metrics.ref*` 仅引用解析成功时出现。
+- **可回传 `chatanki_run` 的参数**：`recommended.route`（作 `route` 强制，通常不必传——管线会自己再跑同一条决策链）与 `recommended.maxCards`（1..=100；词汇表 = 条目数 + 余量，封顶 100）。
+- **管线内自算、run/start 没有对应参数**（仅供解释预估）：`temperature`、`maxOutputTokensOverride`、`segmentOverlapSize` 来自与 `build_generation_options` 共享的词汇表旋钮函数；`pipelineDefaultMaxCards` 是未显式传 `maxCards` 时的内部默认（`0` 表示词汇表模式不设数值上限）。
+- `glossaryMode` 与管线相同取「高置信度 LLM 提示 ∪ 内容启发式」并集。
+
+失败为参数解析错误、`content or resourceIds is required` 或非法 `route`。
 
 ### `builtin-chatanki_check_anki_connect`
 
@@ -1236,6 +1252,6 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 - APKG 媒体当前只统计并跳过，不导入附件内容；APKG 模板当前不落入本地模板库，`importedTemplates=0`。
 - 统一失败分段重试不会自动删除旧错误诊断卡；必须在 `get_cards` 验收替代卡后显式删除，避免部分修复时误删证据。
 - FSRS 目前使用默认牌组，不提供每日新卡上限或 Agent 牌组管理工具。
-- `analyze` 是文本启发式工具，不解析上传文件，也不提供精确卡数预测。
+- `analyze` 与制卡管线共用路由决策函数（Round 3 #7），但引用解析是元数据轻量版（不展开 VFS 存储的完整 ref data），复合引用计数可能与 run 管线有出入；它仍不提供精确卡数预测，`recommended.maxCards` 只是与 skill 口径一致的建议上限。
 - `sync` 依赖本机 Anki 和 AnkiConnect；本工具面不改变 AnkiConnect 协议。
 - 聊天输入栏不提供模板选择 UI，模板选择由 Agent 工具参数和现有模板管理界面承担。

@@ -1382,8 +1382,16 @@ struct ChatAnkiListTemplatesArgs {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatAnkiAnalyzeArgs {
-    content: String,
+    /// 直接文本材料。传 resourceId/resourceIds 时可省略。
+    content: Option<String>,
+    /// 学习目标：进入 plan_route 提示词参与路由规划（不再只是回显）。
     goal: Option<String>,
+    /// 可选：预设强制路由（与 chatanki_run 的 route 同语义），用于预演 forced 路径。
+    route: Option<String>,
+    #[serde(alias = "resourceId")]
+    resource_id: Option<String>,
+    #[serde(alias = "resourceIds")]
+    resource_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5095,33 +5103,19 @@ impl ChatAnkiToolExecutor {
         Ok(result)
     }
 
+    /// 预分析（不生成卡片）。
+    ///
+    /// Round 3 #7：路由决策与制卡管线共用 [`resolve_route_decision`]——
+    /// 无引用的纯文本走启发式（simple_text），带资源引用时走与管线相同的
+    /// plan_route LLM 规划（失败/低置信度回退启发式），route 参数可预演
+    /// forced 路径。输出 routing.routeSource=forced|llm|heuristic。
     async fn execute_analyze(
         &self,
         call: &ToolCall,
         ctx: &ExecutionContext,
         start_time: Instant,
     ) -> Result<ToolResultInfo, String> {
-        let args = match serde_json::from_value::<ChatAnkiAnalyzeArgs>(call.arguments.clone()) {
-            Ok(v) => v,
-            Err(e) => {
-                let error_msg = format!("Invalid chatanki_analyze arguments: {}", e);
-                ctx.emit_tool_call_error(&error_msg);
-                let result = ToolResultInfo::failure(
-                    Some(call.id.clone()),
-                    Some(ctx.block_id.clone()),
-                    call.name.clone(),
-                    call.arguments.clone(),
-                    error_msg,
-                    start_time.elapsed().as_millis() as u64,
-                );
-                let _ = ctx.save_tool_block(&result);
-                return Ok(result);
-            }
-        };
-
-        let content = args.content;
-        if content.trim().is_empty() {
-            let error_msg = "content is required".to_string();
+        let fail = |error_msg: String| {
             ctx.emit_tool_call_error(&error_msg);
             let result = ToolResultInfo::failure(
                 Some(call.id.clone()),
@@ -5132,57 +5126,88 @@ impl ChatAnkiToolExecutor {
                 start_time.elapsed().as_millis() as u64,
             );
             let _ = ctx.save_tool_block(&result);
-            return Ok(result);
-        }
-
-        let chars = content.chars().count();
-        let non_empty_lines: Vec<&str> = content
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| !l.is_empty())
-            .collect();
-        let glossary_mode = looks_like_glossary_content(&content);
-
-        // Rough entry estimate for glossary-like content
-        let mut entry_like = 0usize;
-        for l in &non_empty_lines {
-            if l.contains('：') || l.contains(':') || l.starts_with("- ") || l.starts_with("* ") {
-                entry_like += 1;
-                continue;
-            }
-            if l.len() >= 3
-                && l.chars()
-                    .next()
-                    .map(|c| c.is_ascii_digit())
-                    .unwrap_or(false)
-            {
-                entry_like += 1;
-            }
-        }
-
-        let max_output_tokens_override: Value = if glossary_mode {
-            Value::from(2400)
-        } else {
-            Value::Null
+            Ok(result)
         };
-        let recommended = json!({
-            "route": "simple_text",
-            "glossaryMode": glossary_mode,
-            "segmentOverlapSize": if glossary_mode { 0 } else { 200 },
-            "maxOutputTokensOverride": max_output_tokens_override,
-            "temperature": if glossary_mode { 0.2 } else { 0.3 },
-        });
 
-        let output = json!({
-            "status": "ok",
-            "goal": args.goal,
-            "metrics": {
-                "chars": chars,
-                "nonEmptyLines": non_empty_lines.len(),
-                "entryLikeLines": entry_like,
+        let args = match serde_json::from_value::<ChatAnkiAnalyzeArgs>(call.arguments.clone()) {
+            Ok(v) => v,
+            Err(e) => {
+                return fail(format!("Invalid chatanki_analyze arguments: {}", e));
+            }
+        };
+
+        let forced_route = match args.route.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(raw) => match ChatAnkiRoute::from_str(raw) {
+                Some(route) => Some(route),
+                None => {
+                    return fail(format!(
+                        "Invalid route '{}': expected simple_text | vlm_light | vlm_full",
+                        raw
+                    ));
+                }
             },
-            "recommended": recommended,
-        });
+            None => None,
+        };
+
+        let content = args.content.unwrap_or_default();
+        let mut requested_ids: Vec<String> = Vec::new();
+        for id in args
+            .resource_id
+            .into_iter()
+            .chain(args.resource_ids.into_iter().flatten())
+        {
+            let id = id.trim().to_string();
+            if !id.is_empty() && !requested_ids.contains(&id) {
+                requested_ids.push(id);
+            }
+        }
+
+        if content.trim().is_empty() && requested_ids.is_empty() {
+            return fail("content or resourceIds is required".to_string());
+        }
+
+        // 引用元数据解析（fail-open：解析失败降级为纯文本分析并记 warnings）。
+        let mut warnings: Vec<Value> = Vec::new();
+        let ref_data = if requested_ids.is_empty() {
+            None
+        } else {
+            resolve_analyze_ref_data(ctx, &requested_ids, &mut warnings)
+        };
+
+        // 与制卡管线共用的路由决策链：forced > 高置信度 LLM 计划 > 启发式。
+        let decision = if let Some(forced) = forced_route {
+            RouteDecision::forced(forced)
+        } else if let Some(rd) = ref_data.as_ref().filter(|rd| !rd.refs.is_empty()) {
+            let plan = match ctx.llm_manager.as_ref() {
+                Some(llm) => {
+                    let extra = {
+                        let trimmed = content.trim();
+                        (!trimmed.is_empty()).then_some(trimmed)
+                    };
+                    let text_sample = match ctx.vfs_db.as_ref().and_then(|db| db.get_conn_safe().ok())
+                    {
+                        Some(conn) => sample_ref_text_for_routing(&conn, rd, extra),
+                        None => extra
+                            .map(|t| safe_truncate_chars(t, ROUTE_PLAN_SAMPLE_TOTAL_CHARS))
+                            .unwrap_or_default(),
+                    };
+                    plan_route(llm, args.goal.as_deref().unwrap_or(""), rd, &text_sample).await
+                }
+                None => None,
+            };
+            resolve_route_decision(None, plan.as_ref(), rd)
+        } else {
+            // 纯文本（无图元数据）：与管线 PipelineInput::Content 分支同语义 → simple_text。
+            resolve_route_decision(None, None, &VfsContextRefData::default())
+        };
+
+        let output = build_analyze_output(
+            args.goal.as_deref(),
+            &content,
+            ref_data.as_ref(),
+            &decision,
+            &warnings,
+        );
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         ctx.emit_tool_call_end(Some(json!({ "result": output, "durationMs": duration_ms })));
@@ -7229,24 +7254,31 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 )
                 .await
             };
-            if let Some(plan) = route_plan.as_ref() {
-                if plan.is_confident() {
-                    llm_glossary_hint = plan.glossary_mode;
+            // 与 chatanki_analyze 共用的唯一路由决策入口（forced > 高置信度 LLM > 启发式）。
+            let route_decision =
+                resolve_route_decision(params.forced_route, route_plan.as_ref(), &merged_ref_data);
+            llm_glossary_hint = route_decision.glossary_mode_hint;
+            {
+                let mut debug_patch = serde_json::Map::new();
+                debug_patch.insert(
+                    "routeSource".to_string(),
+                    json!(route_decision.source.as_str()),
+                );
+                if let Some(plan) = route_plan.as_ref() {
+                    debug_patch.insert("routePlan".to_string(), plan.to_debug_json());
                 }
-                let plan_json = plan.to_debug_json();
                 debug_ref = match debug_ref {
                     Some(mut v) => {
                         if let Some(obj) = v.as_object_mut() {
-                            obj.insert("routePlan".to_string(), plan_json);
+                            obj.extend(debug_patch);
                         }
                         Some(v)
                     }
-                    None => Some(json!({ "routePlan": plan_json })),
+                    None => Some(Value::Object(debug_patch)),
                 };
             }
 
-            let mut route =
-                resolve_planned_route(params.forced_route, route_plan.as_ref(), &merged_ref_data);
+            let mut route = route_decision.route;
             let merge_with_extra = |base: String| merge_optional_texts(base, merged_extra.clone());
             let add_truncation_warning =
                 |warnings: &mut Vec<Value>, batch: &ImagePayloadBatch, limit: usize| {
@@ -8617,21 +8649,247 @@ fn parse_route_plan_response(response: &str) -> Option<RoutePlan> {
     })
 }
 
+/// 最终路由的来源（Round 3 #7：管线 debug 输出与 chatanki_analyze 输出契约共用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouteSource {
+    /// 调用方显式传入 route 强制指定。
+    Forced,
+    /// plan_route 的高置信度（>= ROUTE_PLAN_MIN_CONFIDENCE）LLM 计划。
+    Llm,
+    /// decide_route 引用类型计数启发式（含 LLM 计划缺失/低置信度回退）。
+    Heuristic,
+}
+
+impl RouteSource {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Forced => "forced",
+            Self::Llm => "llm",
+            Self::Heuristic => "heuristic",
+        }
+    }
+}
+
+/// 统一路由决策结果。
+///
+/// `run_chatanki_pipeline_background` 与 `execute_analyze` 必须共用
+/// [`resolve_route_decision`] 产出本结构，保证「分析预估」与「实际制卡」
+/// 永远同源，消灭 analyze 永远推荐 simple_text 的漂移。
+#[derive(Debug, Clone)]
+struct RouteDecision {
+    route: ChatAnkiRoute,
+    source: RouteSource,
+    /// 仅 source=Llm 时有值（计划置信度）。
+    confidence: Option<f32>,
+    /// 仅 source=Llm 时可能有值（高置信度计划的 glossaryMode 提示）。
+    glossary_mode_hint: Option<bool>,
+    reason: Option<String>,
+}
+
+impl RouteDecision {
+    fn forced(route: ChatAnkiRoute) -> Self {
+        Self {
+            route,
+            source: RouteSource::Forced,
+            confidence: None,
+            glossary_mode_hint: None,
+            reason: Some("调用方显式指定 route".to_string()),
+        }
+    }
+}
+
+/// 启发式路由的一句话理由（进入 analyze 输出与管线 debug，供 agent 解释决策）。
+fn heuristic_route_reason(ref_data: &VfsContextRefData) -> String {
+    let mut image_count = 0usize;
+    let mut file_count = 0usize;
+    for r in ref_data.refs.iter() {
+        match r.resource_type {
+            VfsResourceType::Image => image_count += 1,
+            VfsResourceType::File => file_count += 1,
+            _ => {}
+        }
+    }
+    format!(
+        "启发式：引用共 {} 项（文件 {}，图片 {}）",
+        ref_data.refs.len(),
+        file_count,
+        image_count
+    )
+}
+
 /// 路由优先级链：forced_route > 高置信度 LLM 计划 > decide_route 启发式。
-fn resolve_planned_route(
+///
+/// 这是管线与 chatanki_analyze 共用的唯一路由决策入口。
+fn resolve_route_decision(
     forced_route: Option<ChatAnkiRoute>,
     llm_plan: Option<&RoutePlan>,
     ref_data: &VfsContextRefData,
-) -> ChatAnkiRoute {
+) -> RouteDecision {
     if let Some(forced) = forced_route {
-        return forced;
+        return RouteDecision::forced(forced);
     }
     if let Some(plan) = llm_plan {
         if plan.is_confident() {
-            return plan.route;
+            return RouteDecision {
+                route: plan.route,
+                source: RouteSource::Llm,
+                confidence: Some(plan.confidence),
+                glossary_mode_hint: plan.glossary_mode,
+                reason: plan.reason.clone(),
+            };
         }
     }
-    decide_route(ref_data)
+    RouteDecision {
+        route: decide_route(ref_data),
+        source: RouteSource::Heuristic,
+        confidence: None,
+        glossary_mode_hint: None,
+        reason: Some(heuristic_route_reason(ref_data)),
+    }
+}
+
+/// chatanki_analyze 的轻量引用解析：会话快照优先，VFS source_id 兜底。
+///
+/// 与 run 管线同链路（`resolve_target_context_refs` →
+/// `resolve_context_ref_from_any_id` → `build_single_ref_data_from_context_ref`），
+/// 但 fail-open：analyze 是只读预估工具，任何解析失败都降级为纯文本分析并
+/// 通过 warnings 告知，不阻断调用。
+fn resolve_analyze_ref_data(
+    ctx: &ExecutionContext,
+    requested_ids: &[String],
+    warnings: &mut Vec<Value>,
+) -> Option<VfsContextRefData> {
+    let mut context_refs: Vec<ContextRef> = Vec::new();
+    if let Some(chat_db) = ctx.chat_v2_db.as_ref() {
+        if let Ok(refs) = resolve_target_context_refs(chat_db, &ctx.session_id, Some(requested_ids))
+        {
+            context_refs = refs;
+        }
+    }
+
+    // 会话快照缺失的 id 直接从 VFS 解析（与 run 管线相同的兜底策略）。
+    let mut unresolved: Vec<String> = Vec::new();
+    for id in requested_ids {
+        if context_refs.iter().any(|r| &r.resource_id == id) {
+            continue;
+        }
+        match ctx.vfs_db.as_ref() {
+            Some(vfs_db) => match resolve_context_ref_from_any_id(vfs_db, id) {
+                Ok(Some(context_ref)) => context_refs.push(context_ref),
+                Ok(None) => unresolved.push(id.clone()),
+                Err(e) => {
+                    log::warn!("[chatanki_analyze] resolve ref '{}' failed: {}", id, e);
+                    unresolved.push(id.clone());
+                }
+            },
+            None => unresolved.push(id.clone()),
+        }
+    }
+    if !unresolved.is_empty() {
+        warnings.push(json!({
+            "code": "analyze_refs_unresolved",
+            "message": format!(
+                "以下资源未能解析为引用元数据，本次分析退化为纯文本启发式：{}",
+                unresolved.join(", ")
+            ),
+            "unresolvedIds": unresolved,
+        }));
+    }
+    if context_refs.is_empty() {
+        return None;
+    }
+
+    let mut merged = VfsContextRefData::default();
+    for context_ref in &context_refs {
+        if let Some(rd) = build_single_ref_data_from_context_ref(context_ref) {
+            merged.total_count += rd.refs.len();
+            merged.refs.extend(rd.refs);
+        }
+    }
+    if merged.refs.is_empty() {
+        None
+    } else {
+        Some(merged)
+    }
+}
+
+/// 组装 chatanki_analyze 的输出契约（纯函数，便于单测锁定）。
+///
+/// 同源约束（Round 3 #7）：
+/// - `routing` 块来自与管线共用的 [`RouteDecision`]；
+/// - `glossaryMode` 与管线相同取「高置信度 LLM 提示 ∪ 内容启发式」并集
+///   （对应 `run_chatanki_pipeline_background` 的 normalize 判定）；
+/// - `recommended.temperature` / `maxOutputTokensOverride` /
+///   `segmentOverlapSize` 来自 [`glossary_generation_knobs`]，
+///   `pipelineDefaultMaxCards` 来自 [`default_max_cards_for_content`]——
+///   这些由管线内自算，run/start 没有对应参数，仅供 agent 解释预估；
+/// - 能回传 `chatanki_run` 的只有 `recommended.route`（作 route 强制）、
+///   `recommended.maxCards`（1..=100）与调用方自己的 goal。
+fn build_analyze_output(
+    goal: Option<&str>,
+    content: &str,
+    ref_data: Option<&VfsContextRefData>,
+    decision: &RouteDecision,
+    warnings: &[Value],
+) -> Value {
+    let chars = content.chars().count();
+    let non_empty_lines = content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .count();
+    let entry_like = count_entry_like_lines(content);
+
+    let glossary_mode =
+        decision.glossary_mode_hint.unwrap_or(false) || looks_like_glossary_content(content);
+    let knobs = glossary_generation_knobs(glossary_mode);
+
+    let mut metrics = serde_json::Map::new();
+    metrics.insert("chars".to_string(), json!(chars));
+    metrics.insert("nonEmptyLines".to_string(), json!(non_empty_lines));
+    metrics.insert("entryLikeLines".to_string(), json!(entry_like));
+    if let Some(rd) = ref_data {
+        let mut file_count = 0usize;
+        let mut image_count = 0usize;
+        let mut other_count = 0usize;
+        for r in rd.refs.iter() {
+            match r.resource_type {
+                VfsResourceType::File => file_count += 1,
+                VfsResourceType::Image => image_count += 1,
+                _ => other_count += 1,
+            }
+        }
+        metrics.insert("refTotal".to_string(), json!(rd.refs.len()));
+        metrics.insert("refFiles".to_string(), json!(file_count));
+        metrics.insert("refImages".to_string(), json!(image_count));
+        metrics.insert("refOthers".to_string(), json!(other_count));
+    }
+
+    let mut output = json!({
+        "status": "ok",
+        "goal": goal,
+        "metrics": Value::Object(metrics),
+        "routing": {
+            "route": decision.route.as_str(),
+            "routeSource": decision.source.as_str(),
+            "confidence": decision.confidence,
+            "glossaryMode": glossary_mode,
+            "reason": decision.reason,
+        },
+        "recommended": {
+            "route": decision.route.as_str(),
+            "maxCards": suggest_max_cards_arg(glossary_mode, entry_like, chars),
+            "glossaryMode": glossary_mode,
+            "segmentOverlapSize": knobs.segment_overlap_size,
+            "maxOutputTokensOverride": knobs.max_output_tokens_override,
+            "temperature": knobs.temperature,
+            "pipelineDefaultMaxCards": default_max_cards_for_content(glossary_mode, chars),
+        },
+    });
+    if !warnings.is_empty() {
+        output["warnings"] = json!(warnings);
+    }
+    output
 }
 
 /// 用 LLM 规划导入路由。任何失败（调用出错 / 输出不可解析）都返回 None，
@@ -9636,24 +9894,32 @@ fn resolve_template_selection(
     }
 }
 
-fn looks_like_glossary_content(text: &str) -> bool {
-    let lines: Vec<&str> = text
-        .lines()
-        .map(|l| l.trim())
+/// 词汇表启发式共享底座：统计非空行中 entry-like（`术语：定义` / 列表项 /
+/// 数字开头）的行数。
+///
+/// Round 3 #7：`chatanki_analyze` 的 metrics 与 [`looks_like_glossary_content`]
+/// 必须共用本函数，禁止再各自内联一份 entry 判定（此前 analyze 内联版与
+/// [`is_glossary_entry_start`] 已经漂移）。
+fn count_entry_like_lines(text: &str) -> usize {
+    text.lines()
+        .map(str::trim)
         .filter(|l| !l.is_empty())
-        .collect();
-    if lines.len() < 40 {
+        .filter(|l| is_glossary_entry_start(l))
+        .count()
+}
+
+fn looks_like_glossary_content(text: &str) -> bool {
+    let non_empty = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .count();
+    if non_empty < 40 {
         return false;
     }
 
-    let mut entry_like = 0usize;
-    for l in &lines {
-        if is_glossary_entry_start(l) {
-            entry_like += 1;
-        }
-    }
-
-    (entry_like as f32 / lines.len() as f32) >= 0.45
+    let entry_like = count_entry_like_lines(text);
+    (entry_like as f32 / non_empty as f32) >= 0.45
 }
 
 fn is_glossary_entry_start(line: &str) -> bool {
@@ -9714,6 +9980,65 @@ fn normalize_glossary_paragraphs(text: &str) -> String {
     paragraphs.join("\n\n")
 }
 
+/// 词汇表/非词汇表两档生成参数。
+///
+/// Round 3 #7：[`build_generation_options`]（管线内自算）与 `chatanki_analyze`
+/// 的 `recommended`（预估回显）必须共用本函数取值，禁止各自内联常量。
+struct GlossaryGenerationKnobs {
+    /// 用 f64 存储：进入 analyze JSON 输出时保持 0.2/0.3 字面精度，
+    /// 进入 AnkiGenerationOptions 时窄化为 f32。
+    temperature: f64,
+    max_output_tokens_override: Option<u32>,
+    segment_overlap_size: u32,
+}
+
+fn glossary_generation_knobs(glossary_mode: bool) -> GlossaryGenerationKnobs {
+    if glossary_mode {
+        GlossaryGenerationKnobs {
+            temperature: 0.2,
+            // 词汇表条目多且单条短：压低单次输出上限，减少超时与漏条。
+            max_output_tokens_override: Some(2400),
+            // 条目边界清晰，不需要段间重叠。
+            segment_overlap_size: 0,
+        }
+    } else {
+        GlossaryGenerationKnobs {
+            temperature: 0.3,
+            max_output_tokens_override: None,
+            segment_overlap_size: 200,
+        }
+    }
+}
+
+/// 调用方未显式指定 maxCards 时管线的默认上限（与 `chatanki_analyze` 同源）。
+///
+/// 返回 `0` 表示词汇表模式不设数值上限（由内容条目数决定，避免模型提前停止）；
+/// 其余按内容长度取 10/30/80 三档。
+fn default_max_cards_for_content(glossary_mode: bool, char_count: usize) -> i32 {
+    if glossary_mode {
+        return 0;
+    }
+    if char_count < 500 {
+        10
+    } else if char_count < 2000 {
+        30
+    } else {
+        80
+    }
+}
+
+/// 给 agent 的建议 maxCards（`chatanki_run`/`start` 的必传参数，1..=100）。
+///
+/// 与 [`default_max_cards_for_content`] 的差别：run 参数不接受 0（不限制），
+/// 词汇表模式按「条目数 + 少量余量」换算，与 chatanki skill 文档口径一致。
+fn suggest_max_cards_arg(glossary_mode: bool, entry_like_lines: usize, char_count: usize) -> i32 {
+    if glossary_mode {
+        let margin = (entry_like_lines / 10).max(2);
+        return ((entry_like_lines + margin).min(100).max(1)) as i32;
+    }
+    default_max_cards_for_content(false, char_count).clamp(1, 100)
+}
+
 fn build_generation_options(
     goal: &str,
     deck_name: &str,
@@ -9726,6 +10051,7 @@ fn build_generation_options(
     // Heuristic: glossary-like inputs (e.g. 120 term definitions) are prone to large single-shot outputs.
     // We bias toward smaller segments (less overlap) to reduce timeouts and missing items.
     let glossary_mode = looks_like_glossary_content(content_text);
+    let knobs = glossary_generation_knobs(glossary_mode);
 
     let (template_id, custom_anki_prompt, template_fields, field_extraction_rules) =
         if let Some(t) = template {
@@ -9751,29 +10077,14 @@ fn build_generation_options(
         // For glossary-like content, avoid giving a low numeric target (e.g. 60) that can cause the
         // model to stop early when the user pasted 100+ entries. Let the content drive count.
         max_cards_per_mistake: max_cards_override.unwrap_or_else(|| {
-            if glossary_mode {
-                0 // 词汇表模式：不限制，由内容条目数决定
-            } else {
-                // 根据内容长度动态计算合理上限：
-                // 短文本（<500字）→ 最多10张
-                // 中等（500-2000字）→ 最多30张
-                // 长文本（>2000字）→ 最多80张
-                let char_count = content_text.chars().count();
-                if char_count < 500 {
-                    10
-                } else if char_count < 2000 {
-                    30
-                } else {
-                    80
-                }
-            }
+            default_max_cards_for_content(glossary_mode, content_text.chars().count())
         }),
         // ChatAnki 的 maxCards 语义是“整次制卡总上限”，不是“每段上限”。
         // 分段后会在 DocumentProcessingService 内按段分配，避免 10 -> 20 的放大。
         max_cards_total: max_cards_override,
         max_tokens: None,
-        temperature: Some(if glossary_mode { 0.2 } else { 0.3 }),
-        max_output_tokens_override: if glossary_mode { Some(2400) } else { None },
+        temperature: Some(knobs.temperature as f32),
+        max_output_tokens_override: knobs.max_output_tokens_override,
         temperature_override: None,
         template_id,
         custom_anki_prompt,
@@ -9783,7 +10094,7 @@ fn build_generation_options(
         field_extraction_rules_by_id: None,
         // High-priority requirements (in system prompt).
         custom_requirements: Some(build_chatanki_requirements(goal, extra_requirements)),
-        segment_overlap_size: if glossary_mode { 0 } else { 200 },
+        segment_overlap_size: knobs.segment_overlap_size,
         system_prompt: None,
         template_ids: None,
         template_descriptions: None,
@@ -16528,7 +16839,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_planned_route_priority_and_fallback() {
+    fn test_resolve_route_decision_priority_and_source() {
         // 启发式基线：单文件 → SimpleText
         let ref_data = VfsContextRefData {
             refs: vec![make_ref(VfsResourceType::File)],
@@ -16540,13 +16851,13 @@ mod tests {
         let high = RoutePlan {
             route: ChatAnkiRoute::VlmFull,
             confidence: 0.9,
-            glossary_mode: None,
-            reason: None,
+            glossary_mode: Some(true),
+            reason: Some("图片为主".to_string()),
         };
         let low = RoutePlan {
             route: ChatAnkiRoute::VlmFull,
             confidence: 0.69,
-            glossary_mode: None,
+            glossary_mode: Some(true),
             reason: None,
         };
         let boundary = RoutePlan {
@@ -16556,31 +16867,39 @@ mod tests {
             reason: None,
         };
 
-        // forced_route 永远最高优先级
-        assert_eq!(
-            resolve_planned_route(Some(ChatAnkiRoute::VlmLight), Some(&high), &ref_data),
-            ChatAnkiRoute::VlmLight
-        );
-        // 高置信度计划生效
-        assert_eq!(
-            resolve_planned_route(None, Some(&high), &ref_data),
-            ChatAnkiRoute::VlmFull
-        );
-        // 低置信度（< 0.7）→ 回退启发式
-        assert_eq!(
-            resolve_planned_route(None, Some(&low), &ref_data),
-            ChatAnkiRoute::SimpleText
-        );
+        // forced_route 永远最高优先级，source=forced，不携带 LLM 字段
+        let forced =
+            resolve_route_decision(Some(ChatAnkiRoute::VlmLight), Some(&high), &ref_data);
+        assert_eq!(forced.route, ChatAnkiRoute::VlmLight);
+        assert_eq!(forced.source, RouteSource::Forced);
+        assert_eq!(forced.confidence, None);
+        assert_eq!(forced.glossary_mode_hint, None);
+
+        // 高置信度计划生效：source=llm，透传 confidence/glossaryMode/reason
+        let llm = resolve_route_decision(None, Some(&high), &ref_data);
+        assert_eq!(llm.route, ChatAnkiRoute::VlmFull);
+        assert_eq!(llm.source, RouteSource::Llm);
+        assert!((llm.confidence.unwrap() - 0.9).abs() < 1e-6);
+        assert_eq!(llm.glossary_mode_hint, Some(true));
+        assert_eq!(llm.reason.as_deref(), Some("图片为主"));
+
+        // 低置信度（< 0.7）→ 回退启发式：source=heuristic 且不透传 glossary 提示
+        let fallback = resolve_route_decision(None, Some(&low), &ref_data);
+        assert_eq!(fallback.route, ChatAnkiRoute::SimpleText);
+        assert_eq!(fallback.source, RouteSource::Heuristic);
+        assert_eq!(fallback.confidence, None);
+        assert_eq!(fallback.glossary_mode_hint, None);
+        assert!(fallback.reason.unwrap().contains("启发式"));
+
         // 阈值边界（= 0.7 生效）
-        assert_eq!(
-            resolve_planned_route(None, Some(&boundary), &ref_data),
-            ChatAnkiRoute::VlmLight
-        );
+        let at_boundary = resolve_route_decision(None, Some(&boundary), &ref_data);
+        assert_eq!(at_boundary.route, ChatAnkiRoute::VlmLight);
+        assert_eq!(at_boundary.source, RouteSource::Llm);
+
         // 无计划（LLM 调用/解析失败）→ 回退启发式
-        assert_eq!(
-            resolve_planned_route(None, None, &ref_data),
-            ChatAnkiRoute::SimpleText
-        );
+        let no_plan = resolve_route_decision(None, None, &ref_data);
+        assert_eq!(no_plan.route, ChatAnkiRoute::SimpleText);
+        assert_eq!(no_plan.source, RouteSource::Heuristic);
     }
 
     #[test]
@@ -16766,13 +17085,9 @@ mod tests {
         )
     }
 
-    async fn run_analyze(content: &str, goal: Option<&str>) -> ToolResultInfo {
+    async fn run_analyze_args(args: Value) -> ToolResultInfo {
         let executor = ChatAnkiToolExecutor::new();
         let ctx = make_windowless_ctx("session-analyze");
-        let mut args = json!({ "content": content });
-        if let Some(g) = goal {
-            args["goal"] = json!(g);
-        }
         let call = ToolCall::new(
             "call-analyze".to_string(),
             "chatanki_analyze".to_string(),
@@ -16784,57 +17099,310 @@ mod tests {
             .expect("execute_analyze should not hard-fail")
     }
 
-    /// Pin 已知行为：chatanki_analyze 永远推荐 route = "simple_text"。
-    /// 该工具只接收纯文本，无法感知图片资源，所以不会推荐 VLM 路由；
-    /// 若未来 analyze 开始输出其他 route，此测试应提醒同步更新调用方约定。
+    async fn run_analyze(content: &str, goal: Option<&str>) -> ToolResultInfo {
+        let mut args = json!({ "content": content });
+        if let Some(g) = goal {
+            args["goal"] = json!(g);
+        }
+        run_analyze_args(args).await
+    }
+
+    // ========================================================================
+    // chatanki_analyze 输出契约（Round 3 #7：与制卡管线同源，不再永远 simple_text）
+    // ========================================================================
+
+    /// 契约 1：无图纯文本 → simple_text，routeSource=heuristic，confidence=null。
     #[tokio::test]
-    async fn test_execute_analyze_always_recommends_simple_text() {
-        // 普通叙述文本：非 glossary 模式
+    async fn test_execute_analyze_text_only_is_heuristic_simple_text() {
         let plain = run_analyze("这是一段普通的学习材料。\n它没有词典式结构。", Some("复习")).await;
         assert!(plain.success);
         assert_eq!(plain.output["status"], json!("ok"));
         assert_eq!(plain.output["goal"], json!("复习"));
+        assert_eq!(plain.output["routing"]["route"], json!("simple_text"));
+        assert_eq!(plain.output["routing"]["routeSource"], json!("heuristic"));
+        assert_eq!(plain.output["routing"]["confidence"], Value::Null);
+        assert_eq!(plain.output["routing"]["glossaryMode"], json!(false));
+        assert!(plain.output["routing"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("启发式"));
         assert_eq!(plain.output["recommended"]["route"], json!("simple_text"));
+        assert_eq!(plain.output["metrics"]["nonEmptyLines"], json!(2));
+        // 无 refs：metrics 不带引用计数字段
+        assert!(plain.output["metrics"].get("refTotal").is_none());
+    }
+
+    /// 契约 2：recommended 与 build_generation_options 同源——同一段内容分别走
+    /// analyze 与管线参数装配，词汇表旋钮必须逐字段一致。
+    #[tokio::test]
+    async fn test_execute_analyze_recommended_aligns_build_generation_options() {
+        let glossary_content = vec!["术语：定义"; 40].join("\n");
+        let glossary = run_analyze(&glossary_content, None).await;
+        assert!(glossary.success);
+
+        let opts = build_generation_options(
+            "goal",
+            "Default",
+            "Basic",
+            &glossary_content,
+            None,
+            None,
+            None,
+        );
+        assert_eq!(
+            glossary.output["recommended"]["glossaryMode"],
+            json!(true)
+        );
+        assert_eq!(
+            glossary.output["recommended"]["temperature"].as_f64().unwrap() as f32,
+            opts.temperature.unwrap()
+        );
+        assert_eq!(
+            glossary.output["recommended"]["maxOutputTokensOverride"]
+                .as_u64()
+                .map(|v| v as u32),
+            opts.max_output_tokens_override
+        );
+        assert_eq!(
+            glossary.output["recommended"]["segmentOverlapSize"]
+                .as_u64()
+                .unwrap() as u32,
+            opts.segment_overlap_size
+        );
+        assert_eq!(
+            glossary.output["recommended"]["pipelineDefaultMaxCards"]
+                .as_i64()
+                .unwrap() as i32,
+            opts.max_cards_per_mistake
+        );
+
+        // 非词汇表文本同样逐字段对齐
+        let plain_content = "这是一段普通的学习材料。\n它没有词典式结构。";
+        let plain = run_analyze(plain_content, None).await;
+        let plain_opts =
+            build_generation_options("goal", "Default", "Basic", plain_content, None, None, None);
         assert_eq!(plain.output["recommended"]["glossaryMode"], json!(false));
         assert_eq!(
-            plain.output["recommended"]["segmentOverlapSize"],
-            json!(200)
+            plain.output["recommended"]["temperature"].as_f64().unwrap() as f32,
+            plain_opts.temperature.unwrap()
         );
         assert_eq!(
             plain.output["recommended"]["maxOutputTokensOverride"],
             Value::Null
         );
-        assert_eq!(plain.output["recommended"]["temperature"], json!(0.3));
-        assert_eq!(plain.output["metrics"]["nonEmptyLines"], json!(2));
+        assert!(plain_opts.max_output_tokens_override.is_none());
+        assert_eq!(
+            plain.output["recommended"]["segmentOverlapSize"]
+                .as_u64()
+                .unwrap() as u32,
+            plain_opts.segment_overlap_size
+        );
+        assert_eq!(
+            plain.output["recommended"]["pipelineDefaultMaxCards"]
+                .as_i64()
+                .unwrap() as i32,
+            plain_opts.max_cards_per_mistake
+        );
+    }
 
-        // glossary 式文本：glossaryMode 参数翻转，但 route 仍固定为 simple_text
+    /// 契约 3：词汇表文本 glossaryMode=true 且 metrics.entryLikeLines 来自共享
+    /// count_entry_like_lines（与 looks_like_glossary_content 同一底座）。
+    #[tokio::test]
+    async fn test_execute_analyze_glossary_metrics_share_entry_counting() {
         let glossary_content = vec!["术语：定义"; 40].join("\n");
         let glossary = run_analyze(&glossary_content, None).await;
         assert!(glossary.success);
-        assert_eq!(
-            glossary.output["recommended"]["route"],
-            json!("simple_text")
-        );
-        assert_eq!(glossary.output["recommended"]["glossaryMode"], json!(true));
-        assert_eq!(
-            glossary.output["recommended"]["segmentOverlapSize"],
-            json!(0)
-        );
-        assert_eq!(
-            glossary.output["recommended"]["maxOutputTokensOverride"],
-            json!(2400)
-        );
-        assert_eq!(glossary.output["recommended"]["temperature"], json!(0.2));
+        assert_eq!(glossary.output["routing"]["glossaryMode"], json!(true));
+        assert_eq!(glossary.output["routing"]["route"], json!("simple_text"));
+        assert_eq!(glossary.output["routing"]["routeSource"], json!("heuristic"));
         assert_eq!(glossary.output["metrics"]["nonEmptyLines"], json!(40));
-        assert_eq!(glossary.output["metrics"]["entryLikeLines"], json!(40));
+        assert_eq!(
+            glossary.output["metrics"]["entryLikeLines"],
+            json!(count_entry_like_lines(&glossary_content))
+        );
         assert_eq!(glossary.output["goal"], Value::Null);
+
+        // 此前 analyze 内联版把 "12" 这类短数字行也计入 entry-like（与共享
+        // 判定漂移）；现在必须与 is_glossary_entry_start 一致：不计入。
+        let short_digit = run_analyze(&vec!["12"; 40].join("\n"), None).await;
+        assert_eq!(short_digit.output["metrics"]["entryLikeLines"], json!(0));
+        assert_eq!(short_digit.output["routing"]["glossaryMode"], json!(false));
     }
 
+    /// 契约 4：route 参数预演 forced 路径 → routeSource=forced，route 原样生效。
     #[tokio::test]
-    async fn test_execute_analyze_rejects_blank_content() {
+    async fn test_execute_analyze_forced_route_source() {
+        let forced = run_analyze_args(json!({
+            "content": "一段普通文本",
+            "route": "vlm_full",
+        }))
+        .await;
+        assert!(forced.success);
+        assert_eq!(forced.output["routing"]["route"], json!("vlm_full"));
+        assert_eq!(forced.output["routing"]["routeSource"], json!("forced"));
+        assert_eq!(forced.output["routing"]["confidence"], Value::Null);
+        assert_eq!(forced.output["recommended"]["route"], json!("vlm_full"));
+    }
+
+    /// 契约 5：非法 route 直接拒绝（与 run 的路由枚举同语义）。
+    #[tokio::test]
+    async fn test_execute_analyze_rejects_invalid_route() {
+        let result = run_analyze_args(json!({
+            "content": "一段普通文本",
+            "route": "banana",
+        }))
+        .await;
+        assert!(!result.success);
+        assert!(result.error.unwrap().contains("Invalid route 'banana'"));
+    }
+
+    /// 契约 6：content 与 resourceIds 都缺失 → 拒绝。
+    #[tokio::test]
+    async fn test_execute_analyze_rejects_blank_input() {
         let result = run_analyze("   \n\t  ", None).await;
         assert!(!result.success);
-        assert_eq!(result.error.as_deref(), Some("content is required"));
+        assert_eq!(
+            result.error.as_deref(),
+            Some("content or resourceIds is required")
+        );
+
+        let empty = run_analyze_args(json!({})).await;
+        assert!(!empty.success);
+        assert_eq!(
+            empty.error.as_deref(),
+            Some("content or resourceIds is required")
+        );
+    }
+
+    /// 契约 7：resourceIds 无法解析（无 chat/vfs DB）时 fail-open——
+    /// 降级为纯文本启发式并在 warnings 里明示，绝不硬失败。
+    #[tokio::test]
+    async fn test_execute_analyze_unresolvable_refs_fail_open_with_warning() {
+        let result = run_analyze_args(json!({
+            "content": "一段普通文本",
+            "resourceIds": ["file_missing_123"],
+        }))
+        .await;
+        assert!(result.success);
+        assert_eq!(result.output["routing"]["route"], json!("simple_text"));
+        assert_eq!(result.output["routing"]["routeSource"], json!("heuristic"));
+        let warnings = result.output["warnings"].as_array().expect("warnings");
+        assert_eq!(warnings[0]["code"], json!("analyze_refs_unresolved"));
+        assert_eq!(
+            warnings[0]["unresolvedIds"],
+            json!(["file_missing_123"])
+        );
+    }
+
+    /// 契约 8：建议 maxCards 与管线默认档位/词汇表口径一致。
+    #[tokio::test]
+    async fn test_execute_analyze_suggested_max_cards_boundaries() {
+        // 短文本（<500 字）→ 10
+        let short = run_analyze("很短的材料", None).await;
+        assert_eq!(short.output["recommended"]["maxCards"], json!(10));
+
+        // 中等（500..2000 字）→ 30
+        let medium_content = "字".repeat(600);
+        let medium = run_analyze(&medium_content, None).await;
+        assert_eq!(medium.output["recommended"]["maxCards"], json!(30));
+
+        // 长文本（>=2000 字）→ 80
+        let long_content = "字".repeat(2500);
+        let long = run_analyze(&long_content, None).await;
+        assert_eq!(long.output["recommended"]["maxCards"], json!(80));
+
+        // 词汇表：条目数 + 余量（40 条 → 40 + max(4,2) = 44），上限 100
+        let glossary_content = vec!["术语：定义"; 40].join("\n");
+        let glossary = run_analyze(&glossary_content, None).await;
+        assert_eq!(glossary.output["recommended"]["maxCards"], json!(44));
+        let huge_glossary = vec!["术语：定义"; 500].join("\n");
+        let huge = run_analyze(&huge_glossary, None).await;
+        assert_eq!(huge.output["recommended"]["maxCards"], json!(100));
+        // 但管线内部默认仍是 0（不限制）
+        assert_eq!(
+            huge.output["recommended"]["pipelineDefaultMaxCards"],
+            json!(0)
+        );
+    }
+
+    /// 契约 9：带图片引用元数据时（LLM 不可用）走同一启发式 → vlm 路由；
+    /// 高置信度 LLM 计划则透传 llm 来源与 glossary 提示（build_analyze_output 纯函数级）。
+    #[test]
+    fn test_build_analyze_output_with_image_refs_and_llm_decision() {
+        let ref_data = VfsContextRefData {
+            refs: vec![
+                make_ref(VfsResourceType::Image),
+                make_ref(VfsResourceType::Image),
+            ],
+            truncated: false,
+            total_count: 2,
+        };
+
+        // 启发式：纯图片 → vlm_full
+        let heuristic = resolve_route_decision(None, None, &ref_data);
+        let output = build_analyze_output(Some("记流程图"), "", Some(&ref_data), &heuristic, &[]);
+        assert_eq!(output["routing"]["route"], json!("vlm_full"));
+        assert_eq!(output["routing"]["routeSource"], json!("heuristic"));
+        assert_eq!(output["metrics"]["refImages"], json!(2));
+        assert_eq!(output["metrics"]["refTotal"], json!(2));
+        assert_eq!(output["goal"], json!("记流程图"));
+
+        // 高置信度 LLM 计划：routeSource=llm + confidence/glossaryMode/reason 透传
+        let plan = RoutePlan {
+            route: ChatAnkiRoute::VlmLight,
+            confidence: 0.85,
+            glossary_mode: Some(true),
+            reason: Some("图表少量".to_string()),
+        };
+        let llm_decision = resolve_route_decision(None, Some(&plan), &ref_data);
+        let llm_output =
+            build_analyze_output(None, "正文", Some(&ref_data), &llm_decision, &[]);
+        assert_eq!(llm_output["routing"]["route"], json!("vlm_light"));
+        assert_eq!(llm_output["routing"]["routeSource"], json!("llm"));
+        assert!(
+            (llm_output["routing"]["confidence"].as_f64().unwrap() - 0.85).abs() < 1e-6
+        );
+        assert_eq!(llm_output["routing"]["reason"], json!("图表少量"));
+        // LLM glossary 提示与内容启发式取并集（内容不足 40 行也翻转为 true）
+        assert_eq!(llm_output["routing"]["glossaryMode"], json!(true));
+        assert_eq!(
+            llm_output["recommended"]["maxOutputTokensOverride"],
+            json!(2400)
+        );
+    }
+
+    /// 契约 10：共享词汇表底座——count_entry_like_lines 与
+    /// looks_like_glossary_content / glossary_generation_knobs 的取值关系。
+    #[test]
+    fn test_shared_glossary_helpers_consistency() {
+        let glossary_content = vec!["术语：定义"; 40].join("\n");
+        assert_eq!(count_entry_like_lines(&glossary_content), 40);
+        assert!(looks_like_glossary_content(&glossary_content));
+
+        // entry 判定必须以 is_glossary_entry_start 为唯一裁判
+        assert_eq!(count_entry_like_lines("12\n34\n56"), 0);
+        assert_eq!(count_entry_like_lines("- 条目\n* 条目\n1、条目"), 3);
+
+        let glossary_knobs = glossary_generation_knobs(true);
+        assert_eq!(glossary_knobs.temperature, 0.2);
+        assert_eq!(glossary_knobs.max_output_tokens_override, Some(2400));
+        assert_eq!(glossary_knobs.segment_overlap_size, 0);
+        let plain_knobs = glossary_generation_knobs(false);
+        assert_eq!(plain_knobs.temperature, 0.3);
+        assert_eq!(plain_knobs.max_output_tokens_override, None);
+        assert_eq!(plain_knobs.segment_overlap_size, 200);
+
+        assert_eq!(default_max_cards_for_content(true, 10_000), 0);
+        assert_eq!(default_max_cards_for_content(false, 499), 10);
+        assert_eq!(default_max_cards_for_content(false, 500), 30);
+        assert_eq!(default_max_cards_for_content(false, 1999), 30);
+        assert_eq!(default_max_cards_for_content(false, 2000), 80);
+
+        assert_eq!(suggest_max_cards_arg(true, 40, 400), 44);
+        assert_eq!(suggest_max_cards_arg(true, 5, 100), 7); // margin 下限 2
+        assert_eq!(suggest_max_cards_arg(true, 500, 5000), 100); // 上限 100
+        assert_eq!(suggest_max_cards_arg(false, 0, 100), 10);
+        assert_eq!(suggest_max_cards_arg(false, 0, 3000), 80);
     }
 
     #[test]

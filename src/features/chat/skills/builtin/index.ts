@@ -1064,14 +1064,30 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_analyze',
-      description: '预分析文本材料（不生成卡片），给出长度/词条密度估计、推荐 route/参数等。',
+      description:
+        '预分析学习材料（不生成卡片），路由决策与制卡管线同源：纯文本走启发式（simple_text）；传 resourceId/resourceIds 时按引用元数据走与 chatanki_run 相同的 LLM 路由规划（失败/低置信度自动回退启发式）。返回 routing（route、routeSource=forced|llm|heuristic、confidence、glossaryMode、reason）与 recommended。recommended 中只有 route（可作 run 的 route 强制）与 maxCards（1~100）能回传给 chatanki_run；temperature/segmentOverlapSize/maxOutputTokensOverride/pipelineDefaultMaxCards 由管线内部按同一函数自算，run/start 没有对应参数，仅供解释预估。',
       inputSchema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: '学习材料内容（文本/Markdown）' },
-          goal: { type: 'string', description: '可选：学习目标（用于更好推荐拆卡方式）' },
+          content: { type: 'string', description: '学习材料内容（文本/Markdown）。传 resourceIds 时可省略。' },
+          goal: { type: 'string', description: '可选：学习目标。会进入路由规划提示词参与决策，不再只是回显。' },
+          route: {
+            type: 'string',
+            enum: ['simple_text', 'vlm_light', 'vlm_full'],
+            description: '可选：预演强制路由（routing.routeSource 将返回 forced）。',
+          },
+          resourceId: {
+            type: 'string',
+            description: '可选：要预分析的单个资源 ID（file_/att_/tb_/res_）。',
+          },
+          resourceIds: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              '可选：要预分析的多个资源 ID。传入后按引用元数据（文件/图片计数 + 文本采样）走与 chatanki_run 同一条路由决策链；资源无法解析时降级为纯文本分析并在 warnings 中说明（不会硬失败）。',
+          },
         },
-        required: ['content'],
+        anyOf: [{ required: ['content'] }, { required: ['resourceIds'] }, { required: ['resourceId'] }],
       },
     },
     {
@@ -1100,6 +1116,22 @@ export const chatAnkiSkill: SkillDefinition = {
 - 已有 APKG：\`builtin-chatanki_import_apkg\` -> 用返回的 \`documentId\` 调用 \`builtin-chatanki_get_cards\` 分页读回全部卡片 -> 必要时加工并再次验收。
 
 两条流程验收后都要向用户汇报并主动询问是否加入复习计划。只有用户同意后才调用 \`builtin-chatanki_enqueue_review\`；只有用户明确要求或确认后，才继续 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
+
+## 策展 → 生成 → 质检 决策树
+
+制卡是「策展（想清楚做什么卡）→ 生成（run/start）→ 质检（get_cards 验收修正）」三段闭环，按以下决策树走：
+
+1. **材料形态是否清楚？**（纯文本还是含图 PDF？词汇表还是叙述文？maxCards 该传多少？）
+   - 不清楚 → 先调用 \`builtin-chatanki_analyze\`（传 \`content\` 或 \`resourceIds\`，goal 一并传入）。它与制卡管线共用同一路由决策函数：
+     - \`routing.route\` / \`routing.routeSource\`（forced|llm|heuristic）/ \`routing.confidence\` / \`routing.reason\` 解释管线将走哪条导入路由、为什么；
+     - \`routing.glossaryMode=true\` 表示词汇表/术语清单：\`maxCards\` 直接采用 \`recommended.maxCards\`（条目数 + 余量），goal 写明「每条条目一张卡」；
+     - **能回传 run 的参数只有** \`recommended.route\`（需要固定路由时作 run 的 \`route\`）与 \`recommended.maxCards\`（1~100）；
+     - \`temperature\` / \`segmentOverlapSize\` / \`maxOutputTokensOverride\` / \`pipelineDefaultMaxCards\` 由管线内部按同一函数自算，run/start **没有**这些参数，禁止试图传入。
+   - 清楚 → 直接进入第 2 步。
+2. **策展**：goal 写成「学习目标 + 卡型偏好 + 粒度要求」；风格/语言/格式约束放 \`extraRequirements\`。材料多、知识点密集时先列制卡大纲（知识点清单/卡型/去重/优先级）再启动；环境安装了 \`content-curator\` 子代理档案且你有子代理委派工具时，可委派它产出大纲并把「建议 goal 文本」拼进 run。
+3. **生成**：\`builtin-chatanki_run\`（文件/引用）或 \`builtin-chatanki_start\`（已清洗文本）→ 下一轮 \`builtin-chatanki_wait\`。
+4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
+5. **交付**：向用户汇报生成/修改/删除统计 → 征求同意后再 enqueue_review / export / sync。
 
 ## APKG 导入闭环（必须完整执行）
 
@@ -1208,7 +1240,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - 当用户询问内置复习进度、今日到期量或近期记忆情况：用库级只读的 \`builtin-chatanki_review_stats\`。
 - 当用户明确要求撤销某张卡的最后一次评分：先 \`builtin-chatanki_get_cards\` 读取该卡最新 \`reviewState\`；仅在 \`latestReview.undoable=true\` 时，把同一快照的 \`reviewVersion\` 与 \`latestReview.logId\` 传给 \`builtin-chatanki_undo_last_review\`。
 - 当用户明确要求暂停或恢复某张已入队卡：先 \`builtin-chatanki_get_cards\` 读取最新 \`reviewState.reviewVersion\`，再调用 \`builtin-chatanki_set_suspended\`；Agent 不得自行决定暂停，也不得替用户评分。
-- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`；需要更换模板时严格执行上面的版本化 \`list_templates -> get_cards -> retemplate(map_only) -> update_card -> get_cards\` 流程。
+- 当用户想看模板/做预估：用 \`builtin-chatanki_list_templates\` / \`builtin-chatanki_analyze\`（预估用法见上方「策展 → 生成 → 质检 决策树」；routing.routeSource 表明路由来源，recommended 中只有 route/maxCards 可回传 run）；需要更换模板时严格执行上面的版本化 \`list_templates -> get_cards -> retemplate(map_only) -> update_card -> get_cards\` 流程。
 ## 卡片数量（必须遵守）
 
 - \`maxCards\` 是**必传参数**，每次调用 \`chatanki_run\` / \`chatanki_start\` 都必须传入。

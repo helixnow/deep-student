@@ -1,12 +1,13 @@
-# Multi-agent 制卡自定义档案（Round 2 · Phase 0）
+# Multi-agent 制卡自定义档案（Round 2 · Phase 0 → Round 3 · Phase 1）
 
 > 所属调研：[Anki AI-Native](../README.md) ·分支 `cursor/anki-ai-native-research-bfca`
-> 对应路线图条目：`03-optimization-roadmap.md` 的 Multi-agent Phase 0
+> 对应路线图条目：`03-optimization-roadmap.md` 的 Multi-agent Phase 0 / Phase 1
 
-本目录提供两份**可直接安装**的 workspace custom agent 定义（契约 C6，解析器见
-`src-tauri/src/chat_v2/workspace/custom_agents.rs`）和两份配套技能文档片段，
-把「制卡前策展」与「制卡后质检」从主代理长上下文中拆出，形成
-**curator → chatanki 生成 → qa → 修正** 的多代理闭环。
+本目录提供**可直接安装**的 workspace custom agent 定义（契约 C6，解析器见
+`src-tauri/src/chat_v2/workspace/custom_agents.rs`）和配套技能文档片段，
+把「制卡前策展」与「制卡后质检」从主代理长上下文中拆出。Phase 0 交付两份
+子代理档案；Phase 1 交付协调者编排技能，把它们固化成
+**content-curator → chatanki_run → card-qa → batch_update** 的可复跑闭环。
 
 ## 文件清单
 
@@ -14,6 +15,7 @@
 |------|------|------|------|
 | [content-curator.md](./content-curator.md) | 制卡内容策展人 | `explorer`（只读沙箱） | 读材料，产出结构化制卡大纲（知识点清单/卡型/粒度/去重/优先级） |
 | [card-qa.md](./card-qa.md) | 制卡质检员 | `worker` | 质检卡片 JSON：重复（D1-D3）、粒度（G1-G4）、Cloze 规范（C1-C6），输出裁决 + 补丁建议 |
+| [skills/card-coordinator/SKILL.md](./skills/card-coordinator/SKILL.md) | **Phase 1 协调者技能** | —（主代理激活） | 固化五阶段编排总线（策展→生成→质检→修正→复检交付）+ 降级规则 + 能力边界 |
 | [skills/card-outline/SKILL.md](./skills/card-outline/SKILL.md) | 技能片段 | — | 制卡大纲方法论（最小知识单元/卡型决策/去重/优先级） |
 | [skills/card-qa-checklist/SKILL.md](./skills/card-qa-checklist/SKILL.md) | 技能片段 | — | 质检规则总表 + 确定性 lint 候选标注 |
 
@@ -35,12 +37,18 @@ skills: [card-outline]        # content-curator.md
 skills: [card-qa-checklist]   # card-qa.md
 ```
 
-## 编排用法（主代理视角）
+## 编排用法（Phase 1：coordinator 提示词已固化）
 
 主代理持有 chatanki skill 的全部 `builtin-chatanki_*` 工具，子代理**没有**
 （custom agent 的 `tools:` 只能取「headless 只读白名单 ∪ workspace 协作工具」
 的子集，越界项会被剔除）。因此所有卡片写操作都由主代理执行，子代理只产出
 文本契约。
+
+Phase 1 把下面的流程固化进
+[skills/card-coordinator/SKILL.md](./skills/card-coordinator/SKILL.md)：
+主代理激活该技能后即按五阶段总线执行，含降级规则（档案未安装 →
+`chatanki_analyze` + 决策树内联策展 / 四类自查内联质检）、复检续跑
+（`resume_agent_session_id`）与循环上限（3 轮）。
 
 ```text
 用户材料
@@ -48,6 +56,7 @@ skills: [card-qa-checklist]   # card-qa.md
   ▼
 制卡大纲（知识点清单 + 建议 goal 文本）
   │ 2. 主代理: chatanki_run(goal=大纲建议goal) → chatanki_wait → chatanki_get_cards
+  │    （maxCards/route 取 chatanki_analyze 的 recommended.maxCards / recommended.route）
   ▼
 卡片 JSON
   │ 3. subagent_call { profile: "card-qa", task: "<卡片JSON原文 + 可选源资源ID>" }
@@ -58,6 +67,18 @@ skills: [card-qa-checklist]   # card-qa.md
   ▼
 chatanki_export / chatanki_sync
 ```
+
+### workspace 文档工具边界（Phase 1 显式声明）
+
+`builtin-workspace_read_document` / `builtin-workspace_update_document` 是
+**主代理 workspace 工具面**的能力，**不在**自定义子代理的安全全集内：档案
+`tools:` 里声明它们会被 sanitize 剔除（与 `builtin-chatanki_*` 同理）。该边界
+由 fail-closed 单测钉死：
+`custom_agents.rs::chatanki_and_workspace_document_tools_are_dropped_fail_closed`
+——同时断言安全全集本身不含这些工具、档案声明后实际被剔除。因此编排设计上，
+协调者与子代理**只通过文本契约交接**（任务入参带材料/卡片 JSON 原文，最终
+回答由运行时自动交付），不依赖共享 workspace 文档。若未来要放宽 worker
+白名单，必须先让该测试失效并同步评审本目录全部档案与审批语义。
 
 调用示例（步骤 1/3 的 `builtin-subagent_call` 入参）：
 
@@ -90,5 +111,9 @@ chatanki_export / chatanki_sync
 - 两份 agent 文件的 frontmatter 已对照 `custom_agents.rs` 的解析器与其单测用例
   逐字段核验（name 合法、base 内建、tools 均在
   `headless_allowed_tools()` 白名单内、无 unsupported 字段）。
-- 尚未在运行中的 app 内做端到端 subagent_call 冒烟（需要桌面环境），列为
-  Round 3 待办。
+- Phase 1（Round 3 #7）：新增 fail-closed 单测
+  `chatanki_and_workspace_document_tools_are_dropped_fail_closed` 钉死
+  「chatanki 写工具 / workspace 文档读写工具不进子代理工具面」的编排前提；
+  coordinator 编排提示词落地为 `skills/card-coordinator/SKILL.md`。
+- 尚未在运行中的 app 内做端到端 subagent_call 冒烟（需要桌面环境），仍列为
+  后续待办。

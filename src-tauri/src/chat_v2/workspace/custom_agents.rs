@@ -534,6 +534,48 @@ mod tests {
         );
     }
 
+    /// Multi-agent Phase 1 编排契约（Round 3 #7）：制卡写工具与 workspace
+    /// 文档读写工具都不在自定义子代理的安全全集（headless 只读白名单 ∪
+    /// workspace_send/query）内，档案里声明必须被剔除。
+    ///
+    /// coordinator 编排（docs/research/anki-ai-native/agents/）依赖该边界：
+    /// 子代理只产出文本契约，所有卡片/文档写操作由主代理执行。若未来放宽
+    /// worker 工具白名单，此测试会先失败，迫使同步评审编排文档与审批语义。
+    #[test]
+    fn chatanki_and_workspace_document_tools_are_dropped_fail_closed() {
+        let safe = safe_tool_set();
+        for tool in [
+            "builtin-chatanki_run",
+            "builtin-chatanki_batch_update_cards",
+            "builtin-chatanki_delete_cards",
+            "builtin-workspace_read_document",
+            "builtin-workspace_update_document",
+        ] {
+            assert!(
+                !safe.contains(tool),
+                "safe tool set must not contain {tool}; relaxing it requires \
+                 revisiting the Phase 1 coordinator orchestration docs"
+            );
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_file(
+            dir.path(),
+            "escalating.md",
+            "---\nname: escalating-agent\nbase: worker\ntools: [builtin-chatanki_run, builtin-chatanki_batch_update_cards, builtin-workspace_read_document, builtin-workspace_update_document, builtin-resource_read]\n---\nBody.\n",
+        );
+
+        let profile = find_custom_profile(dir.path(), "escalating-agent").unwrap();
+        assert_eq!(
+            profile.allowed_tools,
+            vec![
+                "builtin-workspace_send",
+                "builtin-workspace_query",
+                "builtin-resource_read",
+            ]
+        );
+    }
+
     #[test]
     fn built_in_name_conflict_is_skipped() {
         let dir = tempfile::tempdir().unwrap();
