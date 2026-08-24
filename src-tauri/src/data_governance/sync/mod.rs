@@ -10832,17 +10832,27 @@ impl SyncManager {
                 }
             }
 
-            // 云端遗留的「净化后重名」条目：内容与代表条目不同时无法同时物化，
-            // 显式报告而非静默丢弃。
+            // 云端遗留的「净化后重名」条目：内容不同且被遮蔽方按 LWW 更新时，
+            // 无法同时物化 → 显式报告而非静默丢弃。被遮蔽方较旧（典型：改名
+            // 迁移后残留在旧 append-only 清单文件里的原条目）走正常 LWW 静默
+            // 让位，避免迁移后每轮同步都报假冲突。
             for (shadowed, kept) in &shadowed_cloud_keys {
-                let diverged = match (
+                let shadowed_wins = match (
                     cloud_manifest.entries.get(shadowed),
                     cloud_manifest.entries.get(kept),
                 ) {
-                    (Some(a), Some(b)) => a.sha256 != b.sha256,
+                    (Some(a), Some(b)) => {
+                        a.sha256 != b.sha256
+                            && Self::local_file_wins(
+                                &a.updated_at,
+                                &b.updated_at,
+                                &a.sha256,
+                                &b.sha256,
+                            )
+                    }
                     _ => false,
                 };
-                if diverged {
+                if shadowed_wins {
                     download_failures
                         .push(asset_filenames::shadowed_divergent_message(shadowed, kept));
                 }
