@@ -536,6 +536,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 }}
                 disabled={disabled || compareSelected.length === 0}
                 title={t('chatV2:modelMention.retry')}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 <ArrowCounterClockwise size={14} />
                 {t('chatV2:modelMention.retry')}
