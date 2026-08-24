@@ -20,6 +20,7 @@ import {
   pomodoroProjectionSource,
   pomodoroBadgeSource,
   POMODORO_INSTANCE_KEY,
+  POMODORO_CLOSE_LINGER_MS,
 } from '@/features/workbench/apps/system/pomodoroSource';
 import {
   ankiTaskBadgeSource,
@@ -90,29 +91,37 @@ describe('P9 pomodoro projection source', () => {
     expect(pomodoroBadgeSource()).toEqual({ kind: 'dot' });
   });
 
-  it('subscribe：立即回调当前状态，运行↔空闲切换各 notify 一次', () => {
-    const notify = vi.fn();
-    const unsubscribe = pomodoroProjectionSource.subscribe(notify);
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenLastCalledWith([]);
+  it('subscribe：立即回调当前状态，运行↔空闲切换各 notify 一次（idle 收口经余韵延迟）', () => {
+    vi.useFakeTimers();
+    try {
+      const notify = vi.fn();
+      const unsubscribe = pomodoroProjectionSource.subscribe(notify);
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenLastCalledWith([]);
 
-    usePomodoroStore.setState({ mode: 'work', status: 'running', currentTaskTitle: '写论文' });
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(notify).toHaveBeenLastCalledWith([
-      expect.objectContaining({ instanceKey: POMODORO_INSTANCE_KEY, title: '写论文' }),
-    ]);
+      usePomodoroStore.setState({ mode: 'work', status: 'running', currentTaskTitle: '写论文' });
+      expect(notify).toHaveBeenCalledTimes(2);
+      expect(notify).toHaveBeenLastCalledWith([
+        expect.objectContaining({ instanceKey: POMODORO_INSTANCE_KEY, title: '写论文' }),
+      ]);
 
-    // 同为活跃态的内部变化（work→break）不重复 notify
-    usePomodoroStore.setState({ mode: 'short_break' });
-    expect(notify).toHaveBeenCalledTimes(2);
+      // 同为活跃态的内部变化（work→break）不重复 notify
+      usePomodoroStore.setState({ mode: 'short_break' });
+      expect(notify).toHaveBeenCalledTimes(2);
 
-    usePomodoroStore.setState({ mode: 'idle' });
-    expect(notify).toHaveBeenCalledTimes(3);
-    expect(notify).toHaveBeenLastCalledWith([]);
+      // stop 余韵：idle 不立即收口，POMODORO_CLOSE_LINGER_MS 后才 notify([])
+      usePomodoroStore.setState({ mode: 'idle' });
+      expect(notify).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(POMODORO_CLOSE_LINGER_MS);
+      expect(notify).toHaveBeenCalledTimes(3);
+      expect(notify).toHaveBeenLastCalledWith([]);
 
-    unsubscribe();
-    usePomodoroStore.setState({ mode: 'work' });
-    expect(notify).toHaveBeenCalledTimes(3);
+      unsubscribe();
+      usePomodoroStore.setState({ mode: 'work' });
+      expect(notify).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
