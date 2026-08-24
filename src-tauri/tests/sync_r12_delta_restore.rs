@@ -33,7 +33,6 @@ use deep_student_lib::cloud_storage::delta_restore::{
 };
 use deep_student_lib::cloud_storage::delta_upload::{
     device_index_key, publish_verified_staging, PublishParams, PublishResult,
-    BACKUP_V2_OBJECTS_PREFIX,
 };
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo, ListOutcome};
 use deep_student_lib::crypto::backup_crypto::FileCipherSession;
@@ -247,8 +246,11 @@ fn bump_manifest_volatile_fields(root: &Path) {
     value["created_at"] = serde_json::json!("2027-01-01T00:00:00+00:00");
     value["backup_id"] = serde_json::json!("zerochange-second-run-0001");
     value["snapshot_epoch"] = serde_json::json!("00000000-0000-4000-8000-00000000feed");
-    fs::write(&path, serde_json::to_string_pretty(&value).expect("serialize"))
-        .expect("write manifest");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).expect("serialize"),
+    )
+    .expect("write manifest");
 }
 
 async fn publish(
@@ -439,9 +441,16 @@ async fn r12_blank_device_id_or_unknown_version_fails_closed() {
     assert_dest_empty(&dest);
 
     let dest = dir.path().join("restored-unknown");
-    let error = restore(&storage, &dest, "device-a", Some("no-such-version"), None, None)
-        .await
-        .expect_err("unknown version must fail closed");
+    let error = restore(
+        &storage,
+        &dest,
+        "device-a",
+        Some("no-such-version"),
+        None,
+        None,
+    )
+    .await
+    .expect_err("unknown version must fail closed");
     assert!(error.to_string().contains("no-such-version"), "{error}");
     assert_dest_empty(&dest);
 
@@ -660,7 +669,9 @@ async fn r12_corrupted_descriptor_or_index_fails_closed() {
         .expect("publish");
     let index_key = device_index_key("device-a");
     let good_index = storage.get_raw(&index_key).expect("index bytes");
-    let good_descriptor = storage.get_raw(&published.snapshot_key).expect("descriptor bytes");
+    let good_descriptor = storage
+        .get_raw(&published.snapshot_key)
+        .expect("descriptor bytes");
 
     // 6a. 损坏 index：解析失败 fail-closed。
     storage.insert_raw(&index_key, b"{ definitely not a valid index".to_vec());
@@ -673,7 +684,10 @@ async fn r12_corrupted_descriptor_or_index_fails_closed() {
 
     // 6b. index 恢复、损坏 descriptor：大小/哈希核对拦下。
     storage.insert_raw(&index_key, good_index);
-    storage.insert_raw(&published.snapshot_key, b"garbage-descriptor-bytes".to_vec());
+    storage.insert_raw(
+        &published.snapshot_key,
+        b"garbage-descriptor-bytes".to_vec(),
+    );
     let dest = dir.path().join("restored-baddesc");
     let error = restore(&storage, &dest, "device-a", None, None, None)
         .await
@@ -717,7 +731,11 @@ async fn r12_held_lease_blocks_restore_with_zero_storage_writes() {
 
     // 零副作用：dest 为空，存储内容（含租约对象）逐字节不变。
     assert_dest_empty(&dest);
-    assert_eq!(storage.dump(), before, "zero storage writes while lease is held");
+    assert_eq!(
+        storage.dump(),
+        before,
+        "zero storage writes while lease is held"
+    );
 }
 
 // ============================================================================
@@ -783,7 +801,10 @@ async fn r12_compatible_zip_failure_leaves_no_partial_zip() {
     restore(&storage, &dest, "device-a", None, None, Some(&zip_target))
         .await
         .expect_err("missing object must fail the restore");
-    assert!(!zip_target.exists(), "no partial ZIP on mid-restore failure");
+    assert!(
+        !zip_target.exists(),
+        "no partial ZIP on mid-restore failure"
+    );
     assert_dest_empty(&dest);
     storage.insert_raw(&missing_key, original_object);
 
@@ -795,7 +816,10 @@ async fn r12_compatible_zip_failure_leaves_no_partial_zip() {
         .await
         .expect_err("existing zip target must fail closed");
     assert!(error.to_string().contains("已存在"), "{error}");
-    assert_eq!(fs::read(&existing).expect("read existing"), b"pre-existing bytes");
+    assert_eq!(
+        fs::read(&existing).expect("read existing"),
+        b"pre-existing bytes"
+    );
     assert_dest_empty(&dest);
 
     // 8c. ZIP 目标父目录不存在：提前 fail-closed，零半成品。
@@ -809,7 +833,11 @@ async fn r12_compatible_zip_failure_leaves_no_partial_zip() {
 
     // 临时 ZIP 不残留在目标目录。
     for entry in fs::read_dir(dir.path()).expect("read dir") {
-        let name = entry.expect("entry").file_name().to_string_lossy().to_string();
+        let name = entry
+            .expect("entry")
+            .file_name()
+            .to_string_lossy()
+            .to_string();
         assert!(
             !name.starts_with(".delta-restore-zip-"),
             "temp zip must not survive: {name}"
@@ -901,7 +929,11 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
 
     // restore_snapshot_to_staging 在生产代码中零调用方（只在模块自身出现）。
     let mut restore_referencers = Vec::new();
-    collect_files_mentioning(&src_root, "restore_snapshot_to_staging", &mut restore_referencers);
+    collect_files_mentioning(
+        &src_root,
+        "restore_snapshot_to_staging",
+        &mut restore_referencers,
+    );
     assert_eq!(
         relative_names(&restore_referencers, &src_root),
         vec!["cloud_storage/delta_restore.rs".to_string()],
@@ -911,18 +943,94 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
 
     // 模块本身：云端只读（除租约），零 A/B 槽 / 用户数据目录写入。
     let module_src = include_str!("../src/cloud_storage/delta_restore.rs");
-    assert!(module_src.contains("未接线"), "module docs must state it is unwired");
+    assert!(
+        module_src.contains("未接线"),
+        "module docs must state it is unwired"
+    );
     assert!(
         module_src.contains("宣称增量备份"),
         "module docs must forbid claiming incremental backup is implemented"
     );
-    assert!(!module_src.contains("storage.put"), "restore never writes cloud objects");
-    assert!(!module_src.contains(".put_file("), "restore never uploads files");
-    assert!(!module_src.contains("storage.delete"), "restore never deletes cloud objects");
-    assert!(!module_src.contains("ds_data"), "restore never touches user data dirs");
-    assert!(!module_src.contains("data_space"), "restore never touches A/B slots");
+    assert!(
+        !module_src.contains("storage.put"),
+        "restore never writes cloud objects"
+    );
+    assert!(
+        !module_src.contains(".put_file("),
+        "restore never uploads files"
+    );
+    assert!(
+        !module_src.contains("storage.delete"),
+        "restore never deletes cloud objects"
+    );
+    assert!(
+        !module_src.contains("ds_data"),
+        "restore never touches user data dirs"
+    );
+    assert!(
+        !module_src.contains("data_space"),
+        "restore never touches A/B slots"
+    );
     assert!(
         !module_src.contains("zip_export"),
         "compatible ZIP is built with the zip crate; zip_export.rs stays untouched"
+    );
+
+    // 与既有兄弟源码锁保持一致：delta_restore.rs 本体不得出现这些字面子串
+    // （它们的引用面由 sync_r12_delta_upload / sync_r12_backup_lease /
+    // sync_r12_delta_inventory 按 *.rs 白名单锁定；restore 的跨积木复用
+    // 全部集中在 include! 片段里）。
+    for needle in [
+        "delta_upload",
+        "publish_verified_staging",
+        "backup_lease",
+        "BACKUP_LEASE_HELD",
+        "acquire_backup_repo_lease",
+        "delta_inventory",
+    ] {
+        assert!(
+            !module_src.contains(needle),
+            "delta_restore.rs must not mention {needle:?} directly; \
+             upstream reuse lives only in delta_restore_upstream.rs.in"
+        );
+    }
+
+    // include! 片段逐行钉死：只允许注释、空行与恰好这三组 re-export，
+    // 防止片段本身沦为绕过各积木源码锁的生产接线通道。
+    let fragment = include_str!("../src/cloud_storage/delta_restore_upstream.rs.in");
+    let allowed_code_lines = [
+        "pub(super) use crate::cloud_storage::backup_lease::acquire_backup_repo_lease as acquire_repo_lease;",
+        "pub(super) use crate::cloud_storage::delta_upload::{",
+        "    device_index_key, BackupV2DeviceIndex, BackupV2IndexEntry,",
+        "};",
+        "pub(super) use crate::data_governance::backup::delta_inventory::build_inventory_cross_checked;",
+    ];
+    let code_lines: Vec<&str> = fragment
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with("//"))
+        .collect();
+    assert_eq!(
+        code_lines, allowed_code_lines,
+        "delta_restore_upstream.rs.in may only re-export the three upstream primitives"
+    );
+
+    // 全 src 只允许 delta_restore.rs 一处 include! 该片段。
+    let mut fragment_referencers = Vec::new();
+    collect_files_mentioning(
+        &src_root,
+        "delta_restore_upstream.rs.in",
+        &mut fragment_referencers,
+    );
+    assert_eq!(
+        relative_names(&fragment_referencers, &src_root),
+        vec!["cloud_storage/delta_restore.rs".to_string()],
+        "only delta_restore.rs may include the upstream re-export fragment"
+    );
+    assert_eq!(
+        module_src
+            .matches("include!(\"delta_restore_upstream.rs.in\")")
+            .count(),
+        1,
+        "delta_restore.rs must include the fragment exactly once"
     );
 }

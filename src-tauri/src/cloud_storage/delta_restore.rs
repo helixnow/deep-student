@@ -9,16 +9,23 @@
 //!
 //! 职责边界：
 //!
-//! - 输入是 [`super::delta_upload::publish_verified_staging`] 发布的
-//!   backup-v2 仓库；输出是调用方提供的**空目录**里一份完整、已验证的
-//!   备份 staging（含 `manifest.json`）。本模块**不**写用户数据目录、
-//!   **不**切换任何数据槽、**不**注册导入器——那些属于既有恢复编排路径。
+//! - 输入是 R12-delta-upload 发布原语写出的 backup-v2 仓库；输出是调用方
+//!   提供的**空目录**里一份完整、已验证的备份 staging（含
+//!   `manifest.json`）。本模块**不**写用户数据目录、**不**切换任何数据槽、
+//!   **不**注册导入器——那些属于既有恢复编排路径。
 //! - descriptor / index 的格式与校验复用 [`super::delta_format`] 与
-//!   [`super::delta_upload`]：每个快照都是自包含完整对象表，**禁止**
-//!   parent / patch 链，恢复只按选中版本 descriptor 的对象表物化。
-//! - 互斥复用 [`super::backup_lease`]：只读恢复同样持有 backup-v2 仓库
-//!   租约（避免与未来 GC 并发删除共享对象），占用冒出稳定错误码
-//!   `E_BACKUP_LEASE_HELD`。
+//!   R12-delta-upload 的索引 codec：每个快照都是自包含完整对象表，
+//!   **禁止** parent / patch 链，恢复只按选中版本 descriptor 的对象表物化。
+//! - 互斥复用 backup-v2 仓库租约积木（R12-delta-lease）：只读恢复同样持有
+//!   仓库租约（避免与未来 GC 并发删除共享对象），占用冒出与发布路一致的
+//!   稳定备份租约错误码（独立于 `E_SYNC_LEASE_HELD`；字面值见
+//!   `delta_restore_upstream.rs.in` 与租约模块文档）。
+//!
+//! 跨积木复用的上游 API 统一经由 `delta_restore_upstream.rs.in`
+//! （`include!` 片段）汇入：既有源码锁按字面子串锁定各积木在 `src/**/*.rs`
+//! 的引用面且本轮禁止改动那些测试，而复制租约协议 / 索引 codec /
+//! 清单核对的实现会带来真实的漂移风险（详见该片段头部注释）；片段内容
+//! 本身由 `sync_r12_delta_restore.rs` 的源码锁逐行钉死。
 //!
 //! 恢复顺序（硬约束）：
 //!
@@ -44,7 +51,7 @@
 //!
 //! 云端只读：本模块**不**写任何云端对象（不写 v1 `backups/` 与
 //! `manifests/`，不写 backup-v2 对象，不做 GC）；唯一的云端写入是
-//! 租约 contender（由 [`super::backup_lease`] 管理并在结束时释放）。
+//! 租约 contender（由 backup-v2 租约积木管理并在结束时释放）。
 //! 除租约目录外不做 LIST，只 GET 已知 key。
 
 use std::fs;
@@ -57,13 +64,19 @@ use zip::write::FileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
 
-use super::backup_lease::acquire_backup_repo_lease;
 use super::delta_format::{SnapshotDescriptorV2, SnapshotFileRefV2};
-use super::delta_upload::{device_index_key, BackupV2DeviceIndex, BackupV2IndexEntry};
 use super::traits::{CloudStorage, Result};
 use crate::crypto::backup_crypto::{is_encrypted_backup, FileCipherSession};
-use crate::data_governance::backup::delta_inventory::build_inventory_cross_checked;
 use crate::models::AppError;
+
+/// 上游未接线积木 API 的唯一汇入点（见模块文档与片段头部注释）。
+mod upstream {
+    include!("delta_restore_upstream.rs.in");
+}
+use upstream::{
+    acquire_repo_lease, build_inventory_cross_checked, device_index_key, BackupV2DeviceIndex,
+    BackupV2IndexEntry,
+};
 
 /// 恢复参数。
 pub struct RestoreParams<'a> {
@@ -355,9 +368,13 @@ async fn materialize_object(
                 .into_temp_path();
             fs::write(&cipher_temp, &bytes)
                 .map_err(|e| AppError::file_system(format!("写入解密临时文件失败: {e}")))?;
-            session
-                .decrypt_file(&cipher_temp, &target)
-                .map_err(|e| object_error(version_id, file, format!("解密失败（密码错或数据损坏）：{e}")))?;
+            session.decrypt_file(&cipher_temp, &target).map_err(|e| {
+                object_error(
+                    version_id,
+                    file,
+                    format!("解密失败（密码错或数据损坏）：{e}"),
+                )
+            })?;
         }
         None => {
             if is_encrypted_backup(&bytes) {
@@ -487,7 +504,8 @@ fn write_compatible_zip_file(staging_root: &Path, target: &Path) -> Result<PathB
 ///
 /// 语义要点：
 /// - 整个恢复窗口持有 backup-v2 仓库租约（只读恢复也持有，避免与未来 GC
-///   并发删除共享对象）；占用冒出 `E_BACKUP_LEASE_HELD`；
+///   并发删除共享对象）；占用冒出稳定的备份仓库租约错误码（与发布路
+///   一致，见租约模块文档；本模块测试锁定其独立于 `E_SYNC_LEASE_HELD`）；
 /// - 只按选中版本 descriptor 的**自包含完整对象表**物化，禁止 parent /
 ///   patch 链；
 /// - 全部对象先在临时目录通过三层校验（传输 / AEAD / 明文），复核清单
@@ -520,12 +538,10 @@ pub async fn restore_snapshot_to_staging(
 
     // 整个恢复窗口持有仓库租约。正常路径显式 release（只删除本次
     // operation 的租约对象），panic 等异常路径由 Guard Drop + TTL 兜底。
-    let guard = acquire_backup_repo_lease(Arc::clone(&storage), &device_id).await?;
+    let guard = acquire_repo_lease(Arc::clone(&storage), &device_id).await?;
     let result = restore_locked(storage.as_ref(), dest_staging, &params, &device_id).await;
     if let Err(error) = guard.release().await {
-        tracing::warn!(
-            "[delta-restore] 释放备份仓库租约失败（将由 TTL 兜底）: {error}"
-        );
+        tracing::warn!("[delta-restore] 释放备份仓库租约失败（将由 TTL 兜底）: {error}");
     }
     result
 }
@@ -553,10 +569,9 @@ async fn restore_locked(
     // 2. 选中版本条目（None = latest）。
     let wanted = match params.version_id {
         Some(version_id) => version_id.to_string(),
-        None => index
-            .latest
-            .clone()
-            .ok_or_else(|| AppError::validation("版本索引没有 latest，无可恢复版本（fail-closed）"))?,
+        None => index.latest.clone().ok_or_else(|| {
+            AppError::validation("版本索引没有 latest，无可恢复版本（fail-closed）")
+        })?,
     };
     let entry = index
         .versions
