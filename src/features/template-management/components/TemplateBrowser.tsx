@@ -111,10 +111,10 @@ const InlineDeleteConfirm: React.FC<InlineDeleteConfirmProps> = ({ template, onC
         </span>
       </div>
       <div className="wb-tm-delete-confirm-actions">
-        <DsButton variant="ghost" size="sm" onClick={onCancel} autoFocus>
+        <DsButton variant="ghost" size="sm" onClick={onCancel} autoFocus className="[@media(pointer:coarse)]:min-h-11">
           {t('cancel_button')}
         </DsButton>
-        <DsButton variant="danger" size="sm" onClick={onConfirm}>
+        <DsButton variant="danger" size="sm" onClick={onConfirm} className="[@media(pointer:coarse)]:min-h-11">
           {t('templateMgmt.delete_confirm_button')}
         </DsButton>
       </div>
@@ -171,7 +171,7 @@ const CardActions: React.FC<CardActionsProps> = ({
   if (isSelectingMode) {
     return (
       <div className="wb-tm-card-actions" onClick={(e) => e.stopPropagation()}>
-        <DsButton variant="primary" size="sm" className="w-full" onClick={() => onTemplateSelected?.(template)}>
+        <DsButton variant="primary" size="sm" className="w-full [@media(pointer:coarse)]:min-h-11" onClick={() => onTemplateSelected?.(template)}>
           {t('use_template')}
         </DsButton>
       </div>
@@ -658,7 +658,7 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('empty_title')}</h3>
           <p>{t('empty_description')}</p>
           {!isSelectingMode && onCreateTemplate && (
-            <DsButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1">
+            <DsButton variant="primary" size="sm" onClick={onCreateTemplate} className="mt-1 [@media(pointer:coarse)]:min-h-11">
               <Plus size={14} />
               {t('tab_create')}
             </DsButton>
@@ -670,7 +670,7 @@ export const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           <h3 className="wb-tm-empty-title">{t('templateMgmt.no_results_title')}</h3>
           <p>{t('templateMgmt.no_results_desc')}</p>
           {onResetFilters && hasFilters && (
-            <DsButton variant="default" size="sm" onClick={onResetFilters} className="mt-1">
+            <DsButton variant="default" size="sm" onClick={onResetFilters} className="mt-1 [@media(pointer:coarse)]:min-h-11">
               {t('templateMgmt.clear_filters')}
             </DsButton>
           )}
