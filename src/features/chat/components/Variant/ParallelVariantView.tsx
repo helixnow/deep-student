@@ -499,27 +499,27 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
         {/* 操作按钮 */}
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
           </DsButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
               <ArrowCounterClockwise size={16} className={cn(isOperating && 'animate-spin')} />
             </DsButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
               <Square size={16} />
             </DsButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
               <Trash size={16} />
             </DsButton>
           )}
@@ -527,7 +527,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
+              <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
                 <DotsThree size={16} />
               </DsButton>
             </AppMenuTrigger>
@@ -694,21 +694,21 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
           </DsButton>
         )}
 
         {/* 会话分支按钮 */}
         {onBranchSession && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
             <GitBranch size={16} className={cn(isBranching && 'animate-pulse')} />
           </DsButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
             <ArrowCounterClockwise size={16} className={cn(isRetryingAll && 'animate-spin')} />
           </DsButton>
         )}
@@ -717,7 +717,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {onDeleteMessage && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <DsButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
+              <DsButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', !canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
                 <Trash size={16} className={cn(isDeleting && 'animate-pulse')} />
               </DsButton>
             </AppMenuTrigger>
@@ -743,6 +743,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
+                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 aria-label={t('common:more')}
                 title={t('common:more')}
               >
