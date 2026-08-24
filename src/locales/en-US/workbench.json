@@ -868,7 +868,14 @@
       "mentionsFailed": "Could not scan unlinked mentions.",
       "mentionsLimited": "Only the {{count}} most recent candidate notes were scanned.",
       "noMentions": "No unlinked mentions found",
-      "convertMention": "Convert the mention in \"{{title}}\" to a link"
+      "convertMention": "Convert the mention in \"{{title}}\" to a link",
+      "convertDirty": "\"{{title}}\" has unsaved changes. Save it before converting.",
+      "convertMissing": "\"{{title}}\" has changed and the mention could not be found.",
+      "convertFailed": "Could not convert the mention to a link."
+    },
+    "renameSync": {
+      "updated": "Updated wiki links in {{count}} notes",
+      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually."
     },
     "tree": {
       "aria": "File tree",
@@ -884,7 +891,8 @@
       "empty": "No files in this library yet",
       "showAll": "Show all files",
       "dragLink": "Drag link into note",
-      "moreActions": "More actions"
+      "moreActions": "More actions",
+      "truncated": "More than {{max}} files in the library. The file tree only shows part of them."
     },
     "tabs": {
       "aria": "Open files",

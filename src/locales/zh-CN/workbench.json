@@ -868,7 +868,14 @@
       "mentionsFailed": "无法扫描未链接提及。",
       "mentionsLimited": "仅扫描最近 {{count}} 篇候选笔记。",
       "noMentions": "没有找到未链接的提及",
-      "convertMention": "在「{{title}}」中转为链接"
+      "convertMention": "在「{{title}}」中转为链接",
+      "convertDirty": "「{{title}}」有未保存的修改，请先保存再转为链接。",
+      "convertMissing": "「{{title}}」内容已变化，未找到该提及。",
+      "convertFailed": "无法转为链接。"
+    },
+    "renameSync": {
+      "updated": "已同步更新 {{count}} 篇笔记中的双链",
+      "incomplete": "{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查"
     },
     "tree": {
       "aria": "文件树",
@@ -884,7 +891,8 @@
       "empty": "知识库中还没有文件",
       "showAll": "显示全部文件",
       "dragLink": "拖动链接到笔记",
-      "moreActions": "更多操作"
+      "moreActions": "更多操作",
+      "truncated": "文件数量超过 {{max}} 上限，文件树仅显示部分内容"
     },
     "tabs": {
       "aria": "打开的文件",
