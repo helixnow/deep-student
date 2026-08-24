@@ -572,6 +572,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
           <SegmentedControl
             ariaLabel={t('todo:automation.action')}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             value={draft.actionType}
             onValueChange={(value) => patch({ actionType: value })}
             options={[
@@ -627,6 +628,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
             <SegmentedControl
               ariaLabel={t('todo:automation.sessionMode')}
               size="compact"
+              itemClassName="[@media(pointer:coarse)]:!min-h-11"
               value={draft.sessionMode}
               onValueChange={(value) => patch({ sessionMode: value })}
               options={[
