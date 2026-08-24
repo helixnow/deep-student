@@ -22,7 +22,7 @@
 
 ## 诚实未关（不阻塞「备份/换机可用」，但是差距）
 
-- **增量备份**：`DELTA-R11.md` 已合（整 ZIP 零变化仍约 145 MiB，不能宣称增量去重）。生产仍整对象 PUT；下一刀是 codec-only 的 `SnapshotDescriptorV2`（不接上传/恢复）。
+- **增量备份**：`DELTA-R11.md` 已合；`delta_format.rs` codec 已落（schema/上限/fail-closed，15 例）。**未接线**：生产仍整 ZIP 单对象 PUT，不能宣称增量/去重/CDC。
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。

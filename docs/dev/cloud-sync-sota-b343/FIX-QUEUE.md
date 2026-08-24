@@ -584,3 +584,7 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 
 - **实现**：`verify_encryption_password_before_upload` 的 v1 升级臂先经 manifest 取最新备份，走现有 `decrypt_backup_file` 完整试解；成功才写 v2 校验子（保留 created_by/created_at）。空仓无备份保持第一台带密码设备认领。列表/下载/半包/非 DSBK/解密失败均不改标记。
 - **测试**：新 `sync_r12_v1_marker_trust.rs`。未改 `sync_r10_protocol_locks.rs` / `sync_r09_file_e2ee.rs`。
+
+### delta-format 回传（分支 `cursor/cloud-sync-sota-delta-format-b343`，codec only）
+
+前两轮环境不可达。第三轮从 `b2716f21` 交付：`delta_format.rs` + `sync_r12_delta_format.rs` 15 例；`mod.rs` 仅 `pub mod delta_format;`。**未接线**，不能宣称增量备份已实现。
