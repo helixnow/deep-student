@@ -67,6 +67,8 @@ export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers'
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
+export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
+export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';
 export {
   extractFlashcardsFromIntent,
   flashcardPreviewToAnkiCards,

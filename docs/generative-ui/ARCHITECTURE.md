@@ -72,7 +72,7 @@ Rust render_generative_ui
 | mindmap-embed E2E | ✅ |
 | prompt props 同步 | ✅ |
 | 闪卡 save-to-library | ✅ Round 10 |
-| Research/Translation 专用块 | 📋 路线图 |
+| Research/Translation 专用块 | paper-digest + research-plan POC ✅ Round 11 |
 
 ## 7. 测试
 

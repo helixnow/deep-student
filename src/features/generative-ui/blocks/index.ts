@@ -26,6 +26,8 @@ import { FlashcardPreviewBlock } from '../components/FlashcardPreviewBlock';
 import { ReviewCalendarBlock } from '../components/ReviewCalendarBlock';
 import { MistakeAnalysisBlock } from '../components/MistakeAnalysisBlock';
 import { MindmapEmbedBlock, mindmapEmbedPropsSchema } from '../components/MindmapEmbedBlock';
+import { PaperDigestBlock, paperDigestPropsSchema } from '../components/PaperDigestBlock';
+import { ResearchPlanBlock, researchPlanPropsSchema } from '../components/ResearchPlanBlock';
 
 generativeUIRegistry.register({
   type: 'stat-card',
@@ -108,6 +110,22 @@ generativeUIRegistry.register({
   allowPartialRender: false,
 });
 
+generativeUIRegistry.register({
+  type: 'paper-digest',
+  component: PaperDigestBlock,
+  propsSchema: paperDigestPropsSchema,
+  description: '论文摘要：标题、作者、要点、引用标签',
+  allowPartialRender: true,
+});
+
+generativeUIRegistry.register({
+  type: 'research-plan',
+  component: ResearchPlanBlock,
+  propsSchema: researchPlanPropsSchema,
+  description: '研究计划：多步骤进度（pending/active/done）',
+  allowPartialRender: true,
+});
+
 export {
   StatCardBlock,
   AlertBlock,
@@ -120,4 +138,6 @@ export {
   ReviewCalendarBlock,
   MistakeAnalysisBlock,
   MindmapEmbedBlock,
+  PaperDigestBlock,
+  ResearchPlanBlock,
 };

@@ -7,7 +7,7 @@ import '@/features/generative-ui/blocks';
 describe('generativeUIRegistry catalog', () => {
   it('every registered type has propsSchema and description for prompt catalog', () => {
     const all = generativeUIRegistry.getAll();
-    expect(all.length).toBeGreaterThanOrEqual(11);
+    expect(all.length).toBeGreaterThanOrEqual(13);
 
     for (const config of all) {
       expect(config.type).toBeTruthy();

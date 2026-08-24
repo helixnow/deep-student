@@ -22,6 +22,16 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 10（2026-08-24）
+
+- [x] 闪卡 `save-to-library` action handler — `createFlashcardSaveActionHandlers` → `saveCardsToLibrary`
+- [x] `buildFlashcardPreviewIntent` + `extractFlashcardsFromIntent` 工具
+- [x] `resolveGenerativeUIChatActionHandlers` 扩展闪卡 handlers + Chat 块 blockId/session 上下文
+- [x] ARCHITECTURE.md 全面更新（Round 9 架构态）
+- [x] generativeUIArchitectureContract 扩展 bridge 层验证
+- [x] INTEGRATION_ROADMAP 更新（闪卡/Rust emit ✅）
+- [x] 112 项 generative-ui vitest 全绿
+
 ## Round 9（2026-08-24）
 
 - [x] Rust `GenerativeUiExecutor` noteEdit 校验（parse_note_edit + apply-note-edit 必填 gate）

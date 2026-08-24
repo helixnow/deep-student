@@ -121,5 +121,19 @@
       "start_review": "Start review",
       "open_qbank": "Open question bank"
     }
+  },
+  "research": {
+    "paper_digest": {
+      "meta_title": "Paper digest",
+      "findings_stat": "Key points",
+      "key_findings": "Key findings",
+      "citations": "{{count}} citations"
+    },
+    "plan": {
+      "meta_title": "Research plan",
+      "round_label": "Round",
+      "round": "Round {{round}}",
+      "progress": "{{done}} / {{total}} steps done"
+    }
   }
 }
