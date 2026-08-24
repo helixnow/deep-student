@@ -2045,10 +2045,17 @@
     inset: -8px;
   }
 
-  /* 样式面板色板：22px 触屏点不准，放大到 32px 并加大间距（flex-wrap 自动换行不溢出） */
+  /* 样式面板色板：22px 触屏点不准，放大到 32px 并加大间距（flex-wrap 自动换行不溢出）；
+     视觉保持 32px，命中区经 ::after 扩到 44px（硬设 44px 视觉会挤压色板布局） */
   .mm-style-swatch {
+    position: relative;
     width: 32px;
     height: 32px;
+  }
+  .mm-style-swatch::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
   }
   .mm-style-swatches {
     gap: 8px;
@@ -2506,10 +2513,10 @@
     min-height: 44px;
   }
 
-  /* 样式面板图标钮（26px）与色板（22px/32px）触屏统一拉到 44px 命中目标；
-     与 .mm-mobile-subview 子视图内的 44px 规则保持一致 */
-  .mm-style-icon-button,
-  .mm-style-swatch {
+  /* 样式面板图标钮（26px）触屏拉到 44px 命中目标，与 .mm-mobile-subview
+     子视图内的 44px 规则保持一致；色板不硬设 44px 视觉（会挤压布局），
+     改由上方 32px + ::after 规则扩命中到 44px */
+  .mm-style-icon-button {
     min-width: 44px;
     min-height: 44px;
     width: 44px;
