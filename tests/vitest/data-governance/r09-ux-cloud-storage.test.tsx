@@ -55,6 +55,7 @@ vi.mock('@/api/dataGovernance', () => ({
     exportZip: vi.fn(),
     importZip: vi.fn(),
     restoreBackup: vi.fn(),
+    checkDiskSpaceForRestore: vi.fn(),
     getBackupJob: vi.fn(),
     cancelBackup: vi.fn(),
   },
@@ -240,6 +241,10 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(kindIdx).toBeGreaterThan(importIdx);
     expect(kindIdx).toBeLessThan(restoreIdx);
     expect(restoreBlock).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
+    const spaceIdx = restoreBlock.indexOf('checkDiskSpaceForRestore(');
+    expect(spaceIdx).toBeGreaterThan(kindIdx);
+    expect(spaceIdx).toBeLessThan(restoreIdx);
+    expect(restoreBlock).toContain('restoreInsufficientSpace');
 
     expect(componentSource).toContain('localizeCloudStorageError');
     expect(localizeSource).toContain('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT');
@@ -266,6 +271,10 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(Object.keys(zhLocale.encryption).sort()).toEqual(
       Object.keys(enLocale.encryption).sort(),
     );
+    expect(zhLocale.errors.restoreInsufficientSpace).toContain('磁盘空间不足');
+    expect(zhLocale.errors.restoreInsufficientSpace).toContain('没有被改动');
+    expect(enLocale.errors.restoreInsufficientSpace).toMatch(/disk space/i);
+    expect(enLocale.errors.restoreInsufficientSpace).toMatch(/not changed/i);
     expect(Object.keys(zhLocale.errors).sort()).toEqual(
       Object.keys(enLocale.errors).sort(),
     );

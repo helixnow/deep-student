@@ -46,6 +46,7 @@ vi.mock('@/api/dataGovernance', () => ({
     exportZip: vi.fn(),
     importZip: vi.fn(),
     restoreBackup: vi.fn(),
+    checkDiskSpaceForRestore: vi.fn(),
     getBackupJob: vi.fn(),
     cancelBackup: vi.fn(),
   },

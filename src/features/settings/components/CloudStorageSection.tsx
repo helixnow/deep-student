@@ -1073,6 +1073,24 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         );
       }
 
+      // 整槽恢复前先看磁盘：与 Dashboard / 本地 ZIP 同一条预检，失败 fail-closed。
+      let spaceCheck: Awaited<ReturnType<typeof DataGovernanceApi.checkDiskSpaceForRestore>>;
+      try {
+        spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);
+      } catch (e: unknown) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }),
+        );
+      }
+      if (!spaceCheck.has_enough_space) {
+        throw new Error(
+          t('cloudStorage:errors.restoreInsufficientSpace', {
+            required: (spaceCheck.required_bytes / 1024 / 1024 / 1024).toFixed(2),
+            available: (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2),
+          }),
+        );
+      }
+
       // 阶段 3/3：恢复数据库
       setStage('download', 3, 3, t('cloudStorage:progress.restoreDatabase'));
       try {
