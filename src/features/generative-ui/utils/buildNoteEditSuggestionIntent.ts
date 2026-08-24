@@ -4,6 +4,7 @@
 
 import type { GenerativeUIIntent } from '../types';
 import type { CanvasEditOperation } from '@/features/notes/hooks/useAIEditState';
+import { buildMarkdownIntent } from './buildMarkdownIntent';
 
 export interface NoteEditSuggestionLabels {
   metaTitle: string;
@@ -12,6 +13,7 @@ export interface NoteEditSuggestionLabels {
   previewTitle: string;
   applyEdit: string;
   dismissSuggestion: string;
+  suggestionMarkdownTitle?: string;
 }
 
 export interface NoteEditSuggestionInput {
@@ -27,6 +29,13 @@ export function buildNoteEditSuggestionIntent(input: NoteEditSuggestionInput): G
       ? `${input.previewText.slice(0, 240)}…`
       : input.previewText;
 
+  const suggestionBody = [
+    input.labels.metaDescription.trim(),
+    `**${input.labels.operationKey}:** ${input.operationLabel}`,
+  ]
+    .filter((line) => line.length > 0)
+    .join('\n\n');
+
   return {
     version: '1',
     meta: {
@@ -40,6 +49,11 @@ export function buildNoteEditSuggestionIntent(input: NoteEditSuggestionInput): G
           rows: [{ key: input.labels.operationKey, value: input.operationLabel }],
         },
       },
+      ...buildMarkdownIntent({
+        title: input.labels.suggestionMarkdownTitle ?? input.labels.metaTitle,
+        body: suggestionBody,
+        variant: 'compact',
+      }).blocks,
       {
         type: 'text',
         props: {

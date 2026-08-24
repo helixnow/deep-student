@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { markdownPropsSchema } from '@/features/generative-ui/components/MarkdownBlock';
 import { buildNoteSummaryIntent } from '@/features/generative-ui/utils/buildNoteSummaryIntent';
 import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
@@ -45,6 +46,10 @@ describe('buildNoteSummaryIntent', () => {
     expect(rows.find((r) => r.key === 'Chars')?.value).toBe('1200');
     expect(rows.find((r) => r.key === 'Updated at')?.value).toBe('Aug 24, 2026');
     expect(intent.blocks.some((b) => b.type === 'list')).toBe(true);
+    const markdown = intent.blocks.find((b) => b.type === 'markdown');
+    expect(markdown).toBeDefined();
+    expect((markdown?.props as { body?: string }).body).toContain('1200');
+    expect(markdownPropsSchema.safeParse(markdown?.props).success).toBe(true);
     expectValidIntent(intent);
   });
 
@@ -63,6 +68,7 @@ describe('buildNoteSummaryIntent', () => {
     const list = intent.blocks.find((b) => b.type === 'list');
     expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
     expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No headings');
+    expect(intent.blocks.some((b) => b.type === 'markdown')).toBe(true);
     expectValidIntent(intent);
   });
 });

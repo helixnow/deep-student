@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { chartBlockPropsSchema } from '@/features/generative-ui/components/ChartBlock';
 import { buildAiDashboardIntent } from '@/features/generative-ui/utils/buildAiDashboardIntent';
 import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
@@ -37,6 +38,10 @@ describe('buildAiDashboardIntent', () => {
 
     expect(intent.blocks.some((b) => b.type === 'stat-card' && (b.props as { title?: string }).title === labels.ankiTasksTitle)).toBe(true);
     expect(intent.blocks.some((b) => b.type === 'list')).toBe(true);
+    const chart = intent.blocks.find((b) => b.type === 'chart');
+    expect(chart).toBeDefined();
+    expect((chart?.props as { series?: Array<{ values: number[] }> }).series?.[0]?.values).toEqual([5, 2, 1, 2]);
+    expect(chartBlockPropsSchema.safeParse(chart?.props).success).toBe(true);
     const actionBar = intent.blocks.find((b) => b.type === 'action-bar');
     const actions = (actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? [];
     expect(actions.map((a) => a.id)).toEqual(['start-review', 'open-qbank', 'open-task-dashboard']);
@@ -54,6 +59,7 @@ describe('buildAiDashboardIntent', () => {
     expect(anki?.props).toMatchObject({ value: 0, trendLabel: 'Idle' });
     expect(intent.blocks.some((b) => b.type === 'alert')).toBe(true);
     expect(intent.blocks.some((b) => b.type === 'list')).toBe(true);
+    expect(intent.blocks.some((b) => b.type === 'chart')).toBe(true);
     const actionBar = intent.blocks.find((b) => b.type === 'action-bar');
     const actions = (actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? [];
     expect(actions.map((a) => a.id)).toEqual(['start-review', 'open-qbank']);

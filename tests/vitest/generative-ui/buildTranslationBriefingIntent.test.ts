@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { chartBlockPropsSchema } from '@/features/generative-ui/components/ChartBlock';
 import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
 import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
@@ -34,6 +35,10 @@ describe('buildTranslationBriefingIntent', () => {
 
     expect(intent.blocks.some((b) => b.type === 'progress')).toBe(true);
     expect(intent.blocks.some((b) => b.type === 'list')).toBe(true);
+    const chart = intent.blocks.find((b) => b.type === 'chart');
+    expect(chart).toBeDefined();
+    expect((chart?.props as { series?: Array<{ values: number[] }> }).series?.[0]?.values).toEqual([100, 60]);
+    expect(chartBlockPropsSchema.safeParse(chart?.props).success).toBe(true);
     expect(
       intent.blocks.filter((b) => b.type === 'stat-card').map((b) => (b.props as { title?: string }).title),
     ).toEqual(['Source', 'Translated']);
@@ -89,6 +94,7 @@ describe('buildTranslationBriefingIntent', () => {
       labels,
     });
     expect(empty.blocks.some((b) => b.type === 'alert')).toBe(true);
+    expect(empty.blocks.some((b) => b.type === 'chart')).toBe(true);
     expect((empty.blocks.find((b) => b.type === 'list')?.props as { items: unknown[] }).items).toEqual([]);
     expect(parseGenerativeUIIntent(JSON.stringify(withSegments)).ok).toBe(true);
     expect(parseGenerativeUIIntent(JSON.stringify(empty)).ok).toBe(true);

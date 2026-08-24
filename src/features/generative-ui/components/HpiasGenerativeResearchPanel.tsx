@@ -90,6 +90,7 @@ export function HpiasGenerativeResearchPanel({
       stepStatusDone: t('research.hpias.step_status_done'),
       digestFallbackTitle: t('research.hpias.digest_fallback_title'),
       emptySteps: t('research.hpias.empty_steps'),
+      stepsBlockTitle: t('research.hpias.steps_block_title'),
     }),
     [stepLabels, t],
   );

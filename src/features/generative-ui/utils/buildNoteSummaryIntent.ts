@@ -3,6 +3,7 @@
  */
 
 import type { GenerativeUIIntent } from '../types';
+import { buildMarkdownIntent } from './buildMarkdownIntent';
 
 export interface NoteSummaryLabels {
   defaultTitle: string;
@@ -17,6 +18,7 @@ export interface NoteSummaryLabels {
   emptyNoteTitle?: string;
   emptyNoteDescription?: string;
   emptyHeadings?: string;
+  markdownOverviewTitle?: string;
 }
 
 export interface NoteSummaryInput {
@@ -27,6 +29,31 @@ export interface NoteSummaryInput {
   updatedAtLabel?: string;
   topHeadings?: string[];
   labels: NoteSummaryLabels;
+}
+
+function buildNoteOverviewMarkdown(input: NoteSummaryInput): string {
+  const { labels } = input;
+  const lines: string[] = [];
+  const title = input.title.trim();
+  if (title) {
+    lines.push(`**${title}**`);
+  }
+  if (input.charCount != null) {
+    lines.push(`- ${labels.charCountKey}: ${input.charCount}`);
+  }
+  if (input.updatedAtLabel) {
+    lines.push(`- ${labels.updatedAtKey ?? labels.updatedPrefix}: ${input.updatedAtLabel}`);
+  }
+  const tags = input.tags ?? [];
+  lines.push(`- ${labels.tagsKey}: ${tags.length > 0 ? tags.join('、') : labels.tagsEmpty}`);
+  const headings = (input.topHeadings ?? []).slice(0, 5);
+  if (headings.length > 0) {
+    lines.push('');
+    for (const heading of headings) {
+      lines.push(`- ${heading.slice(0, 200)}`);
+    }
+  }
+  return lines.join('\n').trim();
 }
 
 export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIIntent {
@@ -86,6 +113,12 @@ export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIInt
           rows,
         },
       },
+      ...buildMarkdownIntent({
+        title: labels.markdownOverviewTitle ?? labels.overviewTitle,
+        body: buildNoteOverviewMarkdown(input),
+        variant: 'compact',
+        labels: { empty: labels.emptyNoteDescription ?? labels.tagsEmpty },
+      }).blocks,
       {
         type: 'list',
         props: {

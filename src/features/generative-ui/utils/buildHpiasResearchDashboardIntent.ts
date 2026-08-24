@@ -4,6 +4,7 @@
 import type { GenerativeUIIntent } from '../types';
 import { buildResearchPlanIntent } from './buildResearchPlanIntent';
 import { buildResearchReportIntent } from './buildResearchReportIntent';
+import { buildStepsIntent } from './buildStepsIntent';
 import {
   mapHpiasStoreToResearchPlanSteps,
   type HpiasResearchPlanLabels,
@@ -26,6 +27,7 @@ export interface HpiasResearchDashboardLabels extends HpiasResearchPlanLabels {
   stepStatusDone?: string;
   digestFallbackTitle?: string;
   emptySteps?: string;
+  stepsBlockTitle?: string;
 }
 
 export interface HpiasResearchDashboardInput {
@@ -105,6 +107,17 @@ export function buildHpiasResearchDashboardIntent(
       emptyLabel: labels.emptySteps,
     },
   });
+
+  blocks.push(
+    ...buildStepsIntent({
+      title: labels.stepsBlockTitle ?? labels.stepsListTitle ?? labels.planTitle,
+      steps: steps.map((step, index) => ({
+        id: `hpias-step-${index}`,
+        label: step.label,
+        status: step.status,
+      })),
+    }).blocks,
+  );
 
   const queries = extractPlanQueries(snapshot.plan);
   const synthesisExcerpt = snapshot.synthesis?.trim();

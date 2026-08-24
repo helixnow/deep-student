@@ -7,6 +7,8 @@ import {
   createCanvasEditRequestId,
 } from '@/features/generative-ui/utils/dispatchCanvasAIEditRequest';
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
+import { MarkdownBlock, markdownPropsSchema } from '@/features/generative-ui/components/MarkdownBlock';
+import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 
@@ -24,6 +26,14 @@ vi.mock('react-i18next', () => ({
 }));
 
 import '@/features/generative-ui/blocks';
+
+generativeUIRegistry.register({
+  type: 'markdown',
+  component: MarkdownBlock,
+  propsSchema: markdownPropsSchema,
+  description: 'Markdown 正文：title + body，复用 Chat MarkdownRenderer',
+  allowPartialRender: true,
+});
 
 describe('dispatchCanvasAIEditRequest', () => {
   beforeEach(() => {

@@ -1,5 +1,6 @@
 import type { GenerativeUIIntent } from '../types';
 import type { ActionBarProps } from '../schema';
+import { buildChartIntent } from './buildChartIntent';
 import {
   buildLearningBriefingIntent,
   type LearningBriefingInput,
@@ -28,6 +29,10 @@ export interface AiDashboardLabels extends LearningBriefingLabels {
   reviewEmpty?: string;
   idleAlertTitle?: string;
   idleAlertDescription?: string;
+  workloadChartTitle?: string;
+  chartPending?: string;
+  chartOverdue?: string;
+  workloadChartSeries?: string;
 }
 
 /** Workbench AI 仪表盘：学习简报 + 制卡任务 stat-card + 复习日历/空态 */
@@ -60,6 +65,31 @@ export function buildAiDashboardIntent(
 
   const actionBarIdx = blocks.findIndex((block) => block.type === 'action-bar');
   const extraBlocks: typeof blocks = [];
+
+  const categoryFromCountLabel = (template: string, fallback: string) => {
+    const stripped = template.replace(/\{\{count\}\}/g, '').replace(/\s+/g, ' ').trim();
+    return stripped || fallback;
+  };
+
+  extraBlocks.push(
+    ...buildChartIntent({
+      title: labels.workloadChartTitle ?? labels.progressTitle,
+      kind: 'bar',
+      categories: [
+        labels.dueFlashcardsTitle,
+        labels.chartPending ?? categoryFromCountLabel(labels.pendingLabel, labels.progressTitle),
+        labels.chartOverdue ?? categoryFromCountLabel(labels.overdueLabel, labels.progressTitle),
+        labels.ankiTasksTitle,
+      ],
+      series: [
+        {
+          name: (labels.workloadChartSeries ?? labels.ankiTasksTitle).slice(0, 40),
+          values: [dueFlashcards, pendingTodos, overdueTodos, activeAnkiTasks],
+        },
+      ],
+      labels: {},
+    }).blocks,
+  );
 
   if (isIdle) {
     extraBlocks.push({

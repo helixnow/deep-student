@@ -3,6 +3,7 @@
  */
 import type { GenerativeUIIntent } from '../types';
 import type { ActionBarProps } from '../schema';
+import { buildChartIntent } from './buildChartIntent';
 
 export interface TranslationBriefingSegment {
   label: string;
@@ -27,6 +28,8 @@ export interface TranslationBriefingLabels {
   emptySourceDescription?: string;
   segmentsTitle?: string;
   segmentsEmpty?: string;
+  countChartTitle?: string;
+  countChartSeries?: string;
 }
 
 export interface TranslationBriefingInput {
@@ -151,6 +154,18 @@ export function buildTranslationBriefingIntent(input: TranslationBriefingInput):
             },
           ]
         : []),
+      ...buildChartIntent({
+        title: labels.countChartTitle ?? labels.progressTitle,
+        kind: 'bar',
+        categories: [labels.sourceStatTitle, labels.translatedStatTitle],
+        series: [
+          {
+            name: (labels.countChartSeries ?? labels.sourceStatTitle).slice(0, 40),
+            values: [sourceChars, translatedChars],
+          },
+        ],
+        labels: {},
+      }).blocks,
       {
         type: 'key-value-grid',
         props: { rows },

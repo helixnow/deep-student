@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { stepsBlockPropsSchema } from '@/features/generative-ui/components/StepsBlock';
 import {
   mapHpiasStoreToResearchPlanSteps,
   type HpiasResearchSnapshot,
@@ -104,6 +105,9 @@ describe('buildHpiasResearchDashboardIntent', () => {
     expect(intent!.blocks.some((b) => b.type === 'list')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'paper-digest')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'action-bar')).toBe(true);
+    const stepsBlock = intent!.blocks.find((b) => b.type === 'steps');
+    expect(stepsBlock).toBeDefined();
+    expect(stepsBlockPropsSchema.safeParse(stepsBlock?.props).success).toBe(true);
     expect(parseGenerativeUIIntent(JSON.stringify(intent)).ok).toBe(true);
   });
 });

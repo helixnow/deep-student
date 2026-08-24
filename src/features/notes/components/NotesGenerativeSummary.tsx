@@ -57,6 +57,7 @@ export function NotesGenerativeSummary({
         emptyNoteTitle: t('generativeUi:notes.summary_empty_note_title'),
         emptyNoteDescription: t('generativeUi:notes.summary_empty_note_description'),
         emptyHeadings: t('generativeUi:notes.summary_empty_headings'),
+        markdownOverviewTitle: t('generativeUi:notes.summary_markdown_title'),
       },
     });
   }, [content, headingLabels, i18n.language, tags, title, updatedAt, t]);

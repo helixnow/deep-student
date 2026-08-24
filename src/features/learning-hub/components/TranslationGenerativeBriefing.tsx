@@ -59,6 +59,8 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
         emptySourceDescription: t('generativeUi:translation.briefing.empty_source_description'),
         segmentsTitle: t('generativeUi:translation.briefing.segments_title'),
         segmentsEmpty: t('generativeUi:translation.briefing.segments_empty'),
+        countChartTitle: t('generativeUi:translation.briefing.count_chart_title'),
+        countChartSeries: t('generativeUi:translation.briefing.count_chart_series'),
       }),
       [t],
     );
