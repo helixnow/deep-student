@@ -19,6 +19,35 @@ use super::traits::{
 };
 use crate::models::AppError;
 
+/// S3 multipart 上传的分块数硬限制（AWS 及主流兼容服务通用）
+const MAX_MULTIPART_PARTS: u64 = 10_000;
+
+/// S3 单个分块大小硬限制：5 GiB
+const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
+
+/// 上传前根据文件大小规划 multipart 分块大小。
+///
+/// 默认使用 `CHUNK_SIZE`（8MiB）；当文件大到 10000 个默认分块装不下时
+///（约 78GiB 以上），按比例放大分块并向上对齐到 MiB，确保分块数不超过
+/// `MAX_MULTIPART_PARTS`——否则会在上传数十 GB 后才在第 10001 块失败。
+/// 超出 S3 极限（10000 × 5GiB）的文件在发起任何网络请求前直接报错。
+fn plan_multipart_part_size(file_size: u64) -> Result<usize> {
+    const MIB: u64 = 1024 * 1024;
+    let min_part = file_size.div_ceil(MAX_MULTIPART_PARTS);
+    let part_size = (CHUNK_SIZE as u64).max(min_part.div_ceil(MIB) * MIB);
+    if part_size > MAX_PART_SIZE {
+        return Err(AppError::validation(format!(
+            "文件过大（{file_size} 字节）：即使使用 5GiB 分块也会超过 S3 的 10000 分块限制"
+        )));
+    }
+    Ok(part_size as usize)
+}
+
+/// 按给定分块大小计算分块总数（上传前预估用）
+fn planned_part_count(file_size: u64, part_size: usize) -> u64 {
+    file_size.div_ceil(part_size as u64).max(1)
+}
+
 /// S3 兼容存储实现
 pub struct S3Storage {
     client: aws_sdk_s3::Client,
@@ -65,6 +94,7 @@ impl S3Storage {
         // 只识别 provider 明确定义的 bucket-host 域名。不能仅凭首段等于 bucket
         // 判断，否则 bucket 名为 "s3" 时会把规范 AWS endpoint
         // `s3.us-east-1.amazonaws.com` 错改为 `us-east-1.amazonaws.com`。
+        // path-style endpoint 的 bucket 路径属于用户配置，同样不做猜测性剥离。
         if let Some(url::Host::Domain(host)) = url.host() {
             let host = host.to_string();
             if let Some(rest) = host.strip_prefix(&format!("{bucket}.")) {
@@ -128,8 +158,10 @@ impl S3Storage {
             .endpoint_url(&endpoint)
             .timeout_config(
                 // [P0-6/F10] 显式超时：避免 TCP 半开/对端无响应时整个同步流程无限挂起。
-                // connect 30s 建连上限；operation_attempt 120s 单次尝试上限（大对象走
-                // multipart，每个分块各自计时，不受单请求总时长限制）。
+                // connect 30s 建连上限；operation_attempt 120s 单次尝试上限。该值必须与
+                // MIN_MULTIPART_SIZE 配套：阈值以下的单次 PUT 整个请求共用一个 120s 计时
+                //（16MiB 只需约 1.1Mbps 上行即可完成）；阈值以上走 multipart，每个分块
+                // 各自计时，不受单请求总时长限制。
                 aws_sdk_s3::config::timeout::TimeoutConfig::builder()
                     .connect_timeout(std::time::Duration::from_secs(30))
                     .operation_attempt_timeout(std::time::Duration::from_secs(120))
@@ -263,6 +295,14 @@ impl CloudStorage for S3Storage {
             return Ok(checksum);
         }
 
+        // 上传前先规划分块大小并校验分块数：超大文件（>78GiB）自动放大分块，
+        // 超出 S3 极限的文件直接拒绝，避免传完几十 GB 才发现超过 10000 分块。
+        let part_size = plan_multipart_part_size(file_size)?;
+        let planned_parts = planned_part_count(file_size, part_size);
+        log::debug!(
+            "[CloudStorage::S3] multipart 上传 {full_key}: {file_size} 字节，计划 {planned_parts} 块 × {part_size} 字节"
+        );
+
         let create_resp = self
             .client
             .create_multipart_upload()
@@ -285,11 +325,11 @@ impl CloudStorage for S3Storage {
             let mut completed_parts = Vec::new();
             let mut part_number: i32 = 1;
             let mut uploaded = 0u64;
-            let mut buffer = vec![0u8; CHUNK_SIZE];
+            let mut buffer = vec![0u8; part_size];
 
             loop {
                 let mut bytes_read = 0usize;
-                while bytes_read < CHUNK_SIZE {
+                while bytes_read < part_size {
                     let n = file
                         .read(&mut buffer[bytes_read..])
                         .await
@@ -303,8 +343,12 @@ impl CloudStorage for S3Storage {
                 if bytes_read == 0 {
                     break;
                 }
-                if part_number > 10_000 {
-                    return Err(AppError::validation("S3 分块数超过 10000 的限制"));
+                // 兜底防御：正常情况下 plan_multipart_part_size 已保证不会超限，
+                // 仅当文件在上传期间被写入变大时才可能触发。
+                if part_number as u64 > MAX_MULTIPART_PARTS {
+                    return Err(AppError::validation(
+                        "S3 分块数超过 10000 的限制（文件可能在上传期间被修改变大）",
+                    ));
                 }
 
                 let chunk = &buffer[..bytes_read];
@@ -447,6 +491,15 @@ impl CloudStorage for S3Storage {
             file.sync_all()
                 .await
                 .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
+        }
+
+        // [R10-download] 半包 fail-closed：响应流读到 EOF 不等于下载完成。
+        // 流提前结束（半包）或对象在 stat 与 GET 之间被并发替换（大小不同）
+        // 都在此拒绝——无 expected_checksum 的调用方没有第二道防线。
+        if downloaded != total_size {
+            return Err(AppError::network(format!(
+                "S3 下载不完整或对象已变更：声明 {total_size} 字节，实际收到 {downloaded} 字节，已拒绝保存（请重试）"
+            )));
         }
 
         let checksum = format!("{:x}", hasher.finalize());
@@ -649,6 +702,41 @@ impl CloudStorage for S3Storage {
 mod tests {
     use super::*;
 
+    const MIB: u64 = 1024 * 1024;
+    const GIB: u64 = 1024 * MIB;
+
+    #[test]
+    fn multipart_threshold_fits_single_put_attempt_timeout() {
+        // 单次 PUT 受 120s operation_attempt_timeout 限制且整个请求共用一个计时。
+        // 阈值必须落在 16–32MiB 区间：足够小使慢速链路（~1-2Mbps 上行）也能在
+        // 120s 内完成接近阈值的单 PUT——旧 100MB 阈值在此场景必然超时。
+        assert!(
+            MIN_MULTIPART_SIZE <= 32 * MIB,
+            "multipart 阈值过大，会与 120s 单次尝试超时冲突"
+        );
+        assert!(
+            MIN_MULTIPART_SIZE >= 16 * MIB,
+            "multipart 阈值过小，会给小文件带来不必要的多请求开销"
+        );
+        // 阈值以上的文件至少能切出 2 个分块，multipart 才有意义
+        assert!(MIN_MULTIPART_SIZE >= CHUNK_SIZE as u64);
+    }
+
+    #[test]
+    fn plan_part_size_uses_default_chunk_for_common_sizes() {
+        // 阈值边界与常见大文件（10GiB）都应使用默认 8MiB 分块
+        assert_eq!(
+            plan_multipart_part_size(MIN_MULTIPART_SIZE).unwrap(),
+            CHUNK_SIZE
+        );
+        assert_eq!(plan_multipart_part_size(10 * GIB).unwrap(), CHUNK_SIZE);
+        // 8MiB × 10000 = 78.125GiB 恰好装得下
+        assert_eq!(
+            plan_multipart_part_size(CHUNK_SIZE as u64 * MAX_MULTIPART_PARTS).unwrap(),
+            CHUNK_SIZE
+        );
+    }
+
     /// [#57 回归] 腾讯云 COS / 阿里云 OSS / 缤纷云 S4 控制台展示的是带
     /// bucket 前缀的访问域名；原样粘贴 + 单独填写 bucket 会让 SDK 的
     /// virtual-hosted-style 寻址拼出 `bucket.bucket.…` 域名，DNS/TLS 直接失败。
@@ -683,6 +771,40 @@ mod tests {
             ),
             "https://s3.us-east-1.amazonaws.com"
         );
+    }
+
+    #[test]
+    fn plan_part_size_scales_up_to_respect_ten_thousand_part_limit() {
+        // 80GiB 按 8MiB 分块需要 10240 块，超过 10000：必须在上传前放大分块
+        for file_size in [80 * GIB, 500 * GIB, 5 * 1024 * GIB] {
+            let part_size = plan_multipart_part_size(file_size).unwrap();
+            assert!(
+                part_size > CHUNK_SIZE,
+                "{file_size} 字节的文件应使用大于默认值的分块"
+            );
+            assert!(
+                planned_part_count(file_size, part_size) <= MAX_MULTIPART_PARTS,
+                "{file_size} 字节的文件分块数不得超过 10000"
+            );
+            assert!(part_size as u64 <= MAX_PART_SIZE);
+            assert_eq!(part_size as u64 % MIB, 0, "分块大小应对齐到 MiB");
+        }
+    }
+
+    #[test]
+    fn plan_part_size_rejects_files_beyond_s3_hard_limits() {
+        // 超过 10000 × 5GiB 的对象无论如何切分都传不上去，必须在发起请求前报错
+        let max_object = MAX_MULTIPART_PARTS * MAX_PART_SIZE;
+        assert!(plan_multipart_part_size(max_object).is_ok());
+        assert!(plan_multipart_part_size(max_object + 1).is_err());
+    }
+
+    #[test]
+    fn planned_part_count_covers_exact_and_ragged_sizes() {
+        assert_eq!(planned_part_count(2 * CHUNK_SIZE as u64, CHUNK_SIZE), 2);
+        assert_eq!(planned_part_count(2 * CHUNK_SIZE as u64 + 1, CHUNK_SIZE), 3);
+        assert_eq!(planned_part_count(1, CHUNK_SIZE), 1);
+        assert_eq!(planned_part_count(0, CHUNK_SIZE), 1);
     }
 
     #[test]
