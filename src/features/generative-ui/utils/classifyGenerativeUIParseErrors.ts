@@ -9,6 +9,7 @@ export type GenerativeUIParseErrorCode =
   | 'unknown-version'
   | 'too-many-blocks'
   | 'invalid-block'
+  | 'buffer-capped'
   | 'unknown';
 
 export interface ClassifiedGenerativeUIParseError {
@@ -21,6 +22,10 @@ function classifyCode(message: string): GenerativeUIParseErrorCode {
 
   if (haystack.includes('invalid json') || haystack.includes('json.parse')) {
     return 'invalid-json';
+  }
+
+  if (haystack.includes('stream-buffer-capped') || haystack.includes('buffer-capped')) {
+    return 'buffer-capped';
   }
 
   if (
