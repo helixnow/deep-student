@@ -529,7 +529,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
       {/* 紧凑头部：状态 + 子代理数 + 唤醒按钮 */}
       <div
         className={cn(
-          "flex items-center gap-2 px-3 py-2 cursor-pointer",
+          "flex items-center gap-2 px-3 py-2 cursor-pointer [@media(pointer:coarse)]:min-h-11",
           status === 'sleeping' ? statusConfig.bgColor : 'bg-transparent'
         )}
         onClick={() => setIsExpanded(!isExpanded)}
