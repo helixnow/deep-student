@@ -267,7 +267,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">场景超时 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={timeoutMs}
                       min={20000}
                       max={240000}
@@ -280,7 +280,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">轮询间隔 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={pollMs}
                       min={300}
                       max={5000}
@@ -295,7 +295,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">快照间隔 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={snapshotIntervalMs}
                       min={500}
                       max={5000}
@@ -308,7 +308,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">稳定等待 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={settleMs}
                       min={0}
                       max={10000}
@@ -321,7 +321,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Prompt 后缀（可选）</label>
                   <textarea
-                    className="w-full h-12 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none"
+                    className="w-full h-12 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:text-[16px]"
                     value={promptSuffix}
                     onChange={(e) => { setPromptSuffix(e.target.value); saveConfig({ promptSuffix: e.target.value }); }}
                     disabled={status === 'running'}

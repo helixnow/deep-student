@@ -296,13 +296,13 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">短 Prompt</label>
-                  <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                  <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                     value={prompt} onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">长 Prompt（取消/打断测试用）</label>
-                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none"
+                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:text-[16px]"
                     value={longPrompt} onChange={e => { setLongPrompt(e.target.value); saveConfig({ longPrompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
@@ -315,7 +315,7 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   ].map(({ label: lbl, value: val, set, key, min, max, step: stp }) => (
                     <div key={key}>
                       <label className="text-xs text-muted-foreground mb-1 block">{lbl}</label>
-                      <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                      <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                         value={val} min={min} max={max} step={stp}
                         onChange={e => { const v = Number(e.target.value); set(v); saveConfig({ [key]: v }); }}
                         disabled={status === 'running'} />

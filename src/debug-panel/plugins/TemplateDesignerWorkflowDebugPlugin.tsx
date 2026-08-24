@@ -484,7 +484,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
         <div className="relative flex-1 min-w-[220px]">
           <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
-            className="w-full h-8 [@media(pointer:coarse)]:min-h-11 pl-8 pr-2 rounded bg-slate-900 border border-slate-700 text-xs"
+            className="w-full h-8 [@media(pointer:coarse)]:min-h-11 pl-8 pr-2 rounded bg-slate-900 border border-slate-700 text-xs [@media(pointer:coarse)]:text-[16px]"
             placeholder="搜索 tool/templateId/blockId"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}

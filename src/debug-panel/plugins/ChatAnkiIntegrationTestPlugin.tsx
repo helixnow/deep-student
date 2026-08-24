@@ -221,21 +221,21 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">制卡 Prompt</label>
-                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:min-h-11"
+                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                     value={prompt} onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">超时 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={timeoutMs} min={30000} max={300000} step={10000}
                       onChange={e => { const v = Number(e.target.value); setTimeoutMs(v); saveConfig({ timeoutMs: v }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">稳定等待 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={settleMs} min={500} max={10000} step={500}
                       onChange={e => { const v = Number(e.target.value); setSettleMs(v); saveConfig({ settleMs: v }); }}
                       disabled={status === 'running'} />

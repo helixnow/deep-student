@@ -333,14 +333,14 @@ const CitationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">渲染验证 Prompt</label>
-                  <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                  <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                     value={prompt}
                     onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">单轮超时 (ms)</label>
-                  <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                  <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                     value={roundTimeoutMs} min={10000} max={300000} step={5000}
                     onChange={e => { const v = Number(e.target.value); setRoundTimeoutMs(v); saveConfig({ roundTimeoutMs: v }); }}
                     disabled={status === 'running'} />

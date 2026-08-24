@@ -372,14 +372,14 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">发送 Prompt</label>
-                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={prompt}
                       onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">编辑后 Prompt</label>
-                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="text" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={editedPrompt}
                       onChange={e => { setEditedPrompt(e.target.value); saveConfig({ editedPrompt: e.target.value }); }}
                       disabled={status === 'running'} />
@@ -388,14 +388,14 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">中断延迟 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={abortDelayMs} min={500} max={30000} step={500}
                       onChange={e => { const v = Number(e.target.value); setAbortDelayMs(v); saveConfig({ abortDelayMs: v }); }}
                       disabled={status === 'running'} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">单轮超时 (ms)</label>
-                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11"
+                    <input type="number" className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
                       value={roundTimeoutMs} min={10000} max={300000} step={5000}
                       onChange={e => { const v = Number(e.target.value); setRoundTimeoutMs(v); saveConfig({ roundTimeoutMs: v }); }}
                       disabled={status === 'running'} />
