@@ -9,11 +9,20 @@
 - [x] `registryPromptSync` contract 测试
 - [x] 38 项 vitest 全绿（generative-ui + DesktopAiBriefingWidget）
 
-### Round 5（进行中）
-- Rust `generative_ui` 事件 emit
-- Learning Hub 深度集成 POC
-- AIDiffPanel 确定性变更摘要
-- Round 5 子代理调研（10 × xhigh）
+### Round 5（2026-08-24）
+
+### 父代理
+- [x] Rust `GenerativeUiExecutor` + `render_generative_ui` 工具（emit generative_ui 事件）
+- [x] `block_types::GENERATIVE_UI` + `event_types::GENERATIVE_UI`
+- [x] `buildAIDiffSummaryIntent` + AIDiffPanel 确定性变更摘要头
+- [x] `LearningHubGenerativeBriefing` POC（finderStore 数据源）
+- [x] 40 项 vitest 全绿
+- [ ] Round 5 子代理调研合并（10 × xhigh 进行中）
+
+### Round 6+
+- `render_generative_ui` builtin skill / schema 注入
+- Learning Hub action 深度接线
+- mindmap-embed E2E
 
 ---
 

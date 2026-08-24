@@ -2,38 +2,53 @@ import type { GenerativeUIIntent } from '../types';
 
 export interface AIDiffSummaryInput {
   operation: 'append' | 'replace' | 'set';
+  operationLabel: string;
   addedCount: number;
   removedCount: number;
   hasChanges: boolean;
+  labels: {
+    metaTitle: string;
+    metaDescription: string;
+    statTitle: string;
+    noChangeTrend: string;
+    addedKey: string;
+    removedKey: string;
+    operationKey: string;
+    alertTitle: string;
+    alertDescription: string;
+  };
 }
 
-const OPERATION_LABELS: Record<AIDiffSummaryInput['operation'], string> = {
-  append: '追加内容',
-  replace: '查找替换',
-  set: '全文替换',
-};
-
 export function buildAIDiffSummaryIntent(input: AIDiffSummaryInput): GenerativeUIIntent {
-  const { operation, addedCount, removedCount, hasChanges } = input;
-  const operationLabel = OPERATION_LABELS[operation];
+  const { operationLabel, addedCount, removedCount, hasChanges, labels } = input;
+  const totalChanges = addedCount + removedCount;
+
+  const trend =
+    !hasChanges || totalChanges === 0
+      ? 'neutral'
+      : addedCount > removedCount
+        ? 'up'
+        : removedCount > addedCount
+          ? 'down'
+          : 'neutral';
 
   const blocks: GenerativeUIIntent['blocks'] = [
     {
       type: 'stat-card',
       props: {
-        title: '变更行数',
-        value: addedCount + removedCount,
-        trend: hasChanges ? 'up' : 'neutral',
-        trendLabel: hasChanges ? `${operationLabel}` : '无实质变更',
+        title: labels.statTitle,
+        value: totalChanges,
+        trend,
+        trendLabel: hasChanges ? operationLabel : labels.noChangeTrend,
       },
     },
     {
       type: 'key-value-grid',
       props: {
-        items: [
-          { label: '新增', value: String(addedCount) },
-          { label: '删除', value: String(removedCount) },
-          { label: '操作', value: operationLabel },
+        rows: [
+          { key: labels.addedKey, value: String(addedCount) },
+          { key: labels.removedKey, value: String(removedCount) },
+          { key: labels.operationKey, value: operationLabel },
         ],
       },
     },
@@ -44,8 +59,8 @@ export function buildAIDiffSummaryIntent(input: AIDiffSummaryInput): GenerativeU
       type: 'alert',
       props: {
         variant: 'info',
-        title: '无可见差异',
-        message: 'AI 建议与当前正文一致，接受后将不会产生变更。',
+        title: labels.alertTitle,
+        description: labels.alertDescription,
       },
     });
   }
@@ -53,8 +68,8 @@ export function buildAIDiffSummaryIntent(input: AIDiffSummaryInput): GenerativeU
   return {
     version: '1',
     meta: {
-      title: '变更摘要',
-      description: '基于 diff 统计的确定性预览',
+      title: labels.metaTitle,
+      description: labels.metaDescription,
     },
     blocks,
   };

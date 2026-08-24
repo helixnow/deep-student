@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X, Robot } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -156,12 +156,28 @@ export function AIDiffPanel({
   const addedCount = diffLines.filter(line => line.type === 'added').length;
   const removedCount = diffLines.filter(line => line.type === 'removed').length;
 
-  const summaryIntent = buildAIDiffSummaryIntent({
-    operation: request.operation,
-    addedCount,
-    removedCount,
-    hasChanges,
-  });
+  const summaryIntent = useMemo(
+    () =>
+      buildAIDiffSummaryIntent({
+        operation: request.operation,
+        operationLabel: operationLabels[request.operation],
+        addedCount,
+        removedCount,
+        hasChanges,
+        labels: {
+          metaTitle: t('aiDiff.summary.meta_title'),
+          metaDescription: t('aiDiff.summary.meta_description'),
+          statTitle: t('aiDiff.summary.stat_title'),
+          noChangeTrend: t('aiDiff.summary.no_change_trend'),
+          addedKey: t('aiDiff.summary.added'),
+          removedKey: t('aiDiff.summary.removed'),
+          operationKey: t('aiDiff.summary.operation'),
+          alertTitle: t('aiDiff.summary.no_diff_title'),
+          alertDescription: t('aiDiff.summary.no_diff_description'),
+        },
+      }),
+    [addedCount, hasChanges, operationLabels, removedCount, request.operation, t],
+  );
 
   return (
     <section
