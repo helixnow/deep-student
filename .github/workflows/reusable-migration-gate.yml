@@ -73,7 +73,7 @@ jobs:
         run: |
           echo "=== Migration gate tool manifest ==="
           echo "node            : $(node --version)"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / rust-cache v2.9.1 / cache-apt-pkgs v1.6.3 / upload-artifact v7.0.1 (all SHA-pinned)"
 
       - name: Static migration gate (lock manifest + dangerous SQL)
         run: node scripts/check-migrations.mjs
@@ -87,17 +87,27 @@ jobs:
           workspaces: src-tauri
           key: migration-release-gate
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）。
+      # fail-closed 语义不受影响：缓存未命中/恢复失败时 action 内部
+      # 回退到真实 apt-get 安装，任何失败都会让本 step（进而让 gate）红掉。
+      # 缓存 key = 包名列表 + 镜像标识（经 GITHUB_ENV 中转，动机见
+      # ci.yml backend job 同名步骤注释），与 ci.yml/nightly 共享缓存条目。
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so，
       # 与 ci.yml 的 ubuntu cargo job 保持一致，预先下载。
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi

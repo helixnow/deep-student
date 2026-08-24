@@ -75,7 +75,7 @@ pub use block_actions::{
     chat_v2_upsert_streaming_block,
 };
 pub use canvas_handlers::chat_v2_canvas_edit_result;
-pub use export_handlers::chat_v2_export_session;
+pub use export_handlers::{chat_v2_export_session, chat_v2_export_session_jsonl};
 pub use group_handlers::{
     chat_v2_create_group, chat_v2_delete_group, chat_v2_get_group, chat_v2_list_groups,
     chat_v2_move_session_to_group, chat_v2_reorder_groups, chat_v2_update_group,

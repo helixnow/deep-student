@@ -62,24 +62,6 @@ if (
 // 注册 OverlayScrollbars ClickScrollPlugin — 点击轨道时平滑滚动到目标位置
 OverlayScrollbars.plugin(ClickScrollPlugin);
 
-const maybeInstallReactGrab = () => {
-  try {
-    const env = (import.meta as any).env ?? {};
-    const isDev = env.MODE !== 'production';
-    const enabled = env.VITE_ENABLE_REACT_GRAB === 'true';
-    if (!isDev || !enabled) {
-      return;
-    }
-    import('react-grab').catch((error) => {
-      console.warn('[main] React Grab 加载失败', error);
-    });
-  } catch (error) {
-    console.warn('[main] React Grab 初始化失败', error);
-  }
-};
-
-maybeInstallReactGrab();
-
 // ★ 注入 DSTU Logger（连接到调试面板）
 setDstuLogger(createLoggerFromDebugPlugin(dstuDebugLog));
 

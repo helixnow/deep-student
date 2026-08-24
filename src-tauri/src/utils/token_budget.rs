@@ -89,6 +89,9 @@ pub fn estimate_tokens_with_model(text: &str, model_hint: Option<&str>) -> usize
     {
         use std::sync::Once;
 
+        // 启发式估算不区分模型编码
+        let _ = model_hint;
+
         // P2修复：使用启发式估算时打印警告，建议启用精确计数
         static INIT: Once = Once::new();
         INIT.call_once(|| {

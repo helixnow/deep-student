@@ -165,7 +165,7 @@ export const LazyImageViewer = React.lazy(() =>
 );
 
 // 🚀 Chat V2 主页面（默认视图，改为懒加载以减少初始 bundle）
-// 其依赖链包含 @hello-pangea/dnd、framer-motion、chat-v2/init 等重量级模块
+// 其依赖链包含 @dnd-kit/*、framer-motion、chat-v2/init 等重量级模块
 export const LazyChatV2Page = React.lazy(() =>
   import('./features/chat/pages').then(m => ({ default: m.ChatV2Page }))
 );

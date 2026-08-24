@@ -20,7 +20,7 @@ describe('phase 10 learning overview tool contracts', () => {
     expect(learningOverviewToolsSkill.content).toContain('activityTotals/focusTotals');
     expect(learningOverviewToolsSkill.content).toContain('调用时的当前库存/调度快照');
     expect(learningOverviewToolsSkill.content).not.toContain('汇总字段覆盖完整请求区间');
-    expect(tool('builtin-learning_overview').description).toContain('调用时当前快照');
+    expect(tool('builtin-learning_overview').description).toContain('当前快照');
   });
 
   it('requires either a complete exact date range or the seven-day default', () => {

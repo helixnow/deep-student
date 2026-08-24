@@ -16,7 +16,7 @@ describe('WEB-04/05 and GAP11/12 contracts', () => {
       tool => tool.name === 'builtin-browser_screenshot',
     );
     expect(screenshot?.description).toContain('available=false');
-    expect(screenshot?.description).toContain('PLATFORM_API_UNAVAILABLE');
+    expect(screenshot?.description).toContain('reasonCode');
     expect(screenshot?.description).toContain('绝不伪造');
   });
 
@@ -37,7 +37,7 @@ describe('WEB-04/05 and GAP11/12 contracts', () => {
     );
     expect(transcribe?.inputSchema.required).toContain('source');
     expect(transcribe?.inputSchema.properties?.source).toMatchObject({ type: 'object' });
-    expect(transcribe?.description).toMatch(/外部 ASR 提供商/);
+    expect(transcribe?.description).toMatch(/外部 ASR/);
     expect(transcribe?.description).toMatch(/MP3\/WAV\/OGG\/FLAC/);
   });
 });

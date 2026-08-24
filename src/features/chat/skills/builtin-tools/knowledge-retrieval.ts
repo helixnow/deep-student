@@ -126,23 +126,25 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-unified_search',
-      description: '统一搜索：同时搜索知识库文档（文本向量）、图片/PDF 页面（VL 多模态向量）、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识；扫描件、截图、手写笔记、整卷识别等视觉内容同样由本工具检索（已取代独立的 rag_search/multimodal_search）。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
+      description:
+        '统一搜索本地知识：知识库文档（文本向量）、图片/PDF 页面（多模态向量）、用户记忆一次合并返回，含扫描件/截图/手写等视觉内容（已取代 rag_search/multimodal_search）。' +
+        'resource_read 传结果的 readResourceId（优先）或 sourceId，勿传 resourceId（VFS UUID）；记忆结果用 noteId 调 memory_read。引用与图片渲染规则见技能说明。',
       inputSchema: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: '【必填】搜索查询文本，描述你想找的信息',
+            description: '搜索查询文本',
           },
           folder_ids: {
             type: 'array',
             items: { type: 'string' },
-            description: '限制搜索的文件夹 ID 列表（可选，不填则搜索所有文件夹）',
+            description: '限制搜索的文件夹 ID 列表',
           },
           resource_ids: {
             type: 'array',
             items: { type: 'string' },
-            description: '限制搜索的资源 ID 列表（可选，精确到特定资源）',
+            description: '限制搜索的资源 ID 列表',
           },
           resource_types: {
             type: 'array',
@@ -150,24 +152,24 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
               type: 'string',
               enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap'],
             },
-            description: '限制搜索的资源类型列表（可选）',
+            description: '限制搜索的资源类型',
           },
           top_k: {
             type: 'integer',
-            description: '每种搜索源返回的最大结果数（可选，默认 10）。注意：此参数名为 top_k，不是 limit 或 max_results。',
+            description: '每种搜索源最大结果数。参数名是 top_k，不是 limit/max_results。',
             default: 10,
             minimum: 1,
             maximum: 30,
           },
           max_per_resource: {
             type: 'integer',
-            description: '每个资源最多返回的片段数（0表示不限制），用于避免单个资源占据过多结果',
+            description: '每资源最多片段数（0=不限制），避免单一资源占满结果',
             default: 0,
             minimum: 0,
           },
           enable_reranking: {
             type: 'boolean',
-            description: '是否启用重排序优化结果质量，默认启用',
+            description: '是否启用重排序',
             default: true,
           },
         },
@@ -176,12 +178,12 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
     },
     {
       name: 'builtin-web_search',
-      description: '搜索互联网获取最新信息。当本地知识库没有答案，或需要获取实时信息时使用。',
+      description: '搜索互联网获取实时/最新信息，本地知识库没有答案时使用。',
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: '【必填】搜索查询文本' },
-          top_k: { type: 'integer', description: '返回的结果数量（可选，默认 5）。注意：此参数名为 top_k，不是 limit 或 max_results。', default: 5, minimum: 1, maximum: 20 },
+          query: { type: 'string', description: '搜索查询文本' },
+          top_k: { type: 'integer', description: '返回结果数量。参数名是 top_k，不是 limit/max_results。', default: 5, minimum: 1, maximum: 20 },
         },
         required: ['query'],
       },

@@ -1,6 +1,7 @@
 import React from 'react';
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import zhCommon from '@/locales/zh-CN/common.json';
 import { WindowControls } from '@/components/WindowControls';
 import { MobileHeaderProvider } from '@/components/layout/MobileHeaderContext';
 import { UnifiedMobileHeader } from '@/components/layout/UnifiedMobileHeader';
@@ -52,10 +53,12 @@ describe('ui shell smoke render', () => {
       </>
     );
 
-    const minimizeButton = screen.getByLabelText('window_controls.minimize');
+    // i18n mock（tests/ct/mocks/react-i18next.tsx）会解析 zh-CN 语言包，
+    // 因此按解析后的文案断言，而不是原始 key。
+    const minimizeButton = screen.getByLabelText(zhCommon.window_controls.minimize);
     expect(minimizeButton.closest('[data-shell-window-controls]')).toBeInTheDocument();
 
-    const mobileBackButton = screen.getByLabelText('common:mobile_header.back');
+    const mobileBackButton = screen.getByLabelText(zhCommon.mobile_header.back);
     expect(mobileBackButton.closest('[data-mobile-shell="header"]')).toBeInTheDocument();
   });
 

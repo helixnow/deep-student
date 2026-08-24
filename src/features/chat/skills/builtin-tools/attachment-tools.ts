@@ -79,23 +79,23 @@ attachment_read 无法读取压缩包内容。正确流程：
   embeddedTools: [
     {
       name: 'builtin-attachment_list',
-      description: '列出当前会话中的所有附件。当用户询问"上传过什么文件"、"之前的附件"时使用。返回附件列表包含：ID、名称、类型、所属消息ID。',
+      description: '列出当前会话的附件（ID、名称、类型、所属消息 ID）。',
       inputSchema: {
         type: 'object',
         properties: {
           session_id: { 
             type: 'string', 
-            description: '会话 ID，不填则使用当前会话' 
+            description: '会话 ID，不填则当前会话' 
           },
           type: { 
             type: 'string', 
-            description: '附件类型过滤，默认 all',
+            description: '附件类型过滤',
             enum: ['image', 'document', 'all'],
             default: 'all'
           },
           limit: { 
             type: 'integer', 
-            description: '返回数量限制，默认 20 条',
+            description: '返回数量限制',
             default: 20,
             minimum: 1,
             maximum: 100
@@ -105,21 +105,22 @@ attachment_read 无法读取压缩包内容。正确流程：
     },
     {
       name: 'builtin-attachment_read',
-      description: '读取指定附件的内容。图片返回 base64 编码，文档返回解析后的文本内容。当用户说"读取那个PDF"、"看看刚才的图片"时使用。此工具无法读取二进制/压缩包内容：xlsx/zip 等二进制附件应先用 builtin-attachment_stage 物化到 temp root 拿到路径；zip 压缩包物化后再用 builtin-attachment_extract 受管解压（移动端无 shell 时的解包途径），不要尝试 base64 手工拼装。',
+      description:
+        '读取附件内容：图片返回 base64，文档返回解析文本。无法读取二进制/压缩包：xlsx/zip 先用 attachment_stage 物化到 temp root，zip 再用 attachment_extract 受管解压（流程见技能说明），不要手工拼装 base64。',
       inputSchema: {
         type: 'object',
         properties: {
           message_id: { 
             type: 'string', 
-            description: '【必填】附件所属的消息 ID，可通过 attachment_list 获取' 
+            description: '附件所属消息 ID，经 attachment_list 获取' 
           },
           attachment_id: { 
             type: 'string', 
-            description: '【必填】附件 ID，可通过 attachment_list 获取' 
+            description: '附件 ID，经 attachment_list 获取' 
           },
           parse_content: {
             type: 'boolean',
-            description: '是否解析文档内容为文本（对于 PDF/DOCX 等），默认 true',
+            description: '解析文档内容为文本（PDF/DOCX 等），默认 true',
           },
         },
         required: ['message_id', 'attachment_id'],
@@ -128,7 +129,7 @@ attachment_read 无法读取压缩包内容。正确流程：
     {
       name: 'builtin-attachment_extract',
       description:
-        '把已用 builtin-attachment_stage 物化到会话 temp root 的 zip 附件安全解压到 extracted/<名称>/ 子目录（Medium）。纯 Rust 受管解压：复用 zip-bomb 防护（条目数/压缩比/总量限额）、路径穿越校验与 symlink 拒绝；是移动端等无 shell 环境下的解包途径，桌面端也应优先于 shell unzip。返回 { root_id: "temp", extract_dir, fileCount, files: [{path, sizeBytes}] }，随后可用 builtin-workspace_file_read（root_id=temp）读取解出的文件。仅支持 zip；rar/7z 返回结构化不支持错误。',
+        '把已 stage 到会话 temp root 的 zip 安全解压到 extracted/<名称>/（Medium）。纯 Rust 受管解压：zip-bomb 防护、路径穿越校验、symlink 拒绝；无 shell 环境的解包途径，桌面端也优先于 shell unzip。返回 extract_dir 与文件清单，之后用 workspace_file_read（root_id=temp）读取。仅支持 zip；rar/7z 返回结构化错误。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -142,11 +143,11 @@ attachment_read 无法读取压缩包内容。正确流程：
           relative_path: {
             type: 'string',
             minLength: 1,
-            description: '【必填】attachment_stage 返回的 relative_path（如 attachments/xxx.zip）',
+            description: 'attachment_stage 返回的 relative_path',
           },
           target_dir: {
             type: 'string',
-            description: '可选：解压目标目录名（extracted/ 下的单段目录名，默认取 zip 文件名；同名自动加序号）',
+            description: '解压目录名（extracted/ 下单段；默认 zip 文件名，同名加序号）',
           },
         },
         required: ['relative_path'],

@@ -81,16 +81,13 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
   embeddedTools: [
     {
       name: 'builtin-pptx_read_structured',
-      description:
-        '结构化读取 PPTX 演示文稿，输出 Markdown 格式。保留幻灯片标题和文本要点。' +
-        '当用户需要了解 PPT 内容时使用。',
+      description: '结构化读取 PPTX，输出 Markdown，保留幻灯片标题和文本要点。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】PPTX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'PPTX 资源 ID，可经 resource_list 或 attachment_list 获取。',
           },
         },
         required: ['resource_id'],
@@ -98,16 +95,13 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     },
     {
       name: 'builtin-pptx_get_metadata',
-      description:
-        '读取 PPTX 演示文稿的基本信息：精确幻灯片数量、文本总长度。' +
-        '当用户询问“这个 PPT 有几页”时使用。',
+      description: '读取 PPTX 基本信息：精确幻灯片数量、文本总长度。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】PPTX 文件的资源 ID（如 file_xxx）。',
+            description: 'PPTX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -116,16 +110,13 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     {
       name: 'builtin-pptx_extract_tables',
       description:
-        '提取 PPTX 演示文稿中的所有表格，返回结构化 JSON 数组。' +
-        '每个表格包含所在幻灯片标题、表头、数据行、行列数。' +
-        '当用户需要分析 PPT 中的表格数据时使用。',
+        '提取 PPTX 中所有表格为 JSON 数组，每个表格含所在幻灯片标题、表头、数据行、行列数。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】PPTX 文件的资源 ID（如 file_xxx）。',
+            description: 'PPTX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -134,16 +125,13 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     {
       name: 'builtin-pptx_to_spec',
       description:
-        '将已有 PPTX 演示文稿转换为 JSON spec 格式（与 pptx_create 互逆）。' +
-        '返回的 spec 可被修改后传给 pptx_create 生成新文件，实现 round-trip 编辑闭环。' +
-        '当用户要求"修改这个 PPT"时，先用此工具读取结构。',
+        '将已有 PPTX 转为 JSON spec（与 pptx_create 互逆）；修改 spec 后再 pptx_create 即完成 round-trip 编辑。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】PPTX 文件的资源 ID（如 file_xxx）。',
+            description: 'PPTX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -151,42 +139,40 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     },
     {
       name: 'builtin-pptx_replace_text',
-      description:
-        '在已有 PPTX 演示文稿中执行批量文本查找替换，保存为新文件。' +
-        '当用户要求"把 PPT 里的 XXX 替换为 YYY"时使用。',
+      description: '批量查找替换 PPTX 中的文本，保存为新文件。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description: '【必填】源 PPTX 文件的资源 ID。',
+            description: '源 PPTX 资源 ID。',
           },
           replacements: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                find: { type: 'string', description: '要查找的文本' },
-                replace: { type: 'string', description: '替换为的文本' },
+                find: { type: 'string', description: '查找文本' },
+                replace: { type: 'string', description: '替换文本' },
               },
               required: ['find', 'replace'],
             },
-            description: '【必填】替换对数组，每项包含 find 和 replace 字段。',
+            description: '替换对数组。',
           },
           file_name: {
             type: 'string',
-            description: '替换后的文件名（含 .pptx 后缀），默认 "edited.pptx"',
+            description: '输出文件名（含 .pptx 后缀）',
             default: 'edited.pptx',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
@@ -196,37 +182,33 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     {
       name: 'builtin-pptx_create',
       description:
-        '从 JSON spec 生成格式化 PPTX；默认保存到学习资源，也可安全写入已授权 workspace。' +
-        '支持标题页、内容页（要点列表）、表格页、空白页。' +
-        '当用户要求"帮我做一份 PPT"、"生成演示文稿"时使用。' +
-        '返回 TaskObjectHandle；workspace 输出同时返回可撤销的 mutation receipt/change set。',
+        '从 JSON spec 生成格式化 PPTX（标题页/内容页/表格页/空白页），默认存学习资源，也可写入已授权 workspace。' +
+        '返回 TaskObjectHandle；workspace 输出附带可撤销的 mutation receipt/change set。',
       inputSchema: {
         type: 'object',
         properties: {
           spec: {
             type: 'object',
-            description:
-              '【必填】演示文稿规格 JSON，包含 title 和 slides 数组。' +
-              'slides 支持类型：title/content/table/blank。',
+            description: '演示文稿规格 JSON：title + slides 数组，slide 类型 title/content/table/blank。',
           },
           file_name: {
             type: 'string',
-            description: '生成的文件名（含 .pptx 后缀），默认 "generated.pptx"',
+            description: '生成文件名（含 .pptx 后缀）',
             default: 'generated.pptx',
           },
           folder_id: {
             type: 'string',
-            description: '可选：保存到的文件夹 ID。不指定则保存到根目录。',
+            description: '保存目标文件夹 ID，缺省为根目录。',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },

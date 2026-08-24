@@ -26,7 +26,7 @@ describe('toolPackSkill contract', () => {
 
     expect(embeddedTool?.name).toBe('builtin-tool_pack');
     expect(embeddedTool?.description).toContain('Rust backend executor');
-    expect(embeddedTool?.description).toContain('frontend only exposes this schema');
+    expect(embeddedTool?.description).toContain('parallel');
   });
 
   it('requires tools and matches the backend tool_pack bounds', () => {

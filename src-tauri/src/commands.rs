@@ -272,7 +272,6 @@ pub fn merge_tags(primary: &[String], secondary: Option<&[String]>) -> Vec<Strin
 
 use serde_json;
 
-#[cfg(feature = "mcp")]
 /// 估算文本Token数量（优先使用tiktoken；不可用时回退启发式估算）
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct EstimateTokensRequest {
@@ -2634,6 +2633,7 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
     #[cfg(not(feature = "lance"))]
     let orphan_count = {
         // 未启用 Lance 特性时，不执行清理
+        let _ = (&store, &all_message_ids);
         debug!("[CleanupEmbeddings] 未启用 lance 特性，跳过向量清理");
         0
     };

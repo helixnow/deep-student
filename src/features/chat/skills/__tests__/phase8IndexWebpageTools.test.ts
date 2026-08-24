@@ -36,7 +36,7 @@ describe('phase 8 index and webpage tool contracts', () => {
     expect(schema.properties.resource_id.pattern).toBe('^res_[A-Za-z0-9_-]+$');
     expect(schema.properties.folder_id.pattern).toBe('^[A-Za-z0-9_-]+$');
     expect(tool('builtin-index_rebuild').description).toContain('High');
-    expect(tool('builtin-index_rebuild').description).toContain('VfsFullIndexingService');
+    expect(tool('builtin-index_rebuild').description).toContain('完整索引');
   });
 
   it('requires complete bounded fetched content and preserves source metadata', () => {
@@ -47,7 +47,7 @@ describe('phase 8 index and webpage tool contracts', () => {
     expect(schema.properties.url.maxLength).toBe(4096);
     expect(schema.properties.title.maxLength).toBe(300);
     expect(schema.properties.content.maxLength).toBe(1000000);
-    expect(tool('builtin-webpage_save').description).toContain('blob + source metadata');
+    expect(tool('builtin-webpage_save').description).toContain('hasMore=true');
     expect(tool('builtin-webpage_save').description).toContain('Medium');
   });
 });

@@ -144,7 +144,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 // Sentry for Rust (后端)
 use sentry::ClientInitGuard;
-use tracing::{debug, error, info, warn};
+#[cfg(feature = "mcp")]
+use tracing::debug;
+use tracing::{error, info, warn};
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -1888,15 +1890,15 @@ pub fn run() {
             crate::commands::export_mcp_config,
             // 2026-06-12 补注册：设置页 MCP 编辑器与 mcpService 启动预热已在调用
             crate::commands::preheat_mcp_tools,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(all(feature = "mcp", not(target_os = "android")))]
             crate::mcp::commands::start_mcp_oauth,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(all(feature = "mcp", not(target_os = "android")))]
             crate::mcp::commands::cancel_mcp_oauth,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(all(feature = "mcp", not(target_os = "android")))]
             crate::mcp::commands::revoke_mcp_oauth,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(all(feature = "mcp", not(target_os = "android")))]
             crate::mcp::commands::get_mcp_oauth_status,
-            #[cfg(not(target_os = "android"))]
+            #[cfg(all(feature = "mcp", not(target_os = "android")))]
             crate::mcp::commands::get_mcp_oauth_access_token,
             crate::commands::test_all_search_engines
 
@@ -2077,6 +2079,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_sessions
             // 会话导出（markdown / json）
             ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session
+            // 会话 JSONL 时间线导出（WI-12，流式写文件 + 默认脱敏）
+            ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session_jsonl
             // 事件发射失败计数（只读诊断）
             ,crate::chat_v2::events::chat_v2_get_emit_failure_count
             ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts

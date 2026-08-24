@@ -93,7 +93,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_propose',
       description:
-        '提案创建一条定时自动化（High 审批，不可记住授权）。调用前先向用户给出人话预览：调度描述 + 首次运行时间（如「每天 21:00，首次约 2 小时后」），确认无歧义再提案。action_type=notify（默认）：到点发系统通知并创建待办；action_type=agent_turn：到点由后端 headless 跑完整 Agent 任务，完成后推送结果摘要。支持 daily/weekdays/weekly/monthly/interval/once、IANA 时区、补偿策略和失败重试；「明天 09:00 提醒我复习」→ kind=once + date=明天日期。最多 20 条。返回 schedule_description 与 next_trigger_relative，用于向用户转述首次运行时间。',
+        '提案创建定时自动化（High 审批，不可记住授权）。调用前先用人话向用户预览调度与首次运行时间，确认无歧义再提案。notify（默认）=到点发通知并建待办；agent_turn=后端 headless 跑完整 Agent 任务并推送结果摘要。最多 20 条。返回 schedule_description 与 next_trigger_relative，用于转述首次运行时间。',
       inputSchema: {
         type: 'object',
         required: ['name', 'schedule', 'prompt'],
@@ -101,7 +101,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
         properties: {
           name: {
             type: 'string',
-            description: '自动化名称（≤100 字符，显示在通知与待办标题）',
+            description: '自动化名称（≤100 字符）',
           },
           schedule: {
             type: 'object',
@@ -112,81 +112,77 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
                 type: 'string',
                 enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'],
                 description:
-                  'daily=每日；weekdays=工作日；weekly=每周；monthly=每月；interval=每 N 分钟；once=指定日期单次（触发后自动完成，不再重复）',
+                  'daily=每日；weekdays=工作日；weekly=每周；monthly=每月；interval=每 N 分钟；once=单次（触发后自动完成）',
               },
               time: {
                 type: 'string',
-                description: '24 小时制 HH:MM，如 21:00（interval 以外均必填，interval 忽略）',
+                description: '24 小时制 HH:MM（interval 以外必填）',
               },
               date: {
                 type: 'string',
-                description:
-                  'once 必填：目标日期 YYYY-MM-DD（不能是过去时点），如"明天 09:00 提醒我复习"→ time=09:00 + date=明天日期',
+                description: 'once 必填：目标日期 YYYY-MM-DD（不能是过去时点）',
               },
               weekday: {
                 type: 'integer',
                 minimum: 0,
                 maximum: 6,
-                description: 'weekly 单天：0=周日 … 6=周六（提供 weekdays 时可省略）',
+                description: 'weekly 单天：0=周日…6=周六（有 weekdays 时可省略）',
               },
               weekdays: {
                 type: 'array',
                 items: { type: 'integer', minimum: 0, maximum: 6 },
                 minItems: 1,
-                description:
-                  'weekly 多天集合（0=周日 … 6=周六），如每周一三五 → [1,3,5]；与 weekday 同时提供时以本字段为准',
+                description: 'weekly 多天集合（0=周日…6=周六）；与 weekday 同时提供以本字段为准',
               },
               day_of_month: {
                 type: 'integer',
                 minimum: 1,
                 maximum: 31,
-                description: 'monthly 必填；短月份自动使用该月最后一天',
+                description: 'monthly 必填；短月份落到月末',
               },
               interval_minutes: {
                 type: 'integer',
                 minimum: 5,
                 maximum: 1440,
-                description: 'interval 必填：间隔分钟数（5–1440）',
+                description: 'interval 必填：间隔分钟数',
               },
               timezone: {
                 type: 'string',
-                description: '非 interval 可选的 IANA 时区，如 Asia/Shanghai；缺省使用系统时区',
+                description: '非 interval 可选 IANA 时区；缺省系统时区',
               },
             },
           },
           prompt: {
             type: 'string',
             description:
-              '任务说明（≤4000 字符）。notify 类型：写入通知正文与待办描述；agent_turn 类型：未提供 agent_prompt 时作为 agent 任务提示词',
+              '任务说明（≤4000 字符）。notify：写入通知正文与待办描述；agent_turn：缺省 agent_prompt 时作为其提示词',
           },
           action_type: {
             type: 'string',
             enum: ['notify', 'agent_turn'],
             default: 'notify',
-            description:
-              '到点动作：notify=仅通知+待办（默认）；agent_turn=后端 headless 真跑一轮 agent 任务并推送结果摘要',
+            description: '到点动作：notify=通知+待办（默认）；agent_turn=headless 跑 agent 任务',
           },
           agent_prompt: {
             type: 'string',
             description:
-              '仅 action_type=agent_turn 有效：headless agent 的任务提示词（≤4000 字符），如"检查到期复习卡并生成今日复习简报"。缺省时回退使用 prompt；headless 只能读取用户待办，不能写入',
+              '仅 agent_turn：headless 任务提示词（≤4000 字符），缺省回退使用 prompt',
           },
           session_mode: {
             type: 'string',
             enum: ['isolated', 'named'],
             default: 'isolated',
             description:
-              '仅 action_type=agent_turn 有效：isolated=每次运行新建独立会话（默认，适合日报/检查类）；named=固定会话跨运行积累上下文（适合"每周学情报告"这类需要参考上次结果的任务）',
+              '仅 agent_turn：isolated=每次新建独立会话（默认）；named=固定会话跨运行积累上下文',
           },
           model_id: {
             type: 'string',
-            description:
-              '仅 action_type=agent_turn 有效：指定运行模型的配置 ID，缺省使用默认对话模型',
+            description: '仅 agent_turn：运行模型配置 ID，缺省默认对话模型',
           },
           enabled: {
             type: 'boolean',
             default: true,
-            description: '是否立即启用，默认 true',
+            description: '是否立即启用',
           },
           catch_up_policy: {
             type: 'string',
@@ -222,7 +218,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             required: ['schemaVersion', 'profileHash', 'allowedTools', 'runtimeRoots', 'shellCommandPrefixes', 'networkDomains', 'maxToolRounds', 'timeoutSeconds', 'maxOutputBytes', 'rollbackRequired'],
             properties: {
               schemaVersion: { type: 'integer', enum: [1] },
-              profileHash: { type: 'string', pattern: '^(|[0-9a-fA-F]{64})$', description: '创建/更新时可传空字符串，由后端 canonical seal 后回传并持久化；非空值必须与内容匹配。' },
+              profileHash: { type: 'string', pattern: '^(|[0-9a-fA-F]{64})$', description: '创建/更新可传空字符串，由后端 seal 后回传；非空必须与内容匹配' },
               allowedTools: { type: 'array', items: { type: 'string' }, minItems: 1 },
               runtimeRoots: { type: 'array', minItems: 1, items: { type: 'object', required: ['rootId', 'access'], properties: { rootId: { type: 'string' }, access: { type: 'string', enum: ['read_only', 'read_write'] } }, additionalProperties: false } },
               shellCommandPrefixes: { type: 'array', items: { type: 'string' } },
@@ -239,7 +235,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_list',
       description:
-        '列出全部定时自动化（Low，无参数）。每条含 id、version、enabled、action_type、session_mode、schedule、schedule_description（人话调度，如"每天 21:00"）、next_trigger_at、next_trigger_relative（如"约 2 小时后"）、last_run_at、last_run_status/last_run_summary/last_run_error（上次运行结果）、once_completed（单次任务是否已完成）、agent_session_id；顶层含 count/max/capacity（容量占用）。回答"我有哪些定时任务"时转述 schedule_description + next_trigger_relative + 上次运行状态即可。',
+        '列出全部定时自动化（Low，无参数）。每条含 id、version、enabled、action_type、schedule_description（人话调度）、next_trigger_relative、last_run_status/last_run_summary、once_completed、agent_session_id 等；顶层含 count/max/capacity。回答"我有哪些定时任务"时转述人话调度、下次运行相对时间与上次运行状态即可。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -249,7 +245,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_set_enabled',
       description:
-        '按 id 启用或停用自动化（Medium 审批）。先 list 并将当前 version 原样传为 expected_version；冲突后重新读取。停用后调度器不再触发。',
+        '按 id 启用或停用自动化（Medium 审批）。先 list 并把当前 version 传为 expected_version；冲突后重新读取。',
       inputSchema: {
         type: 'object',
         required: ['id', 'expected_version', 'enabled'],
@@ -257,7 +253,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
         properties: {
           id: {
             type: 'string',
-            description: 'automation_propose 返回的 id（auto_<毫秒>_<4位>）',
+            description: 'automation_list 返回的自动化 ID',
           },
           expected_version: {
             type: 'integer',
@@ -274,7 +270,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_update',
       description:
-        '完整修改已有自动化（Medium 审批）。先用 automation_list 读取当前 version，并原样传入 expected_version；版本冲突时重新读取，禁止盲重试。可修改名称、调度、动作类型、提示词、Agent 会话/模型、补偿策略、重试和超时；至少提供一个待修改字段。返回修改前后快照。',
+        '修改已有自动化（Medium 审批）。先 list 读取当前 version 并传为 expected_version；冲突时重新读取，禁止盲重试。至少提供一个待修改字段；返回修改前后快照。',
       inputSchema: {
         type: 'object',
         required: ['id', 'expected_version'],
@@ -295,7 +291,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
         additionalProperties: false,
         properties: {
           id: { type: 'string', minLength: 1, description: 'automation_list 返回的自动化 ID' },
-          expected_version: { type: 'integer', minimum: 1, description: 'automation_list 返回的当前 version；用于乐观并发控制' },
+          expected_version: { type: 'integer', minimum: 1, description: 'automation_list 返回的当前 version' },
           name: { type: 'string', minLength: 1, maxLength: 100, description: '新名称' },
           schedule: {
             type: 'object',
@@ -304,13 +300,13 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             properties: {
               kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'] },
               time: { type: 'string', description: '非 interval 必填：24 小时制 HH:MM' },
-              date: { type: 'string', description: 'once 必填：目标日期 YYYY-MM-DD（不能是过去时点）' },
-              weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 单天：0=周日…6=周六（提供 weekdays 时可省略）' },
+              date: { type: 'string', description: 'once 必填：YYYY-MM-DD（不能是过去时点）' },
+              weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 单天：0=周日…6=周六' },
               weekdays: {
                 type: 'array',
                 items: { type: 'integer', minimum: 0, maximum: 6 },
                 minItems: 1,
-                description: 'weekly 多天集合（0=周日…6=周六），与 weekday 同时提供时以本字段为准',
+                description: 'weekly 多天集合；与 weekday 同时提供以本字段为准',
               },
               day_of_month: { type: 'integer', minimum: 1, maximum: 31, description: 'monthly 必填' },
               interval_minutes: { type: 'integer', minimum: 5, maximum: 1440, description: 'interval 必填：间隔分钟数' },
@@ -326,14 +322,14 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           max_retries: { type: 'integer', minimum: 0, maximum: 10 },
           retry_backoff_seconds: { type: 'integer', minimum: 5, maximum: 86400 },
           timeout_seconds: { type: 'integer', minimum: 30, maximum: 3600 },
-          trusted_profile: { type: 'object', description: '替换 trusted profile；调用底层更新 API 时传 null 可清除并恢复默认只读 headless。' },
+          trusted_profile: { type: 'object', description: '替换 trusted profile；底层 API 传 null 可清除并恢复默认只读 headless' },
         },
       },
     },
     {
       name: 'builtin-automation_delete',
       description:
-        '永久删除一条自动化（High，不可恢复）。调用前必须加载 ask-user 技能，用 builtin-ask_user 列明自动化名称、周期和动作并取得明确确认；不得记住该授权。确认前 list 返回的 version 必须作为 expected_version，冲突后重新确认。返回 success、automationId、deleted（删除前快照）、reversible=false 与 restoreWith=null。',
+        '永久删除自动化（High，不可恢复）。先用 builtin-ask_user 列明名称、周期和动作并取得明确确认，不得记住授权；确认前 list 返回的 version 传为 expected_version，冲突后重新确认。返回删除前快照，reversible=false。',
       inputSchema: {
         type: 'object',
         required: ['id', 'expected_version'],
@@ -347,7 +343,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_run_now',
       description:
-        '绕过调度时点，立即运行一条自动化（Medium 审批）。必须把 automation_list 返回的 version 传为 expected_version，冲突后重新读取再决定是否运行。notify 类型会立即发通知并建待办；agent_turn 类型会启动 headless 任务。返回 success 与 result；result 含 status、automationId，agent_turn 还含 timeoutSecs。运行副作用不可撤销（reversible=false）。',
+        '绕过调度时点，立即运行一条自动化（Medium 审批）。必须把 list 返回的 version 传为 expected_version，冲突后重新读取。notify 立即发通知并建待办；agent_turn 启动 headless 任务。运行副作用不可撤销。',
       inputSchema: {
         type: 'object',
         required: ['id', 'expected_version'],
@@ -361,7 +357,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_runs',
       description:
-        '查询自动化运行历史（Low，只读）。可按 automation_id 与 status 筛选，支持分页；返回状态、触发类型、尝试次数、摘要、错误和会话 ID。注意：status 过滤在当前页内进行（total/hasMore 按未过滤计），需要更多匹配时递增 page 继续翻页。',
+        '查询自动化运行历史（Low，只读）。可按 automation_id 与 status 筛选，支持分页；返回状态、摘要、错误和会话 ID。status 过滤在当前页内进行，需要更多匹配时递增 page。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -370,10 +366,10 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           status: {
             type: 'string',
             enum: ['queued', 'running', 'retrying', 'success', 'error', 'timeout', 'spawn_error', 'cancelled', 'heartbeat_ok', 'skipped'],
-            description: '可选：按运行状态过滤（在当前页内过滤），如 error=失败、running=执行中',
+            description: '可选：按运行状态过滤（当前页内）',
           },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
-          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页条数（≤20）' },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页条数' },
         },
       },
     },

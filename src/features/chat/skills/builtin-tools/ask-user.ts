@@ -52,13 +52,13 @@ export const askUserSkill: SkillDefinition = {
     {
       name: 'builtin-ask_user',
       description:
-        '向用户提出一个轻量级问题，提供 2-6 个选项。支持单选/多选模式，可配置是否允许自由输入。推荐选项放在数组首位并标注 (Recommended)。永久等待用户回答，不会超时。',
+        '向用户提出一个轻量级选择题（2-6 个选项，单选/多选，可自由输入）。推荐选项放首位并标注 (Recommended)。永久等待回答，不超时。',
       inputSchema: {
         type: 'object',
         properties: {
           question: {
             type: 'string',
-            description: '【必填】问题内容，简洁明确',
+            description: '问题内容，简洁明确',
           },
           options: {
             type: 'array',
@@ -74,7 +74,7 @@ export const askUserSkill: SkillDefinition = {
                     },
                     reason: {
                       type: 'string',
-                      description: '可选，解释为什么提供这个选项；前端会在 hover 时展示',
+                      description: '提供此选项的原因；前端 hover 展示',
                     },
                   },
                   required: ['label'],
@@ -84,22 +84,22 @@ export const askUserSkill: SkillDefinition = {
             minItems: 2,
             maxItems: 6,
             description:
-              '【必填】2-6 个选项。可传字符串数组，或传 { label, reason? } 对象数组。推荐选项必须放在第一位（索引 0），并在标签末尾标注 "(Recommended)"',
+              '选项数组：字符串或 { label, reason? } 对象。推荐选项放第一位并在标签末尾标注 "(Recommended)"',
           },
           multiple: {
             type: 'boolean',
             default: false,
-            description: '是否允许多选（默认 false，单选模式）',
+            description: '是否允许多选',
           },
           allowCustom: {
             type: 'boolean',
             default: true,
-            description: '是否允许用户自由输入（默认 true）',
+            description: '是否允许自由输入',
           },
 
           context: {
             type: 'string',
-            description: '为什么要问这个问题的简要上下文（可选）',
+            description: '提问原因的简要上下文',
           },
         },
         required: ['question', 'options'],

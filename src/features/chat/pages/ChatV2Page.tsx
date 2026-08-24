@@ -742,7 +742,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     resetDeleteConfirmation,
     createSession, loadMoreSessions,
     renderSessionItem,
-    // 会话拖入分组（hello-pangea DnD；handleDragEnd 识别 session-group:/session-ungrouped）
+    // 会话拖入分组（dnd-kit DnD；handleDragEnd 识别 session-group:/session-ungrouped）
     onSessionDragEnd: handleDragEnd,
   });
 

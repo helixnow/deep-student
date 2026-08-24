@@ -9,10 +9,10 @@ const FILE_MANAGER_TOOLS = [
 const itemSchema: JsonSchemaProperty = {
   type: 'object', additionalProperties: false,
   properties: {
-    item_id: { type: 'string', minLength: 1, description: 'Stable unique identifier for this item in the batch manifest.' },
+    item_id: { type: 'string', minLength: 1, description: 'Stable unique id in batch_manifest.' },
     operation: { type: 'string', enum: ['rename', 'move', 'delete', 'format_convert'] },
-    source_path: { type: 'string', minLength: 1, description: 'Workspace-relative source path. Absolute, parent, hidden, and symlink paths are rejected.' },
-    destination_path: { type: 'string', minLength: 1, description: 'Required for rename, move, and format_convert. Never valid for delete.' },
+    source_path: { type: 'string', minLength: 1, description: 'Workspace-relative path; absolute/parent/hidden/symlink rejected.' },
+    destination_path: { type: 'string', minLength: 1, description: 'Required for rename/move/format_convert; never valid for delete.' },
     format: { type: 'string', enum: ['json_pretty', 'json_compact', 'csv_to_tsv', 'tsv_to_csv'], description: 'Required only for format_convert.' },
   },
   required: ['item_id', 'operation', 'source_path'],
@@ -44,15 +44,15 @@ Authorized roots and Skill package roots stay read-only. Only root_id="workspace
   embeddedTools: [
     {
       name: 'builtin-file_manager_plan',
-      description: 'Read-only plan for 1-100 workspace files. Normalizes paths, validates destinations, hashes every source, and returns a session/root-bound preview_sha256 with a ten-minute TTL.',
+      description: 'Read-only plan for 1-100 workspace files; returns a session/root-bound preview_sha256 (10-minute TTL).',
       inputSchema: { type: 'object', additionalProperties: false, properties: {
-        root_id: { type: 'string', enum: ['workspace'], description: 'Required runtime root. Authorized roots stay read-only.' },
+        root_id: { type: 'string', enum: ['workspace'], description: 'Runtime root; authorized roots stay read-only.' },
         items: { type: 'array', minItems: 1, maxItems: 100, items: itemSchema },
       }, required: ['root_id', 'items'] },
     },
     {
       name: 'builtin-file_manager_commit',
-      description: 'Commits one exact unexpired plan after approval. Approval binds root_id and preview_sha256. Every source is re-hashed for OCC and every item appears in batch_manifest; complete is false for any failure.',
+      description: 'Commits one exact unexpired plan; approval binds root_id and preview_sha256. Sources re-hashed for OCC; complete=false on any failure.',
       inputSchema: { type: 'object', additionalProperties: false, properties: {
         plan_id: { type: 'string', minLength: 1 },
         root_id: { type: 'string', enum: ['workspace'] },
@@ -61,7 +61,7 @@ Authorized roots and Skill package roots stay read-only. Only root_id="workspace
     },
     {
       name: 'builtin-file_manager_restore',
-      description: 'Restores one soft-deleted file using the complete unchanged receipt. Verifies session/root binding, backend trash path, hash, and an absent original destination.',
+      description: 'Restores one soft-deleted file from the unchanged receipt; verifies session/root binding, trash path, hash, and absent destination.',
       inputSchema: { type: 'object', additionalProperties: false, properties: { receipt: {
         type: 'object', additionalProperties: false,
         properties: {
