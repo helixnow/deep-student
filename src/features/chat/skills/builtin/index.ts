@@ -167,6 +167,7 @@ export const chatAnkiSkill: SkillDefinition = {
     'builtin-chatanki_undo_library_last_review',
     'builtin-chatanki_delete_library_card',
     'builtin-chatanki_retemplate',
+    'builtin-chatanki_transform',
     'builtin-chatanki_control',
     'builtin-chatanki_export',
     'builtin-chatanki_sync',
@@ -466,6 +467,107 @@ export const chatAnkiSkill: SkillDefinition = {
           },
         },
         required: ['documentId', 'updates'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-chatanki_transform',
+      description:
+        '对当前会话文档的卡片执行批量声明式变换（字段内正则替换、批量增删标签），纯本地执行。后端直接从数据库读取选中卡片的无截断全文快照做变换，不存在截断毒化，无需 allowTruncatedSource。默认 mode=dry_run：只返回逐卡 diff 摘要不写库，用于向用户展示效果；确认后再用 mode=apply 经逐卡乐观锁写回，apply 必须携带与选择集精确一致的完整 expectedVersions（cardId -> version，来自最近一次 get_cards）。首次变换必须先 dry_run；一次 apply 影响超过 3 张卡前必须先用 ask_user 征得用户确认。沙箱脚本模式（transform.script）为后续版本预留，当前传入将返回 error=script_mode_unimplemented。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          documentId: {
+            type: 'string',
+            description: '目标制卡任务 documentId（当前会话拥有；来自 run/start/wait/import_apkg）',
+          },
+          selection: {
+            type: 'object',
+            description: '可选：变换范围。缺省为文档全部 live 非诊断卡。cardIds 与 filter 互斥。',
+            properties: {
+              cardIds: {
+                type: 'array',
+                items: { type: 'string' },
+                minItems: 1,
+                maxItems: 500,
+                description: '精确选择的真实卡片 ID（来自 get_cards，不得使用序号或临时 ID）',
+              },
+              filter: {
+                type: 'string',
+                enum: ['all', 'edited_only', 'error_only'],
+                description: '按状态筛选（与 get_cards 的 filter 同语义；all 含诊断卡）',
+              },
+            },
+            additionalProperties: false,
+          },
+          mode: {
+            type: 'string',
+            enum: ['dry_run', 'apply'],
+            default: 'dry_run',
+            description:
+              'dry_run：执行变换但不写库，返回逐卡 diff 摘要（before/after 仅展示用途截断，写库路径不经过它）；apply：校验 expectedVersions 后逐卡乐观锁写回。首次变换必须先 dry_run。',
+          },
+          transform: {
+            type: 'object',
+            description: '变换定义。当前版本仅支持 ops 声明式操作序列（纯 Rust 执行，移动端可用）；script 沙箱脚本模式预留未实现。',
+            properties: {
+              ops: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 20,
+                description: '声明式操作序列，按序应用到每张选中卡片。regex 采用 Rust regex crate 语法（无回溯灾难），编译失败整批返回 error=invalid_pattern 且不写库。',
+                items: {
+                  type: 'object',
+                  properties: {
+                    op: {
+                      type: 'string',
+                      enum: ['regex_replace', 'tag_add', 'tag_remove'],
+                      description:
+                        'regex_replace：字段内正则替换（替换串支持 $1/$name 捕获组引用）；tag_add / tag_remove：对整个选择集批量增删标签（tag_add 自动去重）。',
+                    },
+                    field: {
+                      type: 'string',
+                      enum: ['front', 'back', 'text'],
+                      description: 'regex_replace 的目标字段；text 为 null 的卡自动跳过',
+                    },
+                    pattern: {
+                      type: 'string',
+                      maxLength: 1024,
+                      description: 'Rust regex 语法，regex_replace 必填',
+                    },
+                    replacement: {
+                      type: 'string',
+                      maxLength: 4096,
+                      description: 'regex_replace 的替换串，支持 $1 捕获组引用；缺省为空串（删除匹配）',
+                    },
+                    tags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      minItems: 1,
+                      maxItems: 50,
+                      description: 'tag_add / tag_remove 的标签列表',
+                    },
+                  },
+                  required: ['op'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['ops'],
+            additionalProperties: false,
+          },
+          expectedVersions: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description:
+              'apply 模式必填：cardId -> version 完整映射，必须与本次选择集精确一致（与 retemplate 相同 CAS 语义）。dry_run 可省略。缺卡/多卡返回 expected_versions_mismatch；任一版本过期该卡返回 conflict，其余卡照常生效。',
+          },
+          purpose: {
+            type: 'string',
+            description: '变换目的的一句话说明，用于审计与用户确认展示。',
+          },
+        },
+        required: ['documentId', 'transform'],
         additionalProperties: false,
       },
     },
@@ -1010,6 +1112,15 @@ export const chatAnkiSkill: SkillDefinition = {
 - 暂停/恢复或撤销：必须先 list 读取最新 \`reviewState\`。暂停/恢复传 \`expectedReviewVersion\`；撤销仅在 \`latestReview.undoable=true\` 时传同一快照的 \`expectedReviewVersion + expectedLogId\`。只有用户明确指定目标与动作才执行，歧义时先 ask_user。
 - 删除：先 list 获取同一快照的 \`expectedVersion\` 与 \`reviewState.reviewVersion\`；未入队即 \`reviewState=null\` 时，\`expectedReviewVersion\` 必须显式传 \`null\`。一次删除超过 3 张库卡必须先 ask_user；即使单张，目标或删除意图不明确时也必须确认。冲突后重新 list，不得换用会话级删除绕过 CAS。
 - **Agent 禁止评分**：库级流程同样严禁 Agent 选择 Again/Hard/Good/Easy，工具清单没有任何 rate/score 工具。Agent 只能读取统计与状态，并在用户明确要求时入队、编辑、暂停/恢复、撤销或删除；实际评分必须由用户在复习 UI 中完成。
+
+## 批量程序化变换（chatanki_transform）
+
+- 用户要求对多张卡做**同构的机械变换**（统一术语替换、清理格式、批量加/删标签）时，优先一次 \`builtin-chatanki_transform\`，不要循环调用 update_card 或把 get_cards 的截断输出拼进 batch_update_cards。
+- 固定流程：\`builtin-chatanki_get_cards\`（收集选择集的 \`cardId -> version\`）-> \`transform(mode=dry_run)\` 查看逐卡 diff -> 向用户展示效果（影响超过 3 张卡时用 \`builtin-ask_user\` 确认）-> \`transform(mode=apply, expectedVersions=完整映射)\` -> \`get_cards\` 复核。
+- 后端直接读数据库全文快照做变换，**不受 2000 字符截断影响**；diff 里的 before/after 截断仅为展示，写库路径不经过它。
+- \`apply\` 的 \`expectedVersions\` 必须与选择集精确一致：缺卡/多卡返回 \`expected_versions_mismatch\`，任一版本过期该卡返回 \`conflict\`（其余卡照常生效）；冲突后必须重新 \`get_cards\` 重建映射，不得复用旧版本。
+- 当前仅支持声明式 \`ops\`（\`regex_replace\` / \`tag_add\` / \`tag_remove\`，≤20 个按序应用）；正则用 Rust regex 语法，编译失败整批返回 \`invalid_pattern\` 且不写库。沙箱脚本模式（\`transform.script\`）尚未实现，传入会返回 \`script_mode_unimplemented\`。
+- dry_run 返回 \`wouldBeInvalid=true\` 的卡说明变换后内容不合法（front+back 为空且无 Cloze text），apply 会逐卡拒绝；先调整 ops 再 apply。
 
 ## 更换模板（必须完整走版本化流程）
 

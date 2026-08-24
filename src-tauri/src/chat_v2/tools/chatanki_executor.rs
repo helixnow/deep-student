@@ -25,6 +25,7 @@
 //! - `builtin-chatanki_undo_library_last_review`：带复习版本及日志锁撤销库卡片最后评分。
 //! - `builtin-chatanki_delete_library_card`：同时校验内容与复习版本后删除库卡片。
 //! - `builtin-chatanki_retemplate`：带批量乐观锁地切换一批卡片的模板。
+//! - `builtin-chatanki_transform`：批量声明式变换（正则替换/增删标签），dry_run 预览 + apply 乐观锁写回。
 //! - `builtin-chatanki_control`：控制后台任务（暂停/恢复/重试/取消）。
 //! - `builtin-chatanki_export`：导出 documentId 的卡片（APKG/JSON）。
 //! - `builtin-chatanki_sync`：将 documentId 的卡片同步到 AnkiConnect。
@@ -48,6 +49,12 @@ use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
+use super::chatanki_transform::{
+    apply_transform_ops, changed_field_names, check_expected_versions, compile_transform_ops,
+    select_transform_cards, transform_fields_are_valid, ChatAnkiTransformArgs,
+    NormalizedTransformKind, NormalizedTransformRequest, TransformFields, TransformMode,
+    TransformSelectionError,
+};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::apkg_importer_service::ApkgImporterService;
@@ -1438,6 +1445,7 @@ impl ChatAnkiToolExecutor {
                 | "chatanki_undo_library_last_review"
                 | "chatanki_delete_library_card"
                 | "chatanki_retemplate"
+                | "chatanki_transform"
                 | "chatanki_control"
                 | "chatanki_export"
                 | "chatanki_sync"
@@ -1566,6 +1574,7 @@ impl ToolExecutor for ChatAnkiToolExecutor {
                     .await
             }
             "chatanki_retemplate" => self.execute_retemplate(call, ctx, start_time).await,
+            "chatanki_transform" => self.execute_transform(call, ctx, start_time).await,
             "chatanki_control" => self.execute_control(call, ctx, start_time).await,
             "chatanki_export" => self.execute_export(call, ctx, start_time).await,
             "chatanki_sync" => self.execute_sync(call, ctx, start_time).await,
@@ -1587,7 +1596,11 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             | "chatanki_set_library_suspended"
             // 批量写工具：单次可影响 ≤100 张卡（含批量删除），定级 Medium。
             | "chatanki_batch_update_cards"
-            | "chatanki_delete_cards" => ToolSensitivity::Medium,
+            | "chatanki_delete_cards"
+            // transform（ops 声明式模式）：纯 Rust 批量变换，Medium 与其它批量写
+            // 工具对齐。TODO(script mode)：脚本模式实现后需按参数动态升 High
+            //（对齐 shell script-runner 分级，见调研报告 §6 审批表）。
+            | "chatanki_transform" => ToolSensitivity::Medium,
             // export/sync can send complete card data outside the local card
             // generation flow, so both use the Medium data-egress baseline.
             "chatanki_export" | "chatanki_sync" | "chatanki_import_apkg" => ToolSensitivity::Medium,
@@ -4038,8 +4051,378 @@ impl ChatAnkiToolExecutor {
                 object.insert("fill".to_string(), retemplate_fill_summary(&fill_outcomes));
             }
         }
-
         Ok(finish_chatanki_success(call, ctx, start_time, payload))
+    }
+
+    /// `builtin-chatanki_transform`：对选中卡片执行批量声明式变换（ops 模式）。
+    ///
+    /// 快照直接出自 DB（无 2000 字符截断视图），不存在截断毒化；写回逐卡复用
+    /// `update_anki_card_if_version_for_session` 的 IMMEDIATE 事务 CAS 原语，
+    /// 成功项汇总为一次预览块 patch + `fsrs://changed`（与 batch_update_cards 同构）。
+    ///
+    /// - `mode=dry_run`（默认）：执行变换但不写库，返回逐卡 diff 摘要；
+    /// - `mode=apply`：必须携带与选择集精确一致的完整 `expectedVersions`
+    ///   （与 retemplate 相同的 `expected_versions_mismatch` 语义），逐卡 CAS 写回。
+    ///
+    /// TODO(script mode)：`transform.script`（沙箱 python/node 脚本变换）尚未实现，
+    /// 当前结构化返回 `script_mode_unimplemented`。落地方案见
+    /// `docs/research/anki-ai-native/round1/04-shell-script-integration.md` §5：
+    /// 快照导出到 temp root job 目录 → 复用 `shell_sandbox::SandboxPolicy`（网络恒禁、
+    /// CHATANKI_INPUT/OUTPUT 环境变量合同）→ 校验后走本函数同一条 CAS 写回路径；
+    /// 实现时敏感度需按参数升 High 并接入审批卡展示脚本正文。
+    async fn execute_transform(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+    ) -> Result<ToolResultInfo, String> {
+        let request = match serde_json::from_value::<ChatAnkiTransformArgs>(call.arguments.clone())
+            .map_err(|error| error.to_string())
+            .and_then(ChatAnkiTransformArgs::normalize)
+        {
+            Ok(request) => request,
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Invalid chatanki_transform arguments: {}", error),
+                ));
+            }
+        };
+        let db = match ctx.anki_db.as_ref() {
+            Some(db) => db,
+            None => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.databaseUnavailable".to_string(),
+                ));
+            }
+        };
+        let document_id = request.document_id.clone();
+        if let Err(error) = verify_document_ownership(db, &document_id, &ctx.session_id) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
+
+        let ops = match &request.kind {
+            NormalizedTransformKind::Script => {
+                // TODO(script mode)：沙箱脚本模式尚未实现（见函数级注释）。
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": "rejected",
+                        "error": "script_mode_unimplemented",
+                        "documentId": document_id,
+                        "mode": request.mode.as_str(),
+                        "mutationApplied": false,
+                        "retryable": false,
+                        "guidance": "transform.script (sandboxed python/node) is reserved but not implemented yet; use transform.ops (regex_replace / tag_add / tag_remove) instead.",
+                    }),
+                ));
+            }
+            NormalizedTransformKind::Ops(ops) => ops,
+        };
+        let compiled_ops = match compile_transform_ops(ops) {
+            Ok(compiled) => compiled,
+            Err(invalid) => {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": "blocked",
+                        "error": "invalid_pattern",
+                        "documentId": document_id,
+                        "opIndex": invalid.op_index,
+                        "pattern": invalid.pattern,
+                        "detail": invalid.error,
+                        "mutationApplied": false,
+                        "retryable": false,
+                        "guidance": "Fix the Rust regex (regex crate syntax) at ops[opIndex] and retry; no card was modified.",
+                    }),
+                ));
+            }
+        };
+
+        let cards = match db.get_cards_for_document_for_session(&document_id, &ctx.session_id) {
+            Ok(Some(cards)) => cards,
+            Ok(None) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    "blocks.ankiCards.errors.statusNotFound".to_string(),
+                ));
+            }
+            Err(error) => {
+                return Ok(finish_chatanki_failure(
+                    call,
+                    ctx,
+                    start_time,
+                    format!("Failed to load cards for document: {}", error),
+                ));
+            }
+        };
+        let selected = match select_transform_cards(cards, &request.selection) {
+            Ok(selected) => selected,
+            Err(TransformSelectionError::MissingCards(card_ids)) => {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": "conflict",
+                        "error": "selection_changed",
+                        "documentId": document_id,
+                        "cardIds": card_ids,
+                        "mutationApplied": false,
+                        "retryable": true,
+                        "guidance": "Call builtin-chatanki_get_cards to refresh the live card set before retrying.",
+                    }),
+                ));
+            }
+            Err(TransformSelectionError::TooLarge { selected, limit }) => {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": "blocked",
+                        "error": "selection_too_large",
+                        "documentId": document_id,
+                        "selected": selected,
+                        "limit": limit,
+                        "mutationApplied": false,
+                        "retryable": false,
+                        "guidance": "Narrow the selection with selection.cardIds or selection.filter and run the transform in batches.",
+                    }),
+                ));
+            }
+        };
+
+        match request.mode {
+            TransformMode::DryRun => Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                transform_dry_run_payload(&document_id, &selected, &compiled_ops),
+            )),
+            TransformMode::Apply => {
+                self.apply_transform(call, ctx, start_time, db, &request, &selected, &compiled_ops)
+                    .await
+            }
+        }
+    }
+
+    /// transform apply 模式：expectedVersions 精确校验 → 逐卡 CAS 写回 → 一次 UI 同步。
+    #[allow(clippy::too_many_arguments)]
+    async fn apply_transform(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        start_time: Instant,
+        db: &crate::database::Database,
+        request: &NormalizedTransformRequest,
+        selected: &[crate::models::AnkiCard],
+        compiled_ops: &[super::chatanki_transform::CompiledTransformOp],
+    ) -> Result<ToolResultInfo, String> {
+        let document_id = request.document_id.clone();
+        let selected_ids: Vec<String> = selected.iter().map(|card| card.id.clone()).collect();
+        if let Err(mismatch) = check_expected_versions(&selected_ids, &request.expected_versions) {
+            return Ok(finish_chatanki_success(
+                call,
+                ctx,
+                start_time,
+                json!({
+                    "status": "conflict",
+                    "error": "expected_versions_mismatch",
+                    "documentId": document_id,
+                    "missingVersionIds": mismatch.missing_version_ids,
+                    "unexpectedVersionIds": mismatch.unexpected_version_ids,
+                    "mutationApplied": false,
+                    "retryable": true,
+                    "guidance": "expectedVersions must contain exactly one current version for every selected card. Call builtin-chatanki_get_cards before retrying.",
+                }),
+            ));
+        }
+        let mutation_target =
+            match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
+            {
+                Ok(target) => target,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        format!("Unable to prepare card UI synchronization: {}", error),
+                    ));
+                }
+            };
+
+        let total = selected.len();
+        let mut results: Vec<Value> = Vec::with_capacity(total);
+        let mut updated_cards: Vec<crate::models::AnkiCard> = Vec::new();
+        let mut unchanged_count = 0usize;
+        let mut conflict_count = 0usize;
+        let mut invalid_count = 0usize;
+        let mut failed_count = 0usize;
+
+        for source in selected {
+            let card_id = source.id.clone();
+            let before = TransformFields::from_card(source);
+            let after = apply_transform_ops(compiled_ops, &before);
+            let changed_fields = changed_field_names(&before, &after);
+            if changed_fields.is_empty() {
+                unchanged_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "unchanged",
+                }));
+                continue;
+            }
+            if !transform_fields_are_valid(&after) {
+                invalid_count += 1;
+                results.push(json!({
+                    "cardId": card_id,
+                    "status": "invalid",
+                    "fields": changed_fields,
+                    "error": "blocks.ankiCards.errors.cardContentRequired",
+                }));
+                continue;
+            }
+            // 经 ChatAnkiCardPatch 写回，保证模板别名字段（extra_fields）与
+            // update_card / batch_update_cards 路径完全同构地保持同步。
+            let patch = ChatAnkiCardPatch {
+                front: changed_fields
+                    .contains(&"front")
+                    .then(|| after.front.clone()),
+                back: changed_fields.contains(&"back").then(|| after.back.clone()),
+                text: changed_fields
+                    .contains(&"text")
+                    .then(|| after.text.clone()),
+                tags: changed_fields.contains(&"tags").then(|| after.tags.clone()),
+                extra_fields: None,
+            };
+            let mut card = source.clone();
+            patch.apply_to(&mut card);
+            // normalize() 已保证 expectedVersions 与选择集精确一致。
+            let expected_version = request
+                .expected_versions
+                .get(&card_id)
+                .cloned()
+                .unwrap_or_default();
+            match db.update_anki_card_if_version_for_session(
+                &card,
+                expected_version.as_str(),
+                &ctx.session_id,
+            ) {
+                Ok(AnkiCardVersionUpdate::Updated(updated)) => {
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "ok",
+                        "fields": changed_fields,
+                        "card": convert_card_for_tool(&updated, None),
+                    }));
+                    updated_cards.push(updated);
+                }
+                Ok(AnkiCardVersionUpdate::Conflict(current)) => {
+                    conflict_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "conflict",
+                        "error": "version_conflict",
+                        "current": convert_card_for_tool(&current, None),
+                    }));
+                }
+                Ok(AnkiCardVersionUpdate::NotFound) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "not_found",
+                        "error": "blocks.ankiCards.errors.statusNotFound",
+                    }));
+                }
+                Err(error) => {
+                    failed_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "failed",
+                        "error": format!("Failed to update card: {}", error),
+                    }));
+                }
+            }
+        }
+
+        let updated_count = updated_cards.len();
+        let (ui_status, ui_sync) = if updated_count > 0 {
+            let event_cards: Vec<Value> = updated_cards.iter().map(convert_backend_card).collect();
+            let updated_ids: Vec<String> =
+                updated_cards.iter().map(|card| card.id.clone()).collect();
+            let receipt = mutation_ui_sync_receipt(persist_and_emit_card_mutation(
+                ctx,
+                &mutation_target,
+                &document_id,
+                json!({
+                    "documentId": document_id,
+                    "cardMutation": "upsert",
+                    "cards": event_cards,
+                }),
+            ));
+            emit_fsrs_cards_changed_with_cards(
+                ctx,
+                "card_updated",
+                &updated_ids,
+                updated_cards.iter().map(convert_backend_card).collect(),
+            );
+            receipt
+        } else {
+            (
+                "ok",
+                json!({ "status": "not_required", "eventAttempted": false }),
+            )
+        };
+
+        let problem_count = conflict_count + invalid_count + failed_count;
+        let status = if problem_count == 0 {
+            if ui_status == "ok" {
+                "ok"
+            } else {
+                "partial"
+            }
+        } else if updated_count > 0 {
+            "partial"
+        } else if conflict_count > 0 {
+            "conflict"
+        } else if invalid_count > 0 && failed_count == 0 {
+            "blocked"
+        } else {
+            "failed"
+        };
+
+        Ok(finish_chatanki_success(
+            call,
+            ctx,
+            start_time,
+            json!({
+                "status": status,
+                "mode": "apply",
+                "documentId": document_id,
+                "total": total,
+                "updated": updated_count,
+                "unchanged": unchanged_count,
+                "conflicts": conflict_count,
+                "invalid": invalid_count,
+                "failed": failed_count,
+                "results": results,
+                "mutationApplied": updated_count > 0,
+                "retryable": conflict_count > 0,
+                "uiSync": ui_sync,
+            }),
+        ))
     }
 
     async fn execute_wait(
@@ -10282,6 +10665,96 @@ fn select_chatanki_cards_page(
         .map(|(index, card)| convert_card_for_tool(&card, Some(index)))
         .collect();
     (total, page_cards)
+}
+
+/// transform dry_run：执行变换但不写库，返回逐卡 diff 摘要。
+///
+/// diff 的 before/after 仅为展示用途按 `CHATANKI_CARD_FIELD_LIMIT` 截断——
+/// 写库路径（apply 模式）直接使用内存中的全文快照，不经过该截断视图。
+fn transform_dry_run_payload(
+    document_id: &str,
+    selected: &[crate::models::AnkiCard],
+    compiled_ops: &[super::chatanki_transform::CompiledTransformOp],
+) -> Value {
+    let mut diff: Vec<Value> = Vec::new();
+    let mut changed_count = 0usize;
+    let mut unchanged_count = 0usize;
+    let mut invalid_count = 0usize;
+    for card in selected {
+        let before = TransformFields::from_card(card);
+        let after = apply_transform_ops(compiled_ops, &before);
+        let changed_fields = changed_field_names(&before, &after);
+        if changed_fields.is_empty() {
+            unchanged_count += 1;
+            continue;
+        }
+        changed_count += 1;
+        let valid = transform_fields_are_valid(&after);
+        if !valid {
+            invalid_count += 1;
+        }
+        diff.push(json!({
+            "cardId": card.id,
+            "fields": changed_fields,
+            "before": transform_fields_display(&before, &changed_fields),
+            "after": transform_fields_display(&after, &changed_fields),
+            "wouldBeInvalid": !valid,
+        }));
+    }
+    json!({
+        "status": "ok",
+        "mode": "dry_run",
+        "documentId": document_id,
+        "total": selected.len(),
+        "changed": changed_count,
+        "unchanged": unchanged_count,
+        "invalid": invalid_count,
+        "diff": diff,
+        "mutationApplied": false,
+        "retryable": false,
+        "uiSync": { "status": "not_required", "eventAttempted": false },
+        "guidance": if invalid_count > 0 {
+            "Some cards would become invalid (empty front+back and no cloze text) after this transform; apply would reject them per-card. Adjust the ops before applying."
+        } else {
+            "Review the diff with the user, then re-run with mode=apply and the complete expectedVersions from the latest get_cards."
+        },
+    })
+}
+
+/// 仅序列化发生变化的字段，长字段按展示上限截断（不影响写库路径）。
+fn transform_fields_display(fields: &TransformFields, changed: &[&'static str]) -> Value {
+    let mut object = serde_json::Map::new();
+    for name in changed {
+        match *name {
+            "front" => {
+                object.insert(
+                    "front".to_string(),
+                    json!(safe_truncate_chars(&fields.front, CHATANKI_CARD_FIELD_LIMIT)),
+                );
+            }
+            "back" => {
+                object.insert(
+                    "back".to_string(),
+                    json!(safe_truncate_chars(&fields.back, CHATANKI_CARD_FIELD_LIMIT)),
+                );
+            }
+            "text" => {
+                object.insert(
+                    "text".to_string(),
+                    fields
+                        .text
+                        .as_deref()
+                        .map(|text| json!(safe_truncate_chars(text, CHATANKI_CARD_FIELD_LIMIT)))
+                        .unwrap_or(Value::Null),
+                );
+            }
+            "tags" => {
+                object.insert("tags".to_string(), json!(fields.tags));
+            }
+            _ => {}
+        }
+    }
+    Value::Object(object)
 }
 
 fn chatanki_version_conflict_payload(

@@ -1385,14 +1385,24 @@ impl StreamingAnkiService {
                     if depth == 0 {
                         if let Some(start) = obj_start {
                             let card_content = buffer[start..=i].to_string();
-                            // 消费卡片本体及紧随其后的分隔符（若已到达），
+                            // 消费卡片本体及紧随其后的分隔符（若已到达，含损坏变体），
                             // 避免其残留成为下一张卡的前缀噪声；
                             // 对象前的自然语言前缀（如"以下是卡片："）一并丢弃
                             let mut rest_start = i + 1;
                             let rest = &buffer[rest_start..];
                             let trimmed = rest.trim_start();
+                            let ws_len = rest.len() - trimmed.len();
                             if trimmed.starts_with(DELIMITER) {
-                                rest_start += (rest.len() - trimmed.len()) + DELIMITER.len();
+                                rest_start += ws_len + DELIMITER.len();
+                            } else if trimmed.starts_with("<<<") {
+                                // 损坏分隔符变体（如 "<<< ANKI_CARD_JSON_END>>>"）紧随卡片时一并消费
+                                if let Some(tail_pos) = trimmed.find(BROKEN_DELIMITER_TAIL) {
+                                    let between = &trimmed[3..tail_pos];
+                                    if between.chars().all(|c| c.is_whitespace() || c == '<') {
+                                        rest_start +=
+                                            ws_len + tail_pos + BROKEN_DELIMITER_TAIL.len();
+                                    }
+                                }
                             }
                             *buffer = buffer[rest_start..].to_string();
                             return Some(Ok(card_content));
@@ -3285,5 +3295,417 @@ mod tests {
         let mut buffer = "内容".repeat(10_000);
         assert_eq!(svc.extract_card_from_buffer(&mut buffer), None);
         assert!(!buffer.is_empty());
+    }
+
+    // ==================== 字段校验元数据执行（Round 2 #2） ====================
+    //
+    // min_length/max_length/allowed_values/validation_pattern 违规不毙卡，
+    // 仅写入 extra_fields[QA_FLAGS_FIELD] 留痕。
+
+    /// 从违规项中提取 rule 名便于断言
+    fn violation_rules(violations: &[Value]) -> Vec<String> {
+        violations
+            .iter()
+            .map(|v| v["rule"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn validate_field_passes_without_constraints() {
+        let rule = make_rule(true, FieldType::Text, "无约束字段");
+        assert!(validate_field_against_rule("front", "任意内容", &rule).is_empty());
+    }
+
+    #[test]
+    fn validate_field_flags_min_length_by_unicode_chars() {
+        let mut rule = make_rule(true, FieldType::Text, "正面");
+        rule.min_length = Some(5);
+
+        // "题目" = 2 个 Unicode 字符（6 字节）：必须按字符数而非字节数判定
+        let violations = validate_field_against_rule("front", "题目", &rule);
+        assert_eq!(violation_rules(&violations), vec!["min_length"]);
+        assert!(violations[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("长度 2 小于最小长度 5"));
+
+        // 恰好 5 个字符则通过
+        assert!(validate_field_against_rule("front", "五个字的题", &rule).is_empty());
+    }
+
+    #[test]
+    fn validate_field_flags_max_length() {
+        let mut rule = make_rule(true, FieldType::Text, "正面");
+        rule.max_length = Some(3);
+
+        let violations = validate_field_against_rule("front", "超过三个字", &rule);
+        assert_eq!(violation_rules(&violations), vec!["max_length"]);
+        assert!(validate_field_against_rule("front", "三个字", &rule).is_empty());
+    }
+
+    #[test]
+    fn validate_field_flags_allowed_values() {
+        let mut rule = make_rule(true, FieldType::Text, "正确选项");
+        rule.allowed_values = Some(vec![json!("A"), json!("B"), json!(42)]);
+
+        assert!(validate_field_against_rule("correct", "A", &rule).is_empty());
+        // 非字符串允许值按其 JSON 文本比较
+        assert!(validate_field_against_rule("correct", "42", &rule).is_empty());
+
+        let violations = validate_field_against_rule("correct", "E", &rule);
+        assert_eq!(violation_rules(&violations), vec!["allowed_values"]);
+        assert_eq!(violations[0]["field"], "correct");
+
+        // 空允许列表视为未配置，不应全量误报
+        rule.allowed_values = Some(vec![]);
+        assert!(validate_field_against_rule("correct", "任意", &rule).is_empty());
+    }
+
+    #[test]
+    fn validate_field_flags_validation_pattern() {
+        let mut rule = make_rule(true, FieldType::Text, "编号");
+        rule.validation_pattern = Some(r"^\d{4}$".to_string());
+
+        assert!(validate_field_against_rule("code", "2026", &rule).is_empty());
+        let violations = validate_field_against_rule("code", "abc", &rule);
+        assert_eq!(violation_rules(&violations), vec!["validation_pattern"]);
+    }
+
+    #[test]
+    fn validate_field_skips_uncompilable_pattern() {
+        let mut rule = make_rule(true, FieldType::Text, "编号");
+        // 非法正则属于模板配置问题：跳过该项校验，不惩罚卡片
+        rule.validation_pattern = Some("[unclosed".to_string());
+        assert!(validate_field_against_rule("code", "whatever", &rule).is_empty());
+
+        // 空白模式同样跳过
+        rule.validation_pattern = Some("   ".to_string());
+        assert!(validate_field_against_rule("code", "whatever", &rule).is_empty());
+    }
+
+    #[test]
+    fn validate_field_accumulates_multiple_violations() {
+        let mut rule = make_rule(true, FieldType::Text, "正面");
+        rule.min_length = Some(10);
+        rule.allowed_values = Some(vec![json!("固定答案")]);
+        rule.validation_pattern = Some(r"^\d+$".to_string());
+
+        let violations = validate_field_against_rule("front", "abc", &rule);
+        assert_eq!(
+            violation_rules(&violations),
+            vec!["min_length", "allowed_values", "validation_pattern"]
+        );
+        // 每项都携带字段名与可读消息
+        for v in &violations {
+            assert_eq!(v["field"], "front");
+            assert!(!v["message"].as_str().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn extract_fields_violations_flag_but_do_not_kill_card() {
+        let (svc, _dir) = make_test_service();
+        let mut front_rule = make_rule(true, FieldType::Text, "正面");
+        front_rule.min_length = Some(20); // 故意设高，触发违规
+        let mut correct_rule = make_rule(false, FieldType::Text, "正确选项");
+        correct_rule.allowed_values = Some(vec![json!("A"), json!("B")]);
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), front_rule);
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+        rules.insert("correct".to_string(), correct_rule);
+
+        let json_value = json!({
+            "front": "短问题",
+            "back": "答案",
+            "correct": "E"
+        });
+        let (front, back, _tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("violations must not kill the card");
+
+        // 卡片内容原样保留
+        assert_eq!(front, "短问题");
+        assert_eq!(back, "答案");
+
+        // 违规汇总写入 _qa_flags，且为可解析的 JSON 数组
+        let flags_raw = extra
+            .get(QA_FLAGS_FIELD)
+            .expect("violations must be recorded in _qa_flags");
+        let flags: Vec<Value> = serde_json::from_str(flags_raw).expect("flags must be valid JSON");
+        let mut flagged: Vec<(String, String)> = flags
+            .iter()
+            .map(|f| {
+                (
+                    f["field"].as_str().unwrap_or_default().to_string(),
+                    f["rule"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect();
+        flagged.sort();
+        assert_eq!(
+            flagged,
+            vec![
+                ("correct".to_string(), "allowed_values".to_string()),
+                ("front".to_string(), "min_length".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_fields_compliant_card_has_no_qa_flags() {
+        let (svc, _dir) = make_test_service();
+        let mut front_rule = make_rule(true, FieldType::Text, "正面");
+        front_rule.min_length = Some(2);
+        front_rule.max_length = Some(50);
+        front_rule.validation_pattern = Some("惯性".to_string());
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), front_rule);
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+
+        let json_value = json!({ "front": "什么是惯性？", "back": "答案" });
+        let (_front, _back, _tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("compliant card");
+        assert!(
+            !extra.contains_key(QA_FLAGS_FIELD),
+            "compliant card must not carry _qa_flags"
+        );
+    }
+
+    #[test]
+    fn extract_fields_tags_validated_per_item() {
+        let (svc, _dir) = make_test_service();
+        let mut tags_rule = make_rule(false, FieldType::Array, "标签");
+        tags_rule.max_length = Some(4);
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+        rules.insert("tags".to_string(), tags_rule);
+
+        let json_value = json!({
+            "front": "问题",
+            "back": "答案",
+            "tags": ["物理", "远超四个字符的超长标签"]
+        });
+        let (_front, _back, tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("tag violations must not kill the card");
+
+        // 标签本身原样保留
+        assert_eq!(tags.len(), 2);
+        let flags: Vec<Value> =
+            serde_json::from_str(extra.get(QA_FLAGS_FIELD).expect("flagged")).expect("valid JSON");
+        assert_eq!(flags.len(), 1, "only the overlong tag is flagged");
+        assert_eq!(flags[0]["field"], "tags");
+        assert_eq!(flags[0]["rule"], "max_length");
+    }
+
+    #[test]
+    fn qa_flags_never_leak_into_fallback_back() {
+        let (svc, _dir) = make_test_service();
+        // back 缺失且无默认值 → 走 extra_fields 兜底拼接分支；
+        // _qa_flags 是元数据，绝不能被拼进 back 正文
+        let mut note_rule = make_rule(false, FieldType::Text, "备注");
+        note_rule.min_length = Some(50); // 触发违规
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert("note".to_string(), note_rule);
+
+        let json_value = json!({ "front": "问题", "note": "短备注" });
+        let (_front, back, _tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("card survives");
+
+        assert!(extra.contains_key(QA_FLAGS_FIELD));
+        assert_eq!(back, "短备注", "back falls back to note content only");
+        assert!(
+            !back.contains("min_length"),
+            "qa flags metadata must not leak into back: {back}"
+        );
+    }
+
+    // ==================== brace-depth 切卡器（Round 2 #1） ====================
+    //
+    // 核心函数 extract_card_from_buffer_impl 不依赖 &self，直接测试状态机本身：
+    // in_string / escape / brace_depth 三个状态位 + DELIMITER 辅助信号。
+
+    const DELIM: &str = "<<<ANKI_CARD_JSON_END>>>";
+
+    fn extract(buffer: &mut String) -> Option<Result<String, String>> {
+        StreamingAnkiService::extract_card_from_buffer_impl(buffer)
+    }
+
+    #[test]
+    fn brace_cutter_waits_for_split_json_then_cuts_without_delimiter() {
+        // 半包 JSON：卡片在 chunk 边界被截断，先等待；补齐后无需分隔符即切卡
+        let mut buffer = String::from(r#"{"front": "什么是牛顿第一"#);
+        assert!(extract(&mut buffer).is_none());
+        assert_eq!(
+            buffer,
+            r#"{"front": "什么是牛顿第一"#,
+            "半包时缓冲必须原样保留"
+        );
+
+        buffer.push_str(r#"定律？", "back": "惯性定律"}"#);
+        let card = extract(&mut buffer)
+            .expect("补齐后应切出卡片")
+            .expect("应为 Ok");
+        assert_eq!(
+            card,
+            r#"{"front": "什么是牛顿第一定律？", "back": "惯性定律"}"#
+        );
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn brace_cutter_waits_when_nested_object_not_closed() {
+        // 半包变体：深度计数须覆盖嵌套对象，内层未闭合时不得提前切卡
+        let mut buffer = String::from(r#"{"fields": {"Front": "嵌套问题""#);
+        assert!(extract(&mut buffer).is_none());
+
+        buffer.push_str(r#"}, "template_id": "design-lab"}"#);
+        let card = extract(&mut buffer).unwrap().unwrap();
+        assert_eq!(
+            card,
+            r#"{"fields": {"Front": "嵌套问题"}, "template_id": "design-lab"}"#
+        );
+        assert!(serde_json::from_str::<Value>(&card).is_ok());
+    }
+
+    #[test]
+    fn brace_cutter_extracts_multiple_cards_from_one_chunk() {
+        // 一个 chunk 内到达两张完整卡（含分隔符），逐次切出
+        let mut buffer = format!(
+            r#"{{"front": "Q1", "back": "A1"}}{DELIM}{{"front": "Q2", "back": "A2"}}{DELIM}"#
+        );
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front": "Q1", "back": "A1"}"#
+        );
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front": "Q2", "back": "A2"}"#
+        );
+        assert!(extract(&mut buffer).is_none());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn brace_cutter_extracts_multiple_cards_without_any_delimiter() {
+        // 模型漏发分隔符时，brace-depth 主信号仍能逐张切卡（旧实现会整段滞留）
+        let mut buffer = String::from(r#"{"front":"Q1","back":"A1"} {"front":"Q2","back":"A2"}"#);
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front":"Q1","back":"A1"}"#
+        );
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front":"Q2","back":"A2"}"#
+        );
+        assert!(extract(&mut buffer).is_none());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn brace_cutter_ignores_delimiter_inside_json_string() {
+        // 字符串内含分隔符文本：不得在字符串中间误切（旧实现的已知缺陷）
+        let mut buffer =
+            format!(r#"{{"front": "输出 {DELIM} 有什么作用？", "back": "流式切卡信号"}}{DELIM}"#);
+        let card = extract(&mut buffer).unwrap().unwrap();
+        assert_eq!(
+            card,
+            format!(r#"{{"front": "输出 {DELIM} 有什么作用？", "back": "流式切卡信号"}}"#)
+        );
+        assert!(
+            card.contains(DELIM),
+            "字符串内的分隔符文本必须原样保留在卡片中"
+        );
+        assert!(buffer.is_empty());
+        assert!(serde_json::from_str::<Value>(&card).is_ok());
+    }
+
+    #[test]
+    fn brace_cutter_ignores_delimiter_in_string_even_when_json_incomplete() {
+        // 半包 + 字符串内分隔符：旧实现会在此误切出坏 JSON，新实现必须继续等待
+        let mut buffer = format!(r#"{{"front": "分隔符 {DELIM} 出现在字符串里", "back": "尚未"#);
+        let snapshot = buffer.clone();
+        assert!(
+            extract(&mut buffer).is_none(),
+            "字符串内的分隔符不得触发切卡"
+        );
+        assert_eq!(buffer, snapshot, "等待期间缓冲必须原样保留");
+
+        // 补齐后正常切卡，分隔符文本完整保留
+        buffer.push_str(r#"结束"}"#);
+        let card = extract(&mut buffer).unwrap().unwrap();
+        assert!(card.contains(DELIM));
+        assert!(serde_json::from_str::<Value>(&card).is_ok());
+    }
+
+    #[test]
+    fn brace_cutter_handles_escaped_quotes_and_braces_in_strings() {
+        // 转义引号 \" 不得终止字符串；字符串内的 {} 不得参与深度计数；
+        // 尾部 "\\" 的转义反斜杠不得吞掉字符串结束引号
+        let mut buffer = String::from(r#"{"front": "他说：\"{ 这不是括号 }\"", "back": "转义\\"}"#);
+        let card = extract(&mut buffer).unwrap().unwrap();
+        assert_eq!(
+            card,
+            r#"{"front": "他说：\"{ 这不是括号 }\"", "back": "转义\\"}"#
+        );
+        assert!(buffer.is_empty());
+        assert!(serde_json::from_str::<Value>(&card).is_ok());
+    }
+
+    #[test]
+    fn delimiter_still_cuts_unbalanced_fragment_for_backward_compat() {
+        // 括号不配平的残片：状态机无法闭合，字符串外的分隔符作为辅助信号兜底，
+        // 且不影响后续正常卡片（残片交由上游降级为 error card）
+        let mut buffer =
+            format!(r#"{{"front": "括号缺失"{DELIM}{{"front": "下一张", "back": "B"}}"#);
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front": "括号缺失""#
+        );
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front": "下一张", "back": "B"}"#
+        );
+        assert!(extract(&mut buffer).is_none());
+    }
+
+    #[test]
+    fn broken_delimiter_variant_still_recovers_unbalanced_fragment() {
+        // 损坏分隔符在未闭合字符串内：不得触发修复分支（字符串感知）
+        let mut buffer = String::from(r#"{"front": "残片<<< ANKI_CARD_JSON_END>>>"#);
+        assert!(extract(&mut buffer).is_none());
+
+        // 损坏分隔符在字符串外 + 坏 JSON：修复分支兜底切卡
+        let mut buffer = String::from(r#"{"front": "残片"<<< ANKI_CARD_JSON_END>>>"#);
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front": "残片""#
+        );
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn prose_prefix_is_discarded_when_json_cuts() {
+        // 对象前的自然语言前缀被丢弃，切出的内容是纯 JSON（旧实现会连前缀一起切出）
+        let mut buffer = format!(r#"好的，以下是第一张卡片：{{"front":"Q","back":"A"}}{DELIM}"#);
+        assert_eq!(
+            extract(&mut buffer).unwrap().unwrap(),
+            r#"{"front":"Q","back":"A"}"#
+        );
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn brace_cutter_handles_multibyte_utf8_safely() {
+        // 多字节 UTF-8（中日韩、emoji）与字节级扫描共存：切割点必须落在字符边界
+        let mut buffer = format!(r#"{{"front": "水的沸点🌡️是{{{{c1::100}}}}℃"}}{DELIM}"#);
+        let card = extract(&mut buffer).unwrap().unwrap();
+        assert!(serde_json::from_str::<Value>(&card).is_ok());
+        assert!(card.contains("🌡️"));
+        assert!(buffer.is_empty());
     }
 }

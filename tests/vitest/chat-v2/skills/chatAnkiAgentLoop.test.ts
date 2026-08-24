@@ -39,7 +39,7 @@ describe('ChatAnki agent acceptance loop', () => {
       .map((tool) => tool.name)
       .sort();
     expect(allowedChatAnkiTools.sort()).toEqual(expectedChatAnkiToolNames);
-    expect(embeddedChatAnkiTools).toHaveLength(28);
+    expect(embeddedChatAnkiTools).toHaveLength(29);
     for (const name of requiredTools) {
       expect(chatAnkiSkill.allowedTools).toContain(name);
       expect(chatAnkiSkill.embeddedTools?.some((tool) => tool.name === name)).toBe(true);
