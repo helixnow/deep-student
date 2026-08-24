@@ -14,6 +14,8 @@ export interface GenerativeBlockSlotProps {
   span?: GenerativeLayoutUnit;
   layoutMode: GenerativeLayoutMode;
   blockId?: string;
+  /** skip-to-actions 落点；仅第一个可达 ActionBar 槽位使用。 */
+  focusTargetId?: string;
   /** 非块 props 的外部渲染依赖（例如 ActionBar handler 注册表）。 */
   renderContext?: unknown;
   children: React.ReactNode;
@@ -45,6 +47,7 @@ export function areGenerativeBlockSlotPropsEqual(
     prev.span === next.span &&
     prev.layoutMode === next.layoutMode &&
     prev.blockId === next.blockId &&
+    prev.focusTargetId === next.focusTargetId &&
     Object.is(prev.renderContext, next.renderContext) &&
     shallowEqualProps(prev.props, next.props)
   );
@@ -55,11 +58,15 @@ function GenerativeBlockSlotInner({
   span,
   layoutMode,
   blockId,
+  focusTargetId,
   children,
 }: GenerativeBlockSlotProps) {
   const spanClass = layoutSpanClassName(layoutMode, span);
+  const skipTarget = typeof focusTargetId === 'string' && focusTargetId.length > 0;
   return (
     <div
+      id={skipTarget ? focusTargetId : undefined}
+      tabIndex={skipTarget ? -1 : undefined}
       className={spanClass}
       data-layout-span={span}
       data-block-type={type}

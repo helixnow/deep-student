@@ -320,7 +320,11 @@ export type {
   GenerativeUIParseErrorCode,
   ClassifiedGenerativeUIParseError,
 } from './utils/classifyGenerativeUIParseErrors';
-export { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
+export {
+  collectUnregisteredActionIds,
+  firstReachableActionBarIndex,
+  intentHasReachableActionBar,
+} from './utils/collectUnregisteredActionIds';
 
 // 注册内置块
 import './blocks';

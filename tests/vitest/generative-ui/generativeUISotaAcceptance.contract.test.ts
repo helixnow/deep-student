@@ -472,6 +472,44 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'GENERATIVE_EMBED_ID_RE',
       ]),
   },
+  {
+    id: 'round67-empty-action-bar-toolbar',
+    check: () =>
+      fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
+        'const showToolbar = visibleActions.length > 0 || showUndoControl;',
+      ]),
+  },
+  {
+    id: 'round68-reachable-skip-link',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/collectUnregisteredActionIds.ts', [
+        'export function intentHasReachableActionBar',
+      ]) &&
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'firstReachableActionBarIndex(displayIntent, actionHandlers)',
+      ]),
+  },
+  {
+    id: 'round69-renderer-undo-isolation',
+    check: () =>
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'new GenerativeActionUndoStack()',
+        'undoStack={undoStack}',
+      ]),
+  },
+  {
+    id: 'round70-skip-link-lands-on-action-bar',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/collectUnregisteredActionIds.ts', [
+        'export function firstReachableActionBarIndex',
+      ]) &&
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'focusTargetId={index === reachableActionBarIndex ? actionsTargetId : undefined}',
+      ]) &&
+      fileContains('src/features/generative-ui/components/GenerativeBlockSlot.tsx', [
+        'focusTargetId?: string',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
@@ -512,6 +550,8 @@ describe('generativeUISotaAcceptance contract', () => {
       'usePrefersContrast',
       'createCopyBlockActionHandlers',
       'collectUnregisteredActionIds',
+      'intentHasReachableActionBar',
+      'firstReachableActionBarIndex',
       'formatGenerativeDate',
       'readPersistedLastGoodFingerprint',
     ]) {

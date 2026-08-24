@@ -80,10 +80,13 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
     expect(actionRoot?.firstElementChild).toBe(skip);
 
     const grid = actionContainer.querySelector('[data-layout-mode]');
-    expect(grid?.id).toMatch(/^generative-ui-actions-/);
-    expect(grid).toHaveAttribute('tabindex', '-1');
-    expect(skip).toHaveAttribute('href', `#${grid?.id}`);
-    expect(document.getElementById(grid?.id ?? '')).toBe(grid);
+    const actionSlot = actionContainer.querySelector('[data-generative-block="action-bar"]');
+    expect(grid).not.toHaveAttribute('id');
+    expect(actionSlot).toHaveAttribute('id');
+    expect(actionSlot?.id).toMatch(/^generative-ui-actions-/);
+    expect(actionSlot).toHaveAttribute('tabindex', '-1');
+    expect(skip).toHaveAttribute('href', `#${actionSlot?.id}`);
+    expect(document.getElementById(actionSlot?.id ?? '')).toBe(actionSlot);
 
     const statSlot = container.querySelector('[data-generative-block="stat-card"]');
     const textSlot = container.querySelector('[data-generative-block="text"]');
@@ -115,7 +118,7 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
     expect(roots).toHaveLength(2);
     const targetIds = roots.map((root) => {
       const skip = root.querySelector<HTMLAnchorElement>('[data-skip-to-actions]');
-      const target = root.querySelector<HTMLElement>('[data-layout-mode]');
+      const target = root.querySelector<HTMLElement>('[data-generative-block="action-bar"]');
       expect(skip).toHaveAttribute('href', `#${target?.id}`);
       expect(document.getElementById(target?.id ?? '')).toBe(target);
       return target?.id;

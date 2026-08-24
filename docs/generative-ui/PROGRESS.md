@@ -1,5 +1,26 @@
 # Generative UI 进度日志
 
+## Round 70（2026-08-24）— skip-link 落到操作栏
+
+1. [x] skip-to-actions 的 href 指向第一个可达 ActionBar 槽位，不再落在整块 layout grid
+2. [x] `GenerativeBlockSlot.focusTargetId` + `firstReachableActionBarIndex`
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
+## Round 69（2026-08-24）— Renderer 独立撤销栈
+
+1. [x] `GenerativeUIRenderer` 每实例 `new GenerativeActionUndoStack()`，不再默认共享模块单例
+2. [x] 后一条消息挂载时不会继承上一条 HITL 的撤销按钮（`rendererUndoIsolation`）
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
+## Round 68（2026-08-24）— 可达 skip-link
+
+1. [x] `hasActionBar` 改为 `intentHasReachableActionBar`：强制注册表且全部未登记时不渲染 `[data-skip-to-actions]`
+2. [x] 导出 + SOTA 合同锁定 + `rendererUnregisteredActions` 单测
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 67（2026-08-24）— 空 ActionBar 不渲染 toolbar
 
 1. [x] 强制注册表且没有可见按钮 / undo 时，不输出空 `role="toolbar"`

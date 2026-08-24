@@ -170,14 +170,17 @@
 19. ~~**Round 65 reset 保活 / 导图 ID**~~ — ✅ Style Lab 不再 `clear()` 抹切片；embed id 白名单
 20. ~~**Round 66 隐藏未注册按钮**~~ — ✅ 强制注册表时 ActionBar 不渲染未注册按钮
 21. ~~**Round 67 空 toolbar**~~ — ✅ 无可见操作时不输出空 `role="toolbar"`
-22. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+22. ~~**Round 68 可达 skip-link**~~ — ✅ 全未登记时不渲染 `[data-skip-to-actions]`
+23. ~~**Round 69 Renderer 独立撤销栈**~~ — ✅ 每实例 HITL undo，不继承模块单例
+24. ~~**Round 70 skip-link 落点**~~ — ✅ 跳到第一个可达 ActionBar 槽位，而不是内容 grid
+25. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–67 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–70 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
