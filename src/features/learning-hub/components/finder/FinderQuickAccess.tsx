@@ -448,7 +448,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
-            <DsButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 [@media(pointer:coarse)]:min-h-11 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
+            <DsButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <CaretRight size={16} />
               ) : (

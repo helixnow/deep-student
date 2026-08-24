@@ -1058,7 +1058,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           variant="primary"
           size="md"
           onClick={loadConfig}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise className="w-4 h-4" />
           {t('common:retry')}
@@ -1089,7 +1089,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <DsButton
                     key={folder.id}
                     variant="ghost" size="sm"
-                    className="w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-11"
+                    className="w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => handleSelectRootFolder(folder.id)}
                   >
                     <FolderOpen size={14} className="text-muted-foreground" />
@@ -1100,7 +1100,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </CustomScrollArea>
           </div>
         ) : (
-          <DsButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4 [@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4 [@media(pointer:coarse)]:!min-h-11">
             {loadingFolders ? (
               <CircleNotch size={16} className="animate-spin" />
             ) : (
@@ -1138,10 +1138,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
                 />
                 <div className="flex gap-2">
-                  <DsButton variant="ghost" size="sm" className="flex-1 [@media(pointer:coarse)]:min-h-11" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
+                  <DsButton variant="ghost" size="sm" className="flex-1 [@media(pointer:coarse)]:!min-h-11" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
                     {t('common:cancel')}
                   </DsButton>
-                  <DsButton variant="primary" size="sm" className="flex-1 [@media(pointer:coarse)]:min-h-11" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
+                  <DsButton variant="primary" size="sm" className="flex-1 [@media(pointer:coarse)]:!min-h-11" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
                     {isMutating && <CircleNotch size={16} className="animate-spin" />}
                     {t('common:create')}
                   </DsButton>
@@ -1150,7 +1150,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </motion.div>
           ) : (
             <motion.div key="create-root-button" {...disclosureMotion} className="overflow-hidden">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
                 <Plus size={16} />
                 {t('memory.create_folder')}
               </DsButton>
@@ -1190,13 +1190,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </div>
 
         {/* 视图切换 */}
-        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.refresh')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isListLoading} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise className={cn('w-4 h-4', isListLoading && 'animate-spin')} />
         </DsButton>
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
-          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', viewMode === 'tree' && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', viewMode === 'tree' && 'text-primary bg-primary/10')}
           aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
@@ -1209,12 +1209,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); setConfirmingBatchDelete(false); }}
-          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', batchMode && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
           <CheckSquare size={16} />
         </DsButton>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.export')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.export')}>
           <Download size={16} />
         </DsButton>
 
@@ -1224,7 +1224,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
-          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', showProfile && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', showProfile && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.profile')}
         >
           <MemoryIcon size={16} />
@@ -1232,7 +1232,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
-          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', showAuditLog && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', showAuditLog && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.audit_log')}
           title={t('memory.audit_log')}
         >
@@ -1243,7 +1243,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
-              className={cn('text-success hover:bg-success/10 [@media(pointer:coarse)]:min-h-11', isBatchImporting && 'bg-success/10')}
+              className={cn('text-success hover:bg-success/10 [@media(pointer:coarse)]:!min-h-11', isBatchImporting && 'bg-success/10')}
             >
               <ListPlus size={16} />
               {t('memory.batch_import')}
@@ -1251,7 +1251,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={isCreatingInline ? handleCancelCreate : handleOpenCreate}
-              className={cn('text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11', isCreatingInline && 'bg-primary/10')}
+              className={cn('text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11', isCreatingInline && 'bg-primary/10')}
             >
               <Plus size={16} />
               {t('memory.new')}
@@ -1263,7 +1263,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={handleToggleSelectAll}
-              className="text-muted-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
+              className="text-muted-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
             </DsButton>
@@ -1273,7 +1273,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 onClick={handleBatchDelete}
                 disabled={isMutating}
                 className={cn(
-                  'text-danger hover:bg-danger/10 transition-colors [@media(pointer:coarse)]:min-h-11',
+                  'text-danger hover:bg-danger/10 transition-colors [@media(pointer:coarse)]:!min-h-11',
                   confirmingBatchDelete && 'bg-danger/15 font-medium'
                 )}
               >
@@ -1423,7 +1423,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   ) : profileError ? (
                     <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
                       <div>{profileError}</div>
-                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:min-h-11">
+                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:!min-h-11">
                         {t('common:retry')}
                       </DsButton>
                     </div>
@@ -1494,7 +1494,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
                       <div>{auditLoadError}</div>
                       <div>
-                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs [@media(pointer:coarse)]:min-h-11">
+                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs [@media(pointer:coarse)]:!min-h-11">
                           {t('common:retry')}
                         </DsButton>
                       </div>
@@ -1512,7 +1512,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </div>
                       {hasMoreAuditLogs && (
                         <div className="flex justify-center py-2 border-t border-border/20">
-                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11">
+                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
                             {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
                             {t('memory.audit_load_more')}
                           </DsButton>
@@ -1535,7 +1535,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <ListPlus size={16} />
                       <span className="text-sm font-medium">{t('memory.batch_import')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
                       <X size={16} />
                     </DsButton>
                   </div>
@@ -1632,7 +1632,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <MemoryIcon size={16} />
                       <span className="text-sm font-medium">{t('memory.create_title')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.cancel')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('memory.aria.cancel')}>
                       <X size={16} />
                     </DsButton>
                   </div>
@@ -1735,7 +1735,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <WarningCircle size={32} className="mb-2 text-destructive/60" />
                 <span className="text-sm mb-3">{treeError}</span>
-                <DsButton variant="primary" size="sm" onClick={loadTree} className="[@media(pointer:coarse)]:min-h-11">
+                <DsButton variant="primary" size="sm" onClick={loadTree} className="[@media(pointer:coarse)]:!min-h-11">
                   <ArrowClockwise className="w-3.5 h-3.5" />
                   {t('common:retry')}
                 </DsButton>
@@ -1790,7 +1790,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 size="sm"
                 onClick={loadMemories}
                 disabled={isListLoading}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowClockwise className={cn('w-3.5 h-3.5', isListLoading && 'animate-spin')} />
                 {t('common:retry')}
@@ -2016,7 +2016,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           </DsButton>
                         ) : (
                           // 触屏无 hover：删除钮常显弱化态（[@media(pointer:coarse)]），避免隐形可点
-                          <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
+                          <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
                             <Trash size={14} />
                           </DsButton>
                         )
@@ -2050,7 +2050,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               })}
               {hasMoreMemories && (
                 <div className="flex justify-center py-2">
-                  <DsButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11">
+                  <DsButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
                     {isLoadingMore ? <CircleNotch size={12} className="animate-spin" /> : null}
                     {t('memory.load_more')}
                   </DsButton>
@@ -2237,7 +2237,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       <DsButton
                         variant="ghost" size="icon" iconOnly
                         // 触屏无 hover：删除钮常显弱化态，避免隐形可点
-                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:text-danger hover:bg-danger/10"
+                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:text-danger hover:bg-danger/10"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                         aria-label={t('memory.aria.delete')}
                       >
@@ -2355,10 +2355,10 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:min-h-11"
               />
               <div className="flex gap-2">
-                <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
+                <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11">
                   <X size={12} />{t('common:cancel')}
                 </DsButton>
-                <DsButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
+                <DsButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11">
                   {isLoading ? <CircleNotch size={12} className="animate-spin" /> : <FloppyDisk size={12} />}
                   {t('common:save')}
                 </DsButton>
@@ -2389,7 +2389,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 variant="ghost" size="sm"
                 onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                 className={cn(
-                  'text-danger hover:bg-danger/10 !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors',
+                  'text-danger hover:bg-danger/10 !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 transition-colors',
                   confirmingDelete && 'bg-danger/15 font-medium'
                 )}
               >
@@ -2397,12 +2397,12 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 {confirmingDelete ? t('memory.confirm_delete') : t('common:delete')}
               </DsButton>
               {!isEditing && (
-                <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
+                <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11">
                   <PencilSimple size={12} />{t('memory.edit')}
                 </DsButton>
               )}
             </div>
-            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!min-h-11">
               <ArrowSquareOut size={12} />{t('memory.open_editor')}
             </DsButton>
           </div>

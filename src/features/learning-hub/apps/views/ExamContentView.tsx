@@ -1981,7 +1981,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </DsButton>
@@ -2048,7 +2048,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:min-h-11"
+                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:!min-h-11"
               >
                 {isResuming ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -2071,7 +2071,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <span className="text-sm text-destructive truncate" title={error}>
               {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
-            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               <ArrowClockwise size={14} />
               {t('common:actions.retry')}
             </DsButton>
@@ -2112,7 +2112,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'list' || undefined}
               aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'list'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2133,7 +2133,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'practice' || undefined}
               aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'practice'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
@@ -2154,7 +2154,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:min-h-11',
+                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
                       activeTopTab === 'more'
                         ? 'text-accent-foreground font-medium hover:bg-transparent'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2210,7 +2210,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:min-h-11',
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     isAdvancedRuntimeTimer
                       ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
                       : isTimerRunning
@@ -2250,7 +2250,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={handleOpenExport}
                 aria-label={t('learningHub:exam.tab.export')}
                 title={t('learningHub:exam.tab.export')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
@@ -2264,7 +2264,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
                     title={t('learningHub:exam.tab.addQuestion')}
-                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
                   >
                     <Plus size={14} />
                     <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>

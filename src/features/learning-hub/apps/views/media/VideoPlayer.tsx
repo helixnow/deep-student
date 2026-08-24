@@ -46,7 +46,7 @@ export interface VideoPlayerProps {
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
 const overlayButtonClass =
-  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11';
+  'h-8 w-8 text-white hover:bg-[var(--overlay-control-hover)] hover:text-white [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,

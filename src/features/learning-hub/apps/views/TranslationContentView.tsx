@@ -132,7 +132,7 @@ const CopyButton: React.FC<{
       aria-label={ariaLabel}
       disabled={!text}
       onClick={() => void handleCopy()}
-      className="[@media(pointer:coarse)]:min-h-11"
+      className="[@media(pointer:coarse)]:!min-h-11"
     >
       <IconSwap
         active={copied}
@@ -505,11 +505,11 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
         <div className="flex gap-2">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:back')}
             </DsButton>
           )}
@@ -541,12 +541,12 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0 max-sm:w-full max-sm:justify-end">
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={reloadWorkbench}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={reloadWorkbench}>
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('translation:contentView.workbench_error_retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:back')}
             </DsButton>
           )}
@@ -581,7 +581,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
             onClick={retrySave}
           >
             {/* 着色放在子 span：直接类优先于按钮继承色，svg 再从 span 继承 */}
@@ -593,7 +593,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('translation:contentView.save_error_dismiss')}
             onClick={() => setSaveState({ status: 'idle' })}
           >
@@ -612,7 +612,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('translation:contentView.empty_hint_dismiss')}
             onClick={() => setEmptyHintDismissed(true)}
           >

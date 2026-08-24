@@ -885,11 +885,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         {/* 📱 长错误信息（含路径/ID）在 375px 窄屏必须可换行，避免横向溢出 */}
         <span className="text-destructive text-center break-words max-w-md">{message}</span>
         <div className="flex flex-wrap justify-center gap-2 mt-3">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => loadNoteContent()}>
+          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => loadNoteContent()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:close')}
             </DsButton>
           )}

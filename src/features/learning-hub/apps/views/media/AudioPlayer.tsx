@@ -176,7 +176,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 title={t('learningHub:mediaPreview.loop')}
                 onClick={toggleLoop}
                 className={cn(
-                  'h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
+                  'h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                   loop && 'bg-[var(--interactive-hover)] text-primary',
                 )}
               >
@@ -193,7 +193,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 title={t('learningHub:mediaPreview.skipBackward')}
                 onClick={() => seekBy(-SKIP_SECONDS)}
                 disabled={!isReady}
-                className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <ArrowCounterClockwise size={16} aria-hidden="true" />
               </DsButton>
@@ -233,7 +233,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 title={t('learningHub:mediaPreview.skipForward')}
                 onClick={() => seekBy(SKIP_SECONDS)}
                 disabled={!isReady}
-                className="h-9 w-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <ArrowClockwise size={16} aria-hidden="true" />
               </DsButton>
@@ -255,7 +255,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                     : t('learningHub:mediaPreview.mute')
                 }
                 onClick={toggleMute}
-                className="h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <VolumeIcon size={16} aria-hidden="true" />
               </DsButton>

@@ -226,7 +226,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 gap-2', className)}>
         <span className="text-sm text-muted-foreground">{error}</span>
-        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={loadTree}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={loadTree}>
           <ArrowClockwise size={14} />
           {t('common:retry')}
         </DsButton>

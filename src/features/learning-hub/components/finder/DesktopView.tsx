@@ -499,7 +499,7 @@ function AddShortcutDialog({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => onOpenChange(false)}>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onOpenChange(false)}>
             {t('common:close')}
           </DsButton>
         </DsDialogFooter>
@@ -674,7 +674,7 @@ export function DesktopView({
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setShowAddDialog(true)}
                 >
                   {t('desktop.addFirst')}
@@ -684,7 +684,7 @@ export function DesktopView({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="text-muted-foreground [@media(pointer:coarse)]:min-h-11"
+                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setShowRootFolderPicker(true)}
                 >
                   {t('desktop.setRootFolder')}
