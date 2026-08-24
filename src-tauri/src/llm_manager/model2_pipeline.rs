@@ -1012,6 +1012,32 @@ mod tests {
     }
 
     #[test]
+    fn stream_input_reassembles_chinese_split_across_byte_chunks() {
+        use crate::providers::{OpenAIAdapter, StreamEvent};
+
+        // issue #122：TCP 分帧把 3 字节汉字切成两个 chunk，
+        // 管线入口不得对半截 UTF-8 做 lossy 解码。
+        let source = "data: {\"choices\":[{\"delta\":{\"content\":\"数学题\"}}]}\n\n";
+        let bytes = source.as_bytes();
+        let split = source.find('数').unwrap() + 1;
+
+        let mut buffer = crate::utils::sse_buffer::SseEventBuffer::new();
+        let first = process_sse_stream_input(&mut buffer, Some(&bytes[..split]));
+        assert!(first.is_empty(), "半截 UTF-8 不应产出事件");
+
+        let mut blocks = process_sse_stream_input(&mut buffer, Some(&bytes[split..]));
+        blocks.extend(process_sse_stream_input(&mut buffer, None));
+        assert_eq!(blocks.len(), 1);
+        assert!(!blocks[0].contains('\u{fffd}'));
+
+        let events = OpenAIAdapter.parse_stream(&blocks[0]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StreamEvent::ContentChunk(content) if content == "数学题"
+        )));
+    }
+
+    #[test]
     fn codex_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, true)
             .expect_err("Codex EOF without a terminal event must fail");
