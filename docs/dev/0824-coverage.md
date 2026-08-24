@@ -1,23 +1,28 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-24 21:47:57 UTC。
+审计快照：2026-08-24 23:22:28 UTC。
 
-本表覆盖当时仍开放的 PR #158–#268，共 111 个。判定对象是同一次
+本表覆盖该时点仍开放的 PR #158–#268，共 111 个（无缺号）。判定对象是同一次
 `git fetch` 固定下来的 `refs/pull/<PR>/head`，不是 PR 标题所指的旧底座：
 
-- 0824：`af3e39d818cf557e4f1434dd909442b4aae6d490`
-- B cloud：`f41e5fc72255cd111f4ff615ae666365258a0956`
+- 0824：`8b70b2d7950ecc014f010591fd998350f9cb8c4e`
+- B cloud（当前主题 tip）：`5505d5fe9c5c20fae8d2556dd98465af29bb2019`
 - C genui：`bc26f121a84dc4845e72b239e686b5d483e6fc3c`
 - D anki：`07146ea9fd949d0e2955a29359bbe935c8996aba`
 - E optimization：`ae3207fff67875737d1460bb0d021758033f423e`
 - F subapp：`575fee7f475a83de5c0edd3dd378015495fb22ad`
 - G mobile：`4ab24435bb998f7d24fed9e80e39746a4f44edb3`
 
+0824 已通过 `0e32e0feade503114430234f024527c1f98f5c03` 合入 B
+的 `a1ee2420d53e11824839a9607320dfa1147c0249`；B 后续仍有独立前进，
+因此当前 B tip 也继续作为主题目标参与判定。
+
 `IN_0824` 与 `IN_THEME_ONLY` 均以
 `git merge-base --is-ancestor <PR tip> <target tip>` 的精确祖先关系为准。
 `LEFTOVER` 表示当前 PR tip 仍有未进入 0824 或 B–G 主题仓的独特增量；
 `IGNORE` 表示精确 tip 不应再整支合入（有用部分已经选择性移植/等价吸收，
 或该 tip 已明确被取代、冲突或弃用）。
+本轮对 111 个 tip 全量逐项重算；分类未沿用旧表。
 
 | PR | 状态 |
 |---:|---|
@@ -141,8 +146,9 @@
 - `LEFTOVER`：
   - #160/#161：F 已吸收大部分，但仍缺第五轮审计确认的 6 项
     flashcards/practice/workbench 增量。
-  - #177：B 只合到 #177 的 `9e84c8df`；快照中的 #177 tip
-    `b4cc566f2ae72654da7745d7ceeab8a4d2f8b5bb` 又有后续 cloud 增量。
+  - #177：0824 中的 B 合入边界包含 #177 到 `fb77f0af`；当前 B 又包含到
+    `28eb4c9e`，但本次快照的 #177 tip `57cd704d` 仍多出
+    `recoveryKind` 持久化增量，因此不是任何目标 tip 的祖先。
   - #213/#214：0824 和 E/C 只含较早快照；两 PR 的 post-Step-1
     CI、测试及产品加固增量仍在 clean leftovers 中，当前 tip 不是任何目标祖先。
 - `IGNORE`：
