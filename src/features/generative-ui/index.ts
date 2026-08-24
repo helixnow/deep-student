@@ -133,6 +133,16 @@ export { buildResearchExportMarkdownFromSnapshot } from './utils/buildResearchEx
 export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
 export type { NoteEditPayload } from './utils/extractNoteEditPayload';
 export { schemaToPromptHint } from './utils/schemaToPromptHint';
+export {
+  TableBlock,
+  tableBlockPropsSchema,
+  tableColumnSchema,
+  registerTableBlock,
+  TABLE_BLOCK_TYPE,
+} from './components/TableBlock';
+export type { TableBlockProps, TableColumn } from './components/TableBlock';
+export { buildTableIntent } from './utils/buildTableIntent';
+export type { TableIntentInput, TableIntentLabels } from './utils/buildTableIntent';
 
 // 注册内置块
 import './blocks';

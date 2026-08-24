@@ -36,6 +36,11 @@
   "panel": {
     "empty": "暂无 AI 界面内容"
   },
+  "blocks": {
+    "table": {
+      "empty": "暂无数据"
+    }
+  },
   "notes": {
     "summary_title": "AI 笔记摘要",
     "summary_default_title": "笔记摘要",

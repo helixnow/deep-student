@@ -36,6 +36,11 @@
   "panel": {
     "empty": "No AI UI content"
   },
+  "blocks": {
+    "table": {
+      "empty": "No data"
+    }
+  },
   "notes": {
     "summary_title": "AI note summary",
     "summary_default_title": "Note summary",
