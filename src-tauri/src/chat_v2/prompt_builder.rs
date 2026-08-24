@@ -1032,6 +1032,121 @@ mod tests {
         assert!(parts.turn_volatile.unwrap().contains("<context>"));
     }
 
+    /// P1-10 白名单结构（字节级）：stable system 必须逐字节等于
+    /// 「LaTeX → system_instructions → AGENTS → user_preferences → 固定
+    /// CITATION_GUIDE」五个允许块的确定性拼接——即使 builder 同时喂入了
+    /// 全部 turn-volatile 输入（检索/画像/待办/Canvas/hints），system 也
+    /// 不得多出第六种块或少任何一个字节。
+    #[test]
+    fn test_stable_system_is_exact_concat_of_allowed_blocks() {
+        let rag = vec![SourceInfo {
+            title: None,
+            url: None,
+            snippet: Some("检索命中".to_string()),
+            score: None,
+            metadata: None,
+        }];
+        let canvas = CanvasNoteInfo::new(
+            "note_x".to_string(),
+            "笔记".to_string(),
+            "# 标题\n正文".to_string(),
+        );
+        let prompt = PromptBuilder::new(Some("BASE-SYS"))
+            .with_project_agents_instructions(Some("AGENTS 常驻指令".to_string()))
+            .with_user_append(Some("请用中文回答"))
+            .with_rag_sources(Some(&rag))
+            .with_user_profile(Some("画像".to_string()))
+            .with_learner_profile(Some("学习者画像".to_string()))
+            .with_active_todos(Some("1. 待办".to_string()))
+            .with_canvas_note(Some(canvas))
+            .with_context_type_hints(Some(&vec!["- <hint>".to_string()]))
+            .build();
+
+        let expected = format!(
+            "{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
+             <project_agents_instructions>\nAGENTS 常驻指令\n</project_agents_instructions>\n\n\
+             <user_preferences>\n请用中文回答\n</user_preferences>\n\n{}",
+            LATEX_RULES, CITATION_GUIDE
+        );
+        assert_eq!(prompt, expected);
+    }
+
+    /// P1-10 R2（字节级）：检索命中与否（has_sources 开/关）不得改变
+    /// system 的任何一个字节；差异只允许出现在 turn-volatile 块
+    /// （无来源时整体为 None）。
+    #[test]
+    fn test_has_sources_toggle_keeps_system_bytes_identical() {
+        let build = |with_sources: bool| {
+            let rag = vec![SourceInfo {
+                title: None,
+                url: None,
+                snippet: Some("RAG命中".to_string()),
+                score: None,
+                metadata: None,
+            }];
+            let memory = vec![SourceInfo {
+                title: None,
+                url: None,
+                snippet: Some("记忆命中".to_string()),
+                score: None,
+                metadata: None,
+            }];
+            let web = vec![SourceInfo {
+                title: Some("网页标题".to_string()),
+                url: Some("https://example.com".to_string()),
+                snippet: Some("网页摘要".to_string()),
+                score: None,
+                metadata: None,
+            }];
+            let mut builder = PromptBuilder::new(Some("BASE-SYS"))
+                .with_user_append(Some("追加指令"))
+                .with_project_agents_instructions(Some("AGENTS 常驻指令".to_string()));
+            if with_sources {
+                builder = builder
+                    .with_rag_sources(Some(&rag))
+                    .with_memory_sources(Some(&memory))
+                    .with_web_search_sources(Some(&web));
+            }
+            builder.build_split()
+        };
+
+        let without = build(false);
+        let with = build(true);
+
+        // system 字节级相等
+        assert_eq!(without.stable_system, with.stable_system);
+        // 无来源：turn-volatile 整体为 None；有来源：context 全部落在 volatile
+        assert!(without.turn_volatile.is_none());
+        let volatile = with.turn_volatile.expect("sources produce volatile blocks");
+        assert!(volatile.contains("<context>"));
+        assert!(volatile.contains("[知识库-1] RAG命中"));
+        assert!(volatile.contains("[记忆-1] 记忆命中"));
+        assert!(volatile.contains("[搜索-1] 标题: 网页标题"));
+    }
+
+    /// P1-10 R4：runtime_facts / 当前日期不得出现在 system——
+    /// system 由纯静态常量与会话稳定输入拼接，不包含任何时间事实
+    /// （日期的唯一归属是当前 user 消息的 <runtime_facts>，
+    /// 见 context.rs::turn_volatile_tests）。
+    #[test]
+    fn test_stable_system_free_of_runtime_facts_and_dates() {
+        let prompt = PromptBuilder::new(Some("BASE-SYS"))
+            .with_user_append(Some("追加指令"))
+            .with_project_agents_instructions(Some("AGENTS 常驻指令".to_string()))
+            .build();
+
+        assert!(!prompt.contains("<runtime_facts>"));
+        assert!(!prompt.contains("当前日期"));
+        assert!(!prompt.contains("当前时间"));
+        assert!(!prompt.contains("时区:"));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(
+            !prompt.contains(&today),
+            "stable system must not embed today's date ({})",
+            today
+        );
+    }
+
     #[test]
     fn test_user_profile_is_xml_escaped() {
         let volatile = PromptBuilder::new(None)
@@ -1072,6 +1187,20 @@ mod tests {
                 score: None,
                 metadata: None,
             }];
+            let memory = vec![SourceInfo {
+                title: None,
+                url: None,
+                snippet: Some(format!("第{}轮记忆命中", round)),
+                score: None,
+                metadata: None,
+            }];
+            let web = vec![SourceInfo {
+                title: Some(format!("第{}轮网页标题", round)),
+                url: Some("https://example.com".to_string()),
+                snippet: Some(format!("第{}轮网页摘要", round)),
+                score: None,
+                metadata: None,
+            }];
             let canvas = CanvasNoteInfo::new(
                 format!("note_{}", round),
                 format!("第{}轮笔记", round),
@@ -1081,6 +1210,8 @@ mod tests {
                 .with_user_append(Some("追加指令"))
                 .with_project_agents_instructions(Some("AGENTS 常驻指令".to_string()))
                 .with_rag_sources(Some(&rag))
+                .with_memory_sources(Some(&memory))
+                .with_web_search_sources(Some(&web))
                 .with_user_profile(Some(format!("第{}轮画像", round)))
                 .with_learner_profile(Some(format!("第{}轮学习者画像", round)))
                 .with_active_todos(Some(format!("1. 第{}轮待办", round)))
@@ -1115,6 +1246,8 @@ mod tests {
         assert_ne!(v1, v2);
         for (volatile, round) in [(&v1, 1usize), (&v2, 2usize)] {
             assert!(volatile.contains(&format!("第{}轮检索命中内容", round)));
+            assert!(volatile.contains(&format!("第{}轮记忆命中", round)));
+            assert!(volatile.contains(&format!("第{}轮网页标题", round)));
             assert!(volatile.contains(&format!("第{}轮画像", round)));
             assert!(volatile.contains(&format!("第{}轮学习者画像", round)));
             assert!(volatile.contains(&format!("1. 第{}轮待办", round)));

@@ -1682,6 +1682,53 @@ mod turn_volatile_tests {
         assert!(round2.contains("第二轮命中") && !round2.contains("第一轮命中"));
     }
 
+    /// P1-10 R4：runtime_facts（含当前日期/时间）的唯一归属是当前 user
+    /// 消息的 <injected_context>——本测试确认日期字节确实存在于
+    /// injected_context 内部；system 侧不含日期由
+    /// prompt_builder::tests::test_stable_system_free_of_runtime_facts_and_dates
+    /// 保证，两端合起来构成「日期不在 system」的完整回归。
+    #[test]
+    fn runtime_facts_with_date_live_inside_injected_context() {
+        let facts = PipelineContext::build_runtime_facts_block("讲讲牛顿第二定律");
+        assert!(facts.starts_with("<runtime_facts>"));
+        assert!(facts.contains("当前日期: "));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(facts.contains(&today));
+
+        let blocks = PipelineContext::build_injected_context_blocks(&facts, &[], None);
+        let (text, images) = PipelineContext::collect_injected_context_text_and_images(&blocks);
+        assert!(images.is_empty());
+        let combined =
+            PipelineContext::wrap_user_message_text("讲讲牛顿第二定律", Some(text.as_str()));
+
+        // runtime_facts 位于 <injected_context> 内部，且不泄漏进 user_query
+        let ic_start = combined
+            .find("<injected_context>")
+            .expect("injected_context open");
+        let ic_end = combined
+            .find("</injected_context>")
+            .expect("injected_context close");
+        let facts_pos = combined
+            .find("<runtime_facts>")
+            .expect("runtime_facts block");
+        assert!(ic_start < facts_pos && facts_pos < ic_end);
+        let query_end = combined.find("</user_query>").expect("user_query block");
+        assert!(!combined[..query_end].contains("runtime_facts"));
+        assert!(!combined[..query_end].contains(&today));
+    }
+
+    /// 时间敏感问法升级为「当前时间」精度，但仍只影响 user 消息侧，
+    /// 与 system 无关（system 侧断言见 prompt_builder 测试）。
+    #[test]
+    fn time_sensitive_query_upgrades_runtime_fact_precision() {
+        let normal = PipelineContext::build_runtime_facts_block("讲讲牛顿第二定律");
+        assert!(normal.contains("当前日期: "));
+        assert!(!normal.contains("当前时间: "));
+
+        let sensitive = PipelineContext::build_runtime_facts_block("今天是几号？");
+        assert!(sensitive.contains("当前时间: "));
+    }
+
     #[test]
     fn empty_turn_volatile_keeps_previous_block_shape() {
         let none = PipelineContext::build_injected_context_blocks(FIXED_FACTS, &[], None);
