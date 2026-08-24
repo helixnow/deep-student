@@ -121,28 +121,28 @@ R1-static-assets-audit §3.3 与 R2-pdfjs-subset §5 都要求的用例，落在
 | `COORDINATION.md` WI 状态表更新 | 母代理维护的热点文件，多子代理并发轮次里易冲突，按任务约束避开。 |
 | tsconfig / model2_pipeline / tool_loop / session_export / builtin-tools 区域 | 任务明确要求避开的大热点，未触碰（rebase 中 tsconfig 相关冲突一律采上游）。 |
 
-## 3. 验证
+## 3. 验证（rebase 到 `d248cbab` 之后复跑）
 
 | 检查 | 结果 |
 | --- | --- |
 | `npx tsc --noEmit -p tsconfig.json` | exit 0（需先 `version:generate`，生成物 gitignored） |
 | `npx vitest run tests/vitest/ui-shell/smokeRender.test.tsx` | 2/2 ✅（修复前 1/2） |
-| `npx vitest run tests/vitest/question-bank-editor-ai-markdown.test.tsx` | 1/1 ✅ 175ms（修复前 240s+ 挂死） |
-| `npx vitest run tests/vitest/pdf/` | 4/4 ✅（本轮新增） |
+| `npx vitest run tests/vitest/question-bank-editor-ai-markdown.test.tsx` | 1/1 ✅ ~175ms（修复前 240s+ 挂死） |
+| `npx vitest run tests/vitest/pdf/` | 全部 ✅（本轮新增 3 + 上游 pdfCjkNoCrash/pdfStaticAssets） |
 | `npx vitest run tests/vitest/chat-v2/useSessionLifecycle.test.tsx` | 3/3 ✅ 无 unhandled error |
-| `npx vite build` | exit 0；`dist/cmaps` 68 文件、`dist/wasm` 6 文件与 R2 报告逐一致（共享模块重构无产物影响） |
+| R3 抽样过的另 7 个文件（smoke / errorBoundaryCopy / useChatSession 等） | 68/68 ✅ 无回归 |
 | `npx eslint <改动文件>` | 0 error |
 
-## 4. 变更清单
+（rebase 前曾以等价的白名单重构完整跑过 `npx vite build`：exit 0，
+`dist/cmaps` 68 文件、`dist/wasm` 6 文件与 R2 报告逐一致；rebase 后
+`vite.config.ts` 全盘采上游版本，未再引入配置改动。）
+
+## 4. 变更清单（最终提交内容）
 
 | 文件 | 变更 |
 | --- | --- |
 | `docs/THIRD_PARTY_LICENSES.md` | 移除 Apache-2.0 行 `@hello-pangea/dnd`；日期行纠偏 |
-| `.github/workflows/ci.yml` | bundle-size 步骤注释 +5% → +3%（仅注释） |
 | `tests/vitest/ui-shell/smokeRender.test.tsx` | 按 zh-CN 语言包解析值断言 aria-label |
 | `tests/vitest/question-bank-editor-ai-markdown.test.tsx` | mock 回调身份稳定化（修挂死） |
-| `scripts/pdfjs-cmap-subset.mjs` | 新增：cmap 白名单单一事实来源（+`isCMapKept`） |
-| `vite.config.ts` | 内联白名单 → import 共享模块（拷贝语义零变化） |
-| `tests/vitest/pdf/pdfjsCMapSubsetNoCrash.test.ts` | 新增：日文 PDF 不崩溃 ×3 |
-| `tests/vitest/pdf/pdfWorkerCopySync.test.ts` | 新增：worker 副本漂移守卫 ×1 |
+| `tests/vitest/pdf/pdfjsCMapSubsetNoCrash.test.ts` | 新增：日文 PDF 不崩溃 ×3（消费上游 JSON 清单） |
 | `docs/dev/optimization0824/progress/R4-debt-sweep.md` | 本报告 |
