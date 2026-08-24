@@ -71,6 +71,21 @@ pub(crate) fn freeze_tool_schema_order_for_prompt_cache(
     }
 }
 
+/// P0 tools 会话冻结：把一次执行推进后的局部基线合并回会话级基线。
+/// append-only：只把 `entry` 缺失的名字按 `baseline` 顺序追加到末尾，
+/// 绝不删除或重排 `entry` 已有条目 —— 并行变体各自写回时共享基线保持
+/// 单调，已发出的 tools 前缀序不被打乱。
+pub(crate) fn merge_frozen_tool_schema_order_baseline(
+    entry: &mut Vec<String>,
+    baseline: &[String],
+) {
+    for name in baseline {
+        if !entry.iter().any(|existing| existing == name) {
+            entry.push(name.clone());
+        }
+    }
+}
+
 fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
 }
@@ -225,10 +240,13 @@ impl ChatV2Pipeline {
         // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
         // ============================================================
         let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
-        // P0（DESIGN「tools 会话内冻结」）：工具环生命周期内 tools 顺序基线
-        // （append-only 首见序）。首轮排序后冻结，环内 load_skills 新工具
-        // 只追加末尾，已发出的 tools 前缀字节跨轮不变。
-        let mut frozen_tool_schema_order: Vec<String> = Vec::new();
+        // P0（DESIGN「tools 会话内冻结」）：tools 顺序基线（append-only
+        // 首见序）从会话级状态载入 —— 同一 session 内已发出的 tools 顺序
+        // 跨轮（跨 execute_with_tools 调用 / 下一稳定窗口）保持，禁止每轮
+        // 重建字母序。会话首轮基线为空，首次 freeze 按字母序建立；环内
+        // load_skills 新工具只追加末尾，推进后写回会话级状态。
+        let mut frozen_tool_schema_order: Vec<String> =
+            self.load_session_frozen_tool_schema_order(&ctx.session_id);
         let mut injected_skill_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
         let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
@@ -856,6 +874,11 @@ impl ChatV2Pipeline {
                 freeze_tool_schema_order_for_prompt_cache(
                     custom_tools,
                     &mut frozen_tool_schema_order,
+                );
+                // 基线推进后写回会话级状态，下一轮（下一稳定窗口）复用
+                self.store_session_frozen_tool_schema_order(
+                    &ctx.session_id,
+                    &frozen_tool_schema_order,
                 );
             }
 
@@ -4730,6 +4753,98 @@ mod tests {
             frozen,
             vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
         );
+    }
+
+    #[test]
+    fn frozen_tool_order_persists_across_turns_via_session_baseline() {
+        // P0 回归（跨轮会话冻结）：第一轮结束后基线写回会话级状态；
+        // 第二轮（下一稳定窗口）从会话级状态载入，即便来源顺序不同、
+        // 且新增了字母序落在中段的工具，已发出 tools 的序列化字节必须
+        // 逐字节不变，新工具只追加末尾 —— 禁止跨轮重建字母序。
+        let mut session_baseline: Vec<String> = Vec::new();
+
+        // ===== 第一轮：空基线，首次 freeze 按字母序建立 =====
+        let mut turn1_local = merge_load(&session_baseline);
+        let mut turn1_tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn1_tools, &mut turn1_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn1_local);
+        let sent_bytes: Vec<Vec<u8>> = turn1_tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+        assert_eq!(session_baseline, vec!["alpha_tool", "zeta_tool"]);
+
+        // ===== 第二轮：全量重建（来源顺序打乱 + 新工具 beta 字母序在中段）=====
+        let mut turn2_local = merge_load(&session_baseline);
+        let mut turn2_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn2_tools, &mut turn2_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn2_local);
+
+        let names: Vec<&str> = turn2_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "跨轮基线必须还原已发出顺序，新工具只追加末尾"
+        );
+        for (index, expected) in sent_bytes.iter().enumerate() {
+            let actual =
+                serde_json::to_vec(&turn2_tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "两轮请求之间已发出 tools 的序列化字节必须逐字节不变"
+            );
+        }
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+
+        // ===== 第三轮：某工具（zeta）被移除，剩余顺序仍按基线保持 =====
+        let mut turn3_local = merge_load(&session_baseline);
+        let mut turn3_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn3_tools, &mut turn3_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn3_local);
+        let names: Vec<&str> = turn3_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "beta_tool"]);
+        // 基线不因工具消失而删除条目（append-only），后续恢复时顺序仍稳定
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+    }
+
+    #[test]
+    fn session_baseline_merge_is_append_only_across_parallel_variants() {
+        // 并行变体各自推进局部基线后写回：合并只追加缺失名，绝不删除
+        // 或重排共享基线已有条目。
+        let mut shared: Vec<String> = vec!["alpha_tool".into(), "zeta_tool".into()];
+        // 变体 A 环内追加了 beta_tool
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into(), "beta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+        // 变体 B 写回时还没见过 beta_tool：不得把它从共享基线抹掉
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+    }
+
+    /// 模拟 load_session_frozen_tool_schema_order：会话级基线的克隆载入。
+    fn merge_load(session_baseline: &[String]) -> Vec<String> {
+        session_baseline.to_vec()
     }
 
     #[test]

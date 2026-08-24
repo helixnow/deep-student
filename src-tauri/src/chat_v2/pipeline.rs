@@ -172,6 +172,13 @@ pub struct ChatV2Pipeline {
     /// compaction 之间冻结，保证历史头部字节逐轮稳定（prompt cache 友好）。
     /// 所有 Pipeline clone 共享；进程重启后按当前历史重新基线（冷缓存场景）。
     microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
+    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → append-only 首见序
+    /// 工具名基线。同一 session 内已发出的 tools 相对顺序跨轮（跨
+    /// execute_with_tools 调用）保持，新工具只追加末尾 —— 禁止下一稳定
+    /// 窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会从第 0 字节变化，
+    /// 整段 prompt cache 失效）。所有 Pipeline clone 共享；进程重启后
+    /// 首轮按字母序重新基线（冷缓存场景，与 microcompact_anchors 同哲学）。
+    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, Vec<String>>>>,
     /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
@@ -217,6 +224,7 @@ impl ChatV2Pipeline {
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
             microcompact_anchors: Arc::new(Mutex::new(HashMap::new())),
+            frozen_tool_schema_orders: Arc::new(Mutex::new(HashMap::new())),
             memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
             memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
         }

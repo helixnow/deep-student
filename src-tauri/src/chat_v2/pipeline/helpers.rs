@@ -951,6 +951,35 @@ impl ChatV2Pipeline {
         eligible
     }
 
+    /// 🆕 P0 tools 会话冻结：读取该会话已发出 tools 的 append-only 首见序
+    /// 基线（跨 execute_with_tools 调用共享）。会话首轮返回空基线，
+    /// 由首次 freeze 按字母序建立。
+    pub(crate) fn load_session_frozen_tool_schema_order(&self, session_id: &str) -> Vec<String> {
+        self.frozen_tool_schema_orders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// 🆕 P0 tools 会话冻结：把环内推进后的基线写回会话级状态。
+    /// append-only 合并（只补缺失名、绝不删除或重排已有基线）：并行变体
+    /// 各自持有局部基线副本，合并写回保证共享基线单调，任一变体已发出的
+    /// tools 前缀不会被其他变体的写回打乱。
+    pub(crate) fn store_session_frozen_tool_schema_order(
+        &self,
+        session_id: &str,
+        baseline: &[String],
+    ) {
+        let mut orders = self
+            .frozen_tool_schema_orders
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let entry = orders.entry(session_id.to_string()).or_default();
+        super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, baseline);
+    }
+
     pub(crate) fn load_effective_session_skill_state(
         &self,
         session_id: &str,

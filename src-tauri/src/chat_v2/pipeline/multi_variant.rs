@@ -1243,10 +1243,12 @@ impl ChatV2Pipeline {
             HashMap::new();
         let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
-        // P0（DESIGN「tools 会话内冻结」）：变体工具环生命周期内 tools 顺序
-        // 基线（append-only 首见序）。首轮排序后冻结，环内 load_skills 刷新
-        // 全量重建时按基线还原顺序，新工具只追加末尾。
-        let mut frozen_tool_schema_order: Vec<String> = Vec::new();
+        // P0（DESIGN「tools 会话内冻结」）：tools 顺序基线（append-only
+        // 首见序）从会话级状态载入 —— 同一 session 已发出的 tools 顺序
+        // 跨轮保持，禁止每轮重建字母序。环内 load_skills 刷新全量重建时
+        // 按基线还原顺序，新工具只追加末尾，推进后 append-only 写回。
+        let mut frozen_tool_schema_order: Vec<String> =
+            self.load_session_frozen_tool_schema_order(&session_id);
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
@@ -1290,6 +1292,10 @@ impl ChatV2Pipeline {
                     super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
                         &mut mcp_tool_values,
                         &mut frozen_tool_schema_order,
+                    );
+                    self.store_session_frozen_tool_schema_order(
+                        &session_id,
+                        &frozen_tool_schema_order,
                     );
                     let injected_count = mcp_tool_values.len();
                     llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
@@ -1650,6 +1656,10 @@ impl ChatV2Pipeline {
                                     super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
                                         &mut refreshed_tools,
                                         &mut frozen_tool_schema_order,
+                                    );
+                                    self.store_session_frozen_tool_schema_order(
+                                        &session_id,
+                                        &frozen_tool_schema_order,
                                     );
                                     llm_context.insert(
                                         "custom_tools".into(),
