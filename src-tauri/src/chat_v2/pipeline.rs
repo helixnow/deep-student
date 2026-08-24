@@ -167,6 +167,11 @@ pub struct ChatV2Pipeline {
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
     /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
     compaction_locks: Arc<Mutex<HashSet<String>>>,
+    /// 🆕 microcompact 锚点（会话级状态）：session_id → 锚点。
+    /// 锚点只随 compaction 事件（活跃 compaction id 变化）批量推进，两次
+    /// compaction 之间冻结，保证历史头部字节逐轮稳定（prompt cache 友好）。
+    /// 所有 Pipeline clone 共享；进程重启后按当前历史重新基线（冷缓存场景）。
+    microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
     /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
@@ -211,6 +216,7 @@ impl ChatV2Pipeline {
             question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
+            microcompact_anchors: Arc::new(Mutex::new(HashMap::new())),
             memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
             memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
         }
