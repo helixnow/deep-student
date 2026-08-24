@@ -1,8 +1,8 @@
 # WRAP-workflows：optimization0824 GitHub workflows 终检
 
-> 子代理：SA-WRAP-WF  
-> 分支：`cursor/optimization0824-5575`  
-> 日期：2026-08-24  
+> 子代理：SA-WRAP-WF
+> 分支：`cursor/optimization0824-5575`
+> 日期：2026-08-24
 > 状态：✅ 完成 —— actionlint 全量 **0 条诊断**
 
 ## 范围与工具
