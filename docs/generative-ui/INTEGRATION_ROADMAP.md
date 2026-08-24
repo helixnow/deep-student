@@ -48,3 +48,12 @@
 | `plugins/events/generativeUI.ts` | ✅ |
 | 块级增量 parser（闭合 block 提交 + last-good） | ✅ |
 | 后端 emit `generative_ui` 事件 | 📋 Rust 侧待补 |
+
+## Notes（#3）
+
+| 项 | 规范 |
+|----|------|
+| 首选宿主 | `NotesContextPanel` 只读摘要 |
+| 写入 | 仅 `canvas:ai-edit-request` + OCC |
+| 全文 | `getFullMarkdown()` / DSTU |
+| 详情 | `NOTES_INTEGRATION.md` |
