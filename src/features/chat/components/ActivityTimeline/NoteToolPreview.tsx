@@ -425,7 +425,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                     variant={viewMode === 'diff' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('diff')}
-                    className={cn(viewMode === 'diff' && 'shadow-sm')}
+                    className={cn('[@media(pointer:coarse)]:min-h-11', viewMode === 'diff' && 'shadow-sm')}
                   >
                     <ArrowsLeftRight size={12} />
                     {t('timeline.noteTool.diffView')}
@@ -434,7 +434,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                     variant={viewMode === 'preview' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('preview')}
-                    className={cn(viewMode === 'preview' && 'shadow-sm')}
+                    className={cn('[@media(pointer:coarse)]:min-h-11', viewMode === 'preview' && 'shadow-sm')}
                   >
                     <Eye size={12} />
                     {t('timeline.noteTool.previewView')}
