@@ -58,6 +58,7 @@ vi.mock('i18next', () => ({
 
 vi.mock('@/utils/fileManager', () => ({
   isOpaqueDocumentId: () => false,
+  isGenericPlaceholderFileName: () => false,
 }));
 
 vi.mock('@/shared/result', async (importOriginal) => {

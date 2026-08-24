@@ -17,7 +17,7 @@
 
 import i18next from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { isOpaqueDocumentId } from '@/utils/fileManager';
+import { isGenericPlaceholderFileName, isOpaqueDocumentId } from '@/utils/fileManager';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuNodeType, DstuListOptions } from '../types';
@@ -43,7 +43,7 @@ function deriveImportedMarkdownTitle(fileName: string): string {
 
   // ★ 移动端修复：当文件名为通用占位符或不透明 document ID 时返回 null，
   // 让调用方尝试从内容提取标题
-  if (stripped === '文件' || isOpaqueDocumentId(stripped)) {
+  if (isGenericPlaceholderFileName(stripped) || isOpaqueDocumentId(stripped)) {
     return '';
   }
 

@@ -384,10 +384,10 @@ function getStageLabel(
     case 'image_compression':
       return t('chatV2:inputBar.stage.imageCompression');
     case 'ocr_processing':
-      if (isImage) return 'OCR';
+      if (isImage) return t('learningHub:processing.ocrRecognizing');
       return current && total
         ? t('chatV2:inputBar.stage.ocrProcessingProgress', { current, total })
-        : 'OCR';
+        : t('learningHub:processing.ocrRecognizing');
     case 'vector_indexing':
       return t('chatV2:inputBar.stage.vectorIndexing');
     case 'completed':
@@ -2268,7 +2268,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             stage: 'error',
             percent: 0,
             readyModes: [],
-            error: 'Processing timed out after 5 minutes',
+            error: t('chatV2:inputBar.processingTimeout'),
             mediaType: getMediaTypeForAttachment(att) ?? 'image',
           },
         });

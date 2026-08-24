@@ -180,7 +180,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">{t('settings:ocr.test_title')}</h3>
         {onClose && (
-          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose}>
+          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose} aria-label={t('settings:a11y.close')}>
             <X size={16} />
           </DsButton>
         )}
