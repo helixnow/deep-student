@@ -1959,4 +1959,93 @@ mod tests {
         assert!(version.recovery_kind.is_none());
         assert_eq!(version.device_id, "device-a");
     }
+
+    #[test]
+    fn mixed_manifest_keeps_old_unknown_and_new_recovery_kind() {
+        let json = r#"{
+            "version": 1,
+            "latest": "new-id",
+            "updatedAt": "2026-01-02T00:00:00Z",
+            "versions": [
+                {
+                    "id": "new-id",
+                    "timestamp": "2026-01-02T00:00:00Z",
+                    "size": 2,
+                    "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "deviceId": "device-b",
+                    "recoveryKind": "partial_archive"
+                },
+                {
+                    "id": "old-id",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "size": 1,
+                    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "deviceId": "device-a"
+                }
+            ]
+        }"#;
+        let manifest: CloudManifest =
+            serde_json::from_str(json).expect("新旧版本混排的清单必须仍能反序列化");
+        assert_eq!(
+            manifest.versions[0].recovery_kind.as_deref(),
+            Some("partial_archive")
+        );
+        assert!(manifest.versions[1].recovery_kind.is_none());
+        let encoded = serde_json::to_string(&manifest).unwrap();
+        assert!(encoded.contains("recoveryKind"));
+        assert!(encoded.contains("partial_archive"));
+    }
+
+    #[tokio::test]
+    async fn upload_persists_recovery_kind_for_list_and_status() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-kind");
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-for-recovery-kind").unwrap();
+
+        let uploaded = manager
+            .upload_with_progress(
+                &zip,
+                Some("1.2.3".into()),
+                None,
+                Some("partial_archive".into()),
+                None,
+            )
+            .await
+            .expect("带 recovery_kind 的上传应成功")
+            .version;
+        assert_eq!(uploaded.recovery_kind.as_deref(), Some("partial_archive"));
+
+        let listed = manager.list_versions().await.expect("列出版本应成功");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].recovery_kind.as_deref(), Some("partial_archive"));
+
+        let status = manager.get_status().await;
+        assert_eq!(
+            status
+                .latest_version
+                .as_ref()
+                .and_then(|version| version.recovery_kind.as_deref()),
+            Some("partial_archive")
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_without_recovery_kind_stays_unknown() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-unknown");
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-unknown-kind").unwrap();
+
+        let uploaded = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect("不带 recovery_kind 的上传应成功")
+            .version;
+        assert!(uploaded.recovery_kind.is_none());
+        let listed = manager.list_versions().await.unwrap();
+        assert!(listed[0].recovery_kind.is_none());
+    }
 }
