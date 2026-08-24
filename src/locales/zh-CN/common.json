@@ -3659,7 +3659,7 @@
         },
         "cloudSync": {
           "title": "云同步（可选）",
-          "content": "您可以选择将数据同步到自行配置的 WebDAV 或 S3 兼容存储服务。此功能默认关闭，仅在您主动配置并触发时才会传输数据。"
+          "content": "您可以选择将数据同步到自行配置的云存储。Android 仅支持 WebDAV；桌面端还可使用 S3 兼容存储与实验性 FTP。此功能默认关闭，仅在您主动配置并触发时才会传输数据。数据不会发到 Deep Student 的服务器。"
         },
         "noTracking": {
           "title": "无行为追踪",
@@ -3705,7 +3705,7 @@
         "llmData": "AI 请求数据",
         "llmDataDesc": "使用 AI 功能时，对话内容发送至您配置的 LLM API 服务商",
         "syncData": "同步数据（可选）",
-        "syncDataDesc": "如启用云同步，数据发送至您配置的 WebDAV/S3 服务",
+        "syncDataDesc": "如启用云同步，数据只发到您自己配置的存储（Android 仅 WebDAV；桌面另有 S3 兼容存储与实验性 FTP），不是 Deep Student 的服务器",
         "sentryData": "错误报告（可选）",
         "sentryDataDesc": "如启用，匿名崩溃信息发送至错误报告服务",
         "crossBorderNote": "跨境传输提示",

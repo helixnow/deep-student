@@ -20,9 +20,8 @@ use crate::backup_job_manager::{
 
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
-use super::commands_restore::{
-    execute_backup_with_progress_resumable, execute_zip_import_with_progress_resumable,
-};
+use super::commands_restore::execute_backup_with_progress_resumable;
+use super::commands_zip::execute_zip_import_with_progress_resumable;
 
 /// 获取应用数据基础目录（Tauri app_data_dir）
 ///
@@ -2309,6 +2308,9 @@ pub async fn data_governance_list_resumable_jobs(
 /// ## 参数
 /// - `app`: Tauri AppHandle
 /// - `job_id`: 要恢复的任务 ID
+/// - `password`: 备份密码（可选）。加密全保真 ZIP 导入任务的断点续传
+///   必须重新提供导出时设置的备份密码（密码从不持久化到检查点）；
+///   缺失时续传会在改动目标目录之前明确失败，目标保持可续传。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID（恢复任务使用原 ID）
@@ -2324,6 +2326,7 @@ pub async fn data_governance_resume_backup_job(
     app: tauri::AppHandle,
     backup_job_state: State<'_, BackupJobManagerState>,
     job_id: String,
+    password: Option<String>,
 ) -> Result<BackupJobStartResponse, String> {
     info!("[data_governance] 尝试恢复备份任务: job_id={}", job_id);
 
@@ -2403,6 +2406,7 @@ pub async fn data_governance_resume_backup_job(
                     job_ctx,
                     zip_file_path,
                     params.backup_id,
+                    password,
                 )
                 .await;
             });

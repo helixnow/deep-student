@@ -72,10 +72,65 @@ fn copy_temp_zip_to_virtual_uri(
     Ok(())
 }
 
+/// 解析 ZIP 导出/导入所用的备份密码。
+///
+/// 优先级：调用方显式传入的非空密码 >（开关打开时）安全存储里的已存密码。
+/// 空串视为未配置，不发明密码；未配置则返回 `None`，保持便携 ZIP / 无密码导入。
+pub fn resolve_zip_encryption_password(
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+    stored_password: Option<String>,
+) -> Option<String> {
+    if let Some(password) = explicit_password.filter(|password| !password.trim().is_empty()) {
+        return Some(password);
+    }
+    if use_stored_cloud_encryption_password.unwrap_or(false) {
+        return stored_password.filter(|password| !password.trim().is_empty());
+    }
+    None
+}
+
+/// 从安全存储读取已存云端 E2EE 密码。空串 / 读取失败视为未配置。
+fn stored_cloud_encryption_password(app: &tauri::AppHandle) -> Option<String> {
+    let mut config = crate::cloud_storage::CloudStorageConfig::default();
+    crate::secure_store::hydrate_cloud_config(app, &mut config);
+    config
+        .encryption_password
+        .filter(|password| !password.trim().is_empty())
+}
+
+fn resolve_zip_encryption_password_from_store(
+    app: &tauri::AppHandle,
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+) -> Option<String> {
+    let needs_stored = use_stored_cloud_encryption_password.unwrap_or(false)
+        && explicit_password
+            .as_deref()
+            .map(|password| password.trim().is_empty())
+            .unwrap_or(true);
+    let stored_password = if needs_stored {
+        stored_cloud_encryption_password(app)
+    } else {
+        None
+    };
+    resolve_zip_encryption_password(
+        explicit_password,
+        use_stored_cloud_encryption_password,
+        stored_password,
+    )
+}
+
 /// 一步完成「备份 + 导出 ZIP」（后台任务模式）
 ///
 /// 默认行为：完整备份（数据库 + 资产）后直接导出到指定 ZIP 路径。
 /// 若 `use_tiered=true`，则按分层参数执行备份后导出 ZIP。
+///
+/// `encryption_password`：可选备份密码。提供后执行加密全保真导出——
+/// 敏感数据（crypto/ 密钥、审计库等）密封进密码加密载荷，导入时输入
+/// 同一密码即可解封为可整槽恢复的完整快照（跨设备换机闭环）。
+/// 不提供密码时导出未加密便携 ZIP：不含密钥材料，导入后仅为部分归档，
+/// **不能整槽恢复**（结果 stats 中的 `recovery_kind` 会如实标注）。
 #[tauri::command]
 pub async fn data_governance_backup_and_export_zip(
     app: tauri::AppHandle,
@@ -88,6 +143,7 @@ pub async fn data_governance_backup_and_export_zip(
     tiers: Option<Vec<String>>,
     include_assets: Option<bool>,
     asset_types: Option<Vec<String>>,
+    encryption_password: Option<String>,
 ) -> Result<BackupJobStartResponse, String> {
     let app_data_dir = get_app_data_dir(&app)?;
 
@@ -139,6 +195,7 @@ pub async fn data_governance_backup_and_export_zip(
             tiers,
             include_assets,
             asset_types,
+            encryption_password,
         )
         .await;
     });
@@ -151,6 +208,7 @@ pub async fn data_governance_backup_and_export_zip(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_backup_and_export_zip_with_progress(
     app: tauri::AppHandle,
     window: Option<tauri::Window>,
@@ -163,6 +221,7 @@ async fn execute_backup_and_export_zip_with_progress(
     tiers: Option<Vec<String>>,
     include_assets: Option<bool>,
     asset_types: Option<Vec<String>>,
+    encryption_password: Option<String>,
 ) {
     use super::backup::BackupTier;
 
@@ -282,7 +341,7 @@ async fn execute_backup_and_export_zip_with_progress(
         }
     };
 
-    let backup_result: Result<String, String> = if use_tiered {
+    let backup_result: Result<super::backup::BackupManifest, String> = if use_tiered {
         let parsed_tiers: Vec<BackupTier> = tiers
             .unwrap_or_else(|| vec!["core".to_string()])
             .into_iter()
@@ -329,7 +388,7 @@ async fn execute_backup_and_export_zip_with_progress(
 
         manager
             .backup_tiered(&selection)
-            .map(|result| result.manifest.backup_id)
+            .map(|result| result.manifest)
             .map_err(|e| format!("分层备份失败: {}", e))
     } else if include_assets {
         let mut asset_config = if let Some(types) = asset_types.clone() {
@@ -355,12 +414,10 @@ async fn execute_backup_and_export_zip_with_progress(
 
         manager
             .backup_with_assets(Some(asset_config))
-            .map(|manifest| manifest.backup_id)
             .map_err(|e| format!("完整备份失败: {}", e))
     } else {
         manager
             .backup_full()
-            .map(|manifest| manifest.backup_id)
             .map_err(|e| format!("备份失败: {}", e))
     };
     if let Err(error) = snapshot_barrier.release() {
@@ -368,13 +425,14 @@ async fn execute_backup_and_export_zip_with_progress(
         return;
     }
 
-    let backup_id = match backup_result {
-        Ok(id) => id,
+    let backup_manifest = match backup_result {
+        Ok(manifest) => manifest,
         Err(err) => {
             job_ctx.fail(err);
             return;
         }
     };
+    let backup_id = backup_manifest.backup_id.clone();
 
     if job_ctx.is_cancelled() {
         job_ctx.cancelled(Some("用户取消备份导出".to_string()));
@@ -395,12 +453,14 @@ async fn execute_backup_and_export_zip_with_progress(
         1,
     );
 
+    let encrypted_export = encryption_password.is_some();
     let export_result = export_backup_to_zip(
         &source_backup_dir,
         &ZipExportOptions {
             output_path: Some(PathBuf::from(&output_path)),
             compression_level,
             include_checksums: true,
+            encryption_password,
             ..Default::default()
         },
     );
@@ -412,6 +472,16 @@ async fn execute_backup_and_export_zip_with_progress(
             return;
         }
     };
+
+    // 诚实分类导出产物：只有加密全保真 ZIP（且源备份本身可整槽恢复）才是
+    // disaster_recovery；未加密便携 ZIP / 分层（含默认 core）产物一律是
+    // partial_archive，导入后不能整槽恢复。
+    let (recovery_kind, zip_restorable) =
+        if encrypted_export && backup_manifest.validate_for_slot_restore().is_ok() {
+            ("disaster_recovery", true)
+        } else {
+            ("partial_archive", false)
+        };
 
     let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
         job_ctx.mark_running(
@@ -457,8 +527,14 @@ async fn execute_backup_and_export_zip_with_progress(
         output_path: Some(final_output_path.clone()),
         resolved_path: None,
         message: Some(format!(
-            "备份并导出完成: {} 个文件，{} 字节",
-            export_result.file_count, export_result.compressed_size
+            "备份并导出完成: {} 个文件，{} 字节{}",
+            export_result.file_count,
+            export_result.compressed_size,
+            if zip_restorable {
+                "（加密全保真 ZIP：导入时输入备份密码后可整槽恢复）"
+            } else {
+                "（便携归档：不含密钥等敏感数据，导入后不能整槽恢复）"
+            }
         )),
         error: None,
         duration_ms: Some(duration_ms),
@@ -470,6 +546,9 @@ async fn execute_backup_and_export_zip_with_progress(
             "add_to_backup_list": add_to_backup_list,
             "use_tiered": use_tiered,
             "include_assets": include_assets,
+            "encrypted": encrypted_export,
+            "recovery_kind": recovery_kind,
+            "restorable": zip_restorable,
         })),
         requires_restart: false,
         checkpoint_path: None,
@@ -494,6 +573,10 @@ async fn execute_backup_and_export_zip_with_progress(
 /// - `output_path`: 输出 ZIP 文件路径（可选，默认自动生成）
 /// - `compression_level`: 压缩级别 0-9（可选，默认 6）
 /// - `include_checksums`: 是否包含校验和文件（可选，默认 true）
+/// - `encryption_password`: 可选备份密码。非空时导出加密全保真 ZIP
+/// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
+///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持便携 ZIP。
+///   密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID 的响应
@@ -509,6 +592,8 @@ pub async fn data_governance_export_zip(
     output_path: Option<String>,
     compression_level: Option<u32>,
     include_checksums: Option<bool>,
+    encryption_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = validate_backup_id(&backup_id)?;
 
@@ -535,8 +620,11 @@ pub async fn data_governance_export_zip(
     };
 
     info!(
-        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}",
-        validated_backup_id, local_output_path, target_virtual_uri.is_some()
+        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}, use_stored_cloud_encryption_password={}",
+        validated_backup_id,
+        local_output_path,
+        target_virtual_uri.is_some(),
+        use_stored_cloud_encryption_password.unwrap_or(false)
     );
 
     // 使用全局单例备份任务管理器
@@ -583,6 +671,8 @@ pub async fn data_governance_export_zip(
             target_virtual_uri,
             compression_level,
             include_checksums,
+            encryption_password,
+            use_stored_cloud_encryption_password,
         )
         .await;
     });
@@ -596,6 +686,7 @@ pub async fn data_governance_export_zip(
 }
 
 /// 执行 ZIP 导出（内部函数，带进度回调）
+#[allow(clippy::too_many_arguments)]
 async fn execute_zip_export_with_progress(
     app: tauri::AppHandle,
     window: Option<tauri::Window>,
@@ -605,6 +696,8 @@ async fn execute_zip_export_with_progress(
     target_virtual_uri: Option<String>,
     compression_level: u32,
     include_checksums: bool,
+    encryption_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) {
     use std::fs::File;
     use std::io::Write;
@@ -613,6 +706,12 @@ async fn execute_zip_export_with_progress(
     use zip::write::FileOptions;
     use zip::CompressionMethod;
     use zip::ZipWriter;
+
+    let encryption_password = resolve_zip_encryption_password_from_store(
+        &app,
+        encryption_password,
+        use_stored_cloud_encryption_password,
+    );
 
     let start = Instant::now();
 
@@ -685,6 +784,156 @@ async fn execute_zip_export_with_progress(
             );
         }
         job_ctx.fail(msg);
+        return;
+    }
+
+    // ========== 加密全保真导出：整体委托给库导出器 ==========
+    // 密封敏感数据 + 外层打包 + 自检在 export_backup_to_zip 内一体完成，
+    // 与手工逐文件路径共用同一套导入安全策略。
+    if let Some(password) = encryption_password {
+        job_ctx.mark_running(
+            BackupJobPhase::Compress,
+            10.0,
+            Some("正在密封敏感数据并生成加密全保真 ZIP...".to_string()),
+            0,
+            1,
+        );
+
+        let zip_path = match &output_path {
+            Some(path) => PathBuf::from(path),
+            None => backup_dir.join(format!("{}.zip", backup_id)),
+        };
+        if let Some(parent) = zip_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                job_ctx.fail(format!("创建输出目录失败: {}", e));
+                return;
+            }
+        }
+
+        let manifest_for_classification =
+            super::backup::BackupManifest::load_from_file(&source_backup_dir.join("manifest.json"));
+
+        let export_result = export_backup_to_zip(
+            &source_backup_dir,
+            &ZipExportOptions {
+                output_path: Some(zip_path.clone()),
+                compression_level,
+                include_checksums,
+                encryption_password: Some(password),
+                ..Default::default()
+            },
+        );
+        let export_result = match export_result {
+            Ok(result) => result,
+            Err(e) => {
+                let msg = format!("加密 ZIP 导出失败: {}", e);
+                #[cfg(feature = "data_governance")]
+                {
+                    try_save_audit_log(
+                        &app,
+                        AuditLog::new(
+                            AuditOperation::Backup {
+                                backup_type: super::audit::BackupType::Full,
+                                file_count: 0,
+                                total_size: 0,
+                            },
+                            format!("zip_export/{}", backup_id),
+                        )
+                        .fail(msg.clone())
+                        .with_details(serde_json::json!({
+                            "job_id": job_ctx.job_id.clone(),
+                            "backup_id": backup_id.clone(),
+                            "subtype": "zip_export",
+                            "encrypted": true,
+                        })),
+                    );
+                }
+                job_ctx.fail(msg);
+                return;
+            }
+        };
+
+        let final_output_path = if let Some(virtual_uri) = target_virtual_uri {
+            let Some(window) = window.as_ref() else {
+                job_ctx.fail("虚拟 URI 导出缺少窗口上下文".to_string());
+                return;
+            };
+            let local_path = export_result.zip_path.to_string_lossy().to_string();
+            if let Err(e) = copy_temp_zip_to_virtual_uri(window, &local_path, &virtual_uri) {
+                job_ctx.fail(e);
+                return;
+            }
+            virtual_uri
+        } else {
+            export_result.zip_path.to_string_lossy().to_string()
+        };
+
+        // 加密全保真 ZIP 只有在源备份本身可整槽恢复时才是 disaster_recovery。
+        let zip_restorable = manifest_for_classification
+            .as_ref()
+            .map(|manifest| manifest.validate_for_slot_restore().is_ok())
+            .unwrap_or(false);
+        let recovery_kind = if zip_restorable {
+            "disaster_recovery"
+        } else {
+            "partial_archive"
+        };
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        #[cfg(feature = "data_governance")]
+        {
+            try_save_audit_log(
+                &app,
+                AuditLog::new(
+                    AuditOperation::Backup {
+                        backup_type: super::audit::BackupType::Full,
+                        file_count: export_result.file_count,
+                        total_size: export_result.compressed_size,
+                    },
+                    format!("zip_export/{}", backup_id),
+                )
+                .complete(duration_ms)
+                .with_details(serde_json::json!({
+                    "job_id": job_ctx.job_id.clone(),
+                    "backup_id": backup_id.clone(),
+                    "zip_path": final_output_path.clone(),
+                    "subtype": "zip_export",
+                    "encrypted": true,
+                    "recovery_kind": recovery_kind,
+                })),
+            );
+        }
+
+        job_ctx.complete(
+            Some(format!("加密全保真 ZIP 导出完成: {}", final_output_path)),
+            export_result.file_count as u64,
+            export_result.file_count as u64,
+            BackupJobResultPayload {
+                success: true,
+                output_path: Some(final_output_path.clone()),
+                resolved_path: Some(final_output_path),
+                message: Some(if zip_restorable {
+                    "加密全保真 ZIP 导出完成：导入时输入备份密码后可整槽恢复".to_string()
+                } else {
+                    "加密 ZIP 导出完成：源备份不是完整快照，导入后仍为部分归档".to_string()
+                }),
+                error: None,
+                duration_ms: Some(duration_ms),
+                stats: Some(serde_json::json!({
+                    "file_count": export_result.file_count,
+                    "total_size": export_result.total_size,
+                    "compressed_size": export_result.compressed_size,
+                    "compression_ratio": export_result.compression_ratio(),
+                    "zip_checksum": export_result.zip_checksum,
+                    "encrypted": true,
+                    "recovery_kind": recovery_kind,
+                    "restorable": zip_restorable,
+                })),
+                requires_restart: false,
+                checkpoint_path: None,
+                resumable_job_id: None,
+            },
+        );
         return;
     }
 
@@ -1366,6 +1615,10 @@ pub struct ZipExportResultResponse {
 /// - `app`: Tauri AppHandle
 /// - `zip_path`: ZIP 文件路径
 /// - `backup_id`: 解压后的备份 ID（可选，默认从文件名生成）
+/// - `password`: 可选备份密码。非空时解封加密全保真 ZIP
+/// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
+///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持无密码导入。
+///   密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID
@@ -1385,6 +1638,8 @@ pub async fn data_governance_import_zip(
     backup_job_state: State<'_, BackupJobManagerState>,
     zip_path: String,
     backup_id: Option<String>,
+    password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = match backup_id {
         Some(id) => Some(validate_backup_id(&id)?),
@@ -1419,9 +1674,10 @@ pub async fn data_governance_import_zip(
         };
 
     info!(
-        "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}",
+        "[data_governance] 启动后台 ZIP 导入任务: zip_path={}, backup_id={:?}, use_stored_cloud_encryption_password={}",
         zip_file_path.display(),
-        validated_backup_id
+        validated_backup_id,
+        use_stored_cloud_encryption_password.unwrap_or(false)
     );
 
     // 使用全局单例备份任务管理器
@@ -1455,7 +1711,15 @@ pub async fn data_governance_import_zip(
 
     // 在后台执行导入
     tauri::async_runtime::spawn(async move {
-        execute_zip_import_with_progress(app, job_ctx, zip_file_path, validated_backup_id).await;
+        execute_zip_import_with_progress(
+            app,
+            job_ctx,
+            zip_file_path,
+            validated_backup_id,
+            password,
+            use_stored_cloud_encryption_password,
+        )
+        .await;
         // 清理从 content:// 物化的临时 ZIP 文件
         if let Some(temp_path) = temp_cleanup_path {
             if let Err(e) = std::fs::remove_file(&temp_path) {
@@ -1487,9 +1751,17 @@ async fn execute_zip_import_with_progress(
     job_ctx: BackupJobContext,
     zip_file_path: PathBuf,
     backup_id: Option<String>,
+    password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
 ) {
     use super::backup::zip_export::{import_backup_from_zip_with_progress, ZipImportPhase};
     use std::time::Instant;
+
+    let password = resolve_zip_encryption_password_from_store(
+        &app,
+        password,
+        use_stored_cloud_encryption_password,
+    );
 
     let start = Instant::now();
 
@@ -1599,6 +1871,7 @@ async fn execute_zip_import_with_progress(
             );
         },
         || job_ctx_for_cancel.is_cancelled(),
+        password.as_deref(),
     );
 
     match result {
@@ -1638,14 +1911,32 @@ async fn execute_zip_import_with_progress(
                 );
             }
 
+            // 诚实分类导入产物：能否整槽恢复以导入清单的
+            // validate_for_slot_restore 为准（与恢复门禁同一判定）。
+            let imported_restorable =
+                super::backup::BackupManifest::load_from_file(&target_dir.join("manifest.json"))
+                    .map(|manifest| manifest.validate_for_slot_restore().is_ok())
+                    .unwrap_or(false);
+            let recovery_kind = if imported_restorable {
+                "disaster_recovery"
+            } else {
+                "partial_archive"
+            };
+
             // 完成
             let result_payload = BackupJobResultPayload {
                 success: true,
                 output_path: Some(target_dir.to_string_lossy().to_string()),
                 resolved_path: None,
                 message: Some(format!(
-                    "ZIP 导入成功: {} 个文件, 备份 ID: {}",
-                    file_count, target_backup_id
+                    "ZIP 导入成功: {} 个文件, 备份 ID: {}{}",
+                    file_count,
+                    target_backup_id,
+                    if imported_restorable {
+                        "（完整快照，可整槽恢复）"
+                    } else {
+                        "（部分归档，不能整槽恢复）"
+                    }
                 )),
                 error: None,
                 duration_ms: Some(duration_ms),
@@ -1653,6 +1944,8 @@ async fn execute_zip_import_with_progress(
                     "file_count": file_count,
                     "backup_id": target_backup_id,
                     "backup_path": target_dir.to_string_lossy().to_string(),
+                    "recovery_kind": recovery_kind,
+                    "restorable": imported_restorable,
                 })),
                 requires_restart: false,
                 checkpoint_path: None,
@@ -1714,5 +2007,334 @@ async fn execute_zip_import_with_progress(
                 }
             }
         }
+    }
+}
+
+/// 执行可恢复的 ZIP 导入（带断点续传支持）
+///
+/// 与 execute_zip_import_with_progress 类似，但会：
+/// 1. 设置任务参数供持久化
+/// 2. 初始化检查点
+/// 3. 断点续传：跳过目标目录中已存在且大小匹配的文件
+///
+/// `password`：备份密码。加密全保真 ZIP 的续传必须由用户在恢复任务时
+/// 重新提供（密码从不持久化到任务检查点）；缺失时导入器会在改动目标
+/// 目录之前明确失败，目标保持可续传。未加密 ZIP 传 `None`。
+///
+/// 失败时**不**清理目标目录：外层半成品正是下次续传的起点；加密包解封
+/// 中断留下的敏感明文半成品由导入器自身负责清理。
+pub(super) async fn execute_zip_import_with_progress_resumable(
+    app: tauri::AppHandle,
+    job_ctx: BackupJobContext,
+    zip_file_path: PathBuf,
+    backup_id: Option<String>,
+    password: Option<String>,
+) {
+    use super::backup::zip_export::{import_backup_from_zip_resumable, ZipImportPhase};
+    use std::time::Instant;
+
+    let start = Instant::now();
+
+    // 全局互斥：避免备份/恢复/ZIP 导入导出并发
+    let _global_permit =
+        match acquire_backup_global_permit(&job_ctx, "正在等待其他备份/恢复任务完成...").await
+        {
+            Some(p) => p,
+            None => return,
+        };
+
+    // 设置任务参数（用于持久化和恢复）。注意：备份密码绝不写入持久化参数。
+    job_ctx.set_params(BackupJobParams {
+        zip_path: Some(zip_file_path.to_string_lossy().to_string()),
+        backup_id: backup_id.clone(),
+        ..Default::default()
+    });
+
+    // 获取应用数据目录
+    let app_data_dir = match get_app_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取应用数据目录失败: {}", e));
+            return;
+        }
+    };
+    let backup_dir = get_backup_dir(&app_data_dir);
+
+    // 确保备份目录存在
+    if !backup_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(&backup_dir) {
+            job_ctx.fail(format!("创建备份目录失败: {}", e));
+            return;
+        }
+    }
+
+    // 获取已处理的项目列表（用于断点续传）
+    let processed_items = job_ctx.get_processed_items();
+    let is_resuming = !processed_items.is_empty();
+
+    if is_resuming {
+        info!(
+            "[data_governance] 从检查点恢复 ZIP 导入任务，已处理 {} 个文件",
+            processed_items.len()
+        );
+    }
+
+    // 确定备份 ID
+    let generated_backup_id = backup_id.unwrap_or_else(|| {
+        use uuid::Uuid;
+        let now = chrono::Utc::now();
+        let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+        let millis = now.timestamp_subsec_millis();
+        let rand8 = &Uuid::new_v4().simple().to_string()[..8];
+        format!("{}_{}_{:03}_imported", timestamp, rand8, millis)
+    });
+
+    let target_backup_id = match validate_backup_id(&generated_backup_id) {
+        Ok(id) => id,
+        Err(e) => {
+            job_ctx.fail(format!("backup_id 非法: {}", e));
+            return;
+        }
+    };
+
+    let target_dir = backup_dir.join(&target_backup_id);
+
+    // 如果是恢复，目标目录可能已经存在（部分解压）
+    if target_dir.exists() && !is_resuming {
+        if let Err(e) = ensure_existing_path_within_backup_dir(&target_dir, &backup_dir) {
+            job_ctx.fail(format!("备份路径校验失败: {}", e));
+            return;
+        }
+        job_ctx.fail(format!("备份已存在: {}", target_backup_id));
+        return;
+    }
+
+    // 阶段 1: 扫描
+    job_ctx.mark_running(
+        BackupJobPhase::Scan,
+        0.0,
+        Some(if is_resuming {
+            "从检查点恢复，正在验证 ZIP 文件...".to_string()
+        } else {
+            "正在验证 ZIP 文件...".to_string()
+        }),
+        processed_items.len() as u64,
+        0,
+    );
+
+    // 检查取消
+    if job_ctx.is_cancelled() {
+        job_ctx.cancelled(Some("用户取消导入".to_string()));
+        return;
+    }
+
+    // 使用带进度的导入函数
+    let job_ctx_for_progress = job_ctx.clone();
+    let job_ctx_for_cancel = job_ctx.clone();
+
+    // 断点续传：使用 import_backup_from_zip_resumable，
+    // 自动跳过目标目录中已存在且大小匹配的文件；
+    // 加密全保真 ZIP 的续传携带用户重新提供的备份密码。
+    let result = import_backup_from_zip_resumable(
+        &zip_file_path,
+        &target_dir,
+        |progress| {
+            let phase = match progress.phase {
+                ZipImportPhase::Scan => BackupJobPhase::Scan,
+                ZipImportPhase::Extract => BackupJobPhase::Extract,
+                ZipImportPhase::Verify => BackupJobPhase::Verify,
+                ZipImportPhase::Completed => BackupJobPhase::Completed,
+            };
+
+            job_ctx_for_progress.mark_running(
+                phase,
+                progress.progress,
+                Some(
+                    if is_resuming && progress.phase == ZipImportPhase::Extract {
+                        format!("(断点续传) {}", progress.message)
+                    } else {
+                        progress.message
+                    },
+                ),
+                progress.processed_files as u64,
+                progress.total_files as u64,
+            );
+
+            // 更新检查点
+            if let Some(ref file_name) = progress.current_file {
+                job_ctx_for_progress.update_checkpoint(file_name);
+            }
+        },
+        || job_ctx_for_cancel.is_cancelled(),
+        password.as_deref(),
+    );
+
+    match result {
+        Ok(file_count) => {
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            // 阶段 4: 清理（90% - 100%）
+            job_ctx.mark_running(
+                BackupJobPhase::Cleanup,
+                95.0,
+                Some("正在清理临时文件...".to_string()),
+                file_count as u64,
+                file_count as u64,
+            );
+
+            // 完成
+            let result_payload = BackupJobResultPayload {
+                success: true,
+                output_path: Some(target_backup_id.clone()),
+                resolved_path: Some(target_dir.to_string_lossy().to_string()),
+                message: Some(format!(
+                    "ZIP 导入完成: {} 个文件, 耗时 {}ms{}",
+                    file_count,
+                    duration_ms,
+                    if is_resuming {
+                        " (从检查点恢复)"
+                    } else {
+                        ""
+                    }
+                )),
+                error: None,
+                duration_ms: Some(duration_ms),
+                stats: Some(serde_json::json!({
+                    "backup_id": target_backup_id,
+                    "file_count": file_count,
+                    "zip_path": zip_file_path.to_string_lossy(),
+                    "resumed_from_checkpoint": is_resuming,
+                })),
+                requires_restart: false,
+                checkpoint_path: None,
+                resumable_job_id: None,
+            };
+
+            #[cfg(feature = "data_governance")]
+            {
+                try_save_audit_log(
+                    &app,
+                    AuditLog::new(
+                        AuditOperation::Backup {
+                            backup_type: super::audit::BackupType::Full,
+                            file_count,
+                            total_size: 0,
+                        },
+                        format!("zip_import/{}", target_backup_id),
+                    )
+                    .complete(duration_ms)
+                    .with_details(serde_json::json!({
+                        "job_id": job_ctx.job_id.clone(),
+                        "zip_path": zip_file_path.to_string_lossy(),
+                        "backup_id": target_backup_id,
+                        "backup_path": target_dir.to_string_lossy(),
+                        "file_count": file_count,
+                        "resumed_from_checkpoint": is_resuming,
+                        "subtype": "zip_import_resumable",
+                    })),
+                );
+            }
+
+            job_ctx.complete(
+                Some(format!("ZIP 导入完成: {}", target_backup_id)),
+                file_count as u64,
+                file_count as u64,
+                result_payload,
+            );
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("用户取消") || error_msg.contains("Interrupted") {
+                job_ctx.cancelled(Some("用户取消导入".to_string()));
+            } else {
+                error!("[data_governance] ZIP 导入失败: {}", e);
+                job_ctx.fail(format!("ZIP 导入失败: {}", e));
+            }
+
+            #[cfg(feature = "data_governance")]
+            {
+                try_save_audit_log(
+                    &app,
+                    AuditLog::new(
+                        AuditOperation::Backup {
+                            backup_type: super::audit::BackupType::Full,
+                            file_count: 0,
+                            total_size: 0,
+                        },
+                        format!("zip_import/{}", target_backup_id),
+                    )
+                    .fail(error_msg.clone())
+                    .with_details(serde_json::json!({
+                        "job_id": job_ctx.job_id.clone(),
+                        "zip_path": zip_file_path.to_string_lossy(),
+                        "backup_id": target_backup_id,
+                        "backup_path": target_dir.to_string_lossy(),
+                        "resumed_from_checkpoint": is_resuming,
+                        "subtype": "zip_import_resumable",
+                    })),
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod resolve_zip_encryption_password_tests {
+    use super::resolve_zip_encryption_password;
+
+    #[test]
+    fn unconfigured_stays_portable() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(true), None),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some(String::new()), Some(true), Some(String::new())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some("   ".into()), Some(true), Some(" \t".into())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(None, None, Some("stored-passphrase".into())),
+            None
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(false), Some("stored-passphrase".into())),
+            None
+        );
+    }
+
+    #[test]
+    fn stored_password_used_when_flag_on() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(true), Some("stored-passphrase".into())),
+            Some("stored-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn explicit_password_overrides_stored() {
+        assert_eq!(
+            resolve_zip_encryption_password(
+                Some("explicit-passphrase".into()),
+                Some(true),
+                Some("stored-passphrase".into())
+            ),
+            Some("explicit-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn empty_explicit_falls_back_to_stored() {
+        assert_eq!(
+            resolve_zip_encryption_password(
+                Some("   ".into()),
+                Some(true),
+                Some("stored-passphrase".into())
+            ),
+            Some("stored-passphrase".into())
+        );
     }
 }
