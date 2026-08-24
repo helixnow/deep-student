@@ -88,12 +88,17 @@ impl GenerativeUiExecutor {
     }
 
     fn parse_research_session_id(arguments: &Value) -> Option<String> {
-        arguments
-            .get("researchSessionId")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+        const MAX_RESEARCH_SESSION_ID_LENGTH: usize = 128;
+        let raw = arguments.get("researchSessionId").and_then(Value::as_str)?;
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed.len() > MAX_RESEARCH_SESSION_ID_LENGTH {
+            return None;
+        }
+        let valid = trimmed.chars().enumerate().all(|(index, ch)| {
+            ch.is_ascii_alphanumeric()
+                || ((ch == '.' || ch == '_' || ch == '-') && index > 0)
+        });
+        valid.then(|| trimmed.to_string())
     }
 
     fn parse_note_edit(arguments: &Value) -> Result<Option<Value>, String> {
@@ -536,6 +541,16 @@ mod tests {
     fn parse_research_session_id_rejects_blank() {
         let args = json!({ "researchSessionId": "   " });
         assert!(GenerativeUiExecutor::parse_research_session_id(&args).is_none());
+    }
+
+    #[test]
+    fn parse_research_session_id_rejects_unsafe_or_oversized() {
+        let oversized = json!({ "researchSessionId": "x".repeat(129) });
+        assert!(GenerativeUiExecutor::parse_research_session_id(&oversized).is_none());
+        let traversal = json!({ "researchSessionId": "../evil" });
+        assert!(GenerativeUiExecutor::parse_research_session_id(&traversal).is_none());
+        let scheme = json!({ "researchSessionId": "javascript:alert(1)" });
+        assert!(GenerativeUiExecutor::parse_research_session_id(&scheme).is_none());
     }
 
     #[tokio::test]
