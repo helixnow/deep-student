@@ -55,13 +55,14 @@ async function loadAll(): Promise<{ cases: CaseDef[]; results: Map<string, CaseR
 }
 
 describe('anki eval harness：坏输出回放基线', () => {
-  it('fixture 规模达标：坏样本 ≥22，好卡对照 ≥6', async () => {
+  it('fixture 规模达标：坏样本 ≥25，好卡对照 ≥9', async () => {
     const { cases } = await loadAll();
     const bad = cases.filter((c) => c.set === 'bad');
     const good = cases.filter((c) => c.set === 'good');
-    expect(bad.length).toBeGreaterThanOrEqual(22);
-    expect(good.length).toBeGreaterThanOrEqual(6);
-    // 覆盖任务要求的失败类别（Round 4 #10 起含 lint/critic 边界类别）
+    expect(bad.length).toBeGreaterThanOrEqual(25);
+    expect(good.length).toBeGreaterThanOrEqual(9);
+    // 覆盖任务要求的失败类别（Round 4 #10 起含 lint/critic 边界类别，
+    // Round 5 #10 起含 xxx_residue / empty_brackets 边界对）
     const categories = new Set(bad.map((c) => c.category));
     for (const required of [
       'missing_delimiter',
@@ -77,6 +78,8 @@ describe('anki eval harness：坏输出回放基线', () => {
       'multi_concept',
       'front_too_long',
       'placeholder_residue',
+      'xxx_residue',
+      'empty_brackets',
       'lint_blind_spot',
     ]) {
       expect(categories, `缺少类别 ${required}`).toContain(required);
@@ -203,6 +206,41 @@ describe('lint 规则（Rust anki_qa_lint 契约对齐后）', () => {
     expect(lintCard({ front: '请总结 {{DOCUMENT_CONTENT}}', back: '内容' })).toContain(
       LINT_CODES.PLACEHOLDER_RESIDUE
     );
+  });
+
+  it('cloze 序号 u32 溢出判 cloze_bad_index（与 Rust digits.parse::<u32>() 同界）', () => {
+    // u32::MAX = 4294967295：恰好等于上界合法，+1 即非法
+    expect(lintCard({ text: '产物是 {{c4294967295::葡萄糖}}。' })).toEqual([]);
+    expect(lintCard({ text: '产物是 {{c4294967296::葡萄糖}}。' })).toContain(LINT_CODES.CLOZE_BAD_INDEX);
+    expect(lintCard({ text: '产物是 {{c99999999999::葡萄糖}} 和 {{c2::氧气}}。' })).toEqual([
+      LINT_CODES.CLOZE_BAD_INDEX,
+    ]);
+  });
+
+  it('answer_leak 最小长度按 Unicode 码点计（4 码点起判，短答案回显不误报）', () => {
+    // 归一化后 back 恰好 4 码点且被 front 包含 → 命中
+    expect(lintCard({ front: '答案是 abcd 吗？', back: 'abcd' })).toContain(LINT_CODES.ANSWER_LEAK);
+    // 3 码点 → 低于阈值不判泄露（Rust answer_leak_min_chars=4）
+    expect(lintCard({ front: '答案是 abc 吗？', back: 'abc' })).toEqual([]);
+    // 单字「否」被 front 字面包含也不误报（g09 fixture 的单测锚点）
+    expect(lintCard({ front: '是否成立？答案填是或否。', back: '否' })).toEqual([]);
+  });
+
+  it('xxx_residue 独立 token 边界：两侧非字母数字才命中（g10/31 fixture 锚点）', () => {
+    expect(lintCard({ front: '第几页？', back: '见教材第 xxx 页' })).toContain(LINT_CODES.XXX_RESIDUE);
+    expect(lintCard({ front: 'fooxxxbar 合法吗？', back: '合法的变量名' })).toEqual([]);
+  });
+
+  it('empty_brackets 空括号对命中，非空括号与书名号不误报（32 fixture 锚点）', () => {
+    expect(lintCard({ front: '作者是（）', back: '曹雪芹' })).toContain(LINT_CODES.EMPTY_BRACKETS);
+    expect(lintCard({ front: '《红楼梦》的作者（清代）是谁？', back: '曹雪芹' })).toEqual([]);
+  });
+
+  it('front_too_long 阈值为严格大于 220 可见字符（off-by-one 边界，g11 锚点）', () => {
+    const at = '问'.repeat(219) + '？';
+    const over = '问'.repeat(220) + '？';
+    expect(lintCard({ front: at, back: '答案' })).toEqual([]);
+    expect(lintCard({ front: over, back: '答案' })).toEqual([LINT_CODES.FRONT_TOO_LONG]);
   });
 
   it('结构化 issue 形状对齐 Rust LintIssue：{code, field}', async () => {

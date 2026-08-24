@@ -1,18 +1,25 @@
 /**
  * 确定性制卡质量 lint（eval 测试侧，复用 Rust 生产 lint 契约）。
  *
- * 状态（Round 4 #10 升级）：生产 lint 模块已落地为
- * `src-tauri/src/anki_qa_lint.rs`（Round 3 #3）。本文件不再使用自造的
- * UPPER_SNAKE 原型码，而是**逐字节复用 Rust 侧的 code 字符串契约**：
- * 凡两侧都实现的规则，code 必须与 `anki_qa_lint::LintIssue.code` 一致
- * （契约清单固化在 `src-tauri/src/anki_gold_set.rs` 的 LINT_CONTRACT_CODES，
+ * 状态（Round 4 #10 落地，Round 5 #10 完全对齐）：生产 lint 模块为
+ * `src-tauri/src/anki_qa_lint.rs`（Round 3 #3）。本文件不使用自造码，
+ * 而是**逐字节复用 Rust 侧的 code 字符串契约**：凡两侧都实现的规则，
+ * code 必须与 `anki_qa_lint::codes` 常量一致（契约清单固化在
+ * `src-tauri/src/anki_gold_set.rs` 的 LINT_CONTRACT_CODES，
  * 对齐由 tests/vitest/anki/eval/lintContract.test.ts 双向锁定）。
  *
+ * Round 5 #10 起，Rust 侧的全部 code 以具名常量导出于
+ * `anki_qa_lint::codes`，本文件的三张分区表与之满足硬性等式：
+ *
+ *   RUST_ALIGNED_CODES ∪ RUST_ONLY_CODES == codes::ALL（无交集、无遗漏，
+ *   且每个条目的**键名与 Rust 常量名、值与 Rust 常量值均逐字节一致**）
+ *   EVAL_ONLY_CODES ∩ codes::ALL == ∅
+ *
  * 三类规则码：
- * 1. Rust-aligned（本文件实现，码与 Rust 相同）：内容级纯文本规则；
- * 2. Rust-only（本文件不实现）：依赖模板/文档/DB 上下文的规则
- *    （tags_empty、duplicate_card、mcq_*、field_rule_*、mixed_language、
- *    legacy_flags_unparsed）——回放单卡 JSON 拿不到这些上下文；
+ * 1. Rust-aligned（本文件实现，名与值都与 Rust 相同）：内容级纯文本规则；
+ * 2. Rust-only（本文件声明但不实现）：依赖模板/文档/DB 上下文或属
+ *    Info 级低置信提示的规则——回放单卡 JSON 拿不到上下文，Info 码
+ *    不参与基线断言（见各条目注释）；
  * 3. eval-only（Rust 无对应）：流式回放特有的表层缺陷
  *    （filler_phrase / fence_in_field / placeholder_text），
  *    命名遵循同一 snake_case 约定且不得与契约清单冲突。
@@ -20,7 +27,7 @@
  * 设计原则不变：零 LLM、零网络、纯函数、对好卡零误报（good 对照集守护）。
  */
 
-/** 与 Rust anki_qa_lint 对齐的规则码（值 = Rust code 字符串，逐字节一致） */
+/** 与 Rust anki_qa_lint 对齐的规则码（键 = Rust codes 常量名，值 = 常量值，逐字节一致） */
 export const RUST_ALIGNED_CODES = Object.freeze({
   EMPTY_FRONT: 'empty_front',
   EMPTY_BACK: 'empty_back',
@@ -38,6 +45,35 @@ export const RUST_ALIGNED_CODES = Object.freeze({
   EMPTY_BRACKETS: 'empty_brackets',
 });
 
+/**
+ * Rust 生产侧独有的规则码（本文件声明但不实现；键/值同样与 Rust 常量对齐）。
+ *
+ * 与 RUST_ALIGNED_CODES 合并后必须恰好等于 `anki_qa_lint::codes::ALL`——
+ * Rust 侧任何新增 lint 码都必须先在这两张表之一归类，否则契约测试红。
+ * 每条附不复刻原因（与 eval README 对照表同步）：
+ */
+export const RUST_ONLY_CODES = Object.freeze({
+  /** Info 级；回放夹具不约定 tags，复刻会对好卡全量误报 */
+  TAGS_EMPTY: 'tags_empty',
+  /** 需跨卡 FingerprintTracker 文档级状态，单卡回放无从谈起 */
+  DUPLICATE_IN_DOCUMENT: 'duplicate_in_document',
+  /** 同上（bigram Jaccard 近重复） */
+  NEAR_DUPLICATE: 'near_duplicate',
+  /** Info 级低置信提示（合法中英术语混排即触发），不参与基线断言 */
+  MIXED_LANGUAGE: 'mixed_language',
+  /** 需选择题模板上下文（extra_fields 的 option 槽位约定） */
+  MCQ_TOO_FEW_OPTIONS: 'mcq_too_few_options',
+  MCQ_ANSWER_NOT_IN_OPTIONS: 'mcq_answer_not_in_options',
+  MCQ_MISSING_ANSWER: 'mcq_missing_answer',
+  /** 需模板 FieldExtractionRule 上下文 */
+  FIELD_RULE_MIN_LENGTH: 'field_rule_min_length',
+  FIELD_RULE_MAX_LENGTH: 'field_rule_max_length',
+  FIELD_RULE_ALLOWED_VALUES: 'field_rule_allowed_values',
+  FIELD_RULE_PATTERN: 'field_rule_pattern',
+  /** merge_flags 对非法既有 _qa_flags 值的包装条目，属内部机制 */
+  LEGACY_FLAGS_UNPARSED: 'legacy_flags_unparsed',
+});
+
 /** eval harness 特有码（Rust 无对应规则；不得与 LINT_CONTRACT_CODES 冲突） */
 export const EVAL_ONLY_CODES = Object.freeze({
   /** 模型客套话/助手口癖泄漏进字段正文 */
@@ -48,7 +84,7 @@ export const EVAL_ONLY_CODES = Object.freeze({
   PLACEHOLDER_TEXT: 'placeholder_text',
 });
 
-/** 全量码表（向后兼容出口；测试与 manifest 均引用具体字符串） */
+/** 本文件可能产出的全量码表（不含 Rust-only；测试与 manifest 均引用具体字符串） */
 export const LINT_CODES = Object.freeze({ ...RUST_ALIGNED_CODES, ...EVAL_ONLY_CODES });
 
 // ---------------------------------------------------------------------------
@@ -117,7 +153,9 @@ function scanCloze(s) {
       continue;
     }
     const content = s.slice(contentStart, close);
-    const indexOk = digits.length > 0 && Number.parseInt(digits, 10) >= 1;
+    // Rust 侧序号是 digits.parse::<u32>()：0、非数字与超出 u32 范围均判非法
+    const index = digits.length > 0 ? Number.parseInt(digits, 10) : Number.NaN;
+    const indexOk = Number.isInteger(index) && index >= 1 && index <= 0xffffffff;
     if (!indexOk) scan.badIndex++;
     else if (content.trim().length === 0) scan.empty++;
     else scan.valid++;
@@ -198,10 +236,11 @@ export function lintCardIssues(card) {
   if (hasText && !text.includes('{{c')) push(RUST_ALIGNED_CODES.CLOZE_MISSING, 'text');
 
   // ---- answer_leak（Rust 规则 4：归一化含入 + 最小长度 + f==b 时让位规则 1）----
+  // 最小长度按 Unicode 码点计（对齐 Rust b.chars().count()，而非 UTF-16 单元数）
   if (
     !identical &&
     normFront.length > 0 &&
-    normBack.length >= ANSWER_LEAK_MIN_CHARS &&
+    [...normBack].length >= ANSWER_LEAK_MIN_CHARS &&
     normFront.includes(normBack)
   ) {
     push(RUST_ALIGNED_CODES.ANSWER_LEAK, 'front');

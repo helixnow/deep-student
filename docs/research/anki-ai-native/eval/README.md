@@ -1,12 +1,22 @@
 # 制卡质量 eval harness 使用说明
 
-坏输出回放基线：用固化 fixture（30 坏 + 8 好 + 5 金标修正对）回放流式制卡
+坏输出回放基线：用固化 fixture（33 坏 + 11 好 + 5 金标修正对）回放流式制卡
 解析管线的真实风格失败样本，度量解析成功率、错误卡率与 lint 命中率，并作为
 Structured Output / lint 规则变更 / 金标挖掘的回归护栏。
 
 Round 4 #10 起，eval lint 码**复用 Rust 生产 lint 模块
 `src-tauri/src/anki_qa_lint.rs` 的 code 字符串契约**（见下方对照表），
 金标修正对回归（改前=劣化、改后=金标）同时由 JS 与 Rust 两侧消费。
+
+Round 5 #10 起，Rust 侧全部稳定 code 以具名常量导出于
+`anki_qa_lint::codes`（含 `codes::ALL` 枚举出口），JS 侧
+`cardLint.mjs` 的 `RUST_ALIGNED_CODES` / `RUST_ONLY_CODES` 两张分区表与之满足
+**「键名 == Rust 常量名、值 == Rust 常量值」的双重逐字节对齐**，且二者并集
+恰好等于 `codes::ALL`（无交集、无遗漏）——Rust 新增 lint 码而未在 JS 侧归类
+（复刻或声明为 Rust-only）时，`lintContract.test.ts` 即红。同轮还对齐了两处
+实现级边界：answer_leak 最小长度按 Unicode 码点计（对齐 Rust
+`chars().count()`）、cloze 序号超出 u32 范围判 `cloze_bad_index`（对齐
+`digits.parse::<u32>()` 溢出语义）。
 
 ## 怎么跑
 
@@ -35,32 +45,35 @@ node scripts/anki-eval/run-eval.mjs --json   # JSON（供归档与趋势对比�
 
 ```bash
 cd src-tauri && cargo test --lib anki_gold_set
+cd src-tauri && cargo test --lib anki_qa_lint::tests::codes_module
 ```
 
 其中 `repo_repair_pair_fixtures_satisfy_lint_contract` 用**生产 lint 引擎**
 （`anki_qa_lint::lint_card`）复检 `gold/repair-pairs/*.json`，与 vitest 的
 goldPairs 套件互为校验；`lint_contract_codes_match_anki_qa_lint_source`
-守护契约清单与 lint 源码不漂移。
+守护契约清单与 lint 源码不漂移；`anki_qa_lint` 的三个 `codes_module_*`
+测试守护 `codes` 常量模块与实际产出字面量、契约清单三方相等且
+`codes::ALL` 无重复无遗漏。
 
 ## 目录结构
 
 ```
 tests/fixtures/anki-eval/
   manifest.json          # fixture 清单 + 每个样本的预期结局（回归基线的唯一事实来源）
-  cases/*.txt            # 30 个坏输出样本（模型原始流文本，含 lint/critic 边界样本）
-  good/*.txt             # 8 个好卡对照样本（防 lint 误伤）
+  cases/*.txt            # 33 个坏输出样本（模型原始流文本，含 lint/critic 边界样本）
+  good/*.txt             # 11 个好卡对照样本（防 lint 误伤）
   gold/repair-pairs/*.json  # 金标修正对（改前=劣化、改后=金标，JS/Rust 双侧消费）
 scripts/anki-eval/
   lib/replayParser.mjs   # 生产切卡器/清洗器的测试侧最小复刻（标注 drift 风险）
-  lib/cardLint.mjs       # 确定性 lint（Rust anki_qa_lint 契约对齐版）
+  lib/cardLint.mjs       # 确定性 lint（Rust anki_qa_lint 契约对齐版 + 三张分区表）
   lib/harness.mjs        # 加载/回放/比对/指标/金标修正对（vitest 与 CLI 共用）
   run-eval.mjs           # CLI 入口
 tests/vitest/anki/eval/
-  evalHarness.test.ts    # 回放基线回归
+  evalHarness.test.ts    # 回放基线回归 + lint 边界单测
   lintContract.test.ts   # 跨语言 lint 码契约锁（含本 README 对照表防漂移）
   goldPairs.test.ts      # 金标修正对回归
 src-tauri/src/
-  anki_qa_lint.rs        # 生产 lint 引擎（code 字符串的定义方）
+  anki_qa_lint.rs        # 生产 lint 引擎 + codes 稳定常量导出（code 的定义方）
   anki_gold_set.rs       # 金标挖掘纯函数 + LINT_CONTRACT_CODES 契约清单
 ```
 
@@ -79,21 +92,23 @@ src-tauri/src/
 - `error_card_rate` = error_card / 卡片段总数
 - `lint_flag_rate` = 命中 ≥1 个 lint 码的解析成功卡 / 解析成功卡总数
 
-当前基线（2026-08-24，manifest 固化，Round 4 #10 扩容后）：
+当前基线（2026-08-24，manifest 固化，Round 5 #10 扩容后）：
 
 | 集合 | 段数 | parse_success_rate | error_card_rate | lint_flag_rate |
 |---|---|---|---|---|
-| bad（30 例） | 36 | 80.6% | 19.4% | 44.8% |
-| good（8 例） | 10 | 100% | 0% | 0% |
+| bad（33 例） | 39 | 82.1% | 17.9% | 50.0% |
+| good（11 例） | 13 | 100% | 0% | 0% |
 
 ## lint 码对照表（eval ↔ Rust anki_qa_lint 契约）
 
-契约清单固化于 `src-tauri/src/anki_gold_set.rs` 的 `LINT_CONTRACT_CODES`，
-三方一致性由 `lintContract.test.ts`（JS 侧）与
-`lint_contract_codes_match_anki_qa_lint_source`（Rust 侧）双向锁定，
+Rust 侧锚点为 `anki_qa_lint::codes` 具名常量模块（Round 5 #10），契约清单
+固化于 `src-tauri/src/anki_gold_set.rs` 的 `LINT_CONTRACT_CODES`。一致性由
+`lintContract.test.ts`（JS 侧：常量↔契约↔产出三方相等、分区表键名+值双对齐、
+分区并集 == `codes::ALL`）与 Rust 侧的 `codes_module_*` /
+`lint_contract_codes_match_anki_qa_lint_source` 测试双向锁定，
 **本对照表由测试断言防漂移**（每个码必须以反引号形式出现在本文件中）。
 
-### 双侧实现（eval 复刻 Rust 规则，code 逐字节一致）
+### 双侧实现（eval 复刻 Rust 规则，常量名与 code 值均逐字节一致）
 
 | code | 语义 | Rust 严重度 |
 |---|---|---|
@@ -113,6 +128,9 @@ src-tauri/src/
 | `empty_brackets` | 空括号对 `【】` `（）` `()` | Warn |
 
 ### Rust-only（依赖模板/文档/DB 上下文，回放单卡 JSON 无法复刻）
+
+以下码在 JS 侧以 `RUST_ONLY_CODES` 显式声明（含逐条原因注释）而不实现——
+Rust 新增码必须先在 ALIGNED / RUST_ONLY 两表之一归类，契约测试才会放行。
 
 | code | 语义 | 不复刻原因 |
 |---|---|---|
@@ -163,8 +181,10 @@ src-tauri/src/
 检查另一侧**。
 
 lint 侧的 drift 已由契约锁自动化：改 `anki_qa_lint.rs` 的码而不同步
-`LINT_CONTRACT_CODES` → Rust 测试红；不同步 `cardLint.mjs` 或本对照表 →
-vitest 红。
+`codes` 常量模块或 `LINT_CONTRACT_CODES` → Rust 测试红；不同步
+`cardLint.mjs` 的分区表或本对照表 → vitest 红。实现级阈值语义
+（answer_leak 码点计数、cloze 序号 u32 界、front_too_long 严格大于阈值）
+由 g09/g11/33 号等边界 fixture 与 evalHarness 单测双重锚定。
 
 ## 后续模块如何把 fixture 当回归
 
@@ -172,8 +192,11 @@ vitest 红。
    将新输出路径接入 harness（新增 `entry: "structured"` 或直接替换切卡层），
    预期翻转方向只允许 `error_card → parse_ok`（在 manifest 中更新预期并在
    PR 中列出翻转清单）；任何 `parse_ok → error_card` 翻转即回归，CI 拒绝。
-2. **lint 规则变更时**：新增码需同步 `LINT_CONTRACT_CODES` + 本对照表；
-   若 eval 侧可复刻则加入 `cardLint.mjs` 并补 bad/good 边界 fixture。
+2. **lint 规则变更时**：新增码需同步 `anki_qa_lint::codes` 常量 +
+   `LINT_CONTRACT_CODES` + `cardLint.mjs` 分区表（复刻进
+   `RUST_ALIGNED_CODES` 或声明进 `RUST_ONLY_CODES`）+ 本对照表；
+   若 eval 侧可复刻则实现规则并补 bad/good 边界 fixture 对
+   （参考 31↔g10、32、33、g09、g11）。
 3. **新失败样本入库**：线上遇到新的坏输出时，脱敏后追加
    `cases/NN-<category>.txt` + manifest 条目（预期按当前管线实际行为固化），
    基线即自动扩展。

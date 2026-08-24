@@ -71,6 +71,81 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 /// 此处独立声明避免模块间循环依赖；两处均有编译期断言测试守护。
 pub const QA_FLAGS_FIELD: &str = "_qa_flags";
 
+/// 全部稳定 lint code 的具名常量导出（Round 5 #10，跨语言契约的 Rust 侧锚点）。
+///
+/// 规则实现内部仍以字符串字面量产出 code（保持 `anki_gold_set.rs` 的源码扫描
+/// 契约测试不变），本模块的价值是给下游一个**稳定、可枚举、带名字**的出口：
+///
+/// - 常量名与 eval harness（`scripts/anki-eval/lib/cardLint.mjs`）中
+///   `RUST_ALIGNED_CODES` / `RUST_ONLY_CODES` 的键名逐字节一致，
+///   `tests/vitest/anki/eval/lintContract.test.ts` 解析本模块源码断言
+///   「名字 + 值」双重对齐；
+/// - 常量值与 `anki_gold_set::LINT_CONTRACT_CODES` 及规则实现实际产出的
+///   字面量三方相等，由本文件测试 `codes_module_matches_emitted_literals` /
+///   `codes_module_matches_contract_list` 锁定。
+///
+/// 新增/改名 lint 码的完整步骤：规则实现 → 本模块常量 →
+/// `LINT_CONTRACT_CODES` → `cardLint.mjs` 分区表 → eval README 对照表，
+/// 漏任何一步都有测试红灯。
+pub mod codes {
+    pub const FRONT_BACK_IDENTICAL: &str = "front_back_identical";
+    pub const EMPTY_FRONT: &str = "empty_front";
+    pub const EMPTY_BACK: &str = "empty_back";
+    pub const CLOZE_UNCLOSED: &str = "cloze_unclosed";
+    pub const CLOZE_EMPTY_ANSWER: &str = "cloze_empty_answer";
+    pub const CLOZE_BAD_INDEX: &str = "cloze_bad_index";
+    pub const CLOZE_MISSING: &str = "cloze_missing";
+    pub const ANSWER_LEAK: &str = "answer_leak";
+    pub const MULTI_CONCEPT: &str = "multi_concept";
+    pub const FRONT_TOO_LONG: &str = "front_too_long";
+    pub const PLACEHOLDER_RESIDUE: &str = "placeholder_residue";
+    pub const TODO_RESIDUE: &str = "todo_residue";
+    pub const XXX_RESIDUE: &str = "xxx_residue";
+    pub const EMPTY_BRACKETS: &str = "empty_brackets";
+    pub const TAGS_EMPTY: &str = "tags_empty";
+    pub const DUPLICATE_IN_DOCUMENT: &str = "duplicate_in_document";
+    pub const NEAR_DUPLICATE: &str = "near_duplicate";
+    pub const MIXED_LANGUAGE: &str = "mixed_language";
+    pub const MCQ_TOO_FEW_OPTIONS: &str = "mcq_too_few_options";
+    pub const MCQ_ANSWER_NOT_IN_OPTIONS: &str = "mcq_answer_not_in_options";
+    pub const MCQ_MISSING_ANSWER: &str = "mcq_missing_answer";
+    pub const FIELD_RULE_MIN_LENGTH: &str = "field_rule_min_length";
+    pub const FIELD_RULE_MAX_LENGTH: &str = "field_rule_max_length";
+    pub const FIELD_RULE_ALLOWED_VALUES: &str = "field_rule_allowed_values";
+    pub const FIELD_RULE_PATTERN: &str = "field_rule_pattern";
+    pub const LEGACY_FLAGS_UNPARSED: &str = "legacy_flags_unparsed";
+
+    /// 全部 code 常量的集合（顺序无语义），供契约测试与调用方枚举。
+    pub const ALL: &[&str] = &[
+        FRONT_BACK_IDENTICAL,
+        EMPTY_FRONT,
+        EMPTY_BACK,
+        CLOZE_UNCLOSED,
+        CLOZE_EMPTY_ANSWER,
+        CLOZE_BAD_INDEX,
+        CLOZE_MISSING,
+        ANSWER_LEAK,
+        MULTI_CONCEPT,
+        FRONT_TOO_LONG,
+        PLACEHOLDER_RESIDUE,
+        TODO_RESIDUE,
+        XXX_RESIDUE,
+        EMPTY_BRACKETS,
+        TAGS_EMPTY,
+        DUPLICATE_IN_DOCUMENT,
+        NEAR_DUPLICATE,
+        MIXED_LANGUAGE,
+        MCQ_TOO_FEW_OPTIONS,
+        MCQ_ANSWER_NOT_IN_OPTIONS,
+        MCQ_MISSING_ANSWER,
+        FIELD_RULE_MIN_LENGTH,
+        FIELD_RULE_MAX_LENGTH,
+        FIELD_RULE_ALLOWED_VALUES,
+        FIELD_RULE_PATTERN,
+        LEGACY_FLAGS_UNPARSED,
+    ];
+}
+
 // ============================================================================
 // 输出结构
 // ============================================================================
@@ -2047,5 +2122,60 @@ mod tests {
         assert_eq!(cfg.max_front_chars, 100);
         assert!(cfg.check_cloze);
         assert_eq!(cfg.answer_leak_min_chars, 4);
+    }
+
+    // -------- codes 模块（稳定常量导出）契约守护（Round 5 #10） --------
+
+    #[test]
+    fn codes_module_matches_emitted_literals() {
+        // codes::ALL 必须与规则实现实际产出的 code 字面量集合完全一致：
+        // 新增规则忘了补常量、或常量拼错值，此测试即红。
+        use std::collections::BTreeSet;
+        let source = include_str!("anki_qa_lint.rs");
+        let ctor = regex::Regex::new(r#"LintIssue::new\(\s*"([a-z_]+)""#).unwrap();
+        let json_code = regex::Regex::new(r#""code":\s*"([a-z_]+)""#).unwrap();
+        let mut emitted: BTreeSet<String> = BTreeSet::new();
+        for caps in ctor.captures_iter(source) {
+            emitted.insert(caps[1].to_string());
+        }
+        for caps in json_code.captures_iter(source) {
+            emitted.insert(caps[1].to_string());
+        }
+        let declared: BTreeSet<String> = codes::ALL.iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            declared, emitted,
+            "codes 模块与实际产出的 code 漂移：\n仅常量有: {:?}\n仅产出有: {:?}",
+            declared.difference(&emitted).collect::<Vec<_>>(),
+            emitted.difference(&declared).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn codes_module_matches_contract_list() {
+        use std::collections::BTreeSet;
+        let from_codes: BTreeSet<&str> = codes::ALL.iter().copied().collect();
+        let from_contract: BTreeSet<&str> = crate::anki_gold_set::LINT_CONTRACT_CODES
+            .iter()
+            .copied()
+            .collect();
+        assert_eq!(from_codes, from_contract, "codes::ALL 与 LINT_CONTRACT_CODES 漂移");
+    }
+
+    #[test]
+    fn codes_module_all_is_exhaustive_and_unique() {
+        use std::collections::HashSet;
+        // ALL 无重复
+        let set: HashSet<&str> = codes::ALL.iter().copied().collect();
+        assert_eq!(set.len(), codes::ALL.len(), "codes::ALL 含重复项");
+        // ALL 覆盖模块内声明的每个 &str 常量（漏列即红）
+        let source = include_str!("anki_qa_lint.rs");
+        let decl = regex::Regex::new(r#"pub const [A-Z][A-Z0-9_]*: &str = "([a-z][a-z0-9_]*)";"#)
+            .unwrap();
+        let declared: HashSet<String> = decl
+            .captures_iter(source)
+            .map(|caps| caps[1].to_string())
+            .collect();
+        let listed: HashSet<String> = codes::ALL.iter().map(|s| s.to_string()).collect();
+        assert_eq!(declared, listed, "codes 模块声明的常量与 ALL 清单不一致");
     }
 }

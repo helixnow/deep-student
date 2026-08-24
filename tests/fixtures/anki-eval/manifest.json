@@ -421,6 +421,45 @@
       }
     },
     {
+      "id": "31-xxx-residue",
+      "set": "bad",
+      "category": "xxx_residue",
+      "file": "cases/31-xxx-residue.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "back 含独立占位 token \"xxx\"（模型留下未填的页码/引用）。由 xxx_residue 捕获；与 g10 的字母内嵌 xxx 构成正反边界对。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["xxx_residue"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "32-empty-brackets",
+      "set": "bad",
+      "category": "empty_brackets",
+      "file": "cases/32-empty-brackets.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "填空题挖空处留下空括号对（），内容漏填。由 empty_brackets 捕获；书名号《》等非空括号不受影响。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["empty_brackets"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "33-cloze-index-overflow",
+      "set": "bad",
+      "category": "cloze_broken",
+      "file": "cases/33-cloze-index-overflow.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "cloze 序号超出 u32 范围（{{c99999999999::...}}）。Rust 侧 digits.parse::<u32>() 溢出判非法，JS 侧同界对齐（Round 5 #10 对齐点），由 cloze_bad_index 捕获；同卡另一个合法挖空不受影响。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["cloze_bad_index"] }],
+        "droppedProse": 0
+      }
+    },
+    {
       "id": "g01-basic-qa",
       "set": "good",
       "category": "good_control",
@@ -523,6 +562,45 @@
       "entry": "stream",
       "chunkSize": 13,
       "description": "英文单问句含 and 连接的两个名词（TCP and UDP）。防 multi_concept 英文双疑问词启发式对单一问题误伤（lint 边界）。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "g09-short-back-answer-echo",
+      "set": "good",
+      "category": "good_control",
+      "file": "good/g09-short-back-answer-echo.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "front 提示「答案填是或否」而 back 为单字「否」：front 字面包含 back，但归一化后 back 仅 1 码点（< answer_leak_min_chars=4）。防 answer_leak 最小长度阈值误伤（边界）。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "g10-xxx-inside-word",
+      "set": "good",
+      "category": "good_control",
+      "file": "good/g10-xxx-inside-word.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "标识符 fooxxxbar 内嵌 3 个 x 但两侧均为字母。防 xxx_residue 的独立 token 正则（两侧须非字母数字）误伤（与 31 号坏样本构成正反边界对）。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "g11-front-at-length-limit",
+      "set": "good",
+      "category": "good_control",
+      "file": "good/g11-front-at-length-limit.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "front 恰好 220 个可见字符（== max_front_chars 阈值）。Rust 判据是严格大于（count > 220），JS 同界对齐，恰好等于阈值不得误报 front_too_long（off-by-one 边界）。",
       "expected": {
         "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
         "droppedProse": 0
