@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { z } from 'zod';
 
@@ -26,11 +27,12 @@ export function MistakeAnalysisBlock({
   suggestion,
   severity = 'medium',
 }: MistakeAnalysisProps) {
+  const { t } = useTranslation('generativeUi');
   return (
     <Alert variant={severityVariant[severity]}>
       <AlertTitle>
-        {topic} · 错误率 {errorRate}%
-        {mistakeCount != null ? `（${mistakeCount} 道）` : ''}
+        {topic} · {t('mistake.error_rate', { rate: errorRate })}
+        {mistakeCount != null ? t('mistake.count', { count: mistakeCount }) : ''}
       </AlertTitle>
       <AlertDescription>{suggestion}</AlertDescription>
     </Alert>

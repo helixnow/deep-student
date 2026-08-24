@@ -36,6 +36,7 @@ export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
 export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
 export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
+export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 
 // 注册内置块

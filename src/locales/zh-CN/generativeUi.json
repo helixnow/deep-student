@@ -12,8 +12,23 @@
   },
   "action": {
     "confirm_title": "确认：{{label}}",
+    "confirm_inline": "确认：{{label}}",
     "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
     "confirm_execute": "确认执行"
+  },
+  "flashcard": {
+    "preview_title": "闪卡预览",
+    "front": "正面",
+    "back": "背面"
+  },
+  "review_calendar": {
+    "default_title": "复习日历",
+    "due": "待复习 {{count}}",
+    "completed": "已完成 {{count}}"
+  },
+  "mistake": {
+    "error_rate": "错误率 {{rate}}%",
+    "count": "（{{count}} 道）"
   },
   "panel": {
     "empty": "暂无 AI 界面内容"
@@ -22,9 +37,27 @@
     "summary_title": "AI 笔记摘要"
   },
   "workbench": {
-    "briefing_label": "AI 学习简报"
+    "briefing_label": "AI 学习简报",
+    "briefing": {
+      "due_flashcards_title": "到期闪卡",
+      "due_trend_due": "待复习",
+      "due_trend_none": "暂无到期",
+      "progress_title": "待办进度",
+      "overdue_label": "{{count}} 项逾期",
+      "pending_label": "{{count}} 项待办",
+      "start_review": "开始复习",
+      "open_qbank": "打开题库"
+    }
   },
   "learningHub": {
-    "briefing_label": "AI 资源简报"
+    "briefing_label": "AI 资源简报",
+    "briefing": {
+      "default_folder": "资源库",
+      "stat_title": "可见资源",
+      "trend_active": "可继续探索",
+      "trend_empty": "目录为空",
+      "start_review": "开始复习",
+      "open_qbank": "打开题库"
+    }
   }
 }

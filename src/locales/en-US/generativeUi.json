@@ -12,8 +12,23 @@
   },
   "action": {
     "confirm_title": "Confirm: {{label}}",
+    "confirm_inline": "Confirm: {{label}}",
     "confirm_desc": "This action may have irreversible effects.",
     "confirm_execute": "Confirm"
+  },
+  "flashcard": {
+    "preview_title": "Flashcard preview",
+    "front": "Front",
+    "back": "Back"
+  },
+  "review_calendar": {
+    "default_title": "Review calendar",
+    "due": "Due {{count}}",
+    "completed": "Done {{count}}"
+  },
+  "mistake": {
+    "error_rate": "Error rate {{rate}}%",
+    "count": "({{count}} items)"
   },
   "panel": {
     "empty": "No AI UI content"
@@ -22,9 +37,27 @@
     "summary_title": "AI note summary"
   },
   "workbench": {
-    "briefing_label": "AI learning briefing"
+    "briefing_label": "AI learning briefing",
+    "briefing": {
+      "due_flashcards_title": "Due flashcards",
+      "due_trend_due": "To review",
+      "due_trend_none": "None due",
+      "progress_title": "Todo progress",
+      "overdue_label": "{{count}} overdue",
+      "pending_label": "{{count}} pending",
+      "start_review": "Start review",
+      "open_qbank": "Open question bank"
+    }
   },
   "learningHub": {
-    "briefing_label": "AI resource briefing"
+    "briefing_label": "AI resource briefing",
+    "briefing": {
+      "default_folder": "Library",
+      "stat_title": "Visible resources",
+      "trend_active": "Keep exploring",
+      "trend_empty": "Folder is empty",
+      "start_review": "Start review",
+      "open_qbank": "Open question bank"
+    }
   }
 }

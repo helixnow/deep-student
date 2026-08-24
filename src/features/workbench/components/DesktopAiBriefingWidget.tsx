@@ -39,12 +39,24 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
 
   const intent = useMemo(
     () =>
-      buildLearningBriefingIntent({
-        dueFlashcards: dueCount,
-        pendingTodos,
-        overdueTodos,
-      }),
-    [dueCount, overdueTodos, pendingTodos],
+      buildLearningBriefingIntent(
+        {
+          dueFlashcards: dueCount,
+          pendingTodos,
+          overdueTodos,
+        },
+        {
+          dueFlashcardsTitle: t('generativeUi:workbench.briefing.due_flashcards_title'),
+          dueTrendDue: t('generativeUi:workbench.briefing.due_trend_due'),
+          dueTrendNone: t('generativeUi:workbench.briefing.due_trend_none'),
+          progressTitle: t('generativeUi:workbench.briefing.progress_title'),
+          overdueLabel: t('generativeUi:workbench.briefing.overdue_label'),
+          pendingLabel: t('generativeUi:workbench.briefing.pending_label'),
+          startReview: t('generativeUi:workbench.briefing.start_review'),
+          openQbank: t('generativeUi:workbench.briefing.open_qbank'),
+        },
+      ),
+    [dueCount, overdueTodos, pendingTodos, t],
   );
 
   return (

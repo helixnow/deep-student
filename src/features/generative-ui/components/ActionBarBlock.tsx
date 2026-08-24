@@ -83,7 +83,9 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
               disabled={executing}
               onClick={() => handleClick(action.id, action.label, effectiveRisk)}
             >
-              {isConfirmingMedium ? `确认：${action.label}` : action.label}
+              {isConfirmingMedium
+                ? t('action.confirm_inline', { label: action.label })
+                : action.label}
             </DsButton>
           );
         })}
