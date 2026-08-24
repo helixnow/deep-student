@@ -2,9 +2,42 @@
  * Generative UI — 系统 Prompt 模板
  *
  * 约束模型只输出结构化 JSON，且仅使用注册表中的 type。
+ * few-shot / 负例见 prompts/fewShotExamples.ts。
  */
 
 import { generativeUIRegistry } from './registry';
+import {
+  GENERATIVE_UI_FEW_SHOT_EXAMPLES,
+  GENERATIVE_UI_FEW_SHOT_LABELS,
+  GENERATIVE_UI_NEGATIVE_EXAMPLES,
+  LEARNING_DASHBOARD_EXAMPLE,
+} from './prompts/fewShotExamples';
+
+export {
+  GENERATIVE_UI_FEW_SHOT_EXAMPLES,
+  GENERATIVE_UI_FEW_SHOT_LABELS,
+  GENERATIVE_UI_NEGATIVE_EXAMPLE_KEYWORDS,
+  GENERATIVE_UI_NEGATIVE_EXAMPLES,
+  LEARNING_DASHBOARD_EXAMPLE,
+  MISTAKE_DIAGNOSIS_EXAMPLE,
+  NOTES_HITL_EXAMPLE,
+  RESEARCH_BRIEFING_EXAMPLE,
+} from './prompts/fewShotExamples';
+
+function formatFewShotSection(): string {
+  return GENERATIVE_UI_FEW_SHOT_EXAMPLES.map((example, index) => {
+    const label = GENERATIVE_UI_FEW_SHOT_LABELS[index] ?? `示例 ${index + 1}`;
+    return [`### 正例 ${index + 1} — ${label}`, '```json', JSON.stringify(example, null, 2), '```'].join(
+      '\n',
+    );
+  }).join('\n\n');
+}
+
+function formatNegativeSection(): string {
+  return GENERATIVE_UI_NEGATIVE_EXAMPLES.map((ex, index) => {
+    return `${index + 1}. **${ex.title}**：❌ ${ex.bad} — ${ex.reason}`;
+  }).join('\n');
+}
 
 export function buildGenerativeUISystemPrompt(options?: {
   domain?: 'saas' | 'learning' | 'creative';
@@ -13,6 +46,7 @@ export function buildGenerativeUISystemPrompt(options?: {
   const domain = options?.domain ?? 'learning';
   const maxBlocks = options?.maxBlocks ?? 12;
   const catalog = generativeUIRegistry.getCatalogForPrompt();
+  const catalogTypes = catalog.map((c) => c.type).join(', ');
 
   const domainGuidance =
     domain === 'saas'
@@ -35,68 +69,39 @@ export function buildGenerativeUISystemPrompt(options?: {
     '}',
     '```',
     '',
+    '## 流式约束',
+    '- 只输出一个 JSON 文档（可包在 ```json 围栏内）。不要 markdown 围栏外的闲聊、解释或前后缀。',
+    '- 先输出完整 JSON 结构：先写 `version` / `meta` / `blocks` 数组骨架，再逐个输出**已闭合**的 block（先 `type`，再填完整 `props`）。',
+    '- 不要先吐半截 props 再回头补字段；增量解析器只提交已闭合的 block 对象。',
+    '- 流式过程中不要插入 HTML/JSX 注释或自然语言进度播报。',
+    '',
     `## 约束`,
-    `- 最多 ${maxBlocks} 个 blocks`,
-    `- 只能使用以下 type：${catalog.map((c) => c.type).join(', ')}`,
-    `- 每个 type 的 props 必须符合 schema；不要发明新字段`,
-    `- 高风险操作（删除、支付、发布）只能通过 action-bar 声明 action id，不得假设已执行`,
+    `- 最多 ${maxBlocks} 个 blocks；超过 max blocks 会被拒绝。`,
+    `- 只能使用以下 type（catalog 动态来自 registry）：${catalogTypes}`,
+    `- 每个 type 的 props 必须符合 schema；不要发明新字段，不要传 className / style / hex 色值`,
+    `- 高风险操作（删除、支付、发布、笔记写入、覆盖文件）必须使用 action-bar，且对应 action 必须带 riskLevel（high 或 medium），不得假设已执行`,
+    `- 禁止用 text/alert 宣告「已删除」「已支付」「已提交」来绕过 action-bar`,
     `- ${domainGuidance}`,
+    '',
+    '## HITL / 研究桥接',
+    '- Notes 写入：action-bar 使用 apply-note-edit（edit-apply）与 dismiss-note-suggestion（edit-reject）；同时提供 noteEdit（operation/content/search/replace）。前端经 canvas:ai-edit-request HITL，用户确认前禁止假设已写入。',
+    '- 深度研究：research-plan / research-report / paper-digest 可附带 researchSessionId 绑定 HPIAS；前端经 hpias_event 更新研究面板。',
     '',
     '## 可用组件',
     ...catalog.map(
       (c) => `- **${c.type}**: ${c.description} — props ${c.propsHint}`,
     ),
     '',
-    '## 正负示例',
-    '✅ 正确：blocks 数组内 stat-card + list 组合展示学习进度',
+    '## Few-shot 正例',
+    '以下均为合法 GenerativeUIIntent。模仿结构，不要发明 type。',
+    '',
+    formatFewShotSection(),
+    '',
+    '## 负例（禁止）',
+    formatNegativeSection(),
+    '',
+    '## 正负对照（短）',
+    '✅ 正确：blocks 数组内 stat-card + progress + action-bar 组合展示学习进度',
     '❌ 错误：输出 <div> 或 inline style 或任意 JavaScript',
   ].join('\n');
 }
-
-/** 学习场景示例意图（供 few-shot / 测试） */
-export const LEARNING_DASHBOARD_EXAMPLE = {
-  version: '1' as const,
-  meta: {
-    title: '本周学习概览',
-    description: '基于你的笔记与练习数据',
-  },
-  blocks: [
-    {
-      type: 'stat-card',
-      props: {
-        title: '完成练习',
-        value: 24,
-        trend: 'up',
-        trendLabel: '较上周 +6',
-      },
-    },
-    {
-      type: 'progress',
-      props: {
-        title: '复习计划',
-        current: 18,
-        total: 30,
-        label: '18 张闪卡已复习',
-      },
-    },
-    {
-      type: 'list',
-      props: {
-        title: '待巩固知识点',
-        items: [
-          { label: '线性代数 · 特征值', badge: '高', description: '错题 3 道' },
-          { label: '概率论 · 贝叶斯', badge: '中' },
-        ],
-      },
-    },
-    {
-      type: 'action-bar',
-      props: {
-        actions: [
-          { id: 'start-review', label: '开始复习', variant: 'primary', riskLevel: 'low' },
-          { id: 'export-plan', label: '导出计划', variant: 'default', riskLevel: 'low' },
-        ],
-      },
-    },
-  ],
-};

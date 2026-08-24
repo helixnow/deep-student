@@ -26,9 +26,13 @@ export const generativeUiSkill: SkillDefinition = {
 
 ## 工具
 
-- **builtin-render_generative_ui**: 提交结构化 UI 意图 JSON；前端按组件注册表渲染，副作用仅能通过 action-bar 声明的 action id 触发。
+- **builtin-render_generative_ui**: 提交结构化 UI 意图 JSON；前端按组件注册表渲染，副作用仅能通过 action-bar 声明的 action id 触发。可选 \`noteEdit\`（Notes HITL）与 \`researchSessionId\`（HPIAS 研究会话）。
 
 ## 输出格式
+
+只输出一个 JSON 文档（可包在 \`\`\`json 围栏内）。**禁止 HTML / JSX / 可执行代码**，围栏外不要闲聊。
+
+流式：先输出完整 JSON 结构（\`version\` / \`meta\` / \`blocks\` 骨架），再逐个闭合 block（先 type 再填完整 props）。
 
 \`\`\`json
 {
@@ -44,21 +48,30 @@ export const generativeUiSkill: SkillDefinition = {
 
 stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-preview, review-calendar, mistake-analysis, mindmap-embed, paper-digest, research-plan, research-report
 
+只能使用上述 registry type。禁止发明 markdown / chart / steps / table 等未注册 type。禁止 className、style、hex 色值。
+
 ## 规则
 
 1. 只能使用上述 type；props 必须符合各组件 schema，禁止发明字段。
 2. 禁止输出 HTML、JSX、inline style 或可执行代码。
-3. 删除/提交/导出等副作用只能通过 action-bar 的 action id 声明；不得假设已执行。
-4. 最多 12 个 blocks；优先信息密度与可扫描性。
+3. 删除/提交/导出/笔记写入等副作用只能通过 action-bar 的 action id 声明，且高风险必须带 riskLevel（high/medium）；不得假设已执行，不得用文案宣告「已删除」。
+4. 最多 12 个 blocks；超过 max blocks 会被拒绝。优先信息密度与可扫描性。
 5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、copy-report、apply-note-edit、save-to-library），label 仅作展示。
-6. **笔记写入**：若 intent 含 apply-note-edit，必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，禁止假设已写入。
+6. **Notes HITL**：若 intent 含 apply-note-edit（edit-apply）或 dismiss-note-suggestion（edit-reject），必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，用户确认前禁止假设已写入。
 7. **深度研究**：若 intent 含 research-plan / research-report / paper-digest，可传 researchSessionId 绑定 HPIAS 会话；前端经 hpias_event 实时更新研究面板，静态 Research 块在会话激活后由实时面板取代。
+
+## Few-shot 场景（模仿组合，不要发明 type）
+
+1. 学习仪表盘：stat-card + progress + action-bar
+2. 错题诊断：mistake-analysis + list
+3. 研究：research-plan + research-report + paper-digest（可附 researchSessionId）
+4. Notes HITL：text + action-bar（edit-apply / edit-reject → apply-note-edit / dismiss-note-suggestion）
 `,
   embeddedTools: [
     {
       name: 'builtin-render_generative_ui',
       description:
-        '渲染结构化生成式 UI。传入 intent 对象（含 blocks 数组）；每个 block 含 type 与 props。适合学习简报、统计面板、复习日历等。',
+        '渲染结构化生成式 UI。传入 intent 对象（含 blocks 数组）；每个 block 含 type 与 props。适合学习简报、统计面板、复习日历等。禁止 HTML/JSX。高风险必须 action-bar + riskLevel。笔记写入走 HITL noteEdit；研究可传 researchSessionId。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -66,7 +79,17 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
             type: 'object',
             description: '【必填】Generative UI 意图文档，必须含 blocks 数组。',
             properties: {
-              version: { type: 'string', enum: ['1'] },
+              version: { type: 'string', enum: ['1', '1.1'] },
+              layout: {
+                type: 'object',
+                description: 'v1.1 可选布局。stack 单列；grid 按 columns 分栏。',
+                properties: {
+                  mode: { type: 'string', enum: ['stack', 'grid'] },
+                  columns: { type: 'integer', enum: [1, 2, 3] },
+                },
+                required: ['mode'],
+                additionalProperties: false,
+              },
               meta: {
                 type: 'object',
                 properties: {
@@ -85,6 +108,7 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
                     type: { type: 'string' },
                     props: { type: 'object' },
                     id: { type: 'string' },
+                    span: { type: 'integer', enum: [1, 2, 3], description: 'grid 下列跨度' },
                   },
                   required: ['type'],
                   additionalProperties: false,
@@ -97,7 +121,7 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
           noteEdit: {
             type: 'object',
             description:
-              '【可选】笔记编辑载荷；当 intent 含 apply-note-edit 时必填。经 HITL diff 面板落盘。',
+              '【可选】笔记编辑载荷；当 intent 含 apply-note-edit（edit-apply）时必填。经 HITL diff 面板落盘，禁止假设已写入。',
             properties: {
               operation: { type: 'string', enum: ['append', 'replace', 'set'] },
               content: { type: 'string' },
