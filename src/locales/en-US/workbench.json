@@ -242,6 +242,9 @@
     "pomodoro": "Pomodoro",
     "browser": "Browser"
   },
+  "legacyFallback": {
+    "desktopOnly": "{{name}} is only available on desktop"
+  },
   "dock": {
     "label": "Dock",
     "open": "Open",

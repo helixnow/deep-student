@@ -64,7 +64,7 @@ const studyUiButtonBaseClassName =
 const studyUiButtonSizeIconClassName =
   'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
 const studyUiSendButtonSizeClass =
-  'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
+  'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
 const studyUiBlackActionButtonClass =
   '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
 const studyUiSendButtonEmptyStateClass =
@@ -208,7 +208,7 @@ function ContextWindowUsageRing({
         tabIndex={0}
         aria-label={ariaLabel}
         title={ariaLabel}
-        className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
       >
         <svg
           data-testid="context-window-usage-ring"
@@ -726,7 +726,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                               <MagnifyingGlass className="app-menu-search-icon" />
                               <input
                                 type="search"
-                                className="app-menu-search-input ds-search-input"
+                                // 触控目标 + 16px 输入契约，避免 iOS 聚焦缩放
+                                className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
                                 placeholder={runtimeModelSearchPlaceholder}
                                 value={runtimeModelSearch}
                                 onChange={(event) => setRuntimeModelSearch(event.target.value)}
@@ -871,7 +872,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             onClick={onStop}
             disabled={!canAbort}
             // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-            className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
+            className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full shadow-sm')}
             aria-label={canAbort
               ? t('analysis:input_bar.actions.stop')
               : t('chatV2:inputBar.stopping')}

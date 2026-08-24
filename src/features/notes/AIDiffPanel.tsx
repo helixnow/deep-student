@@ -196,7 +196,7 @@ export function AIDiffPanel({
                 size="sm"
                 onClick={onReject}
                 disabled={isApplying}
-                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
+                className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
               >
                 <X size={13} className="mr-1" />
                 {t('aiDiff.reject')}
@@ -206,7 +206,7 @@ export function AIDiffPanel({
                 onClick={onAccept}
                 disabled={isApplying}
                 aria-busy={isApplying}
-                className="h-7 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
+                className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
               >
                 <Check size={13} className="mr-1" />
                 {t('aiDiff.accept')}

@@ -448,7 +448,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
         onClick={() => setIsExpanded(!isExpanded)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -526,7 +526,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                   role="button"
                   tabIndex={0}
                   aria-expanded={showMessages}
-                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMessages(!showMessages);

@@ -84,7 +84,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
             size="sm"
             onClick={() => handleAdd(side)}
             disabled={items.length >= MAX_ITEMS}
-            className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
+            className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
           >
             <Plus size={10} className="mr-0.5" />
             {t('editor.structEdit.addItem')}
@@ -102,7 +102,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
               value={item.content}
               onChange={(e) => handleItemChange(side, index, e.target.value)}
               placeholder={`${item.key} ...`}
-              className="min-w-0 flex-1 bg-transparent text-xs [@media(pointer:coarse)]:text-[16px]"
+              className="min-w-0 flex-1 bg-transparent text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
             />
             <DsButton
               variant="ghost"
@@ -110,7 +110,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
               iconOnly
               onClick={() => handleRemove(side, index)}
               aria-label={t('editor.structEdit.removeItem')}
-              className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:opacity-70"
+              className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:opacity-70"
             >
               <X size={10} />
             </DsButton>

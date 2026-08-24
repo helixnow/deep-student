@@ -109,7 +109,11 @@ const CopyIconButton: React.FC<{ text: string; label: string; copiedLabel: strin
       title={copied ? copiedLabel : label}
       disabled={!text}
       onClick={() => void handleCopy()}
-      className={copied ? 'text-success hover:text-success' : undefined}
+      className={cn(
+        copied ? 'text-success hover:text-success' : undefined,
+        // 📱 粗指针（触屏）：保证 ≥44px 命中区；细指针沿用 DsButton 紧凑尺寸
+        '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
+      )}
     >
       <IconSwap
         active={copied}
@@ -262,12 +266,17 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         </div>
         <p className="text-sm text-destructive text-center max-w-md px-4">{state.message}</p>
         <div className="flex gap-2">
-          <DsButton variant="primary" size="sm" onClick={() => void loadTranslation()}>
+          <DsButton
+            variant="primary"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={() => void loadTranslation()}
+          >
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('common:actions.retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           )}
@@ -297,34 +306,41 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
     },
   ];
 
+  // 视图切换器（堆叠 / 逐段对照）：桌面放标题行右侧，小屏收进元信息功能条
+  const viewModeControl = !isEmpty && (
+    <SegmentedControl<ViewMode>
+      ariaLabel={t('translation:viewer.view_mode')}
+      size="compact"
+      // 📱 粗指针：!important 盖过 .study-shell-segmented-button 的 min-height:0，保证 ≥44px 命中
+      itemClassName="[@media(pointer:coarse)]:!min-h-11"
+      value={viewMode}
+      onValueChange={setViewMode}
+      options={[
+        { value: 'stacked', label: t('translation:viewer.view_stacked') },
+        {
+          value: 'interleaved',
+          label: t('translation:viewer.view_interleaved'),
+          disabled: !canInterleave,
+        },
+      ]}
+    />
+  );
+
   // 翻译查看器 UI
   return (
     <div className={cn('flex min-h-0 flex-col h-full bg-background ui-fade-in', props.className)}>
-      {/* 工具栏 */}
-      <div className="flex-shrink-0 flex items-center gap-2 h-12 px-3 sm:px-4 border-b border-border/50">
+      {/* 工具栏：📱 小屏（<md，与移动壳 isSmallScreen 同源）整行隐藏——
+          标题与关闭动作由宿主统一顶栏承担（UnifiedMobileHeader 返回箭头），
+          避免移动右屏出现双标题；桌面保留 */}
+      <div className="flex-shrink-0 hidden md:flex items-center gap-2 h-12 px-3 sm:px-4 border-b border-border/50">
         <Translate size={18} className="text-muted-foreground shrink-0" aria-hidden="true" />
         <span className="text-sm font-medium truncate" title={data.title ?? undefined}>
           {data.title || t('dstu:types.translation')}
         </span>
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
-          {!isEmpty && (
-            <SegmentedControl<ViewMode>
-              ariaLabel={t('translation:viewer.view_mode')}
-              size="compact"
-              value={viewMode}
-              onValueChange={setViewMode}
-              options={[
-                { value: 'stacked', label: t('translation:viewer.view_stacked') },
-                {
-                  value: 'interleaved',
-                  label: t('translation:viewer.view_interleaved'),
-                  disabled: !canInterleave,
-                },
-              ]}
-            />
-          )}
+          {viewModeControl}
           {onClose && (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           )}
@@ -364,6 +380,10 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
             <Heart size={12} weight="fill" className="text-destructive" aria-hidden="true" />
             {t('translation:viewer.meta_favorite')}
           </MetaChip>
+        )}
+        {/* 📱 小屏：标题行已隐藏，视图切换器收进本功能条右侧 */}
+        {viewModeControl && (
+          <div className="ml-auto shrink-0 md:hidden">{viewModeControl}</div>
         )}
       </div>
 

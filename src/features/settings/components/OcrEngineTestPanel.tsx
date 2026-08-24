@@ -177,7 +177,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">{t('settings:ocr.test_title')}</h3>
         {onClose && (
-          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose}>
+          <DsButton variant="ghost" size="sm" iconOnly onClick={onClose} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
             <X size={16} />
           </DsButton>
         )}
@@ -192,7 +192,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               alt={t('settings:ocr.test_image')}
               className="max-h-48 mx-auto rounded-lg shadow-sm"
             />
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)]" aria-label="clear">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClear} className="absolute top-2 right-2 !p-1 !rounded-full bg-black/50 text-white hover:bg-[var(--overlay-control-hover-strong)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label="clear">
               <X size={14} />
             </DsButton>
           </div>
@@ -201,6 +201,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               variant="default"
               size="sm"
               onClick={() => clickInputRef.current?.click()}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <ImageIcon size={14} />
               {t('settings:ocr.change_image')}
@@ -210,6 +211,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
               disabled={testing || engineModels.length === 0}
               size="sm"
               variant="primary"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {testing ? (
                 <>
@@ -313,7 +315,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                     {/* 区域详情（可折叠） */}
                     {result.regions.length > 0 && result.regions.some(r => r.bbox) && (
                       <details className="mt-2">
-                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center">
                           {t('settings:ocr.view_regions')} {result.regions.filter(r => r.bbox).length} {t('settings:ocr.regions_count')}
                         </summary>
                         <CustomScrollArea className="mt-2 h-40" viewportClassName="pr-1">

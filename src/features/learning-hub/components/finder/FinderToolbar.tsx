@@ -269,13 +269,15 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     ? t('finder.search.placeholderDisabled')
     : searchPlaceholder || t('finder.search.placeholder');
 
+  // 触屏图标钮：视觉保持 40px（44px 会溢出 38px 窗口标题栏 chrome），
+  // 伪元素 after:-inset-1 外扩 4px 使触控命中区达 48px，明确 ≥44px（对齐 FinderQuickAccess 范式）
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
       <DsButton
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
         onClick={onBack}
         disabled={!canGoBack}
         title={t('finder.toolbar.back')}
@@ -287,7 +289,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
         onClick={onForward}
         disabled={!canGoForward}
         title={t('finder.toolbar.forward')}
@@ -335,7 +337,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           size="icon"
           iconOnly
           className={cn(
-            'pointer-events-auto !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+            "pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']",
             viewMode === mode ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65 hover:bg-background/70'
           )}
           onClick={() => onViewModeChange(mode)}
@@ -398,7 +400,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               variant="ghost"
               size="icon"
               iconOnly
-              className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+              className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
               title={t('finder.sort.title')}
               aria-label={t('finder.sort.title')}
             >
@@ -416,7 +418,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
           onClick={onNewFolder}
           title={t('finder.toolbar.newFolder')}
           aria-label={t('finder.toolbar.newFolder')}
@@ -430,7 +432,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
           onClick={onRefresh}
           title={t('common:refresh')}
           aria-label={t('common:refresh')}
@@ -456,7 +458,11 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         disabled={searchDisabled}
         placeholder={resolvedSearchPlaceholder}
         aria-label={resolvedSearchPlaceholder}
-        className="h-8 [@media(pointer:coarse)]:h-10 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
+        className={cn(
+          'h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:!text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden',
+          // 标题栏模式受 38px 窗口 chrome 约束，触屏保持 40px；内嵌顶栏无高度约束，触屏升至 44px 命中区
+          titlebarMode ? '[@media(pointer:coarse)]:!h-10' : '[@media(pointer:coarse)]:!min-h-11'
+        )}
       />
     </div>
   ) : null;

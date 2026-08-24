@@ -143,7 +143,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
   return (
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
-      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
+      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground hover:text-foreground">
         {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
         <CodeBlock size={12} />
         <span>{t('blocks.mcpTool.input')}</span>
@@ -177,7 +177,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
           {/* 完整 JSON（可选） */}
           {paramKeys.length > 3 && (
             <details className="mt-2">
-              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11">
                 {t('blocks.mcpTool.showFullJson')}
               </summary>
               <pre className="mt-1 text-xs whitespace-pre-wrap break-words text-muted-foreground font-mono">

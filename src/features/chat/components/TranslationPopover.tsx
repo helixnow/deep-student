@@ -775,7 +775,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 ? t('translation:chat_popover.swap_languages')
                 : t('translation:chat_popover.cannot_swap_auto')
             }
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
           >
             <ArrowsLeftRight size={12} />
           </DsButton>
@@ -849,7 +849,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleRetry}
                   aria-label={t('common:actions.retry')}
                   title={t('common:actions.retry')}
-                  className="!h-6 !w-6 shrink-0"
+                  className="!h-6 !w-6 shrink-0 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                 >
                   <ArrowsClockwise size={14} />
                 </DsButton>
@@ -939,7 +939,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopySource}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 <IconSwap
                   active={copiedSource}
@@ -958,7 +958,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopyTranslation}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 <IconSwap
                   active={copiedTranslation}
@@ -978,7 +978,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleAddToInput}
                   disabled={isLoading}
                   title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs"
+                  className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ChatDots size={13} />
                   <span>{t('chatV2:selectionToolbar.addToChat')}</span>

@@ -181,6 +181,14 @@
   background: var(--wb-glass-border);
 }
 
+/* 触屏：菜单行 ~30px 偏矮（长按可调出），升到 44px 命中高度；
+   桌面细指针保持原密度 */
+@media (pointer: coarse) {
+  .wb-desk-menu-item {
+    min-height: 44px;
+  }
+}
+
 /* ==== 子菜单 ============================================================= */
 
 .wb-desk-menu-subwrap {

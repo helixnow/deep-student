@@ -1763,6 +1763,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
   const handleSplitLayout = useCallback((layout: number[]) => {
     if (!splitTab || layout.length !== 2) return;
+    // compact 分屏锁定 50/50（无手柄不可拖），不把该布局写回持久化，避免覆盖桌面拖拽比例
+    if (sizeClassRef.current === 'compact') return;
     const nextLayout = parseSplitLayout(layout);
     setSplitLayout((current) => (
       current[0] === nextLayout[0] && current[1] === nextLayout[1]
@@ -1775,10 +1777,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!splitTab) return;
     const frame = window.requestAnimationFrame(() => {
       const group = paneGroupRef.current;
-      if (group?.getLayout().length === 2) group.setLayout(splitLayoutRef.current);
+      // compact 锁定默认布局（对照 VerticalResizable fixed：断点切换不继承桌面拖拽残留比例）
+      if (group?.getLayout().length === 2) {
+        group.setLayout(sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT : splitLayoutRef.current);
+      }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [splitTab?.key]);
+  }, [splitTab?.key, sizeClass]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1811,6 +1816,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   useEffect(() => {
     if (sizeClass !== 'compact' || !explorerOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，explorer 打开态也随之滞留——
+      // 此时不消费返回键、不误关 explorer，交还给当前活跃视图
+      // （对照 NotesEditorHeader 的同款守卫）
+      const el = hostRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setExplorerOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -2763,7 +2774,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             <Panel
               id="notes-workspace-main-pane"
               order={1}
-              defaultSize={splitTab ? splitLayout[0] : 100}
+              defaultSize={splitTab ? (sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[0] : splitLayout[0]) : 100}
               minSize={splitTab ? 25 : 100}
               className="notes-pane-panel"
             >
@@ -2784,14 +2795,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             </Panel>
             {splitTab && (
               <>
-                <PanelResizeHandle
-                  className="notes-pane-resize"
-                  aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
-                />
+                {/* compact（手机窄窗）分屏固定 50/50：不渲染拖拽手柄（对照 VerticalResizable fixed） */}
+                {sizeClass !== 'compact' && (
+                  <PanelResizeHandle
+                    className="notes-pane-resize"
+                    /* 触屏热区：库在 document 层用 getBoundingClientRect + hitAreaMargins 做命中检测，
+                       CSS ::after 外扩不参与；coarse 19 → 6px 可视宽 + 2×19 = 44px */
+                    hitAreaMargins={{ coarse: 19, fine: 5 }}
+                    aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
+                  />
+                )}
                 <Panel
                   id="notes-workspace-right-pane"
                   order={2}
-                  defaultSize={splitLayout[1]}
+                  defaultSize={sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[1] : splitLayout[1]}
                   minSize={25}
                   className="notes-pane-panel"
                 >

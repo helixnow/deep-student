@@ -54,7 +54,7 @@ interface NotesEditorToolbarProps {
 }
 
 /**
- * 按平台格式化快捷键文案（macOS 符号风格对齐 NotesHeader：⌥⌘L / ⌘⇧P）。
+ * 按平台格式化快捷键文案（macOS 符号风格：⌥⌘L / ⌘⇧P）。
  *
  * 快捷键单一来源说明（已对照真实 keymap 校验，替代原 formatKeymap TODO）：
  * - @milkdown/preset-commonmark：Mod-B 粗体、Mod-I 斜体、Mod-E 行内代码、
@@ -71,7 +71,7 @@ function formatShortcut(
 ): string {
   const { mod = true, alt = false, shift = false, key } = parts;
   if (mac) {
-    // 对齐 NotesHeader：⌥⌘L、⌘⇧P
+    // macOS 符号风格：⌥⌘L、⌘⇧P
     if (alt && shift) return `⌥⇧⌘${key}`;
     if (alt) return `⌥⌘${key}`;
     if (shift) return `⌘⇧${key}`;
@@ -338,7 +338,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                     iconOnly
                     disabled={isDisabled}
                     aria-label={item.label}
-                    className="flex-none ui-press hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                    className="flex-none ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={item.action}
                   >
@@ -375,7 +375,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               size="icon"
               iconOnly
               disabled={isDisabled}
-              className={overflowOpen ? 'notes-editor-format-trigger active flex-none' : 'notes-editor-format-trigger flex-none'}
+              className={overflowOpen ? 'notes-editor-format-trigger active flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11' : 'notes-editor-format-trigger flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11'}
               aria-label={toolbarLabel}
               aria-haspopup="menu"
               aria-expanded={overflowOpen}
@@ -405,7 +405,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                 size="sm"
                 role="menuitem"
                 tabIndex={index === menuActiveIndex ? 0 : -1}
-                className="notes-toolbar-overflow-item hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                className="notes-toolbar-overflow-item [@media(pointer:coarse)]:!min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                 aria-label={item.label}
                 onMouseDown={(event) => event.preventDefault()}
                 onFocus={() => setMenuActiveIndex(index)}

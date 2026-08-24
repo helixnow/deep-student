@@ -281,3 +281,11 @@
   outline: 2px solid var(--wb-focus-ring-color, hsl(var(--ring)));
   outline-offset: 2px;
 }
+
+/* 触屏：崩溃恢复卡的重载按钮放大到 44px 最小命中（卡片居中排布，不挤布局） */
+@media (pointer: coarse) {
+  .wb-body-crash-reload {
+    min-height: 44px;
+    padding-inline: 1.1rem;
+  }
+}

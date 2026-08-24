@@ -32,13 +32,14 @@ const rootClassNames = {
     'rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] p-[3px]',
 } as const;
 
-// [@media(pointer:coarse)]:min-h-10：触屏统一 ≥40px 命中高度（min-height 与
-// 调用点的 !h-auto/!py-* 覆写正交，桌面 fine 指针不受影响）
+// [@media(pointer:coarse)]:!min-h-11：触屏统一 ≥44px 命中高度。必须带 important：
+// app.css 的 .study-shell-segmented-button { min-height: 0 } 会压掉非 important
+// 的同名工具类（min-height 与调用点的 !h-auto/!py-* 覆写正交，桌面 fine 指针不受影响）
 const itemClassNames = {
   default:
-    'h-9 rounded-[var(--radius-shell-control)] px-3.5 text-sm font-medium sm:px-4 [@media(pointer:coarse)]:min-h-[2.5rem]',
+    'h-9 rounded-[var(--radius-shell-control)] px-3.5 text-sm font-medium sm:px-4 [@media(pointer:coarse)]:!min-h-11',
   compact:
-    'h-7 rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium [@media(pointer:coarse)]:min-h-[2.5rem]',
+    'h-7 rounded-[calc(var(--radius-shell-control)-2px)] px-2.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11',
 } as const;
 
 function getNextEnabledIndex<T extends string>(

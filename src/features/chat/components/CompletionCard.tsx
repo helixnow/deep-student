@@ -108,7 +108,7 @@ const SuggestedCommand: React.FC<{ command: string; compact?: boolean }> = ({ co
           variant="ghost"
           size="sm"
           onClick={handleCopyCommand}
-          className="h-6 px-2 text-xs"
+          className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
         >
           <Copy size={12} className="mr-1" />
           {t('completion.copy')}

@@ -438,6 +438,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
       }}>
         <button
           onClick={() => setIsMonitoring(!isMonitoring)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -457,6 +458,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         
         <button
           onClick={captureManualSnapshot}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -475,6 +477,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         
         <button
           onClick={simulateClickTest}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -494,6 +497,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         <select
           value={filterLevel}
           onChange={(e) => setFilterLevel(e.target.value as LogLevel | 'all')}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             padding: '4px 8px',
             border: '1px solid var(--border)',
@@ -518,6 +522,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         
         <button
           onClick={copyLogs}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -536,6 +541,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         
         <button
           onClick={copyDiagnosticReport}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -556,6 +562,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         
         <button
           onClick={clearLogs}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',

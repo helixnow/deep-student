@@ -53,8 +53,8 @@ const ParsedChip: React.FC<{
         aria-label={removeLabel}
         title={removeLabel}
         onClick={onRemove}
-        // 触屏：16px 命中区太小，透明 padding 扩到 32px（负 margin 保持 chip 布局不变，对齐 TagsEditor）
-        className="flex h-4 w-4 items-center justify-center rounded-full opacity-60 transition-opacity hover:bg-foreground/10 hover:opacity-100 [@media(pointer:coarse)]:p-2 [@media(pointer:coarse)]:-m-2 [@media(pointer:coarse)]:box-content"
+        // 触屏：16px 命中区太小，透明 padding 扩到 44px（16 + 14×2，负 margin 保持 chip 布局不变）
+        className="flex h-4 w-4 items-center justify-center rounded-full opacity-60 transition-opacity hover:bg-foreground/10 hover:opacity-100 [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5 [@media(pointer:coarse)]:box-content"
       >
         <X size={9} weight="bold" />
       </button>
@@ -330,7 +330,7 @@ export const TodoQuickAdd: React.FC<{
             variant="shell"
             size="sm"
             onClick={handleSubmit}
-            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-4"
+            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-4"
           >
             {t('todo:actions.add')}
           </DsButton>
@@ -344,7 +344,7 @@ export const TodoQuickAdd: React.FC<{
             value={priority}
             onValueChange={setPriority}
             size="compact"
-            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium"
+            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3"
             options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
               const config = PRIORITY_CONFIG[p];
               const isActive = priority === p;
@@ -358,13 +358,13 @@ export const TodoQuickAdd: React.FC<{
             })}
           />
 
-          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1 [@media(pointer:coarse)]:min-h-11">
             <Calendar size={14} className="text-muted-foreground" />
             <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto"
+              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto [@media(pointer:coarse)]:!min-h-11"
             />
           </div>
         </div>

@@ -129,7 +129,8 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
             >
               <div
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2 border-b border-border/50 cursor-pointer transition-colors',
+                  // 触屏：整行命中高度 ≥44px（桌面精确指针保持紧凑行高）
+                  'flex items-center gap-3 px-3 py-2 border-b border-border/50 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
                   isActive
                     ? 'bg-primary/10 border-l-2 border-l-primary'
                     : 'hover:bg-[var(--interactive-hover)]',
@@ -177,7 +178,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                     variant="ghost"
                     size="icon"
                     aria-label={t('questionBank.favorite', { defaultValue: 'favorite' })}
-                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-m-2"
+                    className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-2"
                     onClick={(e) => handleFavorite(e, question.id)}
                   >
                     <Star

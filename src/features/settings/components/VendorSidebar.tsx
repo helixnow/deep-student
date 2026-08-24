@@ -176,8 +176,8 @@ export const VendorSidebar: React.FC = () => {
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
           // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
-          // P1-8 触控目标：小屏行高提升到 44px
-          isSmallScreen ? 'min-h-11' : 'min-h-[32px]',
+          // P1-8 触控目标：小屏行高提升到 44px；触控设备（如 iPad 横屏）按 pointer:coarse 兜底
+          isSmallScreen ? 'min-h-11' : 'min-h-[32px] [@media(pointer:coarse)]:min-h-11',
           'rounded-[var(--shell-nav-row-radius,14px)] text-sm',
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
@@ -217,7 +217,8 @@ export const VendorSidebar: React.FC = () => {
             <CaretRight size={14} />
           </span>
         ) : (
-          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          // 触屏（如 iPad 横屏）无 hover 但拖拽可用，指示器需 coarse 常显
+          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
             <DotsSixVertical size={12} />
           </span>
         )}
@@ -236,6 +237,7 @@ export const VendorSidebar: React.FC = () => {
             variant="ghost"
             size="sm"
             iconOnly
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={() => handleOpenVendorModal(null)}
             title={t('settings:vendor_panel.add_vendor_button')}
             aria-label={t('settings:vendor_panel.add_vendor_button')}

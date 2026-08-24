@@ -534,3 +534,27 @@
   line-height: 1.4;
   color: hsl(var(--muted-foreground));
 }
+
+/* ==== 触屏命中区（pointer: coarse） ====================================== */
+
+/* 桌面细指针保持 24/28 密度；触屏把关闭/视图切换升到 44×44 最小命中区 */
+@media (pointer: coarse) {
+  .wb-apps-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .wb-apps-view-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* <16px 输入框在 iOS 聚焦时触发页面自动缩放；同步加高便于点按 */
+  .wb-apps-search-wrap {
+    min-height: 44px;
+  }
+
+  .wb-apps-search {
+    font-size: 16px;
+  }
+}

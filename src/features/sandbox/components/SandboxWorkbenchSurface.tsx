@@ -9,6 +9,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 import {
   selectSandboxWorkbenchOwnerState,
@@ -29,7 +30,9 @@ export interface SandboxWorkbenchSurfaceProps {
    * 隐藏自绘的 SandboxToolbar。
    * ★ 2026-07-08（移动端审计 D-6）：独立视图形态下移动端已有统一顶栏
    * （UnifiedMobileHeader），再渲染 SandboxToolbar 会形成第二条顶栏；
-   * 由 SandboxWorkbenchPage 在小屏时传入。嵌入 chat-v2 右屏时保持默认 false。
+   * 由 SandboxWorkbenchPage 在小屏时传入。chat-v2 移动端右屏嵌入形态
+   * 同样有统一顶栏（useChatPageLayout mobileSandboxOpen 分支），也传 true；
+   * 桌面端嵌入保持默认 false。
    */
   hideToolbar?: boolean;
 }
@@ -80,6 +83,25 @@ export function SandboxWorkbenchSurface({
   const handleToggleInspector = useCallback(() => {
     setInspectorOpen(!inspectorOpen, ownerKey);
   }, [inspectorOpen, ownerKey, setInspectorOpen]);
+
+  // Android 返回键：检查器在小屏是叠在预览区上的底部面板（overlay 语义），
+  // 返回键先收起检查器，再轮到右屏/视图级返回（MobileSlidingLayout 同为
+  // overlay 档，后注册者先执行，检查器打开时本 handler 注册在后）。
+  // 可见性守卫：keep-alive 隐藏层（如后台 sandbox-workbench 视图，
+  // visibility:hidden 不清除布局盒）不得吞掉其他页面的返回键。
+  const rootRef = useRef<HTMLElement | null>(null);
+  const hasActiveSession = activeSession !== null;
+  useEffect(() => {
+    if (!isSmallScreen || !inspectorOpen || !hasActiveSession) return;
+    return registerBackHandler(() => {
+      const el = rootRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      setInspectorOpen(false, ownerKey);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, inspectorOpen, hasActiveSession, ownerKey, setInspectorOpen]);
 
   // ACR 4.0（A6 演出）：viewport 切换 / refresh 后给画布一次轻量反馈。
   // 画布 max-width 无 transition（宽度瞬时落位），用一次 scale/opacity 脉冲确认
@@ -201,7 +223,7 @@ export function SandboxWorkbenchSurface({
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
+              className="rounded-full border border-border px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
             >
               {t('sandbox.clearSession')}
             </button>
@@ -228,8 +250,8 @@ export function SandboxWorkbenchSurface({
               type="button"
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                // 触屏（coarse 指针）下药丸放大到 ≥40px 触控目标
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-4',
+                // 触屏（coarse 指针）下药丸放大到 ≥44px 触控目标
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
@@ -286,7 +308,7 @@ export function SandboxWorkbenchSurface({
   );
 
   return (
-    <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
+    <section ref={rootRef} className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
       {!hideToolbar && (
         <SandboxToolbar
           title={activeSession.title}
@@ -314,7 +336,10 @@ export function SandboxWorkbenchSurface({
 
             {inspectorOpen ? (
               <>
-                <PanelResizeHandle className="w-1.5 bg-border transition-colors hover:bg-primary/30 active:bg-primary/50" />
+                <PanelResizeHandle
+                  hitAreaMargins={{ coarse: 19, fine: 5 }}
+                  className="w-1.5 bg-border transition-colors hover:bg-primary/30 active:bg-primary/50"
+                />
                 <Panel defaultSize={26} minSize={20} maxSize={36}>
                   {inspectorShell}
                 </Panel>

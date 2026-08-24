@@ -163,6 +163,11 @@ const InlineRescheduleBar: React.FC<{
   // Android 返回键：展开条打开时先收起，不触发页面级返回
   useEffect(() => {
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的保活层里仍保持挂载（visibility:hidden），
+      // 展开条也随之滞留——此时不消费返回键（对照 TagsEditor / TodoItemDetail 的同款守卫）
+      const el = barRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -238,7 +243,7 @@ const InlineRescheduleBar: React.FC<{
             if (e.target.value) handlePick(e.target.value);
           }}
           aria-label={t('todo:fields.dueDate')}
-          className="h-auto min-h-0 w-auto cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
+          className="h-auto min-h-0 w-auto cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0 [@media(pointer:coarse)]:!min-h-11"
         />
       </label>
     </div>
@@ -310,7 +315,7 @@ const RowTitleEditor: React.FC<{
       }}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      className="h-6 min-h-0 w-full rounded border border-[color:hsl(var(--primary))]/50 bg-background px-1 py-0 text-sm font-medium focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 selection:bg-[color:hsl(var(--primary))]/30"
+      className="h-6 min-h-0 w-full rounded border border-[color:hsl(var(--primary))]/50 bg-background px-1 py-0 text-sm font-medium focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 selection:bg-[color:hsl(var(--primary))]/30 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
     />
   );
 };
@@ -708,7 +713,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         data-checked={isChecked || undefined}
         data-agent-entity={`todo:${item.id}`}
         className={cn(
-          'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 sm:px-6',
+          'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 sm:px-6 [@media(pointer:coarse)]:min-h-11',
           dragging
             ? 'transition-none'
             : 'transition-[background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
@@ -945,8 +950,9 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         )}
       </div>
 
-      {/* 行尾操作按钮：触屏隐藏（改期/删除走滑动手势，开始专注走详情），
-          桌面 hover 渐显保持不变，避免挤占标题与误触 */}
+      {/* 行尾操作按钮：桌面 hover 渐显；触屏 opacity-60 常显且 ≥44px 命中区
+          （详情页有等价编辑，右滑另有改期/删除兜底）。改期入口触屏仍走
+          滑动手势 + InlineRescheduleBar，行内 RescheduleMenu 保持 coarse 隐藏 */}
       {!isCompleted && <RowPriorityMenu item={item} />}
 
       {!isCompleted && (
@@ -966,7 +972,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           }}
           title={t('todo:actions.startFocusSession')}
           aria-label={t('todo:actions.startFocusSession')}
-          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden"
+          // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+        className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Play size={16} />
         </DsButton>
@@ -982,7 +989,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         }}
         title={t('todo:actions.deleteItem')}
         aria-label={t('todo:actions.deleteItem')}
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+        // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash size={16} />
       </DsButton>
@@ -1039,9 +1047,11 @@ export const SortableTodoItemRow: React.FC<Omit<TodoItemRowProps, 'dragHandle'>>
               'group-hover:text-muted-foreground/60 hover:!text-muted-foreground',
               'focus-visible:text-muted-foreground focus:outline-none',
               // 触屏无 hover：手柄常显淡色，长按可拖拽排序（否则功能不可发现）；
-              // touch-none 防止长按判定期间被原生滚动打断，加高命中区便于点中
+              // touch-none 防止长按判定期间被原生滚动打断；盒宽撑到 44，
+              // -ml-4/-mr-2 抵消增量：图标中心与行内布局均与原 w-7 版本一致
               '[@media(pointer:coarse)]:text-muted-foreground/50',
-              '[@media(pointer:coarse)]:touch-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-7',
+              '[@media(pointer:coarse)]:touch-none [@media(pointer:coarse)]:h-11',
+              '[@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-ml-4 [@media(pointer:coarse)]:-mr-2',
             )}
           >
             <DotsSixVertical size={14} weight="bold" />

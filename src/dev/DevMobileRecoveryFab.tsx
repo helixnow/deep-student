@@ -160,7 +160,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleReload}
             >
               <ArrowClockwise size={16} />
@@ -169,7 +169,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleResetView}
             >
               <House size={16} />
@@ -178,7 +178,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleDevTools}
             >
               <Bug size={16} />
@@ -190,7 +190,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
           variant="secondary"
           size="sm"
           className={cn(
-            'h-9 rounded-full px-3 text-xs font-semibold shadow-md touch-none select-none',
+            'h-9 rounded-full px-3 text-xs font-semibold shadow-md touch-none select-none [@media(pointer:coarse)]:!min-h-11',
             open && !dragging && 'ring-2 ring-primary/30',
             dragging && 'cursor-grabbing opacity-90',
           )}

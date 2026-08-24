@@ -678,7 +678,7 @@
 /* 📱 触屏：16px 字号防 iOS 聚焦缩放，高度对齐 44px 触控目标 */
 @media (pointer: coarse) {
   .mm-search-input {
-    height: 40px;
+    height: 44px;
     font-size: 16px;
   }
 }
@@ -1991,30 +1991,30 @@
 }
 
 /* --- 触屏（粗指针）适配 --- */
-/* 触屏没有 hover：依赖悬停显隐的控件须常驻；24px 以下控件用伪元素扩大
-   命中区域到 ~40px（Apple HIG 44 / Material 48 的折中），视觉尺寸不变 */
+/* 触屏没有 hover：依赖悬停显隐的控件须常驻；44px 以下控件用伪元素扩大
+   命中区域到 ≥44px（Apple HIG 最小触控目标），视觉尺寸不变 */
 @media (pointer: coarse) {
-  /* 画布：节点操作按钮（选中时已显示）扩大命中区 */
+  /* 画布：节点操作按钮（24px，选中时已显示）扩大命中区到 44px */
   .mm-action-btn {
     position: relative;
   }
   .mm-action-btn::after {
     content: '';
     position: absolute;
-    inset: -8px;
+    inset: -10px;
   }
 
-  /* 画布：折叠/展开按钮常驻可见 + 扩大命中区 */
+  /* 画布：折叠/展开按钮（20px）常驻可见 + 扩大命中区到 44px */
   .mm-collapse-btn {
     position: relative;
   }
   .mm-collapse-btn::after {
     content: '';
     position: absolute;
-    inset: -10px;
+    inset: -12px;
   }
 
-  /* 大纲：折叠箭头无 hover 可触发，常驻弱显示 */
+  /* 大纲：折叠箭头（16px）无 hover 可触发，常驻弱显示，命中扩到 44px */
   .collapse-toggle {
     position: relative;
     opacity: 0.55;
@@ -2022,33 +2022,53 @@
   .collapse-toggle::after {
     content: '';
     position: absolute;
-    inset: -10px;
+    inset: -14px;
   }
 
-  /* 大纲：bullet（拖拽手柄）扩大命中区 */
+  /* 大纲：折叠态「+N」胶囊（约 15px 高，可点展开）命中扩到 ≥44px，
+     视觉保持小胶囊；行与 .node-left-controls 均无 overflow 裁剪 */
+  .outline-collapse-count {
+    position: relative;
+  }
+  .outline-collapse-count::after {
+    content: '';
+    position: absolute;
+    inset: -15px;
+  }
+
+  /* 大纲：bullet（拖拽手柄，18px）扩大命中区到 44px */
   .node-bullet-container {
     position: relative;
   }
   .node-bullet-container::after {
     content: '';
     position: absolute;
+    inset: -13px;
+  }
+
+  /* 顶部工具栏按钮 / 学习组按钮（28px 高）扩大命中区到 44px，视觉尺寸不变 */
+  .mm-toolbar .mm-toolbar-button,
+  .mm-toolbar .mm-learning-button {
+    position: relative;
+  }
+  .mm-toolbar .mm-toolbar-button::after,
+  .mm-toolbar .mm-learning-button::after {
+    content: '';
+    position: absolute;
     inset: -8px;
   }
 
-  /* 顶部工具栏按钮（28px 高）扩大命中区到 ~40px，视觉尺寸不变 */
-  .mm-toolbar .mm-toolbar-button {
+  /* 样式面板色板：22px 触屏点不准，放大到 32px 并加大间距（flex-wrap 自动换行不溢出）；
+     视觉保持 32px，命中区经 ::after 扩到 44px（硬设 44px 视觉会挤压色板布局） */
+  .mm-style-swatch {
     position: relative;
+    width: 32px;
+    height: 32px;
   }
-  .mm-toolbar .mm-toolbar-button::after {
+  .mm-style-swatch::after {
     content: '';
     position: absolute;
     inset: -6px;
-  }
-
-  /* 样式面板色板：22px 触屏点不准，放大到 32px 并加大间距（flex-wrap 自动换行不溢出） */
-  .mm-style-swatch {
-    width: 32px;
-    height: 32px;
   }
   .mm-style-swatches {
     gap: 8px;
@@ -2072,6 +2092,17 @@
   .mm-node-actions .mm-action-btn--delete {
     display: none;
   }
+
+  /* 画布右下角选择/拖拽/滚轮分段按钮（24px）触屏直接放大到 44px 触控目标；
+     容器随之升高（44px + 2×2px 内衬 + 2×1px 边框 = 50px）。桌面细指针保持 24/30 */
+  .mm-canvas-mode-button {
+    min-height: 44px;
+    height: 44px;
+  }
+  .mm-canvas-mode-switch {
+    min-height: 50px;
+    height: 50px;
+  }
 }
 .mm-note-first-line {
   display: -webkit-box;
@@ -2082,6 +2113,15 @@
 
 .mindmap-container.is-presentation > .mm-toolbar {
   display: none;
+}
+
+/* 移动全屏子屏（结构/样式/更多/快捷键）打开时隐藏顶部工具栏（对照演示模式
+   is-presentation）：子屏只覆盖内容区，不藏工具栏会形成宿主顶栏+工具栏+
+   子屏顶栏三层 chrome，且工具栏按钮在子屏下仍可点 */
+@media (max-width: 767.98px) {
+  .mindmap-container.has-mobile-subview > .mm-toolbar {
+    display: none;
+  }
 }
 
 .mm-presentation-exit {
@@ -2293,11 +2333,11 @@
   transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
-/* 触控命中扩展到 ~40px（视觉尺寸不变） */
+/* 触控命中扩展到 44px（28px 高 + 上下各 8px，视觉尺寸不变） */
 .mm-canvas-touch-button::after {
   content: '';
   position: absolute;
-  inset: -6px;
+  inset: -8px;
 }
 
 .mm-canvas-touch-button:active {
@@ -2389,7 +2429,7 @@
   }
 
   .mm-recite-status-action {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .mm-inline-banner {
@@ -2398,7 +2438,7 @@
   }
 
   .mm-inline-banner .ds-btn {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .mm-version-history-header {
@@ -2429,7 +2469,7 @@
 
   .mm-version-history-action {
     flex: 1;
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .mm-canvas-breadcrumb,
@@ -2439,8 +2479,8 @@
 
   .mm-canvas-breadcrumb .ds-btn,
   .outline-breadcrumb .ds-btn {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
 }
@@ -2457,15 +2497,15 @@
 
 @media (pointer: coarse) {
   .mm-toolbar > div:first-child .ds-btn {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
     padding-right: 8px;
     padding-left: 8px;
   }
 
   .mindmap-container .react-flow__controls-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .mindmap-container .react-flow__controls {
@@ -2477,10 +2517,84 @@
 
   .mm-search-popover .ds-btn,
   .mm-search-popover input {
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  /* Aa/ab 开关（h-6 px-1.5）触屏补足 44px 宽度命中目标；输入框保持弹性宽度不受影响 */
+  .mm-search-popover .ds-btn {
+    min-width: 44px;
+  }
+
+  /* 搜索条关闭钮/结果导航钮（24px）与大纲多选操作钮（28px）不带 ds-btn 类，
+     不被上方规则覆盖：触屏补足 44px（min-h-11）最小命中 */
+  .mm-search-nav-button,
+  .mm-search-close,
+  .outline-multiselect-btn {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .mm-recite-status-action {
+    min-height: 44px;
+  }
+
+  /* 样式面板图标钮（26px）触屏拉到 44px 命中目标，与 .mm-mobile-subview
+     子视图内的 44px 规则保持一致；色板不硬设 44px 视觉（会挤压布局），
+     改由上方 32px + ::after 规则扩命中到 44px */
+  .mm-style-icon-button {
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* 搜索模式切换组及其按钮（24px 硬高）触屏放开到 ≥44px 命中目标 */
+  .mm-search-mode {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .mm-search-mode-button {
+    height: auto;
+    min-height: 44px;
+  }
+
+  /* 演示退出钮（36px）触屏补足 44px 命中：视觉不变，::after 外扩 4px */
+  .mm-presentation-exit::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+  }
+
+  /* 结构预设（38px）/主题行（28px）：平板 popover 触屏补足 44px 命中；
+     手机走 .mm-mobile-subview 子屏规则（特异性更高，56/48px 不受影响） */
+  .mm-structure-preset {
+    min-height: 44px;
+  }
+
+  .mm-theme-option {
+    height: auto;
+    min-height: 44px;
+  }
+
+  /* 字号控件（26px 容器 + 24px 输入框）：容器对齐同面板 44px 图标钮，
+     输入框 16px 字号防 iOS 聚焦缩放（同 .mm-mobile-subview 范式） */
+  .mm-font-size-control {
+    height: 44px;
+  }
+
+  .mm-font-size-input {
+    height: 42px;
+    font-size: 16px;
+  }
+
+  /* 内联横幅按钮（ds-btn 28px）触屏补足 44px（与窄屏 max-width 规则同值互不冲突） */
+  .mm-inline-banner .ds-btn {
+    min-height: 44px;
+  }
+
+  /* 画布面包屑容器（26px 硬高）：内部按钮已 min-h-11，容器放开避免溢出 */
+  .mm-canvas-breadcrumb {
     min-height: 44px;
   }
 }

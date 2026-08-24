@@ -74,6 +74,8 @@ export interface EpubPreviewProps {
    * previewPersistence 控制器写入资源 metadata；不传则保持仅 localStorage。
    */
   onProgressChange?: (progress: { page: number; lastReadAt?: number }) => void;
+  /** 宿主标签页是否活跃；隐藏 tab 不注册返回键 handler（对照 NoteContentView） */
+  isActive?: boolean;
 }
 
 function escapeRegExp(value: string): string {
@@ -86,6 +88,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   resourceId,
   metadataProgress,
   onProgressChange,
+  isActive = true,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
   // 与 App shell 同源的移动端判定（<768px）；旧实现自造 700px 断点，
@@ -142,13 +145,15 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
     if (isNarrow) setSidebarOpen(false);
   }, [isNarrow, resourceId]);
 
+  // isActive 守卫：保活隐藏的 tab 不注册，避免消费当前活跃视图的返回键；
+  // 失活仅注销 handler，不动 sidebarOpen（隐藏 tab 不关侧栏）
   useEffect(() => {
-    if (!isNarrow || !sidebarOpen) return;
+    if (!isActive || !isNarrow || !sidebarOpen) return;
     return registerBackHandler(() => {
       setSidebarOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isNarrow, sidebarOpen]);
+  }, [isActive, isNarrow, sidebarOpen]);
 
   // Follow app theme (html.dark) for the "auto" reading theme.
   useEffect(() => {

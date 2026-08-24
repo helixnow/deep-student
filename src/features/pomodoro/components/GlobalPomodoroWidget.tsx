@@ -382,7 +382,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
 
   // 悬浮药丸：仅在有活跃会话 + 不在 Todo 页面时显示
   const controlButtonClass = isTouchPrimary
-    ? 'flex h-10 w-10 items-center justify-center rounded-full transition-colors motion-reduce:transition-none'
+    ? 'flex h-11 w-11 items-center justify-center rounded-full transition-colors motion-reduce:transition-none'
     : 'p-1.5 rounded-full transition-colors motion-reduce:transition-none';
   const controlIconSize = isTouchPrimary ? 16 : 14;
 
@@ -473,7 +473,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
             {/* 药丸主体：环形微进度 + 倒计时（+ 展开时任务名）；点击进入沉浸模式 */}
             <button
               onClick={handleEnterImmersive}
-              className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pr-1 text-left"
+              className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pr-1 text-left [@media(pointer:coarse)]:!min-h-11"
               title={t('pomodoro.controls.enterImmersive')}
               aria-label={t('pomodoro.controls.enterImmersive')}
             >
@@ -531,7 +531,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
                     onClick={handleStop}
                     className={cn(
                       'ui-rise-in flex-shrink-0 rounded-full bg-destructive px-2.5 text-xs font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 motion-reduce:transition-none',
-                      isTouchPrimary ? 'h-10' : 'h-7',
+                      isTouchPrimary ? 'h-11' : 'h-7',
                     )}
                     title={t('pomodoro.controls.stop')}
                     aria-label={t('pomodoro.controls.stop')}
