@@ -32,7 +32,7 @@ import {
   BookmarkSimple,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
-import type { Command } from '../registry/types';
+import type { Command, CommandView, DependencyResolver } from '../registry/types';
 import { isChatCommandEnabled } from '../registry/capabilityRegistry';
 
 /** Helper: get localized keywords array for a given command key */
@@ -446,16 +446,31 @@ function createRawChatCommands(): Command[] {
 }
 
 /**
+ * ready 命令在 legacy Chat 页与 Workbench 都可见；
+ * Workbench 下要求聚焦窗口是 chat 应用才可执行（范式同 notes.commands.ts）。
+ */
+const CHAT_READY_COMMAND_VIEWS: CommandView[] = ['chat-v2', 'workbench'];
+
+function isChatCommandContextEnabled(deps: DependencyResolver): boolean {
+  const view = deps.getCurrentView();
+  return view === 'chat-v2'
+    || (view === 'workbench' && deps.getFocusedWorkbenchAppTypeId() === 'chat');
+}
+
+/**
  * 通过 capabilityRegistry 过滤后的命令列表。
- * hidden 命令保留定义但不在命令面板中显示。
+ * hidden 幽灵命令保留定义但不在命令面板中显示，也不扩展到 Workbench。
  */
 export function getChatCommands(): Command[] {
   return createRawChatCommands().map((command) => {
     const previousIsEnabled = command.isEnabled;
+    const ready = isChatCommandEnabled(command.id);
     return {
       ...command,
+      visibleInViews: ready ? CHAT_READY_COMMAND_VIEWS : command.visibleInViews,
       isEnabled: (deps) => {
-        if (!isChatCommandEnabled(command.id)) return false;
+        if (!ready) return false;
+        if (!isChatCommandContextEnabled(deps)) return false;
         return previousIsEnabled ? previousIsEnabled(deps) : true;
       },
     };
