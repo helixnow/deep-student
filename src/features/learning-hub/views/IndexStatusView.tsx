@@ -1391,9 +1391,9 @@ export const IndexStatusView: React.FC = () => {
 
     return (
       <div key={resource.resourceId} className="group border-b border-black/[0.04] dark:border-white/[0.06] hover:bg-[var(--interactive-hover)] transition-colors">
-        {/* 主行 - 可点击展开 */}
+        {/* 主行 - 可点击展开；触屏：整行是展开命中区，无块数元数据时行高不足 44，coarse 下兜底 */}
         <div
-          className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 cursor-default select-none"
+          className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 cursor-default select-none [@media(pointer:coarse)]:min-h-11"
           onClick={() => toggleResourceExpand(resource.resourceId)}
         >
           {/* 🆕 展开/折叠指示器 */}

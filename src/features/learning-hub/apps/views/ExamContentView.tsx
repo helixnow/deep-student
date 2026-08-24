@@ -2194,7 +2194,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11"
                 />
                 
                 <DsButton
