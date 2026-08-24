@@ -457,6 +457,16 @@ impl FtpClient {
             .await
             .map_err(|e| AppError::file_system(format!("刷新临时下载文件失败：{}", e)))?;
 
+        // [R10-download][已登记 FIX-QUEUE] 半包 fail-closed：FTP 数据通道的
+        // EOF 与"传输完成"不可区分（连接被服务端/中间设备掐断同样表现为
+        // EOF），实际字节数必须与 SIZE 声明一致（传输固定为 Binary 模式，
+        // SIZE 即精确字节数），否则绝不把半包当成功。
+        if downloaded != total_size {
+            return Err(AppError::network(format!(
+                "FTP 下载不完整：服务端声明 {total_size} 字节，实际收到 {downloaded} 字节，已拒绝保存（请重试）"
+            )));
+        }
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 
@@ -1126,9 +1136,12 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 获取文件大小
-            let stat = self.stat(key).await?;
-            let total_size = stat.as_ref().map(|s| s.size).unwrap_or(0);
+            // 获取文件大小。[R10-download] stat=None 直接按 not-found 失败：
+            // 原实现按 total_size=0 继续 RETR，与半包字节数校验冲突且语义不诚实。
+            let total_size = match self.stat(key).await? {
+                Some(info) => info.size,
+                None => return Err(AppError::not_found("云端文件不存在")),
+            };
 
             if let Some(ref cb) = progress {
                 cb(0, total_size);
@@ -1390,6 +1403,57 @@ mod tests {
         assert!(
             !get_body.contains("ensure_directory"),
             "FTP get/stat/list read paths must not create directories"
+        );
+    }
+
+    // ============ [R10-download] stream_to_file 半包 fail-closed ============
+
+    #[tokio::test]
+    async fn stream_to_file_accepts_exact_size_and_returns_sha256() {
+        use sha2::{Digest, Sha256};
+        let data: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("exact.bin");
+
+        let checksum =
+            FtpClient::stream_to_file(&mut data.as_slice(), &dest, data.len() as u64, None)
+                .await
+                .expect("字节数与声明一致的下载应成功");
+
+        let expected = format!("{:x}", Sha256::digest(&data));
+        assert_eq!(checksum, expected);
+        assert_eq!(std::fs::read(&dest).unwrap(), data);
+    }
+
+    #[tokio::test]
+    async fn stream_to_file_rejects_truncated_stream() {
+        // 数据通道提前 EOF（半包）：声明 10_000 字节，只送到 4_096 字节。
+        let data: Vec<u8> = (0..4_096u32).map(|i| (i % 251) as u8).collect();
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("truncated.bin");
+
+        let error = FtpClient::stream_to_file(&mut data.as_slice(), &dest, 10_000, None)
+            .await
+            .expect_err("半包必须失败，绝不当成功");
+        assert!(
+            error.to_string().contains("下载不完整"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_to_file_rejects_oversized_stream() {
+        // 服务端送来的字节数超过 SIZE 声明（对象被并发替换等错版本形态）。
+        let data: Vec<u8> = vec![0x5A; 8_192];
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("oversized.bin");
+
+        let error = FtpClient::stream_to_file(&mut data.as_slice(), &dest, 1_024, None)
+            .await
+            .expect_err("超过声明大小的流必须失败");
+        assert!(
+            error.to_string().contains("下载不完整"),
+            "unexpected error: {error}"
         );
     }
 }

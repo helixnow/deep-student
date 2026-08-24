@@ -292,3 +292,13 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
   （前端半边已关，机制统一半边仍开、归 R11-android2）。
 
 **文件面认领（独占）**：`src-tauri/tests/sync_r10_android.rs` 新文件、用户指南 16 移动端段增量、本文件两处回写。不改 RecordConflictsPanel / file-e2ee / notes / chat / workbench，不动任何生产代码。
+
+### R10-download（重派，分支 `cursor/cloud-sync-sota-r10-download-b343`，R09-restore-ops 之上的增量复审）
+
+模型 claude-fable-5-thinking-high。R09-restore-ops 已交付 WebDAV Range 续传 + 无密码导入早失败，本包只收增量。复审结论与修复：
+
+- **S3/FTP 半包当成功（确认存在，已修）**：`s3.rs::get_file` 与 `ftp.rs::stream_to_file`（`get` / `get_file` 共用）都以"流读到 EOF"为完成信号，从不核对实际字节数与云端声明大小。备份下载路径因带 `version.checksum` 有第二道防线，但 `data_governance/sync/mod.rs` 的 `get_file_decoded` 以 `expected=None` 调 `get_file`，FTP 数据通道被中间设备掐断（EOF 与正常结束不可区分）时半包会被 persist 成成功产物。修复：三处（含 `traits.rs` 默认实现）在 EOF 后校验 `downloaded == total_size`，不一致即 fail-closed，同时覆盖"对象在 stat 与 GET 之间被并发替换"的错版本形态；`ftp.rs::get_file` 对 `stat=None` 提前返回 not-found（原实现按 `total_size=0` 继续 RETR）。
+- **WebDAV 损坏/对象变更 SHA256 拒绝（确认已闭环，只补锁定测）**：`sync_manager.rs::download_with_progress` 续传路径完成后整文件 SHA256 与 `version.checksum` 比对、失败即丢断点报错（R09 已实现且有损坏断点测试）；本包补"对象被同大小换包"锁定测。
+- **无密码导入所有入口早失败（确认已闭环，补入口枚举锁定测）**：四个公开导入函数（`import_backup_from_zip` / `_with_password` / `_with_progress` / `_resumable`）全部经 `precheck_sealed_payload_password` 在触碰目标目录之前失败；命令层 `data_governance_import_zip`、任务恢复续传、`cloud_sync_download` 的 DSBK 无密码路径均复核无旁路。
+
+**实现改动登记（独占）**：`cloud_storage/ftp.rs`（`stream_to_file` 字节数校验 + `get_file` stat=None 早退 + 单元测试；与 R10-providers 若回传按增量消解）、`cloud_storage/s3.rs`（仅 `get_file` 字节数校验）、`cloud_storage/traits.rs`（仅默认 `get_file` 字节数校验）、新测试 `src-tauri/tests/sync_r10_download.rs`、用户指南 16 补一句、本节。不改 `webdav.rs` / `sync_manager.rs` / RecordConflictsPanel。

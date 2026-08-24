@@ -288,6 +288,17 @@ pub trait CloudStorage: Send + Sync {
             .await?
             .ok_or_else(|| AppError::not_found("云端文件不存在"))?;
 
+        // [R10-download] 半包 fail-closed：`get` 正常返回不等于下载完整。
+        // 无 `expected_checksum` 的调用方（如文件级对象下载）没有第二道防线，
+        // 字节数与云端声明不一致（半包，或对象在 stat 与 get 之间被并发替换）
+        // 时必须失败，绝不落盘冒充成功。
+        if data.len() as u64 != total_size {
+            return Err(AppError::network(format!(
+                "下载不完整或云端对象已变更：声明 {total_size} 字节，实际收到 {} 字节，已拒绝保存（请重试）",
+                data.len()
+            )));
+        }
+
         if let Some(ref cb) = progress {
             cb(total_size / 2, total_size);
         }
