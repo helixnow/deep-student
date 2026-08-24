@@ -683,6 +683,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       onClickCapture={(e) => { shiftKeyRef.current = e.shiftKey; }}
                     >
                       <Checkbox
+                        className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                         checked={selectedIds.has(q.id)}
                         onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
                       />
@@ -808,6 +809,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
+                    className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                     checked={allSelected || (someSelected ? 'indeterminate' : false)}
                     onCheckedChange={handleSelectAll}
 />
@@ -838,6 +840,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     onClickCapture={(e) => { shiftKeyRef.current = e.shiftKey; }}
                   >
                     <Checkbox
+                      className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                       checked={selectedIds.has(q.id)}
                       onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
 />

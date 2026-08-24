@@ -347,7 +347,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               type="number"
               min={1}
               max={120}
-              className="h-11 !w-28 bg-transparent text-xs md:h-8 md:!w-24"
+              className="h-11 !w-28 bg-transparent text-xs md:h-8 md:!w-24 [@media(pointer:coarse)]:min-h-11"
               value={config.rateLimitPerMin}
               onChange={(e) =>
                 setConfig((c) =>

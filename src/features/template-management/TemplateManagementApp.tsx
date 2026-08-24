@@ -1222,7 +1222,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={t('search_placeholder')}
-            className="sidebar-shell-search h-9 w-full pl-9 text-sm"
+            className="sidebar-shell-search h-9 w-full pl-9 text-sm [@media(pointer:coarse)]:h-11"
           />
         </div>
         {!isSelectingMode && (

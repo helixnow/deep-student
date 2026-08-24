@@ -700,9 +700,9 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <DsButton
                                 variant="ghost" size="sm"
                                 className={cn(
-                                    "inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
+                                    "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
                                     "px-1.5 h-6 transition-colors",
-                                    "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5"
+                                    "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
                                 )}
                                 onClick={() => setIsAddingTag(true)}
                             >

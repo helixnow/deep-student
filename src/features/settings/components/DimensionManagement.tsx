@@ -414,7 +414,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                 value={newDimension}
                 onChange={(e) => setNewDimension(e.target.value)}
                 placeholder={`${dimensionRange[0]} - ${dimensionRange[1]}`}
-                className="h-8 text-xs"
+                className="h-8 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                 autoFocus
               />
             </div>

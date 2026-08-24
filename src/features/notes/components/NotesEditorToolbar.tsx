@@ -339,7 +339,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               size="icon"
               iconOnly
               disabled={isDisabled}
-              className={overflowOpen ? 'notes-editor-format-trigger active flex-none' : 'notes-editor-format-trigger flex-none'}
+              className={overflowOpen ? 'notes-editor-format-trigger active flex-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11' : 'notes-editor-format-trigger flex-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11'}
               aria-label={toolbarLabel}
               aria-haspopup="menu"
               aria-expanded={overflowOpen}
@@ -369,7 +369,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                 size="sm"
                 role="menuitem"
                 tabIndex={index === menuActiveIndex ? 0 : -1}
-                className="notes-toolbar-overflow-item hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                className="notes-toolbar-overflow-item [@media(pointer:coarse)]:min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                 aria-label={item.label}
                 onMouseDown={(event) => event.preventDefault()}
                 onFocus={() => setMenuActiveIndex(index)}

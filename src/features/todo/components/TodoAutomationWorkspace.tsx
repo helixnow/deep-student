@@ -882,7 +882,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       aria-controls={TEMPLATES_PANEL_ID}
                       disabled={creating}
                       onClick={() => setTemplatesOpen((value) => !value)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
                       <Sparkle size={13} />
                       {t('todo:automation.createPanel.templatesToggle')}
@@ -1051,7 +1051,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                       aria-expanded={advancedOpen}
                       aria-controls={ADVANCED_PANEL_ID}
                       onClick={() => setAdvancedOpen((value) => !value)}
-                      className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                      className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
                       {t('todo:automation.advanced')}
                       <CaretDown
@@ -1238,7 +1238,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 aria-controls={HISTORY_PANEL_ID}
                 aria-label={t('todo:automation.history.toggleAria', { count: runs.length })}
                 onClick={() => setHistoryOpen((value) => !value)}
-                className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
               >
                 {runs.length}
                 <CaretDown

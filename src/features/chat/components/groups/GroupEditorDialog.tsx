@@ -470,14 +470,14 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     <div className="flex flex-col h-full bg-background relative">
       {/* Action Buttons - Absolute Positioned；小屏「取消/保存」由全局顶栏返回箭头与保存按钮承担 */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:hidden">
+          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 [@media(pointer:coarse)]:!h-11 px-3 max-md:hidden">
             {t('common:cancel')}
           </DsButton>
           <DsButton 
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3 max-md:hidden"
+            className="h-8 [@media(pointer:coarse)]:!h-11 px-3 max-md:hidden"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
           </DsButton>
@@ -551,7 +551,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   value={icon}
                   onChange={(e) => setIcon(e.target.value)}
                   placeholder={t('page.groupIconPlaceholder')}
-                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
+                  className="h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-[16px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
                 />
               </div>
             </PropertyRow>
@@ -561,7 +561,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t('page.groupDescriptionPlaceholder')}
-                className="h-9 border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
+                className="h-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
               />
             </PropertyRow>
 

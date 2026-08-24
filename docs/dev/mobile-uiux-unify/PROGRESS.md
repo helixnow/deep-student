@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–30 已落地；当前队列见下。
+- **轮次**：Round 2–31 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -40,11 +40,12 @@
 | 28 | claude-fable-5-thinking-xhigh ×10 | 画布导航宽屏 coarse、标签清除、导出分段、笔记折叠、设置输入、技能确认条 | 见 ROUND-28-FIXES.md |
 | 29 | claude-fable-5-thinking-xhigh ×10 | 维度确认、MCP 筛选输入、Todo 重命名、Vendor 搜索、设置/题库/PDF/技能残留 | 见 ROUND-29-FIXES.md |
 | 30 | claude-fable-5-thinking-xhigh ×10 | 模型搜索、笔记加标签、日历导航、模板 Select、迁移横幅、壁纸、Agent 下载行 | 见 ROUND-30-FIXES.md |
+| 31 | claude-fable-5-thinking-xhigh ×10 | 迁移关闭、分组顶栏、ShadApi 输入、Changes chip、Memory icon、设置/聊天/笔记残留 | 见 ROUND-31-FIXES.md |
 
-## 进行中的修复队列（Round 31+）
+## 进行中的修复队列（Round 32+）
 
-- MigrationStatusBanner 关闭约 34；GroupEditor 顶栏宽屏 coarse
-- ShadApiEditModal 输入 40；ChangesSection chip；MemoryView 其余 icon
+- ExternalSearchTab 输入 md:h-8；IndexDiagnosticPanel 40
+- GroupEditor 默认技能 chip；Todo 分组折叠/到期行
 - ShortcutSettings 属 #166 不碰；内联引用 chip 设计未决
 
 ## 已落地

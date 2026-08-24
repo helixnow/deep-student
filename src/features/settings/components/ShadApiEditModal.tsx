@@ -998,7 +998,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         value={formData.name}
                         onChange={e => setFormData(prev => ({ ...prev, name: (e.target as HTMLInputElement).value }))}
                         placeholder={t('common:api_config_modal.config_name_placeholder')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                     </div>
                     <div className="space-y-2">
@@ -1011,7 +1011,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           value={formData.model}
                           onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
                           placeholder={t('common:api_config_modal.model_name_placeholder')}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                         <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
@@ -1129,7 +1129,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={formData.baseUrl}
                             onChange={e => setFormData(prev => ({ ...prev, baseUrl: (e.target as HTMLInputElement).value }))}
                             placeholder={ADAPTER_DEFAULT_BASE_URL[formData.modelAdapter] ?? t('common:api_config_modal.base_url_placeholder')}
-                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
@@ -1141,7 +1141,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={formData.apiKey}
                             onChange={e => setFormData(prev => ({ ...prev, apiKey: (e.target as HTMLInputElement).value }))}
                             placeholder={t('common:api_config_modal.api_key_placeholder')}
-                            inputClassName="font-mono"
+                            className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11"
+                            inputClassName="font-mono [@media(pointer:coarse)]:!text-[16px]"
                             revealed={showApiKey}
                             canReveal={formData.apiKey.trim().length > 0}
                             onToggle={() => setShowApiKey(!showApiKey)}
@@ -1240,7 +1241,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={0}
                         max={2}
                         step={0.1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.temperature_hint')}
@@ -1267,7 +1268,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={1}
                         max={128000}
                         step={1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.max_tokens_hint')}
@@ -1307,7 +1308,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={1000000}
                       step={1}
                       placeholder={t('settings:api.modal.fields.max_tokens_limit_placeholder')}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                     />
                     <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.max_tokens_limit_hint')}
@@ -1343,7 +1344,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={2000000}
                       step={1024}
                       placeholder={t('settings:api.modal.fields.context_window_placeholder', { defaultValue: `${t('settings:api.modal.fields.context_window_auto_inferred')}: ${inferredCaps.contextWindow.toLocaleString()}` })}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                     />
                     <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.context_window_hint')}
@@ -1368,7 +1369,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, minP: Math.max(0, Math.min(num, 1)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                       </div>
                       <div className="space-y-2">
@@ -1386,7 +1387,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, topK: Math.max(0, Math.min(Math.round(num), 10000)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                       </div>
                     </div>
@@ -1453,7 +1454,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>}
                       </div>
@@ -1555,7 +1556,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           });
                         }}
                         placeholder={t('settings:api.modal.fields.repetition_penalty_placeholder', 'Qwen: >1.0, Doubao: >0')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                       />
                       <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.repetition_penalty_hint', 'Qwen/Doubao models: penalize repeated tokens')}
@@ -1625,7 +1626,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                         />
                         <p className="text-2xs text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
                       </div>}
@@ -1680,7 +1681,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                           />
                         </div>}
                       </div>
@@ -1854,7 +1855,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 });
                               }}
                               placeholder={t('settings:api.modal.qwen.thinking_budget_placeholder')}
-                              className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
+                              className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                             />
                           </div>}
                         </CardContent>

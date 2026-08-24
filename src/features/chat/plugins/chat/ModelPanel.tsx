@@ -401,7 +401,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
           <DsButton
             variant="ghost"
             size="sm"
-            className="mt-2 h-7 px-2 text-xs"
+            className="mt-2 h-7 [@media(pointer:coarse)]:min-h-11 px-2 text-xs"
             onClick={openModelSettings}
           >
             {t('chat_host:model_panel.go_config_model2')}

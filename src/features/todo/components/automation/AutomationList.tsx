@@ -671,7 +671,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
           aria-expanded={advancedOpen}
           aria-controls={`${idPrefix}-advanced`}
           onClick={() => setAdvancedOpen((value) => !value)}
-          className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+          className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
         >
           {t('todo:automation.advanced')}
           <CaretDown

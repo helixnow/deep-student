@@ -161,7 +161,7 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!p-2.5 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-1.5', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('common:actions.close')}>
             <X size={14} />
           </DsButton>
         </div>

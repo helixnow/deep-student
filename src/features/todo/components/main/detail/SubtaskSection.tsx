@@ -364,7 +364,7 @@ export const SubtaskSection: React.FC<{
           onClick={() => void handleAiBreakdown()}
           disabled={aiBreaking}
           className={cn(
-            'flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs transition-colors duration-150 motion-reduce:transition-none',
+            'flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs transition-colors duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
             aiBreaking
               ? 'cursor-default text-muted-foreground/50'
               : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)] hover:text-foreground',

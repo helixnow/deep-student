@@ -1195,7 +1195,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
-          className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', viewMode === 'tree' && 'text-primary bg-primary/10')}
           aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
           title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
@@ -1208,12 +1208,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); setConfirmingBatchDelete(false); }}
-          className={cn(batchMode && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', batchMode && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.batch')}
         >
           <CheckSquare size={16} />
         </DsButton>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} aria-label={t('memory.aria.export')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.export')}>
           <Download size={16} />
         </DsButton>
 
@@ -1223,7 +1223,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
-          className={cn(showProfile && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', showProfile && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.profile')}
         >
           <MemoryIcon size={16} />
@@ -1231,7 +1231,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <DsButton
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
-          className={cn(showAuditLog && 'text-primary bg-primary/10')}
+          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', showAuditLog && 'text-primary bg-primary/10')}
           aria-label={t('memory.aria.audit_log')}
           title={t('memory.audit_log')}
         >
@@ -1534,7 +1534,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <ListPlus size={16} />
                       <span className="text-sm font-medium">{t('memory.batch_import')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} aria-label={t('memory.aria.cancel_batch_import')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.cancel_batch_import')}>
                       <X size={16} />
                     </DsButton>
                   </div>
@@ -1631,7 +1631,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <MemoryIcon size={16} />
                       <span className="text-sm font-medium">{t('memory.create_title')}</span>
                     </div>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} aria-label={t('memory.aria.cancel')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isMutating} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('memory.aria.cancel')}>
                       <X size={16} />
                     </DsButton>
                   </div>
@@ -2014,7 +2014,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           </DsButton>
                         ) : (
                           // 触屏无 hover：删除钮常显弱化态（[@media(pointer:coarse)]），避免隐形可点
-                          <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
+                          <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
                             <Trash size={14} />
                           </DsButton>
                         )
@@ -2231,7 +2231,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       <DsButton
                         variant="ghost" size="icon" iconOnly
                         // 触屏无 hover：删除钮常显弱化态，避免隐形可点
-                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10"
+                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:text-danger hover:bg-danger/10"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                         aria-label={t('memory.aria.delete')}
                       >

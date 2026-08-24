@@ -134,7 +134,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
           resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
         }
       }}
-      className="!h-auto min-h-8 lg:min-h-0 !p-1 text-2xs text-muted-foreground hover:text-foreground"
+      className="!h-auto min-h-8 lg:min-h-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 !p-1 text-2xs text-muted-foreground hover:text-foreground"
       aria-label={label}
       title={label}
     >
@@ -191,7 +191,7 @@ const StreamPane: React.FC<{
           variant="ghost"
           size="sm"
           onClick={() => setShowAll(true)}
-          className="mt-0.5 !h-auto min-h-8 lg:min-h-0 !p-1 text-2xs text-muted-foreground hover:text-foreground"
+          className="mt-0.5 !h-auto min-h-8 lg:min-h-0 [@media(pointer:coarse)]:!min-h-11 !p-1 [@media(pointer:coarse)]:!px-3 text-2xs text-muted-foreground hover:text-foreground"
         >
           {t('shellOutput.showFull', {
             
