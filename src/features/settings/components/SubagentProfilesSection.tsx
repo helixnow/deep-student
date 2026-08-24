@@ -382,10 +382,10 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={() => void handleSubmit()}>
+        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={() => void handleSubmit()}>
           {saving && <CircleNotch className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {mode === 'create'
             ? t('settings:subagentProfiles.form.create_submit')
@@ -628,7 +628,7 @@ export const SubagentProfilesSection: React.FC = () => {
               {t('settings:subagentProfiles.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteFile(null)}>
+              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => setConfirmingDeleteFile(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton
@@ -636,7 +636,7 @@ export const SubagentProfilesSection: React.FC = () => {
                 variant="danger"
                 disabled={deleteBusy}
                 onClick={() => void handleConfirmDelete(file.fileName)}
-                className="min-h-11 sm:min-h-0"
+                className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
               >
                 {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {t('settings:subagentProfiles.delete.confirm')}
@@ -807,7 +807,7 @@ export const SubagentProfilesSection: React.FC = () => {
             <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="break-words">{error}</span>
           </span>
-          <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={() => void load()}>
+          <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => void load()}>
             {t('settings:subagentProfiles.actions.retry')}
           </DsButton>
         </div>
