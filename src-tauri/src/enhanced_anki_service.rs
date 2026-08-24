@@ -119,7 +119,7 @@ impl EnhancedAnkiService {
             }
         }
 
-        let options = options.unwrap_or_else(|| AnkiGenerationOptions {
+        let mut options = options.unwrap_or_else(|| AnkiGenerationOptions {
             deck_name: "默认牌组".to_string(),
             note_type: "Basic".to_string(),
             enable_images: false,
@@ -141,7 +141,44 @@ impl EnhancedAnkiService {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
         });
+
+        // ===== FSRS 复习数据回流（Round 3 #5）=====
+        // 默认开启（fsrs_feedback == None 视为开启），显式 Some(false) 可关。
+        // 全部统计只读本地 SQLite；任何查询失败降级为不注入，绝不阻断制卡。
+        if options.fsrs_feedback.unwrap_or(true) {
+            // 调用方已显式提供画像时不重复构建；否则从本地 FSRS 库聚合。
+            let injected = options
+                .user_review_profile
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .or_else(|| {
+                    let cfg = crate::anki_fsrs_feedback::FsrsFeedbackConfig::default();
+                    crate::anki_fsrs_feedback::build_feedback_injection(
+                        &self.db,
+                        &document_content,
+                        &cfg,
+                    )
+                });
+            if let Some(section) = injected {
+                options.user_review_profile = Some(section.clone());
+                options.custom_requirements = Some(
+                    match options
+                        .custom_requirements
+                        .take()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(existing) => format!("{existing}\n\n{section}"),
+                        None => section,
+                    },
+                );
+            }
+        }
 
         // 确定文档名称
         let document_name = original_document_name
@@ -1041,6 +1078,8 @@ mod tests {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(
@@ -1120,6 +1159,8 @@ mod tests {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(

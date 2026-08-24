@@ -9628,6 +9628,9 @@ fn build_generation_options(
         template_ids: None,
         template_descriptions: None,
         enable_llm_boundary_detection: Some(true),
+        // FSRS 复习画像回流：保持默认开启（None），由 EnhancedAnkiService 注入
+        fsrs_feedback: None,
+        user_review_profile: None,
     }
 }
 

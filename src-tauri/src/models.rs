@@ -1313,6 +1313,17 @@ pub struct AnkiGenerationOptions {
     /// 是否启用 LLM 智能分段边界检测
     #[serde(default)]
     pub enable_llm_boundary_detection: Option<bool>,
+
+    // ===== FSRS 复习数据回流（Round 3 #5） =====
+    /// 是否将本地 FSRS 复习画像 / 语义干扰预警注入制卡 prompt。
+    /// `None` 视为开启（默认行为）；显式 `Some(false)` 可关闭。
+    /// 所有统计只读本地 SQLite，数据不出本地；查询失败时降级为不注入，绝不阻断制卡。
+    #[serde(default)]
+    pub fsrs_feedback: Option<bool>,
+    /// 本次生成实际注入的「用户复习画像」section（已渲染文本）。
+    /// 通常由服务端在生成开始时自动构建填充；调用方也可显式传入以跳过自动构建。
+    #[serde(default)]
+    pub user_review_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

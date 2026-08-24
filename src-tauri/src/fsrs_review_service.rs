@@ -317,6 +317,26 @@ pub struct FsrsEnqueuedCard {
     pub error_content: Option<String>,
 }
 
+/// FSRS 复习数据回流用的只读联表行（调度状态 + 卡片内容摘要）。
+///
+/// 由 [`FsrsReviewService::list_feedback_rows`] 产出，供 `anki_fsrs_feedback`
+/// 模块的纯函数聚合成用户复习画像。所有数据只在本地 SQLite 读取。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsFeedbackRow {
+    pub anki_card_id: String,
+    pub front: String,
+    pub template_id: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub state: i32,
+    pub stability: Option<f64>,
+    pub lapses: i32,
+    pub reps: i32,
+    pub due_ms: i64,
+    pub last_review_ms: Option<i64>,
+}
+
 /// 统计
 ///
 /// `due` 为“现在可复习”的数量：Review 卡按本地日切窗口计（今天到期即可复习），
@@ -1898,6 +1918,56 @@ impl FsrsReviewService {
             return Ok(Vec::new());
         };
         Ok(serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default())
+    }
+
+    /// FSRS 复习数据回流（Round 3 #5）：一次性读出「调度状态 + 卡片内容摘要」联表行。
+    ///
+    /// 只读查询，供 `anki_fsrs_feedback` 模块在制卡开始前构建用户复习画像与
+    /// 同批次语义干扰预警。行按 `lapses DESC, due_ms ASC` 排序，`limit` 上限 2000。
+    /// 包含 suspended 卡（leech 自动暂停的卡恰是最需要反馈的薄弱点），
+    /// 排除已删除卡、错误卡与已删除任务。
+    pub fn list_feedback_rows(&self, limit: u32) -> Result<Vec<FsrsFeedbackRow>> {
+        let limit = limit.min(2000) as i64;
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.anki_card_id, COALESCE(a.front, ''), a.template_id,
+                        COALESCE(a.tags_json, '[]'), s.state, s.stability, s.lapses,
+                        s.reps, s.due_ms, s.last_review_ms
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL
+                   AND COALESCE(a.is_error_card, 0) = 0
+                 ORDER BY s.lapses DESC, s.due_ms ASC
+                 LIMIT ?1",
+            )
+            .map_err(|e| AppError::database(format!("准备反馈回流查询失败: {}", e)))?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                let tags_json: String = row.get(3)?;
+                Ok(FsrsFeedbackRow {
+                    anki_card_id: row.get(0)?,
+                    front: row.get(1)?,
+                    template_id: row.get(2)?,
+                    tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+                    state: row.get(4)?,
+                    stability: row.get(5)?,
+                    lapses: row.get(6)?,
+                    reps: row.get(7)?,
+                    due_ms: row.get(8)?,
+                    last_review_ms: row.get(9)?,
+                })
+            })
+            .map_err(|e| AppError::database(format!("执行反馈回流查询失败: {}", e)))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| AppError::database(format!("读取反馈回流行失败: {}", e)))?;
+        Ok(rows)
     }
 
     pub fn pending_mastery_reviews(&self, limit: usize) -> Result<Vec<FsrsPendingMasteryReview>> {
