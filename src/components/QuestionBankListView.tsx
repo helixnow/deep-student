@@ -1277,13 +1277,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })} title={t('learningHub:exam.tab.favorites', { defaultValue: '收藏' })}>
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </DsButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })} title={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })}>
               <Plus size={16} />
             </DsButton>
           )}
@@ -1299,7 +1299,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 openBatchMode();
               }}
               className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!h-9 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
-              aria-label="batch manage"
+              aria-label={t('exam_sheet:questionBank.manage', { defaultValue: '管理' })}
             >
               <ListChecks size={14} className="mr-1" />
               <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
