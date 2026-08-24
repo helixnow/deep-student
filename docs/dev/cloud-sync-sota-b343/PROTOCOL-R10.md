@@ -96,7 +96,7 @@ R03 已判「R01 P1 已关」，本轮抽核关键三项仍成立：
 ### P0-1 文件级明文上传 → **已关**（r07-file-e2ee，验收三要点全过）
 
 - **a) 加密门禁**：`src-tauri/src/data_governance/sync/mod.rs:929-955`（`ensure_file_upload_encryption_policy`——无密码 + 云端有标记拒传、读标记失败 fail-closed），三条文件级路径全部接线：`:9920`（VFS blob）、`:10351`（资产目录）、`:10804`（workspace db）；有密码时经 `put_file_encoded`（`:966-998`）DSBK v2 流式加密上传。
-- **b) 内容寻址不破坏**：对象键与清单 hash 保持**明文内容哈希**（`:957-962` 注释 + `get_file_decoded` `:1000-1014` 下载解包后按明文 sha256 回验）。
+- **b) 内容寻址不破坏**：对象键与清单 hash 保持**明文内容哈希**（`:957-962` 注释 + `download_file_object` 下载解密后按明文 sha256 回验；原引用的 `get_file_decoded` 系死代码，已按 FINDINGS-R11 P2-1 由 R12-decoded-dead 删除）。
 - **c) 「部分覆盖」文案已回收**：`src/locales/zh-CN/cloudStorage.json:84` 现描述为全覆盖（整包 ZIP + 记录级 + 文件级对象）。
 - 集成测：`src-tauri/tests/sync_file_level_e2ee.rs`、`sync_r09_file_e2ee.rs`；记录级四上传入口审计见 FIX-QUEUE「R09-e2ee 审计结论」。
 
