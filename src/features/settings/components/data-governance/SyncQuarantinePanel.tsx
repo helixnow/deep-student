@@ -322,7 +322,7 @@ export const SyncQuarantinePanel: React.FC<{
               </div>
               {row.payload_json && (
                 <details className="text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">
+                  <summary className="cursor-pointer text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center">
                     {t("data:governance.quarantine_payload_label")}
                   </summary>
                   <CustomScrollArea orientation="both" className="mt-2 h-48 rounded-md bg-muted/40" viewportClassName="p-2">
