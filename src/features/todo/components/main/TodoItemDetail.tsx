@@ -135,9 +135,18 @@ export const TodoItemDetail: React.FC<{
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  // 面板根节点（Android 返回键的保活可见性守卫用）
+  const panelRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!calendarOpen) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 保活层里仍保持挂载
+      // （visibility:hidden），日历展开态也随之滞留——此时不消费返回键，
+      // 交还给当前活跃视图（对照 MobileDetailOverlay 的同款守卫）
+      const el = panelRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setCalendarOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -515,6 +524,7 @@ export const TodoItemDetail: React.FC<{
 
   return (
     <aside
+      ref={panelRef}
       data-todo-detail-panel
       onKeyDown={handlePanelKeyDown}
       className={cn(
@@ -563,7 +573,8 @@ export const TodoItemDetail: React.FC<{
               onClick={handleStartFocus}
               title={t('todo:actions.startFocusSession')}
               aria-label={t('todo:actions.startFocusSession')}
-              className="!p-1.5 [@media(pointer:coarse)]:!p-3"
+              // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+              className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <Play size={16} />
             </DsButton>
@@ -575,7 +586,8 @@ export const TodoItemDetail: React.FC<{
               iconOnly
               onClick={onClose}
               aria-label={t('common:actions.close')}
-              className="!p-1.5"
+              // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+              className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <X size={16} />
             </DsButton>
@@ -626,7 +638,7 @@ export const TodoItemDetail: React.FC<{
               }}
               size="compact"
               className="flex-wrap"
-              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium"
+              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11"
               options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
                 const isActive = priority === p;
                 return {
@@ -654,7 +666,7 @@ export const TodoItemDetail: React.FC<{
                 aria-expanded={calendarOpen}
                 title={dueDate || undefined}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[var(--radius-shell-control)] px-2 py-1 text-left text-sm',
+                  'flex min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[var(--radius-shell-control)] px-2 py-1 text-left text-sm [@media(pointer:coarse)]:min-h-11',
                   'transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]',
                   dueDate ? 'text-foreground' : 'text-muted-foreground/70',
@@ -682,7 +694,7 @@ export const TodoItemDetail: React.FC<{
                   onClick={clearDueDate}
                   aria-label={t('todo:reschedule.clear')}
                   title={t('todo:reschedule.clear')}
-                  className="!p-1 [@media(pointer:coarse)]:!p-3"
+                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <X size={13} />
                 </DsButton>
@@ -758,7 +770,7 @@ export const TodoItemDetail: React.FC<{
                   iconOnly
                   onClick={() => applyReminder('')}
                   aria-label={t('todo:reminder.clear')}
-                  className="!p-1 [@media(pointer:coarse)]:!p-3"
+                  className="!p-1 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <X size={13} />
                 </DsButton>
@@ -799,7 +811,7 @@ export const TodoItemDetail: React.FC<{
               onValueChange={handleRepeatChange}
               size="compact"
               className="flex-wrap"
-              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium"
+              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11"
               options={REPEAT_OPTIONS.map((opt) => ({
                 value: opt.value,
                 title: t(opt.labelKey),
@@ -862,7 +874,7 @@ export const TodoItemDetail: React.FC<{
                       aria-pressed={active}
                       onClick={() => handleToggleWeekday(day)}
                       className={cn(
-                        'h-9 w-9 rounded-full text-xs font-medium transition-colors duration-150 sm:h-6 sm:w-6',
+                        'h-11 w-11 rounded-full text-xs font-medium transition-colors duration-150 sm:h-6 sm:w-6 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-muted text-muted-foreground hover:bg-[color:var(--interactive-hover)]',

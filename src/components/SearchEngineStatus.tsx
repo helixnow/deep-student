@@ -164,7 +164,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
           )}
         </div>
         
-        <DsButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+        <DsButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 [@media(pointer:coarse)]:!min-h-11 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
           {testing ? (
             <ArrowClockwise size={16} className="animate-spin" />
           ) : (

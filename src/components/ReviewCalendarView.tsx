@@ -45,6 +45,8 @@ interface ReviewCalendarViewProps {
   examId?: string;
   className?: string;
   onClose?: () => void;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
 }
 
 interface DayDetailProps {
@@ -141,7 +143,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
           size="sm"
           onClick={onClose}
           aria-label={t('review:calendar.closeDetail')}
-          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground sm:h-8 sm:w-8"
+          className="h-10 w-10 shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground sm:h-8 sm:w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         >
           <X size={16} />
         </DsButton>
@@ -272,6 +274,8 @@ const CalendarCell: React.FC<CalendarCellProps> = ({
       className={cn(
         // 单元格随七列网格收缩，min-h-9 兜底触控高度（aspect-square 下实际接近方形命中区）
         '!p-0.5 sm:!p-1 !h-auto !rounded-md aspect-square relative min-h-9 min-w-0 sm:min-h-10',
+        // 粗指针：::after 向四周扩 4px 命中区（36px 视觉 → ~44px 命中），不改变视觉尺寸与七列网格
+        "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']",
         'ui-state-colors border transition-[background-color,border-color,box-shadow] duration-150 ease-standard motion-reduce:transition-none',
         getHeatmapColor(count),
         // 边框层级：选中 > 今日 > 常态细边框
@@ -459,6 +463,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   examId,
   className,
   onClose,
+  isActive,
 }) => {
   const { t } = useTranslation(['review', 'common']);
 
@@ -484,13 +489,15 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  // isActive === false：保活隐藏（display:none 标签页）的实例不注册返回键 handler，
+  // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || isActive === false) return;
     return registerBackHandler(() => {
       setSelectedDate(null);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [selectedDate]);
+  }, [selectedDate, isActive]);
   // 月份切换方向（驱动滑动过渡的入场方向）
   const [slideDir, setSlideDir] = useState<'left' | 'right'>('left');
 
@@ -680,7 +687,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             size="sm"
             onClick={onClose}
             aria-label={t('common:close')}
-            className="shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <X size={18} />
           </DsButton>

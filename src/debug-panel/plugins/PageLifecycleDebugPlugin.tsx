@@ -238,7 +238,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             variant="outline"
             size="sm"
             onClick={handleClear}
-            className="h-7 text-xs"
+            className="h-7 [@media(pointer:coarse)]:min-h-11 text-xs"
           >
             <Trash size={12} className="mr-1" />
             清空
@@ -247,7 +247,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             variant="outline"
             size="sm"
             onClick={handleCopyReport}
-            className="h-7 text-xs"
+            className="h-7 [@media(pointer:coarse)]:min-h-11 text-xs"
           >
             {copied ? (
               <CheckCircle size={12} className="mr-1 text-green-500" />
@@ -260,7 +260,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             variant="outline"
             size="sm"
             onClick={handleExportLogs}
-            className="h-7 text-xs"
+            className="h-7 [@media(pointer:coarse)]:min-h-11 text-xs"
           >
             <Download size={12} className="mr-1" />
             导出JSON
@@ -302,7 +302,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             <select
               value={filterEvent}
               onChange={(e) => setFilterEvent(e.target.value as PageLifecycleEvent | 'all')}
-              className="h-7 px-2 rounded border border-input bg-background text-xs"
+              className="h-7 [@media(pointer:coarse)]:min-h-11 px-2 rounded border border-input bg-background text-xs"
             >
               <option value="all">全部事件</option>
               {Object.entries(EVENT_LABELS).map(([key, label]) => (
@@ -312,7 +312,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             <select
               value={filterPage}
               onChange={(e) => setFilterPage(e.target.value)}
-              className="h-7 px-2 rounded border border-input bg-background text-xs"
+              className="h-7 [@media(pointer:coarse)]:min-h-11 px-2 rounded border border-input bg-background text-xs"
             >
               <option value="all">全部页面</option>
               {pageList.map(page => (

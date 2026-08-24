@@ -112,7 +112,7 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
             iconOnly
             title={t('todo:reschedule.title')}
             aria-label={t('todo:reschedule.title')}
-            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!-m-1.5"
+            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <CalendarPlus size={16} />
           </DsButton>

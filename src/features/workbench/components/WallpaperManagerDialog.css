@@ -436,3 +436,38 @@
 .wb-wpm-switch[aria-checked='true'] .wb-wpm-switch-knob {
   transform: translateX(14px);
 }
+
+/* ==== 触屏命中区（仅 coarse pointer，精细指针桌面视觉不变） ==== */
+
+@media (pointer: coarse) {
+  .wb-wpm-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* 触屏没有 hover：删除钮常显，且命中区升到 44 */
+  .wb-wpm-remove {
+    min-width: 44px;
+    min-height: 44px;
+    opacity: 1;
+  }
+
+  .wb-wpm-import {
+    min-height: 44px;
+  }
+
+  /* 开关视觉保持 34×20，仅用伪元素把命中区扩到 44（对齐 Switch.css 做法） */
+  .wb-wpm-switch {
+    position: relative;
+  }
+
+  .wb-wpm-switch::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}

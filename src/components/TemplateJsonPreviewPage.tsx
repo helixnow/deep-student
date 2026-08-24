@@ -80,6 +80,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
           title={t('json_preview.reload_templates')}
           onClick={() => loadTemplatesRef.current()}
           disabled={isLoadingTemplates}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
         </DsButton>
@@ -90,6 +91,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
           aria-label={t('json_preview.parse_button')}
           title={t('json_preview.parse_button')}
           onClick={() => handleParseRef.current()}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Eye size={16} />
         </DsButton>
@@ -324,7 +326,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
       {!isSmallScreen && (
         <div className="template-json-preview-header">
           <div className="left">
-            <DsButton variant="ghost" size="sm" onClick={onBack} className="gap-2">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
               <ArrowLeft size={16} />
               {t('json_preview.back')}
             </DsButton>
@@ -334,11 +336,11 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
             </div>
           </div>
           <div className="actions">
-            <DsButton variant="default" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates} className="gap-1.5">
+            <DsButton variant="default" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
               <span>{t('json_preview.reload_templates')}</span>
             </DsButton>
-            <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
+            <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               <Eye size={16} />
               <span>{t('json_preview.parse_button')}</span>
             </DsButton>
@@ -376,12 +378,12 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                     variant="default"
                     size="sm"
                     onClick={() => setInputValue(SAMPLE_JSON)}
-                    className="gap-1.5"
+                    className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <ArrowClockwise size={16} />
                     <span>{t('json_preview.reset')}</span>
                   </DsButton>
-                  <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
+                  <DsButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
                     <Eye size={16} />
                     <span>{t('json_preview.parse_button')}</span>
                   </DsButton>

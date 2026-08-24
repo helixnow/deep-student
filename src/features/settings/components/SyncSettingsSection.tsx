@@ -333,6 +333,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               size="sm"
               onClick={handleRefresh}
               disabled={isRefreshing}
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               {isRefreshing ? (
                 <CircleNotch className="h-4 w-4 animate-spin" />
@@ -467,7 +468,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               variant="outline"
               onClick={() => handleSync('upload')}
               disabled={isSyncing}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               <Upload className="h-4 w-4 mr-2" />
               {t('data:sync_settings.upload')}
@@ -476,7 +477,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               variant="outline"
               onClick={() => handleSync('download')}
               disabled={isSyncing}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               <Download className="h-4 w-4 mr-2" />
               {t('data:sync_settings.download')}
@@ -484,7 +485,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             <DsButton
               onClick={() => handleSync('bidirectional')}
               disabled={isSyncing}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowsLeftRight className="h-4 w-4 mr-2" />
               {t('data:sync_settings.bidirectional')}
@@ -587,6 +588,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowConflictDialog(true)}
+                  className="[@media(pointer:coarse)]:!min-h-11"
                 >
                   {t('data:sync_settings.view_conflicts')}
                 </DsButton>
@@ -607,7 +609,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Warning className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>{error}</span>
-                <DsButton variant="ghost" size="sm" onClick={clearError}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={clearError}>
                   {t('common:actions.dismiss')}
                 </DsButton>
               </AlertDescription>
@@ -620,7 +622,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               variant="outline"
               onClick={handleDetectConflicts}
               disabled={isDetecting}
-              className="flex-1"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               {isDetecting ? (
                 <>
@@ -638,7 +640,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <DsButton
                 onClick={() => setShowConflictDialog(true)}
                 disabled={isResolving}
-                className="flex-1"
+                className="flex-1 [@media(pointer:coarse)]:!min-h-11"
               >
                 <Lightning className="h-4 w-4 mr-2" />
                 {t('data:sync_settings.resolve_conflicts')}

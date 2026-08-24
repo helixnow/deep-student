@@ -119,7 +119,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {/* P0修复：批量清理按钮 */}
       {errors.length > 1 && (
         <div className="flex justify-end">
-          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700">
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700 [@media(pointer:coarse)]:!min-h-11">
             <Trash size={12} />
             {t('messages.errorHandler.clearAll', { count: errors.length })}
           </DsButton>
@@ -157,7 +157,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                 <div className="flex items-center gap-1">
                   {/* 展开/收起按钮 */}
                   {(error.details || error.context) && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
                       <ArrowCounterClockwise 
                         size={14} 
                         className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -166,7 +166,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                   )}
                   
                   {/* 关闭按钮 */}
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={t('actions.close')} aria-label={t('actions.close')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={t('actions.close')} aria-label={t('actions.close')}>
                     <X size={14} />
                   </DsButton>
                 </div>
@@ -217,7 +217,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                         }
                       }}
                       className={`
-                        !px-3 !py-1.5 text-xs font-medium
+                        !px-3 !py-1.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11
                         ${getActionStyles(action.variant)}
                       `}
                     >

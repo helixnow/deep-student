@@ -158,7 +158,10 @@ const SlideThumbnail: React.FC<{
       onClick={() => onSelect(index)}
       aria-label={label}
       aria-current={isActive ? 'true' : undefined}
-      className={`group relative shrink-0 self-center overflow-hidden rounded-md border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+      // 触屏：缩略图高度随幻灯片宽高比缩放（THUMB_WIDTH 定宽），超宽幻灯片
+      // （>2.36:1）会跌破 44px 触控目标 —— coarse 下 min-h-11 兜底并把画布
+      // 垂直居中（信箱式留白）；常规 16:9/4:3 已 ≥44px，视觉零变化
+      className={`group relative shrink-0 self-center overflow-hidden rounded-md border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center ${
         isActive
           ? 'border-primary shadow-sm ring-1 ring-primary'
           : 'border-border/60 hover:border-border hover:shadow-sm'

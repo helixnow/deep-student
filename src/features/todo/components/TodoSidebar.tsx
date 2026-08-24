@@ -291,7 +291,7 @@ const rowIconButtonClass = cn(
   'flex h-5 w-5 items-center justify-center rounded-md',
   'text-[color:var(--shell-navigation-muted)] transition-colors duration-150',
   'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
-  '[@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10',
+  '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
 );
 
 /** 中性灰 pending 计数（Things 式纯数字，>0 才显示，由调用方保证） */
@@ -896,7 +896,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onBlur={() => void commitRename()}
             aria-label={t('todo:actions.renameList')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border [@media(pointer:coarse)]:h-11',
               'border-[color:var(--shell-navigation-border)]',
               'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
               'text-[color:var(--shell-navigation-foreground)]',
@@ -937,7 +937,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 'shrink-0 rounded-md px-1.5 py-0.5 text-sm font-medium',
                 'text-[color:hsl(var(--destructive))] transition-colors duration-150',
                 'hover:bg-[color:var(--button-danger-surface,var(--interactive-hover))]',
-                '[@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:px-2.5',
+                '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
               )}
             >
               {t('common:actions.delete')}
@@ -949,7 +949,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 'shrink-0 rounded-md px-1.5 py-0.5 text-sm',
                 'text-[color:var(--shell-navigation-muted)] transition-colors duration-150',
                 'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
-                '[@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:px-2.5',
+                '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
               )}
             >
               {t('common:actions.cancel')}
@@ -992,7 +992,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onBlur={() => void handleCreateList()}
             placeholder={t('todo:actions.newListPlaceholder')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border [@media(pointer:coarse)]:h-11',
               'border-[color:var(--shell-navigation-border)]',
               'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
               'text-[color:var(--shell-navigation-foreground)]',
@@ -1083,8 +1083,9 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('todo:actions.searchLists', '搜索列表...')}
             className={cn(
-              'h-8 w-full rounded-[var(--radius-shell-control)] border border-transparent',
-              'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-ui text-[color:var(--shell-navigation-foreground)]',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border border-transparent [@media(pointer:coarse)]:h-11',
+              // coarse 下清除按钮命中区扩到 44px，右侧留白同步放宽避免文字压到按钮下
+              'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-ui text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:pr-11',
               'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
               'focus:border-[color:var(--shell-navigation-border)] focus:bg-[color:var(--interactive-hover)]',
               'transition-colors',
@@ -1094,7 +1095,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8 [@media(pointer:coarse)]:right-0"
+              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:right-0"
               aria-label={t('common:actions.clear')}
             >
               <X size={12} />

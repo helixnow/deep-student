@@ -307,7 +307,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 size="sm"
                 onClick={() => handleChipClick(attachment)}
                 className={cn(
-                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none',
+                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11',
                   isError
                     ? 'border-destructive/40 hover:border-destructive/60'
                     : 'border-[color:var(--input-shell-border)] hover:border-[color:var(--button-plain-border)]',

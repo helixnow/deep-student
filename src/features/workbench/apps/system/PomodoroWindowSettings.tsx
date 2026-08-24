@@ -171,7 +171,7 @@ export const PomodoroWindowSettings: React.FC = () => {
         ariaLabel={t('pomodoro.settings.noiseType')}
         size="compact"
         className="w-full"
-        itemClassName="flex-1 justify-center"
+        itemClassName="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
         value={settings.noiseType}
         onValueChange={(type) => updateSettings({ noiseType: type })}
         options={NOISE_TYPES.map((type) => ({

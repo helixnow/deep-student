@@ -244,15 +244,15 @@ const AttachmentInjectionDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Badge variant="outline">{logs.length} 条日志</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadLogs}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={loadLogs}>
             <ArrowClockwise size={16} className="mr-1" />
             刷新
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCopy} disabled={logs.length === 0}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopy} disabled={logs.length === 0}>
             <Copy size={16} className="mr-1" />
             复制
           </Button>
-          <Button variant="outline" size="sm" onClick={handleClear} disabled={logs.length === 0}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClear} disabled={logs.length === 0}>
             <Trash size={16} className="mr-1" />
             清空
           </Button>

@@ -180,7 +180,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             aria-disabled={isDisabled}
             tabIndex={isActive || index === fallbackTabIndex ? 0 : -1}
             className={cn(
-              'gap-1.5 shrink-0',
+              'gap-1.5 shrink-0 [@media(pointer:coarse)]:!min-h-11',
               isActive
                 ? 'bg-background text-foreground shadow-none'
                 : isDisabled

@@ -235,7 +235,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               {ALL_SCENARIOS.map((s) => (
                 <label
                   key={s}
-                  className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
+                  className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1 [@media(pointer:coarse)]:min-h-11"
                   title={SCENARIO_DESCRIPTIONS[s]}
                 >
                   <Checkbox
@@ -254,7 +254,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           <div>
             <button
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
               {showAdvanced ? <CaretDown size={12} /> : <CaretRight size={12} />}
@@ -267,7 +267,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">场景超时 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={timeoutMs}
                       min={20000}
                       max={240000}
@@ -280,7 +280,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">轮询间隔 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={pollMs}
                       min={300}
                       max={5000}
@@ -295,7 +295,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">快照间隔 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={snapshotIntervalMs}
                       min={500}
                       max={5000}
@@ -308,7 +308,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     <label className="text-xs text-muted-foreground mb-1 block">稳定等待 (ms)</label>
                     <input
                       type="number"
-                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                      className="w-full h-8 [@media(pointer:coarse)]:min-h-11 px-2 rounded-md border border-input bg-background text-xs [@media(pointer:coarse)]:text-[16px]"
                       value={settleMs}
                       min={0}
                       max={10000}
@@ -321,7 +321,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Prompt 后缀（可选）</label>
                   <textarea
-                    className="w-full h-12 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none"
+                    className="w-full h-12 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:text-[16px]"
                     value={promptSuffix}
                     onChange={(e) => { setPromptSuffix(e.target.value); saveConfig({ promptSuffix: e.target.value }); }}
                     disabled={status === 'running'}
@@ -333,21 +333,21 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           <div className="flex items-center justify-end gap-2">
             {status === 'running' ? (
-              <Button size="sm" variant="destructive" onClick={handleAbort}>
+              <Button size="sm" variant="destructive" className="[@media(pointer:coarse)]:min-h-11" onClick={handleAbort}>
                 <Square size={16} className="mr-1" /> 中止
               </Button>
             ) : (
-              <Button size="sm" onClick={handleStart} disabled={!canStart}>
+              <Button size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleStart} disabled={!canStart}>
                 <Play size={16} className="mr-1" /> 开始测试 ({activeScenarios.length} 场景)
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0} title="下载报告">
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleDownload} disabled={results.length === 0} title="下载报告">
               <Download size={16} />
             </Button>
-            <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0} title="复制日志">
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCopyLogs} disabled={liveLogs.length === 0} title="复制日志">
               <Copy size={16} />
             </Button>
-            <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaning || status === 'running'} title="清理 [OrchTest] 工作区">
+            <Button size="sm" variant="outline" className="[@media(pointer:coarse)]:min-h-11" onClick={handleCleanup} disabled={isCleaning || status === 'running'} title="清理 [OrchTest] 工作区">
               {isCleaning ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
             </Button>
           </div>
@@ -399,7 +399,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 const expanded = expandedScenario === r.scenario;
                 return (
                   <div key={r.scenario} className={`border rounded-lg overflow-hidden ${r.status === 'failed' ? 'border-red-300 dark:border-red-700' : 'border-border'}`}>
-                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm" onClick={() => setExpandedScenario(expanded ? null : r.scenario)}>
+                    <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm [@media(pointer:coarse)]:min-h-11" onClick={() => setExpandedScenario(expanded ? null : r.scenario)}>
                       {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {scenarioStatusIcon(r.status)}
                       <span className="font-medium flex-1">{SCENARIO_LABELS[r.scenario]}</span>
@@ -465,7 +465,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="h-32 flex-shrink-0 overflow-hidden">
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
-            <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
+            <Button size="sm" variant="ghost" className="h-5 px-1 [@media(pointer:coarse)]:min-h-11" onClick={() => setLiveLogs([])}>
               <Trash size={12} />
             </Button>
           </div>

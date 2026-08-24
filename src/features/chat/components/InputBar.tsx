@@ -195,6 +195,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               disabled={attachments.length >= maxAttachments}
               className={cn(
                 '!rounded-full bg-muted/50 hover:bg-[var(--interactive-hover)] active:scale-95',
+                '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 attachments.length >= maxAttachments
                   ? 'opacity-50 text-muted-foreground'
                   : 'text-muted-foreground hover:text-foreground'
@@ -240,6 +241,7 @@ export const InputBar: React.FC<InputBarProps> = ({
           disabled={isAborting || (!isStreaming && !canSend)}
           className={cn(
             '!rounded-full shadow-sm hover:shadow-md active:scale-95',
+            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
             isStreaming
               ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
               : 'bg-primary text-primary-foreground hover:bg-primary/90',

@@ -12,17 +12,21 @@
  * R1-14：todo://changed 经 registerDomainListener；详情面板编辑中延迟 reload。
  */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowsClockwise, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { motionSafe, tweenFast } from '@/styles/motion-springs';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { DsButton } from '@/components/ui/DsButton';
 import { PomodoroSettingsContent, PomodoroStatsContent } from '@/features/pomodoro';
 import { registerDomainListener } from '@/features/workbench/agent/domainEvents';
 import { useTodoStore } from '../stores/useTodoStore';
+import { useAutomationStore } from '../stores/useAutomationStore';
+import { requestAutomationCreate } from '../automationCreateRequest';
 import { TodoSidebar } from './TodoSidebar';
 import { TodoMainPanel, MobileDetailOverlay, type PomodoroSubView } from './TodoMainPanel';
 import { TodoTrashScreen, TodoTrashWorkspace, useTodoTrashView } from './TodoTrashDialog';
@@ -69,7 +73,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   initialView,
   className,
 }) => {
-  const { t } = useTranslation(['todo']);
+  const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
   const {
     initialize,
@@ -98,13 +102,30 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   const closeDesktopTrash = useTodoTrashView((s) => s.close);
   const reloadGuardRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
+  // 自动化视图的移动端顶栏动作（≤2 契约）：页内标题栏在移动壳下隐藏
+  // （TodoAutomationWorkspace hideHeader），刷新 / 新建上移统一顶栏。
+  // 新建复用 requestAutomationCreate 共享入口（工作区消费，与命令面板同路径，
+  // 内部另有满容量兜底）；容量门禁与工作区页内按钮同一判定。
+  const automationCount = useAutomationStore((s) => s.count);
+  const automationMax = useAutomationStore((s) => s.max);
+  const automationCapacityFull = automationMax > 0 && automationCount >= automationMax;
+  const [automationRefreshing, setAutomationRefreshing] = useState(false);
+  const handleAutomationRefresh = useCallback(() => {
+    setAutomationRefreshing(true);
+    void Promise.resolve(useAutomationStore.getState().refresh())
+      .finally(() => setAutomationRefreshing(false));
+  }, []);
+
   // Workbench 窄窗双导航防御：窗口化承载（TodoAppWindow）已自带
   // WorkbenchSidebarLayout 的 compact 抽屉导航；此时若视口恰好 <768px，
   // 页内再启用 MobileSlidingLayout 会出现「窗口抽屉 + 页内滑动侧栏」双导航。
   // 通过 data-wb-sys-app 祖先判定（挂载后布局前完成，无闪烁），
   // 在 Workbench 窗内强制走桌面分支。
+  // 三态：null = 尚未检测（首次 commit）。useMobileHeader 只在判定为
+  // 独立视图（=== false）后启用，窗口化实例连首帧都不会往共享的
+  // 'todo' viewId 写入顶栏配置（见下方 useMobileHeader 的 enabled 参数）。
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [inWorkbenchWindow, setInWorkbenchWindow] = useState(false);
+  const [inWorkbenchWindow, setInWorkbenchWindow] = useState<boolean | null>(null);
   useLayoutEffect(() => {
     setInWorkbenchWindow(Boolean(rootRef.current?.closest('[data-wb-sys-app]')));
   }, []);
@@ -201,13 +222,57 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       title: headerTitle,
       showMenu: true,
       onMenuClick: () => setSidebarOpen(true),
+      // 自动化视图：页内标题栏在移动壳下隐藏，刷新 / 新建收进统一顶栏右侧
+      ...(workspaceView === 'automations'
+        ? {
+          rightActions: (
+            <>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                aria-label={t('common:actions.refresh')}
+                disabled={automationRefreshing}
+                onClick={handleAutomationRefresh}
+              >
+                <ArrowsClockwise
+                  size={18}
+                  className={cn(automationRefreshing && 'animate-spin motion-reduce:animate-none')}
+                />
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                aria-label={t('todo:automation.new')}
+                disabled={automationCapacityFull}
+                onClick={() => requestAutomationCreate()}
+              >
+                <Plus size={18} />
+              </DsButton>
+            </>
+          ),
+        }
+        : {}),
     };
   })();
 
+  // enabled = 仅独立 todo 视图写顶栏：窗口化承载（TodoAppWindow）与独立视图
+  // 共用 'todo' viewId，窗口实例若也写入会覆盖独立视图的配置、卸载时还会
+  // 误清其缓存（挂错实例的 onMenuClick，汉堡菜单失灵）。检测未完成（null）
+  // 一并视为禁用，避免首次 commit 抢写；判定落定由 deps 里的
+  // inWorkbenchWindow 触发补写（useLayoutEffect 链在首帧绘制前完成，无闪烁）。
   useMobileHeader(
     'todo',
     headerConfig,
-    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen, mobileDetailItem?.title],
+    [
+      headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen,
+      mobileDetailItem?.title, inWorkbenchWindow,
+      workspaceView, automationRefreshing, automationCapacityFull,
+    ],
+    inWorkbenchWindow === false,
   );
 
   // ===== 移动端：MobileSlidingLayout =====
@@ -241,7 +306,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           className="flex-1"
         >
           {workspaceView === 'automations'
-            ? <TodoAutomationWorkspace />
+            ? <TodoAutomationWorkspace hideHeader />
             : <TodoMainPanel onOpenPomodoroSubView={setPomodoroSubView} />}
         </MobileSlidingLayout>
 

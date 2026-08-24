@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { UploadSimple, WarningCircle, X } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { useMobileHeader } from '@/components/layout';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import '../styles/pdf-reader.css';
@@ -23,11 +24,16 @@ export const PdfReader: React.FC = () => {
   // 换文件只能退出视图重进 —— 把打开文件动作收进统一顶栏右侧。
   useMobileHeader('pdf-reader', {
     title: t('common:navigation.pdf_reader'),
+    // ★ 顶栏统一：返回箭头回聊天主视图（与设置/总览等子页一致）。
+    // viewStore.setCurrentView 仅允许 App.tsx 写入，跨组件导航走 NAVIGATE_TO_VIEW 事件。
+    showBackArrow: true,
+    onMenuClick: () => dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }),
     rightActions: (
       <DsButton
         variant="ghost"
         size="sm"
         iconOnly
+        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         aria-label={t('pdf:empty.select_button')}
         onClick={() => handleSelectFileRef.current()}
       >
@@ -256,7 +262,7 @@ export const PdfReader: React.FC = () => {
             {errorHint && <p className="pdf-reader-status__hint">{errorHint}</p>}
           </div>
           <div className="pdf-reader-status__actions">
-            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5">
+            <DsButton variant="ghost" size="sm" onClick={handleSelectFile} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               <UploadSimple size={14} />
               {t('pdf:empty.select_button')}
             </DsButton>
@@ -264,6 +270,7 @@ export const PdfReader: React.FC = () => {
               variant="ghost"
               size="sm"
               iconOnly
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               aria-label={t('pdf:a11y.close')}
               onClick={clearError}
             >
@@ -280,7 +287,7 @@ export const PdfReader: React.FC = () => {
           </div>
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
-          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
+          <DsButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5 [@media(pointer:coarse)]:!min-h-11">
             <UploadSimple size={16} />
             {t('pdf:empty.select_button')}
           </DsButton>
