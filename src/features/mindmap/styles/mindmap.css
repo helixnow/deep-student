@@ -2544,4 +2544,15 @@
     width: 44px;
     height: 44px;
   }
+
+  /* 搜索模式切换组及其按钮（24px 硬高）触屏放开到 ≥44px 命中目标 */
+  .mm-search-mode {
+    height: auto;
+    min-height: 44px;
+  }
+
+  .mm-search-mode-button {
+    height: auto;
+    min-height: 44px;
+  }
 }
