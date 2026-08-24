@@ -138,7 +138,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
-        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11">
           <ArrowCounterClockwise size={12} />
           {t('error.retry')}
         </DsButton>
