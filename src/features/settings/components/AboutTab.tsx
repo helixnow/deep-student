@@ -46,7 +46,7 @@ const SettingRow = ({
 );
 
 const aboutActionRowClassName =
-  'flex w-full items-center gap-3 rounded-[var(--button-radius)] px-2 py-2.5 text-left outline-none transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none';
+  'flex w-full items-center gap-3 rounded-[var(--button-radius)] px-2 py-2.5 text-left outline-none transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11';
 
 const aboutActionIconClassName =
   'h-4 w-4 flex-shrink-0 text-muted-foreground/70';
