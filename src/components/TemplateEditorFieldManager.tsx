@@ -123,7 +123,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveUp}
           disabled={index === 0}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.moveFieldUp') as string}
         >
           <ArrowUp size={14} />
@@ -132,7 +132,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onMoveDown}
           disabled={index === total - 1}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.moveFieldDown') as string}
         >
           <ArrowDown size={14} />
@@ -141,7 +141,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           type="button" variant="ghost" size="sm" iconOnly
           onClick={onRemove}
           disabled={total <= 1}
-          className="text-destructive hover:text-destructive [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('templateEditor.deleteField') as string}
         >
           <Trash size={14} />
@@ -200,7 +200,7 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
       <div className="flex items-center justify-between mt-3">
         <DsButton
           type="button" variant="ghost" size="sm" onClick={onAddField}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           <Plus size={14} className="mr-1.5" />
           {tTemplate('add_field')}

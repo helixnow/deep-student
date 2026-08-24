@@ -137,7 +137,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
                 size="sm"
                 onClick={handleSelectFile}
                 disabled={importing}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <FileText size={16} className="mr-1" />
                 {t('import.choose_file')}
@@ -196,7 +196,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             variant="default"
             onClick={handleClose}
             disabled={importing}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {importResult ? (
               <>
@@ -212,7 +212,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             <DsButton
               type="button"
               variant="primary"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 if (onImportSuccess && importResult) {
                   // ★ 2026-01 清理：使用 conversationId
@@ -229,7 +229,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               variant="primary"
               onClick={handleImport}
               disabled={!selectedFile || importing}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Upload size={16} className="mr-1" />
               {importing ? t('import.importing') : t('import.import_button')}

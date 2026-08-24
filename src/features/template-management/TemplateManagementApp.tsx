@@ -704,7 +704,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             title={t('template_code')}
             aria-pressed={screenPosition === 'right'}
             onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
-            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Code size={18} />
           </DsButton>
@@ -716,7 +716,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           aria-label={t('manager_title')}
           title={t('manager_title')}
           onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Gear size={18} />
         </DsButton>
@@ -900,7 +900,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             onClick={() => {
               onCancel();
             }}
-            className="w-full justify-start gap-2 [@media(pointer:coarse)]:min-h-11"
+            className="w-full justify-start gap-2 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowLeft size={16} />
             {t('back_button')}
@@ -1015,7 +1015,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             variant="default"
             size="sm"
             onClick={onCancel}
-            className="h-7 [@media(pointer:coarse)]:min-h-11"
+            className="h-7 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowLeft size={14} />
             {t('back_button')}
@@ -1103,7 +1103,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <Warning size={16} className="flex-shrink-0" />
             <span className="truncate">{error}</span>
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:a11y.close')}>
             <X size={14} />
           </DsButton>
         </div>
@@ -1211,7 +1211,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           iconOnly
           onClick={loadTemplates}
           disabled={isLoading}
-          className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('refresh')}
           aria-label={t('refresh')}
         >
@@ -1236,7 +1236,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               startCreateTemplate();
               closeMobileDrawer();
             }}
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title={t('tab_create')}
             aria-label={t('tab_create')}
           >
