@@ -923,7 +923,7 @@
     "e2ee_password_label": "Backup password (end-to-end encryption, optional)",
     "e2ee_password_placeholder": "Leave empty for an unencrypted portable ZIP",
     "e2ee_password_hint": "Set a password of at least {{min}} characters to export an encrypted full-fidelity migration package; enter the same password when importing on a new device to fully restore the data slot. A lost password cannot be recovered.",
-    "e2ee_password_too_short": "The backup password must be at least {{min}} characters (and not blank)",
+    "e2ee_password_too_short": "The backup password must be at least {{min}} Unicode characters (code points, not blank)",
     "e2ee_export_note": "Backup password set: an end-to-end encrypted full-fidelity migration package will be exported. Import it on another device with the same password to fully restore the data slot. A lost password cannot be recovered.",
     "import_password_title": "Import ZIP Backup",
     "import_password_desc": "For an encrypted full-fidelity package, enter the backup password set at export time; leave empty for unencrypted portable ZIPs. Importing does not overwrite current data immediately - restoring still requires confirmation.",

@@ -233,8 +233,10 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(componentSource).toContain("importZipFailed', { error: localizeCloudError(e) }");
 
     expect(zhLocale.encryption.tooShort).toContain('至少需要');
+    expect(zhLocale.encryption.tooShort).toContain('Unicode 码点');
     expect(zhLocale.encryption.tooShort).toContain('不会保存');
-    expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);
+    expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} Unicode characters/i);
+    expect(enLocale.encryption.tooShort).toMatch(/code points/i);
     expect(enLocale.encryption.tooShort).toMatch(/will not be saved/i);
     expect(localizeSource).toContain('无法整槽恢复的便携归档当成加密全保真');
     expect(localizeSource).toContain('cloudStorage:encryption.storedPasswordRequired');
@@ -366,6 +368,7 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).toContain('拒绝导出');
     expect(guide).toContain('不会套用已存密码');
     expect(guide).toContain('至少 **8** 个字符');
+    expect(guide).toContain('Unicode 码点');
     expect(guide).toContain('拒绝保存');
     expect(guide).not.toContain('产物永远是便携归档');
     expect(guide).not.toContain('适合迁移学习数据本身');

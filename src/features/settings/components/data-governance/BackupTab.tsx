@@ -40,6 +40,7 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { localizeCloudStorageError } from './localizeCloudError';
 import type {
   BackupInfoResponse,
   BackupVerifyResponse,
@@ -196,7 +197,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   verificationStatusMap,
   lastAutoVerifyResult,
 }) => {
-  const { t } = useTranslation(['data', 'common', 'settings']);
+  const { t } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
 
   // 备份设置状态
@@ -374,10 +375,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         await onExportZip(selectedBackup, compressionLevel, encryptionPassword || undefined);
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
       showGlobalNotification(
         'error',
-        message,
+        localizeCloudStorageError(error, t),
         t('data:governance.action_failed')
       );
     } finally {

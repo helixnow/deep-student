@@ -923,7 +923,7 @@
     "e2ee_password_label": "备份密码（端到端加密，可选）",
     "e2ee_password_placeholder": "留空导出未加密便携包",
     "e2ee_password_hint": "设置至少 {{min}} 个字符的密码将导出加密全保真换机包，在新设备导入时输入同一密码即可整槽恢复。密码丢失将无法解密。",
-    "e2ee_password_too_short": "备份密码至少需要 {{min}} 个字符（不能为空白）",
+    "e2ee_password_too_short": "备份密码至少需要 {{min}} 个字符（按 Unicode 码点计数，不能为空白）",
     "e2ee_export_note": "已设置备份密码：将导出端到端加密的全保真换机包，在其他设备导入并输入同一密码后可整槽恢复。密码丢失将无法解密。",
     "import_password_title": "导入 ZIP 备份",
     "import_password_desc": "若为加密全保真换机包，请输入导出时设置的备份密码；未加密的便携包请留空。导入不会立即覆盖当前数据，执行恢复前仍会再次确认。",
