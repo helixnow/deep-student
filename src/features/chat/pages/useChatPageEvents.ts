@@ -38,7 +38,6 @@ export interface UseChatPageEventsDeps {
   createAnalysisSession: () => Promise<void>;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
-  loadUngroupedCount: () => Promise<void>;
   canvasSidebarOpen: boolean;
   toggleCanvasSidebar: () => void;
   setPendingOpenResource: React.Dispatch<React.SetStateAction<ResourceListItem | null>>;
@@ -56,12 +55,17 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   const {
     notesContext, t, loadSessions, isInitialLoading, currentSessionId,
     createSession, createAnalysisSession,
-    setSessions, setCurrentSessionId, loadUngroupedCount,
+    setSessions, setCurrentSessionId,
     canvasSidebarOpen, toggleCanvasSidebar, setPendingOpenResource,
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
   } = deps;
+  // 导航事件监听器保持稳定，ready effect 重放事件时读取本次 render 的加载态。
+  // 若把 isInitialLoading 放进监听器依赖，React 会先移除旧监听器，再由前面的
+  // ready effect 派发，导致重放落在无监听器的间隙。
+  const isInitialLoadingRef = useRef(isInitialLoading);
+  isInitialLoadingRef.current = isInitialLoading;
 
   useEffect(() => {
     const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
@@ -122,27 +126,6 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     }
   }, [isInitialLoading, currentSessionId, createSession]);
 
-  // ★ 会话分支：监听 CHAT_V2_BRANCH_SESSION 事件，插入新会话并切换
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const session = (e as CustomEvent)?.detail?.session as ChatSession | undefined;
-      if (!session?.id) return;
-      console.log('[ChatV2Page] CHAT_V2_BRANCH_SESSION:', session.id);
-      // 插入新会话到列表顶部（去重）
-      setSessions((prev) => {
-        if (prev.some((s) => s.id === session.id)) return prev;
-        return [session, ...prev];
-      });
-      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-      // 切换到新会话
-      setCurrentSessionId(session.id);
-      // 刷新未分组计数
-      loadUngroupedCount();
-    };
-    window.addEventListener('CHAT_V2_BRANCH_SESSION', handler);
-    return () => window.removeEventListener('CHAT_V2_BRANCH_SESSION', handler);
-  }, [setCurrentSessionId, loadUngroupedCount, setSessions]);
-
   // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
   useEffect(() => {
     const handler = (e: Event) => {
@@ -158,7 +141,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
   const handleNavigateToSession = useCallback(async (e: Event) => {
     const sid = (e as CustomEvent<{ sessionId?: string }>)?.detail?.sessionId;
-    if (!sid) return;
+    // 未就绪时，标准事件只供 WorkbenchEventBridge 开窗；导航意图仍保留在
+    // pendingChatNavigation，待 loadSessions 完成后重放，避免被启动 draft 覆盖。
+    if (!sid || isInitialLoadingRef.current) return;
 
     // 本次事件已被直接消费：作废更早挂起的导航意图（最新意图生效）
     invalidatePendingChatNavigation();
@@ -550,6 +535,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       // 新建会话
       [COMMAND_EVENTS.CHAT_NEW_SESSION]: () => {
         console.log('[ChatV2Page] CHAT_NEW_SESSION triggered');
+        // 冷启动早到事件只用于壳层开窗；ready 后由导航握手重放并创建一次。
+        if (isInitialLoadingRef.current) return;
         // 事件已被直接消费：清掉握手挂起意图，避免就绪后重复创建
         invalidatePendingChatNavigation();
         createSession(getCurrentSessionGroupId());

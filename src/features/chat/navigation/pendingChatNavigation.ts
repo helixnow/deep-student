@@ -7,7 +7,8 @@
  * 三连发有 1.2s 的硬上限，且晚到的重发会把用户手动切换的会话再拽回去。
  *
  * 新方案（握手）：
- * - 页面未就绪（未挂载或初始加载未完成）时，导航意图挂起在这里（只保留最新一条）；
+ * - 页面未就绪（未挂载或初始加载未完成）时，导航意图挂起在这里（只保留最新一条），
+ *   同时仍派发标准事件让 WorkbenchEventBridge 打开/聚焦 Chat 壳；
  * - ChatV2Page 初始加载完成后调用 markChatPageReady()，消费挂起意图；
  * - 就绪后请求直接走原有 CustomEvent 链路（navigate-to-session / CHAT_NEW_SESSION），
  *   ModernSidebar 高亮同步、WorkbenchEventBridge 等既有监听者不受影响；
@@ -41,21 +42,21 @@ export function isChatPageReady(): boolean {
 
 /**
  * 请求切换到指定会话。
- * 就绪时立即走 navigate-to-session 事件；未就绪时挂起，后写覆盖（最新意图生效）。
+ * 未就绪时挂起，后写覆盖（最新意图生效）；标准事件始终派发一次，让壳层可以
+ * 打开/聚焦 Chat。加载中的 ChatV2Page 会忽略这次早到事件，待 ready 后重放。
  */
 export function requestChatSessionNavigation(sessionId: string): void {
-  if (isChatPageReady()) {
-    dispatchNavigation({ kind: 'session', sessionId });
-    return;
+  if (!isChatPageReady()) {
+    pending = { kind: 'session', sessionId };
   }
-  pending = { kind: 'session', sessionId };
+  dispatchNavigation({ kind: 'session', sessionId });
 }
 
 /**
  * 请求新建会话（CHAT_NEW_SESSION）。
  * 未就绪时事件仍然照发 —— 壳层监听者（legacy App 视图切换 / WorkbenchEventBridge
- * 开窗）依赖它打开聊天页面；若页面已挂载但初始加载未完成，其监听器会同步消费
- * 该事件并调用 invalidatePendingChatNavigation() 清掉挂起，避免重复创建。
+ * 开窗）依赖它打开聊天页面；加载中的 ChatV2Page 忽略早到事件，ready 后再消费
+ * 挂起意图，避免会话创建被初始 loadSessions 覆盖。
  */
 export function requestChatNewSession(): void {
   if (!isChatPageReady()) {

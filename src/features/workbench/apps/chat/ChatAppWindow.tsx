@@ -56,19 +56,23 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     // slot 在窗口壳内时查询范围收窄到壳节点；仅测试等无壳环境回退全文档
     const queryRoot: ParentNode = shell ?? document;
     let currentTarget: HTMLElement | null = null;
+    let observer: MutationObserver | null = null;
     const findTarget = () => {
-      // 已定位且仍在文档中：直接返回。流式渲染期间的高频 mutation
-      // 不再触发 document 级 querySelectorAll（回调收敛为 O(1) 检查）。
-      if (currentTarget && currentTarget.isConnected) return;
       const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
         .find((element) => element.dataset.windowId === windowId) ?? null;
+      if (!target) return;
       currentTarget = target;
       setTitlebarTarget((current) => current === target ? current : target);
+      // titlebar slot 与窗口同生命周期；命中后无需继续观察聊天流中的高频 DOM 变更。
+      observer?.disconnect();
+      observer = null;
     };
     findTarget();
-    const observer = new MutationObserver(findTarget);
-    observer.observe(shell ?? document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    if (!currentTarget) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
   }, [windowId]);
 
   const toggleNavigation = useCallback(() => {
@@ -78,6 +82,13 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     }
     setSidebarCollapsed((collapsed) => !collapsed);
   }, [compact]);
+
+  // Workbench 命令面板与标题栏按钮共用同一侧栏状态；ChatV2Page 内部监听器
+  // 只管理 legacy 页面状态，无法折叠外层 WorkbenchSidebarLayout。
+  useEffect(() => {
+    window.addEventListener('CHAT_TOGGLE_SIDEBAR', toggleNavigation);
+    return () => window.removeEventListener('CHAT_TOGGLE_SIDEBAR', toggleNavigation);
+  }, [toggleNavigation]);
 
   // 消费壳层降档信号（与 ChatSessionSurface 同一策略）：不可见持续 800ms
   // 才降 silky（瞬时遮挡不骤停），回可见立即回 balanced 全速补渲；

@@ -109,6 +109,45 @@ describe('ChatAppWindow', () => {
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'true');
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('CHAT_TOGGLE_SIDEBAR'));
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'false');
+  });
+
+  it('disconnects the titlebar observer as soon as its slot is found', async () => {
+    let callback: MutationCallback | null = null;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    const MockMutationObserver = vi.fn(function (this: MutationObserver, cb: MutationCallback) {
+      callback = cb;
+      Object.assign(this, {
+        observe,
+        disconnect,
+        takeRecords: () => [],
+      });
+    });
+    vi.stubGlobal('MutationObserver', MockMutationObserver);
+
+    try {
+      render(<ChatAppWindow {...makeProps()} />);
+      expect(observe).toHaveBeenCalledOnce();
+
+      const titlebarSlot = document.createElement('div');
+      titlebarSlot.dataset.wbTitlebarSlot = '';
+      titlebarSlot.dataset.windowId = 'chat-window';
+      document.body.appendChild(titlebarSlot);
+      act(() => {
+        callback?.([], {} as MutationObserver);
+      });
+
+      expect(await screen.findByRole('button', { name: '切换边栏' })).toBeInTheDocument();
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('tracks the selected session title inside the singleton window', () => {
@@ -180,13 +219,13 @@ describe('ChatAppWindow', () => {
     try {
       render(<ChatAppWindow {...makeProps({ instanceKey: 'sess_history' })} />);
 
-      // 页面未就绪：不再定时三连发，意图挂起等待 ChatV2Page 完成初始加载
-      expect(received).toEqual([]);
+      // 页面未就绪：标准事件先派发给壳层开窗，同时保留意图等待页面完成初始加载
+      expect(received).toEqual(['sess_history']);
       expect(peekPendingChatNavigation()).toEqual({ kind: 'session', sessionId: 'sess_history' });
 
-      // ChatV2Page 就绪（初始加载完成）：意图被消费并重放一次标准事件
+      // ChatV2Page 就绪（初始加载完成）：意图被消费并向页面重放一次标准事件
       act(() => { markChatPageReady(); });
-      expect(received).toEqual(['sess_history']);
+      expect(received).toEqual(['sess_history', 'sess_history']);
       expect(peekPendingChatNavigation()).toBeNull();
     } finally {
       window.removeEventListener('navigate-to-session', listener);

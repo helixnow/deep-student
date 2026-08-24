@@ -707,7 +707,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   useChatPageEvents({
     notesContext, t, loadSessions, isInitialLoading, currentSessionId,
     createSession, createAnalysisSession,
-    setSessions, setCurrentSessionId, loadUngroupedCount,
+    setSessions, setCurrentSessionId,
     canvasSidebarOpen, toggleCanvasSidebar, setPendingOpenResource,
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
