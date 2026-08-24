@@ -670,6 +670,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                 <DsButton
                   variant="danger"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   {...{ [MENU_ITEM_ATTR]: '' }}
                   onClick={() => exec(() => deleteNode(nodeId))}
                 >
@@ -678,6 +679,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                 <DsButton
                   variant="utility"
                   size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   autoFocus
                   {...{ [MENU_ITEM_ATTR]: '' }}
                   onClick={() => setConfirmingDelete(false)}
