@@ -439,11 +439,11 @@ function ServerListItem({
                 <div className="h-7" style={{ width: isBuiltin ? 28 : 124 }} aria-hidden="true" />
               ) : (
               <>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label={t('settings:mcp_descriptions.action_preview')}>
                 <Eye className="w-3.5 h-3.5" />
               </DsButton>
               {!isBuiltin && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label={t('settings:mcp_descriptions.action_test')}>
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
@@ -945,7 +945,7 @@ function ServerEditPanel({
                               className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
-                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                            <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                               <Trash className="w-3.5 h-3.5" />
                             </DsButton>
                           </div>
@@ -1414,7 +1414,7 @@ function NewServerEditItem({
                                 className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
-                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
+                              <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                                 <Trash className="w-3.5 h-3.5" />
                               </DsButton>
                             </div>
