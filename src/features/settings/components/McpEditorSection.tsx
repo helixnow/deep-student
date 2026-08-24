@@ -1261,7 +1261,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.connection_test_title')}</div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('settings:mcp_descriptions.connection_test_desc')}</p>
                 </div>
-                <DsButton variant="ghost" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
               </div>
             </div>
             </div>
