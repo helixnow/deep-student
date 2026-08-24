@@ -10,7 +10,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const cargoRoot = path.join(repoRoot, 'src-tauri');
 const cargoLockPath = path.join(cargoRoot, 'Cargo.lock');
 const npmLockPath = path.join(repoRoot, 'package-lock.json');
-const outputPath = path.join(repoRoot, 'public', 'legal', 'THIRD_PARTY_NOTICES.txt');
+// 唯一权威路径（WI-9 legal 去重）：不再放 public/（避免随 frontendDist 进安装包形成双份），
+// 仅经 tauri.conf.json bundle.resources 进入 resources/licenses/；前端展示走
+// resolveResource 读取（web dev 由 vite 中间件代理，见 vite.config.ts legalNoticesDevPlugin）。
+const outputPath = path.join(repoRoot, 'legal', 'THIRD_PARTY_NOTICES.txt');
 const legalFilePattern = /^(?:licen[cs]e|copying|notice|copyright)(?:$|[._-])/i;
 
 function sha256(value) {

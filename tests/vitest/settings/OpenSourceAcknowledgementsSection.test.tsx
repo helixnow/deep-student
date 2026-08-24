@@ -1,10 +1,31 @@
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// vitest.setup.ts 的 matchMedia mock 恒为 matches:false，会让 useBreakpoint 判成
+// isSmallScreen（<768）走 P1-9 移动端内联分支。本套件断言的是桌面 Dialog 行为，
+// 按 1280px 桌面视口模拟 min-width 查询。
+beforeAll(() => {
+  const DESKTOP_WIDTH = 1280;
+  window.matchMedia = vi.fn().mockImplementation((query: string) => {
+    const minWidth = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(query);
+    return {
+      matches: minWidth ? DESKTOP_WIDTH >= Number(minWidth[1]) : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    };
+  }) as unknown as typeof window.matchMedia;
+});
+
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useDragControls: () => ({ start: vi.fn() }),
   motion: new Proxy({}, {
     get: (_, tag: string) => {
       const Component = ({ children, ...props }: Record<string, unknown>) => {
@@ -15,6 +36,16 @@ vi.mock('framer-motion', () => ({
       return Component;
     },
   }),
+}));
+
+vi.mock('@tauri-apps/api/path', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveResource: vi.fn(async (resource: string) => `/mock/resources/${resource}`),
+}));
+
+vi.mock('@tauri-apps/plugin-fs', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  readTextFile: vi.fn(async () => 'RESOURCE THIRD-PARTY NOTICES\nrs-fsrs@1.2.1'),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -103,7 +134,7 @@ describe('OpenSourceAcknowledgementsSection', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('loads the bundled third-party notices and returns to the acknowledgement list', async () => {
+  it('loads the third-party notices via fetch in plain web runtime and returns to the list', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -121,5 +152,28 @@ describe('OpenSourceAcknowledgementsSection', () => {
 
     await user.click(screen.getByRole('button', { name: '返回致谢名单' }));
     expect(screen.getByText('React 18')).toBeInTheDocument();
+  });
+
+  it('reads the single bundled resources copy in the Tauri runtime instead of fetching', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+
+    try {
+      render(<OpenSourceAcknowledgementsSection />);
+      await user.click(screen.getByRole('button', { name: '查看致谢名单' }));
+      await user.click(screen.getByRole('button', { name: '第三方许可证' }));
+
+      expect(await screen.findByText(/RESOURCE THIRD-PARTY NOTICES/)).toBeInTheDocument();
+
+      const { resolveResource } = await import('@tauri-apps/api/path');
+      const { readTextFile } = await import('@tauri-apps/plugin-fs');
+      expect(vi.mocked(resolveResource)).toHaveBeenCalledWith('licenses/THIRD_PARTY_NOTICES.txt');
+      expect(vi.mocked(readTextFile)).toHaveBeenCalledWith('/mock/resources/licenses/THIRD_PARTY_NOTICES.txt');
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      delete (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    }
   });
 });

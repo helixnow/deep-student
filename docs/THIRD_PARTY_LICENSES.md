@@ -1,8 +1,8 @@
 # Third-Party Licenses | 第三方许可证
 
-本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/generate-third-party-notices.mjs` 生成到 `public/legal/THIRD_PARTY_NOTICES.txt`。
+本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/generate-third-party-notices.mjs` 生成到 `legal/THIRD_PARTY_NOTICES.txt`（唯一权威路径，经 Tauri `bundle.resources` 进入安装包 `resources/licenses/`）。
 
-This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `public/legal/THIRD_PARTY_NOTICES.txt`.
+This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `legal/THIRD_PARTY_NOTICES.txt` (single authoritative path, bundled into `resources/licenses/` via Tauri `bundle.resources`).
 
 > 生成时间 / Generated: 2026-07-14
 
