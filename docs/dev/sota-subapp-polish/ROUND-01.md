@@ -10,6 +10,8 @@
   - `cursor/preview-media-browser-polish-8dd9` → `f11356c0`
   - `cursor/files-preview-fixes-901a`（tip `9cfd3c34`）→ `63d74b95`
   - `cursor/workbench-shell-wave2-98eb`（tip `7c73fbb2`）→ `1d73d793`
+  - `cursor/w6-workbench-finalize-4a4c`（tip `40684e3a`）→ `0c7936f6`
+  - `cursor/w8-preview-browser-media-20f9`（tip `14740791`）→ `ec03458b`
 
 ## 本轮 12 个审阅席位
 
@@ -60,6 +62,8 @@
 - `cursor/files-preview-fixes-901a`（tip `9cfd3c34`，合并 `63d74b95`）：类型映射、Cmd+A、乐观导航、进度 metadata 白名单均已被后续指定卫星的更完整实现覆盖；四个冲突文件保留中枢版本，只补齐分支历史归并。
 - `cursor/workbench-shell-wave2-98eb`（tip `7c73fbb2`，合并 `1d73d793`）：合入 Ctrl+Tab 让位、窗口崩溃冷却、Dock 触屏容差/⌥角标、Exposé 停绘占位、TITLEBAR 单一来源、genie 源点修复及对应测试。
 - `DockItem.tsx` 冲突同时保留中枢的触屏 tooltip 驻留，并采用卫星 `dockGestures` 的 pointer-type 分档容差；删除被共享手势常量替代的局部 5px 常量。
+- `cursor/w6-workbench-finalize-4a4c`（tip `40684e3a`，合并 `0c7936f6`）：已合入 snap zone 边界、窗口标题栏双击守卫、badge bus 与 StatusBar 回归补强；自动合并无冲突。
+- `cursor/w8-preview-browser-media-20f9`（tip `14740791`，合并 `ec03458b`）：已合入浏览器 session 持久化与 archive manifest 媒体识别补强；自动合并无冲突。
 
 ### translation — 完成（中枢直落）
 
@@ -136,4 +140,5 @@
 - 变更相关 vitest 子集：108 文件 / 1168 用例，**1167 通过 / 1 失败**；唯一失败为已知基线项 `StatusBar` Windows inset；最终 chat 合流曾暴露的 5 个契约红灯已由 `fe6c0d34` 清零。
 - 基线红灯定向复核：3 文件 / 43 用例，39 通过 / 4 失败；失败精确为 `workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu`、`StatusBar`。
 - 用户指南抽查：PDF、Finder、notes、mindmap、exam、flashcards 与实现对照；修正移动端 PDF 划词工具条漏列复制 / 引用 / 笔记。
+- W6 / W8 收尾合并追加验证：workbench pointer / snap / tiling 及关联回归 11 文件 / 232 用例全部通过；browser / archive 相关回归 12 文件 / 95 用例全部通过；`npx tsc --noEmit` 0 错误。
 - 剩余验证风险：未运行仓库全量 vitest、Tauri / Rust 全量测试及桌面端手工性能压测；Exposé OOM 需专项量化。
