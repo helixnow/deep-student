@@ -576,7 +576,13 @@ export const LibraryScreen: React.FC = () => {
       {actionError ? (
         <div role="alert" className="wb-fc-banner flex items-center justify-between gap-3 text-destructive">
           <span className="min-w-0 break-words">{actionError}</span>
-          <DsButton type="button" variant="ghost" size="sm" onClick={clearActionError}>
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={clearActionError}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('library.dismiss')}
           </DsButton>
         </div>
@@ -586,7 +592,13 @@ export const LibraryScreen: React.FC = () => {
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+              className="[@media(pointer:coarse)]:min-h-11"
+            >
               {t('library.retry')}
             </DsButton>
           </div>
@@ -604,7 +616,13 @@ export const LibraryScreen: React.FC = () => {
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{query ? translate('library.noMatches') : t('library.empty')}</p>
             {query ? (
-              <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="[@media(pointer:coarse)]:min-h-11"
+              >
                 {translate('library.clearFilters')}
               </DsButton>
             ) : null}
@@ -613,7 +631,13 @@ export const LibraryScreen: React.FC = () => {
           <div className="wb-fc-empty">
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{translate('library.noMatches')}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              className="[@media(pointer:coarse)]:min-h-11"
+            >
               {translate('library.clearFilters')}
             </DsButton>
           </div>
@@ -669,6 +693,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page <= 1}
             onClick={() => void goToPage(page - 1)}
             aria-label={t('library.previous')}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             <CaretLeft size={14} />
             {t('library.previous')}
@@ -680,6 +705,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page >= pageCount}
             onClick={() => void goToPage(page + 1)}
             aria-label={t('library.next')}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             {t('library.next')}
             <CaretRight size={14} />
