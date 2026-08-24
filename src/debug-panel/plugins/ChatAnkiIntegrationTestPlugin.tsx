@@ -186,7 +186,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <div className="space-y-1.5">
               {GROUP_LABELS.map(({ label, scenarios }) => (
                 <div key={label}>
-                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                     onClick={(e) => { e.preventDefault(); toggleGroup(scenarios); }}>
                     <Checkbox
                       checked={scenarios.every(s => skipScenarios.has(s)) ? false : scenarios.every(s => !skipScenarios.has(s)) ? true : 'indeterminate'}
@@ -196,7 +196,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   </label>
                   <div className="grid grid-cols-1 gap-0.5 ml-5">
                     {scenarios.map(s => (
-                      <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
+                      <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 [@media(pointer:coarse)]:min-h-11"
                         title={SCENARIO_DESCRIPTIONS[s]}>
                         <Checkbox checked={!skipScenarios.has(s)}
                           onCheckedChange={() => toggleScenario(s)} disabled={status === 'running'} />
@@ -221,7 +221,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               <div className="mt-2 space-y-2 pl-4 border-l-2 border-muted">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">制卡 Prompt</label>
-                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none"
+                  <textarea className="w-full h-16 px-2 py-1 rounded-md border border-input bg-background text-xs resize-none [@media(pointer:coarse)]:min-h-11"
                     value={prompt} onChange={e => { setPrompt(e.target.value); saveConfig({ prompt: e.target.value }); }}
                     disabled={status === 'running'} />
                 </div>
