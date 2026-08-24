@@ -224,6 +224,7 @@ function StatusBar({
         size="sm"
         onClick={onRequestAccess}
         disabled={requestingAccess}
+        className="[@media(pointer:coarse)]:min-h-11"
       >
         {requestingAccess ?           <CircleNotch size={14} className="animate-spin" /> : null}
         {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
@@ -344,7 +345,13 @@ function HistoryEntryCard({
             ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
             : ''}
         </div>
-        <DsButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onCopy(entry)}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           <Copy size={14} />
           {copyLabel}
         </DsButton>
@@ -588,6 +595,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="ghost"
               size="sm"
               onClick={() => openSettingsTab('models')}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               <GearSix size={14} />
               {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
@@ -597,6 +605,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="ghost"
               size="sm"
               onClick={() => openSettingsTab('apis')}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               <Wrench size={14} />
               {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
@@ -606,6 +615,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="ghost"
               size="sm"
               onClick={() => openSettingsTab('statistics')}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               <ChartBar size={14} />
               {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
@@ -734,6 +744,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                 variant="ghost"
                 size="sm"
                 onClick={() => void handleClearHistory()}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 <Trash size={14} />
                 {t('settings:voice_input.history_clear', { defaultValue: 'Clear' })}
@@ -837,6 +848,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                     void refreshSupport();
                   }}
                   disabled={saving || requestingAccess}
+                  className="[@media(pointer:coarse)]:min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
