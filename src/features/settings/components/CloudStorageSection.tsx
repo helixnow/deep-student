@@ -1,7 +1,7 @@
 /**
  * 云存储配置面板
  * 
- * 支持 WebDAV 和 S3 兼容存储配置
+ * 支持 WebDAV；桌面端还支持 S3 兼容存储与实验性 FTP。Android 仅 WebDAV。
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';

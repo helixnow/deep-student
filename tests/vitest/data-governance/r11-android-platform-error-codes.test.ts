@@ -132,3 +132,14 @@ describe('移动端指南对 Android 云存储诚实', () => {
     expect(zhReadme).toContain('没有增量传输');
   });
 });
+
+describe('CI Vitest 堆上限不把 4GB worker 顶死当产品红', () => {
+  it('CI forks 使用 6144MB 堆且最多 2 个 worker，不放宽用例', () => {
+    const vitestConfig = readFileSync(resolve(process.cwd(), 'vitest.config.ts'), 'utf-8');
+    const ciYml = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf-8');
+    expect(vitestConfig).toContain("process.env.CI ? '--max-old-space-size=6144'");
+    expect(vitestConfig).toContain('maxForks: 2');
+    expect(ciYml).toContain("NODE_OPTIONS: '--max-old-space-size=6144'");
+    expect(vitestConfig).not.toContain('testTimeout: 0');
+  });
+});

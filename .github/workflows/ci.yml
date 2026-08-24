@@ -142,6 +142,10 @@ jobs:
         run: node scripts/generate-version.mjs
 
       - name: Run vitest shard
+        env:
+          # 与 vitest.config.ts 的 CI forks 堆上限一致；父进程也抬高，
+          # 避免编排进程先于 worker 顶到默认 4GB。
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npx vitest run --shard=${{ matrix.shard }}/4
 
   # ============================================
