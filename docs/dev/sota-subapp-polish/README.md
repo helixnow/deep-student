@@ -1,8 +1,9 @@
 # 子应用 SOTA 对标打磨中枢
 
-- 日期：2026-08-23 启动，2026-08-24 完成 Round 01 合流
+- 日期：2026-08-23 启动，2026-08-24 完成合流与 W10 总检
 - 分支：`cursor/sota-subapp-polish-2399`
-- 状态：Round 01 已收尾（审阅 12/12、落地全部合流入中枢）；Round 02 计划已排（见 [ROUND-02.md](./ROUND-02.md)）
+- 状态：Round 01 与合流后第二波补强已收尾；审阅 12/12、落地与文档同步完成
+- 交付：**可交付**。类型检查无业务错误，变更相关测试无新增红灯；4 个中枢基线失败与剩余产品风险已显式登记
 - 目标：把学习资源管理器全部子应用的功能、UI/UX、以及学习桌面（Workbench）表现，对标真实竞品打磨到 SOTA。
 
 ## 范围
@@ -42,16 +43,30 @@
 
 - 中枢分支 `cursor/sota-subapp-polish-2399` 为唯一集成真源，文档只在中枢改。
 - 卫星席位在 `cursor/<seat>-<hash>` 分支上开发，完成后由中枢合并代理 fetch + merge（保双方功能，不丢测试），冲突在中枢解。
-- Round 01 已合流卫星：`cursor/learning-hub-finder-polish-a9c5`（files 十项）、`cursor/deepstudent-reader-landing-d033`（PDF/教材阅读）、`cursor/preview-media-browser-polish-8dd9`（preview/browser/media）。
+- 已合流卫星：
+  - `cursor/learning-hub-finder-polish-a9c5`（files 十项，`1d9a6287`）
+  - `cursor/deepstudent-reader-landing-d033`（PDF / 教材阅读，`f5f658e6`）
+  - `cursor/preview-media-browser-polish-8dd9`（preview / browser / media，`f11356c0`）
+  - `cursor/files-preview-fixes-901a`（补扫归并，`63d74b95`）
+  - `cursor/workbench-shell-wave2-98eb`（桌面壳第二波，`1d73d793`）
 
 ## 进度索引
 
-- [ROUND-01.md](./ROUND-01.md) — 第 1 轮审阅与落地（已收尾，含各席完成状态与提交清单）
-- [ROUND-02.md](./ROUND-02.md) — 第 2 轮计划（11 个席位，待派发）
-- [BACKLOG.md](./BACKLOG.md) — 跨轮积压与优先级（Round 01 已完成项已勾除）
+- [ROUND-01.md](./ROUND-01.md) — 第 1 轮审阅、落地、第二波补强与 W10 最终验证
+- [ROUND-02.md](./ROUND-02.md) — 第 2 轮初始计划（部分项目已在第二波落地，最终状态以 BACKLOG 为准）
+- [BACKLOG.md](./BACKLOG.md) — 跨轮积压与优先级（W10 已按最终中枢代码勾除完成项）
 - [R1-06-exam.md](./R1-06-exam.md) / [R1-09-flashcards.md](./R1-09-flashcards.md) — 专项审阅报告
 
-## 已知残留（不阻塞 Round 02 开工）
+## W10 验证与交付结论
 
-- workbench 子集存在 7 个**中枢历史遗留**红灯测试（合并前后完全一致，非本次合流引入）：
-  `workbenchWindowsChromeLayoutContract`（2）、`p11-workbench-desktop` 快照恢复、`DockContextMenu` 键盘、`DockWindowList` 焦点、`StatusBar` Windows inset、`NotesSearchOverlay` quick-open 分组。已列入 Round 02 R2-11 席位清零。
+- `npx tsc --noEmit`：生成被忽略的 `src/version.ts` 后 0 错误。
+- 变更相关 vitest：100 文件 / 1126 用例，1125 通过；唯一失败是已知 `StatusBar` Windows inset。
+- 已知基线红灯定向复核：3 文件 / 43 用例，39 通过 / 4 失败。
+- 结论：当前分支达到本轮「可交付」标准；没有为过检查删除功能，也未改动无关业务模块。
+
+## 剩余风险
+
+- 4 个**中枢历史遗留**测试失败：`workbenchWindowsChromeLayoutContract`（2）、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset；均非本轮新增，继续列入 R2-11。
+- Exposé 活体 DOM 缩放的 heap OOM 根因尚未消除，目前只有重窗降级 / 停绘止血。
+- 限时练习 / 模拟考试仍缺重启续考与多窗口会话隔离；Finder 网格仍缺统一缓存缩略图管线。
+- W10 未运行仓库全量 vitest、Tauri / Rust 全量测试及桌面端性能手测；完整清单见 [BACKLOG.md](./BACKLOG.md)。

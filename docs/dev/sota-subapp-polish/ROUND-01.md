@@ -2,9 +2,14 @@
 
 - 开始：2026-08-23；合流收尾：2026-08-24
 - 审阅模型：`claude-fable-5-thinking-xhigh`；实现模型：`claude-fable-5-thinking-high`
-- 状态：审阅 12/12 完成；落地席全部合流入中枢 `cursor/sota-subapp-polish-2399`
-- 指定卫星：`learning-hub-finder-polish-a9c5`、`deepstudent-reader-landing-d033`、`preview-media-browser-polish-8dd9`，合并提交 `1d9a6287` / `f5f658e6` / `f11356c0`
-- `fetch --prune` 补扫卫星：`files-preview-fixes-901a`、`workbench-shell-wave2-98eb`，合并提交 `63d74b95` / `1d73d793`
+- 状态：审阅 12/12、落地与第二波补强全部合流；W10 跨模块总检完成
+- 交付结论：**可交付**。本轮变更相关类型检查与测试无新增红灯；4 个已知失败均为中枢基线问题，另有产品级遗留风险列于文末与 [BACKLOG.md](./BACKLOG.md)
+- 已合并卫星分支：
+  - `cursor/learning-hub-finder-polish-a9c5` → `1d9a6287`
+  - `cursor/deepstudent-reader-landing-d033` → `f5f658e6`
+  - `cursor/preview-media-browser-polish-8dd9` → `f11356c0`
+  - `cursor/files-preview-fixes-901a`（tip `9cfd3c34`）→ `63d74b95`
+  - `cursor/workbench-shell-wave2-98eb`（tip `7c73fbb2`）→ `1d73d793`
 
 ## 本轮 12 个审阅席位
 
@@ -104,19 +109,29 @@
 
 - `2093722c` workbench 窗内 cmd/ctrl+F 聚焦设置搜索；`d616701e` skills 消费窗口 size class + `/` 搜索快捷键
 
+## 合流后的第二波补强
+
+- exam：`eabd8fa0` 修每日一练真实进度、目标阈值与自评改判去重；`8e2a47f9` 补限时总结卡，并把未实现的 PDF / DOCX 组卷导出明确置灰。
+- flashcards：`d55c1b82` 补真实作答用时、多级撤销，并确保统计加载失败时调度设置仍可用。
+- Finder / 阅读：`8e2a021f` 补复制、粘贴与制造副本；`bfefd639` 补 Quick Look 图片原图 / PDF 首页；`672f90b8`、`008eca0a` 补 PDF 视图状态、封面偏移、增量搜索及划词出题 / 制卡。
+- mindmap：`3f456e29`、`f0b876cf` 落地多 sheet 切换、背诵 SRS、大纲窗口化与图片内嵌。
+- notes：`4a25b41b`、`b48abe77` 落地局部图谱、搜索分页 / 操作符、任意属性及集成测试。
+- chat：`e40e3a98` 拆分 InputBar；`bf8fc6dc`、`8967fd99` 补会话轻窗、命令监听与安全权限默认值。
+- settings / templates / tasks / a11y：`450fa4cc`、`6d76b876`、`978310ed`、`cb0aa10e` 等补搜索定位、键盘链路、任务空态与焦点管理。
+- 用户指南：`ceaa6af2`、`54dba801`、`71f88269` 等已同步上述实际能力；W10 另补移动端 PDF 划词动作清单。
+
 ## 本轮未落地（结转 Round 02）
 
-1. **exam P0**：每日一练进度死数据——`question_bank_service.rs` 仍恒返 `completed_count: 0`，`setDailyPractice` 无调用方（→ R2-01）
-2. **exam P1**：打卡达标硬编码 `>=10`、`markCorrect` 双计、限时/模拟考不持久化、多窗练习会话单槽互顶、组卷 PDF 导出（→ R2-01）
-3. **flashcards P1**：调度设置移出统计页 + guide 13 文档漂移、`fsrs_rate` 作答用时、多级撤销、牌组/标签组限额（→ R2-01）
-4. **Exposé OOM**：本轮只做了非焦点重窗降级（`1973383b`），活体 DOM 缩放 heap OOM 根因未消（→ R2-06）
-5. **notes 图谱**：本地图谱视图完全缺失（→ R2-03）
-6. **中枢遗留红灯 4 个**（非本次合流引入）：`workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset（→ R2-11）；原清单中的 `p11-workbench-desktop`、`DockWindowList`、`NotesSearchOverlay` 已转绿。
+1. **Exposé OOM**：目前有非焦点重窗降级与停绘占位，但活体 DOM 缩放造成 heap OOM 的根因未消（→ R2-06）。
+2. **exam 会话隔离**：限时练习 / 模拟考试仍不支持重启后断点续考，多窗口会话仍可能单槽互顶（→ R2-01）。
+3. **flashcards 设置与限额**：调度设置仍位于统计页；牌组 / 标签组限额、leech 检测等深水能力未落地（→ R2-01）。
+4. **Finder 缩略图**：Quick Look 已有图片原图 / PDF 首页，但网格视图仍缺统一的缓存缩略图管线（→ R2-02）。
+5. **中枢遗留红灯 4 个**（非本次合流引入）：`workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset（→ R2-11）；`p11-workbench-desktop`、`DockWindowList`、`NotesSearchOverlay` 已转绿。
 
-## 合流验证记录（2026-08-24，补扫后）
+## W10 最终验证记录（2026-08-24）
 
-- `npx tsc --noEmit`：生成环境缺失的 `src/version.ts` 后 0 错误（`npm run version:generate`，生成文件被忽略）。
-- vitest 子集 `src/features/learning-hub src/features/pdf tests/vitest/learning-hub tests/vitest/browser`：44 文件 / 260 用例全绿。
-- workbench 波次变更子集：9 文件 / 167 用例全绿（Dock 手势、长按、固定区、Exposé、Snap、快捷键、窗口体/错误边界、NotesWorkspace）。
-- 旧红灯定向复核：6 文件共 75 用例，71 通过 / 4 失败；失败仍为 `workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu`、`StatusBar`，其余原红灯已转绿。
-- 剩余验证风险：本次未重跑完整 workbench 广集，只覆盖波次变更子集与旧红灯定向集。
+- `npx tsc --noEmit`：初次仅因被忽略的生成文件 `src/version.ts` 缺失而报 3 个模块解析错误；执行 `npm run version:generate` 后 **0 错误**，无业务类型错误。
+- 变更相关 vitest 子集：100 文件 / 1126 用例，**1125 通过 / 1 失败**；唯一失败为已知基线项 `StatusBar` Windows inset。
+- 基线红灯定向复核：3 文件 / 43 用例，39 通过 / 4 失败；失败精确为 `workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu`、`StatusBar`。
+- 用户指南抽查：PDF、Finder、notes、mindmap、exam、flashcards 与实现对照；修正移动端 PDF 划词工具条漏列复制 / 引用 / 笔记。
+- 剩余验证风险：未运行仓库全量 vitest、Tauri / Rust 全量测试及桌面端手工性能压测；Exposé OOM 需专项量化。
