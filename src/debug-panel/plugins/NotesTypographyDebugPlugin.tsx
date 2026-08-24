@@ -263,7 +263,7 @@ export default function NotesTypographyDebugPlugin() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPaused(!paused)}
-            className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${
+            className={`px-2 py-1 text-xs rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 ${
               paused 
                 ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
                 : 'bg-gray-500 text-white hover:bg-gray-600'
@@ -275,7 +275,7 @@ export default function NotesTypographyDebugPlugin() {
           </button>
           <button
             onClick={clearLogs}
-            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="清空日志"
           >
             <Trash size={12} />
@@ -283,7 +283,7 @@ export default function NotesTypographyDebugPlugin() {
           </button>
           <button
             onClick={copyToClipboard}
-            className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="复制全部日志"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -363,12 +363,12 @@ export default function NotesTypographyDebugPlugin() {
           placeholder="搜索日志..."
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600"
+          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11"
         />
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value)}
-          className="px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600"
+          className="px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11"
         >
           <option value="all">全部分类</option>
           <option value="lifecycle">生命周期</option>

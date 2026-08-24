@@ -502,6 +502,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button
           onClick={toggleCapture}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -522,6 +523,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
         
         <button
           onClick={copyAllData}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -542,6 +544,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
         
         <button
           onClick={clearSessions}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             display: 'flex',
             alignItems: 'center',

@@ -269,6 +269,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
       >
         <button
           onClick={clearLogs}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             color: '#e2e8f0',
@@ -284,6 +285,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
         <button
           onClick={copyLogs}
           disabled={filteredLogs.length === 0}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             color: filteredLogs.length === 0 ? '#64748b' : '#e2e8f0',
@@ -331,6 +333,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
         <select
           value={filterPrefix}
           onChange={(e) => setFilterPrefix(e.target.value)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             background: '#334155',
@@ -351,6 +354,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
         <select
           value={filterLevel}
           onChange={(e) => setFilterLevel(e.target.value as any)}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             background: '#334155',
@@ -372,6 +376,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           placeholder="搜索..."
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             background: '#334155',
