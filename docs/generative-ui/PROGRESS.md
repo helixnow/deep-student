@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 66（2026-08-24）— 隐藏未注册 ActionBar
+
+1. [x] 提供 handler 注册表时，未注册按钮不进入 DOM，只留 Renderer 溢出提示
+2. [x] 模型文案与「未注册操作」占位都不再渲染
+3. [x] CI Frontend `vite build` 堆从 4GiB 提到 6GiB（4096 仍 OOM）
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 65（2026-08-24）— reset 保活切片 / 导图 ID
 
 1. [x] `HpiasStore.reset` 只重置目标会话，其它 `sessions[id]` 保留

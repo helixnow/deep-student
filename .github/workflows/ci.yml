@@ -87,7 +87,7 @@ jobs:
       # 的全平台发布里 —— 失败即阻塞发布。左移到 PR。
       - name: Build production bundle
         env:
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npx vite build
 
       # 审查 F11：此前 `npm audit || true` 永远绿灯且无人看日志。

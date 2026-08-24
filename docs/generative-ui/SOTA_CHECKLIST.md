@@ -168,14 +168,15 @@
 17. ~~**Round 63 多会话切片 / 未注册标签**~~ — ✅ `sessions[id]` 保活并发 HPIAS；未注册 ActionBar 不用模型文案
 18. ~~**Round 64 共享订阅 / 表现属性**~~ — ✅ 多 Chat 块共享一条 `hpias_event`；Markdown 剥 `style`/`srcdoc`
 19. ~~**Round 65 reset 保活 / 导图 ID**~~ — ✅ Style Lab 不再 `clear()` 抹切片；embed id 白名单
-20. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+20. ~~**Round 66 隐藏未注册按钮**~~ — ✅ 强制注册表时 ActionBar 不渲染未注册按钮
+21. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–65 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–66 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
