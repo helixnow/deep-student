@@ -77,11 +77,11 @@
 
   "encryption": {
     "title": "End-to-end encryption password (optional, recommended)",
-    "statusConfigured": "End-to-end encryption configured (partial coverage)",
+    "statusConfigured": "End-to-end encryption configured",
     "statusNotConfigured": "Not encrypted",
     "placeholderConfigured": "Password configured: leave blank to keep it, enter a new password to replace it",
     "placeholderUnset": "Not encrypted: enter a password to enable end-to-end encryption",
-    "description": "When enabled, full ZIP backups and record-level sync payloads (change records, sync manifests, deletion markers) are end-to-end encrypted with AES-256-GCM and cannot be read by the cloud provider. Note: file-level objects in record-level sync — workspace database files, VFS file contents (blobs), and asset files — are not end-to-end encrypted; they are uploaded as-is and protected only by transport encryption such as HTTPS.",
+    "description": "When enabled, full ZIP backups, record-level sync payloads (change records, sync manifests, deletion markers), and file-level objects (workspace databases, VFS blobs, and asset files) are end-to-end encrypted with AES-256-GCM and cannot be read by the cloud provider. Object keys still use the plaintext content hash for deduplication. Legacy plaintext objects uploaded before encryption was enabled are rejected on download; re-sync with the same password to migrate them.",
     "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password.",
     "disableAction": "Disable end-to-end encryption",
     "disabledNotice": "End-to-end encryption disabled. If the cloud root directory has an encryption marker, new backups will be rejected instead of uploaded unencrypted",

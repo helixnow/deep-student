@@ -65,7 +65,20 @@
 
 已合入远端枝：`r07-class-plans` / `r07-filename-tests` / `r07-autosync` / `r07-record-verifier` / `r07-file-e2ee` / `r07-webdav-409` / `r07-webdav-comment`。`sync.json` 自动同步文案由 `r07-autosync` 改过。
 
-后派出的 10 路仍在跑（见 [ROUND-07](./ROUND-07.md)）。
+后派出的 R07 十路若回传只收增量。R08 认领见 [ROUND-08](./ROUND-08.md)。
+
+| 代理 | 模型 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| R08-review-e2ee | xhigh | 只读复审 file-e2ee | 只读，产出 FINDINGS-R08 |
+| R08-sota | xhigh | SOTA 对照刷新 | 只读 |
+| R08-autosync-review | xhigh | 自动同步复审 | 只读 |
+| R08-names | high | 资产文件名净化 | `data_governance/sync/asset_filenames.rs` 新文件 + `sync_asset_directories` key 生成；不改 vfs_blobs / file-e2ee |
+| R08-android | high | Android 换机/重启 | `src-tauri/tests/` 新文件 |
+| R08-contract | high | Contract Gate | `sync_provider_contract_tests.rs`；改实现先登记 |
+| R08-vitest | high | Vitest 4/4 | `tests/vitest/data-governance/**` |
+| R08-archive | high | Rust Archive | 诊断文档或最小编译修复 |
+| R08-e2ee-tests | high | 文件级 E2EE 极端测 | `src-tauri/tests/sync_r08_*.rs` 新文件 |
+| R08-legacy-ux | high | 明文遗留拒收人话 | `SyncTab.tsx` / locale `sync.json`；不改引擎 |
 
 ## Round 07 原认领表（后派出）
 
