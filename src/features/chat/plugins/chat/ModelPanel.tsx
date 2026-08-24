@@ -452,7 +452,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
           <DsButton
             variant="ghost"
             size="sm"
-            className="w-full justify-center gap-2 text-xs"
+            className="w-full justify-center gap-2 text-xs [@media(pointer:coarse)]:min-h-11"
             onClick={handleSetAsDefault}
             disabled={savingDefault}
           >
