@@ -588,15 +588,12 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
-<<<<<<< HEAD
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
-=======
       # OOM 缓解（R07-archive）：4 路并行链接巨型测试二进制会耗尽 16GB 内存，
       # 把 runner agent 一起 OOM 杀掉（exit 143 + "runner has received a shutdown signal"）。
       # 降到 3 路压峰值；不改 RUSTFLAGS/profile，避免打碎与 migration-gate 共享的 tests 缓存。
       CARGO_BUILD_JOBS: '3'
->>>>>>> origin/cursor/0824-theme-cloud-cde6
     steps:
       - name: Free disk space
         run: |
