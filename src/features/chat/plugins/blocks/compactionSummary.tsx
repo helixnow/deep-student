@@ -196,7 +196,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-warning"
+        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg [@media(pointer:coarse)]:min-h-11 text-warning"
       >
         {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
         <Archive size={16} />

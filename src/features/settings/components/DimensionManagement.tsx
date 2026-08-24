@@ -457,7 +457,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                   <Badge
                     key={preset}
                     variant={isSelected ? 'default' : 'outline'}
-                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-2.5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
+                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
                     onClick={() => !exists && setNewDimension(String(preset))}
                   >
                     {preset}
@@ -628,7 +628,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       size="sm"
                                       onClick={() => handleSetAsDefault(dim)}
                                       disabled={settingDefault || !dim.modelConfigId}
-                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                                     >
                                       <span className="text-2xs">⭐</span>
                                     </DsButton>
@@ -640,7 +640,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
                                     className={cn(
-                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5",
+                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-2.5",
                                       isExpanded ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-foreground"
                                     )}
                                   >
@@ -655,7 +655,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     onClick={() => handleToggleDeleteConfirm(dim)}
                                     aria-expanded={isConfirmingDelete}
                                     className={cn(
-                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9",
+                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11",
                                       isConfirmingDelete
                                         ? "text-destructive bg-destructive/10"
                                         : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"

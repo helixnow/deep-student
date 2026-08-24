@@ -735,11 +735,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   </span>
                 </div>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
+                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
                     <Image size={14} />
                     {t('essay_grading:empty_state.ocr_hint')}
                   </DsButton>
-                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3">
+                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
                     <Sparkle size={14} />
                     {t('essay_grading:workbench.sample.fill_button')}
                   </DsButton>

@@ -71,7 +71,7 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
       <IconComp size={14} className="shrink-0 text-[var(--mm-text-secondary)]" />
       <span className="whitespace-nowrap max-w-[200px] truncate">{ref_.name}</span>
       {!readonly && onRemove && (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!p-1 [@media(pointer:coarse)]:!w-9 [@media(pointer:coarse)]:!h-9" aria-label={t('refs.remove', { name: ref_.name })}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!p-1 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11" aria-label={t('refs.remove', { name: ref_.name })}>
           <X className="w-2.5 h-2.5" />
         </DsButton>
       )}

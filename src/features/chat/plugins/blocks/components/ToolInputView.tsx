@@ -143,7 +143,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
   return (
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
-      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
+      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 [@media(pointer:coarse)]:min-h-11 text-muted-foreground hover:text-foreground">
         {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
         <CodeBlock size={12} />
         <span>{t('blocks.mcpTool.input')}</span>

@@ -340,8 +340,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           variant="ghost"
           size="icon"
           iconOnly
-          // 视觉缩为 36px 避免盖住卡片内容，热区经伪元素只向卡片外侧（上/右）扩到 44px
-          className="absolute right-0 top-0 z-10 !h-9 !w-9 !p-2 hover:bg-[var(--interactive-hover)] before:absolute before:content-[''] before:-top-2 before:-right-2 before:bottom-0 before:left-0"
+          // 视觉缩为 36px 避免盖住卡片内容，热区经伪元素四周各扩 8px 到 52px；即使卡外部分被裁剪，卡内命中仍 ≥44px
+          className="absolute right-0 top-0 z-10 !h-9 !w-9 !p-2 hover:bg-[var(--interactive-hover)] before:absolute before:content-[''] before:-inset-2"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
           aria-label={t('common:more')}
         >

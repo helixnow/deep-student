@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–37 已落地；当前队列见下。
+- **轮次**：Round 2–38 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -47,13 +47,14 @@
 | 35 | claude-fable-5-thinking-xhigh ×10 | 滑轨/chip/展开、MCP 勾选、Workspace、标签云、复习/自动化残留 | 见 ROUND-35-FIXES.md |
 | 36 | claude-fable-5-thinking-xhigh ×10 | DEV 测试/Playground、作文去图、制卡 min-h-10、外搜/侧栏/壁纸滑轨 | 见 ROUND-36-FIXES.md |
 | 37 | claude-fable-5-thinking-xhigh ×10 | 匹配/排序 40、Finder 伪元素、导图/壁纸 chrome、模板输入、标签清除 | 见 ROUND-37-FIXES.md |
+| 38 | claude-fable-5-thinking-xhigh ×10 | 导图关闭/移除 36、块折叠、MCP/外搜刷新、维度 Badge、笔记回收站 | 见 ROUND-38-FIXES.md |
 
-## 进行中的修复队列（Round 38+）
+## 进行中的修复队列（Round 39+）
 
 - 内联引用 chip 设计未决；MiniCalendar/TabBar 宽 28 有意折衷
 - FinderToolbar 视觉 40 + 伪元素 48：标题栏约束，勿再硬叠 44 视觉
 - ShortcutSettings 属 #166 不碰
-- question-types 其余编辑器 / Epub / ImmersiveFocus / dock 滑轨已覆盖，勿重做
+- WorkbenchSidebar 桌面壳分区头属 #161，不碰
 
 ## 已落地
 
