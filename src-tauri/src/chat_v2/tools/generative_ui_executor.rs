@@ -549,6 +549,7 @@ mod tests {
         assert!(note_edit.is_some());
         assert_eq!(
             note_edit
+                .as_ref()
                 .and_then(|v| v.get("operation"))
                 .and_then(Value::as_str),
             Some("append")
