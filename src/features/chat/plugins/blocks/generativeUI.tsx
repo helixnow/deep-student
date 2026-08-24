@@ -54,7 +54,7 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
   const shouldBridgeHpias = Boolean(researchSessionId);
 
   useHpiasEventBridge({
-    enabled: shouldBridgeHpias && !isStreaming,
+    enabled: shouldBridgeHpias,
     sessionId: researchSessionId ?? undefined,
   });
 

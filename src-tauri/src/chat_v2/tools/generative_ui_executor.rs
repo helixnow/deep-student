@@ -12,8 +12,8 @@ use super::types::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::hpias::{
-    create_research_backend, extract_question_from_intent, HpiasEventEmitter, HpiasResearchDeps,
-    HpiasResearchSessionRequest,
+    create_research_backend, extract_question_from_intent, intent_has_research_blocks,
+    HpiasEventEmitter, HpiasResearchDeps, HpiasResearchSessionRequest,
 };
 
 const TOOL_NAME: &str = "render_generative_ui";
@@ -386,7 +386,14 @@ impl ToolExecutor for GenerativeUiExecutor {
         Self::emit_chunk(ctx, &content_str);
         Self::emit_end(ctx, &intent, research_session_id.as_deref());
         if let Some(ref session_id) = research_session_id {
-            Self::emit_hpias_session_started_if_needed(ctx, session_id, hpias_question, &intent);
+            if intent_has_research_blocks(&intent) {
+                Self::emit_hpias_session_started_if_needed(
+                    ctx,
+                    session_id,
+                    hpias_question,
+                    &intent,
+                );
+            }
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;

@@ -93,5 +93,6 @@ Round 68：全未登记 ActionBar 不渲染 skip-to-actions。
 Round 69：每个 Renderer 独立 HITL 撤销栈。
 Round 70：skip-to-actions 落到第一个可达 ActionBar 槽位。
 Round 72：Markdown 消毒 `ping`/`background`；宿主简报去掉 defaultValue。
+Round 73：外会话 `session_started` 不顶活跃会话；流式也订阅 HPIAS；引用 note。
 
 不改 Goal 为 complete；合入 main 仍 ⏳。
