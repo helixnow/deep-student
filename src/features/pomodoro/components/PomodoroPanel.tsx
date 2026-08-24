@@ -368,7 +368,7 @@ export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ 
               noiseEngine.setType(type);
             }}
             className="w-full"
-            itemClassName="min-w-0 flex-1 px-1"
+            itemClassName="min-w-0 flex-1 px-1 [@media(pointer:coarse)]:!min-h-11"
             options={NOISE_TYPES.map((type) => ({
               value: type,
               label: (
@@ -970,7 +970,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             size="compact"
             value={settings.noiseType}
             onValueChange={(type) => updateSettings({ noiseType: type })}
-            itemClassName="min-w-0 px-2"
+            itemClassName="min-w-0 px-2 [@media(pointer:coarse)]:!min-h-11"
             options={NOISE_TYPES.map((type) => ({
               value: type,
               label: <span className="min-w-0 truncate text-xs">{t(`pomodoro.noise.${type}`)}</span>,
