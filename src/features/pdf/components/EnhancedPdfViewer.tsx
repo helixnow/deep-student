@@ -309,14 +309,25 @@ function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
     }
     const el = ref.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setFrame(
-      resolveSelectionMenuFrame(
-        anchor,
-        { width: rect.width, height: rect.height },
-        { width: window.innerWidth, height: window.innerHeight }
-      )
-    );
+    const updateFrame = () => {
+      const rect = el.getBoundingClientRect();
+      setFrame(
+        resolveSelectionMenuFrame(
+          anchor,
+          { width: rect.width, height: rect.height },
+          { width: window.innerWidth, height: window.innerHeight }
+        )
+      );
+    };
+    updateFrame();
+    window.addEventListener('resize', updateFrame);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateFrame);
+    resizeObserver?.observe(el);
+    return () => {
+      window.removeEventListener('resize', updateFrame);
+      resizeObserver?.disconnect();
+    };
   }, [anchor]);
   return { ref, frame };
 }
@@ -364,9 +375,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const canPersistAnnotations =
     Boolean(resourcePath) || initialHighlights !== undefined || Boolean(onHighlightsChange);
 
-  // 划词菜单是否可用：有高亮落盘通道，或上层注入了引用/笔记动作
-  const selectionMenuAvailable =
-    canPersistAnnotations || Boolean(onQuoteToChat) || Boolean(onCreateNote);
+  // 复制 / 翻译 / 生成题目 / 制卡均为 viewer 内建动作，不依赖高亮落盘
+  // 或上层回调；只要文本层可选，划词菜单就应可用。
 
   // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
   // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
@@ -397,8 +407,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const chromeToggleTimerRef = useRef<number | null>(null);
   // 捏合预览 transform 的目标元素（.ds-pdf__pages-container）
   const pagesTransformRef = useRef<HTMLDivElement>(null);
-  // 旋转状态下划词提示的节流时间戳
-  const rotationTipAtRef = useRef<number>(0);
   // 进度条拖动预览页码
   const [scrubPage, setScrubPage] = useState<number | null>(null);
   const scrubbingRef = useRef(false);
@@ -1285,9 +1293,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // 文本选择处理（用于高亮批注 / 划词动作）
   const handleTextSelection = useCallback(() => {
-    // 无落盘通道且无划词动作时不弹菜单（选择/复制文本仍可用）
-    if (!selectionMenuAvailable) return;
-
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       setShowHighlightMenu(false);
@@ -1303,24 +1308,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     
     const text = selection.toString().trim();
     if (!text) return;
-
-    // ★ 旋转状态下选区 rect 是旋转后的屏幕坐标，恢复原始角度后会双重错位，
-    // 暂不支持旋转时创建高亮（比错位持久化更可接受）。
-    // 给出轻提示（8s 节流，避免连续划词刷屏）而非静默失败。
-    if (rotation !== 0) {
-      setShowHighlightMenu(false);
-      const now = Date.now();
-      if (now - rotationTipAtRef.current > 8000) {
-        rotationTipAtRef.current = now;
-        showGlobalNotification(
-          'info',
-          t('pdf:toolbar.highlight_rotation_disabled', {
-            defaultValue: '旋转视图下暂不支持划词高亮，请恢复原始方向后再试',
-          })
-        );
-      }
-      return;
-    }
 
     // 获取选区位置
     const range = selection.getRangeAt(0);
@@ -1338,7 +1325,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     // 窗口缩放/侧边栏开合/单双页切换后已存高亮全部错位。
     const rects: { x: number; y: number; width: number; height: number }[] = [];
     const clientRects = range.getClientRects();
-    if (pageWrapper) {
+    // 旋转状态下选区 rect 是旋转后的屏幕坐标，持久化后恢复原始角度会
+    // 双重错位；因此只禁用“创建高亮”，复制/引用/翻译/出题等仍可使用。
+    if (rotation === 0 && pageWrapper) {
       const pageRect = pageWrapper.getBoundingClientRect();
       if (pageRect.width > 0 && pageRect.height > 0) {
         for (let i = 0; i < clientRects.length; i++) {
@@ -1361,7 +1350,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setPendingHighlight({ text, pageIndex, rects, context });
     setHighlightMenuPos({ x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom });
     setShowHighlightMenu(true);
-  }, [selectionMenuAvailable, currentPage, rotation, t]);
+  }, [currentPage, rotation]);
 
   // 打开划词翻译卡片（收起高亮菜单、释放选区）
   const openSelectionTranslation = useCallback(() => {
@@ -3284,7 +3273,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               : { position: 'fixed', left: highlightMenuPos.x, top: highlightMenuPos.top, visibility: 'hidden' }
           }
         >
-          {canPersistAnnotations && (
+          {canPersistAnnotations && rotation === 0 && (
             <>
               <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
               <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
@@ -3322,7 +3311,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {showHighlightMenu && isMobileLike && (
         <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:selection.menu_label')}>
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
-          {canPersistAnnotations && (
+          {canPersistAnnotations && rotation === 0 && (
             <>
               <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
               <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />

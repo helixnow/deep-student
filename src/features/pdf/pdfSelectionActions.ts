@@ -84,7 +84,11 @@ export function resolveSelectionMenuFrame(
 
   const aboveTop = anchor.top - offset - menu.height;
   if (aboveTop >= margin) {
-    return { left, top: aboveTop, placement: 'above' };
+    return {
+      left,
+      top: clamp(aboveTop, margin, viewport.height - margin - menu.height),
+      placement: 'above',
+    };
   }
 
   const belowTop = clamp(

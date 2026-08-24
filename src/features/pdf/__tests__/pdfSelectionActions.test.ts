@@ -73,6 +73,16 @@ describe('resolveSelectionMenuFrame', () => {
     expect(frame.top).toBe(800 - 8 - 80);
   });
 
+  it('clamps an above placement when a stale anchor is below the viewport', () => {
+    const frame = resolveSelectionMenuFrame(
+      { x: 500, top: 950, bottom: 970 },
+      menu,
+      viewport,
+    );
+    expect(frame.placement).toBe('above');
+    expect(frame.top).toBe(800 - 8 - 80);
+  });
+
   it('never returns coordinates above the margin even for tiny viewports', () => {
     const frame = resolveSelectionMenuFrame(
       { x: 50, top: 4, bottom: 6 },
