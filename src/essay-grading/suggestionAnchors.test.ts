@@ -34,9 +34,19 @@ describe('findAnchoredIndex（前后文锚定定位）', () => {
     expect(findAnchoredIndex('正文', '不存在')).toBe(-1);
   });
 
+  it('重复目标的前后文均不匹配时安全失败，不退化为第一处', () => {
+    expect(findAnchoredIndex('重复内容。重复内容。', '重复内容', '不存在的前文', '不存在的后文'))
+      .toBe(-1);
+  });
+
   it('目标为空时按前后文接缝定位（撤销删除的重插场景）', () => {
     const text = '前面的话后面的话';
     expect(findAnchoredIndex(text, '', '前面的话', '后面的话')).toBe(4);
+  });
+
+  it('撤销删除时两侧锚点不能落在同一接缝则安全失败', () => {
+    const text = '前面的话已经被用户改动';
+    expect(findAnchoredIndex(text, '', '前面的话', '后面的话')).toBe(-1);
   });
 });
 
@@ -50,6 +60,16 @@ describe('applyAnchoredReplacement（应用与撤销）', () => {
 
   it('定位失败（原文被手动改动）返回 null', () => {
     expect(applyAnchoredReplacement('正文', '不存在的片段', '替换')).toBeNull();
+  });
+
+  it('重复片段锚点失效时不误替换第一处', () => {
+    expect(applyAnchoredReplacement(
+      '这个词出现一次，这个词又出现一次。',
+      '这个词',
+      '替换词',
+      '不匹配的前文',
+      '不匹配的后文',
+    )).toBeNull();
   });
 
   it('应用替换后可反向撤销回原文', () => {

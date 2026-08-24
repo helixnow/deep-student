@@ -73,6 +73,16 @@ describe('essayGradedSnapshot（内容 + 批改配置）', () => {
     expect(a).not.toBe(b);
   });
 
+  it('恢复题目或图片后必须重建上一轮快照，避免未修改也误提交新轮次', () => {
+    const beforeContextRestore = essayGradedSnapshot(
+      state({ topicText: '', uploadedImages: [], topicImages: [] }),
+      config,
+    );
+    const afterContextRestore = essayGradedSnapshot(state(), config);
+    expect(afterContextRestore).not.toBe(beforeContextRestore);
+    expect(afterContextRestore).toBe(essayGradedSnapshot(state(), config));
+  });
+
   it('内容与配置都相同时快照一致（阻止重复提交）', () => {
     expect(essayGradedSnapshot(state(), config)).toBe(essayGradedSnapshot(state(), config));
   });

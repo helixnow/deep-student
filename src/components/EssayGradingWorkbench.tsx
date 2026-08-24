@@ -299,6 +299,29 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const isGrading = gradingStream.isGrading ?? false;
   const isPartialResult = gradingStream.isPartialResult ?? false;
 
+  // ★ 当前批改配置上下文的实时镜像（每次渲染同步），供异步回调同步读取，
+  // 避免恢复/轮次加载/批改收尾直接依赖大量状态导致回调不稳定
+  const gradingContextRef = useRef<GradingContext>({
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  });
+  gradingContextRef.current = {
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  };
+
   // ★ 最新状态的同步镜像：供全局事件监听器/异步回调读取，
   // 避免监听器闭包依赖 inputText/gradingResult/isGrading 导致每次击键都重建并重挂监听
   const inputTextRef = useRef(inputText);
@@ -455,6 +478,17 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
               uploadedImages: restoredUploaded,
               topicImages: restoredTopicImages,
             });
+            // loadSessionRounds 先于会话上下文恢复完成；此处用已恢复的题目/图片
+            // 重建“上一轮已批改”快照，避免重开后未改内容也能误提交重复轮次。
+            if (restoredText !== null) {
+              lastGradedInputRef.current = restoredText;
+              lastGradedSnapshotRef.current = gradedSnapshotOf(restoredText, {
+                ...gradingContextRef.current,
+                topicText: restoredTopic,
+                uploadedImages: restoredUploaded,
+                topicImages: restoredTopicImages,
+              });
+            }
             // ★ 草稿优先：挂载时恢复的草稿是比最后一轮更新的未保存编辑，
             // 不应被 loadSessionRounds 回填的轮次正文覆盖
             const draft = restoredDraftRef.current;
@@ -540,29 +574,6 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       }
     }
   }, [currentSession?.id, initialSession?.id]);
-
-  // ★ 当前批改配置上下文的实时镜像（每次渲染同步），供异步回调同步读取，
-  // 避免 loadSessionRounds / markInputAsGraded 直接依赖大量状态导致回调不稳定
-  const gradingContextRef = useRef<GradingContext>({
-    topicText,
-    uploadedImages,
-    topicImages,
-    modeId,
-    modelId,
-    essayType,
-    gradeLevel,
-    customPrompt,
-  });
-  gradingContextRef.current = {
-    topicText,
-    uploadedImages,
-    topicImages,
-    modeId,
-    modelId,
-    essayType,
-    gradeLevel,
-    customPrompt,
-  };
 
   // 标记"某段正文已被批改过"：同时更新文本基准与完整快照（内容 + 批改配置）
   const markInputAsGraded = useCallback((text: string) => {
@@ -1001,24 +1012,35 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // ★ 抽取为独立回调：首次批改与"重试成功"共用（此前重试成功不会触发任何持久化收尾）
   const finalizeCompletedGrading = useCallback(async (sessionId: string) => {
     showGlobalNotification('success', t('essay_grading:toast.grading_success'));
-    // ★ S-012: 批改完成后清除草稿
-    try {
-      localStorage.removeItem(`essay_draft_${sessionId}`);
-      localStorage.removeItem('essay_draft_new');
-    } catch {}
     // ★ 题目与图片随会话持久化（settings KV），重开会话可恢复；
     // 轮次表只落正文与批改结果，题目/原图属于会话级上下文
     const gradedContext = gradingContextRef.current;
-    TauriAPI.saveSetting(
-      essaySessionContextKey(sessionId),
-      serializeSessionContext({
-        topicText: gradedContext.topicText,
-        uploadedImages: gradedContext.uploadedImages,
-        topicImages: gradedContext.topicImages,
-      })
-    ).catch(() => {
+    let contextPersisted = false;
+    try {
+      await TauriAPI.saveSetting(
+        essaySessionContextKey(sessionId),
+        serializeSessionContext({
+          topicText: gradedContext.topicText,
+          uploadedImages: gradedContext.uploadedImages,
+          topicImages: gradedContext.topicImages,
+        })
+      );
+      contextPersisted = true;
+    } catch (error: unknown) {
       console.warn('[EssayGrading] Failed to persist session topic/images context');
-    });
+      showGlobalNotification(
+        'error',
+        t('essay_grading:toast.save_failed', { error: getErrorMessage(error) })
+      );
+    }
+    // ★ S-012: 仅在会话上下文也落盘后清除草稿。保存失败时保留正文/题目草稿，
+    // 与 dirty 基准一起防止“批改轮次成功、上下文失败”后静默丢题目。
+    if (contextPersisted) {
+      try {
+        localStorage.removeItem(`essay_draft_${sessionId}`);
+        localStorage.removeItem('essay_draft_new');
+      } catch {}
+    }
     // 刷新轮次
     const latestText = await loadSessionRounds(sessionId);
 
@@ -1053,9 +1075,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     // ★ 基准更新为本轮已持久化的内容（最新轮次正文 + 已保存的题目/图片）
     patchPersistedBaseline({
       inputText: latestText ?? (inputTextRef.current ?? ''),
-      topicText: gradedContext.topicText,
-      uploadedImages: gradedContext.uploadedImages,
-      topicImages: gradedContext.topicImages,
+      // 上下文保存失败时保留旧基准，使题目/图片继续呈 dirty；
+      // 不能把未落盘内容误标为已保存后允许无提示关窗。
+      ...(contextPersisted ? {
+        topicText: gradedContext.topicText,
+        uploadedImages: gradedContext.uploadedImages,
+        topicImages: gradedContext.topicImages,
+      } : {}),
     });
   }, [t, loadSessionRounds, dstuMode, patchPersistedBaseline]);
 

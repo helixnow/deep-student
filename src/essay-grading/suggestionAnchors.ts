@@ -73,20 +73,15 @@ function findJunctionIndex(text: string, before?: string, after?: string): numbe
   const afterAnchor = (after ?? '').slice(0, SUGGESTION_CONTEXT_CHARS);
   if (!beforeAnchor && !afterAnchor) return -1;
 
-  let best = -1;
-  let bestScore = 0;
-
   if (beforeAnchor) {
     for (const idx of findOccurrences(text, beforeAnchor)) {
       const junction = idx + beforeAnchor.length;
-      const score =
-        beforeAnchor.length + commonPrefixLength(text.slice(junction), afterAnchor);
-      if (score > bestScore) {
-        bestScore = score;
-        best = junction;
-      }
+      // 同时有两侧锚点时必须在同一接缝完整相邻；只命中 before 就插入
+      // 会在用户已改动正文后把撤销内容重插到错误的重复片段。
+      if (afterAnchor && !text.startsWith(afterAnchor, junction)) continue;
+      return junction;
     }
-    if (best !== -1) return best;
+    if (!afterAnchor) return -1;
   }
 
   if (afterAnchor) {
@@ -128,7 +123,9 @@ export function findAnchoredIndex(
       best = idx;
     }
   }
-  return best;
+  // 有锚点却完全不匹配时安全失败，而不是退化为全局第一处。
+  // 目标重复的场景中，静默替错位置比提示用户手动处理更危险。
+  return bestScore > 0 ? best : -1;
 }
 
 export interface AnchoredReplacement {
