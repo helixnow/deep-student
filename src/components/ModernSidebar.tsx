@@ -1218,7 +1218,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               data-testid="recent-session-pin-icon"
               aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
               className={cn(
-                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 pinned && 'text-[color:var(--shell-navigation-foreground)]'
               )}
               onClick={(event) => {
@@ -1237,7 +1237,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   type="button"
                   aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
                   className={cn(
-                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                    'flex size-5 shrink-0 appearance-none items-center justify-center rounded-md border-0 !p-0 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                     isConfirmingArchive
                       ? 'bg-destructive/15 text-destructive hover:bg-destructive/20'
                       : 'bg-transparent text-[color:var(--shell-navigation-muted)] hover:text-destructive'
