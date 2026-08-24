@@ -206,3 +206,26 @@ cargo check --manifest-path src-tauri/Cargo.toml --lib
 只要 `package.json`、`package-lock.json` 或 `src-tauri/Cargo.lock` 变化，就必须重跑
 `npm run licenses:generate`，确认 `legal/THIRD_PARTY_NOTICES.txt` 的两个 lock 哈希
 更新，并确认 `public/legal/THIRD_PARTY_NOTICES.txt` 没有复活。
+
+## 5. 本轮门禁实测
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | 通过，按 lock 安装 1192 packages |
+| `npm run licenses:check` | 通过，`[license-compliance] OK` |
+| `npm run typecheck` | 通过，0 个 TypeScript 错误 |
+| `npx vite build` | 通过（仅既有 circular-chunk/dynamic-import/chunk-size 警告） |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | Rust stable 1.98.0 下通过；22 条既有 warning |
+| Step 1 定向 vitest | 6 files / 30 tests 全通过 |
+
+定向 vitest 覆盖
+`src/features/learning-hub/components/__tests__/IndexStatusGenerativeBriefing.test.tsx`、
+`tests/vitest/learning-hub/TranslationGenerativeBriefing.test.tsx`、
+`tests/vitest/generative-ui/translationStreamBridge.test.ts`、
+`tests/vitest/generative-ui/generativeUiI18n.parity.contract.test.ts`、
+`tests/vitest/generative-ui/builderI18n.contract.test.ts` 和
+`tests/vitest/generative-ui/generativeUiRustMapping.contract.test.ts`。
+
+环境初始 Cargo 1.83.0 无法解析 lock 中依赖的 edition-2024 manifest；仓库 CI 使用
+stable。本轮切换到与 CI 一致的 stable 1.98.0，并按 Linux CI 安装 GTK/WebKit 与
+PDFium 前置资源后，使用上表中的原命令复跑通过。该过程没有产生仓库内容变更。
