@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { defineConfig, normalizePath, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { visualizer } from "rollup-plugin-visualizer";
