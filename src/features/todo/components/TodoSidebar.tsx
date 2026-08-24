@@ -937,7 +937,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 'shrink-0 rounded-md px-1.5 py-0.5 text-sm font-medium',
                 'text-[color:hsl(var(--destructive))] transition-colors duration-150',
                 'hover:bg-[color:var(--button-danger-surface,var(--interactive-hover))]',
-                '[@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:px-2.5',
+                '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
               )}
             >
               {t('common:actions.delete')}
@@ -949,7 +949,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 'shrink-0 rounded-md px-1.5 py-0.5 text-sm',
                 'text-[color:var(--shell-navigation-muted)] transition-colors duration-150',
                 'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
-                '[@media(pointer:coarse)]:min-h-[2.5rem] [@media(pointer:coarse)]:px-2.5',
+                '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
               )}
             >
               {t('common:actions.cancel')}
