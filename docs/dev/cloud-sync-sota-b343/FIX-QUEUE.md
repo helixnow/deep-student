@@ -605,3 +605,11 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 ### delta-lease 回传（`cursor/cloud-sync-sota-delta-lease-b343`）
 
 `backup_lease.rs`：`backup-v2/locks/` + `E_BACKUP_LEASE_HELD`；不复用 sync-target。零生产接线。
+
+## Round 15（增量 upload 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-upload | `cursor/cloud-sync-sota-delta-upload-b343` | DELTA-R11 R12-delta-upload：随机不可变对象、同设备上一 descriptor 未变复用、objects→descriptor→manifest commit、失败留孤儿；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_upload.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_upload;`；新 `src-tauri/tests/sync_r12_delta_upload.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。

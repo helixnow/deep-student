@@ -82,7 +82,7 @@ R09/R10 已有宿主机契约与 Android 壳层测试，但当前文档目录没
 | §2 P2-5 / §3.4 Android2 手册未合 | **手册已合，真机未签** | [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md)；8 项 SAF/重启缺口仍开 |
 | §2 P2-6 平台错误靠正则 | **机制半边已关** | `E_FTP_UNSUPPORTED_ON_ANDROID` / `E_S3_UNSUPPORTED_IN_BUILD`；前端只按 code 映射 |
 | §2 P2-3 文件名有损 | **已合（names2）** | rclone 风格可逆映射 + 旧 `_` key 双查找；段 255 / 整 key 240 fail-closed |
-| §3.1 增量去重 | **调研+codec+inventory+lease 已合，生产未接线** | `delta_format.rs` / `delta_inventory.rs` / `backup_lease.rs`；整 ZIP 仍整对象 PUT；不能宣称增量/去重/CDC |
+| §3.1 增量去重 | **调研+codec+inventory+lease 已合，upload 已认领，生产未接线** | `delta_format.rs` / `delta_inventory.rs` / `backup_lease.rs`；Round 15 认领 `delta_upload.rs`；整 ZIP 仍整对象 PUT；不能宣称增量/去重/CDC |
 | §2 P2-1 v1 升级信任 | **已关（wrap-v1trust）** | 升级臂先试解最新备份；空仓仍允许第一台带密码设备认领；失败不写标记。验收 `sync_r12_v1_marker_trust.rs` |
 | §2 P2-2 冲突快速路径 | **已关（wrap-conflict）** | 快速路径在 `BEGIN IMMEDIATE` 内用 `get_record_data` 重读业务行并重算 already-desired，不匹配即拒绝；锁定测 `sync_r10_protocol_locks.rs` P2-3 用例 + 行为验收 `sync_r12_conflict_fast_path.rs` |
 | §4 条件 1 完整 CI 绿灯 | **仍开** | 后继 HEAD CI 多为 pending/queued |

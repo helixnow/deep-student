@@ -448,6 +448,7 @@ v1 与 v2 的「10 版」过渡不能假装是原子操作：
 
 本轮只有调研、可复现的合成基准和协议草案；没有任何生产上传、恢复或 GC 行为改变。
 
-> 进度注记（R12-delta-format / inventory / lease）：codec、staging 规范清单、
-> `backup-v2/locks/` 租约原语已落地，**均未接线**——生产上传仍是整 ZIP 单对象
-> `put_file`，上表「Cloud backup 增量传输/去重」判定不变，仍为**不能宣称**。
+> 进度注记（R12-delta-format / inventory / lease / upload）：codec、staging 规范清单、
+> `backup-v2/locks/` 租约原语已落地；Round 15 认领 upload 积木（未接线）。
+> 生产上传仍是整 ZIP 单对象 `put_file`，上表「Cloud backup 增量传输/去重」判定不变，
+> 仍为**不能宣称**。format/restore/GC 未齐且未接命令/UI 前，功能不可暴露。
