@@ -1,7 +1,8 @@
 //! # 生成后 Grounded judge / LLM critic pass（opt-in，默认关闭）
 //!
 //! Round 4 #2：任务级批量 critic。流式制卡任务收尾（`Ok(stats)`）后，
-//! 对该任务已入库的全部非错误卡做**一次** `call_model2_raw_prompt` JSON 裁决，
+//! 对该任务已入库的全部非错误卡做**一次** JSON 裁决（Round 5 #6 起模型经
+//! Sidekick 分层路由取 Critic 槽，缺槽/失败自动回退旧 model2 路径），
 //! 以任务的 `content_segment`（源材料）为对照，判定三类问题：
 //!
 //! 1. **事实性**（grounded）：卡片答案与源材料矛盾 / 无中生有；
@@ -35,9 +36,12 @@
 //!   超预算卡片跳过并计数），预算可经 `critic_token_budget` 从 options JSON 下发。
 //! - **最多修订轮 1**：critic 每任务只跑一轮，revise 后的卡不再复审；
 //!   `CriticConfig::max_revision_rounds` 被硬钳位到 1。
-//! - **grounded 参照卡接口预留**：`ReferenceCard`（金标卡）可选注入，
-//!   有金标时 prompt 切换为对照金标评审；无金标（当前所有调用方）时
-//!   使用内置规则 rubric（事实性/最小信息/重复，对齐 agents/card-qa.md 维度）。
+//! - **grounded 同源金标（Round 5 #4）**：[`collect_gold_references`] 经
+//!   `anki_gold_set` 挖掘同文档兄弟卡的用户修正记录（改前 = 劣化、
+//!   改后 = 金标），注入 0-N 对 [`ReferenceCard`]；有金标时 prompt 切换为
+//!   对照金标评审（金标区受独立字符预算与对数上限截断，绝不挤占待评审卡），
+//!   无金标时保持内置规则 rubric（事实性/最小信息/重复，对齐
+//!   agents/card-qa.md 维度）。收集失败退化为空列表，绝不拖垮制卡收尾。
 
 use crate::anki_qa_lint::{self, LintIssue, LintSeverity};
 use crate::database::Database;
@@ -117,6 +121,11 @@ pub struct CriticConfig {
     pub max_cards_per_call: usize,
     /// 修订轮数（请求值；实际生效值经 [`CriticConfig::effective_revision_rounds`] 钳位）。
     pub max_revision_rounds: u32,
+    /// 注入 prompt 的同源金标修正对上限（超出者截断并计数）。
+    pub max_reference_pairs: usize,
+    /// 金标参照区的字符预算。实际生效值还会被钳位到
+    /// `max_prompt_chars / 3`——金标绝不允许把待评审卡片挤出预算。
+    pub max_reference_chars: usize,
 }
 
 impl Default for CriticConfig {
@@ -127,6 +136,8 @@ impl Default for CriticConfig {
             max_field_chars: 600,
             max_cards_per_call: 40,
             max_revision_rounds: 1,
+            max_reference_pairs: 6,
+            max_reference_chars: 6_000,
         }
     }
 }
@@ -139,16 +150,63 @@ impl CriticConfig {
 }
 
 // ============================================================================
-// Grounded 参照卡接口（预留）
+// Grounded 参照卡（Round 5 #4：接通 anki_gold_set 挖掘出的同源修正对）
 // ============================================================================
 
-/// 金标参照卡。上游（评测 harness / 教师标注）可注入一组参照卡，
-/// critic prompt 将切换为"对照金标评审"模式。当前生产调用方传空列表，
-/// 走内置规则 rubric。
+/// 金标参照卡。`front`/`back` 是金标（改后）内容；`degraded_front`/
+/// `degraded_back` 可选携带同一张卡被用户修掉的劣化（改前）版本——
+/// 「改前 = 劣化、改后 = 金标」正是 `anki_gold_set` 修正对的语义。
+///
+/// 来源两路：
+/// - 生产收尾路径：[`collect_gold_references`] 从同一文档的**同源**兄弟卡
+///   （其他任务已生成、被用户编辑过、带 `_original_generation` 快照）挖掘；
+/// - 评测 harness / 教师标注：直接构造注入。
+///
+/// 注入 0 对时 critic 保持内置规则 rubric（行为与接通前完全一致）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferenceCard {
+    /// 金标（改后）问题面。
     pub front: String,
+    /// 金标（改后）答案面。
     pub back: String,
+    /// 劣化（改前）问题面；None = 纯金标示例（无对照劣化版本）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_front: Option<String>,
+    /// 劣化（改前）答案面。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_back: Option<String>,
+}
+
+/// Cloze 快照的 text 字段并入答案面展示（prompt 里不单列 text 行）。
+fn snapshot_back_for_prompt(s: &crate::anki_gold_set::CardSnapshot) -> String {
+    match s.text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) if s.back.trim().is_empty() => t.to_string(),
+        Some(t) => format!("{}（Cloze: {}）", s.back, t),
+        None => s.back.clone(),
+    }
+}
+
+impl ReferenceCard {
+    /// 由 `anki_gold_set` 修正对构造：`edited` → 金标面，`original` → 劣化面。
+    /// original 为全空快照时不携带劣化面（退化为纯金标示例）。
+    pub fn from_repair_pair(pair: &crate::anki_gold_set::RepairPair) -> Self {
+        let degraded_front = Some(pair.original.front.clone())
+            .filter(|_| !snapshot_is_blank(&pair.original));
+        let degraded_back = Some(snapshot_back_for_prompt(&pair.original))
+            .filter(|_| !snapshot_is_blank(&pair.original));
+        Self {
+            front: pair.edited.front.clone(),
+            back: snapshot_back_for_prompt(&pair.edited),
+            degraded_front,
+            degraded_back,
+        }
+    }
+}
+
+fn snapshot_is_blank(s: &crate::anki_gold_set::CardSnapshot) -> bool {
+    s.front.trim().is_empty()
+        && s.back.trim().is_empty()
+        && s.text.as_deref().map(str::trim).unwrap_or("").is_empty()
 }
 
 // ============================================================================
@@ -219,10 +277,37 @@ pub struct CriticSummary {
     pub rejected_unknown_ids: u32,
     /// 因 token 预算 / 单次上限被跳过未评审的卡片数。
     pub skipped_over_budget: u32,
+    /// 实际注入 prompt 的同源金标参照对数（0 = 规则 rubric 模式）。
+    pub gold_references: u32,
+    /// 因预算/上限被截断未注入的金标参照对数。
+    pub gold_references_truncated: u32,
     /// 持久化失败（update 未命中行等）的卡片数。
     pub persist_failures: u32,
     /// 非 None 表示本次 critic 降级（模型失败/超时/解析失败），全部卡片视同 keep。
     pub degraded: Option<String>,
+    // ---- Sidekick 模型分层路由观测（Round 5 #6，None 时不序列化保持旧 wire 格式） ----
+    /// critic 路由到的模型配置 id（None = 路由不可用，走旧 model2 路径）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routed_config_id: Option<String>,
+    /// critic 路由到的模型名。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routed_model: Option<String>,
+    /// 路由决策是否为降级（首选主模型槽缺失，落到了其他槽位的同一模型）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routed_degraded: Option<bool>,
+}
+
+/// 将 Sidekick 路由决策写入摘要（纯函数便于单测；`None` 时字段保持缺省，
+/// 序列化结果与路由接通前完全一致）。
+pub fn note_routing_decision(
+    summary: &mut CriticSummary,
+    decision: Option<&crate::anki_model_routing::RoleDecision>,
+) {
+    if let Some(d) = decision {
+        summary.routed_config_id = Some(d.config_id.clone());
+        summary.routed_model = Some(d.model.clone());
+        summary.routed_degraded = Some(d.degraded);
+    }
 }
 
 // ============================================================================
@@ -236,6 +321,10 @@ pub struct CriticPrompt {
     /// 按纳入顺序排列的卡片 id（= 白名单）。
     pub included_ids: Vec<String>,
     pub skipped_over_budget: u32,
+    /// 实际注入 prompt 的同源金标参照对数（0 = 规则 rubric 模式）。
+    pub included_references: u32,
+    /// 因对数上限 / 参照区字符预算被截断的金标对数。
+    pub skipped_references: u32,
 }
 
 fn truncate_chars(s: &str, max: usize) -> String {
@@ -269,21 +358,64 @@ pub fn build_critic_prompt(
     let mut text = String::new();
     text.push_str("你是 Anki 卡片质检裁判（grounded judge）。对下列已生成的卡片逐张裁决。\n\n");
 
-    if references.is_empty() {
-        text.push_str(RULE_RUBRIC);
-    } else {
-        text.push_str(
-            "评审模式：对照金标参照卡。以下【金标参照卡】是同一材料的高质量标准卡，\
-             以其事实与粒度为基准裁决待评审卡片；与金标矛盾的卡片必须 revise 或 flag。\n\n【金标参照卡】\n",
-        );
-        for (i, r) in references.iter().enumerate() {
-            text.push_str(&format!(
-                "{}. Q: {}\n   A: {}\n",
-                i + 1,
-                truncate_chars(&r.front, cfg.max_field_chars),
-                truncate_chars(&r.back, cfg.max_field_chars)
-            ));
+    // 金标参照区先在独立缓冲里按预算构建：全部被截断时干净地退回规则 rubric，
+    // 不会留下一个空的"对照金标"段落。
+    let mut ref_section = String::new();
+    let mut included_references: u32 = 0;
+    let mut skipped_references: u32 = 0;
+    if !references.is_empty() {
+        // 金标区预算：显式配置与总预算 1/3 取小——金标绝不挤占待评审卡片
+        let ref_budget = cfg.max_reference_chars.min(cfg.max_prompt_chars / 3);
+        for r in references {
+            if (included_references as usize) >= cfg.max_reference_pairs {
+                skipped_references += 1;
+                continue;
+            }
+            let mut entry = String::new();
+            let idx = included_references + 1;
+            match (r.degraded_front.as_deref(), r.degraded_back.as_deref()) {
+                (Some(df), db) => {
+                    entry.push_str(&format!(
+                        "{}. 改前(劣化) Q: {}\n   改前(劣化) A: {}\n",
+                        idx,
+                        truncate_chars(df, cfg.max_field_chars),
+                        truncate_chars(db.unwrap_or(""), cfg.max_field_chars)
+                    ));
+                    entry.push_str(&format!(
+                        "   改后(金标) Q: {}\n   改后(金标) A: {}\n",
+                        truncate_chars(&r.front, cfg.max_field_chars),
+                        truncate_chars(&r.back, cfg.max_field_chars)
+                    ));
+                }
+                (None, _) => {
+                    entry.push_str(&format!(
+                        "{}. 金标 Q: {}\n   金标 A: {}\n",
+                        idx,
+                        truncate_chars(&r.front, cfg.max_field_chars),
+                        truncate_chars(&r.back, cfg.max_field_chars)
+                    ));
+                }
+            }
+            if ref_section.chars().count() + entry.chars().count() > ref_budget {
+                skipped_references += 1;
+                continue;
+            }
+            ref_section.push_str(&entry);
+            included_references += 1;
         }
+    }
+
+    if included_references > 0 {
+        text.push_str(
+            "评审模式：对照同源金标。以下【同源金标参照】来自同一文档的真实用户修正记录：\
+             「改前(劣化)」是曾被生成、后被用户修掉的劣化版本；「改后(金标)」是用户留下的标准卡。\
+             以金标的事实与粒度为基准裁决待评审卡片：出现与「改前(劣化)」同类缺陷的卡片，\
+             或与金标事实矛盾的卡片，必须 revise（能依据源材料与金标修正时）或 flag（无法确证时）。\
+             同批语义重复卡保留信息更完整的一张，另一张 flag。拿不准时一律 keep，宁可漏报，不可误改。\n\n【同源金标参照】\n",
+        );
+        text.push_str(&ref_section);
+    } else {
+        text.push_str(RULE_RUBRIC);
     }
 
     text.push_str("\n\n【源材料】\n");
@@ -326,6 +458,8 @@ pub fn build_critic_prompt(
         text,
         included_ids,
         skipped_over_budget: skipped,
+        included_references,
+        skipped_references,
     }
 }
 
@@ -541,6 +675,104 @@ pub fn plan_from_model_output(
 }
 
 // ============================================================================
+// 同源金标收集（anki_gold_set → critic 的接线层）
+// ============================================================================
+
+/// RFC3339 时间戳 → epoch 毫秒；解析失败返回 0（挖掘层对 original 在场的
+/// 候选以内容 diff 为准，时间戳仅是后备信号，0 是安全默认）。
+fn timestamp_ms(rfc3339: &str) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(rfc3339)
+        .map(|dt| dt.timestamp_millis())
+        .unwrap_or(0)
+}
+
+/// 纯函数：从一批同文档卡片行挖掘 grounded 参照对。
+///
+/// - `exclude_task_id`：当前收尾任务的卡片剔除——它们刚生成、尚无用户编辑
+///   信号，且正是待评审对象，不能既当裁判参照又当被告；
+/// - 只有携带 `_original_generation` 快照且被用户实际编辑过的兄弟卡才可能
+///   产出修正对（挖掘语义完全复用 `anki_gold_set::classify_candidate`）；
+/// - 金标端过 `select_grounded_reference_pairs` 的 lint 门槛（脏金标不注入）。
+///
+/// 无 FSRS 复习信号可用（此路径不 join 复习日志），`review_count` 置 0——
+/// 这只影响 `KeptUnedited` 正例桶，修正对挖掘不依赖留存信号。
+pub fn gold_references_from_cards(
+    cards: &[AnkiCard],
+    exclude_task_id: &str,
+    cfg: &CriticConfig,
+) -> Vec<ReferenceCard> {
+    use crate::anki_gold_set as gold;
+
+    let candidates: Vec<gold::GoldCandidate> = cards
+        .iter()
+        .filter(|card| card.task_id != exclude_task_id && !card.is_error_card)
+        .filter_map(|card| {
+            let original = gold::extract_original_from_extras(&card.extra_fields)?;
+            Some(gold::GoldCandidate {
+                card_id: card.id.clone(),
+                current: gold::CardSnapshot {
+                    front: card.front.clone(),
+                    back: card.back.clone(),
+                    text: card.text.clone(),
+                },
+                original: Some(original),
+                created_at_ms: timestamp_ms(&card.created_at),
+                updated_at_ms: timestamp_ms(&card.updated_at),
+                deleted_at_ms: None,
+                review_count: 0,
+                again_count: 0,
+                was_error_card: false,
+                is_error_card: card.is_error_card,
+            })
+        })
+        .collect();
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let samples = gold::mine_gold_set(&candidates, &gold::GoldMiningConfig::default());
+    gold::select_grounded_reference_pairs(
+        &samples,
+        &gold::gold_lint_config(),
+        cfg.max_reference_pairs,
+    )
+    .into_iter()
+    .map(ReferenceCard::from_repair_pair)
+    .collect()
+}
+
+/// 生产收尾路径的金标收集入口：查同文档全部卡片行，挖同源修正对。
+/// **任何失败（DB 错误等）都退化为空列表**——critic 回到规则 rubric，
+/// 收集层绝不拖垮制卡收尾（与 critic 本体的降级哲学一致）。
+pub fn collect_gold_references(
+    db: &Database,
+    task: &DocumentTask,
+    cfg: &CriticConfig,
+) -> Vec<ReferenceCard> {
+    match db.get_cards_for_document(&task.document_id) {
+        Ok(cards) => {
+            let refs = gold_references_from_cards(&cards, &task.id, cfg);
+            if !refs.is_empty() {
+                info!(
+                    "[ANKI_CRITIC] 任务 {} 挖得 {} 对同源金标参照（文档 {}）",
+                    task.id,
+                    refs.len(),
+                    task.document_id
+                );
+            }
+            refs
+        }
+        Err(e) => {
+            warn!(
+                "[ANKI_CRITIC] 收集同源金标失败（退回规则 rubric）: {}",
+                e
+            );
+            Vec::new()
+        }
+    }
+}
+
+// ============================================================================
 // 编排器（任务收尾调用；永不向上抛错）
 // ============================================================================
 
@@ -548,8 +780,9 @@ pub fn plan_from_model_output(
 /// 都折叠为 `CriticSummary`（`degraded` / `persist_failures`），
 /// 保证 critic 不影响整批制卡结果。
 ///
-/// `references`：grounded 金标参照卡（预留接口）。生产收尾路径传空切片
-/// （无金标 → 规则 rubric）；评测 harness 可注入金标。
+/// `references`：grounded 同源金标参照（0-N 对）。生产收尾路径由
+/// [`collect_gold_references`] 从同文档兄弟卡的用户修正记录挖掘；
+/// 评测 harness 可直接注入。空切片 → 规则 rubric（与接通前行为一致）。
 pub async fn run_critic_pass(
     db: &Database,
     llm: &LLMManager,
@@ -579,6 +812,8 @@ pub async fn run_critic_pass(
 
     let prompt = build_critic_prompt(&task.content_segment, &cards, references, cfg);
     summary.skipped_over_budget = prompt.skipped_over_budget;
+    summary.gold_references = prompt.included_references;
+    summary.gold_references_truncated = prompt.skipped_references;
     let allowed_ids: HashSet<String> = prompt.included_ids.iter().cloned().collect();
     let examined: Vec<AnkiCard> = cards
         .iter()
@@ -591,10 +826,29 @@ pub async fn run_critic_pass(
         return summary;
     }
 
+    // Round 5 #6：终审属 Critic 角色（低频、高价值）——经 Sidekick 模型分层
+    // 路由取主模型槽（缺槽位降级到制卡槽同一模型）。决策写入摘要可观测；
+    // 路由不可用（decision=None）时 call_anki_routed_raw_prompt 自动回退
+    // 旧 model2 路径，路由失败绝不影响制卡收尾。
+    let routing_mode =
+        crate::anki_model_routing::parse_routing_mode(&task.anki_generation_options_json);
+    let critic_decision = llm
+        .resolve_anki_role_decision(
+            crate::anki_model_routing::AnkiModelRole::Critic,
+            routing_mode,
+        )
+        .await;
+    note_routing_decision(&mut summary, critic_decision.as_ref());
+
     // 单轮模型调用（最多修订轮 1，见 effective_revision_rounds 钳位）
     let model_output: Result<String, String> = match tokio::time::timeout(
         Duration::from_secs(CRITIC_MODEL_TIMEOUT_SECS),
-        llm.call_model2_raw_prompt(&prompt.text, None, crate::llm_usage::CallerType::Anki),
+        llm.call_anki_routed_raw_prompt(
+            critic_decision.as_ref(),
+            "anki_critic.run_critic_pass",
+            &prompt.text,
+            None,
+        ),
     )
     .await
     {
@@ -630,14 +884,18 @@ pub async fn run_critic_pass(
     }
 
     info!(
-        "[ANKI_CRITIC] 任务 {} critic 完成: examined={} kept={} revised={} flagged={} rejected_ids={} skipped={} persist_failures={} degraded={:?}",
+        "[ANKI_CRITIC] 任务 {} critic 完成: routed_model={:?} routed_degraded={:?} examined={} kept={} revised={} flagged={} rejected_ids={} skipped={} gold_refs={} gold_refs_truncated={} persist_failures={} degraded={:?}",
         task.id,
+        summary.routed_model,
+        summary.routed_degraded,
         summary.examined,
         summary.kept,
         summary.revised,
         summary.flagged,
         summary.rejected_unknown_ids,
         summary.skipped_over_budget,
+        summary.gold_references,
+        summary.gold_references_truncated,
         summary.persist_failures,
         summary.degraded
     );
@@ -979,17 +1237,268 @@ mod tests {
         assert_eq!(prompt.skipped_over_budget, 0);
     }
 
+    fn gold_ref(degraded: Option<(&str, &str)>, gold: (&str, &str)) -> ReferenceCard {
+        ReferenceCard {
+            front: gold.0.to_string(),
+            back: gold.1.to_string(),
+            degraded_front: degraded.map(|(f, _)| f.to_string()),
+            degraded_back: degraded.map(|(_, b)| b.to_string()),
+        }
+    }
+
     #[test]
     fn prompt_switches_to_grounded_mode_with_reference_cards() {
         let cards = vec![make_card("c1", "Q", "A")];
-        let refs = vec![ReferenceCard {
-            front: "金标问题".to_string(),
-            back: "金标答案".to_string(),
-        }];
+        let refs = vec![gold_ref(None, ("金标问题", "金标答案"))];
         let prompt = build_critic_prompt("源材料", &cards, &refs, &CriticConfig::default());
-        assert!(prompt.text.contains("金标参照卡"), "有金标必须切换 grounded 模式");
+        assert!(prompt.text.contains("同源金标参照"), "有金标必须切换 grounded 模式");
         assert!(prompt.text.contains("金标问题"));
         assert!(!prompt.text.contains("最小信息原则"), "grounded 模式不再附规则 rubric");
+        assert_eq!(prompt.included_references, 1);
+        assert_eq!(prompt.skipped_references, 0);
+    }
+
+    #[test]
+    fn prompt_renders_degraded_and_gold_sides_of_pair() {
+        let cards = vec![make_card("c1", "Q", "A")];
+        let refs = vec![gold_ref(
+            Some(("劣化问题？答案泄露了", "泄露")),
+            ("修好的问题？", "修好的答案"),
+        )];
+        let prompt = build_critic_prompt("源材料", &cards, &refs, &CriticConfig::default());
+        assert!(prompt.text.contains("改前(劣化) Q: 劣化问题？答案泄露了"));
+        assert!(prompt.text.contains("改前(劣化) A: 泄露"));
+        assert!(prompt.text.contains("改后(金标) Q: 修好的问题？"));
+        assert!(prompt.text.contains("改后(金标) A: 修好的答案"));
+    }
+
+    #[test]
+    fn prompt_reference_pairs_capped_at_max_pairs() {
+        let cfg = CriticConfig {
+            max_reference_pairs: 2,
+            ..CriticConfig::default()
+        };
+        let refs: Vec<ReferenceCard> = (0..5)
+            .map(|i| gold_ref(Some(("坏Q", "坏A")), (&format!("好Q{}", i), "好A")))
+            .collect();
+        let cards = vec![make_card("c1", "Q", "A")];
+        let prompt = build_critic_prompt("源材料", &cards, &refs, &cfg);
+        assert_eq!(prompt.included_references, 2);
+        assert_eq!(prompt.skipped_references, 3);
+        assert!(prompt.text.contains("好Q0"));
+        assert!(prompt.text.contains("好Q1"));
+        assert!(!prompt.text.contains("好Q2"), "超上限金标必须截断");
+    }
+
+    #[test]
+    fn prompt_reference_budget_truncates_but_never_starves_cards() {
+        // 金标区预算被钳位到 max_prompt_chars/3：巨型金标不得把待评审卡挤出预算
+        let cfg = CriticConfig {
+            max_prompt_chars: 3_000,
+            max_segment_chars: 100,
+            max_field_chars: 400,
+            max_reference_pairs: 20,
+            max_reference_chars: 100_000, // 显式配置故意给大，验证 1/3 钳位兜底
+            ..CriticConfig::default()
+        };
+        let refs: Vec<ReferenceCard> = (0..10)
+            .map(|i| {
+                gold_ref(
+                    Some((&"坏".repeat(100), &"错".repeat(100))),
+                    (&format!("{}{}", "好".repeat(100), i), &"对".repeat(100)),
+                )
+            })
+            .collect();
+        let cards = vec![make_card("c1", "问题？", "答案")];
+        let prompt = build_critic_prompt("源材料", &cards, &refs, &cfg);
+        assert!(prompt.included_references >= 1, "预算内的头部金标必须入选");
+        assert!(prompt.skipped_references > 0, "超预算金标必须截断计数");
+        assert_eq!(
+            prompt.included_references as usize + prompt.skipped_references as usize,
+            refs.len()
+        );
+        assert_eq!(
+            prompt.included_ids,
+            vec!["c1".to_string()],
+            "待评审卡必须仍在 prompt 内"
+        );
+        assert!(
+            prompt.text.chars().count() <= cfg.max_prompt_chars + 200,
+            "总预算仍需贴近上限，实际 {}",
+            prompt.text.chars().count()
+        );
+    }
+
+    #[test]
+    fn prompt_all_references_over_budget_falls_back_to_rule_rubric() {
+        // 单对金标就超出金标区预算 → 一对都进不来 → 必须干净退回规则 rubric
+        let cfg = CriticConfig {
+            max_prompt_chars: 3_000,
+            max_reference_chars: 10, // 任何条目都放不下
+            ..CriticConfig::default()
+        };
+        let refs = vec![gold_ref(Some(("坏Q", "坏A")), ("好Q", "好A"))];
+        let cards = vec![make_card("c1", "Q", "A")];
+        let prompt = build_critic_prompt("源材料", &cards, &refs, &cfg);
+        assert_eq!(prompt.included_references, 0);
+        assert_eq!(prompt.skipped_references, 1);
+        assert!(prompt.text.contains("最小信息原则"), "零金标入选必须回退规则 rubric");
+        assert!(!prompt.text.contains("同源金标参照"), "不得留下空的金标段落");
+    }
+
+    #[test]
+    fn reference_card_from_repair_pair_maps_gold_and_degraded_sides() {
+        use crate::anki_gold_set::{CardSnapshot, RepairPair};
+        let pair = RepairPair {
+            original: CardSnapshot {
+                front: "什么是惯性？答案是保持运动状态。".to_string(),
+                back: "保持运动状态".to_string(),
+                text: None,
+            },
+            edited: CardSnapshot {
+                front: "什么是惯性？".to_string(),
+                back: String::new(),
+                text: Some("物体具有{{c1::保持原有运动状态}}的性质".to_string()),
+            },
+            distance_ratio: 0.3,
+        };
+        let r = ReferenceCard::from_repair_pair(&pair);
+        assert_eq!(r.front, "什么是惯性？");
+        assert_eq!(
+            r.back, "物体具有{{c1::保持原有运动状态}}的性质",
+            "back 为空时 Cloze text 顶上答案面"
+        );
+        assert_eq!(r.degraded_front.as_deref(), Some("什么是惯性？答案是保持运动状态。"));
+        assert_eq!(r.degraded_back.as_deref(), Some("保持运动状态"));
+
+        // original 全空 → 退化为纯金标示例，不携带劣化面
+        let no_degraded = RepairPair {
+            original: CardSnapshot::default(),
+            edited: pair.edited.clone(),
+            distance_ratio: 1.0,
+        };
+        let r2 = ReferenceCard::from_repair_pair(&no_degraded);
+        assert!(r2.degraded_front.is_none());
+        assert!(r2.degraded_back.is_none());
+    }
+
+    // -------- 同源金标收集（gold_set → critic 接线） --------
+
+    fn card_with_original(
+        id: &str,
+        task_id: &str,
+        front: &str,
+        back: &str,
+        original_front: &str,
+        original_back: &str,
+    ) -> AnkiCard {
+        let mut card = make_card(id, front, back);
+        card.task_id = task_id.to_string();
+        card.extra_fields.insert(
+            crate::anki_gold_set::ORIGINAL_GENERATION_FIELD.to_string(),
+            serde_json::json!({ "front": original_front, "back": original_back }).to_string(),
+        );
+        card
+    }
+
+    #[test]
+    fn gold_references_from_cards_mines_sibling_edits() {
+        let cfg = CriticConfig::default();
+        // 兄弟任务的卡：用户修掉了答案泄露 → 应产出一对劣化/金标
+        let edited_sibling = card_with_original(
+            "s1",
+            "task-old",
+            "快速排序的平均时间复杂度是多少？",
+            "O(n log n)",
+            "快速排序的平均时间复杂度是多少？答案是 O(n log n)。",
+            "O(n log n)",
+        );
+        // 兄弟任务未编辑的卡（original == current）：无修正对信号
+        let untouched_sibling = card_with_original(
+            "s2",
+            "task-old",
+            "什么是栈？",
+            "后进先出的线性表",
+            "什么是栈？",
+            "后进先出的线性表",
+        );
+        // 无 _original_generation 快照的卡：无法构成修正对
+        let mut no_snapshot = make_card("s3", "什么是队列？", "先进先出");
+        no_snapshot.task_id = "task-old".to_string();
+        let refs = gold_references_from_cards(
+            &[edited_sibling, untouched_sibling, no_snapshot],
+            "task-current",
+            &cfg,
+        );
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].front, "快速排序的平均时间复杂度是多少？");
+        assert_eq!(
+            refs[0].degraded_front.as_deref(),
+            Some("快速排序的平均时间复杂度是多少？答案是 O(n log n)。")
+        );
+    }
+
+    #[test]
+    fn gold_references_exclude_current_task_and_error_cards() {
+        let cfg = CriticConfig::default();
+        // 当前任务自己的卡即便带编辑痕迹也不能当参照（既当裁判又当被告）
+        let self_card = card_with_original(
+            "c1",
+            "task-current",
+            "修好的问题？",
+            "修好的答案",
+            "坏问题？答案泄露",
+            "泄露",
+        );
+        let mut error_card = card_with_original(
+            "c2",
+            "task-old",
+            "修好的问题2？",
+            "修好的答案2",
+            "坏问题2",
+            "TODO",
+        );
+        error_card.is_error_card = true;
+        let refs = gold_references_from_cards(&[self_card, error_card], "task-current", &cfg);
+        assert!(refs.is_empty(), "当前任务卡与错误卡都不得进入参照集");
+    }
+
+    #[test]
+    fn gold_references_reject_dirty_gold_side() {
+        let cfg = CriticConfig::default();
+        // 用户"修改后"仍残留占位符 → 金标端 lint 不干净，不得注入
+        let dirty = card_with_original(
+            "d1",
+            "task-old",
+            "什么是熵？",
+            "请参考 {{DOCUMENT_CONTENT}}",
+            "熵？？",
+            "混乱",
+        );
+        let refs = gold_references_from_cards(&[dirty], "task-current", &cfg);
+        assert!(refs.is_empty(), "脏金标必须被 lint 门槛拒绝");
+    }
+
+    #[test]
+    fn gold_references_capped_by_config() {
+        let cfg = CriticConfig {
+            max_reference_pairs: 1,
+            ..CriticConfig::default()
+        };
+        let cards: Vec<AnkiCard> = (0..4)
+            .map(|i| {
+                card_with_original(
+                    &format!("g{}", i),
+                    "task-old",
+                    &format!("问题{}是什么？", i),
+                    &format!("答案{}", i),
+                    &format!("问题{}是什么？答案是答案{}。", i, i),
+                    &format!("答案{}", i),
+                )
+            })
+            .collect();
+        let refs = gold_references_from_cards(&cards, "task-current", &cfg);
+        assert_eq!(refs.len(), 1, "收集层同样遵守 max_reference_pairs 上限");
     }
 
     #[test]
@@ -998,8 +1507,7 @@ mod tests {
             max_prompt_chars: 1_600,
             max_segment_chars: 200,
             max_field_chars: 50,
-            max_cards_per_call: 40,
-            max_revision_rounds: 1,
+            ..CriticConfig::default()
         };
         let long_segment = "材".repeat(5_000);
         let cards: Vec<AnkiCard> = (0..30)
@@ -1046,6 +1554,73 @@ mod tests {
             ..CriticConfig::default()
         };
         assert_eq!(zero.effective_revision_rounds(), 0);
+    }
+
+    // -------- Sidekick 路由观测（Round 5 #6） --------
+
+    fn sample_decision(degraded: bool) -> crate::anki_model_routing::RoleDecision {
+        crate::anki_model_routing::RoleDecision {
+            role: crate::anki_model_routing::AnkiModelRole::Critic,
+            config_id: "cfg-strong".to_string(),
+            model: "strong-pro".to_string(),
+            slot: crate::anki_model_routing::SlotKind::MainModel,
+            degraded,
+            is_multimodal: false,
+            reason: "主模型槽（较强模型）".to_string(),
+        }
+    }
+
+    #[test]
+    fn note_routing_decision_populates_summary() {
+        let mut summary = CriticSummary::default();
+        let decision = sample_decision(true);
+        note_routing_decision(&mut summary, Some(&decision));
+        assert_eq!(summary.routed_config_id.as_deref(), Some("cfg-strong"));
+        assert_eq!(summary.routed_model.as_deref(), Some("strong-pro"));
+        assert_eq!(summary.routed_degraded, Some(true));
+    }
+
+    #[test]
+    fn note_routing_decision_none_keeps_summary_untouched() {
+        let mut summary = CriticSummary::default();
+        note_routing_decision(&mut summary, None);
+        assert!(summary.routed_config_id.is_none());
+        assert!(summary.routed_model.is_none());
+        assert!(summary.routed_degraded.is_none());
+    }
+
+    #[test]
+    fn summary_wire_format_unchanged_without_routing() {
+        // 路由不可用（旧 model2 路径）时序列化结果不得出现任何 routed_* 字段，
+        // 与路由接通前的 wire 格式逐字节兼容
+        let raw = serde_json::to_string(&CriticSummary::default()).unwrap();
+        assert!(!raw.contains("routed_"), "None 字段必须跳过序列化: {}", raw);
+    }
+
+    #[test]
+    fn summary_serializes_routing_fields_when_present() {
+        let mut summary = CriticSummary::default();
+        note_routing_decision(&mut summary, Some(&sample_decision(false)));
+        let raw = serde_json::to_string(&summary).unwrap();
+        assert!(raw.contains("\"routed_config_id\":\"cfg-strong\""));
+        assert!(raw.contains("\"routed_model\":\"strong-pro\""));
+        assert!(raw.contains("\"routed_degraded\":false"));
+    }
+
+    #[test]
+    fn critic_routing_mode_parses_from_same_options_json() {
+        // critic 开关与路由模式共用同一份 anki_generation_options_json
+        let json = r#"{"enable_critic_pass":true,"sidekick_model_routing":"single"}"#;
+        assert!(CriticOptions::from_options_json(json).critic_enabled());
+        assert_eq!(
+            crate::anki_model_routing::parse_routing_mode(json),
+            crate::anki_model_routing::RoutingMode::Single
+        );
+        // 缺省 auto：与 streaming get_configurations 的解析口径一致
+        assert_eq!(
+            crate::anki_model_routing::parse_routing_mode(r#"{"enable_critic_pass":true}"#),
+            crate::anki_model_routing::RoutingMode::Auto
+        );
     }
 
     // -------- verdict serde 契约 --------

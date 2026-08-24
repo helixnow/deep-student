@@ -599,12 +599,21 @@ impl StreamingAnkiService {
                     &task.anki_generation_options_json,
                 );
                 if critic_opts.critic_enabled() && stats.card_count > 0 {
+                    let critic_cfg = critic_opts.to_config();
+                    // Round 5 #4：同文档兄弟卡的用户修正记录 → 同源金标参照
+                    // （改前劣化/改后金标）。收集失败/无信号返回空列表，
+                    // critic 自动回到规则 rubric，收尾路径行为不变。
+                    let gold_refs = crate::anki_critic::collect_gold_references(
+                        self.db.as_ref(),
+                        &task,
+                        &critic_cfg,
+                    );
                     let critic_summary = crate::anki_critic::run_critic_pass(
                         self.db.as_ref(),
                         self.llm_manager.as_ref(),
                         &task,
-                        &[], // 生产收尾路径无金标参照卡（接口预留给评测 harness）
-                        &critic_opts.to_config(),
+                        &gold_refs,
+                        &critic_cfg,
                     )
                     .await;
                     self.emit_critic_summary(

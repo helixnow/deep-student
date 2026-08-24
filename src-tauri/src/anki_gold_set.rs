@@ -226,6 +226,18 @@ pub fn extract_original_generation(extra_fields_json: &str) -> Option<CardSnapsh
     serde_json::from_value::<CardSnapshot>(obj).ok()
 }
 
+/// [`extract_original_generation`] 的内存态变体：直接查已反序列化的
+/// `extra_fields: HashMap<String, String>`（`AnkiCard` 在进程内的形态）。
+/// 值必然是二次编码的 JSON 字符串。查询 helper，不改挖掘语义。
+pub fn extract_original_from_extras(extras: &HashMap<String, String>) -> Option<CardSnapshot> {
+    let raw = extras.get(ORIGINAL_GENERATION_FIELD)?;
+    let obj: Value = serde_json::from_str(raw).ok()?;
+    if !obj.is_object() {
+        return None;
+    }
+    serde_json::from_value::<CardSnapshot>(obj).ok()
+}
+
 // ============================================================================
 // 编辑距离
 // ============================================================================
@@ -512,6 +524,55 @@ pub fn lint_repair_pair(pair: &RepairPair, cfg: &LintConfig) -> RepairPairLintRe
         original_flagged,
         edited_clean,
     }
+}
+
+// ============================================================================
+// Grounded critic 参照对选取（Round 5 #4：金标集 → critic 的查询层）
+// ============================================================================
+
+/// 从挖掘结果中选出可注入 `anki_critic` grounded prompt 的同源修正对。
+/// 纯查询/过滤 helper，不改任何挖掘语义：
+///
+/// - 只取携带 [`RepairPair`] 的标签（`EditedMinor` / `EditedMajor` /
+///   `ErrorCardRepaired`）；
+/// - **金标端必须干净**：`edited` 经生产 lint（Warn+）零命中且非空——
+///   脏金标喂给 critic 会教坏裁决基准；
+/// - 刻意**不要求** `original` 被 lint 命中：lint 盲区对（规则抓不到、
+///   用户却动手改了的语义劣化）恰是 LLM critic 相对规则 rubric 的增量价值；
+/// - 按 `edited.front` 去重（同一金标问题不重复注入）；
+/// - 保持输入顺序（确定性），最多返回 `max` 对。
+pub fn select_grounded_reference_pairs<'a>(
+    samples: &'a [GoldSample],
+    lint_cfg: &LintConfig,
+    max: usize,
+) -> Vec<&'a RepairPair> {
+    let mut out: Vec<&'a RepairPair> = Vec::new();
+    let mut seen_fronts: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for sample in samples {
+        if out.len() >= max {
+            break;
+        }
+        if !matches!(
+            sample.label,
+            GoldLabel::EditedMinor | GoldLabel::EditedMajor | GoldLabel::ErrorCardRepaired
+        ) {
+            continue;
+        }
+        let Some(pair) = &sample.repair_pair else {
+            continue;
+        };
+        if pair.edited.is_blank() {
+            continue;
+        }
+        if !lint_repair_pair(pair, lint_cfg).edited_clean {
+            continue;
+        }
+        if !seen_fronts.insert(pair.edited.front.trim().to_string()) {
+            continue;
+        }
+        out.push(pair);
+    }
+    out
 }
 
 // ============================================================================
@@ -870,6 +931,144 @@ mod tests {
         let clean = snap("什么是哈希冲突？", "不同键映射到同一槽位的现象");
         let codes = lint_snapshot_codes(&clean, &gold_lint_config());
         assert!(codes.is_empty(), "codes={:?}", codes);
+    }
+
+    // -------- grounded critic 参照对选取（Round 5 #4） --------
+
+    fn pair_sample(id: &str, label: GoldLabel, original: CardSnapshot, edited: CardSnapshot) -> GoldSample {
+        let ratio = edit_ratio(&original, &edited);
+        GoldSample {
+            card_id: id.to_string(),
+            label,
+            reason: "测试样本".to_string(),
+            repair_pair: Some(RepairPair {
+                original,
+                edited,
+                distance_ratio: ratio,
+            }),
+        }
+    }
+
+    #[test]
+    fn extract_original_from_extras_string_form() {
+        let mut extras: HashMap<String, String> = HashMap::new();
+        extras.insert(
+            ORIGINAL_GENERATION_FIELD.to_string(),
+            r#"{"front":"Q","back":"A"}"#.to_string(),
+        );
+        let snap = extract_original_from_extras(&extras).expect("must parse");
+        assert_eq!(snap.front, "Q");
+        assert_eq!(snap.back, "A");
+
+        // 缺键 / 非法 JSON / 非对象形状 → None
+        assert!(extract_original_from_extras(&HashMap::new()).is_none());
+        let mut bad: HashMap<String, String> = HashMap::new();
+        bad.insert(ORIGINAL_GENERATION_FIELD.to_string(), "not-json".to_string());
+        assert!(extract_original_from_extras(&bad).is_none());
+        let mut num: HashMap<String, String> = HashMap::new();
+        num.insert(ORIGINAL_GENERATION_FIELD.to_string(), "42".to_string());
+        assert!(extract_original_from_extras(&num).is_none());
+    }
+
+    #[test]
+    fn select_reference_pairs_requires_clean_gold_side() {
+        let cfg = gold_lint_config();
+        let clean = pair_sample(
+            "good",
+            GoldLabel::EditedMinor,
+            snap("什么是惯性？答案是保持运动状态。", "保持运动状态"),
+            snap("什么是惯性？", "物体保持原有运动状态不变的性质"),
+        );
+        // 金标端仍残留占位符 → 必须被过滤（脏金标不得进入 critic prompt）
+        let dirty_gold = pair_sample(
+            "dirty",
+            GoldLabel::EditedMajor,
+            snap("TODO 问题", "TODO"),
+            snap("什么是加速度？", "请参考 {{DOCUMENT_CONTENT}}"),
+        );
+        let picked = select_grounded_reference_pairs(&[clean, dirty_gold], &cfg, 10);
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].edited.front, "什么是惯性？");
+    }
+
+    #[test]
+    fn select_reference_pairs_keeps_lint_blind_spot_pairs() {
+        // 两端 lint 都不报的语义修正对（盲区）恰是 LLM critic 的增量价值，必须保留
+        let cfg = gold_lint_config();
+        let blind = pair_sample(
+            "blind",
+            GoldLabel::EditedMinor,
+            snap("什么是惯性？", "物体保持运动状态的性质"),
+            snap("什么是惯性？", "物体保持原有运动状态不变的固有属性"),
+        );
+        let picked = select_grounded_reference_pairs(&[blind], &cfg, 10);
+        assert_eq!(picked.len(), 1, "lint 盲区对不得被 original_flagged 门槛挡掉");
+    }
+
+    #[test]
+    fn select_reference_pairs_filters_labels_blanks_and_duplicates() {
+        let cfg = gold_lint_config();
+        // 非修正对标签：即便带 pair 也不选
+        let mut wrong_label = pair_sample(
+            "kept",
+            GoldLabel::KeptUnedited,
+            snap("Q", "A"),
+            snap("什么是熵？", "系统混乱程度的度量"),
+        );
+        wrong_label.label = GoldLabel::KeptUnedited;
+        // 金标端为空
+        let blank_gold = pair_sample(
+            "blank",
+            GoldLabel::EditedMajor,
+            snap("坏问题", "坏答案"),
+            CardSnapshot::default(),
+        );
+        // 有效对 + 同 front 重复对
+        let valid = pair_sample(
+            "v1",
+            GoldLabel::EditedMinor,
+            snap("什么是熵？？", "混乱度"),
+            snap("什么是熵？", "系统混乱程度的度量"),
+        );
+        let dup_front = pair_sample(
+            "v2",
+            GoldLabel::EditedMajor,
+            snap("什么是熵", "TODO"),
+            snap("什么是熵？", "另一种表述的答案"),
+        );
+        // 无 pair 的样本
+        let no_pair = GoldSample {
+            card_id: "np".to_string(),
+            label: GoldLabel::EditedMinor,
+            reason: "x".to_string(),
+            repair_pair: None,
+        };
+        let picked = select_grounded_reference_pairs(
+            &[wrong_label, blank_gold, valid, dup_front, no_pair],
+            &cfg,
+            10,
+        );
+        assert_eq!(picked.len(), 1, "只有首个干净且不重复的修正对入选");
+        assert_eq!(picked[0].edited.back, "系统混乱程度的度量");
+    }
+
+    #[test]
+    fn select_reference_pairs_caps_at_max_preserving_order() {
+        let cfg = gold_lint_config();
+        let samples: Vec<GoldSample> = (0..5)
+            .map(|i| {
+                pair_sample(
+                    &format!("s{}", i),
+                    GoldLabel::EditedMinor,
+                    snap(&format!("旧问题{}？？", i), "旧答案"),
+                    snap(&format!("问题{}是什么？", i), &format!("答案{}", i)),
+                )
+            })
+            .collect();
+        let picked = select_grounded_reference_pairs(&samples, &cfg, 2);
+        assert_eq!(picked.len(), 2);
+        assert_eq!(picked[0].edited.front, "问题0是什么？");
+        assert_eq!(picked[1].edited.front, "问题1是什么？", "必须保持输入顺序");
     }
 
     // -------- 脱敏 --------
