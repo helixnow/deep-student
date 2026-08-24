@@ -433,6 +433,8 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).toContain('**不会**带备份密码');
     expect(guide).toContain('加密全保真 ZIP');
     expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
+    expect(guide).toContain('恢复按钮会直接禁用');
+    expect(guide).toContain('仍先走确认框');
     expect(guide).toContain('拒绝导出');
     expect(guide).toContain('不会套用已存密码');
     expect(guide).toContain('至少 **8** 个字符');
@@ -460,6 +462,18 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(componentSource).toContain("t('cloudStorage:download.warning')");
     expect(componentSource).toContain("t('cloudStorage:download.partialArchiveNotice')");
     expect(componentSource).toContain("t('cloudStorage:download.restartNotice')");
+    expect(componentSource).toContain("t('cloudStorage:download.confirmVersion'");
+    expect(componentSource).toContain('download.confirmKnownPortable');
+    expect(componentSource).toContain('download.confirmKnownFull');
+    expect(componentSource).toContain('download.confirmUnknownKind');
+    expect(zhLocale.download.confirmVersion).toContain('{{version}}');
+    expect(zhLocale.download.confirmKnownPortable).toContain('便携归档');
+    expect(zhLocale.download.confirmKnownFull).toContain('全保真');
+    expect(zhLocale.download.confirmUnknownKind).toContain('没有恢复种类标记');
+    expect(enLocale.download.confirmVersion).toContain('{{version}}');
+    expect(enLocale.download.confirmKnownPortable).toMatch(/portable archive/i);
+    expect(enLocale.download.confirmKnownFull).toMatch(/full-fidelity/i);
+    expect(enLocale.download.confirmUnknownKind).toMatch(/no restore-kind marker/i);
     expect(componentSource).toContain('useStoredCloudEncryptionPassword');
     expect(componentSource).toContain('resolveCloudZipEncryptionArgs');
     expect(componentSource).toContain('DataGovernanceApi.exportZip(');

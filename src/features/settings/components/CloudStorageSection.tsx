@@ -2026,6 +2026,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </div>
   );
 
+  const pendingRestoreVersion =
+    versions.find((version) => version.id === pendingRestoreVersionId)
+    ?? (syncStatus?.latestVersion?.id === pendingRestoreVersionId
+      ? syncStatus.latestVersion
+      : undefined);
+
   // 恢复确认对话框
   const restoreConfirmDialog = (
     <DsAlertDialog
@@ -2038,7 +2044,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       confirmVariant="warning"
       onConfirm={handleRestore}
     >
-      <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      {pendingRestoreVersionId && (
+        <p className="text-sm font-medium">
+          {t('cloudStorage:download.confirmVersion', { version: pendingRestoreVersionId })}
+        </p>
+      )}
+      {pendingRestoreVersion?.recoveryKind === 'partial_archive' ? (
+        <p className="mt-1 text-sm text-destructive">
+          {t('cloudStorage:download.confirmKnownPortable')}
+        </p>
+      ) : pendingRestoreVersion?.recoveryKind === 'disaster_recovery' ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmKnownFull')}
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmUnknownKind')}
+        </p>
+      )}
+      <p className="mt-1 text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.partialArchiveNotice')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
     </DsAlertDialog>

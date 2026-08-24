@@ -30,6 +30,7 @@
 - `src/components/DataImportExport.tsx`（仅本地 ZIP 导入后的整槽拒绝门，不改其它页）
 - `src/utils/cloudStorageApi.ts`、`src/stores/syncStatusStore.ts`、`src/hooks/useBackupJobListener.ts`
 - `src/locales/*/sync.json`、`src/locales/*/cloudStorage.json`
+- `docs/user-guide/16-数据管理与云同步.md`（仅云整包/恢复诚实句，不改其它章节）
 - `src-tauri/tests/sync_*.rs`、`tests/vitest/data-governance/**`
 - `docs/dev/cloud-sync-sota-b343/**`（本目录）
 
