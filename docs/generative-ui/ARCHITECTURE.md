@@ -1,6 +1,6 @@
 # Generative UI 架构方案（DeepStudent）
 
-> 分支：`Generative-UI-0824` · Round 41–73（18 块已接宿主；HPIAS 共享订阅 + 多会话切片；合入 main 仍 ⏳）
+> 分支：`Generative-UI-0824` · Round 41–76（18 块已接宿主；Rust 入口白名单；合入 main 仍 ⏳）
 
 ## 1. 核心结论
 
@@ -55,7 +55,7 @@ src/features/generative-ui/
 - `version` 缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值
 - `layout.mode` 识别 `stack` | `grid`；未知 mode 不拒绝整份 intent（前端钳制）
 - `blocks[].type` 必须落在 18 种内置白名单（`ALLOWED_GENERATIVE_UI_BLOCK_TYPES`）；未知 / 缺 type / 非对象块在入口拒绝
-- e2e：`execute_v1_1_grid_layout_emits_generative_ui` + `execute_rejects_version_2`
+- e2e：`execute_v1_1_grid_layout_emits_generative_ui` + `execute_rejects_version_2` + `execute_rejects_unknown_block_type`
 
 ## 3. 内置块（18 种）
 
@@ -153,7 +153,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 - Rust：`generative_ui_executor` 单元（含 v1.1 version/layout）+ hpias 模块（需 Cargo stable + Linux GTK CI）
 - HpiasStore 多会话切片：`sessions[sessionId]` 保活并发研究；Chat 面板按 `researchSessionId` 读取
 - HPIAS 共享订阅：`retainSharedHpiasEventBridge` 引用计数，多 Chat 块只 listen 一次
-- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–73 已收口；合入 main 仍 ⏳）
+- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–76 已收口；合入 main 仍 ⏳）
 - Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

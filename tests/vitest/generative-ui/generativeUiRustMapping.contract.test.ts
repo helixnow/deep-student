@@ -51,6 +51,8 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(e2eSrc).toContain('"version": "1.1"');
     expect(e2eSrc).toContain('"mode": "grid"');
     expect(e2eSrc).toContain('execute_rejects_version_2');
+    expect(e2eSrc).toContain('execute_rejects_unknown_block_type');
+    expect(e2eSrc).toContain('unknown-widget');
     expect(e2eSrc).toContain('event_types::GENERATIVE_UI');
   });
 

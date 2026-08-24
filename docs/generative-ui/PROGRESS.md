@@ -1,5 +1,12 @@
 # Generative UI 进度日志
 
+## Round 77（2026-08-24）— 未知块类型 e2e
+
+1. [x] `execute_rejects_unknown_block_type`：未知 type 失败且只发 `generative_ui` error
+2. [x] 合同锁定 e2e 名称；ARCHITECTURE 对齐到 Round 76/77
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）**本轮不 push**（保护 01db704a CI）
+
 ## Round 76（2026-08-24）— CI Vitest 8 路单 worker
 
 1. [x] 19091465 分片 4/4 在 ~6GiB 仍 OOM（StatusBar / scrollbar 已绿）
