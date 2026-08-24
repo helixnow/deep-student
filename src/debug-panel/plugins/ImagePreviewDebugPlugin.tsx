@@ -544,7 +544,7 @@ const ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 
                 {log.data && Object.keys(log.data).length > 0 && !log.snapshot && (
                   <details className="mt-1 ml-4">
-                    <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-400">
+                    <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-400 [@media(pointer:coarse)]:min-h-11">
                       查看详情
                     </summary>
                     <pre className="mt-1 text-[10px] text-slate-400 font-mono bg-slate-800/50 rounded p-1.5 overflow-x-auto">

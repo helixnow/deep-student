@@ -615,7 +615,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                             </div>
                           )}
                           <details className="mt-2">
-                            <summary className="text-slate-400 cursor-pointer hover:text-slate-300">
+                            <summary className="text-slate-400 cursor-pointer hover:text-slate-300 [@media(pointer:coarse)]:min-h-11">
                               查看完整来源 ({event.sourceCount} 项)
                             </summary>
                             <pre className="mt-2 p-2 bg-slate-950 rounded text-xs text-slate-300 overflow-x-auto max-h-64 overflow-y-auto">

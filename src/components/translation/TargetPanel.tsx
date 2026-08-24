@@ -164,7 +164,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             onCheckedChange={setIsSyncScroll}
                             className="data-[state=checked]:bg-primary"
                         />
-                        <Label htmlFor="target-sync-scroll" className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap">
+                        <Label htmlFor="target-sync-scroll" className="flex items-center text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap [@media(pointer:coarse)]:min-h-11">
                             {t('translation:sync_scroll')}
                         </Label>
                     </div>

@@ -334,7 +334,7 @@ export default function NotesTypographyDebugPlugin() {
       {/* 最新快照 */}
       {state.snapshots.length > 0 && (
         <details className="p-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded">
-          <summary className="cursor-pointer font-semibold">
+          <summary className="cursor-pointer font-semibold [@media(pointer:coarse)]:min-h-11">
             📸 最新编辑器快照 ({new Date(state.snapshots[0].timestamp).toLocaleTimeString()})
           </summary>
           <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
@@ -407,7 +407,7 @@ export default function NotesTypographyDebugPlugin() {
               </div>
               {Object.keys(log.details).length > 0 && (
                 <details className="mt-1">
-                  <summary className="cursor-pointer text-[10px] text-blue-600 dark:text-blue-400">
+                  <summary className="cursor-pointer text-[10px] text-blue-600 dark:text-blue-400 [@media(pointer:coarse)]:min-h-11">
                     详情 ({Object.keys(log.details).length} 个字段)
                   </summary>
                   <pre className="mt-1 p-1 bg-white dark:bg-gray-900 rounded text-[9px] overflow-x-auto">
@@ -423,7 +423,7 @@ export default function NotesTypographyDebugPlugin() {
       {/* 使用说明 */}
       <div className="pt-2 border-t border-gray-300 dark:border-gray-700 text-gray-500 text-[10px]">
         <details>
-          <summary className="cursor-pointer">使用说明</summary>
+          <summary className="cursor-pointer [@media(pointer:coarse)]:min-h-11">使用说明</summary>
           <div className="mt-1 space-y-1">
             <div>1. 打开笔记模块，选择一篇笔记</div>
             <div>2. 在编辑器中选中一些文本</div>

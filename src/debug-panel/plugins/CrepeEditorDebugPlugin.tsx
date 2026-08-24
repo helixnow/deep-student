@@ -701,7 +701,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                         
                         {log.details && Object.keys(log.details).length > 0 && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
                               查看详细信息 ({Object.keys(log.details).length} 项)
                             </summary>
                             <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs max-h-48">
@@ -712,7 +712,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                         
                         {log.domSnapshot && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-orange-600 hover:text-orange-800">
+                            <summary className="cursor-pointer text-orange-600 hover:text-orange-800 [@media(pointer:coarse)]:min-h-11">
                               DOM 快照
                             </summary>
                             <pre className="mt-2 p-2 bg-orange-50 rounded overflow-auto text-xs max-h-48">
@@ -723,7 +723,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
 
                         {log.editorSnapshot && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
                               编辑器快照
                             </summary>
                             <pre className="mt-2 p-2 bg-blue-50 rounded overflow-auto text-xs max-h-48">

@@ -386,7 +386,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           <div className="flex items-center gap-2">
             <Prohibit className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <div className="space-y-0.5">
-              <Label htmlFor="vendor-no-api-key" className="text-sm font-normal leading-none cursor-pointer">
+              <Label htmlFor="vendor-no-api-key" className="flex items-center text-sm font-normal leading-none cursor-pointer [@media(pointer:coarse)]:min-h-11">
                 {t('settings:vendor_modal.no_api_key_label')}
               </Label>
               <p className="text-xs text-muted-foreground">

@@ -411,7 +411,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
                     )}
                   </div>
                 </div>
-                <ArrowSquareOut size={16} className="text-gray-300 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ArrowSquareOut size={16} className="text-gray-300 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity" />
               </button>
             );
           })}
@@ -519,7 +519,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
                         
                         {log.details && Object.keys(log.details).length > 0 && (
                           <details className="text-xs mt-2">
-                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-800 [@media(pointer:coarse)]:min-h-11">
                               查看详细信息
                             </summary>
                             <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto text-xs">

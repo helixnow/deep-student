@@ -1731,7 +1731,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: checked === true }))}
                 className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               />
-              <label htmlFor="advertiseAll" className="text-sm font-medium cursor-pointer">
+              <label htmlFor="advertiseAll" className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11">
                 {t('settings:sections.advertise_all')}
               </label>
             </div>

@@ -1462,7 +1462,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.enable_thinking_hint')}</p>
                           </div>
                           <Switch
@@ -1473,7 +1473,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         </div>
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.reasoning.include_thoughts')}</Label>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.reasoning.include_thoughts')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.include_thoughts_hint')}</p>
                           </div>
                           <Switch
@@ -1502,7 +1502,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
                                 {t('settings:api.modal.mimo.enable_thinking', 'Thinking Mode')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1517,7 +1517,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </div>
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.mimo.preserve_reasoning', 'Preserve Reasoning')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1569,7 +1569,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     <div className="pt-4 border-t border-border/40">
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                             {t('settings:api.modal.fields.reasoning_split', 'MiniMax Reasoning Split')}
                           </Label>
                           <p className="text-xs text-muted-foreground/70">
@@ -1588,7 +1588,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     <div className="space-y-6">
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.anthropic.title')}</Label>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>{t('settings:api.modal.anthropic.title')}</Label>
                           <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.anthropic.description')}</p>
                         </div>
                         <Switch
@@ -1638,7 +1638,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       {profileReasoningControl.kind === 'toggle-only' && (
                         <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
-                            <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                            <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                               {t('settings:api.modal.reasoning.enable_thinking')}
                             </Label>
                             <p className="text-xs text-muted-foreground/70">
@@ -1687,7 +1687,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       </div>
                       <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.google.include_thoughts_label')}</Label>
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.google.include_thoughts_label')}</Label>
                           {isGeminiReasoningWithThoughts && (
                             <p className="text-xs text-muted-foreground">{t('settings:api.modal.google.auto_thinking_hint')}</p>
                           )}
@@ -1731,7 +1731,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => effectiveSupportsReasoning && setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.deepseek.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1809,7 +1809,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.qwen.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1973,7 +1973,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.zhipu.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2002,7 +2002,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.zhipu.preserve_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2033,7 +2033,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                 {t('settings:api.modal.reasoning.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -2082,7 +2082,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           {isModernKimiThinkingModel && (
                             <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                               <div className="space-y-1">
-                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                   {t('settings:api.modal.reasoning.enable_thinking')}
                                 </Label>
                                 <p className="text-xs text-muted-foreground/70">
@@ -2125,7 +2125,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           {miniMaxModelMajor !== undefined && (
                             <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", profileThinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                               <div className="space-y-1">
-                                <Label className="text-sm font-medium cursor-pointer" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
+                                <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setProfileThinkingEnabled(!profileThinkingEnabled)}>
                                   {t('settings:api.modal.reasoning.enable_thinking')}
                                 </Label>
                                 <p className="text-xs text-muted-foreground/70">
@@ -2141,7 +2141,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           )}
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
+                              <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                                 {t('settings:api.modal.minimax.reasoning_split', 'Reasoning Split')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">

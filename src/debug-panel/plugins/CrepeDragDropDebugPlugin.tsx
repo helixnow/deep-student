@@ -1116,7 +1116,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
 
                         {(log.dataTransfer || log.editorState || log.domState) && (
                           <details className="mt-1">
-                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                            <summary className="cursor-pointer text-blue-600 hover:text-blue-800 [@media(pointer:coarse)]:min-h-11">
                               详细信息
                             </summary>
                             <div className="mt-1 p-2 bg-gray-100 rounded overflow-auto max-h-32">

@@ -509,7 +509,7 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
 
               <div className="raw-data-section">
                 <details>
-                  <summary>📊 原始数据快照</summary>
+                  <summary className="[@media(pointer:coarse)]:min-h-11">📊 原始数据快照</summary>
                   <div className="raw-data-content">
                     <div><strong>image_base64:</strong> {info.rawImageBase64Sample}</div>
                     <div><strong>content:</strong> {info.rawContentSample}</div>

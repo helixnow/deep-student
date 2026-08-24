@@ -270,7 +270,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                       <div className="font-semibold mb-1">{log.message}</div>
                       {log.data && (
                         <details className="mt-1">
-                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11">
                             展开数据 ▼
                           </summary>
                           <pre className="mt-2 p-2 rounded bg-muted overflow-auto max-h-96 text-xs">

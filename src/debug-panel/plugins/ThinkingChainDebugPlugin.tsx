@@ -460,6 +460,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
                   }}
                 >
                   <summary
+                    className="[@media(pointer:coarse)]:min-h-11"
                     style={{
                       cursor: 'pointer',
                       color: '#94a3b8',

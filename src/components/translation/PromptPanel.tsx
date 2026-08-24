@@ -556,7 +556,7 @@ const PromptEditorContent: React.FC<{
           <div className="space-y-3">
             {setIsAutoTranslate && (
               <div className="flex items-center justify-between">
-                <Label htmlFor="prompt-panel-auto-translate" className="text-sm cursor-pointer">
+                <Label htmlFor="prompt-panel-auto-translate" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
                   {t('translation:auto_mode')}
                 </Label>
                 <Switch
@@ -568,7 +568,7 @@ const PromptEditorContent: React.FC<{
             )}
             {setIsSyncScroll && (
               <div className="flex items-center justify-between">
-                <Label htmlFor="prompt-panel-sync-scroll" className="text-sm cursor-pointer">
+                <Label htmlFor="prompt-panel-sync-scroll" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
                   {t('translation:sync_scroll')}
                 </Label>
                 <Switch
