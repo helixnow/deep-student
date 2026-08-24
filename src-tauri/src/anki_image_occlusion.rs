@@ -1,8 +1,9 @@
 //! # AI 图像遮挡制卡（Image Occlusion，Round 4 #5）
 //!
-//! 纯函数模块：不调用任何 LLM、无 I/O。VlmFull 调用点会把已有
-//! `[IMAGE_DESC: ...]` 转成草稿 marker；流式生成层消费 marker 后把
-//! `_occlusion` 写入该分段首张成功卡。这里只负责确定性变换：
+//! 纯函数模块：不调用任何 LLM、无 I/O。VlmFull 调用点会优先解析
+//! `[OCCLUSION_BOXES]` 归一化坐标，失败才把已有 `[IMAGE_DESC: ...]`
+//! 转成启发式网格草稿 marker；流式生成层消费 marker 后把 `_occlusion`
+//! 写入该分段首张成功卡。这里只负责确定性变换：
 //!
 //! 1. **校验**：`validate_spec` 把外部（LLM / 前端编辑器）产出的
 //!    [`OcclusionSpec`] 收敛为 [`ValidatedOcclusionSpec`]（越界 / 过度重叠 /
@@ -47,6 +48,10 @@ pub const OCCLUSION_TAG: &str = "image-occlusion";
 ///
 /// marker 会在制卡 prompt 构建前被剥离，模型看不到这段机器元数据。
 pub const OCCLUSION_DRAFT_PREFIX: &str = "[ANKI_OCCLUSION_DRAFT:";
+
+/// VLM 输出中归一化坐标 JSON 的块边界。
+pub const OCCLUSION_BOXES_OPEN: &str = "[OCCLUSION_BOXES]";
+pub const OCCLUSION_BOXES_CLOSE: &str = "[/OCCLUSION_BOXES]";
 
 /// 浮点比较容差（归一化坐标场景下 1e-6 远小于 1px）。
 const EPS: f32 = 1e-6;
@@ -483,6 +488,156 @@ fn escape_html_attr(s: &str) -> String {
 }
 
 // ============================================================================
+// VLM 归一化坐标解析
+// ============================================================================
+
+/// 从 VLM 文本的 `[OCCLUSION_BOXES]` 块解析归一化遮挡坐标。
+///
+/// 块内契约是 [`OcclusionBox`] JSON 数组。解析器容忍 Markdown 代码围栏、
+/// 块内数组前后的少量说明文字，以及数组/对象末尾多余逗号。每个候选块都必须
+/// 通过默认配置的 [`validate_spec`]；空块、坏 JSON、越界、过小、过度重叠或
+/// 超量盒均返回 `None`（存在多个块时会继续尝试后续块）。
+///
+/// VLM 块不负责选择图片，因此返回 spec 的 `image_ref` 是内部占位引用；
+/// 生产调用点在生成草稿 marker 前必须替换为实际图片引用。
+pub fn parse_occlusion_boxes_from_vlm(text: &str) -> Option<OcclusionSpec> {
+    for block in occlusion_box_blocks(text) {
+        let Some(json) = extract_first_json_array(block) else {
+            continue;
+        };
+        let sanitized = strip_json_trailing_commas(json);
+        let Ok(boxes) = serde_json::from_str::<Vec<OcclusionBox>>(&sanitized) else {
+            continue;
+        };
+        let candidate = OcclusionSpec {
+            image_ref: "vlm://pending-image".to_string(),
+            boxes,
+        };
+        let Ok(validated) = validate_spec(&candidate, &OcclusionConfig::default()) else {
+            continue;
+        };
+        return Some(OcclusionSpec {
+            image_ref: validated.image_ref,
+            boxes: validated.boxes,
+        });
+    }
+    None
+}
+
+/// 从面向制卡模型的正文中剥离 VLM 坐标块。
+///
+/// 完整块连同内部代码围栏一起删除；若模型输出了开始标记却遗漏结束标记，
+/// 从开始标记到文本末尾一并删除，避免协议 JSON 被误制成垃圾卡。
+pub fn strip_occlusion_boxes_blocks(text: &str) -> String {
+    let Some(_) = text.find(OCCLUSION_BOXES_OPEN) else {
+        return text.to_string();
+    };
+
+    let mut out = String::with_capacity(text.len());
+    let mut remaining = text;
+    while let Some(open_rel) = remaining.find(OCCLUSION_BOXES_OPEN) {
+        out.push_str(&remaining[..open_rel]);
+        let after_open = &remaining[open_rel + OCCLUSION_BOXES_OPEN.len()..];
+        let Some(close_rel) = after_open.find(OCCLUSION_BOXES_CLOSE) else {
+            remaining = "";
+            break;
+        };
+        remaining = &after_open[close_rel + OCCLUSION_BOXES_CLOSE.len()..];
+    }
+    out.push_str(remaining);
+    out.trim().to_string()
+}
+
+fn occlusion_box_blocks(text: &str) -> Vec<&str> {
+    let mut blocks = Vec::new();
+    let mut remaining = text;
+    while let Some(open_rel) = remaining.find(OCCLUSION_BOXES_OPEN) {
+        let after_open = &remaining[open_rel + OCCLUSION_BOXES_OPEN.len()..];
+        let Some(close_rel) = after_open.find(OCCLUSION_BOXES_CLOSE) else {
+            break;
+        };
+        blocks.push(&after_open[..close_rel]);
+        remaining = &after_open[close_rel + OCCLUSION_BOXES_CLOSE.len()..];
+    }
+    blocks
+}
+
+/// 找出块内第一个完整 JSON 数组，忽略围栏与数组前后 Markdown。
+fn extract_first_json_array(text: &str) -> Option<&str> {
+    let mut start = None;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in text.char_indices() {
+        if start.is_none() {
+            if ch == '[' {
+                start = Some(idx);
+                depth = 1;
+            }
+            continue;
+        }
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[start.unwrap_or(0)..idx + ch.len_utf8()]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 删除 JSON 数组/对象闭合符前的尾随逗号，不改动字符串内的逗号。
+fn strip_json_trailing_commas(json: &str) -> String {
+    let chars: Vec<char> = json.chars().collect();
+    let mut out = String::with_capacity(json.len());
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, &ch) in chars.iter().enumerate() {
+        if in_string {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            out.push(ch);
+            continue;
+        }
+        if ch == ',' {
+            let next_non_whitespace = chars[idx + 1..].iter().find(|c| !c.is_whitespace());
+            if matches!(next_non_whitespace, Some(']' | '}')) {
+                continue;
+            }
+        }
+        out.push(ch);
+    }
+    out
+}
+
+// ============================================================================
 // IMAGE_DESC 启发式盒建议（零 LLM 成本首版桥）
 // ============================================================================
 
@@ -524,14 +679,24 @@ pub fn build_occlusion_draft_marker(
     if boxes.is_empty() {
         return None;
     }
-    let validated = validate_spec(
+    build_occlusion_draft_marker_from_spec(
         &OcclusionSpec {
             image_ref: image_ref.to_string(),
             boxes,
         },
         cfg,
     )
-    .ok()?;
+}
+
+/// 校验真实坐标 spec 并封装成内部草稿 marker。
+///
+/// 与 [`build_occlusion_draft_marker`] 共用同一校验与序列化边界，调用方可先把
+/// [`parse_occlusion_boxes_from_vlm`] 返回值的占位 `image_ref` 替换为真实引用。
+pub fn build_occlusion_draft_marker_from_spec(
+    spec: &OcclusionSpec,
+    cfg: &OcclusionConfig,
+) -> Option<String> {
+    let validated = validate_spec(spec, cfg).ok()?;
     let json = serde_json::to_string(&validated).ok()?;
     Some(format!("{OCCLUSION_DRAFT_PREFIX}{json}]"))
 }
@@ -948,6 +1113,172 @@ mod tests {
         assert!(parse_occlusion_field(&fields).is_none());
         fields.insert(OCCLUSION_FIELD.to_string(), "not json".to_string());
         assert!(parse_occlusion_field(&fields).is_none());
+    }
+
+    // ---- VLM 归一化坐标 ----
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_valid_json() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":0.1,"y":0.2,"w":0.3,"h":0.15,"label":"左心房"}]
+[/OCCLUSION_BOXES]"#;
+        let spec = parse_occlusion_boxes_from_vlm(text).expect("合法坐标应解析");
+        assert_eq!(spec.image_ref, "vlm://pending-image");
+        assert_eq!(spec.boxes.len(), 1);
+        assert_eq!(spec.boxes[0].label, "左心房");
+        assert_eq!(spec.boxes[0].cloze_index, Some(1));
+        assert!((spec.boxes[0].x - 0.1).abs() < EPS);
+        assert!((spec.boxes[0].h - 0.15).abs() < EPS);
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_amid_markdown_and_fence() {
+        let text = r#"# 心脏结构
+[IMAGE_DESC: 左心房；右心室]
+
+[OCCLUSION_BOXES]
+```json
+[
+  {"x":0.05,"y":0.1,"w":0.2,"h":0.2,"label":"左心房"},
+  {"x":0.65,"y":0.6,"w":0.2,"h":0.2,"label":"右心室"}
+]
+```
+[/OCCLUSION_BOXES]
+
+后续 Markdown。"#;
+        let spec = parse_occlusion_boxes_from_vlm(text).expect("围栏不应影响解析");
+        assert_eq!(spec.boxes.len(), 2);
+        assert_eq!(spec.boxes[1].label, "右心室");
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_tolerates_trailing_commas() {
+        let text = r#"[OCCLUSION_BOXES]
+[
+  {"x":0.1,"y":0.2,"w":0.3,"h":0.15,"label":"A, B",},
+]
+[/OCCLUSION_BOXES]"#;
+        let spec = parse_occlusion_boxes_from_vlm(text).expect("尾随逗号应被清理");
+        assert_eq!(spec.boxes[0].label, "A, B");
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_empty_block() {
+        assert!(
+            parse_occlusion_boxes_from_vlm("正文\n[OCCLUSION_BOXES]\n\n[/OCCLUSION_BOXES]")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_malformed_json() {
+        assert!(parse_occlusion_boxes_from_vlm(
+            "[OCCLUSION_BOXES]\n[{x: 0.1}]\n[/OCCLUSION_BOXES]"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_negative_coordinate() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":-0.01,"y":0.2,"w":0.3,"h":0.15,"label":"越界"}]
+[/OCCLUSION_BOXES]"#;
+        assert!(parse_occlusion_boxes_from_vlm(text).is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_extent_past_one() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":0.8,"y":0.2,"w":0.3,"h":0.15,"label":"越界"}]
+[/OCCLUSION_BOXES]"#;
+        assert!(parse_occlusion_boxes_from_vlm(text).is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_too_small_box() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":0.1,"y":0.2,"w":0.001,"h":0.15,"label":"过小"}]
+[/OCCLUSION_BOXES]"#;
+        assert!(parse_occlusion_boxes_from_vlm(text).is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_excessive_overlap() {
+        let text = r#"[OCCLUSION_BOXES]
+[
+  {"x":0.1,"y":0.1,"w":0.4,"h":0.4,"label":"A"},
+  {"x":0.12,"y":0.12,"w":0.4,"h":0.4,"label":"B"}
+]
+[/OCCLUSION_BOXES]"#;
+        assert!(parse_occlusion_boxes_from_vlm(text).is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_rejects_more_than_default_limit() {
+        let boxes = (0..13)
+            .map(|i| {
+                format!(
+                    r#"{{"x":{},"y":{},"w":0.02,"h":0.02,"label":"B{i}"}}"#,
+                    (i % 4) as f32 * 0.24,
+                    (i / 4) as f32 * 0.24
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let text = format!("{OCCLUSION_BOXES_OPEN}\n[{boxes}]\n{OCCLUSION_BOXES_CLOSE}");
+        assert!(parse_occlusion_boxes_from_vlm(&text).is_none());
+    }
+
+    #[test]
+    fn test_parse_vlm_occlusion_boxes_uses_later_valid_block() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":1.1,"y":0.2,"w":0.3,"h":0.15,"label":"坏"}]
+[/OCCLUSION_BOXES]
+[OCCLUSION_BOXES]
+[{"x":0.1,"y":0.2,"w":0.3,"h":0.15,"label":"好"}]
+[/OCCLUSION_BOXES]"#;
+        let spec = parse_occlusion_boxes_from_vlm(text).expect("应继续尝试后续块");
+        assert_eq!(spec.boxes[0].label, "好");
+    }
+
+    #[test]
+    fn test_strip_vlm_occlusion_boxes_block_from_markdown() {
+        let text = r#"# 标题
+正文
+
+[OCCLUSION_BOXES]
+```json
+[{"x":0.1,"y":0.2,"w":0.3,"h":0.15,"label":"垃圾协议"}]
+```
+[/OCCLUSION_BOXES]
+
+结尾"#;
+        let stripped = strip_occlusion_boxes_blocks(text);
+        assert_eq!(stripped, "# 标题\n正文\n\n\n\n结尾");
+        assert!(!stripped.contains("垃圾协议"));
+        assert!(!stripped.contains(OCCLUSION_BOXES_OPEN));
+    }
+
+    #[test]
+    fn test_strip_vlm_occlusion_boxes_unclosed_block_to_eof() {
+        let text = "保留正文\n[OCCLUSION_BOXES]\n[{\"x\":0.1";
+        assert_eq!(strip_occlusion_boxes_blocks(text), "保留正文");
+    }
+
+    #[test]
+    fn test_build_draft_marker_from_vlm_spec_binds_real_image() {
+        let text = r#"[OCCLUSION_BOXES]
+[{"x":0.1,"y":0.2,"w":0.3,"h":0.15,"label":"真实框"}]
+[/OCCLUSION_BOXES]"#;
+        let mut spec = parse_occlusion_boxes_from_vlm(text).unwrap();
+        spec.image_ref = "image-source-42".to_string();
+        let marker =
+            build_occlusion_draft_marker_from_spec(&spec, &OcclusionConfig::default()).unwrap();
+        let fields = extract_occlusion_draft_fields(&marker).unwrap();
+        let parsed = parse_occlusion_field(&fields.extra_fields).unwrap();
+        assert_eq!(parsed.image_ref, "image-source-42");
+        assert!((parsed.boxes[0].x - 0.1).abs() < EPS);
+        assert_eq!(parsed.boxes[0].label, "真实框");
     }
 
     // ---- serde 契约 ----
