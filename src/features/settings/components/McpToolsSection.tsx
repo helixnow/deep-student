@@ -1543,24 +1543,24 @@ function ActionMenu({
 
   const menuItems = (
     <>
-      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
         <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.reconnect')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.refresh_list')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
         <Flask className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.health_check')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
         {t('settings:mcp.clear_cache')}
       </DsButton>
       <div className="my-1 border-t border-border/50" />
-      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
+      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
         <Key className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.security_policy')}
       </DsButton>
@@ -1574,7 +1574,7 @@ function ActionMenu({
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
-        className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
+        className="bg-muted/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
       >
         <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
