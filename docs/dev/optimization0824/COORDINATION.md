@@ -37,7 +37,7 @@
 | WI-6 | P1 | Android mobile-slim | 🔄 R2 compile ✅ / R3 CI |
 | WI-7 | P1 | rolldown-vite + swc + tsgo | 🔄 R2 rolldown❌ / R3 swc+tsgo |
 | WI-8 | P1 | 依赖收敛 + bundle 门禁 | 🔄 R2 DnD ✅ / R3 删依赖 |
-| WI-9 | P1 | pdfjs 按需化 | 🔄 R2 子集 ✅ / R5 运行时 |
+| WI-9 | P1 | pdfjs 按需化 | 🔄 R2 子集 ✅ / R4 运行时 fallback + legal 去重 ✅ |
 | WI-10 | P1 | Token 预算治理 | 🔄 R2 -15.8% / R3 继续 |
 | WI-11 | P2 | Provider 协议归一 | R10+ |
 | WI-12 | P2 | Session JSONL replay | R12+ |
