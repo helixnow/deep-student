@@ -6,8 +6,11 @@
  * 保留 TAB / LF / CR，避免破坏正文换行与缩进。
  */
 
-/** NUL–BS, VT, FF, SO–US, DEL, C1 */
-const CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+/** NUL–BS, VT, FF, SO–US, DEL, C1。用 fromCharCode 避免源码控制字符字面量。 */
+const CONTROL_CHARS_RE = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(8)}${String.fromCharCode(0x0b)}${String.fromCharCode(0x0c)}${String.fromCharCode(0x0e)}-${String.fromCharCode(0x1f)}${String.fromCharCode(0x7f)}-${String.fromCharCode(0x9f)}]`,
+  'g',
+);
 
 export function sanitizeGenerativeText(value: string): string {
   if (typeof value !== 'string' || value.length === 0) return value;
