@@ -267,7 +267,7 @@ fn transform_validity_guard_matches_card_content_semantics() {
     }];
     let compiled = compile_transform_ops(&ops).unwrap();
     let before = TransformFields::from_card(&make_card("card-1", "Q", "A", None, &[]));
-    let after = apply_transform_ops(&compiled, &before);
+    let after = apply_transform_ops(&compiled, &before).expect("shrinking back must stay in bounds");
     assert_eq!(after.back, "");
     assert!(transform_fields_are_valid(&before));
     assert!(!transform_fields_are_valid(&after), "清空 back 的普通卡必须被拒绝");
@@ -756,7 +756,7 @@ fn preference_retrieve_respects_token_budget_end_to_end() {
     };
     let candidates = extract_preferences(&observation);
     assert!(candidates.len() >= 2, "显式要求应抽出多类偏好: {candidates:?}");
-    let outcome = consolidate(&mut store, candidates, 1_000);
+    let outcome = consolidate(&mut store, &candidates, 1_000);
     assert!(!outcome.added.is_empty());
 
     let templates = vec!["学术填空题".to_string()];
@@ -787,7 +787,7 @@ fn preference_template_filtering_matches_available_templates() {
         template_used: Some("填空".to_string()),
         ..Default::default()
     };
-    consolidate(&mut store, extract_preferences(&observation), 1_000);
+    consolidate(&mut store, &extract_preferences(&observation), 1_000);
     assert!(!store.entries.is_empty());
 
     let hit = retrieve_preference_prompt(&store, "复习", &["学术填空题".to_string()], 200);
