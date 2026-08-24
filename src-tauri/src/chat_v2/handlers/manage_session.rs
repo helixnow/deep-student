@@ -1386,7 +1386,10 @@ fn branch_session_in_db(
     let now = chrono::Utc::now();
     let new_session_id = ChatSession::generate_id();
 
-    // 构建 metadata，加入 branchedFrom 信息
+    // 构建 metadata，加入 branchedFrom 信息。
+    // 整体 clone 源会话 metadata（不重建）：authority/plan 以及 P0 tools
+    // 冻结基线（frozenToolSchemaOrder）等键随分支自然继承 —— 分支会话的
+    // tools 前缀字节与源会话一致，provider prompt cache 可跨分支复用。
     let mut metadata = source_session
         .metadata
         .clone()

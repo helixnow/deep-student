@@ -446,6 +446,15 @@ pub struct SessionTag {
 // Session authority mode (Ask / Plan / Craft) — stored in session.metadata
 // ============================================================================
 
+/// 🆕 P0 tools 会话冻结：session.metadata 中持久化基线的键名。
+///
+/// 值为 append-only 首见序工具名数组（JSON string array）。桌面 App 重启后
+/// provider 侧 prompt cache 仍可能存活，进程内存基线丢失时必须从该键恢复
+/// 同一 tools 前缀字节序，禁止按字母序重新基线（否则 tools 段从第 0 字节
+/// 打碎 provider 缓存命中）。与 authority/plan 等键共存于同一 metadata
+/// 对象，读写只 merge 该键、绝不覆盖其他键。
+pub const FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY: &str = "frozenToolSchemaOrder";
+
 /// Session-level Ask / Plan / Craft authority mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]

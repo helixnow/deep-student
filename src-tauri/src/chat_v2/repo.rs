@@ -20,7 +20,25 @@ use super::types::{
     CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
     MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
     SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
+    FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
 };
+
+/// 从 session.metadata 解析持久化的 tools 会话冻结基线。
+///
+/// 缺键 / metadata 非对象 / 数组元素非字符串一律容错降级（跳过或返回
+/// 空基线），空基线等同会话首轮语义（由首次 freeze 按字母序建立）。
+fn frozen_tool_schema_order_from_metadata(metadata: Option<&Value>) -> Vec<String> {
+    metadata
+        .and_then(|meta| meta.get(FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 /// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
 const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
@@ -2591,6 +2609,89 @@ impl ChatV2Repo {
         Ok(true)
     }
 
+    /// 🆕 P0 tools 会话冻结：读取 session.metadata 中持久化的基线
+    /// （`frozenToolSchemaOrder`，append-only 首见序工具名数组）。
+    ///
+    /// 桌面 App 重启后进程内存基线丢失，pipeline 内存 miss 时从这里恢复，
+    /// 保证同一 session 复用上一进程已发出的 tools 前缀字节序。
+    pub fn get_session_frozen_tool_schema_order(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_frozen_tool_schema_order_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_frozen_tool_schema_order` 的 `_with_conn` 版本。
+    pub fn get_session_frozen_tool_schema_order_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(frozen_tool_schema_order_from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// 🆕 P0 tools 会话冻结：把内存推进后的基线 append-only 合并进
+    /// session.metadata（IMMEDIATE 事务内读-合并-写，防止并发写回互相丢失）。
+    ///
+    /// merge 语义双重保证：
+    /// - 对 metadata 对象只 upsert `frozenToolSchemaOrder` 一个键，
+    ///   authority/plan/branchedFrom 等其他键原样保留；
+    /// - 对已持久化基线只按 `baseline` 顺序追加缺失名，绝不删除或重排
+    ///   已有条目（与内存合并同语义）。无新增时跳过写库。
+    pub fn merge_session_frozen_tool_schema_order(
+        db: &ChatV2Database,
+        session_id: &str,
+        baseline: &[String],
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::merge_session_frozen_tool_schema_order_with_conn(&tx, session_id, baseline)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `merge_session_frozen_tool_schema_order` 的 `_with_conn` 版本。
+    pub fn merge_session_frozen_tool_schema_order_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        baseline: &[String],
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut persisted = frozen_tool_schema_order_from_metadata(session.metadata.as_ref());
+        let persisted_len_before = persisted.len();
+        super::pipeline::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut persisted,
+            baseline,
+        );
+        // append-only 合并只会追加：长度不变即无新增，跳过写库（发送热路径
+        // 每个稳定窗口都会调用，避免无意义的行重写）。
+        if persisted.len() == persisted_len_before {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY.to_string(),
+                Value::Array(persisted.into_iter().map(Value::String).collect()),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at：该键是发送热路径的内部缓存状态，
+        // 不代表用户可见的会话更新，不应扰动会话列表排序。
+        Self::update_session_with_conn(conn, &session)
+    }
+
     /// 删除会话（使用 ChatV2Database）
     pub fn delete_session_v2(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
         let mut conn = db.get_conn_safe()?;
@@ -4013,6 +4114,154 @@ mod tests {
 
         let deleted = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123").unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_survives_process_restart_via_session_metadata() {
+        // 回归（P0 tools 会话冻结跨进程）：基线写库 → 模拟桌面 App 重启
+        // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复
+        // 得到同一顺序，provider 侧 tools 前缀字节不被字母序冷重建打碎。
+        let conn = setup_test_db();
+        let session =
+            ChatSession::new("sess_frozen_tools".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 首见序基线（非字母序：zeta 在 alpha 前，还原字节序全靠持久化）
+        let baseline: Vec<String> = vec!["zeta_tool".into(), "alpha_tool".into()];
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_tools",
+            &baseline,
+        )
+        .unwrap();
+
+        // 「重启后」内存 miss 时 pipeline 走这条恢复路径
+        let restored =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_tools")
+                .unwrap();
+        assert_eq!(
+            restored, baseline,
+            "重启恢复的基线必须与上一进程写入的首见序逐字一致"
+        );
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_metadata_merge_is_append_only() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_frozen_append".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["alpha_tool".into(), "zeta_tool".into()],
+        )
+        .unwrap();
+        // 环内出现新工具：metadata 只在末尾追加，已有前缀不重排
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["beta_tool".into(), "alpha_tool".into()],
+        )
+        .unwrap();
+        let after_append =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_append")
+                .unwrap();
+        assert_eq!(
+            after_append,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新工具只追加末尾，绝不按字母序插入中段"
+        );
+
+        // 并行变体写回子集：绝不删除已持久化条目
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_append",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+        let after_subset =
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_append")
+                .unwrap();
+        assert_eq!(after_subset, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_merge_preserves_other_session_metadata() {
+        // merge 语义：只 upsert frozenToolSchemaOrder 一个键，
+        // authority/plan 等既有 metadata 键必须原样共存。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_frozen_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+            "plan": { "batchId": "batch_1" },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_meta",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_frozen_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "authority metadata 不得被冻结基线写入覆盖"
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+        assert_eq!(
+            metadata
+                .get("plan")
+                .and_then(|plan| plan.get("batchId"))
+                .and_then(Value::as_str),
+            Some("batch_1")
+        );
+        assert_eq!(
+            SessionAuthorityState::from_metadata(Some(metadata)).authority_mode,
+            AuthorityMode::Plan,
+            "authority 状态解析必须不受新键影响"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_meta")
+                .unwrap(),
+            vec!["alpha_tool"]
+        );
+
+        // 反向共存：authority 写路径（apply_to_metadata）也不得丢掉冻结基线
+        let mut authority = SessionAuthorityState::from_metadata(reloaded.metadata.as_ref());
+        authority.authority_mode = AuthorityMode::Craft;
+        let mut updated = reloaded.clone();
+        updated.metadata = Some(authority.apply_to_metadata(updated.metadata.take()));
+        ChatV2Repo::update_session_with_conn(&conn, &updated).unwrap();
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_meta")
+                .unwrap(),
+            vec!["alpha_tool"],
+            "authority 切换后冻结基线必须仍在 metadata 中"
+        );
+    }
+
+    #[test]
+    fn frozen_tool_schema_order_missing_key_defaults_to_fresh_baseline() {
+        // 缺键（旧会话 / 从未发出 tools）降级为空基线 = 首轮语义
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_frozen_empty".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        assert!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_empty")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

@@ -952,32 +952,77 @@ impl ChatV2Pipeline {
     }
 
     /// 🆕 P0 tools 会话冻结：读取该会话已发出 tools 的 append-only 首见序
-    /// 基线（跨 execute_with_tools 调用共享）。会话首轮返回空基线，
-    /// 由首次 freeze 按字母序建立。
+    /// 基线（跨 execute_with_tools 调用共享）。
+    ///
+    /// 内存 miss（典型场景：桌面 App 重启后该会话首轮）时从 session.metadata
+    /// 恢复持久化基线并填回内存 —— provider 侧 prompt cache 跨进程存活，
+    /// 必须复用上一进程已发出的 tools 前缀字节序，禁止按字母序重新基线。
+    /// 读取失败降级为空基线（等同会话首轮，由首次 freeze 按字母序建立），
+    /// 只打日志、不阻断发送。
     pub(crate) fn load_session_frozen_tool_schema_order(&self, session_id: &str) -> Vec<String> {
-        self.frozen_tool_schema_orders
+        if let Some(existing) = self
+            .frozen_tool_schema_orders
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(session_id)
-            .cloned()
-            .unwrap_or_default()
-    }
-
-    /// 🆕 P0 tools 会话冻结：把环内推进后的基线写回会话级状态。
-    /// append-only 合并（只补缺失名、绝不删除或重排已有基线）：并行变体
-    /// 各自持有局部基线副本，合并写回保证共享基线单调，任一变体已发出的
-    /// tools 前缀不会被其他变体的写回打乱。
-    pub(crate) fn store_session_frozen_tool_schema_order(
-        &self,
-        session_id: &str,
-        baseline: &[String],
-    ) {
+        {
+            return existing.clone();
+        }
+        let persisted =
+            match ChatV2Repo::get_session_frozen_tool_schema_order(&self.db, session_id) {
+                Ok(baseline) => baseline,
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to load persisted frozen tool schema order (fallback to fresh baseline): session_id={}, error={}",
+                        session_id,
+                        err
+                    );
+                    Vec::new()
+                }
+            };
         let mut orders = self
             .frozen_tool_schema_orders
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let entry = orders.entry(session_id.to_string()).or_default();
-        super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, baseline);
+        // 释放锁读库期间并行变体可能已写入内存基线：append-only 合并持久化
+        // 基线（只补缺失名），绝不覆盖已建立的内存前缀序。
+        super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, &persisted);
+        entry.clone()
+    }
+
+    /// 🆕 P0 tools 会话冻结：把环内推进后的基线写回会话级状态并持久化。
+    /// append-only 合并（只补缺失名、绝不删除或重排已有基线）：并行变体
+    /// 各自持有局部基线副本，合并写回保证共享基线单调，任一变体已发出的
+    /// tools 前缀不会被其他变体的写回打乱。
+    ///
+    /// 合并后的基线同步持久化到 session.metadata（repo 侧 merge 单键、
+    /// 无新增时跳过写库），保证桌面 App 重启后同一会话仍复用相同 tools
+    /// 前缀字节。持久化失败只降级打日志（下一进程退回冷基线），绝不让
+    /// 本次发送失败。
+    pub(crate) fn store_session_frozen_tool_schema_order(
+        &self,
+        session_id: &str,
+        baseline: &[String],
+    ) {
+        let merged = {
+            let mut orders = self
+                .frozen_tool_schema_orders
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = orders.entry(session_id.to_string()).or_default();
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, baseline);
+            entry.clone()
+        };
+        if let Err(err) =
+            ChatV2Repo::merge_session_frozen_tool_schema_order(&self.db, session_id, &merged)
+        {
+            log::warn!(
+                "[ChatV2::pipeline] Failed to persist frozen tool schema order (in-memory baseline still active): session_id={}, error={}",
+                session_id,
+                err
+            );
+        }
     }
 
     pub(crate) fn load_effective_session_skill_state(
