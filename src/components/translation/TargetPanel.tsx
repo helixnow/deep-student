@@ -308,10 +308,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 {editedTranslation.length.toLocaleString()} {t('translation:stats.characters')}
                             </span>
                             <div className="flex gap-2">
-                                <DsButton variant="outline" size="sm" onClick={onCancelEdit}>
+                                <DsButton variant="outline" size="sm" onClick={onCancelEdit} className="[@media(pointer:coarse)]:min-h-11">
                                     {t('common:cancel')}
                                 </DsButton>
-                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation}>
+                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation} className="[@media(pointer:coarse)]:min-h-11">
                                     <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
                                 </DsButton>
