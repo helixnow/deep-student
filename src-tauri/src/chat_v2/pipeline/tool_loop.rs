@@ -2878,13 +2878,9 @@ impl ChatV2Pipeline {
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
         .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
-        .with_shell_guard_approved(super::authority_mode::shell_guard_admitted(
-            admission.immutable_guard_asks,
-            admission.approval_required,
-            admission.approval_requirement_satisfied,
-        ))
+        .with_shell_guard_approved(admission.shell_guard_admitted())
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
-        if let Some((authority_mode, permission_preset)) = admission.authority_admission {
+        if let Some((authority_mode, permission_preset)) = admission.authority_admission() {
             ctx = ctx.with_shell_authority_admission(authority_mode, permission_preset);
         }
 

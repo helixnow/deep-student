@@ -35,21 +35,24 @@ pub struct ToolHookContext<'a> {
 /// （shell 守卫/权限档位注入）与 `after_tool` 审计钩子消费。
 #[derive(Debug, Clone)]
 pub struct ToolAdmission {
-    pub approval_arguments: Value,
-    pub immutable_guard_asks: bool,
-    pub approval_required: bool,
-    pub approval_requirement_satisfied: bool,
-    pub is_external_mcp: bool,
-    pub trusted_automation_preauthorized: bool,
+    // Security evidence is deliberately private. Appended hooks may inspect the
+    // admission through hook behavior, but must not forge ApprovalGateHook's
+    // decision before ExecutionContext is built.
+    approval_arguments: Value,
+    immutable_guard_asks: bool,
+    approval_required: bool,
+    approval_requirement_satisfied: bool,
+    is_external_mcp: bool,
+    trusted_automation_preauthorized: bool,
     /// 执行前复核通过的会话权限（authority_mode, permission_preset）。
-    pub authority_admission: Option<(
+    authority_admission: Option<(
         crate::chat_v2::types::AuthorityMode,
         crate::chat_v2::types::PermissionPreset,
     )>,
 }
 
 impl ToolAdmission {
-    pub fn new(arguments: &Value) -> Self {
+    pub(super) fn new(arguments: &Value) -> Self {
         Self {
             approval_arguments: arguments.clone(),
             immutable_guard_asks: false,
@@ -59,6 +62,23 @@ impl ToolAdmission {
             trusted_automation_preauthorized: false,
             authority_admission: None,
         }
+    }
+
+    pub(super) fn shell_guard_admitted(&self) -> bool {
+        super::authority_mode::shell_guard_admitted(
+            self.immutable_guard_asks,
+            self.approval_required,
+            self.approval_requirement_satisfied,
+        )
+    }
+
+    pub(super) fn authority_admission(
+        &self,
+    ) -> Option<(
+        crate::chat_v2::types::AuthorityMode,
+        crate::chat_v2::types::PermissionPreset,
+    )> {
+        self.authority_admission
     }
 }
 
@@ -121,6 +141,38 @@ pub(crate) fn default_pipeline_hooks() -> Arc<Vec<Arc<dyn PipelineHook>>> {
         Arc::new(ApprovalGateHook) as Arc<dyn PipelineHook>,
         Arc::new(TaskAuditHook) as Arc<dyn PipelineHook>,
     ])
+}
+
+/// Resolve the backend-owned command guard only for the local shell executor.
+///
+/// Keeping this classification next to the default approval hook makes the
+/// security boundary directly testable: an external MCP tool that happens to
+/// accept a `command` argument must never be represented as locally guarded.
+fn immutable_command_guard_for_tool_call(
+    tool_call: &ToolCall,
+) -> Option<crate::chat_v2::approval_scope::ShellCommandGuardDecision> {
+    if !crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+        &tool_call.name,
+        &tool_call.arguments,
+    ) {
+        return None;
+    }
+
+    // The pipeline checkpoint does not know the runtime cwd/roots yet (the
+    // executor re-checks with full context before spawn), but HOME is always
+    // protected and cheap to resolve here.
+    let guard_roots: Vec<std::path::PathBuf> = dirs::home_dir().into_iter().collect();
+    tool_call
+        .arguments
+        .get("command")
+        .and_then(Value::as_str)
+        .map(|command| {
+            crate::chat_v2::approval_scope::immutable_shell_command_guard(
+                command,
+                None,
+                &guard_roots,
+            )
+        })
 }
 
 /// 构造「执行前被拦截」的统一失败结果并发射 start/error 事件。
@@ -328,25 +380,7 @@ impl PipelineHook for ApprovalGateHook {
         // shell before user rules or any preset bypass. External MCP execution
         // is remote/uncontrolled and is explicitly not claimed to be protected
         // by this local command parser.
-        let immutable_command_guard = if is_local_shell {
-            // The pipeline checkpoint does not know the runtime cwd/roots yet
-            // (the executor re-checks with full context before spawn), but
-            // HOME is always protected and cheap to resolve here.
-            let guard_roots: Vec<std::path::PathBuf> = dirs::home_dir().into_iter().collect();
-            tool_call
-                .arguments
-                .get("command")
-                .and_then(Value::as_str)
-                .map(|command| {
-                    crate::chat_v2::approval_scope::immutable_shell_command_guard(
-                        command,
-                        None,
-                        &guard_roots,
-                    )
-                })
-        } else {
-            None
-        };
+        let immutable_command_guard = immutable_command_guard_for_tool_call(tool_call);
         if immutable_command_guard.as_ref().is_some_and(|decision| {
             decision.effect == crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
         }) {
@@ -1428,6 +1462,41 @@ impl ChatV2Pipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_hooks_keep_approval_gate_first() {
+        let names = default_pipeline_hooks()
+            .iter()
+            .map(|hook| hook.name())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, ["approval_gate", "task_audit"]);
+    }
+
+    #[test]
+    fn catastrophe_guard_is_wired_only_to_backend_local_shell() {
+        let local_shell = ToolCall {
+            id: "local-catastrophe".to_string(),
+            name: "builtin-local_shell_execute".to_string(),
+            arguments: json!({"command": "rm -rf /"}),
+        };
+        let local_decision = immutable_command_guard_for_tool_call(&local_shell)
+            .expect("backend local shell must run the immutable guard");
+        assert_eq!(
+            local_decision.effect,
+            crate::chat_v2::approval_scope::ShellCommandGuardEffect::Deny
+        );
+
+        let external_mcp = ToolCall {
+            id: "external-command".to_string(),
+            name: "mcp.tools.local_shell_execute".to_string(),
+            arguments: json!({"command": "rm -rf /"}),
+        };
+        assert!(
+            immutable_command_guard_for_tool_call(&external_mcp).is_none(),
+            "external MCP commands are outside the local guard guarantee"
+        );
+    }
 
     #[test]
     fn missing_approval_manager_is_fail_closed_for_non_low_sensitivity() {

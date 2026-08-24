@@ -39,7 +39,7 @@ R3-bundle-baseline §5 遗留项 1：脚本（`scripts/check-bundle-size.mjs`，
 ### 1.3 ✅ done（确认项）— @hello-pangea/dnd 已彻底移除
 
 `package.json`、`package-lock.json`（含独占传递依赖 `css-box-model`/`raf-schd`）、
-`public/legal/THIRD_PARTY_NOTICES.txt` 三处 `rg "hello-pangea"` 均零匹配，
+`legal/THIRD_PARTY_NOTICES.txt` 三处 `rg "hello-pangea"` 均零匹配，
 与 R3-remove-dnd-dep 报告一致。仓库内剩余提及仅两处 src 注释
 （`useTouchFriendlyDndSensors.ts` 长按语义来源、`VendorSidebar.tsx` 迁移前行为对照），
 属 R3 §4 明确保留的历史语义说明，非引用，不动。
