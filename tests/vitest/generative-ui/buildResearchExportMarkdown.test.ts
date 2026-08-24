@@ -46,6 +46,22 @@ describe('extractResearchContentFromIntent', () => {
     expect(md).toContain('[~] Synthesis');
     expect(md).toContain('Final findings.');
   });
+
+  it('uses optional report labels for intent exports', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'research-plan' as const, props: { steps: [{ label: 'Plan' }] } },
+        { type: 'research-report' as const, props: { body: 'Result' } },
+      ],
+    };
+    const md = buildResearchExportMarkdownFromIntent(intent, undefined, {
+      researchPlan: '研究计划',
+      report: '研究报告',
+    });
+    expect(md).toContain('## 研究计划');
+    expect(md).toContain('## 研究报告');
+  });
 });
 
 describe('buildResearchExportMarkdownFromSnapshot', () => {
@@ -76,5 +92,43 @@ describe('buildResearchExportMarkdownFromSnapshot', () => {
     expect(md).toContain('Round 2');
     expect(md).toContain('- Topic A');
     expect(md).toContain('Report body');
+  });
+
+  it('uses optional locale labels for snapshot section headings and counts', () => {
+    const md = buildResearchExportMarkdownFromSnapshot({
+      snapshot: {
+        sessionId: 's2',
+        round: 1,
+        plan: { core: { queries: ['主题 A'] } },
+        synthesis: '报告正文',
+        retrievalCount: 4,
+        selectedCount: 2,
+        subAgents: {},
+      },
+      planTitle: '研究',
+      roundLabel: '第',
+      stepLabels: {
+        stepPlan: '计划',
+        stepRetrieval: '检索',
+        stepSelection: '筛选',
+        stepSubagents: '子任务',
+        stepSynthesis: '综合',
+        subagentFallback: '子任务 {{id}}',
+      },
+    }, {
+      researchPlan: '研究计划',
+      queries: '检索问题',
+      retrieval: '检索结果',
+      retrieved: '已检索',
+      selected: '已入选',
+      report: '研究报告',
+    });
+
+    expect(md).toContain('## 研究计划');
+    expect(md).toContain('## 检索问题');
+    expect(md).toContain('## 检索结果');
+    expect(md).toContain('- 已检索: 4');
+    expect(md).toContain('- 已入选: 2');
+    expect(md).toContain('## 研究报告');
   });
 });

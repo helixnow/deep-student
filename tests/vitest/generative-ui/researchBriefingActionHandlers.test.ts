@@ -56,6 +56,7 @@ describe('createResearchBriefingActionHandlers', () => {
   });
 
   it('export-intent calls buildIntentExportMarkdown and copies result', async () => {
+    const exportLabels = { flashcardFront: 'Front' };
     const handlers = createResearchBriefingActionHandlers(
       {
         getReportBody: () => '',
@@ -63,10 +64,11 @@ describe('createResearchBriefingActionHandlers', () => {
         getIntent: () => SAMPLE_INTENT,
       },
       { copyReport: 'Copy', exportPlan: 'Export', exportIntent: 'Export intent' },
+      exportLabels,
     );
 
     await handlers['export-intent'].handler({} as never);
-    expect(mockedExport).toHaveBeenCalledWith(SAMPLE_INTENT);
+    expect(mockedExport).toHaveBeenCalledWith(SAMPLE_INTENT, exportLabels);
     expect(mockedCopy).toHaveBeenCalledWith('# Intent export');
   });
 
@@ -83,7 +85,7 @@ describe('createResearchBriefingActionHandlers', () => {
     );
 
     await handlers['export-intent'].handler({} as never);
-    expect(mockedExport).toHaveBeenCalledWith(SAMPLE_INTENT);
+    expect(mockedExport).toHaveBeenCalledWith(SAMPLE_INTENT, undefined);
     expect(onExportIntent).toHaveBeenCalledWith('# Intent export');
     expect(mockedCopy).not.toHaveBeenCalled();
   });

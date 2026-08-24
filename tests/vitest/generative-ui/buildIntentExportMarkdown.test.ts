@@ -81,4 +81,44 @@ describe('buildIntentExportMarkdown', () => {
     expect(md).toContain('- 危险操作');
     expect(called).toBe(false);
   });
+
+  it('uses optional locale labels for generated markdown fields', () => {
+    const intent: GenerativeUIIntent = {
+      version: '1',
+      blocks: [
+        {
+          type: 'chart',
+          props: { kind: 'bar', categories: ['Mon'], series: [{ values: [1] }] },
+        },
+        {
+          type: 'flashcard-preview',
+          props: { deckName: 'Biology', front: 'Cell', back: '细胞', tags: ['exam'] },
+        },
+        {
+          type: 'mistake-analysis',
+          props: { errorRate: 25, mistakeCount: 2 },
+        },
+      ],
+    };
+
+    const md = buildIntentExportMarkdown(intent, {
+      chartKind: 'Chart type',
+      chartCategories: 'Categories',
+      chartSeriesFallback: 'Series',
+      flashcardDeck: 'Deck',
+      flashcardFront: 'Front',
+      flashcardBack: 'Back',
+      flashcardTags: 'Tags',
+      mistakeErrorRate: 'Error rate',
+      mistakeCount: 'Mistakes',
+    });
+
+    expect(md).toContain('- Chart type: bar');
+    expect(md).toContain('- Categories: Mon');
+    expect(md).toContain('- Series: 1');
+    expect(md).toContain('- Front: Cell');
+    expect(md).toContain('- Back: 细胞');
+    expect(md).toContain('Error rate: 25%');
+    expect(md).toContain('Mistakes: 2');
+  });
 });

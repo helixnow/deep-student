@@ -195,6 +195,10 @@ export {
   buildResearchExportMarkdownFromIntent,
 } from './utils/extractResearchContentFromIntent';
 export { buildResearchExportMarkdownFromSnapshot } from './utils/buildResearchExportMarkdown';
+export type {
+  BuildResearchExportMarkdownFromSnapshotInput,
+  ResearchExportMarkdownLabels,
+} from './utils/buildResearchExportMarkdown';
 export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
 export type { NoteEditPayload } from './utils/extractNoteEditPayload';
 export { schemaToPromptHint } from './utils/schemaToPromptHint';
@@ -249,6 +253,7 @@ export type {
   GenerativeBlockIdentity,
 } from './utils/diffGenerativeUIIntent';
 export { buildIntentExportMarkdown } from './utils/buildIntentExportMarkdown';
+export type { IntentExportMarkdownLabels } from './utils/buildIntentExportMarkdown';
 export {
   createCopyIntentActionHandlers,
   COPY_INTENT_ACTION_ID,

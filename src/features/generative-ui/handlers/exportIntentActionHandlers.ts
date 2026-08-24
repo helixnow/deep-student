@@ -4,7 +4,10 @@
  */
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
-import { buildIntentExportMarkdown } from '../utils/buildIntentExportMarkdown';
+import {
+  buildIntentExportMarkdown,
+  type IntentExportMarkdownLabels,
+} from '../utils/buildIntentExportMarkdown';
 
 export const EXPORT_INTENT_ACTION_ID = 'export-intent' as const;
 
@@ -15,6 +18,7 @@ export interface ExportIntentActionLabels {
 export function createExportIntentActionHandlers(
   intent: GenerativeUIIntent,
   labels: ExportIntentActionLabels,
+  markdownLabels?: Partial<IntentExportMarkdownLabels>,
 ): Record<string, GenerativeActionDefinition> {
   return {
     [EXPORT_INTENT_ACTION_ID]: {
@@ -22,7 +26,7 @@ export function createExportIntentActionHandlers(
       label: labels.exportMarkdown,
       riskLevel: 'low',
       handler: async () => {
-        const text = buildIntentExportMarkdown(intent);
+        const text = buildIntentExportMarkdown(intent, markdownLabels);
         if (!text) return;
         await copyTextToClipboard(text);
       },

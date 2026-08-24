@@ -3,7 +3,10 @@
  */
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
-import { buildIntentExportMarkdown } from '../utils/buildIntentExportMarkdown';
+import {
+  buildIntentExportMarkdown,
+  type IntentExportMarkdownLabels,
+} from '../utils/buildIntentExportMarkdown';
 
 export interface ResearchBriefingActionCallbacks {
   getReportBody: () => string;
@@ -21,6 +24,7 @@ export interface ResearchBriefingActionLabels {
 export function createResearchBriefingActionHandlers(
   callbacks: ResearchBriefingActionCallbacks,
   labels: ResearchBriefingActionLabels,
+  intentExportLabels?: Partial<IntentExportMarkdownLabels>,
 ): Record<string, GenerativeActionDefinition> {
   return {
     'copy-report': {
@@ -50,7 +54,7 @@ export function createResearchBriefingActionHandlers(
       handler: async () => {
         const intent = callbacks.getIntent?.();
         if (!intent) return;
-        const text = buildIntentExportMarkdown(intent).trim();
+        const text = buildIntentExportMarkdown(intent, intentExportLabels).trim();
         if (!text) return;
         if (callbacks.onExportIntent) {
           await callbacks.onExportIntent(text);

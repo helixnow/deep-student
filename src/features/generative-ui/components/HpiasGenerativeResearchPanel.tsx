@@ -7,6 +7,7 @@ import { useHpiasStore } from '@/stores/researchStore';
 import { GenerativeUIPanel } from './GenerativeUIPanel';
 import { buildHpiasResearchDashboardIntent } from '../utils/buildHpiasResearchDashboardIntent';
 import { buildResearchExportMarkdownFromSnapshot } from '../utils/buildResearchExportMarkdown';
+import { buildExportMarkdownI18nLabels } from '../utils/buildExportMarkdownI18nLabels';
 import { pickHpiasResearchSnapshot } from '../utils/mapHpiasStoreToResearchPlan';
 import { createResearchBriefingActionHandlers } from '../handlers/researchBriefingActionHandlers';
 import { createCopyIntentActionHandlers } from '../handlers/copyIntentActionHandlers';
@@ -26,6 +27,7 @@ export function HpiasGenerativeResearchPanel({
   emptyFallback = null,
 }: HpiasGenerativeResearchPanelProps) {
   const { t } = useTranslation('generativeUi');
+  const exportMarkdownLabels = useMemo(() => buildExportMarkdownI18nLabels(t), [t]);
   const sessionId = useHpiasStore((s) => s.sessionId);
   const round = useHpiasStore((s) => s.round);
   const plan = useHpiasStore((s) => s.plan);
@@ -118,14 +120,24 @@ export function HpiasGenerativeResearchPanel({
 
   const getExportMarkdown = useCallback(
     () =>
-      buildResearchExportMarkdownFromSnapshot({
-        snapshot,
-        question,
-        planTitle: dashboardLabels.planTitle,
-        roundLabel: dashboardLabels.roundLabel,
-        stepLabels,
-      }),
-    [dashboardLabels.planTitle, dashboardLabels.roundLabel, question, snapshot, stepLabels],
+      buildResearchExportMarkdownFromSnapshot(
+        {
+          snapshot,
+          question,
+          planTitle: dashboardLabels.planTitle,
+          roundLabel: dashboardLabels.roundLabel,
+          stepLabels,
+        },
+        exportMarkdownLabels.research,
+      ),
+    [
+      dashboardLabels.planTitle,
+      dashboardLabels.roundLabel,
+      exportMarkdownLabels.research,
+      question,
+      snapshot,
+      stepLabels,
+    ],
   );
 
   const getIntent = useCallback(() => intent, [intent]);
@@ -138,6 +150,7 @@ export function HpiasGenerativeResearchPanel({
         exportPlan: dashboardLabels.exportPlan,
         exportIntent: dashboardLabels.exportIntent,
       },
+      exportMarkdownLabels.intent,
     );
     if (!intent || !dashboardLabels.copyIntent) {
       return researchHandlers;
@@ -151,6 +164,7 @@ export function HpiasGenerativeResearchPanel({
     dashboardLabels.copyReport,
     dashboardLabels.exportIntent,
     dashboardLabels.exportPlan,
+    exportMarkdownLabels.intent,
     getExportMarkdown,
     getIntent,
     getReportBody,

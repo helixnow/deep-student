@@ -16,10 +16,30 @@ export interface BuildResearchExportMarkdownFromSnapshotInput {
   stepLabels: HpiasResearchPlanLabels;
 }
 
+export interface ResearchExportMarkdownLabels {
+  researchPlan: string;
+  queries: string;
+  retrieval: string;
+  retrieved: string;
+  selected: string;
+  report: string;
+}
+
+const DEFAULT_RESEARCH_EXPORT_MARKDOWN_LABELS: ResearchExportMarkdownLabels = {
+  researchPlan: 'Research Plan',
+  queries: 'Queries',
+  retrieval: 'Retrieval',
+  retrieved: 'Retrieved',
+  selected: 'Selected',
+  report: 'Report',
+};
+
 export function buildResearchExportMarkdownFromSnapshot(
   input: BuildResearchExportMarkdownFromSnapshotInput,
+  labels?: Partial<ResearchExportMarkdownLabels>,
 ): string {
   const { snapshot, question, planTitle, roundLabel, stepLabels } = input;
+  const resolvedLabels = { ...DEFAULT_RESEARCH_EXPORT_MARKDOWN_LABELS, ...labels };
   const lines: string[] = [];
 
   const title = question?.trim() || planTitle;
@@ -31,7 +51,7 @@ export function buildResearchExportMarkdownFromSnapshot(
 
   const steps = mapHpiasStoreToResearchPlanSteps(snapshot, stepLabels);
   if (steps.length > 0) {
-    lines.push('## Research Plan', '');
+    lines.push(`## ${resolvedLabels.researchPlan}`, '');
     for (const step of steps) {
       const mark =
         step.status === 'done' ? '[x]' : step.status === 'active' ? '[~]' : '[ ]';
@@ -42,7 +62,7 @@ export function buildResearchExportMarkdownFromSnapshot(
 
   const queries = extractPlanQueries(snapshot.plan);
   if (queries.length > 0) {
-    lines.push('## Queries', '');
+    lines.push(`## ${resolvedLabels.queries}`, '');
     for (const q of queries) {
       lines.push(`- ${q}`);
     }
@@ -50,18 +70,18 @@ export function buildResearchExportMarkdownFromSnapshot(
   }
 
   if (snapshot.retrievalCount != null || snapshot.selectedCount != null) {
-    lines.push('## Retrieval', '');
+    lines.push(`## ${resolvedLabels.retrieval}`, '');
     if (snapshot.retrievalCount != null) {
-      lines.push(`- Retrieved: ${snapshot.retrievalCount}`);
+      lines.push(`- ${resolvedLabels.retrieved}: ${snapshot.retrievalCount}`);
     }
     if (snapshot.selectedCount != null) {
-      lines.push(`- Selected: ${snapshot.selectedCount}`);
+      lines.push(`- ${resolvedLabels.selected}: ${snapshot.selectedCount}`);
     }
     lines.push('');
   }
 
   if (snapshot.synthesis?.trim()) {
-    lines.push('## Report', '', snapshot.synthesis.trim());
+    lines.push(`## ${resolvedLabels.report}`, '', snapshot.synthesis.trim());
   }
 
   return lines.join('\n').trim();

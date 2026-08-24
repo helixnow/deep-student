@@ -38,6 +38,8 @@ import {
   createCopyBlockActionHandlers,
   type CopyBlockActionLabels,
 } from '../handlers/copyBlockActionHandlers';
+import type { IntentExportMarkdownLabels } from '../utils/buildIntentExportMarkdown';
+import type { ResearchExportMarkdownLabels } from '../utils/buildResearchExportMarkdown';
 import {
   EXPORT_INTENT_ACTION_ID,
   createExportIntentActionHandlers,
@@ -70,6 +72,8 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   copyIntentLabels?: CopyIntentActionLabels;
   copyBlockLabels?: CopyBlockActionLabels;
   workbenchLabels?: WorkbenchLearningHandlerLabels;
+  intentExportLabels?: Partial<IntentExportMarkdownLabels>;
+  researchExportLabels?: Partial<ResearchExportMarkdownLabels>;
 }
 
 /**
@@ -130,6 +134,7 @@ export function resolveGenerativeUIChatActionHandlers(
             buildResearchExportMarkdownFromIntent(
               input.intent,
               input.intent.meta?.title,
+              input.researchExportLabels,
             ),
           getIntent: () => input.intent,
         },
@@ -138,6 +143,7 @@ export function resolveGenerativeUIChatActionHandlers(
           exportPlan: '导出计划',
           exportIntent: '导出全部意图',
         },
+        input.intentExportLabels,
       ),
     );
   }
@@ -170,9 +176,13 @@ export function resolveGenerativeUIChatActionHandlers(
   ) {
     Object.assign(
       handlers,
-      createExportIntentActionHandlers(input.intent, {
-        exportMarkdown: input.researchLabels?.exportIntent ?? '导出全部意图',
-      }),
+      createExportIntentActionHandlers(
+        input.intent,
+        {
+          exportMarkdown: input.researchLabels?.exportIntent ?? '导出全部意图',
+        },
+        input.intentExportLabels,
+      ),
     );
   }
 

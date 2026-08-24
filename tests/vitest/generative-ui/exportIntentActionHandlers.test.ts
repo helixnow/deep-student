@@ -45,12 +45,15 @@ describe('createExportIntentActionHandlers', () => {
   });
 
   it('copies intent markdown that includes known block titles', async () => {
+    const markdownLabels = { statFallbackTitle: 'Metric' };
     const handlers = createExportIntentActionHandlers(sampleIntent, {
       exportMarkdown: 'Export Markdown',
-    });
+    }, markdownLabels);
     await handlers[EXPORT_INTENT_ACTION_ID]!.handler({} as never);
     expect(mockedCopy).toHaveBeenCalledTimes(1);
-    expect(mockedCopy).toHaveBeenCalledWith(buildIntentExportMarkdown(sampleIntent));
+    expect(mockedCopy).toHaveBeenCalledWith(
+      buildIntentExportMarkdown(sampleIntent, markdownLabels),
+    );
     const payload = mockedCopy.mock.calls[0]?.[0] as string;
     expect(payload).toContain('Coverage score');
     expect(payload).toContain('Key takeaway');

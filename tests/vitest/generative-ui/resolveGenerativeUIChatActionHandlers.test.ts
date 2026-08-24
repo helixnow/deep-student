@@ -147,7 +147,10 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
       ],
     };
 
-    const handlers = resolveGenerativeUIChatActionHandlers({ intent });
+    const handlers = resolveGenerativeUIChatActionHandlers({
+      intent,
+      researchExportLabels: { report: 'Localized report' },
+    });
     expect(handlers['copy-report']).toBeDefined();
     expect(handlers['export-plan']).toBeDefined();
     expect(handlers['export-intent']).toBeDefined();
@@ -157,6 +160,7 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
     expect(mockedCopy).toHaveBeenCalled();
     const exported = mockedCopy.mock.calls[0]?.[0] as string;
     expect(exported).toContain('Summary [paper-1]');
+    expect(exported).toContain('## Localized report');
 
     mockedCopy.mockClear();
     await handlers['export-intent'].handler({} as never);

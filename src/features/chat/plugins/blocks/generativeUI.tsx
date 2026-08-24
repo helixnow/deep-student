@@ -22,6 +22,7 @@ import { resolveGenerativeUIChatActionHandlers } from '@/features/generative-ui/
 import { HpiasGenerativeResearchPanel } from '@/features/generative-ui/components/HpiasGenerativeResearchPanel';
 import { useHpiasEventBridge } from '@/features/generative-ui/hooks/useHpiasEventBridge';
 import { extractResearchSessionId } from '@/features/generative-ui/utils/extractResearchSessionId';
+import { buildExportMarkdownI18nLabels } from '@/features/generative-ui/utils/buildExportMarkdownI18nLabels';
 import { getCanvasNoteIdFromModeState } from '@/features/chat/adapters/tauri/requestHelpers';
 import { useHpiasStore } from '@/stores/researchStore';
 
@@ -33,6 +34,7 @@ function readIntentQuestion(intent: unknown): string | undefined {
 
 function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponentProps) {
   const { t } = useTranslation('generativeUi');
+  const exportMarkdownLabels = useMemo(() => buildExportMarkdownI18nLabels(t), [t]);
   const canvasNoteId = getCanvasNoteIdFromModeState(store?.getState().modeState ?? null);
 
   const extracted = extractGenerativeUIIntent(
@@ -119,8 +121,20 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
         exportPlan: t('research.actions.export_plan'),
         openTaskDashboard: t('workbench.dashboard.open_task_dashboard'),
       },
+      intentExportLabels: exportMarkdownLabels.intent,
+      researchExportLabels: exportMarkdownLabels.research,
     });
-  }, [block.id, block.toolInput, block.toolOutput, canvasNoteId, extracted, store, t]);
+  }, [
+    block.id,
+    block.toolInput,
+    block.toolOutput,
+    canvasNoteId,
+    exportMarkdownLabels.intent,
+    exportMarkdownLabels.research,
+    extracted,
+    store,
+    t,
+  ]);
 
   if (!extracted) {
     return (

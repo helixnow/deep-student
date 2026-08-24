@@ -3,6 +3,7 @@
  */
 
 import type { GenerativeUIIntent } from '../types';
+import type { ResearchExportMarkdownLabels } from './buildResearchExportMarkdown';
 
 export function extractResearchReportBody(intent: GenerativeUIIntent): string | null {
   for (const block of intent.blocks) {
@@ -33,6 +34,7 @@ function formatPlanStepsMarkdown(
 export function buildResearchExportMarkdownFromIntent(
   intent: GenerativeUIIntent,
   title?: string,
+  labels?: Partial<ResearchExportMarkdownLabels>,
 ): string {
   const lines: string[] = [];
   const heading = title?.trim() || intent.meta?.title?.trim();
@@ -48,7 +50,7 @@ export function buildResearchExportMarkdownFromIntent(
     };
     lines.push(
       ...formatPlanStepsMarkdown(
-        props.title?.trim() || 'Research Plan',
+        props.title?.trim() || labels?.researchPlan || 'Research Plan',
         props.steps ?? [],
       ),
     );
@@ -56,7 +58,7 @@ export function buildResearchExportMarkdownFromIntent(
 
   const reportBody = extractResearchReportBody(intent);
   if (reportBody) {
-    lines.push('## Report', '', reportBody);
+    lines.push(`## ${labels?.report || 'Report'}`, '', reportBody);
   }
 
   return lines.join('\n').trim();

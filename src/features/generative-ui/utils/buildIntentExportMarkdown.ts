@@ -7,6 +7,42 @@ import type { GenerativeBlockIntent, GenerativeUIIntent } from '../types';
 
 type Props = Record<string, unknown>;
 
+export interface IntentExportMarkdownLabels {
+  emptyTable: string;
+  chartKind: string;
+  chartUnit: string;
+  chartCategories: string;
+  chartSeriesFallback: string;
+  statFallbackTitle: string;
+  flashcardDeck: string;
+  flashcardFront: string;
+  flashcardBack: string;
+  flashcardTags: string;
+  reviewDayFallback: string;
+  reviewDue: string;
+  reviewDone: string;
+  mistakeErrorRate: string;
+  mistakeCount: string;
+}
+
+const DEFAULT_INTENT_EXPORT_MARKDOWN_LABELS: IntentExportMarkdownLabels = {
+  emptyTable: '(empty table)',
+  chartKind: 'kind',
+  chartUnit: 'unit',
+  chartCategories: '类别',
+  chartSeriesFallback: '系列',
+  statFallbackTitle: '指标',
+  flashcardDeck: 'deck',
+  flashcardFront: '正面',
+  flashcardBack: '背面',
+  flashcardTags: 'tags',
+  reviewDayFallback: 'day',
+  reviewDue: 'due',
+  reviewDone: 'done',
+  mistakeErrorRate: '错误率',
+  mistakeCount: '错题数',
+};
+
 function asRecord(value: unknown): Props {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Props) : {};
 }
@@ -47,7 +83,7 @@ function escapeTableCell(value: unknown): string {
   return stringifyScalar(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
-function formatTable(props: Props): string[] {
+function formatTable(props: Props, labels: IntentExportMarkdownLabels): string[] {
   const columns = Array.isArray(props.columns) ? props.columns : [];
   const rows = Array.isArray(props.rows) ? props.rows : [];
   const parsedColumns = columns
@@ -55,7 +91,7 @@ function formatTable(props: Props): string[] {
     .filter((col) => asTrimmedString(col.key) || asTrimmedString(col.label));
 
   if (parsedColumns.length === 0) {
-    return rows.length === 0 ? [] : ['(empty table)'];
+    return rows.length === 0 ? [] : [labels.emptyTable];
   }
 
   const headers = parsedColumns.map((col) =>
@@ -78,24 +114,24 @@ function formatTable(props: Props): string[] {
   return lines;
 }
 
-function formatChart(props: Props): string[] {
+function formatChart(props: Props, labels: IntentExportMarkdownLabels): string[] {
   const lines: string[] = [];
   const kind = asTrimmedString(props.kind);
   const unit = asTrimmedString(props.unit);
-  if (kind) lines.push(`- kind: ${kind}`);
-  if (unit) lines.push(`- unit: ${unit}`);
+  if (kind) lines.push(`- ${labels.chartKind}: ${kind}`);
+  if (unit) lines.push(`- ${labels.chartUnit}: ${unit}`);
 
   const categories = Array.isArray(props.categories)
     ? props.categories.filter((item): item is string => typeof item === 'string')
     : [];
   if (categories.length > 0) {
-    lines.push(`- 类别: ${categories.join(', ')}`);
+    lines.push(`- ${labels.chartCategories}: ${categories.join(', ')}`);
   }
 
   const series = Array.isArray(props.series) ? props.series : [];
   for (const raw of series) {
     const item = asRecord(raw);
-    const name = asTrimmedString(item.name) ?? '系列';
+    const name = asTrimmedString(item.name) ?? labels.chartSeriesFallback;
     const values = Array.isArray(item.values)
       ? item.values.map((v) => stringifyScalar(v)).filter((v) => v.length > 0)
       : [];
@@ -147,15 +183,17 @@ function formatKeyValueRows(rows: unknown): string[] {
   return lines;
 }
 
-function formatReviewDays(days: unknown): string[] {
+function formatReviewDays(days: unknown, labels: IntentExportMarkdownLabels): string[] {
   if (!Array.isArray(days)) return [];
   const lines: string[] = [];
   for (const raw of days) {
     const day = asRecord(raw);
-    const date = asTrimmedString(day.date) ?? asTrimmedString(day.label) ?? 'day';
+    const date = asTrimmedString(day.date) ?? asTrimmedString(day.label) ?? labels.reviewDayFallback;
     const due = stringifyScalar(day.dueCount);
     const completed = stringifyScalar(day.completedCount);
-    const suffix = completed ? ` due ${due}, done ${completed}` : `: ${due}`;
+    const suffix = completed
+      ? ` ${labels.reviewDue} ${due}, ${labels.reviewDone} ${completed}`
+      : `: ${due}`;
     lines.push(`- ${date}${suffix}`);
   }
   return lines;
@@ -179,8 +217,8 @@ function formatActions(actions: unknown): string[] {
   return lines;
 }
 
-function formatStatCard(props: Props): string[] {
-  const title = asTrimmedString(props.title) ?? '指标';
+function formatStatCard(props: Props, labels: IntentExportMarkdownLabels): string[] {
+  const title = asTrimmedString(props.title) ?? labels.statFallbackTitle;
   const value = stringifyScalar(props.value);
   const lines = [`${title}: ${value}`];
   const subtitle = asTrimmedString(props.subtitle);
@@ -193,10 +231,14 @@ function formatStatCard(props: Props): string[] {
   return lines;
 }
 
-function formatBlockBody(type: string, props: Props): string[] {
+function formatBlockBody(
+  type: string,
+  props: Props,
+  labels: IntentExportMarkdownLabels,
+): string[] {
   switch (type) {
     case 'stat-card':
-      return formatStatCard(props);
+      return formatStatCard(props, labels);
     case 'alert': {
       const description = asTrimmedString(props.description);
       return description ? [description] : [];
@@ -225,24 +267,24 @@ function formatBlockBody(type: string, props: Props): string[] {
       const front = asTrimmedString(props.front);
       const back = asTrimmedString(props.back);
       const deckName = asTrimmedString(props.deckName);
-      if (deckName) lines.push(`- deck: ${deckName}`);
-      if (front) lines.push(`- 正面: ${front}`);
-      if (back) lines.push(`- 背面: ${back}`);
+      if (deckName) lines.push(`- ${labels.flashcardDeck}: ${deckName}`);
+      if (front) lines.push(`- ${labels.flashcardFront}: ${front}`);
+      if (back) lines.push(`- ${labels.flashcardBack}: ${back}`);
       if (Array.isArray(props.tags)) {
         const tags = props.tags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
-        if (tags.length > 0) lines.push(`- tags: ${tags.join(', ')}`);
+        if (tags.length > 0) lines.push(`- ${labels.flashcardTags}: ${tags.join(', ')}`);
       }
       return lines;
     }
     case 'review-calendar':
-      return formatReviewDays(props.days);
+      return formatReviewDays(props.days, labels);
     case 'mistake-analysis': {
       const lines: string[] = [];
       if (typeof props.errorRate === 'number') {
-        lines.push(`错误率: ${props.errorRate}%`);
+        lines.push(`${labels.mistakeErrorRate}: ${props.errorRate}%`);
       }
       if (typeof props.mistakeCount === 'number') {
-        lines.push(`错题数: ${props.mistakeCount}`);
+        lines.push(`${labels.mistakeCount}: ${props.mistakeCount}`);
       }
       const suggestion = asTrimmedString(props.suggestion);
       if (suggestion) lines.push(suggestion);
@@ -271,9 +313,9 @@ function formatBlockBody(type: string, props: Props): string[] {
     case 'steps':
       return formatStepList(props.steps);
     case 'chart':
-      return formatChart(props);
+      return formatChart(props, labels);
     case 'table':
-      return formatTable(props);
+      return formatTable(props, labels);
     default: {
       const fallback = Object.entries(props)
         .filter(([key]) => key !== 'id')
@@ -289,14 +331,21 @@ function formatBlockBody(type: string, props: Props): string[] {
   }
 }
 
-function formatBlock(block: GenerativeBlockIntent): string[] {
+function formatBlock(
+  block: GenerativeBlockIntent,
+  labels: IntentExportMarkdownLabels,
+): string[] {
   const heading = `### ${blockHeading(block)}`;
-  const body = formatBlockBody(block.type, asRecord(block.props));
+  const body = formatBlockBody(block.type, asRecord(block.props), labels);
   return body.length > 0 ? [heading, '', ...body] : [heading];
 }
 
 /** 任意 intent → 可读 Markdown（无副作用） */
-export function buildIntentExportMarkdown(intent: GenerativeUIIntent): string {
+export function buildIntentExportMarkdown(
+  intent: GenerativeUIIntent,
+  labels?: Partial<IntentExportMarkdownLabels>,
+): string {
+  const resolvedLabels = { ...DEFAULT_INTENT_EXPORT_MARKDOWN_LABELS, ...labels };
   const lines: string[] = [];
   const title = intent.meta?.title?.trim();
   if (title) {
@@ -304,7 +353,7 @@ export function buildIntentExportMarkdown(intent: GenerativeUIIntent): string {
   }
 
   for (const block of intent.blocks ?? []) {
-    lines.push(...formatBlock(block), '');
+    lines.push(...formatBlock(block, resolvedLabels), '');
   }
 
   return lines.join('\n').replace(/\n+$/, '').trim();
