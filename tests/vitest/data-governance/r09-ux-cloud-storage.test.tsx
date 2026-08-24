@@ -468,6 +468,12 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(componentSource).not.toMatch(/importZip\(\s*downloadResult\.localPath\s*\)/);
     expect(componentSource).not.toMatch(/getCloudCredentials\(|secure_get_cloud_credentials/);
     expect(componentSource).toContain('onConfirm={handleRestore}');
+    expect(componentSource).toContain("t('cloudStorage:actions.downloadLatest')");
+    const latestStart = componentSource.indexOf('{syncStatus.latestVersion && (');
+    const latestSlice = componentSource.slice(latestStart, latestStart + 1800);
+    expect(latestSlice).toContain('openRestoreConfirm');
+    expect(latestSlice).not.toContain('performRestore(');
+    expect(latestSlice).toContain("recoveryKind === 'partial_archive'");
     // 恢复确认框用 warning 变体
     expect(componentSource).toMatch(
       /download\.confirmTitle'\)\}[\s\S]{0,400}confirmVariant="warning"/,

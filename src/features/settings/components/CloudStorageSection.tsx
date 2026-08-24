@@ -1631,11 +1631,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 </span>
               </div>
               {syncStatus.latestVersion && (
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
-                  <span className="ml-2 font-medium">
-                    {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
-                  </span>
+                <div className="col-span-2 space-y-2">
+                  <div>
+                    <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
+                    <span className="ml-2 font-medium">
+                      {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
+                      {syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? ` · ${t('cloudStorage:history.portableArchive')}`
+                        : syncStatus.latestVersion.recoveryKind === 'disaster_recovery'
+                          ? ` · ${t('cloudStorage:history.fullFidelity')}`
+                          : null}
+                    </span>
+                  </div>
+                  <DsButton
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      downloading
+                      || syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                    }
+                    title={
+                      syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? t('cloudStorage:history.portableArchiveNotRestorable')
+                        : t('cloudStorage:actions.downloadLatest')
+                    }
+                    onClick={() => openRestoreConfirm(syncStatus.latestVersion!.id)}
+                  >
+                    {t('cloudStorage:actions.downloadLatest')}
+                  </DsButton>
                 </div>
               )}
             </div>
