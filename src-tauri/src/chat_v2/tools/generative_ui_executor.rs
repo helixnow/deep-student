@@ -135,11 +135,14 @@ impl GenerativeUiExecutor {
             ));
         }
 
-        let mut sanitized = raw.clone();
-        if let Some(obj) = sanitized.as_object_mut() {
-            obj.remove("isRegex");
+        let mut sanitized = serde_json::Map::new();
+        sanitized.insert("operation".to_string(), Value::String(operation.to_string()));
+        for key in ["content", "search", "replace", "section"] {
+            if let Some(value) = raw.get(key).cloned() {
+                sanitized.insert(key.to_string(), value);
+            }
         }
-        Ok(Some(sanitized))
+        Ok(Some(Value::Object(sanitized)))
     }
 
     fn intent_has_apply_note_edit(intent: &Value) -> bool {
@@ -602,6 +605,26 @@ mod tests {
         });
         let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("size");
         assert!(error.contains("256"));
+    }
+
+    #[test]
+    fn parse_note_edit_strips_unknown_fields() {
+        let args = json!({
+            "noteEdit": {
+                "operation": "append",
+                "content": "## Summary",
+                "className": "x",
+                "isRegex": false
+            }
+        });
+        let note_edit = GenerativeUiExecutor::parse_note_edit(&args)
+            .expect("parse")
+            .expect("present");
+        let obj = note_edit.as_object().expect("object");
+        assert_eq!(obj.get("operation").and_then(Value::as_str), Some("append"));
+        assert_eq!(obj.get("content").and_then(Value::as_str), Some("## Summary"));
+        assert!(!obj.contains_key("className"));
+        assert!(!obj.contains_key("isRegex"));
     }
 
     #[test]

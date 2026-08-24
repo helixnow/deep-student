@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 54（2026-08-24）— Rust noteEdit 字段白名单
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] `parse_note_edit` 只保留 operation/content/search/replace/section
+2. [x] 合同测试锁定 strips_unknown_fields
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 53（2026-08-24）— Rust noteEdit 体积上限
 
 CI `32711020815` 仍 queued，**本轮不 push**。
