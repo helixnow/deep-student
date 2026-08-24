@@ -228,11 +228,17 @@ describe('SyncTab 自动同步开关', () => {
     expect(props.onRunSync).not.toHaveBeenCalled();
   });
 
-  it('locale 契约：zh/en 文案都写明默认关闭与不自动运行的前提', () => {
+  it('locale 契约：zh/en 文案写明默认关闭、启用行为与静默跳过前提', () => {
     expect(zhSync.autoSync.description).toContain('默认关闭');
-    expect(zhSync.autoSync.description).toContain('不会自动运行');
+    expect(zhSync.autoSync.description).toContain('开启后');
+    expect(zhSync.autoSync.description).toContain('云端未配置');
+    expect(zhSync.autoSync.description).toContain('缺少密码');
+    expect(zhSync.autoSync.description).toContain('静默跳过');
     expect(enSync.autoSync.description).toMatch(/off by default/i);
-    expect(enSync.autoSync.description).toMatch(/never runs/i);
+    expect(enSync.autoSync.description).toMatch(/when enabled/i);
+    expect(enSync.autoSync.description).toMatch(/cloud is not configured/i);
+    expect(enSync.autoSync.description).toMatch(/password is missing/i);
+    expect(enSync.autoSync.description).toMatch(/silently skipped/i);
   });
 });
 
