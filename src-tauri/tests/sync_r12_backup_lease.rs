@@ -1,7 +1,8 @@
 //! [R12-delta-lease] backup-v2 / GC 独立仓库租约集成测试（内存假存储）。
 //!
-//! 注意：本轮**只**落地租约互斥原语本身；增量备份（backup-v2 上传/恢复/GC）
-//! 尚未实现，backup_lease 不允许有任何生产接线（见源码锁测试）。
+//! 注意：本轮**只**落地租约互斥原语本身；增量备份尚未接线到命令/UI。
+//! `delta_upload` 积木可持有 backup-v2 租约；`sync_manager` / 记录级入口
+//! 仍不得引用本模块（见源码锁测试）。
 //!
 //! 覆盖：
 //! 1. 两设备同时看到空目录并写 contender 时仍只有一个赢家；
@@ -9,8 +10,9 @@
 //! 3. 过期 committed 陈旧锁可回收；
 //! 4. 崩溃留下的 pending 残锁在 TTL 内 fail-closed、过期后自动恢复；
 //! 5. LIST 截断时无法证明唯一性，必须 fail-closed（零持锁、零写入）；
-//! 6. 源码锁：记录级同步入口仍只用 sync_lease / `E_SYNC_LEASE_HELD`，
-//!    backup_lease 在生产代码中零接线，namespace 与 sync-target 完全隔离。
+//! 6. 源码锁：记录级同步入口仍只用 sync_lease / `E_SYNC_LEASE_HELD`；
+//!    除未接线的 `delta_upload` 外 backup_lease 零生产接线，namespace
+//!    与 sync-target 完全隔离。
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
