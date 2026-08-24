@@ -5,6 +5,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { usePdfSettingsStore, type PdfFitMode } from '../stores/pdfSettingsStore';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import {
   canNavigateNext,
   canNavigatePrev,
@@ -302,6 +303,22 @@ const MemoPage = React.memo(Page);
 function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
   const ref = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState<SelectionMenuFrame | null>(null);
+  const updateFrame = useCallback(() => {
+    const el = ref.current;
+    if (!anchor || !el) return;
+    const rect = el.getBoundingClientRect();
+    setFrame(
+      resolveSelectionMenuFrame(
+        anchor,
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight }
+      )
+    );
+  }, [anchor]);
+  useEventRegistry(
+    anchor ? [{ target: 'window', type: 'resize', listener: updateFrame }] : [],
+    [anchor, updateFrame],
+  );
   useLayoutEffect(() => {
     if (!anchor) {
       setFrame(null);
@@ -309,26 +326,14 @@ function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
     }
     const el = ref.current;
     if (!el) return;
-    const updateFrame = () => {
-      const rect = el.getBoundingClientRect();
-      setFrame(
-        resolveSelectionMenuFrame(
-          anchor,
-          { width: rect.width, height: rect.height },
-          { width: window.innerWidth, height: window.innerHeight }
-        )
-      );
-    };
     updateFrame();
-    window.addEventListener('resize', updateFrame);
     const resizeObserver =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateFrame);
     resizeObserver?.observe(el);
     return () => {
-      window.removeEventListener('resize', updateFrame);
       resizeObserver?.disconnect();
     };
-  }, [anchor]);
+  }, [anchor, updateFrame]);
   return { ref, frame };
 }
 
