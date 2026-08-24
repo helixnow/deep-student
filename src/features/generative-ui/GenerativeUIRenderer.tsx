@@ -7,6 +7,7 @@ import {
   parseGenerativeUIIntent,
   parseGenerativeUIIntentRecovered,
   validateBlockProps,
+  isGenerativeUIParseFailure,
   isBlockPropsValidationFailure,
   resolveGenerativeLayout,
   layoutGridClassName,
@@ -150,7 +151,7 @@ function resolveDisplayIntent(
   return {
     intent: null,
     warnings: mergeWarnings(extra),
-    parseError: parsed.errors,
+    parseError: isGenerativeUIParseFailure(parsed) ? parsed.errors : [],
     truncatedCount: explicitCount,
     streamFallback: false,
   };

@@ -2,18 +2,20 @@
 
 ## Round 44（2026-08-24）— 10 子代理：SOTA 体验加固
 
-在 Round 43 之上并行 10 项（文档先行，运行时未改；合入 main 仍 ⏳，**不标 Goal complete**）：
+在 Round 43 之上并行 10 项（**本地完成，未 push**，保护 CI `32701178039`）：
 
-1. [ ] 禁裸 px 合同 — 宪法 §3 字号禁裸 px
-2. [ ] overflow UX — 块数上限 / `MAX_GENERATIVE_UI_BLOCKS` 溢出降级
-3. [ ] intent fingerprint — 意图指纹公开契约
-4. [ ] 文本字段消毒 — 非 markdown 文本 props XSS/注入消毒
-5. [ ] 明暗主题合同 — token 单一来源 / 9 palette × 明暗
-6. [ ] focus-visible — 交互块键盘焦点环
-7. [ ] intent diff — 意图差分 / 变更摘要
-8. [ ] 新块流式 parser — markdown/chart/steps/table 增量提交
-9. [ ] recipe i18n — Style Lab `intentRecipes` 词条对齐
-10. [x] SOTA 文档对齐（PROGRESS 本小节 + CHECKLIST 对应行；不标 Goal complete）
+1. [x] 禁裸 px 合同 — `fontSizeToken.contract.test.ts`（引用徽标改 `text-xs`）
+2. [x] overflow UX — `data-blocks-truncated` + i18n
+3. [x] intent fingerprint — 稳定 16 hex + 可选 telemetry
+4. [x] 文本字段消毒 — `sanitizeGenerativeText` 进 `validateBlockProps`
+5. [x] 明暗主题合同 — `themeToken.contract.test.ts`
+6. [x] focus-visible — `--ring` 语义环
+7. [x] intent diff — `diffGenerativeUIIntent`
+8. [x] 新块流式 parser — markdown/chart/steps/table last-good
+9. [x] recipe i18n — Style Lab `demo.recipes.*`
+10. [x] SOTA 文档对齐（不标 Goal complete）
+
+- [x] generative-ui vitest **606** 全绿
 
 - [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
 
