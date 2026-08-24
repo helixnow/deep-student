@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 53（2026-08-24）— Rust noteEdit 体积上限
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] Rust `parse_note_edit` 对齐前端 256KiB 总量 + section 1024
+2. [x] 合同测试锁定 `MAX_NOTE_EDIT_INPUT_BYTES`
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 52（2026-08-24）— 笔记 HITL 去掉 regex 透传
 
 CI `32711020815` 仍 queued，**本轮不 push**。
