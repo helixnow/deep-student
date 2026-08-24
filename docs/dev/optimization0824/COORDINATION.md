@@ -3,7 +3,8 @@
 > 分支：`cursor/optimization0824-5575`  
 > 启动：2026-08-24  
 > 目标：多轮持久优化 deep-student 至 SOTA 级别  
-> 约定：≥20 轮 × 10 子代理/轮，模型 `claude-fable-5-thinking-xhigh`（修复/落地），父代理只做 ≤10 行文档/配置措辞直改
+> 约定：≥20 轮 × 10 子代理/轮，模型 `claude-fable-5-thinking-xhigh`（修复/落地），父代理只做 ≤10 行文档/配置措辞直改  
+> **任务粒度（2026-08-24 补充）**：每个子代理必须被分配**足够大的可落地工作包**（多文件实现 + 测试 + 报告），禁止只给单点小改。一轮 10 个子代理结束后必须出现**巨大且可靠**的进展。
 
 ## 模型分工（§11.2）
 
@@ -55,7 +56,28 @@
 - wallpapers -72%；NOTICES -51%；pdfjs cmaps -544KB；DnD 全量迁移；mobile-slim compile 通过
 - rolldown-vite @ vite6 失败（文档化），待 vite7
 
-## R3 子代理分配（进行中）
+## R3 成果摘要（2026-08-24）
+
+- 移除 hello-pangea/dnd；Android mobile-slim CI + opt-level=z；plugin-react-swc（build -20%）
+- tsgo spike：7.8× 提速，待 R4 落地；schema batch2 -11.4%；bundle 基线收紧
+- WI-12 spec+stub；WI-11 四阶段计划；frontend CI 并行；actionlint 复审无新增告警
+
+## R4 子代理分配（大工作包，进行中）
+
+| # | 工作包 | 子代理 |
+| --- | --- | --- |
+| 1 | tsgo 全量落地：tsconfig + Blob 修复 + CI 双跑 | SA-R4-01 |
+| 2 | WI-12 JSONL 导出完整实现 + 测试 + Tauri command | SA-R4-02 |
+| 3 | WI-11 Phase1 全部 11-1a~1d（quirks + 快照） | SA-R4-03 |
+| 4 | 前端未用依赖清扫 + licenses + 低频库评估落地 | SA-R4-04 |
+| 5 | WI-10 剩余全部 skill 组精简 + 首轮 token CI 报告 | SA-R4-05 |
+| 6 | WI-13：tool_loop 横切抽 PipelineHook（审批+审计） | SA-R4-06 |
+| 7 | CI 剩余：linux apt、36 条 actionlint、注释与门禁 | SA-R4-07 |
+| 8 | WI-9：pdfjs 运行时下载 + legal 去重 + 静态资产 | SA-R4-08 |
+| 9 | Rust 编译卫生：大文件拆分非 pipeline 热点 + 测试 | SA-R4-09 |
+| 10 | 复审 R1–R3 遗漏并落地修复（质量债清扫） | SA-R4-10 |
+
+## R3 子代理分配（已完成）
 
 | # | WI | 任务 | 子代理 |
 | --- | --- | --- | --- |
