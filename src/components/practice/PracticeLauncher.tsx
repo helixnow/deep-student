@@ -477,6 +477,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setIsTagPickerOpen(false)}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
@@ -517,6 +518,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setActiveAdvanced(null)}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
