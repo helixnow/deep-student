@@ -1624,7 +1624,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       variant="default"
                       size="sm"
                       onClick={() => updateDraft({ env: { ...draft.env, '': '' } })}
-                      className="min-h-11 sm:min-h-0"
+                      className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                     >
                       <Plus className="h-4 w-4 mr-1" />
                       {t('settings:mcp_descriptions.add_env')}
