@@ -233,6 +233,13 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     );
     expect(uploadBlock).toContain('exitMaintenanceMode');
     expect(uploadBlock).toContain('progress.maintenanceBackup');
+    expect(uploadBlock).toContain('isImportedArchiveSlotRestorable');
+    expect(uploadBlock).toContain('portableArchiveUploaded');
+    expect(zhLocale.upload.portableArchiveUploaded).toContain('便携归档');
+    expect(zhLocale.upload.portableArchiveUploaded).toContain('整槽恢复');
+    expect(enLocale.upload.portableArchiveUploaded).toMatch(/portable archive/i);
+    expect(enLocale.upload.portableArchiveUploaded).toMatch(/slot restore/i);
+    expect(Object.keys(zhLocale.upload).sort()).toEqual(Object.keys(enLocale.upload).sort());
 
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);

@@ -935,6 +935,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setUploading(true);
     enterMaintenanceMode(t('cloudStorage:progress.maintenanceBackup'));
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+    let uploadedArchiveSlotRestorable = true;
     try {
       // 阶段 1/4：创建备份
       let backupId: string;
@@ -969,6 +970,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
+        uploadedArchiveSlotRestorable = cloudApi.isImportedArchiveSlotRestorable(
+          zipExportSummary.result?.stats,
+        );
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.packageZipFailed', { error: localizeCloudError(e) }));
       }
@@ -989,6 +993,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
       setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:upload.successDetail', { version: result.version.id }));
+      if (!uploadedArchiveSlotRestorable) {
+        showGlobalNotification('warning', t('cloudStorage:upload.portableArchiveUploaded'));
+      }
       if (result.prunedVersions.length > 0) {
         showGlobalNotification('info', t('cloudStorage:upload.pruned', { count: result.prunedVersions.length }));
       }

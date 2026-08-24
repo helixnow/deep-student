@@ -166,6 +166,7 @@
     "confirm": "Start Backup",
     "success": "Backup Successful",
     "successDetail": "Version {{version}} has been uploaded to cloud",
+    "portableArchiveUploaded": "This upload is a portable archive. A slot restore on another device will be refused. To get a cloud package that can replace the data slot, configure the same cloud end-to-end encryption password on both devices and run Backup to Cloud Now again.",
     "pruned": "Automatically cleaned up {{count}} old version(s)"
   },
   
