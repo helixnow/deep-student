@@ -1439,8 +1439,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               placeholder={t('skills:selector.searchPlaceholder')}
               className={cn(
                 'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                // 移动端加高到触控目标标准，桌面保持紧凑
-                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
+                // 移动端加高到触控目标标准，桌面保持紧凑；粗指针设备（如 iPad 横屏）同样加高
+                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs [@media(pointer:coarse)]:h-11',
               )}
 />
           </div>
