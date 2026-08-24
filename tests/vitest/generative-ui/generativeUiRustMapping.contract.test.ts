@@ -163,6 +163,37 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('parse_intent_rejects_oversized_payload');
   });
 
+  it('Rust executor allowlists the 18 registered generative-ui block types', () => {
+    expect(executorSrc).toContain('ALLOWED_GENERATIVE_UI_BLOCK_TYPES');
+    expect(executorSrc).toContain('fn validate_block_types');
+    expect(executorSrc).toContain('parse_intent_rejects_unknown_block_type');
+    expect(executorSrc).toContain('parse_intent_rejects_missing_block_type');
+    expect(executorSrc).toContain('parse_intent_rejects_non_object_block');
+    expect(executorSrc).toContain('parse_intent_accepts_all_registered_block_types');
+    for (const type of [
+      'stat-card',
+      'alert',
+      'list',
+      'progress',
+      'action-bar',
+      'text',
+      'key-value-grid',
+      'flashcard-preview',
+      'review-calendar',
+      'mistake-analysis',
+      'mindmap-embed',
+      'paper-digest',
+      'research-plan',
+      'research-report',
+      'markdown',
+      'chart',
+      'steps',
+      'table',
+    ]) {
+      expect(executorSrc, `Rust allowlist missing ${type}`).toContain(`"${type}"`);
+    }
+  });
+
   it('documents that TS allows empty blocks while Rust ingress rejects them', () => {
     const schemaSrc = fs.readFileSync(
       path.join(process.cwd(), 'src/features/generative-ui/schema.ts'),

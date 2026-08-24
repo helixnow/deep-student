@@ -19,6 +19,27 @@ use crate::hpias::{
 const TOOL_NAME: &str = "render_generative_ui";
 const MAX_GENERATIVE_UI_BLOCKS: usize = 32;
 const MAX_GENERATIVE_UI_INTENT_CHARS: usize = 256_000;
+/// 与前端 `EXPECTED_BLOCK_TYPES` / `ALL_BLOCK_TYPES` 对齐的 18 种内置块。
+const ALLOWED_GENERATIVE_UI_BLOCK_TYPES: &[&str] = &[
+    "stat-card",
+    "alert",
+    "list",
+    "progress",
+    "action-bar",
+    "text",
+    "key-value-grid",
+    "flashcard-preview",
+    "review-calendar",
+    "mistake-analysis",
+    "mindmap-embed",
+    "paper-digest",
+    "research-plan",
+    "research-report",
+    "markdown",
+    "chart",
+    "steps",
+    "table",
+];
 
 pub struct GenerativeUiExecutor;
 
@@ -76,7 +97,25 @@ impl GenerativeUiExecutor {
             ));
         }
 
+        Self::validate_block_types(blocks)?;
+
         Ok(intent)
+    }
+
+    /// 每块必须是对象，且 `type` 落在 18 种内置白名单。未知类型在入口拒绝。
+    fn validate_block_types(blocks: &[Value]) -> Result<(), String> {
+        for (index, block) in blocks.iter().enumerate() {
+            let Some(obj) = block.as_object() else {
+                return Err(format!("intent.blocks[{index}] 必须是对象"));
+            };
+            let Some(block_type) = obj.get("type").and_then(Value::as_str) else {
+                return Err(format!("intent.blocks[{index}].type 必须是字符串"));
+            };
+            if !ALLOWED_GENERATIVE_UI_BLOCK_TYPES.contains(&block_type) {
+                return Err(format!("intent.blocks[{index}].type 不支持: {block_type}"));
+            }
+        }
+        Ok(())
     }
 
     /// Intent version 字面量：缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值。
@@ -586,6 +625,65 @@ mod tests {
         let args = json!({ "other": true });
         let err = GenerativeUiExecutor::parse_intent(&args).expect_err("missing intent");
         assert!(err.contains("intent"));
+    }
+
+    #[test]
+    fn parse_intent_rejects_unknown_block_type() {
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": [{ "type": "unknown-widget", "props": {} }]
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("unknown type");
+        assert!(err.contains("unknown-widget"));
+        assert!(err.contains("type"));
+    }
+
+    #[test]
+    fn parse_intent_rejects_missing_block_type() {
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": [{ "props": { "text": "hi" } }]
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("missing type");
+        assert!(err.contains("type"));
+    }
+
+    #[test]
+    fn parse_intent_rejects_non_object_block() {
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": ["text"]
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("non-object block");
+        assert!(err.contains("对象"));
+    }
+
+    #[test]
+    fn parse_intent_accepts_all_registered_block_types() {
+        let blocks: Vec<Value> = ALLOWED_GENERATIVE_UI_BLOCK_TYPES
+            .iter()
+            .map(|block_type| json!({ "type": block_type, "props": {} }))
+            .collect();
+        let args = json!({
+            "intent": {
+                "version": "1",
+                "blocks": blocks
+            }
+        });
+        let intent = GenerativeUiExecutor::parse_intent(&args).expect("all 18 types");
+        assert_eq!(
+            intent
+                .get("blocks")
+                .and_then(Value::as_array)
+                .map(|a| a.len()),
+            Some(18)
+        );
     }
 
     #[test]
