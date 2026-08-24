@@ -8,7 +8,8 @@
  *   （`decode_payload` 的“缺少 DSBK 加密头”、文件级对象的“缺少 cipher_sha256”）；
  * - `wrongPassword`：加密密码与云端既有数据不一致
  *   （标记校验子不一致、DSBK AEAD 解密失败）；
- * - `markerCorrupted`：云端 `.encryption-marker` 损坏/异常导致 fail-closed。
+ * - `markerCorrupted`：云端 `.encryption-marker` 损坏/异常导致 fail-closed；
+ * - `passwordRequired`：云端已加密，但本机未提供 / 未配置解密密码。
  *
  * 匹配片段与 src-tauri 侧错误文案的对应关系由
  * `tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 用后端原文钉死。
@@ -17,19 +18,22 @@
 export type SyncE2eeErrorKind =
   | 'plaintextLegacyRejected'
   | 'wrongPassword'
-  | 'markerCorrupted';
+  | 'markerCorrupted'
+  | 'passwordRequired';
 
 /** 与 `src-tauri/src/cloud_storage/mod.rs` 同名常量对齐。 */
 export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE =
   'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
 export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
+export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
 
-/** 三类错误对应的 i18n key（zh/en 均在 cloudStorage.json 的 errors 下）。 */
+/** 四类错误对应的 i18n key（zh/en 均在 cloudStorage.json 的 errors 下）。 */
 export const SYNC_E2EE_ERROR_I18N_KEYS = {
   plaintextLegacyRejected: 'cloudStorage:errors.e2eePlaintextLegacyRejected',
   wrongPassword: 'cloudStorage:errors.e2eeWrongPassword',
   markerCorrupted: 'cloudStorage:errors.e2eeMarkerCorrupted',
+  passwordRequired: 'cloudStorage:errors.e2eePasswordRequired',
 } as const;
 
 const CODE_KINDS: readonly { code: string; kind: SyncE2eeErrorKind }[] = [
@@ -40,6 +44,7 @@ const CODE_KINDS: readonly { code: string; kind: SyncE2eeErrorKind }[] = [
     code: SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
     kind: 'plaintextLegacyRejected',
   },
+  { code: SYNC_E2EE_PASSWORD_REQUIRED_CODE, kind: 'passwordRequired' },
 ];
 
 interface SyncE2eeErrorMatcher {
@@ -87,6 +92,17 @@ const MATCHERS: readonly SyncE2eeErrorMatcher[] = [
       /已拒绝未加密上传/,
       // sync_manager.rs 本机「曾加密」记忆：标记已缺失仍拒明文上传
       /本机记录显示该云端目录曾启用/,
+      // sync/mod.rs：有加密标记却未配置密码，拒文件级明文上传
+      /已拒绝文件级明文上传/,
+    ],
+  },
+  {
+    kind: 'passwordRequired',
+    patterns: [
+      // decode_payload / download_file_object / autosync 半配置
+      /未配置加密密码/,
+      // cloud_sync_download：整包已加密但本机没给密码
+      /未提供解密密码/,
     ],
   },
 ];
@@ -102,7 +118,7 @@ export function classifySyncE2eeErrorCode(
 }
 
 /**
- * 把后端错误原文归类为三类 E2EE 失败之一；无法归类返回 null（调用方回退原文）。
+ * 把后端错误原文归类为四类 E2EE 失败之一；无法归类返回 null（调用方回退原文）。
  * 稳定 code 优先；旧中文诊断走正则兜底。
  */
 export function classifySyncE2eeError(raw: string): SyncE2eeErrorKind | null {

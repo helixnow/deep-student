@@ -883,11 +883,11 @@ impl SyncManager {
                         format!("解密 sync payload 失败（密码错误或数据损坏）: {}", e),
                     ))
                 }),
-                None => Err(SyncError::Database(
+                None => Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                    crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE,
                     "检测到加密的 sync payload 但本端未配置加密密码。\
-                     请在云同步设置里填入正确的密码后重试。"
-                        .to_string(),
-                )),
+                     请在云同步设置里填入正确的密码后重试。",
+                ))),
             }
         } else if self.encryption_enabled() {
             Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
@@ -944,13 +944,13 @@ impl SyncManager {
                 ))
             })?;
         if marker.is_some() {
-            return Err(SyncError::Database(
+            return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "云端根目录已存在端到端加密标记（.encryption-marker），但本机未配置加密密码。\
                  为避免明文文件与加密数据混布，已拒绝文件级明文上传。\
                  请在云同步设置里填入该根目录既有的加密密码后重试，\
-                 或改用一个全新的云端根目录。"
-                    .to_string(),
-            ));
+                 或改用一个全新的云端根目录。",
+            )));
         }
         Ok(())
     }
@@ -9464,9 +9464,12 @@ impl SyncManager {
         };
 
         let Some(cipher) = self.file_cipher()? else {
-            return Err(SyncError::Database(format!(
-                "{label} 的云端对象已端到端加密（存在 cipher_sha256），但本端未配置加密密码，\
-                 无法解密。请在云同步设置中填入正确的加密密码后重试。"
+            return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+                format!(
+                    "{label} 的云端对象已端到端加密（存在 cipher_sha256），但本端未配置加密密码，\
+                     无法解密。请在云同步设置中填入正确的加密密码后重试。"
+                ),
             )));
         };
         let parent = dest
@@ -12013,6 +12016,10 @@ mod tests {
             .decode_payload(&encoded)
             .expect_err("未配置密码的设备必须拒绝 DSBK payload")
             .to_string();
+        assert!(
+            message.contains(crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE),
+            "缺密码必须带稳定 code: {message}"
+        );
         assert!(message.contains("未配置加密密码"), "{message}");
     }
 

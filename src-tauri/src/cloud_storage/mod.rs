@@ -60,6 +60,8 @@ pub const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE: &str = "E_SYNC_E2EE_PLAINTEX
 pub const SYNC_E2EE_WRONG_PASSWORD_CODE: &str = "E_SYNC_E2EE_WRONG_PASSWORD";
 /// `.encryption-marker` 损坏、缺校验子或无法校验。
 pub const SYNC_E2EE_MARKER_CORRUPTED_CODE: &str = "E_SYNC_E2EE_MARKER_CORRUPTED";
+/// 云端已加密，但本机未提供 / 未配置解密密码。
+pub const SYNC_E2EE_PASSWORD_REQUIRED_CODE: &str = "E_SYNC_E2EE_PASSWORD_REQUIRED";
 
 /// 给 E2EE fail-closed 诊断加上稳定 code，文案仍可改语言。
 pub fn sync_e2ee_error(code: &'static str, message: impl std::fmt::Display) -> String {
@@ -516,10 +518,10 @@ pub async fn cloud_sync_download(
             .as_deref()
             .filter(|s| !s.is_empty());
         let pwd = pwd.ok_or_else(|| {
-            AppError::configuration(
-                "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。"
-                    .to_string(),
-            )
+            AppError::configuration(sync_e2ee_error(
+                SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+                "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。",
+            ))
         })?;
         tracing::info!("[CloudSync] 检测到加密备份，开始流式解密...");
         // [F14] 流式分块解密到同目录临时文件再原子改名，内存占用恒定，避免多 GB
