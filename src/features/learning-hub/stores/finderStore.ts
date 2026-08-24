@@ -426,18 +426,60 @@ export const useFinderStore = create<FinderState>()(
       },
       
       enterFolder: async (folderId: string, folderName?: string, folderPath?: string) => {
-        // ★ 2025-12-27 修复：从后端获取真实的面包屑 ID 链
-        const newBreadcrumbs = await fetchBreadcrumbs(folderId);
-
+        // ★ 先乐观导航再回填面包屑：
+        // 旧实现先 await fetchBreadcrumbs 再 navigateTo，慢网络下点击文件夹
+        // 会卡在旧目录数百毫秒，且迟到的导航还可能把过期路径压进历史栈。
+        // 现在进入立即生效（乐观面包屑 = 当前面包屑 + 该文件夹），
+        // 后端真实 ID 链到达后原地回填；期间用户再次导航则丢弃回填。
         const { currentPath } = get();
+        const parentCrumbs = currentPath.viewKind === 'folder' ? currentPath.breadcrumbs : [];
+        const optimisticName = folderName || folderId;
+        const optimisticCrumbs: BreadcrumbItem[] = isSpecialViewFolderId(folderId)
+          ? []
+          : [
+              ...parentCrumbs,
+              {
+                id: folderId,
+                name: optimisticName,
+                dstuPath:
+                  folderPath ||
+                  `${parentCrumbs[parentCrumbs.length - 1]?.dstuPath ?? ''}/${optimisticName}`,
+              },
+            ];
+
         const newPath: FinderPath = createFinderPath({
           ...currentPath,
           viewKind: 'folder',
-          breadcrumbs: newBreadcrumbs,
+          breadcrumbs: optimisticCrumbs,
           folderId,
           typeFilter: null,
         });
         get().navigateTo(newPath);
+
+        // navigateTo 已递增 _currentRequestId，以此作为本次导航的请求票据
+        const requestId = get()._currentRequestId;
+
+        const realBreadcrumbs = await fetchBreadcrumbs(folderId);
+
+        // 过期判定：票据未变 → 期间无任何新导航/加载，直接回填；
+        // 票据已变时（同文件夹的 loadItems / 刷新也会递增 ID），退化为
+        // 路径判定 —— 仅当用户已离开该文件夹才丢弃回填。
+        const { currentPath: pathNow, _currentRequestId: latestRequestId } = get();
+        const isStale =
+          latestRequestId !== requestId &&
+          (pathNow.viewKind !== 'folder' || pathNow.folderId !== folderId);
+        if (isStale) return;
+        // 后端失败（fetchBreadcrumbs 返回空）时保留乐观面包屑，避免标题闪回根目录
+        if (realBreadcrumbs.length === 0) return;
+
+        set((state) => {
+          const updatedPath: FinderPath = { ...state.currentPath, breadcrumbs: realBreadcrumbs };
+          const history = [...state.history];
+          if (history[state.historyIndex]) {
+            history[state.historyIndex] = updatedPath;
+          }
+          return { currentPath: updatedPath, history };
+        });
       },
       
       goUp: () => {

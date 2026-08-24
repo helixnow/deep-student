@@ -339,6 +339,8 @@ interface FinderFileListProps {
   onNavigateUp?: () => void;
   /** ★ 多选模式（触屏单击只切换选中，不打开） */
   multiSelectMode?: boolean;
+  /** ★ 多选 + Enter：打开全部选中项（对标访达；由宿主决定文件夹如何处理） */
+  onOpenMany?: (items: DstuNode[]) => void;
 }
 
 export function FinderFileList({
@@ -373,6 +375,7 @@ export function FinderFileList({
   onSpecialDrop,
   onNavigateUp,
   multiSelectMode = false,
+  onOpenMany,
 }: FinderFileListProps) {
   // columns（Finder 分栏视图）的专属 UI 尚未落地：在本组件内统一回退为 grid 渲染，
   // 保证持久化的 viewMode='columns' 不会落入既非 list 也非 grid 的悬空分支
@@ -974,7 +977,14 @@ export function FinderFileList({
         moveFocus(-getPageDelta());
         break;
       case 'Enter': {
-        if (anchorIndex >= 0 && selectedIds.size === 1) {
+        if (selectedIds.size > 1 && onOpenMany) {
+          // ★ 多选 Enter：打开全部选中项（访达语义）
+          const selectedItems = items.filter(item => selectedIds.has(item.id));
+          if (selectedItems.length > 0) {
+            e.preventDefault();
+            onOpenMany(selectedItems);
+          }
+        } else if (anchorIndex >= 0 && selectedIds.size === 1) {
           e.preventDefault();
           onOpen(items[anchorIndex]);
         }
@@ -1027,7 +1037,7 @@ export function FinderFileList({
         break;
       }
     }
-  }, [editingId, items, selectedIds, viewMode, gridColumns, listItemHeight, onSelect, onSelectionChange, onOpen, onRequestRename, onNavigateUp, scrollItemIntoView]);
+  }, [editingId, items, selectedIds, viewMode, gridColumns, listItemHeight, onSelect, onSelectionChange, onOpen, onOpenMany, onRequestRename, onNavigateUp, scrollItemIntoView]);
 
   // Finder-style loading state
   if (isLoading) {
