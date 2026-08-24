@@ -123,7 +123,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       <TrendUp size={28} className="mb-3 opacity-40" />
       <p className="text-sm">{t('trendChart.noRecord')}</p>
       {onRefresh && (
-        <DsButton variant="ghost" size="sm" className="mt-3" onClick={onRefresh}>
+        <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:min-h-11" onClick={onRefresh}>
           <ArrowsClockwise size={14} />
           {t('trendChart.refreshData')}
         </DsButton>
