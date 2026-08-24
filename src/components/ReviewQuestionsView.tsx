@@ -676,6 +676,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <SegmentedControl<ReviewSortBy>
           ariaLabel={t('review:questions.sortLabel')}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           value={sortBy}
           onValueChange={setSortBy}
           options={[
