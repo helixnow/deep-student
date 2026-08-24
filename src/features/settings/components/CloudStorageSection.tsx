@@ -407,6 +407,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行保存逻辑
   const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
+    const explicitEncryptionPassword = encryptionPassword.trim();
+    if (explicitEncryptionPassword && [...explicitEncryptionPassword].length < 8) {
+      showGlobalNotification('error', t('cloudStorage:encryption.tooShort', { min: 8 }));
+      return;
+    }
+
     const config = buildConfig(allowInsecureOverride);
 
     // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
@@ -467,15 +473,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
     const config = buildConfig();
-    const explicitEncryptionPassword = encryptionPassword.trim();
-    if (
-      explicitEncryptionPassword
-      && [...explicitEncryptionPassword].length < 8
-    ) {
-      showGlobalNotification('error', t('cloudStorage:encryption.tooShort', { min: 8 }));
-      return;
-    }
-
     if (
       (config.provider === 'webdav'
         && !webdavConfig.password.trim()
@@ -511,7 +508,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doSaveConfig(false);
-  }, [buildConfig, credentialStatus, encryptionPassword, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
+  }, [buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
   // 实际执行测试连接逻辑
   const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
