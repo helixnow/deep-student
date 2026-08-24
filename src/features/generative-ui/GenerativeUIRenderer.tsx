@@ -17,7 +17,10 @@ import {
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
 import { coercePartialIntent } from './utils/coercePartialIntent';
-import { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
+import {
+  collectUnregisteredActionIds,
+  firstReachableActionBarIndex,
+} from './utils/collectUnregisteredActionIds';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import {
@@ -37,6 +40,7 @@ import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
 import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
+import { GenerativeActionUndoStack } from './handlers/actionUndoStack';
 
 import './blocks';
 import './generative-ui.css';
@@ -241,6 +245,7 @@ export function GenerativeUIRenderer({
   const contrast = usePrefersContrast();
   const rendererId = useId();
   const actionsTargetId = `generative-ui-actions-${rendererId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const undoStack = useMemo(() => new GenerativeActionUndoStack(), []);
   const resolved = useMemo(
     () =>
       resolveDisplayIntent(
@@ -271,9 +276,10 @@ export function GenerativeUIRenderer({
     () => (displayIntent ? collectUnregisteredActionIds(displayIntent, actionHandlers) : []),
     [actionHandlers, displayIntent],
   );
-  const hasActionBar = Boolean(
-    displayIntent?.blocks.some((block) => block.type === 'action-bar'),
-  );
+  const reachableActionBarIndex = displayIntent
+    ? firstReachableActionBarIndex(displayIntent, actionHandlers)
+    : -1;
+  const hasActionBar = reachableActionBarIndex >= 0;
 
   useEffect(() => {
     if (!displayIntent || !resolved.snapshotEligible) return;
@@ -360,8 +366,6 @@ export function GenerativeUIRenderer({
       ) : null}
 
       <div
-        id={actionsTargetId}
-        tabIndex={-1}
         className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
         data-layout-columns={columns}
@@ -375,6 +379,7 @@ export function GenerativeUIRenderer({
               span={block.span}
               layoutMode={mode}
               blockId={block.id}
+              focusTargetId={index === reachableActionBarIndex ? actionsTargetId : undefined}
               renderContext={block.type === 'action-bar' ? actionBarRenderContext : undefined}
             >
               {node}
@@ -419,6 +424,7 @@ export function GenerativeUIRenderer({
                 {...actionBarProps}
                 actionHandlers={actionHandlers}
                 onAction={onAction}
+                undoStack={undoStack}
               />,
             );
           }
