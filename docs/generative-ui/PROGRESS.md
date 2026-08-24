@@ -6,6 +6,7 @@
 2. [x] `session_started` 切换活跃会话时重置顶层字段，旧切片保留
 3. [x] Chat / Research 面板按 `researchSessionId` 读切片，并发研究不串台
 4. [x] 未注册 ActionBar 按钮改用 i18n 标签，不再渲染模型文案
+5. [x] CI Frontend `vite build` 设 `NODE_OPTIONS=4096`，避免生产构建 OOM
 
 - [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
 

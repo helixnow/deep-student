@@ -86,6 +86,8 @@ jobs:
       # 资源引用、chunk 配置）。此前第一次构建产物发生在合并 Release PR 之后
       # 的全平台发布里 —— 失败即阻塞发布。左移到 PR。
       - name: Build production bundle
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npx vite build
 
       # 审查 F11：此前 `npm audit || true` 永远绿灯且无人看日志。
