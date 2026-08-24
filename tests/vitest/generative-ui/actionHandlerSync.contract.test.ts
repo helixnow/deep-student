@@ -5,6 +5,10 @@ import { buildExamBriefingIntent } from '@/features/generative-ui/utils/buildExa
 import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import { learningHubActionHandlers } from '@/features/generative-ui/handlers/learningHubActionHandlers';
 import { createExamBriefingActionHandlers } from '@/features/generative-ui/handlers/examBriefingActionHandlers';
+import { createIndexStatusBriefingActionHandlers } from '@/features/generative-ui/handlers/indexStatusBriefingActionHandlers';
+import { createMemoryBriefingActionHandlers } from '@/features/generative-ui/handlers/memoryBriefingActionHandlers';
+import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/buildIndexStatusBriefingIntent';
+import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildMemoryBriefingIntent';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -89,6 +93,59 @@ describe('generativeUI actionHandlerSync contract', () => {
       { startReview: 'Review', openPractice: 'Practice' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildExamBriefingIntent');
+  });
+
+  it('index status briefing action ids exist in createIndexStatusBriefingActionHandlers', () => {
+    const intent = buildIndexStatusBriefingIntent({
+      summary: {
+        totalResources: 5,
+        indexedCount: 2,
+        pendingCount: 2,
+        failedCount: 1,
+        indexingCount: 0,
+      },
+      labels: {
+        totalTitle: 'Total',
+        progressTitle: 'Progress',
+        indexedRow: '{{count}}',
+        pendingRow: 'Pending',
+        failedRow: 'Failed',
+        indexingRow: 'Indexing',
+        allIndexedTrend: 'Ready',
+        needsAttentionTrend: 'Attention',
+        batchIndex: 'Index',
+        refresh: 'Refresh',
+      },
+    });
+    const handlers = createIndexStatusBriefingActionHandlers(
+      { onBatchIndex: () => {}, onRefresh: () => {} },
+      { batchIndex: 'Index', refresh: 'Refresh' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildIndexStatusBriefingIntent');
+  });
+
+  it('memory briefing action ids exist in createMemoryBriefingActionHandlers', () => {
+    const intent = buildMemoryBriefingIntent({
+      memoryCount: 3,
+      labels: {
+        countTitle: 'Count',
+        activeTrend: 'Active',
+        emptyTrend: 'Empty',
+        overviewTitle: 'Overview',
+        rootFolderRow: 'Root',
+        autoExtractRow: 'Auto',
+        freqOff: 'Off',
+        freqBalanced: 'Balanced',
+        freqAggressive: 'Aggressive',
+        refresh: 'Refresh',
+        createMemory: 'Create',
+      },
+    });
+    const handlers = createMemoryBriefingActionHandlers(
+      { onRefresh: () => {}, onCreateMemory: () => {} },
+      { refresh: 'Refresh', createMemory: 'Create' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildMemoryBriefingIntent');
   });
 
   it('LEARNING_DASHBOARD_EXAMPLE action ids exist in workbenchLearningHandlers', () => {

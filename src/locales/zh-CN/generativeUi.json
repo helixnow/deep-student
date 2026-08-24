@@ -59,6 +59,37 @@
       "open_practice": "开始练习"
     }
   },
+  "indexStatus": {
+    "briefing_label": "AI 索引简报",
+    "briefing": {
+      "total_title": "资源总数",
+      "progress_title": "索引进度",
+      "indexed_row": "已索引 {{count}}",
+      "pending_row": "待索引",
+      "failed_row": "失败",
+      "indexing_row": "索引中",
+      "trend_all_indexed": "全部就绪",
+      "trend_needs_attention": "有待处理项",
+      "batch_index": "一键索引",
+      "refresh": "刷新状态"
+    }
+  },
+  "memory": {
+    "briefing_label": "AI 记忆简报",
+    "briefing": {
+      "count_title": "记忆条目",
+      "trend_active": "持续积累",
+      "trend_empty": "暂无记忆",
+      "overview_title": "概览",
+      "root_folder_row": "根目录",
+      "auto_extract_row": "自动提取",
+      "freq_off": "关闭",
+      "freq_balanced": "均衡",
+      "freq_aggressive": "积极",
+      "refresh": "刷新",
+      "create_memory": "新建记忆"
+    }
+  },
   "workbench": {
     "briefing_label": "AI 学习简报",
     "briefing": {

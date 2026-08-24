@@ -1,21 +1,13 @@
 # Generative UI 进度日志
 
-## Round 4（2026-08-24）
-
-### 父代理
-- [x] `DesktopAiBriefingWidget` — 桌面 AI 学习简报（todo + 闪卡数据源）
-- [x] `workbenchLearningHandlers` — workbenchBus 接线
-- [x] `mindmap-embed` 块（React.lazy + MindMapEmbed）
-- [x] `registryPromptSync` contract 测试
-- [x] 38 项 vitest 全绿（generative-ui + DesktopAiBriefingWidget）
-
-### Round 6（2026-08-24）
+## Round 6（2026-08-24）
 
 ### 父代理
 - [x] `buildExamBriefingIntent` + `ExamGenerativeBriefing` — ExamContentView 题库简报 POC（stats + handleStartReview）
 - [x] `createExamBriefingActionHandlers` — 上下文回调注入（start-review / open-practice）
 - [x] `buildNoteSummaryIntent` labels/i18n 注入（对齐其他 builder 模式）
 - [x] actionHandlerSync contract 扩展 exam briefing
+- [x] 60 项 vitest 全绿（generative-ui + ExamGenerativeBriefing）
 - [ ] Memory/IndexStatus Hub 挂载点
 - [ ] generative-ui skill ↔ Rust parse_intent contract 测试
 - [ ] Rust execute 级测试
@@ -27,7 +19,7 @@
 
 ---
 
-### Round 5（2026-08-24）
+## Round 5（2026-08-24）
 
 ### 父代理
 - [x] Rust `GenerativeUiExecutor` + `render_generative_ui` 工具（emit generative_ui 事件）
@@ -37,11 +29,29 @@
 - [x] 40 项 vitest 全绿
 - [x] Round 5 子代理跟进：P0 i18n 块组件、actionHandlerSync 契约、learningHubActionHandlers、简报去重 meta
 - [x] Round 5 子代理调研合并（Round 6 路线图见上）
+- [x] `render_generative_ui` builtin skill + 历史 toolInput.intent 恢复 + ActionBar HITL
 
-### Round 6+
-- ~~`render_generative_ui` builtin skill / schema 注入~~（Round 5 已落地 skill + toolInput）
-- Learning Hub Memory/IndexStatus 深度挂载
-- mindmap-embed E2E
+### Round 5 子代理结论摘要
+| 主题 | 状态 |
+|------|------|
+| 流式 parser P0 | 部分（tryParsePartialIntent 已修；chunkBuffer 待做） |
+| mindmap-embed | 部分（schema/边界已修；E2E 待做） |
+| prompt sync | 部分（目录行契约；props 未进 prompt） |
+| Learning Hub 挂载 | Exam 简报 ✅；Memory/IndexStatus 待做 |
+| i18n | 部分（P0 块组件 ✅；builder 持续跟进） |
+| Security HITL | 部分（ActionBar ✅；Notes 写入链待做） |
+| Rust emit | 部分（skill+toolInput ✅；execute 测试待做） |
+
+---
+
+## Round 4（2026-08-24）
+
+### 父代理
+- [x] `DesktopAiBriefingWidget` — 桌面 AI 学习简报（todo + 闪卡数据源）
+- [x] `workbenchLearningHandlers` — workbenchBus 接线
+- [x] `mindmap-embed` 块（React.lazy + MindMapEmbed）
+- [x] `registryPromptSync` contract 测试
+- [x] 38 项 vitest 全绿（generative-ui + DesktopAiBriefingWidget）
 
 ---
 

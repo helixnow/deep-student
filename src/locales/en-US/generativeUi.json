@@ -59,6 +59,37 @@
       "open_practice": "Start practice"
     }
   },
+  "indexStatus": {
+    "briefing_label": "AI index briefing",
+    "briefing": {
+      "total_title": "Total resources",
+      "progress_title": "Index progress",
+      "indexed_row": "{{count}} indexed",
+      "pending_row": "Pending",
+      "failed_row": "Failed",
+      "indexing_row": "Indexing",
+      "trend_all_indexed": "All ready",
+      "trend_needs_attention": "Needs attention",
+      "batch_index": "Index all",
+      "refresh": "Refresh"
+    }
+  },
+  "memory": {
+    "briefing_label": "AI memory briefing",
+    "briefing": {
+      "count_title": "Memory entries",
+      "trend_active": "Growing",
+      "trend_empty": "No memories",
+      "overview_title": "Overview",
+      "root_folder_row": "Root folder",
+      "auto_extract_row": "Auto extract",
+      "freq_off": "Off",
+      "freq_balanced": "Balanced",
+      "freq_aggressive": "Aggressive",
+      "refresh": "Refresh",
+      "create_memory": "New memory"
+    }
+  },
   "workbench": {
     "briefing_label": "AI learning briefing",
     "briefing": {

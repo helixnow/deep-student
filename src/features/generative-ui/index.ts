@@ -35,7 +35,11 @@ export { buildLearningBriefingIntent } from './utils/buildLearningBriefingIntent
 export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
 export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
 export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
+export { buildIndexStatusBriefingIntent } from './utils/buildIndexStatusBriefingIntent';
+export { buildMemoryBriefingIntent } from './utils/buildMemoryBriefingIntent';
 export { createExamBriefingActionHandlers } from './handlers/examBriefingActionHandlers';
+export { createIndexStatusBriefingActionHandlers } from './handlers/indexStatusBriefingActionHandlers';
+export { createMemoryBriefingActionHandlers } from './handlers/memoryBriefingActionHandlers';
 export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
