@@ -80,6 +80,36 @@
 | R08-e2ee-tests | high | 文件级 E2EE 极端测 | `src-tauri/tests/sync_r08_*.rs` 新文件 |
 | R08-legacy-ux | high | 明文遗留拒收人话 | `SyncTab.tsx` / locale `sync.json`；不改引擎 |
 
+## Round 09（进行中）
+
+### Round 09 实现改动登记
+
+- **R09-android → `cloud_storage/config.rs` / `cloud_storage/mod.rs` / `cloud_config_commands.rs`**：
+  为 Android 换机闭环测试补齐平台能力测试钩子并修复 RESTORE-MATRIX P3-2。
+  1. 新增 `PlatformStorageCapabilities`（`ftp_supported` / `s3_supported`，生产入口一律
+     `current()` 取编译期真值）；`validate` / `create_storage` / SSOT 保存与加载新增
+     `*_with_capabilities` 变体，宿主机测试按 Android 能力矩阵驱动**同一套**拒绝分支
+     （serde/IPC 无法构造该值，不构成运行时开关）。FTP 的 Android 拒绝从 `#[cfg]` 双臂
+     改为运行时能力判断（行为不变，文案仍为共享常量）。
+  2. P3-2：无 S3 构建的拒绝文案由「请在编译时启用 cloud_storage_s3 feature」改为用户级
+     常量 `S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE`（"当前安装包不支持 S3 兼容存储，请改用
+     WebDAV。"），并对齐 FTP-on-Android 语义：SSOT 保存**与**加载在无 S3 构建上均
+     fail-closed，杜绝"保存成功但永远连不上"的僵尸 S3 配置。
+  3. 新集成测试 `src-tauri/tests/sync_android_device_switch.rs`：Android 拒 FTP/S3 四路径、
+     mobile-slim/android-release feature 清单锚定、仅 WebDAV 换机闭环（进程内假 WebDAV
+     服务器 + 加密上传/下载/密码门禁/非活动 B 槽/重启切换/两段式租约）、租约目标未激活
+     拒启 guard、device_id 落 `<app_data_dir>/.device_id` 与恢复后 rotate（子进程探针）。
+
+### Round 09 待修登记（locale）
+
+- **P2-LOCALE-PLATFORM-MSG**：平台能力拒绝文案语言不统一且未接 i18n——
+  `FTP_UNSUPPORTED_ON_ANDROID_MESSAGE` 为英文（前端 `CloudStorageSection.tsx` 以正则映射
+  到 `cloudStorage.json` 的 `ftpDisabledAndroid`），新增的
+  `S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE` 为中文且前端**尚无**对应映射/locale 键。
+  建议后续代理：为 S3 拒绝补 `cloudStorage.json`（zh/en）键与前端映射，并统一两条常量的
+  映射机制（错误码优于字符串正则）。本轮（R09-android）只保证后端文案面向用户且四路径
+  字节一致，不动前端与 locale。
+
 ## Round 07 原认领表（后派出）
 
 任务定义见 [ROUND-07](./ROUND-07.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
