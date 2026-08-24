@@ -63,6 +63,7 @@
     "next": "Next",
     "new": "Submit Next Round",
     "total": "{{count}} rounds total",
+    "switch_confirm_title": "Switch Round",
     "switch_unsaved_confirm": "You have unsaved changes to the essay text. Switching rounds will overwrite them with the selected round's text. Continue?"
   },
   "actions": {

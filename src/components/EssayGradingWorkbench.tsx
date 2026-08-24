@@ -25,6 +25,7 @@ import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ESSAY_MAX_CHARS } from './essay-grading/InputPanel';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -567,23 +568,30 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     }
   }, [setGradingResult, markInputAsGraded]);
 
-  // 切换轮次（批改中禁止切换，避免覆盖流式结果）
-  // ★ 正文相对当前展示轮次有未保存编辑时先确认——切换会用目标轮次正文覆盖输入区
-  const handleSelectRound = useCallback((index: number) => {
-    if (isGrading) return;
-    if (index < 0 || index >= rounds.length || index === currentRoundIndex) return;
-    if (
-      inputText !== lastGradedInputRef.current &&
-      !window.confirm(t('essay_grading:round.switch_unsaved_confirm'))
-    ) {
-      return;
-    }
+  // ★ 待确认的轮次切换目标（null = 无待确认）：脏正文时经对话框确认后再切换
+  const [pendingRoundIndex, setPendingRoundIndex] = useState<number | null>(null);
+
+  // 真正执行轮次切换（handleSelectRound 已完成边界/脏检查）
+  const applyRoundSelection = useCallback((index: number) => {
     setCurrentRoundIndex(index);
     const round = rounds[index];
     setInputText(round.input_text);
     setGradingResult(round.grading_result);
     markInputAsGraded(round.input_text);
-  }, [isGrading, currentRoundIndex, rounds, inputText, setGradingResult, markInputAsGraded, t]);
+  }, [rounds, setGradingResult, markInputAsGraded]);
+
+  // 切换轮次（批改中禁止切换，避免覆盖流式结果）
+  // ★ 正文相对当前展示轮次有未保存编辑时先确认——切换会用目标轮次正文覆盖输入区。
+  // 用 DsAlertDialog 而非 window.confirm（Tauri WebView 可能不弹窗直接返回 false）
+  const handleSelectRound = useCallback((index: number) => {
+    if (isGrading) return;
+    if (index < 0 || index >= rounds.length || index === currentRoundIndex) return;
+    if (inputText !== lastGradedInputRef.current) {
+      setPendingRoundIndex(index);
+      return;
+    }
+    applyRoundSelection(index);
+  }, [isGrading, currentRoundIndex, rounds.length, inputText, applyRoundSelection]);
 
   const handlePrevRound = useCallback(() => {
     handleSelectRound(currentRoundIndex - 1);
@@ -1371,6 +1379,22 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           } : undefined}
         />
       </div>
+
+      {/* 切换轮次前的未保存修改确认（脏正文会被目标轮次正文覆盖） */}
+      <DsAlertDialog
+        open={pendingRoundIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRoundIndex(null);
+        }}
+        title={t('essay_grading:round.switch_confirm_title')}
+        description={t('essay_grading:round.switch_unsaved_confirm')}
+        onConfirm={() => {
+          if (pendingRoundIndex === null) return;
+          const index = pendingRoundIndex;
+          setPendingRoundIndex(null);
+          applyRoundSelection(index);
+        }}
+      />
     </div>
   );
 };
