@@ -1477,7 +1477,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             </p>
             <p className="mt-1 text-xs text-muted-foreground/70">{t('learningHub:exam.library.noMatchHint')}</p>
             {hasActiveFilters && (
-              <DsButton variant="ghost" size="sm" className="mt-3" onClick={clearFilters}>
+              <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-[44px] [@media(pointer:coarse)]:!px-3" onClick={clearFilters}>
                 <X size={14} />
                 {t('common:clear')}
               </DsButton>
