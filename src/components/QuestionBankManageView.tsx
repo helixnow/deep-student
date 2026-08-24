@@ -610,7 +610,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="mt-3"
+                  className="mt-3 [@media(pointer:coarse)]:min-h-11"
                   onClick={() => {
                     if (searchTimerRef.current != null) {
                       window.clearTimeout(searchTimerRef.current);
@@ -629,7 +629,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <>
                 <p>{t('exam_sheet:questionBank.empty')}</p>
                 {showCsvActions && onCsvImport && (
-                  <DsButton variant="ghost" size="sm" className="mt-3" onClick={onCsvImport}>
+                  <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:min-h-11" onClick={onCsvImport}>
                     <Upload size={14} />
                     {t('exam_sheet:questionBank.import')}
                   </DsButton>
