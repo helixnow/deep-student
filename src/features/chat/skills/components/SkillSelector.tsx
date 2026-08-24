@@ -351,7 +351,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }}
                   placeholder={t('skills:bundles.name_placeholder')}
                   aria-label={t('skills:bundles.name_placeholder')}
-                  className="h-6 max-lg:h-8 [@media(pointer:coarse)]:!h-11 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
+                  className="h-6 max-lg:h-8 [@media(pointer:coarse)]:!h-11 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] [@media(pointer:coarse)]:text-base outline-none focus:border-[color:var(--button-primary-border)]"
                 />
                 {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
                 <button

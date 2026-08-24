@@ -627,7 +627,11 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               {/* 禁用自动激活 */}
               <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-colors">
                 <div className="space-y-1">
-                  <Label className="text-sm font-medium cursor-pointer">
+                  {/* htmlFor 关联 Switch：点标签即切换；触屏标签自身抬到 44px 命中高度 */}
+                  <Label
+                    htmlFor="skill-editor-disable-auto-invoke"
+                    className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11"
+                  >
                     {t('skills:editor.disable_auto_invoke')}
                   </Label>
                   <p className="text-xs text-muted-foreground/70">
@@ -635,6 +639,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   </p>
                 </div>
                 <Switch
+                  id="skill-editor-disable-auto-invoke"
                   checked={formData.disableAutoInvoke}
                   onCheckedChange={(checked) => updateField('disableAutoInvoke', checked)}
 />
