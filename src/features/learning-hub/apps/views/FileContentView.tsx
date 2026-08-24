@@ -56,6 +56,13 @@ import {
 import { PreviewStatus } from './PreviewStatus';
 import { AudioPlayer, VideoPlayer } from './media';
 import { createPreviewPersistController } from './previewPersistence';
+import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
+import { dstu } from '@/dstu';
+import {
+  buildSelectionLocator,
+  buildSelectionNoteContent,
+  type PdfSelectionPayload,
+} from '@/features/pdf/pdfSelectionActions';
 
 /** 加载指示延迟：对齐 UnifiedAppPanel 的 150ms 策略，快速加载不闪 spinner */
 const LOADING_INDICATOR_DELAY_MS = 150;
@@ -99,7 +106,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   isActive = true,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
-  const { t } = useTranslation(['learningHub', 'common']);
+  const { t } = useTranslation(['learningHub', 'common', 'pdf']);
   
   // 从 PreviewContext 获取状态和方法
   const {
@@ -252,6 +259,42 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setBookmarks(newBookmarks);
     persistControllerRef.current.scheduleBookmarks(newBookmarks);
   }, []);
+
+  // 划词「引用到对话」：selectedText + 页码 locator 随资源引用进入会话上下文
+  const { referenceToChat } = useReferenceToChat();
+  const handleQuoteToChat = useCallback((payload: PdfSelectionPayload) => {
+    void referenceToChat({
+      sourceType: 'file',
+      sourceId: node.sourceId || node.id,
+      metadata: {
+        title: node.name,
+        selectedText: payload.text,
+        locator: buildSelectionLocator(payload.page),
+      },
+    });
+  }, [referenceToChat, node.sourceId, node.id, node.name]);
+
+  // 划词「做笔记」：创建摘录笔记（引用块 + 来源行）
+  const handleCreateNote = useCallback((payload: PdfSelectionPayload) => {
+    void (async () => {
+      const compact = payload.text.replace(/\s+/g, ' ').trim();
+      const title = compact.slice(0, 30) || t('pdf:selection.note_default_title');
+      const result = await dstu.create('/', {
+        type: 'note',
+        name: title,
+        content: buildSelectionNoteContent({
+          text: payload.text,
+          sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
+        }),
+        metadata: { tags: [] },
+      });
+      if (result.ok) {
+        showGlobalNotification('success', t('pdf:selection.note_saved'));
+      } else {
+        showGlobalNotification('error', t('pdf:selection.note_save_failed'), result.error.toUserMessage());
+      }
+    })();
+  }, [node.name, t]);
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -744,6 +787,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             onProgressChange={handleProgressChange}
             bookmarks={bookmarks}
             onBookmarksChange={handleBookmarksChange}
+            onQuoteToChat={handleQuoteToChat}
+            onCreateNote={handleCreateNote}
           />
         );
       }
@@ -770,7 +815,13 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isEpub && base64Content) {
       return (
         <div className="h-full ui-rise-in">
-          <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />
+          <EpubPreview
+            base64Content={base64Content}
+            fileName={node.name}
+            resourceId={node.id}
+            metadataProgress={readingProgress}
+            onProgressChange={handleProgressChange}
+          />
         </div>
       );
     }

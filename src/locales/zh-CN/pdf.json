@@ -178,7 +178,11 @@
     "copied": "已复制到剪贴板",
     "copy_failed": "复制失败",
     "quote_to_chat": "引用到对话",
-    "create_note": "做笔记"
+    "create_note": "做笔记",
+    "note_default_title": "摘录笔记",
+    "note_source": "—— 摘自《{{name}}》第 {{page}} 页",
+    "note_saved": "已保存为笔记",
+    "note_save_failed": "笔记保存失败"
   },
   "annotations": {
     "save_failed": "批注保存失败，本次修改可能未生效",

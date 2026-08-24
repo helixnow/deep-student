@@ -39,6 +39,13 @@ import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
+import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
+import { dstu } from '@/dstu';
+import {
+  buildSelectionLocator,
+  buildSelectionNoteContent,
+  type PdfSelectionPayload,
+} from '@/features/pdf/pdfSelectionActions';
 
 const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
   if (type === 'docx' || type === 'xlsx' || type === 'pptx' || type === 'text') {
@@ -63,7 +70,7 @@ const LoadingSpinner: React.FC = () => {
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
 }) => {
-  const { t } = useTranslation(['textbook', 'common', 'learningHub']);
+  const { t } = useTranslation(['textbook', 'common', 'learningHub', 'pdf']);
   const {
     zoomScale,
     fontScale,
@@ -501,6 +508,43 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     persistControllerRef.current.scheduleBookmarks(newBookmarks);
   }, []);
 
+  // 划词「引用到对话」：selectedText + 页码 locator 随资源引用进入会话上下文
+  const { referenceToChat } = useReferenceToChat();
+  const handleQuoteToChat = useCallback((payload: PdfSelectionPayload) => {
+    void referenceToChat({
+      sourceType: 'textbook',
+      sourceId: node.sourceId || node.id,
+      metadata: {
+        title: node.name,
+        selectedText: payload.text,
+        locator: buildSelectionLocator(payload.page),
+      },
+    });
+  }, [referenceToChat, node.sourceId, node.id, node.name]);
+
+  // 划词「做笔记」：创建摘录笔记（引用块 + 来源行）
+  const handleCreateNote = useCallback(async (payload: PdfSelectionPayload) => {
+    const compact = payload.text.replace(/\s+/g, ' ').trim();
+    const title = compact.slice(0, 30) || t('pdf:selection.note_default_title');
+    const result = await dstu.create('/', {
+      type: 'note',
+      name: title,
+      content: buildSelectionNoteContent({
+        text: payload.text,
+        sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
+      }),
+      metadata: { tags: [] },
+    });
+    if (result.ok) {
+      showGlobalNotification('success', t('pdf:selection.note_saved'));
+    } else {
+      showGlobalNotification('error', t('pdf:selection.note_save_failed'), result.error.toUserMessage());
+    }
+  }, [node.name, t]);
+  const handleCreateNoteSync = useCallback((payload: PdfSelectionPayload) => {
+    void handleCreateNote(payload);
+  }, [handleCreateNote]);
+
   // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）。
   // 旧控制器 dispose 用的是它创建时的快照；新控制器在 refs 同步 effect
   // 之后创建，此时 ref 已指向新 node 的 metadata。
@@ -731,7 +775,15 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     if (!fileContent) {
       return contentLoadingView;
     }
-    return <EpubPreview base64Content={fileContent} fileName={node.name} resourceId={node.id} />;
+    return (
+      <EpubPreview
+        base64Content={fileContent}
+        fileName={node.name}
+        resourceId={node.id}
+        metadataProgress={readingProgress}
+        onProgressChange={handleProgressChange}
+      />
+    );
   }
 
   // 纯文本预览
@@ -795,6 +847,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         resourcePath={node.path}
         bookmarks={bookmarks}
         onBookmarksChange={handleBookmarksChange}
+        onQuoteToChat={handleQuoteToChat}
+        onCreateNote={handleCreateNoteSync}
       />
     </div>
   );
