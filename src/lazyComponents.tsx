@@ -98,9 +98,9 @@ export const LazyImportConversationDialog = React.lazy(() =>
   import('./components/ImportConversationDialog').then(m => ({ default: m.ImportConversationDialog }))
 );
 
-// 技能管理
+// 技能管理（feature 公共出口转导出，见 features/skills-management/index.ts）
 export const LazySkillsManagementPage = React.lazy(() =>
-  import('./components/skills-management/SkillsManagementPage').then(m => ({ default: m.SkillsManagementPage }))
+  import('./features/skills-management').then(m => ({ default: m.SkillsManagementPage }))
 );
 
 // 模板管理
