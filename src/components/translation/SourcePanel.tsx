@@ -207,7 +207,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 border-b lg:border-b-0 lg:border-r relative group/source">
             {/* 桌面工具栏：标题 + 常驻字数 + 清空 */}
-            <div data-wb-blur-surface className="hidden sm:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
                 <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
                     <TextAa size={14} className="shrink-0 text-muted-foreground" />
                     {t('translation:source_section.title')}
@@ -219,7 +219,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             </div>
 
             {/* 移动端工具栏：字数 + 清空 + 翻译/取消 */}
-            <div className="sm:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+            <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
                 <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                     <TextAa size={13} className="shrink-0" />
                     {charCounter}
@@ -309,7 +309,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
             </div>
 
             {/* 桌面主操作栏 */}
-            <div data-wb-blur-surface className="hidden sm:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex p-3 border-t bg-background/50 backdrop-blur items-center justify-end shrink-0">
                 {isTranslating ? (
                     <DsButton
                         variant="default"

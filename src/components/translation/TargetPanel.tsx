@@ -128,7 +128,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-muted/10 group/target">
             {/* 桌面工具栏 */}
-            <div data-wb-blur-surface className="hidden sm:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
+            <div data-wb-blur-surface className="hidden md:flex items-center justify-between px-4 h-10 border-b border-border/50 bg-background/50 backdrop-blur z-10 shrink-0">
                 <span className="text-sm text-foreground/70 flex items-center gap-1.5 min-w-0 truncate">
                     <Translate size={14} className="shrink-0 text-muted-foreground" />
                     {t('translation:target_section.title')}
@@ -231,7 +231,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
             {/* 移动端操作栏 */}
             {translatedText && !isEditingTranslation && (
-                <div className="sm:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
+                <div className="md:hidden flex items-center justify-between px-3 h-10 border-b border-border/50 bg-background/50 shrink-0">
                     <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0 truncate">
                         <Translate size={13} className="shrink-0" />
                         {t('translation:target_section.title')}

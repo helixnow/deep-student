@@ -430,13 +430,13 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {/* 非移动端：轮次显示 */}
           {currentRound > 0 && (
-            <span className="hidden sm:inline text-xs text-muted-foreground/60 whitespace-nowrap tabular-nums">
+            <span className="hidden md:inline text-xs text-muted-foreground/60 whitespace-nowrap tabular-nums">
               {t('essay_grading:round.label', { number: currentRound })}
             </span>
           )}
 
           {roundNavigation && roundNavigation.total > 1 && (
-            <div className="hidden sm:flex items-center gap-1">
+            <div className="hidden md:flex items-center gap-1">
               <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretLeft size={14} />
               </DsButton>
@@ -476,7 +476,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           )}
 
           {/* 移动端：清空 + 批改按钮（字数统计移到输入区右下角悬浮条，避免顶栏拥挤截断） */}
-          <div className="sm:hidden flex min-w-0 items-center gap-1">
+          <div className="md:hidden flex min-w-0 items-center gap-1">
             {hasClearableContent && !isGrading && (
               mobileClearConfirm.armed ? (
                 <DsButton variant="destructive" size="sm" onClick={mobileClearConfirm.handleClick} aria-label={t('essay_grading:confirm.clear')} className={cn(COARSE_HIT, "!h-7 shrink-0 px-2 text-xs transition-colors duration-150")}>
@@ -784,7 +784,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             </span>
             {/* 清空钮仅桌面端悬浮显示（移动端已在顶栏提供） */}
             {hasClearableContent && !isGrading && (
-              <div className="hidden sm:flex items-center">
+              <div className="hidden md:flex items-center">
                 {desktopClearConfirm.armed ? (
                   <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
                     <Trash size={12} />
@@ -804,7 +804,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       </div>
 
       {/* Action Bar - 桌面端 简洁风格 */}
-      <div className="hidden sm:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
+      <div className="hidden md:flex px-4 py-2.5 border-t border-border/30 items-center gap-2">
         {/* 左侧：模型选择 - 向上展开 */}
         {models.length > 0 && (
           <div className="min-w-0">

@@ -141,22 +141,22 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {currentRound > 0 && (
             <div className="flex items-center gap-0.5 shrink-0">
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretLeft size={12} />
                 </DsButton>
               )}
               <span className="text-xs text-muted-foreground/60 tabular-nums">
                 {roundNavigation && roundNavigation.total > 1 ? (
                   <>
-                    <span className="sm:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
-                    <span className="hidden sm:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
+                    <span className="md:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
+                    <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
                   </>
                 ) : (
                   t('essay_grading:round.label', { number: currentRound })
                 )}
               </span>
               {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                   <CaretRight size={12} />
                 </DsButton>
               )}
