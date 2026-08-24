@@ -433,9 +433,25 @@ fn is_web_search_function_tool(tool: &Value) -> bool {
     name.trim().trim_start_matches("builtin-") == "web_search"
 }
 
+/// 官方文档列名支持服务端 web_search 的 DeepSeek 型号（2026-08-23 文档：
+/// 仅 v4-flash 系列，contains 匹配含 `deepseek-v4-flash-vision-exp`；
+/// `deepseek-v4-pro` 已列名 Responses 但 web_search 未列名，不得注入
+/// `{"type":"web_search"}`）。legacy 别名 `deepseek-chat` / `deepseek-reasoner`
+/// 官方映射到 flash，同样放行。与前端 apiCapabilityEngine 的
+/// WEB_SEARCH_WHITELIST_REGEXES DeepSeek 项对齐。
+#[inline]
+fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    normalized.contains("deepseek-v4-flash")
+        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
+}
+
 /// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
 /// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
-/// - 必须是官方 DeepSeek 端点（模型级门控已在上游保证 v4-flash 系列）
+/// - 必须是官方 DeepSeek 端点
+/// - 模型必须在官方 web_search 列名（仅 flash 系列；Responses 门控已放开
+///   v4-pro，不能再依赖「上游保证仅 flash」，见
+///   `deepseek_model_supports_server_side_web_search`）
 /// - 模型支持工具
 /// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
 ///
@@ -449,6 +465,9 @@ fn server_side_web_search_enabled(
         return false;
     }
     if !is_official_deepseek_config(config) {
+        return false;
+    }
+    if !deepseek_model_supports_server_side_web_search(&config.model) {
         return false;
     }
     if llm_context
@@ -1534,6 +1553,54 @@ mod tests {
         let mut no_tools = base.clone();
         no_tools.supports_tools = false;
         assert!(!server_side_web_search_enabled(&no_tools, &enabled_context));
+    }
+
+    /// web_search 白名单收紧回归：Responses 门控已放开 v4-pro，服务端
+    /// web_search 必须独立按官方列名（仅 flash 系列）判定，pro 不注入。
+    #[test]
+    fn server_side_web_search_whitelist_restricts_to_flash_series() {
+        let base = ApiConfig {
+            model_adapter: "deepseek".to_string(),
+            provider_type: Some("deepseek".to_string()),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            supports_tools: true,
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let context: HashMap<String, Value> = HashMap::new();
+
+        // v4-pro：官方 Responses 已列名（走 Responses 协议），但 web_search
+        // 未列名 → 不得注入 {"type":"web_search"}
+        let mut pro = base.clone();
+        pro.model = "deepseek-v4-pro".to_string();
+        assert!(
+            should_use_openai_responses_for_config(&pro),
+            "v4-pro 应走 Responses 协议（前置条件）"
+        );
+        assert!(!server_side_web_search_enabled(&pro, &context));
+
+        // flash 系列（含官方文档列名的 vision-exp）→ 注入
+        let mut vision_exp = base.clone();
+        vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
+        assert!(server_side_web_search_enabled(&vision_exp, &context));
+
+        // legacy 别名（官方映射到 flash）→ 注入
+        for alias in ["deepseek-chat", "deepseek-reasoner"] {
+            let mut legacy = base.clone();
+            legacy.model = alias.to_string();
+            assert!(
+                server_side_web_search_enabled(&legacy, &context),
+                "legacy 别名 {alias} 应放行"
+            );
+        }
+
+        // 未列名型号（V3.x 等，防御性：即使协议侧误放行也不注入）
+        assert!(!deepseek_model_supports_server_side_web_search(
+            "deepseek-v3.2-think"
+        ));
+        assert!(!deepseek_model_supports_server_side_web_search(""));
     }
 
     #[test]
