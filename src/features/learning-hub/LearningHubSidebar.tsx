@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, useSyncExternalStore, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -101,6 +101,13 @@ import {
   finderUndoStack,
   type FinderMoveUndoEntry,
 } from './utils/finderUndoStack';
+import {
+  finderClipboard,
+  toClipboardEntries,
+  buildCopySrcPath,
+  buildPasteDstPath,
+  type FinderClipboardEntry,
+} from './utils/finderClipboard';
 import { dstu, type DstuNode, folderApi, createEmpty, trashApi } from '@/dstu';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { dstuNodeToResourceListItem, mapDstuTypeToFolderItemType } from './types';
@@ -2220,6 +2227,119 @@ export function LearningHubSidebar({
     handleRefresh();
   }, [items, t, clearSelection, handleRefresh, canRecordMoveUndo, moveUndoSourceFolderId]);
 
+  // ==========================================================================
+  // ★ 复制 / 粘贴 / 制造副本（Finder 内部剪贴板，对标访达 Duplicate）
+  // ==========================================================================
+  const clipboardState = useSyncExternalStore(
+    finderClipboard.subscribe,
+    finderClipboard.get,
+    finderClipboard.get,
+  );
+  const clipboardCount = clipboardState?.entries.length ?? 0;
+
+  // 粘贴/制造副本门禁：仅真实文件夹导航（root / 子文件夹）。
+  // 智能文件夹（typeFilter）目的地会退化为根目录且可能被过滤隐藏，不开放。
+  const canPasteHere =
+    mode !== 'canvas' &&
+    canCreateInCurrentView &&
+    effectivePath.viewKind === 'folder' &&
+    !effectivePath.typeFilter;
+
+  /** 当前选中的真实节点（排除待创建文件夹草稿） */
+  const getSelectedNodes = useCallback(
+    () => displayedItems.filter((item) => selectedIds.has(item.id) && !isPendingFolderId(item.id)),
+    [displayedItems, selectedIds],
+  );
+
+  // 右键目标解析：目标在多选集合内时作用于整组（访达语义），否则只作用于该项
+  const resolveContextTargetNodes = useCallback((target: ContextMenuTarget): DstuNode[] => {
+    const targetId = target.type === 'folder'
+      ? target.folder.folder.id
+      : target.type === 'resource'
+        ? target.resource.id
+        : null;
+    if (!targetId || isPendingFolderId(targetId)) return [];
+    if (selectedIds.has(targetId) && selectedIds.size > 1) {
+      return getSelectedNodes();
+    }
+    const item = displayedItems.find((i) => i.id === targetId);
+    return item ? [item] : [];
+  }, [displayedItems, selectedIds, getSelectedNodes]);
+
+  const handleCopyNodes = useCallback((nodes: DstuNode[]) => {
+    const entries = toClipboardEntries(nodes);
+    if (entries.length === 0) return;
+    finderClipboard.copy(entries);
+    showGlobalNotification('success', t('finder.clipboard.copied', { count: entries.length }));
+  }, [t]);
+
+  const handleCopyFromContextMenu = useCallback((target: ContextMenuTarget) => {
+    handleCopyNodes(resolveContextTargetNodes(target));
+  }, [handleCopyNodes, resolveContextTargetNodes]);
+
+  const handleCopySelection = useCallback(() => {
+    handleCopyNodes(getSelectedNodes());
+  }, [getSelectedNodes, handleCopyNodes]);
+
+  // 粘贴与制造副本共用执行体：批量 dstu_copy 到目标文件夹（后端追加「(副本)」）
+  const executeCopyEntries = useCallback(async (
+    entries: FinderClipboardEntry[],
+    destFolderId: string | null,
+    successKey: 'finder.clipboard.pasteSuccess' | 'finder.clipboard.duplicateSuccess',
+  ) => {
+    if (entries.length === 0) return;
+    setIsBatchProcessing(true);
+    try {
+      const limit = pLimit(3);
+      const results = await Promise.all(entries.map((entry) =>
+        limit(() => dstu.copy(buildCopySrcPath(entry), buildPasteDstPath(destFolderId)))
+      ));
+      if (!isMountedRef.current) return;
+      const failedResults = results.filter((r) => !r.ok);
+      const succeeded = results.length - failedResults.length;
+      if (failedResults.length === 0) {
+        showGlobalNotification('success', t(successKey, { count: succeeded }));
+      } else if (succeeded > 0) {
+        showGlobalNotification('warning', t('finder.clipboard.copyPartial', {
+          succeeded,
+          failed: failedResults.length,
+        }));
+      } else {
+        const firstError = failedResults[0];
+        if (firstError && !firstError.ok) {
+          reportError(firstError.error, 'copy items');
+          showGlobalNotification('error', firstError.error.toUserMessage());
+        }
+      }
+      if (succeeded > 0) handleRefresh();
+    } finally {
+      if (isMountedRef.current) setIsBatchProcessing(false);
+    }
+  }, [t, handleRefresh]);
+
+  const handlePaste = useCallback(() => {
+    if (!canPasteHere) return;
+    const state = finderClipboard.get();
+    if (!state || state.entries.length === 0) return;
+    void executeCopyEntries(state.entries, currentCreatableFolderId, 'finder.clipboard.pasteSuccess');
+  }, [canPasteHere, currentCreatableFolderId, executeCopyEntries]);
+
+  // 制造副本：不经剪贴板，原地复制（目的地 = 当前文件夹，副本落在原件旁）
+  const handleDuplicateNodes = useCallback((nodes: DstuNode[]) => {
+    if (!canPasteHere) return;
+    const entries = toClipboardEntries(nodes);
+    if (entries.length === 0) return;
+    void executeCopyEntries(entries, currentCreatableFolderId, 'finder.clipboard.duplicateSuccess');
+  }, [canPasteHere, currentCreatableFolderId, executeCopyEntries]);
+
+  const handleDuplicateFromContextMenu = useCallback((target: ContextMenuTarget) => {
+    handleDuplicateNodes(resolveContextTargetNodes(target));
+  }, [handleDuplicateNodes, resolveContextTargetNodes]);
+
+  const handleDuplicateSelection = useCallback(() => {
+    handleDuplicateNodes(getSelectedNodes());
+  }, [getSelectedNodes, handleDuplicateNodes]);
+
   // 拖拽时可放置的面包屑祖先（含根目录）——对齐访达「拖到路径栏」
   const parentDropTargets = useMemo(() => {
     if (!canDragDropInCurrentView || mode === 'canvas') return undefined;
@@ -3047,6 +3167,46 @@ export function LearningHubSidebar({
         return;
       }
 
+      // ★ Cmd/Ctrl + C：复制选中项到 Finder 剪贴板。
+      // 页面上有文本选区时不拦截（用户可能在复制文字）。
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyC' || e.key.toLowerCase() === 'c') &&
+        mode !== 'canvas'
+      ) {
+        if (selectedIds.size > 0 && !window.getSelection()?.toString()) {
+          e.preventDefault();
+          handleCopySelection();
+        }
+        return;
+      }
+
+      // ★ Cmd/Ctrl + V：粘贴剪贴板内容到当前文件夹
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyV' || e.key.toLowerCase() === 'v') &&
+        mode !== 'canvas'
+      ) {
+        if (canPasteHere && clipboardCount > 0) {
+          e.preventDefault();
+          handlePaste();
+        }
+        return;
+      }
+
+      // ★ Cmd/Ctrl + D：制造副本（访达 Duplicate 同键位）
+      if (
+        cmdOrCtrl && !e.shiftKey && !e.altKey &&
+        (e.code === 'KeyD' || e.key.toLowerCase() === 'd') &&
+        mode !== 'canvas'
+      ) {
+        if (canPasteHere && selectedIds.size > 0) {
+          e.preventDefault();
+          handleDuplicateSelection();
+        }
+        return;
+      }
+
       // Cmd/Ctrl + ↑：返回上一级（访达）
       if (cmdOrCtrl && e.key === 'ArrowUp') {
         if (currentPath.viewKind === 'folder' && (currentPath.folderId || currentPath.breadcrumbs.length > 0)) {
@@ -3104,7 +3264,7 @@ export function LearningHubSidebar({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView, mode, quickLookItem, displayedItems, canvasLastSelectedId, isMultiSelectMode, toggleMultiSelect, searchQuery, setSearchQuery, handleUndoLastOperation]);
+  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp, canDeleteInCurrentView, mode, quickLookItem, displayedItems, canvasLastSelectedId, isMultiSelectMode, toggleMultiSelect, searchQuery, setSearchQuery, handleUndoLastOperation, handleCopySelection, handlePaste, handleDuplicateSelection, canPasteHere, clipboardCount]);
 
   const shouldRenderQuickAccess = mode !== 'canvas' && (!isSmallScreen || Boolean(quickAccessPortalTarget));
   const quickAccessNode = shouldRenderQuickAccess ? (
@@ -3646,6 +3806,8 @@ export function LearningHubSidebar({
                     }
                   }
             }
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery('')}
           />
           </>
           )}
@@ -3752,6 +3914,10 @@ export function LearningHubSidebar({
           }
         } : undefined}
         onToggleFavorite={handleToggleFavorite}
+        onCopy={isTrashView ? undefined : handleCopyFromContextMenu}
+        onDuplicate={canPasteHere ? handleDuplicateFromContextMenu : undefined}
+        onPaste={canPasteHere ? handlePaste : undefined}
+        pasteCount={clipboardCount}
         onExportResource={handleExportResource}
         onExportFolder={handleExportFolder}
         onRestoreItem={handleRestoreItem}

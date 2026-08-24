@@ -1,18 +1,24 @@
 /**
  * FinderQuickLook — 空格快速预览浮层（对标 macOS Finder Quick Look）
  *
- * 轻量实现：大图标 + 名称 + 类型 / 大小 / 修改时间 / 位置 + 内容摘要（如有），
- * 不加载完整渲染管线（PDF/Office 等仍走「打开」进完整预览）。
+ * 轻量实现：可视预览（图片原图 / PDF 首页）或大图标 + 名称 + 类型 / 大小 /
+ * 修改时间 / 位置 + 内容摘要（如有），不加载完整渲染管线
+ * （Office / 多页 PDF 等仍走「打开」进完整预览）。
  *
  * 交互：
  * - 空格 / Esc 关闭（capture 层拦截，避免触发列表的清选/滚动）
  * - 点击遮罩关闭
  * - 「打开」按钮走宿主 onOpen（消费 LearningHubSidebarProps.onOpenPreview）
  */
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut, X } from '@phosphor-icons/react';
+import {
+  loadQuickLookVisual,
+  resolveQuickLookVisual,
+  type QuickLookVisualResult,
+} from './quickLookPreview';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { Z_INDEX } from '@/config/zIndex';
@@ -92,6 +98,45 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
     ? t('learningHub:finder.quickLook.folder')
     : t(`learningHub:resourceType.${item.type === 'retrieval' ? 'file' : item.type}`);
 
+  // ★ 可视预览：图片原图 / PDF 首页。加载中显示 shimmer，失败回退类型图标。
+  const visualKind = resolveQuickLookVisual(item);
+  const [visual, setVisual] = useState<QuickLookVisualResult | null>(null);
+  const [visualLoading, setVisualLoading] = useState(Boolean(visualKind));
+  const [visualFailed, setVisualFailed] = useState(false);
+
+  useEffect(() => {
+    setVisual(null);
+    setVisualFailed(false);
+    if (!visualKind) {
+      setVisualLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setVisualLoading(true);
+
+    void loadQuickLookVisual(item).then((result) => {
+      if (cancelled) {
+        // 过期结果：ObjectURL 立即释放，避免 Blob 泄漏
+        if (result?.isObjectUrl) URL.revokeObjectURL(result.url);
+        return;
+      }
+      if (result?.isObjectUrl) objectUrl = result.url;
+      setVisual(result);
+      setVisualLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // item 引用会随列表刷新变化；仅在内容真正变化时重载
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.updatedAt, visualKind]);
+
+  const showVisual = Boolean(visualKind) && !visualFailed && (visualLoading || visual !== null);
+
   const contentPreview = useMemo(() => {
     const raw = item.metadata?.contentPreview;
     return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
@@ -154,7 +199,35 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
 
         {/* 主体 */}
         <div className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto px-5 py-5">
-          <Icon size={96} />
+          {showVisual ? (
+            visualLoading ? (
+              /* 加载骨架：与预览图同占位，避免布局跳动 */
+              <div
+                className="h-44 w-full max-w-[320px] shrink-0 animate-pulse rounded-lg bg-muted/60"
+                data-testid="quick-look-visual-loading"
+                aria-hidden
+              />
+            ) : (
+              <div className="flex w-full shrink-0 flex-col items-center gap-1.5">
+                <img
+                  src={visual!.url}
+                  alt={item.name}
+                  data-testid="quick-look-visual"
+                  data-visual-kind={visual!.kind}
+                  className="max-h-[260px] w-auto max-w-full rounded-lg border border-border/40 bg-muted/20 object-contain shadow-sm"
+                  draggable={false}
+                  onError={() => setVisualFailed(true)}
+                />
+                {visual!.kind === 'pdf' && (
+                  <span className="text-2xs text-muted-foreground/70">
+                    {t('learningHub:finder.quickLook.pdfFirstPage')}
+                  </span>
+                )}
+              </div>
+            )
+          ) : (
+            <Icon size={96} />
+          )}
           <span className="text-xs text-muted-foreground">{typeLabel}</span>
 
           {contentPreview && (

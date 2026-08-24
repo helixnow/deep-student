@@ -218,6 +218,8 @@
     "attachmentsUploading": "附件上传中，请稍候",
     "attachmentNotReady": "附件未就绪：{{name}}（{{modes}}）",
     "attachmentProcessing": "附件处理中：{{name}}",
+    "sendBlockedEmpty": "输入内容或添加附件后即可发送",
+    "sendBlockedBusy": "正在回复中，完成后可发送",
     "processingIndicator": "附件处理中...",
     "processingIndicatorPartial": "部分模式未就绪",
     "completedMissingModes": "完成（{{modes}}未就绪）",
