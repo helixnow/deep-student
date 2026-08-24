@@ -69,10 +69,9 @@ pub use approval_handlers::{
 };
 pub use ask_user_handlers::chat_v2_ask_user_respond; // 🆕 用户提问响应
 pub use block_actions::{
-    chat_v2_anki_cards_result, chat_v2_compact_session, chat_v2_copy_block_content,
-    chat_v2_delete_message, chat_v2_get_anki_cards_from_block_by_document_id,
-    chat_v2_undo_compaction, chat_v2_update_block_content, chat_v2_update_block_tool_output,
-    chat_v2_upsert_streaming_block,
+    chat_v2_compact_session, chat_v2_copy_block_content, chat_v2_delete_message,
+    chat_v2_get_anki_cards_from_block_by_document_id, chat_v2_undo_compaction,
+    chat_v2_update_block_content, chat_v2_update_block_tool_output, chat_v2_upsert_streaming_block,
 };
 pub use canvas_handlers::chat_v2_canvas_edit_result;
 pub use export_handlers::{chat_v2_export_session, chat_v2_export_session_jsonl};

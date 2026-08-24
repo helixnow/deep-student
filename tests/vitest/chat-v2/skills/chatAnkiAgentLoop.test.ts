@@ -4,7 +4,9 @@ import { chatAnkiSkill } from '@/features/chat/skills/builtin';
 const requiredTools = [
   'builtin-chatanki_get_cards',
   'builtin-chatanki_update_card',
+  'builtin-chatanki_batch_update_cards',
   'builtin-chatanki_delete_card',
+  'builtin-chatanki_delete_cards',
   'builtin-chatanki_add_cards',
   'builtin-chatanki_enqueue_review',
   'builtin-chatanki_review_stats',
@@ -30,15 +32,32 @@ describe('ChatAnki agent acceptance loop', () => {
 
   it('exposes every card CRUD tool through both allowlist and embedded schemas', () => {
     const allowedChatAnkiTools = (chatAnkiSkill.allowedTools ?? [])
-      .filter((name) => name.startsWith('builtin-chatanki_'));
+      .filter((name) => name.startsWith('builtin-chatanki_'))
+      .sort();
     const embeddedChatAnkiTools = (chatAnkiSkill.embeddedTools ?? [])
-      .filter((tool) => tool.name.startsWith('builtin-chatanki_'));
-    expect(allowedChatAnkiTools).toHaveLength(26);
-    expect(embeddedChatAnkiTools).toHaveLength(26);
-    for (const name of requiredTools) {
-      expect(chatAnkiSkill.allowedTools).toContain(name);
-      expect(chatAnkiSkill.embeddedTools?.some((tool) => tool.name === name)).toBe(true);
-    }
+      .filter((tool) => tool.name.startsWith('builtin-chatanki_'))
+      .map((tool) => tool.name)
+      .sort();
+    const missingFromAllowlist = embeddedChatAnkiTools.filter(
+      (name) => !allowedChatAnkiTools.includes(name),
+    );
+    const missingFromEmbedded = allowedChatAnkiTools.filter(
+      (name) => !embeddedChatAnkiTools.includes(name),
+    );
+    const requiredMissingFromAllowlist = requiredTools.filter(
+      (name) => !allowedChatAnkiTools.includes(name),
+    );
+    const requiredMissingFromEmbedded = requiredTools.filter(
+      (name) => !embeddedChatAnkiTools.includes(name),
+    );
+
+    expect(missingFromAllowlist, 'embedded tools missing from allowlist').toEqual([]);
+    expect(missingFromEmbedded, 'allowlisted tools missing from embedded schemas').toEqual([]);
+    expect(requiredMissingFromAllowlist, 'required CRUD tools missing from allowlist').toEqual([]);
+    expect(
+      requiredMissingFromEmbedded,
+      'required CRUD tools missing from embedded schemas',
+    ).toEqual([]);
   });
 
   it('defines the cross-session library scope, CAS tokens, and confirmation thresholds', () => {
@@ -179,7 +198,11 @@ describe('ChatAnki agent acceptance loop', () => {
       items: { type: 'string', minLength: 1 },
     });
     expect(schema.properties.targetTemplateId.minLength).toBe(1);
-    expect(schema.properties.strategy.enum).toEqual(['map_only', 'fill_missing']);
+    expect(schema.properties.strategy.enum).toEqual([
+      'map_only',
+      'fill_missing',
+      'fill_missing_llm',
+    ]);
     expect(schema.properties.expectedVersions).toMatchObject({
       type: 'object',
       minProperties: 1,
@@ -192,6 +215,10 @@ describe('ChatAnki agent acceptance loop', () => {
     expect(content).toContain('`missingFields`');
     expect(content).toContain('按卡逐一调用 `builtin-chatanki_update_card`');
     expect(content).toContain('`fill_missing` **不会调用 LLM，也不会自动生成字段值**');
+    expect(content).toContain('`fill_missing_llm` 是两阶段策略');
+    expect(content).toContain('批量调用 LLM 生成字段值并按 Phase 1 之后的新版本逐卡 CAS 写回');
+    expect(content).toContain('`filled/partial/skipped/conflict/failed/not_needed`');
+    expect(content).toContain('不会因补字段失败回滚');
     expect(content).toContain('`{{cN::...}}`');
     expect(content).toContain('更换超过 3 张卡');
     expect(content).toContain('覆盖用户已编辑卡片');

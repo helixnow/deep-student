@@ -1,0 +1,2 @@
+{"front": "Python 中如何原地交换两个变量？", "back": "使用元组解包：a, b = b, a，无需引入临时变量。", "tags": ["Python"]}
+<<<ANKI_CARD_JSON_END>>>

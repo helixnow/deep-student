@@ -22,6 +22,18 @@
     "title": "等待批改",
     "description": "在输入区输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
   },
+  "make_cards": {
+    "label": "生成卡片",
+    "running": "正在提交制卡…",
+    "disabled_grading": "批改完成后才能生成卡片",
+    "disabled_no_result": "还没有批改结果，无法提炼错点",
+    "deck_name": "作文批改卡片",
+    "requirements": "根据批改结果中的批注与修改建议生成记忆卡片，重点覆盖被指出的问题与更好的表达，不要把整篇原文做成一张卡。",
+    "too_short": "批改结果太短，无法生成有效卡片",
+    "started": "已开始制卡，可在制卡任务台查看进度",
+    "failed": "制卡启动失败",
+    "open_task_dashboard": "打开任务台"
+  },
   "confirm": {
     "clear": "确认清空？",
     "cancel": "确认取消？"
