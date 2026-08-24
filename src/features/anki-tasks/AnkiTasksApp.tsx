@@ -668,9 +668,13 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               size="compact"
               className="flex-shrink-0"
               itemClassName={isSmallScreen
-                // 移动端加大纵向点击区，接近触控目标标准
-                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap'
-                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap'}
+                // 移动端加大纵向点击区，接近触控目标标准；
+                // 触控闸门必须用 pointer:coarse（iPad 横屏视口 ≥768 走桌面分支，
+                // 不能只靠 isSmallScreen）。!min-h-11 带 important：app.css 的
+                // .study-shell-segmented-button { min-height: 0 } 会盖掉基元里
+                // 非 important 的 coarse min-h-11
+                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
               options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
                 const labelText =
                   tab === 'all'
