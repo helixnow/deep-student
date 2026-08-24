@@ -142,6 +142,8 @@ export {
   normalizeHpiasEventPayload,
   omitResearchBlocksFromIntent,
   startHpiasEventBridge,
+  retainSharedHpiasEventBridge,
+  resetSharedHpiasEventBridgeForTests,
 } from './bridge/hpiasEventBridge';
 export { useHpiasEventBridge } from './hooks/useHpiasEventBridge';
 export {

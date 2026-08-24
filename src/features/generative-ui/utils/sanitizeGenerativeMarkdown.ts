@@ -40,6 +40,9 @@ const LOOSE_STRIP_RE = new RegExp(
 
 const EVENT_HANDLER_ATTR_RE = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
 
+const PRESENTATION_ATTR_RE =
+  /\s+(?:style|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+
 const URL_ATTR_RE =
   /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc|poster)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
@@ -75,6 +78,7 @@ function sanitizeOpenTag(tag: string): string {
   if (!name || !ALLOWED_TAGS.has(name)) return '';
 
   let cleaned = tag.replace(EVENT_HANDLER_ATTR_RE, '');
+  cleaned = cleaned.replace(PRESENTATION_ATTR_RE, '');
   cleaned = cleaned.replace(URL_ATTR_RE, (full, prefix: string, d?: string, s?: string, u?: string) => {
     const value = d ?? s ?? u ?? '';
     if (isDangerousGenerativeUrl(value)) return `${prefix}""`;
