@@ -582,6 +582,13 @@
   animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
 }
 
+/* 触屏：溢出菜单行 30px 目标过小，升到 ≥44px（桌面 30px 密度不变） */
+@media (pointer: coarse) {
+  .notes-tabs-overflow-menu button {
+    min-height: 44px;
+  }
+}
+
 .notes-titlebar-tabs .notes-tab {
   height: 100%;
   pointer-events: auto;
@@ -827,6 +834,14 @@
   color: hsl(var(--destructive));
 }
 
+/* 触屏：菜单项固定 28px 压死触控目标，改 auto 并升到 ≥44px（桌面 28px 密度不变） */
+@media (pointer: coarse) {
+  .notes-context-menu button {
+    min-height: 44px;
+    height: auto;
+  }
+}
+
 .notes-tab-context-menu {
   width: 184px;
 }
@@ -876,6 +891,19 @@
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
+}
+
+/* 触屏：输入行固定 30px 压死触控目标，改 auto 并升到 ≥44px；
+   input 提到 16px 防 iOS Safari 聚焦自动放大（桌面 30px 密度不变） */
+@media (pointer: coarse) {
+  .notes-inline-create-row {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .notes-inline-create-row input {
+    font-size: 16px;
+  }
 }
 
 .notes-inline-confirm {
