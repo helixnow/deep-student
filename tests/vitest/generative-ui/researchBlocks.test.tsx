@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { buildPaperDigestIntent } from '@/features/generative-ui/utils/buildPaperDigestIntent';
 import { buildResearchPlanIntent } from '@/features/generative-ui/utils/buildResearchPlanIntent';
@@ -81,16 +81,14 @@ describe('Research generative-ui blocks POC', () => {
     expect(screen.getByText('第 2 轮')).toBeInTheDocument();
   });
 
-  it('makes research-report citation badges keyboard-activable', () => {
+  it('marks research-report citations as notes, not fake links', () => {
     render(<ResearchReportBlock body="结论见 [paper-1]。" />);
 
     const badge = document.querySelector('[data-citation]');
     expect(badge).toBeTruthy();
     expect(badge).toHaveTextContent('[paper-1]');
-    expect(badge).toHaveAttribute('role', 'link');
-    expect(badge).toHaveAttribute('tabIndex', '0');
+    expect(badge).toHaveAttribute('role', 'note');
+    expect(badge).not.toHaveAttribute('tabIndex');
     expect(badge).toHaveAttribute('data-citation', '[paper-1]');
-
-    expect(() => fireEvent.keyDown(badge!, { key: 'Enter' })).not.toThrow();
   });
 });

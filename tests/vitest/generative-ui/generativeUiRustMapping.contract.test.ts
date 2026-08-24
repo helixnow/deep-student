@@ -83,6 +83,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
     expect(executorSrc).toContain('parse_note_edit_rejects_non_string_fields');
     expect(executorSrc).toContain('emit_hpias_session_started_if_needed');
+    expect(executorSrc).toContain('intent_has_research_blocks(&intent)');
   });
 
   it('hpias Rust module emits on hpias_event channel', () => {
