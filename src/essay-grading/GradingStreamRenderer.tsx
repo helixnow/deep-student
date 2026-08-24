@@ -246,7 +246,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors duration-150 motion-reduce:transition-none whitespace-nowrap",
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors duration-150 motion-reduce:transition-none whitespace-nowrap [@media(pointer:coarse)]:min-h-11",
                 activeTab === tab.id
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
