@@ -66,6 +66,20 @@ Translation 流式简报（Round 17）：
 - `useTranslationStream({ publishKey: resourceId })` → `translationStreamBridge`
 - `TranslationGenerativeBriefing` 通过 `streamKey={node.id}` 订阅，翻译进行中实时更新 progress / copy 文本
 
+### HPIAS 后端 emit 协议（Round 19 约定）
+
+前端 `hpiasEventBridge` 订阅 Tauri 通道 **`hpias_event`**。后端应按以下约定 emit（payload 为 HpiasEvent JSON，或 `{ event: HpiasEvent }` 包装）：
+
+| 字段 | 说明 |
+|------|------|
+| `type` | 事件类型（必填），与 `HpiasEvent` 联合类型一致 |
+| `session_id` | 研究会话 ID；Chat 块可通过 `researchSessionId` 过滤 |
+| `round` | 轮次（plan/retrieval/synthesis 类事件） |
+
+关键生命周期：`session_started` → `plan_generated` → `retrieval_completed` → `selection_completed` → `subagent_*` → `synthesis_updated` → `session_completed`。
+
+Rust 侧尚未落地 emit 实现；`render_generative_ui` 已支持 `researchSessionId` 透传，供 Chat 块绑定会话。
+
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`
 - `src/features/chat/plugins/events/generativeUI.ts`

@@ -25,6 +25,14 @@ describe('generativeUIArchitectureContract', () => {
     expect(fs.existsSync(path.join(root, 'bridge/hpiasEventBridge.ts'))).toBe(true);
   });
 
+  it('module integration contract test file guards full wiring', () => {
+    expect(
+      fs.existsSync(
+        path.join(process.cwd(), 'tests/vitest/generative-ui/generativeUIModuleIntegration.contract.test.ts'),
+      ),
+    ).toBe(true);
+  });
+
   it('uses zod in schema.ts', () => {
     const schemaSrc = fs.readFileSync(path.join(root, 'schema.ts'), 'utf8');
     expect(schemaSrc).toContain("from 'zod'");

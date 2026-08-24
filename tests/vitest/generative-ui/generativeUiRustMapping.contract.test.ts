@@ -38,4 +38,10 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('fn intent_has_apply_note_edit');
     expect(executorSrc).toContain('noteEdit.operation');
   });
+
+  it('Rust executor parses and emits researchSessionId for HPIAS Chat bridge', () => {
+    expect(executorSrc).toContain('fn parse_research_session_id');
+    expect(executorSrc).toContain('researchSessionId');
+    expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
+  });
 });

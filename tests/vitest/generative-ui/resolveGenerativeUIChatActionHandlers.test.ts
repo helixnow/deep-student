@@ -1,13 +1,31 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { schemaToPromptHint } from '@/features/generative-ui/utils/schemaToPromptHint';
 import { statCardPropsSchema } from '@/features/generative-ui/schema';
 import { extractNoteEditPayload } from '@/features/generative-ui/utils/extractNoteEditPayload';
+import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
+import { buildResearchReportIntent } from '@/features/generative-ui/utils/buildResearchReportIntent';
 import {
   resolveGenerativeUIChatActionHandlers,
   collectGenerativeUIActionIds,
 } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
-import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
+
+vi.mock('@/utils/clipboardUtils', () => ({
+  copyTextToClipboard: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock('@/features/workbench', () => ({
+  workbenchBus: {
+    launch: vi.fn(),
+    activateDetailed: vi.fn(),
+  },
+}));
+
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { workbenchBus } from '@/features/workbench';
+
+const mockedCopy = vi.mocked(copyTextToClipboard);
+const mockedLaunch = vi.mocked(workbenchBus.launch);
 
 describe('schemaToPromptHint', () => {
   it('summarizes object schema fields', () => {
@@ -38,6 +56,11 @@ describe('extractNoteEditPayload', () => {
 });
 
 describe('resolveGenerativeUIChatActionHandlers', () => {
+  beforeEach(() => {
+    mockedCopy.mockClear();
+    mockedLaunch.mockClear();
+  });
+
   it('includes workbench handlers for learning dashboard actions', () => {
     const intent = {
       version: '1' as const,
@@ -76,5 +99,38 @@ describe('resolveGenerativeUIChatActionHandlers', () => {
     expect(collectGenerativeUIActionIds(intent)).toContain('apply-note-edit');
     expect(handlers['apply-note-edit']).toBeDefined();
     expect(handlers['dismiss-note-suggestion']).toBeDefined();
+  });
+
+  it('research export-plan overrides workbench handler and copies markdown', async () => {
+    const reportIntent = buildResearchReportIntent({
+      title: 'Findings',
+      body: 'Summary [paper-1]',
+      labels: { metaTitle: 'Report', citationStatTitle: 'Citations' },
+    });
+    const intent = {
+      ...reportIntent,
+      blocks: [
+        ...reportIntent.blocks,
+        {
+          type: 'action-bar' as const,
+          props: {
+            actions: [
+              { id: 'copy-report', label: 'Copy', riskLevel: 'low' as const },
+              { id: 'export-plan', label: 'Export', riskLevel: 'medium' as const },
+            ],
+          },
+        },
+      ],
+    };
+
+    const handlers = resolveGenerativeUIChatActionHandlers({ intent });
+    expect(handlers['copy-report']).toBeDefined();
+    expect(handlers['export-plan']).toBeDefined();
+
+    await handlers['export-plan'].handler({} as never);
+    expect(mockedLaunch).not.toHaveBeenCalled();
+    expect(mockedCopy).toHaveBeenCalled();
+    const exported = mockedCopy.mock.calls[0]?.[0] as string;
+    expect(exported).toContain('Summary [paper-1]');
   });
 });

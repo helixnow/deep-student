@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 19（2026-08-24）
+
+- [x] **全模块 integration contract** — `generativeUIModuleIntegration.contract.test.ts`（14 块 / bridge / handler / mount 点）
+- [x] `hpiasEventBridge.integration.test.ts` — Style Lab 时间线 → dashboard intent + action-bar 全链路
+- [x] `resolveGenerativeUIChatActionHandlers` — Research `export-plan` 覆盖 workbench handler 测试
+- [x] Rust mapping contract 扩展 `researchSessionId`
+- [x] ARCHITECTURE HPIAS 后端 emit 协议约定
+
 ## Round 18（2026-08-24）
 
 - [x] **Research action handlers** — `createResearchBriefingActionHandlers`（`copy-report` / `export-plan`）
