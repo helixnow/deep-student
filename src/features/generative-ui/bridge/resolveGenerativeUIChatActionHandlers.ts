@@ -2,6 +2,7 @@
  * Chat generative_ui 块 — 按 modeState + toolInput 解析 actionHandlers
  */
 
+import i18n from '@/i18n';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 import { withGenerativeActionInstrumentation } from '../actions';
 import { intentHasResearchBlocks } from '../bridge/hpiasEventBridge';
@@ -44,6 +45,14 @@ import {
   EXPORT_INTENT_ACTION_ID,
   createExportIntentActionHandlers,
 } from '../handlers/exportIntentActionHandlers';
+
+/**
+ * 未传 labels 时的兜底文案：复用 generativeUi 命名空间既有 key，
+ * defaultValue 保留原中文，覆盖延迟命名空间尚未加载完成的窗口期。
+ */
+function fallbackLabel(key: string, defaultValue: string): string {
+  return String(i18n.t(`generativeUi:${key}`, { defaultValue }));
+}
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
 export const FLASHCARD_ACTION_IDS = ['save-to-library'] as const;
@@ -101,8 +110,8 @@ export function resolveGenerativeUIChatActionHandlers(
         createNotesEditActionHandlers(
           { noteId: input.canvasNoteId, ...noteEdit },
           input.noteEditLabels ?? {
-            applyEdit: '应用到笔记',
-            dismissSuggestion: '忽略建议',
+            applyEdit: fallbackLabel('notes.edit_apply', '应用到笔记'),
+            dismissSuggestion: fallbackLabel('notes.edit_dismiss', '忽略建议'),
           },
         ),
       );
@@ -116,7 +125,9 @@ export function resolveGenerativeUIChatActionHandlers(
       createFlashcardSaveActionHandlers(
         input.intent,
         input.flashcardContext ?? {},
-        input.flashcardLabels ?? { saveToLibrary: '保存到闪卡库' },
+        input.flashcardLabels ?? {
+          saveToLibrary: fallbackLabel('flashcard.save_to_library', '保存到闪卡库'),
+        },
       ),
     );
   }
@@ -139,9 +150,9 @@ export function resolveGenerativeUIChatActionHandlers(
           getIntent: () => input.intent,
         },
         input.researchLabels ?? {
-          copyReport: '复制报告',
-          exportPlan: '导出计划',
-          exportIntent: '导出全部意图',
+          copyReport: fallbackLabel('research.actions.copy_report', '复制报告'),
+          exportPlan: fallbackLabel('research.actions.export_plan', '导出计划'),
+          exportIntent: fallbackLabel('research.actions.export_intent', '导出全部意图'),
         },
         input.intentExportLabels,
       ),
@@ -154,7 +165,9 @@ export function resolveGenerativeUIChatActionHandlers(
       handlers,
       createCopyIntentActionHandlers(
         input.intent,
-        input.copyIntentLabels ?? { copyIntent: '复制意图' },
+        input.copyIntentLabels ?? {
+          copyIntent: fallbackLabel('action.copy_intent', '复制意图'),
+        },
       ),
     );
   }
@@ -165,7 +178,9 @@ export function resolveGenerativeUIChatActionHandlers(
       handlers,
       createCopyBlockActionHandlers(
         input.intent,
-        input.copyBlockLabels ?? { copyBlock: '复制该组件' },
+        input.copyBlockLabels ?? {
+          copyBlock: fallbackLabel('action.copy_block', '复制该组件'),
+        },
       ),
     );
   }
@@ -179,7 +194,9 @@ export function resolveGenerativeUIChatActionHandlers(
       createExportIntentActionHandlers(
         input.intent,
         {
-          exportMarkdown: input.researchLabels?.exportIntent ?? '导出全部意图',
+          exportMarkdown:
+            input.researchLabels?.exportIntent ??
+            fallbackLabel('research.actions.export_intent', '导出全部意图'),
         },
         input.intentExportLabels,
       ),

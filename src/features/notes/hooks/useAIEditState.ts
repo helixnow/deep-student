@@ -1,5 +1,18 @@
 import { useState, useCallback, useRef } from 'react';
 import * as Diff from 'diff';
+import i18n from '@/i18n';
+
+/**
+ * 护栏文案统一走 notes:aiDiff.errors.*；defaultValue 保留原中文，
+ * 覆盖延迟命名空间尚未加载完成的窗口期（i18n.ts 按 import.meta.glob 异步注入）。
+ */
+function guardText(
+  key: string,
+  defaultValue: string,
+  vars?: Record<string, string | number>
+): string {
+  return String(i18n.t(`notes:aiDiff.errors.${key}`, { defaultValue, ...vars }));
+}
 
 export type CanvasEditOperation = 'append' | 'replace' | 'set';
 
@@ -77,7 +90,11 @@ function projectedOutputTooLarge(byteLength: number): boolean {
 }
 
 function outputTooLargeError(): string {
-  return `建议后的笔记超过 ${MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES} 字节上限`;
+  return guardText(
+    'output_too_large',
+    `建议后的笔记超过 ${MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES} 字节上限`,
+    { maxBytes: MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES }
+  );
 }
 
 /**
@@ -93,7 +110,7 @@ export function computeProposedContent(
     case 'append': {
       const contentToAppend = request.content || '';
       if (!contentToAppend) {
-        return { content: originalContent, error: '追加内容为空' };
+        return { content: originalContent, error: guardText('append_empty', '追加内容为空') };
       }
 
       // Use a conservative newline allowance so no oversized string is constructed first.
@@ -127,7 +144,7 @@ export function computeProposedContent(
       const replaceWith = request.replace || '';
       
       if (!searchPattern) {
-        return { content: originalContent, error: '搜索模式为空' };
+        return { content: originalContent, error: guardText('search_empty', '搜索模式为空') };
       }
       
       let newContent: string;
@@ -141,9 +158,13 @@ export function computeProposedContent(
             return replaceWith;
           });
         } catch (regexErr) {
+          const message =
+            regexErr instanceof Error
+              ? regexErr.message
+              : guardText('regex_syntax_error', '语法错误');
           return {
             content: originalContent,
-            error: `无效的正则表达式: ${regexErr instanceof Error ? regexErr.message : '语法错误'}`,
+            error: guardText('invalid_regex', `无效的正则表达式: ${message}`, { message }),
           };
         }
       } else {
@@ -167,14 +188,22 @@ export function computeProposedContent(
       }
 
       if (replaceCount === 0) {
-        return { content: originalContent, error: '未找到要替换的内容' };
+        return {
+          content: originalContent,
+          error: guardText('replace_not_found', '未找到要替换的内容'),
+        };
       }
       
       return { content: newContent, replaceCount };
     }
     
     default:
-      return { content: originalContent, error: `未知的操作类型: ${request.operation}` };
+      return {
+        content: originalContent,
+        error: guardText('unknown_operation', `未知的操作类型: ${request.operation}`, {
+          operation: request.operation,
+        }),
+      };
   }
 }
 
@@ -190,7 +219,13 @@ function appendToSection(
   const match = content.match(sectionRegex);
 
   if (!match || match.index === undefined) {
-    return { success: false, content, error: `未找到章节: ${sectionTitle}` };
+    return {
+      success: false,
+      content,
+      error: guardText('section_not_found', `未找到章节: ${sectionTitle}`, {
+        section: sectionTitle,
+      }),
+    };
   }
 
   const sectionLevel = match[1].length;
@@ -362,7 +397,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     const result: CanvasAIEditResult = {
       requestId: current.request.requestId,
       success: false,
-      error: '用户拒绝修改',
+      error: guardText('user_rejected', '用户拒绝修改'),
     };
     
     setState(initialState);

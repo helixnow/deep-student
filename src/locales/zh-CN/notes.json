@@ -75,6 +75,17 @@
     "accept": "接受",
     "reject": "拒绝",
     "no_changes": "未检测到变更",
+    "errors": {
+      "output_too_large": "建议后的笔记超过 {{maxBytes}} 字节上限",
+      "append_empty": "追加内容为空",
+      "search_empty": "搜索模式为空",
+      "invalid_regex": "无效的正则表达式: {{message}}",
+      "regex_syntax_error": "语法错误",
+      "replace_not_found": "未找到要替换的内容",
+      "unknown_operation": "未知的操作类型: {{operation}}",
+      "section_not_found": "未找到章节: {{section}}",
+      "user_rejected": "用户拒绝修改"
+    },
     "summary": {
       "meta_title": "变更摘要",
       "meta_description": "基于 diff 统计的确定性预览",

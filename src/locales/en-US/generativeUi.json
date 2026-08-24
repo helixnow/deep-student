@@ -147,7 +147,10 @@
     "edit_preview_title": "Change preview",
     "edit_apply": "Apply to note",
     "edit_dismiss": "Dismiss",
-    "edit_suggestion_markdown_title": "Suggestion notes"
+    "edit_suggestion_markdown_title": "Suggestion notes",
+    "edit_dispatch_no_panel": "No suggestion panel is available in this environment",
+    "edit_dispatch_invalid": "The note edit suggestion is invalid or its content is too large",
+    "edit_dispatch_unclaimed": "No matching note editor claimed the suggestion"
   },
   "exam": {
     "briefing_label": "AI question bank briefing",

@@ -147,7 +147,10 @@
     "edit_preview_title": "变更预览",
     "edit_apply": "应用到笔记",
     "edit_dismiss": "忽略建议",
-    "edit_suggestion_markdown_title": "建议说明"
+    "edit_suggestion_markdown_title": "建议说明",
+    "edit_dispatch_no_panel": "当前环境没有可用的建议面板",
+    "edit_dispatch_invalid": "笔记编辑建议无效或内容过大",
+    "edit_dispatch_unclaimed": "没有匹配的笔记编辑器认领建议"
   },
   "exam": {
     "briefing_label": "AI 题库简报",
