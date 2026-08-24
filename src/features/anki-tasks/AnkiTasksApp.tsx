@@ -22,7 +22,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   ArrowsClockwise, ArrowCounterClockwise, Warning, CheckCircle,
   CircleNotch, FileText, Hash, TrendUp, ChartBar,
-  MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee,
+  MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee, Palette,
 } from '@phosphor-icons/react';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
@@ -735,7 +735,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           </div>
 
           {sessions.length === 0 ? (
-            /* 空状态 + CTA */
+            /* 空状态 + 双引导：去聊天发起制卡（主）/ 打开模板库先备好模板（次） */
             <div className="wb-at-empty">
               <FileText size={28} className="text-muted-foreground/30" />
               <p className="font-medium text-foreground text-[13px]">
@@ -744,20 +744,31 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="text-xs text-muted-foreground/70">
                 {t('taskDashboard.emptyHint')}
               </p>
-              <DsButton
-                size="sm"
-                variant="primary"
-                className="mt-2"
-                onClick={() => {
-                  // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
-                  // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
-                  onNavigateToChat?.('__new__');
-                }}
-                disabled={!onNavigateToChat}
-              >
-                <ChatCircleDots size={14} />
-                {t('taskDashboard.goToChat')}
-              </DsButton>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <DsButton
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
+                    // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
+                    onNavigateToChat?.('__new__');
+                  }}
+                  disabled={!onNavigateToChat}
+                >
+                  <ChatCircleDots size={14} />
+                  {t('taskDashboard.goToChat')}
+                </DsButton>
+                {onOpenTemplateManagement && (
+                  <DsButton
+                    size="sm"
+                    variant="default"
+                    onClick={onOpenTemplateManagement}
+                  >
+                    <Palette size={14} />
+                    {t('taskDashboard.openTemplateLib')}
+                  </DsButton>
+                )}
+              </div>
             </div>
           ) : sortedAndFiltered.length === 0 ? (
             <div className="wb-at-empty">
