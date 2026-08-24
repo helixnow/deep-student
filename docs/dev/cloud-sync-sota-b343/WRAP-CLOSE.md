@@ -26,7 +26,7 @@
 - **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。
 - **基线遗留红灯**：tombstone 场景非法短 hash；明文遗留下载 `downloaded=0`（勿为绿灯放松 fail-closed）。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
-- **CI / Rust 门禁**：前端相关 Vitest 5 文件 38 例通过。wrap rust test gate 子代理环境不可达；本机完整 `cargo test` 曾被 pod OOM（137）打断，未宣称 Rust 绿灯。
+- **CI / Rust 门禁**：前端相关 Vitest 5 文件 38 例通过。本机（Rust 1.95）`sync_android_device_switch` 9、`sync_android_restart` 10、`sync_r11_history` 9、`sync_r11_lease` 7 全过；并发租约测试栅栏已从 pending PUT 改到空 LIST。完整 `cargo test` / CI 未宣称全绿。
 
 ## go/no-go
 
