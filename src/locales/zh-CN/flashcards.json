@@ -140,7 +140,30 @@
       "review": "复习中",
       "relearning": "重新学习",
       "enqueued": "已入队"
-    }
+    },
+    "create": {
+      "new": "新建卡片",
+      "cancel": "收起新建",
+      "frontLabel": "卡片正面",
+      "backLabel": "卡片背面",
+      "frontPlaceholder": "正面：要提问的内容",
+      "backPlaceholder": "背面：答案",
+      "save": "保存并入队",
+      "saving": "保存中…",
+      "hint": "保存后自动加入复习队列，可在行内继续编辑。",
+      "incomplete": "正面与背面都需要填写",
+      "success": "已新建卡片并加入复习队列",
+      "failed": "新建卡片失败"
+    },
+    "import": {
+      "apkg": "导入 .apkg",
+      "pickTitle": "选择 Anki 牌组（.apkg）",
+      "running": "导入中…",
+      "hint": "选择本地 .apkg 文件导入卡片库",
+      "success": "导入完成：共 {{count}} 张卡片",
+      "failed": "Anki 牌组导入失败"
+    },
+    "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。"
   },
   "session": {
     "loading": "准备复习队列…",
