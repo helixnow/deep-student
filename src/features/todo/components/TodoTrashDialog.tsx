@@ -429,6 +429,7 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
             onClick={close}
             aria-label={t('todo:trash.back')}
             title={t('todo:trash.back')}
+            className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <ArrowLeft size={16} />
           </DsButton>
