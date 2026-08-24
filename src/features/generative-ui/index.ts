@@ -72,6 +72,17 @@ export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
 export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';
 export { buildResearchReportIntent } from './utils/buildResearchReportIntent';
 export {
+  mapHpiasStoreToResearchPlanSteps,
+  pickHpiasResearchSnapshot,
+} from './utils/mapHpiasStoreToResearchPlan';
+export type {
+  HpiasResearchSnapshot,
+  HpiasResearchPlanLabels,
+} from './utils/mapHpiasStoreToResearchPlan';
+export { buildHpiasResearchDashboardIntent } from './utils/buildHpiasResearchDashboardIntent';
+export type { HpiasResearchDashboardLabels } from './utils/buildHpiasResearchDashboardIntent';
+export { HpiasGenerativeResearchPanel } from './components/HpiasGenerativeResearchPanel';
+export {
   parseResearchReportCitations,
   countResearchReportCitations,
   RESEARCH_REPORT_CITATION_PATTERN,

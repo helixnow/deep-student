@@ -18,7 +18,7 @@
 |--------|------|------|
 | `paper_digest` | NDJSON 快照（参照 `paperSave.tsx`） | ✅ generative-ui `paper-digest` 块 POC |
 | `research_report` | 流式 markdown + citation `[类型-N]` | ✅ generative-ui `research-report` 块 POC |
-| `research_plan` | 映射 HpiasStore 事件词汇表 | ✅ generative-ui `research-plan` 块 POC |
+| `research_plan` | 映射 HpiasStore 事件词汇表 | ✅ generative-ui `research-plan` 块 POC + **HpiasStore 实时接线** Round 14 |
 
 **原则**：rAF 批处理 + 终态 `toolOutput` 双通道；引用走 `BackendSourceInfo` / `Block.citations`。
 

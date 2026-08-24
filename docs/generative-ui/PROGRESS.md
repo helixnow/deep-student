@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 14（2026-08-24）
+
+- [x] **HpiasStore → Generative UI 实时接线** — `mapHpiasStoreToResearchPlanSteps` + `buildHpiasResearchDashboardIntent`
+- [x] `HpiasGenerativeResearchPanel` — 订阅 store，渲染 research-plan + stat-card + research-report
+- [x] Style Lab **Research HPIAS** 演示模式 — `playStyleLabHpiasDemo` 事件时间线
+- [x] i18n `research.hpias.*` + vitest 桥接/面板测试
+
 ## Round 13（2026-08-24）
 
 - [x] Workbench **AI 仪表盘应用窗口** — `AiDashboardAppWindow` + `AppDefinition` + `agentManifest`

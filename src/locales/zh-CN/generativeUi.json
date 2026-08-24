@@ -145,6 +145,18 @@
       "meta_title": "研究报告",
       "citation_stat": "引用数",
       "citation_aria": "引用 {{label}}"
+    },
+    "hpias": {
+      "meta_title": "深度研究进度",
+      "plan_title": "研究任务",
+      "step_plan": "制定检索计划",
+      "step_retrieval": "文献检索",
+      "step_selection": "引用筛选",
+      "step_subagents": "子代理调研",
+      "step_synthesis": "综合报告",
+      "subagent_fallback": "子任务 {{id}}",
+      "retrieval_stat": "检索文献",
+      "selected_stat": "入选引用"
     }
   }
 }

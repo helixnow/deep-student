@@ -6,11 +6,17 @@ import { learningActionHandlers } from '@/features/generative-ui/handlers/learni
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { useGenerativeUIStream } from '@/features/generative-ui/hooks/useGenerativeUIStream';
+import { HpiasGenerativeResearchPanel } from '@/features/generative-ui/components/HpiasGenerativeResearchPanel';
+import { useHpiasStore } from '@/stores/researchStore';
+import {
+  playStyleLabHpiasDemo,
+  STYLE_LAB_HPIAS_DEMO_QUESTION,
+} from '@/features/generative-ui/demo/styleLabHpiasDemo';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
-type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap';
+type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap' | 'research-hpias';
 
 const DEMO_NOTE_ID = 'style-lab-note-demo';
 
@@ -41,6 +47,25 @@ export function GenerativeUIDemoTab() {
   const stream = useGenerativeUIStream();
   const [mode, setMode] = useState<DemoMode>('static');
   const [noteEditStatus, setNoteEditStatus] = useState<string | null>(null);
+  const [hpiasPlaying, setHpiasPlaying] = useState(false);
+  const hpiasCancelRef = React.useRef<(() => void) | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      hpiasCancelRef.current?.();
+      hpiasCancelRef.current = null;
+    };
+  }, []);
+
+  const startHpiasDemo = React.useCallback(() => {
+    hpiasCancelRef.current?.();
+    const store = useHpiasStore.getState();
+    store.actions.clear();
+    setHpiasPlaying(true);
+    setMode('research-hpias');
+    hpiasCancelRef.current = playStyleLabHpiasDemo(store.actions.handleEvent, 350);
+    window.setTimeout(() => setHpiasPlaying(false), 350 * 14);
+  }, []);
 
   const noteEditIntent = useMemo(
     () =>
@@ -135,6 +160,24 @@ export function GenerativeUIDemoTab() {
         );
       case 'mindmap':
         return <GenerativeUIRenderer intent={MINDMAP_DEMO_INTENT} showChrome={false} />;
+      case 'research-hpias':
+        return (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              HpiasStore 事件 → buildHpiasResearchDashboardIntent 实时接线
+              {hpiasPlaying ? '（模拟进行中…）' : '（演示完成，可再次播放）'}
+            </p>
+            <HpiasGenerativeResearchPanel
+              showChrome={false}
+              question={STYLE_LAB_HPIAS_DEMO_QUESTION}
+              emptyFallback={
+                <p className="text-sm text-muted-foreground" data-testid="hpias-demo-empty">
+                  等待 session_started…
+                </p>
+              }
+            />
+          </div>
+        );
       case 'static':
       default:
         return (
@@ -184,6 +227,14 @@ export function GenerativeUIDemoTab() {
               onClick={() => setMode('mindmap')}
             >
               导图嵌入
+            </DsButton>
+            <DsButton
+              size="sm"
+              variant={mode === 'research-hpias' ? 'default' : 'outline'}
+              onClick={startHpiasDemo}
+              data-testid="generative-ui-demo-hpias"
+            >
+              Research HPIAS
             </DsButton>
           </div>
         </CardContent>

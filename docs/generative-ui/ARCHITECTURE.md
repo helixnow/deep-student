@@ -74,6 +74,7 @@ Rust render_generative_ui
 | prompt props 同步 | ✅ |
 | 闪卡 save-to-library | ✅ Round 10 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
+| HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
 
 ## 7. 测试
 
