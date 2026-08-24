@@ -893,7 +893,7 @@ function ServerEditPanel({
 
             {/* 高级配置折叠区 */}
             <div className="border border-border/40 rounded-lg overflow-hidden">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none [@media(pointer:coarse)]:!min-h-11">
                 <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                 {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
               </DsButton>
@@ -1351,7 +1351,7 @@ function NewServerEditItem({
 
               {/* 高级配置折叠区 */}
               <div className="border border-border/40 rounded-lg overflow-hidden">
-                <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
+                <DsButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none [@media(pointer:coarse)]:!min-h-11">
                   <span>{t('settings:mcp_server_edit.advanced_config')}</span>
                   {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
                 </DsButton>
@@ -1744,7 +1744,7 @@ export function PresetServerSelector({
                         disabled={isAdded}
                         data-testid={`mcp-preset-item-${preset.id}`}
                         className={cn(
-                          'w-full !justify-start !h-auto !py-2 text-left',
+                          'w-full !justify-start !h-auto !py-2 text-left [@media(pointer:coarse)]:!min-h-11',
                           isAdded && 'opacity-50 bg-muted/30'
                         )}
                       >
@@ -1901,6 +1901,7 @@ export function PresetServerSelector({
         onClick={() => setIsOpen(!isOpen)}
         variant="default"
         size="sm"
+        className="[@media(pointer:coarse)]:!min-h-11"
         aria-haspopup={isSmallScreen ? undefined : 'dialog'}
         aria-expanded={isOpen}
         data-testid="mcp-preset-add-btn"
@@ -2987,7 +2988,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 }
               }}
               className={cn(
-                '!h-auto !px-2 !py-0.5 text-xs font-medium',
+                '!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11',
                 isActive
                   ? config.badge
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -3206,7 +3207,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   size="sm"
                   onClick={handleBrowseRuntimeRoot}
                   disabled={isSavingRuntimeRoot}
-                  className="text-xs flex-shrink-0"
+                  className="text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <FolderOpen className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_browse')}
@@ -3216,7 +3217,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   size="sm"
                   onClick={handleSetWorkspaceRoot}
                   disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
-                  className="text-xs flex-shrink-0"
+                  className="text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Check className="h-3 w-3 mr-1" />
                   {t('settings:tool_permissions.runtime_root_set_workspace')}
@@ -3227,7 +3228,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   onClick={handleAuthorizeRuntimeRoot}
                   disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
                   className={cn(
-                    'text-xs flex-shrink-0',
+                    'text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     pendingRootRisk && 'text-warning'
                   )}
                 >
@@ -3263,7 +3264,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                       variant="ghost"
                       size="sm"
                       onClick={handleReselectRuntimeRoot}
-                      className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline"
+                      className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('settings:tool_permissions.runtime_root_reselect')}
                     </DsButton>
@@ -3360,7 +3361,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleFocusRuntimeRootInput}
-                                className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline"
+                                className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11"
                               >
                                 {t('settings:tool_permissions.runtime_root_configure_now')}
                               </DsButton>
@@ -3428,7 +3429,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 size="sm"
                 onClick={fetchConfig}
                 disabled={isLoading || isBulkUpdating}
-                className="text-xs flex-shrink-0"
+                className="text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
@@ -3519,7 +3520,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowAdvancedTools(value => !value)}
-                  className="mt-2 !px-1 text-xs"
+                  className="mt-2 !px-1 text-xs [@media(pointer:coarse)]:!min-h-11"
                   aria-expanded={showAdvancedTools}
                 >
                   <CaretRight className={cn('h-3.5 w-3.5 mr-1 transition-transform', showAdvancedTools && 'rotate-90')} />
@@ -3699,7 +3700,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearHistory}
-                className="text-xs text-destructive hover:text-destructive/80"
+                className="text-xs text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:!min-h-11"
               >
                 <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}
@@ -3891,6 +3892,7 @@ export function McpToolsSection({
               disabled={isAddingNew}
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <Plus className="w-4 h-4 mr-1" />
               {t('settings:mcp.add_server')}
