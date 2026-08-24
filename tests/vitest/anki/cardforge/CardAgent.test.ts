@@ -41,7 +41,6 @@ vi.mock('@/utils/fileManager', () => ({
 
 vi.mock('@/components/anki/cardforge/prompts', () => ({
   buildCardGenerationSystemPrompt: vi.fn(() => 'system'),
-  buildCardGenerationUserPrompt: vi.fn(() => 'user'),
   buildContentAnalysisPrompt: vi.fn(() => 'analysis'),
 }));
 
@@ -185,7 +184,18 @@ describe('CardAgent', () => {
       .mocked(invoke)
       .mock.calls.find(([command]) => command === 'start_enhanced_document_processing');
     expect(startCall).toBeTruthy();
-    const startArgs = startCall?.[1] as { options?: Record<string, unknown> } | undefined;
+    const startArgs = startCall?.[1] as {
+      documentContent?: string;
+      options?: Record<string, unknown>;
+    } | undefined;
+
+    // Prompt 装配契约：材料只经 documentContent 注入 user 消息，
+    // system prompt 经 custom_anki_prompt 作为后端 system 消息基础层，
+    // 不再使用 {{DOCUMENT_CONTENT}} 占位符，也不再误传 options.system_prompt
+    expect(startArgs?.documentContent).toBe('Hello');
+    expect(startArgs?.options?.custom_anki_prompt).toBe('system');
+    expect(startArgs?.options).not.toHaveProperty('system_prompt');
+
     expect(startArgs?.options).toEqual(
       expect.objectContaining({
         template_ids: ['basic'],

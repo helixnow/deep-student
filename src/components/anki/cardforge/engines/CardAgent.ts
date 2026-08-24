@@ -26,7 +26,6 @@ import { SegmentEngine } from './SegmentEngine';
 import {
   buildContentAnalysisPrompt,
   buildCardGenerationSystemPrompt,
-  buildCardGenerationUserPrompt,
 } from '../prompts';
 import {
   filterExportableCards,
@@ -361,19 +360,14 @@ export class CardAgent {
         generation_prompt: t.generation_prompt || undefined,
       }));
 
-      // G4: 使用 PromptKit 构建系统 prompt 和用户 prompt
-      // 注意：userPrompt 使用占位符标记内容位置，实际内容由后端填充
+      // Prompt 装配契约（与后端 streaming_anki_service::build_prompt 对齐）：
+      // - custom_anki_prompt：后端 system 消息的基础提示词，传入角色/输出协议 system prompt
+      // - 学习材料只经 documentContent 参数由后端注入 user 消息；
+      //   历史上的 {{DOCUMENT_CONTENT}} 占位符方案（后端从不替换，占位符原样进入
+      //   system 消息）已删除
+      // - options.system_prompt 在后端的语义是"用户补充要求"，模板列表/数量上限/
+      //   自定义要求均已通过专用字段传递，此处无补充内容，不传
       const systemPrompt = buildCardGenerationSystemPrompt();
-      const userPrompt = buildCardGenerationUserPrompt(
-        '{{DOCUMENT_CONTENT}}', // 占位符，后端会用实际内容替换
-        templates,
-        undefined, // 分段信息由后端管理
-        {
-          maxCards: input.maxCards,
-          customRequirements: input.options?.customRequirements,
-          preferredTemplates: input.templates,
-        }
-      );
 
       // 构建后端生成选项 - 传递所有模板让 LLM 自选
       const templateFieldMap = templates.reduce((acc, t) => {
@@ -392,7 +386,6 @@ export class CardAgent {
       const isMultiTemplate = templates.length > 1;
       const defaultTemplateId = templates[0]?.id;
       const backendOptions: BackendGenerationOptions & {
-        system_prompt?: string;
         custom_anki_prompt?: string;
         template_fields?: string[];
       } = {
@@ -409,9 +402,8 @@ export class CardAgent {
         segment_overlap_size: 200,
         // 启用 LLM 智能分段边界检测
         enable_llm_boundary_detection: true,
-        // G4: 使用 PromptKit 制卡模板
-        system_prompt: systemPrompt,
-        custom_anki_prompt: userPrompt,
+        // PromptKit system prompt 作为后端 system 消息的基础提示词
+        custom_anki_prompt: systemPrompt,
         // 单模板时传递字段定义（多模板时使用按模板分组的映射）
         template_fields: !isMultiTemplate && defaultTemplateId
           ? templateFieldMap[defaultTemplateId]

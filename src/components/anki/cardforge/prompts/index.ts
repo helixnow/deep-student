@@ -13,13 +13,16 @@
 import type { TemplateInfo } from '../types';
 
 // ============================================================================
-// 流式输出标记协议
+// 流式输出标记协议（END-only）
 // ============================================================================
 
-/** 卡片 JSON 开始标记 */
-export const CARD_JSON_START = '<<<ANKI_CARD_JSON_START>>>';
-
-/** 卡片 JSON 结束标记 */
+/**
+ * 卡片 JSON 结束标记（唯一分隔符）
+ *
+ * 协议为 END-only：每张卡片输出完整 JSON 后紧跟一行结束标记。
+ * 后端流式解析器（streaming_anki_service::extract_card_from_buffer）
+ * 只识别此结束标记，历史上的 START 标记从未被解析，已删除。
+ */
 export const CARD_JSON_END = '<<<ANKI_CARD_JSON_END>>>';
 
 // ============================================================================
@@ -87,6 +90,12 @@ ${afterContext}
 
 /**
  * 生成制卡系统 Prompt
+ *
+ * 语义约定（与后端 streaming_anki_service::build_prompt 对齐）：
+ * 此 prompt 是 LLM 的 system 消息基础层（角色设定 + 输出协议），
+ * 在 start_enhanced_document_processing 路径应通过 options.custom_anki_prompt
+ * 传给后端（custom_anki_prompt 是后端 system 消息的 base prompt）。
+ * 学习材料由后端注入 user 消息，此层绝不包含材料或占位符。
  */
 export function buildCardGenerationSystemPrompt(): string {
   return `你是一位专业的 Anki 记忆卡片制作专家。你的任务是将学习材料转化为高质量的记忆卡片。
@@ -107,18 +116,18 @@ export function buildCardGenerationSystemPrompt(): string {
 - 专业术语可保留原文，不要把材料语言翻译成本提示词的语言
 
 【输出格式协议】
-每张卡片必须包裹在特殊标记中：
-${CARD_JSON_START}
+每张卡片输出一个完整的 JSON，随后紧跟一行结束标记：
 {JSON内容}
 ${CARD_JSON_END}
 
+结束标记独占一行；包括最后一张卡片之后也必须输出结束标记。
 这样设计是为了支持流式解析，每生成一张卡片就立即输出。
 
 【JSON 硬性规则（违反将导致卡片解析失败）】
-1. 标记必须独占一行，且成对出现；一对标记之间只放一张卡片的 JSON
+1. 结束标记必须独占一行；相邻两个结束标记之间只放一张卡片的 JSON
 2. JSON 必须是合法的严格 JSON：键和字符串一律用双引号；禁止尾逗号、注释、单引号
 3. 字符串内的换行必须写成 \\n，双引号必须写成 \\"；不要输出未转义的控制字符
-4. 不要用 markdown 代码围栏（\`\`\`）包裹 JSON，不要在标记外输出任何解释性文字
+4. 不要用 markdown 代码围栏（\`\`\`）包裹 JSON，除 JSON 和结束标记外不要输出任何解释性文字
 5. tags 必须是字符串数组（如 ["数学", "定义"]），不能是逗号分隔的字符串
 6. 数值字段（如 confidence）直接写数字，不要加引号
 7. 若某张卡片生成到一半发现内容不完整，宁可整张放弃，也不要输出残缺 JSON`;
@@ -127,7 +136,13 @@ ${CARD_JSON_END}
 /**
  * 生成制卡用户 Prompt
  *
- * @param content 学习材料内容
+ * 语义约定：user 消息层，`content` 必须是真实的学习材料原文。
+ * 禁止传入占位符（如历史上的 `{{DOCUMENT_CONTENT}}`——后端从不做占位符替换，
+ * 该方案已删除）。在 start_enhanced_document_processing 路径中，材料由后端
+ * 直接注入 user 消息，不要调用此函数；此函数仅用于前端自行组装完整
+ * user 消息并直连 LLM 的场景。
+ *
+ * @param content 学习材料原文（真实内容，非占位符）
  * @param templates 可用模板列表
  * @param segmentInfo 分段信息
  * @param options 额外选项
@@ -197,9 +212,8 @@ ${preferredTemplateText}
 ${extraRequirements}
 
 【输出格式】
-对于每张卡片，请输出：
+对于每张卡片，输出完整 JSON 后紧跟一行结束标记：
 
-${CARD_JSON_START}
 {
   "template_id": "选择的模板ID",
   "front": "问题/概念",
@@ -219,7 +233,7 @@ ${CARD_JSON_END}
 - fields 的键名必须与所选模板声明的字段名完全一致（区分大小写），模板声明的每个字段都要给出值
 - 非 Cloze 模板不要输出 text 字段；无标签时输出 "tags": []
 - 严格 JSON：双引号、无尾逗号、字符串内换行写 \\n；不要用 \`\`\` 包裹
-- 每对标记之间只放一张卡片；标记独占一行；标记外不要输出任何多余文字
+- 相邻两个结束标记之间只放一张卡片；结束标记独占一行（最后一张卡片之后也要输出）；除 JSON 和结束标记外不要输出任何多余文字
 
 【最佳实践】
 - 每个知识点一张卡片，避免内容过长
@@ -312,7 +326,8 @@ ${templateHint}
 4. 输出完整、正确的卡片
 
 【输出格式】
-${CARD_JSON_START}
+输出完整 JSON 后紧跟一行结束标记：
+
 {
   "template_id": "模板ID",
   "front": "完整的问题",
@@ -387,8 +402,7 @@ ${cardsText}
 // ============================================================================
 
 export const PromptKit = {
-  // 标记
-  CARD_JSON_START,
+  // 标记（END-only 协议，唯一分隔符）
   CARD_JSON_END,
 
   // 定界
