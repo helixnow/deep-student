@@ -75,6 +75,8 @@ describe('generativeUI Rust dual-mapping contract', () => {
   it('Rust executor parses and emits researchSessionId for HPIAS Chat bridge', () => {
     expect(executorSrc).toContain('fn parse_research_session_id');
     expect(executorSrc).toContain('researchSessionId');
+    expect(executorSrc).toContain('MAX_RESEARCH_SESSION_ID_LENGTH');
+    expect(executorSrc).toContain('parse_research_session_id_rejects_unsafe_or_oversized');
     expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
     expect(executorSrc).toContain('emit_hpias_session_started_if_needed');
   });

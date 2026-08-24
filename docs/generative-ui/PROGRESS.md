@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 55（2026-08-24）— researchSessionId 消毒
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] TS/Rust 限制长度 128，字符集 `[A-Za-z0-9._-]`
+2. [x] 拒绝 `../`、scheme 与超长 id
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 54（2026-08-24）— Rust noteEdit 字段白名单
 
 CI `32711020815` 仍 queued，**本轮不 push**。
