@@ -468,7 +468,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                     size="sm"
                     variant="ghost"
-                    className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:min-h-11"
+                    className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:!min-h-11"
                     width={90}
                   />
                   <DsButton
@@ -514,7 +514,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   disabled={fontSaving || fontLoading}
                   width={180}
                   variant="outline"
-                  className="h-11 max-w-full bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:min-h-11"
+                  className="h-11 max-w-full bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:!min-h-11"
                 />
               </div>
             </SettingRow>
@@ -532,7 +532,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                   size="sm"
                   variant="ghost"
-                  className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:min-h-11"
+                  className="h-11 bg-transparent text-xs transition-colors hover:bg-[var(--interactive-hover)] md:h-8 [@media(pointer:coarse)]:!min-h-11"
                   width={90}
                 />
                 <DsButton

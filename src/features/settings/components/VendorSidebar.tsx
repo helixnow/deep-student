@@ -236,7 +236,7 @@ export const VendorSidebar: React.FC = () => {
             variant="ghost"
             size="sm"
             iconOnly
-            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={() => handleOpenVendorModal(null)}
             title={t('settings:vendor_panel.add_vendor_button')}
             aria-label={t('settings:vendor_panel.add_vendor_button')}

@@ -169,19 +169,19 @@ function McpOAuthControls({
         <DsButton
           size="sm"
           variant="primary"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           disabled={busy || hasApiKey || !resourceUrl.trim()}
           onClick={() => void startOauth()}
         >
           {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
         </DsButton>
         {busy && (
-          <DsButton size="sm" variant="default" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void cancelOauth()}>
+          <DsButton size="sm" variant="default" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void cancelOauth()}>
             {t('settings:mcp.oauth.cancel')}
           </DsButton>
         )}
         {authorized && (
-          <DsButton size="sm" variant="default" className="[@media(pointer:coarse)]:min-h-11" disabled={busy} onClick={() => void revokeOauth()}>
+          <DsButton size="sm" variant="default" className="[@media(pointer:coarse)]:!min-h-11" disabled={busy} onClick={() => void revokeOauth()}>
             {t('settings:mcp.oauth.logout')}
           </DsButton>
         )}
@@ -318,7 +318,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <span>{label}</span>
         <Popover>
           <PopoverTrigger asChild>
-            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 text-muted-foreground">
+            <DsButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground">
               <InfoIcon size={16} />
             </DsButton>
           </PopoverTrigger>
@@ -1228,7 +1228,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.env_title')}</span>
-                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={addEnvRow}>+ {t('settings:mcp_descriptions.add_env')}</DsButton>
               </div>
               <div className="space-y-2">
                 {envEntries.length === 0 && (
@@ -1247,7 +1247,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       onChange={e => handleEnvValueChange(key, e.target.value)}
                       placeholder={t('settings:placeholders.env_value')}
                     />
-                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" onClick={() => removeEnvRow(key)}>
+                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={() => removeEnvRow(key)}>
                       <Trash size={16} />
                     </DsButton>
                   </div>
@@ -1261,7 +1261,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   <div className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.connection_test_title')}</div>
                   <p className="mt-1 text-xs text-muted-foreground">{t('settings:mcp_descriptions.connection_test_desc')}</p>
                 </div>
-                <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleTestConnection}>{t('settings:mcp_descriptions.run_test')}</DsButton>
               </div>
             </div>
             </div>
@@ -1293,8 +1293,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           )}
 
           <DsDialogFooter>
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
-            <DsButton size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClose}>{t('common:actions.cancel')}</DsButton>
+            <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleSubmit}>{isEditing ? t('common:actions.save') : t('common:actions.create')}</DsButton>
           </DsDialogFooter>
         </div>
       </UnifiedModal>
@@ -1609,7 +1609,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                         <DsButton
                           variant="ghost"
                           iconOnly size="sm"
-                          className="self-end max-sm:!h-11 max-sm:!w-11 sm:self-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                          className="self-end max-sm:!h-11 max-sm:!w-11 sm:self-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           onClick={() => {
                             const newEnv = { ...draft.env };
                             delete newEnv[key];

@@ -780,7 +780,7 @@ export const SubagentProfilesSection: React.FC = () => {
         size="sm"
         disabled={!isTauri || expandedId === 'create'}
         onClick={openCreate}
-        className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11"
+        className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         {t('settings:subagentProfiles.actions.create')}
@@ -861,7 +861,7 @@ export const SubagentProfilesSection: React.FC = () => {
               <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:subagentProfiles.empty.description')}
               </p>
-              <DsButton variant="primary" size="sm" className="mt-4 [@media(pointer:coarse)]:min-h-11" onClick={openCreate}>
+              <DsButton variant="primary" size="sm" className="mt-4 [@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 {t('settings:subagentProfiles.empty.cta')}
               </DsButton>

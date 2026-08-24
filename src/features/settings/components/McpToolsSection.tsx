@@ -303,7 +303,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="ghost"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('settings:mcp_server_edit.cancel')}
@@ -311,7 +311,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="danger"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={deleting}
               onClick={async () => {
                 if (deleting) return;
@@ -788,11 +788,11 @@ function ServerEditPanel({
     <div className="p-4 space-y-6">
       {/* 模式切换标签 */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <FileCode className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.form_mode')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <CodeBlock className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
         </DsButton>
@@ -997,7 +997,7 @@ function ServerEditPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -1007,7 +1007,7 @@ function ServerEditPanel({
             type="submit"
             variant="primary"
             size="sm"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={isSaving}
           >
             {t('settings:mcp_server_edit.save')}
@@ -1246,11 +1246,11 @@ function NewServerEditItem({
       <div className="p-4 space-y-6">
         {/* 模式切换标签 */}
         <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <FileCode className="w-3.5 h-3.5" />
             {t('settings:mcp_server_edit.form_mode')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:!min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <CodeBlock className="w-3.5 h-3.5" />
             JSON
           </DsButton>
@@ -1468,7 +1468,7 @@ function NewServerEditItem({
               type="button"
               variant="ghost"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={onCancel}
               disabled={isSubmitting}
             >
@@ -1478,7 +1478,7 @@ function NewServerEditItem({
               type="submit"
               variant="primary"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={isSubmitting}
             >
               {t('settings:mcp_server_edit.create')}
@@ -1509,7 +1509,7 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
         onClick={onAdd}
         variant="primary"
         size="sm"
-        className="[@media(pointer:coarse)]:min-h-11"
+        className="[@media(pointer:coarse)]:!min-h-11"
       >
         <Plus className="w-4 h-4 mr-1" />
         {t('settings:mcp_server_list.add_server')}
@@ -1550,24 +1550,24 @@ function ActionMenu({
 
   const menuItems = (
     <>
-      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.reconnect')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.refresh_list')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Flask className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.health_check')}
       </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
         {t('settings:mcp.clear_cache')}
       </DsButton>
       <div className="my-1 border-t border-border/50" />
-      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start [@media(pointer:coarse)]:!min-h-11">
         <Key className="w-3.5 h-3.5 text-muted-foreground" />
         {t('settings:mcp.security_policy')}
       </DsButton>
@@ -1581,7 +1581,7 @@ function ActionMenu({
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
-        className="bg-muted/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
+        className="bg-muted/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
       >
         <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
@@ -1866,7 +1866,7 @@ export function PresetServerSelector({
       )}
 
       {oauthSupported && isOAuthCapablePreset(pendingPreset) && (
-        <label className="flex items-start gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center">
           <Checkbox
             checked={enableOauth && !pendingApiKey.trim()}
             onCheckedChange={(v) => {
@@ -1885,10 +1885,10 @@ export function PresetServerSelector({
 
   const permissionFooterButtons = (
     <>
-      <DsButton variant="default" size="sm" onClick={closePermissionDrawer} className="[@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="default" size="sm" onClick={closePermissionDrawer} className="[@media(pointer:coarse)]:!min-h-11">
         {t('common:cancel')}
       </DsButton>
-      <DsButton variant="primary" size="sm" onClick={confirmInstall} className="[@media(pointer:coarse)]:min-h-11">
+      <DsButton variant="primary" size="sm" onClick={confirmInstall} className="[@media(pointer:coarse)]:!min-h-11">
         {t('settings:mcp_presets.confirm_install')}
       </DsButton>
     </>
@@ -2336,7 +2336,7 @@ function ShellCommandRulesSection() {
             {t('settings:tool_permissions.shell_rules.desc')}
           </p>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs [@media(pointer:coarse)]:!min-h-11">
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('settings:tool_permissions.shell_rules.add')}
         </DsButton>
@@ -2413,11 +2413,11 @@ function ShellCommandRulesSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[8rem_10rem_minmax(12rem,1fr)] gap-2">
             <Select value={draft.action} onValueChange={value => { setDraft(prev => ({ ...prev, action: value as ShellCommandAction })); setPendingRisk(null); }}>
-              <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={draft.matchType} onValueChange={value => { setDraft(prev => ({ ...prev, matchType: value as ShellCommandMatchType })); setDraftError(null); setPendingRisk(null); }}>
-              <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
               <SelectContent>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent>
             </Select>
             <Input
@@ -2439,8 +2439,8 @@ function ShellCommandRulesSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs [@media(pointer:coarse)]:min-h-11">{t('common:cancel')}</DsButton>
-            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs [@media(pointer:coarse)]:!min-h-11">{t('common:cancel')}</DsButton>
+            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs [@media(pointer:coarse)]:!min-h-11">
               {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
             </DsButton>
           </div>
@@ -2457,8 +2457,8 @@ function ShellCommandRulesSection() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_9rem_10rem] gap-2 mb-2">
             <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="h-8 pl-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" /></div>
-            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
-            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
           </div>
           <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
@@ -3194,7 +3194,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                   value={workspaceAccess}
                   onValueChange={(value) => setWorkspaceAccess(value as 'read_only' | 'read_write')}
                 >
-                  <SelectTrigger className="h-8 w-[8.5rem] text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
+                  <SelectTrigger className="h-8 w-[8.5rem] text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3550,7 +3550,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         />
                       </div>
                       <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.source_filter')}>
+                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.source_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3561,7 +3561,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={levelFilter} onValueChange={value => setLevelFilter(value as ToolLevelFilter)}>
-                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.level_filter')}>
+                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.level_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -3573,7 +3573,7 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                         </SelectContent>
                       </Select>
                       <Select value={overrideFilter} onValueChange={value => setOverrideFilter(value as ToolOverrideFilter)}>
-                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.override_filter')}>
+                        <SelectTrigger className="h-8 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]" aria-label={t('settings:tool_permissions.override_filter')}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -4014,7 +4014,7 @@ export function McpToolsSection({
             variant="ghost"
             size="sm"
             onClick={() => setPermissionsExpanded((open) => !open)}
-            className="!h-auto !px-1 !py-1.5 [@media(pointer:coarse)]:min-h-11 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
+            className="!h-auto !px-1 !py-1.5 [@media(pointer:coarse)]:!min-h-11 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
             aria-expanded={permissionsExpanded}
             aria-controls="settings-tool-permissions"
           >

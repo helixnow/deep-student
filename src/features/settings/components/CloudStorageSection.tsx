@@ -1214,7 +1214,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         <div className="flex flex-wrap gap-2">
           <DsButton
             variant="outline"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={testConnection}
             disabled={testing || !isConfigValid()}
           >
@@ -1232,7 +1232,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             )}
           </DsButton>
           <DsButton
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={saveConfig}
             disabled={!isConfigValid()}
           >
@@ -1240,7 +1240,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           </DsButton>
           <DsButton
             variant="danger"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={clearConfig}
           >
             {t('cloudStorage:actions.clearConfig')}
@@ -1339,7 +1339,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   <DsButton
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11"
+                    className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => setOpProgress(null)}
                   >
                     {t('common:close')}
@@ -1352,7 +1352,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="flex flex-wrap gap-2 pt-2">
               <DsButton
                 size="sm"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={handleBackupAndUpload}
                 disabled={uploading || downloading}
               >
@@ -1371,7 +1371,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowHistory(!showHistory)}
               >
                 <ClockCounterClockwise size={16} className="mr-2" />
@@ -1406,7 +1406,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <DsButton
                         size="sm"
                         variant="ghost"
-                        className="[@media(pointer:coarse)]:min-h-11"
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         title={t('cloudStorage:history.restore')}
                         disabled={downloading}
                         onClick={() => openRestoreConfirm(version.id)}
@@ -1423,7 +1423,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="danger"
-                          className="whitespace-nowrap [@media(pointer:coarse)]:min-h-11"
+                          className="whitespace-nowrap [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => {
                             setConfirmingDeleteVersionId(null);
                             void handleDeleteVersion();
@@ -1436,7 +1436,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="ghost"
-                          className="[@media(pointer:coarse)]:min-h-11"
+                          className="[@media(pointer:coarse)]:!min-h-11"
                           title={t('cloudStorage:history.delete')}
                           aria-label={t('cloudStorage:history.delete')}
                           onClick={() => {

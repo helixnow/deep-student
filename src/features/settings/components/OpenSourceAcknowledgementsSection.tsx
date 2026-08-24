@@ -221,7 +221,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       <DsButton
         variant="ghost"
         size="sm"
-        className="flex-1 justify-center [@media(pointer:coarse)]:min-h-11"
+        className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
         onClick={() => void openLegalDocument('project')}
       >
         <FileText size={14} />
@@ -230,7 +230,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       <DsButton
         variant="ghost"
         size="sm"
-        className="flex-1 justify-center [@media(pointer:coarse)]:min-h-11"
+        className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
         onClick={() => void openLegalDocument('thirdParty')}
       >
         <ListChecks size={14} />
@@ -250,7 +250,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             onClick={() => handleOpenChange(!open)}
             aria-label={t('acknowledgements.openSource.openDialog')}
             aria-expanded={isSmallScreen ? open : undefined}
-            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85 [@media(pointer:coarse)]:min-h-11"
+            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85 [@media(pointer:coarse)]:!min-h-11"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             {isSmallScreen ? (
@@ -327,7 +327,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="flex-1 justify-center [@media(pointer:coarse)]:min-h-11"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setLegalDocument(null)}
                 >
                   <ArrowLeft size={14} />
@@ -336,7 +336,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="flex-1 justify-center [@media(pointer:coarse)]:min-h-11"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}
@@ -348,7 +348,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="flex-1 justify-center [@media(pointer:coarse)]:min-h-11"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}

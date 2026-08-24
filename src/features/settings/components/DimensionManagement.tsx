@@ -377,7 +377,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             variant={isAddingNew ? 'default' : 'ghost'}
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:h-11 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:!h-11 text-xs px-2 py-0"
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
@@ -387,7 +387,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
-            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:h-11 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:!h-11 text-xs px-2 py-0"
           >
             {t('common:refresh')}
           </DsButton>
@@ -401,7 +401,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                <X size={14} />
             </DsButton>
           </div>
@@ -468,7 +468,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           )}
           
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/20">
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 [@media(pointer:coarse)]:h-11 text-xs flex-1 md:flex-none">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1 md:flex-none">
               {t('common:cancel')}
             </DsButton>
             <DsButton 
@@ -476,7 +476,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               size="sm" 
               onClick={handleCreateDimension} 
               disabled={creating || !newDimension}
-              className="h-7 [@media(pointer:coarse)]:h-11 text-xs flex-1 md:flex-none"
+              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1 md:flex-none"
             >
               {creating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
               {t('common:create')}
@@ -533,7 +533,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <p className="text-xs text-muted-foreground/50 mb-4 max-w-md px-4">
               {t('settings:dimension_management.no_data_hint')}
             </p>
-            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 [@media(pointer:coarse)]:h-11 text-xs">
+            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 [@media(pointer:coarse)]:!h-11 text-xs">
               {t('settings:dimension_management.create_first_dimension')}
             </DsButton>
           </div>
@@ -628,7 +628,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       size="sm"
                                       onClick={() => handleSetAsDefault(dim)}
                                       disabled={settingDefault || !dim.modelConfigId}
-                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                     >
                                       <span className="text-2xs">⭐</span>
                                     </DsButton>
@@ -640,7 +640,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
                                     className={cn(
-                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-2.5",
+                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5",
                                       isExpanded ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-foreground"
                                     )}
                                   >
@@ -655,7 +655,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     onClick={() => handleToggleDeleteConfirm(dim)}
                                     aria-expanded={isConfirmingDelete}
                                     className={cn(
-                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11",
+                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11",
                                       isConfirmingDelete
                                         ? "text-destructive bg-destructive/10"
                                         : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"
@@ -865,7 +865,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={() => handleSetAsDefault(dim)}
                               disabled={settingDefault || !dim.modelConfigId}
-                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:h-11 px-2 active:scale-95"
+                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:!h-11 px-2 active:scale-95"
                             >
                               <span className="mr-1">⭐</span>
                               {t('settings:dimension_management.set_as_default')}
@@ -877,7 +877,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
                           className={cn(
-                            "text-2xs h-7 [@media(pointer:coarse)]:h-11 px-2 active:scale-95",
+                            "text-2xs h-7 [@media(pointer:coarse)]:!h-11 px-2 active:scale-95",
                             isExpanded && "bg-primary/10 text-primary"
                           )}
                         >
@@ -891,7 +891,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           onClick={() => handleToggleDeleteConfirm(dim)}
                           aria-expanded={isConfirmingDelete}
                           className={cn(
-                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 p-0 active:scale-95 transition-colors",
+                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 p-0 active:scale-95 transition-colors",
                             isConfirmingDelete
                               ? "text-destructive bg-destructive/10"
                               : "text-destructive/60 hover:text-destructive"

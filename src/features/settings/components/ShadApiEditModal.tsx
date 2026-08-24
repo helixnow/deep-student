@@ -1056,7 +1056,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 });
                               }}
                               className={cn(
-                                '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center [@media(pointer:coarse)]:min-h-11',
+                                '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center [@media(pointer:coarse)]:!min-h-11',
                                 isSelected
                                   ? 'border-primary bg-primary/10 text-foreground'
                                   : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -2178,7 +2178,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               variant="ghost"
               onClick={() => void handleTestConnection()}
               disabled={connectionTest.state === 'testing'}
-              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
+              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {connectionTest.state === 'testing' ? (
                 <Lightning className="h-4 w-4 animate-pulse" />
@@ -2202,10 +2202,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 避免顶栏/底栏双保存出口造成心智分叉（表单仍可经 requestSubmit 提交） */}
             {!mobilePanelMode && (
               <>
-                <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11">
+                <DsButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11">
                   {t('common:actions.cancel')}
                 </DsButton>
-                <DsButton type="submit" variant="primary" className="min-w-[100px] [@media(pointer:coarse)]:min-h-11">
+                <DsButton type="submit" variant="primary" className="min-w-[100px] [@media(pointer:coarse)]:!min-h-11">
                   {t('common:actions.save')}
                 </DsButton>
               </>

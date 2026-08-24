@@ -1542,7 +1542,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="default" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:min-h-11">{t('common:close')}</DsButton>
+              <DsButton variant="default" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:!min-h-11">{t('common:close')}</DsButton>
             </DsDialogFooter>
           </DsDialog>
         )}
@@ -1693,7 +1693,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -1707,7 +1707,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 trackOffsetBottom={4}
               >
                 <div style={{ display: 'grid', gap: 12 }}>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+                <label className="inline-flex items-center gap-2 cursor-pointer [@media(pointer:coarse)]:min-h-11">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
                     onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: !!checked }))}
@@ -1796,9 +1796,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 </div>
               </CustomScrollArea>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
@@ -1994,7 +1994,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:actions.close')}
-                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   >
                     <X size={26} weight="regular" />
                   </DsButton>
@@ -2007,7 +2007,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:mobile_header.back')}
-                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   >
                     <CaretLeft size={26} weight="regular" />
                   </DsButton>

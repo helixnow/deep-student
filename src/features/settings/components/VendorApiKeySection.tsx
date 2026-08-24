@@ -311,7 +311,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <DsButton
           variant="primary"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={() => {
             void handleSaveApiKey();
           }}
@@ -324,7 +324,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <DsButton
           variant="danger"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={handleClearApiKey}
           disabled={!canClearStoredKey}
           title={t('settings:vendor_panel.clear_api_key_title')}

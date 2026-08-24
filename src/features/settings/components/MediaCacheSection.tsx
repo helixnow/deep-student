@@ -209,7 +209,7 @@ export const MediaCacheSection: React.FC = () => {
               size="sm"
               onClick={loadStats}
               disabled={loading}
-              className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
             </DsButton>
@@ -245,7 +245,7 @@ export const MediaCacheSection: React.FC = () => {
                   !clearOptions.clearOcrText &&
                   !clearOptions.clearVectorIndex)
               }
-              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11"
+              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               {clearing ? (
                 <>

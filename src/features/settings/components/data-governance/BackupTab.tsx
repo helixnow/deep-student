@@ -405,7 +405,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <DsButton size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onResumeJob?.(job.job_id)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
               </DsButton>
@@ -438,7 +438,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onCancelBackup}
-                className="text-destructive hover:text-destructive [@media(pointer:coarse)]:min-h-11"
+                className="text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
@@ -661,7 +661,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => void loadBackupConfig(true)}
             >
               <ArrowClockwise size={14} className="mr-1.5" />
@@ -875,7 +875,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
@@ -886,7 +886,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('export');
@@ -900,7 +900,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => {
                           if (backup.backup_type === 'incremental') {
                             showGlobalNotification(
@@ -934,7 +934,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('delete');
@@ -1016,7 +1016,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onRestartNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestartNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}
           </DsButton>
@@ -1036,10 +1036,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onRestoreLater}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreLater}>
             {t('data:governance.restore_later')}
           </DsButton>
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onRestoreNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restore_now')}
           </DsButton>
@@ -1163,7 +1163,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onCloseVerifyDialog}>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCloseVerifyDialog}>
             {t('common:actions.close')}
           </DsButton>
         </DsDialogFooter>

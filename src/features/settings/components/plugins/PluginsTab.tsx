@@ -209,7 +209,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={onBack}
             >
               <ArrowLeft className="w-4 h-4 mr-1" />
@@ -230,7 +230,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               </p>
               <DsButton
                 variant="primary"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -272,7 +272,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               <DsButton
                 variant="secondary"
                 size="sm"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -315,7 +315,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                 <DsButton
                   size="sm"
                   variant="danger"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   disabled={busy}
                   onClick={() => setUnbindOpen(true)}
                 >
@@ -564,7 +564,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                 >
                   <DsButton
                     variant="ghost"
-                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1 [@media(pointer:coarse)]:min-h-11"
+                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => setSelectedId(p.id)}
                   >
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/80">
@@ -599,7 +599,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="gap-1.5 text-foreground/80 [@media(pointer:coarse)]:min-h-11"
+                      className="gap-1.5 text-foreground/80 [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setSelectedId(p.id)}
                     >
                       <GearSix className="size-4" aria-hidden="true" />
