@@ -7,7 +7,8 @@
  * 轮询保留为低频兜底（见 DockItem BADGE_POLL_MS），防事件丢失。
  *
  * 不承载数据（payload 永远是「去重读一次」），因此无顺序/合并问题；
- * 通知同步派发，源在 store 提交后调用即可。
+ * 通知同步派发，源在 store 提交后调用即可。订阅者逐个故障隔离，避免某个
+ * badgeSource / 已卸载视图异常阻断同应用其余 Dock 实例刷新。
  */
 
 const listenersByType = new Map<string, Set<() => void>>();
@@ -16,7 +17,13 @@ const listenersByType = new Map<string, Set<() => void>>();
 export function notifyAppBadgeChanged(typeId: string): void {
   const set = listenersByType.get(typeId);
   if (!set) return;
-  for (const cb of Array.from(set)) cb();
+  for (const cb of Array.from(set)) {
+    try {
+      cb();
+    } catch (error) {
+      console.error(`[workbench] badgeBus listener failed for "${typeId}"`, error);
+    }
+  }
 }
 
 /** 消费侧（DockItem 等）：订阅 typeId 的角标失效通知 */
