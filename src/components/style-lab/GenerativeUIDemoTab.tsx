@@ -18,6 +18,7 @@ import {
   type IntentRecipeId,
 } from '@/features/generative-ui/demo/intentRecipes';
 import { buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
+import { lintGenerativeUIIntent } from '@/features/generative-ui/utils/lintGenerativeUIIntent';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
@@ -117,6 +118,31 @@ export function GenerativeUIDemoTab() {
         },
       ),
     [t],
+  );
+
+  const displayedIntent = useMemo((): GenerativeUIIntent | null => {
+    switch (mode) {
+      case 'static':
+        return LEARNING_DASHBOARD_EXAMPLE;
+      case 'recipe':
+        return (getIntentRecipe(recipeId) ?? INTENT_RECIPES[0]!).intent;
+      case 'showcase':
+        return buildAllBlocksGridIntent();
+      case 'note-edit':
+        return noteEditIntent;
+      case 'mindmap':
+        return MINDMAP_DEMO_INTENT;
+      case 'stream':
+        return stream.intent;
+      case 'research-hpias':
+      default:
+        return null;
+    }
+  }, [mode, recipeId, noteEditIntent, stream.intent]);
+
+  const lintResult = useMemo(
+    () => (displayedIntent ? lintGenerativeUIIntent(displayedIntent) : null),
+    [displayedIntent],
   );
 
   const simulateStream = () => {
@@ -289,6 +315,33 @@ export function GenerativeUIDemoTab() {
           </div>
         </CardContent>
       </Card>
+
+      {lintResult ? (
+        <div
+          className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs space-y-1"
+          data-testid="generative-ui-demo-lint"
+          data-lint-ok={lintResult.ok ? 'true' : 'false'}
+          data-lint-count={lintResult.issues.length}
+        >
+          <p className="font-medium text-foreground">{t('demo.lint_title')}</p>
+          {lintResult.ok && lintResult.issues.length === 0 ? (
+            <p className="text-muted-foreground">{t('demo.lint_ok')}</p>
+          ) : (
+            <>
+              <p className="text-muted-foreground">
+                {t('demo.lint_count', { count: lintResult.issues.length })}
+              </p>
+              <ul className="list-disc pl-4 text-muted-foreground">
+                {lintResult.issues.map((issue, index) => (
+                  <li key={`${issue.code}-${issue.path ?? index}`} data-lint-code={issue.code}>
+                    {issue.code}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : null}
 
       {renderDemo()}
     </div>

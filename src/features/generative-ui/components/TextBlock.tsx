@@ -16,12 +16,14 @@ export function TextBlock({ heading, body, density }: TextBlockProps) {
       {heading ? (
         <h4
           id={headingId}
+          dir="auto"
           className={cn('font-semibold', density === 'compact' ? 'text-sm' : 'text-base')}
         >
           {heading}
         </h4>
       ) : null}
       <p
+        dir="auto"
         className={cn(
           'whitespace-pre-wrap text-muted-foreground',
           density === 'compact' ? 'text-xs leading-snug' : 'text-sm leading-relaxed',

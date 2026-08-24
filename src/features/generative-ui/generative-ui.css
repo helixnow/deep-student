@@ -187,3 +187,25 @@
     break-inside: avoid;
   }
 }
+
+/**
+ * prefers-contrast: more — 加粗语义边框；JS 同步写 [data-contrast]。
+ * 焦点环保持 2px，颜色走 token / currentColor，不用裸 hex。
+ */
+@media (prefers-contrast: more) {
+  [data-generative-ui],
+  [data-generative-ui][data-contrast] {
+    border: 2px solid hsl(var(--border));
+  }
+
+  [data-generative-ui] :is(button, [role='button'], [data-generative-block], [role='region']),
+  [data-generative-ui][data-contrast] :is(button, [role='button'], [data-generative-block], [role='region']) {
+    border: 2px solid currentColor;
+  }
+
+  [data-generative-ui] :is(button, a, [tabindex]):focus-visible,
+  [data-generative-ui][data-contrast] :is(button, a, [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}

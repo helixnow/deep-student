@@ -7,7 +7,7 @@ import { GenerativeUIDemoTab } from '@/components/style-lab/GenerativeUIDemoTab'
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: { count?: number }) => {
       const map: Record<string, string> = {
         'notes.edit_suggestion_title': '笔记编辑建议',
         'notes.edit_suggestion_description': '确认后打开 diff',
@@ -40,7 +40,13 @@ vi.mock('react-i18next', () => ({
         'demo.recipes.empty_markdown.description': 'i18n-empty-markdown-desc',
         'demo.recipes.v11_grid_two_col.title': 'i18n-v11-grid-two-col',
         'demo.recipes.v11_grid_two_col.description': 'i18n-v11-grid-two-col-desc',
+        'demo.lint_title': 'Intent diagnostics',
+        'demo.lint_ok': 'No issues',
+        'demo.lint_count': '{{count}} issues',
       };
+      if (options && typeof options.count === 'number' && typeof (map[key] ?? key) === 'string') {
+        return (map[key] ?? key).replace('{{count}}', String(options.count));
+      }
       return map[key] ?? key;
     },
     i18n: { language: 'zh-CN' },
@@ -121,5 +127,15 @@ describe('GenerativeUIDemoTab', () => {
     await user.click(screen.getByTestId('generative-ui-demo-showcase'));
     expect(screen.getByText('18 块 Showcase · v1.1 grid')).toBeInTheDocument();
     expect(await screen.findByTestId('mindmap-embed-mock')).toBeInTheDocument();
+  });
+
+  it('shows lint diagnostics for the default static intent', () => {
+    render(<GenerativeUIDemoTab />);
+    const panel = screen.getByTestId('generative-ui-demo-lint');
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute('data-lint-ok', 'true');
+    expect(panel).toHaveAttribute('data-lint-count', '0');
+    expect(panel).toHaveTextContent('Intent diagnostics');
+    expect(panel).toHaveTextContent('No issues');
   });
 });

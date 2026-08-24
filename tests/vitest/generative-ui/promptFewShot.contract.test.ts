@@ -126,6 +126,24 @@ describe('generativeUI promptFewShot contract', () => {
     }
   });
 
+  it('system prompt injects JSON Schema type constraints from the registered enum', () => {
+    const prompt = buildGenerativeUISystemPrompt();
+    expect(prompt).toContain('JSON Schema');
+    expect(prompt).toContain('markdown');
+    expect(prompt).toContain('chart');
+    expect(prompt).toContain('steps');
+    expect(prompt).toContain('table');
+    expect(prompt).toContain('stat-card');
+    expect(prompt).toMatch(/32|maxItems/);
+  });
+
+  it('system prompt does not dump the full JSON Schema object', () => {
+    const prompt = buildGenerativeUISystemPrompt();
+    expect(prompt).toContain('JSON Schema 类型约束');
+    expect(prompt).not.toContain('$schema');
+    expect(prompt).not.toContain('x-registered-block-types');
+  });
+
   it('skill content stays synced with registry types and HITL / research / no-HTML rules', () => {
     const registered = generativeUIRegistry.keys();
     expect(registered.length).toBeGreaterThanOrEqual(14);
@@ -145,5 +163,23 @@ describe('generativeUI promptFewShot contract', () => {
     expect(generativeUiSkill.content).toMatch(/table[^\n]*columns/);
     expect(generativeUiSkill.content).toContain('chart + table + action-bar');
     expect(generativeUiSkill.content).toContain('steps + markdown');
+  });
+
+  it('system prompt injects JSON Schema type constraints from the registered enum', () => {
+    const prompt = buildGenerativeUISystemPrompt();
+    expect(prompt).toContain('JSON Schema');
+    expect(prompt).toContain('markdown');
+    expect(prompt).toContain('chart');
+    expect(prompt).toContain('steps');
+    expect(prompt).toContain('table');
+    expect(prompt).toContain('stat-card');
+    expect(prompt).toMatch(/32|maxItems/);
+  });
+
+  it('system prompt does not dump the full JSON Schema object', () => {
+    const prompt = buildGenerativeUISystemPrompt();
+    expect(prompt).toContain('JSON Schema 类型约束');
+    expect(prompt).not.toContain('$schema');
+    expect(prompt).not.toContain('x-registered-block-types');
   });
 });

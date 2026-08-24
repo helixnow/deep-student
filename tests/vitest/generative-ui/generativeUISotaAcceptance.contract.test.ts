@@ -313,6 +313,21 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'export function exportGenerativeUIJsonSchema',
       ]),
   },
+  {
+    id: 'round46-export-intent-handler',
+    check: () =>
+      fileContains('src/features/generative-ui/handlers/exportIntentActionHandlers.ts', [
+        'export function createExportIntentActionHandlers',
+        'EXPORT_INTENT_ACTION_ID',
+      ]),
+  },
+  {
+    id: 'round46-parse-error-codes',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/classifyGenerativeUIParseErrors.ts', [
+        'export function classifyGenerativeUIParseErrors',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
@@ -344,6 +359,9 @@ describe('generativeUISotaAcceptance contract', () => {
       'exportGenerativeUIJsonSchema',
       'wrapActionWithTimeout',
       'wrapActionWithRateLimit',
+      'createExportIntentActionHandlers',
+      'classifyGenerativeUIParseErrors',
+      'usePrefersContrast',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }

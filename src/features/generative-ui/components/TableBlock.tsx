@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/shad/Table';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from '../registry';
+import { formatGenerativeStatValue } from '../utils/formatGenerativeNumber';
 
 const TABLE_ALIGN = ['left', 'center', 'right'] as const;
 
@@ -48,7 +49,7 @@ function stringifyCell(value: unknown): string {
   return '';
 }
 
-function isNumericCell(value: unknown): boolean {
+function isNumericCell(value: unknown): value is number {
   return typeof value === 'number';
 }
 
@@ -107,15 +108,18 @@ export function TableBlock({ id, title, columns, rows, emptyLabel, caption }: Ta
                   <TableRow key={rowIndex}>
                     {columns.map((column) => {
                       const raw = row[column.key];
+                      const numeric = isNumericCell(raw);
                       return (
                         <TableCell
                           key={column.key}
+                          data-table-cell
+                          data-numeric={numeric ? 'true' : undefined}
                           className={cn(
                             ALIGN_CLASS[column.align ?? 'left'],
-                            isNumericCell(raw) && 'tabular-nums',
+                            numeric && 'tabular-nums',
                           )}
                         >
-                          {stringifyCell(raw)}
+                          {numeric ? formatGenerativeStatValue(raw) : stringifyCell(raw)}
                         </TableCell>
                       );
                     })}

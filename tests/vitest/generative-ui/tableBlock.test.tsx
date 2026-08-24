@@ -24,6 +24,7 @@ import {
 } from '@/features/generative-ui/components/TableBlock';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { validateBlockProps } from '@/features/generative-ui/schema';
+import { formatGenerativeStatValue } from '@/features/generative-ui/utils/formatGenerativeNumber';
 
 beforeAll(() => {
   registerTableBlock();
@@ -138,6 +139,22 @@ describe('TableBlock render', () => {
       (cell) => cell.textContent === '100',
     );
     expect(numericCell?.className).toContain('tabular-nums');
+  });
+
+  it('formats numeric cells with formatGenerativeStatValue and leaves strings as-is', () => {
+    const expected = formatGenerativeStatValue(1200);
+    render(
+      <TableBlock
+        columns={COLUMNS}
+        rows={[{ name: 'hello', score: 1200 }]}
+      />,
+    );
+
+    const numericCell = document.querySelector('[data-table-cell][data-numeric="true"]');
+    expect(numericCell).toBeTruthy();
+    expect(numericCell).toHaveTextContent(expected);
+    expect(screen.getByRole('cell', { name: 'hello' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: 'hello' })).toHaveTextContent('hello');
   });
 });
 

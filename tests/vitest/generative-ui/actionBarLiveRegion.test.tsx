@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -15,6 +15,9 @@ vi.mock('react-i18next', () => ({
       if (key === 'action.undo_empty') return '没有可撤销的操作';
       if (key === 'action.live_ok') return `${params?.label ?? ''} completed`;
       if (key === 'action.live_error') return `${params?.label ?? ''} failed`;
+      if (key === 'action.live_timeout') return `${params?.label ?? ''} timed out`;
+      if (key === 'action.live_rate_limit')
+        return `${params?.label ?? ''} too fast, try again shortly`;
       if (key === 'action.live_undo') return 'Last action undone';
       if (key === 'action.live_undo_error') return 'Undo failed';
       if (key === 'a11y.action_bar_label') return '操作栏';
@@ -24,6 +27,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 import { ActionBarBlock } from '@/features/generative-ui/components/ActionBarBlock';
+import { wrapActionWithRateLimit } from '@/features/generative-ui/handlers/actionRateLimit';
+import { wrapActionWithTimeout } from '@/features/generative-ui/handlers/actionTimeout';
 import { GenerativeActionUndoStack } from '@/features/generative-ui/handlers/actionUndoStack';
 import type { GenerativeActionDefinition } from '@/features/generative-ui/types';
 
@@ -44,6 +49,10 @@ function liveRegion(): HTMLElement {
 }
 
 describe('ActionBarBlock live region', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('announces success after a registered low-risk action executes', async () => {
     const user = userEvent.setup();
     const handler = vi.fn();
@@ -153,5 +162,53 @@ describe('ActionBarBlock live region', () => {
     await waitFor(() => {
       expect(liveRegion()).toHaveTextContent('Undo failed');
     });
+  });
+
+  it('announces timeout when the wrapped handler hangs', async () => {
+    vi.useFakeTimers();
+    const wrapped = wrapActionWithTimeout(
+      def('save', '保存', 'low', () => new Promise(() => {})),
+      { timeoutMs: 10 },
+    );
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'save', label: '保存', riskLevel: 'low' }]}
+        actionHandlers={{ save: wrapped }}
+        undoStack={new GenerativeActionUndoStack({ sink: () => undefined })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(liveRegion()).toHaveTextContent('保存 timed out');
+  });
+
+  it('announces rate-limit when a second click arrives during cooldown', async () => {
+    const user = userEvent.setup();
+    const handler = vi.fn();
+    const wrapped = wrapActionWithRateLimit(def('save', '保存', 'low', handler), {
+      cooldownMs: 10_000,
+    });
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'save', label: '保存', riskLevel: 'low' }]}
+        actionHandlers={{ save: wrapped }}
+        undoStack={new GenerativeActionUndoStack({ sink: () => undefined })}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => {
+      expect(liveRegion()).toHaveTextContent('保存 completed');
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => {
+      expect(liveRegion()).toHaveTextContent('保存 too fast, try again shortly');
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

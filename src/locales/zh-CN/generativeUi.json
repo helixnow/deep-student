@@ -20,9 +20,12 @@
     "live_error": "{{label}} 失败",
     "live_undo": "已撤销上一操作",
     "live_undo_error": "撤销失败",
+    "live_timeout": "{{label}} 已超时",
+    "live_rate_limit": "{{label}} 操作过快，请稍后再试",
     "undo": "撤销",
     "undo_empty": "没有可撤销的操作",
-    "copy_intent": "复制意图"
+    "copy_intent": "复制意图",
+    "export_markdown": "导出 Markdown"
   },
   "flashcard": {
     "preview_title": "闪卡预览",
@@ -70,7 +73,8 @@
     "table_label": "表格",
     "table_caption": "数据表",
     "block_error": "组件渲染失败",
-    "retry": "重试"
+    "retry": "重试",
+    "skip_to_actions": "跳到操作栏"
   },
   "blocks": {
     "table": {
@@ -341,6 +345,9 @@
         "title": "v1.1 两列",
         "description": "两列栅格布局"
       }
-    }
+    },
+    "lint_title": "意图诊断",
+    "lint_ok": "未发现问题",
+    "lint_count": "{{count}} 个问题"
   }
 }

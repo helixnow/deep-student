@@ -10,6 +10,8 @@ import {
   resolveGenerativeActionUndo,
   type GenerativeActionUndoStack,
 } from '../handlers/actionUndoStack';
+import { GenerativeActionTimeoutError } from '../handlers/actionTimeout';
+import { GenerativeActionRateLimitError } from '../handlers/actionRateLimit';
 
 export interface ActionBarBlockProps extends ActionBarProps {
   actionHandlers?: Record<string, GenerativeActionDefinition>;
@@ -143,8 +145,14 @@ export function ActionBarBlock({
           onAction?.({ type: 'execute', actionId });
           setLiveMessage(t('action.live_ok', { label }));
         }
-      } catch {
-        setLiveMessage(t('action.live_error', { label }));
+      } catch (error) {
+        if (error instanceof GenerativeActionTimeoutError) {
+          setLiveMessage(t('action.live_timeout', { label }));
+        } else if (error instanceof GenerativeActionRateLimitError) {
+          setLiveMessage(t('action.live_rate_limit', { label }));
+        } else {
+          setLiveMessage(t('action.live_error', { label }));
+        }
       } finally {
         executingRef.current = false;
         setExecuting(false);

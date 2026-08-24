@@ -20,9 +20,12 @@
     "live_error": "{{label}} failed",
     "live_undo": "Last action undone",
     "live_undo_error": "Undo failed",
+    "live_timeout": "{{label}} timed out",
+    "live_rate_limit": "{{label}} too fast, try again shortly",
     "undo": "Undo",
     "undo_empty": "Nothing to undo",
-    "copy_intent": "Copy intent"
+    "copy_intent": "Copy intent",
+    "export_markdown": "Export Markdown"
   },
   "flashcard": {
     "preview_title": "Flashcard preview",
@@ -70,7 +73,8 @@
     "table_label": "Table",
     "table_caption": "Data table",
     "block_error": "Component failed to render",
-    "retry": "Retry"
+    "retry": "Retry",
+    "skip_to_actions": "Skip to actions"
   },
   "blocks": {
     "table": {
@@ -341,6 +345,9 @@
         "title": "v1.1 two-column",
         "description": "Two-column grid layout"
       }
-    }
+    },
+    "lint_title": "Intent diagnostics",
+    "lint_ok": "No issues",
+    "lint_count": "{{count}} issues"
   }
 }

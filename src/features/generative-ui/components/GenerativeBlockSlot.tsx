@@ -1,6 +1,6 @@
 /**
  * 单块槽位：grid span + 错误边界 + data-block-type / data-generative-block。
- * React.memo 只比较 type / props / span（及决定 span class 的 layoutMode）。
+ * React.memo 只比较 type / props / span / blockId（及决定 span class 的 layoutMode）。
  * `data-generative-block="<type>"` 是 18 种块的稳定选择器（未知/校验失败块同样挂上）。
  */
 import React from 'react';
@@ -13,6 +13,7 @@ export interface GenerativeBlockSlotProps {
   props?: Record<string, unknown>;
   span?: GenerativeLayoutUnit;
   layoutMode: GenerativeLayoutMode;
+  blockId?: string;
   children: React.ReactNode;
 }
 
@@ -32,7 +33,7 @@ function shallowEqualProps(
   return true;
 }
 
-/** 供测试与 memo 共用：type + props + span（layoutMode 影响 span class） */
+/** 供测试与 memo 共用：type + props + span + blockId（layoutMode 影响 span class） */
 export function areGenerativeBlockSlotPropsEqual(
   prev: GenerativeBlockSlotProps,
   next: GenerativeBlockSlotProps,
@@ -41,6 +42,7 @@ export function areGenerativeBlockSlotPropsEqual(
     prev.type === next.type &&
     prev.span === next.span &&
     prev.layoutMode === next.layoutMode &&
+    prev.blockId === next.blockId &&
     shallowEqualProps(prev.props, next.props)
   );
 }
@@ -49,6 +51,7 @@ function GenerativeBlockSlotInner({
   type,
   span,
   layoutMode,
+  blockId,
   children,
 }: GenerativeBlockSlotProps) {
   const spanClass = layoutSpanClassName(layoutMode, span);
@@ -58,6 +61,7 @@ function GenerativeBlockSlotInner({
       data-layout-span={span}
       data-block-type={type}
       data-generative-block={type}
+      data-block-id={typeof blockId === 'string' && blockId.length > 0 ? blockId : undefined}
     >
       <GenerativeUIErrorBoundary resetKey={type}>{children}</GenerativeUIErrorBoundary>
     </div>

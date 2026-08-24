@@ -15,11 +15,13 @@ import {
 } from './schema';
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { coercePartialIntent } from './utils/coercePartialIntent';
+import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
 import {
   GENERATIVE_UI_COMPACT_CLASS,
   useGenerativeUICompact,
 } from './hooks/useGenerativeUICompact';
+import { usePrefersContrast } from './hooks/usePrefersContrast';
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion';
 import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
@@ -179,6 +181,7 @@ export function GenerativeUIRenderer({
   const { t } = useTranslation('generativeUi');
   const compact = useGenerativeUICompact();
   const reducedMotion = usePrefersReducedMotion();
+  const contrast = usePrefersContrast();
   const resolved = useMemo(
     () => resolveDisplayIntent(intentInput, incomingWarnings, incomingTruncatedCount, isStreaming),
     [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming],
@@ -203,6 +206,7 @@ export function GenerativeUIRenderer({
           data-generative-ui
           data-compact={compact ? 'true' : undefined}
           data-reduced-motion={reducedMotion ? 'true' : undefined}
+          data-contrast={contrast ? 'true' : undefined}
           data-streaming
           data-stream-fallback
           role="region"
@@ -231,12 +235,17 @@ export function GenerativeUIRenderer({
       data-generative-ui
       data-compact={compact ? 'true' : undefined}
       data-reduced-motion={reducedMotion ? 'true' : undefined}
+      data-contrast={contrast ? 'true' : undefined}
       data-streaming={isStreaming || undefined}
       data-stream-fallback={streamingFallback ? true : undefined}
+      data-intent-fingerprint={fingerprintGenerativeUIIntent(displayIntent)}
       role="region"
       aria-label={t('a11y.region_label')}
       aria-busy={isStreaming || undefined}
     >
+      <a href="#generative-ui-actions" className="sr-only focus:not-sr-only" data-skip-to-actions>
+        {t('a11y.skip_to_actions')}
+      </a>
       {showChrome ? (
         <GenerativeUIChrome isStreaming={isStreaming} onAction={onAction} />
       ) : null}
@@ -251,6 +260,7 @@ export function GenerativeUIRenderer({
       ) : null}
 
       <div
+        id="generative-ui-actions"
         className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
         data-layout-columns={columns}
@@ -263,6 +273,7 @@ export function GenerativeUIRenderer({
               props={block.props}
               span={block.span}
               layoutMode={mode}
+              blockId={block.id}
             >
               {node}
             </GenerativeBlockSlot>

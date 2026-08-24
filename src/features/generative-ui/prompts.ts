@@ -11,6 +11,7 @@ import {
   GENERATIVE_UI_FEW_SHOT_LABELS,
   GENERATIVE_UI_NEGATIVE_EXAMPLES,
 } from './prompts/fewShotExamples';
+import { exportGenerativeUIJsonSchema } from './utils/exportGenerativeUIJsonSchema';
 
 export {
   GENERATIVE_UI_FEW_SHOT_EXAMPLES,
@@ -41,6 +42,38 @@ function formatNegativeSection(): string {
   }).join('\n');
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+    ? value
+    : undefined;
+}
+
+/** 从 JSON Schema 取出已注册 type enum（扩展字段优先，其次 items.type.enum）。 */
+function extractRegisteredBlockTypes(schema: Record<string, unknown>): string[] {
+  const types = new Set<string>();
+  for (const value of stringArray(schema['x-registered-block-types']) ?? []) {
+    types.add(value);
+  }
+  const typeNode = asRecord(
+    asRecord(asRecord(asRecord(asRecord(schema.properties)?.blocks)?.items)?.properties)?.type,
+  );
+  for (const value of stringArray(typeNode?.enum) ?? []) {
+    types.add(value);
+  }
+  return [...types].sort();
+}
+
+function extractBlocksMaxItems(schema: Record<string, unknown>): number {
+  const maxItems = asRecord(asRecord(schema.properties)?.blocks)?.maxItems;
+  return typeof maxItems === 'number' ? maxItems : 32;
+}
+
 export function buildGenerativeUISystemPrompt(options?: {
   domain?: 'saas' | 'learning' | 'creative';
   maxBlocks?: number;
@@ -49,6 +82,9 @@ export function buildGenerativeUISystemPrompt(options?: {
   const maxBlocks = options?.maxBlocks ?? 12;
   const catalog = generativeUIRegistry.getCatalogForPrompt();
   const catalogTypes = catalog.map((c) => c.type).join(', ');
+  const schema = exportGenerativeUIJsonSchema();
+  const registeredTypes = extractRegisteredBlockTypes(schema).join(', ');
+  const schemaMaxBlocks = extractBlocksMaxItems(schema);
 
   const domainGuidance =
     domain === 'saas'
@@ -93,6 +129,12 @@ export function buildGenerativeUISystemPrompt(options?: {
     ...catalog.map(
       (c) => `- **${c.type}**: ${c.description} — props ${c.propsHint}`,
     ),
+    '',
+    '## JSON Schema 类型约束',
+    '- 意图 version 只能是 1 或 1.1',
+    `- blocks 最多 ${schemaMaxBlocks}`,
+    `- type 只能是：${registeredTypes}`,
+    '- 禁止 className / style / 裸 hex / fontSize',
     '',
     '## Few-shot 正例',
     '以下均为合法 GenerativeUIIntent。模仿结构，不要发明 type。',

@@ -48,6 +48,10 @@ export {
   usePrefersReducedMotion,
   PREFERS_REDUCED_MOTION_QUERY,
 } from './hooks/usePrefersReducedMotion';
+export {
+  usePrefersContrast,
+  PREFERS_CONTRAST_QUERY,
+} from './hooks/usePrefersContrast';
 export { resolveEffectiveRiskLevel, withGenerativeActionInstrumentation } from './actions';
 export type { GenerativeActionInstrumentationOptions } from './actions';
 export {
@@ -236,6 +240,11 @@ export {
   createCopyIntentActionHandlers,
   COPY_INTENT_ACTION_ID,
 } from './handlers/copyIntentActionHandlers';
+export {
+  createExportIntentActionHandlers,
+  EXPORT_INTENT_ACTION_ID,
+} from './handlers/exportIntentActionHandlers';
+export type { ExportIntentActionLabels } from './handlers/exportIntentActionHandlers';
 export { lintGenerativeUIIntent } from './utils/lintGenerativeUIIntent';
 export type {
   GenerativeUILintIssue,
@@ -262,6 +271,21 @@ export {
   exportGenerativeUIJsonSchema,
   GENERATIVE_UI_JSON_SCHEMA_ID,
 } from './utils/exportGenerativeUIJsonSchema';
+export {
+  GenerativeUIIntentSnapshotRing,
+  getDefaultGenerativeUIIntentSnapshotRing,
+  resetDefaultGenerativeUIIntentSnapshotRing,
+  pushDefaultGenerativeUIIntentSnapshot,
+  GENERATIVE_UI_INTENT_SNAPSHOT_LIMIT,
+} from './utils/intentSnapshotRing';
+export type { GenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
+export {
+  classifyGenerativeUIParseErrors,
+} from './utils/classifyGenerativeUIParseErrors';
+export type {
+  GenerativeUIParseErrorCode,
+  ClassifiedGenerativeUIParseError,
+} from './utils/classifyGenerativeUIParseErrors';
 
 // 注册内置块
 import './blocks';

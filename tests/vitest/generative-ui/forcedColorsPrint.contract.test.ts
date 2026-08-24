@@ -38,6 +38,7 @@ describe('forcedColorsPrint.contract — generative-ui.css', () => {
     const css = readCss();
     expect(css).toContain('@media (forced-colors: active)');
     expect(css).toContain('@media print');
+    expect(css).toContain('@media (prefers-contrast: more)');
   });
 
   it('forced-colors maps buttons/links/focus to system colors', () => {

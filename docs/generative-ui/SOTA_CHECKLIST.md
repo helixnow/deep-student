@@ -116,6 +116,12 @@
 | 稳定 block id | `assignStableBlockIds` | ✅ |
 | locale 数字 | `formatGenerativeStatValue` | ✅ |
 | telemetry ring | 最近 50 条 | ✅ |
+| live timeout / rate-limit | ActionBar 区分错误码 | ✅ Round 46 |
+| prefers-contrast | `usePrefersContrast` + CSS | ✅ Round 46 |
+| dir=auto | Text / Markdown | ✅ Round 46 |
+| skip-to-actions / fingerprint | Renderer | ✅ Round 46 |
+| parse error codes | `classifyGenerativeUIParseErrors` | ✅ Round 46 |
+| Style Lab lint | Demo Tab 诊断面板 | ✅ Round 46 |
 
 ## HPIAS 后端
 
@@ -146,15 +152,16 @@
 1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
 2. **合并 main** — 待 CI 绿 + 人工 approve（仍 ⏳，Goal 未标 complete）
 3. ~~**Round 42–44 补洞**~~ — ✅ 本地完成
-4. ~~**Round 45 守卫 / 导出 / a11y**~~ — ✅ 本地完成（timeout / rate-limit / live region / URL / lint / JSON Schema）
-5. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+4. ~~**Round 45 守卫 / 导出 / a11y**~~ — ✅ 本地完成
+5. ~~**Round 46 可观测 / 对比度 / 导出**~~ — ✅ 本地完成
+6. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–45 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–46 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

@@ -68,21 +68,23 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
     >
       {title ? (
         <CardHeader className={cn('space-y-2', isCompact ? 'p-2 pb-2' : 'p-4 pb-2')}>
-          <h4 id={titleId} className="text-sm font-medium">
+          <h4 id={titleId} dir="auto" className="text-sm font-medium">
             {title}
           </h4>
         </CardHeader>
       ) : null}
       <CardContent className={cn(isCompact ? 'p-2' : 'p-4', title && 'pt-0')}>
-        {isEmpty ? (
-          <p className="text-sm text-muted-foreground" data-testid="markdown-block-empty">
-            {emptyLabel}
-          </p>
-        ) : (
-          <GenerativeUIErrorBoundary>
-            <MarkdownRenderer content={body} isStreaming={isStreaming} className="text-sm" />
-          </GenerativeUIErrorBoundary>
-        )}
+        <div dir="auto">
+          {isEmpty ? (
+            <p className="text-sm text-muted-foreground" data-testid="markdown-block-empty">
+              {emptyLabel}
+            </p>
+          ) : (
+            <GenerativeUIErrorBoundary>
+              <MarkdownRenderer content={body} isStreaming={isStreaming} className="text-sm" />
+            </GenerativeUIErrorBoundary>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

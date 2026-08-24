@@ -139,6 +139,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 | compact / i18n / testid / migrateToV11 | ✅ Round 42 |
 | action timeout / rate-limit / live region | ✅ Round 45 |
 | URL 消毒 / intent lint / JSON Schema | ✅ Round 45 |
+| prefers-contrast / skip-to-actions / parse codes / Style Lab lint | ✅ Round 46 |
 
 ## 7. 测试
 
