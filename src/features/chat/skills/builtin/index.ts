@@ -848,7 +848,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_retemplate',
       description:
-        '把当前会话中的整批或指定卡片更换为目标模板。必须携带 get_cards 读到的每张卡版本；返回逐卡映射结果与 missingFields，缺失字段由后续 update_card 补齐。',
+        '把当前会话中的整批或指定卡片更换为目标模板。必须携带 get_cards 读到的每张卡版本；返回逐卡映射结果与 missingFields。fill_missing_llm 会在换模板事务之后用 LLM 批量补缺失字段并按新版本 CAS 写回；其余策略的缺失字段由后续 update_card 补齐。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -872,8 +872,9 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           strategy: {
             type: 'string',
-            enum: ['map_only', 'fill_missing'],
-            description: 'map_only 只映射已有字段；fill_missing 额外返回缺失字段与源卡内容，但不会自动生成字段值',
+            enum: ['map_only', 'fill_missing', 'fill_missing_llm'],
+            description:
+              'map_only 只映射已有字段；fill_missing 额外返回缺失字段与源卡内容，但不会自动生成字段值；fill_missing_llm 在换模板成功后追加 Phase 2：LLM 批量生成缺失字段值并逐卡 CAS 写回，逐卡返回 fillStatus/filledFields',
           },
           expectedVersions: {
             type: 'object',
@@ -1015,6 +1016,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - 固定流程：\`builtin-chatanki_list_templates\` -> \`builtin-chatanki_get_cards\`（对完整选择分页读回，收集每张卡的 \`cardId -> version\`）-> \`builtin-chatanki_retemplate\`（先用 \`strategy=map_only\`）-> 检查返回的 \`missingFields\` -> 按卡逐一调用 \`builtin-chatanki_update_card\` 补齐 -> 再用 \`builtin-chatanki_get_cards\` 复核。
 - \`list_templates\` 返回 \`total/page/pageSize\`；目标模板未出现在当前页时必须继续翻页，不能把前 20 个结果当作完整模板库。
 - \`fill_missing\` **不会调用 LLM，也不会自动生成字段值**；它只报告 \`missingFields\` 和源卡内容，字段值必须由你判断后在后续 \`update_card\` 调用中写入。
+- \`fill_missing_llm\` 是两阶段策略：Phase 1 与 \`fill_missing\` 相同（同一事务换模板并映射字段），Phase 2 对仍缺字段的卡**批量调用 LLM 生成字段值并按 Phase 1 之后的新版本逐卡 CAS 写回**。返回逐卡 \`fillStatus\`（\`filled/partial/skipped/conflict/failed/not_needed\`）与 \`filledFields\`，顶层 \`fill\` 汇总各状态数量。用户明确要求自动补齐时才使用；调用后必须检查 \`fillStatus\`，对 \`partial/skipped/conflict/failed\` 的卡走 \`get_cards -> update_card\` 手工补齐，且换模板已生效、不会因补字段失败回滚。
 - Basic -> Cloze 前，必须先用 \`update_card\` 写入包含有效 \`{{cN::...}}\` 标记的 \`text\`，再调用 \`retemplate\`；没有合法 Cloze text 时不得强行更换。
 - 批量换模板会改变卡片外观，并可能覆盖字段映射。更换超过 3 张卡、覆盖用户已编辑卡片，或对整份 document 换模板前，必须先用 \`builtin-ask_user\` 明确确认。
 - 禁止使用过期 version。任何版本冲突后都必须重新调用 \`builtin-chatanki_get_cards\` 刷新完整选择，重建 \`expectedVersions\`，再决定是否重试；不得复用旧版本。

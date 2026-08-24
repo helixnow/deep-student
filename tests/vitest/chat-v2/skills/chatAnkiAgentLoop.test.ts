@@ -184,7 +184,11 @@ describe('ChatAnki agent acceptance loop', () => {
       items: { type: 'string', minLength: 1 },
     });
     expect(schema.properties.targetTemplateId.minLength).toBe(1);
-    expect(schema.properties.strategy.enum).toEqual(['map_only', 'fill_missing']);
+    expect(schema.properties.strategy.enum).toEqual([
+      'map_only',
+      'fill_missing',
+      'fill_missing_llm',
+    ]);
     expect(schema.properties.expectedVersions).toMatchObject({
       type: 'object',
       minProperties: 1,
@@ -197,6 +201,10 @@ describe('ChatAnki agent acceptance loop', () => {
     expect(content).toContain('`missingFields`');
     expect(content).toContain('按卡逐一调用 `builtin-chatanki_update_card`');
     expect(content).toContain('`fill_missing` **不会调用 LLM，也不会自动生成字段值**');
+    expect(content).toContain('`fill_missing_llm` 是两阶段策略');
+    expect(content).toContain('批量调用 LLM 生成字段值并按 Phase 1 之后的新版本逐卡 CAS 写回');
+    expect(content).toContain('`filled/partial/skipped/conflict/failed/not_needed`');
+    expect(content).toContain('不会因补字段失败回滚');
     expect(content).toContain('`{{cN::...}}`');
     expect(content).toContain('更换超过 3 张卡');
     expect(content).toContain('覆盖用户已编辑卡片');

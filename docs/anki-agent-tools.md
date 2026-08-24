@@ -790,10 +790,26 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
 | `documentId` | 与 `cardIds` 二选一 | 选择当前文档全部 live 卡片 |
 | `cardIds` | 与 `documentId` 二选一 | `1..100` 个不重复真实 ID，且必须来自同一文档 |
 | `targetTemplateId` | 是 | 来自 `list_templates` 的激活模板 |
-| `strategy` | 是 | `map_only` 或 `fill_missing` |
+| `strategy` | 是 | `map_only`、`fill_missing` 或 `fill_missing_llm` |
 | `expectedVersions` | 是 | `cardId -> version`，必须与本次完整选择精确一致 |
 
 `map_only` 映射已有同名/别名字段并报告缺失字段。`fill_missing` 仍不会调用 LLM 或自动填值，只会在缺字段卡片上额外返回 `source`，供后续 `update_card` 使用。
+
+`fill_missing_llm` 是两阶段策略：
+
+- **Phase 1** 与 `fill_missing` 完全相同——同一 `IMMEDIATE` 事务内校验选择集与全部版本并换模板，任何冲突都不会写入部分结果；LLM 不可用时在写库前即以工具失败返回。
+- **Phase 2** 在 Phase 1 提交后，对仍有 `missingFields` 的卡按批（每批至多 8 张）调用后台模型生成字段值，只允许填该卡列出的缺失字段，然后以 Phase 1 之后的新 `version` 逐卡 CAS 写回。Phase 2 失败**不回滚 Phase 1**：换模板已生效，失败卡只体现在 `fillStatus` 上。
+
+`fill_missing_llm` 的逐卡返回额外携带 `fillStatus` 与 `filledFields`；顶层追加 `fill` 汇总：
+
+| `fillStatus` | 含义 |
+|---|---|
+| `filled` | 全部缺失字段已生成并 CAS 写回，`version` 已再次前进 |
+| `partial` | 部分字段写回，剩余留在 `missingFields`，需 `update_card` 补齐 |
+| `skipped` | LLM 未返回该卡可用字段值，未写库 |
+| `conflict` | Phase 2 CAS 版本冲突（Phase 1 后另有写入），未写库；重新 `get_cards` |
+| `failed` | LLM 调用/解析或写库失败，未写库，`fillError` 给出原因 |
+| `not_needed` | 该卡 Phase 1 后没有缺失字段，无需补齐 |
 
 成功返回：
 
@@ -820,6 +836,23 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
   "uiSync": {}
 }
 ```
+
+`strategy=fill_missing_llm` 时逐卡追加 `fillStatus`/`filledFields`（失败时含 `fillError`），顶层追加：
+
+```json
+{
+  "fill": {
+    "attempted": 2,
+    "filled": 1,
+    "partial": 0,
+    "skipped": 0,
+    "conflicts": 0,
+    "failed": 1
+  }
+}
+```
+
+`missingCards` 与逐卡 `missingFields`/`version` 均为 Phase 2 之后的终态。
 
 结构化拒绝/冲突：
 
@@ -1033,7 +1066,7 @@ APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某�
 2. `get_cards` 分页读完完整选择，构造每张卡的 `cardId -> version`。
 3. 用户确认后调用 `retemplate(strategy=map_only)`。
 4. 检查每张卡的 `missingFields`。若目标为 Cloze，先用 `update_card` 写入有效 `{{cN::...}}` 文本。
-5. 按卡调用 `update_card` 补齐字段；`fill_missing` 只提供源内容，不会自动填值。
+5. 按卡调用 `update_card` 补齐字段；`fill_missing` 只提供源内容，不会自动填值。用户明确要求自动补齐时可改用 `fill_missing_llm`，之后按逐卡 `fillStatus` 对 `partial/skipped/conflict/failed` 的卡走 `update_card` 兜底。
 6. 再次分页 `get_cards` 验收。任何版本冲突都要刷新完整选择和全部版本，不得复用旧映射。
 
 ### APKG 加工闭环

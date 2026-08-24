@@ -51,6 +51,10 @@
 - [x] extraRequirements 参数暴露（run/start args → build_chatanki_requirements 追加；skill schema + 系统提示文档 + Rust 测试）
 - chatanki_transform 工具落地
 - Multi-agent Phase 0 档案
+- [x] 子代理 #10：retemplate 新增 `fill_missing_llm` 两阶段策略（路线图 #11，修复 Round 1 #9 "fill_missing 名不副实" gap）
+  - Phase 1 复用既有单事务换模板；Phase 2 按批（≤8 卡）`call_model2_raw_prompt` 补缺失字段并以 Phase 1 后版本逐卡 CAS 写回，失败不回滚 Phase 1
+  - payload 逐卡扩展 `fillStatus/filledFields(/fillError)`，顶层 `fill` 汇总；`fill_missing` 语义保持不变
+  - schema enum、skill 系统提示、`docs/anki-agent-tools.md` 同步；新增 Rust 单测 ×5 + vitest 契约更新
 
 ---
 

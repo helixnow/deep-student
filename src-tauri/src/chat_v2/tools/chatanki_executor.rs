@@ -3743,6 +3743,22 @@ impl ChatAnkiToolExecutor {
                 ));
             }
         };
+        // fill_missing_llm 需要 LLM；在 Phase 1 写库之前拒绝，避免只完成半个策略。
+        let fill_llm_manager = if request.strategy == ChatAnkiRetemplateStrategy::FillMissingLlm {
+            match ctx.llm_manager.as_ref() {
+                Some(manager) => Some(manager.clone()),
+                None => {
+                    return Ok(finish_chatanki_failure(
+                        call,
+                        ctx,
+                        start_time,
+                        "LLM manager not available for fill_missing_llm".to_string(),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
         let template_db = match ctx.main_db.as_ref().or(ctx.anki_db.as_ref()) {
             Some(db) => db,
             None => {
@@ -3906,7 +3922,7 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        let (target_note_type, updates) = match result {
+        let (target_note_type, mut updates) = match result {
             AnkiRetemplateBatchResult::Updated {
                 target_note_type,
                 updates,
@@ -3920,6 +3936,51 @@ impl ChatAnkiToolExecutor {
                 ));
             }
         };
+
+        // Phase 2（仅 fill_missing_llm）：Phase 1 事务已提交且不变；这里对仍缺字段
+        // 的卡分批调用 LLM 生成字段值，并以 Phase 1 之后的版本逐卡 CAS 写回。
+        // LLM/写回失败只影响对应卡的 fillStatus，不回滚 Phase 1。
+        let mut fill_outcomes: HashMap<String, RetemplateFillOutcome> = HashMap::new();
+        if let Some(llm_manager) = fill_llm_manager {
+            let pending_indices: Vec<usize> = updates
+                .iter()
+                .enumerate()
+                .filter(|(_, update)| !update.missing_fields.is_empty())
+                .map(|(index, _)| index)
+                .collect();
+            for chunk in pending_indices.chunks(CHATANKI_RETEMPLATE_FILL_BATCH_SIZE) {
+                let batch: Vec<&AnkiRetemplateCardUpdate> =
+                    chunk.iter().map(|index| &updates[*index]).collect();
+                let prompt = build_retemplate_fill_prompt(&target_note_type, &batch);
+                let generated = match llm_manager
+                    .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Anki)
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|output| parse_retemplate_fill_response(&output.assistant_message))
+                {
+                    Ok(generated) => generated,
+                    Err(error) => {
+                        for index in chunk {
+                            fill_outcomes.insert(
+                                updates[*index].card.id.clone(),
+                                RetemplateFillOutcome::failed(error.clone()),
+                            );
+                        }
+                        continue;
+                    }
+                };
+                for index in chunk {
+                    let update = &mut updates[*index];
+                    let outcome = match generated.get(&update.card.id) {
+                        Some(fields) => {
+                            write_retemplate_fill(anki_db.as_ref(), &ctx.session_id, update, fields)
+                        }
+                        None => RetemplateFillOutcome::skipped("llm_returned_no_fields"),
+                    };
+                    fill_outcomes.insert(update.card.id.clone(), outcome);
+                }
+            }
+        }
         let event_cards: Vec<Value> = updates
             .iter()
             .map(|update| convert_backend_card(&update.card))
@@ -3950,28 +4011,35 @@ impl ChatAnkiToolExecutor {
             .count();
         let cards: Vec<Value> = updates
             .iter()
-            .map(|update| retemplate_update_for_tool(update, request.strategy))
+            .map(|update| {
+                retemplate_update_for_tool(
+                    update,
+                    request.strategy,
+                    fill_outcomes.get(&update.card.id),
+                )
+            })
             .collect();
+        let mut payload = json!({
+            "status": status,
+            "documentId": document_id,
+            "targetTemplateId": target.template_id,
+            "targetNoteType": target_note_type,
+            "isCloze": target_note_type.trim().eq_ignore_ascii_case("cloze"),
+            "strategy": request.strategy.as_str(),
+            "updated": cards.len(),
+            "missingCards": missing_cards,
+            "cards": cards,
+            "mutationApplied": true,
+            "retryable": false,
+            "uiSync": ui_sync,
+        });
+        if request.strategy == ChatAnkiRetemplateStrategy::FillMissingLlm {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert("fill".to_string(), retemplate_fill_summary(&fill_outcomes));
+            }
+        }
 
-        Ok(finish_chatanki_success(
-            call,
-            ctx,
-            start_time,
-            json!({
-                "status": status,
-                "documentId": document_id,
-                "targetTemplateId": target.template_id,
-                "targetNoteType": target_note_type,
-                "isCloze": target_note_type.trim().eq_ignore_ascii_case("cloze"),
-                "strategy": request.strategy.as_str(),
-                "updated": cards.len(),
-                "missingCards": missing_cards,
-                "cards": cards,
-                "mutationApplied": true,
-                "retryable": false,
-                "uiSync": ui_sync,
-            }),
-        ))
+        Ok(finish_chatanki_success(call, ctx, start_time, payload))
     }
 
     async fn execute_wait(
@@ -10021,6 +10089,7 @@ fn retemplate_rejection_payload(result: AnkiRetemplateBatchResult) -> Value {
 fn retemplate_update_for_tool(
     update: &AnkiRetemplateCardUpdate,
     strategy: ChatAnkiRetemplateStrategy,
+    fill: Option<&RetemplateFillOutcome>,
 ) -> Value {
     let mut output = convert_card_for_tool(&update.card, None);
     let missing_fields: Vec<String> = update
@@ -10044,15 +10113,288 @@ fn retemplate_update_for_tool(
             "missingFieldDetails".to_string(),
             json!(missing_field_details),
         );
-        if strategy == ChatAnkiRetemplateStrategy::FillMissing && !update.missing_fields.is_empty()
-        {
+        let include_source = matches!(
+            strategy,
+            ChatAnkiRetemplateStrategy::FillMissing | ChatAnkiRetemplateStrategy::FillMissingLlm
+        ) && !update.missing_fields.is_empty();
+        if include_source {
             object.insert(
                 "source".to_string(),
                 convert_card_for_tool(&update.source, None),
             );
         }
+        if strategy == ChatAnkiRetemplateStrategy::FillMissingLlm {
+            match fill {
+                Some(outcome) => {
+                    object.insert("fillStatus".to_string(), json!(outcome.status));
+                    object.insert("filledFields".to_string(), json!(outcome.filled_fields));
+                    if let Some(error) = &outcome.error {
+                        object.insert("fillError".to_string(), json!(error));
+                    }
+                }
+                None => {
+                    object.insert("fillStatus".to_string(), json!("not_needed"));
+                    object.insert("filledFields".to_string(), json!([] as [String; 0]));
+                }
+            }
+        }
     }
     output
+}
+
+// ============================================================================
+// retemplate fill_missing_llm — Phase 2（LLM 批量补缺失字段 + CAS 写回）
+// ============================================================================
+
+/// 每次 LLM 调用最多带多少张缺字段卡，避免单次响应过长导致 JSON 截断。
+const CHATANKI_RETEMPLATE_FILL_BATCH_SIZE: usize = 8;
+/// 拼 prompt 时每个源字段值的字符上限。
+const CHATANKI_RETEMPLATE_FILL_FIELD_CHAR_LIMIT: usize = 800;
+
+/// Phase 2 逐卡补字段结果；`filled`/`partial` 表示已 CAS 写回，其余状态不写库。
+#[derive(Debug, Clone)]
+struct RetemplateFillOutcome {
+    /// `filled` | `partial` | `skipped` | `conflict` | `failed`
+    status: &'static str,
+    filled_fields: Vec<String>,
+    error: Option<String>,
+}
+
+impl RetemplateFillOutcome {
+    fn skipped(reason: &str) -> Self {
+        Self {
+            status: "skipped",
+            filled_fields: Vec::new(),
+            error: Some(reason.to_string()),
+        }
+    }
+
+    fn failed(error: String) -> Self {
+        Self {
+            status: "failed",
+            filled_fields: Vec::new(),
+            error: Some(error),
+        }
+    }
+}
+
+/// 与 database 层字段别名匹配一致的宽松键归一化（仅保留 ASCII 字母数字并转小写）。
+fn normalize_retemplate_fill_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+/// 为一批缺字段卡构建严格 JSON 输出的补字段 prompt（无系统提示，配合
+/// `call_model2_raw_prompt` 使用）。
+fn build_retemplate_fill_prompt(
+    target_note_type: &str,
+    batch: &[&AnkiRetemplateCardUpdate],
+) -> String {
+    let mut prompt = String::new();
+    prompt.push_str(
+        "你是 Anki 卡片字段补全助手。以下卡片刚更换为目标模板，部分模板字段缺失。\n",
+    );
+    prompt.push_str(&format!("目标 noteType：{}\n\n", target_note_type));
+    prompt.push_str("规则：\n");
+    prompt.push_str("1. 只输出一个 JSON 对象，不要解释、不要 Markdown 代码块。\n");
+    prompt.push_str(
+        "2. 输出格式：{\"cards\":[{\"cardId\":\"...\",\"fields\":{\"字段名\":\"字段值\"}}]}\n",
+    );
+    prompt.push_str("3. fields 里只允许出现该卡列出的缺失字段名，字段名必须逐字一致。\n");
+    prompt.push_str("4. 只根据卡片现有内容推断；无法可靠推断的字段直接省略，禁止编造。\n");
+    prompt.push_str("5. 字段值使用与卡片内容相同的语言，保持简洁。\n\n");
+    prompt.push_str("卡片列表：\n");
+    for (index, update) in batch.iter().enumerate() {
+        prompt.push_str(&format!("[card {}]\n", index + 1));
+        prompt.push_str(&format!("cardId: {}\n", update.card.id));
+        prompt.push_str("现有内容：\n");
+        let mut push_field = |name: &str, value: &str| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                return;
+            }
+            prompt.push_str(&format!(
+                "- {}: {}\n",
+                name,
+                safe_truncate_chars(trimmed, CHATANKI_RETEMPLATE_FILL_FIELD_CHAR_LIMIT)
+            ));
+        };
+        push_field("front", &update.source.front);
+        push_field("back", &update.source.back);
+        if let Some(text) = &update.source.text {
+            push_field("text", text);
+        }
+        let mut extra_keys: Vec<&String> = update.source.extra_fields.keys().collect();
+        extra_keys.sort();
+        for key in extra_keys {
+            if let Some(value) = update.source.extra_fields.get(key) {
+                push_field(key, value);
+            }
+        }
+        let missing: Vec<String> = update
+            .missing_fields
+            .iter()
+            .map(|missing| {
+                if missing.required {
+                    format!("{}（必填）", missing.field)
+                } else {
+                    missing.field.clone()
+                }
+            })
+            .collect();
+        prompt.push_str(&format!("缺失字段：{}\n\n", missing.join(", ")));
+    }
+    prompt
+}
+
+/// 解析 Phase 2 LLM 响应为 `cardId -> (字段名 -> 非空值)`；容忍 Markdown
+/// 代码块包裹，丢弃空值与非字符串值。
+fn parse_retemplate_fill_response(
+    raw: &str,
+) -> Result<HashMap<String, HashMap<String, String>>, String> {
+    let start = raw.find('{').ok_or("fill response contains no JSON object")?;
+    let end = raw.rfind('}').ok_or("fill response contains no JSON object")?;
+    if end < start {
+        return Err("fill response contains no JSON object".to_string());
+    }
+    let parsed: Value = serde_json::from_str(&raw[start..=end])
+        .map_err(|error| format!("fill response is not valid JSON: {}", error))?;
+    let cards = parsed
+        .get("cards")
+        .and_then(Value::as_array)
+        .ok_or("fill response missing cards array")?;
+    let mut generated: HashMap<String, HashMap<String, String>> = HashMap::new();
+    for card in cards {
+        let Some(card_id) = card
+            .get("cardId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|card_id| !card_id.is_empty())
+        else {
+            continue;
+        };
+        let Some(fields) = card.get("fields").and_then(Value::as_object) else {
+            continue;
+        };
+        let entry = generated.entry(card_id.to_string()).or_default();
+        for (field, value) in fields {
+            let Some(value) = value.as_str() else {
+                continue;
+            };
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            entry.insert(field.clone(), trimmed.to_string());
+        }
+    }
+    generated.retain(|_, fields| !fields.is_empty());
+    Ok(generated)
+}
+
+/// 把 LLM 生成的字段值套到 Phase 1 更新后的卡上：只允许填 `missing_fields`
+/// 中列出的字段（键按精确 -> 归一化两级匹配），返回填好的卡与实际填充的字段名。
+fn apply_retemplate_fill_to_card(
+    update: &AnkiRetemplateCardUpdate,
+    generated: &HashMap<String, String>,
+) -> (crate::models::AnkiCard, Vec<String>) {
+    let mut normalized_generated: HashMap<String, &String> = HashMap::new();
+    let mut generated_keys: Vec<&String> = generated.keys().collect();
+    generated_keys.sort();
+    for key in generated_keys {
+        let normalized = normalize_retemplate_fill_key(key);
+        if normalized.is_empty() {
+            continue;
+        }
+        normalized_generated
+            .entry(normalized)
+            .or_insert_with(|| generated.get(key).expect("key from generated"));
+    }
+
+    let mut filled_card = update.card.clone();
+    let mut filled_fields = Vec::new();
+    for missing in &update.missing_fields {
+        let value = generated.get(&missing.field).or_else(|| {
+            normalized_generated
+                .get(&normalize_retemplate_fill_key(&missing.field))
+                .copied()
+        });
+        let Some(value) = value else {
+            continue;
+        };
+        filled_card
+            .extra_fields
+            .insert(missing.field.clone(), value.clone());
+        filled_fields.push(missing.field.clone());
+    }
+    (filled_card, filled_fields)
+}
+
+/// Phase 2 单卡写回：CAS 条件为该卡 Phase 1 之后的 `updated_at`。成功时就地
+/// 更新 `update.card` 为写回后的最新卡，并把已填字段从 `missing_fields` 移除，
+/// 使 payload 的 `missingFields`/`version` 与库内终态一致。
+fn write_retemplate_fill(
+    db: &crate::database::Database,
+    session_id: &str,
+    update: &mut AnkiRetemplateCardUpdate,
+    generated: &HashMap<String, String>,
+) -> RetemplateFillOutcome {
+    let (filled_card, filled_fields) = apply_retemplate_fill_to_card(update, generated);
+    if filled_fields.is_empty() {
+        return RetemplateFillOutcome::skipped("llm_returned_no_matching_fields");
+    }
+    let expected_version = update.card.updated_at.clone();
+    match db.update_anki_card_if_version_for_session(&filled_card, &expected_version, session_id) {
+        Ok(AnkiCardVersionUpdate::Updated(updated)) => {
+            update.card = updated;
+            update
+                .missing_fields
+                .retain(|missing| !filled_fields.contains(&missing.field));
+            let status = if update.missing_fields.is_empty() {
+                "filled"
+            } else {
+                "partial"
+            };
+            RetemplateFillOutcome {
+                status,
+                filled_fields,
+                error: None,
+            }
+        }
+        Ok(AnkiCardVersionUpdate::Conflict(current)) => {
+            update.card = current;
+            RetemplateFillOutcome {
+                status: "conflict",
+                filled_fields: Vec::new(),
+                error: Some("version_conflict".to_string()),
+            }
+        }
+        Ok(AnkiCardVersionUpdate::NotFound) => {
+            RetemplateFillOutcome::failed("card_not_found".to_string())
+        }
+        Err(error) => RetemplateFillOutcome::failed(format!("fill write failed: {}", error)),
+    }
+}
+
+/// 汇总 Phase 2 逐卡结果为 payload 顶层 `fill` 对象。
+fn retemplate_fill_summary(outcomes: &HashMap<String, RetemplateFillOutcome>) -> Value {
+    let count = |status: &str| {
+        outcomes
+            .values()
+            .filter(|outcome| outcome.status == status)
+            .count()
+    };
+    json!({
+        "attempted": outcomes.len(),
+        "filled": count("filled"),
+        "partial": count("partial"),
+        "skipped": count("skipped"),
+        "conflicts": count("conflict"),
+        "failed": count("failed"),
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -14403,13 +14745,15 @@ mod tests {
             other => panic!("unexpected result: {:?}", other),
         };
 
-        let map_only = retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::MapOnly);
+        let map_only =
+            retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::MapOnly, None);
         assert_eq!(map_only["missingFields"], json!(["Unmapped Field"]));
         assert_eq!(map_only["missingFieldDetails"][0]["required"], true);
         assert!(map_only.get("source").is_none());
+        assert!(map_only.get("fillStatus").is_none());
 
         let fill_missing =
-            retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::FillMissing);
+            retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::FillMissing, None);
         assert_eq!(fill_missing["source"]["truncated"], true);
         assert_eq!(
             fill_missing["source"]["front"]
@@ -14419,6 +14763,217 @@ mod tests {
                 .count(),
             CHATANKI_CARD_FIELD_LIMIT
         );
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_strategy_parses_fill_missing_llm() {
+        for (raw, expected) in [
+            ("map_only", ChatAnkiRetemplateStrategy::MapOnly),
+            ("fill_missing", ChatAnkiRetemplateStrategy::FillMissing),
+            ("fill_missing_llm", ChatAnkiRetemplateStrategy::FillMissingLlm),
+        ] {
+            let parsed: ChatAnkiRetemplateStrategy =
+                serde_json::from_value(json!(raw)).expect("parse strategy");
+            assert_eq!(parsed, expected);
+            assert_eq!(parsed.as_str(), raw);
+        }
+        assert!(
+            serde_json::from_value::<ChatAnkiRetemplateStrategy>(json!("fill_all_llm")).is_err()
+        );
+    }
+
+    fn make_retemplate_fill_update(
+        card_id: &str,
+        missing: &[(&str, bool)],
+    ) -> AnkiRetemplateCardUpdate {
+        let mut card = make_chatanki_card(card_id, "task-fill", "front text", "back text");
+        for (field, _) in missing {
+            card.extra_fields.insert((*field).to_string(), String::new());
+        }
+        AnkiRetemplateCardUpdate {
+            document_id: "doc-fill".to_string(),
+            card: card.clone(),
+            source: card,
+            missing_fields: missing
+                .iter()
+                .map(|(field, required)| crate::database::AnkiRetemplateMissingField {
+                    field: (*field).to_string(),
+                    required: *required,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_fill_prompt_lists_cards_sources_and_missing_fields() {
+        let mut update = make_retemplate_fill_update("card-prompt", &[("Example", true)]);
+        update
+            .source
+            .extra_fields
+            .insert("Hint".to_string(), "existing hint".to_string());
+        let prompt = build_retemplate_fill_prompt("Basic", &[&update]);
+        assert!(prompt.contains("cardId: card-prompt"));
+        assert!(prompt.contains("目标 noteType：Basic"));
+        assert!(prompt.contains("- front: front text"));
+        assert!(prompt.contains("- back: back text"));
+        assert!(prompt.contains("- Hint: existing hint"));
+        assert!(prompt.contains("缺失字段：Example（必填）"));
+        assert!(prompt.contains("\"cards\""));
+        // Phase 1 为缺失字段写入的空占位不应进入 prompt 的现有内容。
+        assert!(!prompt.contains("- Example:"));
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_fill_response_parsing_contract() {
+        let fenced = "```json\n{\"cards\":[{\"cardId\":\"card-1\",\"fields\":{\"Example\":\"an example\",\"Empty\":\"  \",\"Number\":42}},{\"cardId\":\"\",\"fields\":{\"X\":\"y\"}},{\"cardId\":\"card-2\",\"fields\":{}}]}\n```";
+        let generated = parse_retemplate_fill_response(fenced).expect("parse fenced response");
+        assert_eq!(generated.len(), 1);
+        let fields = generated.get("card-1").expect("card-1 fields");
+        assert_eq!(fields.get("Example").map(String::as_str), Some("an example"));
+        assert!(fields.get("Empty").is_none());
+        assert!(fields.get("Number").is_none());
+
+        assert!(parse_retemplate_fill_response("no json here").is_err());
+        assert!(parse_retemplate_fill_response("{\"cards\":\"oops\"}").is_err());
+        assert!(parse_retemplate_fill_response("{}").is_err());
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_fill_apply_matches_missing_fields_only() {
+        let update =
+            make_retemplate_fill_update("card-apply", &[("Example", true), ("Usage Note", false)]);
+        let mut generated = HashMap::new();
+        generated.insert("Example".to_string(), "exact match".to_string());
+        // 归一化匹配：LLM 返回的键大小写/分隔符与模板字段不一致时仍可落位。
+        generated.insert("usage_note".to_string(), "normalized match".to_string());
+        // 非缺失字段必须被忽略，禁止 LLM 越权写其他字段。
+        generated.insert("Front".to_string(), "must be ignored".to_string());
+
+        let (filled_card, filled_fields) = apply_retemplate_fill_to_card(&update, &generated);
+        assert_eq!(filled_fields, vec!["Example", "Usage Note"]);
+        assert_eq!(
+            filled_card.extra_fields.get("Example").map(String::as_str),
+            Some("exact match")
+        );
+        assert_eq!(
+            filled_card
+                .extra_fields
+                .get("Usage Note")
+                .map(String::as_str),
+            Some("normalized match")
+        );
+        assert!(filled_card.extra_fields.get("Front").is_none());
+        assert_eq!(filled_card.front, "front text");
+
+        let (_, no_fill) = apply_retemplate_fill_to_card(&update, &HashMap::new());
+        assert!(no_fill.is_empty());
+    }
+
+    #[test]
+    fn test_chatanki_retemplate_fill_missing_llm_cas_write_back_conflict_and_payload() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-fill-llm", "session-fill-llm");
+        let card = make_chatanki_card("card-fill-llm", &task_id, "front", "back");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+        let expected = expected_card_versions(std::slice::from_ref(&card));
+        let target = make_retemplate_target("target-fill", "Basic", &["Front", "Example"], &[]);
+
+        // Phase 1：现有 retemplate 事务保持不变，产出缺失字段。
+        let result = db
+            .retemplate_anki_cards_for_session(
+                &AnkiRetemplateSelector::Document("doc-fill-llm".to_string()),
+                &target,
+                &expected,
+                "session-fill-llm",
+                &["doc-fill-llm".to_string()],
+            )
+            .expect("phase 1 retemplate");
+        let mut update = match result {
+            AnkiRetemplateBatchResult::Updated { mut updates, .. } => updates.remove(0),
+            other => panic!("unexpected result: {:?}", other),
+        };
+        assert_eq!(update.missing_fields.len(), 1);
+        assert_eq!(update.missing_fields[0].field, "Example");
+        let stale_update = update.clone();
+        let phase1_version = update.card.updated_at.clone();
+
+        // Phase 2：以 Phase 1 之后的版本 CAS 写回 LLM 生成值。
+        let mut generated = HashMap::new();
+        generated.insert("Example".to_string(), "generated example".to_string());
+        let outcome = write_retemplate_fill(&db, "session-fill-llm", &mut update, &generated);
+        assert_eq!(outcome.status, "filled");
+        assert_eq!(outcome.filled_fields, vec!["Example"]);
+        assert!(outcome.error.is_none());
+        assert!(update.missing_fields.is_empty());
+        assert_ne!(update.card.updated_at, phase1_version);
+        let reloaded = db
+            .get_cards_for_document("doc-fill-llm")
+            .expect("reload cards");
+        assert_eq!(
+            reloaded[0].extra_fields.get("Example").map(String::as_str),
+            Some("generated example")
+        );
+
+        // 空匹配：LLM 返回值都对不上缺失字段时跳过且不写库。
+        let mut unmatched = HashMap::new();
+        unmatched.insert("Unrelated".to_string(), "value".to_string());
+        let mut skipped_update = stale_update.clone();
+        let skipped =
+            write_retemplate_fill(&db, "session-fill-llm", &mut skipped_update, &unmatched);
+        assert_eq!(skipped.status, "skipped");
+
+        // 冲突：持有过期版本（Phase 1 版本已被上面成功写回消费）→ CAS 拒绝。
+        let mut conflicted_update = stale_update;
+        let conflict =
+            write_retemplate_fill(&db, "session-fill-llm", &mut conflicted_update, &generated);
+        assert_eq!(conflict.status, "conflict");
+        assert_eq!(conflict.error.as_deref(), Some("version_conflict"));
+        assert_eq!(conflicted_update.card.updated_at, update.card.updated_at);
+
+        // payload 契约：fill_missing_llm 逐卡输出 fillStatus/filledFields。
+        let payload = retemplate_update_for_tool(
+            &update,
+            ChatAnkiRetemplateStrategy::FillMissingLlm,
+            Some(&outcome),
+        );
+        assert_eq!(payload["fillStatus"], json!("filled"));
+        assert_eq!(payload["filledFields"], json!(["Example"]));
+        assert_eq!(payload["missingFields"], json!([] as [String; 0]));
+        assert!(payload.get("source").is_none());
+        assert_eq!(
+            payload["version"],
+            json!(update.card.updated_at.as_str())
+        );
+
+        let untouched = retemplate_update_for_tool(
+            &update,
+            ChatAnkiRetemplateStrategy::FillMissingLlm,
+            None,
+        );
+        assert_eq!(untouched["fillStatus"], json!("not_needed"));
+        assert_eq!(untouched["filledFields"], json!([] as [String; 0]));
+
+        let mut outcomes = HashMap::new();
+        outcomes.insert("card-fill-llm".to_string(), outcome);
+        outcomes.insert(
+            "card-conflict".to_string(),
+            RetemplateFillOutcome {
+                status: "conflict",
+                filled_fields: Vec::new(),
+                error: Some("version_conflict".to_string()),
+            },
+        );
+        outcomes.insert(
+            "card-failed".to_string(),
+            RetemplateFillOutcome::failed("llm error".to_string()),
+        );
+        let summary = retemplate_fill_summary(&outcomes);
+        assert_eq!(summary["attempted"], json!(3));
+        assert_eq!(summary["filled"], json!(1));
+        assert_eq!(summary["conflicts"], json!(1));
+        assert_eq!(summary["failed"], json!(1));
+        assert_eq!(summary["partial"], json!(0));
+        assert_eq!(summary["skipped"], json!(0));
     }
 
     #[test]
