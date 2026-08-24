@@ -320,6 +320,52 @@ describe('NotesWorkspaceApp', () => {
     expect(await screen.findByTestId('note-editor-note_1')).toBeInTheDocument();
   });
 
+  it('falls back to the mm_ instance key when the launch payload has no resourceId', async () => {
+    // 回归（I8 补强）：payload 只带 resourceType 时 id 回退 instanceKey，
+    // mm_ 前缀不得再被当成笔记打开
+    const mmNode = {
+      id: 'mm_42', sourceId: 'mm_42', path: '/course/mm_42', name: '前缀导图', type: 'mindmap',
+      createdAt: 3, updatedAt: 3,
+    };
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return Promise.resolve({ ok: true, value: [...nodes, mmNode] }) as never;
+    });
+
+    render(<NotesWorkspaceApp {...props({
+      instanceKey: 'mm_42',
+      launchPayload: { resourceType: 'mindmap' },
+    })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mm_42')).toBeInTheDocument();
+  });
+
+  it('accepts the legacy `type` payload alias when opening a mindmap', async () => {
+    render(<NotesWorkspaceApp {...props({
+      launchPayload: { type: 'mindmap', resourceId: 'mindmap_1' },
+    })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mindmap_1')).toBeInTheDocument();
+  });
+
+  it('opens a mindmap requested from the resource library (requestWorkspaceResource)', async () => {
+    // 回归：学习资源库通过 requestWorkspaceResource 打开导图的跨模块路径
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('章节导图');
+
+    await act(async () => {
+      await requestWorkspaceResource({ type: 'mindmap', id: 'mindmap_1' }, 'notes-window');
+    });
+
+    expect(await screen.findByTestId('mindmap-editor-mindmap_1')).toBeInTheDocument();
+    expect(mindmapProps.at(-1)?.storeInstanceId).toBe('notes-window:mindmap:mindmap_1');
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-pane="main"]')?.getAttribute('data-resource-id')).toBe('mindmap_1');
+    });
+  });
+
   it('selects the closing tab neighbor and supports automatic keyboard tab navigation', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByTestId('note-editor-note_1');

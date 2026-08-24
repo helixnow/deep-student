@@ -3158,6 +3158,13 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 按分支批量挖空（背诵）：子树内所有非空文本节点整行挖空，单次 undo 还原
       blankBranchNodes: (nodeId: string) => {
+        // 前置校验：目标不存在或子树全为空文本时不进 mutation（不产生历史/脏位）
+        const target = findNodeById(get().document.root, nodeId);
+        if (!target) return 0;
+        const hasText = (node: MindMapNode): boolean =>
+          node.text.length > 0 || node.children.some(hasText);
+        if (!hasText(target)) return 0;
+
         let affected = 0;
         applyMutation((state) => {
           const branchRoot = findNodeById(state.document.root, nodeId);
@@ -3182,6 +3189,13 @@ export function createMindMapStore(): MindMapStoreApi {
       },
 
       clearBranchBlanks: (nodeId: string) => {
+        // 前置校验：目标不存在或子树没有任何挖空时不进 mutation
+        const target = findNodeById(get().document.root, nodeId);
+        if (!target) return 0;
+        const hasBlanks = (node: MindMapNode): boolean =>
+          (node.blankedRanges?.length ?? 0) > 0 || node.children.some(hasBlanks);
+        if (!hasBlanks(target)) return 0;
+
         let affected = 0;
         applyMutation((state) => {
           const branchRoot = findNodeById(state.document.root, nodeId);
