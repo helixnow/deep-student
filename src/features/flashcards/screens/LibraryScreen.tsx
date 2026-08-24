@@ -12,15 +12,18 @@ import {
   MagnifyingGlass,
   Pause,
   Play,
+  Plus,
   PlusCircle,
   Stack,
   Trash,
+  UploadSimple,
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import {
@@ -98,12 +101,20 @@ export const LibraryScreen: React.FC = () => {
   const bulkEnqueue = useFlashcardsLibraryStore((state) => state.bulkEnqueue);
   const bulkSetSuspended = useFlashcardsLibraryStore((state) => state.bulkSetSuspended);
   const bulkDelete = useFlashcardsLibraryStore((state) => state.bulkDelete);
+  const creating = useFlashcardsLibraryStore((state) => state.creating);
+  const importing = useFlashcardsLibraryStore((state) => state.importing);
+  const createCard = useFlashcardsLibraryStore((state) => state.createCard);
+  const importApkg = useFlashcardsLibraryStore((state) => state.importApkg);
 
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [lastAnchorId, setLastAnchorId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
+  // 手动新建：内联展开的正/背面输入（与行内编辑同口径，无弹窗）
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draftFront, setDraftFront] = useState('');
+  const [draftBack, setDraftBack] = useState('');
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
 
@@ -361,6 +372,33 @@ export const LibraryScreen: React.FC = () => {
     if (query) void submitSearch('');
   };
 
+  // ---------- 新建 / 导入 ----------
+  const draftValid = draftFront.trim().length > 0 && draftBack.trim().length > 0;
+
+  const handleSubmitDraft = useCallback(() => {
+    if (!draftValid || creating) return;
+    void createCard({ front: draftFront, back: draftBack }).then((ok) => {
+      if (!ok) return;
+      setDraftFront('');
+      setDraftBack('');
+      setComposerOpen(false);
+      showGlobalNotification('success', translate('library.create.success'));
+    });
+  }, [draftValid, creating, createCard, draftFront, draftBack, translate]);
+
+  const handleImportApkg = useCallback(() => {
+    if (importing) return;
+    void importApkg().then((outcome) => {
+      if (outcome.status === 'imported') {
+        showGlobalNotification(
+          'success',
+          translate('library.import.success', { count: outcome.importedCards }),
+        );
+      }
+      // canceled 静默；failed 已写入 actionError 由页内错误条呈现
+    });
+  }, [importing, importApkg, translate]);
+
   const pageCount = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
   const initialLoading = loading && !loaded;
 
@@ -412,6 +450,62 @@ export const LibraryScreen: React.FC = () => {
           {t('library.search')}
         </DsButton>
       </div>
+
+      <div className="fc-lib-create">
+        <DsButton
+          type="button"
+          variant={composerOpen ? 'default' : 'primary'}
+          onClick={() => setComposerOpen((open) => !open)}
+          aria-expanded={composerOpen}
+          className="fc-lib-create-cta text-sm"
+        >
+          <Plus size={15} />
+          {composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="default"
+          disabled={importing}
+          onClick={handleImportApkg}
+          title={translate('library.import.hint')}
+          className="fc-lib-create-cta text-sm"
+        >
+          <UploadSimple size={15} />
+          {importing ? translate('library.import.running') : translate('library.import.apkg')}
+        </DsButton>
+      </div>
+
+      {composerOpen ? (
+        <div className="fc-lib-composer">
+          <Input
+            aria-label={translate('library.create.frontLabel')}
+            value={draftFront}
+            onChange={(event) => setDraftFront(event.target.value)}
+            placeholder={translate('library.create.frontPlaceholder')}
+            className="h-10 text-sm"
+          />
+          <Input
+            aria-label={translate('library.create.backLabel')}
+            value={draftBack}
+            onChange={(event) => setDraftBack(event.target.value)}
+            placeholder={translate('library.create.backPlaceholder')}
+            className="h-10 text-sm"
+          />
+          <div className="fc-lib-composer-actions">
+            <DsButton
+              type="button"
+              variant="primary"
+              disabled={!draftValid || creating}
+              onClick={handleSubmitDraft}
+              title={draftValid ? undefined : translate('library.create.incomplete')}
+              className="fc-lib-create-cta text-sm"
+            >
+              {creating ? translate('library.create.saving') : translate('library.create.save')}
+            </DsButton>
+            <p className="fc-lib-composer-hint">{translate('library.create.hint')}</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="fc-lib-filters">
         <div
@@ -625,7 +719,34 @@ export const LibraryScreen: React.FC = () => {
               >
                 {translate('library.clearFilters')}
               </DsButton>
-            ) : null}
+            ) : (
+              <>
+                <p className="max-w-md text-xs text-muted-foreground">
+                  {translate('library.emptyHint')}
+                </p>
+                <div className="fc-lib-empty-actions">
+                  <DsButton
+                    type="button"
+                    variant="primary"
+                    onClick={() => setComposerOpen(true)}
+                    className="fc-lib-create-cta text-sm"
+                  >
+                    <Plus size={15} />
+                    {translate('library.create.new')}
+                  </DsButton>
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    disabled={importing}
+                    onClick={handleImportApkg}
+                    className="fc-lib-create-cta text-sm"
+                  >
+                    <UploadSimple size={15} />
+                    {importing ? translate('library.import.running') : translate('library.import.apkg')}
+                  </DsButton>
+                </div>
+              </>
+            )}
           </div>
         ) : visibleItems.length === 0 ? (
           <div className="wb-fc-empty">

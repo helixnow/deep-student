@@ -5,8 +5,6 @@
  * - 基础模式（顺序/随机/错题优先/按标签）→ 直接进入做题
  * - 高级模式（限时/模拟考/每日/组卷）→ 展开配置面板
  * - 顶部快速统计摘要
- * 
- * @see PracticeModeSelector 模式卡片网格
  */
 
 import React, { lazy, Suspense, useState, useCallback, useMemo, useEffect } from 'react';

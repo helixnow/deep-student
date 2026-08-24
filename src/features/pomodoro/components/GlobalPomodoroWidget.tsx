@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useMotionValue, animate } from 'framer-motion'
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture, CaretLeft, CaretRight, SkipForward } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -26,11 +27,12 @@ import {
  * 职责：
  * 1. 全局 tick 驱动（唯一的 setInterval 来源）
  * 2. 沉浸式专注模式渲染（AnimatePresence 转场）
- * 3. 离开 Todo 页面时的悬浮药丸（仅在有活跃会话时显示）
+ * 3. 没有可见番茄钟宿主时的悬浮药丸（仅在有活跃会话时显示）
  *
  * 空闲态不显示任何浮动 UI——番茄钟主入口在 Todo 页面内的 PomodoroPanel。
- * 药丸让位规则：workbench 激活（菜单栏 + 番茄窗已投射）或置顶小窗打开时
- * 一律隐藏，任何时刻最多一重悬浮投影。
+ * 药丸让位规则：legacy Todo 页、Workbench 的 pomodoro / todo 窗口、
+ * Workbench 菜单栏投影或置顶小窗只要有一个可见，药丸就隐藏，
+ * 避免同屏出现多份计时。
  *
  * 药丸交互（桌面）：
  * - 默认紧凑（环形微进度 + 倒计时），hover / 键盘聚焦时横向展开任务名与快捷控制
@@ -64,6 +66,14 @@ const phaseProgress = (
 
 /** 拖拽偏移在组件卸载/重挂（切页）间保留（会话级，不持久化） */
 const pillOffset = { x: 0, y: 0 };
+
+/**
+ * 已经把番茄钟画在屏幕上的 Workbench 窗口类型：
+ * - `pomodoro`：PomodoroAppWindow（投射窗，自带完整计时盘与控制坞）
+ * - `todo`：TodoAppWindow → TodoContentView → PomodoroPanel
+ * 任一未最小化时，悬浮药丸就是第三份重复呈现，不再渲染。
+ */
+const POMODORO_HOST_TYPE_IDS = new Set(['pomodoro', 'todo']);
 
 /** 视口边距（拖拽吸附/收回目标） */
 const PILL_MARGIN = 24;
@@ -138,6 +148,11 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   const { t } = useTranslation('todo');
   const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
+  // Workbench 下 legacy currentView 不再切换，仅靠它判断会与 PomodoroAppWindow /
+  // Todo 窗口同时出现三份番茄钟；改为直接问窗口状态机有没有可见宿主。
+  const hasVisibleWindowHost = useWindowStore((s) => Object.values(s.windows).some(
+    (win) => !win.minimized && POMODORO_HOST_TYPE_IDS.has(win.typeId),
+  ));
   // P-1/P-2: 触屏上抬高药丸避开底部停靠的输入栏，并放大控制按钮触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 移动端可收起：小屏上完整药丸接近整屏宽，收起后只留图标+倒计时，减少对底部内容的遮挡
@@ -380,7 +395,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     }
   };
 
-  // 悬浮药丸：仅在有活跃会话 + 不在 Todo 页面时显示
+  // 悬浮药丸：仅在有活跃会话 + 无可见番茄钟宿主时显示
   const controlButtonClass = isTouchPrimary
     ? 'flex h-11 w-11 items-center justify-center rounded-full transition-colors motion-reduce:transition-none'
     : 'p-1.5 rounded-full transition-colors motion-reduce:transition-none';
@@ -402,10 +417,11 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     () => false,
   );
 
+  const hasVisiblePomodoroHost = currentView === 'todo' || hasVisibleWindowHost;
   const showPill =
     !isImmersive &&
     mode !== 'idle' &&
-    currentView !== 'todo' &&
+    !hasVisiblePomodoroHost &&
     !workbenchActive &&
     !miniWindowOpen;
   const isBreak = mode === 'short_break' || mode === 'long_break';

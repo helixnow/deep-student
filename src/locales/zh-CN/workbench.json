@@ -389,6 +389,7 @@
     "hint": "从下方 Dock 打开应用开始工作——窗口可以自由摆放、平铺与并排对比。",
     "actionsLabel": "快速开始",
     "actionFiles": "打开资源库",
+    "actionRestoreSession": "恢复上次桌面",
     "actionFilesDesc": "浏览笔记、教材与全部资源",
     "actionApps": "全部应用",
     "actionFlashcards": "闪卡",
@@ -459,7 +460,9 @@
     "materialTier": "视觉材质",
     "showDesktop": "显示桌面",
     "restoreWindows": "恢复窗口",
+    "showWidgets": "显示桌面组件",
     "shortcuts": "键盘快捷键",
+    "replayTour": "重新查看引导",
     "settings": "桌面设置…"
   },
   "immersive": {
@@ -667,8 +670,18 @@
       "desc": "不使用时 Dock 自动收起，指针移到屏幕底部时滑出。"
     },
     "restoreSession": {
-      "title": "启动时恢复上次桌面",
-      "desc": "下次启动学习桌面时恢复上次打开的窗口与布局。默认关闭以加快冷启动；关闭时仍会保存桌面状态，便于日后开启。"
+      "title": "启动时自动恢复上次桌面",
+      "desc": "开启后每次启动都会自动重开上次的全部窗口。默认关闭以加快冷启动——关闭时桌面状态照常保存，空桌面上的「恢复上次桌面」按钮可按需恢复一次。"
+    },
+    "desktopWidgets": {
+      "title": "显示桌面组件",
+      "desc": "在桌面上显示日历与今日日程组件。关闭后窄窗口/小屏幕可用宽度更大（桌面右键菜单也可切换）。"
+    },
+    "shortcuts": {
+      "title": "键盘快捷键",
+      "desc": "学习桌面的窗口管理快捷键清单；桌面上按 ? 或从桌面右键菜单也可随时打开速查表。",
+      "show": "查看全部 {{count}} 项",
+      "hide": "收起列表"
     },
     "menubarAutohide": {
       "title": "自动隐藏菜单栏",

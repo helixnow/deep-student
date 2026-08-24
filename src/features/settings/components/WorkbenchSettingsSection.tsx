@@ -27,6 +27,7 @@ import { APP_EVENTS, dispatchAppEvent } from '@/events';
 // 走 index 会把整条 chat store 链拖进 settings bundle（见 P10 进度文件遗留项）。
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { setMaterialTier, type MaterialTierSetting } from '@/features/workbench/core/materialTier';
+import { listWorkbenchShortcuts } from '@/features/workbench/core/shortcuts';
 import { WALLPAPER_PRESETS, DEFAULT_WALLPAPER, type WallpaperConfig } from '@/features/workbench/components/WallpaperLayer';
 import {
   parseTitleBarDoubleClickAction,
@@ -57,6 +58,8 @@ export const WORKBENCH_SETTING_KEYS = {
    * 快照仍会后台保存；关闭时仅跳过启动 hydrate。
    */
   restoreSession: 'desktop.workbenchRestoreSession',
+  /** 桌面组件（日程小组件等）显隐；缺省显示，与桌面右键菜单同一 key */
+  desktopWidgets: 'desktop.workbenchDesktopWidgets',
   /** 菜单栏自动隐藏（StatusBar 自读；见 menuBarAutohideStore） */
   menuBarAutohide: 'desktop.workbenchMenuBarAutohide',
   /** 双击标题栏行为（WindowTitleBar 自读；见 titleBarBehaviorStore） */
@@ -186,6 +189,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [restoreSession, setRestoreSession] = useState(false);
+  const [desktopWidgets, setDesktopWidgets] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [menuBarAutohide, setMenuBarAutohide] = useState(false);
   const [titleBarDoubleClick, setTitleBarDoubleClick] = useState<TitleBarDoubleClickAction>('zoom');
   const [devPanel, setDevPanel] = useState(false);
@@ -213,6 +218,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         dockSizeVal,
         autohideVal,
         restoreSessionVal,
+        desktopWidgetsVal,
         menuBarAutohideVal,
         titleBarDoubleClickVal,
         devPanelVal,
@@ -231,6 +237,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.dockSize),
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
         read(WORKBENCH_SETTING_KEYS.restoreSession),
+        read(WORKBENCH_SETTING_KEYS.desktopWidgets),
         read(WORKBENCH_SETTING_KEYS.menuBarAutohide),
         read(WORKBENCH_SETTING_KEYS.titleBarDoubleClick),
         read(WORKBENCH_SETTING_KEYS.devPanel),
@@ -251,6 +258,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setRestoreSession(String(restoreSessionVal ?? '') === 'true');
+      // 缺省（从未设置）= 显示，只有显式 'false' 才隐藏
+      setDesktopWidgets(String(desktopWidgetsVal ?? '') !== 'false');
       setMenuBarAutohide(String(menuBarAutohideVal ?? '') === 'true');
       setTitleBarDoubleClick(parseTitleBarDoubleClickAction(titleBarDoubleClickVal));
       setDevPanel(String(devPanelVal ?? '') === 'true');
@@ -381,6 +390,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     },
     [persist],
   );
+
+  // 键位展示随平台（macOS 为 ⌘ 基底符号），列表本身是静态定义
+  const workbenchShortcuts = React.useMemo(() => listWorkbenchShortcuts(), []);
 
   const presetOptions = WALLPAPER_PRESETS.map((preset) => ({
     value: preset.id,
@@ -678,6 +690,18 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SwitchRow
+        title={t('workbench:settings.desktopWidgets.title')}
+        description={t('workbench:settings.desktopWidgets.desc')}
+        checked={desktopWidgets}
+        loading={!loaded}
+        onCheckedChange={(next) => {
+          if (!loaded) return;
+          setDesktopWidgets(next);
+          void persist(WORKBENCH_SETTING_KEYS.desktopWidgets, String(next), next);
+        }}
+      />
+
+      <SwitchRow
         title={t('workbench:settings.menubarAutohide.title')}
         description={t('workbench:settings.menubarAutohide.desc')}
         checked={menuBarAutohide}
@@ -711,6 +735,54 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             { value: 'none', label: t('workbench:settings.titleBarDoubleClick.none') },
           ]}
         />
+      </SettingRow>
+
+      {/* 快捷键清单：速查表（`?` / 桌面右键菜单 / 品牌菜单）之外的第三条可发现路径 */}
+      <SettingRow
+        title={t('workbench:settings.shortcuts.title')}
+        description={t('workbench:settings.shortcuts.desc')}
+      >
+        <div className="w-full min-w-0 lg:max-w-[560px]">
+          <button
+            type="button"
+            aria-expanded={shortcutsOpen}
+            aria-controls="workbench-shortcuts-list"
+            onClick={() => setShortcutsOpen((prev) => !prev)}
+            className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <span
+              aria-hidden="true"
+              className={`inline-block transition-transform ${shortcutsOpen ? 'rotate-90' : ''}`}
+            >
+              ▸
+            </span>
+            {shortcutsOpen
+              ? t('workbench:settings.shortcuts.hide')
+              : t('workbench:settings.shortcuts.show', { count: workbenchShortcuts.length })}
+          </button>
+          {shortcutsOpen && (
+            <ul
+              id="workbench-shortcuts-list"
+              data-testid="workbench-shortcuts-list"
+              className="mt-1 divide-y divide-border/40 rounded-md border border-border/40"
+            >
+              {workbenchShortcuts.map((shortcut) => (
+                <li
+                  key={shortcut.id}
+                  data-shortcut-id={shortcut.id}
+                  className="flex items-center justify-between gap-3 px-2.5 py-1.5"
+                >
+                  <span className="min-w-0 break-words text-xs text-foreground/85">
+                    {t(shortcut.descriptionKey, shortcut.defaultDescription)}
+                  </span>
+                  <kbd className="shrink-0 rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                    {shortcut.keys}
+                  </kbd>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </SettingRow>
 
       <SwitchRow

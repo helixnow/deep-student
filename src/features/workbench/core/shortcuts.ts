@@ -531,10 +531,10 @@ export function matchWorkbenchShortcut(e: KeyboardEvent): WorkbenchShortcutDefin
     if (b.code) {
       if (e.code === b.code) return def;
     } else if (b.key) {
+      // 只按 e.key 匹配：曾有的「Slash code 兜底」会让单独一个 `/` 弹出速查表
+      // （搜索框外的 `/` 是常见误触），速查表的可发现性改由桌面右键菜单 /
+      // 品牌菜单 / 设置页的入口保证。
       if (e.key === b.key) return def;
-      // `?` 类 shiftAgnostic 绑定的布局兜底：部分键盘布局未按 Shift 时
-      // e.key 为 '/'（物理 Slash 键），按 code 也算命中，速查表不失联
-      if (b.shiftAgnostic && b.key === '?' && e.code === 'Slash') return def;
     }
   }
   return null;
