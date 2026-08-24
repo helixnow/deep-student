@@ -627,3 +627,15 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-restore | `cursor/cloud-sync-sota-delta-restore-b343` | DELTA-R11 R12-delta-restore：v2 下载、三层校验、完整 staging/兼容 ZIP 物化、缺对象不触活动槽；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_restore.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_restore;`；新 `src-tauri/tests/sync_r12_delta_restore.rs` |
 
 禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-restore 回传（`cursor/cloud-sync-sota-delta-restore-b343` @ `a58e70f3`）
+
+`delta_restore.rs`：`restore_snapshot_to_staging` 持 backup-v2 租约；三层校验（传输 SHA / AEAD / 明文 hash+size）后原子改名进空 dest；缺/坏对象 dest 为空；可选兼容 ZIP 先临时再 persist。上游 API 经钉死的 `delta_restore_upstream.rs.in` `include!` 复用（避免复制租约协议，同时不改既有 sibling 源码锁）。测试 `sync_r12_delta_restore.rs`（明文/复用/E2EE/缺对象/换包/损坏/租约/ZIP/源码锁）。**未接线**，不碰 A/B 槽，不能宣称增量备份已实现。
+
+## Round 17（增量 GC 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-gc | `cursor/cloud-sync-sota-delta-gc-b343` | DELTA-R11 R12-delta-gc：合并所有 v2 device manifests、两遍 candidate/grace GC、截断/并发/崩溃注入；共享对象绝不误删；**不接命令/UI** | 新 `cloud_storage/delta_gc.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_gc;`；新 `src-tauri/tests/sync_r12_delta_gc.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `delta_restore.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。宁留垃圾，不删仍被引用的对象。
