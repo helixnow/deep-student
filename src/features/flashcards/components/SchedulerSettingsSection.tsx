@@ -190,7 +190,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                 size="sm"
                 disabled={saving || !dirty}
                 onClick={() => void handleSave()}
-                className="text-xs"
+                className="text-xs [@media(pointer:coarse)]:min-h-11"
               >
                 {t('settings.scheduler.save')}
               </DsButton>
