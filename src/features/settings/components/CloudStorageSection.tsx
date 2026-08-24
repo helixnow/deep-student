@@ -1596,6 +1596,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 {t('cloudStorage:actions.viewHistory')}
               </DsButton>
             </div>
+            <p className="text-xs text-muted-foreground pt-1">
+              {t('cloudStorage:actions.fullZipHint')}
+            </p>
           </div>
         )}
 

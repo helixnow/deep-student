@@ -112,6 +112,7 @@
     "saving": "Saving...",
     "uploadNow": "Backup to Cloud Now",
     "uploading": "Uploading...",
+    "fullZipHint": "Each backup packs the current data into a full ZIP and uploads it as a single object. Unchanged files are not skipped. There is no incremental transfer, content deduplication, or CDC.",
     "downloadLatest": "Restore Latest from Cloud",
     "downloading": "Downloading...",
     "viewHistory": "View History",

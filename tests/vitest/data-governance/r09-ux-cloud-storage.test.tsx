@@ -234,6 +234,31 @@ describe('CloudStorageSection 清除配置部分失败', () => {
 });
 
 // ============================================================================
+// 整包 ZIP 无增量传输（对外诚实）
+// ============================================================================
+
+describe('CloudStorageSection 整包备份诚实文案', () => {
+  it('zh/en 在上传入口写明每次都是完整 ZIP 单对象，没有增量/去重/CDC', () => {
+    expect(zhLocale.actions.fullZipHint).toContain('完整 ZIP');
+    expect(zhLocale.actions.fullZipHint).toContain('单个对象');
+    expect(zhLocale.actions.fullZipHint).toContain('没有增量传输');
+    expect(zhLocale.actions.fullZipHint).toContain('去重');
+    expect(zhLocale.actions.fullZipHint).toContain('CDC');
+    expect(enLocale.actions.fullZipHint).toMatch(/full ZIP/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/single object/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/no incremental transfer/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/deduplication/i);
+    expect(enLocale.actions.fullZipHint).toContain('CDC');
+    expect(Object.keys(zhLocale.actions).sort()).toEqual(Object.keys(enLocale.actions).sort());
+  });
+
+  it('上传按钮旁挂载 fullZipHint，且不接线 backup-v2 / delta 积木', () => {
+    expect(componentSource).toContain("t('cloudStorage:actions.fullZipHint')");
+    expect(componentSource).not.toMatch(/delta_upload|publish_verified_staging|backup-v2/);
+  });
+});
+
+// ============================================================================
 // 危险操作确认源码契约
 // ============================================================================
 

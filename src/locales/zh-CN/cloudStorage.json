@@ -112,6 +112,7 @@
     "saving": "保存中...",
     "uploadNow": "立即备份到云端",
     "uploading": "上传中...",
+    "fullZipHint": "每次备份都会把当前数据打成完整 ZIP，再作为单个对象上传；未变化的文件也不会少传。当前没有增量传输、内容去重或 CDC。",
     "downloadLatest": "从云端恢复最新版本",
     "downloading": "下载中...",
     "viewHistory": "查看历史版本",
