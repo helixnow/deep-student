@@ -8,10 +8,13 @@ import { generativeUIIntentSchema, validateBlockProps } from '@/features/generat
 import '@/features/generative-ui/blocks';
 
 describe('generativeUI registryPromptSync contract', () => {
-  it('every registered type appears in system prompt catalog line', () => {
+  it('every registered type appears in system prompt catalog line with props hint', () => {
     const prompt = buildGenerativeUISystemPrompt();
     for (const config of generativeUIRegistry.getAll()) {
+      const catalogEntry = generativeUIRegistry.getCatalogForPrompt().find((c) => c.type === config.type);
+      expect(catalogEntry?.propsHint.length).toBeGreaterThan(0);
       expect(prompt).toContain(`- **${config.type}**: ${config.description}`);
+      expect(prompt).toContain(`props ${catalogEntry!.propsHint}`);
       expect(config.description?.length).toBeGreaterThan(0);
     }
   });

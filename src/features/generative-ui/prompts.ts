@@ -43,7 +43,9 @@ export function buildGenerativeUISystemPrompt(options?: {
     `- ${domainGuidance}`,
     '',
     '## 可用组件',
-    ...catalog.map((c) => `- **${c.type}**: ${c.description}`),
+    ...catalog.map(
+      (c) => `- **${c.type}**: ${c.description} — props ${c.propsHint}`,
+    ),
     '',
     '## 正负示例',
     '✅ 正确：blocks 数组内 stat-card + list 组合展示学习进度',

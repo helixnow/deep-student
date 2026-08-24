@@ -66,6 +66,14 @@ export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
+export {
+  resolveGenerativeUIChatActionHandlers,
+  collectGenerativeUIActionIds,
+  NOTE_EDIT_ACTION_IDS,
+} from './bridge/resolveGenerativeUIChatActionHandlers';
+export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
+export type { NoteEditPayload } from './utils/extractNoteEditPayload';
+export { schemaToPromptHint } from './utils/schemaToPromptHint';
 
 // 注册内置块
 import './blocks';

@@ -5,6 +5,7 @@
  */
 
 import type { GenerativeComponentConfig } from './types';
+import { schemaToPromptHint } from './utils/schemaToPromptHint';
 
 class GenerativeUIRegistryClass {
   private components = new Map<string, GenerativeComponentConfig>();
@@ -28,11 +29,12 @@ class GenerativeUIRegistryClass {
     return Array.from(this.components.values());
   }
 
-  /** 供 prompt 注入的组件目录 */
-  getCatalogForPrompt(): Array<{ type: string; description: string }> {
+  /** 供 prompt 注入的组件目录（含 props 字段摘要） */
+  getCatalogForPrompt(): Array<{ type: string; description: string; propsHint: string }> {
     return this.getAll().map((c) => ({
       type: c.type,
       description: c.description ?? c.type,
+      propsHint: schemaToPromptHint(c.propsSchema),
     }));
   }
 

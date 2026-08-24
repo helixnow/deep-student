@@ -50,7 +50,8 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 2. 禁止输出 HTML、JSX、inline style 或可执行代码。
 3. 删除/提交/导出等副作用只能通过 action-bar 的 action id 声明；不得假设已执行。
 4. 最多 12 个 blocks；优先信息密度与可扫描性。
-5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan），label 仅作展示。
+5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、apply-note-edit），label 仅作展示。
+6. **笔记写入**：若 intent 含 apply-note-edit，必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，禁止假设已写入。
 `,
   embeddedTools: [
     {
@@ -91,6 +92,21 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
             },
             required: ['blocks'],
             additionalProperties: true,
+          },
+          noteEdit: {
+            type: 'object',
+            description:
+              '【可选】笔记编辑载荷；当 intent 含 apply-note-edit 时必填。经 HITL diff 面板落盘。',
+            properties: {
+              operation: { type: 'string', enum: ['append', 'replace', 'set'] },
+              content: { type: 'string' },
+              search: { type: 'string' },
+              replace: { type: 'string' },
+              isRegex: { type: 'boolean' },
+              section: { type: 'string' },
+            },
+            required: ['operation'],
+            additionalProperties: false,
           },
         },
         required: ['intent'],
