@@ -55,11 +55,14 @@ const watchState = vi.hoisted(() => ({
 }));
 
 // 重命名后的双链回写是独立模块（有专属单测），这里只验证宿主的触发契约
-const { syncWikiLinksAfterNoteRename } = vi.hoisted(() => ({
+const { syncWikiLinksAfterNoteRename, showGlobalNotification } = vi.hoisted(() => ({
   syncWikiLinksAfterNoteRename: vi.fn(),
+  showGlobalNotification: vi.fn(),
 }));
 
 vi.mock('../wikilinkRenameSync', () => ({ syncWikiLinksAfterNoteRename }));
+
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification }));
 
 vi.mock('@/utils/notesApi', () => ({
   NotesAPI: { listTags },
@@ -191,6 +194,7 @@ describe('NotesWorkspaceApp', () => {
     syncWikiLinksAfterNoteRename.mockResolvedValue({
       updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
     });
+    showGlobalNotification.mockReset();
     watchState.callback = null;
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
@@ -1132,60 +1136,42 @@ describe('NotesWorkspaceApp', () => {
     syncWikiLinksAfterNoteRename.mockResolvedValue({
       updatedSources: 2, rewrittenLinks: 3, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
     });
-    const notifications: string[] = [];
-    const onNotification = (event: Event) => {
-      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
-    };
-    window.addEventListener('showGlobalNotification', onNotification);
-    try {
-      render(<NotesWorkspaceApp {...props()} />);
-      const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
-      fireEvent.contextMenu(resource);
-      fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
-      const input = await screen.findByRole('textbox', { name: /重命名/ });
-      fireEvent.change(input, { target: { value: '新课堂笔记' } });
-      fireEvent.keyDown(input, { key: 'Enter' });
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新课堂笔记' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
-      await waitFor(() => expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledTimes(1));
-      // knownNotes 必须携带重命名前的标题快照，否则旧标题无从解析
-      expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledWith({
-        noteId: 'note_1',
-        oldTitle: '课堂笔记',
-        newTitle: '新课堂笔记',
-        knownNotes: [{ id: 'note_1', title: '课堂笔记' }],
-      });
-      await waitFor(() => {
-        expect(notifications.some((message) => message.includes('已同步更新 2 篇'))).toBe(true);
-      });
-    } finally {
-      window.removeEventListener('showGlobalNotification', onNotification);
-    }
+    await waitFor(() => expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledTimes(1));
+    // knownNotes 必须携带重命名前的标题快照，否则旧标题无从解析
+    expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledWith({
+      noteId: 'note_1',
+      oldTitle: '课堂笔记',
+      newTitle: '新课堂笔记',
+      knownNotes: [{ id: 'note_1', title: '课堂笔记' }],
+    });
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('success', expect.stringContaining('已同步更新 2 篇'));
+    });
   });
 
   it('warns when some wiki links could not be synced after a rename', async () => {
     syncWikiLinksAfterNoteRename.mockResolvedValue({
       updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 1, failedSources: 1, scanFailed: false,
     });
-    const notifications: string[] = [];
-    const onNotification = (event: Event) => {
-      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
-    };
-    window.addEventListener('showGlobalNotification', onNotification);
-    try {
-      render(<NotesWorkspaceApp {...props()} />);
-      const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
-      fireEvent.contextMenu(resource);
-      fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
-      const input = await screen.findByRole('textbox', { name: /重命名/ });
-      fireEvent.change(input, { target: { value: '新课堂笔记' } });
-      fireEvent.keyDown(input, { key: 'Enter' });
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新课堂笔记' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
-      await waitFor(() => {
-        expect(notifications.some((message) => message.includes('2 篇笔记中的双链未同步'))).toBe(true);
-      });
-    } finally {
-      window.removeEventListener('showGlobalNotification', onNotification);
-    }
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('warning', expect.stringContaining('2 篇笔记中的双链未同步'));
+    });
   });
 
   it('does not run the wiki-link rename sync for mindmap renames', async () => {
@@ -1228,24 +1214,16 @@ describe('NotesWorkspaceApp', () => {
         error: { toUserMessage: () => '后续分页失败' },
       }) as never;
     });
-    const notifications: string[] = [];
-    const onNotification = (event: Event) => {
-      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
-    };
-    window.addEventListener('showGlobalNotification', onNotification);
-    try {
-      render(<NotesWorkspaceApp {...props()} />);
-      await waitFor(() => {
-        expect(notifications.filter((message) => message.includes('仅显示部分内容'))).toHaveLength(1);
-      });
-      // 已取到的第一页（1000+1 个文件）仍然可用，而不是整树报错。
-      // 树本体在千级节点时走虚拟化渲染（jsdom 视口高度为 0，只挂载首行），
-      // 因此断言状态栏计数而非具体树节点文本。
-      await screen.findByText(/1001 个文件/);
-      expect(screen.queryByText(/加载失败|无法加载/)).toBeNull();
-    } finally {
-      window.removeEventListener('showGlobalNotification', onNotification);
-    }
+    render(<NotesWorkspaceApp {...props()} />);
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('warning', expect.stringContaining('仅显示部分内容'));
+    });
+    expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+    // 已取到的第一页（1000+1 个文件）仍然可用，而不是整树报错。
+    // 树本体在千级节点时走虚拟化渲染（jsdom 视口高度为 0，只挂载首行），
+    // 因此断言状态栏计数而非具体树节点文本。
+    await screen.findByText(/1001 个文件/);
+    expect(screen.queryByText(/加载失败|无法加载/)).toBeNull();
   });
 });
 
