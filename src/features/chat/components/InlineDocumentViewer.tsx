@@ -639,16 +639,16 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
         {/* 操作按钮 */}
         <div className="flex items-center gap-1">
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
             <ArrowSquareOut size={15} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
             <Download size={15} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
             <X size={15} />
           </DsButton>
         </div>
