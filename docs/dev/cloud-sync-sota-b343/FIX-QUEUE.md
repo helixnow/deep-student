@@ -588,3 +588,12 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 ### delta-format 回传（分支 `cursor/cloud-sync-sota-delta-format-b343`，codec only）
 
 前两轮环境不可达。第三轮从 `b2716f21` 交付：`delta_format.rs` + `sync_r12_delta_format.rs` 15 例；`mod.rs` 仅 `pub mod delta_format;`。**未接线**，不能宣称增量备份已实现。
+
+## Round 14（增量下一刀，codec 之后，仍不接上传）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-inventory | `cursor/cloud-sync-sota-delta-inventory-b343` | 从已验证 staging 生成规范文件表；volatile manifest 字段不进复用比较；输出可喂给 `SnapshotFileRefV2` 的 path/size/hash | 新 `data_governance/backup/delta_inventory.rs`；`backup/mod.rs` 仅 `pub mod delta_inventory;`；新 `src-tauri/tests/sync_r12_delta_inventory.rs` |
+| delta-lease | `cursor/cloud-sync-sota-delta-lease-b343` | backup-v2/GC 独立租约（contender、TTL、截断/损坏 fail-closed）；**不**复用记录级 `sync-target` namespace | 新 `cloud_storage/backup_lease.rs`；`cloud_storage/mod.rs` 仅 `pub mod backup_lease;`；新 `src-tauri/tests/sync_r12_backup_lease.rs` |
+
+两路都禁止改 `sync_manager.rs` / `delta_format.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。

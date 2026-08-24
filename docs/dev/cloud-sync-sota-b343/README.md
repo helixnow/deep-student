@@ -81,7 +81,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R08 复审与收口 | 进行中 | 见 [ROUND-08](./ROUND-08.md) |
 | R09–R10 大包 | 进行中 | 每路 ≥4 交付物；P1-1 冲突 UI 已关；P2-2 KDF 钳制已合，见 [ROUND-10](./ROUND-10.md) |
 | R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 / lease / names2 / delta 调研已合，见 [ROUND-11](./ROUND-11.md) |
-| 收尾 | 进行中 | P2-1/P2-2 已关；names2 + delta codec 已合（未接线）；见 [WRAP-CLOSE.md](./WRAP-CLOSE.md) |
+| 收尾 | 进行中 | P2-1/P2-2 已关；delta codec 已合（未接线）；inventory/lease 在飞，见 [WRAP-CLOSE.md](./WRAP-CLOSE.md) |
 
 ## 文档索引
 
