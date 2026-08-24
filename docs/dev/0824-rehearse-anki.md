@@ -37,6 +37,14 @@
 - 门禁复跑全绿：`npm ci`、`npm run typecheck`（清理后复跑）、`npx vite build`、
   `cargo check --lib`（仍为既有 25 项 warning）。GenUI 契约 6 文件 43 项、
   遮挡 3 文件 37 项、清理影响面 4 文件 29 项测试均通过。
+- 额外发现并修复一处**基线遗留**问题：`generative_ui_executor.rs` 测试
+  `parse_note_edit_accepts_append_payload` 存在 E0515（闭包返回对局部 `Value`
+  的引用），导致 `cargo test --lib` 无法编译。该错误在基线 `8361e6b7`
+  （step-1 合入 #214 时）即存在，与 Anki 主题无关；`cargo check --lib`
+  不编译 `#[cfg(test)]` 代码所以门禁未暴露。已就地修复；修复后
+  `generative_ui_executor` 23 项 + streaming_anki token 回归 6 项共 29 项
+  Rust 单测通过，lib test target 恢复可编译。正式合并链上其它以 `8361e6b7`
+  为基线的预演分支若单独跑 `cargo test --lib` 也会遇到同一错误，可采用本修复。
 
 裁决：正式合并 Anki 主题（D 步）时可直接以本分支为准。
 
