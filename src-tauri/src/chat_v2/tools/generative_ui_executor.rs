@@ -12,7 +12,7 @@ use super::types::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::hpias::{
-    create_research_backend, extract_question_from_intent, HpiasEventEmitter,
+    create_research_backend, extract_question_from_intent, HpiasEventEmitter, HpiasResearchDeps,
     HpiasResearchSessionRequest,
 };
 
@@ -181,7 +181,12 @@ impl GenerativeUiExecutor {
                 error
             );
         }
-        let backend = create_research_backend(window);
+        let deps = HpiasResearchDeps {
+            vfs_db: ctx.vfs_db.clone(),
+            vfs_lance_store: ctx.vfs_lance_store.clone(),
+            llm_manager: ctx.llm_manager.clone(),
+        };
+        let backend = create_research_backend(window, deps);
         backend.start_research_session(HpiasResearchSessionRequest {
             session_id,
             question,

@@ -137,6 +137,10 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ),
   },
   {
+    id: 'hpias-retrieval-backend',
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/retrieval_backend.rs')),
+  },
+  {
     id: 'sota-checklist-doc',
     check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/SOTA_CHECKLIST.md')),
   },

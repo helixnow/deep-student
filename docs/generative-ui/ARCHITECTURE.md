@@ -82,7 +82,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 
 **`hpias::HpiasPipelineOrchestrator`**（Round 21）在 intent 含 Research 块时于后台按生命周期 emit：`plan_generated` → `retrieval_completed` → `selection_completed` → `subagent_*` → `synthesis_updated` → `session_completed`（payload 构建见 `hpias/payloads.rs`，与 Style Lab 演示时间线对齐）。
 
-**`hpias::HpiasResearchBackend`**（Round 22）通过 `StubHpiasResearchService` 封装 orchestrator，executor 经 `create_research_backend` 启动 pipeline；前端 `contracts/hpiasLifecycleContract.ts` 与 Rust payloads 跨语言对齐。未来真实 HPIAS 后端实现同一 trait 即可替换 stub。
+**`hpias::RetrievalHpiasResearchService`**（Round 24）在 `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 且 ExecutionContext 注入 VFS/LLM 时，经 `VfsUnifiedRetriever` 执行真实检索并按生命周期 emit；synthesis 为检索片段确定性拼接（LLM 综合待后续轮次）。不可用时回退 stub。
 
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`

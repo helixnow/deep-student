@@ -33,6 +33,7 @@
 | Rust HPIAS pipeline orchestrator | `HpiasPipelineOrchestrator` + payloads 生命周期 | ✅ Round 21 |
 | HPIAS 可替换后端 + 运行时验收 | `HpiasResearchBackend` + lifecycle contract + runtime test | ✅ Round 22 |
 | 14 块全量 runtime + Chat HPIAS E2E | `generativeUIAllBlocksRuntime` + `generativeUIChatBlockHpiasRuntime` | ✅ Round 23 |
+| VFS retrieval HPIAS backend | `RetrievalHpiasResearchService` + env `retrieval` | ✅ Round 24 |
 | SOTA acceptance contract | 15 项集成要求静态验收 | ✅ Round 20 |
 
 ## 安全 / HITL（#8）

@@ -37,6 +37,7 @@ describe('hpiasPayloadParity contract', () => {
     );
     expect(serviceSrc).toContain('trait HpiasResearchBackend');
     expect(serviceSrc).toContain('StubHpiasResearchService');
+    expect(serviceSrc).toContain('create_research_backend');
     expect(serviceSrc).toContain('HpiasBackendKind');
     expect(serviceSrc).toContain('DEEP_STUDENT_HPIAS_BACKEND');
   });
@@ -48,6 +49,16 @@ describe('hpiasPayloadParity contract', () => {
     );
     expect(executorSrc).toContain('create_research_backend');
     expect(executorSrc).toContain('HpiasResearchSessionRequest');
+    expect(executorSrc).toContain('HpiasResearchDeps');
     expect(executorSrc).not.toContain('HpiasPipelineOrchestrator::spawn_from_intent');
+  });
+
+  it('retrieval backend module exists with VFS wiring', () => {
+    const retrievalSrc = fs.readFileSync(
+      path.join(REPO, 'src-tauri/src/hpias/retrieval_backend.rs'),
+      'utf8',
+    );
+    expect(retrievalSrc).toContain('RetrievalHpiasResearchService');
+    expect(retrievalSrc).toContain('DEEP_STUDENT_HPIAS_BACKEND');
   });
 });

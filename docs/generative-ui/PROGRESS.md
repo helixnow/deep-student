@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 24（2026-08-24）
+
+- [x] **`hpias/retrieval_backend.rs`** — `RetrievalHpiasResearchService` 经 `VfsUnifiedRetriever` 真实检索
+- [x] `HpiasResearchDeps` — executor 注入 vfs_db / lance_store / llm_manager
+- [x] `DEEP_STUDENT_HPIAS_BACKEND=retrieval` + VFS 不可用时自动回退 stub
+- [x] 确定性 `build_synthesis_markdown`（LLM 综合待续）
+- [x] contract / SOTA / ARCHITECTURE 更新
+
 ## Round 23（2026-08-24）
 
 - [x] **`allBlocksFixture.ts`** + **`generativeUIAllBlocksRuntime.test.tsx`** — 14 块全量运行时渲染 SOTA 验收

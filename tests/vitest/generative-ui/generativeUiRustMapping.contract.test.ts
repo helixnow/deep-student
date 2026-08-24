@@ -74,6 +74,18 @@ describe('generativeUI Rust dual-mapping contract', () => {
     );
     expect(serviceSrc).toContain('trait HpiasResearchBackend');
     expect(serviceSrc).toContain('StubHpiasResearchService');
+    expect(serviceSrc).toContain('HpiasBackendKind::Retrieval');
+    expect(serviceSrc).toContain('Box<dyn HpiasResearchBackend>');
+  });
+
+  it('hpias retrieval backend uses VfsUnifiedRetriever', () => {
+    const retrievalSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/retrieval_backend.rs'),
+      'utf8',
+    );
+    expect(retrievalSrc).toContain('VfsUnifiedRetriever');
+    expect(retrievalSrc).toContain('UnifiedRetrievalRequest');
+    expect(retrievalSrc).toContain('build_synthesis_markdown');
   });
 
   it('hpias payloads align with frontend lifecycle events', () => {

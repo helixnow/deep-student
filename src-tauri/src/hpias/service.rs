@@ -1,20 +1,22 @@
-//! HPIAS 研究服务 — 后端 pipeline 入口（Round 22）
+//! HPIAS 研究服务 — 后端 pipeline 入口（Round 22–24）
 //!
-//! `StubHpiasResearchService` 委托 `HpiasPipelineOrchestrator`；
-//! 未来真实 HPIAS 后端实现同一 trait，保留 `HpiasEventEmitter` emit 协议。
+//! `StubHpiasResearchService` — Style Lab 时间线 stub（默认）
+//! `RetrievalHpiasResearchService` — VFS UnifiedRetriever 真实检索（`DEEP_STUDENT_HPIAS_BACKEND=retrieval`）
 
 use serde_json::Value;
 use tauri::Window;
 
 use super::orchestrator::HpiasPipelineOrchestrator;
 use super::payloads::intent_has_research_blocks;
+use super::retrieval_backend::{HpiasResearchDeps, RetrievalHpiasResearchService};
 
-/// HPIAS 后端实现种类（Round 23：环境变量 `DEEP_STUDENT_HPIAS_BACKEND` 选择）
+/// HPIAS 后端实现种类（环境变量 `DEEP_STUDENT_HPIAS_BACKEND`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HpiasBackendKind {
     /// Style Lab 时间线 stub（默认）
     Stub,
-    // Retrieval — 未来：VFS unified_retriever 驱动真实检索 pipeline
+    /// VFS UnifiedRetriever 驱动检索 + 确定性 synthesis
+    Retrieval,
 }
 
 impl HpiasBackendKind {
@@ -25,6 +27,7 @@ impl HpiasBackendKind {
             .as_str()
         {
             "stub" | "" => Self::Stub,
+            "retrieval" => Self::Retrieval,
             other => {
                 log::warn!(
                     "[HpiasResearchService] Unknown DEEP_STUDENT_HPIAS_BACKEND={:?}, using stub",
@@ -43,9 +46,8 @@ pub struct HpiasResearchSessionRequest<'a> {
     pub intent: &'a Value,
 }
 
-/// HPIAS 研究 pipeline 后端（stub 与真实实现共用接口）
+/// HPIAS 研究 pipeline 后端（stub 与 retrieval 共用接口）
 pub trait HpiasResearchBackend: Send + Sync {
-    /// 绑定 Chat researchSessionId 后启动研究 pipeline
     fn start_research_session(&self, request: HpiasResearchSessionRequest<'_>);
 }
 
@@ -74,11 +76,23 @@ impl HpiasResearchBackend for StubHpiasResearchService {
     }
 }
 
-/// 默认后端工厂（`DEEP_STUDENT_HPIAS_BACKEND=stub` 为默认）
-pub fn create_research_backend(window: Window) -> StubHpiasResearchService {
-    let kind = HpiasBackendKind::from_env();
-    match kind {
-        HpiasBackendKind::Stub => StubHpiasResearchService::new(window),
+/// 后端工厂：`retrieval` 模式在 VFS/LLM 不可用时自动回退 stub
+pub fn create_research_backend(
+    window: Window,
+    deps: HpiasResearchDeps,
+) -> Box<dyn HpiasResearchBackend> {
+    match HpiasBackendKind::from_env() {
+        HpiasBackendKind::Stub => Box::new(StubHpiasResearchService::new(window)),
+        HpiasBackendKind::Retrieval => {
+            if deps.can_run_retrieval() {
+                Box::new(RetrievalHpiasResearchService::new(window, deps))
+            } else {
+                log::warn!(
+                    "[HpiasResearchService] retrieval backend requested but VFS/LLM unavailable; using stub"
+                );
+                Box::new(StubHpiasResearchService::new(window))
+            }
+        }
     }
 }
 
@@ -111,6 +125,13 @@ mod tests {
     fn backend_kind_reads_env_stub() {
         std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
         assert_eq!(HpiasBackendKind::from_env(), HpiasBackendKind::Stub);
+        std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND");
+    }
+
+    #[test]
+    fn backend_kind_reads_env_retrieval() {
+        std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "retrieval");
+        assert_eq!(HpiasBackendKind::from_env(), HpiasBackendKind::Retrieval);
         std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND");
     }
 }
