@@ -6,6 +6,7 @@
 pub mod adapters;
 pub mod anki;
 pub mod anki_connect_service;
+pub mod anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
 pub mod anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
 pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
 pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）

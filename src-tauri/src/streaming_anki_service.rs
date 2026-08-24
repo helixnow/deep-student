@@ -1,3 +1,4 @@
+use crate::anki_protocol::{self, OutputProtocol, StructuredOutputOptions};
 use crate::database::Database;
 use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::{
@@ -439,6 +440,30 @@ impl StreamingAnkiService {
                 }
             };
 
+        // 协议扩展选项（output_protocol / enable_qa_pass）：对同一份 options JSON
+        // 做 serde-default 二次解析（不能直接加到 AnkiGenerationOptions，
+        // 详见 anki_protocol::StructuredOutputOptions 的设计说明）。
+        let structured_opts =
+            StructuredOutputOptions::from_options_json(&task.anki_generation_options_json);
+        let capability = anki_protocol::detect_schema_capability(
+            &api_config.model_adapter,
+            api_config.api_protocol.as_deref(),
+            api_config.provider_type.as_deref(),
+            &api_config.base_url,
+        );
+        let (mut protocol, protocol_reason) = anki_protocol::resolve_output_protocol(
+            structured_opts.output_protocol.as_deref(),
+            capability,
+        );
+        info!(
+            "[ANKI_PROTOCOL] 输出协议决策: protocol={} reason={} capability={:?} model={} adapter={}",
+            protocol.as_str(),
+            protocol_reason,
+            capability,
+            api_config.model,
+            api_config.model_adapter
+        );
+
         // 全局限额分配下，额度为 0 的分段直接跳过，避免“0 表示无限制”带来额外卡片。
         if options.max_cards_total.unwrap_or(0) > 0 && options.max_cards_per_mistake <= 0 {
             self.update_task_status(
@@ -454,7 +479,7 @@ impl StreamingAnkiService {
         }
 
         // 构建prompt
-        let prompt_payload = match self.build_prompt(&task.content_segment, &options) {
+        let prompt_payload = match self.build_prompt(&task.content_segment, &options, protocol) {
             Ok(p) => p,
             Err(err) => {
                 self.handle_task_error(
@@ -491,6 +516,8 @@ impl StreamingAnkiService {
         .await?;
         // 设置取消通道（暂停走文档级硬取消，见 EnhancedAnkiService::pause_document_processing）
         let (cancel_tx, cancel_rx) = watch::channel(false);
+        // 结构化协议被端点拒绝时回退 delimiter 重试一次需要第二个接收端
+        let cancel_rx_fallback = cancel_tx.subscribe();
         {
             let mut senders = CANCEL_SENDERS.lock().await;
             senders.insert(task_id.clone(), cancel_tx);
@@ -500,7 +527,7 @@ impl StreamingAnkiService {
         if let Some(ready_tx) = ready_signal {
             let _ = ready_tx.send(());
         }
-        let result = self
+        let mut result = self
             .stream_cards_from_ai(
                 &api_config,
                 &prompt_payload,
@@ -510,9 +537,52 @@ impl StreamingAnkiService {
                 &task.document_id,
                 &window,
                 &options,
+                protocol,
+                structured_opts.qa_pass_enabled(),
                 cancel_rx,
             )
             .await;
+
+        // 结构化输出被端点拒绝（HTTP 400/404/422，典型为 response_format 不支持或
+        // schema 不合法）时，回退 delimiter 协议重试一次。失败发生在 HTTP 状态检查
+        // 阶段（任何卡片解析之前），重试不会产生重复卡片。
+        if let Err(ref e) = result {
+            if protocol.is_structured()
+                && e.message != CANCELLED_BY_USER_MSG
+                && anki_protocol::is_probably_structured_output_rejection(&e.message)
+            {
+                warn!(
+                    "[ANKI_PROTOCOL] 结构化输出请求被拒绝（{}），回退 delimiter 协议重试一次",
+                    e.message
+                );
+                protocol = OutputProtocol::Delimiter;
+                match self.build_prompt(&task.content_segment, &options, protocol) {
+                    Ok(fallback_prompt) => {
+                        result = self
+                            .stream_cards_from_ai(
+                                &api_config,
+                                &fallback_prompt,
+                                max_tokens,
+                                temperature,
+                                &task_id,
+                                &task.document_id,
+                                &window,
+                                &options,
+                                protocol,
+                                structured_opts.qa_pass_enabled(),
+                                cancel_rx_fallback,
+                            )
+                            .await;
+                    }
+                    Err(prompt_err) => {
+                        warn!(
+                            "[ANKI_PROTOCOL] 回退 delimiter 时重建 prompt 失败，保留原始错误: {}",
+                            prompt_err
+                        );
+                    }
+                }
+            }
+        }
 
         let outcome: Result<(), AppError> = match result {
             Ok(stats) => {
@@ -593,13 +663,25 @@ impl StreamingAnkiService {
         &self,
         content: &str,
         options: &AnkiGenerationOptions,
+        protocol: OutputProtocol,
     ) -> Result<PromptPayload, AppError> {
-        // 获取基础prompt（优先级：模板prompt > 默认prompt）
-        let base_prompt = if let Some(custom_prompt) = &options.custom_anki_prompt {
-            custom_prompt.clone()
-        } else {
-            // 默认 Anki 制卡 prompt
-            "你是一个专业的 Anki 学习卡片制作助手。请根据提供的学习内容，生成高质量的 Anki 学习卡片。\n\n要求：\n1. 卡片应该有助于记忆和理解\n2. 问题要简洁明确\n3. 答案要准确完整\n4. 适当添加相关标签\n5. 确保卡片的逻辑性和实用性\n6. 卡片内容语言必须与学习材料一致：英文材料生成英文卡片，中文材料生成中文卡片，不要翻译".to_string()
+        // 默认 Anki 制卡 prompt（通用质量要求，始终保留）
+        let default_prompt = "你是一个专业的 Anki 学习卡片制作助手。请根据提供的学习内容，生成高质量的 Anki 学习卡片。\n\n要求：\n1. 卡片应该有助于记忆和理解\n2. 问题要简洁明确\n3. 答案要准确完整\n4. 适当添加相关标签\n5. 确保卡片的逻辑性和实用性\n6. 卡片内容语言必须与学习材料一致：英文材料生成英文卡片，中文材料生成中文卡片，不要翻译".to_string();
+
+        // 模板 generation_prompt（经 custom_anki_prompt 传入）改为「附加而非替换」：
+        // 旧实现整体替换默认 prompt，会把上面的通用质量要求一并丢弃，
+        // 模板作者写的往往只是字段格式说明，不该抹掉质量基线。
+        let base_prompt = match options
+            .custom_anki_prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+        {
+            Some(custom_prompt) => format!(
+                "{}\n\n模板生成说明（模板作者提供，在遵守上述通用要求的前提下执行）：\n{}",
+                default_prompt, custom_prompt
+            ),
+            None => default_prompt,
         };
 
         // system role 信息
@@ -679,26 +761,8 @@ impl StreamingAnkiService {
 
         let system_message = system_sections.join("\n\n");
 
-        let multi_template = options
-            .template_descriptions
-            .as_ref()
-            .map(|descriptions| descriptions.len() > 1)
-            .unwrap_or(false)
-            || options
-                .template_ids
-                .as_ref()
-                .map(|ids| ids.len() > 1)
-                .unwrap_or(false)
-            || options
-                .template_fields_by_id
-                .as_ref()
-                .map(|fields| fields.len() > 1)
-                .unwrap_or(false)
-            || options
-                .field_extraction_rules_by_id
-                .as_ref()
-                .map(|rules| rules.len() > 1)
-                .unwrap_or(false);
+        // 多模板判定：与 parse_and_save_card 共用 anki_protocol::is_multi_template
+        let multi_template = anki_protocol::is_multi_template(options);
 
         // 获取模板字段（多模板时不强制统一字段清单）
         let template_fields = if multi_template {
@@ -723,10 +787,12 @@ impl StreamingAnkiService {
             }))
         };
 
+        // 示例 JSON 使用语言中性占位符（<question> 等），避免中文 few-shot
+        // 把非中文材料的卡片语言牵引到中文（材料语言一致性要求见系统段）。
         let (fields_requirement, example_json) = if multi_template {
             (
                 "template_id（字符串）+ 所选模板的必需字段（见上方模板列表）".to_string(),
-                "{\"template_id\": \"<模板ID>\", \"<字段名>\": \"内容\"}".to_string(),
+                "{\"template_id\": \"<template-id>\", \"<field-name>\": \"<value>\"}".to_string(),
             )
         } else if let Some(fields) = template_fields.as_ref() {
             // 按模板字段提取规则的 is_required 生成诚实的必填/可选标记，
@@ -756,16 +822,16 @@ impl StreamingAnkiService {
                 let mut example_fields = vec![];
                 for field in fields {
                     match field.as_str() {
-                        "front" => example_fields.push("\"front\": \"问题内容\"".to_string()),
-                        "back" => example_fields.push("\"back\": \"答案内容\"".to_string()),
+                        "front" => example_fields.push("\"front\": \"<question>\"".to_string()),
+                        "back" => example_fields.push("\"back\": \"<answer>\"".to_string()),
                         "tags" => {
-                            example_fields.push("\"tags\": [\"标签1\", \"标签2\"]".to_string())
+                            example_fields.push("\"tags\": [\"<tag-1>\", \"<tag-2>\"]".to_string())
                         }
-                        "example" => example_fields.push("\"example\": \"示例内容\"".to_string()),
-                        "source" => example_fields.push("\"source\": \"来源信息\"".to_string()),
-                        "code" => example_fields.push("\"code\": \"代码示例\"".to_string()),
-                        "notes" => example_fields.push("\"notes\": \"注释内容\"".to_string()),
-                        _ => example_fields.push(format!("\"{}\": \"{}内容\"", field, field)),
+                        "example" => example_fields.push("\"example\": \"<example>\"".to_string()),
+                        "source" => example_fields.push("\"source\": \"<source>\"".to_string()),
+                        "code" => example_fields.push("\"code\": \"<code>\"".to_string()),
+                        "notes" => example_fields.push("\"notes\": \"<notes>\"".to_string()),
+                        _ => example_fields.push(format!("\"{}\": \"<{}>\"", field, field)),
                     }
                 }
                 format!("{{{}}}", example_fields.join(", "))
@@ -775,7 +841,7 @@ impl StreamingAnkiService {
         } else {
             (
                 "front/back/tags（默认字段）".to_string(),
-                "{\"front\": \"问题内容\", \"back\": \"答案内容\", \"tags\": [\"标签\"]}"
+                "{\"front\": \"<question>\", \"back\": \"<answer>\", \"tags\": [\"<tag>\"]}"
                     .to_string(),
             )
         };
@@ -797,19 +863,12 @@ impl StreamingAnkiService {
             "根据内容的信息密度生成适量的高质量卡片，充分覆盖所有知识点。\n\n".to_string()
         };
 
-        // 增强prompt以支持流式输出和动态字段
-        let generation_instructions = format!(
-            "{}\
-            重要指令：\n\
-            1. 请逐个生成卡片，每个卡片必须是完整的JSON格式\n\
-            2. 每生成一个完整的卡片JSON后，立即输出分隔符：<<<ANKI_CARD_JSON_END>>>（包括最后一张卡片之后也必须输出分隔符）\n\
-            3. JSON格式必须包含以下字段：{}\n\
-            4. 不要使用Markdown代码块，直接输出JSON\n\
-            5. 输出完所有卡片和最后一个分隔符后立即停止，不要输出任何总结或结束语\n\
-            6. 示例输出格式：\n\
-            {}\n\
-            <<<ANKI_CARD_JSON_END>>>",
-            card_count_instruction, fields_requirement, example_json
+        // 输出格式指令按协议生成（分隔符常量与解析侧共用 anki_protocol::CARD_DELIMITER）
+        let generation_instructions = anki_protocol::format_instructions(
+            protocol,
+            &card_count_instruction,
+            &fields_requirement,
+            &example_json,
         );
 
         let user_message = format!(
@@ -843,6 +902,8 @@ impl StreamingAnkiService {
         document_id: &str,
         window: &Window,
         options: &AnkiGenerationOptions,
+        protocol: OutputProtocol,
+        qa_pass_enabled: bool,
         mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<StreamStats, AppError> {
         let mut messages = vec![];
@@ -857,13 +918,29 @@ impl StreamingAnkiService {
             "content": prompt_payload.user
         }));
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": api_config.model,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": true
         });
+
+        // 结构化协议：注入 OpenAI CC 形态的 response_format。
+        // 各 provider 适配器（providers/mod.rs、adapters/gemini-openai-converter.rs）
+        // 负责将其转换为 Responses text.format / Anthropic output_config.format /
+        // Gemini response_schema；delimiter 协议不注入，保持历史请求体不变。
+        if let Some(response_format) = anki_protocol::build_response_format(protocol, options) {
+            info!(
+                "[ANKI_PROTOCOL] 注入 response_format: protocol={} type={}",
+                protocol.as_str(),
+                response_format
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("?")
+            );
+            request_body["response_format"] = response_format;
+        }
 
         // 使用 ProviderAdapter 构建请求（支持 Gemini 中转），并统一合并自定义头 / Codex OAuth。
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(api_config);
@@ -1030,6 +1107,13 @@ impl StreamingAnkiService {
                                 ));
                             }
 
+                            // 结构化协议：剥离 wrapper 前缀 {"cards": [ 后，
+                            // 数组内的卡片对象成为顶层对象，brace-depth 切卡器
+                            // 可原样逐卡流式切出（首卡延迟与 delimiter 协议持平）
+                            if protocol.is_structured() {
+                                anki_protocol::strip_wrapper_prefix(&mut buffer);
+                            }
+
                             // 检查是否有完整的卡片
                             while let Some(card_result) = self.extract_card_from_buffer(&mut buffer)
                             {
@@ -1047,7 +1131,12 @@ impl StreamingAnkiService {
                                 match card_result {
                                     Ok(card_json) => {
                                         match self
-                                            .parse_and_save_card(&card_json, task_id, options)
+                                            .parse_and_save_card(
+                                                &card_json,
+                                                task_id,
+                                                options,
+                                                qa_pass_enabled,
+                                            )
                                             .await
                                         {
                                             Ok(Some(card)) => {
@@ -1202,66 +1291,76 @@ impl StreamingAnkiService {
             // 只有"像卡片但解析失败"才降级为错误卡。
             let residual = buffer.trim().to_string();
             if !residual.is_empty() {
-                let within_limit = options.max_cards_per_mistake <= 0
-                    || (stats.card_count as i32) < options.max_cards_per_mistake;
-                let looks_like_card = residual.contains('{');
+                // 结构化协议下收尾残留可能是完整的 {"cards": [...]} wrapper
+                // （例如整段响应在 flush 阶段才到达）：先尝试展开为逐卡 payload。
+                // 非 wrapper 内容原样作为单个 payload，行为与旧实现一致。
+                let payloads = self.expand_wrapper_payloads(&residual);
+                for payload in payloads {
+                    let within_limit = options.max_cards_per_mistake <= 0
+                        || (stats.card_count as i32) < options.max_cards_per_mistake;
+                    let looks_like_card = payload.contains('{');
 
-                let mut handled = false;
-                if within_limit && looks_like_card {
-                    match self.parse_and_save_card(&residual, task_id, options).await {
-                        Ok(Some(card)) => {
-                            stats.card_count += 1;
-                            if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
-                                stats.flagged_cards += 1;
+                    let mut handled = false;
+                    if within_limit && looks_like_card {
+                        match self
+                            .parse_and_save_card(&payload, task_id, options, qa_pass_enabled)
+                            .await
+                        {
+                            Ok(Some(card)) => {
+                                stats.card_count += 1;
+                                if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
+                                    stats.flagged_cards += 1;
+                                }
+                                info!(
+                                    "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
+                                    stats.card_count
+                                );
+                                self.emit_new_card(card, document_id, window).await;
+                                handled = true;
                             }
-                            info!(
-                                "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
-                                stats.card_count
-                            );
-                            self.emit_new_card(card, document_id, window).await;
-                            handled = true;
-                        }
-                        Ok(None) => {
-                            // 重复卡片被去重跳过，视为已处理
-                            stats.duplicate_cards += 1;
-                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析成功但被去重跳过");
-                            handled = true;
-                        }
-                        Err(e) if e.message.contains(UNREADABLE_FRAGMENT_MSG) => {
-                            // 收尾残片不含任何可读文本：丢弃并记录 warning
-                            stats.dropped_fragments += 1;
-                            warn!(
-                                "[ANKI_CARD_DEBUG] 丢弃流收尾的不可读残片（{} 字符）",
-                                residual.chars().count()
-                            );
-                            self.emit_generation_warning(
-                                task_id,
-                                document_id,
-                                "unreadable_fragment_dropped",
-                                &residual,
-                                window,
-                            );
-                            handled = true;
-                        }
-                        Err(e) => {
-                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析失败: {}", e);
+                            Ok(None) => {
+                                // 重复卡片被去重跳过，视为已处理
+                                stats.duplicate_cards += 1;
+                                debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析成功但被去重跳过");
+                                handled = true;
+                            }
+                            Err(e) if e.message.contains(UNREADABLE_FRAGMENT_MSG) => {
+                                // 收尾残片不含任何可读文本：丢弃并记录 warning
+                                stats.dropped_fragments += 1;
+                                warn!(
+                                    "[ANKI_CARD_DEBUG] 丢弃流收尾的不可读残片（{} 字符）",
+                                    payload.chars().count()
+                                );
+                                self.emit_generation_warning(
+                                    task_id,
+                                    document_id,
+                                    "unreadable_fragment_dropped",
+                                    &payload,
+                                    window,
+                                );
+                                handled = true;
+                            }
+                            Err(e) => {
+                                debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析失败: {}", e);
+                            }
                         }
                     }
-                }
 
-                if !handled {
-                    if looks_like_card {
-                        // 像卡片但解析失败：保留为错误卡供用户检查
-                        stats.failed_cards += 1;
-                        if let Ok(error_card) = self.create_error_card(&residual, task_id).await {
-                            self.emit_error_card(error_card, document_id, window).await;
+                    if !handled {
+                        if looks_like_card {
+                            // 像卡片但解析失败：保留为错误卡供用户检查
+                            stats.failed_cards += 1;
+                            if let Ok(error_card) = self.create_error_card(&payload, task_id).await
+                            {
+                                self.emit_error_card(error_card, document_id, window).await;
+                            }
+                        } else {
+                            // 纯自然语言收尾（如"以上就是全部卡片"）：丢弃，不生成错误卡
+                            info!(
+                                "[ANKI_CARD_DEBUG] 丢弃流收尾的非卡片残留内容（{} 字符）",
+                                payload.chars().count()
+                            );
                         }
-                    } else {
-                        // 纯自然语言收尾（如"以上就是全部卡片"）：丢弃，不生成错误卡
-                        info!(
-                            "[ANKI_CARD_DEBUG] 丢弃流收尾的非卡片残留内容（{} 字符）",
-                            residual.chars().count()
-                        );
                     }
                 }
             }
@@ -1312,8 +1411,9 @@ impl StreamingAnkiService {
     /// 2. 字符串外遇到标准分隔符 → 按旧协议切卡（辅助信号，兜底坏 JSON）；
     /// 3. 字符串外遇到损坏分隔符尾部（如 `<<< ANKI_CARD_JSON_END>>>`）→ 自动修复切卡。
     fn extract_card_from_buffer_impl(buffer: &mut String) -> Option<Result<String, String>> {
-        const DELIMITER: &str = "<<<ANKI_CARD_JSON_END>>>";
-        const BROKEN_DELIMITER_TAIL: &str = "ANKI_CARD_JSON_END>>>";
+        // 分隔符常量与 build_prompt 指令生成侧共用唯一定义（anki_protocol）
+        const DELIMITER: &str = anki_protocol::CARD_DELIMITER;
+        const BROKEN_DELIMITER_TAIL: &str = anki_protocol::BROKEN_DELIMITER_TAIL;
 
         // 按字节扫描是 UTF-8 安全的：所有关注的字符（引号、反斜杠、大括号、
         // 分隔符）均为 ASCII，多字节字符的后续字节都 >= 0x80，不会误匹配。
@@ -1434,45 +1534,66 @@ impl StreamingAnkiService {
         }
     }
 
+    /// 若内容是结构化 wrapper（`{"cards": [...]}`），展开为逐卡 payload；
+    /// 否则原样返回单元素列表。解析失败时先尝试一次轻量 JSON 修复。
+    fn expand_wrapper_payloads(&self, raw: &str) -> Vec<String> {
+        if !raw.contains('{') {
+            return vec![raw.to_string()];
+        }
+        let cleaned = self.clean_json_string(raw);
+        let parsed = serde_json::from_str::<Value>(&cleaned).ok().or_else(|| {
+            anki_protocol::repair_json(&cleaned)
+                .and_then(|repaired| serde_json::from_str::<Value>(&repaired).ok())
+        });
+        if let Some(value) = parsed {
+            if let Some(cards) = anki_protocol::unwrap_cards_array(&value) {
+                info!(
+                    "[ANKI_PROTOCOL] 收尾残留为结构化 wrapper，展开为 {} 个卡片 payload",
+                    cards.len()
+                );
+                return cards.iter().map(|card| card.to_string()).collect();
+            }
+        }
+        vec![raw.to_string()]
+    }
+
     /// 解析并保存卡片 - 支持动态字段提取规则
     async fn parse_and_save_card(
         &self,
         card_json: &str,
         task_id: &str,
         options: &AnkiGenerationOptions,
+        qa_pass_enabled: bool,
     ) -> Result<Option<AnkiCard>, AppError> {
         // 清理JSON字符串
         let cleaned_json = self.clean_json_string(card_json);
 
-        // 解析JSON
-        let json_value: Value = serde_json::from_str(&cleaned_json).map_err(|e| {
-            error!("[ANKI_PARSE_ERROR] JSON解析失败");
-            error!("[ANKI_PARSE_ERROR] 错误信息: {}", e);
-            error!("[ANKI_PARSE_ERROR] 原始内容: {}", card_json);
-            error!("[ANKI_PARSE_ERROR] 清理后内容: {}", cleaned_json);
-            AppError::validation(format!("JSON解析失败: {}", e))
-        })?;
+        // 解析JSON：serde 失败后尝试一次轻量修复（去尾逗号/补括号/截尾垃圾），
+        // 仍失败才降级为错误卡，保留原始错误语义
+        let json_value: Value = match serde_json::from_str(&cleaned_json) {
+            Ok(value) => value,
+            Err(e) => match anki_protocol::repair_json(&cleaned_json)
+                .and_then(|repaired| serde_json::from_str::<Value>(&repaired).ok())
+            {
+                Some(repaired_value) => {
+                    warn!(
+                        "[ANKI_JSON_REPAIR] serde 解析失败（{}），轻量修复后成功解析",
+                        e
+                    );
+                    repaired_value
+                }
+                None => {
+                    error!("[ANKI_PARSE_ERROR] JSON解析失败");
+                    error!("[ANKI_PARSE_ERROR] 错误信息: {}", e);
+                    error!("[ANKI_PARSE_ERROR] 原始内容: {}", card_json);
+                    error!("[ANKI_PARSE_ERROR] 清理后内容: {}", cleaned_json);
+                    return Err(AppError::validation(format!("JSON解析失败: {}", e)));
+                }
+            },
+        };
 
-        let multi_template = options
-            .template_ids
-            .as_ref()
-            .map(|ids| ids.len() > 1)
-            .unwrap_or(false)
-            || options
-                .template_descriptions
-                .as_ref()
-                .map(|descriptions| descriptions.len() > 1)
-                .unwrap_or(false)
-            || options
-                .template_fields_by_id
-                .as_ref()
-                .map(|fields| fields.len() > 1)
-                .unwrap_or(false)
-            || options
-                .field_extraction_rules_by_id
-                .as_ref()
-                .map(|rules| rules.len() > 1)
-                .unwrap_or(false);
+        // 多模板判定：与 build_prompt 共用 anki_protocol::is_multi_template
+        let multi_template = anki_protocol::is_multi_template(options);
 
         let raw_template_id_from_card = self.extract_template_id(&json_value);
         let template_id_from_card = resolve_template_id_candidate(
@@ -1588,6 +1709,11 @@ impl StreamingAnkiService {
             .iter()
             .map(|(k, v)| (k.clone(), self.clean_template_placeholders(v)))
             .collect();
+
+        // enable_qa_pass=false 时不携带字段 QA 违规留痕（校验本身照跑，仅不落盘）
+        if !qa_pass_enabled {
+            cleaned_extra_fields.remove(QA_FLAGS_FIELD);
+        }
 
         // Cloze 模板兼容：若模板声明 Text 字段但当前缺失，则尝试补齐
         let needs_text_field = resolved_template_fields
@@ -2108,7 +2234,7 @@ impl StreamingAnkiService {
             warn!(
                 "[QA_FLAGS] 卡片字段校验发现 {} 项违规（仅标记，不丢弃）: {}",
                 qa_flags.len(),
-                Value::Array(qa_flags.clone()).to_string()
+                serde_json::Value::Array(qa_flags.clone()).to_string()
             );
             extra_fields.insert(
                 QA_FLAGS_FIELD.to_string(),
@@ -2778,7 +2904,10 @@ impl StreamingAnkiService {
             "你将收到若干条‘错误卡片的原始输出片段’（例如被截断/不完整/被安全策略阻断的内容）。\n",
         );
         aggregated.push_str("请逐条修复并补全为有效的 Anki 卡片JSON。\n");
-        aggregated.push_str("严格要求：\n- 对每条 ==FIX== 段，输出1个或多个完整卡片JSON\n- 每个卡片JSON输出后紧跟分隔符 <<<ANKI_CARD_JSON_END>>>\n- 不输出任何额外解释或Markdown，只输出JSON与分隔符\n\n");
+        aggregated.push_str(&format!(
+            "严格要求：\n- 对每条 ==FIX== 段，输出1个或多个完整卡片JSON\n- 每个卡片JSON输出后紧跟分隔符 {}\n- 不输出任何额外解释或Markdown，只输出JSON与分隔符\n\n",
+            anki_protocol::CARD_DELIMITER
+        ));
         let mut idx = 1usize;
         for ec in &error_cards {
             aggregated.push_str(&format!(
@@ -3545,7 +3674,8 @@ mod tests {
     // 核心函数 extract_card_from_buffer_impl 不依赖 &self，直接测试状态机本身：
     // in_string / escape / brace_depth 三个状态位 + DELIMITER 辅助信号。
 
-    const DELIM: &str = "<<<ANKI_CARD_JSON_END>>>";
+    // 与协议模块共用唯一常量定义（防止测试基于过期字面量给出假通过）
+    const DELIM: &str = crate::anki_protocol::CARD_DELIMITER;
 
     fn extract(buffer: &mut String) -> Option<Result<String, String>> {
         StreamingAnkiService::extract_card_from_buffer_impl(buffer)
@@ -3723,5 +3853,192 @@ mod tests {
         assert!(serde_json::from_str::<Value>(&card).is_ok());
         assert!(card.contains("🌡️"));
         assert!(buffer.is_empty());
+    }
+
+    // ==================== 输出协议升级（Round 3 #2） ====================
+
+    fn minimal_options() -> AnkiGenerationOptions {
+        serde_json::from_value(json!({
+            "deck_name": "默认",
+            "note_type": "Basic",
+            "enable_images": false,
+            "max_cards_per_mistake": 5
+        }))
+        .expect("minimal options must deserialize")
+    }
+
+    #[test]
+    fn prompt_and_parser_share_delimiter_constant() {
+        // 常量一致性：指令生成侧（build_prompt）与解析侧（extract_card_from_buffer）
+        // 必须使用同一个分隔符定义，任何一侧漂移都会让协议破裂
+        let (svc, _dir) = make_test_service();
+        let payload = svc
+            .build_prompt(
+                "内容",
+                &minimal_options(),
+                crate::anki_protocol::OutputProtocol::Delimiter,
+            )
+            .expect("prompt");
+        assert!(payload.user.contains(crate::anki_protocol::CARD_DELIMITER));
+
+        // 解析侧对同一常量分隔的内容能够切卡
+        let mut buffer = format!(
+            r#"{{"front":"Q","back":"A"}}{}"#,
+            crate::anki_protocol::CARD_DELIMITER
+        );
+        let card = svc.extract_card_from_buffer(&mut buffer).unwrap().unwrap();
+        assert_eq!(card, r#"{"front":"Q","back":"A"}"#);
+    }
+
+    #[test]
+    fn build_prompt_structured_omits_delimiter_and_uses_wrapper() {
+        let (svc, _dir) = make_test_service();
+        for protocol in [
+            crate::anki_protocol::OutputProtocol::JsonObject,
+            crate::anki_protocol::OutputProtocol::JsonSchema,
+        ] {
+            let payload = svc
+                .build_prompt("内容", &minimal_options(), protocol)
+                .expect("prompt");
+            assert!(
+                !payload.user.contains(crate::anki_protocol::CARD_DELIMITER),
+                "结构化协议的指令不得再要求输出分隔符"
+            );
+            assert!(payload
+                .user
+                .contains(&format!("\"{}\"", crate::anki_protocol::CARDS_WRAPPER_KEY)));
+        }
+    }
+
+    #[test]
+    fn build_prompt_example_json_is_language_neutral() {
+        // 示例 JSON 必须是语言中性占位，避免中文 few-shot 把非中文材料的
+        // 卡片语言牵引到中文
+        let (svc, _dir) = make_test_service();
+        let payload = svc
+            .build_prompt(
+                "content",
+                &minimal_options(),
+                crate::anki_protocol::OutputProtocol::Delimiter,
+            )
+            .expect("prompt");
+        assert!(payload.user.contains("\"front\": \"<question>\""));
+        assert!(payload.user.contains("\"back\": \"<answer>\""));
+        assert!(
+            !payload.user.contains("问题内容"),
+            "示例 JSON 不得再含中文占位: {}",
+            payload.user
+        );
+    }
+
+    #[test]
+    fn build_prompt_appends_custom_prompt_instead_of_replacing() {
+        // 单模板 generation_prompt（经 custom_anki_prompt 传入）改为附加而非替换：
+        // 默认 prompt 的通用质量要求必须保留
+        let (svc, _dir) = make_test_service();
+        let mut options = minimal_options();
+        options.custom_anki_prompt = Some("每张卡片的 front 必须以疑问句结尾".to_string());
+        let payload = svc
+            .build_prompt(
+                "内容",
+                &options,
+                crate::anki_protocol::OutputProtocol::Delimiter,
+            )
+            .expect("prompt");
+        let system = payload.system.expect("system message");
+        assert!(
+            system.contains("专业的 Anki 学习卡片制作助手"),
+            "默认质量基线必须保留"
+        );
+        assert!(
+            system.contains("每张卡片的 front 必须以疑问句结尾"),
+            "模板生成说明必须附加"
+        );
+        assert!(system.contains("模板生成说明"));
+    }
+
+    #[test]
+    fn structured_wrapper_streams_cards_through_existing_cutter() {
+        // 结构化协议全链路（流入侧）：wrapper 前缀剥离后，
+        // 既有 brace-depth 切卡器能逐卡切出数组内的卡片对象
+        let mut buffer = String::new();
+
+        // chunk 1：不完整前缀，剥离必须等待且不破坏缓冲
+        buffer.push_str("{\"ca");
+        assert!(!crate::anki_protocol::strip_wrapper_prefix(&mut buffer));
+        assert!(extract(&mut buffer).is_none());
+
+        // chunk 2：前缀补齐 + 第一张卡完整
+        buffer.push_str("rds\": [{\"front\": \"Q1\", \"back\": \"A1\"},");
+        assert!(crate::anki_protocol::strip_wrapper_prefix(&mut buffer));
+        let card1 = extract(&mut buffer).unwrap().unwrap();
+        assert_eq!(card1, r#"{"front": "Q1", "back": "A1"}"#);
+        assert!(extract(&mut buffer).is_none());
+
+        // chunk 3：第二张卡 + wrapper 收尾
+        buffer.push_str("{\"front\": \"Q2\", \"back\": \"A2\"}]}");
+        assert!(!crate::anki_protocol::strip_wrapper_prefix(&mut buffer));
+        let card2 = extract(&mut buffer).unwrap().unwrap();
+        assert_eq!(card2, r#"{"front": "Q2", "back": "A2"}"#);
+
+        // 收尾残留 ]} 不含 '{'，由收尾逻辑按非卡片内容丢弃
+        assert!(extract(&mut buffer).is_none());
+        assert!(!buffer.trim().contains('{'));
+    }
+
+    #[test]
+    fn expand_wrapper_payloads_expands_wrapper_and_repairs_truncation() {
+        let (svc, _dir) = make_test_service();
+
+        // 完整 wrapper → 逐卡展开
+        let payloads = svc.expand_wrapper_payloads(
+            r#"{"cards": [{"front": "Q1", "back": "A1"}, {"front": "Q2", "back": "A2"}]}"#,
+        );
+        assert_eq!(payloads.len(), 2);
+        assert!(payloads[0].contains("Q1"));
+        assert!(payloads[1].contains("Q2"));
+
+        // 截断 wrapper（缺 ]}）→ 轻量修复后仍能展开
+        let payloads =
+            svc.expand_wrapper_payloads(r#"{"cards": [{"front": "Q1", "back": "A1"}"#);
+        assert_eq!(payloads.len(), 1);
+        assert!(payloads[0].contains("Q1"));
+
+        // 非 wrapper 内容原样返回单元素
+        let payloads = svc.expand_wrapper_payloads(r#"{"front": "Q", "back": "A"}"#);
+        assert_eq!(payloads, vec![r#"{"front": "Q", "back": "A"}"#.to_string()]);
+
+        // 纯文本原样返回
+        let payloads = svc.expand_wrapper_payloads("以上就是全部卡片");
+        assert_eq!(payloads, vec!["以上就是全部卡片".to_string()]);
+    }
+
+    #[test]
+    fn response_format_injection_matrix_for_service_options() {
+        // 服务侧注入语义：delimiter 不注入；json_schema 生成 wrapper schema；
+        // 决策函数在能力未知时保守回退 delimiter
+        let options = minimal_options();
+        assert!(crate::anki_protocol::build_response_format(
+            crate::anki_protocol::OutputProtocol::Delimiter,
+            &options
+        )
+        .is_none());
+
+        let format = crate::anki_protocol::build_response_format(
+            crate::anki_protocol::OutputProtocol::JsonSchema,
+            &options,
+        )
+        .expect("json_schema format");
+        assert_eq!(format["type"], json!("json_schema"));
+        assert_eq!(
+            format["json_schema"]["schema"]["required"],
+            json!([crate::anki_protocol::CARDS_WRAPPER_KEY])
+        );
+
+        let (protocol, _) = crate::anki_protocol::resolve_output_protocol(
+            None,
+            crate::anki_protocol::SchemaCapability::Unknown,
+        );
+        assert_eq!(protocol, crate::anki_protocol::OutputProtocol::Delimiter);
     }
 }
