@@ -429,6 +429,55 @@ async fn execute_rejects_version_2() {
 }
 
 #[tokio::test]
+async fn execute_rejects_unknown_block_type() {
+    let harness = create_harness();
+    let events = capture_block_events(&harness.window, &harness.session_id);
+    let executor = GenerativeUiExecutor::new();
+    let block_id = "block-generative-ui-unknown-type-e2e";
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-unknown-type-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({
+                    "intent": {
+                        "version": "1",
+                        "blocks": [{ "type": "unknown-widget", "props": {} }]
+                    }
+                }),
+            ),
+            &execution_context(&harness, block_id),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(!result.success);
+    let error = result.error.as_deref().unwrap_or("");
+    assert!(
+        error.contains("unknown-widget"),
+        "expected unknown type in error, got {error:?}"
+    );
+
+    for _ in 0..50 {
+        let captured = events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let generative_events: Vec<&Value> = captured
+            .iter()
+            .filter(|payload| payload["type"] == event_types::GENERATIVE_UI)
+            .collect();
+        if generative_events.iter().any(|e| e["phase"] == "error") {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("timed out waiting for generative_ui unknown-type error event");
+}
+
+#[tokio::test]
 async fn execute_rejects_too_many_blocks() {
     let harness = create_harness();
     let events = capture_block_events(&harness.window, &harness.session_id);

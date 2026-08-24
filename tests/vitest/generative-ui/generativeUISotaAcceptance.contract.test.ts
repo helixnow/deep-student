@@ -506,6 +506,9 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'fn validate_block_types',
         'parse_intent_rejects_unknown_block_type',
         'parse_intent_accepts_all_registered_block_types',
+      ]) &&
+      fileContains('src-tauri/tests/generative_ui_executor_e2e.rs', [
+        'execute_rejects_unknown_block_type',
       ]),
   },
   {
