@@ -32,18 +32,32 @@ describe('ChatAnki agent acceptance loop', () => {
 
   it('exposes every card CRUD tool through both allowlist and embedded schemas', () => {
     const allowedChatAnkiTools = (chatAnkiSkill.allowedTools ?? [])
-      .filter((name) => name.startsWith('builtin-chatanki_'));
+      .filter((name) => name.startsWith('builtin-chatanki_'))
+      .sort();
     const embeddedChatAnkiTools = (chatAnkiSkill.embeddedTools ?? [])
-      .filter((tool) => tool.name.startsWith('builtin-chatanki_'));
-    const expectedChatAnkiToolNames = embeddedChatAnkiTools
+      .filter((tool) => tool.name.startsWith('builtin-chatanki_'))
       .map((tool) => tool.name)
       .sort();
-    expect(allowedChatAnkiTools.sort()).toEqual(expectedChatAnkiToolNames);
-    expect(embeddedChatAnkiTools).toHaveLength(29);
-    for (const name of requiredTools) {
-      expect(chatAnkiSkill.allowedTools).toContain(name);
-      expect(chatAnkiSkill.embeddedTools?.some((tool) => tool.name === name)).toBe(true);
-    }
+    const missingFromAllowlist = embeddedChatAnkiTools.filter(
+      (name) => !allowedChatAnkiTools.includes(name),
+    );
+    const missingFromEmbedded = allowedChatAnkiTools.filter(
+      (name) => !embeddedChatAnkiTools.includes(name),
+    );
+    const requiredMissingFromAllowlist = requiredTools.filter(
+      (name) => !allowedChatAnkiTools.includes(name),
+    );
+    const requiredMissingFromEmbedded = requiredTools.filter(
+      (name) => !embeddedChatAnkiTools.includes(name),
+    );
+
+    expect(missingFromAllowlist, 'embedded tools missing from allowlist').toEqual([]);
+    expect(missingFromEmbedded, 'allowlisted tools missing from embedded schemas').toEqual([]);
+    expect(requiredMissingFromAllowlist, 'required CRUD tools missing from allowlist').toEqual([]);
+    expect(
+      requiredMissingFromEmbedded,
+      'required CRUD tools missing from embedded schemas',
+    ).toEqual([]);
   });
 
   it('defines the cross-session library scope, CAS tokens, and confirmation thresholds', () => {

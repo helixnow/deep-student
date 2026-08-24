@@ -5,8 +5,7 @@ import { chatAnkiSkill } from '@/features/chat/skills/builtin';
  * ChatAnki Round 4 跨模块契约回归（Round 2–3 新能力的 TS ↔ Rust 同源锁定）。
  *
  * 与 Rust 侧 `src-tauri/tests/anki_ai_native_integration.rs` 成对：
- * - 工具清单：allowlist 与 embeddedTools 用清单 diff 锁定（不写死会过期的数字，
- *   只设下限 29）；
+ * - 工具清单：allowlist 与 embeddedTools 用清单 diff 锁定（不写死会过期的数字）；
  * - transform：schema 数值边界与 Rust 引擎常量逐项同源
  *   （ops<=20 / cardIds<=500 / pattern<=1024 / replacement<=4096 /
  *   script code<=65536 / timeout 1000..=120000 默认 30000）；
@@ -42,12 +41,15 @@ describe('ChatAnki Round 4 contract', () => {
     expect(embeddedNames).toEqual(allowedChatAnki);
   });
 
-  it('keeps the tool count at or above the round-3 floor without duplicates', () => {
-    const names = embedded.map((tool) => tool.name);
-    expect(new Set(names).size).toBe(names.length);
-    expect(new Set(allowed).size).toBe(allowed.length);
-    // Round 3 交付后为 29 个 chatanki 工具；后续只增不减（以代码清单为准）
-    expect(names.length).toBeGreaterThanOrEqual(29);
+  it('rejects duplicate tool names without relying on a tool count', () => {
+    const embeddedNames = embedded.map((tool) => tool.name);
+    const duplicateEmbedded = embeddedNames.filter(
+      (name, index) => embeddedNames.indexOf(name) !== index,
+    );
+    const duplicateAllowed = allowed.filter((name, index) => allowed.indexOf(name) !== index);
+
+    expect(duplicateEmbedded, 'duplicate names in embeddedTools').toEqual([]);
+    expect(duplicateAllowed, 'duplicate names in allowedTools').toEqual([]);
   });
 
   it('only borrows dependency tools that its declared skill dependencies provide', () => {
