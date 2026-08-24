@@ -431,6 +431,121 @@ fn r11_rollback_not_reoverwritten_by_lww_replay_or_echo_suppression() {
     );
 }
 
+/// 同步入口允许远端时钟在 60 秒漂移窗内超前。回退版本必须严格晚于刚应用的
+/// 合法未来云端胜方，不能只取本机 now；同时覆盖 UPSERT 重放与硬 DELETE
+/// 版本账本两条路径。
+#[test]
+fn r11_rollback_beats_accepted_future_skewed_cloud_winner() {
+    let cloud_ts = (chrono::Utc::now() + chrono::Duration::seconds(30))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // UPSERT：回退后重放原云端胜方，必须被 LWW 门拒绝。
+    let upsert_conn = Connection::open_in_memory().unwrap();
+    ensure_schema(&upsert_conn);
+    seed_locally_edited_row(
+        &upsert_conn,
+        "rec-future-upsert",
+        "local-edit",
+        "2026-07-10T13:00:00Z",
+    );
+    let (apply_result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+        &upsert_conn,
+        &[cloud_update_change(
+            "rec-future-upsert",
+            "future-cloud",
+            &cloud_ts,
+        )],
+        None,
+        ConflictPolicy::KeepCloud,
+        Some("device-cloud"),
+        Some("device-local"),
+    )
+    .unwrap();
+    assert_eq!(apply_result.success_count, 1);
+    let upsert_batch = snapshot_rows(&upsert_conn, "rec-future-upsert")[0]
+        .0
+        .clone();
+    upsert_conn
+        .execute(
+            "UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0",
+            [],
+        )
+        .unwrap();
+
+    history::rollback_batch(&upsert_conn, &upsert_batch, None, Some("vfs")).unwrap();
+    let rollback_ts = record_updated_at(&upsert_conn, "rec-future-upsert").unwrap();
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(&rollback_ts).unwrap()
+            > chrono::DateTime::parse_from_rfc3339(&cloud_ts).unwrap(),
+        "回退 updated_at 必须严格晚于允许漂移窗内的云端胜方"
+    );
+    let replay = SyncManager::apply_downloaded_changes(
+        &upsert_conn,
+        &[cloud_update_change(
+            "rec-future-upsert",
+            "future-cloud",
+            &cloud_ts,
+        )],
+        None,
+    )
+    .unwrap();
+    assert_eq!(replay.success_count, 0, "未来云端旧胜方不得再次覆盖回退");
+    assert_eq!(
+        record_content(&upsert_conn, "rec-future-upsert").as_deref(),
+        Some("local-edit")
+    );
+    assert!(
+        pending_change_log_rows(&upsert_conn, "rec-future-upsert") > 0,
+        "未来时钟场景的回退同样必须留下待上传 change_log"
+    );
+
+    // hard DELETE：回退 UPSERT 必须胜过 __sync_delete_versions 中的未来删除版本。
+    let delete_conn = Connection::open_in_memory().unwrap();
+    ensure_schema(&delete_conn);
+    seed_locally_edited_row(
+        &delete_conn,
+        "rec-future-delete",
+        "local-edit",
+        "2026-07-10T13:00:00Z",
+    );
+    let (delete_result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+        &delete_conn,
+        &[cloud_delete_change("rec-future-delete", &cloud_ts)],
+        None,
+        ConflictPolicy::KeepCloud,
+        Some("device-cloud"),
+        Some("device-local"),
+    )
+    .unwrap();
+    assert_eq!(delete_result.success_count, 1);
+    assert!(record_content(&delete_conn, "rec-future-delete").is_none());
+    let delete_batch = snapshot_rows(&delete_conn, "rec-future-delete")[0]
+        .0
+        .clone();
+
+    let outcome = history::rollback_batch(&delete_conn, &delete_batch, None, Some("vfs")).unwrap();
+    assert_eq!(outcome.restored, 1);
+    assert_eq!(
+        record_content(&delete_conn, "rec-future-delete").as_deref(),
+        Some("local-edit"),
+        "回退复活不得被未来 DELETE 版本账本拦截"
+    );
+    let delete_replay = SyncManager::apply_downloaded_changes(
+        &delete_conn,
+        &[cloud_delete_change("rec-future-delete", &cloud_ts)],
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        delete_replay.success_count, 0,
+        "旧未来 DELETE 重放必须输给回退版本"
+    );
+    assert_eq!(
+        record_content(&delete_conn, "rec-future-delete").as_deref(),
+        Some("local-edit")
+    );
+}
+
 /// 云端 DELETE 胜（KeepCloud）删除本地行前留快照；回退令行复活；
 /// 再回退撤销点批次（existed=0）把行删掉——完整还原链闭环。
 #[test]
