@@ -155,6 +155,9 @@ pub struct ChatV2LLMAdapter {
     in_think_tag: std::sync::Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: std::sync::Mutex<String>,
+    /// GLM/Qwen 路由专用的协议包装 token 流式过滤器。
+    wrap_token_filter:
+        std::sync::Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
     /// Complete OpenAI Responses reasoning item for the current tool round.
@@ -180,6 +183,7 @@ impl ChatV2LLMAdapter {
         enable_thinking: bool,
         skill_state_version: Option<u64>,
         round_id: Option<String>,
+        wrap_token_policy: crate::utils::model_special_tokens::ModelWrapTokenPolicy,
     ) -> Self {
         Self {
             emitter,
@@ -197,6 +201,11 @@ impl ChatV2LLMAdapter {
             api_usage: std::sync::Mutex::new(None),
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
+            wrap_token_filter: std::sync::Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
             cached_thought_signature: std::sync::Mutex::new(None),
             cached_response_reasoning_item: std::sync::Mutex::new(None),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
@@ -329,6 +338,18 @@ impl ChatV2LLMAdapter {
     }
 
     fn finalize_all_inner(&self, include_authoritative_content: bool) {
+        let filter_tail = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !filter_tail.is_empty() {
+            self.think_tag_buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push_str(&filter_tail);
+        }
+
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
 
@@ -497,6 +518,10 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        self.wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
         *self
             .cached_thought_signature
             .lock()
@@ -1014,13 +1039,22 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
+        let filtered = self
+            .wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
+            return;
+        }
+
         // 🔧 <think> 标签解析：将 chunk 追加到缓冲区并处理
         {
             let mut buffer = self
                 .think_tag_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            buffer.push_str(text);
+            buffer.push_str(&filtered);
         }
         self.process_think_tag_buffer();
     }
