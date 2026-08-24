@@ -80,7 +80,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R07 CI 收口与文件级 E2EE | 部分合入 | 已合文件级 DSBK、自动同步、记录级校验子、WebDAV 409、文件名测试；文案已回写不再称文件级明文，见 [ROUND-07](./ROUND-07.md) |
 | R08 复审与收口 | 进行中 | 见 [ROUND-08](./ROUND-08.md) |
 | R09–R10 大包 | 进行中 | 每路 ≥4 交付物；P1-1 冲突 UI 已关；P2-2 KDF 钳制已合，见 [ROUND-10](./ROUND-10.md) |
-| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 / lease 已合；names2 / delta 未齐，见 [ROUND-11](./ROUND-11.md) |
+| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 / lease 已合；delta 调研已交付、names2 未齐，见 [ROUND-11](./ROUND-11.md) |
 | 收尾 | 进行中 | P1 巡检头 + P2 死代码/WebDAV 字节已合；见 [WRAP-CLOSE.md](./WRAP-CLOSE.md) |
 
 ## 文档索引
@@ -99,6 +99,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [SOTA-R10.md](./SOTA-R10.md) — R09 合入后的 SOTA 对照（我们已有 / 诚实差距 / 不该学）
 - [PROTOCOL-R10.md](./PROTOCOL-R10.md) — FINDINGS-R01/03/05/07 与 FIX-QUEUE 逐条核销（仍开项锁定测）
 - [ROUND-11.md](./ROUND-11.md) — 第十一轮大包任务表（巡检 / 时点恢复 / 增量调研 / 可逆文件名 / 租约）
+- [DELTA-R11.md](./DELTA-R11.md) — 整包 ZIP 走向增量的三路线、合成基准、推荐对象布局与下一轮拆分
 - [KEY-ROTATION-R11.md](./KEY-ROTATION-R11.md) — 备份密码更换现状与用户流程、文件名元数据收敛、KDF 参数钳制复审与 R12 任务拆分
 - [WRAP-CLOSE.md](./WRAP-CLOSE.md) — 收尾 go/no-go 与已合/未关清单
 - [FINDINGS-R11.md](./FINDINGS-R11.md) — R10 七路 + R11 两路合入项核销、新发现（含 repo_check DSBK v2 头偏移 P1）、锁定测清单与 SOTA-R10 §3 改判建议
