@@ -4005,7 +4005,7 @@ export function McpToolsSection({
             variant="ghost"
             size="sm"
             onClick={() => setPermissionsExpanded((open) => !open)}
-            className="!h-auto !px-1 !py-1.5 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
+            className="!h-auto !px-1 !py-1.5 [@media(pointer:coarse)]:min-h-11 w-full !justify-start gap-1.5 text-sm font-medium text-foreground"
             aria-expanded={permissionsExpanded}
             aria-controls="settings-tool-permissions"
           >

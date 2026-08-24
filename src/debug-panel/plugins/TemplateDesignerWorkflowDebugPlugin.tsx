@@ -522,16 +522,16 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
           <option value="system">system</option>
         </select>
 
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700" onClick={() => setAutoScroll((v) => !v)}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700" onClick={() => setAutoScroll((v) => !v)}>
           自动滚动: {autoScroll ? '开' : '关'}
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleCopy}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleCopy}>
           <Copy size={14} /> 复制
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleDownload}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={handleDownload}>
           <Download size={14} /> 下载
         </button>
-        <button className="h-8 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={() => { clearLogs(); setLogs([]); }}>
+        <button className="h-8 [@media(pointer:coarse)]:min-h-11 px-2 text-xs rounded bg-slate-800 hover:bg-slate-700 inline-flex items-center gap-1" onClick={() => { clearLogs(); setLogs([]); }}>
           <Trash size={14} /> 清空
         </button>
       </div>

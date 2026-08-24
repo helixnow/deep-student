@@ -371,7 +371,7 @@ const TagGroupCard: React.FC<{
                   variant="ghost" size="sm"
                   onClick={() => onQuestionClick?.(q.id)}
                   disabled={!onQuestionClick}
-                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 !text-left hover:bg-accent [content-visibility:auto] [contain-intrinsic-size:auto_32px]"
+                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!min-h-11 !text-left hover:bg-accent [content-visibility:auto] [contain-intrinsic-size:auto_32px]"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />

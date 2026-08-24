@@ -103,7 +103,10 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
           )}
         </div>
         {actions && (
-          <div className="flex items-center gap-1 px-3 py-1" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="flex items-center gap-1 px-3 py-1 [@media(pointer:coarse)]:min-h-11"
+            onClick={(e) => e.stopPropagation()}
+          >
             {actions}
           </div>
         )}

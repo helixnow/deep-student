@@ -649,7 +649,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             <>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="relative !h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleStartRenameTag(tag);
@@ -661,7 +661,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 </DsButton>
                                                 <DsButton
                                                     variant="ghost" iconOnly size="sm"
-                                                    className="relative !h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleRemoveTag(tag);

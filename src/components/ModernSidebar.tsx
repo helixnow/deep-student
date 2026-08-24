@@ -306,7 +306,7 @@ function SidebarSessionOverflowToggle({
     <button
       type="button"
       aria-label={label}
-      className="sidebar-session-toggle block w-full cursor-default appearance-none border-0 bg-transparent py-1 pl-9 pr-2.5 text-left text-[12px] font-normal leading-none text-[color:var(--shell-navigation-muted)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="sidebar-session-toggle block w-full cursor-default appearance-none border-0 bg-transparent py-1 pl-9 pr-2.5 text-left text-[12px] font-normal leading-none text-[color:var(--shell-navigation-muted)] outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11"
       onClick={onClick}
     >
       {label}

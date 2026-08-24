@@ -1960,7 +1960,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onManualCreate ?? onBack}
-                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline [@media(pointer:coarse)]:min-h-11"
               >
                 {t('exam_sheet:uploader.manual_create_link')}
               </DsButton>
