@@ -2,18 +2,18 @@
 
 ## Round 42（2026-08-24）— 10 子代理：SOTA 补洞
 
-在 Round 41 已落地「18 块接宿主 + 隔离 + 消毒 + v1.1 Rust」之上并行 10 项（进行中，Goal 不标 complete）：
+在 Round 41 已落地「18 块接宿主 + 隔离 + 消毒 + v1.1 Rust」之上并行 10 项（已本地完成，**未 push** 以免 cancel CI `32701178039`）：
 
-1. 移动端 compact（density / 窄屏）
-2. `migrateToV11`（v1 → v1.1 兼容升级）
-3. i18n 完整合同（zh-CN / en-US + builder labels）
-4. 宿主新块测试（Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard）
-5. ActionBar 键盘可达
-6. 18 块 testid 合同（`data-generative-block` / `data-testid`）
-7. Chat 块新 type 路径（markdown/chart/steps/table）
-8. Widget 回归（DesktopAiBriefing / Hub 挂载点）
-9. last-good 持久化（流式坏 JSON 恢复）
-10. SOTA 文档补洞（本轮：ARCHITECTURE / SOTA_CHECKLIST / ROADMAP / PROGRESS）
+1. [x] 移动端 compact（窄屏强制 stack）
+2. [x] `migrateToV11`（v1 → v1.1 兼容升级）
+3. [x] i18n 完整合同（zh-CN / en-US 243 key 对齐）
+4. [x] 宿主新块测试（Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard）
+5. [x] ActionBar 键盘可达（方向键 / Esc / Undo）
+6. [x] 18 块 `data-generative-block` 合同
+7. [x] Chat 块新 type 路径（markdown/chart/steps/table）
+8. [x] Widget 回归（DesktopAiBriefing chart/table）
+9. [x] last-good 可选 persistKey 持久化
+10. [x] SOTA 文档补洞 + `useMediaQuery` matchMedia 空值防护
 
 - [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
 
