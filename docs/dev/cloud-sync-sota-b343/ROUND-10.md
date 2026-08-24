@@ -23,4 +23,4 @@
 
 ## 派出状态
 
-R09 五路已合入专属枝 `cursor/cloud-sync-sota-b343`（names / e2ee / android / restore-ops / ux）。R10 空档已开，优先 R10-conflict-ui（P1-1）。R10-names / R10-download / R10-ux / R10-android 改为**增量复审+补洞**，不要重做 R09 已交付的主路径。不合并过时的 `r07-docs`（会覆盖现行 ROUND-07/08/10）。
+R09 五路已合入专属枝 `cursor/cloud-sync-sota-b343`（names / e2ee / android / restore-ops / ux）。R10 十路已派出（复审 xhigh 当前 Task 不可用，全部明示用 high）：conflict-ui / verifier / protocol 走云端子代理；names / download / ux / providers / chaos / sota / android 走独立 worktree。优先收 conflict-ui（P1-1）。R10-names / download / ux / android 为增量补洞。不合并过时的 `r07-docs`。
