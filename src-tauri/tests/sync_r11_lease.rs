@@ -116,17 +116,6 @@ impl CloudStorage for MemoryStorage {
             .lock()
             .unwrap()
             .insert(key.to_string(), (data.to_vec(), Utc::now()));
-
-        // 两个 pending contender 必须都已写入且彼此可见后才允许 put 返回，
-        // 强制覆盖“双方初次 LIST 都为空”的真正并发窗口。
-        let is_pending_lease = key.starts_with(SYNC_TARGET_LEASE_PREFIX)
-            && serde_json::from_slice::<SyncTargetLease>(data)
-                .is_ok_and(|lease| !lease.activation_committed);
-        if is_pending_lease {
-            if let Some(barrier) = &self.pending_put_barrier {
-                barrier.wait().await;
-            }
-        }
         Ok(())
     }
 
@@ -157,6 +146,22 @@ impl CloudStorage for MemoryStorage {
     }
 
     async fn list_outcome(&self, prefix: &str) -> CloudResult<ListOutcome> {
+        // 把栅栏放在「初次空 LIST」而不是 pending PUT：后者会在先写入的一方
+        // 等待时，让后到方扫到已有 contender 后直接 E_SYNC_LEASE_HELD、永不 PUT，
+        // 从而永久卡死 barrier。
+        if prefix.starts_with(SYNC_TARGET_LEASE_PREFIX) {
+            let empty = self
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .all(|key| !key.starts_with(prefix));
+            if empty {
+                if let Some(barrier) = &self.pending_put_barrier {
+                    barrier.wait().await;
+                }
+            }
+        }
         Ok(ListOutcome {
             files: self.list(prefix).await?,
             truncated: self.truncate_listing,
