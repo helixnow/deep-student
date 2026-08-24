@@ -138,7 +138,7 @@ export const PdfSettingsSection: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={handleReset}
-            className="gap-1"
+            className="gap-1 [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
