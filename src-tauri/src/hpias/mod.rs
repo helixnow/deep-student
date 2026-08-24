@@ -11,6 +11,6 @@ pub use payloads::{
     build_pipeline_timeline, extract_question_from_intent, intent_has_research_blocks,
 };
 pub use service::{
-    create_research_backend, HpiasResearchBackend, HpiasResearchSessionRequest,
+    create_research_backend, HpiasBackendKind, HpiasResearchBackend, HpiasResearchSessionRequest,
     StubHpiasResearchService,
 };

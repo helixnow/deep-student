@@ -22,6 +22,15 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 23（2026-08-24）
+
+- [x] **`allBlocksFixture.ts`** + **`generativeUIAllBlocksRuntime.test.tsx`** — 14 块全量运行时渲染 SOTA 验收
+- [x] **`generativeUIChatBlockHpiasRuntime.integration.test.tsx`** — Chat 块 + 真实 `useHpiasEventBridge` + mock Tauri listen 全链路
+- [x] **`HpiasBackendKind`** — `DEEP_STUDENT_HPIAS_BACKEND` 环境变量扩展点（默认 stub）
+- [x] **`SOTA_CHECKLIST.md`** — 目标态验收清单与剩余项
+- [x] SOTA acceptance 扩展 all-blocks / chat-hpias / checklist 要求
+- [x] vitest 全绿
+
 ## Round 22（2026-08-24）
 
 - [x] **`hpias/service.rs`** — `HpiasResearchBackend` trait + `StubHpiasResearchService`（可替换真实后端）

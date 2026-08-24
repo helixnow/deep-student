@@ -120,6 +120,27 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ),
   },
   {
+    id: 'all-blocks-runtime-test',
+    check: () =>
+      fs.existsSync(
+        path.join(REPO, 'tests/vitest/generative-ui/generativeUIAllBlocksRuntime.test.tsx'),
+      ),
+  },
+  {
+    id: 'chat-hpias-runtime-test',
+    check: () =>
+      fs.existsSync(
+        path.join(
+          REPO,
+          'tests/vitest/generative-ui/generativeUIChatBlockHpiasRuntime.integration.test.tsx',
+        ),
+      ),
+  },
+  {
+    id: 'sota-checklist-doc',
+    check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/SOTA_CHECKLIST.md')),
+  },
+  {
     id: 'guarded-listen-hpias-whitelist',
     check: () =>
       fs.readFileSync(path.join(REPO, 'src/utils/guardedListen.ts'), 'utf8').includes('hpias_event'),

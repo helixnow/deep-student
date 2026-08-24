@@ -9,6 +9,33 @@ use tauri::Window;
 use super::orchestrator::HpiasPipelineOrchestrator;
 use super::payloads::intent_has_research_blocks;
 
+/// HPIAS 后端实现种类（Round 23：环境变量 `DEEP_STUDENT_HPIAS_BACKEND` 选择）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HpiasBackendKind {
+    /// Style Lab 时间线 stub（默认）
+    Stub,
+    // Retrieval — 未来：VFS unified_retriever 驱动真实检索 pipeline
+}
+
+impl HpiasBackendKind {
+    pub fn from_env() -> Self {
+        match std::env::var("DEEP_STUDENT_HPIAS_BACKEND")
+            .unwrap_or_else(|_| "stub".to_string())
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "stub" | "" => Self::Stub,
+            other => {
+                log::warn!(
+                    "[HpiasResearchService] Unknown DEEP_STUDENT_HPIAS_BACKEND={:?}, using stub",
+                    other
+                );
+                Self::Stub
+            }
+        }
+    }
+}
+
 /// HPIAS 研究会话启动参数
 pub struct HpiasResearchSessionRequest<'a> {
     pub session_id: &'a str,
@@ -47,9 +74,12 @@ impl HpiasResearchBackend for StubHpiasResearchService {
     }
 }
 
-/// 默认后端工厂（当前返回 stub；真实 HPIAS 接入时切换实现）
+/// 默认后端工厂（`DEEP_STUDENT_HPIAS_BACKEND=stub` 为默认）
 pub fn create_research_backend(window: Window) -> StubHpiasResearchService {
-    StubHpiasResearchService::new(window)
+    let kind = HpiasBackendKind::from_env();
+    match kind {
+        HpiasBackendKind::Stub => StubHpiasResearchService::new(window),
+    }
 }
 
 #[cfg(test)]
@@ -69,5 +99,18 @@ mod tests {
         };
         assert_eq!(req.session_id, "s1");
         assert!(intent_has_research_blocks(req.intent));
+    }
+
+    #[test]
+    fn backend_kind_defaults_to_stub() {
+        std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND");
+        assert_eq!(HpiasBackendKind::from_env(), HpiasBackendKind::Stub);
+    }
+
+    #[test]
+    fn backend_kind_reads_env_stub() {
+        std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
+        assert_eq!(HpiasBackendKind::from_env(), HpiasBackendKind::Stub);
+        std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND");
     }
 }

@@ -1,0 +1,53 @@
+/**
+ * 14 种内置块最小合法 props — 用于 SOTA 运行时渲染验收
+ */
+import type { GenerativeUIIntent } from '../types';
+
+export const ALL_BLOCKS_MINIMAL_PROPS: Record<string, Record<string, unknown>> = {
+  'stat-card': { title: '指标', value: 42 },
+  alert: { title: '提示', description: '说明' },
+  list: { items: [{ label: '条目 A' }] },
+  progress: { current: 2, total: 5, title: '进度' },
+  'action-bar': {
+    actions: [{ id: 'demo-action', label: '操作', variant: 'default', riskLevel: 'low' }],
+  },
+  text: { body: '正文内容' },
+  'key-value-grid': { rows: [{ key: '键', value: '值' }] },
+  'flashcard-preview': { front: '正面', back: '背面' },
+  'review-calendar': { days: [{ date: '2026-08-24', dueCount: 3 }] },
+  'mistake-analysis': { topic: '代数', errorRate: 35, suggestion: '加强练习' },
+  'mindmap-embed': { versionId: 'mv_all_blocks_demo', title: '导图' },
+  'paper-digest': { title: '论文标题', keyFindings: ['发现 A'] },
+  'research-plan': {
+    title: '研究计划',
+    steps: [{ label: '检索', status: 'pending' }],
+  },
+  'research-report': { body: '报告正文 [paper-1]' },
+};
+
+export const ALL_BLOCK_TYPES = Object.keys(ALL_BLOCKS_MINIMAL_PROPS);
+
+/** 单块意图 */
+export function buildSingleBlockIntent(blockType: string): GenerativeUIIntent {
+  const props = ALL_BLOCKS_MINIMAL_PROPS[blockType];
+  if (!props) {
+    throw new Error(`Unknown block type: ${blockType}`);
+  }
+  return {
+    version: '1',
+    meta: { title: `Block: ${blockType}` },
+    blocks: [{ type: blockType, props }],
+  };
+}
+
+/** 14 块合一意图（用于全量 smoke） */
+export function buildAllBlocksIntent(): GenerativeUIIntent {
+  return {
+    version: '1',
+    meta: { title: 'All 14 blocks' },
+    blocks: ALL_BLOCK_TYPES.map((type) => ({
+      type,
+      props: ALL_BLOCKS_MINIMAL_PROPS[type]!,
+    })),
+  };
+}
