@@ -118,6 +118,23 @@ impl GenerativeUiExecutor {
             return Err("noteEdit.isRegex 不被支持".to_string());
         }
 
+        const MAX_NOTE_EDIT_INPUT_BYTES: usize = 256 * 1024;
+        const MAX_NOTE_EDIT_SECTION_LEN: usize = 1024;
+        let field_len = |key: &str| -> usize {
+            raw.get(key).and_then(Value::as_str).map(str::len).unwrap_or(0)
+        };
+        if field_len("section") > MAX_NOTE_EDIT_SECTION_LEN {
+            return Err("noteEdit.section 过长".to_string());
+        }
+        let total_bytes =
+            field_len("content") + field_len("search") + field_len("replace") + field_len("section");
+        if total_bytes > MAX_NOTE_EDIT_INPUT_BYTES {
+            return Err(format!(
+                "noteEdit 内容超过 {} 字节",
+                MAX_NOTE_EDIT_INPUT_BYTES
+            ));
+        }
+
         let mut sanitized = raw.clone();
         if let Some(obj) = sanitized.as_object_mut() {
             obj.remove("isRegex");
@@ -576,6 +593,16 @@ mod tests {
         });
         let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("regex");
         assert!(error.contains("isRegex"));
+    }
+
+    #[test]
+    fn parse_note_edit_rejects_oversized_payload() {
+        let huge = "x".repeat(256 * 1024 + 1);
+        let args = json!({
+            "noteEdit": { "operation": "append", "content": huge }
+        });
+        let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("size");
+        assert!(error.contains("256"));
     }
 
     #[test]
