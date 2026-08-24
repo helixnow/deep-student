@@ -865,14 +865,27 @@ impl PipelineHook for ApprovalGateHook {
                     ));
                 }
             };
-        let current_approval_required = super::authority_mode::requires_tool_approval(
-            &current_authority,
-            sensitivity,
-            effective_sensitivity,
-            immutable_guard_asks,
-            is_external_mcp,
-            privilege_escalation,
-        );
+        // An approved Plan binding replaces the secondary tool approval for
+        // this exact call. Re-evaluate that evidence together with the current
+        // authority state; checking `requires_tool_approval` alone would reject
+        // every valid Plan call before its binding can be atomically consumed.
+        let current_plan_binding_covers_tool_approval =
+            super::authority_mode::plan_binding_satisfies_tool_approval(
+                &current_authority,
+                &plan_binding_key,
+                privilege_escalation,
+                plan_gate_just_approved,
+                chrono::Utc::now(),
+            );
+        let current_approval_required = !current_plan_binding_covers_tool_approval
+            && super::authority_mode::requires_tool_approval(
+                &current_authority,
+                sensitivity,
+                effective_sensitivity,
+                immutable_guard_asks,
+                is_external_mcp,
+                privilege_escalation,
+            );
         if current_approval_required && !approval_requirement_satisfied {
             return ToolGateOutcome::Block(build_preflight_blocked_result(
                 "会话审批策略在执行前发生变化，当前调用需要重新审批".to_string(),
