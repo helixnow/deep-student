@@ -45,16 +45,46 @@ const MODEL_SPECIAL_TOKENS: &[&str] = &[
     "<|endoftext|>",
 ];
 
-/// 剥离白名单内的模型特殊 token。
-/// 仅在残片切出/流收尾后调用（此时残片已完整，不存在 token 跨 chunk 撕裂）。
+fn contains_only_model_special_tokens(text: &str) -> bool {
+    let mut remaining = text.trim();
+    let mut consumed_token = false;
+
+    while !remaining.is_empty() {
+        let Some(rest) = MODEL_SPECIAL_TOKENS
+            .iter()
+            .find_map(|token| remaining.strip_prefix(token))
+        else {
+            return false;
+        };
+        remaining = rest.trim_start();
+        consumed_token = true;
+    }
+
+    consumed_token
+}
+
+/// 丢弃纯 token 残片，或剥离完整卡片 JSON 外侧的纯 token 包装。
+/// 卡片字段中可能用这些字面量讲解协议，不能对正文做全局替换。
 fn strip_model_special_tokens(text: &str) -> String {
-    let mut out = text.to_string();
-    for token in MODEL_SPECIAL_TOKENS {
-        if out.contains(token) {
-            out = out.replace(token, "");
+    if contains_only_model_special_tokens(text) {
+        return String::new();
+    }
+
+    let trimmed = text.trim();
+    if let (Some(json_start), Some(json_end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        let prefix = &trimmed[..json_start];
+        let suffix = &trimmed[json_end + 1..];
+        let prefix_is_token = contains_only_model_special_tokens(prefix);
+        let suffix_is_token = contains_only_model_special_tokens(suffix);
+        let prefix_is_noise = prefix.trim().is_empty() || prefix_is_token;
+        let suffix_is_noise = suffix.trim().is_empty() || suffix_is_token;
+
+        if (prefix_is_token || suffix_is_token) && prefix_is_noise && suffix_is_noise {
+            return trimmed[json_start..=json_end].to_string();
         }
     }
-    out
+
+    text.to_string()
 }
 
 /// 错误卡内容剥离协议噪声后是否仍含可修复的实质内容（字母/数字/CJK）。
@@ -2875,6 +2905,19 @@ mod tests {
     fn strip_model_special_tokens_keeps_non_whitelisted_content() {
         let input = "{\"front\":\"何为 <|自定义|> 标记？\"}";
         assert_eq!(strip_model_special_tokens(input), input);
+    }
+
+    #[test]
+    fn strip_model_special_tokens_preserves_literal_tokens_in_card_body() {
+        let input =
+            "{\"front\":\"<|im_end|> 是什么？\",\"back\":\"它是模型协议的字面量 <|endoftext|>。\"}";
+        assert_eq!(strip_model_special_tokens(input), input);
+
+        let wrapped = format!("<|begin_of_box|>{input}<|end_of_box|>");
+        assert_eq!(strip_model_special_tokens(&wrapped), input);
+
+        let truncated = "{\"front\":\"正文以字面量 <|im_end|>";
+        assert_eq!(strip_model_special_tokens(truncated), truncated);
     }
 
     #[test]
