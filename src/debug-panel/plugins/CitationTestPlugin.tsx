@@ -304,7 +304,7 @@ const CitationTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <label className="text-xs text-muted-foreground mb-1.5 block">测试步骤（取消勾选 = 跳过）</label>
             <div className="grid grid-cols-2 gap-1">
               {ALL_STEPS.map(step => (
-                <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
+                <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1 [@media(pointer:coarse)]:min-h-11"
                   title={STEP_DESCRIPTIONS[step]}>
                   <Checkbox
                     checked={!skipSteps.has(step)}
