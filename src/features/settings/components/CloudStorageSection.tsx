@@ -125,6 +125,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       if (/FTP\/FTPS storage is not available on Android/i.test(raw)) {
         return t('cloudStorage:errors.ftpDisabledAndroid');
       }
+      // [R10-ux / P2-LOCALE-PLATFORM-MSG] 无 S3 构建（Android 发行版）的拒绝
+      // 常量 S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE 是中文，en 用户不可读。
+      // 四条后端路径（validate / create_storage / SSOT 保存与加载）字节一致，
+      // 按稳定片段映射为 i18n。
+      if (/当前安装包不支持\s*S3\s*兼容存储/.test(raw)) {
+        return t('cloudStorage:errors.s3DisabledInBuild');
+      }
       return raw;
     },
     [t],
@@ -387,13 +394,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
     } catch (e: unknown) {
       console.error('Failed to save credential-free cloud config SSOT:', e);
-      showGlobalNotification('error', t('cloudStorage:messages.configSsotFailed'));
+      // [R10-ux] 与加载路径对齐：带上后端拒绝原因（经 localizeCloudError 映射），
+      // 否则平台能力类拒绝（如无 S3 构建）只剩一句「配置未保存」，用户无从下手。
+      showGlobalNotification(
+        'error',
+        `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
+      );
       return;
     }
 
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
-  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, markSecureStoreIssue, t, onConfigChanged]);
+  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
 
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {

@@ -1100,7 +1100,16 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             : t('data:governance.restore')
         }
         cancelText={t('common:actions.cancel')}
-        confirmVariant={actionType === 'delete' ? 'danger' : 'primary'}
+        // [R10-ux] 恢复会用备份覆盖当前数据槽（重启后切换），与云端恢复
+        // （CloudStorageSection warning）、库级冲突覆盖（SyncTab warning/danger）
+        // 同级，不能用 primary；导出不改动数据保持 primary。
+        confirmVariant={
+          actionType === 'delete'
+            ? 'danger'
+            : actionType === 'restore'
+            ? 'warning'
+            : 'primary'
+        }
         onConfirm={handleAction}
         loading={isActionRunning}
         disabled={isActionRunning}
