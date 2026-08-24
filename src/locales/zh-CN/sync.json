@@ -25,7 +25,23 @@
   "experimentalBadgeTooltip": "实验性功能，建议先备份数据再使用。",
   "autoSync": {
     "label": "自动同步",
-    "description": "默认关闭。开启后定时自动执行双向同步（保留最新策略）；失败按指数退避重试，云端配置不完整或缺少凭据时不会自动运行。"
+    "description": "默认关闭。开启后按所选间隔自动执行双向同步（保留最新策略）；失败按指数退避重试。云端未配置、缺少密码或同步租约被其他设备占用时会静默跳过本轮，不会弹出错误打扰。",
+    "intervalLabel": "同步间隔",
+    "interval": {
+      "15m": "每 15 分钟",
+      "1h": "每小时",
+      "6h": "每 6 小时"
+    },
+    "lastRun": "上次自动同步",
+    "neverRan": "尚未运行",
+    "outcome": {
+      "success": "成功",
+      "failure": "失败（将按退避间隔重试）",
+      "skippedUnconfigured": "已跳过：云端未配置或缺少密码",
+      "skippedBusy": "已跳过：另一个同步正在进行",
+      "skippedLeaseHeld": "已跳过：同步租约被其他设备占用"
+    },
+    "consecutiveFailures": "连续失败 {{count}} 次"
   },
   "severity_low": "低",
   "severity_medium": "中",

@@ -337,3 +337,17 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 | 绿灯声明未经运行（P2-3，过程项） | P2 | 下一次完整 CI run（含 P1-1 修复）前，「测试 N 例」类声明一律视为「已交付未验证」 |
 
 **文件面认领（独占，均在 `docs/dev/cloud-sync-sota-b343/`）**：`FINDINGS-R11.md` 新文件、`README.md` 索引一行、本节与 R11-check 节状态更新一段。不改任何代码。
+
+### R11-autosync2（分支 `cursor/cloud-sync-sota-r11-autosync2-b343`，自动同步档位 + fail-close 加固一整包）
+
+模型 claude-fable-5-thinking-high。在 R07-autosync 前端调度器（`syncStatusStore.ts`，固定 15min 间隔）之上做增量，**默认关不变、不接 workbench 壳层、不改 Rust 引擎**。交付：
+
+- **① 定时档位**：`AutoSyncIntervalPreset`（15m/1h/6h）+ `AUTO_SYNC_INTERVAL_PRESETS` 常量表，默认 15m（与 R07 行为一致）；调度器 `intervalMs` 支持函数式求值（每次排程按当前档位取值），新增 `reschedule()`（档位切换即时重排挂起的定时器）；长档位下失败退避封顶取 `max(maxBackoffMs, intervalMs)`——6h 档失败重试不得比常规轮询更频繁。
+- **② 触发前置检查加固（fail-close，静默跳过绝不弹错）**：新增 `classifyAutoSyncSkip`——租约被占 → 新结果 `skipped_lease_held`；后端全局互斥「另一个数据治理任务…」「已有数据治理操作正在运行」→ `skipped_busy`；引擎「未配置加密密码」（云端要求 E2EE 但本机无密码）→ `skipped_unconfigured`。三类均不计失败退避；未知错误照旧 failure。既有防线（无配置/缺 provider 凭据/断层预检/前端全局锁）复审无改动需求，全部保留。
+- **③ 状态可见**：`useAutoSyncStore` 持久化面从仅 `enabled` 扩为 `enabled + intervalPreset + lastOutcome + lastRunAtMs`（persist version 1→2，v1 旧值靠默认值兜底迁移）；`SyncSettingsSection.tsx` 自动同步区新增档位选择（关闭时禁用不隐藏）与「上次自动同步: 时间 · 结果（· 连续失败 N 次）」状态行。
+- **④ 测试**：新文件 `src-tauri/tests/sync_r11_autosync.rs`（全局互斥锁完整生命周期行为测：手动持锁时 try_acquire 立即失败/释放后恢复/账本 holder 可见；busy·无密码·租约三组标记的跨层源码契约；档位常量与默认关源码锁；zh/en locale 键形对齐）+ 新文件 `tests/vitest/data-governance/r11-autosync-intervals-failclose.test.tsx`（档位常量/动态间隔/reschedule/6h 档退避下限；classifyAutoSyncSkip 全分支含「错密码不得静默吞」；performAutoSyncOnce 五类 outcome 与锁释放；与手动互斥不窃锁；UI/locale 契约）。既有 `src/stores/__tests__/autoSyncStore.test.ts` 仅更新持久化断言（partialize 字段扩展），其余 R07 基线用例不动。
+- **⑤ locale**：`sync.json`（zh/en）`autoSync.*` 新增 `intervalLabel` / `interval.{15m,1h,6h}` / `lastRun` / `neverRan` / `outcome.{success,failure,skippedUnconfigured,skippedBusy,skippedLeaseHeld}` / `consecutiveFailures`，并更新 `description` 提及档位与静默跳过。
+
+**跨代理契约（→ R11-lease）**：自动同步以稳定错误码 **`E_SYNC_LEASE_HELD`** 识别「租约被占」——R11-lease 落地 sync target 租约时，其「租约被占」错误文案**必须包含该 token**（建议格式 `[E_SYNC_LEASE_HELD] 同步租约被其他设备持有…`），否则自动同步会把租约冲突误计为失败进入退避。`sync_r11_autosync.rs` 与 vitest 均已钉死前端半边；R11-lease 合入后请在其集成测试中补后端半边（错误文案含 token）断言。
+
+**文件面认领（独占）**：`src/stores/syncStatusStore.ts`、`src/stores/__tests__/autoSyncStore.test.ts`（仅持久化断言一处）、`SyncSettingsSection.tsx` 自动同步区、`sync.json`（zh/en）`autoSync.*`、`src-tauri/tests/sync_r11_autosync.rs` 新文件、`tests/vitest/data-governance/r11-autosync-intervals-failclose.test.tsx` 新文件、本节。不改 RecordConflictsPanel / repo_check / notes / chat / workbench，不动任何 Rust 生产代码。

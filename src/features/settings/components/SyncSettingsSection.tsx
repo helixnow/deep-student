@@ -51,6 +51,8 @@ import {
   useGlobalSyncStore,
   useAutoSyncStore,
   ensureAutoSyncSchedulerStarted,
+  type AutoSyncIntervalPreset,
+  type AutoSyncOutcome,
 } from '@/stores/syncStatusStore';
 import {
   DataGovernanceApi,
@@ -109,10 +111,30 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
   const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
+  // [R11-autosync2] 定时档位与上次自动同步状态
+  const autoSyncIntervalPreset = useAutoSyncStore((s) => s.intervalPreset);
+  const setAutoSyncIntervalPreset = useAutoSyncStore((s) => s.setIntervalPreset);
+  const autoSyncLastOutcome = useAutoSyncStore((s) => s.lastOutcome);
+  const autoSyncLastRunAtMs = useAutoSyncStore((s) => s.lastRunAtMs);
+  const autoSyncConsecutiveFailures = useAutoSyncStore(
+    (s) => s.consecutiveFailures
+  );
   useEffect(() => {
     // 幂等：开关持久化为开时，进入本设置区块即恢复调度
     ensureAutoSyncSchedulerStarted();
   }, []);
+
+  // 各结果的人话文案（静态映射以兼容类型化 i18n）
+  const autoSyncOutcomeLabels = useMemo<Record<AutoSyncOutcome, string>>(
+    () => ({
+      success: t('sync:autoSync.outcome.success'),
+      failure: t('sync:autoSync.outcome.failure'),
+      skipped_unconfigured: t('sync:autoSync.outcome.skippedUnconfigured'),
+      skipped_busy: t('sync:autoSync.outcome.skippedBusy'),
+      skipped_lease_held: t('sync:autoSync.outcome.skippedLeaseHeld'),
+    }),
+    [t]
+  );
 
   // 合并策略（与数据治理仪表盘 SyncTab 保持一致，不再硬编码 keep_latest）
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
@@ -462,22 +484,69 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* 自动同步（默认关闭；未配置/缺凭据时调度器会跳过，不会自动运行） */}
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/40 bg-muted/20 p-3">
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium text-foreground">
-                {t('sync:autoSync.label')}
+          {/* 自动同步（默认关闭；未配置/缺凭据/租约被占时调度器静默跳过，不弹错） */}
+          <div className="space-y-3 rounded-lg border border-border/40 bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">
+                  {t('sync:autoSync.label')}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('sync:autoSync.description')}
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {t('sync:autoSync.description')}
-              </p>
+              <Switch
+                size="sm"
+                checked={autoSyncEnabled}
+                onCheckedChange={setAutoSyncEnabled}
+                aria-label={t('sync:autoSync.label')}
+              />
             </div>
-            <Switch
-              size="sm"
-              checked={autoSyncEnabled}
-              onCheckedChange={setAutoSyncEnabled}
-              aria-label={t('sync:autoSync.label')}
-            />
+
+            {/* 定时档位（15min / 1h / 6h），关闭时禁用但保留所选值 */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t('sync:autoSync.intervalLabel')}
+              </span>
+              <AppSelect
+                value={autoSyncIntervalPreset}
+                onValueChange={(v) =>
+                  setAutoSyncIntervalPreset(v as AutoSyncIntervalPreset)
+                }
+                options={[
+                  { value: '15m', label: t('sync:autoSync.interval.15m') },
+                  { value: '1h', label: t('sync:autoSync.interval.1h') },
+                  { value: '6h', label: t('sync:autoSync.interval.6h') },
+                ]}
+                size="sm"
+                variant="outline"
+                disabled={!autoSyncEnabled}
+              />
+            </div>
+
+            {/* 上次自动同步时间/结果（静默跳过也会记录，用户可在此看到原因） */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ClockCounterClockwise className="h-3 w-3 shrink-0" />
+              {autoSyncLastRunAtMs !== null && autoSyncLastOutcome !== null ? (
+                <span>
+                  {t('sync:autoSync.lastRun')}:{' '}
+                  {new Date(autoSyncLastRunAtMs).toLocaleString()} ·{' '}
+                  {autoSyncOutcomeLabels[autoSyncLastOutcome]}
+                  {autoSyncConsecutiveFailures > 0 && (
+                    <>
+                      {' · '}
+                      {t('sync:autoSync.consecutiveFailures', {
+                        count: autoSyncConsecutiveFailures,
+                      })}
+                    </>
+                  )}
+                </span>
+              ) : (
+                <span>
+                  {t('sync:autoSync.lastRun')}: {t('sync:autoSync.neverRan')}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* 合并策略选择 */}
