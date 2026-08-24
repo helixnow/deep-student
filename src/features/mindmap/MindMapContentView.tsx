@@ -1427,6 +1427,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 variant="ghost"
                 className={cn(
                   'ds-btn h-6 px-1.5 text-xs font-medium',
+                  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                   searchCaseSensitive
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
@@ -1443,6 +1444,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 variant="ghost"
                 className={cn(
                   'ds-btn h-6 px-1.5 text-xs font-medium',
+                  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                   searchWholeWord
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
