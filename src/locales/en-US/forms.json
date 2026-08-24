@@ -3,6 +3,11 @@
     "configured": "Configured",
     "not_configured": "Not configured",
     "to_be_configured": "Pending configuration"
+  },
+  "system_validation": {
+    "language": "Language must be zh-CN or en-US",
+    "markdown_renderer_mode": "Markdown renderer mode must be legacy or enhanced",
+    "max_chat_history": "Max chat history must be between 10 and 1000",
+    "theme": "Theme must be light, dark, or auto"
   }
 }
-
