@@ -1,6 +1,6 @@
 # Round 90 + 收尾落地（fable 残留打包 + gpt-5.6-sol-xhigh-fast）
 
-本轮是**最后一轮代码扫洞**，不再派 fable 无限续跑。生产路径按整区域吃 **死 CSS、!important 基线层叠、Label/16px、640–767 桌面 chrome 泄漏、触控重叠回归**。11 个代码提交已 push（`5e58a1c2`…`74fd6b23`）。聊天/设置 6 个文件仍可能由对应子代理提交，父代理不抢。
+本轮是**最后一轮代码扫洞**，不再派 fable 无限续跑。生产路径按整区域吃 **死 CSS、!important 基线层叠、Label/16px、640–767 桌面 chrome 泄漏、触控重叠回归**。12 个代码提交已 push（`5e58a1c2`…`381b9f69`）。设置 3 个文件仍可能由对应子代理提交，父代理不抢。
 
 ## 已修
 
@@ -49,6 +49,11 @@
 - SnappySlider 数值框 coarse 16px
 - AppMenu 选项组行 44 + 搜索 16px
 
+### 聊天（`381b9f69`）
+- ChatErrorBoundary DEV `<summary>` coarse 44
+- MessageSearchBar 15px → coarse 16px（防 iOS zoom）
+- RagPanel 三个 Switch 行 label coarse `min-h-11`
+
 ## sol 收尾复查（无新代码提交）
 
 | 项 | 结果 |
@@ -71,4 +76,4 @@
 
 ## 在飞（父代理不抢）
 
-工作树可能仍有未提交：`ChatErrorBoundary` / `MessageSearchBar` / `RagPanel` / `CloudStorageSection` / `VendorSidebar` / `BackupTab`。落地后记入本文件补记，再把 PR #172 标为可审。
+工作树可能仍有未提交：`CloudStorageSection` / `VendorSidebar` / `BackupTab`。落地后记入本文件补记，再把 PR #172 标为可审。

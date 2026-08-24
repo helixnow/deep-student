@@ -16,7 +16,7 @@
 
 ## 待关（本文件会在干净后改「可审」）
 
-- 聊天/设置 6 文件若仍脏：等对应子代理自己提交，父代理不 `git add`
+- 设置 3 文件（`CloudStorageSection` / `VendorSidebar` / `BackupTab`）若仍脏：等对应子代理自己提交，父代理不 `git add`
 - GitHub CI 对最新 push 仍可能排队；失败只修本分支引入的问题
 - PR 仍为 draft，直到工作树干净且文档覆盖全部已 push 提交后再 `draft=false`
 
