@@ -10398,7 +10398,20 @@ impl SyncManager {
                 let replace = merged
                     .entries
                     .get(&hash)
-                    .map(|current| Self::timestamp_after(&entry.updated_at, &current.updated_at))
+                    .map(|current| {
+                        // [R07-file-e2ee] blob 内容寻址（同 hash 必同内容），条目
+                        // 差异只在对象形态：密文条目一律优先于明文遗留条目，且
+                        // 永不被明文条目降级覆盖——不受 updated_at 影响，否则
+                        // 遗留清单里时间戳更新的明文条目会盖掉迁移后的密文条目。
+                        if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() {
+                            true
+                        } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none()
+                        {
+                            false
+                        } else {
+                            Self::timestamp_after(&entry.updated_at, &current.updated_at)
+                        }
+                    })
                     .unwrap_or(true);
                 if replace {
                     merged.entries.insert(hash, entry);
