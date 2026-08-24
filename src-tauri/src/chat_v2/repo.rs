@@ -1912,6 +1912,26 @@ impl ChatV2Repo {
         }
     }
 
+    /// 清空块的 `llm_content` 重放旁路列（显式失效旧 live 包装）
+    ///
+    /// 编辑重发等「正文语义改写」路径专用：`update_block_replay_with_conn`
+    /// 对全 NULL 载荷是 no-op（is_empty 早退），无法用来置 NULL。
+    /// 列不存在（V20260806 未迁移的旧库）时静默跳过。
+    pub fn clear_block_llm_content_with_conn(
+        conn: &Connection,
+        block_id: &str,
+    ) -> ChatV2Result<()> {
+        let result = conn.execute(
+            "UPDATE chat_v2_blocks SET llm_content = NULL WHERE id = ?1",
+            params![block_id],
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) if Self::is_missing_replay_column_error(&e) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// 更新块
     pub fn update_block(db: &Database, block: &MessageBlock) -> ChatV2Result<()> {
         let conn = db.get_conn_safe()?;
@@ -1919,6 +1939,12 @@ impl ChatV2Repo {
     }
 
     /// 更新块（使用现有连接）
+    ///
+    /// V20260806 审视结论：`content` 变更会使 `llm_content`（该块 live 发送
+    /// 的完整包装文本）语义过期，本方法在同一条 UPDATE 中将其失效
+    /// （`content` 不变时保留）——覆盖编辑重发、`chat_v2_update_block_content`
+    /// 等所有正文改写路径。`tool_call_id` / `round_text` 不随本块 content
+    /// 派生（provider 工具身份 / 工具前助手正文），保持不动。
     pub fn update_block_with_conn(conn: &Connection, block: &MessageBlock) -> ChatV2Result<()> {
         debug!(
             "[ChatV2::Repo] Updating block: id={}, status={}",
@@ -1941,25 +1967,44 @@ impl ChatV2Repo {
             .map(serde_json::to_string)
             .transpose()?;
 
-        let rows_affected = conn.execute(
+        let update_params = params![
+            block.id,
+            block.status,
+            block.content,
+            tool_input_json,
+            tool_output_json,
+            citations_json,
+            block.error,
+            block.started_at,
+            block.ended_at,
+            block.first_chunk_at,
+        ];
+
+        // SET 表达式引用的列取更新前的旧值：`content IS ?3` 即「旧正文 == 新正文」，
+        // 相等时保留 llm_content，变更时置 NULL（读侧回退裸文本/新编译包装）
+        let result = conn.execute(
             r#"
             UPDATE chat_v2_blocks
-            SET status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+            SET llm_content = CASE WHEN content IS ?3 THEN llm_content ELSE NULL END,
+                status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
             WHERE id = ?1
             "#,
-            params![
-                block.id,
-                block.status,
-                block.content,
-                tool_input_json,
-                tool_output_json,
-                citations_json,
-                block.error,
-                block.started_at,
-                block.ended_at,
-                block.first_chunk_at,
-            ],
-        )?;
+            update_params,
+        );
+
+        let rows_affected = match result {
+            Ok(n) => n,
+            // 旧库无 V20260806 三列：回退到不含失效逻辑的原更新语句
+            Err(e) if Self::is_missing_replay_column_error(&e) => conn.execute(
+                r#"
+                UPDATE chat_v2_blocks
+                SET status = ?2, content = ?3, tool_input_json = ?4, tool_output_json = ?5, citations_json = ?6, error = ?7, started_at = ?8, ended_at = ?9, first_chunk_at = ?10
+                WHERE id = ?1
+                "#,
+                update_params,
+            )?,
+            Err(e) => return Err(e.into()),
+        };
 
         if rows_affected == 0 {
             return Err(ChatV2Error::BlockNotFound(block.id.clone()));
@@ -4695,6 +4740,145 @@ mod tests {
             map.get("blk_replay_tool_copy").unwrap(),
             map.get("blk_replay_tool").unwrap()
         );
+    }
+
+    /// V20260806 P0 回归：update_block_with_conn 在 content 变更时必须失效
+    /// `llm_content`（编辑重发/块编辑残留旧 <user_query> 包装的根因）；
+    /// content 不变时保留；工具块 tool_call_id / round_text 不受影响
+    #[test]
+    fn test_update_block_invalidates_llm_content_on_content_change() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+
+        let session_id = "sess_replay_invalidate";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_user(session_id.to_string(), vec![]);
+        message.id = "msg_replay_invalidate".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut user_block = MessageBlock::new_content(message.id.clone(), 0);
+        user_block.id = "blk_inv_user".to_string();
+        user_block.content = Some("编辑前的问题".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &user_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_user",
+            &BlockReplayData {
+                llm_content: Some("<user_query>\n编辑前的问题\n</user_query>".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let mut tool_block = MessageBlock::new_tool(
+            message.id.clone(),
+            "builtin-note_read",
+            serde_json::json!({"id": "n1"}),
+            1,
+        );
+        tool_block.id = "blk_inv_tool".to_string();
+        tool_block.content = Some("tool text".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &tool_block).unwrap();
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_tool",
+            &BlockReplayData {
+                llm_content: None,
+                tool_call_id: Some("call_live_inv".to_string()),
+                round_text: Some("我先读一下。".to_string()),
+            },
+        )
+        .unwrap();
+
+        // 1) content 不变的 update（如仅改 status）：llm_content 保留
+        let mut unchanged = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_user")
+            .unwrap()
+            .unwrap();
+        unchanged.status = block_status::SUCCESS.to_string();
+        ChatV2Repo::update_block_with_conn(&conn, &unchanged).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(
+            map.get("blk_inv_user").unwrap().llm_content.as_deref(),
+            Some("<user_query>\n编辑前的问题\n</user_query>"),
+            "content 未变时 llm_content 必须保留"
+        );
+
+        // 2) content 变更的 update：llm_content 必须置 NULL
+        let mut edited = unchanged.clone();
+        edited.content = Some("编辑后的新问题".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &edited).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(
+            map.get("blk_inv_user").is_none(),
+            "content 变更后旧 llm_content 必须失效"
+        );
+
+        // 3) 工具块 content 变更：tool_call_id / round_text 保留（不随 content 派生）
+        let mut tool_edited = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_tool")
+            .unwrap()
+            .unwrap();
+        tool_edited.content = Some("tool text changed".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &tool_edited).unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        let tool_replay = map.get("blk_inv_tool").unwrap();
+        assert_eq!(tool_replay.tool_call_id.as_deref(), Some("call_live_inv"));
+        assert_eq!(tool_replay.round_text.as_deref(), Some("我先读一下。"));
+
+        // 4) 显式清空 llm_content（编辑重发事务路径）：可对已有值置 NULL
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_inv_user",
+            &BlockReplayData {
+                llm_content: Some("重新写入的包装".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        ChatV2Repo::clear_block_llm_content_with_conn(&conn, "blk_inv_user").unwrap();
+        let map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id).unwrap();
+        assert!(
+            map.get("blk_inv_user").is_none(),
+            "clear_block_llm_content_with_conn 必须清掉 llm_content"
+        );
+    }
+
+    /// V20260806 P0 回归：旧库（无三列）时 update_block_with_conn 走回退
+    /// 语句仍正常更新,clear_block_llm_content_with_conn 为 no-op
+    #[test]
+    fn test_update_block_fallback_without_replay_columns() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_inv_nocol";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_user(session_id.to_string(), vec![]);
+        message.id = "msg_inv_nocol".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_inv_nocol".to_string();
+        block.content = Some("原文".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        block.content = Some("改后".to_string());
+        ChatV2Repo::update_block_with_conn(&conn, &block).unwrap();
+        let loaded = ChatV2Repo::get_block_with_conn(&conn, "blk_inv_nocol")
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.content.as_deref(), Some("改后"));
+
+        ChatV2Repo::clear_block_llm_content_with_conn(&conn, "blk_inv_nocol").unwrap();
+
+        // 不存在的块仍报 BlockNotFound（回退路径保持原语义）
+        let mut missing = block.clone();
+        missing.id = "blk_not_exists".to_string();
+        assert!(ChatV2Repo::update_block_with_conn(&conn, &missing).is_err());
     }
 
     /// V20260806：迁移未应用（无三列）时写入静默跳过、读取返回空表

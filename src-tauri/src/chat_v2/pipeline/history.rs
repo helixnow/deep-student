@@ -1417,4 +1417,142 @@ mod replay_consistency_tests {
         assert_eq!(ctx.chat_history[2].role, "assistant");
         assert_eq!(ctx.chat_history[2].content, "收到，先处理 A");
     }
+
+    /// 模拟 `chat_v2_edit_and_resend` 编辑事务对 content 块的写操作
+    /// （改写正文 + 显式失效旧 llm_content，与 handler 实现保持一致）
+    fn simulate_edit_transaction(conn: &rusqlite::Connection, block_id: &str, new_content: &str) {
+        let mut edited = ChatV2Repo::get_block_with_conn(conn, block_id)
+            .unwrap()
+            .unwrap();
+        edited.content = Some(new_content.to_string());
+        ChatV2Repo::update_block_with_conn(conn, &edited).unwrap();
+        ChatV2Repo::clear_block_llm_content_with_conn(conn, block_id).unwrap();
+    }
+
+    /// P0 回归：编辑重发改写正文后，下一轮回放不得再返回编辑前的
+    /// `llm_content` 旧包装（模型看到编辑前 <user_query> 的正确性回归）；
+    /// 管线未补写时回退裸文本（新正文）
+    #[tokio::test]
+    async fn edit_and_resend_clears_stale_llm_content() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_edit_stale";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_edit_u1",
+            "blk_edit_u1",
+            "编辑前的问题",
+            1_000,
+        );
+        let stale_wrapped = "<user_query>\n编辑前的问题\n</user_query>\n\n<injected_context>\n旧上下文\n</injected_context>";
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_edit_u1",
+            &BlockReplayData {
+                llm_content: Some(stale_wrapped.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        simulate_edit_transaction(&conn, "blk_edit_u1", "编辑后的新问题");
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 1);
+        assert_eq!(
+            ctx.chat_history[0].content, "编辑后的新问题",
+            "旧 llm_content 已失效，必须回退到编辑后的裸文本"
+        );
+        assert!(
+            !ctx.chat_history[0].content.contains("编辑前的问题"),
+            "禁止回放编辑前的旧包装"
+        );
+    }
+
+    /// P0 回归：编辑重发（skip_user_message_save=true 复用原 user_message_id）
+    /// 的保存路径必须把本轮 live 编译的新包装补写回既有 content 块，
+    /// 下一轮回放与 live 字节相等
+    #[tokio::test]
+    async fn edit_and_resend_skip_user_save_rewrites_llm_content() {
+        use crate::chat_v2::types::SendOptions;
+
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_edit_rewrite";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_edit_u1",
+            "blk_edit_u1",
+            "编辑前的问题",
+            1_000,
+        );
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            "blk_edit_u1",
+            &BlockReplayData {
+                llm_content: Some(
+                    "<user_query>\n编辑前的问题\n</user_query>".to_string(),
+                ),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        simulate_edit_transaction(&conn, "blk_edit_u1", "编辑后的新问题");
+        drop(conn);
+
+        // 编辑轮 ctx：与 chat_v2_edit_and_resend 一致——skip_user_message_save
+        // 且 user_message_id 复用被编辑的原消息 id
+        let mut edit_ctx = PipelineContext::new(SendMessageRequest {
+            session_id: session_id.to_string(),
+            content: "编辑后的新问题".to_string(),
+            options: Some(SendOptions {
+                skip_user_message_save: Some(true),
+                ..Default::default()
+            }),
+            user_message_id: Some("msg_edit_u1".to_string()),
+            assistant_message_id: Some("msg_edit_a1".to_string()),
+            user_context_refs: None,
+            path_map: None,
+            workspace_id: None,
+        });
+        edit_ctx.compiled_current_user_message =
+            Some(pipeline.build_current_user_message(&edit_ctx));
+        let live_wrapped = edit_ctx
+            .live_user_llm_content()
+            .expect("compiled current user message");
+        assert!(live_wrapped.contains("编辑后的新问题"));
+        edit_ctx.interleaved_blocks = vec![content_block("msg_edit_a1", "blk_edit_a1", "新回答", 0)];
+
+        pipeline.save_intermediate_results(&edit_ctx).await.unwrap();
+
+        // 下一轮回放：用户消息 = 编辑轮 live 发送的新包装（字节相等）
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 2);
+        assert_eq!(ctx.chat_history[0].role, "user");
+        assert_eq!(
+            ctx.chat_history[0].content, live_wrapped,
+            "补写后的 llm_content 必须与编辑轮 live 包装字节相等"
+        );
+        assert!(!ctx.chat_history[0].content.contains("编辑前的问题"));
+        assert_eq!(ctx.chat_history[1].role, "assistant");
+        assert_eq!(ctx.chat_history[1].content, "新回答");
+    }
 }

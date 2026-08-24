@@ -191,6 +191,24 @@ impl ChatV2Pipeline {
     ///
     /// 必须在对应块 INSERT 之后调用（UPDATE 需要行已存在）。列不存在
     /// （V20260806 未迁移）时 repo 层静默跳过，读侧回退旧重建。
+    /// V20260806 P0：skip_user_message_save 路径下解析既有用户消息的 CONTENT 块
+    ///
+    /// 编辑重发（`chat_v2_edit_and_resend`）传入的 `user_message_id` 是已存在
+    /// 的原消息：编辑事务已将其 `llm_content` 失效，这里找回该 content 块 id
+    /// 交给 `persist_replay_sidecar` 用本轮 live 编译的新包装补写，避免下一轮
+    /// history 只能回退裸文本造成跨轮字节漂移。wake / retry 路径的
+    /// `user_message_id` 是新生成 id（DB 无行），查不到块，自然跳过。
+    fn existing_user_content_block_id(
+        conn: &rusqlite::Connection,
+        user_message_id: &str,
+    ) -> Option<String> {
+        ChatV2Repo::get_message_blocks_with_conn(conn, user_message_id)
+            .ok()?
+            .into_iter()
+            .find(|block| block.block_type == block_types::CONTENT)
+            .map(|block| block.id)
+    }
+
     fn persist_replay_sidecar(
         &self,
         conn: &rusqlite::Connection,
@@ -413,6 +431,9 @@ impl ChatV2Pipeline {
             ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
             ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
             user_block_id = Some(user_msg_result.block.id.clone());
+        } else {
+            // V20260806 P0：编辑重发时补写既有 content 块的新 live 包装
+            user_block_id = Self::existing_user_content_block_id(conn, &ctx.user_message_id);
         }
 
         // 1. 保存助手消息（如果不存在则创建）
@@ -646,9 +667,12 @@ impl ChatV2Pipeline {
                 ctx.user_content.len()
             );
         } else {
+            // V20260806 P0：编辑重发时补写既有 content 块的新 live 包装
+            user_block_id = Self::existing_user_content_block_id(conn, &ctx.user_message_id);
             log::debug!(
-                "[ChatV2::pipeline] Skipped user message save (skip_user_message_save=true): id={}",
-                ctx.user_message_id
+                "[ChatV2::pipeline] Skipped user message save (skip_user_message_save=true): id={}, existing_content_block={:?}",
+                ctx.user_message_id,
+                user_block_id
             );
         }
 
