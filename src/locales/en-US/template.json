@@ -46,6 +46,10 @@
     "export_selected_count": "{{count}} selected",
     "panel_close": "Close panel"
   },
+  "preview_ref": {
+    "get_node": "Fetch referenced node",
+    "get_content": "Fetch referenced content"
+  },
   "manager_title": "Card Template Manager",
   "manager_subtitle": "Manage templates, create new ones or let AI generate",
   "refresh": "Refresh",

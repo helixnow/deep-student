@@ -142,7 +142,10 @@ async function fetchReferenceContent(
 
   if (!nodeResult.ok) {
     console.error('[PreviewPanel] Failed to fetch node via DSTU:', nodeResult.error);
-    reportError(nodeResult.error, '获取引用节点');
+    reportError(
+      nodeResult.error,
+      i18next.t('template:preview_ref.get_node', { defaultValue: '获取引用节点' })
+    );
     return {
       success: false,
       error: nodeResult.error.toUserMessage(),
@@ -188,7 +191,10 @@ async function fetchReferenceContent(
     const contentResult = await dstu.getContent(dstuPath);
     if (!contentResult.ok) {
       console.error('[PreviewPanel] Failed to fetch content via DSTU:', contentResult.error);
-      reportError(contentResult.error, '获取引用内容');
+      reportError(
+        contentResult.error,
+        i18next.t('template:preview_ref.get_content', { defaultValue: '获取引用内容' })
+      );
       return {
         success: false,
         error: contentResult.error.toUserMessage(),
