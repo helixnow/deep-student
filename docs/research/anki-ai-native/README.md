@@ -84,9 +84,13 @@
 
 ## 当前收口状态
 
-- Round 4/5 已交付 skill 参数、critic 内核、eval lint、文档/i18n；收尾续作又接通
-  偏好写入、`_original_generation`、Sidekick Planner/Vlm 和遮挡预览，并删除旧 CardAgent 结果回调。
-- 仍未伪装成已完成的项目：图像遮挡完整闭环
-  （PDF 页图、真实 grounding、编辑器、原生 note type）和 ChatAnki critic 开关。
+- PR [#215](https://github.com/helixnow/deep-student/pull/215) 的最终现码口径为
+  **8.5/10**：偏好写入、遮挡预览、Sidekick Planner/Generator/Vlm 消费和
+  `_original_generation` 首次入库均已接通。
+- critic 的内核调用点与 Critic 角色路由已接，但 ChatAnki run/start 没有公开开关，
+  主入口仍传 `None`，所以默认用户路径保持关闭。
+- 图像遮挡完整闭环仍未完成：PDF 页图、真实 grounding、编辑器和原生 note type
+  不在本次“遮挡预览已接”的范围内。
+- CI 仍是发布门禁；required checks 全绿前，PR 不应视为可发布或可合并。
 - 用户可见主路径、工具数量与限制以 ChatAnki skill 和
   [用户指南](../../user-guide/12-Anki制卡与模板.md) 为准；历史调研中的阶段性设计不作为现行入口说明。

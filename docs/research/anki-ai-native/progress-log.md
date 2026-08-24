@@ -212,6 +212,11 @@
   遮挡编辑器或原生 note type 闭环。
 - [x] 现码评分更新为 **8.5/10**：偏好写入、原始快照和 Planner/Vlm 消费关闭了
   三个实质缺口；critic 用户入口与完整图像遮挡仍使其不能标为完整 SOTA。
+- [x] PR [#215](https://github.com/helixnow/deep-student/pull/215) 最终文档口径统一：
+  偏好写入、遮挡预览、Planner/Generator/Vlm 和 `_original_generation` 均记为已接；
+  critic 只记内核接线，因 run/start 无开关而仍默认关闭。
+- [ ] 发布状态仍由 required CI 决定；检查未全绿前保持发布门禁，不以本轮文档收尾
+  替代平台矩阵验证。
 
 详细证据见 `wrapup/00-final-readiness.md` 与 `wrapup/18-sota-status.md`。
 
@@ -228,4 +233,4 @@
 | 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 与遮挡草稿最小接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |
-| 2026-08-24 | 收尾续作 #8 | 按现码更正 26 个 QA code；登记偏好写入、原始快照、四角色路由、兼容回调删除；保留 critic/遮挡未接边界；评分 8.5 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 收尾续作 #8 | 按现码登记偏好写入、遮挡预览、Planner/Generator/Vlm、`_original_generation` 已接；critic 默认关闭；评分 8.5；CI 保持发布门禁 | [#215](https://github.com/helixnow/deep-student/pull/215) |

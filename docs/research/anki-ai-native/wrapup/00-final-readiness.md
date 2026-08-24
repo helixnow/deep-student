@@ -12,7 +12,8 @@
 以 PR #215 收尾续作后的现码为审计基线，未发现仍未修复的确定性 Anki 发布阻断
 代码缺陷。公开生成参数、transform、analyze 路由、Structured Output、QA、FSRS、
 偏好记忆写入/检索和 Sidekick Planner/Generator/Vlm 已进入 ChatAnki 生产路径；
-生成原文快照也已落到首次入库点。
+`_original_generation` 已落到首次入库点，遮挡层也已进入折叠/展开生产预览。
+critic 虽有内核调用点，但 run/start 未接开关，默认用户路径仍关闭。
 
 需要严格区分三层事实：
 
@@ -62,7 +63,10 @@ CI 全绿且没有新增 review blocker 后，可转 Ready for review。
 
 ## 发布阻断项
 
-- **PR 必需 CI 仍在运行。** 本文生成时 12 项检查均为 pending；在完整平台矩阵给出结果前，不应转为可发布/可合并状态。
+- **CI 仍是发布门禁。** 本次复核时 PR
+  [#215](https://github.com/helixnow/deep-student/pull/215) 的 12 项检查均为
+  queued/pending；最终状态以 GitHub required checks 为准，未全绿前不应转为
+  可发布/可合并状态。
 - 若任一 Backend、Rust test、Migration、Security 或 Windows sandbox 检查失败，应将该失败视为新的发布阻断并先修复。
 
 当前没有已知且未修复的 Anki 代码 blocker。
