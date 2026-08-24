@@ -1,6 +1,6 @@
 # Workbench 无障碍（a11y）落实清单 — O19 出品
 
-- 版本：2026-07-08（本轮 20 代理打磨）
+- 版本：2026-07-08（本轮 20 代理打磨）；2026-08-24 增补 §13（触屏/焦点环/焦点陷阱补遗）
 - 责任模型：**各组件代理尽量自行落实自己组件的条目；未落实项由 O20 兜底**（编排 §4）。
 - 基建位置（O19 归属，已交付）：
   - `hooks/useWorkbenchA11y.ts` — `getWindowA11yProps` / `announceWorkbench` /
@@ -153,3 +153,31 @@ workbench:a11y.appCrashed        {{name}} 出现错误，可重新加载
 3. **forced-colors**：Windows 高对比主题下检查焦点环、拖放高亮、焦点窗辨识度。
 4. **reduced-motion**：系统开启后确认无残留动效（minimal 档 + 媒询双保险）。
 5. `document.getElementById('wb-a11y-announcer')` 全程唯一且位于 body 尾部。
+
+## 13. 2026-08-24 补遗（sota-subapp-polish 轮）
+
+对照本清单与实现走查后落实的三处缺口：
+
+1. **Dock tooltip 触屏等价（§4 增补）**
+   - 未运行应用：长按（400ms，与窗口列表长按同判定）把 `wb-dock-tip` 钉住
+     （`data-tip-pinned`，无 350ms 悬停延迟），松手驻留 1.6s 再消失；
+     长按不触发 launch（复用 click 抑制标记）。
+   - 运行中应用：长按被 DockWindowList 占用，应用名改由列表头部
+     `.wb-docklist-header`（视觉可见、对 AT 隐藏——菜单 `aria-label` 已含应用名）提供。
+   - 键盘/AT 路径不变：图标按钮 `aria-label` 始终携带应用名+运行态+角标。
+2. **Exposé 键盘焦点环可见性（§5/§10 增补）**
+   - 焦点环从写死的 `0 0 0 2px primary/0.65` 改为引用统一 token
+     （`--wb-focus-ring-width/-color`，`prefers-contrast: more` 自动加粗），
+     并加 1px 背景色衬边，任意窗口内容上都可辨。
+   - forced-colors 下 box-shadow 被系统剥除 → 新增 `outline: 3px solid Highlight`
+     映射（选中格、pick/close 按钮 focus-visible、玻璃标签补 Canvas/CanvasText）。
+3. **主要对话框焦点陷阱（§G1/G6 缺口修补）**
+   - `src/hooks/useFocusTrap.ts` 扩展：无可聚焦元素时焦点留容器；初始聚焦不抢
+     容器内已有焦点（保住 autoFocus）；关闭/卸载归还焦点（原元素仍在文档、
+     且当前焦点未被用户主动移走时）。可选项 `initialFocus` / `restoreFocus`。
+   - 接线：`DsDialog` / `DsAlertDialog`（全应用通用模态，此前完全无焦点管理，
+     关窗确认「保存并关闭」三态框等均经此修复）、`WallpaperManagerDialog`
+     （此前 Tab 可穿透到桌面）、`WorkbenchSidebarLayout` 窄窗抽屉
+     （已有初始聚焦/归还，仅补 Tab 循环）。
+   - 已自带轻量陷阱的浮层（ShortcutCheatsheet / ExposeOverlay / StatusBar 弹层 /
+     AppsPanel / StatusBarClock）维持现状，不重复接线。

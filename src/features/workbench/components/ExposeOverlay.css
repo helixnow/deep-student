@@ -175,10 +175,17 @@
     var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
 }
 
+/*
+ * 键盘焦点环：宽度/颜色走 a11y-cursor.css 统一 token
+ * （--wb-focus-ring-width/-color；prefers-contrast: more 时自动加粗），
+ * 外加一圈背景色衬边提升在任意窗口内容上的可辨识度。
+ */
 .wb-expose-cell:focus-within .wb-expose-cell-hit,
 .wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
   box-shadow:
-    var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65)),
+    0 0 0 1px hsl(var(--background) / 0.9),
+    0 0 0 calc(1px + var(--wb-focus-ring-width, 2px))
+      var(--wb-focus-ring-color, hsl(var(--primary) / 0.85)),
     var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
 }
 
@@ -327,6 +334,31 @@
 [data-wb-window-id][data-expose-transform] .wb-titlebar {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+/* ==========================================================================
+ * forced-colors（Windows 高对比）：box-shadow 被系统调色板剥除，
+ * 键盘焦点环 / 选中态改用 outline 映射系统 Highlight 色（a11y 清单 §10）。
+ * ========================================================================== */
+
+@media (forced-colors: active) {
+  .wb-expose-cell-pick:focus-visible,
+  .wb-expose-cell[data-selected='true'] .wb-expose-cell-hit {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .wb-expose-close:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  /* 玻璃标签在 forced-colors 下失去底色，补系统色边框保证可读 */
+  .wb-expose-label {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
 }
 
 /* ==========================================================================
