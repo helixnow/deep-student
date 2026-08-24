@@ -9,7 +9,6 @@ import {
   isBlockPropsValidationFailure,
   resolveGenerativeLayout,
   layoutGridClassName,
-  layoutSpanClassName,
   type ActionBarProps,
 } from './schema';
 import { coercePartialIntent } from './utils/coercePartialIntent';
@@ -17,6 +16,7 @@ import { GenerativeUIChrome } from './GenerativeUIChrome';
 import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
+import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
 
 import './blocks';
 
@@ -109,16 +109,21 @@ export function GenerativeUIRenderer({
         data-layout-columns={columns}
       >
         {displayIntent.blocks.map((block, index) => {
-          const spanClass = layoutSpanClassName(mode, block.span);
-          const wrap = (node: React.ReactNode) => (
-            <div key={block.id ?? index} className={spanClass} data-layout-span={block.span}>
+          const slot = (node: React.ReactNode) => (
+            <GenerativeBlockSlot
+              key={block.id ?? index}
+              type={block.type}
+              props={block.props}
+              span={block.span}
+              layoutMode={mode}
+            >
               {node}
-            </div>
+            </GenerativeBlockSlot>
           );
 
           const config = generativeUIRegistry.get(block.type);
           if (!config) {
-            return wrap(
+            return slot(
               <Alert variant="warning" role="alert" data-block-invalid>
                 <AlertTitle>{t('unknown_block_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{t('unknown_block_desc')}</AlertDescription>
@@ -128,7 +133,7 @@ export function GenerativeUIRenderer({
 
           const validation = validateBlockProps(config.propsSchema, block.props ?? {});
           if (isBlockPropsValidationFailure(validation)) {
-            return wrap(
+            return slot(
               <Alert variant="warning" role="alert" data-block-invalid>
                 <AlertTitle>{t('validation_failed_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{validation.errors.join('; ')}</AlertDescription>
@@ -139,7 +144,7 @@ export function GenerativeUIRenderer({
           const Component = config.component;
           if (block.type === 'action-bar') {
             const actionBarProps = validation.props as ActionBarProps;
-            return wrap(
+            return slot(
               <ActionBarBlock
                 {...actionBarProps}
                 actionHandlers={actionHandlers}
@@ -148,7 +153,7 @@ export function GenerativeUIRenderer({
             );
           }
 
-          return wrap(<Component {...validation.props} />);
+          return slot(<Component {...validation.props} />);
         })}
       </div>
     </div>
