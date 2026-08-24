@@ -39,5 +39,5 @@
 ## 验证
 
 - 静态核对：`derive_key`/Argon2 全仓入口、`FileCipherSession` 构造与缓存、ZIP/记录级上传入口、文件级 DSBK 包装及明文防降级路径。
-- 目标测试：`cargo test --test sync_r10_verifier`、`cargo test crypto::backup_crypto::tests::session_ --lib`。
-- 本机首次构建被环境问题阻断：GUI 开发库尚未就绪，且 Rust 1.88 无法编译 `libsqlite3-sys 0.38.1` 使用的 `cfg_select!`。GUI 库就绪后，以仅作用于本机 Cargo registry 的等价 `#[cfg]` 改写继续执行目标测试；该临时环境改写不进入仓库。
+- 尝试目标测试：`cargo test --test sync_r10_verifier`、`cargo test crypto::backup_crypto::tests::session_ --lib`。
+- 两次命令均未进入项目测试：首次构建时 GUI 开发库尚未就绪；库就绪后，Rust 1.88 仍无法编译基线依赖 `rusqlite 0.40.1` / `libsqlite3-sys 0.38.1` 多处使用的 `cfg_select!`。曾以仅作用于本机 Cargo registry 的等价 `#[cfg]` 改写跨过 `libsqlite3-sys` 构建脚本，随后在 `rusqlite` 库本体同因失败。该临时环境改写未进入仓库；本轮不把“未执行断言”误报为测试通过。
