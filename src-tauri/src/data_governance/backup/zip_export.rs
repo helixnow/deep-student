@@ -1511,6 +1511,36 @@ fn unseal_encrypted_secrets(
     }
 }
 
+/// [R09-restore-ops][P3] 加密全保真 ZIP 的备份密码预检：在解压任何条目之前
+/// 尽早失败。
+///
+/// 外层归档携带密封载荷（`portable_secrets.dsbk`）而调用方未提供备份密码时，
+/// 后续解封阶段必然失败——没有理由先做一次全量解压再报错（非续传路径失败
+/// 后还会整目录清理，白白浪费一次全量 IO）。此预检只看归档条目名，不改动
+/// 目标目录；密码错误仍由解封时的 AEAD 校验判定，声明与载荷不一致等
+/// 形态错误仍由 [`unseal_encrypted_secrets`] 精确报告。
+fn precheck_sealed_payload_password<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    password: Option<&str>,
+    resumable: bool,
+) -> Result<(), ZipExportError> {
+    if password.is_some()
+        || !archive
+            .file_names()
+            .any(|name| name == ENCRYPTED_SECRETS_ENTRY)
+    {
+        return Ok(());
+    }
+    // 文案与既有报错保持一致：续传路径沿用 R05 的「重新恢复任务」指引，
+    // 非续传路径沿用解封阶段的措辞（既有调用方/测试按该文案断言）。
+    let message = if resumable {
+        "这是加密全保真备份 ZIP：断点续传必须携带导出时设置的备份密码。请提供备份密码后重新恢复导入任务"
+    } else {
+        "这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入"
+    };
+    Err(ZipExportError::ExportFailed(message.to_string()))
+}
+
 /// 从 ZIP 文件导入备份
 ///
 /// 将 ZIP 文件解压到指定目录
@@ -1542,6 +1572,7 @@ pub fn import_backup_from_zip_with_password(
     let zip_file = File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(zip_file)?;
     validate_import_archive(&mut archive)?;
+    precheck_sealed_payload_password(&mut archive, password, false)?;
 
     validate_import_target_root(target_dir)?;
 
@@ -1718,20 +1749,12 @@ where
     let mut archive = zip::ZipArchive::new(zip_file)?;
     validate_import_archive(&mut archive)?;
 
-    // 断点续传的加密全保真 ZIP 前置检查：备份密码必须随续传一起提供。
-    // 在改动目标目录之前就明确失败：半解压的目标保持原样，携带密码
-    // 重新恢复任务即可继续续传，不会留下新的半成品。
-    if skip_existing
-        && password.is_none()
-        && archive
-            .file_names()
-            .any(|name| name == ENCRYPTED_SECRETS_ENTRY)
-    {
-        return Err(ZipExportError::ExportFailed(
-            "这是加密全保真备份 ZIP：断点续传必须携带导出时设置的备份密码。请提供备份密码后重新恢复导入任务"
-                .to_string(),
-        ));
-    }
+    // 加密全保真 ZIP 的备份密码前置检查（续传与非续传共用）：
+    // - 续传（R05）：在改动目标目录之前就明确失败——半解压的目标保持原样，
+    //   携带密码重新恢复任务即可继续续传，不会留下新的半成品；
+    // - 非续传（R09，P3）：避免全量解压后才在解封阶段报错、随后整目录清理，
+    //   白白浪费一次全量 IO。
+    precheck_sealed_payload_password(&mut archive, password, skip_existing)?;
 
     let total_files = archive.len();
 
@@ -2525,5 +2548,85 @@ mod tests {
         assert!(!target.join("manifest.json").exists());
         // 外层加密载荷保持原样：修复目标目录后仍可携带密码继续续传。
         assert!(target.join(ENCRYPTED_SECRETS_ENTRY).is_file());
+    }
+
+    // ============ [R09-restore-ops][P3] 非续传导入无密码早失败 ============
+
+    #[test]
+    fn test_non_resumable_import_encrypted_zip_fails_early_without_password() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let error = import_backup_from_zip(&zip_path, &target).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("请提供导出时设置的备份密码后重试导入"),
+            "unexpected error: {}",
+            error
+        );
+        // 早失败必须发生在解压任何条目之前：目标目录不得被创建/写入
+        // （旧行为是全量解压后才在解封阶段报错，再由调用方整目录清理）。
+        assert!(
+            !target.exists(),
+            "missing-password non-resumable import must fail before touching the target dir"
+        );
+    }
+
+    #[test]
+    fn test_non_resumable_progress_import_encrypted_zip_fails_early_without_password() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let mut saw_extract_phase = false;
+        let error = import_backup_from_zip_with_progress(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.phase == ZipImportPhase::Extract {
+                    saw_extract_phase = true;
+                }
+            },
+            || false,
+            None,
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("请提供导出时设置的备份密码后重试导入"),
+            "unexpected error: {}",
+            error
+        );
+        assert!(
+            !saw_extract_phase,
+            "precheck must fire before any Extract-phase work"
+        );
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn test_non_resumable_import_encrypted_zip_with_password_still_succeeds() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        let file_count = import_backup_from_zip_with_password(
+            &zip_path,
+            &target,
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap();
+
+        assert!(file_count > 0);
+        let manifest = BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();
+        manifest.validate_for_slot_restore().unwrap();
     }
 }

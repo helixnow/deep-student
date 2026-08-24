@@ -39,7 +39,10 @@ pub use sync_manager::{
     rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
     EncryptionMarker, SyncStatus, UploadResult,
 };
-pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
+pub use traits::{
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result,
+    UploadProgressCallback, RESUMABLE_DOWNLOAD_UNSUPPORTED,
+};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};

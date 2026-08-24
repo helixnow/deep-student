@@ -156,3 +156,19 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 | R07-asset-names | claude-fable-5-thinking-high | 资产文件名跨平台 | `src-tauri/tests/` 新文件；净化实现落点先在此登记 |
 | R07-android | claude-fable-5-thinking-high | Android 换机/重启语义 | `src-tauri/tests/` 新文件 + 必要 cfg 门测试 |
 | R07-tests | claude-fable-5-thinking-high | 本轮极端回归 | `src-tauri/tests/` 与 `tests/vitest/data-governance/` **各自新文件** |
+
+## Round 09 回传（增量登记）
+
+### R09-restore-ops（RESTORE-MATRIX-R07 运维缺口一整包）
+
+分支 `cursor/cloud-sync-sota-r09-restore-ops-b343`，模型 claude-fable-5-thinking-high。交付：
+
+- **P2-1**：`docs/user-guide/16-数据管理与云同步.md` 新增「云端目录的加密标记与『密码不一致』解锁」小节 + FAQ——旧 `.encryption-marker`（v1 无校验子）被配错密码设备抢先一次性升级后，正确密码设备的解锁步骤（自证密码 → 删云端标记 → 重新登记 → 纠正错密码设备）。
+- **P2-2**：云端 ZIP 下载断点续传最小实现（复用导入续传"失败保留断点"模式）：
+  - `cloud_storage/traits.rs`：`supports_resumable_download` + `get_file_resumable`（默认实现 fail-closed，文案常量 `RESUMABLE_DOWNLOAD_UNSUPPORTED`，禁止静默整包重下冒充续传）；
+  - `cloud_storage/webdav.rs`：HTTP Range 续传（206 校验 Content-Range 起点、200 诚实从零重写、错位/截断 fail-closed）；
+  - `cloud_storage/sync_manager.rs`：`download_with_progress` 断点编排（`.{id}.zip.part` 中断保留、完成后整文件 SHA256 兜底、损坏断点丢弃明确报错）；S3/FTP 不支持续传，走原整文件下载路径（诚实，无断点）。
+- **P3**：`backup/zip_export.rs` 非续传导入的无密码早失败——`precheck_sealed_payload_password` 由续传/非续传共用，在解压任何条目之前失败，错误文案与解封阶段保持一致。
+- **测试**：`src-tauri/tests/sync_r09_download_resume_tests.rs`（编排契约 6 例）、`src-tauri/tests/webdav_download_resume_tests.rs`（假 WebDAV 服务器 Range 行为 6 例）、`zip_export.rs` 内 P3 单测 3 例、`tests/vitest/data-governance/r09-restore-ops.source.test.ts`（指南/实现锁定）。
+
+**文件面认领**：`cloud_storage/traits.rs`、`cloud_storage/webdav.rs`（仅新增 resumable 方法与 `parse_content_range_start`）、`cloud_storage/sync_manager.rs`（仅 download 路径）、`cloud_storage/mod.rs`（仅导出）、`backup/zip_export.rs`（预检 + 测试）、用户指南 16、上述新测试文件。**与 R10 的交叠**：R10-download（下载续传+无密码早失败+指南）与 R10-verifier 的「错密码抢先升级解锁指南」两项已由本包交付，按"R09 回传只收增量"处理，R10 两路只需补本包未覆盖的部分（如 Argon2 参数钳制、S3/FTP 续传）。
