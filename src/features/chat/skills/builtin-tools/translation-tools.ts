@@ -15,13 +15,13 @@ const termSchema = {
       type: 'string' as const,
       minLength: 1,
       maxLength: 200,
-      description: '源语言术语，必须是非空文本',
+      description: '源语言术语',
     },
     dst: {
       type: 'string' as const,
       minLength: 1,
       maxLength: 200,
-      description: '该术语必须采用的目标语言译法',
+      description: '该术语的强制目标译法',
     },
   },
   required: ['src', 'dst'],
@@ -32,25 +32,25 @@ const saveCommonProperties = {
     type: 'string' as const,
     minLength: 1,
     maxLength: 200,
-    description: '入库标题（可选）',
+    description: '入库标题',
   },
   folder_id: {
     type: 'string' as const,
     minLength: 1,
     maxLength: 128,
-    description: '目标 VFS 文件夹 ID（可选）；文件夹不存在时拒绝保存',
+    description: '目标 VFS 文件夹 ID；不存在则拒绝保存',
   },
   engine: {
     type: 'string' as const,
     minLength: 1,
     maxLength: 200,
-    description: '翻译引擎标识（可选，仅在已知真实值时填写）',
+    description: '翻译引擎标识（仅已知真实值时填）',
   },
   model: {
     type: 'string' as const,
     minLength: 1,
     maxLength: 200,
-    description: '翻译模型标识（可选，仅在已知真实值时填写）',
+    description: '翻译模型标识（仅已知真实值时填）',
   },
 };
 
@@ -106,7 +106,7 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
     {
       name: 'builtin-translate_text',
       description:
-        '使用真实翻译专用模型翻译文本（Low）。总输入最多 500000 个 Unicode 字符，后端按每段最多 100000 字符自动分段并聚合。返回 translation_result_id、source_lang、target_lang、translated_preview（最多 2000 字符）、translated_truncated、source_chars、translated_chars、segment_count、expires_in_seconds、consumed_after_successful_save；仅译文不超过 2000 字符时额外返回完整 translated。不会写入翻译库。',
+        '用真实翻译模型翻译文本（Low）。总输入最多 500000 字符，超长自动分段聚合。返回 translation_result_id、translated_preview（≤2000 字符）、translated_truncated、segment_count、expires_in_seconds 等；短译文额外返回完整 translated。不写入翻译库。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -114,37 +114,37 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
             type: 'string',
             minLength: 1,
             maxLength: 500000,
-            description: '【必填】待翻译原文；按 Unicode 字符计最多 500000',
+            description: '待翻译原文',
           },
           source_lang: {
             type: 'string',
             minLength: 1,
             maxLength: 32,
             pattern: '^(?:auto|[A-Za-z]+(?:-[A-Za-z0-9]{1,8})*)$',
-            description: '【必填】源语言代码，如 auto、en、zh-CN',
+            description: '源语言代码，如 auto、en、zh-CN',
           },
           target_lang: {
             type: 'string',
             minLength: 1,
             maxLength: 32,
             pattern: '^(?!auto$)[A-Za-z]+(?:-[A-Za-z0-9]{1,8})*$',
-            description: '【必填】目标语言代码，如 zh-CN、en、ja；不允许 auto',
+            description: '目标语言代码；不允许 auto',
           },
           formality: {
             type: 'string',
             enum: ['formal', 'casual'],
-            description: '正式度（可选）',
+            description: '正式度',
           },
           domain: {
             type: 'string',
             enum: ['general', 'academic', 'technical', 'literary', 'casual', 'legal', 'medical'],
-            description: '翻译领域（可选，默认 general）',
+            description: '翻译领域（默认 general）',
           },
           terms: {
             type: 'array',
             maxItems: 100,
             items: termSchema,
-            description: '内联术语约束（可选）；不存在 glossary_id 路径',
+            description: '内联术语约束；无 glossary_id 路径',
           },
         },
         required: ['text', 'source_lang', 'target_lang'],
@@ -154,7 +154,7 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
     {
       name: 'builtin-translation_save',
       description:
-        '把完整翻译结果保存为真实 VFS 翻译资源（Medium，仅前台对话）。使用会话绑定的短期 translation_result_id，或直接提供各不超过 2000 字符的 source/translated 及语言代码，两条路径严格互斥。支持 title 与 folder_id。成功返回 translation_id、resource_id、path、title、folder_id、source_lang、target_lang、engine、model、created_at、updated_at、source_chars、translated_chars、source_mode、translation_result_consumed、reversible=true，以及 undo={tool_name:"builtin-dstu_delete",arguments:{path},effect:"soft_delete_to_trash"}。不会调用模型或重新翻译。',
+        '把完整翻译结果保存为真实 VFS 翻译资源（Medium，仅前台对话）。传短期 translation_result_id，或直接提供 source/translated 及语言代码（两条路径严格互斥）。返回 translation_id、resource_id、path 等，以及 undo（builtin-dstu_delete 软删除）。不会重新翻译。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -162,33 +162,33 @@ translate_text **不会自动入库**，translation_save **不会重新翻译**�
             type: 'string',
             minLength: 1,
             maxLength: 80,
-            description: 'translate_text 返回的短期结果引用；与显式文本路径互斥',
+            description: 'translate_text 返回的短期引用；与显式文本路径互斥',
           },
           source: {
             type: 'string',
             minLength: 1,
             maxLength: 2000,
-            description: '显式保存路径的完整短原文',
+            description: '显式路径的完整短原文',
           },
           translated: {
             type: 'string',
             minLength: 1,
             maxLength: 2000,
-            description: '显式保存路径的完整短译文',
+            description: '显式路径的完整短译文',
           },
           source_lang: {
             type: 'string',
             minLength: 1,
             maxLength: 32,
             pattern: '^(?:auto|[A-Za-z]+(?:-[A-Za-z0-9]{1,8})*)$',
-            description: '显式保存路径的源语言代码',
+            description: '显式路径的源语言代码',
           },
           target_lang: {
             type: 'string',
             minLength: 1,
             maxLength: 32,
             pattern: '^(?!auto$)[A-Za-z]+(?:-[A-Za-z0-9]{1,8})*$',
-            description: '显式保存路径的目标语言代码；不允许 auto',
+            description: '显式路径的目标语言；不允许 auto',
           },
           ...saveCommonProperties,
         },
