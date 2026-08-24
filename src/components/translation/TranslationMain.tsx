@@ -315,6 +315,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           value={layoutControlValue}
           onValueChange={setLayoutMode}
           size="compact"
+          // ! 必须：app.css .study-shell-segmented-button 的 min-height:0
+          // 会压掉基元 coarse min-h-11，触屏命中区需 important 才能 ≥44px
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'split',
