@@ -46,8 +46,7 @@ use std::sync::{Arc, Mutex};
 
 use deep_student_lib::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE;
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, StorageProvider,
-    WebDavConfig,
+    create_storage, CloudStorageConfig, CloudSyncManager, StorageProvider, WebDavConfig,
 };
 use deep_student_lib::data_space::{DataSpaceManager, Slot};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
