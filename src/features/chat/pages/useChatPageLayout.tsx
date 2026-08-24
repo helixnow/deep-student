@@ -175,6 +175,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           variant="ghost"
           size="icon"
           iconOnly
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           onClick={() => refreshSandboxSession(sandboxOwnerKey)}
           aria-label={t('workbench:sandbox.refresh', '刷新')}
           title={t('workbench:sandbox.refresh', '刷新')}
@@ -187,6 +188,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           iconOnly
           onClick={() => setSandboxInspectorOpen(!sandboxInspectorOpen, sandboxOwnerKey)}
           className={cn(
+            '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
             sandboxInspectorOpen
               && 'bg-primary/10 text-primary hover:bg-primary/15',
           )}
@@ -213,6 +215,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           variant="ghost"
           size="icon"
           iconOnly
+          className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           onClick={() => openAppInLearningHubRef.current?.()}
           aria-label={t('page.openInLearningHub')}
           title={t('page.openInLearningHub')}
@@ -238,6 +241,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           iconOnly
           onClick={() => resourceMultiSelectToggleRef.current?.()}
           className={cn(
+            '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
             resourceMultiSelectActive
               && 'bg-primary/10 text-primary hover:bg-primary/15',
           )}
