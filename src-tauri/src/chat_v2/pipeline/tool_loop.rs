@@ -3512,20 +3512,9 @@ mod tests {
         );
     }
 
-    /// Behaviour-level Plan-mode test driven through the **real persisted
-    /// session authority state + AuthorityGate**.
-    ///
-    /// Note on scope: the final tool *execution* step builds an
-    /// `ExecutionContext` that requires a live Tauri `Window`, which a unit
-    /// test cannot construct (two `generate_context!()` expansions collide on
-    /// the embedded Info.plist symbol, and the mock runtime yields a
-    /// `Window<MockRuntime>` incompatible with the `Wry`-typed emitter/context).
-    /// We therefore assert the security-relevant contract — the gate suspends
-    /// writes without approval, allows them only for an approved+unexpired
-    /// plan batch, and re-blocks after expiry — against the state that is
-    /// actually round-tripped through `ChatV2Repo`. The "executor is not
-    /// invoked while blocked" half is proven end-to-end by
-    /// `ask_mode_blocks_medium_write_without_calling_executor` above.
+    /// Behaviour-level Plan-mode state lifecycle test driven through the real
+    /// persisted session authority state + AuthorityGate. The full
+    /// `execute_single_tool` wiring is locked by the C4 regression test below.
     #[tokio::test]
     async fn plan_mode_suspends_then_allows_once_then_reblocks_after_expiry() {
         use crate::chat_v2::pipeline::authority_mode::{
@@ -3781,6 +3770,83 @@ mod tests {
             )
             .await
             .expect("execute_single_tool")
+    }
+
+    #[tokio::test]
+    async fn approved_plan_binding_reaches_executor_without_secondary_approval() {
+        use crate::chat_v2::types::PlanAuthorityState;
+
+        let harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Plan);
+        let binding = crate::chat_v2::pipeline::authority_mode::plan_call_binding_key(
+            "builtin-authority_probe_write",
+            &json!({"path": "/tmp/c4-probe"}),
+            None,
+        );
+        let mut plan = PlanAuthorityState::new_pending("execute approved probe");
+        plan.bind_to_call(binding);
+        plan.mark_approved(600);
+        ChatV2Repo::set_session_plan_state(&harness.pipeline.db, &harness.session_id, Some(plan))
+            .expect("persist approved plan");
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "call_plan_approved",
+            "blk_plan_approved",
+            None,
+        )
+        .await;
+
+        assert!(result.success, "approved Plan call was blocked: {result:?}");
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "approved Plan call must reach the executor exactly once"
+        );
+        let state =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("reload consumed plan");
+        assert!(
+            state.plan.is_none(),
+            "the approved Plan binding must be consumed before execution"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_approval_manager_blocks_required_tool_before_executor() {
+        let mut harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Craft);
+        ChatV2Repo::set_session_permission_preset(
+            &harness.pipeline.db,
+            &harness.session_id,
+            crate::chat_v2::types::PermissionPreset::Cautious,
+        )
+        .expect("set cautious preset");
+        harness.pipeline.approval_manager = None;
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "call_missing_approval",
+            "blk_missing_approval",
+            None,
+        )
+        .await;
+
+        assert!(!result.success);
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "executor must not run when required approval service is absent"
+        );
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("审批服务不可用")),
+            "missing approval service must return the fail-closed reason: {result:?}"
+        );
     }
 
     async fn c4_seed_remembered_allow(
