@@ -242,8 +242,21 @@ describe('StatusBar 信号项可见性', () => {
     const btn = screen.getByTestId('wb-menubar-pomodoro');
     expect(btn.textContent).toContain('12:34');
     expect(btn.getAttribute('aria-label')).toMatch(/12:34/);
+    expect(btn.getAttribute('aria-label')).toContain('专注剩余');
     fireEvent.click(btn);
     expect(launchSpy).toHaveBeenCalledWith({ typeId: 'pomodoro', reason: 'api' });
+  });
+
+  it('番茄休息阶段状态项文案为「休息剩余」而非「专注剩余」', () => {
+    usePomodoroStore.setState({
+      mode: 'short_break',
+      status: 'running',
+      timeLeft: 240, // 4:00
+    });
+    render(<StatusBar />);
+    const btn = screen.getByTestId('wb-menubar-pomodoro');
+    expect(btn.getAttribute('aria-label')).toContain('休息剩余');
+    expect(btn.getAttribute('aria-label')).toMatch(/4:00/);
   });
 
   it('due>0 显示闪卡数字，点击 activate flashcards due session', async () => {

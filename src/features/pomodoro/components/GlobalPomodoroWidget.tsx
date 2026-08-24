@@ -119,7 +119,18 @@ const InlineRevealX: React.FC<{ open: boolean; children: React.ReactNode; classN
   </span>
 );
 
-export const GlobalPomodoroWidget: React.FC = () => {
+export interface GlobalPomodoroWidgetProps {
+  /**
+   * Workbench（OS 桌面）激活时不显示悬浮药丸：番茄状态已由菜单栏
+   * StatusBarItems 与 PomodoroAppWindow 投射，药丸只会形成第三重投影。
+   * tick 驱动 / 沉浸模式 / 置顶小窗桥接不受影响，仍全局常驻。
+   */
+  workbenchActive?: boolean;
+}
+
+export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
+  workbenchActive = false,
+}) => {
   const { t } = useTranslation('todo');
   const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
@@ -379,7 +390,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
     if (!expanded) resetConfirmAbandon();
   }, [expanded, resetConfirmAbandon]);
 
-  const showPill = !isImmersive && mode !== 'idle' && currentView !== 'todo';
+  const showPill = !isImmersive && mode !== 'idle' && currentView !== 'todo' && !workbenchActive;
   const isBreak = mode === 'short_break' || mode === 'long_break';
 
   return (

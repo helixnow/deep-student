@@ -160,6 +160,7 @@
     "automationsRelativeHours": "in {{count}} h",
     "automationsRelativeDays": "in {{count}} d",
     "pomodoroFocus": "Focus remaining {{time}}",
+    "pomodoroBreakRemaining": "Break remaining {{time}}",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
@@ -1048,6 +1049,7 @@
     },
     "settingsTitle": "Pomodoro Settings",
     "statsTitle": "Focus trends",
+    "breakReview": "Review {{count}} due cards",
     "progressTitle": "{{done}}/{{total}} pomodoros completed",
     "today": {
       "label": "Today",

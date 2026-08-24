@@ -160,6 +160,7 @@
     "automationsRelativeHours": "{{count}} 小时后",
     "automationsRelativeDays": "{{count}} 天后",
     "pomodoroFocus": "专注剩余 {{time}}",
+    "pomodoroBreakRemaining": "休息剩余 {{time}}",
     "pomodoroIdle": "未开始",
     "pomodoroWork": "专注中",
     "pomodoroBreak": "休息中",
@@ -1048,6 +1049,7 @@
     },
     "settingsTitle": "番茄钟设置",
     "statsTitle": "专注趋势",
+    "breakReview": "去复习 {{count}} 张",
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "today": {
       "label": "今日",

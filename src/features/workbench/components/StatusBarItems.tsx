@@ -110,8 +110,13 @@ function launchAutomations(): void {
 const PomodoroStatusItem: React.FC = () => {
   const { t } = useTranslation('workbench');
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
+  const mode = usePomodoroStore((s) => s.mode);
   const pomodoroTime = formatStatusBarTime(timeLeft);
-  const pomodoroLabel = t('menubar.pomodoroFocus', { time: pomodoroTime });
+  // 休息阶段文案与实际阶段一致，不再一律显示「专注剩余」
+  const isBreak = mode === 'short_break' || mode === 'long_break';
+  const pomodoroLabel = isBreak
+    ? t('menubar.pomodoroBreakRemaining', { time: pomodoroTime })
+    : t('menubar.pomodoroFocus', { time: pomodoroTime });
   return (
     <button
       type="button"
