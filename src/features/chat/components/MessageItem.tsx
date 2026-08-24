@@ -459,7 +459,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
       // 🔧 修复：向上抛出，让调用方（MessageActions 等）不要展示"已复制"的成功对勾
       throw error;
     }

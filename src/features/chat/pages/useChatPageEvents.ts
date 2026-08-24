@@ -659,7 +659,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           showGlobalNotification('success', t('messageItem.actions.copySuccess'));
         } catch (error) {
           console.error('[ChatV2Page] Copy last response failed:', getErrorMessage(error));
-          showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+          showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
         }
       },
       // AI 继续（幽灵命令补活：chat.ai-continue）——继续最后一条 AI 回复，
