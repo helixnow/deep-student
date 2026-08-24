@@ -38,6 +38,9 @@ describe('classifyModelFamily', () => {
 
   describe('Google', () => {
     it.each([
+      ['gemini-3.1-pro-preview', 'gemini-3'],
+      ['gemini-3.1-pro-preview-customtools', 'gemini-3'],
+      ['gemini-3.5-flash', 'gemini-3'],
       ['gemini-2.5-pro', 'gemini-2.5'],
       ['gemini-2.5-flash', 'gemini-2.5'],
       ['gemini-2.0-flash', 'gemini-2.0'],
@@ -74,6 +77,60 @@ describe('classifyModelFamily', () => {
       ['qwen-vl-plus', 'qwen-vl'],
       ['qwq-32b-preview', 'qwq'],
       ['qvq-72b-preview', 'qvq'],
+    ])('classifies %s as %s', (id, expectedFamilyId) => {
+      expect(classifyModelFamily(id).id).toBe(expectedFamilyId);
+    });
+  });
+
+  describe('xAI', () => {
+    it.each([
+      ['grok-4.5', 'grok'],
+      ['grok-4.3', 'grok'],
+      ['grok-4-0709', 'grok'],
+      ['grok-4-1-fast-reasoning', 'grok'],
+      ['grok-4-1-fast-non-reasoning', 'grok'],
+      ['grok-3-mini', 'grok'],
+    ])('classifies %s as %s', (id, expectedFamilyId) => {
+      expect(classifyModelFamily(id).id).toBe(expectedFamilyId);
+    });
+  });
+
+  describe('Meta Llama', () => {
+    it.each([
+      ['llama-4-scout', 'llama-4'],
+      ['llama-4-maverick', 'llama-4'],
+    ])('classifies %s as %s', (id, expectedFamilyId) => {
+      expect(classifyModelFamily(id).id).toBe(expectedFamilyId);
+    });
+
+    it('keeps DeepSeek distills out of the Llama family', () => {
+      expect(classifyModelFamily('deepseek-r1-distill-llama-70b').id).toBe('deepseek-r');
+    });
+  });
+
+  describe('Mistral', () => {
+    it.each([
+      ['magistral-medium-latest', 'magistral'],
+      ['magistral-small-latest', 'magistral'],
+      ['mistral-large-3', 'mistral'],
+      ['mistral-medium-3-5', 'mistral'],
+      ['mistral-small-4', 'mistral'],
+    ])('classifies %s as %s', (id, expectedFamilyId) => {
+      expect(classifyModelFamily(id).id).toBe(expectedFamilyId);
+    });
+  });
+
+  describe('Domestic vendors', () => {
+    it.each([
+      ['minimax-m3', 'minimax'],
+      ['minimax-m2.7', 'minimax'],
+      ['MiniMax-M2.5', 'minimax'],
+      ['ernie-5.1', 'ernie'],
+      ['ernie-5.0', 'ernie'],
+      ['ernie-5.0-thinking-latest', 'ernie'],
+      ['ernie-x1.1', 'ernie'],
+      ['ernie-x1-turbo', 'ernie'],
+      ['ernie-4.5', 'ernie'],
     ])('classifies %s as %s', (id, expectedFamilyId) => {
       expect(classifyModelFamily(id).id).toBe(expectedFamilyId);
     });
