@@ -369,7 +369,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 size="icon"
                 onClick={handleCloseRequest}
                 aria-label={t('common:actions.close')}
-                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 <X size={18} />
               </DsButton>
@@ -517,7 +517,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             type="button"
                             variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'standalone')}
-                            className="w-full [@media(pointer:coarse)]:min-h-11"
+                            className="w-full [@media(pointer:coarse)]:!min-h-11"
                           >
                             {t('skills:editor.skill_type_standalone')}
                           </DsButton>
@@ -525,7 +525,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             type="button"
                             variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                             onClick={() => updateField('skillType', 'composite')}
-                            className="w-full [@media(pointer:coarse)]:min-h-11"
+                            className="w-full [@media(pointer:coarse)]:!min-h-11"
                           >
                             {t('skills:editor.skill_type_composite')}
                           </DsButton>
@@ -582,14 +582,14 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     variant="ghost"
                     onClick={handleCloseRequest}
                     disabled={isSaving}
-                    className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+                    className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                   >
                     {t('common:actions.cancel')}
                   </DsButton>
                   <DsButton
                     type="submit"
                     disabled={isSaving}
-                    className="flex-1 shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:min-h-11"
+                    className="flex-1 shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isSaving
                       ? t('common:actions.saving')

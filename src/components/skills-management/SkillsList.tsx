@@ -275,13 +275,13 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     ? t('skills:package.enable')
                     : t('skills:package.disable')}
                 </DsButton>
-                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
+                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
                   <Pencil size={14} />
                 </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" aria-label="more">
                       <DotsThree size={14} />
                     </DsButton>
                   </AppMenuTrigger>

@@ -409,21 +409,21 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           <TabsList className="bg-muted/20 border border-border/30 rounded-xl px-1.5 py-1 h-auto gap-2 shadow-sm">
             <TabsTrigger
               value="basic"
-              className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Gear size={14} className="mr-1.5" />
               {t('skills:editor.tab_basic')}
             </TabsTrigger>
             <TabsTrigger
               value="content"
-              className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <FileText size={14} className="mr-1.5" />
               {t('skills:editor.tab_content')}
             </TabsTrigger>
             <TabsTrigger
               value="tools"
-              className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Wrench size={14} className="mr-1.5" />
               {t('skills:editor.tab_tools')}
@@ -578,7 +578,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'standalone' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'standalone')}
-                      className="w-full [@media(pointer:coarse)]:min-h-11"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('skills:editor.skill_type_standalone')}
                     </DsButton>
@@ -586,7 +586,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       type="button"
                       variant={formData.skillType === 'composite' ? 'default' : 'ghost'}
                       onClick={() => updateField('skillType', 'composite')}
-                      className="w-full [@media(pointer:coarse)]:min-h-11"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('skills:editor.skill_type_composite')}
                     </DsButton>
@@ -692,14 +692,14 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           variant="ghost"
           onClick={handleCancel}
           disabled={isSaving}
-          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
         >
           {t('common:actions.cancel')}
         </DsButton>
         <DsButton
           type="submit"
           disabled={isSaving}
-          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:min-h-11"
+          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
         >
           {isSaving
             ? t('common:actions.saving')

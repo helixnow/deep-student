@@ -1122,7 +1122,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         ? () => setScreenPosition('center')
         : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />
       </DsButton>
     ) : undefined,
@@ -1440,7 +1440,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               className={cn(
                 'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
                 // 移动端加高到触控目标标准，桌面保持紧凑；粗指针设备（如 iPad 横屏）同样加高
-                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs [@media(pointer:coarse)]:h-11',
+                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs [@media(pointer:coarse)]:!h-11',
               )}
 />
           </div>

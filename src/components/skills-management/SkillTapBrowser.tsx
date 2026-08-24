@@ -449,7 +449,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onCancel}
             disabled={busy}
-            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -458,7 +458,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onConfirm}
             disabled={busy}
-            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 px-2.5 text-xs"
           >
             {busy
               ? t('skills:tap.installing')
@@ -520,7 +520,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               if (e.key === 'Enter') void handleBrowse();
             }}
             placeholder={t('skills:tap.url_placeholder')}
-            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:h-11 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 pl-8 pr-3 text-xs"
           />
         </div>
         <DsButton
@@ -543,7 +543,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
               type="button"
               onClick={() => void handleBrowse(source.url)}
               disabled={loading}
-              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
+              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
             >
               <GithubLogo size={11} />
               {source.label}
@@ -601,7 +601,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                         }
                       }}
                       disabled={scanningSubdir !== null || installing}
-                      className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 flex-shrink-0 px-2.5 text-xs"
+                      className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 px-2.5 text-xs"
                     >
                       {scanningSubdir === entry.subdir ? (
                         t('skills:tap.scanning')
@@ -659,7 +659,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             }}
             placeholder={t('skills:tap.market.search_placeholder')}
             aria-label={t('skills:tap.market.search_placeholder')}
-            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:h-11 pl-8 pr-3 text-xs"
+            className="h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 pl-8 pr-3 text-xs"
             data-testid="skill-market-search-input"
           />
         </div>
@@ -678,7 +678,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
 
       <div className="skill-market-filter-row">
         {/* 触屏：13px checkbox + 11px 文案不足触控标准，label 整体升到 44px 命中高度 */}
-        <label className="[@media(pointer:coarse)]:min-h-11">
+        <label className="[@media(pointer:coarse)]:!min-h-11">
           <input
             type="checkbox"
             checked={nonSuspiciousOnly}
@@ -775,7 +775,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                       }
                     }}
                     disabled={marketBusySlug !== null || marketInstalling}
-                    className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 flex-shrink-0 px-2.5 text-xs"
+                    className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 px-2.5 text-xs"
                     data-testid={`skill-market-install-${card.slug}`}
                   >
                     {busy ? (
@@ -847,7 +847,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           iconOnly
           onClick={onClose}
           aria-label={t('common:actions.close')}
-          className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+          className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
         >
           <X size={14} />
         </DsButton>
