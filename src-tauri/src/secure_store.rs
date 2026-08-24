@@ -2460,10 +2460,17 @@ mod cloud_hydration_tests {
             format!("{:?}", credentials),
             format!("{:#?}", credentials),
         ] {
-            assert!(
-                !rendered.contains("secret"),
-                "Debug 输出不得包含任何明文 secret: {rendered}"
-            );
+            for plaintext in [
+                "webdav-secret",
+                "s3-secret",
+                "ftp-secret",
+                "encryption-secret",
+            ] {
+                assert!(
+                    !rendered.contains(plaintext),
+                    "Debug 输出不得包含明文 {plaintext}: {rendered}"
+                );
+            }
             assert!(rendered.contains("[REDACTED]"));
             // 字段名保留，便于排障时定位
             assert!(rendered.contains("webdav_password"));
