@@ -4444,14 +4444,20 @@ pub async fn data_governance_resolve_record_conflict(
     let current_local_snapshot =
         SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
             .map_err(|e| format!("读取当前本地记录失败: {}", e))?;
-    let recorded_local_raw =
-        get_side_data("local")?.ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?;
+    let recorded_local_raw = get_side_data("local")?;
     let recorded_cloud_raw =
         get_side_data("cloud")?.ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?;
-    let recorded_local_snapshot = {
-        let value: serde_json::Value = serde_json::from_str(&recorded_local_raw)
-            .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
-        (!value.is_null()).then_some(value)
+    // [R06-del-resolve] LWW 门败方（DELETE / UPSERT SkipStale）只落 side='cloud'
+    // 单行——本地行是胜方、未被改动，因此没有必要的 local 快照。缺失 local 侧时
+    // 回退为当前业务表行（本地行即胜方状态），使这类单侧冲突可被解决，
+    // 不再永久占据冲突面板。
+    let recorded_local_snapshot = match recorded_local_raw {
+        Some(raw) => {
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("解析冲突中的本地快照失败: {}", e))?;
+            (!value.is_null()).then_some(value)
+        }
+        None => current_local_snapshot.clone(),
     };
     let recorded_cloud_snapshot = {
         let value: serde_json::Value = serde_json::from_str(&recorded_cloud_raw)
@@ -4515,6 +4521,76 @@ pub async fn data_governance_resolve_record_conflict(
     };
 
     let now = chrono::Utc::now().to_rfc3339();
+
+    // [R06-del-resolve] 决策结果与业务表当前状态一致时（典型：单侧 DELETE 冲突
+    // 选 keep_local——本地行本就是 LWW 胜方），无需也无法走同步回写：
+    // force 应用链路会把语义等价的 Update 幂等跳过（success_count=0），
+    // 而本地行已是全网收敛状态、无新决策需要广播。此时只把冲突行标记为已解决。
+    let already_in_desired_state = match (&operation, &data) {
+        (crate::data_governance::sync::ChangeOperation::Delete, _) => {
+            current_local_snapshot.is_none()
+        }
+        (_, Some(desired)) => current_local_snapshot
+            .as_ref()
+            .is_some_and(|current| SyncManager::records_semantically_equal_for_sync(current, desired)),
+        (_, None) => false,
+    };
+    if already_in_desired_state {
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| format!("开始冲突标记事务失败: {}", e))?;
+        let mark_result = (|| -> Result<(), String> {
+            // 事务内重验 generation：期间若有新冲突行出现，旧决策作废
+            let mut current = Vec::new();
+            {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id FROM __sync_conflicts
+                         WHERE table_name = ?1 AND record_id = ?2 AND resolved_at IS NULL
+                         ORDER BY id ASC",
+                    )
+                    .map_err(|e| format!("提交前读取冲突 generation 失败: {}", e))?;
+                let rows = stmt
+                    .query_map(rusqlite::params![&table_name, &record_id], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .map_err(|e| format!("提交前查询冲突 generation 失败: {}", e))?;
+                for row in rows {
+                    current.push(row.map_err(|e| format!("提交前解析冲突 generation 失败: {}", e))?);
+                }
+            }
+            current.sort_unstable();
+            if current != expected_ids {
+                return Err("冲突已在后台变化，旧决策未执行；请刷新后重新确认".to_string());
+            }
+            for conflict_id in &expected_ids {
+                let updated = conn
+                    .execute(
+                        "UPDATE __sync_conflicts
+                         SET resolved_at = ?1, resolution = ?2
+                         WHERE id = ?3 AND table_name = ?4 AND record_id = ?5
+                           AND resolved_at IS NULL",
+                        rusqlite::params![&now, &resolution, conflict_id, &table_name, &record_id],
+                    )
+                    .map_err(|e| format!("更新冲突状态失败: {}", e))?;
+                if updated != 1 {
+                    return Err("冲突状态在提交前发生变化".to_string());
+                }
+            }
+            Ok(())
+        })();
+        return match mark_result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| format!("提交冲突标记事务失败: {}", e))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        };
+    }
+
     if let Some(obj) = data.as_mut().and_then(serde_json::Value::as_object_mut) {
         if table_has_column(&conn, &table_name, "updated_at") {
             let current = obj.get("updated_at");

@@ -1,31 +1,32 @@
-//! [R06-tests] 单侧 DELETE 冲突的"可解决性"回归测试
+//! [R06-del-resolve] 单侧 DELETE 冲突的"可解决性"回归测试
 //!
-//! ## 背景（FINDINGS-R05 复审残留，等 R06-del-resolve 修复）
+//! ## 背景（FINDINGS-R05 复审残留，R06-del-resolve 已修复）
 //!
-//! 生产同步链路存在一条自相矛盾的契约：
+//! 生产同步链路曾存在一条自相矛盾的契约：
 //!
 //! 1. **写入端**：本地行无 pending 修改时，慢钟设备的 DELETE 输掉 LWW 门后，
 //!    删除意图只写**一行** `__sync_conflicts(side='cloud', data_json='null')`
 //!    ——没有配对的 local 侧快照（见 `sync_r05_regression_tests.rs` 已钉住的
 //!    `r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts`，count=1）。
-//! 2. **消费端**：`data_governance_resolve_record_conflict` 无条件要求
-//!    local + cloud **双侧**快照（`找不到该冲突的 local side 数据` /
-//!    `找不到该冲突的 cloud side 数据`），任何 resolution 都在读取阶段就失败。
+//! 2. **消费端**：`data_governance_resolve_record_conflict` 曾无条件要求
+//!    local + cloud **双侧**快照，任何 resolution 都在读取阶段就失败，
+//!    这类冲突永远无法通过 UI 解决，冲突面板 / 计数徽章被永久占位。
 //!
-//! 结果：这类单侧 DELETE 冲突永远无法通过 UI 解决，
-//! `data_governance_list_record_conflicts` / 计数徽章被永久占位。
+//! R06-del-resolve 的修复落在**消费端**（写入端形状保持不变，作为契约钉住）：
+//!
+//! - 缺失 local 侧快照时回退为当前业务表行（LWW 胜方即本地行，本就没有
+//!   独立快照的必要）；
+//! - 决策结果与业务表当前状态一致时（keep_local 且本地行已是胜方），
+//!   不再走会被语义等价幂等跳过卡死的同步回写，直接把冲突行标记为已解决。
 //!
 //! ## 本文件的测试分层
 //!
 //! - `r06_lww_gate_losing_delete_writes_only_cloud_side_snapshot`
-//!   纯库层（内存 SQLite，无 tauri runtime）：钉住"写入端只产出单侧"这一事实，
-//!   任何环境都可跑。
-//! - `r06_pin_resolve_command_rejects_one_sided_delete_conflict`
-//!   端到端钉住当前缺陷：真实调用生产 `#[tauri::command]`，断言 resolve
-//!   **失败**且冲突徽章仍占位。**R06-del-resolve 合入后本测试会转红：
-//!   届时请删除本测试，并解除下一个测试的 `#[ignore]`。**
-//! - `r06_one_sided_delete_conflict_should_be_resolvable`（`#[ignore]`）
-//!   期望行为：单侧 DELETE 冲突应可被 keep_local 解决。等 R06-del-resolve。
+//!   纯库层（内存 SQLite，无 tauri runtime）：钉住"写入端只产出单侧"这一
+//!   既定契约（resolve 端已能消费该形状），任何环境都可跑。
+//! - `r06_one_sided_delete_conflict_should_be_resolvable`
+//!   端到端：真实调用生产 `#[tauri::command]`，单侧 DELETE 冲突用 keep_local
+//!   成功解决——冲突行标记 resolved、本地行保留、徽章释放。
 //!
 //! 端到端用例走 `tauri::Builder::default()`（同 `tool_pack_integration_tests.rs`
 //! 的既有先例，Linux CI 无显示环境下可构建 App；本文件不创建任何窗口）。
@@ -150,8 +151,8 @@ fn record_content(conn: &Connection, record_id: &str) -> Option<String> {
 // ============================================================================
 
 /// LWW 门败方 DELETE 只写 side='cloud' 一行，**没有** local 侧快照。
-/// 这正是 `data_governance_resolve_record_conflict`（要求双侧）无法消费的形状；
-/// 两端契约必须有一方让步（R06-del-resolve）。
+/// 这是既定的写入端契约：本地行是 LWW 胜方、原样保留，无需独立快照；
+/// resolve 命令（R06-del-resolve 起）对缺失的 local 侧回退当前业务表行。
 #[test]
 fn r06_lww_gate_losing_delete_writes_only_cloud_side_snapshot() {
     let conn = Connection::open_in_memory().unwrap();
@@ -238,76 +239,9 @@ fn command_serial_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// 【钉住当前缺陷 —— R06-del-resolve 合入后请删除本测试并解除下一个测试的 ignore】
-///
-/// 单侧 DELETE 冲突（side='cloud'/null 独此一行）在生产 resolve 命令上：
-/// - keep_local / keep_cloud 都在读取阶段失败（`找不到该冲突的 local side 数据`）；
-/// - 冲突行保持未解决 → 冲突面板 / 徽章永久占位；
-/// - 本地行不受影响（失败发生在任何写入之前）。
-#[test]
-fn r06_pin_resolve_command_rejects_one_sided_delete_conflict() {
-    let _serial = command_serial_lock();
-    let conn = open_active_vfs_db();
-    let record_id = "r06-pin-rec";
-    let expected_ids = seed_one_sided_delete_conflict(&conn, record_id, 101);
-    drop(conn);
-
-    let app = build_headless_app();
-    let handle = app.handle().clone();
-
-    for resolution in ["keep_local", "keep_cloud"] {
-        let error = tauri::async_runtime::block_on(data_governance_resolve_record_conflict(
-            handle.clone(),
-            "vfs".to_string(),
-            "items".to_string(),
-            record_id.to_string(),
-            resolution.to_string(),
-            None,
-            expected_ids.clone(),
-        ))
-        .expect_err(
-            "当前生产实现要求双侧快照，单侧 DELETE 冲突的 resolve 应失败。\
-             若本断言开始报错（即 resolve 成功了），说明 R06-del-resolve 已落地：\
-             请删除本钉住测试，并解除 r06_one_sided_delete_conflict_should_be_resolvable \
-             的 #[ignore]",
-        );
-        assert!(
-            error.contains("local side"),
-            "{resolution}: 失败原因应是缺 local 侧快照（双侧硬性要求），实际: {error}"
-        );
-    }
-
-    // 徽章永久占位：冲突面板列表仍包含该组，且底层行仍未解决
-    let listed = tauri::async_runtime::block_on(data_governance_list_record_conflicts(
-        handle.clone(),
-        None,
-        None,
-    ))
-    .expect("列出冲突不应失败");
-    assert!(
-        listed
-            .iter()
-            .any(|row| row.database_name == "vfs" && row.record_id == record_id),
-        "resolve 失败后该冲突组仍应占据冲突面板（这正是 R06 要消除的永久徽章）"
-    );
-
-    let conn = open_active_vfs_db();
-    assert_eq!(
-        unresolved_conflict_rows(&conn, record_id).len(),
-        1,
-        "冲突行应保持未解决状态"
-    );
-    assert_eq!(
-        record_content(&conn, record_id).as_deref(),
-        Some("kept-local"),
-        "失败发生在写入之前，本地行必须完好"
-    );
-}
-
-/// 【期望行为 —— 等 R06-del-resolve】单侧 DELETE 冲突应可被解决：
+/// 【R06-del-resolve 修复后的行为】单侧 DELETE 冲突可被解决：
 /// keep_local 后冲突行标记 resolved、本地行保留、徽章释放。
 #[test]
-#[ignore = "等 R06-del-resolve：resolve 命令硬性要求 local+cloud 双侧快照，而 LWW 门败方 DELETE 只写单侧（cloud/null），该类冲突当前不可解决（徽章永久占位）。修复合入后启用本测试，并删除上面的 r06_pin_resolve_command_rejects_one_sided_delete_conflict"]
 fn r06_one_sided_delete_conflict_should_be_resolvable() {
     let _serial = command_serial_lock();
     let conn = open_active_vfs_db();
