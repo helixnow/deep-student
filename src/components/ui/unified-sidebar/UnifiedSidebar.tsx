@@ -396,13 +396,13 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
               <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
             </DsButton>
           )}
 
           {showCreate && (
-            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={cn(styles.button.padding, '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11')} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
               <Plus className={styles.button.iconSize} weight="regular" />
             </DsButton>
           )}
@@ -503,7 +503,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
+          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline [@media(pointer:coarse)]:min-h-11', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
           </DsButton>
         )}
