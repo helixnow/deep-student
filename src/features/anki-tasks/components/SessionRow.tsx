@@ -259,7 +259,7 @@ export const SessionRow: React.FC<{
     >
       {/* ---- 主行 ---- */}
       <div
-        className={`wb-at-row-main${isSmallScreen ? ' min-h-[44px]' : ''}`}
+        className={`wb-at-row-main [@media(pointer:coarse)]:min-h-[44px]${isSmallScreen ? ' min-h-[44px]' : ''}`}
         onClick={onToggle}
       >
         {/* 展开箭头 */}
