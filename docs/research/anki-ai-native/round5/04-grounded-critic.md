@@ -36,7 +36,8 @@ run_critic_pass(db, llm, task, &refs, &cfg)          [anki_critic]
   │  build_critic_prompt：0 对 → 规则 rubric（行为与接通前逐字节一致）
   │                       ≥1 对 → 同源金标对照模式（含独立预算截断）
   ▼
-keep|revise|flag 裁决 → 白名单校验 → plan_updates → update_anki_card_rows
+keep|revise|flag 裁决 → 白名单校验 → plan_updates
+  → update_anki_card_if_version_for_library（送审快照 updated_at CAS）
 ```
 
 ### 同源的含义
@@ -109,6 +110,7 @@ critic 就以同类标准评审新生成的卡。
 | --- | --- |
 | 模型伪造 card_id | 裁决 id 必须命中送审白名单（`allowed_ids`），白名单外一律拒绝并计数（`rejected_unknown_ids`）；`revised` 载荷中的 id/task_id 被解析层忽略 |
 | 模型失败 / 超时 / 非法 JSON | `plan_from_model_output` 降级：全部卡片视同 keep、零写入、`degraded` 标记；`run_critic_pass` 永不向上抛错 |
+| 模型调用期间用户编辑同一卡片 | 写回使用送审快照的 `updated_at` 做 CAS；版本冲突直接跳过并计入 `persist_failures`，绝不以 critic 的旧快照覆盖用户新内容 |
 | 金标收集失败（DB 错误等） | `collect_gold_references` 返回空列表 → 规则 rubric，收集层绝不拖垮制卡收尾 |
 | revise 空载荷 | 解析层降级为 flag，绝不用空内容覆盖卡片 |
 | 修订轮 | 硬钳位 1 轮不变 |

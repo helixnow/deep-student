@@ -15,8 +15,9 @@
 //!
 //! - `keep`：不动；
 //! - `revise`：用模型给出的 `revised` 字段重写卡片，走既有
-//!   `Database::update_anki_card_rows` 持久化（id/task_id 永不变更），
-//!   并写入 `_qa_flags` 审计条目 `llm_critic_revised`；
+//!   `Database::update_anki_card_if_version_for_library` CAS 持久化
+//!   （id/task_id 永不变更；送审后用户有编辑则拒绝覆盖），并写入
+//!   `_qa_flags` 审计条目 `llm_critic_revised`；
 //! - `flag`：仅在 `extra_fields["_qa_flags"]` 追加 `llm_critic` 条目留痕，
 //!   卡片内容不动（与 `anki_qa_lint` 的 Flag 语义一致，绝不丢卡）。
 //!
@@ -44,7 +45,7 @@
 //!   agents/card-qa.md 维度）。收集失败退化为空列表，绝不拖垮制卡收尾。
 
 use crate::anki_qa_lint::{self, LintIssue, LintSeverity};
-use crate::database::Database;
+use crate::database::{AnkiLibraryCardVersionUpdate, AnkiLibraryScope, Database};
 use crate::llm_manager::LLMManager;
 use crate::models::{AnkiCard, DocumentTask};
 use serde::{Deserialize, Serialize};
@@ -865,15 +866,25 @@ pub async fn run_critic_pass(
     summary.rejected_unknown_ids = rejected_unknown_ids;
     summary.degraded = degraded;
 
-    // 持久化：走既有 update_anki_card_rows（WHERE id 命中 + 任务未删除双保险）
+    // 持久化：模型调用最长可达 180 秒，送审后用户可能已经编辑同一卡片。
+    // 必须用送审快照的 updated_at 做 CAS，绝不能用无版本 UPDATE 覆盖用户新内容。
+    // library CAS 还会递增 local_version，保证 critic 改动进入同步链路。
     for card in &plan.updates {
-        match db.update_anki_card_rows(card) {
-            Ok(1) => {}
-            Ok(rows) => {
+        match db.update_anki_card_if_version_for_library(
+            AnkiLibraryScope::agent(),
+            card,
+            &card.updated_at,
+        ) {
+            Ok(AnkiLibraryCardVersionUpdate::Updated(_)) => {}
+            Ok(AnkiLibraryCardVersionUpdate::Conflict(current)) => {
                 warn!(
-                    "[ANKI_CRITIC] 卡片 {} 更新命中 {} 行（预期 1），跳过",
-                    card.id, rows
+                    "[ANKI_CRITIC] 卡片 {} 在送审后已被修改（当前版本 {}），跳过以避免覆盖用户编辑",
+                    card.id, current.library_card.card.updated_at
                 );
+                summary.persist_failures += 1;
+            }
+            Ok(AnkiLibraryCardVersionUpdate::NotFound) => {
+                warn!("[ANKI_CRITIC] 卡片 {} 在写回前已不存在，跳过", card.id);
                 summary.persist_failures += 1;
             }
             Err(e) => {
