@@ -72,22 +72,53 @@ fn copy_temp_zip_to_virtual_uri(
     Ok(())
 }
 
-/// 解析 ZIP 导出/导入所用的备份密码。
+/// 开关打开却读不到已存密码时的拒绝文案。
+///
+/// 导出路径必须 fail-closed：宁可拒绝，也不能默默打成便携包再冒充全保真。
+pub const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED: &str =
+    "已开启云端端到端加密，但安全存储里没有可用的备份密码。已拒绝继续，以免把无法整槽恢复的便携归档当成加密全保真。请重新配置云端加密密码后再试。";
+
+/// 解析 ZIP 导出所用的备份密码。
 ///
 /// 优先级：调用方显式传入的非空密码 >（开关打开时）安全存储里的已存密码。
-/// 空串视为未配置，不发明密码；未配置则返回 `None`，保持便携 ZIP / 无密码导入。
+/// 空串视为未配置，不发明密码。开关打开却没有可用密码时返回错误，禁止默默导出便携包。
+/// 未请求 stored 时返回 `Ok(None)`，保持便携 ZIP。
 pub fn resolve_zip_encryption_password(
     explicit_password: Option<String>,
     use_stored_cloud_encryption_password: Option<bool>,
     stored_password: Option<String>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     if let Some(password) = explicit_password.filter(|password| !password.trim().is_empty()) {
-        return Some(password);
+        return Ok(Some(password));
     }
     if use_stored_cloud_encryption_password.unwrap_or(false) {
-        return stored_password.filter(|password| !password.trim().is_empty());
+        return match stored_password.filter(|password| !password.trim().is_empty()) {
+            Some(password) => Ok(Some(password)),
+            None => Err(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED.to_string()),
+        };
     }
-    None
+    Ok(None)
+}
+
+/// 解析 ZIP 导入所用的备份密码。
+///
+/// 只有外层 ZIP 带 `portable_secrets.dsbk` 时才套用已存云端密码。
+/// 便携包忽略 stored，避免「无需提供备份密码」把旧云端包挡在门外；
+/// 调用方显式输入的密码仍原样返回，交给解封层按既有契约拒绝。
+pub fn resolve_import_zip_password(
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+    stored_password: Option<String>,
+    zip_has_sealed_secrets: bool,
+) -> Result<Option<String>, String> {
+    if !zip_has_sealed_secrets {
+        return Ok(explicit_password.filter(|password| !password.trim().is_empty()));
+    }
+    resolve_zip_encryption_password(
+        explicit_password,
+        use_stored_cloud_encryption_password,
+        stored_password,
+    )
 }
 
 /// 从安全存储读取已存云端 E2EE 密码。空串 / 读取失败视为未配置。
@@ -103,7 +134,7 @@ fn resolve_zip_encryption_password_from_store(
     app: &tauri::AppHandle,
     explicit_password: Option<String>,
     use_stored_cloud_encryption_password: Option<bool>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let needs_stored = use_stored_cloud_encryption_password.unwrap_or(false)
         && explicit_password
             .as_deref()
@@ -118,6 +149,22 @@ fn resolve_zip_encryption_password_from_store(
         explicit_password,
         use_stored_cloud_encryption_password,
         stored_password,
+    )
+}
+
+fn resolve_import_zip_password_from_store(
+    app: &tauri::AppHandle,
+    explicit_password: Option<String>,
+    use_stored_cloud_encryption_password: Option<bool>,
+    zip_has_sealed_secrets: bool,
+) -> Result<Option<String>, String> {
+    if !zip_has_sealed_secrets {
+        return Ok(explicit_password.filter(|password| !password.trim().is_empty()));
+    }
+    resolve_zip_encryption_password_from_store(
+        app,
+        explicit_password,
+        use_stored_cloud_encryption_password,
     )
 }
 
@@ -575,8 +622,8 @@ async fn execute_backup_and_export_zip_with_progress(
 /// - `include_checksums`: 是否包含校验和文件（可选，默认 true）
 /// - `encryption_password`: 可选备份密码。非空时导出加密全保真 ZIP
 /// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
-///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持便携 ZIP。
-///   密码不写入日志 / Debug / job params。
+///   读取已存云端 E2EE 密码。显式非空密码优先；开关打开却读不到密码时拒绝导出，
+///   禁止默默打成便携包。密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID 的响应
@@ -618,6 +665,13 @@ pub async fn data_governance_export_zip(
         }
         None => (None, None),
     };
+
+    // 开关打开却读不到已存密码时立刻拒绝，避免排队一个注定写出便携包的任务。
+    resolve_zip_encryption_password_from_store(
+        &app,
+        encryption_password.clone(),
+        use_stored_cloud_encryption_password,
+    )?;
 
     info!(
         "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}, use_stored_cloud_encryption_password={}",
@@ -707,11 +761,17 @@ async fn execute_zip_export_with_progress(
     use zip::CompressionMethod;
     use zip::ZipWriter;
 
-    let encryption_password = resolve_zip_encryption_password_from_store(
+    let encryption_password = match resolve_zip_encryption_password_from_store(
         &app,
         encryption_password,
         use_stored_cloud_encryption_password,
-    );
+    ) {
+        Ok(password) => password,
+        Err(error) => {
+            job_ctx.fail(error);
+            return;
+        }
+    };
 
     let start = Instant::now();
 
@@ -1617,8 +1677,8 @@ pub struct ZipExportResultResponse {
 /// - `backup_id`: 解压后的备份 ID（可选，默认从文件名生成）
 /// - `password`: 可选备份密码。非空时解封加密全保真 ZIP
 /// - `use_stored_cloud_encryption_password`: 未显式传密码时，是否从安全存储
-///   读取已存云端 E2EE 密码。显式非空密码优先；未配置则保持无密码导入。
-///   密码不写入日志 / Debug / job params。
+///   读取已存云端 E2EE 密码。只对带 `portable_secrets.dsbk` 的密封 ZIP 生效；
+///   便携包忽略 stored。密码不写入日志 / Debug / job params。
 ///
 /// ## 返回
 /// - `BackupJobStartResponse`: 包含任务 ID
@@ -1754,14 +1814,30 @@ async fn execute_zip_import_with_progress(
     password: Option<String>,
     use_stored_cloud_encryption_password: Option<bool>,
 ) {
-    use super::backup::zip_export::{import_backup_from_zip_with_progress, ZipImportPhase};
+    use super::backup::zip_export::{
+        import_backup_from_zip_with_progress, zip_contains_encrypted_secrets, ZipImportPhase,
+    };
     use std::time::Instant;
 
-    let password = resolve_zip_encryption_password_from_store(
+    let zip_has_sealed_secrets = match zip_contains_encrypted_secrets(&zip_file_path) {
+        Ok(value) => value,
+        Err(error) => {
+            job_ctx.fail(format!("无法读取 ZIP 文件: {}", error));
+            return;
+        }
+    };
+    let password = match resolve_import_zip_password_from_store(
         &app,
         password,
         use_stored_cloud_encryption_password,
-    );
+        zip_has_sealed_secrets,
+    ) {
+        Ok(password) => password,
+        Err(error) => {
+            job_ctx.fail(error);
+            return;
+        }
+    };
 
     let start = Instant::now();
 
@@ -2280,28 +2356,42 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
 
 #[cfg(test)]
 mod resolve_zip_encryption_password_tests {
-    use super::resolve_zip_encryption_password;
+    use super::{
+        resolve_import_zip_password, resolve_zip_encryption_password,
+        STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED,
+    };
+
+    #[test]
+    fn flag_without_stored_password_is_fail_closed() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(true), None).unwrap_err(),
+            STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some(String::new()), Some(true), Some(String::new()))
+                .unwrap_err(),
+            STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
+        );
+        assert_eq!(
+            resolve_zip_encryption_password(Some("   ".into()), Some(true), Some(" \t".into()))
+                .unwrap_err(),
+            STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
+        );
+    }
 
     #[test]
     fn unconfigured_stays_portable() {
         assert_eq!(
-            resolve_zip_encryption_password(None, Some(true), None),
+            resolve_zip_encryption_password(None, None, Some("stored-passphrase".into())).unwrap(),
             None
         );
         assert_eq!(
-            resolve_zip_encryption_password(Some(String::new()), Some(true), Some(String::new())),
+            resolve_zip_encryption_password(None, Some(false), Some("stored-passphrase".into()))
+                .unwrap(),
             None
         );
         assert_eq!(
-            resolve_zip_encryption_password(Some("   ".into()), Some(true), Some(" \t".into())),
-            None
-        );
-        assert_eq!(
-            resolve_zip_encryption_password(None, None, Some("stored-passphrase".into())),
-            None
-        );
-        assert_eq!(
-            resolve_zip_encryption_password(None, Some(false), Some("stored-passphrase".into())),
+            resolve_zip_encryption_password(None, None, None).unwrap(),
             None
         );
     }
@@ -2309,7 +2399,8 @@ mod resolve_zip_encryption_password_tests {
     #[test]
     fn stored_password_used_when_flag_on() {
         assert_eq!(
-            resolve_zip_encryption_password(None, Some(true), Some("stored-passphrase".into())),
+            resolve_zip_encryption_password(None, Some(true), Some("stored-passphrase".into()))
+                .unwrap(),
             Some("stored-passphrase".into())
         );
     }
@@ -2321,7 +2412,8 @@ mod resolve_zip_encryption_password_tests {
                 Some("explicit-passphrase".into()),
                 Some(true),
                 Some("stored-passphrase".into())
-            ),
+            )
+            .unwrap(),
             Some("explicit-passphrase".into())
         );
     }
@@ -2333,8 +2425,59 @@ mod resolve_zip_encryption_password_tests {
                 Some("   ".into()),
                 Some(true),
                 Some("stored-passphrase".into())
-            ),
+            )
+            .unwrap(),
             Some("stored-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn portable_import_ignores_stored_password() {
+        assert_eq!(
+            resolve_import_zip_password(
+                None,
+                Some(true),
+                Some("stored-passphrase".into()),
+                false
+            )
+            .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn portable_import_keeps_explicit_password_for_existing_reject() {
+        assert_eq!(
+            resolve_import_zip_password(
+                Some("user-typed".into()),
+                Some(true),
+                Some("stored-passphrase".into()),
+                false
+            )
+            .unwrap(),
+            Some("user-typed".into())
+        );
+    }
+
+    #[test]
+    fn sealed_import_uses_stored_password() {
+        assert_eq!(
+            resolve_import_zip_password(
+                None,
+                Some(true),
+                Some("stored-passphrase".into()),
+                true
+            )
+            .unwrap(),
+            Some("stored-passphrase".into())
+        );
+    }
+
+    #[test]
+    fn sealed_import_without_stored_is_fail_closed() {
+        assert_eq!(
+            resolve_import_zip_password(None, Some(true), None, true).unwrap_err(),
+            STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
         );
     }
 }

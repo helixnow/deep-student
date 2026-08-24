@@ -1507,6 +1507,19 @@ fn unseal_encrypted_secrets(
     }
 }
 
+/// 外层 ZIP 是否携带密封载荷 `portable_secrets.dsbk`。
+///
+/// 只看条目名，不解密、不解压。导入路径用它决定要不要套用已存云端密码：
+/// 便携包没有该条目，套用已存密码会被解封层拒绝。
+pub fn zip_contains_encrypted_secrets(zip_path: &Path) -> Result<bool, ZipExportError> {
+    let file = File::open(zip_path)?;
+    let archive = zip::ZipArchive::new(file)?;
+    let contains_sealed_secrets = archive
+        .file_names()
+        .any(|name| name == ENCRYPTED_SECRETS_ENTRY);
+    Ok(contains_sealed_secrets)
+}
+
 /// [R09-restore-ops][P3] 加密全保真 ZIP 的备份密码预检：在解压任何条目之前
 /// 尽早失败。
 ///
@@ -2620,5 +2633,24 @@ mod tests {
         assert!(file_count > 0);
         let manifest = BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();
         manifest.validate_for_slot_restore().unwrap();
+    }
+
+    #[test]
+    fn zip_contains_encrypted_secrets_distinguishes_portable_and_sealed() {
+        let backup_dir = create_test_backup_dir();
+        let portable = TempDir::new().unwrap();
+        let portable_zip = portable.path().join("portable.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(portable_zip.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(!zip_contains_encrypted_secrets(&portable_zip).unwrap());
+
+        let (_zip_guard, sealed_zip) = export_encrypted_test_zip(backup_dir.path());
+        assert!(zip_contains_encrypted_secrets(&sealed_zip).unwrap());
     }
 }

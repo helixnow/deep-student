@@ -30,10 +30,14 @@ use std::path::{Path, PathBuf};
 
 use deep_student_lib::data_governance::backup::{
     export_backup_to_zip,
-    zip_export::{import_backup_from_zip, import_backup_from_zip_with_password},
+    zip_export::{
+        import_backup_from_zip, import_backup_from_zip_with_password, zip_contains_encrypted_secrets,
+    },
     BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
-use deep_student_lib::data_governance::commands_zip::resolve_zip_encryption_password;
+use deep_student_lib::data_governance::commands_zip::{
+    resolve_import_zip_password, resolve_zip_encryption_password,
+};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -599,15 +603,21 @@ fn zip_contains_sealed_secrets(zip_path: &Path) -> bool {
     })
 }
 
-/// stored-password 解析接到现有 ZIP 导出模式：未配置→便携；开关+stored→加密全保真；显式覆盖 stored。
+/// stored-password 解析接到现有 ZIP 导出模式：未请求 stored→便携；开关无密码→拒绝；开关+stored→加密全保真；显式覆盖 stored。
 #[test]
 fn stored_password_resolution_selects_portable_or_encrypted_export() {
     let (_source_guard, backup_dir, manifest) = create_full_backup();
     let backup_subdir = backup_dir.join(&manifest.backup_id);
     let export_root = TempDir::new().expect("export root");
 
-    let portable_password = resolve_zip_encryption_password(None, Some(true), None);
-    assert_eq!(portable_password, None, "未配置不得发明密码");
+    assert!(
+        resolve_zip_encryption_password(None, Some(true), None).is_err(),
+        "开关打开但无密码必须 fail-closed，不得默默便携"
+    );
+
+    let portable_password =
+        resolve_zip_encryption_password(None, Some(false), None).expect("未请求 stored 应保持便携");
+    assert_eq!(portable_password, None, "未请求 stored 不得发明密码");
     let portable_zip = export_root.path().join("resolved-portable.zip");
     export_backup_to_zip(
         &backup_subdir,
@@ -617,14 +627,33 @@ fn stored_password_resolution_selects_portable_or_encrypted_export() {
             ..Default::default()
         },
     )
-    .expect("未配置应走便携导出");
+    .expect("未请求 stored 应走便携导出");
     assert!(
         !zip_contains_sealed_secrets(&portable_zip),
-        "未配置不得写出 portable_secrets.dsbk"
+        "未请求 stored 不得写出 portable_secrets.dsbk"
+    );
+    assert!(
+        !zip_contains_encrypted_secrets(&portable_zip).expect("peek portable zip"),
+        "便携 ZIP peek 必须为 false"
+    );
+    assert_eq!(
+        resolve_import_zip_password(
+            None,
+            Some(true),
+            Some(ENCRYPTION_PASSWORD.to_string()),
+            zip_contains_encrypted_secrets(&portable_zip).expect("peek portable zip")
+        )
+        .expect("便携导入应忽略 stored"),
+        None,
+        "便携云端包不得套用已存密码"
     );
 
-    let stored_password =
-        resolve_zip_encryption_password(None, Some(true), Some(ENCRYPTION_PASSWORD.to_string()));
+    let stored_password = resolve_zip_encryption_password(
+        None,
+        Some(true),
+        Some(ENCRYPTION_PASSWORD.to_string()),
+    )
+    .expect("stored 应解析成功");
     assert_eq!(stored_password.as_deref(), Some(ENCRYPTION_PASSWORD));
     let stored_zip = export_root.path().join("resolved-stored.zip");
     export_backup_to_zip(
@@ -641,12 +670,29 @@ fn stored_password_resolution_selects_portable_or_encrypted_export() {
         "stored 密码导出必须包含 portable_secrets.dsbk"
     );
 
+    assert!(
+        zip_contains_encrypted_secrets(&stored_zip).expect("peek stored zip"),
+        "加密全保真 ZIP peek 必须为 true"
+    );
+    assert_eq!(
+        resolve_import_zip_password(
+            None,
+            Some(true),
+            Some(ENCRYPTION_PASSWORD.to_string()),
+            zip_contains_encrypted_secrets(&stored_zip).expect("peek stored zip")
+        )
+        .expect("密封导入应使用 stored")
+        .as_deref(),
+        Some(ENCRYPTION_PASSWORD)
+    );
+
     const OVERRIDE_PASSWORD: &str = "explicit-override-pass";
     let explicit_password = resolve_zip_encryption_password(
         Some(OVERRIDE_PASSWORD.to_string()),
         Some(true),
         Some(ENCRYPTION_PASSWORD.to_string()),
-    );
+    )
+    .expect("显式密码应覆盖 stored");
     assert_eq!(explicit_password.as_deref(), Some(OVERRIDE_PASSWORD));
     let explicit_zip = export_root.path().join("resolved-explicit.zip");
     export_backup_to_zip(
