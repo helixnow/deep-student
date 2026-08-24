@@ -1,6 +1,7 @@
 /**
- * 单块槽位：grid span + 错误边界 + data-block-type。
+ * 单块槽位：grid span + 错误边界 + data-block-type / data-generative-block。
  * React.memo 只比较 type / props / span（及决定 span class 的 layoutMode）。
+ * `data-generative-block="<type>"` 是 18 种块的稳定选择器（未知/校验失败块同样挂上）。
  */
 import React from 'react';
 import { layoutSpanClassName } from '../schema';
@@ -52,7 +53,12 @@ function GenerativeBlockSlotInner({
 }: GenerativeBlockSlotProps) {
   const spanClass = layoutSpanClassName(layoutMode, span);
   return (
-    <div className={spanClass} data-layout-span={span} data-block-type={type}>
+    <div
+      className={spanClass}
+      data-layout-span={span}
+      data-block-type={type}
+      data-generative-block={type}
+    >
       <GenerativeUIErrorBoundary resetKey={type}>{children}</GenerativeUIErrorBoundary>
     </div>
   );
