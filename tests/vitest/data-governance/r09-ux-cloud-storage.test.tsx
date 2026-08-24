@@ -167,7 +167,49 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
 
   it('拒绝保存短于 8 字符的云端 E2EE 密码，避免徽章冒充已配置', () => {
     expect(componentSource).toContain('cloudStorage:encryption.tooShort');
-    expect(componentSource).toContain('[...explicitEncryptionPassword].length < 8');
+    expect(componentSource).toContain('isExplicitCloudEncryptionPasswordTooShort');
+    expect(componentSource).toContain('CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS');
+
+    const saveStart = componentSource.indexOf('const doSaveConfig = useCallback');
+    const saveEnd = componentSource.indexOf('const saveConfig = useCallback', saveStart);
+    const saveBlock = componentSource.slice(saveStart, saveEnd);
+    expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      saveBlock.indexOf('await cloudApi.saveCredentials'),
+    );
+
+    const testStart = componentSource.indexOf('const doTestConnection = useCallback');
+    const testEnd = componentSource.indexOf('const handleConfirmInsecureFtpSave = useCallback', testStart);
+    const testBlock = componentSource.slice(testStart, testEnd);
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      testBlock.indexOf('setTesting(true)'),
+    );
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      testBlock.indexOf('await cloudApi.saveCredentials'),
+    );
+
+    const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
+    const uploadEnd = componentSource.indexOf('const openRestoreConfirm = useCallback', uploadStart);
+    const uploadBlock = componentSource.slice(uploadStart, uploadEnd);
+    expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      uploadBlock.indexOf('setUploading(true)'),
+    );
+
+    const restoreStart = componentSource.indexOf('const performRestore = useCallback');
+    const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
+    const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
+    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      restoreBlock.indexOf('setDownloading(true)'),
+    );
+
+    expect(componentSource).toContain('云端端到端加密密码至少需要');
+    expect(componentSource).toContain('备份密码至少需要');
+    expect(componentSource).toContain("packageZipFailed', { error: localizeCloudError(e) }");
+    expect(componentSource).toContain("importZipFailed', { error: localizeCloudError(e) }");
+
     expect(zhLocale.encryption.tooShort).toContain('至少需要');
     expect(zhLocale.encryption.tooShort).toContain('不会保存');
     expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);

@@ -34,6 +34,14 @@ import {
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+/** 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS` / ZIP `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。 */
+const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
+
+function isExplicitCloudEncryptionPasswordTooShort(password: string): boolean {
+  const trimmed = password.trim();
+  return trimmed.length > 0 && [...trimmed].length < CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS;
+}
+
 // ==================== [R11-check] 云端仓库巡检（只读） ====================
 
 /** 巡检问题类别（与后端 `cloud_storage::repo_check::RepoCheckProblemKind` 对齐） */
@@ -182,6 +190,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       if (e2eeKind) {
         return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
       }
+      // 安全存储 / ZIP 解析拒绝短密码：中文诊断原文，映射为同一条 i18n。
+      if (/云端端到端加密密码至少需要|备份密码至少需要/.test(raw)) {
+        return t('cloudStorage:encryption.tooShort', {
+          min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+        });
+      }
       const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
       if (platformErrorKey) return t(platformErrorKey);
       return raw;
@@ -327,7 +341,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }
       } catch (e: unknown) {
         console.error('Failed to resolve backend cloud storage config:', e);
-        const secureMessage = markSecureStoreIssue(e, 'write');
+        const secureMessage = markSecureStoreIssue(e, 'read');
         showGlobalNotification(
           'error',
           secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
@@ -407,9 +421,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行保存逻辑
   const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
-    const explicitEncryptionPassword = encryptionPassword.trim();
-    if (explicitEncryptionPassword && [...explicitEncryptionPassword].length < 8) {
-      showGlobalNotification('error', t('cloudStorage:encryption.tooShort', { min: 8 }));
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
       return;
     }
 
@@ -512,6 +528,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行测试连接逻辑
   const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+
     setTesting(true);
     setConnectionStatus('unknown');
     try {
@@ -887,6 +911,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
     setUploading(true);
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
     try {
@@ -924,7 +955,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 3/4：上传至云端（字节进度由 Tauri 事件驱动）
@@ -956,6 +987,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     connectionStatus,
+    encryptionPassword,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -981,6 +1013,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
   const performRestore = useCallback(async (versionId: string) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
     lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
     setRestoreVersionId(versionId);
@@ -1012,7 +1051,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.importZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.importZipFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 3/3：恢复数据库
@@ -1021,7 +1060,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
         await waitForGovernanceJob(restoreJob.job_id, 'import');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }));
       }
 
       setOpProgress(null);
@@ -1044,6 +1083,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
+    encryptionPassword,
     localizeCloudError,
     resolveBackupId,
     resolveCloudZipEncryptionArgs,

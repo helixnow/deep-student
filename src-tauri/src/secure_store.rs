@@ -1906,11 +1906,18 @@ pub struct CloudStorageCredentials {
 /// 短于此长度的密码不能导出加密全保真包，禁止写入安全存储冒充「已配置」。
 pub const MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS: usize = 8;
 
-fn cloud_encryption_password_too_short(password: Option<&str>) -> bool {
+pub(crate) fn cloud_encryption_password_too_short(password: Option<&str>) -> bool {
     password
         .map(str::trim)
         .filter(|password| !password.is_empty())
         .is_some_and(|password| password.chars().count() < MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS)
+}
+
+pub fn cloud_encryption_password_too_short_message() -> String {
+    format!(
+        "云端端到端加密密码至少需要 {} 个字符（不能为空白）",
+        MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
+    )
 }
 
 /// 手写 Debug：secret 字段一律脱敏为 `[REDACTED]`，仅保留 Some/None 的存在性
@@ -2049,10 +2056,9 @@ impl SecureStore {
         update: &CloudStorageCredentials,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
         if cloud_encryption_password_too_short(update.encryption_password.as_deref()) {
-            return Err(SecureStoreError::Other(format!(
-                "云端端到端加密密码至少需要 {} 个字符（不能为空白）",
-                MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
-            )));
+            return Err(SecureStoreError::Other(
+                cloud_encryption_password_too_short_message(),
+            ));
         }
         let mut credentials = self.get_cloud_credentials()?.unwrap_or_default();
         credentials.apply_nonempty_update(update);
