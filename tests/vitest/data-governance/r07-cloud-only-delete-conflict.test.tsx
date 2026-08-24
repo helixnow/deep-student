@@ -1,18 +1,20 @@
 /**
- * [R07-tests] 单侧 cloud-only DELETE 冲突在冲突面板中的可解决性锁定测试
+ * [R07-tests → R10-conflict-ui] 单侧 cloud-only DELETE 冲突在冲突面板中的可解决性锁定测试
  *
  * 背景：LWW 门败方 DELETE 只写一行 side='cloud' / data_json='null' 的冲突
- * （无 local 侧快照）。R06-del-resolve 让后端 resolve 命令可以消费这种形状；
- * 本文件锁定前端 RecordConflictsPanel 对该形状的当前行为：
+ * （无 local 侧快照）。R06-del-resolve 让后端 resolve 命令可以消费这种形状
+ * （缺 local 侧回退当前业务表行）；R10-conflict-ui 关闭 FINDINGS-R07 P1-1，
+ * 前端「保留本地」对 cloud-only 组放开。本文件锁定新行为：
  *
- * 1. cloud-only 组必须正常渲染（local 侧显示"无"，cloud 侧显示 null payload），
- *    不得因缺失 local 快照而崩溃或整组消失；
+ * 1. cloud-only 组必须正常渲染（local 侧显示"无"+ 人话说明这是云端单侧冲突，
+ *    cloud 侧显示 null payload），不得因缺失 local 快照而崩溃或整组消失；
  * 2. 「采用云端」按钮可用，点击后以正确的 expectedConflictIds（仅 cloud 行 id）
- *    调用 resolve API —— 这是 UI 侧解决单侧 DELETE 冲突的主路径；
- * 3. 「保留本地」按钮当前因无 local 快照被禁用（锁定现状：后端已支持
- *    keep_local 回退到业务表行，但 UI 尚未放开；若未来放开该按钮，
- *    请同步更新本测试）；
- * 4. 批量「保留本地」跳过 cloud-only 组、批量「采用云端」包含它。
+ *    调用 resolve API；
+ * 3. 「保留本地」按钮对 cloud-only 组**可点**（语义 = 驳回云端败方 DELETE/覆盖、
+ *    保留本地胜方），点击先走 unifiedConfirm 两击确认——拒绝时绝不调用 resolve，
+ *    确认后以仅含 cloud 行 id 的 expectedConflictIds 调用 keep_local；
+ * 4. 批量「保留本地」**包含** cloud-only 组（不再按 locals.length 过滤）、
+ *    批量「采用云端」同样包含它。
  *
  * 与 sync_r07_delete_resolve_lock_tests.rs（后端 e2e）互补。
  */
@@ -107,11 +109,11 @@ beforeEach(() => {
 });
 
 // ============================================================================
-// 渲染：cloud-only 组不得崩溃或消失
+// 渲染：cloud-only 组不得崩溃或消失，空状态要说人话
 // ============================================================================
 
 describe('cloud-only DELETE 冲突组渲染', () => {
-  it('渲染冲突组：local 侧显示占位"无"，cloud 侧显示 null payload', async () => {
+  it('渲染冲突组：local 侧显示占位"无"+ 云端单侧冲突说明，cloud 侧显示 null payload', async () => {
     render(<RecordConflictsPanel />);
 
     await waitFor(() => {
@@ -119,6 +121,8 @@ describe('cloud-only DELETE 冲突组渲染', () => {
     });
     // local 侧无快照 → 显示 data:governance.none 占位
     expect(screen.getByText('data:governance.none')).toBeInTheDocument();
+    // 人话空状态：说明这是云端单侧冲突、保留本地 = 驳回云端变更
+    expect(screen.getByText('data:governance.conflict_cloud_only_hint')).toBeInTheDocument();
     // cloud 侧 data_json='null' 原样可见（tryFormatJson('null') === 'null'）
     expect(screen.getByText('null')).toBeInTheDocument();
   });
@@ -136,7 +140,7 @@ describe('cloud-only DELETE 冲突组渲染', () => {
 });
 
 // ============================================================================
-// 单组解决：采用云端可用，保留本地按当前行为禁用
+// 单组解决：采用云端与保留本地都可用（P1-1 关闭）
 // ============================================================================
 
 describe('cloud-only DELETE 冲突组解决', () => {
@@ -165,7 +169,8 @@ describe('cloud-only DELETE 冲突组解决', () => {
     });
   });
 
-  it('「保留本地」因无 local 快照被禁用（锁定现状；后端 R06 已支持回退，UI 放开时更新本测试）', async () => {
+  it('「保留本地」可点击：确认后以仅含 cloud 行 id 的 expectedConflictIds 调用 keep_local（驳回云端败方 DELETE）', async () => {
+    const user = userEvent.setup();
     render(<RecordConflictsPanel />);
     await waitFor(() => {
       expect(screen.getByText('r07-one-sided-del')).toBeInTheDocument();
@@ -174,12 +179,49 @@ describe('cloud-only DELETE 冲突组解决', () => {
     const keepLocalButton = screen.getByRole('button', {
       name: 'data:governance.keep_local',
     });
-    expect(keepLocalButton).toBeDisabled();
+    expect(keepLocalButton).toBeEnabled();
+    await user.click(keepLocalButton);
+
+    // 危险语义必须先确认，不静默执行
+    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    expect(mockTranslate).toHaveBeenCalledWith(
+      'data:governance.conflict_keep_local_cloud_only_confirm',
+      { table: 'items', record: 'r07-one-sided-del' },
+    );
+
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).toHaveBeenCalledWith(
+        'vfs',
+        'items',
+        'r07-one-sided-del',
+        'keep_local',
+        [71],
+        undefined,
+      );
+    });
+  });
+
+  it('「保留本地」确认被拒绝时绝不调用 resolve', async () => {
+    mockUnifiedConfirm.mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<RecordConflictsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('r07-one-sided-del')).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'data:governance.keep_local' }),
+    );
+
+    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+    });
   });
 });
 
 // ============================================================================
-// 批量解决：keep_local 跳过 cloud-only 组，keep_cloud 包含它
+// 批量解决：keep_local 与 keep_cloud 都包含 cloud-only 组
 // ============================================================================
 
 describe('cloud-only DELETE 冲突组的批量解决', () => {
@@ -191,7 +233,7 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
     mockCountRecordConflicts.mockResolvedValue({ total_groups: 2 });
   });
 
-  it('批量「保留本地」只处理有 local 快照的组，跳过 cloud-only 组', async () => {
+  it('批量「保留本地」包含 cloud-only 组（P1-1：驳回云端败方 DELETE 批量可达）', async () => {
     const user = userEvent.setup();
     render(<RecordConflictsPanel />);
     await waitFor(() => {
@@ -204,9 +246,19 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
       }),
     );
 
+    // 批量仍走一次确认对话框
+    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(mockResolveRecordConflict).toHaveBeenCalledTimes(1);
+      expect(mockResolveRecordConflict).toHaveBeenCalledTimes(2);
     });
+    expect(mockResolveRecordConflict).toHaveBeenCalledWith(
+      'vfs',
+      'items',
+      'r07-one-sided-del',
+      'keep_local',
+      [71],
+      undefined,
+    );
     expect(mockResolveRecordConflict).toHaveBeenCalledWith(
       'vfs',
       'notes_meta',
@@ -215,15 +267,26 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
       [81, 82],
       undefined,
     );
-    // cloud-only 组绝不能被批量 keep_local 触碰（它没有可保留的 local 快照）
-    expect(mockResolveRecordConflict).not.toHaveBeenCalledWith(
-      'vfs',
-      'items',
-      'r07-one-sided-del',
-      expect.anything(),
-      expect.anything(),
-      expect.anything(),
+  });
+
+  it('批量「保留本地」确认被拒绝时绝不执行', async () => {
+    mockUnifiedConfirm.mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<RecordConflictsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('r07-one-sided-del')).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'data:governance.conflict_bulk_keep_local',
+      }),
     );
+
+    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+    });
   });
 
   it('批量「采用云端」包含 cloud-only 组（接受删除意图）', async () => {

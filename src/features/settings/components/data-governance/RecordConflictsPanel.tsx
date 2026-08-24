@@ -155,6 +155,19 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const handleResolve = useCallback(
     async (p: ConflictPair, resolution: 'keep_local' | 'keep_cloud' | 'merged', merged?: string) => {
       const key = pairKey(p);
+      // cloud-only 组（无 local 快照，典型为 LWW 门败方 DELETE/覆盖）的「保留本地」
+      // 语义 = 驳回云端败方变更、保留本地当前业务表行（后端缺 local 侧时自动回退）。
+      // 危险语义不静默执行，走两击确认。
+      if (resolution === 'keep_local' && p.locals.length === 0) {
+        const confirmed = unifiedConfirm(
+          t('data:governance.conflict_keep_local_cloud_only_confirm', {
+            table: p.tableName,
+            record: p.recordId,
+          }),
+          { key: `record-conflict-keep-local-cloud-only-${key}` },
+        );
+        if (!confirmed) return;
+      }
       setResolvingKey(key);
       try {
         const expectedConflictIds = [
@@ -195,9 +208,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const handleBulkResolve = useCallback(async (
     resolution: 'keep_local' | 'keep_cloud',
   ) => {
-    const targets = pairs.filter((pair) =>
-      resolution === 'keep_local' ? pair.locals.length > 0 : pair.clouds.length > 0
-    );
+    // keep_local 对 cloud-only 组同样有效：后端缺 local 快照时回退保留当前业务表行，
+    // 语义 = 驳回云端败方 DELETE/覆盖。keep_cloud 仍需有 cloud 候选才有可采用的值。
+    const targets = resolution === 'keep_local'
+      ? pairs
+      : pairs.filter((pair) => pair.clouds.length > 0);
     if (targets.length === 0) return;
     // Tauri WebView（尤其 Android）不保证实现阻塞式 window.confirm（可能直接返回 false
     // 静默失效），统一走两击确认通知。
@@ -379,8 +394,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
-                    disabled={isResolving || isEditing || !latestLocal}
+                    disabled={isResolving || isEditing}
                     className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    title={!latestLocal ? t('data:governance.conflict_cloud_only_hint') : undefined}
                   >
                     {t('data:governance.keep_local')}
                   </DsButton>
@@ -418,6 +434,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       {latestLocal ? tryFormatJson(latestLocal.data_json) : t('data:governance.none')}
                     </pre>
                   </CustomScrollArea>
+                  {!latestLocal && (
+                    <div className="mt-1 text-muted-foreground">
+                      {t('data:governance.conflict_cloud_only_hint')}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   {p.clouds.length === 0 && (

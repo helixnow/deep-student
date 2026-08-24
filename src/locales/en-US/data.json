@@ -1155,6 +1155,8 @@
     "conflict_bulk_confirm": "Apply “{{action}}” to {{count}} loaded conflict groups? This will overwrite data.",
     "conflict_bulk_success": "Resolved {{count}} loaded conflict groups",
     "conflict_bulk_partial": "Resolved {{resolved}} groups; {{failed}} failed. First error: {{error}}",
+    "conflict_cloud_only_hint": "No losing local snapshot: this is a cloud-only conflict (usually a stale delete or overwrite from the cloud). \"Keep Local\" rejects that cloud change and leaves your current local data untouched.",
+    "conflict_keep_local_cloud_only_confirm": "Reject the cloud change and keep local? {{table}}/{{record}} is a cloud-only conflict: your current local data stays unchanged, and the losing cloud record will be marked as resolved.",
     "keep_local": "Keep Local",
     "use_cloud": "Use Cloud",
     "use_cloud_latest": "Use Cloud{{suffix}}",
