@@ -70,5 +70,13 @@
   "virtual_list": {
     "scroll_to_bottom": "Scroll to bottom",
     "new_messages": "New messages"
+  },
+  "vfs_inject": {
+    "resource_not_found": "Resource {{sourceId}} not found",
+    "network_error": "Network error: unable to fetch resource references",
+    "permission_denied": "Insufficient permissions to access this resource",
+    "capacity_exceeded": "Resource limit exceeded: {{count}} selected, maximum {{maxCount}}",
+    "batch_query_failed": "Failed to batch-query resources",
+    "network_retry": "Network error, please retry"
   }
 }
