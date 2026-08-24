@@ -467,6 +467,14 @@ pub struct WorkspaceEntry {
     /// 每个 workspace 的单调修订号；0 表示 legacy 未知。
     #[serde(default)]
     pub revision: u64,
+    /// [R07-file-e2ee] 云端密文对象（DSBK 容器）的哈希。
+    /// `Some` = 对象已端到端加密，下载先按此哈希校验传输，再解密并按
+    /// `sha256` 校验明文；`None` = 加密启用前的明文遗留对象。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 /// VFS blob 云同步清单（内容寻址）
@@ -486,6 +494,12 @@ pub struct BlobEntry {
     pub size: u64,
     #[serde(default)]
     pub updated_at: String,
+    /// [R07-file-e2ee] 云端密文对象哈希；`None` = 明文遗留对象（见 [`WorkspaceEntry::cipher_sha256`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 /// VFS Blob 同步结果，区分完全成功与部分失败
@@ -540,6 +554,12 @@ pub struct AssetFileEntry {
     pub revision: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    /// [R07-file-e2ee] 云端密文对象哈希；`None` = 明文遗留对象（见 [`WorkspaceEntry::cipher_sha256`]）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_sha256: Option<String>,
+    /// [R07-file-e2ee] 密文对象大小（字节）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cipher_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -717,26 +737,35 @@ fn default_min_reader_version() -> u32 {
 pub struct SyncManager {
     /// 本地设备 ID
     device_id: String,
-    /// 可选的端到端加密密码（对文本 payload 生效，批判报告 P0-2 修复）
+    /// 可选的端到端加密密码（批判报告 P0-2 修复；[R07-file-e2ee] 扩展到文件级对象）
     ///
     /// 覆盖范围：
     /// - ✅ 加密：`SyncManifest`、`SyncChangesPayload`、`*Tombstones`、
     ///   各种 metadata manifest（workspaces/blobs/assets）
-    /// - ❌ **不**加密：VFS blob 的 raw bytes、workspace `.db` 文件。
-    ///   原因：blob 走内容寻址（sha256 作 key），加密会破坏去重语义；
-    ///   workspace DB 的完整性校验依赖明文 sha256。这两类的加密需要
-    ///   额外的密文-明文 hash 双校验，作为后续 P1 任务单独处理。
+    /// - ✅ [R07-file-e2ee] 文件级对象：workspace `.db` 快照、VFS blob、资产文件
+    ///   （DSBK v2 分块流式容器）。清单条目新增 `cipher_sha256`/`cipher_size`，
+    ///   下载先按**密文哈希**校验传输完整性，解密后再按**明文哈希**校验内容；
+    ///   对象 key 仍使用明文哈希（保留内容寻址去重；哈希本身只泄露"内容相同"
+    ///   这一事实，不泄露内容）。
     ///
     /// 语义：
     /// - `None` 或空字符串：所有 payload 明文上传（向后兼容旧数据）
-    /// - `Some(pw)` 非空：文本 payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
+    /// - `Some(pw)` 非空：payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
     ///
     /// 解密端探测规则（[R04-sync-e2ee] 防降级）：
     /// - 遇到 `DSBK` 魔数走解密；
     /// - 无 `DSBK` 头的明文仅在本端**未启用**加密时放行；本端已启用加密时
     ///   一律显式报错（不再静默接受明文），避免密文被明文对象静默替换。
+    ///   文件级对象同理：清单条目缺 `cipher_sha256`（旧明文对象）时拒收，
+    ///   并给出可操作的迁移指引。
     #[cfg(feature = "data_governance")]
     encryption_password: Option<String>,
+    /// [R07-file-e2ee] 会话级加密器（懒初始化）：一轮同步只做一次 Argon2 派生，
+    /// 所有清单 payload 与文件级对象共用会话密钥；解密对端对象时按容器头
+    /// salt 缓存派生结果。
+    #[cfg(feature = "data_governance")]
+    file_cipher:
+        std::sync::Mutex<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>>,
 }
 
 impl SyncManager {
@@ -746,6 +775,8 @@ impl SyncManager {
             device_id: crate::cloud_storage::normalize_device_id(&device_id),
             #[cfg(feature = "data_governance")]
             encryption_password: None,
+            #[cfg(feature = "data_governance")]
+            file_cipher: std::sync::Mutex::new(None),
         }
     }
 
@@ -758,6 +789,7 @@ impl SyncManager {
         Self {
             device_id: crate::cloud_storage::normalize_device_id(&device_id),
             encryption_password: password,
+            file_cipher: std::sync::Mutex::new(None),
         }
     }
 
@@ -770,17 +802,44 @@ impl SyncManager {
             .unwrap_or(false)
     }
 
+    /// [R07-file-e2ee] 取得（并懒初始化）会话级加密器。
+    ///
+    /// - 未启用加密 → `Ok(None)`；
+    /// - 已启用 → 首次调用做一次 Argon2 派生并缓存，之后整轮同步复用。
+    #[cfg(feature = "data_governance")]
+    fn file_cipher(
+        &self,
+    ) -> Result<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>, SyncError>
+    {
+        let Some(password) = self.encryption_password.as_deref().filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        let mut guard = self
+            .file_cipher
+            .lock()
+            .map_err(|_| SyncError::Database("同步加密器锁被毒化".to_string()))?;
+        if let Some(cipher) = guard.as_ref() {
+            return Ok(Some(cipher.clone()));
+        }
+        let cipher = std::sync::Arc::new(
+            crate::crypto::backup_crypto::FileCipherSession::new(password)
+                .map_err(|e| SyncError::Database(format!("初始化同步加密会话失败: {}", e)))?,
+        );
+        *guard = Some(cipher.clone());
+        Ok(Some(cipher))
+    }
+
     /// 加密文本 payload 为上传格式（若未启用则原样返回）
     ///
-    /// 输出：`DSBK` 容器（参见 `crypto::backup_crypto::encrypt_backup`）
+    /// 输出：`DSBK` 容器（参见 `crypto::backup_crypto::encrypt_backup`）。
+    /// [R07-file-e2ee] 走会话级密钥复用，避免每个 payload 一次 Argon2。
     #[cfg(feature = "data_governance")]
     fn encode_payload(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
-        match self.encryption_password.as_deref() {
-            Some(pw) if !pw.is_empty() => {
-                crate::crypto::backup_crypto::encrypt_backup(plaintext, pw)
-                    .map_err(|e| SyncError::Database(format!("加密 sync payload 失败: {}", e)))
-            }
-            _ => Ok(plaintext.to_vec()),
+        match self.file_cipher()? {
+            Some(cipher) => cipher
+                .encrypt_bytes(plaintext)
+                .map_err(|e| SyncError::Database(format!("加密 sync payload 失败: {}", e))),
+            None => Ok(plaintext.to_vec()),
         }
     }
 
@@ -798,16 +857,14 @@ impl SyncManager {
     #[cfg(feature = "data_governance")]
     fn decode_payload(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
         if crate::crypto::backup_crypto::is_encrypted_backup(data) {
-            match self.encryption_password.as_deref() {
-                Some(pw) if !pw.is_empty() => {
-                    crate::crypto::backup_crypto::decrypt_backup(data, pw).map_err(|e| {
-                        SyncError::Database(format!(
-                            "解密 sync payload 失败（密码错误或数据损坏）: {}",
-                            e
-                        ))
-                    })
-                }
-                _ => Err(SyncError::Database(
+            match self.file_cipher()? {
+                Some(cipher) => cipher.decrypt_bytes(data).map_err(|e| {
+                    SyncError::Database(format!(
+                        "解密 sync payload 失败（密码错误或数据损坏）: {}",
+                        e
+                    ))
+                }),
+                None => Err(SyncError::Database(
                     "检测到加密的 sync payload 但本端未配置加密密码。\
                      请在云同步设置里填入正确的密码后重试。"
                         .to_string(),
@@ -9201,6 +9258,136 @@ impl SyncManager {
         })
     }
 
+    /// [R07-file-e2ee] 加密开启时把 `path` 加密到临时文件，返回
+    /// `(临时密文文件, cipher_sha256, cipher_size)`；未启用加密返回 `None`。
+    ///
+    /// 临时文件放系统临时目录（drop 自动清理），避免污染被扫描的数据目录。
+    #[cfg(feature = "data_governance")]
+    fn encrypt_upload_object(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Option<(tempfile::TempPath, String, u64)>, SyncError> {
+        let Some(cipher) = self.file_cipher()? else {
+            return Ok(None);
+        };
+        let tmp = tempfile::Builder::new()
+            .prefix("dsbk-up-")
+            .suffix(".tmp")
+            .tempfile()
+            .map_err(|e| SyncError::Database(format!("创建加密临时文件失败: {}", e)))?
+            .into_temp_path();
+        cipher
+            .encrypt_file(path, &tmp)
+            .map_err(|e| SyncError::Database(format!("加密上传对象失败 {:?}: {}", path, e)))?;
+        let cipher_sha256 = crate::backup_common::calculate_file_hash(&tmp)
+            .map_err(|e| SyncError::Database(format!("计算密文哈希失败: {}", e)))?;
+        let cipher_size = std::fs::metadata(&tmp)
+            .map(|m| m.len())
+            .map_err(|e| SyncError::Database(format!("读取密文大小失败: {}", e)))?;
+        Ok(Some((tmp, cipher_sha256, cipher_size)))
+    }
+
+    /// [R07-file-e2ee] 选择实际上传的文件与要写入清单的密文元数据。
+    #[cfg(feature = "data_governance")]
+    fn upload_object_source<'a>(
+        encrypted: &'a Option<(tempfile::TempPath, String, u64)>,
+        plain: &'a std::path::Path,
+    ) -> (&'a std::path::Path, Option<String>, Option<u64>) {
+        match encrypted {
+            Some((tmp, cipher_sha256, cipher_size)) => {
+                (tmp, Some(cipher_sha256.clone()), Some(*cipher_size))
+            }
+            None => (plain, None, None),
+        }
+    }
+
+    /// [R07-file-e2ee] 下载单个文件级对象并落地到 `dest`。
+    ///
+    /// - `cipher_sha256 = Some`：云端对象是 DSBK 密文。先按**密文哈希**校验
+    ///   下载完整性（防篡改/防截断在 AEAD 之外再加一道传输校验），再解密到
+    ///   同目录临时文件、按**明文哈希**校验内容，最后原子替换 `dest`；
+    ///   任一步失败都不会触碰已有的 `dest`。
+    /// - `cipher_sha256 = None`：明文遗留对象。本端启用加密时**拒收**
+    ///   （[R04-sync-e2ee] 防降级延伸到文件级），并给出可操作的迁移指引；
+    ///   未启用加密时保持原有"按明文哈希校验下载"行为。
+    #[cfg(feature = "data_governance")]
+    async fn download_file_object(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        dest: &std::path::Path,
+        expected_plain_sha256: Option<&str>,
+        cipher_sha256: Option<&str>,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+        label: &str,
+    ) -> Result<(), SyncError> {
+        let Some(expected_cipher) = cipher_sha256 else {
+            if self.encryption_enabled() {
+                return Err(SyncError::Database(format!(
+                    "{label} 的云端条目是启用加密前的明文对象（缺少 cipher_sha256），\
+                     本端已启用端到端加密，为防止密文被明文静默替换已拒绝下载。\
+                     处理办法：在仍持有该数据的设备上配置同一加密密码并执行一次上传同步\
+                     （会自动把该对象重新加密上传）；或暂时清除本端加密密码取回旧明文数据后，\
+                     重新配置密码并执行一次完整上传。"
+                )));
+            }
+            storage
+                .get_file(key, dest, expected_plain_sha256, progress)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载 {label} 失败: {e}")))?;
+            return Ok(());
+        };
+
+        let Some(cipher) = self.file_cipher()? else {
+            return Err(SyncError::Database(format!(
+                "{label} 的云端对象已端到端加密（存在 cipher_sha256），但本端未配置加密密码，\
+                 无法解密。请在云同步设置中填入正确的加密密码后重试。"
+            )));
+        };
+        let parent = dest
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or_else(|| SyncError::Database(format!("下载目标路径非法: {:?}", dest)))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| SyncError::Database(format!("创建下载目录失败: {}", e)))?;
+
+        let cipher_tmp = tempfile::Builder::new()
+            .prefix("dsbk-dl-")
+            .suffix(".tmp")
+            .tempfile()
+            .map_err(|e| SyncError::Database(format!("创建下载临时文件失败: {}", e)))?
+            .into_temp_path();
+        // 密文哈希校验由 get_file 的 expected_checksum 完成：不匹配即失败。
+        storage
+            .get_file(key, &cipher_tmp, Some(expected_cipher), progress)
+            .await
+            .map_err(|e| SyncError::Network(format!("下载加密对象 {label} 失败: {e}")))?;
+
+        // 解密到 dest 同目录临时文件，成功且明文哈希匹配后才原子替换 dest。
+        let plain_tmp = tempfile::Builder::new()
+            .prefix(".dsbk-pt-")
+            .suffix(".tmp")
+            .tempfile_in(parent)
+            .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
+            .into_temp_path();
+        cipher.decrypt_file(&cipher_tmp, &plain_tmp).map_err(|e| {
+            SyncError::Database(format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"))
+        })?;
+        if let Some(expected_plain) = expected_plain_sha256 {
+            let actual = crate::backup_common::calculate_file_hash(&plain_tmp)
+                .map_err(|e| SyncError::Database(format!("计算 {label} 明文哈希失败: {e}")))?;
+            if actual != expected_plain {
+                return Err(SyncError::Database(format!(
+                    "{label} 解密后明文哈希不匹配: 期望 {expected_plain}, 实际 {actual}"
+                )));
+            }
+        }
+        plain_tmp
+            .persist(dest)
+            .map_err(|e| SyncError::Database(format!("替换 {label} 目标文件失败: {e}")))?;
+        Ok(())
+    }
+
     fn validate_remote_object_key(key: &str, expected_prefix: &str) -> Result<(), SyncError> {
         let normalized_prefix = expected_prefix.trim_matches('/');
         let expected_start = format!("{normalized_prefix}/");
@@ -9510,13 +9697,20 @@ impl SyncManager {
                         // 本地文件恰好是云端快照本身（刚下载所得）也视为未变更。
                         let unchanged = ce.source_sha256.as_deref() == Some(sha256.as_str())
                             || ce.sha256 == *sha256;
-                        !unchanged
-                            && Self::local_file_wins(
-                                local_updated_at,
-                                &ce.updated_at,
-                                sha256,
-                                ce.source_sha256.as_deref().unwrap_or(&ce.sha256),
-                            )
+                        // [R07-file-e2ee] 云端条目仍是明文而本端已启用加密：内容
+                        // 未变也要重新加密上传（迁移明文遗留对象）。内容有变时
+                        // 走正常 LWW 判定——若云端更新，下载侧会以可操作错误拒收
+                        // 明文对象，而不是在这里用旧内容覆盖更新的云端版本。
+                        let needs_encryption_migration =
+                            self.encryption_enabled() && ce.cipher_sha256.is_none();
+                        (unchanged && needs_encryption_migration)
+                            || (!unchanged
+                                && Self::local_file_wins(
+                                    local_updated_at,
+                                    &ce.updated_at,
+                                    sha256,
+                                    ce.source_sha256.as_deref().unwrap_or(&ce.sha256),
+                                ))
                     }
                 };
                 if should_upload {
@@ -9539,17 +9733,30 @@ impl SyncManager {
                     let snapshot_size = std::fs::metadata(&snapshot)
                         .map(|m| m.len())
                         .unwrap_or(*size);
+                    // [R07-file-e2ee] 对象 key 保持明文快照哈希（内容寻址去重）；
+                    // 加密开启时实际上传 DSBK 密文，密文哈希写入 cipher_sha256。
                     let key = format!(
                         "{}/{}/{}.db",
                         Self::WORKSPACES_CLOUD_PREFIX,
                         ws_id,
                         snapshot_hash
                     );
+                    let encrypted = match self.encrypt_upload_object(&snapshot) {
+                        Ok(encrypted) => encrypted,
+                        Err(e) => {
+                            let _ = std::fs::remove_file(&snapshot);
+                            tracing::warn!("[sync] 工作区数据库加密失败: {}: {}", ws_id, e);
+                            failures.push(format!("{}: {}", ws_id, e));
+                            continue;
+                        }
+                    };
+                    let (upload_path, cipher_sha256, cipher_size) =
+                        Self::upload_object_source(&encrypted, &snapshot);
                     let transfer_progress = Self::file_transfer_progress(
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage.put_file(&key, &snapshot, transfer_progress).await {
+                    match storage.put_file(&key, upload_path, transfer_progress).await {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 ws_id.clone(),
@@ -9571,6 +9778,8 @@ impl SyncManager {
                                         .get(ws_id)
                                         .map(|entry| entry.revision.saturating_add(1).max(1))
                                         .unwrap_or(1),
+                                    cipher_sha256,
+                                    cipher_size,
                                 },
                             );
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
@@ -9627,8 +9836,18 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(&cloud_entry.sha256), transfer_progress)
+                    // [R07-file-e2ee] 加密对象：先校验密文哈希再解密，解密后
+                    // 校验明文快照哈希；明文遗留条目在本端启用加密时被拒收。
+                    match self
+                        .download_file_object(
+                            storage,
+                            &key,
+                            &dest,
+                            Some(&cloud_entry.sha256),
+                            cloud_entry.cipher_sha256.as_deref(),
+                            transfer_progress,
+                            &format!("工作区数据库 {}", ws_id),
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -9712,7 +9931,14 @@ impl SyncManager {
                         &entry.sha256,
                     )
                 });
-                if !theirs_newer {
+                // [R07-file-e2ee] 明文遗留条目 → 密文条目的迁移不受时间戳
+                // 干扰：本端已启用加密时无法接受明文条目，用密文版本覆盖。
+                let ours_upgrades_encryption = entry.cipher_sha256.is_some()
+                    && merged
+                        .entries
+                        .get(ws_id)
+                        .is_some_and(|theirs| theirs.cipher_sha256.is_none());
+                if !theirs_newer || ours_upgrades_encryption {
                     merged.entries.insert(ws_id.clone(), entry.clone());
                 }
             }
@@ -9891,8 +10117,13 @@ impl SyncManager {
 
         if direction != SyncDirection::Download {
             for (hash, path) in &local_blobs {
-                if cloud_manifest.entries.contains_key(hash.as_str()) {
-                    continue;
+                if let Some(cloud_entry) = cloud_manifest.entries.get(hash.as_str()) {
+                    // [R07-file-e2ee] 仅当本端启用加密而云端仍是明文遗留对象时
+                    // 重新加密上传（内容寻址：同 hash 必同内容，覆盖是安全的）；
+                    // 其余情况保持原有"已存在即跳过"的去重行为。
+                    if !(self.encryption_enabled() && cloud_entry.cipher_sha256.is_none()) {
+                        continue;
+                    }
                 }
                 let relative = path
                     .strip_prefix(blobs_dir)
@@ -9909,6 +10140,19 @@ impl SyncManager {
                     .cloned()
                     .unwrap_or_else(|| Self::file_mtime_rfc3339(path));
 
+                // [R07-file-e2ee] 加密开启时上传 DSBK 密文（对象 key 仍是明文
+                // hash 路径，保留内容寻址去重）；密文哈希/大小写入清单。
+                let encrypted = match self.encrypt_upload_object(path) {
+                    Ok(encrypted) => encrypted,
+                    Err(e) => {
+                        tracing::error!("[sync] blob 加密失败: {}: {}", hash, e);
+                        upload_failures.push(hash.clone());
+                        continue;
+                    }
+                };
+                let (upload_path, cipher_sha256, cipher_size) =
+                    Self::upload_object_source(&encrypted, path);
+
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
@@ -9916,7 +10160,7 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage.put_file(&key, path, transfer_progress).await {
+                    match storage.put_file(&key, upload_path, transfer_progress).await {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 hash.clone(),
@@ -9924,6 +10168,8 @@ impl SyncManager {
                                     relative_path: relative.clone(),
                                     size,
                                     updated_at: updated_at.clone(),
+                                    cipher_sha256: cipher_sha256.clone(),
+                                    cipher_size,
                                 },
                             );
                             uploaded += 1;
@@ -9967,6 +10213,19 @@ impl SyncManager {
                 }
                 let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
 
+                // [R07-file-e2ee] 明文遗留条目在本端启用加密时直接拒收（防降级），
+                // 不做无意义的网络重试；错误给出可操作的迁移指引。
+                if self.encryption_enabled() && cloud_entry.cipher_sha256.is_none() {
+                    tracing::error!(
+                        "[sync] blob 下载被拒绝（明文遗留对象，本端已启用端到端加密）: {}。\
+                         请在仍持有该附件的设备上配置同一加密密码并执行一次上传同步，\
+                         该对象会被自动重新加密上传。",
+                        hash
+                    );
+                    download_failures.push(hash.clone());
+                    continue;
+                }
+
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
@@ -9974,8 +10233,16 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(hash), transfer_progress)
+                    match self
+                        .download_file_object(
+                            storage,
+                            &key,
+                            &dest,
+                            Some(hash),
+                            cloud_entry.cipher_sha256.as_deref(),
+                            transfer_progress,
+                            &format!("VFS blob {}", hash),
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -10051,10 +10318,19 @@ impl SyncManager {
                 }
             };
             for (hash, entry) in &new_manifest.entries {
-                merged
-                    .entries
-                    .entry(hash.clone())
-                    .or_insert_with(|| entry.clone());
+                match merged.entries.get(hash) {
+                    None => {
+                        merged.entries.insert(hash.clone(), entry.clone());
+                    }
+                    // [R07-file-e2ee] 用密文条目升级遗留明文条目（内容寻址下
+                    // 内容一致，只是对象换成了 DSBK 密文）。
+                    Some(current)
+                        if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() =>
+                    {
+                        merged.entries.insert(hash.clone(), entry.clone());
+                    }
+                    Some(_) => {}
+                }
             }
             merged.updated_at = chrono::Utc::now().to_rfc3339();
             self.publish_file_manifest(storage, Self::BLOBS_MANIFESTS_PREFIX, &merged, "blob")
@@ -10126,7 +10402,20 @@ impl SyncManager {
                 let replace = merged
                     .entries
                     .get(&hash)
-                    .map(|current| Self::timestamp_after(&entry.updated_at, &current.updated_at))
+                    .map(|current| {
+                        // [R07-file-e2ee] blob 内容寻址（同 hash 必同内容），条目
+                        // 差异只在对象形态：密文条目一律优先于明文遗留条目，且
+                        // 永不被明文条目降级覆盖——不受 updated_at 影响，否则
+                        // 遗留清单里时间戳更新的明文条目会盖掉迁移后的密文条目。
+                        if current.cipher_sha256.is_none() && entry.cipher_sha256.is_some() {
+                            true
+                        } else if current.cipher_sha256.is_some() && entry.cipher_sha256.is_none()
+                        {
+                            false
+                        } else {
+                            Self::timestamp_after(&entry.updated_at, &current.updated_at)
+                        }
+                    })
                     .unwrap_or(true);
                 if replace {
                     merged.entries.insert(hash, entry);
@@ -10228,22 +10517,43 @@ impl SyncManager {
                 let should_upload = match cloud_manifest.entries.get(key) {
                     None => true,
                     Some(entry) => {
-                        (entry.sha256 != *sha256 || entry.size != *size)
-                            && Self::local_file_wins(
-                                local_updated_at,
-                                &entry.updated_at,
-                                sha256,
-                                &entry.sha256,
-                            )
+                        let unchanged = entry.sha256 == *sha256 && entry.size == *size;
+                        // [R07-file-e2ee] 云端条目仍是明文而本端已启用加密：内容
+                        // 未变也重新加密上传（迁移）；内容有变走正常 LWW 判定。
+                        let needs_encryption_migration =
+                            self.encryption_enabled() && entry.cipher_sha256.is_none();
+                        (unchanged && needs_encryption_migration)
+                            || (!unchanged
+                                && Self::local_file_wins(
+                                    local_updated_at,
+                                    &entry.updated_at,
+                                    sha256,
+                                    &entry.sha256,
+                                ))
                     }
                 };
                 if !should_upload {
                     continue;
                 }
+                // [R07-file-e2ee] 对象 key 保持明文哈希（内容寻址去重）；加密开启
+                // 时上传 DSBK 密文并把密文哈希/大小写入清单。
                 let remote_key = format!("{}/{}", Self::ASSET_OBJECTS_PREFIX, sha256);
+                let encrypted = match self.encrypt_upload_object(path) {
+                    Ok(encrypted) => encrypted,
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产加密失败（跳过）: {}: {}", key, e);
+                        upload_failures.push(key.clone());
+                        continue;
+                    }
+                };
+                let (upload_path, cipher_sha256, cipher_size) =
+                    Self::upload_object_source(&encrypted, path);
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage.put_file(&remote_key, path, transfer_progress).await {
+                match storage
+                    .put_file(&remote_key, upload_path, transfer_progress)
+                    .await
+                {
                     Ok(_) => {
                         new_manifest.entries.insert(
                             key.clone(),
@@ -10262,6 +10572,8 @@ impl SyncManager {
                                     .map(|entry| entry.revision.saturating_add(1).max(1))
                                     .unwrap_or(1),
                                 device_id: Some(self.device_id.clone()),
+                                cipher_sha256,
+                                cipher_size,
                             },
                         );
                         uploaded += 1;
@@ -10314,8 +10626,18 @@ impl SyncManager {
                 Self::validate_asset_object_key(&remote_key)?;
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage
-                    .get_file(&remote_key, &dest, Some(&entry.sha256), transfer_progress)
+                // [R07-file-e2ee] 加密对象先校验密文哈希再解密并校验明文哈希；
+                // 明文遗留条目在本端启用加密时拒收（可操作错误见日志）。
+                match self
+                    .download_file_object(
+                        storage,
+                        &remote_key,
+                        &dest,
+                        Some(&entry.sha256),
+                        entry.cipher_sha256.as_deref(),
+                        transfer_progress,
+                        &format!("资产文件 {}", key),
+                    )
                     .await
                 {
                     Ok(_) => downloaded += 1,
@@ -10371,7 +10693,13 @@ impl SyncManager {
                         &entry.sha256,
                     )
                 });
-                if !theirs_newer {
+                // [R07-file-e2ee] 明文遗留条目 → 密文条目的迁移不受时间戳干扰。
+                let ours_upgrades_encryption = entry.cipher_sha256.is_some()
+                    && merged
+                        .entries
+                        .get(key)
+                        .is_some_and(|theirs| theirs.cipher_sha256.is_none());
+                if !theirs_newer || ours_upgrades_encryption {
                     merged.entries.insert(key.clone(), entry.clone());
                 }
             }
@@ -15452,5 +15780,564 @@ mod tests {
             user_sync_version, 0,
             "existing user update log must not be marked as synced by replay suppression"
         );
+    }
+
+    // ============ [R07-file-e2ee] 文件级对象端到端加密 ============
+
+    use crate::cloud_storage::{FileInfo, Result as StorageResult};
+
+    #[derive(Default)]
+    struct FileE2eeMemoryStorage {
+        files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+    }
+
+    impl FileE2eeMemoryStorage {
+        fn object(&self, key: &str) -> Option<Vec<u8>> {
+            self.files.lock().unwrap().get(key).cloned()
+        }
+
+        fn keys_with_prefix(&self, prefix: &str) -> Vec<String> {
+            self.files
+                .lock()
+                .unwrap()
+                .keys()
+                .filter(|k| k.starts_with(prefix))
+                .cloned()
+                .collect()
+        }
+
+        fn put_raw(&self, key: &str, data: Vec<u8>) {
+            self.files.lock().unwrap().insert(key.to_string(), data);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for FileE2eeMemoryStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-file-e2ee-test"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), data.to_vec());
+            Ok(())
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            Ok(self.files.lock().unwrap().get(key).cloned())
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, value)| FileInfo {
+                    key: key.clone(),
+                    size: value.len() as u64,
+                    last_modified: chrono::Utc::now(),
+                    etag: None,
+                })
+                .collect())
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            Ok(self.files.lock().unwrap().get(key).map(|value| FileInfo {
+                key: key.to_string(),
+                size: value.len() as u64,
+                last_modified: chrono::Utc::now(),
+                etag: None,
+            }))
+        }
+    }
+
+    /// 带加密的 SyncManager，注入低成本 Argon2 参数的会话（仅为测试提速；
+    /// 容器头会如实登记参数，加解密语义与默认参数完全一致）。
+    fn encrypted_manager(device_id: &str, password: &str) -> SyncManager {
+        let manager =
+            SyncManager::with_encryption(device_id.to_string(), Some(password.to_string()));
+        *manager.file_cipher.lock().unwrap() = Some(std::sync::Arc::new(
+            crate::crypto::backup_crypto::FileCipherSession::with_params(password, 8, 1, 1)
+                .unwrap(),
+        ));
+        manager
+    }
+
+    fn is_dsbk(data: &[u8]) -> bool {
+        crate::crypto::backup_crypto::is_encrypted_backup(data)
+    }
+
+    fn sha256_hex(data: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        format!("{:x}", Sha256::digest(data))
+    }
+
+    /// 在 `active_dir/workspaces/` 下创建一个真实 SQLite 工作区库并写入一行数据
+    fn create_workspace_db(active_dir: &std::path::Path, ws_id: &str, content: &str) {
+        let dir = active_dir.join("workspaces");
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = rusqlite::Connection::open(dir.join(format!("{}.db", ws_id))).unwrap();
+        conn.execute_batch("CREATE TABLE notes (id TEXT PRIMARY KEY, content TEXT)")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO notes (id, content) VALUES ('n1', ?1)",
+            params![content],
+        )
+        .unwrap();
+    }
+
+    fn read_workspace_note(active_dir: &std::path::Path, ws_id: &str) -> String {
+        let conn = rusqlite::Connection::open(
+            active_dir.join("workspaces").join(format!("{}.db", ws_id)),
+        )
+        .unwrap();
+        conn.query_row("SELECT content FROM notes WHERE id = 'n1'", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_roundtrip_between_encrypted_devices() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_e2ee_rt", "encrypted note");
+
+        let manager_a = encrypted_manager("device-e2ee-a", "shared-pw");
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        // 云端 workspace 对象必须是 DSBK 密文（不再明文 put_file）
+        let object_keys = storage.keys_with_prefix(SyncManager::WORKSPACES_CLOUD_PREFIX);
+        assert_eq!(object_keys.len(), 1, "应恰好上传一个工作区对象");
+        let object = storage.object(&object_keys[0]).unwrap();
+        assert!(is_dsbk(&object), "工作区对象必须是 DSBK 密文");
+
+        // 清单条目必须登记密文哈希/大小，且与对象一致；对象 key 仍是明文快照哈希
+        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get("ws_e2ee_rt").unwrap();
+        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(entry.cipher_size, Some(object.len() as u64));
+        assert!(
+            object_keys[0].contains(&entry.sha256),
+            "对象 key 应保持明文快照哈希（内容寻址去重）: {}",
+            object_keys[0]
+        );
+        assert_ne!(
+            entry.cipher_sha256.as_deref(),
+            Some(entry.sha256.as_str()),
+            "密文哈希与明文哈希必须不同"
+        );
+
+        // 另一台配置相同密码的设备：下载→双哈希校验→解密→SQLite 完整性检查
+        let manager_b = encrypted_manager("device-e2ee-b", "shared-pw");
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(read_workspace_note(dir_b.path(), "ws_e2ee_rt"), "encrypted note");
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_plaintext_mode_unaffected() {
+        // 未启用加密时行为不变：对象是明文 SQLite，清单无 cipher_sha256
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_plain_rt", "plain note");
+
+        let manager_a = SyncManager::new("device-plain-a".to_string());
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let object_keys = storage.keys_with_prefix(SyncManager::WORKSPACES_CLOUD_PREFIX);
+        assert_eq!(object_keys.len(), 1);
+        let object = storage.object(&object_keys[0]).unwrap();
+        assert!(!is_dsbk(&object), "明文模式对象不得带 DSBK 头");
+
+        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get("ws_plain_rt").unwrap();
+        assert!(entry.cipher_sha256.is_none());
+        assert!(entry.cipher_size.is_none());
+
+        let manager_b = SyncManager::new("device-plain-b".to_string());
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(read_workspace_note(dir_b.path(), "ws_plain_rt"), "plain note");
+    }
+
+    /// 在（已加密的）清单里手工登记一个明文遗留 workspace 条目 + 明文对象，
+    /// 模拟"启用加密前上传的旧数据被带进了加密后的清单"。
+    async fn seed_legacy_plaintext_workspace(
+        storage: &FileE2eeMemoryStorage,
+        publisher: &SyncManager,
+        ws_id: &str,
+    ) -> (String, u64) {
+        let tmp = tempfile::tempdir().unwrap();
+        create_workspace_db(tmp.path(), ws_id, "legacy plaintext note");
+        let db_path = tmp.path().join("workspaces").join(format!("{}.db", ws_id));
+        let bytes = std::fs::read(&db_path).unwrap();
+        let sha256 = sha256_hex(&bytes);
+        let size = bytes.len() as u64;
+        let object_key = format!("{}/{}/{}.db", SyncManager::WORKSPACES_CLOUD_PREFIX, ws_id, sha256);
+        storage.put_raw(&object_key, bytes);
+
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manifest.entries.insert(
+            ws_id.to_string(),
+            WorkspaceEntry {
+                sha256: sha256.clone(),
+                size,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                source_sha256: Some(sha256.clone()),
+                device_id: Some("device-legacy".to_string()),
+                object_key: Some(object_key),
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        publisher
+            .publish_file_manifest(
+                storage,
+                SyncManager::WORKSPACES_MANIFESTS_PREFIX,
+                &manifest,
+                "工作区",
+            )
+            .await
+            .unwrap();
+        (sha256, size)
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_rejects_legacy_plaintext_entry() {
+        let storage = FileE2eeMemoryStorage::default();
+        let publisher = encrypted_manager("device-seed", "shared-pw");
+        // publish_file_manifest 前需要初始化远端格式描述符
+        publisher.ensure_remote_instance_id(&storage).await.unwrap();
+        seed_legacy_plaintext_workspace(&storage, &publisher, "ws_legacy").await;
+
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-e2ee-strict", "shared-pw");
+        let error = manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .expect_err("本端启用加密时必须拒收明文遗留 workspace 对象")
+            .to_string();
+        assert!(error.contains("cipher_sha256"), "错误应指出缺少密文哈希: {error}");
+        assert!(error.contains("拒绝下载"), "错误应明确拒收行为: {error}");
+        assert!(error.contains("加密密码"), "错误应给出可操作指引: {error}");
+        assert!(
+            !dir_b.path().join("workspaces").join("ws_legacy.db").exists(),
+            "被拒收的明文对象不得落地"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_workspace_migrates_legacy_plaintext_entry_on_upload() {
+        let storage = FileE2eeMemoryStorage::default();
+        let publisher = encrypted_manager("device-seed", "shared-pw");
+        publisher.ensure_remote_instance_id(&storage).await.unwrap();
+
+        // 设备 A 本地已有同一工作区（内容独立创建，哈希与云端明文条目不同也可，
+        // 这里手工把清单条目的 source_sha256 对齐成 A 的本地哈希以模拟"内容未变"）。
+        let dir_a = tempfile::tempdir().unwrap();
+        create_workspace_db(dir_a.path(), "ws_migrate", "note to migrate");
+        let local_db = dir_a.path().join("workspaces").join("ws_migrate.db");
+        let local_sha = sha256_hex(&std::fs::read(&local_db).unwrap());
+
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manifest.entries.insert(
+            "ws_migrate".to_string(),
+            WorkspaceEntry {
+                sha256: local_sha.clone(),
+                size: std::fs::metadata(&local_db).unwrap().len(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                source_sha256: Some(local_sha.clone()),
+                device_id: Some("device-legacy".to_string()),
+                object_key: Some(format!(
+                    "{}/ws_migrate/{}.db",
+                    SyncManager::WORKSPACES_CLOUD_PREFIX,
+                    local_sha
+                )),
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        publisher
+            .publish_file_manifest(
+                &storage,
+                SyncManager::WORKSPACES_MANIFESTS_PREFIX,
+                &manifest,
+                "工作区",
+            )
+            .await
+            .unwrap();
+
+        // 内容未变 + 云端条目是明文 → 迁移路径应重新加密上传
+        let manager_a = encrypted_manager("device-e2ee-migrator", "shared-pw");
+        manager_a
+            .sync_workspace_databases(&storage, dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let manifest = manager_a.download_workspaces_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get("ws_migrate").unwrap();
+        assert!(
+            entry.cipher_sha256.is_some(),
+            "迁移后清单条目必须带密文哈希"
+        );
+        let object = storage
+            .object(entry.object_key.as_deref().unwrap())
+            .unwrap();
+        assert!(is_dsbk(&object), "迁移后云端对象必须是 DSBK 密文");
+
+        // 迁移完成后，加密设备可正常下载
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-e2ee-reader", "shared-pw");
+        manager_b
+            .sync_workspace_databases(&storage, dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(read_workspace_note(dir_b.path(), "ws_migrate"), "note to migrate");
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_blob_roundtrip_rejection_and_migration() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        let blobs_a = dir_a.path().join("vfs_blobs");
+
+        // 内容寻址 blob：ab/<hash>.pdf
+        let payload = b"blob payload for e2ee".to_vec();
+        let hash = sha256_hex(&payload);
+        let relative = format!("{}/{}.pdf", &hash[..2], hash);
+        let blob_path = blobs_a.join(&relative);
+        std::fs::create_dir_all(blob_path.parent().unwrap()).unwrap();
+        std::fs::write(&blob_path, &payload).unwrap();
+
+        let manager_a = encrypted_manager("device-blob-a", "shared-pw");
+        let outcome = manager_a
+            .sync_vfs_blobs(&storage, &blobs_a, SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1);
+        assert!(!outcome.has_failures());
+
+        let object_key = format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, relative);
+        let object = storage.object(&object_key).unwrap();
+        assert!(is_dsbk(&object), "blob 对象必须是 DSBK 密文");
+
+        let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get(&hash).unwrap();
+        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(entry.cipher_size, Some(object.len() as u64));
+        assert_eq!(entry.size, payload.len() as u64, "size 字段保持明文大小");
+
+        // 同密码设备 B：下载后内容与明文一致
+        let dir_b = tempfile::tempdir().unwrap();
+        let blobs_b = dir_b.path().join("vfs_blobs");
+        std::fs::create_dir_all(&blobs_b).unwrap();
+        let manager_b = encrypted_manager("device-blob-b", "shared-pw");
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(std::fs::read(blobs_b.join(&relative)).unwrap(), payload);
+
+        // 密文对象被篡改 → 密文哈希校验失败 → 下载失败且不落地
+        let mut tampered = object.clone();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0xFF;
+        storage.put_raw(&object_key, tampered);
+        let dir_c = tempfile::tempdir().unwrap();
+        let blobs_c = dir_c.path().join("vfs_blobs");
+        std::fs::create_dir_all(&blobs_c).unwrap();
+        let manager_c = encrypted_manager("device-blob-c", "shared-pw");
+        let outcome = manager_c
+            .sync_vfs_blobs(&storage, &blobs_c, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.download_failures, vec![hash.clone()]);
+        assert!(!blobs_c.join(&relative).exists(), "篡改对象不得落地");
+        storage.put_raw(&object_key, object);
+
+        // 明文遗留条目：本端启用加密时拒收
+        let legacy_payload = b"legacy plaintext blob".to_vec();
+        let legacy_hash = sha256_hex(&legacy_payload);
+        let legacy_relative = format!("{}/{}.pdf", &legacy_hash[..2], legacy_hash);
+        storage.put_raw(
+            &format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, legacy_relative),
+            legacy_payload.clone(),
+        );
+        let mut legacy_manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        legacy_manifest.entries.insert(
+            legacy_hash.clone(),
+            BlobEntry {
+                relative_path: legacy_relative.clone(),
+                size: legacy_payload.len() as u64,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        legacy_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manager_a
+            .publish_file_manifest(
+                &storage,
+                SyncManager::BLOBS_MANIFESTS_PREFIX,
+                &legacy_manifest,
+                "blob",
+            )
+            .await
+            .unwrap();
+
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.download_failures,
+            vec![legacy_hash.clone()],
+            "明文遗留 blob 必须被拒收"
+        );
+        assert!(!blobs_b.join(&legacy_relative).exists());
+
+        // 迁移：持有该 blob 明文的加密设备执行上传 → 对象被重新加密，其他设备可下载
+        let legacy_local = blobs_a.join(&legacy_relative);
+        std::fs::create_dir_all(legacy_local.parent().unwrap()).unwrap();
+        std::fs::write(&legacy_local, &legacy_payload).unwrap();
+        let outcome = manager_a
+            .sync_vfs_blobs(&storage, &blobs_a, SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1, "明文遗留对象应被重新加密上传");
+        let migrated = storage
+            .object(&format!("{}/{}", SyncManager::BLOBS_CLOUD_PREFIX, legacy_relative))
+            .unwrap();
+        assert!(is_dsbk(&migrated), "迁移后 blob 对象必须是 DSBK 密文");
+        let manifest = manager_a.download_blobs_manifest(&storage).await.unwrap();
+        assert!(
+            manifest.entries.get(&legacy_hash).unwrap().cipher_sha256.is_some(),
+            "迁移后清单条目必须升级为密文条目"
+        );
+
+        let outcome = manager_b
+            .sync_vfs_blobs(&storage, &blobs_b, SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(std::fs::read(blobs_b.join(&legacy_relative)).unwrap(), legacy_payload);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_e2ee_asset_roundtrip_and_legacy_rejection() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir_a = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir_a.path().join("images")).unwrap();
+        std::fs::write(dir_a.path().join("images/pic.png"), b"png bytes here").unwrap();
+
+        let manager_a = encrypted_manager("device-asset-a", "shared-pw");
+        let outcome = manager_a
+            .sync_asset_directories(&storage, dir_a.path(), dir_a.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+        assert_eq!(outcome.uploaded, 1);
+        assert!(!outcome.has_failures());
+
+        // 资产对象必须是密文；对象 key 保持明文哈希（去重）
+        let plain_sha = sha256_hex(b"png bytes here");
+        let object_key = format!("{}/{}", SyncManager::ASSET_OBJECTS_PREFIX, plain_sha);
+        let object = storage.object(&object_key).expect("对象 key 应保持明文哈希");
+        assert!(is_dsbk(&object), "资产对象必须是 DSBK 密文");
+
+        let manifest = manager_a.download_assets_manifest(&storage).await.unwrap();
+        let entry = manifest.entries.get("active/images/pic.png").unwrap();
+        assert_eq!(entry.cipher_sha256.as_deref(), Some(sha256_hex(&object).as_str()));
+        assert_eq!(entry.sha256, plain_sha);
+
+        // 同密码设备 B 下载
+        let dir_b = tempfile::tempdir().unwrap();
+        let manager_b = encrypted_manager("device-asset-b", "shared-pw");
+        let outcome = manager_b
+            .sync_asset_directories(&storage, dir_b.path(), dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(outcome.downloaded, 1);
+        assert!(!outcome.has_failures());
+        assert_eq!(
+            std::fs::read(dir_b.path().join("images/pic.png")).unwrap(),
+            b"png bytes here"
+        );
+
+        // 明文遗留资产条目：启用加密的设备必须拒收
+        let legacy_bytes = b"legacy plaintext asset".to_vec();
+        let legacy_sha = sha256_hex(&legacy_bytes);
+        let legacy_key = format!("{}/{}", SyncManager::ASSET_OBJECTS_PREFIX, legacy_sha);
+        storage.put_raw(&legacy_key, legacy_bytes.clone());
+        let mut legacy_manifest = manager_a.download_assets_manifest(&storage).await.unwrap();
+        legacy_manifest.entries.insert(
+            "active/images/legacy.png".to_string(),
+            AssetFileEntry {
+                sha256: legacy_sha.clone(),
+                size: legacy_bytes.len() as u64,
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                object_key: Some(legacy_key),
+                base_sha256: None,
+                revision: 1,
+                device_id: Some("device-legacy".to_string()),
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        legacy_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+        manager_a
+            .publish_file_manifest(
+                &storage,
+                SyncManager::ASSETS_MANIFESTS_PREFIX,
+                &legacy_manifest,
+                "资产",
+            )
+            .await
+            .unwrap();
+
+        let outcome = manager_b
+            .sync_asset_directories(&storage, dir_b.path(), dir_b.path(), SyncDirection::Download)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.download_failures,
+            vec!["active/images/legacy.png".to_string()],
+            "明文遗留资产必须被拒收"
+        );
+        assert!(!dir_b.path().join("images/legacy.png").exists());
     }
 }
