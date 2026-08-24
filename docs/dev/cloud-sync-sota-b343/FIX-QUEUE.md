@@ -534,3 +534,29 @@ workbench。
 `src-tauri/tests/cloud_sync_delta_benchmark.py` 新手动脚本、README 索引一行、本节。
 不改任何生产代码，不改 `version.ts` / pdfium，不碰 notes / chat / workbench /
 `ftp.rs`。
+
+### R11-names2（分支 `cursor/cloud-sync-sota-names2-b343`，资产 key 可逆映射）
+
+- **编码协议**：`asset_filenames.rs` 从 `_` 替换升级为带版本标记的 rclone 风格
+  映射。Windows 非法字符使用全角安全码点、C0/DEL 使用 Control Pictures，原本
+  就存在的替代字符用 `‛` 引用；Windows 保留名和尾点/空格也进入带标记形态。
+  非 NFC 原名使用 `‛eh<utf8-hex>`，所以云 key 自身为 NFC，decoder 仍逐字节还原
+  NFD。公开不变量为 `decode_segment(encode_segment(x)) == x`。
+- **fail-closed 长度门**：编码前后均核对 UTF-8 字节数与 UTF-16 code unit；
+  单段上限 255，完整 `root/top/rel` 资产 key 上限 240。结构异常、损坏标记、
+  非规范编码、段/总长越界均在内容读取和云端写入前终止，不截断、不哈希改名。
+  `sync_r10_protocol_locks.rs` 的“长度仍未钳制”缺口锁已改为关闭断言。
+- **旧 `_` key 兼容策略**：旧 key 无法可靠反推原名，因此不猜测。同步器按
+  “新可逆 key exact → 旧未编码原名 → R09 `_` key”双代际查找；若 `_` key
+  同时是另一份本地文件的 exact key，exact 优先；多个候选仅允许唯一内容匹配者
+  认领。内容未变保留旧 key 且不旁落副本，内容更新时新清单写可逆 key 并移除旧
+  别名。新旧 key 云端同时存在时保留为两个条目，避免把真实下划线误判成旧映射。
+- **测试与人话**：更新 `sync_r09_filenames.rs`、两份 R07 names/filename 回归与
+  长度协议锁，覆盖非法字符/替代字符碰撞、保留名、尾点空格、大小写、NFC/NFD、
+  旧 key 双查找迁移、新旧共存、恶意/超长 key 零落盘。zh/en `sync.json` 将
+  “净化后重名”改为“旧版文件名映射冲突”，明确新版可逆、旧版原名不可猜。
+
+**最小接线登记**：为让长度错误可传播且防 Unix 反斜杠文件名被误拆段，
+`data_governance/sync/mod.rs` 仅改资产扫描 key 生成、云 key fail-close 和旧 key
+双查找/迁移段；未改 `cloud_storage/sync_manager.rs`，未触碰 notes / chat /
+workbench / `ftp.rs` / 增量备份 / 租约。

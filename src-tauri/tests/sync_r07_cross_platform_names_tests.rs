@@ -2,16 +2,11 @@
 //!
 //! ## 覆盖点
 //!
-//! 1. **Windows 非法字符 / 保留设备名 / 尾点尾空格**（在 Unix 上完全合法）：
-//!    同步管线必须原样透传这些名字——键、清单条目、下载落盘文件名都不得被
-//!    静默改写（mangling 会破坏内容寻址与 LWW 键的一致性）。Windows 端的
-//!    落盘兼容属于展示/落盘层的职责，不属于同步键空间。
-//! 2. **大小写仅异**：`R07-Case.md` 与 `r07-case.md` 必须是两个独立条目，
-//!    互不覆盖（大小写不敏感文件系统上的合并属于本地文件系统问题，
-//!    清单键空间必须保持区分）。
-//! 3. **Unicode NFC vs NFD**：视觉相同、字节不同的名字必须保持为两个键，
-//!    同步不得做任何隐式规范化（macOS HFS+/APFS 会产生 NFD 名，隐式转换
-//!    会导致两台设备互相"纠正"对方、清单永不收敛）。
+//! 1. **Windows 非法字符 / 保留设备名 / 尾点尾空格**使用 rclone 风格可逆
+//!    映射，云 key 与落盘名跨平台安全，decoder 可逐字节还原原名。
+//! 2. **大小写仅异**在大小写不敏感平台会互相覆盖，因此确定性保留一方并报告。
+//! 3. **Unicode NFC vs NFD**保持两个可逆 key；NFD 用 NFC 安全的 UTF-8 hex
+//!    形态承载，不再靠有损规范化合并。
 //! 4. **恶意清单键 fail-closed**：路径穿越（`..`）、绝对路径、未知根别名
 //!    必须让整次同步失败且本地不落任何文件。
 //!
@@ -24,7 +19,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
-use deep_student_lib::data_governance::sync::{SyncDirection, SyncManager};
+use deep_student_lib::data_governance::sync::{
+    asset_filenames, SyncDirection, SyncManager, FILENAME_CONFLICT_MARKER,
+};
 use deep_student_lib::models::AppError;
 
 type CloudResult<T> = Result<T, AppError>;
@@ -138,16 +135,10 @@ fn image_bytes(active: &tempfile::TempDir, name: &str) -> Vec<u8> {
 }
 
 // ============================================================================
-// 1. Windows 非法名在 Unix 键空间中的原样透传
+// 1. Windows 非法名可逆映射为跨平台安全名称
 // ============================================================================
 
-/// Windows 非法字符（`< > : " | ? *`）、保留设备名（AUX）、尾点/尾空格
-/// 在 Unix 设备之间必须逐字节往返：上传设备 A → 下载设备 B，
-/// 文件名与内容都不得被静默改写。
-///
-/// 注意：这些名字在 Windows 落盘时确实会失败——那是**下载失败**
-/// （`download_failures` 逐文件降级），而不是名字被悄悄改写。
-/// 本测试只在 Unix 语义下运行（Windows 上文件根本创建不出来）。
+/// 原始名只在 Unix fixture 上创建；第二台设备看到安全编码名，decoder 仍可还原。
 #[cfg(unix)]
 #[tokio::test]
 async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
@@ -182,7 +173,7 @@ async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
     assert_eq!(outcome.uploaded, hostile_names.len(), "全部文件都应上传");
     assert!(!outcome.has_failures(), "上传不得有失败: {outcome:?}");
 
-    // 设备 B（空工作区）下载：名字与内容逐字节一致
+    // 设备 B 下载：落盘名是跨平台安全编码，且可逆恢复原始名。
     let manager_b = SyncManager::new("device-b".to_string());
     let (active_b, app_b) = empty_workspace();
     let outcome = manager_b
@@ -199,30 +190,29 @@ async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
 
     let expected: BTreeSet<String> = hostile_names
         .iter()
-        .map(|(name, _)| name.to_string())
+        .map(|(name, _)| asset_filenames::encode_segment(name).unwrap())
         .collect();
     assert_eq!(
         image_names(&active_b),
         expected,
-        "文件名必须逐字节往返，不得被静默改写"
+        "下载端必须只出现跨平台安全编码名"
     );
     for (name, content) in hostile_names {
+        let encoded = asset_filenames::encode_segment(name).unwrap();
+        assert_eq!(asset_filenames::decode_segment(&encoded).unwrap(), *name);
         assert_eq!(
-            image_bytes(&active_b, name),
+            image_bytes(&active_b, &encoded),
             content.to_vec(),
-            "{name:?} 内容必须一致"
+            "{name:?} 的编码文件内容必须一致"
         );
     }
 }
 
 // ============================================================================
-// 2. 大小写仅异的名字是独立条目
+// 2. 大小写仅异的名字确定性冲突
 // ============================================================================
 
-/// `R07x-Case.md` 与 `r07x-case.md`（内容不同）必须保持为两个清单键、
-/// 两个云端对象，下载端两个文件各自拿到正确内容。
-/// （大小写不敏感文件系统上二者会在**本地落盘**时相互覆盖——那是
-/// 文件系统语义；同步键空间绝不能提前合并它们。）
+/// `R07x-Case.md` 与 `r07x-case.md`（内容不同）只能上传字典序胜方，败方可观测。
 #[cfg(unix)]
 #[tokio::test]
 async fn r07_case_only_different_names_stay_distinct_entries() {
@@ -241,7 +231,14 @@ async fn r07_case_only_different_names_stay_distinct_entries() {
         )
         .await
         .expect("上传大小写仅异文件应成功");
-    assert_eq!(outcome.uploaded, 2, "两个大小写变体都应作为独立条目上传");
+    assert_eq!(outcome.uploaded, 1, "大小写冲突只能上传一个变体");
+    assert!(
+        outcome
+            .upload_failures
+            .iter()
+            .any(|failure| failure.contains(FILENAME_CONFLICT_MARKER)),
+        "败方必须进入可观测冲突通道: {outcome:?}"
+    );
 
     let manager_b = SyncManager::new("device-b".to_string());
     let (active_b, app_b) = empty_workspace();
@@ -254,18 +251,17 @@ async fn r07_case_only_different_names_stay_distinct_entries() {
         )
         .await
         .expect("下载大小写仅异文件应成功");
-    assert_eq!(outcome.downloaded, 2);
+    assert_eq!(outcome.downloaded, 1);
 
     assert_eq!(image_bytes(&active_b, "R07x-Case.md"), b"UPPER variant");
-    assert_eq!(image_bytes(&active_b, "r07x-case.md"), b"lower variant");
+    assert!(!active_b.path().join("images/r07x-case.md").exists());
 }
 
 // ============================================================================
-// 3. NFC vs NFD：不做隐式 Unicode 规范化
+// 3. NFC vs NFD：可逆且编码结果均为 NFC
 // ============================================================================
 
-/// NFC（`é` = U+00E9）与 NFD（`e` + U+0301）视觉相同、字节不同：
-/// 必须保持为两个独立键并逐字节往返，同步不得隐式规范化。
+/// NFC 原样安全，NFD 进入带标记 hex 模式；两者不碰撞且都能还原。
 #[cfg(unix)]
 #[tokio::test]
 async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
@@ -294,10 +290,7 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
         )
         .await
         .expect("上传 NFC/NFD 变体应成功");
-    assert_eq!(
-        outcome.uploaded, 2,
-        "NFC 与 NFD 必须是两个独立条目（不得隐式规范化合并）"
-    );
+    assert_eq!(outcome.uploaded, 2, "NFC 与 NFD 必须是两个独立、可逆的条目");
 
     let manager_b = SyncManager::new("device-b".to_string());
     let (active_b, app_b) = empty_workspace();
@@ -312,17 +305,28 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
         .expect("下载 NFC/NFD 变体应成功");
     assert_eq!(outcome.downloaded, 2);
 
+    let encoded_nfc = asset_filenames::encode_segment(nfc_name).unwrap();
+    let encoded_nfd = asset_filenames::encode_segment(nfd_name).unwrap();
+    assert_ne!(encoded_nfc, encoded_nfd);
+    assert_eq!(
+        asset_filenames::decode_segment(&encoded_nfc).unwrap(),
+        nfc_name
+    );
+    assert_eq!(
+        asset_filenames::decode_segment(&encoded_nfd).unwrap(),
+        nfd_name
+    );
     let names = image_names(&active_b);
     assert!(
-        names.contains(nfc_name),
-        "NFC 名必须逐字节保留，实际: {names:?}"
+        names.contains(&encoded_nfc),
+        "NFC 安全名必须存在，实际: {names:?}"
     );
     assert!(
-        names.contains(nfd_name),
-        "NFD 名必须逐字节保留，实际: {names:?}"
+        names.contains(&encoded_nfd),
+        "NFD 可逆安全名必须存在，实际: {names:?}"
     );
-    assert_eq!(image_bytes(&active_b, nfc_name), b"NFC payload");
-    assert_eq!(image_bytes(&active_b, nfd_name), b"NFD payload");
+    assert_eq!(image_bytes(&active_b, &encoded_nfc), b"NFC payload");
+    assert_eq!(image_bytes(&active_b, &encoded_nfd), b"NFD payload");
 }
 
 // ============================================================================

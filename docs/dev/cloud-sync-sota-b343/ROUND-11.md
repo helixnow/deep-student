@@ -12,6 +12,10 @@
 
 R10 已合入：conflict-ui / sota / ux / protocol / android / download / chaos / verifier / **providers**。R11 已合入：rotate / check / review / autosync2 / history / unsynced-ui。R12 已合入：decoded-dead / **repocheck-fix（P1）**。专属枝 HEAD `d746da20`。收尾见 [WRAP-CLOSE.md](./WRAP-CLOSE.md)。不合并 `r07-docs`。
 
+R11-names2 已在 `cursor/cloud-sync-sota-names2-b343` 专枝交付：非法字符改为带版本
+标记的可逆映射，旧 R09 `_` key 走双 key 查找并在内容更新时迁移；段/总长越界
+fail-closed。实现与测试登记见 [FIX-QUEUE](./FIX-QUEUE.md#r11-names2分支-cursorcloud-sync-sota-names2-b343资产-key-可逆映射)。
+
 ## 十路大包
 
 | 代理 | 模型 | 分支 | 一整包必须交付（每路 ≥4） |
@@ -20,7 +24,7 @@ R10 已合入：conflict-ui / sota / ux / protocol / android / download / chaos 
 | R11-check | high | `cursor/cloud-sync-sota-r11-check-b343` | ① 云端仓库巡检命令（restic `check` 档）：遍历 manifest 引用对象、核对存在性/SHA256/DSBK 头可解、报孤儿与缺失，只读不修；② 巡检结果 UI 入口与人话报告（含"发现坏对象后该做什么"指引）；③ zh+en locale 键；④ 集成测试新文件（好库全绿 / 缺对象 / 坏密文 / 孤儿对象 / 截断时拒绝给"全绿"结论）；⑤ 用户指南 16 巡检小节 |
 | R11-history | high | `cursor/cloud-sync-sota-r11-history-b343` | ① 记录级时点恢复最小版：冲突批量解决/库级策略覆盖执行前自动快照受影响记录（GAP-8 最小闭环，快照进本地表不上云）；② 快照浏览与单批回退命令；③ 回退与 change_log/回声过滤的交互测试（回退不得被同步再覆盖）新文件；④ SyncTab/冲突面板"可撤销"文案 zh+en；⑤ 保留策略（快照上限与清理） |
 | R11-delta | xhigh | `cursor/cloud-sync-sota-r11-delta-b343` | ① 调研文档 DELTA-R11.md：整 ZIP → 增量的三条路线（内容寻址 objects 复用 / manifest 级未变跳过 / CDC 分块）在我们 dumb-storage + E2EE 约束下的可行性与恢复语义影响；② 现状基准：典型库尺寸下整 ZIP 备份的流量/耗时测量脚本与数据；③ 推荐路线的对象布局草案（含与现有 `backups/` 版本清单、10 版保留、GC 顺序的兼容性分析）；④ 不做实现，产出下一轮可直接认领的任务拆分；⑤ 风险清单（增量链损坏、GC 竞态、加密去重信息泄露） |
-| R11-names2 | high | `cursor/cloud-sync-sota-r11-names2-b343` | ① `asset_filenames.rs` 从有损净化升级为 rclone 档可逆映射（非法字符 → 安全码点编码，可无损还原）；② 旧净化 key 的兼容/迁移路径（云端已有净化 key 不得变孤儿）；③ 全边界测试更新+新增（编码往返、大小写、NFC/NFD、保留名、与旧 key 共存）；④ 冲突人话消息按新语义更新 zh+en；⑤ 在 FIX-QUEUE 登记与 R10-names 增量的关系 |
+| R11-names2 | high | `cursor/cloud-sync-sota-names2-b343` | ① `asset_filenames.rs` 从有损净化升级为 rclone 档可逆映射（非法字符 → 安全码点编码，可无损还原）；② 旧净化 key 的兼容/迁移路径（云端已有净化 key 不得变孤儿）；③ 全边界测试更新+新增（编码往返、大小写、NFC/NFD、保留名、与旧 key 共存）；④ 冲突人话消息按新语义更新 zh+en；⑤ 在 FIX-QUEUE 登记与 R10-names 增量的关系 |
 | R11-lease | high | `cursor/cloud-sync-sota-r11-lease-b343` | ① 常规记录级同步的 sync target 租约（Joplin 锁档）：上传窗口内互斥、带 TTL、陈旧锁回收，复用换机两段式租约的存储格式；② 租约被占时的人话错误与重试指引 zh+en；③ 集成测试新文件（并发两设备、陈旧锁回收、租约与 `remote_format_version` 门槛叠加、崩溃残锁）；④ ARCHITECTURE.md 租约状态机小节；⑤ 改 `sync_manager.rs`/`mod.rs` 前先在 FIX-QUEUE 登记 |
 | R11-unsynced-ui | high | `cursor/cloud-sync-sota-r11-unsynced-ui-b343` | ① Dropbox 档"未同步文件清单"常驻面板：`download_failures`、文件名净化/大小写冲突跳过、明文遗留拒收对象一处可见；② 每条目给原因与可执行建议（重试/改名/迁移）；③ zh+en locale；④ vitest 新文件（空态/多类目/重试动作）；⑤ 后端若需新查询命令，独立新增不改既有命令签名 |
 | R11-rotate | xhigh | `cursor/cloud-sync-sota-r11-rotate-b343` | ① 调研文档 KEY-ROTATION-R11.md：SN 式原地密钥轮换 vs 现状"换密码=换 root 全量重传"的差距、我们 DSBK 会话密钥模型下的轮换协议草案（标记 v3、双钥过渡窗、中断恢复）；② `backups/<version>.zip` 命名暴露设备短 ID/时间戳的元数据泄露评估与收敛方案（含向后兼容）；③ Argon2 参数钳制（R10-verifier 交付）的独立复审；④ 不做实现，产出下一轮任务拆分与验收标准 |
