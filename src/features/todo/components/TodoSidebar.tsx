@@ -291,7 +291,7 @@ const rowIconButtonClass = cn(
   'flex h-5 w-5 items-center justify-center rounded-md',
   'text-[color:var(--shell-navigation-muted)] transition-colors duration-150',
   'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
-  '[@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10',
+  '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
 );
 
 /** 中性灰 pending 计数（Things 式纯数字，>0 才显示，由调用方保证） */
