@@ -102,6 +102,13 @@ describe('resolveInitialEpubLocation', () => {
       resolveInitialEpubLocation({ chapterIndex: 2, chapterProgress: 0.4, updatedAt: 0 }, { page: 6 }),
     ).toEqual({ chapterIndex: 5, chapterProgress: 0 });
   });
+
+  it('metadata 无 lastReadAt 时仍覆盖较新的本机章节（后端当前只回读 page）', () => {
+    expect(resolveInitialEpubLocation(local, { page: 6 })).toEqual({
+      chapterIndex: 5,
+      chapterProgress: 0,
+    });
+  });
 });
 
 describe('buildEpubReadingProgress', () => {

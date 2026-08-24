@@ -271,19 +271,27 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   }, [chapterIndex, chapterProgress, theme, fontScale, fontFamily, lineHeight, pageMargin, storageKey]);
 
   // 章节级进度写入资源 metadata（page = 章节序号）。章内滚动仍只进
-  // localStorage —— 后端进度通道只落库 readingProgress.page / lastReadAt。
-  const lastReportedChapterRef = useRef<number | null>(null);
+  // localStorage；lastReadAt 随载荷发送供未来后端使用，当前后端只回读 page。
+  const lastReportedLocationRef = useRef<{
+    resourceId: string;
+    chapterIndex: number;
+  } | null>(null);
   useEffect(() => {
-    if (!onProgressChange) return;
-    if (lastReportedChapterRef.current === chapterIndex) return;
-    // 首次挂载只记基线，不上报（避免打开即写一次无变化进度）
-    if (lastReportedChapterRef.current === null) {
-      lastReportedChapterRef.current = chapterIndex;
+    const previous = lastReportedLocationRef.current;
+    // 首次挂载或同组件切换资源时，以该资源解析出的初始章节记基线。
+    // 不能沿用旧 resourceId 的章节，否则新 EPUB 恢复初始位置时会被误报为
+    // 一次用户导航，并写进刚切换好的 previewPersistence 控制器。
+    if (!previous || previous.resourceId !== resourceId) {
+      lastReportedLocationRef.current = {
+        resourceId,
+        chapterIndex: initialState.chapterIndex,
+      };
       return;
     }
-    lastReportedChapterRef.current = chapterIndex;
-    onProgressChange(buildEpubReadingProgress(chapterIndex));
-  }, [chapterIndex, onProgressChange]);
+    if (previous.chapterIndex === chapterIndex) return;
+    lastReportedLocationRef.current = { resourceId, chapterIndex };
+    onProgressChange?.(buildEpubReadingProgress(chapterIndex));
+  }, [chapterIndex, initialState.chapterIndex, onProgressChange, resourceId]);
 
   useEffect(() => {
     // Flushing pending reading progress on window close cannot go through the
