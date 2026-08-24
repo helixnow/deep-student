@@ -374,6 +374,7 @@
     "quote": "Quote",
     "horizontalRule": "Horizontal Rule",
     "codeBlock": "Code Block",
+    "generateCards": "Generate cards",
     "link": "Link",
     "image": "Image",
     "table": "Table",
@@ -1320,7 +1321,16 @@
     "taskList": "Task list",
     "image": "Image",
     "undo": "Undo",
-    "redo": "Redo"
+    "redo": "Redo",
+    "generateCards": "Generate cards"
+  },
+  "generateCards": {
+    "deckName": "Note cards",
+    "requirements": "Build cards from the key points of this note, keep the original terminology and wording, and skip purely formatting content.",
+    "tooShort": "This note is too short — add some content before generating cards",
+    "started": "Started generating cards from this note",
+    "failed": "Failed to generate cards",
+    "openTaskDashboard": "View tasks"
   },
   "menu": {
     "page_actions": "Page Actions",

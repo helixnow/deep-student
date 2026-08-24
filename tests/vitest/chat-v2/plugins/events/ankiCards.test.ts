@@ -520,6 +520,48 @@ describe('AnkiCardsEventHandler', () => {
       );
     });
 
+    it('uses a newer critic-updated final card so QA flags reach the preview', () => {
+      const handler = eventRegistry.get('anki_cards');
+      handler!.onStart!(mockStore, 'msg-1', { blockType: 'anki_cards' });
+      handler!.onChunk!(
+        mockStore,
+        'anki_cards-block-1',
+        JSON.stringify({
+          id: 'card-critic',
+          front: 'Original question',
+          back: 'Original answer',
+          updated_at: '2026-08-24T10:00:00Z',
+          extra_fields: {},
+        }),
+      );
+
+      const qaFlags = JSON.stringify([
+        {
+          code: 'llm_critic_revised',
+          field: 'card',
+          message: 'LLM critic 修订：答案与源材料矛盾',
+          severity: 'info',
+        },
+      ]);
+      handler!.onEnd!(mockStore, 'anki_cards-block-1', {
+        status: 'completed',
+        cards: [
+          {
+            id: 'card-critic',
+            front: 'Revised question',
+            back: 'Revised answer',
+            updated_at: '2026-08-24T10:00:01Z',
+            extra_fields: { _qa_flags: qaFlags },
+          },
+        ],
+      });
+
+      const block = mockStore.blocks.get('anki_cards-block-1');
+      const card = (block?.toolOutput as any)?.cards?.[0];
+      expect(card?.front).toBe('Revised question');
+      expect(card?.extra_fields?._qa_flags).toBe(qaFlags);
+    });
+
     it('should merge non-card fields in final result', () => {
       const handler = eventRegistry.get('anki_cards');
       handler!.onStart!(mockStore, 'msg-1', { blockType: 'anki_cards' });

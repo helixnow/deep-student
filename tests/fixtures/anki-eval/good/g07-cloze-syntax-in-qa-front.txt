@@ -1,0 +1,2 @@
+{"front": "Anki cloze 语法 {{c1::答案}} 中的 c1 表示什么？", "back": "第一个挖空的序号，同号挖空在同一张卡上同时隐藏。", "tags": ["Anki"]}
+<<<ANKI_CARD_JSON_END>>>

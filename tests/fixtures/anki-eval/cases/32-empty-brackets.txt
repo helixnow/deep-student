@@ -1,0 +1,2 @@
+{"front": "《红楼梦》前八十回的作者是（）", "back": "曹雪芹", "tags": ["文学"]}
+<<<ANKI_CARD_JSON_END>>>

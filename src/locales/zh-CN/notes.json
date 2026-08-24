@@ -347,6 +347,7 @@
     "quote": "引用",
     "horizontalRule": "分隔线",
     "codeBlock": "代码块",
+    "generateCards": "生成卡片",
     "link": "链接",
     "image": "图片",
     "table": "表格",
@@ -1309,7 +1310,16 @@
     "taskList": "任务列表",
     "image": "图片",
     "undo": "撤销",
-    "redo": "重做"
+    "redo": "重做",
+    "generateCards": "生成卡片"
+  },
+  "generateCards": {
+    "deckName": "笔记制卡",
+    "requirements": "基于这篇笔记的要点出卡，保留原文的术语与表述，跳过纯格式化内容。",
+    "tooShort": "笔记内容太短，先写点内容再生成卡片",
+    "started": "已开始根据笔记生成卡片",
+    "failed": "生成卡片失败",
+    "openTaskDashboard": "查看任务"
   },
   "versions": {
     "title": "版本历史",
