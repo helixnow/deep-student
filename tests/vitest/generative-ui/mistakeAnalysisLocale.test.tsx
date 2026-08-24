@@ -21,7 +21,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('MistakeAnalysisBlock locale format', () => {
-  it('formats errorRate and mistakeCount with formatGenerativeNumber', () => {
+  it('formats counts and puts dir="auto" on topic and suggestion', () => {
     const formattedRate = formatGenerativeNumber(12.5);
     const formattedCount = formatGenerativeNumber(3);
 
@@ -32,6 +32,8 @@ describe('MistakeAnalysisBlock locale format', () => {
     const title = screen.getByRole('heading');
     expect(title).toHaveTextContent(formattedRate);
     expect(title).toHaveTextContent(formattedCount);
+    expect(title).toHaveAttribute('dir', 'auto');
+    expect(screen.getByText('Review')).toHaveAttribute('dir', 'auto');
 
     const errorRateEl = document.querySelector('[data-error-rate]');
     expect(errorRateEl).toBeTruthy();

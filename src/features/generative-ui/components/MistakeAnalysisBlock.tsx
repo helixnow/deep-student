@@ -33,11 +33,11 @@ export function MistakeAnalysisBlock({
   const formattedRate = formatGenerativeNumber(errorRate);
   return (
     <Alert variant={severityVariant[severity]} role="alert" aria-labelledby={titleId}>
-      <AlertTitle id={titleId} data-error-rate={formattedRate}>
+      <AlertTitle id={titleId} dir="auto" data-error-rate={formattedRate}>
         {topic} · {t('mistake.error_rate', { rate: formattedRate })}
         {mistakeCount != null ? t('mistake.count', { count: formatGenerativeNumber(mistakeCount) }) : ''}
       </AlertTitle>
-      <AlertDescription>{suggestion}</AlertDescription>
+      <AlertDescription dir="auto">{suggestion}</AlertDescription>
     </Alert>
   );
 }

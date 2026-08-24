@@ -324,9 +324,9 @@ export function GenerativeUIRenderer({
 
       {displayIntent.meta?.title ? (
         <div className="space-y-0.5">
-          <h3 className="text-base font-semibold">{displayIntent.meta.title}</h3>
+          <h3 dir="auto" className="text-base font-semibold">{displayIntent.meta.title}</h3>
           {displayIntent.meta.description ? (
-            <p className="text-sm text-muted-foreground">{displayIntent.meta.description}</p>
+            <p dir="auto" className="text-sm text-muted-foreground">{displayIntent.meta.description}</p>
           ) : null}
         </div>
       ) : null}

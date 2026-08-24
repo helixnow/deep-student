@@ -296,9 +296,11 @@ export function ActionBarBlock({
               }}
               onClick={() => handleClick(action.id, effectiveRisk)}
             >
-              {isConfirmingMedium
-                ? t('action.confirm_inline', { label: displayLabel })
-                : displayLabel}
+              <span dir="auto">
+                {isConfirmingMedium
+                  ? t('action.confirm_inline', { label: displayLabel })
+                  : displayLabel}
+              </span>
             </DsButton>
           );
         })}

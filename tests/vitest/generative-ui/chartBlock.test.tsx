@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import React from 'react';
 
 vi.mock('react-i18next', () => ({
@@ -21,16 +21,15 @@ vi.mock('react-i18next', () => ({
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import {
   CHART_BLOCK_TYPE,
-  CHART_REDUCED_MOTION_QUERY,
   ChartBlock,
   chartBlockPropsSchema,
   formatChartTooltipValue,
-  readPrefersReducedMotion,
   registerChartBlock,
   resolveChartAnimationActive,
 } from '@/features/generative-ui/components/ChartBlock';
 import { formatGenerativeNumber } from '@/features/generative-ui/utils/formatGenerativeNumber';
 import { GENERATIVE_UI_COMPACT_MEDIA_QUERY } from '@/features/generative-ui/hooks/useGenerativeUICompact';
+import { PREFERS_REDUCED_MOTION_QUERY } from '@/features/generative-ui/hooks/usePrefersReducedMotion';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { validateBlockProps } from '@/features/generative-ui/schema';
 
@@ -62,6 +61,49 @@ function mockInnerWidth(width: number): void {
     configurable: true,
     value: width,
   });
+}
+
+function mockMutableReducedMotion(initialMatches: boolean): { setMatches: (matches: boolean) => void } {
+  let matches = initialMatches;
+  const listeners = new Set<() => void>();
+  const reducedMotionQuery = {
+    get matches() {
+      return matches;
+    },
+    media: PREFERS_REDUCED_MOTION_QUERY,
+    onchange: null,
+    addListener: vi.fn((listener: () => void) => listeners.add(listener)),
+    removeListener: vi.fn((listener: () => void) => listeners.delete(listener)),
+    addEventListener: vi.fn((_event: string, listener: () => void) => listeners.add(listener)),
+    removeEventListener: vi.fn((_event: string, listener: () => void) => listeners.delete(listener)),
+    dispatchEvent: vi.fn(),
+  };
+
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) =>
+      query === PREFERS_REDUCED_MOTION_QUERY
+        ? reducedMotionQuery
+        : {
+            matches: false,
+            media: query,
+            onchange: null,
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+          },
+    ),
+  });
+
+  return {
+    setMatches(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener());
+    },
+  };
 }
 
 function restoreDesktopViewport(): void {
@@ -197,13 +239,6 @@ describe('ChartBlock animation gating', () => {
     expect(resolveChartAnimationActive(true, true)).toBe(false);
   });
 
-  it('reads prefers-reduced-motion from matchMedia', () => {
-    mockMatchMedia((query) => query === CHART_REDUCED_MOTION_QUERY);
-    expect(readPrefersReducedMotion()).toBe(true);
-    mockMatchMedia(() => false);
-    expect(readPrefersReducedMotion()).toBe(false);
-  });
-
   it('keeps animation on desktop without reduced motion', () => {
     restoreDesktopViewport();
     render(<ChartBlock {...BASE_PROPS} kind="bar" />);
@@ -221,7 +256,20 @@ describe('ChartBlock animation gating', () => {
       'data-animation-active',
       'false',
     );
-    expect(window.matchMedia).toHaveBeenCalledWith(CHART_REDUCED_MOTION_QUERY);
+    expect(window.matchMedia).toHaveBeenCalledWith(PREFERS_REDUCED_MOTION_QUERY);
+  });
+
+  it('disables animation when reduced-motion changes at runtime', () => {
+    mockInnerWidth(1280);
+    const media = mockMutableReducedMotion(false);
+    render(<ChartBlock {...BASE_PROPS} kind="bar" />);
+
+    const chart = document.querySelector('[data-generative-chart]');
+    expect(chart).toHaveAttribute('data-animation-active', 'true');
+
+    act(() => media.setMatches(true));
+
+    expect(chart).toHaveAttribute('data-animation-active', 'false');
   });
 
   it('sets isAnimationActive=false in compact viewport', () => {
@@ -237,8 +285,8 @@ describe('ChartBlock animation gating', () => {
   it('wires resolve result to recharts isAnimationActive', () => {
     const source = readFileSync(CHART_BLOCK_SRC, 'utf8');
     expect(source).toContain('isAnimationActive={isAnimationActive}');
-    expect(source).toContain(CHART_REDUCED_MOTION_QUERY);
     expect(source).toContain('useGenerativeUICompact');
+    expect(source).toContain('usePrefersReducedMotion');
   });
 });
 

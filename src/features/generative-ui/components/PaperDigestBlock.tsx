@@ -42,7 +42,7 @@ export function PaperDigestBlock({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle id={titleId} dir="auto" className="text-sm font-semibold leading-snug">{title}</CardTitle>
           {citationLabel ? (
-            <Badge variant="secondary" className="text-xs shrink-0">
+            <Badge variant="secondary" dir="auto" className="text-xs shrink-0">
               {citationLabel}
             </Badge>
           ) : null}

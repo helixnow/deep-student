@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { ReviewCalendarBlock } from '@/features/generative-ui/components/ReviewCalendarBlock';
 import { formatGenerativeDate } from '@/features/generative-ui/utils/formatGenerativeDate';
@@ -27,8 +27,15 @@ describe('formatGenerativeDate', () => {
 });
 
 describe('ReviewCalendarBlock locale format', () => {
-  it('keeps ISO dateTime and exposes a locale-formatted due count', () => {
-    render(<ReviewCalendarBlock days={[{ date: '2026-08-24', dueCount: 4 }]} />);
+  it('keeps ISO dateTime, formats due count, and sets title direction', () => {
+    render(
+      <ReviewCalendarBlock
+        title="Review לוח"
+        days={[{ date: '2026-08-24', dueCount: 4 }]}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Review לוח' })).toHaveAttribute('dir', 'auto');
 
     const timeEl = document.querySelector('time');
     expect(timeEl).toBeTruthy();

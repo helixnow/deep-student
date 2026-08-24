@@ -18,11 +18,12 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('PaperDigestBlock locale format', () => {
-  it('puts dir="auto" on title and locale-formats citationCount', () => {
+  it('puts dir="auto" on title/citation label and locale-formats citationCount', () => {
     const formatted = formatGenerativeNumber(1200);
     render(
       <PaperDigestBlock
         title="Attention Is All You Need"
+        citationLabel="Citation ציטוט"
         citationCount={1200}
         abstractExcerpt="We propose the Transformer."
       />,
@@ -30,6 +31,7 @@ describe('PaperDigestBlock locale format', () => {
 
     const title = screen.getByRole('heading', { name: 'Attention Is All You Need' });
     expect(title).toHaveAttribute('dir', 'auto');
+    expect(screen.getByText('Citation ציטוט')).toHaveAttribute('dir', 'auto');
 
     const citationLine = document.querySelector('[data-citation-count]');
     expect(citationLine).toBeTruthy();

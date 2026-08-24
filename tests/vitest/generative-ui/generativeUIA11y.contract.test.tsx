@@ -131,6 +131,34 @@ describe('generativeUIA11y.contract', () => {
     expect(root).toHaveAttribute('aria-label', 'AI 生成界面');
   });
 
+  it('puts dir="auto" on renderer meta and action display labels', () => {
+    render(
+      <GenerativeUIRenderer
+        intent={{
+          version: '1.1',
+          meta: {
+            title: 'Study סיכום',
+            description: 'Review مرحبا',
+          },
+          blocks: [
+            {
+              type: 'action-bar',
+              props: {
+                actions: [{ id: 'open-review', label: 'Open مراجعة' }],
+              },
+            },
+          ],
+        }}
+        showChrome={false}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Study סיכום' })).toHaveAttribute('dir', 'auto');
+    expect(screen.getByText('Review مرحبا')).toHaveAttribute('dir', 'auto');
+    const action = screen.getByRole('button', { name: 'Open مراجعة' });
+    expect(action.querySelector('span')).toHaveAttribute('dir', 'auto');
+  });
+
   it('sets aria-busy and chrome live region while streaming', () => {
     render(<GenerativeUIRenderer intent={buildAllBlocksIntent()} isStreaming showChrome />);
     const root = document.querySelector('[data-generative-ui]');

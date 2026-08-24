@@ -35,7 +35,7 @@ export function ReviewCalendarBlock({ title, days }: ReviewCalendarProps) {
   return (
     <Card className="min-w-0" role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2">
-        <CardTitle id={titleId} className="text-sm font-medium">{resolvedTitle}</CardTitle>
+        <CardTitle id={titleId} dir="auto" className="text-sm font-medium">{resolvedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
         <ul className="space-y-2">

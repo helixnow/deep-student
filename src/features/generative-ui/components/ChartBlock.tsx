@@ -18,20 +18,9 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { useGenerativeUICompact } from '../hooks/useGenerativeUICompact';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { generativeUIRegistry } from '../registry';
 import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
-
-/** 本地读 matchMedia；不引入独立 hook，避免与共享 reduced-motion hook 抢定义 */
-export const CHART_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-
-export function readPrefersReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  try {
-    return Boolean(window.matchMedia(CHART_REDUCED_MOTION_QUERY).matches);
-  } catch {
-    return false;
-  }
-}
 
 export function resolveChartAnimationActive(
   compact: boolean,
@@ -211,7 +200,7 @@ function ChartGraphic({
 export function ChartBlock({ id, title, kind, categories, series, unit }: ChartBlockProps) {
   const { t } = useTranslation('generativeUi');
   const compact = useGenerativeUICompact();
-  const prefersReducedMotion = readPrefersReducedMotion();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const isAnimationActive = resolveChartAnimationActive(compact, prefersReducedMotion);
   const resolvedSeries = series ?? [];
   const isEmpty = resolvedSeries.length === 0;
