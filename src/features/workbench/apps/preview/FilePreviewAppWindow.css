@@ -182,12 +182,12 @@
    coarse 指针统一放大触控目标；输入 16px 防 iOS 聚焦放大 */
 @media (pointer: coarse) {
   .wb-file-preview-toolbar .wb-file-preview-tip-anchor > button {
-    min-width: 40px;
-    min-height: 40px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .wb-file-preview-search {
-    height: 40px;
+    height: 44px;
   }
 
   .wb-file-preview-search input {
@@ -195,9 +195,9 @@
   }
 
   .wb-file-preview-search .wb-file-preview-search-btn {
-    height: 36px;
-    width: 36px;
-    min-width: 36px;
+    height: 44px;
+    width: 44px;
+    min-width: 44px;
   }
 }
 
