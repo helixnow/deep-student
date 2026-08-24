@@ -230,6 +230,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               </p>
               <DsButton
                 variant="primary"
+                className="[@media(pointer:coarse)]:min-h-11"
                 disabled={busy}
                 onClick={async () => {
                   setBusy(true);
@@ -563,7 +564,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                 >
                   <DsButton
                     variant="ghost"
-                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1"
+                    className="flex h-auto min-w-0 w-full items-center justify-start gap-3 border-0 p-0 text-left whitespace-normal !bg-transparent hover:!bg-transparent sm:row-start-1 [@media(pointer:coarse)]:min-h-11"
                     onClick={() => setSelectedId(p.id)}
                   >
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/80">
