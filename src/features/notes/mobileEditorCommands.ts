@@ -15,6 +15,7 @@ import {
   pickImageWithTauriDialog,
 } from '@/components/crepe/features/imageUpload';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { generateCardsFromNote } from './generateCardsFromNote';
 import type { MobileEditorToolbarCommands } from './components/MobileEditorToolbar';
 
 type ViewAction = (view: EditorView) => void;
@@ -159,13 +160,53 @@ export async function insertImageFromDevice(
 }
 
 /**
+ * 移动端制卡的 in-flight 守卫。
+ *
+ * 命令对象在宿主每次渲染时重建，闭包变量守不住双击；按编辑器实例记在模块级，
+ * 与桌面 NotesEditorToolbar 的 generatingCards state 等效（触屏双击只发一个任务）。
+ */
+const cardsInFlightEditors = new WeakSet<object>();
+/** 编辑器尚未就绪时也要防抖，此时没有可作键的实例 */
+let cardsInFlightWithoutEditor = false;
+
+function isGeneratingCards(editor: CrepeEditorApi | null | undefined): boolean {
+  return editor ? cardsInFlightEditors.has(editor) : cardsInFlightWithoutEditor;
+}
+
+function setGeneratingCards(editor: CrepeEditorApi | null | undefined, running: boolean): void {
+  if (!editor) {
+    cardsInFlightWithoutEditor = running;
+    return;
+  }
+  if (running) cardsInFlightEditors.add(editor);
+  else cardsInFlightEditors.delete(editor);
+}
+
+/** 制卡入口：任务在途时忽略重复点击，完成/失败后恢复 */
+export function generateCardsFromEditor(
+  editor: CrepeEditorApi | null | undefined,
+  noteTitle?: string,
+): void {
+  if (isGeneratingCards(editor)) return;
+  setGeneratingCards(editor, true);
+  void generateCardsFromNote({ editor, noteTitle }).finally(() => {
+    setGeneratingCards(editor, false);
+  });
+}
+
+/**
  * 宿主侧扩展（不依赖编辑器实例的命令）。
  * - openFind：打开编辑器内查找替换面板（NotesCrepeEditor 传 setIsFindReplaceOpen(true)）；
  * - noteId：图片上传归档到该笔记的资产目录（P0-4；缺省时 uploader 回退 blob URL）。
+ * - noteTitle：制卡时作为牌组名；缺省时 generateCardsFromNote 回退到通用牌组。
+ * - enableGenerateCards：笔记宿主显式开启制卡入口；其他宿主（复用工具条但内容不是
+ *   笔记正文）不传，底栏就不会多出一个「生成卡片」按钮。
  */
 export interface MobileEditorCommandExtras {
   openFind?: () => void;
   noteId?: string;
+  noteTitle?: string;
+  enableGenerateCards?: boolean;
 }
 
 export function buildMobileEditorCommands(
@@ -193,6 +234,13 @@ export function buildMobileEditorCommands(
     insertTable: () => editor?.insertTable(),
     // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
     openBlockActions: () => editor?.openBlockMenuAtSelection?.(),
+    // 生成卡片：走与桌面工具栏同一个共享制卡入口，不新起链路；
+    // 仅笔记宿主显式开启（enableGenerateCards）后暴露，未开启时按钮不渲染
+    ...(extras?.enableGenerateCards
+      ? {
+          generateCards: () => generateCardsFromEditor(editor, extras.noteTitle),
+        }
+      : {}),
     // 查找入口：仅宿主接线后暴露，保持未接线宿主的按钮隐藏行为
     ...(extras?.openFind ? { openFind: extras.openFind } : {}),
   };

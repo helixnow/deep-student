@@ -1,0 +1,2 @@
+{"front": "请根据 {{DOCUMENT_CONTENT}} 总结牛顿三大定律的核心内容", "back": "惯性定律、加速度定律与作用反作用定律。", "tags": ["物理"]}
+<<<ANKI_CARD_JSON_END>>>

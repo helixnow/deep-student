@@ -1,0 +1,1 @@
+{"front": "TCP 与 UDP 的核心区别？", "back": "TCP 面向连接、可靠、有序；UDP 无连接、不保证可靠交付。"}{"front": "TCP 如何保证可靠传输？", "back": "序号、确认应答、超时重传、滑动窗口与拥塞控制。"}<<<ANKI_CARD_JSON_END>>>

@@ -1,9 +1,15 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CrepeEditorApi } from '@/components/crepe/types';
+import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
 import { NotesEditorToolbar } from '../NotesEditorToolbar';
+
+vi.mock('@/features/anki/generateCardsFromText', () => ({
+  MIN_CONTENT_LENGTH_FOR_CARDS: 10,
+  generateCardsFromText: vi.fn(async () => ({ ok: true as const })),
+}));
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
@@ -36,11 +42,16 @@ function makeEditor(overrides: Partial<CrepeEditorApi> = {}): CrepeEditorApi {
     insertAtCursor: vi.fn(),
     focus: vi.fn(),
     getCrepe: vi.fn(() => null),
+    getMarkdown: vi.fn(() => '# 光合作用\n叶绿体把光能转成化学能。'),
     ...overrides,
   } as unknown as CrepeEditorApi;
 }
 
 describe('NotesEditorToolbar', () => {
+  beforeEach(() => {
+    vi.mocked(generateCardsFromText).mockClear();
+  });
+
   it('keeps every formatting command keyboard reachable in one quiet menu', () => {
     const editor = makeEditor();
 
@@ -124,5 +135,43 @@ describe('NotesEditorToolbar', () => {
 
     fireEvent.keyDown(menu, { key: 'Home' });
     expect(items[0]).toHaveAttribute('tabindex', '0');
+  });
+
+  it('exposes a generate-cards action that feeds the note body to the shared card pipeline', async () => {
+    const editor = makeEditor();
+    render(<NotesEditorToolbar editor={editor} />);
+
+    const trigger = screen.getByRole('button', { name: 'generateCards' });
+    fireEvent.click(trigger);
+
+    await waitFor(() => {
+      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(generateCardsFromText).mock.calls[0][0]).toMatchObject({
+      content: '# 光合作用\n叶绿体把光能转成化学能。',
+    });
+  });
+
+  it('prefers the full document over the loaded window when generating cards', async () => {
+    const editor = makeEditor({
+      getMarkdown: vi.fn(() => 'visible prefix only'),
+      getFullMarkdown: vi.fn(() => 'visible prefix only\nplus the windowed tail'),
+    });
+    render(<NotesEditorToolbar editor={editor} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'generateCards' }));
+
+    await waitFor(() => {
+      expect(generateCardsFromText).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(generateCardsFromText).mock.calls[0][0].content).toBe(
+      'visible prefix only\nplus the windowed tail',
+    );
+  });
+
+  it('keeps the generate-cards action disabled without an editor', () => {
+    render(<NotesEditorToolbar editor={null} />);
+
+    expect(screen.getByRole('button', { name: 'generateCards' })).toBeDisabled();
   });
 });

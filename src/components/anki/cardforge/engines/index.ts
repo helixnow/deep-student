@@ -14,10 +14,10 @@
  * - `analyzeContent`: 分析内容
  *
  * ### SegmentEngine
- * 智能分段引擎，负责将大文档分割成适合 LLM 上下文的语义完整片段：
- * - 阶段一：硬分割（纯数学计算，按固定 token 数）
- * - 阶段二：LLM 定界（可选，当文档较大时启用，并行执行）
- * - 阶段三：构建最终分段
+ * 分段估算引擎（纯数学计算，无 LLM 调用）：
+ * - 硬分割（按固定 token 数）+ 构建分段
+ * - 仅用于 analyzeContent 的分段数估算；真正的 LLM 语义定界由后端
+ *   streaming_anki_service 在生成管线内执行（enable_llm_boundary_detection）
  *
  * ### TaskController
  * 任务控制器，提供任务级别的控制接口：
@@ -79,7 +79,6 @@ export {
 // ============================================================================
 
 export {
-  normalizeToolExportCards,
   validateCardsForExport,
   filterExportableCards,
 } from './exportNormalize';
@@ -109,8 +108,6 @@ export type {
   SegmentConfig,
   DocumentSegment,
   HardSplitPoint,
-  BoundaryDetectionRequest,
-  BoundaryDetectionResult,
   // 制卡相关
   CardGenerationTask,
   ConcurrencyConfig,
