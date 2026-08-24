@@ -126,7 +126,9 @@ describe('multimodalRagService', () => {
     await expect(retrieve('vector query', undefined, undefined, { topK: 4 }))
       .resolves.toEqual([{
         source_type: 'image',
+        // 扁平路线后端不携带业务 sourceId：source_id 回退为 resource_id
         source_id: 'res-1',
+        resource_id: 'res-1',
         embedding_id: 'emb-1',
         page_index: 2,
         text_content: 'diagram',

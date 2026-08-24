@@ -21,9 +21,12 @@ describe('mind map hover clarity contract', () => {
   );
 
   it('does not restyle every edge when the hovered node changes', () => {
+    // 悬停高亮现在只作用于「悬停节点 → 根」的祖先链树边（hoverPathEdgeKeys），
+    // onNodeMouseEnter/Leave 仅维护该路径状态；禁止回到基于 hoveredNodeId
+    // 的全量边压暗（opacity: 0.25）实现。
     expect(canvasSource).not.toContain('hoveredNodeId');
-    expect(canvasSource).not.toContain('onNodeMouseEnter');
-    expect(canvasSource).not.toContain('onNodeMouseLeave');
+    expect(canvasSource).toContain('hoverPathEdgeKeys');
+    expect(canvasSource).toContain('hoverPathEdgeKeys?.has(edgeKey)');
     expect(canvasSource).not.toContain('opacity: 0.25');
   });
 

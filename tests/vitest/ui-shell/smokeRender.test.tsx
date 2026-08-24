@@ -52,10 +52,11 @@ describe('ui shell smoke render', () => {
       </>
     );
 
-    const minimizeButton = screen.getByLabelText('window_controls.minimize');
+    // 测试环境现在会同步加载 zh-CN common 命名空间，aria-label 解析为本地化文案
+    const minimizeButton = screen.getByLabelText('最小化');
     expect(minimizeButton.closest('[data-shell-window-controls]')).toBeInTheDocument();
 
-    const mobileBackButton = screen.getByLabelText('common:mobile_header.back');
+    const mobileBackButton = screen.getByLabelText('返回');
     expect(mobileBackButton.closest('[data-mobile-shell="header"]')).toBeInTheDocument();
   });
 

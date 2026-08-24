@@ -172,7 +172,7 @@ describe('phase 5 automation tool surface', () => {
       },
     });
     expect(update.inputSchema.properties.schedule.properties?.kind.enum).toEqual([
-      'daily', 'weekdays', 'weekly', 'monthly', 'interval',
+      'daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once',
     ]);
     for (const tool of [setEnabled, deletion, runNow]) {
       expect(tool.inputSchema).toMatchObject({
