@@ -156,6 +156,9 @@ const TranslationDisplayModeRow = ({
         ariaLabel={title}
         value={value}
         size="compact"
+        // !min-h-11：app.css .study-shell-segmented-button 的 min-height:0 会压掉基元
+        // 非 important 的 coarse min-h-11，这里用 important 恢复触屏 ≥44px 命中高度
+        itemClassName="[@media(pointer:coarse)]:!min-h-11"
         options={[
           { value: 'aligned', label: alignedLabel },
           { value: 'streaming', label: streamingLabel },
