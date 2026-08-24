@@ -179,6 +179,25 @@ impl ToolExecutor for GenerativeUiExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use crate::chat_v2::events::ChatV2EventEmitter;
+    use crate::chat_v2::types::ToolCall;
+    use crate::tools::ToolRegistry;
+
+    fn test_ctx(block_id: &str) -> ExecutionContext {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "generative-ui-test-session".to_string(),
+        ));
+        ExecutionContext::new(
+            "generative-ui-test-session".to_string(),
+            "generative-ui-test-message".to_string(),
+            block_id.to_string(),
+            emitter,
+            Arc::new(ToolRegistry::new()),
+            None,
+        )
+        .with_tool_call_id("call-generative-ui")
+    }
 
     #[test]
     fn parse_intent_accepts_object() {
@@ -205,5 +224,79 @@ mod tests {
     fn parse_intent_rejects_empty_blocks() {
         let args = json!({ "intent": { "version": "1", "blocks": [] } });
         assert!(GenerativeUiExecutor::parse_intent(&args).is_err());
+    }
+
+    #[test]
+    fn parse_intent_rejects_missing_intent() {
+        let args = json!({ "other": true });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("missing intent");
+        assert!(err.contains("intent"));
+    }
+
+    #[test]
+    fn can_handle_namespaced_and_plain_tool_name() {
+        let executor = GenerativeUiExecutor::new();
+        assert!(executor.can_handle("render_generative_ui"));
+        assert!(executor.can_handle("builtin-render_generative_ui"));
+        assert!(!executor.can_handle("rag_search"));
+    }
+
+    #[tokio::test]
+    async fn execute_success_returns_rendered_status_and_block_count() {
+        let executor = GenerativeUiExecutor::new();
+        let call = ToolCall::new(
+            "call-generative-ui".to_string(),
+            "builtin-render_generative_ui".to_string(),
+            json!({
+                "intent": {
+                    "version": "1",
+                    "meta": { "title": "Learning briefing" },
+                    "blocks": [
+                        { "type": "stat-card", "props": { "title": "Due", "value": 3 } },
+                        { "type": "action-bar", "props": { "actions": [] } }
+                    ]
+                }
+            }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(result.success, "expected success, got {:?}", result.error);
+        assert_eq!(
+            result.output.get("status").and_then(Value::as_str),
+            Some("rendered")
+        );
+        assert_eq!(
+            result.output.get("blockCount").and_then(Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(result.tool_name, "builtin-render_generative_ui");
+    }
+
+    #[tokio::test]
+    async fn execute_failure_on_empty_blocks_returns_error_result() {
+        let executor = GenerativeUiExecutor::new();
+        let call = ToolCall::new(
+            "call-generative-ui-fail".to_string(),
+            "render_generative_ui".to_string(),
+            json!({ "intent": { "version": "1", "blocks": [] } }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-fail"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(!result.success);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("blocks")
+        );
     }
 }

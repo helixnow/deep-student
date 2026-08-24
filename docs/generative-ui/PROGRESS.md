@@ -6,14 +6,18 @@
 - [x] `buildExamBriefingIntent` + `ExamGenerativeBriefing` — ExamContentView 题库简报 POC（stats + handleStartReview）
 - [x] `createExamBriefingActionHandlers` — 上下文回调注入（start-review / open-practice）
 - [x] `buildNoteSummaryIntent` labels/i18n 注入（对齐其他 builder 模式）
+- [x] Memory/IndexStatus Hub 挂载点（IndexStatusView + MemoryView + MemoryFolder）
+- [x] `buildIndexStatusBriefingIntent` / `buildMemoryBriefingIntent` + 上下文 action handlers
+- [x] actionHandlerSync contract 扩展（exam / index / memory）
 - [x] generative-ui skill ↔ Rust parse_intent contract 测试
-- [x] 75 项 vitest 全绿（+15：Index/Memory 简报 + skill contract）
-- [ ] Rust execute 级测试
+- [x] Rust execute 级测试（`generative_ui_executor` 单元 + `generative_ui_executor_e2e`；本环境 Cargo 1.83 暂无法跑通 `cargo test`）
+- [x] generativeUiRustMapping contract（context/pipeline 双映射）
+- [x] 77 项 vitest 全绿（+3 Rust mapping contract）
 
 ### Round 6+
-- Learning Hub Memory/IndexStatus 挂载点
-- mindmap-embed E2E
 - chunkBuffer 增量流式状态机
+- mindmap-embed E2E
+- Notes 写入 HITL 链
 
 ---
 
