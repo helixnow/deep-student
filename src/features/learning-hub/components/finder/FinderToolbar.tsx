@@ -359,7 +359,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
           title={t('finder.toolbar.more')}
           aria-label={t('finder.toolbar.more')}
           data-finder-toolbar-overflow

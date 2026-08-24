@@ -3801,7 +3801,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'bookmarks'}
-                className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('bookmarks')}
               >
                 {t('pdf:bookmark.tabLabel')}
@@ -3811,7 +3811,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'highlights'}
-                  className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'highlights' ? 'active' : ''}`}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'highlights' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('highlights')}
                 >
                   {t('pdf:toolbar.highlight_tab')}
