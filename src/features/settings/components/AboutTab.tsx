@@ -296,7 +296,7 @@ export const AboutTab: React.FC = () => {
                           href={updater.info.apkUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-1"
                         >
                           <Download size={14} />
                           {t('about.update.mirrorDownload')}
@@ -306,7 +306,7 @@ export const AboutTab: React.FC = () => {
                         href={`https://github.com/helixnow/deep-student/releases/latest`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-1"
                       >
                         <GithubLogo size={14} />
                         {t('about.update.githubDownload')}
