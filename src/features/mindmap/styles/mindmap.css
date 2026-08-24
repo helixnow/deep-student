@@ -2505,4 +2505,14 @@
   .mm-recite-status-action {
     min-height: 44px;
   }
+
+  /* 样式面板图标钮（26px）与色板（22px/32px）触屏统一拉到 44px 命中目标；
+     与 .mm-mobile-subview 子视图内的 44px 规则保持一致 */
+  .mm-style-icon-button,
+  .mm-style-swatch {
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+  }
 }
