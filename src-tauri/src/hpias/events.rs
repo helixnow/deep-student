@@ -2,8 +2,10 @@
 //!
 //! 通道名：`hpias_event`（见 `docs/generative-ui/ARCHITECTURE.md`）
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{Emitter, Window};
+
+use super::payloads::build_session_started_payload;
 
 /// 前端 `hpiasEventBridge` 订阅的 Tauri 事件通道
 pub const HPIAS_EVENT_CHANNEL: &str = "hpias_event";
@@ -25,16 +27,9 @@ impl HpiasEventEmitter {
             .map_err(|e| e.to_string())
     }
 
-    /// 构建 `session_started` 事件 payload（纯函数，便于单测）
+    /// 构建 `session_started` 事件 payload（委托 payloads 模块）
     pub fn build_session_started_payload(session_id: &str, question: Option<&str>) -> Value {
-        let mut payload = json!({
-            "type": "session_started",
-            "session_id": session_id,
-        });
-        if let Some(q) = question.map(str::trim).filter(|s| !s.is_empty()) {
-            payload["question"] = json!(q);
-        }
-        payload
+        build_session_started_payload(session_id, question, None)
     }
 
     /// 通知前端 HPIAS 会话已绑定（Chat `researchSessionId` 联用时）

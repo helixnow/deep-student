@@ -22,6 +22,15 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 21（2026-08-24）
+
+- [x] **`hpias/payloads.rs`** — HpiasEvent 生命周期 payload 构建器（plan/retrieval/subagent/synthesis/completed）
+- [x] **`hpias/orchestrator.rs`** — `HpiasPipelineOrchestrator` 后台 emit pipeline（对齐 Style Lab 时间线）
+- [x] `generative_ui_executor` — researchSessionId + Research 块 → session_started + spawn orchestrator
+- [x] `.cargo/config.toml` — 移除强制 `-fuse-ld=lld`，CI 可通过 `RUSTFLAGS` 可选启用
+- [x] SOTA / Rust mapping contract 扩展 orchestrator 验收
+- [x] vitest 全绿；Rust `cargo test` 本环境仍受 edition2024 依赖版本限制
+
 ## Round 20（2026-08-24）
 
 - [x] Rust **`hpias::HpiasEventEmitter`**（Round 20）+ executor `session_started` emit

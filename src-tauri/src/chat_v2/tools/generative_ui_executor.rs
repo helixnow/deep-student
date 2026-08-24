@@ -11,7 +11,7 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::types::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::hpias::HpiasEventEmitter;
+use crate::hpias::{extract_question_from_intent, HpiasEventEmitter, HpiasPipelineOrchestrator};
 
 const TOOL_NAME: &str = "render_generative_ui";
 
@@ -157,11 +157,12 @@ impl GenerativeUiExecutor {
         );
     }
 
-    /// researchSessionId 存在时 emit `hpias_event` session_started，激活前端 HPIAS 桥
+    /// researchSessionId 存在时 emit `hpias_event` session_started，并 spawn pipeline orchestrator
     fn emit_hpias_session_started_if_needed(
         ctx: &ExecutionContext,
         session_id: &str,
         question: Option<&str>,
+        intent: &Value,
     ) {
         let window = ctx
             .tauri_window
@@ -170,13 +171,14 @@ impl GenerativeUiExecutor {
         let Some(window) = window else {
             return;
         };
-        let emitter = HpiasEventEmitter::new(window);
+        let emitter = HpiasEventEmitter::new(window.clone());
         if let Err(error) = emitter.emit_session_started(session_id, question) {
             log::warn!(
                 "[GenerativeUiExecutor] hpias_event session_started emit failed: {}",
                 error
             );
         }
+        HpiasPipelineOrchestrator::spawn_from_intent(window, session_id, question, intent);
     }
 }
 
@@ -257,6 +259,8 @@ impl ToolExecutor for GenerativeUiExecutor {
             .get("meta")
             .and_then(|m| m.get("title"))
             .and_then(Value::as_str);
+        let hpias_question = title
+            .or(extract_question_from_intent(&intent).as_deref());
 
         let content_str = serde_json::to_string(&intent)
             .map_err(|e| format!("intent 序列化失败: {}", e))?;
@@ -265,7 +269,7 @@ impl ToolExecutor for GenerativeUiExecutor {
         Self::emit_chunk(ctx, &content_str);
         Self::emit_end(ctx, &intent, research_session_id.as_deref());
         if let Some(ref session_id) = research_session_id {
-            Self::emit_hpias_session_started_if_needed(ctx, session_id, title);
+            Self::emit_hpias_session_started_if_needed(ctx, session_id, hpias_question, &intent);
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;

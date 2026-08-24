@@ -55,4 +55,34 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(hpiasSrc).toContain('"hpias_event"');
     expect(hpiasSrc).toContain('emit_session_started');
   });
+
+  it('hpias orchestrator spawns pipeline from generative_ui executor', () => {
+    expect(executorSrc).toContain('HpiasPipelineOrchestrator::spawn_from_intent');
+    const orchestratorSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/orchestrator.rs'),
+      'utf8',
+    );
+    expect(orchestratorSrc).toContain('build_pipeline_timeline');
+    expect(orchestratorSrc).toContain('intent_has_research_blocks');
+  });
+
+  it('hpias payloads align with frontend lifecycle events', () => {
+    const payloadsSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/payloads.rs'),
+      'utf8',
+    );
+    for (const eventType of [
+      'session_started',
+      'plan_generated',
+      'retrieval_completed',
+      'selection_completed',
+      'subagent_started',
+      'subagent_completed',
+      'synthesis_updated',
+      'subagents_done',
+      'session_completed',
+    ]) {
+      expect(payloadsSrc).toContain(eventType);
+    }
+  });
 });

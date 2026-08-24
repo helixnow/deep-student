@@ -90,9 +90,16 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       );
       return (
         src.includes('emit_hpias_session_started_if_needed') &&
-        src.includes('crate::hpias::HpiasEventEmitter')
+        src.includes('HpiasEventEmitter') &&
+        src.includes('HpiasPipelineOrchestrator::spawn_from_intent')
       );
     },
+  },
+  {
+    id: 'hpias-pipeline-orchestrator',
+    check: () =>
+      fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/orchestrator.rs')) &&
+      fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/payloads.rs')),
   },
   {
     id: 'guarded-listen-hpias-whitelist',
