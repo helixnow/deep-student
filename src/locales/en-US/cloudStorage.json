@@ -1,6 +1,6 @@
 {
   "title": "Cloud Storage",
-  "description": "Configure cloud backup storage, supporting WebDAV and S3-compatible storage",
+  "description": "Configure storage for cloud backups and record-level sync. Android supports WebDAV only; desktop builds also support S3-compatible storage and experimental FTP/FTPS.",
   
   "provider": {
     "label": "Storage Type",
@@ -8,11 +8,11 @@
     "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
     "s3": "S3 Compatible",
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
-    "s3Disabled": "S3 is not available in this version. Use WebDAV instead, or export a ZIP backup on a desktop device and import it here.",
+    "s3Disabled": "S3 is not available on this platform or in this build. Use WebDAV instead, or export a ZIP backup on a desktop device and import it here.",
     "ftp": "FTP/FTPS",
     "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support",
     "ftpDescExperimental": "Experimental backend with known data-risk issues",
-    "ftpDisabledMobile": "FTP is not available on mobile. Use WebDAV instead, or sync via FTP on a desktop device."
+    "ftpDisabledMobile": "FTP/FTPS is not available on Android. Use WebDAV instead, or sync via FTP on a desktop device."
   },
   
   "webdav": {

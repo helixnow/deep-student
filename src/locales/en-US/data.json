@@ -691,7 +691,7 @@
     "cloud_sync_title": "Cloud sync",
     "open_cloud_settings": "Open cloud storage settings",
     "cloud_sync_not_configured": "Cloud storage not configured",
-    "cloud_sync_not_configured_desc": "Configure cloud storage (WebDAV/S3) before syncing or detecting conflicts.",
+    "cloud_sync_not_configured_desc": "Configure storage available on this platform before syncing or detecting conflicts. Android supports WebDAV only; desktop builds also support S3 and experimental FTP/FTPS.",
     "cloud_sync_configure_now": "Configure now",
     "cloud_sync_provider": "Provider",
     "cloud_sync_root": "Root",
