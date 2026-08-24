@@ -13,7 +13,9 @@
 import { nanoid } from 'nanoid';
 import i18n from 'i18next';
 import JSZip from 'jszip';
-import type { MindMapAssociation, MindMapDocument, MindMapNode, MindMapSheetMeta } from '../types';
+import type {
+  MindMapAssociation, MindMapDocument, MindMapImage, MindMapNode, MindMapSheetMeta,
+} from '../types';
 import { markdownListToNodes } from './pasteMarkdown';
 
 /**
@@ -42,8 +44,8 @@ interface XmindTopicJson {
   };
   markers?: Array<{ markerId?: string }>;
   labels?: string[];
-  /** 主题图片（导入时丢弃，仅计数用于导入报告） */
-  image?: unknown;
+  /** 主题图片（可解析的小图内联嵌入；其余计数上报并留备注占位） */
+  image?: { src?: string; width?: unknown; height?: unknown };
   /** 主题概要（导入时丢弃，仅计数用于导入报告） */
   summaries?: unknown[];
   children?: {
@@ -55,14 +57,16 @@ interface XmindTopicJson {
 /**
  * .xmind 导入丢弃项统计（P3 导入报告）。
  * 传入 importFromXmindZip 可选参数收集静默丢弃的图片/概要数量，供 UI toast 展示。
+ * embeddedImages 记录成功内联为 data URL 的小图数量（不算丢弃）。
  */
 export interface XmindImportReport {
   droppedImages: number;
   droppedSummaries: number;
+  embeddedImages: number;
 }
 
 export function createXmindImportReport(): XmindImportReport {
-  return { droppedImages: 0, droppedSummaries: 0 };
+  return { droppedImages: 0, droppedSummaries: 0, embeddedImages: 0 };
 }
 
 /** .xmind sheet 级关联线（自由连线，非父子边） */
@@ -158,12 +162,103 @@ function allocateXmindNodeId(
 }
 
 /**
- * 图片节点降级占位（B12）：本应用模型不支持图片节点，导入时不再完全静默丢弃，
+ * 图片节点降级占位（B12）：无法内联嵌入的图片不再完全静默丢弃，
  * 而是在备注中保留占位说明（原主题含几张图片），配合导入报告 toast 提示。
  */
 function imagePlaceholderLines(droppedImageCount: number): string[] {
   if (droppedImageCount <= 0) return [];
   return [i18n.t('mindmap:import.imagePlaceholderNote', { count: droppedImageCount })];
+}
+
+// ============================================================================
+// 内嵌图片提取（.xmind zip 内 resources/attachments 小图 → data URL）
+// ============================================================================
+
+/** 单张内联图片的体积上限；超过则降级为备注占位（避免文档 JSON 膨胀） */
+export const MAX_INLINE_IMAGE_BYTES = 256 * 1024;
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+};
+
+/** 转换阶段（同步）收集的图片引用；zip 解析（异步）在拓扑构建完成后统一进行 */
+interface PendingNodeImage {
+  node: MindMapNode;
+  src?: string;
+  width?: number;
+  height?: number;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  const num = typeof value === 'string' ? Number(value) : value;
+  return typeof num === 'number' && Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/** 尝试把一条图片引用内联进节点；成功返回 true，失败（缺资源/超限/类型不明）返回 false */
+async function tryEmbedImage(zip: JSZip, item: PendingNodeImage): Promise<boolean> {
+  const raw = item.src?.trim();
+  if (!raw) return false;
+  // .xmind 内部引用形如 xap:resources/xxx.png 或 xap:attachments/xxx.png
+  const path = raw.replace(/^xap:/i, '').replace(/^\/+/, '');
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  const mime = IMAGE_MIME_BY_EXT[ext];
+  if (!mime) return false;
+  const entry = zip.file(path);
+  if (!entry) return false;
+  let bytes: Uint8Array;
+  try {
+    bytes = await entry.async('uint8array');
+  } catch {
+    return false;
+  }
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_INLINE_IMAGE_BYTES) return false;
+  const image: MindMapImage = {
+    src: `data:${mime};base64,${bytesToBase64(bytes)}`,
+    name: path.split('/').pop(),
+    ...(item.width !== undefined ? { width: item.width } : {}),
+    ...(item.height !== undefined ? { height: item.height } : {}),
+  };
+  item.node.images = [...(item.node.images ?? []), image];
+  return true;
+}
+
+/**
+ * 统一解析转换阶段收集的图片引用：
+ * 可内联的挂到 node.images（导入报告计 embeddedImages），
+ * 其余按节点聚合计入 droppedImages 并在备注追加占位行（保持既有降级行为）。
+ */
+async function resolvePendingImages(
+  zip: JSZip,
+  pending: PendingNodeImage[],
+  report?: XmindImportReport,
+): Promise<void> {
+  const droppedByNode = new Map<MindMapNode, number>();
+  for (const item of pending) {
+    if (await tryEmbedImage(zip, item)) {
+      if (report) report.embeddedImages += 1;
+    } else {
+      droppedByNode.set(item.node, (droppedByNode.get(item.node) ?? 0) + 1);
+      if (report) report.droppedImages += 1;
+    }
+  }
+  for (const [node, count] of droppedByNode) {
+    node.note = composeNote(node.note, imagePlaceholderLines(count));
+  }
 }
 
 function xmindJsonTopicToNode(
@@ -174,12 +269,12 @@ function xmindJsonTopicToNode(
   idMap: Map<string, string>,
   forceRoot = false,
   report?: XmindImportReport,
+  pendingImages?: PendingNodeImage[],
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：图片与概要在本应用模型中不支持，计数上报；图片额外留备注占位
-  const droppedImageCount = topic.image ? 1 : 0;
+  // 导入报告：概要在本应用模型中不支持，计数上报；
+  // 图片引用先收集，拓扑构建完成后统一尝试从 zip 内联（失败才计丢弃+备注占位）
   if (report) {
-    report.droppedImages += droppedImageCount;
     if (Array.isArray(topic.summaries)) report.droppedSummaries += topic.summaries.length;
     else if (Array.isArray(topic.children?.summary)) {
       report.droppedSummaries += topic.children.summary.length;
@@ -200,17 +295,23 @@ function xmindJsonTopicToNode(
     (label): label is string => typeof label === 'string' && label.trim().length > 0,
   );
   const extras = collectXmindExtras(markerIds, labels);
-  return {
+  const node: MindMapNode = {
     id: assignedId,
     text: extras.textPrefix + (topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic')),
-    note: composeNote(plainNote || htmlNote, [
-      ...extras.noteSuffixLines,
-      ...imagePlaceholderLines(droppedImageCount),
-    ]),
+    note: composeNote(plainNote || htmlNote, extras.noteSuffixLines),
     ...(completed !== undefined ? { completed } : {}),
     children: (topic.children?.attached || []).map((child) =>
-      xmindJsonTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report)),
+      xmindJsonTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report, pendingImages)),
   };
+  if (topic.image && typeof topic.image === 'object') {
+    pendingImages?.push({
+      node,
+      src: typeof topic.image.src === 'string' ? topic.image.src : undefined,
+      width: toFiniteNumber(topic.image.width),
+      height: toFiniteNumber(topic.image.height),
+    });
+  }
+  return node;
 }
 
 function directChildrenByLocalName(element: Element, localName: string): Element[] {
@@ -225,6 +326,14 @@ function firstDescendantByLocalName(element: Element, localName: string): Elemen
   ) || null;
 }
 
+/** 按 localName 匹配属性（.xmind XML 属性常带命名空间前缀：xhtml:src / svg:width） */
+function attrByLocalName(element: Element, localName: string): string | undefined {
+  for (const attr of Array.from(element.attributes)) {
+    if (attr.localName === localName) return attr.value;
+  }
+  return undefined;
+}
+
 function xmindXmlTopicToNode(
   topic: Element,
   depth: number,
@@ -233,13 +342,13 @@ function xmindXmlTopicToNode(
   idMap: Map<string, string>,
   forceRoot = false,
   report?: XmindImportReport,
+  pendingImages?: PendingNodeImage[],
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：XML 内容的 <xhtml:img>（localName=img）与 <summaries><summary> 计数；
-  // 图片额外在备注中保留占位说明
-  const droppedImageCount = directChildrenByLocalName(topic, 'img').length;
+  // 导入报告：<summaries><summary> 计数；<xhtml:img>（localName=img）先收集引用，
+  // 拓扑构建完成后统一尝试从 zip 内联（失败才计丢弃+备注占位）
+  const imageElements = directChildrenByLocalName(topic, 'img');
   if (report) {
-    report.droppedImages += droppedImageCount;
     const summariesContainer = directChildrenByLocalName(topic, 'summaries')[0];
     if (summariesContainer) {
       report.droppedSummaries += directChildrenByLocalName(summariesContainer, 'summary').length;
@@ -280,17 +389,23 @@ function xmindXmlTopicToNode(
   if (originalId && !idMap.has(originalId)) {
     idMap.set(originalId, assignedId);
   }
-  return {
+  const node: MindMapNode = {
     id: assignedId,
     text: extras.textPrefix + (title || i18n.t('mindmap:import.unnamedTopic')),
-    note: composeNote(note, [
-      ...extras.noteSuffixLines,
-      ...imagePlaceholderLines(droppedImageCount),
-    ]),
+    note: composeNote(note, extras.noteSuffixLines),
     ...(completed !== undefined ? { completed } : {}),
     children: childTopics.map((child) =>
-      xmindXmlTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report)),
+      xmindXmlTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report, pendingImages)),
   };
+  for (const img of imageElements) {
+    pendingImages?.push({
+      node,
+      src: attrByLocalName(img, 'src'),
+      width: toFiniteNumber(attrByLocalName(img, 'width')),
+      height: toFiniteNumber(attrByLocalName(img, 'height')),
+    });
+  }
+  return node;
 }
 
 /**
@@ -447,6 +562,7 @@ export async function importFromXmindZip(
     const stats = createImportStats();
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
+    const pendingImages: PendingNodeImage[] = [];
     // sheet 级关联线（拓扑转换完成后统一按 idMap 重映射）
     const rawRelationships = sheets.flatMap((sheet) =>
       (Array.isArray(sheet.relationships) ? sheet.relationships : []).map((rel) => ({
@@ -455,13 +571,17 @@ export async function importFromXmindZip(
         label: rel?.title,
       })));
     if (sheets.length === 1) {
-      const root = xmindJsonTopicToNode(sheets[0].rootTopic, 0, stats, usedIds, idMap, true, report);
+      const root = xmindJsonTopicToNode(
+        sheets[0].rootTopic, 0, stats, usedIds, idMap, true, report, pendingImages,
+      );
+      await resolvePendingImages(zip, pendingImages, report);
       return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
     }
     claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = sheets.map((sheet) =>
-      xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report));
+      xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report, pendingImages));
+    await resolvePendingImages(zip, pendingImages, report);
     const sheetTitles = sheets.map((sheet) => sheet.title || sheet.rootTopic.title || '');
     const merged = createMultiSheetRoot(children, sheetTitles);
     return createXmindDocument(
@@ -485,6 +605,7 @@ export async function importFromXmindZip(
     const stats = createImportStats();
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
+    const pendingImages: PendingNodeImage[] = [];
     // XML relationships：<relationships><relationship end1=".." end2=".."><title>..</title></relationship>
     const rawRelationships = sheetElements
       .flatMap((sheet) => directChildrenByLocalName(sheet, 'relationships'))
@@ -495,13 +616,17 @@ export async function importFromXmindZip(
         label: directChildrenByLocalName(rel, 'title')[0]?.textContent ?? undefined,
       }));
     if (rootTopics.length === 1) {
-      const root = xmindXmlTopicToNode(rootTopics[0], 0, stats, usedIds, idMap, true, report);
+      const root = xmindXmlTopicToNode(
+        rootTopics[0], 0, stats, usedIds, idMap, true, report, pendingImages,
+      );
+      await resolvePendingImages(zip, pendingImages, report);
       return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
     }
     claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = rootTopics.map((topic) =>
-      xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false, report));
+      xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false, report, pendingImages));
+    await resolvePendingImages(zip, pendingImages, report);
     // sheet 标题优先取 <sheet><title>，缺失时回退到该 sheet 根主题标题
     const sheetTitles = sheetElements
       .filter((sheet) => directChildrenByLocalName(sheet, 'topic').length > 0)

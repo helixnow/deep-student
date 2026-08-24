@@ -16,6 +16,7 @@ import {
   selectNodeDecorationKey,
   parseNodeDecorations,
 } from '../../../utils/nodeDecorations';
+import { selectNodeImages } from '../../../utils/nodeImages';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 import './nodes.css';
 
@@ -64,6 +65,8 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     selectNodeDecorationKey(state.document.root, data.nodeId),
   );
   const decorations = parseNodeDecorations(decorationKey);
+  // 内嵌图片：同样经索引直接读 store（数组引用稳定，无图不触发重渲染）
+  const images = useMindMapStore(state => selectNodeImages(state.document.root, data.nodeId));
   const nodeRef = useRef<HTMLDivElement>(null);
   
   const isEditing = editingNodeId === data.nodeId;
@@ -178,6 +181,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         text={data.label}
         note={data.note}
         refs={data.refs}
+        images={images}
         icon={data.style?.icon}
         bgColor={data.style?.bgColor}
         isRoot

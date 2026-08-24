@@ -41,6 +41,13 @@ import {
   type SearchOptions,
 } from '../utils/searchFilter';
 import { mergeMindMapViewport } from '../utils/viewport';
+import {
+  buildReviewQueue,
+  commitReciteSession,
+  loadReciteStats,
+  saveReciteStats,
+  type ReciteReviewItem,
+} from '../utils/reciteSrs';
 
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
 enableMapSet();
@@ -370,6 +377,21 @@ export interface MindMapStoreState {
   revealBlank: (nodeId: string, rangeIndex: number) => void;
   revealAllBlanks: () => void;
   resetAllBlanks: () => void;
+  /**
+   * 难点优先复习队列（会话级 SRS）：按持久化统计的平滑错误率降序排列的
+   * 带挖空节点列表；null = 未在复习流程中。退出背诵模式自动清空。
+   */
+  reciteReviewQueue: ReciteReviewItem[] | null;
+  reciteReviewIndex: number;
+  /**
+   * 开始难点优先复习：从持久化统计构建队列（专注分支时限定 viewRoot 子树），
+   * 聚焦第一个节点并进入背诵模式。返回队列长度（0 = 范围内无挖空）。
+   */
+  startReciteReview: () => number;
+  /** 复习队列前进/后退（越界钳制），并聚焦目标节点 */
+  stepReciteReview: (delta: number) => void;
+  /** 退出复习流程（保留背诵模式本身） */
+  stopReciteReview: () => void;
   addBlankRange: (nodeId: string, range: BlankRange) => void;
   removeBlankRange: (nodeId: string, rangeIndex: number) => void;
   clearNodeBlanks: (nodeId: string) => void;
@@ -1104,6 +1126,8 @@ export function createMindMapStore(): MindMapStoreApi {
       conflictSnapshot: null,
       reciteMode: false,
       revealedBlanks: {},
+      reciteReviewQueue: null,
+      reciteReviewIndex: 0,
       hideCompleted: false,
       viewRootId: null,
       searchQuery: '',
@@ -1208,6 +1232,8 @@ export function createMindMapStore(): MindMapStoreApi {
             // 修复: 重置背诵模式状态
             state.reciteMode = false;
             state.revealedBlanks = {};
+            state.reciteReviewQueue = null;
+            state.reciteReviewIndex = 0;
             // ACR 瞬态入场/退场/更新标记随文档重载清除
             state.agentEnteringIds = new Set();
             state.agentExitingIds = new Set();
@@ -1279,6 +1305,8 @@ export function createMindMapStore(): MindMapStoreApi {
           state.viewports = {};
           state.reciteMode = false;
           state.revealedBlanks = {};
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
           state.searchQuery = '';
           state.searchOptions = {};
           state.searchResults = [];
@@ -1345,6 +1373,8 @@ export function createMindMapStore(): MindMapStoreApi {
           // 修复: 重置背诵模式状态
           state.reciteMode = false;
           state.revealedBlanks = {};
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
           state.viewRootId = null;
           // hideCompleted / searchFilterMode 为会话级 UI 偏好，reset 时保留
           state.viewports = {};
@@ -3050,16 +3080,79 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 背诵模式
       setReciteMode: (enabled: boolean) => {
+        // 退出背诵 = 一次会话结束：把本会话「翻开即没背出来」的信号
+        // 提交进持久化学习记录（零翻开的会话在 commitReciteSession 内被忽略）
+        if (!enabled) {
+          const current = get();
+          if (current.reciteMode && current.mindmapId) {
+            const scopeRoot = current.viewRootId
+              ? findNodeById(current.document.root, current.viewRootId) ?? current.document.root
+              : current.document.root;
+            const committed = commitReciteSession(
+              loadReciteStats(current.mindmapId),
+              scopeRoot,
+              current.revealedBlanks,
+            );
+            saveReciteStats(current.mindmapId, committed);
+          }
+        }
         set((state) => {
           state.reciteMode = enabled;
           if (!enabled) {
             state.revealedBlanks = {};
+            state.reciteReviewQueue = null;
+            state.reciteReviewIndex = 0;
           }
           // 进入背诵模式时退出编辑状态
           if (enabled) {
             state.editingNodeId = null;
             state.editingNoteNodeId = null;
           }
+        });
+      },
+
+      startReciteReview: () => {
+        const current = get();
+        const scopeRoot = current.viewRootId
+          ? findNodeById(current.document.root, current.viewRootId) ?? current.document.root
+          : current.document.root;
+        const stats = current.mindmapId ? loadReciteStats(current.mindmapId) : {};
+        const queue = buildReviewQueue(scopeRoot, stats);
+        if (queue.length === 0) return 0;
+        set((state) => {
+          state.reciteReviewQueue = queue;
+          state.reciteReviewIndex = 0;
+          if (!state.reciteMode) {
+            state.reciteMode = true;
+            state.editingNodeId = null;
+            state.editingNoteNodeId = null;
+          }
+        });
+        get().expandToNode(queue[0].nodeId, { silent: true });
+        get().setFocusedNodeId(queue[0].nodeId);
+        return queue.length;
+      },
+
+      stepReciteReview: (delta: number) => {
+        const { reciteReviewQueue, reciteReviewIndex } = get();
+        if (!reciteReviewQueue || reciteReviewQueue.length === 0) return;
+        const next = Math.min(
+          Math.max(reciteReviewIndex + delta, 0),
+          reciteReviewQueue.length - 1,
+        );
+        if (next === reciteReviewIndex) return;
+        set((state) => {
+          state.reciteReviewIndex = next;
+        });
+        const nodeId = reciteReviewQueue[next].nodeId;
+        get().expandToNode(nodeId, { silent: true });
+        get().setFocusedNodeId(nodeId);
+      },
+
+      stopReciteReview: () => {
+        set((state) => {
+          state.reciteReviewQueue = null;
+          state.reciteReviewIndex = 0;
         });
       },
 
