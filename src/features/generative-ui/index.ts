@@ -198,6 +198,10 @@ export type {
   NormalizeGenerativeUIIntentResult,
 } from './utils/normalizeGenerativeUIIntent';
 export { buildIntentExportMarkdown } from './utils/buildIntentExportMarkdown';
+export {
+  createCopyIntentActionHandlers,
+  COPY_INTENT_ACTION_ID,
+} from './handlers/copyIntentActionHandlers';
 
 // 注册内置块
 import './blocks';
