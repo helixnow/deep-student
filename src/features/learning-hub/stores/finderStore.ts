@@ -426,18 +426,59 @@ export const useFinderStore = create<FinderState>()(
       },
       
       enterFolder: async (folderId: string, folderName?: string, folderPath?: string) => {
-        // ★ 2025-12-27 修复：从后端获取真实的面包屑 ID 链
-        const newBreadcrumbs = await fetchBreadcrumbs(folderId);
-
         const { currentPath } = get();
+
+        // ★ 乐观导航：不等后端 getBreadcrumbs，先用「当前链 + 本级降级名」
+        // 立即进入目录，消除进目录时的可感知等待；真实 ID 链返回后原位纠正。
+        const fallbackName = folderName || folderId;
+        const baseBreadcrumbs = currentPath.viewKind === 'folder' ? currentPath.breadcrumbs : [];
+        const parentDstuPath = baseBreadcrumbs.length > 0
+          ? baseBreadcrumbs[baseBreadcrumbs.length - 1].dstuPath
+          : '';
+        const optimisticBreadcrumbs: BreadcrumbItem[] = [
+          ...baseBreadcrumbs,
+          {
+            id: folderId,
+            name: fallbackName,
+            dstuPath: folderPath || `${parentDstuPath}/${fallbackName}`,
+          },
+        ];
+
         const newPath: FinderPath = createFinderPath({
           ...currentPath,
           viewKind: 'folder',
-          breadcrumbs: newBreadcrumbs,
+          breadcrumbs: optimisticBreadcrumbs,
           folderId,
           typeFilter: null,
         });
         get().navigateTo(newPath);
+
+        // ★ 面包屑请求守卫：navigateTo 已递增 _currentRequestId 使旧请求失效。
+        // 注意 loadItems/executeSearch（同目录内的列表加载）也会递增该计数器，
+        // 因此这里不能用「计数器相等」判过期，而是用等价的导航级判据：
+        // 所有导航入口（navigateTo/goBack/goForward/setCurrentPathWithoutHistory/reset）
+        // 在递增 _currentRequestId 的同时都会替换 currentPath 对象——
+        // currentPath 引用仍是本次 newPath 即代表没有更新的导航发生。
+        const backendBreadcrumbs = await fetchBreadcrumbs(folderId);
+
+        const { currentPath: latestPath, history, historyIndex } = get();
+        if (latestPath !== newPath) {
+          // 已有更新的导航（其 navigateTo 递增了 _currentRequestId），丢弃过期面包屑
+          return;
+        }
+        // 后端失败 / 特殊视图会返回空数组：保留乐观面包屑，避免清链导致 goUp 失效
+        if (backendBreadcrumbs.length === 0) return;
+
+        const correctedPath: FinderPath = { ...newPath, breadcrumbs: backendBreadcrumbs };
+        // 同步纠正历史栈中的同一条目，保证 back/forward 拿到真实 ID 链
+        const newHistory = history[historyIndex] === newPath
+          ? [
+              ...history.slice(0, historyIndex),
+              correctedPath,
+              ...history.slice(historyIndex + 1),
+            ]
+          : history;
+        set({ currentPath: correctedPath, history: newHistory });
       },
       
       goUp: () => {

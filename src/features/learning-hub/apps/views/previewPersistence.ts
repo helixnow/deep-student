@@ -29,7 +29,12 @@ export interface PreviewPersistTarget {
   kind: PreviewPersistKind;
   nodeId: string;
   nodePath: string;
-  /** 始终读最新 metadata，供 merge，避免覆盖并发字段 */
+  /**
+   * 控制器创建时快照一次，仅取 readingProgress / bookmarks 作合并基线。
+   * 调用方通常传共享的 nodeMetadataRef 闭包，node 切换后再读会拿到
+   * 新 node 的 metadata——延迟写入（debounce/flush）若此时读取，
+   * 会把别的 node 的进度/书签串写到本 node，故不允许创建后再读。
+   */
   getMetadata: () => Record<string, unknown> | undefined | null;
 }
 
@@ -72,9 +77,31 @@ export function createPreviewPersistController(
 
   const currentTarget = { ...target };
 
+  /**
+   * ★ 白名单：本控制器只拥有 readingProgress / bookmarks 两个字段。
+   * 之前全量展开 metadata 会把 props 里可能过期的其他字段一并回写——
+   * 尤其 highlights：textbook 分支的 dstu_set_metadata 一旦收到 highlights
+   * 就走「整表替换高亮」路径（要求 expected_updated_at，且跳过进度/书签
+   * 写入），会用陈旧高亮覆盖 Agent/UI 的并发标注或直接写失败。
+   * 后端按字段存在性处理（非全量替换），省略其他字段是安全的。
+   */
+  const pickOwnedFields = (
+    meta: Record<string, unknown> | undefined | null,
+  ): Record<string, unknown> => {
+    const picked: Record<string, unknown> = {};
+    if (meta && typeof meta === 'object') {
+      if (meta.readingProgress !== undefined) picked.readingProgress = meta.readingProgress;
+      if (meta.bookmarks !== undefined) picked.bookmarks = meta.bookmarks;
+    }
+    return picked;
+  };
+
+  // ★ 创建时快照一次（见 PreviewPersistTarget.getMetadata 注释）：
+  // 防止延迟写入经共享 ref 读到切换后 node 的 metadata 造成跨 node 串写。
+  const baselineMetadata = pickOwnedFields(currentTarget.getMetadata());
+
   const mergeBase = (): Record<string, unknown> => {
-    const meta = currentTarget.getMetadata();
-    const merged = meta && typeof meta === 'object' ? { ...meta } : {};
+    const merged: Record<string, unknown> = { ...baselineMetadata };
     if (latestProgress) {
       merged.readingProgress = {
         page: latestProgress.page,

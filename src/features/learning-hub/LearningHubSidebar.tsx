@@ -76,6 +76,25 @@ const MODULE_GUIDANCE_EXTENSIONS: Record<string, 'flashcards' | 'mindmap'> = {
 const getFileExtension = (name: string): string =>
   (name.split('.').pop() || '').toLowerCase();
 
+/**
+ * DstuNodeType → FolderItemType 映射（folder 由调用方单独处理）。
+ * 未覆盖的类型（如 retrieval）回退为 note。
+ * ★ 统一收口：右键菜单 / 双击打开 / 拖拽移动等路径共用，
+ * 避免各处 switch 漏 case（如 image/file 曾被 default 成 note）。
+ */
+const mapDstuTypeToFolderItemType = (type: DstuNodeType): FolderItemType => {
+  switch (type) {
+    case 'textbook': return 'textbook';
+    case 'exam': return 'exam';
+    case 'translation': return 'translation';
+    case 'essay': return 'essay';
+    case 'image': return 'image';
+    case 'file': return 'file';
+    case 'mindmap': return 'mindmap';
+    default: return 'note';
+  }
+};
+
 // 懒加载向量化状态视图
 const IndexStatusView = lazy(() => import('./views/IndexStatusView'));
 // ★ 2026-01-19: 懒加载 VFS 记忆管理视图
@@ -97,6 +116,7 @@ import {
   FolderPickerDialog,
 } from './components/finder';
 import { dstu, type DstuNode, folderApi, createEmpty, trashApi } from '@/dstu';
+import type { DstuNodeType } from '@/dstu/types';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { dstuNodeToResourceListItem } from './types';
 import type { LearningHubSidebarProps, ResourceListItem } from './types';
@@ -660,20 +680,7 @@ export function LearningHubSidebar({
       enterFolder(item.id, item.name, item.path);
     } else {
       if (onOpenApp) {
-        // Map DstuNodeType to FolderItemType
-        let itemType: FolderItemType = 'note';
-        switch (item.type) {
-            case 'textbook': itemType = 'textbook'; break;
-            case 'exam': itemType = 'exam'; break;
-            case 'translation': itemType = 'translation'; break;
-            case 'essay': itemType = 'essay'; break;
-            case 'image': itemType = 'image'; break;
-            case 'file': itemType = 'file'; break;
-            case 'mindmap': itemType = 'mindmap'; break;
-            default: itemType = 'note';
-        }
-
-        const resourceItem = dstuNodeToResourceListItem(item, itemType);
+        const resourceItem = dstuNodeToResourceListItem(item, mapDstuTypeToFolderItemType(item.type));
         onOpenApp(resourceItem);
       }
     }
@@ -1670,17 +1677,8 @@ export function LearningHubSidebar({
         folder: folderNode
       });
     } else {
-      // Map to ResourceListItem
-      let itemType: FolderItemType = 'note';
-      switch (item.type) {
-        case 'textbook': itemType = 'textbook'; break;
-        case 'exam': itemType = 'exam'; break;
-        case 'translation': itemType = 'translation'; break;
-        case 'essay': itemType = 'essay'; break;
-        case 'mindmap': itemType = 'mindmap'; break;
-        default: itemType = 'note';
-      }
-      const resourceItem = dstuNodeToResourceListItem(item, itemType);
+      // Map to ResourceListItem（image/file 曾漏映射成 note，导致右键菜单动作错型）
+      const resourceItem = dstuNodeToResourceListItem(item, mapDstuTypeToFolderItemType(item.type));
       setContextMenuTarget({ type: 'resource', resource: resourceItem });
     }
     setContextMenuOpen(true);
@@ -1998,19 +1996,7 @@ export function LearningHubSidebar({
       result = await folderApi.moveFolder(itemId, targetFolderId ?? undefined);
     } else {
       // 非文件夹使用 moveItem
-      // P1-13: 修复 image/file 类型拖拽移动失败
-      let itemType: FolderItemType = 'note';
-      switch (item.type) {
-        case 'textbook': itemType = 'textbook'; break;
-        case 'exam': itemType = 'exam'; break;
-        case 'translation': itemType = 'translation'; break;
-        case 'essay': itemType = 'essay'; break;
-        case 'image': itemType = 'image'; break;
-        case 'file': itemType = 'file'; break;
-        case 'mindmap': itemType = 'mindmap'; break;
-        default: itemType = 'note';
-      }
-      result = await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined);
+      result = await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), itemId, targetFolderId ?? undefined);
     }
 
     // ★ MEDIUM-005: 检查组件是否已卸载
@@ -2047,19 +2033,7 @@ export function LearningHubSidebar({
         if (item.type === 'folder') {
           return await folderApi.moveFolder(itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
         } else {
-          // P1-13: 修复 image/file 类型拖拽移动失败
-          let itemType: FolderItemType = 'note';
-          switch (item.type) {
-            case 'textbook': itemType = 'textbook'; break;
-            case 'exam': itemType = 'exam'; break;
-            case 'translation': itemType = 'translation'; break;
-            case 'essay': itemType = 'essay'; break;
-            case 'image': itemType = 'image'; break;
-            case 'file': itemType = 'file'; break;
-            case 'mindmap': itemType = 'mindmap'; break;
-            default: itemType = 'note';
-          }
-          return await folderApi.moveItem(itemType, itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
+          return await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), itemId, targetFolderId ?? undefined, { skipCacheRefresh: true });
         }
       })
     ));
@@ -2720,19 +2694,7 @@ export function LearningHubSidebar({
               error: result.ok ? null : result.error.toUserMessage()
             };
           } else {
-            // P1-13: 修复 image/file 类型拖拽移动失败
-            let itemType: FolderItemType = 'note';
-            switch (item.type) {
-              case 'textbook': itemType = 'textbook'; break;
-              case 'exam': itemType = 'exam'; break;
-              case 'translation': itemType = 'translation'; break;
-              case 'essay': itemType = 'essay'; break;
-              case 'image': itemType = 'image'; break;
-              case 'file': itemType = 'file'; break;
-              case 'mindmap': itemType = 'mindmap'; break; // 🔒 审计修复: 添加遗漏的 mindmap 类型映射
-              default: itemType = 'note';
-            }
-            const result = await folderApi.moveItem(itemType, id, targetFolderId ?? undefined, { skipCacheRefresh: true });
+            const result = await folderApi.moveItem(mapDstuTypeToFolderItemType(item.type), id, targetFolderId ?? undefined, { skipCacheRefresh: true });
             return {
               id,
               ok: result.ok,
@@ -2814,8 +2776,8 @@ export function LearningHubSidebar({
         return;
       }
       
-      // Cmd/Ctrl + A：全选
-      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+      // Cmd/Ctrl + A：全选（toLowerCase 兼容 Caps Lock / Shift 下的 'A'）
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         handleSelectAll();
       }
