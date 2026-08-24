@@ -195,6 +195,11 @@
     min-height: 44px;
   }
 
+  /* font: inherit 继承工作区 13px，低于 iOS Safari 16px 阈值会触发聚焦自动缩放 */
+  .notes-search input {
+    font-size: 16px;
+  }
+
   .notes-search .notes-icon-button {
     width: 44px;
     height: 44px;
