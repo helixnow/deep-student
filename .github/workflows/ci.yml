@@ -347,10 +347,11 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Compile Windows backend
-        working-directory: src-tauri
-        run: cargo check --lib
-
+      # 单次 cargo test 同时承担编译与执行：此前先 cargo check --lib 再
+      # cargo test --lib 在 Windows 上等于完整编译两遍（check 的 metadata
+      # 产物无法被 test 的 codegen 复用），30 分钟超时被取消。编译失败
+      # 仍会让本步骤直接红。测试保持默认并行：起进程的 AppContainer 用例
+      # 已被实现内的命名 ACL 互斥锁串行化，无跨线程共享状态冲突。
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
         run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
