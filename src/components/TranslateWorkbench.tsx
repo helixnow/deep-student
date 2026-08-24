@@ -24,7 +24,16 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 // 子组件
 import { TranslationMain } from './translation/TranslationMain';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  registerContentDirtyChecker,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { resolveSessionPrefs } from '@/translation/sessionPrefs';
+import {
+  DOMAIN_DEFAULT_PROMPT_KEYS,
+  isPromptCustomized as isPromptCustomizedBy,
+  promptAfterDomainSwitch,
+} from '@/translation/promptPresets';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -44,20 +53,6 @@ interface WorkbenchPrefs {
   tgtLang?: string;
   formality?: 'formal' | 'casual' | 'auto';
 }
-
-/**
- * 各领域的默认提示词文案 key（无专属模板的领域回落到通用默认）。
- * 命中任一默认/模板文案即视为「用户未显式修改提示词」：
- * - 不发送 prompt_override（后端按语向/领域参数自行组装默认提示词）；
- * - 切换领域时默认文案跟随领域模板。
- */
-const DOMAIN_DEFAULT_PROMPT_KEYS: Record<string, string> = {
-  general: 'translation:prompt_editor.default_prompt',
-  academic: 'translation:prompt_panel.template_prompts.academic',
-  technical: 'translation:prompt_panel.template_prompts.technical',
-  literary: 'translation:prompt_panel.template_prompts.literary',
-  casual: 'translation:prompt_panel.template_prompts.conversational',
-};
 
 function loadWorkbenchPrefs(): WorkbenchPrefs {
   try {
@@ -212,10 +207,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   }
   const prefs = prefsRef.current;
 
+  // 会话语向/正式度初值：会话值 → 偏好 → 默认（三处签名/状态共用同一解析结果）
+  const initialResolvedPrefs = useMemo(
+    () => resolveSessionPrefs(initialSession, prefs),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initialSession?.id]
+  );
+
   // 左栏状态（session 优先，其次持久化偏好）
   const [sourceText, setSourceText] = useState(initialSession?.sourceText || '');
-  const [srcLang, setSrcLang] = useState(initialSession?.srcLang || prefs.srcLang || 'auto');
-  const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || prefs.tgtLang || 'zh-CN');
+  const [srcLang, setSrcLang] = useState(initialResolvedPrefs.srcLang);
+  const [tgtLang, setTgtLang] = useState(initialResolvedPrefs.tgtLang);
   const [customPrompt, setCustomPrompt] = useState('');
   // 外部设置标签可能早于懒加载工作台被点击；直接以宿主状态初始化，
   // 避免挂载后再双向 effect 同步造成 settingsVisibility 真假振荡。
@@ -224,7 +226,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   );
   const isExternalSettingsPageOpen = externalSettingsNavigation && showPromptEditor;
   const [formality, setFormality] = useState<'formal' | 'casual' | 'auto'>(
-    initialSession?.formality || prefs.formality || 'auto'
+    initialResolvedPrefs.formality
   );
   const [domain, setDomain] = useState<string>(initialSession?.domain || 'general');
   const [glossary, setGlossary] = useState<Array<[string, string]>>(initialSession?.glossary || []);
@@ -239,17 +241,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     [t]
   );
   // 仅用户显式改过提示词才发送 prompt_override / 持久化 customPrompt
-  const isPromptCustomized =
-    customPrompt.trim() !== '' && !knownDefaultPrompts.has(customPrompt.trim());
+  const isPromptCustomized = isPromptCustomizedBy(customPrompt, knownDefaultPrompts);
 
   // 切换领域时默认文案跟随：提示词仍为默认/模板文案（或为空）才替换，显式修改过则保留
   const handleSetDomain = useCallback((nextDomain: string) => {
     setDomain(nextDomain);
-    setCustomPrompt((prev) => {
-      const trimmed = prev.trim();
-      if (trimmed !== '' && !knownDefaultPrompts.has(trimmed)) return prev;
-      return defaultPromptForDomain(nextDomain);
-    });
+    setCustomPrompt((prev) =>
+      promptAfterDomainSwitch(prev, defaultPromptForDomain(nextDomain), knownDefaultPrompts)
+    );
   }, [knownDefaultPrompts, defaultPromptForDomain]);
 
   // 右栏状态
@@ -351,7 +350,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     ? (translationStream.detectedLang ?? heuristicDetectedLang)
     : null;
 
-  const persistedDirtySnapshotRef = useRef(translationDirtySnapshot(initialSession ?? {}));
+  // 持久化侧快照同样走 resolveSessionPrefs：新建空翻译按偏好回填语向后，
+  // 状态与持久化快照仍一致，不会一打开就误报 dirty
+  const persistedSnapshotOf = useCallback(
+    (session: TranslationSession | null) =>
+      translationDirtySnapshot({
+        ...(session ?? {}),
+        ...resolveSessionPrefs(session, prefsRef.current ?? {}),
+      }),
+    []
+  );
+  const persistedDirtySnapshotRef = useRef(persistedSnapshotOf(initialSession));
   const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
   const translatedTextForDirty = isEditingTranslation
     ? editedTranslation
@@ -367,8 +376,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   });
 
   useEffect(() => {
-    persistedDirtySnapshotRef.current = translationDirtySnapshot(initialSession ?? {});
-  }, [initialSession]);
+    persistedDirtySnapshotRef.current = persistedSnapshotOf(initialSession);
+  }, [initialSession, persistedSnapshotOf]);
 
   useEffect(() => {
     const resourceId = dstuMode.resourceId ?? initialSession?.id;
@@ -382,6 +391,39 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     persistedDirtySnapshotRef.current = translationDirtySnapshot(session);
   }, []);
 
+  // 「保存并关闭」：把当前工作台状态整体落盘（与 dirty 快照同源，
+  // 保存成功后 dirty 消除、关窗放行）。闭包经 ref 每帧更新，注册保持稳定。
+  const saveCurrentSessionRef = useRef<() => Promise<void>>(async () => undefined);
+  saveCurrentSessionRef.current = async () => {
+    if (!dstuMode.onSessionSave) return;
+    const now = Date.now();
+    const sessionToSave: TranslationSession = {
+      id: currentSessionIdRef.current || generateTranslationId(),
+      sourceText,
+      translatedText: translatedTextForDirty,
+      srcLang,
+      tgtLang,
+      formality,
+      customPrompt: isPromptCustomized ? customPrompt : undefined,
+      domain,
+      glossary,
+      quality: translationQuality ?? undefined,
+      createdAt: initialSession?.createdAt || now,
+      updatedAt: now,
+    };
+    currentSessionIdRef.current = sessionToSave.id;
+    await dstuMode.onSessionSave(sessionToSave);
+    markTranslationPersisted(sessionToSave);
+  };
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId || !dstuMode.onSessionSave) return;
+    return registerContentSaveHandler('translation', resourceId, () =>
+      saveCurrentSessionRef.current()
+    );
+  }, [dstuMode.resourceId, initialSession?.id, dstuMode.onSessionSave]);
+
   // 同步流式管线的错误状态到本地
   useEffect(() => {
     if (streamError) {
@@ -392,19 +434,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 初始化会话数据（编辑已有记录时）
   // 无条件赋值（含空字符串），确保父级会话被清空/刷新时本地状态一致
   useEffect(() => {
+    // 语向/正式度统一解析链：会话缺失的字段（新建空翻译 / 旧版无 meta 文档）
+    // 回落到用户持久化偏好，不被幽灵默认值挡住，也不残留上一个会话的设置
+    const restored = resolveSessionPrefs(initialSession, loadWorkbenchPrefs());
+    setSrcLang(restored.srcLang);
+    setTgtLang(restored.tgtLang);
+    setFormality(restored.formality);
     if (!initialSession?.id) {
-      // 新建翻译：语向/正式度回到用户持久化偏好，不残留上一个会话的设置
-      const restoredPrefs = loadWorkbenchPrefs();
-      setSrcLang(restoredPrefs.srcLang || 'auto');
-      setTgtLang(restoredPrefs.tgtLang || 'zh-CN');
-      setFormality(restoredPrefs.formality || 'auto');
       return;
     }
     setSourceText(initialSession.sourceText ?? '');
     setTranslatedText(initialSession.translatedText ?? '');
-    setSrcLang(initialSession.srcLang || 'auto');
-    setTgtLang(initialSession.tgtLang || 'zh-CN');
-    setFormality(initialSession.formality || 'auto');
     setDomain(initialSession.domain || 'general');
     setGlossary(initialSession.glossary || []);
     setTranslationQuality(initialSession.quality ?? null);
@@ -417,10 +457,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     initialSession?.translatedText
       ? JSON.stringify([
           initialSession.sourceText || '',
-          initialSession.srcLang || 'auto',
-          initialSession.tgtLang || 'zh-CN',
+          initialResolvedPrefs.srcLang,
+          initialResolvedPrefs.tgtLang,
           '',
-          initialSession.formality || 'auto',
+          initialResolvedPrefs.formality,
           initialSession.domain || 'general',
           initialSession.glossary || [],
         ])
@@ -435,14 +475,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     if (!initialSession?.translatedText) return;
     lastTranslatedSigRef.current = JSON.stringify([
       initialSession.sourceText || '',
-      initialSession.srcLang || 'auto',
-      initialSession.tgtLang || 'zh-CN',
+      initialResolvedPrefs.srcLang,
+      initialResolvedPrefs.tgtLang,
       prompt,
-      initialSession.formality || 'auto',
+      initialResolvedPrefs.formality,
       initialSession.domain || 'general',
       initialSession.glossary || [],
     ]);
-  }, [initialSession]);
+  }, [initialSession, initialResolvedPrefs]);
 
   // 加载自定义 Prompt（带 stale 守卫，防止旧请求覆盖新 session 的 prompt）
   useEffect(() => {
@@ -695,10 +735,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     }
   }, [customPrompt, t]);
 
-  // 恢复默认Prompt
+  // 恢复默认 Prompt：跟随当前领域的默认/模板文案（命中已知默认集合，
+  // 因此恢复后 isPromptCustomized=false，不会发送 prompt_override 覆盖领域预设）
   const handleRestoreDefaultPrompt = useCallback(() => {
-    setCustomPrompt(t('translation:prompt_editor.default_prompt'));
-  }, [t]);
+    setCustomPrompt(defaultPromptForDomain(domain));
+  }, [defaultPromptForDomain, domain]);
 
   // 复制翻译结果
   const handleCopyResult = useCallback(async () => {

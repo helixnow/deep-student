@@ -29,12 +29,16 @@ export interface TranslationSession {
   sourceText: string;
   /** 译文 */
   translatedText: string;
-  /** 源语言代码 */
-  srcLang: string;
-  /** 目标语言代码 */
-  tgtLang: string;
-  /** 正式度：formal（正式）、casual（随意）、auto（自动） */
-  formality: 'formal' | 'casual' | 'auto';
+  /**
+   * 源语言代码。
+   * 节点未持久化语向时为 undefined（不注入幽灵 'auto' 默认值），
+   * 由工作台按「会话值 → 用户偏好 → 内建默认」链路回填。
+   */
+  srcLang?: string;
+  /** 目标语言代码（同 srcLang：缺失时不注入幽灵 'zh-CN'） */
+  tgtLang?: string;
+  /** 正式度：formal（正式）、casual（随意）、auto（自动）；缺失时不注入默认 */
+  formality?: 'formal' | 'casual' | 'auto';
   /** 自定义提示词 */
   customPrompt?: string;
   /** 翻译领域 */
@@ -231,13 +235,25 @@ function normalizeLangCode(code: string): string {
  */
 export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession {
   const meta = node.metadata || {};
+  // ★ 语向/正式度缺失时保持 undefined：新建空翻译的节点 metadata 没有这些值，
+  // 注入幽灵 'auto'/'zh-CN' 会在工作台挡住用户持久化偏好的恢复
+  const srcLang = typeof meta.srcLang === 'string' && meta.srcLang
+    ? normalizeLangCode(meta.srcLang)
+    : undefined;
+  const tgtLang = typeof meta.tgtLang === 'string' && meta.tgtLang
+    ? normalizeLangCode(meta.tgtLang)
+    : undefined;
+  const formality =
+    meta.formality === 'formal' || meta.formality === 'casual' || meta.formality === 'auto'
+      ? meta.formality
+      : undefined;
   return {
     id: node.id,
     sourceText: (meta.sourceText as string) || '',
     translatedText: (meta.translatedText as string) || '',
-    srcLang: normalizeLangCode((meta.srcLang as string) || 'auto'),
-    tgtLang: normalizeLangCode((meta.tgtLang as string) || 'zh-CN'),
-    formality: (meta.formality as 'formal' | 'casual' | 'auto') || 'auto',
+    srcLang,
+    tgtLang,
+    formality,
     customPrompt: meta.customPrompt as string | undefined,
     domain: meta.domain as string | undefined,
     glossary: meta.glossary as Array<[string, string]> | undefined,
