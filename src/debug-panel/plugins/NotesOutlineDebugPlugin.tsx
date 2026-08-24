@@ -116,13 +116,13 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
 
       <div className="flex flex-wrap gap-2 text-xs">
         <input
-          className="px-2 py-1 rounded border bg-background flex-1 min-w-[120px]"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded border bg-background flex-1 min-w-[120px]"
           placeholder="关键字过滤"
           value={filter}
           onChange={e => setFilter(e.target.value)}
         />
         <select
-          className="px-2 py-1 rounded border bg-background"
+          className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 rounded border bg-background"
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as typeof categoryFilter)}
         >
