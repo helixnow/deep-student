@@ -1818,7 +1818,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         role="button"
                         tabIndex={0}
                         className={cn(
-                          'group flex flex-col gap-0.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-left w-full',
+                          'group flex flex-col justify-center gap-0.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-left w-full [@media(pointer:coarse)]:min-h-11',
                           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
                           isExpanded ? 'bg-muted/50' : !isSelected && 'hover:bg-[var(--interactive-hover)]',
                           isSelected && 'bg-primary/5'
@@ -1905,7 +1905,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       role="button"
                       tabIndex={0}
                       className={cn(
-                        'group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
+                        'group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
                         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
                         isExpanded ? 'bg-muted/50' : !isSelected && 'hover:bg-[var(--interactive-hover)]',
                         isSelected && 'bg-primary/5'
