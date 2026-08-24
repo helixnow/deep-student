@@ -3555,7 +3555,7 @@
     "cannotOpenLink": "无法打开链接，请复制后手动打开: {{url}}"
   },
   "imageUpload": {
-    "tooLarge": "图片超过10MB限制"
+    "tooLarge": "图片超过50MB限制"
   },
   "persistFailed": "保存更改失败",
   "aria": {

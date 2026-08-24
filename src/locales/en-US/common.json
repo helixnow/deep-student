@@ -3612,7 +3612,7 @@
     "cannotOpenLink": "Cannot open link, please copy and open manually: {{url}}"
   },
   "imageUpload": {
-    "tooLarge": "Image exceeds 10MB limit"
+    "tooLarge": "Image exceeds 50MB limit"
   },
   "persistFailed": "Failed to save changes",
   "aria": {
