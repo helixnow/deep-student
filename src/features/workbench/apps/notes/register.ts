@@ -28,7 +28,10 @@ export const notesAppDefinition: AppDefinition = {
   icon: React.createElement(AppIconImage, { typeId: 'notes', className: 'h-8 w-8' }),
   instanceMode: 'single',
   memoryWeight: 3,
-  defaultFrame: { w: 1180, h: 760 },
+  // 默认宽度须明显大于 BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH（1120，见
+  // NotesWorkspaceApp）：旧值 1180 与 overlay 阈值 1180 重合，扣掉窗框后
+  // 背链面板在默认尺寸下永远以覆盖层出现，无法并排
+  defaultFrame: { w: 1240, h: 760 },
   minSize: { w: 480, h: 420 },
   render: React.lazy(() => import('./NotesWorkspaceApp')),
   onActivation: handleNotesActivation,

@@ -54,6 +54,13 @@ const watchState = vi.hoisted(() => ({
   callback: null as ((event: { type: string; path: string; node?: typeof nodes[number] }) => void) | null,
 }));
 
+// 重命名后的双链回写是独立模块（有专属单测），这里只验证宿主的触发契约
+const { syncWikiLinksAfterNoteRename } = vi.hoisted(() => ({
+  syncWikiLinksAfterNoteRename: vi.fn(),
+}));
+
+vi.mock('../wikilinkRenameSync', () => ({ syncWikiLinksAfterNoteRename }));
+
 vi.mock('@/utils/notesApi', () => ({
   NotesAPI: { listTags },
 }));
@@ -95,7 +102,12 @@ import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import { registerContentCloseConfirmationHandler } from '../../content/ContentCloseConfirmation';
 import { __resetContentDirtyRegistry, registerContentDirtyChecker } from '../../content/contentDirtyRegistry';
 import { requestWorkspaceResource, resetWorkspaceRegistryForTests } from '../workspaceRegistry';
-import { NotesWorkspaceApp } from '../NotesWorkspaceApp';
+import {
+  listWorkspaceResources,
+  NotesWorkspaceApp,
+  RESOURCE_LIST_MAX_TOTAL,
+  RESOURCE_LIST_PAGE_SIZE,
+} from '../NotesWorkspaceApp';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
   type NotesWorkspaceCommandAction,
@@ -175,6 +187,10 @@ describe('NotesWorkspaceApp', () => {
     search.mockResolvedValue({ ok: true, value: [] });
     getContent.mockReset();
     getContent.mockResolvedValue({ ok: true, value: '' });
+    syncWikiLinksAfterNoteRename.mockReset();
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+    });
     watchState.callback = null;
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
@@ -1086,5 +1102,210 @@ describe('NotesWorkspaceApp', () => {
     await waitFor(() => {
       expect(document.querySelector('[data-notes-files-subscreen]')).toBeNull();
     });
+  });
+
+  it('keeps the create-folder input on blur while it has text or an IME composition', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+    fireEvent.click(screen.getByRole('button', { name: /新建文件夹|New folder/ }));
+    const input = await screen.findByRole('textbox', { name: /新建文件夹|New folder/ });
+
+    // 已有输入：失焦（点错地方）不得清空取消
+    fireEvent.change(input, { target: { value: '半成品名字' } });
+    fireEvent.blur(input);
+    expect(screen.getByRole('textbox', { name: /新建文件夹|New folder/ })).toHaveValue('半成品名字');
+
+    // IME 合成中：点候选词触发的 blur 也不得取消（即使值为空）
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.compositionStart(input);
+    fireEvent.blur(input);
+    expect(screen.getByRole('textbox', { name: /新建文件夹|New folder/ })).toBeInTheDocument();
+
+    // 合成结束且没有内容：失焦才视为取消
+    fireEvent.compositionEnd(input);
+    fireEvent.blur(input);
+    expect(screen.queryByRole('textbox', { name: /新建文件夹|New folder/ })).toBeNull();
+    expect(folderApi.createFolder).not.toHaveBeenCalled();
+  });
+
+  it('syncs title-based wiki links after a note rename and reports the summary', async () => {
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 2, rewrittenLinks: 3, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+    });
+    const notifications: string[] = [];
+    const onNotification = (event: Event) => {
+      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
+    };
+    window.addEventListener('showGlobalNotification', onNotification);
+    try {
+      render(<NotesWorkspaceApp {...props()} />);
+      const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+      fireEvent.contextMenu(resource);
+      fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+      const input = await screen.findByRole('textbox', { name: /重命名/ });
+      fireEvent.change(input, { target: { value: '新课堂笔记' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledTimes(1));
+      // knownNotes 必须携带重命名前的标题快照，否则旧标题无从解析
+      expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledWith({
+        noteId: 'note_1',
+        oldTitle: '课堂笔记',
+        newTitle: '新课堂笔记',
+        knownNotes: [{ id: 'note_1', title: '课堂笔记' }],
+      });
+      await waitFor(() => {
+        expect(notifications.some((message) => message.includes('已同步更新 2 篇'))).toBe(true);
+      });
+    } finally {
+      window.removeEventListener('showGlobalNotification', onNotification);
+    }
+  });
+
+  it('warns when some wiki links could not be synced after a rename', async () => {
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 1, failedSources: 1, scanFailed: false,
+    });
+    const notifications: string[] = [];
+    const onNotification = (event: Event) => {
+      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
+    };
+    window.addEventListener('showGlobalNotification', onNotification);
+    try {
+      render(<NotesWorkspaceApp {...props()} />);
+      const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+      fireEvent.contextMenu(resource);
+      fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+      const input = await screen.findByRole('textbox', { name: /重命名/ });
+      fireEvent.change(input, { target: { value: '新课堂笔记' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(notifications.some((message) => message.includes('2 篇笔记中的双链未同步'))).toBe(true);
+      });
+    } finally {
+      window.removeEventListener('showGlobalNotification', onNotification);
+    }
+  });
+
+  it('does not run the wiki-link rename sync for mindmap renames', async () => {
+    vi.mocked(dstu.rename).mockClear();
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /章节导图/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新章节导图' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(dstu.rename).toHaveBeenCalledTimes(1));
+    expect(syncWikiLinksAfterNoteRename).not.toHaveBeenCalled();
+  });
+
+  it('notifies once when the resource list is truncated instead of silently dropping files', async () => {
+    // 首页整整一页 + 次页失败 = 保留已取到的部分并标记截断
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({
+      id: `note_page_${index}`,
+      sourceId: `note_page_${index}`,
+      path: `/bulk/note_page_${index}`,
+      name: `批量笔记 ${index}`,
+      type: 'note',
+      createdAt: index,
+      updatedAt: index,
+    }));
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      if (options?.typeFilter === 'mindmap') {
+        return Promise.resolve({ ok: true, value: [nodes[1]] }) as never;
+      }
+      if ((options?.offset ?? 0) === 0) {
+        return Promise.resolve({ ok: true, value: fullPage }) as never;
+      }
+      return Promise.resolve({
+        ok: false,
+        error: { toUserMessage: () => '后续分页失败' },
+      }) as never;
+    });
+    const notifications: string[] = [];
+    const onNotification = (event: Event) => {
+      notifications.push(String((event as CustomEvent<{ message: string }>).detail.message));
+    };
+    window.addEventListener('showGlobalNotification', onNotification);
+    try {
+      render(<NotesWorkspaceApp {...props()} />);
+      await waitFor(() => {
+        expect(notifications.filter((message) => message.includes('仅显示部分内容'))).toHaveLength(1);
+      });
+      // 已取到的第一页（1000+1 个文件）仍然可用，而不是整树报错。
+      // 树本体在千级节点时走虚拟化渲染（jsdom 视口高度为 0，只挂载首行），
+      // 因此断言状态栏计数而非具体树节点文本。
+      await screen.findByText(/1001 个文件/);
+      expect(screen.queryByText(/加载失败|无法加载/)).toBeNull();
+    } finally {
+      window.removeEventListener('showGlobalNotification', onNotification);
+    }
+  });
+});
+
+describe('listWorkspaceResources', () => {
+  beforeEach(() => {
+    vi.mocked(dstu.list).mockReset();
+  });
+
+  it('pages through the library with aligned offsets until a short page', async () => {
+    const pageOne = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    const pageTwo = [{ id: 'note_last' }];
+    vi.mocked(dstu.list)
+      .mockResolvedValueOnce({ ok: true, value: pageOne } as never)
+      .mockResolvedValueOnce({ ok: true, value: pageTwo } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_PAGE_SIZE + 1);
+    expect(result.truncated).toBe(false);
+    expect(dstu.list).toHaveBeenCalledTimes(2);
+    expect(dstu.list).toHaveBeenNthCalledWith(1, '/', {
+      typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: RESOURCE_LIST_PAGE_SIZE, offset: 0,
+    });
+    expect(dstu.list).toHaveBeenNthCalledWith(2, '/', {
+      typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: RESOURCE_LIST_PAGE_SIZE, offset: RESOURCE_LIST_PAGE_SIZE,
+    });
+  });
+
+  it('stops at the hard cap and reports truncation', async () => {
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    vi.mocked(dstu.list).mockResolvedValue({ ok: true, value: fullPage } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_MAX_TOTAL);
+    expect(result.truncated).toBe(true);
+    expect(dstu.list).toHaveBeenCalledTimes(RESOURCE_LIST_MAX_TOTAL / RESOURCE_LIST_PAGE_SIZE);
+  });
+
+  it('keeps earlier pages and flags truncation when a follow-up page fails', async () => {
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    vi.mocked(dstu.list)
+      .mockResolvedValueOnce({ ok: true, value: fullPage } as never)
+      .mockResolvedValueOnce({ ok: false, error: { toUserMessage: () => 'boom' } } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_PAGE_SIZE);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('propagates a first-page failure as a load error', async () => {
+    vi.mocked(dstu.list).mockResolvedValue({ ok: false, error: { toUserMessage: () => 'boom' } } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.toUserMessage()).toBe('boom');
   });
 });

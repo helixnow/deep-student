@@ -25,6 +25,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { dstu, createEmpty, folderApi, trashApi, type DstuNode } from '@/dstu';
+import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { getMindMapStoreForInstance } from '@/features/mindmap/store';
@@ -58,6 +59,7 @@ import {
   NotesBacklinksPanel,
   type NotesBacklinksTabRequest,
 } from './NotesBacklinksPanel';
+import { syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
@@ -180,6 +182,50 @@ type ResourceDialog =
 
 const WORKSPACE_STORAGE_KEY = 'workbench.notesWorkspace.state.v1';
 
+/**
+ * 资源列表分页参数，与 wikilinkNotesCache 对齐（每页 1000、总上限 20000）。
+ * 旧实现单次 `limit: 1000` 静默截断：第 1001 篇起从文件树里消失且毫无提示。
+ */
+export const RESOURCE_LIST_PAGE_SIZE = 1000;
+export const RESOURCE_LIST_MAX_TOTAL = 20000;
+
+/**
+ * 背链面板并排（非 overlay）所需的最小工作区宽度。
+ * 旧值 1180 恰好等于窗口默认宽（去掉窗框后工作区永远差几像素）——默认
+ * 尺寸下面板永远盖在正文上。现在阈值与默认窗宽（register.ts 1240）拉开，
+ * 默认窗口即可并排显示。
+ */
+export const BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH = 1120;
+
+// 互斥 never 字段与 shared/result 的 Ok/Err 同款（strict:false 下无收窄）
+type ListWorkspaceResourcesResult =
+  | { ok: true; nodes: DstuNode[]; truncated: boolean; error?: never }
+  | { ok: false; error: { toUserMessage(): string }; nodes?: never; truncated?: never };
+
+/** 分页拉全某类型资源；命中总上限或后续页失败时返回已取到的部分并标记截断。 */
+export async function listWorkspaceResources(typeFilter: ResourceType): Promise<ListWorkspaceResourcesResult> {
+  const nodes: DstuNode[] = [];
+  let offset = 0;
+  for (;;) {
+    const result = await dstu.list('/', {
+      typeFilter,
+      sortBy: 'name',
+      sortOrder: 'asc',
+      limit: RESOURCE_LIST_PAGE_SIZE,
+      offset,
+    });
+    if (!result.ok) {
+      // 首页失败 = 整树加载失败；后续页失败保留已取到的部分并提示不完整
+      if (offset === 0) return { ok: false, error: result.error };
+      return { ok: true, nodes, truncated: true };
+    }
+    nodes.push(...result.value);
+    if (result.value.length < RESOURCE_LIST_PAGE_SIZE) return { ok: true, nodes, truncated: false };
+    if (nodes.length >= RESOURCE_LIST_MAX_TOTAL) return { ok: true, nodes, truncated: true };
+    offset += RESOURCE_LIST_PAGE_SIZE;
+  }
+}
+
 interface PersistedWorkspaceState {
   tabs: WorkspaceTab[];
   activeTabKey: string | null;
@@ -264,8 +310,17 @@ function parseInitialResource(instanceKey: string | null, payload: unknown): Not
     if (type && id) return { type, id };
   }
   if (!instanceKey) return null;
-  // 思维导图资源 ID 的真实前缀是 mm_（见 dstu/types/path.ts 的 ID_PREFIX 映射）
-  return { type: instanceKey.startsWith('mm_') ? 'mindmap' : 'note', id: instanceKey };
+  // 冷启动回退按 DSTU 统一的 ID 前缀表推断类型（mm_ → mindmap 等），
+  // 未知前缀按笔记打开（历史行为，笔记是工作区的默认资源类型）
+  return { type: resourceTypeFromIdPrefix(instanceKey) ?? 'note', id: instanceKey };
+}
+
+/** 从资源 ID 前缀推断工作区资源类型；非 note/mindmap 前缀返回 null。 */
+function resourceTypeFromIdPrefix(id: string): ResourceType | null {
+  for (const [prefix, type] of Object.entries(RESOURCE_ID_PREFIX_MAP)) {
+    if (id.startsWith(prefix)) return resourceType(type);
+  }
+  return null;
 }
 
 function getFolderMembership(treeNodes: readonly FolderTreeNode[]): ReadonlyMap<string, string> {
@@ -948,6 +1003,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const focusedPaneRef = useRef<WorkspacePaneId>(focusedPane);
   const resourcesRef = useRef<DstuNode[]>([]);
   const hasLoadedResourcesRef = useRef(false);
+  const truncationNotifiedRef = useRef(false);
+  const createFolderComposingRef = useRef(false);
   const loadSequenceRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1016,7 +1073,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const availableMainWidth = workspaceWidth - sidebarLayoutWidth;
   const backlinksOverlay = sizeClass === 'compact'
     || Boolean(splitTab)
-    || workspaceWidth < 1180
+    || workspaceWidth < BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH
     || availableMainWidth < 760;
   const titlebarTabsLeft = Math.max(76, sidebarLayoutWidth);
   const saveStates = useMemo(
@@ -1073,27 +1130,43 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const foldersRequest = folderApi?.listFolders?.() ?? Promise.resolve(null);
       const folderTreeRequest = folderApi?.getFolderTree?.() ?? Promise.resolve(null);
       const [notesResult, mindmapsResult, foldersResult, folderTreeResult] = await Promise.all([
-        dstu.list('/', { typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: 1000 }),
-        dstu.list('/', { typeFilter: 'mindmap', sortBy: 'name', sortOrder: 'asc', limit: 1000 }),
+        listWorkspaceResources('note'),
+        listWorkspaceResources('mindmap'),
         foldersRequest,
         folderTreeRequest,
       ]);
       if (requestSequence !== loadSequenceRef.current) return;
 
-      const resourceFailure = !notesResult.ok ? notesResult : !mindmapsResult.ok ? mindmapsResult : null;
-      if (resourceFailure) {
-        const message = resourceFailure.error.toUserMessage();
+      const reportLoadFailure = (message: string) => {
         if (blocking || !hasLoadedResourcesRef.current) setLoadError(message);
         setStatus(message);
         if (blocking || requiresInitialLoad) setLoading(false);
+      };
+      if (!notesResult.ok) {
+        reportLoadFailure(notesResult.error.toUserMessage());
+        return;
+      }
+      if (!mindmapsResult.ok) {
+        reportLoadFailure(mindmapsResult.error.toUserMessage());
         return;
       }
 
       const byId = new Map<string, DstuNode>();
-      for (const node of [...notesResult.value, ...mindmapsResult.value]) {
+      for (const node of [...notesResult.nodes, ...mindmapsResult.nodes]) {
         if (resourceType(node.type)) byId.set(node.id, node);
       }
       const nextResources = [...byId.values()];
+      // 命中上限（或后续分页失败）时明确告知，不再静默丢文件；同一截断态只提示一次
+      const truncated = notesResult.truncated || mindmapsResult.truncated;
+      if (truncated && !truncationNotifiedRef.current) {
+        truncationNotifiedRef.current = true;
+        showGlobalNotification('warning', t('notesWorkspace.tree.truncated', {
+          defaultValue: '文件数量超过 {{max}} 上限，文件树仅显示部分内容',
+          max: RESOURCE_LIST_MAX_TOTAL,
+        }));
+      } else if (!truncated) {
+        truncationNotifiedRef.current = false;
+      }
       const nextFolders = foldersResult?.ok ? foldersResult.value : [];
       const nextResourceFolderIds = folderTreeResult?.ok
         ? getFolderMembership(folderTreeResult.value)
@@ -2026,15 +2099,47 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     } else {
       const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
       const path = node?.path || `/${item.id}`;
+      const previousName = (node?.name ?? item.name).trim();
       const result = await dstu.rename(path, name);
       if (!result.ok) {
         setStatus(result.error.toUserMessage());
         return;
       }
       updateTabTitle(`${item.kind}:${item.id}`, name);
+      // 按旧标题写的 [[wikilink]] 会因重命名失解析：后台回写引用来源
+      //（OCC 保护并发编辑；脏来源跳过），结果以通知汇总
+      if (item.kind === 'note' && previousName && previousName !== name) {
+        // knownNotes 是重命名前的标题快照（resourcesRef 尚未刷新，天然是旧名）
+        const knownNotes = resourcesRef.current
+          .filter((entry) => entry.type === 'note')
+          .map((entry) => ({
+            id: entry.id,
+            title: entry.id === item.id ? previousName : entry.name,
+          }));
+        void syncWikiLinksAfterNoteRename({
+          noteId: item.id,
+          oldTitle: previousName,
+          newTitle: name,
+          knownNotes,
+        }).then((summary) => {
+          if (summary.updatedSources > 0) {
+            showGlobalNotification('success', t('notesWorkspace.renameSync.updated', {
+              defaultValue: '已同步更新 {{count}} 篇笔记中的双链',
+              count: summary.updatedSources,
+            }));
+            void loadResources({ blocking: false });
+          }
+          if (summary.skippedDirtySources > 0 || summary.failedSources > 0) {
+            showGlobalNotification('warning', t('notesWorkspace.renameSync.incomplete', {
+              defaultValue: '{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查',
+              count: summary.skippedDirtySources + summary.failedSources,
+            }));
+          }
+        });
+      }
     }
     await loadResources({ blocking: false });
-  }, [loadResources, treeItems, updateTabTitle]);
+  }, [loadResources, t, treeItems, updateTabTitle]);
 
   const moveTreeItem = useCallback(async (
     dragId: string,
@@ -2364,7 +2469,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                   event.preventDefault();
                   void createFolder();
                 }}
-                onBlur={() => {
+                onCompositionStart={() => { createFolderComposingRef.current = true; }}
+                onCompositionEnd={() => { createFolderComposingRef.current = false; }}
+                onBlur={(event) => {
+                  // 失焦只在「还没输入任何内容」时视为取消。已有输入或 IME 合成中
+                  //（点候选词可能触发 blur）、以及焦点仍落在行内面板内部（计数器/
+                  // 错误提示）时保留输入行，避免误取消丢输入。
+                  if (createFolderComposingRef.current) return;
+                  if (
+                    event.relatedTarget instanceof Node
+                    && event.currentTarget.closest('[data-notes-inline-create]')?.contains(event.relatedTarget)
+                  ) return;
+                  if (resourceDialog.value.trim()) return;
                   setDialogError(null);
                   setResourceDialog(null);
                 }}
