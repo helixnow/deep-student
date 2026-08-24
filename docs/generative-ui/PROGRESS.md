@@ -9,10 +9,16 @@
 - [x] Chat `generative_ui` 块桥接
 - [x] 新增测试 useGenerativeUIStream + chatBlockBridge
 
+### Round 1 子代理 #10 结论（测试契约）
+- 已采用 `tests/vitest/generative-ui/` 目录 + contract/行为/渲染三类测试
+- 20+ 用例覆盖 schema、renderer、registry catalog、parser 流式、chat 桥接
+- 待补：schema↔registry↔prompts 三处同步源码契约（Round 3）
+
 ### 子代理（Round 1 调研，10 × xhigh）
 | # | 任务 | 状态 |
 |---|------|------|
-| 1-10 | Round 1 调研 | 进行中/待合并 |
+| 1-9 | Round 1 调研 | 进行中/待合并 |
+| 10 | 测试契约模式 | ✅ |
 
 ### 下一轮计划（Round 3）
 - 合并 Round 1 子代理调研结论
@@ -45,7 +51,7 @@
 | 7 | Research / Translation | 进行中 |
 | 8 | 安全 / Human-in-the-loop | 进行中 |
 | 9 | AI 流式输出模式 | 进行中 |
-| 10 | 测试契约模式 | 进行中 |
+| 10 | 测试契约模式 | ✅ 已合并（见 Round 2 测试补全） |
 
 ### 下一轮计划（Round 2）
 - 合并 Round 1 子代理结论到本文档
