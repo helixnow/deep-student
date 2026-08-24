@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 57（2026-08-24）— parse error code buffer-capped
+
+CI `32711020815` 仍 queued，**本轮不 push**。
+
+1. [x] `classifyGenerativeUIParseErrors` 识别 `stream-buffer-capped`
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 56（2026-08-24）— 完整 intent 256k 上限
 
 CI `32711020815` 仍 queued，**本轮不 push**。
