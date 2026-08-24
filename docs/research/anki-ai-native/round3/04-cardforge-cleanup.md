@@ -131,4 +131,8 @@ SelectionToolbar (MessageItem.handleSelectionMakeCards)
   `selectionCardGeneration.test.ts`、`src/features/anki-tasks` 全绿（58 tests）。
 - `tsc --noEmit`：仅剩 3 个与本轮无关的既有错误（缺少生成文件 `src/version.ts`，
   由 `npm run version:generate` 产生）。
-- `cargo check --lib`：通过（删除 anki_executor 后无悬挂引用）。
+- `cargo check --lib`：在共享工作区执行时，唯一编译错误位于并行子代理
+  正在编辑的未提交文件 `streaming_anki_service.rs:2237`（本轮禁改文件），
+  与本次删除无关；模块解析阶段通过——`anki_executor` 删除后全仓库无
+  悬挂引用（grep 亦确认 `AnkiToolExecutor` 仅剩注释提及），无任何
+  anki_executor 相关错误/警告。
