@@ -37,18 +37,20 @@ R12 delta format/inventory/lease/upload/restore/GC 原语、完整 ZIP/E2EE 修�
 
 其余冲突按最新 #177 主体处理：Vitest CI 使用 6144 MiB 堆与最多两个 fork；
 auto-sync persist 采用完整、校验后的迁移切片。tombstone 场景测试同时覆盖
-“共享引用保留”和“最后引用删除”。
+“共享引用保留”和“最后引用删除”。另修正两条合并后才可见的测试契约：
+auto-sync 动态间隔用例在第二轮仍 pending 时切档；cloud SSOT 缺配置断言按
+当前 i18n key 的译文校验。
 
 ## 编译与回归门禁
 
-合并提交推送后执行：
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | PASS |
+| `cargo check -p deep-student --lib`（cwd=`src-tauri`） | PASS（仅既有 warning） |
+| `cargo test -p deep-student --lib cloud_storage`（cwd=`src-tauri`） | PASS，86 passed |
+| `cargo test -p deep-student --test sync_scenarios_tests asset_tombstone_ -- --test-threads=1`（cwd=`src-tauri`，干净 sync state） | PASS，4 passed |
+| `npx vitest run src/utils/__tests__/cloudStorageSsot.test.ts src/stores/__tests__/autoSyncStore.test.ts tests/vitest/data-governance/r11-android-platform-error-codes.test.ts tests/vitest/data-governance/r11-autosync-intervals-failclose.test.tsx` | PASS，4 files / 65 tests |
 
-```bash
-npm run typecheck
-cd src-tauri && cargo check -p deep-student --lib
-cd src-tauri && cargo test -p deep-student --lib cloud_storage
-cd src-tauri && cargo test -p deep-student --test sync_scenarios_tests \
-  asset_tombstone_
-```
-
-结果将在门禁完成后回填。
+首次并行运行 tombstone 定向组时，本机已有默认 `sync_state.db` 被多个测试并发
+写入，出现一次 `database is locked`；清理该测试状态并串行运行后 4/4 通过。
+这是测试状态隔离问题，不是 tombstone 断言失败。
