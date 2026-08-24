@@ -1,15 +1,20 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { StreamingMarkdownRenderer } from '../StreamingMarkdownRenderer';
 import { StreamingBlockRenderer } from '../StreamingBlockRenderer';
-import { FlowTokenMarkdownRenderer } from '../FlowTokenMarkdownRenderer';
+import { FlowTokenMarkdownRenderer, preloadFlowToken } from '../FlowTokenMarkdownRenderer';
 import { ThinkingBlock } from '../../../plugins/blocks/thinking';
 
 vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: (path: string) => `asset://mock${path}`,
 }));
+
+// flowtoken 现为懒加载（依赖收敛 R4）；预载后所有断言保持同步语义。
+beforeAll(async () => {
+  await preloadFlowToken();
+});
 
 const FLOWTOKEN_ANIMATION_SELECTOR =
   '[style*="animation-name: ft-fadeIn"]';
