@@ -175,7 +175,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
               <DsButton
                 variant="secondary"
                 size="sm"
-                className="w-full justify-center gap-1.5"
+                className="w-full justify-center gap-1.5 [@media(pointer:coarse)]:min-h-11"
                 onClick={handleCompact}
                 disabled={compactDisabled || isCompactingContext}
                 title={
