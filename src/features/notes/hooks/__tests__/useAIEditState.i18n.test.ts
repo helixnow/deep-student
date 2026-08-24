@@ -1,12 +1,12 @@
 /**
  * useAIEditState 用户可见错误文案 i18n 契约测试。
  *
- * 本切换刻意不改任何 locale JSON：错误文案全部走
- * `i18n.t('learningHub:ai_edit.*', { defaultValue: 主干中文原文 })` 兜底。
+ * 错误文案走 `i18n.t('learningHub:ai_edit.*', { defaultValue: 主干中文原文 })`，
+ * 同时在两个 locale 中注册与 defaultValue 一致的消息。
  * 因此分两层守卫：
  * 1. source 守卫：每条错误必须经 i18n.t 且 defaultValue 与主干原文逐字相等，
- *    不允许硬编码中文直接赋给 error；learningHub locale JSON 中不得出现
- *    ai_edit 段（零 locale 文件改动）。
+ *    不允许硬编码中文直接赋给 error；learningHub locale JSON 必须包含完整
+ *    ai_edit 段。
  * 2. 行为守卫：mock `@/i18n` 复刻 i18next 的 defaultValue + {{var}} 插值语义，
  *    断言 computeProposedContent / reject 返回给 UI 的中文与切换前完全一致。
  */
@@ -70,12 +70,14 @@ describe('useAIEditState i18n source contract', () => {
     expect(source).not.toMatch(/error:\s*['"`]/);
   });
 
-  it('keeps the locale JSON files untouched (defaultValue-only contract)', () => {
+  it('registers every defaultValue in both learningHub locale bundles', () => {
     for (const lang of ['zh-CN', 'en-US']) {
       const bundle = JSON.parse(
         readFileSync(resolve(process.cwd(), `src/locales/${lang}/learningHub.json`), 'utf8'),
-      ) as Record<string, unknown>;
-      expect(bundle).not.toHaveProperty('ai_edit');
+      ) as { ai_edit?: Record<string, string> };
+      for (const [key, defaultValue] of EXPECTED_MESSAGES) {
+        expect(bundle.ai_edit?.[key]).toBe(defaultValue);
+      }
     }
   });
 });

@@ -241,6 +241,12 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
     expect(opus.supportsThinkingTokens).toBe(true);
   });
 
+  it('uses the official 1M context window for Claude Opus 5', () => {
+    const caps = inferApiCapabilities({ id: 'claude-opus-5' });
+    expect(caps.contextWindow).toBe(1_000_000);
+    expect(caps.contextWindowSource).toBe('rule');
+  });
+
   it('treats Grok 4.3 as reasoning-effort capable with 1M context', () => {
     const caps = inferApiCapabilities({ id: 'grok-4.3' });
     expect(caps.reasoning).toBe(true);

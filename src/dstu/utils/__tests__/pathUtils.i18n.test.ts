@@ -5,7 +5,7 @@ import enLlmUsage from '@/locales/en-US/llm_usage.json';
 
 // 模拟 i18next 在 key 缺失时的 defaultValue 回退 + 插值行为，
 // 验证纯函数在无 locale 资源时输出与主干一致的中文原文。
-vi.mock('@/i18n', () => ({
+vi.mock('i18next', () => ({
   default: {
     t: (key: string, options?: Record<string, unknown>) => {
       const template = typeof options?.defaultValue === 'string' ? options.defaultValue : key;

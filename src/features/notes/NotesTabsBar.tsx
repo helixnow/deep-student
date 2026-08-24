@@ -291,12 +291,12 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
         }}
       >
         {canLeft && (
-          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label={t('notes:tabs.scrollLeft')} className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
             <CaretLeft size={16} />
           </DsButton>
         )}
         {canRight && (
-          <DsButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
+          <DsButton variant="ghost" size="icon" iconOnly aria-label={t('notes:tabs.scrollRight')} className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
             <CaretRight size={16} />
           </DsButton>
         )}

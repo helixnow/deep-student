@@ -108,12 +108,12 @@ export function useDstuResource(
             setOriginalContent(null);
           }
         } else {
-          reportError(contentResult.error, i18n.t('learningHub:error.loadFailed', { defaultValue: '加载失败' }));
+          reportError(contentResult.error, i18n.t('common:loadResource', { defaultValue: '加载资源' }));
           setError(contentResult.error);
         }
       }
     } else {
-      reportError(nodeResult.error, i18n.t('learningHub:error.loadFailed', { defaultValue: '加载失败' }));
+      reportError(nodeResult.error, i18n.t('common:loadResource', { defaultValue: '加载资源' }));
       setError(nodeResult.error);
     }
 

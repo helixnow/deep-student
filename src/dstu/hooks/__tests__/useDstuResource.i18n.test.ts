@@ -8,9 +8,6 @@ const hookSource = readFileSync(path.join(here, '../useDstuResource.ts'), 'utf8'
 const zhCommon = JSON.parse(
   readFileSync(path.join(here, '../../../locales/zh-CN/common.json'), 'utf8'),
 );
-const zhLearningHub = JSON.parse(
-  readFileSync(path.join(here, '../../../locales/zh-CN/learningHub.json'), 'utf8'),
-);
 
 describe('useDstuResource reportError i18n contract', () => {
   it('no longer passes hardcoded English contexts to reportError', () => {
@@ -28,18 +25,18 @@ describe('useDstuResource reportError i18n contract', () => {
 
   it('resolves reportError contexts through i18n with Chinese defaults', () => {
     expect(hookSource).toContain("import i18n from '@/i18n'");
-    expect(hookSource).toContain("i18n.t('learningHub:error.loadFailed', { defaultValue: '加载失败' })");
+    expect(hookSource).toContain("i18n.t('common:loadResource', { defaultValue: '加载资源' })");
+    expect(hookSource).not.toContain("i18n.t('learningHub:error.loadFailed'");
     expect(hookSource).toContain("i18n.t('common:save', { defaultValue: '保存' })");
     expect(hookSource).toContain("i18n.t('common:delete', { defaultValue: '删除' })");
     expect(hookSource).toContain("i18n.t('common:create', { defaultValue: '新建' })");
     expect(hookSource).toContain("i18n.t('common:search', { defaultValue: '搜索' })");
   });
 
-  it('only reuses locale keys that already exist on main (no locale edits needed)', () => {
+  it('reuses the existing common locale keys for the other operations', () => {
     expect(zhCommon.save).toBe('保存');
     expect(zhCommon.delete).toBe('删除');
     expect(zhCommon.create).toBe('新建');
     expect(zhCommon.search).toBe('搜索');
-    expect(zhLearningHub.error.loadFailed).toBe('加载失败');
   });
 });
