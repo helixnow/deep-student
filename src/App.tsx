@@ -2754,7 +2754,7 @@ function App() {
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
+                className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   if (maintenanceRequiresRestart) {
                     void (async () => {

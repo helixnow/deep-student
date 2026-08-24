@@ -79,7 +79,7 @@ const ExtendChips: React.FC<{
           title={t('pomodoro.controls.extendTitle', { count: minutes })}
           aria-label={t('pomodoro.controls.extendTitle', { count: minutes })}
           className={cn(
-            'gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:min-w-11',
+            'gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
             touch ? 'h-11 flex-shrink-0 !px-3 text-xs' : 'h-6 [@media(pointer:coarse)]:!h-11',
             className,
           )}
@@ -927,7 +927,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             })}
             aria-pressed={workMinutes === minutes}
             className={cn(
-              'gap-0 !px-2 text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:min-w-11',
+              'gap-0 !px-2 text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
               touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6 [@media(pointer:coarse)]:!h-11',
               workMinutes === minutes
                 ? 'font-semibold text-primary'
