@@ -395,14 +395,22 @@
   font-size: 11px;
 }
 
-/* 触屏：结果行 / 模式切换放大到 ≥44px 触控目标 */
+/* 触屏：结果行 / 模式切换 / 图标按钮放大到 ≥44px 触控目标 */
 @media (pointer: coarse) {
   .notes-search-overlay-result {
     min-height: 52px;
   }
 
+  /* 44×44 命中区，负 margin 抵消占位（同 tab 关闭钮范式），视觉图标保持小 */
+  .notes-search-overlay-clear,
+  .notes-search-overlay-close {
+    width: 44px;
+    height: 44px;
+    margin: -8px;
+  }
+
   .notes-search-overlay-modes button {
-    height: 36px;
+    height: 44px;
   }
 
   /* 键盘提示对触屏无意义 */
