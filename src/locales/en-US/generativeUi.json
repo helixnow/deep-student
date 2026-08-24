@@ -74,6 +74,7 @@
       "translated_stat_title": "Translated characters",
       "empty_trend": "No source text",
       "progress_title": "Translation progress",
+      "streaming_progress_title": "Translating",
       "translated_row": "{{count}} translated",
       "language_pair_row": "Language pair",
       "formality_row": "Tone",

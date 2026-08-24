@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useTranslationStreamBridge } from './translationStreamBridge';
 
 // 翻译空闲超时时间（毫秒）- 2分钟无任何事件视为超时
 const TRANSLATION_TIMEOUT_MS = 120000;
@@ -111,7 +112,13 @@ const INITIAL_STATE: TranslationStreamState = {
 /**
  * 翻译流式管理 Hook
  */
-export function useTranslationStream() {
+export interface UseTranslationStreamOptions {
+  /** DSTU resourceId — 发布快照供 TranslationGenerativeBriefing 订阅 */
+  publishKey?: string | null;
+}
+
+export function useTranslationStream(options?: UseTranslationStreamOptions) {
+  const publishKey = options?.publishKey ?? null;
   const { t } = useTranslation(['translation']);
   const [state, setState] = useState<TranslationStreamState>(INITIAL_STATE);
 
@@ -541,6 +548,25 @@ export function useTranslationStream() {
       currentSessionIdRef.current = null;
     };
   }, [finishSession]);
+
+  useEffect(() => {
+    if (!publishKey) return;
+    useTranslationStreamBridge.getState().actions.publish(publishKey, {
+      isTranslating: state.isTranslating,
+      translatedText: state.translatedText,
+      charCount: state.charCount,
+      wordCount: state.wordCount,
+      detectedLang: state.detectedLang,
+      isPartialResult: state.isPartialResult,
+    });
+  }, [publishKey, state]);
+
+  useEffect(() => {
+    if (!publishKey) return;
+    return () => {
+      useTranslationStreamBridge.getState().actions.clear(publishKey);
+    };
+  }, [publishKey]);
 
   return {
     ...state,

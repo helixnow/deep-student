@@ -46,4 +46,17 @@ describe('buildTranslationBriefingIntent', () => {
     const actions = (actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? [];
     expect(actions.map((a) => a.id)).toEqual(['open-settings']);
   });
+
+  it('uses streaming progress title when isStreaming', () => {
+    const intent = buildTranslationBriefingIntent({
+      sourceChars: 100,
+      translatedChars: 40,
+      srcLangLabel: 'English',
+      tgtLangLabel: 'Chinese',
+      isStreaming: true,
+      labels: { ...labels, streamingProgressTitle: 'Translating…' },
+    });
+    const progress = intent.blocks.find((b) => b.type === 'progress');
+    expect((progress?.props as { title?: string }).title).toBe('Translating…');
+  });
 });

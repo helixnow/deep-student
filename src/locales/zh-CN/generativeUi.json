@@ -74,6 +74,7 @@
       "translated_stat_title": "译文字数",
       "empty_trend": "暂无原文",
       "progress_title": "翻译进度",
+      "streaming_progress_title": "翻译进行中",
       "translated_row": "已译 {{count}} 字",
       "language_pair_row": "语向",
       "formality_row": "语气",

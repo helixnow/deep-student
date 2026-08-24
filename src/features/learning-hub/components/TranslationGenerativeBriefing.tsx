@@ -2,18 +2,33 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkle } from '@phosphor-icons/react';
 import type { TranslationSession } from '@/dstu/adapters/translationDstuAdapter';
+import { useTranslationStreamSnapshot } from '@/translation/translationStreamBridge';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
+import { mergeTranslationBriefingMetrics } from '@/features/generative-ui/utils/mergeTranslationBriefingMetrics';
 import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
 import './TranslationGenerativeBriefing.css';
 
 export interface TranslationGenerativeBriefingProps {
   session: TranslationSession;
+  /** DSTU node.id — 与 TranslateWorkbench publishKey 对齐 */
+  streamKey?: string | null;
 }
 
 export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefingProps> = React.memo(
-  ({ session }) => {
+  ({ session, streamKey }) => {
     const { t } = useTranslation(['generativeUi', 'translation']);
+    const streamSnapshot = useTranslationStreamSnapshot(streamKey);
+
+    const metrics = useMemo(
+      () =>
+        mergeTranslationBriefingMetrics({
+          sessionSourceText: session.sourceText,
+          sessionTranslatedText: session.translatedText,
+          stream: streamSnapshot,
+        }),
+      [session.sourceText, session.translatedText, streamSnapshot],
+    );
 
     const srcLangLabel = t(`translation:languages.${session.srcLang}`, {
       defaultValue: session.srcLang,
@@ -32,6 +47,7 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
         translatedStatTitle: t('generativeUi:translation.briefing.translated_stat_title'),
         emptyTrend: t('generativeUi:translation.briefing.empty_trend'),
         progressTitle: t('generativeUi:translation.briefing.progress_title'),
+        streamingProgressTitle: t('generativeUi:translation.briefing.streaming_progress_title'),
         translatedRow: t('generativeUi:translation.briefing.translated_row'),
         languagePairRow: t('generativeUi:translation.briefing.language_pair_row'),
         formalityRow: t('generativeUi:translation.briefing.formality_row'),
@@ -46,16 +62,27 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
     const intent = useMemo(
       () =>
         buildTranslationBriefingIntent({
-          sourceChars: session.sourceText.length,
-          translatedChars: session.translatedText.length,
+          sourceChars: metrics.sourceChars,
+          translatedChars: metrics.translatedChars,
           srcLangLabel,
           tgtLangLabel,
           formalityLabel,
           domainLabel: session.domain,
           glossaryCount: session.glossary?.length ?? 0,
+          isStreaming: metrics.isStreaming,
           labels,
         }),
-      [formalityLabel, labels, session.domain, session.glossary?.length, session.sourceText.length, session.translatedText.length, srcLangLabel, tgtLangLabel],
+      [
+        formalityLabel,
+        labels,
+        metrics.isStreaming,
+        metrics.sourceChars,
+        metrics.translatedChars,
+        session.domain,
+        session.glossary?.length,
+        srcLangLabel,
+        tgtLangLabel,
+      ],
     );
 
     const onOpenSettings = useCallback(() => {
@@ -67,17 +94,17 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
         createTranslationBriefingActionHandlers(
           {
             onOpenSettings,
-            getTranslatedText: () => session.translatedText,
+            getTranslatedText: () => metrics.translatedText,
           },
           {
             openSettings: labels.openSettings,
             copyTranslation: labels.copyTranslation,
           },
         ),
-      [labels.copyTranslation, labels.openSettings, onOpenSettings, session.translatedText],
+      [labels.copyTranslation, labels.openSettings, metrics.translatedText, onOpenSettings],
     );
 
-    if (!session.sourceText && !session.translatedText) {
+    if (!session.sourceText && !session.translatedText && !metrics.isStreaming) {
       return null;
     }
 
@@ -85,13 +112,19 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
       <section
         className="translation-generative-briefing"
         data-testid="translation-generative-briefing"
+        data-streaming={metrics.isStreaming ? 'true' : 'false'}
         aria-label={t('generativeUi:translation.briefing_label')}
       >
         <header className="translation-generative-briefing-header">
           <Sparkle className="h-3.5 w-3.5 text-primary" weight="fill" aria-hidden />
           {t('generativeUi:translation.briefing_label')}
         </header>
-        <GenerativeUIPanel intent={intent} showChrome={false} actionHandlers={actionHandlers} />
+        <GenerativeUIPanel
+          intent={intent}
+          isStreaming={metrics.isStreaming}
+          showChrome={false}
+          actionHandlers={actionHandlers}
+        />
       </section>
     );
   },

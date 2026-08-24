@@ -8,6 +8,7 @@ export interface TranslationBriefingLabels {
   translatedStatTitle: string;
   emptyTrend: string;
   progressTitle: string;
+  streamingProgressTitle?: string;
   translatedRow: string;
   languagePairRow: string;
   formalityRow: string;
@@ -25,6 +26,7 @@ export interface TranslationBriefingInput {
   formalityLabel?: string;
   domainLabel?: string;
   glossaryCount?: number;
+  isStreaming?: boolean;
   labels: TranslationBriefingLabels;
 }
 
@@ -37,6 +39,7 @@ export function buildTranslationBriefingIntent(input: TranslationBriefingInput):
     formalityLabel,
     domainLabel,
     glossaryCount = 0,
+    isStreaming = false,
     labels,
   } = input;
 
@@ -97,7 +100,9 @@ export function buildTranslationBriefingIntent(input: TranslationBriefingInput):
             {
               type: 'progress' as const,
               props: {
-                title: labels.progressTitle,
+                title: isStreaming
+                  ? (labels.streamingProgressTitle ?? labels.progressTitle)
+                  : labels.progressTitle,
                 current: translatedChars,
                 total: Math.max(sourceChars, 1),
                 label: labels.translatedRow.replace('{{count}}', String(translatedChars)),

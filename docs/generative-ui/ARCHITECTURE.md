@@ -62,6 +62,10 @@ Hpias 实时研究（Round 16）：
 - Chat `generative_ui` 块在 `researchSessionId` 或 intent 含 research 块时挂载 `HpiasGenerativeResearchPanel`
 - 会话激活后静态 research 块由实时面板取代，避免重复渲染
 
+Translation 流式简报（Round 17）：
+- `useTranslationStream({ publishKey: resourceId })` → `translationStreamBridge`
+- `TranslationGenerativeBriefing` 通过 `streamKey={node.id}` 订阅，翻译进行中实时更新 progress / copy 文本
+
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`
 - `src/features/chat/plugins/events/generativeUI.ts`
@@ -84,6 +88,7 @@ Hpias 实时研究（Round 16）：
 | HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
 | Hpias Chat 事件桥 | `hpiasEventBridge` + Chat 块挂载 ✅ Round 16 |
 | Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15 |
+| Translation 流式简报 | `translationStreamBridge` + streamKey ✅ Round 17 |
 
 ## 7. 测试
 

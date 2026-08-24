@@ -1,8 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { TranslationGenerativeBriefing } from '@/features/learning-hub/components/TranslationGenerativeBriefing';
 import type { TranslationSession } from '@/dstu/adapters/translationDstuAdapter';
+import {
+  publishTranslationStreamSnapshot,
+  useTranslationStreamBridge,
+} from '@/translation/translationStreamBridge';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
@@ -12,6 +16,7 @@ vi.mock('react-i18next', () => ({
         'generativeUi:translation.briefing_label': 'AI 翻译简报',
         'generativeUi:translation.briefing.source_stat_title': '原文字数',
         'generativeUi:translation.briefing.progress_title': '翻译进度',
+        'generativeUi:translation.briefing.streaming_progress_title': '翻译进行中',
         'generativeUi:translation.briefing.translated_row': '已译 {{count}} 字',
         'generativeUi:translation.briefing.language_pair_row': '语向',
         'generativeUi:translation.briefing.formality_row': '语气',
@@ -45,6 +50,10 @@ const session: TranslationSession = {
 };
 
 describe('TranslationGenerativeBriefing', () => {
+  beforeEach(() => {
+    useTranslationStreamBridge.getState().actions.clearAll();
+  });
+
   it('renders briefing with source stat', () => {
     render(<TranslationGenerativeBriefing session={session} />);
     expect(screen.getByTestId('translation-generative-briefing')).toBeInTheDocument();
@@ -60,5 +69,25 @@ describe('TranslationGenerativeBriefing', () => {
       />,
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it('updates progress from stream snapshot while translating', () => {
+    publishTranslationStreamSnapshot('stream-node', {
+      isTranslating: true,
+      translatedText: '你',
+      charCount: 1,
+      wordCount: 1,
+      detectedLang: null,
+      isPartialResult: false,
+    });
+
+    render(<TranslationGenerativeBriefing session={session} streamKey="stream-node" />);
+
+    expect(screen.getByTestId('translation-generative-briefing')).toHaveAttribute(
+      'data-streaming',
+      'true',
+    );
+    expect(screen.getByText('翻译进行中')).toBeInTheDocument();
+    expect(screen.getByText('9%')).toBeInTheDocument();
   });
 });

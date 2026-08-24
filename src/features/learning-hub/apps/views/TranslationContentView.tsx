@@ -623,7 +623,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       )}
 
       {!externalSettingsOpen && session && (session.sourceText || session.translatedText) ? (
-        <TranslationGenerativeBriefing session={session} />
+        <TranslationGenerativeBriefing session={session} streamKey={node.id} />
       ) : null}
 
       <div className="relative flex-1 min-h-0">

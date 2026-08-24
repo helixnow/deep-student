@@ -188,8 +188,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     }
   }, [initialSession?.id]);
 
-  // 独立翻译流式管线
-  const translationStream = useTranslationStream();
+  // 独立翻译流式管线（发布快照供 ContentView 简报实时订阅）
+  const translationStream = useTranslationStream({ publishKey: dstuMode.resourceId });
 
   // 持久化偏好（只在首次渲染读取一次）
   const prefsRef = useRef<WorkbenchPrefs | null>(null);

@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 17（2026-08-24）
+
+- [x] **流式翻译简报** — `translationStreamBridge` + `useTranslationStream({ publishKey })`
+- [x] `mergeTranslationBriefingMetrics` — session 与流式快照合并
+- [x] `TranslationGenerativeBriefing` 订阅 `streamKey`（node.id）实时更新进度
+- [x] `buildTranslationBriefingIntent` 支持 `isStreaming` + `streaming_progress_title` i18n
+- [x] vitest + ARCHITECTURE / INTEGRATION_ROADMAP 更新
+
 ## Round 16（2026-08-24）
 
 - [x] **Hpias Tauri 事件桥** — `hpiasEventBridge.ts` + `useHpiasEventBridge`（`hpias_event` → HpiasStore）

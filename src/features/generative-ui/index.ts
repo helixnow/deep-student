@@ -44,6 +44,7 @@ export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
 export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
 export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
 export { buildTranslationBriefingIntent } from './utils/buildTranslationBriefingIntent';
+export { mergeTranslationBriefingMetrics } from './utils/mergeTranslationBriefingMetrics';
 export { buildIndexStatusBriefingIntent } from './utils/buildIndexStatusBriefingIntent';
 export { buildMemoryBriefingIntent } from './utils/buildMemoryBriefingIntent';
 export { buildNoteEditSuggestionIntent } from './utils/buildNoteEditSuggestionIntent';
