@@ -63,11 +63,21 @@
   outline-offset: 1px;
 }
 
-/* 触屏：28px 工具栏按钮放大到 40px 命中区 */
+/* 触屏：28px 工具栏按钮放大到 44px 命中区；地址栏 / 接管 / 提示按钮同步 44px 最小命中
+   （min-height 优先级高于后文 height，声明顺序无关） */
 @media (pointer: coarse) {
   .wb-browser-icon-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .wb-browser-address {
+    min-height: 44px;
+  }
+
+  .wb-browser-takeover,
+  .wb-browser-hint-action {
+    min-height: 44px;
   }
 }
 
