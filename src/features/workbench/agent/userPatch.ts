@@ -3,6 +3,7 @@
  * 暂停/中止回执附带用户改动概述（Devin 协议）；各 driver 可注册 diff 回调，缺省文案见 DEFAULT_USER_PATCH。
  * 见 docs/dev/acr/DESIGN.md §4.1 / ROUND2.md R2-06。
  */
+import i18n from '@/i18n';
 import type { AcrReceipt } from './types';
 
 /** 缺省：无法采集具体 diff 时的 LLM 可读摘要 */
@@ -35,7 +36,9 @@ export function summarizeUserPatch(typeId: string): string {
       /* 回落缺省 */
     }
   }
-  return DEFAULT_USER_PATCH;
+  return i18n.t('dstu:agent.user_patch.default', {
+    defaultValue: DEFAULT_USER_PATCH,
+  });
 }
 
 /**
