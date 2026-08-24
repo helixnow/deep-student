@@ -230,6 +230,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [skillToDelete, setSkillToDelete] = useState<SkillDefinition | null>(null);
   const [inlineDeleting, setInlineDeleting] = useState(false);
 
+  // 恢复内置默认确认状态（丢弃全部自定义且不可撤销 → 与删除同级的风险确认）
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [skillToReset, setSkillToReset] = useState<SkillDefinition | null>(null);
+  const [resetting, setResetting] = useState(false);
+
   // 导入覆盖确认状态
   const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ content: string; skill: SkillDefinition } | null>(null);
@@ -587,26 +592,42 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     await reloadSkills();
   }, [editingSkill, t]);
 
-  // 恢复内置技能默认值
-  const handleResetToDefault = useCallback(async (skill: SkillDefinition) => {
+  // 请求恢复内置技能默认值（风险操作：先经列表顶部行内确认横幅，再真正执行）
+  const handleRequestResetToDefault = useCallback((skill: SkillDefinition) => {
     if (!skill.isBuiltin) return;
+    setSkillToReset(skill);
+    setResetConfirmOpen(true);
+  }, []);
 
+  const handleCancelResetToDefault = useCallback(() => {
+    setResetConfirmOpen(false);
+    setSkillToReset(null);
+  }, []);
+
+  // 确认恢复内置技能默认值（丢弃全部自定义，不可撤销）
+  const handleConfirmResetToDefault = useCallback(async () => {
+    if (!skillToReset) return;
+    setResetting(true);
     try {
-      await resetBuiltinSkillCustomization(skill.id);
+      await resetBuiltinSkillCustomization(skillToReset.id);
       showGlobalNotification(
         'success',
         t('skills:management.reset_success')
       );
       // 刷新列表
       await reloadSkills();
+      setResetConfirmOpen(false);
+      setSkillToReset(null);
     } catch (error) {
       console.error('[SkillsManagement] 恢复默认失败:', error);
       showGlobalNotification(
         'error',
         t('skills:management.reset_failed')
       );
+    } finally {
+      setResetting(false);
     }
-  }, [t]);
+  }, [skillToReset, t]);
 
   // 确认删除
   const handleConfirmDelete = useCallback(async () => {
@@ -1104,7 +1125,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
   const anyInlineConfirmOpen =
-    updateConfirmOpen || zipConfirmOpen ||
+    updateConfirmOpen || zipConfirmOpen || resetConfirmOpen ||
     deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
     if (!anyInlineConfirmOpen) return;
@@ -1556,7 +1577,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onEdit={handleEdit}
             onDelete={handleDelete}
             onToggleDefault={handleToggleDefault}
-            onResetToOriginal={handleResetToDefault}
+            onResetToOriginal={handleRequestResetToDefault}
             onExport={handleExport}
             onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
             cardRefsMap={cardRefsMap}
@@ -1894,6 +1915,48 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 className="!h-9 px-3 text-xs"
               >
                 {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
+              </DsButton>
+            </div>
+          </InlineConfirmSection>
+        )}
+
+        {resetConfirmOpen && skillToReset && (
+          <InlineConfirmSection
+            label={t('skills:management.reset_confirm_title')}
+            onCancel={() => {
+              if (!resetting) handleCancelResetToDefault();
+            }}
+            className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
+          >
+            <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+              <ArrowCounterClockwise size={16} className="text-amber-600 dark:text-amber-400" />
+              {t('skills:management.reset_confirm_title')}
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {t('skills:management.reset_confirm_desc', {
+                name: getLocalizedSkillName(skillToReset.id, skillToReset.name, t),
+              })}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCancelResetToDefault}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {t('common:actions.cancel')}
+              </DsButton>
+              <DsButton
+                variant="primary"
+                size="sm"
+                onClick={() => void handleConfirmResetToDefault()}
+                disabled={resetting}
+                className="!h-9 px-3 text-xs"
+              >
+                {resetting
+                  ? t('skills:management.resetting')
+                  : t('skills:management.reset_confirm_action')}
               </DsButton>
             </div>
           </InlineConfirmSection>

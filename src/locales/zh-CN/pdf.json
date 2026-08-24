@@ -181,6 +181,16 @@
     "process_new": "处理新文件"
   },
   "selection": {
+    "menu_label": "划词操作",
+    "copy": "复制",
+    "copied": "已复制到剪贴板",
+    "copy_failed": "复制失败",
+    "quote_to_chat": "引用到对话",
+    "create_note": "做笔记",
+    "note_default_title": "摘录笔记",
+    "note_source": "—— 摘自《{{name}}》第 {{page}} 页",
+    "note_saved": "已保存为笔记",
+    "note_save_failed": "笔记保存失败",
     "generateQuestions": "生成题目",
     "makeCards": "制卡",
     "selectionEmpty": "请先选中要出题的文本",
@@ -190,6 +200,10 @@
     "questionPromptSource": "《{{name}}》",
     "questionPromptSourcePage": "《{{name}}》第 {{page}} 页",
     "questionPromptSourceUnknown": "阅读器划词摘录"
+  },
+  "annotations": {
+    "save_failed": "批注保存失败，本次修改可能未生效",
+    "remote_updated": "批注已在其他窗口更新，已加载最新版本，本次修改未保存"
   },
   "a11y": {
     "close": "关闭",

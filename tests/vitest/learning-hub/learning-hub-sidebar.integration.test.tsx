@@ -90,7 +90,8 @@ vi.mock('@/features/learning-hub/components/finder', () => ({
   ),
 }));
 vi.mock('@/dstu', () => ({
-  dstu: { watch: vi.fn(() => () => {}), get: vi.fn() },
+  // list：收藏徽标挂载即查询（fetchFavoriteCount），缺失会抛未处理拒绝
+  dstu: { watch: vi.fn(() => () => {}), get: vi.fn(), list: vi.fn(async () => ({ ok: true, value: [] })) },
   folderApi: { createFolder: vi.fn(), getFolder: vi.fn(), getBreadcrumbs: vi.fn() },
   createEmpty: vi.fn(),
   trashApi: { restoreItem: vi.fn(), permanentlyDelete: vi.fn(), emptyTrash: vi.fn() },

@@ -163,8 +163,26 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             )}
             style={{ willChange: isEditing ? 'transform' : 'auto' }}
             onClick={() => onSelectSkill?.(skill)}
+            onKeyDown={(e) => {
+              // 只消费卡片本体上的按键，不劫持卡片内部按钮/菜单的键盘事件
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectSkill?.(skill);
+              } else if (e.key === 'e' || e.key === 'E') {
+                // 启用/停用快捷键：与卡片右下角开关同一存储写入（即时生效）
+                e.preventDefault();
+                setSkillDisabled(skill.id, !isDisabledSkill);
+              } else if ((e.key === 'Delete' || e.key === 'Backspace') && !isBuiltin && !disabled) {
+                // 删除仍走列表顶部行内确认横幅（风险操作二次确认）
+                e.preventDefault();
+                onDelete(skill);
+              }
+            }}
             role="button"
             tabIndex={0}
+            aria-label={getLocalizedSkillName(skill.id, skill.name, t)}
+            aria-keyshortcuts="Enter E Delete"
             layout
             transition={{
               layout: { type: 'spring', stiffness: 350, damping: 28 }

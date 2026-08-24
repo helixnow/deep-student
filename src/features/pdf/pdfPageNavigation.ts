@@ -94,3 +94,23 @@ export function canNavigateNext(
     ? getSpreadStart(currentPage, coverOffset) < getLastSpreadStart(numPages, coverOffset)
     : currentPage < numPages;
 }
+
+export type PageScrollKeyAction = 'scroll' | 'navigate';
+
+/**
+ * PageUp / PageDown 的语义裁决：
+ * - 页面放大到一屏放不下（渲染高度 > 视口高度）时按「滚一屏」处理——
+ *   直接跳页会整段跳过当前页的未读部分（Acrobat/pdf.js 同语义）；
+ * - 页面完整可见时按「翻页」处理（双页模式按 spread 步进）。
+ * ←/→ 不走本函数，始终是翻页。
+ */
+export function resolvePageScrollKeyAction(
+  pageHeightPx: number,
+  viewportHeightPx: number,
+): PageScrollKeyAction {
+  if (!Number.isFinite(pageHeightPx) || !Number.isFinite(viewportHeightPx)) {
+    return 'navigate';
+  }
+  if (pageHeightPx <= 0 || viewportHeightPx <= 0) return 'navigate';
+  return pageHeightPx > viewportHeightPx + 1 ? 'scroll' : 'navigate';
+}

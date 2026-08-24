@@ -181,6 +181,16 @@
     "process_new": "Process New File"
   },
   "selection": {
+    "menu_label": "Selection actions",
+    "copy": "Copy",
+    "copied": "Copied to clipboard",
+    "copy_failed": "Copy failed",
+    "quote_to_chat": "Quote in chat",
+    "create_note": "Create note",
+    "note_default_title": "Excerpt note",
+    "note_source": "— Excerpt from \"{{name}}\", page {{page}}",
+    "note_saved": "Saved as note",
+    "note_save_failed": "Failed to save note",
     "generateQuestions": "Generate questions",
     "makeCards": "Make flashcards",
     "selectionEmpty": "Select the text you want questions generated from first",
@@ -190,6 +200,10 @@
     "questionPromptSource": "\"{{name}}\"",
     "questionPromptSourcePage": "\"{{name}}\", page {{page}}",
     "questionPromptSourceUnknown": "Reader text selection"
+  },
+  "annotations": {
+    "save_failed": "Failed to save annotations. Your latest change may not have been saved",
+    "remote_updated": "Annotations were updated in another window. Loaded the latest version; your change was not saved"
   },
   "a11y": {
     "close": "Close",

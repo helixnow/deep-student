@@ -525,7 +525,8 @@
       "viewGrid": "网格视图",
       "viewList": "列表视图",
       "hideSidebar": "隐藏侧边栏",
-      "showSidebar": "显示侧边栏"
+      "showSidebar": "显示侧边栏",
+      "more": "更多操作"
     },
     "create": {
       "folderTitle": "新建文件夹",
@@ -599,6 +600,19 @@
     "movedToTrashWithRefs": "已移入回收站（被 {{count}} 个对话引用）",
     "batchMovedToTrash": "已将 {{count}} 项移入回收站",
     "restored": "已恢复",
+    "undoRenameSuccess": "已撤销重命名：{{name}}",
+    "undoMoveSuccess": "已撤销移动（{{count}} 项）",
+    "undoMovePartial": "部分撤销失败（{{failed}} 项未能移回）",
+    "undoFailed": "撤销失败",
+    "quickLook": {
+      "title": "快速预览",
+      "folder": "文件夹",
+      "sizeLabel": "大小",
+      "updatedLabel": "修改时间",
+      "pathLabel": "位置",
+      "closeHint": "空格 / Esc 关闭",
+      "open": "打开"
+    },
     "error": {
       "title": "加载失败",
       "retry": "重新加载"
@@ -649,7 +663,8 @@
       "noChatSession": "请先打开一个对话",
       "addToChatSuccess": "已添加 {{count}} 项到对话",
       "addToChatPartial": "成功添加 {{succeeded}} 项，{{failed}} 项失败",
-      "addToChatFailed": "添加失败"
+      "addToChatFailed": "添加失败",
+      "openAllLimited": "已打开前 {{count}} 项（共选中 {{total}} 项）"
     },
     "batch": {
       "selectAll": "全选",
