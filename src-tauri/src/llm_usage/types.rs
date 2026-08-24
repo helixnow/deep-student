@@ -145,6 +145,16 @@ pub struct UsageRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
 
+    /// 适配器/协议（如 openai_chat_completions、openai_responses、
+    /// anthropic_messages、google_generate_content），用于报表按协议拆分
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+
+    /// Token 数据来源（api / tiktoken / heuristic / mixed），
+    /// 对齐 `chat_v2::types::TokenSource` 的字符串表示；缺省时落库为 "api"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_source: Option<String>,
+
     /// 输入 Token 数量（Prompt Tokens）
     pub prompt_tokens: u32,
 
@@ -207,6 +217,8 @@ impl UsageRecord {
             model_id,
             config_id: None,
             provider_id: None,
+            adapter: None,
+            token_source: None,
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
@@ -235,6 +247,18 @@ impl UsageRecord {
     /// Builder 方法：设置供应商 ID
     pub fn with_provider_id(mut self, provider_id: String) -> Self {
         self.provider_id = Some(provider_id);
+        self
+    }
+
+    /// Builder 方法：设置适配器/协议
+    pub fn with_adapter(mut self, adapter: String) -> Self {
+        self.adapter = Some(adapter);
+        self
+    }
+
+    /// Builder 方法：设置 Token 数据来源
+    pub fn with_token_source(mut self, token_source: String) -> Self {
+        self.token_source = Some(token_source);
         self
     }
 

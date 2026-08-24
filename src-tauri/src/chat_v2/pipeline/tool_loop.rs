@@ -1171,11 +1171,12 @@ impl ChatV2Pipeline {
 
                     // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
                     // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
-                    if !ctx.needs_compaction {
-                        let cfg = self.resolve_active_api_config(ctx).await;
-                        if super::compaction::should_compact(ctx, cfg.as_ref()) {
-                            ctx.needs_compaction = true;
-                        }
+                    // （配置只解析一次，同时供压缩判断与用量记录的协议归属使用）
+                    let active_cfg = self.resolve_active_api_config(ctx).await;
+                    if !ctx.needs_compaction
+                        && super::compaction::should_compact(ctx, active_cfg.as_ref())
+                    {
+                        ctx.needs_compaction = true;
                     }
 
                     // 记录 LLM 使用量到数据库
@@ -1185,7 +1186,7 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    crate::llm_usage::record_llm_usage_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         round_usage.prompt_tokens,
@@ -1196,6 +1197,13 @@ impl ChatV2Pipeline {
                         None, // duration_ms - 在 adapter 层面已记录
                         true,
                         None,
+                        // 生效协议（openai_chat_completions / openai_responses / ...），
+                        // 配置无法解析时留 NULL 而不是猜测
+                        active_cfg
+                            .as_ref()
+                            .map(crate::llm_manager::effective_api_protocol_for_config),
+                        // 真实 token 来源：API 精确值 / tiktoken / heuristic 估算
+                        Some(round_usage.source.to_string()),
                     );
                 }
                 Err(e) => {
@@ -1232,7 +1240,12 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    let failed_round_protocol = self
+                        .resolve_active_api_config(ctx)
+                        .await
+                        .as_ref()
+                        .map(crate::llm_manager::effective_api_protocol_for_config);
+                    crate::llm_usage::record_llm_usage_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         failed_round_usage
@@ -1257,6 +1270,11 @@ impl ChatV2Pipeline {
                         } else {
                             error_message.clone()
                         }),
+                        failed_round_protocol,
+                        // 失败轮保留到的部分 usage 同样带真实来源；无 usage 时留空
+                        failed_round_usage
+                            .as_ref()
+                            .map(|usage| usage.source.to_string()),
                     );
 
                     if externally_cancelled {

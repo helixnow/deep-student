@@ -118,13 +118,52 @@ pub fn record_llm_usage(
     success: bool,
     error_message: Option<String>,
 ) {
-    log::debug!(
-        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, success={}",
+    record_llm_usage_ext(
+        caller_type,
         model_id,
         prompt_tokens,
         completion_tokens,
         reasoning_tokens,
-        success
+        cached_tokens,
+        session_id,
+        duration_ms,
+        success,
+        error_message,
+        None,
+        None,
+    );
+}
+
+/// 记录 LLM 使用量（扩展版）：额外携带适配器/协议与 token 来源
+///
+/// - `adapter`: 生效的协议/适配器（如 openai_chat_completions / openai_responses /
+///   anthropic_messages / google_generate_content），缺省落库 NULL；
+/// - `token_source`: token 数据来源（对齐 `chat_v2::types::TokenSource` 的字符串：
+///   api / tiktoken / heuristic / mixed），缺省落库 schema 默认 "api"。
+#[allow(clippy::too_many_arguments)]
+pub fn record_llm_usage_ext(
+    caller_type: CallerType,
+    model_id: &str,
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    reasoning_tokens: Option<u32>,
+    cached_tokens: Option<u32>,
+    session_id: Option<String>,
+    duration_ms: Option<u64>,
+    success: bool,
+    error_message: Option<String>,
+    adapter: Option<String>,
+    token_source: Option<String>,
+) {
+    log::debug!(
+        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, success={}, adapter={:?}, token_source={:?}",
+        model_id,
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        success,
+        adapter,
+        token_source
     );
 
     let mut record = UsageRecord::new(
@@ -145,6 +184,12 @@ pub fn record_llm_usage(
     }
     if let Some(duration) = duration_ms {
         record = record.with_duration(duration);
+    }
+    if let Some(adapter) = adapter {
+        record = record.with_adapter(adapter);
+    }
+    if let Some(source) = token_source {
+        record = record.with_token_source(source);
     }
     if !success {
         record = record.with_error(error_message.unwrap_or_else(|| "Unknown error".to_string()));
@@ -176,6 +221,8 @@ mod tests {
                 model_id: format!("m-{}", i),
                 config_id: None,
                 provider_id: None,
+                adapter: None,
+                token_source: None,
                 prompt_tokens: 1,
                 completion_tokens: 1,
                 total_tokens: 2,

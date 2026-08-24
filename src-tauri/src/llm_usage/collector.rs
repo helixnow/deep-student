@@ -282,14 +282,16 @@ impl UsageCollector {
                         .clone()
                         .unwrap_or_else(|| Self::extract_provider(&record.model_id)),
                     record.model_id,
-                    Option::<String>::None, // adapter
+                    // 真实写入调用方标注的适配器/协议（缺省保持 NULL，报表显示 unknown）
+                    record.adapter,
                     record.config_id,
                     record.prompt_tokens,
                     record.completion_tokens,
                     record.total_tokens,
                     record.reasoning_tokens,
                     record.cached_tokens,
-                    "api", // token_source
+                    // 真实写入 token 来源；仅在调用方未标注时回退 schema 默认 "api"
+                    record.token_source.as_deref().unwrap_or("api"),
                     record.duration_ms.map(|d| d as i64),
                     record.caller_type.to_string(),
                     record.caller_id,
@@ -701,6 +703,44 @@ mod tests {
             .expect("Failed to count records");
 
         assert_eq!(count, 10);
+    }
+
+    #[tokio::test]
+    async fn test_record_writes_real_adapter_and_token_source() {
+        let (_temp_dir, db, collector) = setup_test_env().await;
+
+        // 带真实标注的记录：估算来源 + Responses 协议
+        let record = UsageRecord::new(CallerType::ChatV2, "deepseek-chat".to_string(), 100, 50)
+            .with_adapter("openai_responses".to_string())
+            .with_token_source("tiktoken".to_string());
+        // 未标注的记录：adapter 应为 NULL，token_source 回退 schema 默认 "api"
+        let plain = UsageRecord::new(CallerType::ChatV2, "gpt-4o".to_string(), 10, 5);
+
+        // 批量记录立即触发刷新，避免等待 5s 定时器
+        collector.record_batch(vec![record.clone(), plain.clone()]);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let conn = db.get_conn().expect("Failed to get connection");
+
+        let (adapter, token_source): (Option<String>, String) = conn
+            .query_row(
+                "SELECT adapter, token_source FROM llm_usage_logs WHERE id = ?1",
+                [&record.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Failed to query annotated record");
+        assert_eq!(adapter, Some("openai_responses".to_string()));
+        assert_eq!(token_source, "tiktoken", "估算行不得伪装成 api");
+
+        let (plain_adapter, plain_source): (Option<String>, String) = conn
+            .query_row(
+                "SELECT adapter, token_source FROM llm_usage_logs WHERE id = ?1",
+                [&plain.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Failed to query plain record");
+        assert_eq!(plain_adapter, None);
+        assert_eq!(plain_source, "api");
     }
 
     #[tokio::test]

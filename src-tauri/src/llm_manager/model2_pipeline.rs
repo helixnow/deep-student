@@ -4921,7 +4921,13 @@ impl LLMManager {
             // （带真实 session_id、模型显示名和失败记录），此处不再重复写入。
             // 多变体（"chat_v2_variant"）没有 pipeline 层记录，仍依赖此处。
             if task_context != Some("chat_v2") {
-                crate::llm_usage::record_llm_usage(
+                // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
+                let token_source = if captured_usage.is_some() {
+                    crate::chat_v2::types::TokenSource::Api
+                } else {
+                    crate::chat_v2::types::TokenSource::Heuristic
+                };
+                crate::llm_usage::record_llm_usage_ext(
                     crate::llm_usage::CallerType::ChatV2,
                     &config.model,
                     actual_prompt_tokens,
@@ -4936,6 +4942,8 @@ impl LLMManager {
                     } else {
                         None
                     },
+                    Some(super::effective_api_protocol_for_config(&config)),
+                    Some(token_source.to_string()),
                 );
             }
         }
@@ -6386,10 +6394,13 @@ impl LLMManager {
             ));
         }
 
+        // 生效协议归属，供本函数内所有用量记录使用（报表按协议拆分）
+        let usage_protocol = super::effective_api_protocol_for_config(&config);
+
         // 7. 解析响应
         let response_json: serde_json::Value = response.json().await.map_err(|e| {
             let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-            crate::llm_usage::record_llm_usage(
+            crate::llm_usage::record_llm_usage_ext(
                 caller_type.clone(),
                 &config.model,
                 0,
@@ -6400,6 +6411,9 @@ impl LLMManager {
                 None,
                 false,
                 Some(err_msg.clone()),
+                Some(usage_protocol.clone()),
+                // 响应解析失败没有任何 API usage，0 token 记录标注为本地估算
+                Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
             );
             AppError::llm(err_msg)
         })?;
@@ -6408,7 +6422,7 @@ impl LLMManager {
         // This also converts canonical Responses JSON produced by the Codex SSE bridge.
         let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)
             .inspect_err(|error| {
-                crate::llm_usage::record_llm_usage(
+                crate::llm_usage::record_llm_usage_ext(
                     caller_type.clone(),
                     &config.model,
                     0,
@@ -6419,6 +6433,8 @@ impl LLMManager {
                     None,
                     false,
                     Some(error.to_string()),
+                    Some(usage_protocol.clone()),
+                    Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
                 );
             })?;
 
@@ -6429,13 +6445,19 @@ impl LLMManager {
 
         // 记录成功的 LLM 使用量
         let usage = openai_like_json.get("usage");
+        // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
+        let token_source = if usage.is_some() {
+            crate::chat_v2::types::TokenSource::Api
+        } else {
+            crate::chat_v2::types::TokenSource::Heuristic
+        };
         let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
             Self::extract_usage_tokens(
                 &usage.cloned(),
                 crate::utils::token_budget::estimate_tokens(&assistant_message),
                 (user_prompt.len() / 4).max(1),
             );
-        crate::llm_usage::record_llm_usage(
+        crate::llm_usage::record_llm_usage_ext(
             caller_type,
             &config.model,
             actual_prompt_tokens,
@@ -6446,6 +6468,8 @@ impl LLMManager {
             None,
             true,
             None,
+            Some(usage_protocol),
+            Some(token_source.to_string()),
         );
 
         Ok(StandardModel2Output {

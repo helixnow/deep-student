@@ -3057,7 +3057,7 @@ pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
     base_url_host(&config.base_url) == "api.deepseek.com"
 }
 
-fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
+pub(crate) fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
     let explicit_responses = if let Some(protocol) = config.api_protocol.as_deref() {
         let normalized = normalize_provider_protocol_registry_value(Some(protocol));
         match normalized.as_str() {

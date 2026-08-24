@@ -58,14 +58,14 @@ impl LlmUsageRepo {
                 timestamp,
                 provider,
                 record.model_id,
-                Option::<String>::None,
+                record.adapter,
                 record.config_id,
                 record.prompt_tokens,
                 record.completion_tokens,
                 record.total_tokens,
                 record.reasoning_tokens,
                 record.cached_tokens,
-                "api",
+                record.token_source.as_deref().unwrap_or("api"),
                 record.duration_ms,
                 record.caller_type.to_string(),
                 record.caller_id,
@@ -160,14 +160,14 @@ impl LlmUsageRepo {
                 timestamp,
                 provider,
                 record.model_id,
-                Option::<String>::None,
+                record.adapter,
                 record.config_id,
                 record.prompt_tokens,
                 record.completion_tokens,
                 record.total_tokens,
                 record.reasoning_tokens,
                 record.cached_tokens,
-                "api",
+                record.token_source.as_deref().unwrap_or("api"),
                 record.duration_ms,
                 record.caller_type.to_string(),
                 record.caller_id,
@@ -449,7 +449,8 @@ impl LlmUsageRepo {
                 id, timestamp, provider, model, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens,
-                duration_ms, caller_type, session_id, status, error_message, cost_estimate
+                duration_ms, caller_type, session_id, status, error_message, cost_estimate,
+                adapter, token_source
             FROM llm_usage_logs
             ORDER BY timestamp DESC
             LIMIT ?1 OFFSET ?2
@@ -478,6 +479,8 @@ impl LlmUsageRepo {
                 model_id: row.get(3)?,
                 config_id: row.get(4)?,
                 provider_id: row.get(2)?,
+                adapter: row.get(16)?,
+                token_source: row.get(17)?,
                 prompt_tokens: row.get(5)?,
                 completion_tokens: row.get(6)?,
                 total_tokens: row.get(7)?,
@@ -693,6 +696,32 @@ mod tests {
         let summary = LlmUsageRepo::get_usage_summary(&conn, None, None).unwrap();
         assert_eq!(summary.total_requests, 1);
         assert_eq!(summary.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_insert_usage_writes_real_adapter_and_token_source() {
+        let conn = setup_test_db();
+
+        let record = UsageRecord::new(CallerType::ChatV2, "claude-3-opus".to_string(), 100, 50)
+            .with_adapter("anthropic_messages".to_string())
+            .with_token_source("heuristic".to_string());
+
+        LlmUsageRepo::insert_usage(&conn, &record).unwrap();
+
+        let (adapter, token_source): (Option<String>, String) = conn
+            .query_row(
+                "SELECT adapter, token_source FROM llm_usage_logs WHERE id = ?1",
+                [&record.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(adapter, Some("anthropic_messages".to_string()));
+        assert_eq!(token_source, "heuristic");
+
+        // 回读路径也应带出新字段
+        let recent = LlmUsageRepo::get_recent_usage(&conn, 10).unwrap();
+        assert_eq!(recent[0].adapter, Some("anthropic_messages".to_string()));
+        assert_eq!(recent[0].token_source, Some("heuristic".to_string()));
     }
 
     #[test]

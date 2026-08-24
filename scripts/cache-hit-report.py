@@ -10,8 +10,15 @@ hit rate directly tracks cost.
 Scenarios reported (downstream section 3.3):
   - overall: token-weighted cached/prompt across all requests;
   - per caller_type (chat_v2 / translation / ...);
+  - per adapter/protocol (openai_chat_completions / openai_responses / ...);
+  - per provider (openai / anthropic / deepseek / ...);
+  - per token_source (api / tiktoken / heuristic / mixed);
   - per session: first request (cold start, expected ~0%) vs steady state;
   - per model.
+
+Rows whose `cached_tokens` are all NULL never had a cache measurement (adapter
+did not surface the field); they are reported as 无测量 instead of 0% so a
+telemetry gap is not mistaken for a cold cache.
 
 Usage:
     python3 scripts/cache-hit-report.py [--db PATH] [--days N] [--session ID]
@@ -56,7 +63,8 @@ def fetch(conn: sqlite3.Connection, days: Optional[int]):
     rows = conn.execute(
         f"""
         SELECT session_id, caller_type, model, timestamp,
-               prompt_tokens, completion_tokens, cached_tokens, token_source
+               prompt_tokens, completion_tokens, cached_tokens, token_source,
+               adapter, provider
         FROM llm_usage_logs
         {where}
         ORDER BY timestamp ASC
@@ -67,16 +75,32 @@ def fetch(conn: sqlite3.Connection, days: Optional[int]):
 
 
 def hit_rate(rows):
-    """token-weighted cached/prompt; cached may be NULL or exceed prompt (gateway quirks)."""
+    """token-weighted cached/prompt; cached may be NULL or exceed prompt (gateway quirks).
+
+    Returns (rate, prompt, cached, measured). `measured` is False when every
+    row's cached_tokens is NULL — i.e. no adapter ever reported the field —
+    which must be rendered as 无测量, not 0%.
+    """
     prompt = sum(max(r[4], 0) for r in rows)
-    cached = sum(max(r[6] or 0, 0) for r in rows)
+    measured = any(r[6] is not None for r in rows)
+    cached = sum(max(r[6], 0) for r in rows if r[6] is not None)
     cached = min(cached, prompt)
-    return (cached / prompt) if prompt > 0 else 0.0, prompt, cached
+    return (cached / prompt) if prompt > 0 else 0.0, prompt, cached, measured
+
+
+def fmt_rate(rate: float, measured: bool) -> str:
+    """Format a hit rate; all-NULL buckets show 无测量 instead of a fake 0%."""
+    if not measured:
+        return "无测量"
+    return f"{rate*100:6.2f}%"
 
 
 def print_rate(label: str, rows, indent: str = ""):
-    rate, prompt, cached = hit_rate(rows)
-    print(f"{indent}{label:<34} hit={rate*100:6.2f}%  prompt={prompt:>9}  cached={cached:>9}")
+    rate, prompt, cached, measured = hit_rate(rows)
+    print(
+        f"{indent}{label:<34} hit={fmt_rate(rate, measured):>7}  "
+        f"prompt={prompt:>9}  cached={cached:>9}"
+    )
     return rate
 
 
@@ -114,6 +138,30 @@ def main() -> int:
     for caller, rs in sorted(by_caller.items(), key=lambda kv: -sum(x[4] for x in kv[1])):
         print_rate(caller, rs)
 
+    by_adapter = defaultdict(list)
+    for r in rows:
+        by_adapter[r[8] or "unknown"].append(r)
+    print()
+    print("== per adapter/protocol ==")
+    for adapter, rs in sorted(by_adapter.items(), key=lambda kv: -sum(x[4] for x in kv[1])):
+        print_rate(adapter, rs)
+
+    by_provider = defaultdict(list)
+    for r in rows:
+        by_provider[r[9] or "unknown"].append(r)
+    print()
+    print("== per provider ==")
+    for provider, rs in sorted(by_provider.items(), key=lambda kv: -sum(x[4] for x in kv[1])):
+        print_rate(provider, rs)
+
+    by_source = defaultdict(list)
+    for r in rows:
+        by_source[r[7] or "unknown"].append(r)
+    print()
+    print("== per token_source ==")
+    for source, rs in sorted(by_source.items(), key=lambda kv: -sum(x[4] for x in kv[1])):
+        print_rate(source, rs)
+
     by_model = defaultdict(list)
     for r in rows:
         by_model[r[2] or "unknown"].append(r)
@@ -132,16 +180,35 @@ def main() -> int:
         rs.sort(key=lambda r: r[3])
         first = rs[:1]
         steady = rs[1:]
-        total_rate, total_prompt, _ = hit_rate(rs)
-        first_rate, first_prompt, _ = hit_rate(first)
-        steady_rate, steady_prompt, _ = hit_rate(steady)
-        session_rates.append((sid, total_rate, total_prompt, first_rate, steady_rate))
-    for sid, total_rate, total_prompt, first_rate, steady_rate in sorted(
-        session_rates, key=lambda x: -x[2]
-    )[:25]:
+        total_rate, total_prompt, _, total_measured = hit_rate(rs)
+        first_rate, _, _, first_measured = hit_rate(first)
+        steady_rate, _, _, steady_measured = hit_rate(steady)
+        session_rates.append(
+            (
+                sid,
+                total_rate,
+                total_prompt,
+                first_rate,
+                steady_rate,
+                total_measured,
+                first_measured,
+                steady_measured,
+            )
+        )
+    for (
+        sid,
+        total_rate,
+        total_prompt,
+        first_rate,
+        steady_rate,
+        total_measured,
+        first_measured,
+        steady_measured,
+    ) in sorted(session_rates, key=lambda x: -x[2])[:25]:
         print(
-            f"  {sid[:48]:<50} total={total_rate*100:6.2f}%  "
-            f"cold={first_rate*100:6.2f}%  steady={steady_rate*100:6.2f}%  prompt={total_prompt}"
+            f"  {sid[:48]:<50} total={fmt_rate(total_rate, total_measured):>7}  "
+            f"cold={fmt_rate(first_rate, first_measured):>7}  "
+            f"steady={fmt_rate(steady_rate, steady_measured):>7}  prompt={total_prompt}"
         )
 
     return 0
