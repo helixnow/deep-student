@@ -472,7 +472,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
       )}>
         <p>{error}</p>
         {onRetry && (
-          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
+          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2 [@media(pointer:coarse)]:min-h-11">
             {t('retry')}
           </DsButton>
         )}
