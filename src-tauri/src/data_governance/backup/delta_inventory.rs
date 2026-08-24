@@ -1,4 +1,5 @@
 //! [R12-delta-inventory] 已验证 staging 的规范文件清单（DELTA-R11 §R12）。
+//! 模块标识：`delta_inventory`（源码锁按此字面量定位本文件）。
 //!
 //! 本模块**只做清单**：遍历一个已验证的备份 staging 根目录，产出按
 //! `logical_path` 字节序排序的规范文件表（相对 POSIX 路径、大小、明文
