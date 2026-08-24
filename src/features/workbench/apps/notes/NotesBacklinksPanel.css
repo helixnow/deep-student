@@ -371,6 +371,16 @@
   .notes-backlinks-panel-link {
     min-height: 44px;
   }
+
+  .notes-backlinks-panel-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .notes-backlinks-panel-message button {
+    min-height: 44px;
+    height: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
