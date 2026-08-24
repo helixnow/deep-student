@@ -369,5 +369,8 @@
       "not_found": "未找到 ID 为 {{id}} 的错题",
       "load_failed": "加载失败：{{message}}"
     }
+  },
+  "recovery_fab": {
+    "aria_label": "开发恢复菜单（可拖动）"
   }
 }

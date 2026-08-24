@@ -3,6 +3,7 @@
  * 仅在 DEV + 小屏时挂载（见 App.tsx）。支持拖动，避免挡住侧栏内容。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, Bug, House } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,7 @@ async function openDevTools() {
 }
 
 export const DevMobileRecoveryFab: React.FC = () => {
+  const { t } = useTranslation('dev');
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<FabPosition>(() => readStoredPosition() ?? defaultPosition());
   const [dragging, setDragging] = useState(false);
@@ -195,7 +197,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             dragging && 'cursor-grabbing opacity-90',
           )}
           aria-expanded={open}
-          aria-label="开发恢复菜单（可拖动）"
+          aria-label={t('recovery_fab.aria_label', { defaultValue: '开发恢复菜单（可拖动）' })}
           onPointerDown={handleFabPointerDown}
           onPointerMove={handleFabPointerMove}
           onPointerUp={handleFabPointerUp}
