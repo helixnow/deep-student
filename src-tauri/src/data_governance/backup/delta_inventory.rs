@@ -101,7 +101,9 @@ pub fn validate_logical_path(value: &str) -> Result<(), BackupError> {
         )));
     }
     if value.bytes().any(|b| b == 0) {
-        return Err(BackupError::Manifest("logical_path 含 NUL 字节".to_string()));
+        return Err(BackupError::Manifest(
+            "logical_path 含 NUL 字节".to_string(),
+        ));
     }
     if value.contains('\\') {
         return Err(BackupError::Manifest(
@@ -151,9 +153,8 @@ pub fn build_inventory(staging_root: &Path) -> Result<DeltaInventory, BackupErro
 
     let mut entries: Vec<InventoryEntry> = Vec::new();
     for entry in WalkDir::new(staging_root).follow_links(false) {
-        let entry = entry.map_err(|error| {
-            BackupError::BackupDirectory(format!("遍历 staging 失败: {error}"))
-        })?;
+        let entry = entry
+            .map_err(|error| BackupError::BackupDirectory(format!("遍历 staging 失败: {error}")))?;
         let file_type = entry.file_type();
         if file_type.is_symlink() {
             return Err(BackupError::BackupDirectory(format!(
@@ -218,9 +219,7 @@ pub fn build_inventory(staging_root: &Path) -> Result<DeltaInventory, BackupErro
     }
     for entry in &entries {
         logical_size = logical_size.checked_add(entry.size).ok_or_else(|| {
-            BackupError::BackupDirectory(
-                "entries[].size 之和溢出 u64，拒绝出清单".to_string(),
-            )
+            BackupError::BackupDirectory("entries[].size 之和溢出 u64，拒绝出清单".to_string())
         })?;
     }
 
@@ -356,9 +355,9 @@ pub fn manifest_unchanged_ignoring_volatile(
 fn canonicalize_manifest_value(bytes: &[u8]) -> Result<serde_json::Value, BackupError> {
     let mut value: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|e| BackupError::Manifest(format!("manifest 不是合法 JSON: {e}")))?;
-    let object = value.as_object_mut().ok_or_else(|| {
-        BackupError::Manifest("manifest 顶层必须是 JSON 对象".to_string())
-    })?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| BackupError::Manifest("manifest 顶层必须是 JSON 对象".to_string()))?;
     for field in VOLATILE_MANIFEST_FIELDS {
         object.remove(field);
     }

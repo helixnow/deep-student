@@ -425,7 +425,10 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
                     !line.trim_start().starts_with("//") && !line.contains("pub mod backup_lease;")
                 })
                 .count();
-            assert_eq!(wiring, 0, "cloud_storage/mod.rs 只允许声明 backup_lease 模块");
+            assert_eq!(
+                wiring, 0,
+                "cloud_storage/mod.rs 只允许声明 backup_lease 模块"
+            );
             continue;
         }
 

@@ -1290,9 +1290,7 @@ pub(crate) fn validate_archive_path(path: &Path) -> Result<ArchiveStats, ZipExpo
 /// 校验密封载荷解密后的内层 ZIP：条目只允许是原始 manifest.json 或
 /// 便携排除路径（crypto/、审计库、导出隔离域），并复用外层归档的
 /// 数量/大小/压缩比策略。
-fn validate_secrets_archive(
-    archive: &mut zip::ZipArchive<File>,
-) -> Result<(), ZipExportError> {
+fn validate_secrets_archive(archive: &mut zip::ZipArchive<File>) -> Result<(), ZipExportError> {
     let archive_len = archive.len();
     ARCHIVE_POLICY.validate_counts(archive_len, 0)?;
 
@@ -1417,8 +1415,7 @@ fn unseal_encrypted_secrets(
         (false, false) => {
             if password.is_some() {
                 return Err(ZipExportError::ExportFailed(
-                    "该 ZIP 不是加密全保真备份，无需提供备份密码；请去掉密码后重试导入"
-                        .to_string(),
+                    "该 ZIP 不是加密全保真备份，无需提供备份密码；请去掉密码后重试导入".to_string(),
                 ));
             }
             Ok(false)
@@ -1434,8 +1431,7 @@ fn unseal_encrypted_secrets(
         (true, true) => {
             let Some(password) = password else {
                 return Err(ZipExportError::ExportFailed(
-                    "这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入"
-                        .to_string(),
+                    "这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入".to_string(),
                 ));
             };
             let inner_plain = tempfile::NamedTempFile::new()?;
@@ -2417,9 +2413,8 @@ mod tests {
 
         let import_dir = TempDir::new().unwrap();
         let target = import_dir.path().join("restored");
-        let error =
-            import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None)
-                .unwrap_err();
+        let error = import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None)
+            .unwrap_err();
 
         assert!(
             error.to_string().contains("备份密码"),
@@ -2618,12 +2613,9 @@ mod tests {
 
         let import_dir = TempDir::new().unwrap();
         let target = import_dir.path().join("restored");
-        let file_count = import_backup_from_zip_with_password(
-            &zip_path,
-            &target,
-            Some(TEST_BACKUP_PASSWORD),
-        )
-        .unwrap();
+        let file_count =
+            import_backup_from_zip_with_password(&zip_path, &target, Some(TEST_BACKUP_PASSWORD))
+                .unwrap();
 
         assert!(file_count > 0);
         let manifest = BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();

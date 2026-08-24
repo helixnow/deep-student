@@ -156,7 +156,11 @@ fn compare_contenders(left: &ActiveLease, right: &ActiveLease) -> Ordering {
     }
 }
 
-async fn put_verified(storage: &dyn CloudStorage, key: &str, lease: &BackupRepoLease) -> Result<()> {
+async fn put_verified(
+    storage: &dyn CloudStorage,
+    key: &str,
+    lease: &BackupRepoLease,
+) -> Result<()> {
     let encoded = serde_json::to_vec_pretty(lease)
         .map_err(|error| AppError::internal(format!("序列化备份仓库租约失败: {error}")))?;
     storage

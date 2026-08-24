@@ -1640,8 +1640,14 @@ pub async fn data_governance_import_zip(
 
     // 在后台执行导入
     tauri::async_runtime::spawn(async move {
-        execute_zip_import_with_progress(app, job_ctx, zip_file_path, validated_backup_id, password)
-            .await;
+        execute_zip_import_with_progress(
+            app,
+            job_ctx,
+            zip_file_path,
+            validated_backup_id,
+            password,
+        )
+        .await;
         // 清理从 content:// 物化的临时 ZIP 文件
         if let Some(temp_path) = temp_cleanup_path {
             if let Err(e) = std::fs::remove_file(&temp_path) {

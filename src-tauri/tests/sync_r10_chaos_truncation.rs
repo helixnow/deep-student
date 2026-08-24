@@ -18,9 +18,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo, ListOutcome};
-use deep_student_lib::data_governance::sync::{
-    ChangeOperation, SyncChangeWithData, SyncManager,
-};
+use deep_student_lib::data_governance::sync::{ChangeOperation, SyncChangeWithData, SyncManager};
 use deep_student_lib::models::AppError;
 use rusqlite::Connection;
 use serde_json::json;

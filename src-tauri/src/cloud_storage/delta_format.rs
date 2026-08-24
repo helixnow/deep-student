@@ -137,9 +137,7 @@ fn validate_relative_path(field: &str, value: &str, max_bytes: usize) -> Result<
     }
     // 拒绝 Windows 盘符形式的绝对/漂移路径（如 `C:\` 已被反斜杠拦截，`C:/` 在此拦截）。
     if value.as_bytes().get(1) == Some(&b':') {
-        return Err(AppError::validation(format!(
-            "{field} 不允许盘符路径"
-        )));
+        return Err(AppError::validation(format!("{field} 不允许盘符路径")));
     }
     for segment in value.split('/') {
         if segment.is_empty() {
@@ -195,9 +193,7 @@ impl SnapshotDescriptorV2 {
         validate_identifier("versionId", &self.version_id)?;
         validate_identifier("deviceId", &self.device_id)?;
         if chrono::DateTime::parse_from_rfc3339(&self.created_at).is_err() {
-            return Err(AppError::validation(
-                "createdAt 必须是合法 RFC 3339 时间戳",
-            ));
+            return Err(AppError::validation("createdAt 必须是合法 RFC 3339 时间戳"));
         }
         if self.files.len() > MAX_SNAPSHOT_FILES {
             return Err(AppError::validation(format!(
@@ -238,9 +234,8 @@ impl SnapshotDescriptorV2 {
     /// 解码并全量校验。未知字段（含 `parent`/`patch`）、未来版本、超限、
     /// 穿越路径、非法 hex、重复路径与 `logicalSize` 不一致均 fail-closed。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let descriptor: Self = serde_json::from_slice(bytes).map_err(|e| {
-            AppError::validation(format!("snapshot descriptor 解析失败: {e}"))
-        })?;
+        let descriptor: Self = serde_json::from_slice(bytes)
+            .map_err(|e| AppError::validation(format!("snapshot descriptor 解析失败: {e}")))?;
         descriptor.validate()?;
         Ok(descriptor)
     }
@@ -279,9 +274,8 @@ impl BackupV2RepoConfig {
 
     /// 解码并校验；未知字段（例如任何密钥材料字段）直接拒绝。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let config: Self = serde_json::from_slice(bytes).map_err(|e| {
-            AppError::validation(format!("repository config 解析失败: {e}"))
-        })?;
+        let config: Self = serde_json::from_slice(bytes)
+            .map_err(|e| AppError::validation(format!("repository config 解析失败: {e}")))?;
         config.validate()?;
         Ok(config)
     }

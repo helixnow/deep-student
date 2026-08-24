@@ -169,14 +169,23 @@ fn r10_chaos_slow_clock_update_loses_lww_and_lands_in_conflicts() {
     // 混沌语义：网络重试导致同一变更被投递三次
     for round in 0..3 {
         let (result, _) = apply_guarded(&conn, &[stale.clone()], "device-slow");
-        assert_eq!(result.success_count, 0, "round {round}: 较旧 UPDATE 不得生效");
+        assert_eq!(
+            result.success_count, 0,
+            "round {round}: 较旧 UPDATE 不得生效"
+        );
         assert_eq!(result.failure_count, 0, "round {round}: LWW 拒绝不是失败");
-        assert_eq!(result.skipped_count, 1, "round {round}: 较旧 UPDATE 应被跳过");
+        assert_eq!(
+            result.skipped_count, 1,
+            "round {round}: 较旧 UPDATE 应被跳过"
+        );
     }
 
     assert_eq!(
         row(&conn, "rec-slow"),
-        Some(("newer-local".to_string(), "2026-07-10T13:00:00Z".to_string())),
+        Some((
+            "newer-local".to_string(),
+            "2026-07-10T13:00:00Z".to_string()
+        )),
         "本地更新的行必须原样保留"
     );
 
@@ -276,7 +285,10 @@ fn r10_chaos_fast_clock_far_future_update_quarantined_not_applied() {
 
     assert_eq!(
         row(&conn, "rec-fast"),
-        Some(("must-survive".to_string(), "2026-07-10T13:00:00Z".to_string())),
+        Some((
+            "must-survive".to_string(),
+            "2026-07-10T13:00:00Z".to_string()
+        )),
         "本地行不得被未来时间戳覆盖"
     );
 

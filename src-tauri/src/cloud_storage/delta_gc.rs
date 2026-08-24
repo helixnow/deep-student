@@ -225,8 +225,9 @@ impl GcCandidateV2 {
 
     /// 解码并全量校验；未知字段、未来版本、越界 objectKey 均 fail-closed。
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let candidate: Self = serde_json::from_slice(bytes)
-            .map_err(|e| AppError::validation(format!("GC candidate 解析失败（fail-closed）: {e}")))?;
+        let candidate: Self = serde_json::from_slice(bytes).map_err(|e| {
+            AppError::validation(format!("GC candidate 解析失败（fail-closed）: {e}"))
+        })?;
         candidate.validate()?;
         Ok(candidate)
     }

@@ -115,7 +115,10 @@ fn r12_future_format_version_is_rejected() {
 
     let mut past = descriptor(vec![]);
     past.format_version = 1;
-    assert!(past.encode().is_err(), "version 1 is not this format either");
+    assert!(
+        past.encode().is_err(),
+        "version 1 is not this format either"
+    );
 
     let mut future_cfg = repo_config();
     future_cfg.format_version = 3;
@@ -138,7 +141,9 @@ fn r12_wrong_format_string_is_rejected() {
 fn r12_parent_or_patch_fields_are_rejected_not_ignored() {
     // 恢复链依赖禁令的 schema 面：多出的 parent/patch 字段必须让解码失败，
     // 而不是被 serde 静默忽略后当成自包含快照。
-    let bytes = descriptor(vec![file_ref("a.bin", 1)]).encode().expect("encode");
+    let bytes = descriptor(vec![file_ref("a.bin", 1)])
+        .encode()
+        .expect("encode");
     let mut value: serde_json::Value = serde_json::from_slice(&bytes).expect("parse");
     value["parent"] = serde_json::json!("20260101-000000-000-old-version");
     let with_parent = serde_json::to_vec(&value).expect("serialize");
@@ -163,7 +168,10 @@ fn r12_repo_config_refuses_key_material_and_zero_epoch() {
 
     let mut zero = repo_config();
     zero.id_key_epoch = 0;
-    assert!(zero.encode().is_err(), "idKeyEpoch=0 is uninitialized, fail-closed");
+    assert!(
+        zero.encode().is_err(),
+        "idKeyEpoch=0 is uninitialized, fail-closed"
+    );
 }
 
 // ============================================================================
@@ -267,14 +275,20 @@ fn r12_path_and_object_key_length_limits_reject_not_truncate() {
 #[test]
 fn r12_duplicate_logical_path_is_rejected() {
     let d = descriptor(vec![file_ref("dup/a.bin", 1), file_ref("dup/a.bin", 2)]);
-    assert!(d.encode().is_err(), "duplicate logicalPath must fail-closed");
+    assert!(
+        d.encode().is_err(),
+        "duplicate logicalPath must fail-closed"
+    );
 }
 
 #[test]
 fn r12_logical_size_mismatch_is_rejected() {
     let mut d = descriptor(vec![file_ref("a.bin", 10), file_ref("b.bin", 20)]);
     d.logical_size = 31;
-    assert!(d.encode().is_err(), "logicalSize != sum(files.size) must fail");
+    assert!(
+        d.encode().is_err(),
+        "logicalSize != sum(files.size) must fail"
+    );
     let json = serde_json::to_vec(&d).expect("raw serialize");
     assert!(SnapshotDescriptorV2::decode(&json).is_err());
 
@@ -285,11 +299,11 @@ fn r12_logical_size_mismatch_is_rejected() {
 #[test]
 fn r12_invalid_hex_digests_are_rejected() {
     for bad in [
-        "aaaa",                                     // 太短
-        &HEX_A[..63],                               // 63 位
-        &format!("{}a", HEX_A),                     // 65 位
-        &format!("{}g", &HEX_A[..63]),              // 非 hex 字符
-        &format!("{}\u{4e2d}", &HEX_A[..63]),       // 非 ASCII
+        "aaaa",                               // 太短
+        &HEX_A[..63],                         // 63 位
+        &format!("{}a", HEX_A),               // 65 位
+        &format!("{}g", &HEX_A[..63]),        // 非 hex 字符
+        &format!("{}\u{4e2d}", &HEX_A[..63]), // 非 ASCII
         "",
     ] {
         let mut f = file_ref("a.bin", 1);

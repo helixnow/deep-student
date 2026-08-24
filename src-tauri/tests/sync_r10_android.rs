@@ -390,7 +390,10 @@ fn rollback_trash_of_old_slot_survives_cutover_restart() {
         .clear_slot_for_restore(Slot::B)
         .expect("恢复前清空非活动槽")
         .expect("有残留时必须移入 trash 兜底");
-    assert!(slot_b_trash.is_dir(), "trash 目录必须真实存在（可手动找回）");
+    assert!(
+        slot_b_trash.is_dir(),
+        "trash 目录必须真实存在（可手动找回）"
+    );
     let slots_dir = slot_b_trash.parent().expect("trash 在 slots 目录下");
 
     // 人为放置旧活动槽 A 的 rollback trash（模拟上一次恢复留下的回滚点）。

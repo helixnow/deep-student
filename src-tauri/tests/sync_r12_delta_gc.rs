@@ -292,8 +292,11 @@ fn bump_manifest_volatile_fields(root: &Path) {
     value["created_at"] = serde_json::json!("2027-01-01T00:00:00+00:00");
     value["backup_id"] = serde_json::json!("zerochange-second-run-0001");
     value["snapshot_epoch"] = serde_json::json!("00000000-0000-4000-8000-00000000feed");
-    fs::write(&path, serde_json::to_string_pretty(&value).expect("serialize"))
-        .expect("write manifest");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).expect("serialize"),
+    )
+    .expect("write manifest");
 }
 
 async fn publish(
@@ -404,7 +407,12 @@ async fn r12_gc_keeps_shared_objects_and_reclaims_pruned_snapshot_after_grace() 
     let shared_keys: Vec<&str> = v2_descriptor
         .files
         .iter()
-        .filter(|file| v1_descriptor.files.iter().any(|old| old.object_key == file.object_key))
+        .filter(|file| {
+            v1_descriptor
+                .files
+                .iter()
+                .any(|old| old.object_key == file.object_key)
+        })
         .map(|file| file.object_key.as_str())
         .collect();
     assert_eq!(shared_keys.len(), 3, "three data objects are shared");
@@ -447,7 +455,10 @@ async fn r12_gc_keeps_shared_objects_and_reclaims_pruned_snapshot_after_grace() 
     assert!(storage.get_raw(&v2.snapshot_key).is_some());
     assert!(storage.get_raw(BACKUP_V2_CONFIG_KEY).is_some());
     assert!(storage.get_raw(&device_index_key("device-a")).is_some());
-    assert!(storage.get_raw(&v1.snapshot_key).is_none(), "pruned snapshot reclaimed");
+    assert!(
+        storage.get_raw(&v1.snapshot_key).is_none(),
+        "pruned snapshot reclaimed"
+    );
     assert!(
         storage
             .keys_with_prefix(BACKUP_V2_GC_CANDIDATES_PREFIX)
@@ -466,12 +477,13 @@ async fn r12_gc_orphan_needs_grace_and_first_seen_is_not_refreshed() {
     let storage = Arc::new(MemoryStorage::new());
     let root = dir.path().join("staging");
     make_staging(&root, 1);
-    publish(&storage, &root, "device-a", None).await.expect("v1");
+    publish(&storage, &root, "device-a", None)
+        .await
+        .expect("v1");
 
     // 上传失败留下的未发布孤儿（index 从未引用）。
-    let orphan_key = format!(
-        "{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000001.dsbk"
-    );
+    let orphan_key =
+        format!("{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000001.dsbk");
     storage.insert_raw(&orphan_key, b"orphan-bytes-from-failed-upload".to_vec());
 
     // collect：孤儿进 candidate（candidate ≠ 立即可删）。
@@ -499,7 +511,11 @@ async fn r12_gc_orphan_needs_grace_and_first_seen_is_not_refreshed() {
     assert!(recollect.new_candidate_keys.is_empty());
     assert_eq!(recollect.retained_candidates, 1);
     let bodies = candidate_bodies(&storage);
-    assert_eq!(bodies[0].first_seen, t0.to_rfc3339(), "firstSeen must not refresh");
+    assert_eq!(
+        bodies[0].first_seen,
+        t0.to_rfc3339(),
+        "firstSeen must not refresh"
+    );
 
     // grace 未到：sweep 零删除。
     let early = sweep_gc_candidates(
@@ -511,7 +527,12 @@ async fn r12_gc_orphan_needs_grace_and_first_seen_is_not_refreshed() {
     assert!(early.deleted_object_keys.is_empty());
     assert_eq!(early.pending_candidates, 1);
     assert!(storage.get_raw(&orphan_key).is_some());
-    assert_eq!(storage.keys_with_prefix(BACKUP_V2_GC_CANDIDATES_PREFIX).len(), 1);
+    assert_eq!(
+        storage
+            .keys_with_prefix(BACKUP_V2_GC_CANDIDATES_PREFIX)
+            .len(),
+        1
+    );
 
     // grace 已过：sweep 删除对象 + candidate。
     let late = sweep_gc_candidates(
@@ -538,10 +559,11 @@ async fn r12_gc_truncated_listing_fails_closed() {
     let storage = Arc::new(MemoryStorage::new());
     let root = dir.path().join("staging");
     make_staging(&root, 1);
-    publish(&storage, &root, "device-a", None).await.expect("v1");
-    let orphan_key = format!(
-        "{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000002.dsbk"
-    );
+    publish(&storage, &root, "device-a", None)
+        .await
+        .expect("v1");
+    let orphan_key =
+        format!("{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000002.dsbk");
     storage.insert_raw(&orphan_key, b"orphan".to_vec());
     let t0 = Utc::now();
 
@@ -607,10 +629,11 @@ async fn r12_gc_corrupt_descriptor_means_zero_deletes_and_zero_candidates() {
     let storage = Arc::new(MemoryStorage::new());
     let root = dir.path().join("staging");
     make_staging(&root, 1);
-    let v1 = publish(&storage, &root, "device-a", None).await.expect("v1");
-    let orphan_key = format!(
-        "{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000003.dsbk"
-    );
+    let v1 = publish(&storage, &root, "device-a", None)
+        .await
+        .expect("v1");
+    let orphan_key =
+        format!("{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000003.dsbk");
     storage.insert_raw(&orphan_key, b"orphan".to_vec());
     let t0 = Utc::now();
     collect_gc_candidates(cloud(&storage), gc_params(t0, GRACE, None))
@@ -659,9 +682,8 @@ async fn r12_gc_wrong_password_or_policy_mismatch_means_zero_deletes() {
     publish(&storage, &root, "device-a", Some(&session_a))
         .await
         .expect("encrypted v1");
-    let orphan_key = format!(
-        "{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000004.dsbk"
-    );
+    let orphan_key =
+        format!("{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000004.dsbk");
     storage.insert_raw(&orphan_key, b"orphan".to_vec());
     let t0 = Utc::now();
     collect_gc_candidates(cloud(&storage), gc_params(t0, GRACE, Some(&session_a)))
@@ -710,10 +732,11 @@ async fn r12_gc_held_lease_blocks_both_passes_with_zero_writes() {
     let storage = Arc::new(MemoryStorage::new());
     let root = dir.path().join("staging");
     make_staging(&root, 1);
-    publish(&storage, &root, "device-a", None).await.expect("v1");
-    let orphan_key = format!(
-        "{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000005.dsbk"
-    );
+    publish(&storage, &root, "device-a", None)
+        .await
+        .expect("v1");
+    let orphan_key =
+        format!("{BACKUP_V2_OBJECTS_PREFIX}device-a/00000000-dead-4000-8000-000000000005.dsbk");
     storage.insert_raw(&orphan_key, b"orphan".to_vec());
     insert_active_lease(&storage, "other-device");
     let keys_before = storage.data_keys();
@@ -735,7 +758,11 @@ async fn r12_gc_held_lease_blocks_both_passes_with_zero_writes() {
     .to_string();
     assert!(error.contains(BACKUP_LEASE_HELD_ERROR_CODE), "{error}");
 
-    assert_eq!(storage.data_keys(), keys_before, "zero writes, zero deletions");
+    assert_eq!(
+        storage.data_keys(),
+        keys_before,
+        "zero writes, zero deletions"
+    );
     assert!(storage
         .keys_with_prefix(BACKUP_V2_GC_CANDIDATES_PREFIX)
         .is_empty());
@@ -780,7 +807,10 @@ async fn r12_gc_rereferenced_candidate_is_dropped_without_deleting_object() {
     )
     .await
     .expect("sweep");
-    assert!(sweep.deleted_object_keys.is_empty(), "no object may be deleted");
+    assert!(
+        sweep.deleted_object_keys.is_empty(),
+        "no object may be deleted"
+    );
     assert_eq!(sweep.dropped_candidate_keys.len(), 2);
     assert!(storage.get_raw(&v2.snapshot_key).is_some());
     for file in &v2_descriptor.files {
@@ -935,7 +965,10 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
 
     // 模块文档必须如实声明未接线状态与「宁留垃圾」原则。
     let module_src = include_str!("../src/cloud_storage/delta_gc.rs");
-    assert!(module_src.contains("未接线"), "module docs must state it is unwired");
+    assert!(
+        module_src.contains("未接线"),
+        "module docs must state it is unwired"
+    );
     assert!(
         module_src.contains("宣称增量备份"),
         "module docs must forbid claiming incremental backup is implemented"
@@ -944,10 +977,7 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
         module_src.contains("宁留垃圾"),
         "module docs must state the leave-garbage-over-deleting-live principle"
     );
-    assert!(
-        !module_src.contains(".put_file("),
-        "GC never uploads files"
-    );
+    assert!(!module_src.contains(".put_file("), "GC never uploads files");
 
     // 与既有兄弟源码锁保持一致：delta_gc.rs 本体不得出现这些字面子串
     // （它们的引用面由 sync_r12_delta_upload / sync_r12_backup_lease /
@@ -991,7 +1021,11 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
 
     // 全 src 只允许 delta_gc.rs 一处 include! 该片段。
     let mut fragment_referencers = Vec::new();
-    collect_files_mentioning(&src_root, "delta_gc_upstream.rs.in", &mut fragment_referencers);
+    collect_files_mentioning(
+        &src_root,
+        "delta_gc_upstream.rs.in",
+        &mut fragment_referencers,
+    );
     assert_eq!(
         relative_names(&fragment_referencers, &src_root),
         vec!["cloud_storage/delta_gc.rs".to_string()],

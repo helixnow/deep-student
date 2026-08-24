@@ -101,8 +101,11 @@ fn bump_manifest_volatile_fields(root: &Path) {
     value["created_at"] = serde_json::json!("2027-01-01T00:00:00+00:00");
     value["backup_id"] = serde_json::json!("zerochange-second-run-0001");
     value["snapshot_epoch"] = serde_json::json!("00000000-0000-4000-8000-00000000feed");
-    fs::write(&path, serde_json::to_string_pretty(&value).expect("serialize"))
-        .expect("write manifest");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).expect("serialize"),
+    )
+    .expect("write manifest");
 }
 
 // ============================================================================
@@ -210,7 +213,10 @@ fn r12_zero_change_reuses_everything_except_manifest() {
         .all(|e| e.logical_path != MANIFEST_LOGICAL_PATH));
 
     // canonicalized 比较：剥离 volatile 字段后两版 manifest 内容一致。
-    assert_eq!(VOLATILE_MANIFEST_FIELDS, ["created_at", "backup_id", "snapshot_epoch"]);
+    assert_eq!(
+        VOLATILE_MANIFEST_FIELDS,
+        ["created_at", "backup_id", "snapshot_epoch"]
+    );
     let prev_bytes = fs::read(prev_root.join(MANIFEST_LOGICAL_PATH)).expect("read prev manifest");
     let curr_bytes = fs::read(curr_root.join(MANIFEST_LOGICAL_PATH)).expect("read curr manifest");
     assert!(
@@ -225,7 +231,9 @@ fn r12_zero_change_reuses_everything_except_manifest() {
     mutated["files"][0]["sha256"] =
         serde_json::json!("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     let mutated_bytes = serde_json::to_vec(&mutated).expect("serialize");
-    assert!(!manifest_unchanged_ignoring_volatile(&prev_bytes, &mutated_bytes).expect("legal JSON"));
+    assert!(
+        !manifest_unchanged_ignoring_volatile(&prev_bytes, &mutated_bytes).expect("legal JSON")
+    );
 }
 
 // ============================================================================
@@ -374,8 +382,7 @@ fn r12_source_lock_inventory_has_no_production_callers() {
     );
 
     // 本路不分配云端对象名：模块里不得出现 object_key 字段或 put_file 调用。
-    let module_src =
-        include_str!("../src/data_governance/backup/delta_inventory.rs");
+    let module_src = include_str!("../src/data_governance/backup/delta_inventory.rs");
     assert!(
         !module_src.contains("object_key:") && !module_src.contains("pub object_key"),
         "delta_inventory must not assign cloud object keys (that is the upload route)"

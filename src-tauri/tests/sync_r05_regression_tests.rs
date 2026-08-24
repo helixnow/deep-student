@@ -115,18 +115,22 @@ fn r05_slow_clock_delete_losing_lww_lands_in_sync_conflicts() {
             Some("device-local"),
         )
         .unwrap();
-        assert_eq!(result.success_count, 0, "round {round}: 较旧 DELETE 不得生效");
+        assert_eq!(
+            result.success_count, 0,
+            "round {round}: 较旧 DELETE 不得生效"
+        );
         assert_eq!(result.failure_count, 0, "round {round}: LWW 拒绝不是失败");
-        assert_eq!(result.skipped_count, 1, "round {round}: 较旧 DELETE 应被 LWW 拒绝");
+        assert_eq!(
+            result.skipped_count, 1,
+            "round {round}: 较旧 DELETE 应被 LWW 拒绝"
+        );
     }
 
     assert_eq!(record_count(&conn, "rec-1"), 1, "更新的本地行必须保留");
     let content: String = conn
-        .query_row(
-            "SELECT content FROM items WHERE id='rec-1'",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT content FROM items WHERE id='rec-1'", [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(content, "newer-local", "本地内容不得被慢钟 DELETE 影响");
 
@@ -273,7 +277,10 @@ fn r05_delete_with_unparseable_changed_at_goes_to_quarantine() {
             },
         )
         .unwrap();
-    assert_eq!(count, 1, "fail-closed 的 DELETE 必须落隔离区（可见、可处理）");
+    assert_eq!(
+        count, 1,
+        "fail-closed 的 DELETE 必须落隔离区（可见、可处理）"
+    );
     assert_eq!(operation, "DELETE");
     assert!(
         error.contains("changed_at"),

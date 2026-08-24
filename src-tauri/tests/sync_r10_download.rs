@@ -509,9 +509,8 @@ mod import_password_gate {
 
         // 对照：携带正确密码时同一 ZIP 可正常导入（防止预检修成一刀切拒绝）。
         let target = import_root.path().join("ok");
-        let file_count =
-            import_backup_from_zip_with_password(&zip_path, &target, Some(PASSWORD))
-                .expect("正确密码导入应成功");
+        let file_count = import_backup_from_zip_with_password(&zip_path, &target, Some(PASSWORD))
+            .expect("正确密码导入应成功");
         assert!(file_count > 0);
         assert!(target.join("manifest.json").is_file());
     }

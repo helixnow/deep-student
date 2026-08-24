@@ -257,8 +257,11 @@ fn bump_manifest_volatile_fields(root: &Path) {
     value["created_at"] = serde_json::json!("2027-01-01T00:00:00+00:00");
     value["backup_id"] = serde_json::json!("zerochange-second-run-0001");
     value["snapshot_epoch"] = serde_json::json!("00000000-0000-4000-8000-00000000feed");
-    fs::write(&path, serde_json::to_string_pretty(&value).expect("serialize"))
-        .expect("write manifest");
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).expect("serialize"),
+    )
+    .expect("write manifest");
 }
 
 async fn publish(
@@ -349,7 +352,11 @@ async fn r12_first_version_uploads_every_logical_file() {
     assert!(result.logical_size > 0);
 
     let object_keys = storage.keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX);
-    assert_eq!(object_keys.len(), 4, "one immutable object per logical file");
+    assert_eq!(
+        object_keys.len(),
+        4,
+        "one immutable object per logical file"
+    );
     for key in &object_keys {
         assert!(key.starts_with("backup-v2/objects/device-a/"), "{key}");
         assert!(key.ends_with(".dsbk"), "{key}");
@@ -363,7 +370,10 @@ async fn r12_first_version_uploads_every_logical_file() {
     for file in &descriptor.files {
         let staged = fs::read(root.join(&file.logical_path)).expect("read staged file");
         let stored = storage.get_raw(&file.object_key).expect("object stored");
-        assert_eq!(stored, staged, "plaintext mode stores staging bytes verbatim");
+        assert_eq!(
+            stored, staged,
+            "plaintext mode stores staging bytes verbatim"
+        );
         assert_eq!(file.plaintext_sha256, sha256_hex_bytes(&staged));
         assert_eq!(file.object_cipher_sha256, sha256_hex_bytes(&stored));
     }
@@ -377,7 +387,9 @@ async fn r12_first_version_uploads_every_logical_file() {
     assert_eq!(index.versions[0].newly_uploaded_size, result.logical_size);
 
     // 仓库配置首次写入且可解码；v1 namespace 零写入。
-    let config_bytes = storage.get_raw(BACKUP_V2_CONFIG_KEY).expect("config written");
+    let config_bytes = storage
+        .get_raw(BACKUP_V2_CONFIG_KEY)
+        .expect("config written");
     let config = BackupV2RepoConfig::decode(&config_bytes).expect("decode config");
     assert!(config.id_key_epoch >= 1);
     assert!(storage.keys_with_prefix("backups/").is_empty());
@@ -422,7 +434,10 @@ async fn r12_zero_change_second_version_reuses_all_data_objects() {
         .expect("v2 publish");
 
     // 只有 always-changed 的 manifest.json 需要新对象。
-    assert_eq!(v2.uploaded_file_count, 1, "only manifest.json is re-uploaded");
+    assert_eq!(
+        v2.uploaded_file_count, 1,
+        "only manifest.json is re-uploaded"
+    );
     assert_eq!(v2.reused_file_count, 3);
     assert!(v2.reused_size > 0);
     assert_eq!(v2.reused_size + v2.newly_uploaded_size, v2.logical_size);
@@ -490,7 +505,10 @@ async fn r12_single_file_change_uploads_only_that_file_and_manifest() {
         object_key_of(&d1, MANIFEST_LOGICAL_PATH),
         object_key_of(&d2, MANIFEST_LOGICAL_PATH)
     );
-    assert_eq!(object_key_of(&d1, ASSET_PATH), object_key_of(&d2, ASSET_PATH));
+    assert_eq!(
+        object_key_of(&d1, ASSET_PATH),
+        object_key_of(&d2, ASSET_PATH)
+    );
     assert_eq!(
         object_key_of(&d1, CRYPTO_PATH),
         object_key_of(&d2, CRYPTO_PATH)
@@ -554,11 +572,17 @@ async fn r12_index_put_failure_leaves_orphans_but_no_new_version() {
     let error = publish(&storage, &root, "device-a", None)
         .await
         .expect_err("index PUT failure must fail the publish");
-    assert!(error.to_string().contains("injected PUT failure"), "{error}");
+    assert!(
+        error.to_string().contains("injected PUT failure"),
+        "{error}"
+    );
 
     // objects + descriptor 已写入（孤儿），index 不存在 → 版本不可见。
     assert_eq!(storage.keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX).len(), 4);
-    assert_eq!(storage.keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX).len(), 1);
+    assert_eq!(
+        storage.keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX).len(),
+        1
+    );
     assert!(
         storage.get_raw(&device_index_key("device-a")).is_none(),
         "commit point never happened"
@@ -577,10 +601,15 @@ async fn r12_descriptor_put_failure_leaves_objects_but_no_new_version() {
     let error = publish(&storage, &root, "device-a", None)
         .await
         .expect_err("descriptor PUT failure must fail the publish");
-    assert!(error.to_string().contains("injected PUT failure"), "{error}");
+    assert!(
+        error.to_string().contains("injected PUT failure"),
+        "{error}"
+    );
 
     assert_eq!(storage.keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX).len(), 4);
-    assert!(storage.keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX).is_empty());
+    assert!(storage
+        .keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX)
+        .is_empty());
     assert!(storage.get_raw(&device_index_key("device-a")).is_none());
 }
 
@@ -604,9 +633,15 @@ async fn r12_held_lease_blocks_publish_with_zero_object_writes() {
     assert!(error.contains(BACKUP_LEASE_HELD_ERROR_CODE), "{error}");
     assert!(!error.contains("E_SYNC_LEASE_HELD"), "{error}");
 
-    assert!(storage.keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX).is_empty());
-    assert!(storage.keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX).is_empty());
-    assert!(storage.keys_with_prefix(BACKUP_V2_MANIFESTS_PREFIX).is_empty());
+    assert!(storage
+        .keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX)
+        .is_empty());
+    assert!(storage
+        .keys_with_prefix(BACKUP_V2_SNAPSHOTS_PREFIX)
+        .is_empty());
+    assert!(storage
+        .keys_with_prefix(BACKUP_V2_MANIFESTS_PREFIX)
+        .is_empty());
 }
 
 // ============================================================================
@@ -691,7 +726,10 @@ async fn r12_e2ee_encrypts_objects_and_descriptor_with_one_session() {
         assert!(is_encrypted_backup(&bytes), "object {key} must be DSBK");
     }
     let snapshot_bytes = storage.get_raw(&v1.snapshot_key).expect("descriptor bytes");
-    assert!(is_encrypted_backup(&snapshot_bytes), "descriptor must be DSBK");
+    assert!(
+        is_encrypted_backup(&snapshot_bytes),
+        "descriptor must be DSBK"
+    );
     let config_bytes = storage.get_raw(BACKUP_V2_CONFIG_KEY).expect("config bytes");
     assert!(is_encrypted_backup(&config_bytes), "config must be DSBK");
 
@@ -701,11 +739,17 @@ async fn r12_e2ee_encrypts_objects_and_descriptor_with_one_session() {
         .get_raw(&device_index_key("device-a"))
         .expect("index bytes");
     let index_text = String::from_utf8(index_bytes).expect("index is plaintext JSON");
-    assert!(!index_text.contains(&db_plain_sha), "no plaintext hash in index");
+    assert!(
+        !index_text.contains(&db_plain_sha),
+        "no plaintext hash in index"
+    );
     assert!(!index_text.contains(DB_PATH), "no logical path in index");
     assert!(!index_text.contains("assets/"), "no logical path in index");
     for key in storage.keys_with_prefix(BACKUP_V2_OBJECTS_PREFIX) {
-        assert!(!key.contains(&db_plain_sha), "content-addressed keys are forbidden");
+        assert!(
+            !key.contains(&db_plain_sha),
+            "content-addressed keys are forbidden"
+        );
     }
 
     // descriptor 用同一会话可解密，文件表完整。
@@ -810,7 +854,11 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
 
     // publish_verified_staging 在生产代码中零调用方（只在模块自身出现）。
     let mut publish_referencers = Vec::new();
-    collect_files_mentioning(&src_root, "publish_verified_staging", &mut publish_referencers);
+    collect_files_mentioning(
+        &src_root,
+        "publish_verified_staging",
+        &mut publish_referencers,
+    );
     let publish_names: Vec<String> = publish_referencers
         .iter()
         .map(|p| {
@@ -829,7 +877,10 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
 
     // 模块文档必须如实声明未接线状态。
     let module_src = include_str!("../src/cloud_storage/delta_upload.rs");
-    assert!(module_src.contains("未接线"), "module docs must state it is unwired");
+    assert!(
+        module_src.contains("未接线"),
+        "module docs must state it is unwired"
+    );
     assert!(
         module_src.contains("不得**因本模块存在而宣称增量备份"),
         "module docs must forbid claiming incremental backup is implemented"

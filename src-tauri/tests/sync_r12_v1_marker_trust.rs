@@ -18,9 +18,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{
-    CloudStorage, CloudSyncManager, EncryptionMarker, FileInfo,
-};
+use deep_student_lib::cloud_storage::{CloudStorage, CloudSyncManager, EncryptionMarker, FileInfo};
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::models::AppError;
 use tempfile::TempDir;
@@ -257,7 +255,12 @@ async fn r12_correct_password_upgrades_after_trial_decrypt_of_existing_backup() 
     let storage = MemStorage::new();
     let password = "team-pw-2026";
     let legacy = mint_v1_marker(&storage).await;
-    seed_encrypted_backup(&storage, password, b"zip bytes protected by the team password").await;
+    seed_encrypted_backup(
+        &storage,
+        password,
+        b"zip bytes protected by the team password",
+    )
+    .await;
 
     let device_a = manager_on(&storage, "device-a");
     let upgraded = device_a
@@ -348,7 +351,12 @@ async fn r12_wrong_password_cannot_claim_root_with_existing_backups() {
 async fn r12_backup_download_failure_keeps_v1_marker_untouched() {
     let storage = MemStorage::new();
     mint_v1_marker(&storage).await;
-    seed_encrypted_backup(&storage, "team-pw-2026", b"backup unreachable during outage").await;
+    seed_encrypted_backup(
+        &storage,
+        "team-pw-2026",
+        b"backup unreachable during outage",
+    )
+    .await;
 
     let flaky = CloudSyncManager::new(
         Box::new(BackupReadOutage {

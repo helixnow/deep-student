@@ -267,9 +267,7 @@ impl BackupV2DeviceIndex {
         }
         validate_index_identifier("deviceId", &self.device_id)?;
         if DateTime::parse_from_rfc3339(&self.updated_at).is_err() {
-            return Err(AppError::validation(
-                "updatedAt 必须是合法 RFC 3339 时间戳",
-            ));
+            return Err(AppError::validation("updatedAt 必须是合法 RFC 3339 时间戳"));
         }
         let mut seen = HashSet::with_capacity(self.versions.len());
         for entry in &self.versions {
@@ -290,9 +288,7 @@ impl BackupV2DeviceIndex {
         match (&self.latest, self.versions.is_empty()) {
             (None, true) => {}
             (None, false) => {
-                return Err(AppError::validation(
-                    "索引 versions 非空时 latest 不能为空",
-                ));
+                return Err(AppError::validation("索引 versions 非空时 latest 不能为空"));
             }
             (Some(latest), _) => {
                 if !self.versions.iter().any(|entry| &entry.id == latest) {
@@ -446,12 +442,12 @@ async fn load_previous_descriptor(
                      加密策略不一致，fail-closed",
                 ));
             }
-            session
-                .decrypt_bytes(&bytes)
-                .map_err(|e| AppError::validation(format!(
+            session.decrypt_bytes(&bytes).map_err(|e| {
+                AppError::validation(format!(
                     "解密上一份 snapshot descriptor 失败（密码错或数据损坏），\
                      fail-closed：{e}"
-                )))?
+                ))
+            })?
         }
         None => {
             if is_encrypted_backup(&bytes) {
@@ -582,9 +578,7 @@ pub async fn publish_verified_staging(
     let guard = acquire_backup_repo_lease(Arc::clone(&storage), &device_id).await?;
     let result = publish_locked(storage.as_ref(), staging_root, &params, &device_id).await;
     if let Err(error) = guard.release().await {
-        tracing::warn!(
-            "[delta-upload] 释放备份仓库租约失败（将由 TTL 兜底）: {error}"
-        );
+        tracing::warn!("[delta-upload] 释放备份仓库租约失败（将由 TTL 兜底）: {error}");
     }
     result
 }
@@ -644,14 +638,13 @@ async fn publish_locked(
                 .collect();
             for entry in &inventory.entries {
                 if reusable_paths.contains(entry.logical_path.as_str()) {
-                    let previous_ref =
-                        previous_by_path
-                            .get(entry.logical_path.as_str())
-                            .ok_or_else(|| {
-                                AppError::internal(
-                                    "复用候选在上一份 descriptor 中缺失（内部不变量被破坏）",
-                                )
-                            })?;
+                    let previous_ref = previous_by_path
+                        .get(entry.logical_path.as_str())
+                        .ok_or_else(|| {
+                            AppError::internal(
+                                "复用候选在上一份 descriptor 中缺失（内部不变量被破坏）",
+                            )
+                        })?;
                     reused_refs.push(SnapshotFileRefV2 {
                         logical_path: entry.logical_path.clone(),
                         size: entry.size,
@@ -703,9 +696,9 @@ async fn publish_locked(
             scratch.path(),
         )
         .await?;
-        newly_uploaded_size = newly_uploaded_size.checked_add(entry.size).ok_or_else(|| {
-            AppError::validation("新上传字节数溢出 u64，拒绝发布")
-        })?;
+        newly_uploaded_size = newly_uploaded_size
+            .checked_add(entry.size)
+            .ok_or_else(|| AppError::validation("新上传字节数溢出 u64，拒绝发布"))?;
         uploaded_refs.push(file_ref);
     }
     let reused_size: u64 = {
@@ -804,9 +797,10 @@ async fn publish_locked(
     index.updated_at = now.to_rfc3339();
     let index_bytes = index.encode()?;
     storage.put(&index_key, &index_bytes).await?;
-    let index_readback = storage.get(&index_key).await?.ok_or_else(|| {
-        AppError::network("版本索引写入后回读缺失，commit 状态不明，请重试")
-    })?;
+    let index_readback = storage
+        .get(&index_key)
+        .await?
+        .ok_or_else(|| AppError::network("版本索引写入后回读缺失，commit 状态不明，请重试"))?;
     if index_readback != index_bytes {
         return Err(AppError::network(
             "版本索引回读字节与本地不符，commit 状态不明，请重试",
