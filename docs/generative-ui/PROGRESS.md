@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 79（2026-08-24）— 对齐分片 4 过期合同
+
+1. [x] Workbench 快照恢复改为显式 `desktop.workbenchRestoreSession=true`；默认冷启动不 hydrate
+2. [x] CardAgent 空闲超时断言改为 `ok:false` / `timedOut:true`（不再伪装成功）
+3. [x] PDF 缺省 injectModes 只保留原生文本；显式 `image` 模式仍带页图
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 78（2026-08-24）— 技能展示名 + CI 分片断言
 
 1. [x] zh-CN / en-US `builtinNames` / `builtinDescriptions` 补 `generative-ui`
