@@ -318,6 +318,8 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
     <SegmentedControl<ViewMode>
       ariaLabel={t('translation:viewer.view_mode')}
       size="compact"
+      // 📱 粗指针：!important 盖过 .study-shell-segmented-button 的 min-height:0，保证 ≥44px 命中
+      itemClassName="[@media(pointer:coarse)]:!min-h-11"
       value={viewMode}
       onValueChange={setViewMode}
       options={[

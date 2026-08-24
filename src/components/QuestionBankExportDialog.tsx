@@ -166,7 +166,7 @@ const SegmentedControl = <T extends string>({
         onClick={() => onChange(opt.value)}
         aria-pressed={value === opt.value}
         className={cn(
-          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:min-h-11',
+          'flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs ui-state-colors [@media(pointer:coarse)]:!min-h-11',
           value === opt.value
             ? 'bg-background font-medium text-foreground shadow-sm'
             : 'text-muted-foreground hover:text-foreground'
@@ -832,7 +832,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     if (index < inlineStep) setInlineStep(index);
                   }}
                   className={cn(
-                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11',
+                    'flex min-h-[32px] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11',
                     index === inlineStep
                       ? 'bg-primary/10 font-medium text-primary'
                       : index < inlineStep
