@@ -381,6 +381,11 @@
     min-height: 44px;
     height: auto;
   }
+
+  /* 属性/链接页签随 40px 头部拉伸：min-height 让头部长到 44px 命中高度 */
+  .notes-backlinks-panel-tab {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -738,6 +738,18 @@
     margin: -10px -6px -10px -10px;
     opacity: 1;
   }
+
+  /* 标签选择钮受 36/40px 标签条（含标题栏内嵌模式）约束，不硬叠 44 视觉：
+     伪元素纵向外扩到 ≥44px 命中；关闭钮在 DOM 后位，重叠区命中不受影响 */
+  .notes-tab > button:first-child {
+    position: relative;
+  }
+
+  .notes-tab > button:first-child::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
+  }
 }
 
 .notes-pane-content, .notes-document-host {

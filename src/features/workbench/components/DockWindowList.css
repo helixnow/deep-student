@@ -285,6 +285,11 @@
     transform: scale(1);
     pointer-events: auto;
   }
+
+  /* 「显示全部窗口」整行入口 ~28px 偏矮：升到 44px 命中高度 */
+  .wb-docklist-showall {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

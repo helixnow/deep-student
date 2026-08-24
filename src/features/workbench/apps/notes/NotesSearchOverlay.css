@@ -397,6 +397,11 @@
 
 /* 触屏：结果行 / 模式切换 / 图标按钮放大到 ≥44px 触控目标 */
 @media (pointer: coarse) {
+  /* <16px 输入框在 iOS 聚焦时触发页面自动缩放（输入行本身已 46px 高） */
+  .notes-search-overlay-input-wrap input {
+    font-size: 16px;
+  }
+
   .notes-search-overlay-result {
     min-height: 52px;
   }

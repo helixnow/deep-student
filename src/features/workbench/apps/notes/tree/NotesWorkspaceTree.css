@@ -500,4 +500,12 @@
     position: absolute;
     inset: -15px;
   }
+
+  /* 重命名输入：行已 44px，输入随行撑满；16px 防 iOS 聚焦自动放大
+     （对齐 DesktopShortcuts / notes-inline-create 同款处理） */
+  .nwt-rename-input {
+    height: auto;
+    min-height: 44px;
+    font-size: 16px;
+  }
 }
