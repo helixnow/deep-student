@@ -997,7 +997,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   }}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-10 w-full pl-9 pr-3 text-sm"
+                  className="h-10 w-full pl-9 pr-3 text-sm [@media(pointer:coarse)]:h-11"
                 />
               </div>
               <DsButton

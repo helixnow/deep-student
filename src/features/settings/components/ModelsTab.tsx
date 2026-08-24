@@ -107,7 +107,7 @@ const ModelAssignmentRow = ({
         variant="full"
         allowEmpty
         placeholder={placeholder}
-        className="w-full justify-between h-9 bg-transparent hover:bg-[var(--interactive-hover)] transition-colors border border-border/30 hover:border-border/50"
+        className="w-full justify-between h-9 [@media(pointer:coarse)]:min-h-11 bg-transparent hover:bg-[var(--interactive-hover)] transition-colors border border-border/30 hover:border-border/50"
         popoverClassName="w-[min(280px,calc(100vw-2rem))]"
       />
       {models.length === 0 && noModelsMessage && (

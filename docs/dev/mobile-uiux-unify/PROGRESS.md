@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–32 已落地；当前队列见下。
+- **轮次**：Round 2–33 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -42,11 +42,12 @@
 | 30 | claude-fable-5-thinking-xhigh ×10 | 模型搜索、笔记加标签、日历导航、模板 Select、迁移横幅、壁纸、Agent 下载行 | 见 ROUND-30-FIXES.md |
 | 31 | claude-fable-5-thinking-xhigh ×10 | 迁移关闭、分组顶栏、ShadApi 输入、Changes chip、Memory icon、设置/聊天/笔记残留 | 见 ROUND-31-FIXES.md |
 | 32 | claude-fable-5-thinking-xhigh ×10 | 外搜输入、诊断钮、技能 chip、Todo 折叠、聊天筛选、PDF 色点、TabBar 伪条 | 见 ROUND-32-FIXES.md |
+| 33 | claude-fable-5-thinking-xhigh ×10 | 填空 40→44、TabBar 更多关闭加高、paperSave、EmbeddedTools、聊天展开、闪卡搜索 | 见 ROUND-33-FIXES.md |
 
-## 进行中的修复队列（Round 33+）
+## 进行中的修复队列（Round 34+）
 
-- BlanksEditor 加/删空 40；TabBar 更多/关闭宽
-- EmbeddedToolsEditor max-lg 惯例；paperSave 约 38
+- DeepSeek 余额刷新 20；ReviewQuestions 重做 32；日历详情关闭
+- MultiSelectModelPanel 钉 40；TagsEditor 建议行；导图搜索 Aa/ab 宽
 - ShortcutSettings 属 #166 不碰；内联引用 chip 设计未决
 
 ## 已落地

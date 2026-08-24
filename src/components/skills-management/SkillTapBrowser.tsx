@@ -449,7 +449,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onCancel}
             disabled={busy}
-            className="max-lg:!h-11 h-7 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -458,7 +458,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             size="sm"
             onClick={onConfirm}
             disabled={busy}
-            className="max-lg:!h-11 h-7 px-2.5 text-xs"
+            className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 px-2.5 text-xs"
           >
             {busy
               ? t('skills:tap.installing')
@@ -601,7 +601,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                         }
                       }}
                       disabled={scanningSubdir !== null || installing}
-                      className="max-lg:!h-11 h-7 flex-shrink-0 px-2.5 text-xs"
+                      className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 flex-shrink-0 px-2.5 text-xs"
                     >
                       {scanningSubdir === entry.subdir ? (
                         t('skills:tap.scanning')
@@ -775,7 +775,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
                       }
                     }}
                     disabled={marketBusySlug !== null || marketInstalling}
-                    className="max-lg:!h-11 h-7 flex-shrink-0 px-2.5 text-xs"
+                    className="max-lg:!h-11 h-7 [@media(pointer:coarse)]:min-h-11 flex-shrink-0 px-2.5 text-xs"
                     data-testid={`skill-market-install-${card.slug}`}
                   >
                     {busy ? (

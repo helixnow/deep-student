@@ -273,7 +273,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
-                '!h-auto !py-1',
+                '!h-auto !py-1 [@media(pointer:coarse)]:min-h-11',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',

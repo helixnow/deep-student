@@ -93,7 +93,7 @@ const SubtaskRow: React.FC<{
           }
         }}
         title={t('todo:subtasks.openDetail')}
-        className="group/subtask flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-shell-control)] px-1 py-1 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
+        className="group/subtask flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-shell-control)] px-1 py-1 [@media(pointer:coarse)]:min-h-11 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
       >
         {/* 拖拽把手：hover 常显、触屏淡显；不与行点击冲突 */}
         <span
