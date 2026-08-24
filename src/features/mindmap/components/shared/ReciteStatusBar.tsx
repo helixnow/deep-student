@@ -28,16 +28,34 @@ export const ReciteStatusBar: React.FC = () => {
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 
       {progress.total > 0 ? (
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.revealed}
+          aria-label={t('recite.progress', {
+            revealed: progress.revealed,
+            total: progress.total,
+          })}
+        >
           <div className="w-24 h-1.5 rounded-full bg-[var(--mm-border)] overflow-hidden">
             <div
               className="h-full rounded-full bg-[var(--mm-warning)] transition-all duration-300 motion-reduce:transition-none"
               style={{ width: `${(progress.revealed / progress.total) * 100}%` }}
             />
           </div>
+          {/* 统计增强：已揭示数 + 百分比 + 剩余数，一眼判断背诵进度 */}
           <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap tabular-nums">
             {progress.revealed}/{progress.total}
+            {' · '}
+            {Math.round((progress.revealed / progress.total) * 100)}%
           </span>
+          {progress.revealed < progress.total && (
+            <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap tabular-nums opacity-80">
+              {t('recite.remaining', { count: progress.total - progress.revealed })}
+            </span>
+          )}
         </div>
       ) : (
         <DsButton

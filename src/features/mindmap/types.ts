@@ -133,6 +133,22 @@ export interface NodeWithParent {
 // 文档相关类型
 // ============================================================================
 
+/**
+ * 多画布（sheet）元数据 —— 多 sheet 数据模型第一步。
+ *
+ * 当前运行时仍是单树模型：多 sheet 文件导入时合并为「虚拟根 + 每 sheet 一个
+ * 一级子节点」。本结构把「哪个一级子节点来自哪个 sheet」显式记录进 meta，
+ * 供未来的多画布 UI 直接升格使用；所有现有读取方可安全忽略此字段。
+ */
+export interface MindMapSheetMeta {
+  /** sheet 标识（导入时生成，文档内唯一） */
+  id: string;
+  /** sheet 标题（源文件 sheet 名，缺省回退根主题标题） */
+  title: string;
+  /** 该 sheet 对应的节点 id（虚拟根的直接子节点） */
+  rootNodeId: string;
+}
+
 export interface MindMapMeta {
   createdAt: string;
   updatedAt?: string;
@@ -140,6 +156,8 @@ export interface MindMapMeta {
   theme?: string;
   /** 渲染配置 */
   renderConfig?: MindMapRenderConfig;
+  /** 多 sheet 导入来源记录（单树模型不消费；见 MindMapSheetMeta） */
+  sheets?: MindMapSheetMeta[];
 }
 
 // 兼容别名

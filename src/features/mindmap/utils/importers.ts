@@ -3,6 +3,7 @@
  *
  * 支持格式：
  * - .xmind（content.json / content.xml，zip 流式读 + 体积上限）
+ * - .mmap（MindManager，zip 内 Document.xml，与后端 chat 导入能力对齐）
  * - OPML (Outline Processor Markup Language)
  * - Markdown（大纲格式，与粘贴解析共用 pasteMarkdown 真源）
  * - .mm 大纲文件（XML）
@@ -12,7 +13,7 @@
 import { nanoid } from 'nanoid';
 import i18n from 'i18next';
 import JSZip from 'jszip';
-import type { MindMapAssociation, MindMapDocument, MindMapNode } from '../types';
+import type { MindMapAssociation, MindMapDocument, MindMapNode, MindMapSheetMeta } from '../types';
 import { markdownListToNodes } from './pasteMarkdown';
 
 /**
@@ -156,6 +157,15 @@ function allocateXmindNodeId(
   return generated;
 }
 
+/**
+ * 图片节点降级占位（B12）：本应用模型不支持图片节点，导入时不再完全静默丢弃，
+ * 而是在备注中保留占位说明（原主题含几张图片），配合导入报告 toast 提示。
+ */
+function imagePlaceholderLines(droppedImageCount: number): string[] {
+  if (droppedImageCount <= 0) return [];
+  return [i18n.t('mindmap:import.imagePlaceholderNote', { count: droppedImageCount })];
+}
+
 function xmindJsonTopicToNode(
   topic: XmindTopicJson,
   depth: number,
@@ -166,9 +176,10 @@ function xmindJsonTopicToNode(
   report?: XmindImportReport,
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：图片与概要在本应用模型中不支持，静默丢弃但计数上报
+  // 导入报告：图片与概要在本应用模型中不支持，计数上报；图片额外留备注占位
+  const droppedImageCount = topic.image ? 1 : 0;
   if (report) {
-    if (topic.image) report.droppedImages += 1;
+    report.droppedImages += droppedImageCount;
     if (Array.isArray(topic.summaries)) report.droppedSummaries += topic.summaries.length;
     else if (Array.isArray(topic.children?.summary)) {
       report.droppedSummaries += topic.children.summary.length;
@@ -192,7 +203,10 @@ function xmindJsonTopicToNode(
   return {
     id: assignedId,
     text: extras.textPrefix + (topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic')),
-    note: composeNote(plainNote || htmlNote, extras.noteSuffixLines),
+    note: composeNote(plainNote || htmlNote, [
+      ...extras.noteSuffixLines,
+      ...imagePlaceholderLines(droppedImageCount),
+    ]),
     ...(completed !== undefined ? { completed } : {}),
     children: (topic.children?.attached || []).map((child) =>
       xmindJsonTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report)),
@@ -221,9 +235,11 @@ function xmindXmlTopicToNode(
   report?: XmindImportReport,
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：XML 内容的 <xhtml:img>（localName=img）与 <summaries><summary> 丢弃计数
+  // 导入报告：XML 内容的 <xhtml:img>（localName=img）与 <summaries><summary> 计数；
+  // 图片额外在备注中保留占位说明
+  const droppedImageCount = directChildrenByLocalName(topic, 'img').length;
   if (report) {
-    report.droppedImages += directChildrenByLocalName(topic, 'img').length;
+    report.droppedImages += droppedImageCount;
     const summariesContainer = directChildrenByLocalName(topic, 'summaries')[0];
     if (summariesContainer) {
       report.droppedSummaries += directChildrenByLocalName(summariesContainer, 'summary').length;
@@ -267,7 +283,10 @@ function xmindXmlTopicToNode(
   return {
     id: assignedId,
     text: extras.textPrefix + (title || i18n.t('mindmap:import.unnamedTopic')),
-    note: composeNote(note, extras.noteSuffixLines),
+    note: composeNote(note, [
+      ...extras.noteSuffixLines,
+      ...imagePlaceholderLines(droppedImageCount),
+    ]),
     ...(completed !== undefined ? { completed } : {}),
     children: childTopics.map((child) =>
       xmindXmlTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report)),
@@ -300,29 +319,46 @@ function remapXmindRelationships(
 function createXmindDocument(
   root: MindMapNode,
   associations?: MindMapAssociation[],
+  sheets?: MindMapSheetMeta[],
 ): MindMapDocument {
   return {
     version: '1.0',
     root,
-    meta: { createdAt: new Date().toISOString() },
+    meta: {
+      createdAt: new Date().toISOString(),
+      ...(sheets && sheets.length > 0 ? { sheets } : {}),
+    },
     ...(associations && associations.length > 0 ? { associations } : {}),
   };
 }
 
 /**
- * 多 sheet 文件保持「合成虚拟根」策略（本应用是单树模型，不支持多画布），
- * 但在根备注中说明来源，避免用户误以为丢失了画布信息。
+ * 多 sheet 文件保持「合成虚拟根」策略（运行时仍是单树模型），
+ * 但在根备注中说明来源，并把 sheet → 一级子节点的对应关系记录到
+ * meta.sheets（多 sheet 数据模型第一步，未来多画布 UI 可直接升格）。
  */
-function createMultiSheetRoot(children: MindMapNode[], sheetTitles: string[]): MindMapNode {
-  const titles = sheetTitles
-    .map((title) => title.trim() || i18n.t('mindmap:import.unnamedTopic'))
-    .join(', ');
-  return {
+function createMultiSheetRoot(
+  children: MindMapNode[],
+  sheetTitles: string[],
+): { root: MindMapNode; sheets: MindMapSheetMeta[] } {
+  const normalizedTitles = sheetTitles.map(
+    (title) => title.trim() || i18n.t('mindmap:import.unnamedTopic'),
+  );
+  const root: MindMapNode = {
     id: 'root',
     text: i18n.t('mindmap:import.importedMap'),
-    note: i18n.t('mindmap:import.multiSheetNote', { count: children.length, titles }),
+    note: i18n.t('mindmap:import.multiSheetNote', {
+      count: children.length,
+      titles: normalizedTitles.join(', '),
+    }),
     children,
   };
+  const sheets: MindMapSheetMeta[] = children.map((child, index) => ({
+    id: `sheet_${nanoid(8)}`,
+    title: normalizedTitles[index] ?? i18n.t('mindmap:import.unnamedTopic'),
+    rootNodeId: child.id,
+  }));
+  return { root, sheets };
 }
 
 interface XmindStreamHelper {
@@ -427,9 +463,11 @@ export async function importFromXmindZip(
     const children = sheets.map((sheet) =>
       xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report));
     const sheetTitles = sheets.map((sheet) => sheet.title || sheet.rootTopic.title || '');
+    const merged = createMultiSheetRoot(children, sheetTitles);
     return createXmindDocument(
-      createMultiSheetRoot(children, sheetTitles),
+      merged.root,
       remapXmindRelationships(rawRelationships, idMap),
+      merged.sheets,
     );
   }
 
@@ -473,13 +511,77 @@ export async function importFromXmindZip(
           directChildrenByLocalName(sheet, 'topic')[0], 'title',
         )[0]?.textContent?.trim()
         || '');
+    const merged = createMultiSheetRoot(children, sheetTitles);
     return createXmindDocument(
-      createMultiSheetRoot(children, sheetTitles),
+      merged.root,
       remapXmindRelationships(rawRelationships, idMap),
+      merged.sheets,
     );
   }
 
   throw new Error('Invalid .xmind archive: content.json or content.xml not found');
+}
+
+// ============================================================================
+// .mmap（MindManager）导入
+// ============================================================================
+
+function mmapTopicToNode(
+  topic: Element,
+  depth: number,
+  stats: { nodeCount: number },
+  usedIds: Set<string>,
+  forceRoot = false,
+): MindMapNode {
+  claimImportedNode(stats, depth, '.mmap');
+  // MindManager 结构：<Topic><Text PlainText="…"/><SubTopics><Topic/>…</SubTopics></Topic>
+  const text = directChildrenByLocalName(topic, 'Text')[0]
+    ?.getAttribute('PlainText')
+    ?.trim();
+  const children = directChildrenByLocalName(topic, 'SubTopics')
+    .flatMap((container) => directChildrenByLocalName(container, 'Topic'))
+    .map((child) => mmapTopicToNode(child, depth + 1, stats, usedIds));
+  return {
+    id: allocateXmindNodeId(topic.getAttribute('OId') ?? undefined, usedIds, forceRoot),
+    text: text || i18n.t('mindmap:import.unnamedTopic'),
+    children,
+  };
+}
+
+/**
+ * 从 .mmap（MindManager，zip 内 Document.xml）导入。
+ * 结构解析与后端 chat 附件导入（builtin_resource_executor::parse_mmap_to_mindmap）
+ * 对齐：OneTopic → Topic 为根，Text@PlainText 为标题，SubTopics/Topic 递归。
+ * 样式、图标、备注等 MindManager 专有数据不支持（静默丢弃）。
+ */
+export async function importFromMmapZip(data: Uint8Array | ArrayBuffer): Promise<MindMapDocument> {
+  if (data.byteLength > MAX_XMIND_ARCHIVE_BYTES) {
+    throw new Error(`.mmap archive exceeds maximum size (${MAX_XMIND_ARCHIVE_BYTES} bytes)`);
+  }
+  const zip = await JSZip.loadAsync(data);
+  const entry = zip.file('Document.xml');
+  if (!entry) {
+    throw new Error('Invalid .mmap archive: Document.xml not found');
+  }
+  const xml = new DOMParser().parseFromString(await readXmindContent(entry), 'text/xml');
+  const parserError = xml.querySelector('parsererror');
+  if (parserError) throw new Error(`Invalid .mmap Document.xml: ${parserError.textContent}`);
+
+  const oneTopic = Array.from(xml.getElementsByTagName('*')).find(
+    (element) => element.localName.toLowerCase() === 'onetopic',
+  );
+  if (!oneTopic) throw new Error('Invalid .mmap archive: missing OneTopic element');
+  const rootTopic = directChildrenByLocalName(oneTopic, 'Topic')[0];
+  if (!rootTopic) throw new Error('Invalid .mmap archive: OneTopic has no Topic');
+
+  const stats = createImportStats();
+  const usedIds = new Set<string>();
+  const root = mmapTopicToNode(rootTopic, 0, stats, usedIds, true);
+  return {
+    version: '1.0',
+    root,
+    meta: { createdAt: new Date().toISOString() },
+  };
 }
 
 // ============================================================================
@@ -894,9 +996,13 @@ export function importFromJson(jsonContent: string): MindMapDocument {
 // 通用导入接口
 // ============================================================================
 
-export type ImportFormat = 'opml' | 'markdown' | 'json' | 'mm' | 'xmind' | 'auto';
+export type ImportFormat =
+  | 'opml' | 'markdown' | 'json' | 'mm' | 'xmind' | 'mmap'
+  /** 已确认是 XML 但既非 OPML 也非 .mm（importMindMap 报明确错误，不再误报 Invalid OPML） */
+  | 'unknown-xml'
+  | 'auto';
 
-/** zip 包（.xmind）魔数：PK\x03\x04 */
+/** zip 包（.xmind / .mmap）魔数：PK\x03\x04 */
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04] as const;
 
 function looksLikeZip(bytes: Uint8Array): boolean {
@@ -907,7 +1013,8 @@ function looksLikeZip(bytes: Uint8Array): boolean {
  * 自动检测格式（基于文本内容）。
  * - zip 魔数被解码为文本时也能识别为 xmind（但二进制内容需走 importFromFile /
  *   importFromXmindZip 的字节路径，本函数只做提示性识别）；
- * - XML 按根元素区分 opml / mm，无法识别时保持旧行为回退 opml。
+ * - XML 按根元素区分 opml / mm；其他 XML 根元素返回 'unknown-xml'——
+ *   不再回退 opml 导致「Invalid OPML: missing body element」这类误导性报错。
  */
 export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
   const trimmed = content.trim();
@@ -918,10 +1025,14 @@ export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
 
   if (trimmed.startsWith('<?xml') || trimmed.startsWith('<')) {
     // 只嗅探开头片段，避免对超大文件做整体正则
-    const head = trimmed.slice(0, 2048);
-    if (/<opml[\s>]/i.test(head)) return 'opml';
-    if (/<map[\s>]/i.test(head)) return 'mm';
-    if (trimmed.startsWith('<?xml') || trimmed.startsWith('<opml')) return 'opml';
+    const head = trimmed.slice(0, 4096);
+    if (/<opml[\s>/]/i.test(head)) return 'opml';
+    if (/<map[\s>/]/i.test(head)) return 'mm';
+    // 提取首个真实元素名（跳过 XML 声明 / DOCTYPE / 注释）：
+    // 能解析出元素说明确实是 XML/HTML 文档，但不是我们认识的导图格式
+    const withoutProlog = head.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<![^>]*>/g, '').trimStart();
+    if (/^<[A-Za-z_][\w:.-]*/.test(withoutProlog)) return 'unknown-xml';
+    if (trimmed.startsWith('<?xml')) return 'unknown-xml';
   }
 
   if (trimmed.startsWith('{')) {
@@ -933,7 +1044,8 @@ export function detectFormat(content: string): Exclude<ImportFormat, 'auto'> {
 
 /**
  * 统一导入接口（文本内容）。
- * .xmind 是 zip 二进制格式，无法从字符串导入——请使用 importFromFile 或 importFromXmindZip。
+ * .xmind / .mmap 是 zip 二进制格式，无法从字符串导入——
+ * 请使用 importFromFile 或 importFromXmindZip / importFromMmapZip。
  */
 export function importMindMap(
   content: string,
@@ -952,6 +1064,13 @@ export function importMindMap(
       return importFromMmOutline(content);
     case 'xmind':
       throw new Error('.xmind import requires binary data; use importFromFile or importFromXmindZip');
+    case 'mmap':
+      throw new Error('.mmap import requires binary data; use importFromFile or importFromMmapZip');
+    case 'unknown-xml':
+      // 明确报「不认识的 XML 根元素」，而不是把任意 XML 塞给 OPML 解析器误报 Invalid OPML
+      throw new Error(
+        'Unrecognized XML mind map format: expected an OPML (<opml>) or FreeMind (<map>) document',
+      );
     default:
       throw new Error(`Unsupported import format: ${actualFormat}`);
   }
@@ -959,8 +1078,9 @@ export function importMindMap(
 
 /**
  * 从文件导入。
- * ★ B11 修复：扩展名路由补齐 .xmind（二进制 zip）与 .mm（XML）；
- * 无扩展名时按 zip 魔数嗅探（zip 内容按文本解码会损坏，必须走字节路径）。
+ * ★ B11 修复：扩展名路由补齐 .xmind / .mmap（二进制 zip）与 .mm（XML）；
+ * 无扩展名时按 zip 魔数嗅探（zip 内容按文本解码会损坏，必须走字节路径），
+ * 先按 .xmind 解析、失败再按 .mmap 解析——与后端 chat 附件导入顺序一致。
  */
 export async function importFromFile(file: File): Promise<MindMapDocument> {
   const extension = file.name.split('.').pop()?.toLowerCase();
@@ -969,11 +1089,28 @@ export async function importFromFile(file: File): Promise<MindMapDocument> {
     return importFromXmindZip(await file.arrayBuffer());
   }
 
+  if (extension === 'mmap') {
+    return importFromMmapZip(await file.arrayBuffer());
+  }
+
   if (extension !== 'opml' && extension !== 'json' && extension !== 'md'
     && extension !== 'markdown' && extension !== 'mm' && extension !== 'txt') {
     const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
     if (looksLikeZip(head)) {
-      return importFromXmindZip(await file.arrayBuffer());
+      const bytes = await file.arrayBuffer();
+      try {
+        return await importFromXmindZip(bytes);
+      } catch (xmindError) {
+        try {
+          return await importFromMmapZip(bytes);
+        } catch (mmapError) {
+          throw new Error(
+            `Unrecognized zip mind map file. .xmind: ${
+              xmindError instanceof Error ? xmindError.message : String(xmindError)
+            }; .mmap: ${mmapError instanceof Error ? mmapError.message : String(mmapError)}`,
+          );
+        }
+      }
     }
   }
 

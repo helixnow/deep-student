@@ -268,7 +268,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   }), [reactFlowInstance]);
 
   // 画布专属导航/编辑快捷键；剪贴板已上提到 MindMapContentView，大纲视图也可共用
-  useMindMapKeyboard();
+  // containerRef：空间导航候选节点限定本画布，禁止分屏双画布串扰
+  useMindMapKeyboard({ containerRef: canvasContainerRef });
 
   // 隐藏已完成时，焦点若落在不可见节点则上移到可见祖先
   useEffect(() => {

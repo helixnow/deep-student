@@ -8,6 +8,8 @@ import {
   Pencil,
   CheckCircle,
   Circle,
+  Eye,
+  EyeSlash,
   TextB,
   TextItalic,
   TextUnderline,
@@ -33,6 +35,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
@@ -44,6 +47,7 @@ import { useMindMapStore } from '../../store';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { findNodeById, findParentNode } from '../../utils/node/find';
 import { countAllDescendants } from '../../utils/layout/countDescendants';
+import type { MindMapNode } from '../../types';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
 import { EmojiPicker } from '../shared/EmojiPicker';
 
@@ -124,6 +128,12 @@ const MenuSeparator: React.FC = () => (
   <div className="h-px bg-[var(--menu-shell-border)] my-1 mx-2" />
 );
 
+/** 子树内是否存在挖空区间（决定「清除分支挖空」是否展示） */
+function subtreeHasBlanks(node: MindMapNode): boolean {
+  if (node.blankedRanges && node.blankedRanges.length > 0) return true;
+  return node.children.some(subtreeHasBlanks);
+}
+
 /** 内联颜色选择面板 */
 export const ColorPalette: React.FC<{
   colors: string[];
@@ -197,6 +207,9 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const clipboard = useMindMapStore(s => s.clipboard);
   const expandAll = useMindMapStore(s => s.expandAll);
   const collapseAll = useMindMapStore(s => s.collapseAll);
+  const reciteMode = useMindMapStore(s => s.reciteMode);
+  const blankBranchNodes = useMindMapStore(s => s.blankBranchNodes);
+  const clearBranchBlanks = useMindMapStore(s => s.clearBranchBlanks);
 
   /** 「添加图标」内联展开的 emoji 面板 */
   const [showIconPanel, setShowIconPanel] = useState(false);
@@ -609,6 +622,35 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           style: { ...node.style, bgColor: color },
         }), { keepOpen: true })}
       />
+
+      {/* 背诵：按分支批量挖空 / 清除（背诵进行中隐藏——挖空管理属于编辑态） */}
+      {!reciteMode && (
+        <>
+          <MenuSeparator />
+          <MenuItem
+            icon={<EyeSlash className="w-4 h-4" />}
+            label={t('recite.blankBranch', { defaultValue: '挖空整个分支' })}
+            onClick={() => exec(() => {
+              const count = blankBranchNodes(nodeId);
+              if (count > 0) {
+                showGlobalNotification('success', t('recite.blankBranchDone', { count }));
+              }
+            })}
+          />
+          {subtreeHasBlanks(node) && (
+            <MenuItem
+              icon={<Eye className="w-4 h-4" />}
+              label={t('recite.clearBranchBlanks', { defaultValue: '清除分支挖空' })}
+              onClick={() => exec(() => {
+                const count = clearBranchBlanks(nodeId);
+                if (count > 0) {
+                  showGlobalNotification('success', t('recite.clearBranchBlanksDone', { count }));
+                }
+              })}
+            />
+          )}
+        </>
+      )}
 
       <MenuSeparator />
 

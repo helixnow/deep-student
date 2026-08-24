@@ -119,6 +119,8 @@
     "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
     "markersNote": ".xmind 标记：{{markers}}",
+    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，当前版本导入不保留图片",
+    "importing": "正在导入导图，请稍候…",
     "saveAndImport": "保存并导入"
   },
   "presentation": {
@@ -449,7 +451,12 @@
     "clearBlanks": "清除所有挖空",
     "emptyHint": "选择文字后点击「挖空」创建填空题",
     "createBlankCta": "退出背诵并创建挖空",
-    "progress": "{{revealed}}/{{total}} 已揭示"
+    "progress": "{{revealed}}/{{total}} 已揭示",
+    "remaining": "剩余 {{count}}",
+    "blankBranch": "挖空整个分支",
+    "blankBranchDone": "已挖空 {{count}} 个节点",
+    "clearBranchBlanks": "清除分支挖空",
+    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空"
   },
   "errors": {
     "notFound": "未找到思维导图"

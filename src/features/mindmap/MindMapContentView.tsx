@@ -33,7 +33,12 @@ import {
   exportToImage,
   exportToXmindFile,
 } from './utils/exporters';
-import { createXmindImportReport, importFromXmindZip, importMindMap } from './utils/importers';
+import {
+  createXmindImportReport,
+  importFromMmapZip,
+  importFromXmindZip,
+  importMindMap,
+} from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
@@ -55,6 +60,7 @@ import {
   CaretUp,
   CaretDown,
   CaretLeft,
+  CircleNotch,
   Keyboard,
   WarningCircle,
   Gear,
@@ -242,6 +248,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   // 导入解析/读取失败：工具栏下方内联错误横幅（禁弹窗），支持一键重试
   const [importError, setImportError] = useState<string | null>(null);
+  // 大文件导入进度反馈：读取/解析期间显示内联忙碌横幅（.xmind zip 解包可能耗时数秒）
+  const [isImporting, setIsImporting] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [associationModeRequest, setAssociationModeRequest] = useState(0);
   const isCoarsePointer = useCoarsePointer();
@@ -740,17 +748,23 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
-          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
+          // .mmap（MindManager）与后端 chat 附件导入能力面对齐
+          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'mmap', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
         ],
       });
 
       if (!filePath) return;
+      // 选中文件后进入忙碌态：大 .xmind/.mmap 解包与万节点解析可能耗时数秒
+      setIsImporting(true);
 
       // P3 导入报告：收集 .xmind 导入时被静默丢弃的图片/概要计数
       const report = createXmindImportReport();
-      const imported = filePath.toLowerCase().endsWith('.xmind')
+      const lowerPath = filePath.toLowerCase();
+      const imported = lowerPath.endsWith('.xmind')
         ? await importFromXmindZip(await TauriAPI.readFileAsBytes(filePath), report)
-        : importMindMap(await fileManager.readTextFile(filePath), 'auto');
+        : lowerPath.endsWith('.mmap')
+          ? await importFromMmapZip(await TauriAPI.readFileAsBytes(filePath))
+          : importMindMap(await fileManager.readTextFile(filePath), 'auto');
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
       type CountableNode = { children?: CountableNode[] };
@@ -773,6 +787,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const message = error instanceof Error ? error.message : t('mindmap:import.failed');
       console.error('[MindMapContentView] Import failed:', error);
       setImportError(message);
+    } finally {
+      setIsImporting(false);
     }
   }, [setDocument, setFocusedNodeId, t]);
 
@@ -1305,6 +1321,21 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               >
                 <span className="text-xs">{t('mindmap:shellV2.conflict.keepServer')}</span>
               </DsButton>
+            </div>
+          </InlineCollapse>
+        )}
+      </AnimatePresence>
+
+      {/* 大文件导入进行中：内联忙碌横幅（进度反馈，防止界面看似卡死） */}
+      <AnimatePresence initial={false}>
+        {isImporting && (
+          <InlineCollapse role="status">
+            <div
+              className="mm-inline-banner flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-muted)]"
+              aria-busy="true"
+            >
+              <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" />
+              <span className="text-sm">{t('mindmap:import.importing')}</span>
             </div>
           </InlineCollapse>
         )}

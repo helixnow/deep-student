@@ -373,6 +373,13 @@ export interface MindMapStoreState {
   addBlankRange: (nodeId: string, range: BlankRange) => void;
   removeBlankRange: (nodeId: string, rangeIndex: number) => void;
   clearNodeBlanks: (nodeId: string) => void;
+  /**
+   * 按分支批量挖空：对 nodeId 子树内所有非空文本节点整行挖空（含自身），
+   * 已有挖空区间的节点合并为整行。返回受影响节点数（单次 undo 还原整批）。
+   */
+  blankBranchNodes: (nodeId: string) => number;
+  /** 清除 nodeId 子树（含自身）的全部挖空与揭示状态。返回受影响节点数。 */
+  clearBranchBlanks: (nodeId: string) => number;
 
   /** 大纲/画布：隐藏已完成且无未完成后代的节点（内存 UI 状态） */
   hideCompleted: boolean;
@@ -3147,6 +3154,49 @@ export function createMindMapStore(): MindMapStoreApi {
           }
           delete state.revealedBlanks[nodeId];
         });
+      },
+
+      // 按分支批量挖空（背诵）：子树内所有非空文本节点整行挖空，单次 undo 还原
+      blankBranchNodes: (nodeId: string) => {
+        let affected = 0;
+        applyMutation((state) => {
+          const branchRoot = findNodeById(state.document.root, nodeId);
+          if (!branchRoot) return;
+          const visit = (node: MindMapNode) => {
+            const textLength = node.text.length;
+            if (textLength > 0) {
+              const merged = mergeRanges(validateRanges(
+                [...(node.blankedRanges || []), { start: 0, end: textLength }],
+                textLength,
+              ));
+              node.blankedRanges = merged;
+              // 新遮挡的内容重置揭示状态，避免刚挖空就已「揭示」
+              delete state.revealedBlanks[node.id];
+              affected += 1;
+            }
+            node.children.forEach(visit);
+          };
+          visit(branchRoot);
+        });
+        return affected;
+      },
+
+      clearBranchBlanks: (nodeId: string) => {
+        let affected = 0;
+        applyMutation((state) => {
+          const branchRoot = findNodeById(state.document.root, nodeId);
+          if (!branchRoot) return;
+          const visit = (node: MindMapNode) => {
+            if (node.blankedRanges && node.blankedRanges.length > 0) {
+              delete node.blankedRanges;
+              affected += 1;
+            }
+            delete state.revealedBlanks[node.id];
+            node.children.forEach(visit);
+          };
+          visit(branchRoot);
+        });
+        return affected;
       },
 
       // 搜索节点
