@@ -37,6 +37,14 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('meta-llama/Llama-3.2')).toBe('meta');
     });
 
+    it('应该正确识别 Meta Llama 4 模型（含无连字符写法）', () => {
+      expect(detectProviderBrand('llama-4-maverick')).toBe('meta');
+      expect(detectProviderBrand('meta-llama/Llama-4-Scout')).toBe('meta');
+      expect(detectProviderBrand('Llama-4')).toBe('meta');
+      expect(detectProviderBrand('llama4')).toBe('meta');
+      expect(detectProviderBrand('llama-guard-3-8b')).toBe('meta');
+    });
+
     it('应该正确识别 Mistral 模型', () => {
       expect(detectProviderBrand('mistral-large')).toBe('mistral');
       expect(detectProviderBrand('mixtral-8x7b')).toBe('mistral');
@@ -191,6 +199,47 @@ describe('ProviderIconEngine', () => {
 
     it('未识别的模型不应该再回退到 generic 图标路径', () => {
       expect(getProviderIcon('unknown-model-xyz')).toBe('');
+    });
+  });
+
+  describe('2026.8 官方模型 ID 锁定（brand + iconPath）', () => {
+    it('Meta Llama 4 系列应该识别为 meta 并使用 meta 图标', () => {
+      for (const id of ['llama-4-maverick', 'meta-llama/Llama-4-Scout', 'Llama-4', 'llama4']) {
+        expect(detectProviderBrand(id)).toBe('meta');
+        expect(getProviderIcon(id)).toBe('/icons/providers/meta.svg');
+      }
+    });
+
+    it('Anthropic Claude 4.5/5 系列应该识别为 anthropic 并使用 anthropic 图标', () => {
+      // 官方 Haiku ID 为 claude-haiku-4-5（不存在 claude-haiku-5）
+      for (const id of ['claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5']) {
+        expect(detectProviderBrand(id)).toBe('anthropic');
+        expect(getProviderIcon(id)).toBe('/icons/providers/anthropic.svg');
+      }
+    });
+
+    it('Google Gemini 3.x 系列应该识别为 google 并使用 gemini 图标', () => {
+      for (const id of ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite']) {
+        expect(detectProviderBrand(id)).toBe('google');
+        expect(getProviderIcon(id)).toBe('/icons/providers/gemini.svg');
+      }
+    });
+
+    it('xAI Grok 4 系列应该识别为 xai 并使用 grok 图标', () => {
+      for (const id of ['grok-4', 'grok-4-0709']) {
+        expect(detectProviderBrand(id)).toBe('xai');
+        expect(getProviderIcon(id)).toBe('/icons/providers/grok.svg');
+      }
+    });
+
+    it('MiniMax-M2 应该识别为 minimax', () => {
+      expect(detectProviderBrand('MiniMax-M2')).toBe('minimax');
+      expect(getProviderIcon('MiniMax-M2')).toBe('/icons/providers/minimax.svg');
+    });
+
+    it('gpt-5.6 应该识别为 openai', () => {
+      expect(detectProviderBrand('gpt-5.6')).toBe('openai');
+      expect(getProviderIcon('gpt-5.6')).toBe('/icons/providers/openai.svg');
     });
   });
 
