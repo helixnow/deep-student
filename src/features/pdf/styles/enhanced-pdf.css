@@ -522,13 +522,15 @@
   border-bottom: 1px solid hsl(var(--border));
 }
 
-.ds-pdf__sidebar-tab {
+/* tab 走 DsButton（规范），双类名选择器压过其基础 utility（高度/边距/圆角/配色） */
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 3px;
   min-width: 30px;
+  width: auto;
   height: 28px;
   padding: 0 6px;
   border: none;
@@ -539,12 +541,12 @@
   transition: background .15s ease, color .15s ease;
 }
 
-.ds-pdf__sidebar-tab:hover {
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab:hover {
   background: var(--interactive-hover, hsl(var(--accent)));
   color: hsl(var(--foreground));
 }
 
-.ds-pdf__sidebar-tab.active {
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab.active {
   background: var(--interactive-selected, hsl(var(--accent)));
   color: hsl(var(--foreground));
 }
@@ -1780,9 +1782,11 @@
   background: hsl(var(--muted) / 0.5);
 }
 
-.ds-pdf__mobile-panel-tab {
+/* tab 走 DsButton（规范），双类名选择器压过其基础 utility（触屏 44px 高度等） */
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab {
   flex: 1;
   min-width: 0;
+  height: auto;
   min-height: 34px;
   padding: 6px 10px;
   font-size: 13px;
@@ -1797,7 +1801,12 @@
   white-space: nowrap;
 }
 
-.ds-pdf__mobile-panel-tab.active {
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab:hover {
+  background: transparent;
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab.active {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   box-shadow: 0 1px 3px hsl(var(--ring) / 0.12);

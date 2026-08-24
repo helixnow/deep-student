@@ -3511,8 +3511,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               <div className="ds-pdf__sidebar-inner">
                 <div className="ds-pdf__sidebar-tabs" role="tablist" aria-label={t('pdf:toolbar.sidebar')}>
                   {outline && outline.length > 0 && (
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="ghost"
                       role="tab"
                       aria-selected={sidebarMode === 'outline'}
                       className={`ds-pdf__sidebar-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
@@ -3521,10 +3521,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       aria-label={sidebarTabLabels.outline}
                     >
                       <List size={15} />
-                    </button>
+                    </DsButton>
                   )}
-                  <button
-                    type="button"
+                  <DsButton
+                    variant="ghost"
                     role="tab"
                     aria-selected={sidebarMode === 'thumbnails'}
                     className={`ds-pdf__sidebar-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
@@ -3533,9 +3533,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     aria-label={sidebarTabLabels.thumbnails}
                   >
                     <GridFour size={15} />
-                  </button>
-                  <button
-                    type="button"
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
                     role="tab"
                     aria-selected={sidebarMode === 'bookmarks'}
                     className={`ds-pdf__sidebar-tab ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
@@ -3545,10 +3545,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   >
                     <BookmarkSimple size={15} />
                     {bookmarks.length > 0 && <span className="ds-pdf__sidebar-tab-count">{bookmarks.length}</span>}
-                  </button>
+                  </DsButton>
                   {(canPersistAnnotations || highlights.length > 0) && (
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="ghost"
                       role="tab"
                       aria-selected={sidebarMode === 'highlights'}
                       className={`ds-pdf__sidebar-tab ${sidebarMode === 'highlights' ? 'active' : ''}`}
@@ -3558,7 +3558,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     >
                       <Highlighter size={15} />
                       {highlights.length > 0 && <span className="ds-pdf__sidebar-tab-count">{highlights.length}</span>}
-                    </button>
+                    </DsButton>
                   )}
                   <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm ds-pdf__sidebar-close" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
                     <X size={14} />
@@ -3763,44 +3763,44 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </DsButton>
             <div className="ds-pdf__mobile-panel-tabs" role="tablist">
               {outline && outline.length > 0 && (
-                <button
-                  type="button"
+                <DsButton
+                  variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'outline'}
                   className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('outline')}
                 >
                   {t('pdf:toolbar.outline')}
-                </button>
+                </DsButton>
               )}
-              <button
-                type="button"
+              <DsButton
+                variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'thumbnails'}
                 className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('thumbnails')}
               >
                 {t('pdf:toolbar.thumbnails')}
-              </button>
-              <button
-                type="button"
+              </DsButton>
+              <DsButton
+                variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'bookmarks'}
                 className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('bookmarks')}
               >
                 {t('pdf:bookmark.tabLabel')}
-              </button>
+              </DsButton>
               {(canPersistAnnotations || highlights.length > 0) && (
-                <button
-                  type="button"
+                <DsButton
+                  variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'highlights'}
                   className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'highlights' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('highlights')}
                 >
                   {t('pdf:toolbar.highlight_tab')}
-                </button>
+                </DsButton>
               )}
             </div>
             <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
