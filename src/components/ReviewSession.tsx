@@ -393,12 +393,16 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       {/* 操作按钮 */}
       <div className="flex items-center gap-3">
         {onRestart && (
-          <DsButton variant="ghost" onClick={onRestart} className="gap-2">
+          <DsButton
+            variant="ghost"
+            onClick={onRestart}
+            className="gap-2 [@media(pointer:coarse)]:min-h-11"
+          >
             <ArrowCounterClockwise size={16} />
             {t('review:complete.reviewAgain')}
           </DsButton>
         )}
-        <DsButton onClick={onClose} className="gap-2">
+        <DsButton onClick={onClose} className="gap-2 [@media(pointer:coarse)]:min-h-11">
           {t('review:complete.finish')}
           <ArrowRight size={16} />
         </DsButton>
@@ -685,7 +689,11 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         <p className="text-muted-foreground">
           {t('review:session.noItems')}
         </p>
-        <DsButton variant="ghost" onClick={handleClose} className="mt-4">
+        <DsButton
+          variant="ghost"
+          onClick={handleClose}
+          className="mt-4 [@media(pointer:coarse)]:min-h-11"
+        >
           {t('common:close')}
         </DsButton>
       </div>
