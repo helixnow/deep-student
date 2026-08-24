@@ -37,6 +37,10 @@
 | HPIAS LLM synthesis | `hpias/synthesis.rs` + Model2 Markdown 综合 | ✅ Round 25 |
 | SOTA acceptance contract | 15 项集成要求静态验收 | ✅ Round 20 |
 | 18 块 + Intent v1.1 + telemetry + fallback | markdown/chart/steps/table + coercePartialIntent + undo | ✅ Round 40/41 |
+| 18 块宿主接线 | Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard builders | ✅ Round 41 |
+| 渲染隔离 + Markdown 消毒 | `GenerativeBlockSlot` + `sanitizeGenerativeMarkdown` | ✅ Round 41 |
+| Rust v1.1 version/layout | executor 契约 + e2e（拒 `"2"`、透传 grid） | ✅ Round 41 |
+| compact / i18n / testid / migrateToV11 | 移动端密度、词条合同、选择器合同、v1→v1.1 | ⏳ Round 42 进行中 |
 
 ## 安全 / HITL（#8）
 
@@ -72,4 +76,20 @@
 | 首选宿主 | `NotesContextPanel` 只读摘要 |
 | 写入 | 仅 `canvas:ai-edit-request` + OCC |
 | 全文 | `getFullMarkdown()` / DSTU |
+| 新块 | Round 41 已接 markdown / table 等（见 `buildNoteSummaryIntent`） |
 | 详情 | `NOTES_INTEGRATION.md` |
+
+## Round 42 进行中
+
+并行 10 项补洞（不改 Goal 为 complete；合入 main 仍 ⏳）：
+
+1. 移动端 compact
+2. `migrateToV11`
+3. i18n 完整合同
+4. 宿主新块测试
+5. ActionBar 键盘
+6. 18 块 testid 合同
+7. Chat 块新 type 路径
+8. Widget 回归
+9. last-good 持久化
+10. SOTA 文档补洞

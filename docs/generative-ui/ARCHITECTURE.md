@@ -1,6 +1,6 @@
 # Generative UI 架构方案（DeepStudent）
 
-> 分支：`Generative-UI-0824` · Round 9+ 持续迭代中
+> 分支：`Generative-UI-0824` · Round 41/42（18 块已接宿主；R42 补洞进行中）
 
 ## 1. 核心结论
 
@@ -27,10 +27,12 @@ src/features/generative-ui/
 │   ├── hpiasEventBridge.ts      # hpias_event → HpiasStore
 │   └── resolveGenerativeUIChatActionHandlers.ts
 ├── handlers/              # workbench / notes / flashcard action handlers
-├── utils/                 # build*Intent + dispatchCanvasAIEditRequest
+├── utils/                 # build*Intent + dispatchCanvasAIEditRequest + sanitizeGenerativeMarkdown
 ├── blocks/index.ts        # 18 种内置块（import 即注册）
-└── components/
+└── components/            # 含 GenerativeBlockSlot / GenerativeUIErrorBoundary
 ```
+
+宿主简报（Round 41 已接线）：Exam / Memory / IndexStatus / LearningHub / Notes / Translation / HPIAS / AiDashboard 的 `build*Intent` 已纳入 table / chart / steps / markdown，并可输出 v1.1 `layout.mode=grid`。
 
 ### Intent v1.1 layout
 
@@ -39,6 +41,20 @@ src/features/generative-ui/
 - 块级可选 `span?: 1|2|3`（仅 grid 下映射到 `sm:col-span-*`），非法值钳制到 1–3
 - Renderer：`stack` 保持 `grid gap-3` 单列；`grid` 按 columns 加 `sm:grid-cols-2` / `sm:grid-cols-3`，并写 `data-layout-mode` / `data-layout-columns`
 - 未知 version（如 `'2'`）：`parseGenerativeUIIntent` 失败；流式 parser 降级为 v1 last-good blocks（layout 未闭合时同样保留已提交块）
+
+### 渲染隔离与消毒（Round 41）
+
+- 块级隔离：`GenerativeBlockSlot`（`React.memo`）包一层 `GenerativeUIErrorBoundary`；单块抛错不拖垮整页，槽位挂 `data-generative-block="<type>"` / `data-block-type`
+- Markdown 消毒：`sanitizeGenerativeMarkdown` 在进入 Chat `MarkdownRenderer` 前剥 script / on* / 危险标签（围栏代码原文保留）；与 `rehype-sanitize` defaultSchema 对齐
+- 流式坏 JSON：`coercePartialIntent` + last-good blocks，非整页报错（`data-stream-fallback`）
+
+### Rust v1.1 契约（Round 41）
+
+`generative_ui_executor::parse_intent`：
+
+- `version` 缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值
+- `layout.mode` 识别 `stack` | `grid`；未知 mode 不拒绝整份 intent（前端钳制）
+- e2e：`execute_v1_1_grid_layout_emits_generative_ui` + `execute_rejects_version_2`
 
 ## 3. 内置块（18 种）
 
@@ -97,33 +113,37 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 - `src/features/chat/plugins/events/generativeUI.ts`
 - `src-tauri/src/chat_v2/tools/generative_ui_executor.rs`
 
-## 6. 集成状态（Round 9）
+## 6. 集成状态（Round 41/42）
 
 | 模块 | 状态 |
 |------|------|
 | Chat generative_ui 块 | ✅ |
 | 流式 parser + chunkBuffer | ✅ |
-| Notes 摘要 + HITL 写入 | ✅ |
-| Learning Hub 简报（Exam/Memory/IndexStatus） | ✅ |
+| Notes 摘要 + HITL 写入 | ✅ 已接 markdown / table 等新块（Round 41） |
+| Learning Hub 简报（Exam/Memory/IndexStatus） | ✅ table/chart/steps/markdown + v1.1 grid（Round 41） |
 | Workbench DesktopAiBriefingWidget | ✅ |
-| Workbench AiDashboardAppWindow + agentManifest | ✅ Round 13 |
+| Workbench AiDashboardAppWindow + agentManifest | ✅ Round 13；Round 41 接入新块 |
 | mindmap-embed E2E | ✅ |
+| 18 块宿主接线 | Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard ✅ Round 41 |
+| 渲染隔离 + Markdown 消毒 | `GenerativeBlockSlot` + `sanitizeGenerativeMarkdown` ✅ Round 41 |
+| Rust Intent v1.1 | version/layout 契约 + e2e ✅ Round 41 |
 | 18 块 + v1.1 layout E2E | Playwright CT + [TAURI_E2E.md](./TAURI_E2E.md) ✅ Round 41 |
-| prompt props 同步 | ✅ |
+| prompt props 同步 | ✅ few-shot / skill 18 type（Round 41） |
 | 闪卡 save-to-library | ✅ Round 10 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
-| HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
+| HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14；Round 41 接入新块 |
 | Hpias Chat 事件桥 | `hpiasEventBridge` + Chat 块挂载 ✅ Round 16 |
 | Research action handlers | `copy-report` / `export-plan` ✅ Round 18 |
-| Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15 |
+| Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15；Round 41 接入新块 |
 | Translation 流式简报 | `translationStreamBridge` + streamKey ✅ Round 17 |
+| compact / i18n / testid / migrateToV11 | ⏳ Round 42 进行中 |
 
 ## 7. 测试
 
-- vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime**，含 18 块 smoke）
+- vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime** / isolation / sanitize，含 18 块 smoke）
 - Playwright CT：`tests/ct/generative-ui/` — 18 块 smoke（含 markdown/chart/steps/table）+ v1.1 layout 可选检查
-- Rust：`generative_ui_executor` 单元 + hpias 模块（需 Cargo stable + Linux GTK CI）
-- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)
+- Rust：`generative_ui_executor` 单元（含 v1.1 version/layout）+ hpias 模块（需 Cargo stable + Linux GTK CI）
+- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42 compact/i18n/testid/migrate 仍 ⏳）
 - Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

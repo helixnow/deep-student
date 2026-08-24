@@ -1,6 +1,6 @@
 # Generative UI SOTA 验收清单
 
-> 分支 `Generative-UI-0824` · 对照目标态「结构化意图 + 组件注册表」
+> 分支 `Generative-UI-0824` · Round 41/42 · 对照目标态「结构化意图 + 组件注册表」
 
 ## 架构核心
 
@@ -13,9 +13,17 @@
 | 流式 parser + chunkBuffer | `parser.ts` + `generativeUIStreamRegistry` | ✅ |
 | actionHandlers 确定性副作用 | `handlers/` + HITL riskLevel | ✅ |
 | Intent v1.1 layout | `schema.ts` layout.mode stack/grid | ✅ Round 40 |
+| Rust v1.1 version/layout 契约 | `generative_ui_executor.rs` + e2e | ✅ Round 41 |
+| 18 块宿主接线 | Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard | ✅ Round 41 |
+| 渲染隔离 | `GenerativeBlockSlot` memo + ErrorBoundary | ✅ Round 41 |
+| Markdown XSS 消毒 | `sanitizeGenerativeMarkdown` | ✅ Round 41 |
 | 流式 last-good 恢复 | `coercePartialIntent` + Renderer fallback | ✅ Round 40 |
 | Action telemetry + undo | `actionTelemetry.ts` / `actionUndoStack.ts` | ✅ Round 40 |
-| A11y landmarks | `generativeUIA11y.contract.test.tsx` | ✅ Round 40 |
+| A11y landmarks | `generativeUIA11y.contract.test.tsx` | ✅ Round 40/41 |
+| 移动端 compact | density/variant compact + 窄屏布局 | ⏳ Round 42 进行中 |
+| i18n 完整合同 | zh-CN / en-US 块词条 + builder labels | ⏳ Round 42 进行中 |
+| 18 块 testid 合同 | `data-generative-block` / `data-testid` 全覆盖 | ⏳ Round 42 进行中 |
+| v1 → v1.1 migrate | `migrateToV11` 兼容升级 | ⏳ Round 42 进行中 |
 
 ## Chat 桥接
 
@@ -32,12 +40,27 @@
 
 | 模块 | 挂载 / 简报 | 状态 |
 |------|-------------|------|
-| Learning Hub (Exam/Memory/IndexStatus) | `*GenerativeBriefing` | ✅ |
-| Workbench | `DesktopAiBriefingWidget` + AiDashboard | ✅ |
-| Notes | `NotesContextPanel` + edit suggestion | ✅ |
-| Translation | 会话 + 流式简报 | ✅ |
-| Research | plan/report/digest + HPIAS 面板 | ✅ |
+| Learning Hub (Exam/Memory/IndexStatus) | `*GenerativeBriefing` + table/chart/steps/markdown | ✅ Round 41 |
+| Workbench | `DesktopAiBriefingWidget` + AiDashboard | ✅ Round 41 接入新块 |
+| Notes | `NotesContextPanel` + edit suggestion + 新块 | ✅ Round 41 |
+| Translation | 会话 + 流式简报 + 新块 | ✅ Round 41 |
+| Research | plan/report/digest + HPIAS 面板 + 新块 | ✅ Round 41 |
 | Mindmap | mindmap-embed E2E | ✅ |
+
+## Round 42 补洞（进行中）
+
+| 项 | 证据 / 落点 | 状态 |
+|----|-------------|------|
+| 移动端 compact | density / variant compact + 窄屏 | ⏳ |
+| migrateToV11 | v1 文档升级为 v1.1 layout | ⏳ |
+| i18n 完整合同 | zh-CN / en-US + builder labels | ⏳ |
+| 宿主新块测试 | 各 `*GenerativeBriefing` / builder 单测 | ⏳ |
+| ActionBar 键盘 | toolbar 焦点与快捷键 | ⏳ |
+| 18 块 testid 合同 | `data-generative-block` / `data-testid` | ⏳ |
+| Chat 块新 type 路径 | Chat `generative_ui` 渲染 markdown/chart/steps/table | ⏳ |
+| Widget 回归 | DesktopAiBriefing / Hub 挂载点 | ⏳ |
+| last-good 持久化 | 流式坏 JSON 恢复跨 chunk | ⏳ |
+| SOTA 文档补洞 | 本清单 + ARCHITECTURE / ROADMAP / PROGRESS | ⏳ 本轮文档已对齐真实态 |
 
 ## HPIAS 后端
 
@@ -66,16 +89,17 @@
 ## 距 SOTA 完整态剩余项
 
 1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
-2. **合并 main** — 待 CI 绿 + 人工 approve
-3. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+2. **合并 main** — 待 CI 绿 + 人工 approve（Goal 未标 complete）
+3. **Round 42 补洞** — compact / i18n / testid / migrateToV11 / ActionBar 键盘 / Chat 新 type 路径 / Widget 回归 / last-good 持久化（进行中）
+4. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
-| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks | ✅ 分支真实态（Round 40/41） |
-| 多轮迭代至 SOTA | Round 6–41 + 本清单全绿 | ✅ 分支真实态 |
-| 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E | ✅ |
+| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41/42） |
+| 多轮迭代至 SOTA | Round 6–42；R42 补洞未收口 | ⏳ 进行中（不标 complete） |
+| 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

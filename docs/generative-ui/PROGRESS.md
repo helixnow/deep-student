@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 42（2026-08-24）— 10 子代理：SOTA 补洞
+
+在 Round 41 已落地「18 块接宿主 + 隔离 + 消毒 + v1.1 Rust」之上并行 10 项（进行中，Goal 不标 complete）：
+
+1. 移动端 compact（density / 窄屏）
+2. `migrateToV11`（v1 → v1.1 兼容升级）
+3. i18n 完整合同（zh-CN / en-US + builder labels）
+4. 宿主新块测试（Exam/Memory/Index/Hub/Notes/Translation/HPIAS/Dashboard）
+5. ActionBar 键盘可达
+6. 18 块 testid 合同（`data-generative-block` / `data-testid`）
+7. Chat 块新 type 路径（markdown/chart/steps/table）
+8. Widget 回归（DesktopAiBriefing / Hub 挂载点）
+9. last-good 持久化（流式坏 JSON 恢复）
+10. SOTA 文档补洞（本轮：ARCHITECTURE / SOTA_CHECKLIST / ROADMAP / PROGRESS）
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 41（2026-08-24）— 10 子代理：宿主接入 + 隔离 + 契约
 
 并行 10 个足量任务，把 Round 40 的 18 块接到真实宿主并加固：
