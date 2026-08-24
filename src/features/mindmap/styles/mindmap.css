@@ -2090,6 +2090,17 @@
   .mm-node-actions .mm-action-btn--delete {
     display: none;
   }
+
+  /* 画布右下角选择/拖拽/滚轮分段按钮（24px）触屏直接放大到 44px 触控目标；
+     容器随之升高（44px + 2×2px 内衬 + 2×1px 边框 = 50px）。桌面细指针保持 24/30 */
+  .mm-canvas-mode-button {
+    min-height: 44px;
+    height: 44px;
+  }
+  .mm-canvas-mode-switch {
+    min-height: 50px;
+    height: 50px;
+  }
 }
 .mm-note-first-line {
   display: -webkit-box;
