@@ -24,11 +24,10 @@
 
 ## Round 20（2026-08-24）
 
-- [x] **Rust HPIAS emit POC** — `src-tauri/src/hpias/events.rs` + `HpiasEventEmitter`（`hpias_event` 通道）
-- [x] `GenerativeUiExecutor` — `researchSessionId` 时 emit `session_started` 激活前端桥
+- [x] Rust **`hpias::HpiasEventEmitter`**（Round 20）+ executor `session_started` emit
 - [x] **`generativeUISotaAcceptance.contract.test.ts`** — 15 项 SOTA 集成要求静态验收
-- [x] Rust 1.98 stable  toolchain 验证 `generative_ui_executor` + `hpias` 单元测试通过
-- [x] ARCHITECTURE / INTEGRATION_ROADMAP / PROGRESS 更新
+- [x] Rust mapping contract 扩展 hpias emit 接线验证
+- [x] 175 项 vitest 全绿；Rust `cargo test` 本环境 linker（`-fuse-ld=lld`）仍不可跑通，靠源码 + contract 验证
 
 ## Round 19（2026-08-24）
 
