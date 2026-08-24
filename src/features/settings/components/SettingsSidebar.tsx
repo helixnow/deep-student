@@ -97,7 +97,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             variant="nav"
             size="md"
             onClick={onBack}
-            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
+            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-left"
           >
             <ArrowLeft size={18} className="h-[18px] w-[18px]" />
             <span className="truncate">
