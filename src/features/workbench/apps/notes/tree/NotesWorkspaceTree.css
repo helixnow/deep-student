@@ -475,4 +475,11 @@
   .nwt-link-drag {
     flex: 0 0 44px;
   }
+
+  /* 整行可选/打开：触屏放大到 44px 触控目标（桌面保持 30/26 密度档） */
+  .nwt-row,
+  .nwt-root {
+    height: 44px;
+    min-height: 44px;
+  }
 }
