@@ -166,14 +166,15 @@
 15. ~~**Round 61 store 会话守卫**~~ — ✅ 外会话 plan/synthesis 不覆盖活跃 HPIAS store
 16. ~~**Round 62 文本消毒 lint**~~ — ✅ `sanitizeGenerativeText` 去掉控制字符字面量正则
 17. ~~**Round 63 多会话切片 / 未注册标签**~~ — ✅ `sessions[id]` 保活并发 HPIAS；未注册 ActionBar 不用模型文案
-18. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+18. ~~**Round 64 共享订阅 / 表现属性**~~ — ✅ 多 Chat 块共享一条 `hpias_event`；Markdown 剥 `style`/`srcdoc`
+19. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–63 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–64 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

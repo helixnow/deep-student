@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 64（2026-08-24）— 共享 HPIAS 订阅
+
+1. [x] `retainSharedHpiasEventBridge` 引用计数，多 Chat 研究块只 listen 一次
+2. [x] Markdown 剥 `style` / `srcdoc`，避免 CSS / srcdoc 注入绕过
+3. [x] 运行时验收：两个 Chat 研究块共享一条 listen，synthesis 只折叠一次
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 63（2026-08-24）— HPIAS 多会话切片
 
 1. [x] `HpiasStore.sessions` 按 sessionId 保活，外会话事件不再丢弃

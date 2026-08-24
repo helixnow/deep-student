@@ -149,6 +149,16 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(sanitized).toContain('<https://ok.test>');
     expect(sanitized).toContain('https://ok.test/a.png');
   });
+
+  it('strips style and srcdoc attributes before render', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      '<p style="background:url(javascript:alert(1))">hi</p><div srcdoc="<script>alert(1)</script>">x</div>',
+    );
+    expect(sanitized).not.toMatch(/style=/i);
+    expect(sanitized).not.toMatch(/srcdoc=/i);
+    expect(sanitized).not.toMatch(/javascript:/i);
+    expect(sanitized).toContain('hi');
+  });
 });
 
 describe('MarkdownBlock', () => {
