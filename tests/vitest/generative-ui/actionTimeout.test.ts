@@ -35,8 +35,9 @@ describe('wrapActionWithTimeout', () => {
     );
 
     const promise = wrapped.handler({ source: 'test' });
+    const settled = promise.then((result) => result);
     await vi.advanceTimersByTimeAsync(1_000);
-    await expect(promise).resolves.toEqual({ undo });
+    await expect(settled).resolves.toEqual({ undo });
   });
 
   it('rejects with GenerativeActionTimeoutError and correct fields', async () => {
@@ -49,12 +50,14 @@ describe('wrapActionWithTimeout', () => {
     );
 
     const promise = wrapped.handler();
+    const pending = promise.then(
+      () => {
+        throw new Error('expected timeout rejection');
+      },
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(GENERATIVE_ACTION_TIMEOUT_MS);
-
-    let error: unknown;
-    await promise.catch((caught) => {
-      error = caught;
-    });
+    const error = await pending;
 
     expect(error).toBeInstanceOf(GenerativeActionTimeoutError);
     expect(error).toMatchObject({
@@ -112,8 +115,14 @@ describe('wrapActionWithTimeout', () => {
     );
 
     const promise = wrapped.handler();
+    const pending = promise.then(
+      () => {
+        throw new Error('expected handler rejection');
+      },
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(50);
-    await expect(promise).rejects.toBe(boom);
+    await expect(pending).resolves.toBe(boom);
   });
 
   it('preserves id, label, and riskLevel', () => {

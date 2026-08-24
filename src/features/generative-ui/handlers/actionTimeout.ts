@@ -35,7 +35,7 @@ export function wrapActionWithTimeout(
 
   return {
     ...def,
-    handler: (payload) => {
+    handler: async (payload) => {
       const handlerPromise = Promise.resolve(def.handler(payload));
       // timeout 先胜出时，底层 handler 仍可能后续 reject；吞掉以免未处理拒绝。
       handlerPromise.catch(() => undefined);
@@ -46,12 +46,16 @@ export function wrapActionWithTimeout(
           reject(new GenerativeActionTimeoutError(def.id, timeoutMs));
         }, timeoutMs);
       });
+      // race 结算后 timeoutPromise 可能仍处于 pending；clear 后不应再 reject。
+      timeoutPromise.catch(() => undefined);
 
-      return Promise.race([handlerPromise, timeoutPromise]).finally(() => {
+      try {
+        return await Promise.race([handlerPromise, timeoutPromise]);
+      } finally {
         if (timer !== undefined) {
           clearTimeout(timer);
         }
-      });
+      }
     },
   };
 }
