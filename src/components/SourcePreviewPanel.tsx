@@ -175,7 +175,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
             </div>
           </div>
         </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('source_preview.close')}>
           <X size={20} className="text-[hsl(var(--muted-foreground))]" />
         </DsButton>
       </div>
