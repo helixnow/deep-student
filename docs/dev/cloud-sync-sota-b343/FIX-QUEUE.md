@@ -572,3 +572,10 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-format | `cursor/cloud-sync-sota-delta-format-b343` | DELTA-R11 R12-delta-format：`SnapshotDescriptorV2` / object ref / repo config codec + 上限 + 未来版本 fail-closed；**不接上传/恢复/UI** | 新 `cloud_storage/delta_format.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_format;` 一行；新 `src-tauri/tests/sync_r12_delta_format.rs` |
 
 不碰 `ftp.rs` / notes / chat / workbench / `version.ts` / pdfium。不放松 fail-closed。
+
+### wrap-conflict 回传（分支 `cursor/cloud-sync-sota-wrap-conflict-b343`，关 FINDINGS-WRAP P2-2 / PROTOCOL-R10 P2-3）
+
+首轮同名任务因环境不可达失败，本轮从 `origin/cursor/cloud-sync-sota-b343` @ `5440d582` 重做。交付：
+
+- **实现**：`commands_sync.rs` resolve 快速路径在 `BEGIN IMMEDIATE` 后、标记 resolved 前用 `SyncManager::get_record_data` 事务内重读业务行，按同一套 `(operation, data)` 重算 already-desired；不再匹配即拒绝（「本地记录在冲突确认期间已变化，请刷新后重新确认」），不用旧快照标 resolved。generation 重验保留，慢速路径语义未动。
+- **测试**：`sync_r10_protocol_locks.rs` P2-3 源码锁按其自述改写为「已关」断言（重读存在、位于标记之前、fail-closed 文案在），P2-1 / KDF 用例未动；新 `sync_r12_conflict_fast_path.rs` 两例——业务行未变时快速路径照常标 resolved（重读不误伤）、并发写锁窗口内的本地编辑被事务内重读拦下（冲突保持未解决、新编辑保留）。

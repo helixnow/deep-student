@@ -84,7 +84,7 @@ R09/R10 已有宿主机契约与 Android 壳层测试，但当前文档目录没
 | §2 P2-3 文件名有损 | **已合（names2）** | rclone 风格可逆映射 + 旧 `_` key 双查找；段 255 / 整 key 240 fail-closed |
 | §3.1 增量去重 | **调研已合，生产未实现** | [DELTA-R11.md](./DELTA-R11.md)；整 ZIP 零变化仍约 145 MiB；不能宣称增量/去重/CDC |
 | §2 P2-1 v1 升级信任 | **仍开** | 升级前未试解既有备份；见 FIX-QUEUE wrap-v1trust |
-| §2 P2-2 冲突快速路径 | **仍开** | `already_in_desired_state` 仍在事务外判断业务行；见 FIX-QUEUE wrap-conflict |
+| §2 P2-2 冲突快速路径 | **已关（wrap-conflict）** | 快速路径在 `BEGIN IMMEDIATE` 内用 `get_record_data` 重读业务行并重算 already-desired，不匹配即拒绝；锁定测 `sync_r10_protocol_locks.rs` P2-3 用例 + 行为验收 `sync_r12_conflict_fast_path.rs` |
 | §4 条件 1 完整 CI 绿灯 | **仍开** | 后继 HEAD CI 多为 pending/queued |
 | §4 条件 2 租约 | **已合** | 见上 |
 | §4 条件 3 Android 真机核对 | **仍开** | 手册有、真机签字无 |

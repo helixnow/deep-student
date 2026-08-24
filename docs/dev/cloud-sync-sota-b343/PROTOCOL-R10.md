@@ -19,6 +19,8 @@
 
 > **R10-verifier 回写（本文档定稿后）**：P2-2 已关——`derive_key` 应用级上限（1 GiB / t≤16 / p≤8），校验子与 DSBK 头共用同一入口，超限派生前 fail-closed；锁定测 3 号已改写为断言边界，验收测见 `sync_r10_verifier.rs`。下文 P2-2 相关行保持历史留档不改。仍开收敛为 3 件（P2-3、P2-1 残余、文件名长度）。
 
+> **wrap-conflict 回写（Round 13）**：P2-3 已关——resolve 快速路径在 `BEGIN IMMEDIATE` 后、标记 resolved 前用 `get_record_data` 事务内重读业务行，按同一套 `(operation, data)` 重算 already-desired，不匹配即 fail-closed 拒绝（「本地记录在冲突确认期间已变化」）；锁定测 4 号已改写为断言该重读存在，行为级验收见 `sync_r12_conflict_fast_path.rs`。下文 P2-3 相关行保持历史留档不改。
+
 ---
 
 ## FINDINGS-R01 核销（R01 → R02 修复 → R03 复审链）
