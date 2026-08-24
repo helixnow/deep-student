@@ -88,6 +88,13 @@ jobs:
       - name: Build production bundle
         run: npx vite build
 
+      # WI-8：bundle 体积门禁。阈值 = 2026-08-24 基线 gzip +5%
+      # （见 scripts/check-bundle-size.mjs 的 BUDGETS 表）。
+      # 引入期先跑 warn 模式：超限打 ::warning:: 注解 + job summary，
+      # exit 0 不阻塞；观察两周（至 ~2026-09-07）后去掉 --warn-only 转阻塞。
+      - name: Bundle size check (warn mode)
+        run: node scripts/check-bundle-size.mjs --warn-only
+
       # 审查 F11：此前 `npm audit || true` 永远绿灯且无人看日志。
       # 保持非阻塞（npm 无 audit.toml 式忽略清单，深层传递依赖难以升级），
       # 但结果写入 job summary，红字可见。
