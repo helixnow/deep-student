@@ -24,6 +24,7 @@
 pub mod backup_lease;
 mod config;
 pub mod delta_format;
+pub mod delta_upload;
 #[cfg(not(target_os = "android"))]
 mod ftp;
 /// [R11-check] 云端仓库巡检（restic `check` 档，只读不修）
