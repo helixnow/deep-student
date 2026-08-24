@@ -333,8 +333,28 @@ interface AutoSyncState {
   setIntervalPreset: (preset: AutoSyncIntervalPreset) => void;
 }
 
+/** persist 切片：v1 只有 enabled；缺字段必须补默认值，禁止把 Partial 当完整快照。 */
+type AutoSyncPersisted = Pick<
+  AutoSyncState,
+  'enabled' | 'intervalPreset' | 'lastOutcome' | 'lastRunAtMs'
+>;
+
+function migrateAutoSyncPersisted(persisted: unknown): AutoSyncPersisted {
+  const p = (persisted ?? {}) as Partial<AutoSyncPersisted>;
+  const intervalPreset =
+    p.intervalPreset === '15m' || p.intervalPreset === '1h' || p.intervalPreset === '6h'
+      ? p.intervalPreset
+      : AUTO_SYNC_DEFAULT_INTERVAL_PRESET;
+  return {
+    enabled: p.enabled === true,
+    intervalPreset,
+    lastOutcome: p.lastOutcome ?? null,
+    lastRunAtMs: typeof p.lastRunAtMs === 'number' ? p.lastRunAtMs : null,
+  };
+}
+
 export const useAutoSyncStore = create<AutoSyncState>()(
-  persist(
+  persist<AutoSyncState, [], [], AutoSyncPersisted>(
     (set) => ({
       enabled: false,
       intervalPreset: AUTO_SYNC_DEFAULT_INTERVAL_PRESET,
@@ -358,14 +378,13 @@ export const useAutoSyncStore = create<AutoSyncState>()(
     {
       name: 'dstu-auto-sync',
       version: 2,
-      partialize: (state) => ({
+      partialize: (state): AutoSyncPersisted => ({
         enabled: state.enabled,
         intervalPreset: state.intervalPreset,
         lastOutcome: state.lastOutcome,
         lastRunAtMs: state.lastRunAtMs,
       }),
-      // v1 只持久化 enabled；新字段由 create 的默认值兜底，无需改写
-      migrate: (persisted) => persisted as Partial<AutoSyncState>,
+      migrate: migrateAutoSyncPersisted,
     },
   ),
 );
