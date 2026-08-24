@@ -245,3 +245,16 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **测试**：改写 `tests/vitest/data-governance/r07-cloud-only-delete-conflict.test.tsx` 锁定新行为——cloud-only「保留本地」可点、确认拒绝不执行、resolve 的 expectedConflictIds 仅含 cloud 行 id、批量 keep_local 包含 cloud-only 组且仍走确认。
 
 **文件面认领（独占）**：`RecordConflictsPanel.tsx`、`data.json`（zh/en，仅 governance 新增两键）、`r07-cloud-only-delete-conflict.test.tsx`、`FINDINGS-R07.md` P1-1 回写、本节。
+
+### R10-protocol（分支 `cursor/cloud-sync-sota-r10-protocol-b343`，重派；只读调研 + 新文档 + 新锁定测）
+
+模型：`claude-fable-5-thinking-high`（用户要求 xhigh，slug 不可用，明示降级，非静默）。交付：
+
+- [PROTOCOL-R10.md](./PROTOCOL-R10.md)：FINDINGS-R01/03/05/07 与本文件仍开登记项逐条核销（已关/仍开/部分 + 现场核实的证据文件:行）。结论：**P0/P1 清零**；仍开高危收敛为 4 件 P2——P2-2（KDF 参数无上限）、P2-3（resolve 快速路径事务外快照）、P2-1 残余（升级信任边界仅文档缓解）、R01-P2 残余（文件名长度未钳制）；CI 红灯三项无法就地复核（基线 runs 均 cancelled/queued），留待完整 run。
+- `src-tauri/tests/sync_r10_protocol_locks.rs` 新文件：6 个锁定测——P2-2 三枚（零值参数 fail-closed / 标记参数原样采用 / 无钳制源码锁）、P2-3 源码锁（事务内仅 generation 重验，业务行重读缺席；顺带钉住既有两道防线）、P2-1 文档锁（解锁指南 + FAQ + 升级日志不被删）、文件名长度未钳制行为锁（幂等 + 长度原样）。缺口被修复时用例失败，逼出本台账回写。
+- FINDINGS-R07 顶部状态表回写（不删历史正文）。
+- 附带核销：R09 登记的孤儿文件 `data_governance/sync/auto.rs` 在当前基线已不存在，销项。
+
+**文件面认领（独占）**：`PROTOCOL-R10.md` 新文件、`sync_r10_protocol_locks.rs` 新文件、`FINDINGS-R07.md` 顶部状态表、本节。不改任何实现代码。
+
+**仍开项去向（R11 建议，详见 PROTOCOL-R10 文末）**：R11-verifier-clamp（P2-2 双处钳制）、P2-3 并入 sync 面、P2-1 升级事件暴露、错误码替代正则（P2-LOCALE 机制半边）、文件名长度钳制（低优先，需连带迁移设计）。
