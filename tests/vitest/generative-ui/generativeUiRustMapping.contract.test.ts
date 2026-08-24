@@ -65,6 +65,8 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('fn parse_note_edit');
     expect(executorSrc).toContain('fn intent_has_apply_note_edit');
     expect(executorSrc).toContain('noteEdit.operation');
+    expect(executorSrc).toContain('noteEdit.isRegex 不被支持');
+    expect(executorSrc).toContain('parse_note_edit_rejects_regex_flag');
   });
 
   it('Rust executor parses and emits researchSessionId for HPIAS Chat bridge', () => {
