@@ -17,42 +17,19 @@ describe('modern sidebar scroll contract', () => {
     expect(primitiveSource).toContain('<CustomScrollArea');
   });
 
-  it('uses a viewport mask fade instead of overlay pseudo-elements that could block interactions', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
+  it('does not overlay session fades that could block pointer events', () => {
     expect(primitiveSource).toContain('desktop-shell-sidebar-session-scroll');
-    expect(fadeCss).not.toContain('.desktop-shell-sidebar-session-scroll::before');
-    expect(fadeCss).not.toContain('.desktop-shell-sidebar-session-scroll::after');
-    expect(fadeCss).toContain('.desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('mask-image');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll::before');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll::after');
   });
 
-  it('keeps the session edge fade compatible with desktop WebViews', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
-    expect(fadeCss).not.toContain('color-mix');
-    expect(fadeCss).toContain('--desktop-shell-sidebar-session-fade-size: 28px');
-    expect(fadeCss).toContain('-webkit-mask-image');
+  it('does not apply a session fade mask to the OverlayScrollbars viewport', () => {
+    expect(primitiveSource).not.toContain('desktop-shell-sidebar-session-scroll-viewport');
+    expect(appCss).not.toContain('.desktop-shell-sidebar-session-scroll-viewport {');
   });
 
-  it('applies the bottom edge fade directly to the session scroll viewport content', () => {
-    const fadeCss = appCss.slice(
-      appCss.indexOf('.desktop-shell-sidebar-session-scroll'),
-      appCss.indexOf('.desktop-shell-header-title')
-    );
-
-    expect(primitiveSource).toContain('desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('.desktop-shell-sidebar-session-scroll-viewport');
-    expect(fadeCss).toContain('-webkit-mask-image');
-    expect(fadeCss).toContain('mask-image');
-    expect(fadeCss).toContain('transparent 0%');
-    expect(fadeCss).toContain('black var(--desktop-shell-sidebar-session-fade-size)');
-    expect(fadeCss).toContain('black calc(100% - var(--desktop-shell-sidebar-session-fade-size))');
+  it('keeps session scrolling on CustomScrollArea without a dedicated fade token', () => {
+    expect(primitiveSource).toContain('scrollAutoHide="scroll"');
+    expect(appCss).not.toContain('--desktop-shell-sidebar-session-fade-size');
   });
 });

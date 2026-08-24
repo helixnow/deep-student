@@ -145,6 +145,8 @@ jobs:
 
       - name: Run vitest shard
         run: npx vitest run --shard=${{ matrix.shard }}/4
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
   # ============================================
   # 后端静态检查（fmt + clippy）

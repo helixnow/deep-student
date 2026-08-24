@@ -43,7 +43,13 @@ vi.mock('react-i18next', async () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, fallback?: string) => fallback ?? key,
+      t: (key: string, options?: string | { defaultValue?: string }) => {
+        if (typeof options === 'string') return options;
+        if (options && typeof options === 'object' && typeof options.defaultValue === 'string') {
+          return options.defaultValue;
+        }
+        return key;
+      },
     }),
   };
 });

@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 71（2026-08-24）— CI：Rust E0603 / Vitest 分片
+
+1. [x] `generative_ui_executor_e2e` 不再引用 `pub(crate) chat_v2::context`；块类型断言改到 crate 内单测
+2. [x] Learning Hub sidebar 测试 mock 兼容 `t(key, { defaultValue })`
+3. [x] sidebar scroll 合同对齐 OverlayScrollbars 现状；Vitest 分片堆提到 6GiB
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 70（2026-08-24）— skip-link 落到操作栏
 
 1. [x] skip-to-actions 的 href 指向第一个可达 ActionBar 槽位，不再落在整块 layout grid
