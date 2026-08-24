@@ -208,5 +208,69 @@ libwebkit2gtk-4.1-dev 等系统依赖与 PDFium 后复跑）：
 step1-review 点名的 `useAIEditState.i18n.test.ts` 只存在于主题仓 A（wrapup），
 随 Step 3 合入时再跑。
 
-待办：A/B/D/F/G 各主题仓按第 5 节顺序继续合入
-（回归清单见 `docs/dev/0824-step1-review.md` 第 3 节）。
+### Step 3：已合入 A wrapup（#268 底座 + tests 对齐，经预演分支）
+
+日期：2026-08-24。本步由第五轮官方合并代理完成。未直接合 theme-wrapup +
+theme-tests 两仓，而是采用已完成第四轮复查的预演分支
+`origin/cursor/0824-rehearse-wrapup-cde6` @ `2e82b623`（预演过程与冲突解法见
+`docs/dev/0824-rehearse-wrapup.md`，随本步一并入库）：
+
+- 预演分支以 Step 1 tip `8361e6b7` 为基线，先合 wrapup tip `1f8d9850`
+  再合 tests tip `02a1d03a`，4 处测试冲突已按「对齐当前实现」原则解掉；
+- 第四轮复查发现与 Step 2 后 0824 的唯一内容冲突
+  （`useAIEditState.ts` 双方接不同 i18n 契约）已在预演分支上预对齐为
+  0824 的 `guardText → notes:aiDiff.errors.*` 契约（提交 `2e82b623`），
+  同时修正配套 locale 与测试断言、删除 `learningHub.json` 的 `ai_edit` 死键段；
+- 复查点名的 `e54603a0` 编译阻断（`server_side_web_search_enabled` 坏合成）
+  已由 Step 2 的 `c1a2a232`/`2f7eec54` 在 0824 上修复。
+
+合并执行：`git merge --no-ff origin/cursor/0824-rehearse-wrapup-cde6` →
+merge commit `3efdc1b3`，**零冲突**（与复查结论一致；未从过期基线
+`8361e6b7` fast-forward）。409 文件，+15676/−1758。
+
+合并后红线复核（对照第 7 节与 step1-review）：
+
+- #213 拆模保留：`pipeline.rs` 的 `pub mod hooks` + `default_pipeline_hooks()`、
+  compaction/context_compiler 拆分不变；wrapup 对 `llm_adapter.rs`、
+  `multi_variant.rs`、`tool_loop.rs`、`variant_adapter.rs` 的修补落在拆分结构上。
+- #214 GenUI 保留：catch-all 前注册 `GenerativeUiExecutor`、
+  `generative_ui_executor.rs` 与 Step 2 移植的 i18n guard 文案不变。
+- Step 2 H cache 保留：prefix freeze 全链（`frozen_tool_schema_orders`、
+  `freeze_tool_schemas_for_prompt_cache`、`pipeline/prefix_snapshot_tests.rs`）、
+  `cache_write_tokens` 记账、native replay；`model2_pipeline.rs` 的
+  `server_side_web_search_enabled(quirks, config, llm_context)` 三参门控与
+  flash 白名单、`is_official_deepseek_config` 导入均未被合并回退。
+- wrapup 保留：i18n/a11y 测试群（dstu、workbench driver、command-palette 等
+  新增 60+ 测试文件）、流式修复（`utf8_stream.rs`、`sse_buffer.rs`、
+  `streaming_anki_service.rs`）、模型修复（`model_special_tokens.rs` 新增、
+  `builtin_vendors.rs`/adapters、model-capability-registry）。
+- package.json 仅 npm scripts 变化（dstu-test:cloud 指到 scripts/dev 编排），
+  依赖与 lockfile 零变化，无需重生成 NOTICES。
+
+合并后门禁修复（`llm_adapter.rs` 测试，git 看不见的跨侧语义断裂）：
+wrapup 给 `ChatV2LLMAdapter::new` 加了第 6 参
+`wrap_token_policy: ModelWrapTokenPolicy`（special-token 过滤链），而 Step 2
+从 H 合入的同文件测试 helper（`web_search_item_tests` /
+`response_reasoning_pairing_tests`）仍按旧 5 参调用，`--lib` 测试目标
+2 处 E0061（`cargo check --lib` 不受影响）。两处 helper 补传
+`ModelWrapTokenPolicy::Disabled`（与 `tool_loop.rs` 生产侧无策略模型的默认值
+一致；这两组测试只验证 web_search item 缓存与 reasoning-item 配对，不涉及
+token 过滤，语义不变）。修复后该 6 个测试全过。
+
+编译门禁结果（Rust stable 1.98.0 + CI 同款系统依赖与 PDFium）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages |
+| `npm run typecheck` | ✅ 0 错误（先 `npm run version:generate`） |
+| `npx vite build` | ✅ 2m19s，仅既有 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（24 条，与 Step 2 持平） |
+| 定向 vitest `useAIEditState.i18n.test.ts` | ✅ 12/12（预对齐契约生效） |
+| 定向 `cargo test --lib prefix_snapshot` | ✅ 4/4（H prefix freeze 回归在 wrapup 合入后仍过；需先修上述 E0061） |
+| 定向 `cargo test --lib chat_v2::pipeline::llm_adapter` | ✅ 6/6（E0061 修复后的 H reasoning/web_search 测试） |
+| 预演冲突覆盖 4 文件（question-bank-editor-ai-markdown / fileDefinitionPdf / settingsQuietHoverContract / smokeRender） | ✅ 9/9 |
+
+待办：B cloud-sync / D anki / F subapp / G mobile 按第 5 节顺序继续合入
+（回归清单见 `docs/dev/0824-step1-review.md` 第 3 节；B 合入时注意与本步
+wrapup 在 `ftp.rs`/`s3.rs`/`webdav.rs` 的语义合并，D 注意
+`streaming_anki_service.rs` 冲突）。

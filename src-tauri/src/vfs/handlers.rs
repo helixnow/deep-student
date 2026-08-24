@@ -239,15 +239,15 @@ fn image_needs_compression_with_conn(
 /// 获取资源类型的大文件限制（字节）
 fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
     match resource_type {
-        VfsResourceType::Image => 50 * 1024 * 1024,       // 50MB（#221：与作文批改图片上限对齐）
-        VfsResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
-        VfsResourceType::Note => 50 * 1024 * 1024,        // 50MB
-        VfsResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
-        VfsResourceType::Exam => 50 * 1024 * 1024,        // 50MB
-        VfsResourceType::Textbook => 50 * 1024 * 1024,    // 50MB
+        VfsResourceType::Image => 50 * 1024 * 1024, // 50MB（#221：与作文批改图片上限对齐）
+        VfsResourceType::File => 200 * 1024 * 1024, // 200MB（#62：与附件上限对齐）
+        VfsResourceType::Note => 50 * 1024 * 1024,  // 50MB
+        VfsResourceType::Retrieval => 10 * 1024 * 1024, // 10MB
+        VfsResourceType::Exam => 50 * 1024 * 1024,  // 50MB
+        VfsResourceType::Textbook => 50 * 1024 * 1024, // 50MB
         VfsResourceType::Translation => 10 * 1024 * 1024, // 10MB
-        VfsResourceType::Essay => 10 * 1024 * 1024,       // 10MB
-        VfsResourceType::MindMap => 50 * 1024 * 1024,     // 50MB
+        VfsResourceType::Essay => 10 * 1024 * 1024, // 10MB
+        VfsResourceType::MindMap => 50 * 1024 * 1024, // 50MB
     }
 }
 

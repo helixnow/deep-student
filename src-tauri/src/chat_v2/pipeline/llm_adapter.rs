@@ -1414,7 +1414,14 @@ mod web_search_item_tests {
         let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
             "sess_ws_items".to_string(),
         ));
-        ChatV2LLMAdapter::new(emitter, "msg_ws_items".to_string(), false, None, None)
+        ChatV2LLMAdapter::new(
+            emitter,
+            "msg_ws_items".to_string(),
+            false,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        )
     }
 
     /// P2-13 收尾：流事件载荷携带的完整 web_search_call item 被缓存，
@@ -1476,7 +1483,14 @@ mod response_reasoning_pairing_tests {
         let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
             "sess_rr_pairing".to_string(),
         ));
-        ChatV2LLMAdapter::new(emitter, "msg_rr_pairing".to_string(), false, None, None)
+        ChatV2LLMAdapter::new(
+            emitter,
+            "msg_rr_pairing".to_string(),
+            false,
+            None,
+            None,
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        )
     }
 
     fn reasoning_item(id: &str) -> Value {
