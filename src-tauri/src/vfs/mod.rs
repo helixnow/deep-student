@@ -30,6 +30,12 @@ pub mod handlers;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
+#[cfg(feature = "lance")]
+pub mod lance_store;
+// lance feature 未启用时（如 mobile-slim），提供同名 API 的 no-op stub，
+// 保持 ~30 个消费方（unified_retriever / indexing / handlers 等）无需逐一门控。
+#[cfg(not(feature = "lance"))]
+#[path = "lance_store_stub.rs"]
 pub mod lance_store;
 pub mod multimodal_service;
 pub mod ocr_utils;

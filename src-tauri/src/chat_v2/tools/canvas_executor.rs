@@ -909,17 +909,21 @@ impl CanvasToolExecutor {
         let vfs_db = ctx.vfs_db.clone();
 
         tokio::task::spawn_blocking(move || {
+            #[cfg(not(feature = "lance"))]
+            {
+                let _ = (notes_manager, vfs_db, folder_id, query, search_limit, page, page_size);
+                return Ok(json!({
+                    "results": [],
+                    "count": 0,
+                    "warning": "语义搜索功能未启用（lance feature 未编译），搜索结果可能不完整"
+                }));
+            }
+
             #[cfg(feature = "lance")]
+            {
             let results = notes_manager
                 .search_notes_lance(&query, search_limit)
                 .map_err(|e| format!("搜索笔记失败: {}", e))?;
-
-            #[cfg(not(feature = "lance"))]
-            return Ok(json!({
-                "results": [],
-                "count": 0,
-                "warning": "语义搜索功能未启用（lance feature 未编译），搜索结果可能不完整"
-            }));
 
             let items: Vec<_> = results
                 .into_iter()
@@ -969,6 +973,7 @@ impl CanvasToolExecutor {
                 "total": items.len(),
                 "totalExact": total_exact,
             }))
+            }
         })
         .await
         .map_err(|e| format!("搜索笔记失败: {}", e))?
