@@ -84,6 +84,20 @@
   white-space: nowrap;
 }
 
+/* 触屏：标签胶囊补足 44px 触控高度；18px 移除钮扩到 44×44 命中区，
+   负 margin 抵消占位（视觉图标与胶囊布局不变，同 tab 关闭钮范式） */
+@media (pointer: coarse) {
+  .notes-search-overlay-active-tag {
+    min-height: 44px;
+  }
+
+  .notes-search-overlay-active-tag-remove {
+    width: 44px;
+    height: 44px;
+    margin: -13px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .notes-search-overlay-active-tag-remove {
     transition: none;
