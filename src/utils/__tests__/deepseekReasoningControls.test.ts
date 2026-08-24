@@ -147,6 +147,9 @@ describe('DeepSeek runtime reasoning controls', () => {
 
   it.each([
     ['gemini-3.5-flash', 'medium'],
+    // flash-lite 包含 "gemini-3.5-flash" 子串，需先匹配，默认 "minimal"（与后端 gemini.rs 一致）
+    ['gemini-3.5-flash-lite', 'minimal'],
+    ['gemini-3.5-flash-lite-preview-08-2026', 'minimal'],
     ['gemini-3.1-flash-lite', 'minimal'],
     ['gemini-3-flash-preview', 'high'],
     ['gemini-3.1-pro-preview', 'high'],

@@ -176,8 +176,11 @@ function isGemini3FlashModelId(modelId: string): boolean {
 }
 
 function getGemini3DefaultEffort(modelId: string): DeepSeekReasoningOptionValue {
+  // flash-lite 必须先于 gemini-3.5-flash 匹配：
+  // "gemini-3.5-flash-lite" 包含子串 "gemini-3.5-flash"，
+  // 若顺序颠倒会被误判为 Flash 默认 "medium"（与后端 gemini.rs 对齐，覆盖 3.5/3.1 lite）
+  if (modelId.includes('flash-lite')) return 'minimal';
   if (modelId.includes('gemini-3.5-flash')) return 'medium';
-  if (modelId.includes('gemini-3.1-flash-lite')) return 'minimal';
   if (modelId.includes('gemini-3-flash')) return 'high';
   return modelId.includes('flash') ? 'low' : 'high';
 }
