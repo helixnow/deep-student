@@ -511,7 +511,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
           onChange={e => setText(e.target.value)}
           onFocus={() => setSearchFocus(true)}
           onBlur={() => setSearchFocus(false)}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{
             flex: '1 1 180px',
             minWidth: 140,
@@ -540,7 +540,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
             min={50}
             max={2000}
             onChange={e => setDisplayLimit(Math.min(2000, Math.max(50, parseInt(e.target.value || '200', 10))))}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
             style={{ width: 60, fontSize: 10, background: '#0b1220', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
           />
         </label>

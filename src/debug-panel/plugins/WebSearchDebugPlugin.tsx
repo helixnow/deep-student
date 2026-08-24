@@ -568,7 +568,7 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
             value={keyword} 
             onChange={e => setKeyword(e.target.value)} 
             placeholder="关键词搜索..." 
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
             style={{ background: 'transparent', border: 0, outline: 'none', color: '#e2e8f0', fontSize: 10, flex: 1 }} 
           />
         </div>

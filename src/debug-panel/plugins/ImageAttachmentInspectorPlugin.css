@@ -392,7 +392,9 @@
   .btn-inspect,
   .btn-simulate,
   .btn-copy-logs,
-  .btn-clear-logs {
+  .btn-clear-logs,
+  .auto-refresh-toggle,
+  .capture-toggle {
     min-height: 44px;
   }
 }

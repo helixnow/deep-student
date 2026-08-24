@@ -607,7 +607,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索消息、详情..."
-            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm [@media(pointer:coarse)]:text-[16px] border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         

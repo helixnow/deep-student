@@ -546,7 +546,7 @@ const ToolCallLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="搜索工具名/ID/内容..."
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{ flex: 1, minWidth: 120, background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', fontSize: 11, outline: 'none' }}
         />
         <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value as any)} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>

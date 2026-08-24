@@ -182,12 +182,12 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             placeholder="关键词搜索..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            className="px-2 py-1 text-sm rounded border border-border bg-background w-40 [@media(pointer:coarse)]:min-h-11"
+            className="px-2 py-1 text-sm rounded border border-border bg-background w-40 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
           />
         </div>
 
         {/* 操作按钮 */}
-        <label className="flex items-center gap-1 text-sm cursor-pointer">
+        <label className="flex items-center gap-1 text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>

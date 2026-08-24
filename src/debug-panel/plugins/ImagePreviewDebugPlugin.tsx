@@ -479,7 +479,7 @@ const ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </button>
         ))}
         <div className="flex-1" />
-        <label className="flex items-center gap-1 text-[10px] text-slate-400">
+        <label className="flex items-center gap-1 text-[10px] text-slate-400 [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>

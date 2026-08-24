@@ -549,7 +549,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          <label className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+          <label className="inline-flex items-center gap-1 text-[10px] text-slate-400 [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
@@ -593,7 +593,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="relative">
             <MagnifyingGlass className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-600" />
             <input
-              className="bg-slate-900 border border-slate-700 text-[10px] pl-5 pr-5 py-0.5 rounded w-[120px] [@media(pointer:coarse)]:min-h-11"
+              className="bg-slate-900 border border-slate-700 text-[10px] pl-5 pr-5 py-0.5 rounded w-[120px] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
               placeholder="搜索..."
               value={keyword}
               onChange={e => setKeyword(e.target.value)}

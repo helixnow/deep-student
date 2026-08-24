@@ -281,7 +281,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
       {/* 自动滚动开关 */}
       <div className="flex items-center justify-end px-3 py-1 border-b border-slate-700 bg-slate-800/20">
-        <label className="flex items-center gap-1 text-[10px] text-slate-400">
+        <label className="flex items-center gap-1 text-[10px] text-slate-400 [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>

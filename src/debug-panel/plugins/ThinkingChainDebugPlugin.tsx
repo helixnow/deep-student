@@ -377,7 +377,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           placeholder="搜索..."
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{
             fontSize: 12,
             background: '#334155',

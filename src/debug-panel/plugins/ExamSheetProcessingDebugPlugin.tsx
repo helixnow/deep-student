@@ -543,7 +543,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         {stats.warnings > 0 && <span style={{ color: '#f59e0b', fontWeight: 600 }}>⚠ {stats.warnings}</span>}
         {stats.anomalies > 0 && <span style={{ color: '#f97316', fontWeight: 600 }}>🔀 {stats.anomalies} 异常</span>}
         <div style={{ flex: 1 }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
@@ -566,7 +566,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="搜索会话ID/内容..."
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
           style={{ flex: 1, minWidth: 120, background: 'transparent', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', fontSize: 11, outline: 'none' }}
         />
         <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value as any)} className="[@media(pointer:coarse)]:min-h-11" style={{ fontSize: 11, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px' }}>

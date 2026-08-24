@@ -422,7 +422,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <label className="flex items-center gap-1 text-xs text-gray-400 mr-2">
+          <label className="flex items-center gap-1 text-xs text-gray-400 mr-2 [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>

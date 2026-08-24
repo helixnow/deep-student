@@ -417,7 +417,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
 
           {/* 选项 + 控制 */}
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label className="flex items-center gap-2 text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
               <Switch size="sm" checked={skipSend} onCheckedChange={(checked) => { setSkipSend(checked); saveConfig({ skipSend: checked }); }}
                 disabled={status === 'running'} />
               仅上传（跳过发送）

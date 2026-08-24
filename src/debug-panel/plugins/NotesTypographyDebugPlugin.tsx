@@ -363,7 +363,7 @@ export default function NotesTypographyDebugPlugin() {
           placeholder="搜索日志..."
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11"
+          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
         />
         <select
           value={categoryFilter}

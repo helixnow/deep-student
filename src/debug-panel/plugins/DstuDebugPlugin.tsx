@@ -229,7 +229,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
           placeholder="过滤方法..."
           value={methodFilter}
           onChange={e => setMethodFilter(e.target.value)}
-          className="px-2 py-1 text-xs bg-background border border-border rounded w-32 [@media(pointer:coarse)]:min-h-11"
+          className="px-2 py-1 text-xs bg-background border border-border rounded w-32 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
         />
 
         <div className="flex-1" />

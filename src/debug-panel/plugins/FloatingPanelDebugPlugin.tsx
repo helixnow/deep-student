@@ -617,7 +617,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs">
+          <label className="flex items-center gap-1 text-xs [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoCapture} onCheckedChange={setAutoCapture} />
             自动捕获
           </label>

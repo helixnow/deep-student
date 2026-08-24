@@ -95,7 +95,7 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <span className="font-semibold tracking-wide">
           {t('debug_panel.plugin_anki_generation', 'Anki 制卡日志')}
         </span>
-        <label className="inline-flex items-center gap-1 text-[10px] text-slate-300">
+        <label className="inline-flex items-center gap-1 text-[10px] text-slate-300 [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           {t('debug_panel.auto_scroll', '自动滚动')}
         </label>
@@ -111,7 +111,7 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             <option value="error">ERROR</option>
           </select>
           <input
-            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded [@media(pointer:coarse)]:min-h-11"
+            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
             placeholder={t('debug_panel.search_placeholder', '搜索事件/内容')}
             value={keyword}
             onChange={(ev) => setKeyword(ev.target.value)}
