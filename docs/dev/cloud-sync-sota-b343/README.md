@@ -78,7 +78,8 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R05 极端测试与复审 | 已合入 | 五路分支合入本枝（android-ftp / ftp-i18n / tests / zip-resume / webdav-1k，另含直接提交）；R05-guide 未交付转 R06，见 [FINDINGS-R05](./FINDINGS-R05.md) |
 | R06 E2EE 闭环与跨平台资产 | 部分合入 | 校验子 / 单侧 DELETE 可解 / 指南回写已合；资产文件级 E2EE、自动同步、跨平台文件名、Android 语义未交付，见 [ROUND-06](./ROUND-06.md) |
 | R07 CI 收口与文件级 E2EE | 部分合入 | 已合文件级 DSBK、自动同步、记录级校验子、WebDAV 409、文件名测试；文案已回写不再称文件级明文，见 [ROUND-07](./ROUND-07.md) |
-| R08 复审与收口 | 进行中 | 文件级 E2EE 复审、文件名净化、Android、CI，见 [ROUND-08](./ROUND-08.md) |
+| R08 复审与收口 | 进行中 | 见 [ROUND-08](./ROUND-08.md) |
+| R09–R10 大包 | 进行中 | 每路 ≥4 交付物；P1-1 冲突 UI 优先，见 [ROUND-10](./ROUND-10.md) |
 
 ## 文档索引
 
@@ -92,5 +93,6 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [ROUND-06.md](./ROUND-06.md) — 第六轮 E2EE 闭环、单侧冲突可解与跨平台资产
 - [ROUND-07.md](./ROUND-07.md) — 第七轮 CI 收口、文件级 E2EE、自动同步与跨平台资产
 - [ROUND-08.md](./ROUND-08.md) — 第八轮文件级 E2EE 复审、文件名净化、Android 与 CI
+- [ROUND-10.md](./ROUND-10.md) — 第十轮大包收口（冲突 UI / 文件名 / 校验子硬化）
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图
