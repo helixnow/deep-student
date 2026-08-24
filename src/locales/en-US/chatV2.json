@@ -150,6 +150,7 @@
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
     },
+    "branchedFromHere": "Branched from here",
     "touchBar": {
       "ariaLabel": "Message quick actions"
     },

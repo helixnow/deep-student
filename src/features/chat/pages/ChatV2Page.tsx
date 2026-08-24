@@ -49,6 +49,7 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/Desk
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
+import { rebuildSessionBranchIndex } from '../core/session/sessionBranchIndex';
 import { invalidatePendingChatNavigation } from '../navigation/pendingChatNavigation';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -414,6 +415,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
+
+  // 「已从此处分支」角标索引：会话列表变化时用 metadata.branchedFrom 重建
+  useEffect(() => {
+    rebuildSessionBranchIndex(sessions);
+  }, [sessions]);
 
   // P2-4 fix: Prune stale collapsed state when groups change
   useEffect(() => {

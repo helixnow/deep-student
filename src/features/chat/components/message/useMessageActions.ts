@@ -21,6 +21,7 @@ import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
 import { logChatV2 } from '../../debug/chatV2Logger';
 import type { Block, ChatStore, Message } from '../../core/types';
+import { branchSessionFromMessage } from './branchFromMessage';
 import { extractMessageContentFromBlocks, extractNoteTitle } from './messageItemUtils';
 
 /** 两步删除确认的自动复原时长（与 MessageActions / MessageTouchActionBar 一致） */
@@ -397,23 +398,13 @@ export function useMessageActions({
     }
   }, [message, extractMessageContent, t]);
 
-  // 会话分支：从此消息处创建新会话
+  // 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
     if (isBranchingRef.current || isLocked || !message) return;
     isBranchingRef.current = true;
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const sessionId = store.getState().sessionId;
-      if (!sessionId) throw new Error('No active session');
-      const newSession = await invoke('chat_v2_branch_session', {
-        sourceSessionId: sessionId,
-        upToMessageId: messageId,
-      });
-      // 通知 ChatV2Page 插入新会话并切换
-      window.dispatchEvent(new CustomEvent('CHAT_V2_BRANCH_SESSION', {
-        detail: { session: newSession },
-      }));
+      await branchSessionFromMessage(store, messageId);
       showGlobalNotification('success', t('messageItem.actions.branchSuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Branch session failed:', error);

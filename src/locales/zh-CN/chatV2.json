@@ -150,6 +150,7 @@
       "branchSuccess": "已创建分支会话",
       "branchFailed": "分支失败"
     },
+    "branchedFromHere": "已从此处分支",
     "touchBar": {
       "ariaLabel": "消息快捷操作"
     },

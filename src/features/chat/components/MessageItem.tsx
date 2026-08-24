@@ -45,6 +45,9 @@ import { ThreadContentShell } from './ui/ThreadContentShell';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
+import { branchSessionFromMessage } from './message/branchFromMessage';
+import { useSessionBranchTargets } from '../core/session/sessionBranchIndex';
+import { requestChatSessionNavigation } from '../navigation/pendingChatNavigation';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -201,6 +204,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 子代理会话只读：触发指令等消息可看不可改（编辑/重发会绕过 workspace 运行时）
   const storeSessionId = useStore(store, (s) => s.sessionId);
+  // 「已从此处分支」角标：其他会话 metadata.branchedFrom 指向本消息时展示
+  const branchTargets = useSessionBranchTargets(storeSessionId, messageId);
   const storeMode = useStore(store, (s) => s.mode);
   const storeSessionMetadata = useStore(store, (s) => s.sessionMetadata);
   const isReadOnlySession = isStoreSubagentSession({
@@ -779,23 +784,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [message, extractMessageContent, extractNoteTitle, t]);
 
-  // 🆕 会话分支：从此消息处创建新会话
+  // 🆕 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
     if (isBranchingRef.current || isReadOnlySession || isLocked || !message) return;
     isBranchingRef.current = true;
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const sessionId = store.getState().sessionId;
-      if (!sessionId) throw new Error('No active session');
-      const newSession = await invoke('chat_v2_branch_session', {
-        sourceSessionId: sessionId,
-        upToMessageId: messageId,
-      });
-      // 通知 ChatV2Page 插入新会话并切换
-      window.dispatchEvent(new CustomEvent('CHAT_V2_BRANCH_SESSION', {
-        detail: { session: newSession },
-      }));
+      await branchSessionFromMessage(store, messageId);
       showGlobalNotification('success', t('messageItem.actions.branchSuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Branch session failed:', error);
@@ -1403,6 +1398,40 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 )}
               </div>
 
+            </div>
+          )}
+
+          {/* 「已从此处分支」可导航角标：点击切换到分支会话 */}
+          {branchTargets.length > 0 && !isInlineEditing && (
+            <div
+              className={cn('mt-1.5 flex flex-wrap items-center gap-1.5', isUser && 'justify-end')}
+              data-slot="message-branch-badges"
+            >
+              {branchTargets.map((target) => (
+                <button
+                  key={target.sessionId}
+                  type="button"
+                  onClick={() => requestChatSessionNavigation(target.sessionId)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40',
+                    'px-2 py-1 text-[11px] leading-none text-muted-foreground transition-colors',
+                    'hover:border-border hover:bg-muted/70 hover:text-foreground',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                  )}
+                  title={target.title || t('messageItem.branchedFromHere')}
+                  aria-label={
+                    target.title
+                      ? `${t('messageItem.branchedFromHere')} · ${target.title}`
+                      : t('messageItem.branchedFromHere')
+                  }
+                >
+                  <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="max-w-[180px] truncate">
+                    {t('messageItem.branchedFromHere')}
+                    {target.title ? ` · ${target.title}` : ''}
+                  </span>
+                </button>
+              ))}
             </div>
           )}
 
