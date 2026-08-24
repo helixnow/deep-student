@@ -797,7 +797,8 @@
       "refresh": "Refresh",
       "open": "Open file explorer",
       "close": "Close file explorer",
-      "closeFiles": "Close files"
+      "closeFiles": "Close files",
+      "moreActions": "More actions"
     },
     "navHistory": {
       "aria": "Navigation history",
@@ -854,10 +855,13 @@
       "activeTags": "Active tags",
       "removeTag": "Remove tag {{tag}}",
       "emptyQuickOpenHint": "Try \"Search content\" for full-text matches.",
-      "tagHint": "tag:name filters by tag",
+      "tagHint": "Filter with tag: path: or key:value",
       "resultCount": "{{count}} results",
       "recentGroup": "Recently opened",
-      "allGroup": "All files"
+      "allGroup": "All files",
+      "loadMore": "Load more results",
+      "loadingMore": "Loading more…",
+      "resultCountMore": "{{count}}+ results"
     },
     "backlinks": {
       "title": "Links",
@@ -892,7 +896,8 @@
       "convertMention": "Convert the mention in \"{{title}}\" to a link",
       "convertDirty": "\"{{title}}\" has unsaved changes. Save it before converting.",
       "convertMissing": "\"{{title}}\" has changed and the mention could not be found.",
-      "convertFailed": "Could not convert the mention to a link."
+      "convertFailed": "Could not convert the mention to a link.",
+      "tabGraph": "Graph"
     },
     "renameSync": {
       "updated": "Updated wiki links in {{count}} notes",
@@ -1001,6 +1006,42 @@
       "confirmPurgeTitle": "Delete permanently?",
       "confirmPurgeDesc": "\"{{name}}\" will be permanently deleted. This cannot be undone.",
       "confirmPurgeAction": "Delete permanently"
+    },
+    "graph": {
+      "canvasAria": "Local link graph for \"{{title}}\"",
+      "clientFallback": "Graph service unavailable; showing only outgoing links of this note.",
+      "depth1": "1 hop",
+      "depth2": "2 hops",
+      "depthLabel": "Graph depth",
+      "empty": "No links yet. Type [[ to create a wiki link.",
+      "loadFailed": "Failed to load the local graph.",
+      "loading": "Building graph…",
+      "noActiveNote": "Select a note to see its graph.",
+      "refresh": "Refresh graph",
+      "truncated": "Too many connections; showing a subset of nodes."
+    },
+    "props": {
+      "title": "Properties",
+      "add": "Add property",
+      "confirmAdd": "Add property",
+      "cancelAdd": "Cancel",
+      "confirmEdit": "Save value",
+      "cancelEdit": "Cancel editing",
+      "editAria": "Edit property {{key}}",
+      "editValueAria": "Edit value of property {{key}}",
+      "removeAria": "Delete property {{key}}",
+      "keyPlaceholder": "Name",
+      "valuePlaceholder": "Value",
+      "emptyHint": "Add arbitrary key-value properties, searchable via key:value.",
+      "emptyReadOnly": "No properties.",
+      "emptyKey": "Enter a property name.",
+      "reservedKey": "This name is reserved; pick another.",
+      "duplicateKey": "A property with this name already exists.",
+      "keyTooLong": "Property names can be at most {{max}} characters.",
+      "valueTooLong": "Property values can be at most {{max}} characters.",
+      "invalidChars": "Properties cannot contain control characters.",
+      "tooMany": "You can add at most {{max}} properties.",
+      "saveFailed": "Failed to save properties."
     }
   },
   "sandbox": {

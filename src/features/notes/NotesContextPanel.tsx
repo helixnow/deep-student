@@ -67,6 +67,8 @@ export interface NotesContextPanelProps {
     content?: string;
     /** 标签变更回调（DSTU 模式） */
     onTagsChange?: (tags: string[]) => Promise<void>;
+    /** 大纲之前的附加区块（DSTU 模式；如工作区属性页的自定义键值编辑器） */
+    beforeOutline?: React.ReactNode;
 }
 
 const formatPanelDate = (value: string | undefined, locale: string) => {
@@ -448,9 +450,13 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     };
 
     /**
-     * DSTU 模式下的跨笔记标签重命名回退实现。
+     * DSTU 模式下的跨笔记标签重命名回退实现（workbench 等无 NotesProvider 宿主）。
      * 与 NotesContext.renameTagAcrossNotes 走同一 DSTU 协议
-     * （dstu.list 分页 + dstu.setMetadata），仅在无 NotesProvider 时使用。
+     * （dstu.list 分页 + dstu.setMetadata）。
+     *
+     * 先收集完所有分页再写回：setMetadata 会更新 updated_at 从而改变列表
+     * 排序，边翻页边写会让 offset 分页跳过 / 重复访问笔记（幂等写回不至于
+     * 损坏数据，但会漏改）。
      */
     const renameTagAcrossNotesDstu = useCallback(async (
         oldName: string,
@@ -458,30 +464,34 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         skipId: string
     ): Promise<number> => {
         const pageSize = 200;
+        const maxTotal = 20000;
         let offset = 0;
-        let updatedCount = 0;
+        const targets: Array<{ id: string; tags: string[] }> = [];
 
         while (true) {
             const result = await dstu.list('/', { typeFilter: 'note', limit: pageSize, offset });
             if (!result.ok) {
                 throw new Error(result.error.toUserMessage());
             }
-
             for (const node of result.value) {
                 if (node.id === skipId) continue;
                 const nodeTags = (node.metadata?.tags as string[] | undefined) || [];
                 if (!nodeTags.includes(oldName)) continue;
-
-                const nextTags = nodeTags.map(tag => (tag === oldName ? newName : tag));
-                const setResult = await dstu.setMetadata(`/${node.id}`, { tags: nextTags });
-                if (!setResult.ok) {
-                    throw new Error(setResult.error.toUserMessage());
-                }
-                updatedCount += 1;
+                targets.push({ id: node.id, tags: nodeTags });
             }
-
             if (result.value.length < pageSize) break;
             offset += pageSize;
+            if (offset >= maxTotal) break;
+        }
+
+        let updatedCount = 0;
+        for (const target of targets) {
+            const nextTags = target.tags.map(tag => (tag === oldName ? newName : tag));
+            const setResult = await dstu.setMetadata(`/${target.id}`, { tags: nextTags });
+            if (!setResult.ok) {
+                throw new Error(setResult.error.toUserMessage());
+            }
+            updatedCount += 1;
         }
 
         return updatedCount;
@@ -713,6 +723,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     </div>
                 </div>
             </div>
+
+            {props.beforeOutline}
 
             <Separator />
 

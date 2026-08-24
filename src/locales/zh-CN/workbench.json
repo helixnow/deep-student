@@ -797,7 +797,8 @@
       "refresh": "刷新",
       "open": "打开文件浏览器",
       "close": "关闭文件浏览器",
-      "closeFiles": "关闭文件面板"
+      "closeFiles": "关闭文件面板",
+      "moreActions": "更多操作"
     },
     "navHistory": {
       "aria": "导航历史",
@@ -854,10 +855,13 @@
       "activeTags": "已选标签",
       "removeTag": "移除标签 {{tag}}",
       "emptyQuickOpenHint": "试试「搜索内容」进行全文匹配。",
-      "tagHint": "tag:名称 按标签筛选",
+      "tagHint": "可用 tag:标签 path:路径 key:value 过滤结果",
       "resultCount": "{{count}} 条结果",
       "recentGroup": "最近打开",
-      "allGroup": "全部文件"
+      "allGroup": "全部文件",
+      "loadMore": "加载更多结果",
+      "loadingMore": "正在加载…",
+      "resultCountMore": "{{count}}+ 条结果"
     },
     "backlinks": {
       "title": "链接",
@@ -892,7 +896,8 @@
       "convertMention": "在「{{title}}」中转为链接",
       "convertDirty": "「{{title}}」有未保存的修改，请先保存再转为链接。",
       "convertMissing": "「{{title}}」内容已变化，未找到该提及。",
-      "convertFailed": "无法转为链接。"
+      "convertFailed": "无法转为链接。",
+      "tabGraph": "图谱"
     },
     "renameSync": {
       "updated": "已同步更新 {{count}} 篇笔记中的双链",
@@ -1001,6 +1006,42 @@
       "confirmPurgeTitle": "彻底删除？",
       "confirmPurgeDesc": "「{{name}}」将被永久删除，此操作不可撤销。",
       "confirmPurgeAction": "彻底删除"
+    },
+    "graph": {
+      "canvasAria": "「{{title}}」的局部链接图",
+      "clientFallback": "图谱服务不可用，仅显示当前笔记的出链。",
+      "depth1": "1 度",
+      "depth2": "2 度",
+      "depthLabel": "图谱深度",
+      "empty": "本篇还没有任何链接，输入 [[ 即可创建双链。",
+      "loadFailed": "无法加载局部图谱。",
+      "loading": "正在构建图谱…",
+      "noActiveNote": "选择一篇笔记以查看图谱。",
+      "refresh": "刷新图谱",
+      "truncated": "连接较多，仅显示部分节点。"
+    },
+    "props": {
+      "title": "属性",
+      "add": "添加属性",
+      "confirmAdd": "添加属性",
+      "cancelAdd": "取消添加",
+      "confirmEdit": "保存属性值",
+      "cancelEdit": "取消编辑",
+      "editAria": "编辑属性 {{key}}",
+      "editValueAria": "编辑属性 {{key}} 的值",
+      "removeAria": "删除属性 {{key}}",
+      "keyPlaceholder": "属性名",
+      "valuePlaceholder": "值",
+      "emptyHint": "为笔记添加任意键值属性，可用 key:value 搜索。",
+      "emptyReadOnly": "暂无属性。",
+      "emptyKey": "请输入属性名。",
+      "reservedKey": "该属性名为保留字，请换一个。",
+      "duplicateKey": "同名属性已存在。",
+      "keyTooLong": "属性名最多 {{max}} 个字符。",
+      "valueTooLong": "属性值最多 {{max}} 个字符。",
+      "invalidChars": "属性不能包含控制字符。",
+      "tooMany": "最多添加 {{max}} 个属性。",
+      "saveFailed": "无法保存属性。"
     }
   },
   "sandbox": {

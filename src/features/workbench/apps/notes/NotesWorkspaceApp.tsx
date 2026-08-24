@@ -61,6 +61,8 @@ import {
 } from './NotesBacklinksPanel';
 import { syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
+import { NotesGraphTab } from './graph/NotesGraphTab';
+import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
 import { FavoritesSection } from './FavoritesSection';
@@ -2380,6 +2382,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   );
 
   // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
+  // 探索器工具栏尾部低频动作（新建导图/刷新/搜索/背链/回收站/文库）。
+  // 中窗侧栏仅 240px，10 个图标按钮必溢出被裁：中窗折叠进「更多」菜单，
+  // 宽窗与紧凑子屏（探索器全宽展示）保持整排图标。
+  const explorerTailActions: ExplorerOverflowAction[] = [
+    { key: 'new-mindmap', label: t('notesWorkspace.explorer.newMindmap', 'New mind map'), icon: <TreeStructure size={15} />, onSelect: () => { void createResource('mindmap'); } },
+    { key: 'refresh', label: t('notesWorkspace.explorer.refresh', 'Refresh'), icon: <ArrowsClockwise size={15} />, onSelect: () => { void loadResources({ blocking: false }); } },
+    { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: () => openSearchOverlay('full-text') },
+    { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: () => setBacklinksOpen((open) => !open) },
+    { key: 'trash', label: t('notesWorkspace.ribbon.trash', 'Trash'), icon: <Trash size={15} />, onSelect: () => setTrashOpen(true) },
+    { key: 'library', label: t('notesWorkspace.library.manage', 'Import or export library'), icon: <FileArchive size={15} />, onSelect: () => setLibraryDialog({ open: true, tab: 'export' }) },
+  ];
+
   const explorerSurface = (
     <WorkbenchSidebarSurface
         ariaLabel={t('notesWorkspace.explorer.title', 'Files')}
@@ -2402,12 +2416,21 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             ><ArrowRight size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newNote', 'New note')} onClick={() => void createResource('note')}><FileText size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newFolder', 'New folder')} onClick={() => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); }}><FolderPlus size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.newMindmap', 'New mind map')} onClick={() => void createResource('mindmap')}><TreeStructure size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.explorer.refresh', 'Refresh')} onClick={() => void loadResources({ blocking: false })}><ArrowsClockwise size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => !open)}><LinkSimple size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={15} /></IconButton>
-            <IconButton label={t('notesWorkspace.library.manage', 'Import or export library')} onClick={() => setLibraryDialog({ open: true, tab: 'export' })}><FileArchive size={15} /></IconButton>
+            {sizeClass === 'medium' ? (
+              <ExplorerOverflowMenu
+                label={t('notesWorkspace.explorer.moreActions', 'More actions')}
+                actions={explorerTailActions}
+              />
+            ) : (
+              explorerTailActions.map((action) => (
+                <IconButton
+                  key={action.key}
+                  label={action.label}
+                  data-active={action.active === undefined ? undefined : (action.active ? 'true' : 'false')}
+                  onClick={action.onSelect}
+                >{action.icon}</IconButton>
+              ))
+            )}
           </div>
         </header>
         <div className="notes-search">
@@ -2791,6 +2814,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               <NotesPropertiesTab
                 activeResource={activeResource}
                 onRefresh={() => { void loadResources({ blocking: false }); }}
+              />
+            )}
+            graphContent={(
+              <NotesGraphTab
+                open={backlinksOpen}
+                activeResource={activeResource}
+                notes={resources}
+                onOpenResource={openWorkspaceSearchResult}
               />
             )}
           />

@@ -133,11 +133,13 @@ export interface NotesBacklinksPanelProps {
    * 与笔记内嵌属性浮层互斥（宿主应同时隐藏内嵌浮层）。
    */
   propertiesContent?: React.ReactNode;
+  /** 统一右侧栏第三页签「图谱」：当前笔记的局部链接图（提供时显示页签）。 */
+  graphContent?: React.ReactNode;
   requestedTab?: NotesBacklinksTabRequest | null;
   className?: string;
 }
 
-type PanelTab = 'properties' | 'links';
+type PanelTab = 'properties' | 'links' | 'graph';
 
 export interface NotesBacklinksTabRequest {
   tab: PanelTab;
@@ -149,7 +151,7 @@ const PANEL_TAB_STORAGE_KEY = 'notes-backlinks-panel:active-tab';
 function readInitialPanelTab(): PanelTab {
   try {
     const raw = window.localStorage.getItem(PANEL_TAB_STORAGE_KEY);
-    return raw === 'properties' || raw === 'links' ? raw : 'links';
+    return raw === 'properties' || raw === 'links' || raw === 'graph' ? raw : 'links';
   } catch {
     return 'links';
   }
@@ -158,13 +160,17 @@ function readInitialPanelTab(): PanelTab {
 export function useRequestedPanelTab(
   hasPropertiesTab: boolean,
   requestedTab: NotesBacklinksTabRequest | null | undefined,
+  hasGraphTab = false,
 ): readonly [PanelTab, (tab: PanelTab) => void] {
   const [activeTab, setActiveTab] = useState<PanelTab>(readInitialPanelTab);
   useEffect(() => {
-    if (requestedTab && (requestedTab.tab === 'links' || hasPropertiesTab)) {
+    const tabAvailable = requestedTab?.tab === 'links'
+      || (requestedTab?.tab === 'properties' && hasPropertiesTab)
+      || (requestedTab?.tab === 'graph' && hasGraphTab);
+    if (requestedTab && tabAvailable) {
       setActiveTab(requestedTab.tab);
     }
-  }, [hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
+  }, [hasGraphTab, hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
   const switchTab = useCallback((tab: PanelTab) => {
     setActiveTab(tab);
     try {
@@ -586,13 +592,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   onCreateFromUnresolved,
   onRefresh,
   propertiesContent,
+  graphContent,
   requestedTab,
   className,
 }) => {
   const { t } = useTranslation('workbench');
   const hasPropertiesTab = propertiesContent !== undefined;
-  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab);
-  const resolvedTab: PanelTab = hasPropertiesTab ? activeTab : 'links';
+  const hasGraphTab = graphContent !== undefined;
+  const hasExtraTabs = hasPropertiesTab || hasGraphTab;
+  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab, hasGraphTab);
+  const resolvedTab: PanelTab = (activeTab === 'properties' && hasPropertiesTab)
+    || (activeTab === 'graph' && hasGraphTab)
+    ? activeTab
+    : 'links';
   const [loadState, setLoadState] = useState<RelationshipsLoadState>({ status: 'idle' });
   const [mentionsState, setMentionsState] = useState<MentionsLoadState>({ status: 'idle' });
   const [candidateLimit, setCandidateLimit] = useState(BACKLINK_CANDIDATE_LIMIT);
@@ -1154,28 +1166,30 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
       className={cn('notes-backlinks-panel', className)}
       data-notes-backlinks-panel
       role="complementary"
-      {...(hasPropertiesTab
+      {...(hasExtraTabs
         ? { 'aria-label': t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' }) }
         : { 'aria-labelledby': titleId })}
       onKeyDown={onPanelKeyDown}
     >
       <header className="notes-backlinks-panel-header">
-        {hasPropertiesTab ? (
+        {hasExtraTabs ? (
           <div
             className="notes-backlinks-panel-tabs"
             role="tablist"
             aria-label={t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' })}
           >
-            <button
-              type="button"
-              role="tab"
-              id={`${titleId}-tab-properties`}
-              className="notes-backlinks-panel-tab"
-              aria-selected={resolvedTab === 'properties'}
-              onClick={() => switchTab('properties')}
-            >
-              {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
-            </button>
+            {hasPropertiesTab && (
+              <button
+                type="button"
+                role="tab"
+                id={`${titleId}-tab-properties`}
+                className="notes-backlinks-panel-tab"
+                aria-selected={resolvedTab === 'properties'}
+                onClick={() => switchTab('properties')}
+              >
+                {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
+              </button>
+            )}
             <button
               type="button"
               role="tab"
@@ -1186,6 +1200,18 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             >
               {t('notesWorkspace.backlinks.tabLinks', { defaultValue: '链接' })}
             </button>
+            {hasGraphTab && (
+              <button
+                type="button"
+                role="tab"
+                id={`${titleId}-tab-graph`}
+                className="notes-backlinks-panel-tab"
+                aria-selected={resolvedTab === 'graph'}
+                onClick={() => switchTab('graph')}
+              >
+                {t('notesWorkspace.backlinks.tabGraph', { defaultValue: '图谱' })}
+              </button>
+            )}
           </div>
         ) : (
           <div className="notes-backlinks-panel-heading">
@@ -1218,7 +1244,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         </div>
       </header>
 
-      {hasPropertiesTab && activeResource?.type === 'note' && (
+      {hasExtraTabs && activeResource?.type === 'note' && (
         <div className="notes-backlinks-panel-note" title={activeResource.name}>
           <FileText size={13} aria-hidden="true" />
           <span>{activeResource.name}</span>
@@ -1233,12 +1259,20 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         >
           {propertiesContent}
         </div>
+      ) : hasGraphTab && resolvedTab === 'graph' ? (
+        <div
+          className="notes-backlinks-panel-graph"
+          role="tabpanel"
+          aria-labelledby={`${titleId}-tab-graph`}
+        >
+          {graphContent}
+        </div>
       ) : (
       <CustomScrollArea
         className="notes-backlinks-panel-body"
         viewportProps={{
           'aria-live': 'polite',
-          ...(hasPropertiesTab
+          ...(hasExtraTabs
             ? { role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links` }
             : {}),
         }}
