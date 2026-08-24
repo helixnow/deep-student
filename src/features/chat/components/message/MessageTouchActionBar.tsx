@@ -162,7 +162,8 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
     }
   }, [canDelete, isDeleting, deleteArmed, disarmDelete, onDelete, onClose]);
 
-  const barButtonClassName = 'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui';
+  const barButtonClassName =
+    'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui [@media(pointer:coarse)]:min-h-11';
 
   return (
     <div
