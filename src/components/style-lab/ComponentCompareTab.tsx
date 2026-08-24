@@ -128,7 +128,7 @@ function ButtonCompareSection() {
               <tr key={v.label} className="border-b border-[color:var(--border-soft)]">
                 <td className="py-3 pr-4 text-[color:var(--text-secondary)]">{v.label}</td>
                 <td className="py-3 pr-4">
-                  <DsButton variant={v.cardVariant as any} size={size} disabled={disabled} className="[@media(pointer:coarse)]:min-h-11">
+                  <DsButton variant={v.cardVariant as any} size={size} disabled={disabled} className="[@media(pointer:coarse)]:!min-h-11">
                     {v.label}
                   </DsButton>
                 </td>
@@ -436,7 +436,7 @@ function TooltipCompareSection() {
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">CommonTooltip (目标)</p>
           <CommonTooltip content="这是 CommonTooltip" position={position} theme={theme}>
-            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">Hover me</DsButton>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
           </CommonTooltip>
         </div>
 
@@ -445,7 +445,7 @@ function TooltipCompareSection() {
           <ShadTooltipProvider>
             <ShadTooltip>
               <ShadTooltipTrigger asChild>
-                <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">Hover me</DsButton>
+                <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
               </ShadTooltipTrigger>
               <ShadTooltipContent side={position === 'left' ? 'left' : position === 'right' ? 'right' : position === 'bottom' ? 'bottom' : 'top'}>
                 这是 shad Tooltip
@@ -456,7 +456,7 @@ function TooltipCompareSection() {
 
         <div className="text-center space-y-2">
           <p className="text-[11px] text-[color:var(--text-muted)]">原生 title (对照)</p>
-          <DsButton variant="outline" size="sm" title="这是原生 title" className="[@media(pointer:coarse)]:min-h-11">Hover me</DsButton>
+          <DsButton variant="outline" size="sm" title="这是原生 title" className="[@media(pointer:coarse)]:!min-h-11">Hover me</DsButton>
         </div>
       </div>
     </div>
@@ -573,7 +573,7 @@ function ToastCompareSection() {
             key={sample.label}
             variant="outline"
             size="sm"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => fireToast(sample)}
           >
             触发 {sample.label}
@@ -621,7 +621,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">打开 Popover</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">打开 Popover</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8}>
                       <div className="space-y-2 p-2">
@@ -643,7 +643,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadPopover>
                     <ShadPopoverTrigger asChild>
-                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">日期筛选</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">日期筛选</DsButton>
                     </ShadPopoverTrigger>
                     <ShadPopoverContent align="start" sideOffset={8} className="w-56">
                       <div className="space-y-2 p-2">
@@ -699,7 +699,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadDialog>
                     <ShadDialogTrigger asChild>
-                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">shad Dialog</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">shad Dialog</DsButton>
                     </ShadDialogTrigger>
                     <ShadDialogContent>
                       <ShadDialogHeader>
@@ -710,14 +710,14 @@ function PopupCompareSection() {
                         内容区域示例。shad Dialog 基于自定义 portal 实现，使用 framer-motion 动画。
                       </p>
                       <ShadDialogFooter>
-                        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11">取消</DsButton>
-                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11">确认</DsButton>
+                        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11">取消</DsButton>
+                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11">确认</DsButton>
                       </ShadDialogFooter>
                     </ShadDialogContent>
                   </ShadDialog>
                 </td>
                 <td className="py-3 pr-4 align-top">
-                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => setDsDialogOpen(true)}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setDsDialogOpen(true)}>
                     DsDialog
                   </DsButton>
                   <DsDialog
@@ -774,7 +774,7 @@ function PopupCompareSection() {
                 <td className="py-3 pr-4 align-top">
                   <ShadSheet>
                     <ShadSheetTrigger asChild>
-                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11">打开 Sheet ({sheetSide})</DsButton>
+                      <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11">打开 Sheet ({sheetSide})</DsButton>
                     </ShadSheetTrigger>
                     <ShadSheetContent side={sheetSide}>
                       <ShadSheetHeader>
@@ -788,7 +788,7 @@ function PopupCompareSection() {
                         <p className="mt-2">基于 Radix Dialog 原语实现，支持四方向滑入动画。</p>
                       </div>
                       <ShadSheetFooter>
-                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11">完成</DsButton>
+                        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11">完成</DsButton>
                       </ShadSheetFooter>
                     </ShadSheetContent>
                   </ShadSheet>
