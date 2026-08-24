@@ -47,6 +47,12 @@
     "tooltip": "第{{page}}页",
     "tooltip_with_name": "{{name}} 第{{page}}页"
   },
+  "image_preview": {
+    "zoom_not_ready": "图片尚未加载完成，无法缩放",
+    "zoom_out_of_range": "zoom 百分比须在 {{min}}–{{max}} 之间，或传 'fit'",
+    "rotate_not_ready": "图片尚未加载完成，无法旋转",
+    "rotate_invalid_degrees": "rotate 的 degrees 仅支持 90/180/270（顺时针）"
+  },
   "bookmarkSaveFailed": "书签保存失败",
   "export_no_pdf_file": "未找到可导出的PDF文件",
   "export_render_failed": "无法渲染选中的页面"
