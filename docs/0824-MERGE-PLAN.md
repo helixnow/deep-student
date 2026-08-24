@@ -123,4 +123,90 @@ cargo check --manifest-path src-tauri/Cargo.toml --lib
 | `npx vite build` | ✅ 1m14s，仅 chunk 体积警告 |
 | `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（22 条，均为两仓自带） |
 
-待办：H/A/B/D/F/G 各主题仓按第 5 节顺序继续合入。
+### Step 2：已合入 H cache（#175+#183）+ 移植主题仓 C 的 i18n 修复
+
+日期：2026-08-24。本步由第四轮官方合并代理完成，输入为
+`docs/dev/0824-step1-review.md`（第三轮复查，随本步一并收录进 0824，提交
+`df7bed1a` + `f40ee4c8`）标注的两个阻断项：主题仓 H 的 `pipeline.rs` tip 上
+看不到 Step 1 的 hooks/GenerativeUiExecutor；0824 尚缺主题仓 C 的 `423dc82a`。
+
+顺序与提交：
+
+1. **移植主题仓 C i18n**：cherry-pick `423dc82a` → `34c66cb2`
+   （`fix(generative-ui): wire hardcoded Chinese guard texts to existing i18n`，
+   7 个文件与源提交逐字节一致）。主题仓 C tip 的另一后续 `bc26f121`
+   （executor E0716 修复）与 0824 已有的 `82fc755a` 等价——合并后
+   `generative_ui_executor.rs` 与主题仓 C tip 零 diff——按计划跳过，不重复移植。
+2. **合入 H**：`origin/cursor/0824-theme-cache-cde6` @ `9101aa0b` →
+   merge commit `e54603a0`。按 step1-review 的红线执行
+   「结构/hooks/GenUI 听 0824，cache 语义听 H」：
+   - `src-tauri/permissions/application-commands.toml`：两侧新命令取并集
+     （#213 的 `chat_v2_export_session_jsonl` + H 的
+     `chat_v2_freeze_available_skills_snapshot`）。
+   - `src-tauri/src/chat_v2/pipeline/tool_loop.rs`：保留 H 新增的
+     prompt-cache 冻结/排序 helper（`sort_tool_schemas_for_prompt_cache`、
+     `freeze_tool_schema_order_for_prompt_cache`、
+     `freeze_tool_schemas_for_prompt_cache`、
+     `merge_frozen_tool_schema_order_baseline`）与 reasoning-item 归属逻辑；
+     丢弃 H 侧遗留的 approval 函数副本
+     （`approval_manager_required`/`tool_may_require_approval`/
+     `request_tool_approval`/`request_plan_gate` 等，#213 已迁至
+     `pipeline/hooks.rs`，合并后逐一确认仍在 hooks.rs）。
+
+合并后逐项复核（对照 step1-review 第 3 节 H cache 清单）：
+
+- 0824 侧保留：`pipeline.rs` 的 `pub mod hooks` + `default_pipeline_hooks()`、
+  catch-all 前注册 `GenerativeUiExecutor`、`render_generative_ui` →
+  `block_types::GENERATIVE_UI` 映射；`tool_loop.rs` 的
+  `before_tool`/`after_tool` hook 调用；`lib.rs` 的 `pub mod hpias`、
+  `chat_v2_export_session_jsonl` 注册与 #213 初始化；compaction 拆分模块
+  （`compaction/memory_flush.rs` 等）与 `context_compiler` 拆分不变。
+- H 侧保留：prefix freeze 全链
+  （`frozen_tool_schema_orders`/`microcompact_anchors`/
+  `availableSkillsSnapshot` 会话持久化 + `prefix_snapshot_tests.rs`）、
+  native replay（`llm_adapter.rs` 的 `response_reasoning_items` 采集/配对/回放）、
+  cache telemetry（`V20260824__add_cache_write_tokens.sql` 迁移、
+  `record_llm_usage_cache_ext`、`cache_write_tokens` 全链路记账）、
+  检索/预取注入迁至 `<injected_context>`、`scripts/cache-hit-report.py` 报表。
+- `git diff origin/cursor/0824-theme-genui-cde6..HEAD` 在
+  generative-ui/locales/tests 路径下仅剩 0824 独有的 #213/H 增量，
+  主题仓 C 无内容缺失。
+
+合并后编译门禁修复（`src-tauri/src/llm_manager/model2_pipeline.rs`，
+该文件不在 step1-review 的 H 重叠清单内，是本步实测新暴露的坏合成）：
+
+- `server_side_web_search_enabled` 被合成了「#213 的 quirks 签名 + H 的
+  `config.model` 白名单检查」的坏混合体（E0423）。重构为
+  `(quirks, config, llm_context)` 三参：`ProviderQuirks::server_side_web_search`
+  继续承载 #213 收敛的「官方 DeepSeek + Responses + supports_tools」门控，
+  H 新增的 flash 系列模型白名单
+  （`deepseek_model_supports_server_side_web_search`）作为独立第二道门保留，
+  两个生产调用点与两组单测（含 H 的
+  `server_side_web_search_whitelist_restricts_to_flash_series` 回归）同步更新。
+- 合并丢失了 H 在 `use super::{...}` 中对 `is_official_deepseek_config`
+  的导入，致 H 的 `provider_accepts_prompt_cache_key` /
+  `provider_accepts_prompt_cache_retention`（DeepSeek 官方不写
+  `prompt_cache_key`/缓存保留参数）E0425；补回导入，语义不变。
+- 另修 #214 遗留的 lib test 编译错（与 Step 1 的 E0716 同类，#214 CI 从未跑完）：
+  `generative_ui_executor.rs` 测试 `parse_note_edit_accepts_append_payload`
+  把 owned `Option<Value>` move 进 `and_then` 再返回内部引用（E0515），
+  改为 `as_ref()` 先借用；该错此前阻断整个 lib test target 编译
+  （含 H 的 `prefix_snapshot_tests`）。
+
+编译门禁结果（Rust stable 1.98.0，与 CI 一致；安装 CI 同款
+libwebkit2gtk-4.1-dev 等系统依赖与 PDFium 后复跑）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages（package.json/lock 本步无变化，无需重生成 NOTICES） |
+| `npm run licenses:check` | ✅ `[license-compliance] OK` |
+| `npm run typecheck` | ✅ 0 错误 |
+| `npx vite build` | ✅ 2m44s，仅既有 chunk 体积/循环 chunk 警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（24 条，均为主题仓自带） |
+| 定向 vitest（i18n 移植） | ✅ `builderI18n.contract` + `generativeUiI18n.parity.contract`，9 tests 全过 |
+
+step1-review 点名的 `useAIEditState.i18n.test.ts` 只存在于主题仓 A（wrapup），
+随 Step 3 合入时再跑。
+
+待办：A/B/D/F/G 各主题仓按第 5 节顺序继续合入
+（回归清单见 `docs/dev/0824-step1-review.md` 第 3 节）。
