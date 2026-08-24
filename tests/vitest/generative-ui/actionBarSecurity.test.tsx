@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
       if (key === 'action.confirm_desc') return '确认描述';
       if (key === 'action.confirm_execute') return '确认执行';
       if (key === 'action.unregistered_hint') return '未注册';
+      if (key === 'action.unregistered_label') return '未注册操作';
       if (key === 'a11y.action_bar_label') return '操作栏';
       return key;
     },
@@ -110,7 +111,8 @@ describe('ActionBarBlock security', () => {
         }}
       />,
     );
-    expect(screen.getByRole('button', { name: '伪造' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '伪造' })).not.toBeInTheDocument();
   });
 
   it('emits onAction when no handler registry is provided', async () => {
@@ -135,6 +137,7 @@ describe('ActionBarBlock security', () => {
         }}
       />,
     );
-    expect(screen.getByRole('button', { name: '伪造操作' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '伪造操作' })).not.toBeInTheDocument();
   });
 });

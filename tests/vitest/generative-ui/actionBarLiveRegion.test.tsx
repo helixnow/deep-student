@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
       if (key === 'action.confirm_desc') return '确认描述';
       if (key === 'action.confirm_execute') return '确认执行';
       if (key === 'action.unregistered_hint') return '未注册';
+      if (key === 'action.unregistered_label') return '未注册操作';
       if (key === 'action.undo') return '撤销';
       if (key === 'action.undo_empty') return '没有可撤销的操作';
       if (key === 'action.live_ok') return `${params?.label ?? ''} completed`;
@@ -133,7 +134,7 @@ describe('ActionBarBlock live region', () => {
       />,
     );
 
-    const button = screen.getByRole('button', { name: '伪造操作' });
+    const button = screen.getByRole('button', { name: '未注册操作' });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('data-action-unregistered', '');
     expect(button).toHaveAttribute('title', '未注册');

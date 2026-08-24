@@ -270,7 +270,9 @@ export function ActionBarBlock({
         {actions.map((action) => {
           const handlerDef = lookupGenerativeActionHandler(actionHandlers, action.id);
           const isRegistered = !enforceHandlerRegistry || handlerDef != null;
-          const displayLabel = trustedLabel(action.id, action.label, actionHandlers);
+          const displayLabel = isRegistered
+            ? trustedLabel(action.id, action.label, actionHandlers)
+            : t('action.unregistered_label');
           const handlerRisk = handlerDef?.riskLevel;
           const effectiveRisk = resolveEffectiveRiskLevel(action.riskLevel, handlerRisk);
           const isConfirmingMedium = pendingMediumId === action.id;
