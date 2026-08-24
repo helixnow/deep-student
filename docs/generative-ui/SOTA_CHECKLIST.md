@@ -56,6 +56,7 @@
 | Frontend tsc | `npx tsc --noEmit`（Round 28 22 项修复） | ✅ |
 | SOTA 静态验收 | `generativeUISotaAcceptance.contract.test.ts` | ✅ |
 | 全模块 integration contract | `generativeUIModuleIntegration.contract.test.ts` | ✅ |
+| Rust fmt | `cargo fmt --check`（Round 30 修复） | ✅ |
 | Rust hpias 单测 | `cargo test hpias` | ⏳ 需 GTK + stable Rust CI |
 
 ## 距 SOTA 完整态剩余项
