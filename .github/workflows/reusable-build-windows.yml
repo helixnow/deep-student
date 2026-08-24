@@ -49,6 +49,12 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       SENTRY_UPLOAD_ENABLED: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'true' || 'false' }}
+      # Align with the macOS/Linux release jobs: the repository release profile
+      # uses one codegen unit + ThinLTO, which makes the final rustc phase very
+      # slow on standard hosted runners. Favor a bounded, reproducible release
+      # build instead.
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
     steps:
       # ── 生产签名 secrets 预检（fail-closed, 在任何耗时步骤之前）──
       - name: Preflight — require production signing secrets (fail-closed)
@@ -135,6 +141,7 @@ jobs:
           echo "rustc           : $(rustc --version)"
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}"
           echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
           echo "timestamp       : ${TIMESTAMP_URL_PRIMARY} (fallback: ${TIMESTAMP_URL_FALLBACK})"
           echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
