@@ -177,7 +177,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
             onClick={() => void loadEssay()}
           >
             <ArrowClockwise size={16} />
@@ -185,7 +185,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               onClick={onClose}
             >
               {t('common:actions.close')}
