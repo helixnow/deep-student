@@ -1885,6 +1885,22 @@ impl StreamingAnkiService {
         ));
         crate::anki_qa_lint::merge_flags(&mut cleaned_extra_fields, &lint_issues);
 
+        // 首次入库时固化生成原文，供后续用户编辑后挖掘 grounded critic 修正对。
+        // entry-once helper 不覆盖模板/用户已有值；超限或序列化失败仅少一份快照，
+        // 绝不能阻断卡片主路径。
+        let original_text = cleaned_extra_fields.get("text").cloned();
+        if let Err(error) = crate::anki_gold_set::insert_original_generation_once(
+            &mut cleaned_extra_fields,
+            &cleaned_front,
+            &cleaned_back,
+            original_text.as_deref(),
+        ) {
+            warn!(
+                "[ANKI_ORIGINAL_GENERATION] 跳过任务 {} 的原始快照，不影响卡片入库: {}",
+                task_id, error
+            );
+        }
+
         // 创建卡片
         let now = Utc::now().to_rfc3339();
         let card = AnkiCard {
@@ -4305,6 +4321,153 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    // -------------------- 收尾 #4：首次入库原文快照 --------------------
+
+    #[tokio::test]
+    async fn parse_and_save_card_persists_original_generation_snapshot() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-original-basic-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "original-basic-task", &document_id, 0);
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"  什么是惯性？  ","back":"  保持原有运动状态的性质  "}"#,
+                "original-basic-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect("card parses")
+            .expect("card saves");
+        let snapshot = crate::anki_gold_set::extract_original_from_extras(&card.extra_fields)
+            .expect("snapshot on returned card");
+        assert_eq!(snapshot.front, card.front);
+        assert_eq!(snapshot.back, card.back);
+        assert_eq!(snapshot.text, None);
+
+        let persisted = svc
+            .db
+            .get_cards_for_task("original-basic-task")
+            .expect("stored card");
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(
+            crate::anki_gold_set::extract_original_from_extras(&persisted[0].extra_fields),
+            Some(snapshot)
+        );
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn parse_and_save_card_snapshot_includes_cloze_text() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-original-cloze-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "original-cloze-task", &document_id, 0);
+        let mut options = minimal_options();
+        options.template_fields = Some(vec!["Text".to_string()]);
+        options.field_extraction_rules = Some(HashMap::from([(
+            "text".to_string(),
+            make_rule(true, FieldType::Text, "text"),
+        )]));
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"text":"水在标准大气压下的沸点是 {{c1::100 摄氏度}}。"}"#,
+                "original-cloze-task",
+                &document_id,
+                &options,
+                true,
+                None,
+            )
+            .await
+            .expect("cloze parses")
+            .expect("cloze saves");
+        let snapshot = crate::anki_gold_set::extract_original_from_extras(&card.extra_fields)
+            .expect("cloze snapshot");
+        assert_eq!(snapshot.front, card.front);
+        assert_eq!(snapshot.back, card.back);
+        assert_eq!(snapshot.text, card.text);
+        assert!(snapshot.text.as_deref().unwrap_or("").contains("{{c1::"));
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn parse_and_save_card_does_not_overwrite_existing_original_generation() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-original-existing-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "original-existing-task", &document_id, 0);
+        let mut options = fingerprint_options();
+        options
+            .field_extraction_rules
+            .as_mut()
+            .expect("rules")
+            .insert(
+                crate::anki_gold_set::ORIGINAL_GENERATION_FIELD.to_string(),
+                make_rule(false, FieldType::Text, "existing snapshot"),
+            );
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"新问题","back":"新答案","_original_generation":"user-controlled-value"}"#,
+                "original-existing-task",
+                &document_id,
+                &options,
+                true,
+                None,
+            )
+            .await
+            .expect("card parses")
+            .expect("card saves");
+        assert_eq!(
+            card.extra_fields
+                .get(crate::anki_gold_set::ORIGINAL_GENERATION_FIELD)
+                .map(String::as_str),
+            Some("user-controlled-value")
+        );
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn oversized_original_generation_failure_does_not_block_card_insert() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-original-oversized-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "original-oversized-task", &document_id, 0);
+        let oversized_front = "界".repeat(crate::anki_gold_set::ORIGINAL_GENERATION_MAX_BYTES);
+        let payload = json!({
+            "front": oversized_front,
+            "back": "仍需正常入库",
+        })
+        .to_string();
+
+        let card = svc
+            .parse_and_save_card(
+                &payload,
+                "original-oversized-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect("snapshot failure is non-fatal")
+            .expect("card still saves");
+        assert!(!card
+            .extra_fields
+            .contains_key(crate::anki_gold_set::ORIGINAL_GENERATION_FIELD));
+        let persisted = svc
+            .db
+            .get_cards_for_task("original-oversized-task")
+            .expect("stored oversized card");
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].front, card.front);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
     }
 
     #[tokio::test]

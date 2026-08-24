@@ -21,8 +21,8 @@
 //!
 //! plan §2 缺口中推荐的 P0 方案：生成时在 `extra_fields_json` 写入一次
 //! `_original_generation: {front, back, text}`，永不更新。
-//! [`extract_original_generation`] 负责从该 JSON 中解出快照；
-//! 埋点写入本身属于生成管线改动，不在本模块范围（见 plan §6 P0）。
+//! [`insert_original_generation_once`] 提供有界、幂等的写入端，
+//! [`extract_original_generation`] 负责从落库 JSON 中解出快照。
 //!
 //! ## 与 `anki_qa_lint` 的契约
 //!
@@ -40,6 +40,12 @@ use std::collections::HashMap;
 
 /// `extra_fields_json` 中保存"生成时原文快照"的键名（plan §2 P0 方案）。
 pub const ORIGINAL_GENERATION_FIELD: &str = "_original_generation";
+
+/// `_original_generation` 值本身的 UTF-8 字节硬上限。
+///
+/// 普通卡通常只有数百字节；16 KiB 足以容纳长公式/代码，同时避免异常模型输出
+/// 让每张卡额外复制接近流缓冲硬上限的正文。超限时跳过快照，卡片本身仍须入库。
+pub const ORIGINAL_GENERATION_MAX_BYTES: usize = 16 * 1024;
 
 /// `anki_qa_lint` 全部稳定 lint code 字符串（跨语言契约清单）。
 ///
@@ -207,6 +213,63 @@ impl Default for GoldMiningConfig {
 // 编辑前原文提取
 // ============================================================================
 
+/// 首次写入 `_original_generation` 时可能发生的非致命错误。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OriginalGenerationSnapshotError {
+    Serialization(String),
+    TooLarge {
+        actual_bytes: usize,
+        max_bytes: usize,
+    },
+}
+
+impl std::fmt::Display for OriginalGenerationSnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Serialization(message) => write!(f, "快照序列化失败: {message}"),
+            Self::TooLarge {
+                actual_bytes,
+                max_bytes,
+            } => write!(f, "快照大小 {actual_bytes} 字节超过上限 {max_bytes} 字节"),
+        }
+    }
+}
+
+impl std::error::Error for OriginalGenerationSnapshotError {}
+
+/// 把生成完成、清理后的卡片正文写入 `extra_fields`，供后续用户编辑后挖掘修正对。
+///
+/// 返回 `Ok(true)` 表示本次写入；键已存在时返回 `Ok(false)`，并逐字节保留既有值。
+/// 该幂等语义是硬约束：无论既有值是否合法，都不能覆盖用户或历史版本写下的
+/// `_original_generation`。序列化或体积校验失败只返回错误，由入库调用方降级跳过。
+pub fn insert_original_generation_once(
+    extras: &mut HashMap<String, String>,
+    front: &str,
+    back: &str,
+    text: Option<&str>,
+) -> Result<bool, OriginalGenerationSnapshotError> {
+    if extras.contains_key(ORIGINAL_GENERATION_FIELD) {
+        return Ok(false);
+    }
+
+    let snapshot = CardSnapshot {
+        front: front.to_string(),
+        back: back.to_string(),
+        text: text.map(str::to_string),
+    };
+    let serialized = serde_json::to_string(&snapshot)
+        .map_err(|error| OriginalGenerationSnapshotError::Serialization(error.to_string()))?;
+    if serialized.len() > ORIGINAL_GENERATION_MAX_BYTES {
+        return Err(OriginalGenerationSnapshotError::TooLarge {
+            actual_bytes: serialized.len(),
+            max_bytes: ORIGINAL_GENERATION_MAX_BYTES,
+        });
+    }
+
+    extras.insert(ORIGINAL_GENERATION_FIELD.to_string(), serialized);
+    Ok(true)
+}
+
 /// 从 `extra_fields_json`（`anki_cards.extra_fields_json` 原文）中解出
 /// `_original_generation` 快照。键缺失 / JSON 非法 / 形状不符均返回 None。
 ///
@@ -254,7 +317,11 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
         return a.len();
     }
     // 让 b 是较短的一侧，压缩滚动数组宽度
-    let (long, short) = if a.len() >= b.len() { (&a, &b) } else { (&b, &a) };
+    let (long, short) = if a.len() >= b.len() {
+        (&a, &b)
+    } else {
+        (&b, &a)
+    };
     let mut prev: Vec<usize> = (0..=short.len()).collect();
     let mut cur = vec![0usize; short.len() + 1];
     for (i, lc) in long.iter().enumerate() {
@@ -371,13 +438,19 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
             return if ratio < cfg.minor_edit_max_ratio {
                 sample(
                     GoldLabel::EditedMinor,
-                    format!("小幅编辑（距离比 {:.3} < {:.2}）", ratio, cfg.minor_edit_max_ratio),
+                    format!(
+                        "小幅编辑（距离比 {:.3} < {:.2}）",
+                        ratio, cfg.minor_edit_max_ratio
+                    ),
                     Some(pair),
                 )
             } else {
                 sample(
                     GoldLabel::EditedMajor,
-                    format!("大幅重写（距离比 {:.3} ≥ {:.2}）", ratio, cfg.minor_edit_max_ratio),
+                    format!(
+                        "大幅重写（距离比 {:.3} ≥ {:.2}）",
+                        ratio, cfg.minor_edit_max_ratio
+                    ),
                     Some(pair),
                 )
             };
@@ -422,7 +495,10 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
 
 /// 批量挖掘：逐候选标注，返回全部样本（含 Unlabeled，供审计）。
 pub fn mine_gold_set(candidates: &[GoldCandidate], cfg: &GoldMiningConfig) -> Vec<GoldSample> {
-    candidates.iter().map(|c| classify_candidate(c, cfg)).collect()
+    candidates
+        .iter()
+        .map(|c| classify_candidate(c, cfg))
+        .collect()
 }
 
 /// 各标签计数（挖掘报告 / 分层抽样前的分布检查）。
@@ -586,8 +662,14 @@ pub fn select_grounded_reference_pairs<'a>(
 /// 仅做样式级替换，主题白名单与人审仍是入仓 fixture 的硬前置（plan §4）。
 pub fn scrub_pii(text: &str) -> (String, usize) {
     let patterns: [(&str, &str); 3] = [
-        (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[已脱敏邮箱]"),
-        (r"(?:^|[^0-9])((?:\+?86[- ]?)?1[3-9]\d{9})(?:[^0-9]|$)", "[已脱敏手机号]"),
+        (
+            r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+            "[已脱敏邮箱]",
+        ),
+        (
+            r"(?:^|[^0-9])((?:\+?86[- ]?)?1[3-9]\d{9})(?:[^0-9]|$)",
+            "[已脱敏手机号]",
+        ),
         (r"\d{17}[0-9Xx]", "[已脱敏证件号]"),
     ];
     let mut out = text.to_string();
@@ -681,6 +763,136 @@ mod tests {
     }
 
     // -------- extract_original_generation --------
+
+    #[test]
+    fn insert_original_generation_captures_front_back_and_text() {
+        let mut extras = HashMap::new();
+        let inserted = insert_original_generation_once(
+            &mut extras,
+            "什么是惯性？",
+            "保持原有运动状态的性质",
+            Some("物体具有 {{c1::惯性}}"),
+        )
+        .expect("snapshot");
+
+        assert!(inserted);
+        let snapshot = extract_original_from_extras(&extras).expect("round trip");
+        assert_eq!(snapshot.front, "什么是惯性？");
+        assert_eq!(snapshot.back, "保持原有运动状态的性质");
+        assert_eq!(snapshot.text.as_deref(), Some("物体具有 {{c1::惯性}}"));
+    }
+
+    #[test]
+    fn insert_original_generation_omits_absent_text() {
+        let mut extras = HashMap::new();
+        insert_original_generation_once(&mut extras, "Q", "A", None).expect("snapshot");
+
+        let raw = extras.get(ORIGINAL_GENERATION_FIELD).expect("stored");
+        let value: Value = serde_json::from_str(raw).expect("json object");
+        assert_eq!(value, json!({"front": "Q", "back": "A"}));
+        assert!(value.get("text").is_none());
+    }
+
+    #[test]
+    fn insert_original_generation_preserves_explicit_empty_text() {
+        let mut extras = HashMap::new();
+        insert_original_generation_once(&mut extras, "Q", "A", Some("")).expect("snapshot");
+
+        let snapshot = extract_original_from_extras(&extras).expect("round trip");
+        assert_eq!(snapshot.text.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn insert_original_generation_is_first_write_only() {
+        let mut extras = HashMap::new();
+        assert!(
+            insert_original_generation_once(&mut extras, "original Q", "original A", None)
+                .expect("first write")
+        );
+        let original_raw = extras[ORIGINAL_GENERATION_FIELD].clone();
+
+        let inserted =
+            insert_original_generation_once(&mut extras, "edited Q", "edited A", Some("edited"))
+                .expect("existing value is a no-op");
+        assert!(!inserted);
+        assert_eq!(extras[ORIGINAL_GENERATION_FIELD], original_raw);
+    }
+
+    #[test]
+    fn insert_original_generation_never_replaces_malformed_existing_value() {
+        let mut extras = HashMap::from([(
+            ORIGINAL_GENERATION_FIELD.to_string(),
+            "user-controlled-non-json".to_string(),
+        )]);
+
+        let inserted = insert_original_generation_once(
+            &mut extras,
+            &"x".repeat(ORIGINAL_GENERATION_MAX_BYTES * 2),
+            "A",
+            None,
+        )
+        .expect("existing key is checked before size");
+        assert!(!inserted);
+        assert_eq!(
+            extras[ORIGINAL_GENERATION_FIELD],
+            "user-controlled-non-json"
+        );
+    }
+
+    #[test]
+    fn insert_original_generation_accepts_exact_byte_limit() {
+        let overhead = serde_json::to_string(&CardSnapshot::default())
+            .expect("snapshot")
+            .len();
+        assert!(overhead < ORIGINAL_GENERATION_MAX_BYTES);
+        let front = "x".repeat(ORIGINAL_GENERATION_MAX_BYTES - overhead);
+        let mut extras = HashMap::new();
+
+        insert_original_generation_once(&mut extras, &front, "", None).expect("exact limit");
+        assert_eq!(
+            extras[ORIGINAL_GENERATION_FIELD].len(),
+            ORIGINAL_GENERATION_MAX_BYTES
+        );
+    }
+
+    #[test]
+    fn insert_original_generation_rejects_over_limit_without_mutation() {
+        let overhead = serde_json::to_string(&CardSnapshot::default())
+            .expect("snapshot")
+            .len();
+        let front = "x".repeat(ORIGINAL_GENERATION_MAX_BYTES - overhead + 1);
+        let mut extras = HashMap::from([("keep".to_string(), "value".to_string())]);
+        let before = extras.clone();
+
+        let error = insert_original_generation_once(&mut extras, &front, "", None)
+            .expect_err("one byte over must fail");
+        assert_eq!(
+            error,
+            OriginalGenerationSnapshotError::TooLarge {
+                actual_bytes: ORIGINAL_GENERATION_MAX_BYTES + 1,
+                max_bytes: ORIGINAL_GENERATION_MAX_BYTES,
+            }
+        );
+        assert_eq!(extras, before);
+    }
+
+    #[test]
+    fn insert_original_generation_limit_counts_utf8_bytes() {
+        let overhead = serde_json::to_string(&CardSnapshot::default())
+            .expect("snapshot")
+            .len();
+        let front = "界".repeat((ORIGINAL_GENERATION_MAX_BYTES - overhead) / 3 + 1);
+        assert!(front.chars().count() < ORIGINAL_GENERATION_MAX_BYTES);
+        let mut extras = HashMap::new();
+
+        let error = insert_original_generation_once(&mut extras, &front, "", None)
+            .expect_err("multibyte payload must use byte limit");
+        assert!(matches!(
+            error,
+            OriginalGenerationSnapshotError::TooLarge { .. }
+        ));
+        assert!(!extras.contains_key(ORIGINAL_GENERATION_FIELD));
+    }
 
     #[test]
     fn extracts_original_generation_object_form() {
@@ -806,7 +1018,11 @@ mod tests {
         c.updated_at_ms = c.created_at_ms + 60 * 60 * 1000; // 1h 后编辑
         let s = classify_candidate(&c, &GoldMiningConfig::default());
         assert_eq!(s.label, GoldLabel::Unlabeled);
-        assert!(s.reason.contains("_original_generation"), "reason={}", s.reason);
+        assert!(
+            s.reason.contains("_original_generation"),
+            "reason={}",
+            s.reason
+        );
     }
 
     // -------- classify：删除通道 --------
@@ -886,10 +1102,22 @@ mod tests {
             }
         );
 
-        assert_eq!(fixture_export_bucket(GoldLabel::KeptUnedited), Some("gold/positive"));
-        assert_eq!(fixture_export_bucket(GoldLabel::EditedMinor), Some("gold/repair-pairs"));
-        assert_eq!(fixture_export_bucket(GoldLabel::ErrorCardRepaired), Some("gold/repair-pairs"));
-        assert_eq!(fixture_export_bucket(GoldLabel::DeletedEarly), Some("gold/negative"));
+        assert_eq!(
+            fixture_export_bucket(GoldLabel::KeptUnedited),
+            Some("gold/positive")
+        );
+        assert_eq!(
+            fixture_export_bucket(GoldLabel::EditedMinor),
+            Some("gold/repair-pairs")
+        );
+        assert_eq!(
+            fixture_export_bucket(GoldLabel::ErrorCardRepaired),
+            Some("gold/repair-pairs")
+        );
+        assert_eq!(
+            fixture_export_bucket(GoldLabel::DeletedEarly),
+            Some("gold/negative")
+        );
         assert_eq!(fixture_export_bucket(GoldLabel::Unlabeled), None);
     }
 
@@ -909,7 +1137,11 @@ mod tests {
         let report = lint_repair_pair(&pair, &gold_lint_config());
         assert!(report.original_flagged);
         assert!(report.original_codes.contains(&"answer_leak".to_string()));
-        assert!(report.edited_clean, "edited codes: {:?}", report.edited_codes);
+        assert!(
+            report.edited_clean,
+            "edited codes: {:?}",
+            report.edited_codes
+        );
         assert!(!report.lint_blind_spot);
     }
 
@@ -938,7 +1170,12 @@ mod tests {
 
     // -------- grounded critic 参照对选取（Round 5 #4） --------
 
-    fn pair_sample(id: &str, label: GoldLabel, original: CardSnapshot, edited: CardSnapshot) -> GoldSample {
+    fn pair_sample(
+        id: &str,
+        label: GoldLabel,
+        original: CardSnapshot,
+        edited: CardSnapshot,
+    ) -> GoldSample {
         let ratio = edit_ratio(&original, &edited);
         GoldSample {
             card_id: id.to_string(),
@@ -966,7 +1203,10 @@ mod tests {
         // 缺键 / 非法 JSON / 非对象形状 → None
         assert!(extract_original_from_extras(&HashMap::new()).is_none());
         let mut bad: HashMap<String, String> = HashMap::new();
-        bad.insert(ORIGINAL_GENERATION_FIELD.to_string(), "not-json".to_string());
+        bad.insert(
+            ORIGINAL_GENERATION_FIELD.to_string(),
+            "not-json".to_string(),
+        );
         assert!(extract_original_from_extras(&bad).is_none());
         let mut num: HashMap<String, String> = HashMap::new();
         num.insert(ORIGINAL_GENERATION_FIELD.to_string(), "42".to_string());
@@ -1007,7 +1247,11 @@ mod tests {
         );
         let samples = [blind];
         let picked = select_grounded_reference_pairs(&samples, &cfg, 10);
-        assert_eq!(picked.len(), 1, "lint 盲区对不得被 original_flagged 门槛挡掉");
+        assert_eq!(
+            picked.len(),
+            1,
+            "lint 盲区对不得被 original_flagged 门槛挡掉"
+        );
     }
 
     #[test]
