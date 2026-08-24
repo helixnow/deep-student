@@ -682,6 +682,7 @@ describe('InputBarV2 stale context ref guard', () => {
       'medium',
       'high',
       'xhigh',
+      'max',
     ]);
     expect(capturedInputBarUIProps?.thinkingCanDisable).toBe(false);
 
