@@ -383,6 +383,7 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 **文件面认领（独占）**：`data_governance/sync/history.rs` 新文件、`sync/mod.rs`（仅 `pub mod history;` 一行）、`conflict_resolver.rs` 快照挂钩段（上文已登记）、`commands_sync.rs` 时点恢复命令段 + resolve preflight 快照段（上文已登记）、`lib.rs` 注册两行、`data_governance/mod.rs` re-export 两行、`permissions/application-commands.toml` 两行、`RecordConflictsPanel.tsx` 撤销入口、`data.json` / `sync.json`（zh/en）上述新键、`api/dataGovernance.ts` 两个包装、`sync_r11_history.rs` 新文件、本节。与 R11-unsynced-ui / R11-check 的 `commands_sync.rs` 各自新段无交叠（推前 rebase 消解）。
 
 **已知基线红灯（非本包引入）**：`sync_scenarios_tests.rs` 5 个 blob tombstone 场景（scenario_35/37/57/58/59）因基线 `c006f457` 收紧 tombstone hash 校验（拒绝非 64 位 hex 的 `"ab123"`）而失败，`a5333474` 只修了单测未跟进场景测；本分支文件面不含 `tombstone.rs`，留待专路修复。本分支已验证通过：`--lib data_governance::sync::` 191 例、`sync_r05_regression` / `sync_r06_delete_resolve` / `sync_r07_delete_resolve_lock` / `sync_r10_protocol_locks` / `sync_integration_deep` / `sync_r11_history` 全绿。
+
 ### R11-unsynced-ui（分支 `cursor/cloud-sync-sota-r11-unsynced-ui-b343`，未同步文件清单常驻面板）
 
 模型 claude-fable-5-thinking-high。Dropbox 档「未同步文件清单」一整包。交付：
