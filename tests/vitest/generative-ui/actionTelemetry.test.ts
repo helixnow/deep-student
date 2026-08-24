@@ -21,7 +21,7 @@ function makeDef(
 
 describe('wrapActionWithTelemetry', () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('records success duration (actionId / riskLevel / startedAt / durationMs / ok)', async () => {
@@ -117,7 +117,7 @@ describe('wrapActionWithTelemetry', () => {
 
 describe('defaultGenerativeActionTelemetrySink', () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('writes the event to console.debug', () => {

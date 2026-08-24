@@ -29,7 +29,7 @@ describe('GenerativeUIErrorBoundary', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('renders children when the subtree is healthy', () => {
