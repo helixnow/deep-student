@@ -1270,7 +1270,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     type="button"
                     onClick={() => openMobileSection(item.tab)}
                     className={cn(
-                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press',
+                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press [@media(pointer:coarse)]:min-h-11',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1307,7 +1307,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                         data-tour-id={item.tourId}
                         onClick={() => openMobileSection(item.value)}
                         className={cn(
-                          '!flex !h-auto !min-h-[72px] !w-full !items-center !justify-start !gap-3 !rounded-none !border-0 !border-b !border-border/35 !px-4 !py-3 text-left last:!border-b-0 ui-press',
+                          '!flex !h-auto !min-h-[72px] !w-full !items-center !justify-start !gap-3 !rounded-none !border-0 !border-b !border-border/35 !px-4 !py-3 text-left last:!border-b-0 ui-press [@media(pointer:coarse)]:min-h-11',
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset'
                         )}
                       >
@@ -1542,7 +1542,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
-              <DsButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
+              <DsButton variant="default" size="sm" onClick={handleClosePreview} className="[@media(pointer:coarse)]:min-h-11">{t('common:close')}</DsButton>
             </DsDialogFooter>
           </DsDialog>
         )}
@@ -1693,7 +1693,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
@@ -1796,8 +1796,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                 </div>
               </CustomScrollArea>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-                <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
+                <DsButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
+                  className="[@media(pointer:coarse)]:min-h-11"
                   onClick={async () => {
                     const nextPolicy = {
                       mcpAdvertiseAll: mcpPolicyModal.advertiseAll,
@@ -1993,7 +1994,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:actions.close')}
-                    className="settings-mobile-sheet-header-action !rounded-full"
+                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   >
                     <X size={26} weight="regular" />
                   </DsButton>
@@ -2006,7 +2007,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:mobile_header.back')}
-                    className="settings-mobile-sheet-header-action !rounded-full"
+                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   >
                     <CaretLeft size={26} weight="regular" />
                   </DsButton>
