@@ -111,12 +111,21 @@ const PomodoroStatusItem: React.FC = () => {
   const { t } = useTranslation('workbench');
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
   const mode = usePomodoroStore((s) => s.mode);
+  const status = usePomodoroStore((s) => s.status);
+  const sessionCountUp = usePomodoroStore((s) => s.sessionCountUp);
+  const countUpSetting = usePomodoroStore((s) => s.settings.countUp);
   const pomodoroTime = formatStatusBarTime(timeLeft);
-  // 休息阶段文案与实际阶段一致，不再一律显示「专注剩余」
+  // 文案与实际阶段/状态一致：已暂停 > 休息剩余 > 已专注（正计时）> 专注剩余
   const isBreak = mode === 'short_break' || mode === 'long_break';
-  const pomodoroLabel = isBreak
-    ? t('menubar.pomodoroBreakRemaining', { time: pomodoroTime })
-    : t('menubar.pomodoroFocus', { time: pomodoroTime });
+  const isCountUpWork = mode === 'work' && (sessionCountUp ?? countUpSetting);
+  const pomodoroLabel =
+    status === 'paused'
+      ? t('menubar.pomodoroPaused', { time: pomodoroTime })
+      : isBreak
+        ? t('menubar.pomodoroBreakRemaining', { time: pomodoroTime })
+        : isCountUpWork
+          ? t('menubar.pomodoroFocusElapsed', { time: pomodoroTime })
+          : t('menubar.pomodoroFocus', { time: pomodoroTime });
   return (
     <button
       type="button"

@@ -161,6 +161,8 @@
     "automationsRelativeDays": "in {{count}} d",
     "pomodoroFocus": "Focus remaining {{time}}",
     "pomodoroBreakRemaining": "Break remaining {{time}}",
+    "pomodoroFocusElapsed": "Focused {{time}}",
+    "pomodoroPaused": "Paused {{time}}",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
