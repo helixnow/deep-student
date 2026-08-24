@@ -3,7 +3,11 @@
     "not_configured": "未配置",
     "configured": "已配置",
     "to_be_configured": "待配置"
+  },
+  "system_validation": {
+    "max_chat_history": "最大聊天历史记录数量必须在10-1000之间",
+    "theme": "主题必须是 light、dark 或 auto",
+    "language": "语言必须是 zh-CN 或 en-US",
+    "markdown_renderer_mode": "Markdown 渲染模式必须是 legacy 或 enhanced"
   }
 }
-
-

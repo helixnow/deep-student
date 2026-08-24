@@ -194,7 +194,8 @@ export const SystemSettingsSection: React.FC = () => {
   const handleSaveAll = async () => {
     const errors = validateSettings(settings);
     if (errors.length > 0) {
-      showGlobalNotification('warning', t('common:system_settings.validation_failed', { errors: errors.join(', ') }));
+      // common:system_settings.validation_failed 没有 {{errors}} 插值，明细需在此手动拼接
+      showGlobalNotification('warning', `${t('common:system_settings.validation_failed')} ${errors.join('；')}`);
       return;
     }
 
