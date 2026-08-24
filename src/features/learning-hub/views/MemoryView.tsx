@@ -1422,7 +1422,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   ) : profileError ? (
                     <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
                       <div>{profileError}</div>
-                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs">
+                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:min-h-11">
                         {t('common:retry')}
                       </DsButton>
                     </div>
@@ -1493,7 +1493,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
                       <div>{auditLoadError}</div>
                       <div>
-                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs">
+                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs [@media(pointer:coarse)]:min-h-11">
                           {t('common:retry')}
                         </DsButton>
                       </div>
@@ -1511,7 +1511,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </div>
                       {hasMoreAuditLogs && (
                         <div className="flex justify-center py-2 border-t border-border/20">
-                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
+                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11">
                             {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
                             {t('memory.audit_load_more')}
                           </DsButton>
@@ -1734,7 +1734,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <WarningCircle size={32} className="mb-2 text-destructive/60" />
                 <span className="text-sm mb-3">{treeError}</span>
-                <DsButton variant="primary" size="sm" onClick={loadTree}>
+                <DsButton variant="primary" size="sm" onClick={loadTree} className="[@media(pointer:coarse)]:min-h-11">
                   <ArrowClockwise className="w-3.5 h-3.5" />
                   {t('common:retry')}
                 </DsButton>
@@ -1789,6 +1789,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 size="sm"
                 onClick={loadMemories}
                 disabled={isListLoading}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 <ArrowClockwise className={cn('w-3.5 h-3.5', isListLoading && 'animate-spin')} />
                 {t('common:retry')}
@@ -2048,7 +2049,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               })}
               {hasMoreMemories && (
                 <div className="flex justify-center py-2">
-                  <DsButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground">
+                  <DsButton variant="ghost" size="sm" onClick={handleLoadMoreMemories} disabled={isLoadingMore} className="text-xs text-muted-foreground [@media(pointer:coarse)]:min-h-11">
                     {isLoadingMore ? <CircleNotch size={12} className="animate-spin" /> : null}
                     {t('memory.load_more')}
                   </DsButton>
