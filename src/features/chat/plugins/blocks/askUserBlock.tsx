@@ -413,7 +413,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                 <label
                   key={index}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-shell-control)] border px-3 py-2 transition-colors',
+                    'flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-shell-control)] border px-3 py-2 transition-colors [@media(pointer:coarse)]:min-h-11',
                     isChecked
                       ? 'border-[color:var(--border-strong)] bg-[color:var(--interactive-selected)]'
                       : isRecommended
