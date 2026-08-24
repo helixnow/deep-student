@@ -54,7 +54,10 @@
   现状 G6 是空操作。统一写 `custom_tools`（多变体现在写的 `"tools"` 是死键）。
   稳定后改为「首见轮次 + 名字」append-only。
 - `web_search` engine enum 不要写进 schema。
-- Anthropic：删除无效顶层 `cache_control`；system 用 block 数组，在稳定段末尾与历史尾部打合法断点（≤4）。
+- Anthropic：**保留顶层 automatic `cache_control`**（ROUND-02 冻结结论 P2 第 11 条：
+  「auto + tools/system 尾保险断点」，见 [ROUND-02-synthesis.md](./ROUND-02-synthesis.md)）；
+  system 用 block 数组，在 tools 尾与稳定段末尾补两个显式 ephemeral
+  保险断点（≤4，不拆 auto，不剥调用方块级标记）。
 - DeepSeek 默认协议路径也要跑模型门控；`is_official_deepseek_config` 校验 base_url。
 - user_profile 停止按当前 query 重排；microcompact 只在 compaction 事件批量推进。
 - `prompt_builder` 跨轮前缀快照测试。

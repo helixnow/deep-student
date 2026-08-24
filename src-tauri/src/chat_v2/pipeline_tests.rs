@@ -1514,6 +1514,65 @@ fn test_parse_api_usage_anthropic_cache_read() {
 }
 
 #[test]
+fn test_parse_api_usage_responses_format() {
+    // 验证 OpenAI/DeepSeek Responses API 格式（P0 观测修复）：
+    // input_tokens_details.cached_tokens = 缓存命中
+    // input_tokens_details.cache_write_tokens = 缓存写入（计费元数据）
+    // output_tokens_details.reasoning_tokens = 思维链
+    let usage = json!({
+        "input_tokens": 1200,
+        "output_tokens": 300,
+        "total_tokens": 1500,
+        "input_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 128
+        },
+        "output_tokens_details": {
+            "reasoning_tokens": 90
+        }
+    });
+
+    let result = parse_api_usage(&usage);
+    assert!(result.is_some());
+
+    let token_usage = result.unwrap();
+    assert_eq!(token_usage.prompt_tokens, 1200);
+    assert_eq!(token_usage.completion_tokens, 300);
+    assert_eq!(token_usage.cached_tokens, Some(1024));
+    assert_eq!(token_usage.cache_write_tokens, Some(128));
+    assert_eq!(token_usage.reasoning_tokens, Some(90));
+}
+
+#[test]
+fn test_parse_api_usage_gateway_duplicate_cache_uses_max() {
+    // 网关（LiteLLM/OneAPI）可能同时返回 CC 与 Responses 两种格式表示同一份缓存，
+    // 必须 max() 归一而非相加
+    let usage = json!({
+        "prompt_tokens": 2000,
+        "completion_tokens": 100,
+        "prompt_tokens_details": { "cached_tokens": 1024 },
+        "input_tokens_details": { "cached_tokens": 1024 }
+    });
+
+    let token_usage = parse_api_usage(&usage).unwrap();
+    assert_eq!(token_usage.cached_tokens, Some(1024));
+}
+
+#[test]
+fn test_parse_api_usage_anthropic_cache_write() {
+    // Anthropic cache_creation_input_tokens 记为缓存写入，不计入命中
+    let usage = json!({
+        "input_tokens": 10,
+        "output_tokens": 20,
+        "cache_creation_input_tokens": 500
+    });
+
+    let token_usage = parse_api_usage(&usage).unwrap();
+    assert!(token_usage.cached_tokens.is_none());
+    assert_eq!(token_usage.cache_write_tokens, Some(500));
+}
+
+#[test]
 fn test_token_usage_serialization_camel_case() {
     // 验证 TokenUsage 序列化输出为 camelCase
     let usage = TokenUsage::from_api(1000, 500, Some(200));
