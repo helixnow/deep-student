@@ -6,8 +6,10 @@
 
 import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
-import { chunkBuffer } from '../../core/middleware/chunkBuffer';
-import { GENERATIVE_UI_BLOCK_TYPE } from '@/features/generative-ui/bridge/chatBlockBridge';
+import {
+  GENERATIVE_UI_BLOCK_TYPE,
+  normalizeGenerativeUIEndIntent,
+} from '@/features/generative-ui/bridge/chatBlockBridge';
 
 const generativeUIEventHandler: EventHandler = {
   onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
@@ -22,8 +24,6 @@ const generativeUIEventHandler: EventHandler = {
   },
 
   onEnd: (store: ChatStore, blockId: string, result?: unknown) => {
-    chunkBuffer.flushBlock(store.sessionId, blockId);
-
     const authoritativeContent =
       result && typeof result === 'object' && 'content' in result
         ? (result as { content?: unknown }).content
@@ -33,12 +33,14 @@ const generativeUIEventHandler: EventHandler = {
       store.updateBlock(blockId, { content: authoritativeContent });
     }
 
-    const intent =
+    const rawIntent =
       result && typeof result === 'object' && 'intent' in result
         ? (result as { intent?: unknown }).intent
         : authoritativeContent;
 
-    if (intent !== undefined) {
+    const intent = normalizeGenerativeUIEndIntent(rawIntent);
+
+    if (intent !== null) {
       store.updateBlock(blockId, {
         toolOutput: {
           intent,

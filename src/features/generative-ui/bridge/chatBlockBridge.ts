@@ -5,13 +5,31 @@
  */
 
 import type { GenerativeUIIntent } from '../types';
-import { parseGenerativeUIIntent } from '../schema';
+import { tryParsePartialIntent } from '../parser';
+import { generativeUIIntentSchema, parseGenerativeUIIntent } from '../schema';
 
 export const GENERATIVE_UI_BLOCK_TYPE = 'generative_ui';
+
+const EMPTY_STREAMING_INTENT: GenerativeUIIntent = { version: '1', blocks: [] };
 
 export interface GenerativeUIBlockOutput {
   intent?: string | GenerativeUIIntent;
   isStreaming?: boolean;
+}
+
+function validateIntentObject(value: unknown): GenerativeUIIntent | null {
+  const result = generativeUIIntentSchema.safeParse(value);
+  return result.success ? (result.data as GenerativeUIIntent) : null;
+}
+
+/** 终态 intent 规范化：对象过 zod；字符串走严格解析 */
+export function normalizeGenerativeUIEndIntent(intent: unknown): GenerativeUIIntent | string | null {
+  if (intent === undefined || intent === null) return null;
+  if (typeof intent === 'string') {
+    const parsed = parseGenerativeUIIntent(intent);
+    return parsed.ok ? parsed.intent : intent;
+  }
+  return validateIntentObject(intent);
 }
 
 /** 从 chat block toolOutput / 流式 content 提取可渲染意图 */
@@ -21,13 +39,23 @@ export function extractGenerativeUIIntent(
 ): { intent: GenerativeUIIntent | string; isStreaming: boolean } | null {
   if (toolOutput && typeof toolOutput === 'object') {
     const data = toolOutput as GenerativeUIBlockOutput;
-    if (data.intent) {
+    if (data.intent !== undefined) {
       if (typeof data.intent === 'string') {
         const parsed = parseGenerativeUIIntent(data.intent);
-        if (!parsed.ok) return { intent: data.intent, isStreaming: !!data.isStreaming };
-        return { intent: parsed.intent, isStreaming: !!data.isStreaming };
+        if (parsed.ok) {
+          return { intent: parsed.intent, isStreaming: !!data.isStreaming };
+        }
+        if (data.isStreaming) {
+          const partial = tryParsePartialIntent(data.intent);
+          return { intent: partial ?? EMPTY_STREAMING_INTENT, isStreaming: true };
+        }
+        return { intent: data.intent, isStreaming: false };
       }
-      return { intent: data.intent, isStreaming: !!data.isStreaming };
+      const validated = validateIntentObject(data.intent);
+      if (validated) {
+        return { intent: validated, isStreaming: !!data.isStreaming };
+      }
+      return null;
     }
   }
 
@@ -35,7 +63,8 @@ export function extractGenerativeUIIntent(
   if (trimmed) {
     const parsed = parseGenerativeUIIntent(trimmed);
     if (parsed.ok) return { intent: parsed.intent, isStreaming: true };
-    return { intent: trimmed, isStreaming: true };
+    const partial = tryParsePartialIntent(trimmed);
+    return { intent: partial ?? EMPTY_STREAMING_INTENT, isStreaming: true };
   }
 
   return null;

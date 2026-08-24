@@ -2,16 +2,28 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
-import { buildGenerativeUISystemPrompt } from '@/features/generative-ui/prompts';
+import { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
+import { generativeUIIntentSchema, validateBlockProps } from '@/features/generative-ui/schema';
 
 import '@/features/generative-ui/blocks';
 
 describe('generativeUI registryPromptSync contract', () => {
-  it('every registered type appears in system prompt catalog', () => {
+  it('every registered type appears in system prompt catalog line', () => {
     const prompt = buildGenerativeUISystemPrompt();
     for (const config of generativeUIRegistry.getAll()) {
-      expect(prompt).toContain(config.type);
+      expect(prompt).toContain(`- **${config.type}**: ${config.description}`);
       expect(config.description?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('LEARNING_DASHBOARD_EXAMPLE passes intent and block props schemas', () => {
+    const intentResult = generativeUIIntentSchema.safeParse(LEARNING_DASHBOARD_EXAMPLE);
+    expect(intentResult.success).toBe(true);
+    for (const block of LEARNING_DASHBOARD_EXAMPLE.blocks) {
+      const config = generativeUIRegistry.get(block.type);
+      expect(config).toBeDefined();
+      const validation = validateBlockProps(config!.propsSchema, block.props ?? {});
+      expect(validation.ok).toBe(true);
     }
   });
 
