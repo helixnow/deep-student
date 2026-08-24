@@ -165,7 +165,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           variant="outline"
           size="sm"
           onClick={() => handleRefresh()}
-          className="mt-2"
+          className="mt-2 [@media(pointer:coarse)]:min-h-11"
         >
           <ArrowClockwise size={12} className="mr-1" />
           {t('chatV2:workspace.retry')}
