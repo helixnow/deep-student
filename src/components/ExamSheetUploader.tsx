@@ -1351,7 +1351,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <DsButton
                       variant="secondary"
                       size="sm"
-                      className="sm:hidden gap-1.5"
+                      className="md:hidden gap-1.5 [@media(pointer:coarse)]:!min-h-11"
                       disabled={isProcessing}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1379,7 +1379,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <span className="text-sm font-medium">
                       {t('exam_sheet:uploader.selected_images', { count: selectedFiles.length })}
                     </span>
-                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
                       {t('exam_sheet:uploader.clear')}
                     </DsButton>
                   </div>
@@ -1394,7 +1394,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
 />
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
                           <X size={12} />
                         </DsButton>
                       </div>
@@ -1421,7 +1421,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <div className="flex gap-2">
                     <DsButton
                       variant="ghost"
-                      className="flex-1"
+                      className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                       disabled={selectedFiles.length === 0 || isProcessing}
                       onClick={() => {
                         void executeDocumentImport(
@@ -1434,7 +1434,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         {t('exam_sheet:uploader.pdf_use_extracted_text')}
                     </DsButton>
                     <DsButton
-                      className="flex-1"
+                      className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                       disabled={selectedFiles.length === 0 || isProcessing}
                       onClick={() => {
                         void executeDocumentImport(
@@ -1461,7 +1461,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         {(selectedFiles[0].file.size / 1024).toFixed(1)} KB
                       </div>
                     </div>
-                    <DsButton variant="ghost" size="sm" onClick={handleReset}>
+                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="[@media(pointer:coarse)]:!min-h-11">
                       <X size={16} className="mr-1" />
                       {t('exam_sheet:uploader.remove')}
                     </DsButton>
@@ -1567,7 +1567,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     size="sm"
                     onClick={() => setShowCancelConfirm(true)}
                     disabled={isCancelling}
-                    className="shrink-0"
+                    className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <X size={14} className="mr-1" />
                     {isCancelling
@@ -1587,7 +1587,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => setShowCancelConfirm(false)}
                     disabled={isCancelling}
                   >
@@ -1596,7 +1596,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="danger"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => void handleCancelImport()}
                     disabled={isCancelling}
                   >
@@ -1732,7 +1732,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="overflow-hidden rounded-md border border-border/50">
                   {/* 筛选头部 */}
                   <div
-                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
                     onClick={() => setShowQuestionFilter(prev => !prev)}
                   >
                     <div className="flex items-center gap-2">
@@ -1766,7 +1766,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         <DsButton
                           variant="ghost"
                           size="sm"
-                          className="!h-7 text-xs"
+                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => setExcludedCardIds(new Set())}
                         >
                           <CheckSquare size={14} className="mr-1" />
@@ -1775,7 +1775,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         <DsButton
                           variant="ghost"
                           size="sm"
-                          className="!h-7 text-xs"
+                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => setExcludedCardIds(new Set(allCards.map(c => c.card_id)))}
                         >
                           <Square size={14} className="mr-1" />
@@ -1794,7 +1794,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                             <div
                               key={card.card_id}
                               className={cn(
-                                'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors',
+                                'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
                                 isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-[var(--interactive-hover)]'
                               )}
                               onClick={() => {
@@ -1865,10 +1865,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               
               {/* 操作按钮 */}
               <div className="flex gap-3 pt-2">
-                <DsButton variant="ghost" onClick={handleReset} className="flex-1">
+                <DsButton variant="ghost" onClick={handleReset} className="flex-1 [@media(pointer:coarse)]:!min-h-11">
                   {t('exam_sheet:uploader.continue_import')}
                 </DsButton>
-                <DsButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
+                <DsButton onClick={() => void handleConfirmSummary()} className="flex-1 [@media(pointer:coarse)]:!min-h-11" disabled={keptCount === 0 || isConfirming}>
                   {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
                   {excludedCardIds.size > 0
                     ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
@@ -1891,7 +1891,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => void handleStartProcess()}
-                    className="shrink-0"
+                    className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     <ArrowClockwise size={16} className="mr-1" />
                     {t('common:retry')}
@@ -1908,7 +1908,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="warning"
                     size="sm"
-                    className="!h-7 text-xs"
+                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => void handleResumeImport()}
                   >
                     <ArrowClockwise size={14} className="mr-1" />
@@ -1923,14 +1923,14 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           {step === 'select' && (selectedFiles.length > 0 || isProcessing) && (
             <div className="flex gap-3">
               {onBack && (
-                <DsButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1">
+                <DsButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1 [@media(pointer:coarse)]:!min-h-11">
                   {t('common:actions.back')}
                 </DsButton>
               )}
               <DsButton
                 onClick={handleStartProcess}
                 disabled={selectedFiles.length === 0 || isProcessing}
-                className="flex-1 gap-2"
+                className="flex-1 gap-2 [@media(pointer:coarse)]:!min-h-11"
               >
                 {isProcessing ? (
                   <>
@@ -1961,7 +1961,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onManualCreate ?? onBack}
-                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('exam_sheet:uploader.manual_create_link')}
               </DsButton>
@@ -1970,7 +1970,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {step === 'processing' && !isLLMProcessing && (
             <div className="flex justify-center">
-              <DsButton variant="ghost" onClick={onBack}>
+              <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">
                 {t('exam_sheet:uploader.done')}
               </DsButton>
             </div>

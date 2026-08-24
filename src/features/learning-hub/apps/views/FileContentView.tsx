@@ -779,6 +779,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             resourceId={node.id}
             metadataProgress={readingProgress}
             onProgressChange={handleProgressChange}
+            isActive={isActive}
           />
         </div>
       );
