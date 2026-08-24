@@ -759,7 +759,7 @@ export const SubagentProfilesSection: React.FC = () => {
         title={t('settings:subagentProfiles.actions.refresh')}
         disabled={loading}
         onClick={() => void load()}
-        className="max-lg:!h-11 max-lg:!w-11"
+        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       >
         <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
       </DsButton>
@@ -771,7 +771,7 @@ export const SubagentProfilesSection: React.FC = () => {
         title={t('settings:subagentProfiles.actions.open_dir')}
         disabled={!agentsDir}
         onClick={() => void handleOpenDir()}
-        className="max-lg:!h-11 max-lg:!w-11"
+        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       >
         <FolderOpen className="h-4 w-4" aria-hidden="true" />
       </DsButton>
@@ -780,7 +780,7 @@ export const SubagentProfilesSection: React.FC = () => {
         size="sm"
         disabled={!isTauri || expandedId === 'create'}
         onClick={openCreate}
-        className="max-lg:min-h-11"
+        className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         {t('settings:subagentProfiles.actions.create')}
