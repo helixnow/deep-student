@@ -21,7 +21,7 @@ const SKILL_BLOCK_TYPES = [
   'mindmap-embed',
 ];
 
-const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan'];
+const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'apply-note-edit'];
 
 describe('generativeUiSkill contract', () => {
   it('skill content lists every registered block type', () => {
@@ -37,6 +37,8 @@ describe('generativeUiSkill contract', () => {
     expect(tool?.name).toBe('builtin-render_generative_ui');
     const intentSchema = tool?.inputSchema?.properties?.intent as { required?: string[] };
     expect(intentSchema?.required).toContain('blocks');
+    const noteEditSchema = tool?.inputSchema?.properties?.noteEdit as { properties?: Record<string, unknown> };
+    expect(noteEditSchema?.properties?.operation).toBeDefined();
   });
 
   it('skill example action ids are documented in content', () => {

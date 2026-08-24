@@ -150,3 +150,44 @@ async fn execute_emits_generative_ui_start_chunk_end_events() {
 
     panic!("timed out waiting for generative_ui block events");
 }
+
+#[tokio::test]
+async fn execute_with_note_edit_preserves_input_payload() {
+    let harness = create_harness();
+    let executor = GenerativeUiExecutor::new();
+    let note_edit = json!({ "operation": "append", "content": "## E2E" });
+    let intent = json!({
+        "version": "1",
+        "blocks": [
+            { "type": "text", "props": { "body": "Preview" } },
+            {
+                "type": "action-bar",
+                "props": {
+                    "actions": [{ "id": "apply-note-edit", "label": "Apply" }]
+                }
+            }
+        ]
+    });
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-note-edit-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({ "intent": intent, "noteEdit": note_edit }),
+            ),
+            &execution_context(&harness, "block-generative-ui-note-edit-e2e"),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(result.success);
+    assert_eq!(
+        result
+            .input
+            .get("noteEdit")
+            .and_then(|v| v.get("operation"))
+            .and_then(Value::as_str),
+        Some("append")
+    );
+}

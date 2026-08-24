@@ -1,17 +1,90 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import { learningActionHandlers } from '@/features/generative-ui/handlers/learningActionHandlers';
+import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
+import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { useGenerativeUIStream } from '@/features/generative-ui/hooks/useGenerativeUIStream';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
+import type { GenerativeUIIntent } from '@/features/generative-ui/types';
+
+type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap';
+
+const DEMO_NOTE_ID = 'style-lab-note-demo';
+
+const MINDMAP_DEMO_INTENT: GenerativeUIIntent = {
+  version: '1',
+  meta: { title: '知识图谱预览', description: 'Style Lab — mindmap-embed 块演示' },
+  blocks: [
+    {
+      type: 'stat-card',
+      props: { title: '节点数', value: 8, trend: 'up', trendLabel: '本周 +2' },
+    },
+    {
+      type: 'mindmap-embed',
+      props: {
+        versionId: 'mv_style_lab_demo',
+        title: '复习导图',
+        height: 280,
+      },
+    },
+  ],
+};
 
 /**
  * Style Lab — Generative UI 演示页签
  */
 export function GenerativeUIDemoTab() {
+  const { t } = useTranslation('generativeUi');
   const stream = useGenerativeUIStream();
-  const [mode, setMode] = useState<'static' | 'stream'>('static');
+  const [mode, setMode] = useState<DemoMode>('static');
+  const [noteEditStatus, setNoteEditStatus] = useState<string | null>(null);
+
+  const noteEditIntent = useMemo(
+    () =>
+      buildNoteEditSuggestionIntent({
+        operation: 'append',
+        operationLabel: t('notes.edit_operation_key'),
+        previewText: '## Style Lab 演示\n\n这是经 HITL 链写入的 append 建议预览。',
+        labels: {
+          metaTitle: t('notes.edit_suggestion_title'),
+          metaDescription: t('notes.edit_suggestion_description'),
+          operationKey: t('notes.edit_operation_key'),
+          previewTitle: t('notes.edit_preview_title'),
+          applyEdit: t('notes.edit_apply'),
+          dismissSuggestion: t('notes.edit_dismiss'),
+        },
+      }),
+    [t],
+  );
+
+  const noteEditHandlers = useMemo(
+    () =>
+      createNotesEditActionHandlers(
+        {
+          noteId: DEMO_NOTE_ID,
+          operation: 'append',
+          content: '## Style Lab 演示\n\n这是经 HITL 链写入的 append 建议预览。',
+        },
+        {
+          applyEdit: t('notes.edit_apply'),
+          dismissSuggestion: t('notes.edit_dismiss'),
+        },
+        {
+          onApplyDispatched: (result) => {
+            setNoteEditStatus(
+              result.claimed
+                ? '已派发 canvas:ai-edit-request（需打开对应笔记编辑器认领）'
+                : `未认领：${result.reason ?? '无编辑器'}`,
+            );
+          },
+          onDismiss: () => setNoteEditStatus('已忽略建议'),
+        },
+      ),
+    [t],
+  );
 
   const simulateStream = () => {
     stream.reset();
@@ -31,8 +104,51 @@ export function GenerativeUIDemoTab() {
     tick();
   };
 
+  const renderDemo = () => {
+    switch (mode) {
+      case 'stream':
+        return (
+          <GenerativeUIRenderer
+            intent={stream.intent ?? LEARNING_DASHBOARD_EXAMPLE}
+            isStreaming={stream.isStreaming}
+            actionHandlers={learningActionHandlers}
+            onAction={() => {}}
+          />
+        );
+      case 'note-edit':
+        return (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              演示 noteId={DEMO_NOTE_ID}；apply-note-edit 经 canvas:ai-edit-request HITL 链。
+            </p>
+            {noteEditStatus ? (
+              <p className="text-xs text-primary" data-testid="note-edit-status">
+                {noteEditStatus}
+              </p>
+            ) : null}
+            <GenerativeUIRenderer
+              intent={noteEditIntent}
+              actionHandlers={noteEditHandlers}
+              onAction={() => {}}
+            />
+          </div>
+        );
+      case 'mindmap':
+        return <GenerativeUIRenderer intent={MINDMAP_DEMO_INTENT} showChrome={false} />;
+      case 'static':
+      default:
+        return (
+          <GenerativeUIRenderer
+            intent={LEARNING_DASHBOARD_EXAMPLE}
+            actionHandlers={learningActionHandlers}
+            onAction={() => {}}
+          />
+        );
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="generative-ui-demo-tab">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Generative UI 演示</CardTitle>
@@ -42,30 +158,38 @@ export function GenerativeUIDemoTab() {
             结构化意图 + 组件注册表。模型只输出 JSON，渲染受控 shad 组件。
           </p>
           <div className="flex flex-wrap gap-2">
-            <DsButton size="sm" variant={mode === 'static' ? 'default' : 'outline'} onClick={() => setMode('static')}>
+            <DsButton
+              size="sm"
+              variant={mode === 'static' ? 'default' : 'outline'}
+              onClick={() => setMode('static')}
+            >
               静态示例
             </DsButton>
-            <DsButton size="sm" variant="outline" onClick={simulateStream}>
+            <DsButton size="sm" variant={mode === 'stream' ? 'default' : 'outline'} onClick={simulateStream}>
               模拟流式
+            </DsButton>
+            <DsButton
+              size="sm"
+              variant={mode === 'note-edit' ? 'default' : 'outline'}
+              onClick={() => {
+                setNoteEditStatus(null);
+                setMode('note-edit');
+              }}
+            >
+              笔记 HITL
+            </DsButton>
+            <DsButton
+              size="sm"
+              variant={mode === 'mindmap' ? 'default' : 'outline'}
+              onClick={() => setMode('mindmap')}
+            >
+              导图嵌入
             </DsButton>
           </div>
         </CardContent>
       </Card>
 
-      {mode === 'static' ? (
-        <GenerativeUIRenderer
-          intent={LEARNING_DASHBOARD_EXAMPLE}
-          actionHandlers={learningActionHandlers}
-          onAction={() => {}}
-        />
-      ) : (
-        <GenerativeUIRenderer
-          intent={stream.intent ?? LEARNING_DASHBOARD_EXAMPLE}
-          isStreaming={stream.isStreaming}
-          actionHandlers={learningActionHandlers}
-          onAction={() => {}}
-        />
-      )}
+      {renderDemo()}
     </div>
   );
 }

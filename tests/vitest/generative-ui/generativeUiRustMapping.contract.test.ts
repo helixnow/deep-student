@@ -32,4 +32,10 @@ describe('generativeUI Rust dual-mapping contract', () => {
     );
     expect(typesSrc).toContain('pub const GENERATIVE_UI: &str = "generative_ui"');
   });
+
+  it('Rust executor validates and preserves noteEdit alongside intent', () => {
+    expect(executorSrc).toContain('fn parse_note_edit');
+    expect(executorSrc).toContain('fn intent_has_apply_note_edit');
+    expect(executorSrc).toContain('noteEdit.operation');
+  });
 });

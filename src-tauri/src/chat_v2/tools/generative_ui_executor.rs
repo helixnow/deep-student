@@ -49,6 +49,52 @@ impl GenerativeUiExecutor {
         Ok(intent)
     }
 
+    fn parse_note_edit(arguments: &Value) -> Result<Option<Value>, String> {
+        let Some(raw) = arguments.get("noteEdit") else {
+            return Ok(None);
+        };
+
+        if !raw.is_object() {
+            return Err("noteEdit 必须是 JSON 对象".to_string());
+        }
+
+        let operation = raw
+            .get("operation")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "noteEdit.operation 必填（append | replace | set）".to_string())?;
+
+        if !matches!(operation, "append" | "replace" | "set") {
+            return Err(format!("noteEdit.operation 无效: {}", operation));
+        }
+
+        Ok(Some(raw.clone()))
+    }
+
+    fn intent_has_apply_note_edit(intent: &Value) -> bool {
+        let Some(blocks) = intent.get("blocks").and_then(Value::as_array) else {
+            return false;
+        };
+
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) != Some("action-bar") {
+                continue;
+            }
+            let Some(actions) = block
+                .pointer("/props/actions")
+                .and_then(Value::as_array)
+            else {
+                continue;
+            };
+            for action in actions {
+                if action.get("id").and_then(Value::as_str) == Some("apply-note-edit") {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn emit_start(ctx: &ExecutionContext, title: Option<&str>) {
         ctx.emitter.emit_start_with_meta(
             event_types::GENERATIVE_UI,
@@ -134,6 +180,40 @@ impl ToolExecutor for GenerativeUiExecutor {
                 return Ok(result);
             }
         };
+
+        let note_edit = match Self::parse_note_edit(&call.arguments) {
+            Ok(note_edit) => note_edit,
+            Err(error) => {
+                Self::emit_start(ctx, None);
+                Self::emit_error(ctx, &error);
+                let result = ToolResultInfo::failure(
+                    Some(call.id.clone()),
+                    Some(ctx.block_id.clone()),
+                    call.name.clone(),
+                    call.arguments.clone(),
+                    error.clone(),
+                    start.elapsed().as_millis() as u64,
+                );
+                let _ = ctx.save_tool_block(&result);
+                return Ok(result);
+            }
+        };
+
+        if Self::intent_has_apply_note_edit(&intent) && note_edit.is_none() {
+            let error = "intent 含 apply-note-edit 时必须提供 noteEdit 参数".to_string();
+            Self::emit_start(ctx, None);
+            Self::emit_error(ctx, &error);
+            let result = ToolResultInfo::failure(
+                Some(call.id.clone()),
+                Some(ctx.block_id.clone()),
+                call.name.clone(),
+                call.arguments.clone(),
+                error.clone(),
+                start.elapsed().as_millis() as u64,
+            );
+            let _ = ctx.save_tool_block(&result);
+            return Ok(result);
+        }
 
         let title = intent
             .get("meta")
@@ -231,6 +311,110 @@ mod tests {
         let args = json!({ "other": true });
         let err = GenerativeUiExecutor::parse_intent(&args).expect_err("missing intent");
         assert!(err.contains("intent"));
+    }
+
+    #[test]
+    fn parse_note_edit_accepts_append_payload() {
+        let args = json!({
+            "noteEdit": { "operation": "append", "content": "## Summary" }
+        });
+        let note_edit = GenerativeUiExecutor::parse_note_edit(&args).expect("parse");
+        assert!(note_edit.is_some());
+        assert_eq!(
+            note_edit
+                .and_then(|v| v.get("operation"))
+                .and_then(Value::as_str),
+            Some("append")
+        );
+    }
+
+    #[test]
+    fn parse_note_edit_rejects_invalid_operation() {
+        let args = json!({ "noteEdit": { "operation": "delete" } });
+        assert!(GenerativeUiExecutor::parse_note_edit(&args).is_err());
+    }
+
+    #[test]
+    fn intent_has_apply_note_edit_detects_action_bar_id() {
+        let intent = json!({
+            "version": "1",
+            "blocks": [{
+                "type": "action-bar",
+                "props": { "actions": [{ "id": "apply-note-edit", "label": "Apply" }] }
+            }]
+        });
+        assert!(GenerativeUiExecutor::intent_has_apply_note_edit(&intent));
+    }
+
+    #[tokio::test]
+    async fn execute_preserves_note_edit_in_tool_arguments() {
+        let executor = GenerativeUiExecutor::new();
+        let note_edit = json!({ "operation": "set", "content": "# Title" });
+        let intent = json!({
+            "version": "1",
+            "blocks": [
+                { "type": "text", "props": { "body": "Preview" } },
+                {
+                    "type": "action-bar",
+                    "props": {
+                        "actions": [{ "id": "apply-note-edit", "label": "Apply", "riskLevel": "high" }]
+                    }
+                }
+            ]
+        });
+        let call = ToolCall::new(
+            "call-generative-ui-note-edit".to_string(),
+            "render_generative_ui".to_string(),
+            json!({ "intent": intent, "noteEdit": note_edit }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-note-edit"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(result.success);
+        assert_eq!(
+            result
+                .input
+                .get("noteEdit")
+                .and_then(|v| v.get("operation"))
+                .and_then(Value::as_str),
+            Some("set")
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_fails_when_apply_note_edit_without_note_edit_payload() {
+        let executor = GenerativeUiExecutor::new();
+        let intent = json!({
+            "version": "1",
+            "blocks": [{
+                "type": "action-bar",
+                "props": {
+                    "actions": [{ "id": "apply-note-edit", "label": "Apply" }]
+                }
+            }]
+        });
+        let call = ToolCall::new(
+            "call-generative-ui-note-edit-missing".to_string(),
+            "render_generative_ui".to_string(),
+            json!({ "intent": intent }),
+        );
+
+        let result = executor
+            .execute(&call, &test_ctx("block-generative-ui-note-edit-missing"))
+            .await
+            .expect("execute returns ToolResultInfo");
+
+        assert!(!result.success);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("noteEdit")
+        );
     }
 
     #[test]

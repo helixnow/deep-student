@@ -22,6 +22,22 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 9（2026-08-24）
+
+- [x] Rust `GenerativeUiExecutor` noteEdit 校验（parse_note_edit + apply-note-edit 必填 gate）
+- [x] Rust 单元测试：noteEdit 透传 / 缺失 noteEdit 失败
+- [x] generative_ui_executor_e2e：noteEdit input 保留
+- [x] Style Lab `GenerativeUIDemoTab` 扩展 — 笔记 HITL / 导图嵌入 / 流式四模式
+- [x] generativeUiSkill + Rust mapping contract 扩展 noteEdit
+- [x] 106 项 generative-ui vitest 全绿
+
+## Round 8（2026-08-24）
+
+- [x] Chat `generative_ui` 块挂载 actionHandlers — `resolveGenerativeUIChatActionHandlers`（modeState.canvasNoteId + toolInput.noteEdit）
+- [x] prompt sync — `schemaToPromptHint` + catalog props 摘要注入 system prompt
+- [x] builtin skill 扩展 `noteEdit` 参数 + apply-note-edit 规则
+- [x] 测试：generativeUIChatBlock / resolveGenerativeUIChatActionHandlers / registryPromptSync props（102 项 vitest 全绿）
+
 ### Round 6+
 - [x] chunkBuffer 增量流式状态机（`GenerativeUIStreamParser` committedBlocks + `generativeUIStreamRegistry`）
 - [x] eventBridge `generative_ui` chunk 走 chunkBuffer；onEnd/onError flush + finalize
@@ -47,10 +63,10 @@
 |------|------|
 | 流式 parser P0 | ✅（tryParsePartialIntent + chunkBuffer + streamRegistry 状态机） |
 | mindmap-embed | ✅（schema + E2E renderer 全链路） |
-| prompt sync | 部分（目录行契约；props 未进 prompt） |
+| prompt sync | ✅（目录行 + props schema 摘要进 prompt） |
 | Learning Hub 挂载 | Exam 简报 ✅；Memory/IndexStatus 待做 |
 | i18n | 部分（P0 块组件 ✅；builder 持续跟进） |
-| Security HITL | 部分（ActionBar ✅；Notes 写入链 ✅ dispatch + handlers；Chat 挂载待做） |
+| Security HITL | ✅（ActionBar + Notes dispatch 链 + Chat 块挂载；OCC 终态落盘仍走 AIDiffPanel） |
 | Rust emit | 部分（skill+toolInput ✅；execute 测试待做） |
 
 ---
