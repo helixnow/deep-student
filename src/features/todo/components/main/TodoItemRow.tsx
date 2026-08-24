@@ -243,7 +243,7 @@ const InlineRescheduleBar: React.FC<{
             if (e.target.value) handlePick(e.target.value);
           }}
           aria-label={t('todo:fields.dueDate')}
-          className="h-auto min-h-0 w-auto cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0"
+          className="h-auto min-h-0 w-auto cursor-pointer border-0 bg-transparent p-0 text-xs focus-visible:ring-0 [@media(pointer:coarse)]:!min-h-11"
         />
       </label>
     </div>
