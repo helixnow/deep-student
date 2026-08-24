@@ -150,6 +150,7 @@ reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 tauri-plugin-clipboard-manager = "~2.2"
 fs2 = "0.4.3"
+unicode-normalization = "0.1"
 
 # 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
