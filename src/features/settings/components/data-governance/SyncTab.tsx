@@ -314,7 +314,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
-                className="bg-background hover:bg-[var(--interactive-hover)]"
+                className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               >
                 {t("data:governance.cloud_sync_configure_now")}
               </DsButton>
@@ -534,7 +534,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts("keep_local")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             >
               {t("data:governance.keep_local")}
             </DsButton>
@@ -543,7 +543,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts("use_cloud")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             >
               {t("data:governance.use_cloud")}
             </DsButton>
@@ -552,7 +552,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts("keep_latest")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             >
               {t("data:governance.keep_latest")}
             </DsButton>
@@ -561,7 +561,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts("manual")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             >
               {t("data:governance.manual")}
             </DsButton>
