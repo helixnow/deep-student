@@ -476,7 +476,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
-                    className="min-h-11 md:min-h-0"
+                    className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
@@ -500,7 +500,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
@@ -540,7 +540,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
-                  className="min-h-11 md:min-h-0"
+                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}
