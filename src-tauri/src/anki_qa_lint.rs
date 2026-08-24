@@ -533,14 +533,12 @@ fn scan_cloze(s: &str) -> ClozeScan {
         bad_index: 0,
         unclosed: 0,
     };
-    let bytes = s.as_bytes();
+    // 用 find 跳转到下一个 "{{c"，所有中间偏移都落在 ASCII 序列上，
+    // 保证字节索引始终在 UTF-8 字符边界（front 多为中文，逐字节步进会 panic）
     let mut i = 0;
-    while i < bytes.len() {
-        if !s[i..].starts_with("{{c") {
-            i += 1;
-            continue;
-        }
-        let body_start = i + 3;
+    while let Some(rel) = s[i..].find("{{c") {
+        let start = i + rel;
+        let body_start = start + 3;
         // 解析数字序号
         let digits_end = s[body_start..]
             .find(|c: char| !c.is_ascii_digit())
@@ -1453,7 +1451,7 @@ mod tests {
         let t = tags(&["cs"]);
         let input = basic_input(
             "什么是操作系统调度？",
-            "操作系统调度指的是 the process of selecting which ready process runs next 由内核完成的决策过程",
+            "操作系统进程调度指的就是 the process of selecting which ready process runs next 这样一个由内核负责完成的核心决策过程",
             &t,
             &extras,
         );
