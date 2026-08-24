@@ -137,7 +137,11 @@ export function useWindowImmersive(windowId: string): boolean {
   return useImmersiveStore((s) => s.windowId === windowId);
 }
 
-/** 当前沉浸窗口 id，供壳层渲染始终可达的退出提示。 */
+/**
+ * React hook：当前沉浸窗口 id（无则 null）。
+ * 供壳层的沉浸退出提示（ImmersiveHint）订阅——Esc 是隐性知识，
+ * 进入沉浸必须给一条可见的退出指引。
+ */
 export function useImmersiveWindowId(): string | null {
   return useImmersiveStore((s) => s.windowId);
 }

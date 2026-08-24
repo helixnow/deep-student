@@ -25,6 +25,7 @@ export interface StatusBarBrandMenuProps {
   onClose: () => void;
 }
 
+/** 速查表键位提示（平台相关，渲染时求值而非模块初始化时） */
 function cheatsheetShortcutHint(): string | undefined {
   const definition = WORKBENCH_SHORTCUT_DEFINITIONS.find((item) => item.id === 'cheatsheet');
   return definition ? formatShortcutBinding(definition.binding) : undefined;
@@ -58,9 +59,10 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
         testId="wb-menubar-brand-apps"
         onClick={runAndClose(() => openAppsPanel())}
       />
+      {/* 速查表的常驻可发现入口（`?` 快捷键之外的第二条路径） */}
       <ActionItem
         icon={<Keyboard size={15} weight="duotone" />}
-        label={t('desktopMenu.shortcuts')}
+        label={t('workbench:desktopMenu.shortcuts')}
         shortcut={cheatsheetShortcutHint()}
         testId="wb-menubar-brand-shortcuts"
         onClick={runAndClose(() =>
