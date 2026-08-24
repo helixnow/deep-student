@@ -4,6 +4,8 @@
  * 提供 Base64 解码、数值限制、缩放常量、偏好持久化等通用功能
  */
 
+import i18n from '@/i18n';
+
 // ============================================================================
 // Base64 解码工具
 // ============================================================================
@@ -43,7 +45,7 @@ export const normalizeBase64 = (input: string): string => {
  */
 export const decodeBase64ToArrayBuffer = (normalizedBase64: string): ArrayBuffer => {
   if (!normalizedBase64) {
-    throw new Error('内容为空');
+    throw new Error(i18n.t('pdf:preview.empty_content', { defaultValue: '内容为空' }));
   }
   
   let binaryString = '';
@@ -52,7 +54,7 @@ export const decodeBase64ToArrayBuffer = (normalizedBase64: string): ArrayBuffer
   } catch {
     const preview = normalizedBase64.slice(0, 80);
     console.error('[decodeBase64ToArrayBuffer] atob failed, input preview:', preview, 'length:', normalizedBase64.length);
-    throw new Error('内容解码失败');
+    throw new Error(i18n.t('pdf:preview.decode_failed', { defaultValue: '内容解码失败' }));
   }
   
   const bytes = new Uint8Array(binaryString.length);

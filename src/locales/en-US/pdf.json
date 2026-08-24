@@ -23,6 +23,10 @@
     "description": "Choose a PDF file to start reading",
     "select_button": "Choose PDF file"
   },
+  "preview": {
+    "empty_content": "Content is empty",
+    "decode_failed": "Failed to decode content"
+  },
   "errors": {
     "invalid_file": "Please choose a valid PDF file",
     "load_failed": "Failed to load PDF. Please retry",
