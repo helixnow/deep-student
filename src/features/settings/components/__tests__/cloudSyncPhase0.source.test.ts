@@ -96,7 +96,7 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(saveBlock.indexOf("localStorage.setItem(CONFIG_STORAGE_KEY")).toBeGreaterThan(
       saveBlock.indexOf("await cloudApi.saveCredentials"),
     );
-    expect(saveBlock).toContain("showGlobalNotification('error'");
+    expect(saveBlock).toMatch(/showGlobalNotification\(\s*'error'/);
     expect(saveBlock).toContain("return;");
   });
 

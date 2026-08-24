@@ -45,8 +45,15 @@ import {
   formatSpeed,
   formatEta,
 } from '@/types/dataGovernance';
+import { Switch } from '@/components/ui/shad/Switch';
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
-import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import {
+  useGlobalSyncStore,
+  useAutoSyncStore,
+  ensureAutoSyncSchedulerStarted,
+  type AutoSyncIntervalPreset,
+  type AutoSyncOutcome,
+} from '@/stores/syncStatusStore';
 import {
   DataGovernanceApi,
   listenSyncProgress,
@@ -60,7 +67,7 @@ interface SyncSettingsSectionProps {
 export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   embedded = false,
 }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(['data', 'common', 'sync']);
 
   // 本地化的同步阶段名称
   const localizedPhaseNames = useMemo<Record<SyncPhase, string>>(
@@ -101,6 +108,33 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   // 全局同步状态：与数据治理面板等其他入口共享，任一入口同步时本入口按钮禁用
   const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
+  // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
+  const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
+  const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
+  // [R11-autosync2] 定时档位与上次自动同步状态
+  const autoSyncIntervalPreset = useAutoSyncStore((s) => s.intervalPreset);
+  const setAutoSyncIntervalPreset = useAutoSyncStore((s) => s.setIntervalPreset);
+  const autoSyncLastOutcome = useAutoSyncStore((s) => s.lastOutcome);
+  const autoSyncLastRunAtMs = useAutoSyncStore((s) => s.lastRunAtMs);
+  const autoSyncConsecutiveFailures = useAutoSyncStore(
+    (s) => s.consecutiveFailures
+  );
+  useEffect(() => {
+    // 幂等：开关持久化为开时，进入本设置区块即恢复调度
+    ensureAutoSyncSchedulerStarted();
+  }, []);
+
+  // 各结果的人话文案（静态映射以兼容类型化 i18n）
+  const autoSyncOutcomeLabels = useMemo<Record<AutoSyncOutcome, string>>(
+    () => ({
+      success: t('sync:autoSync.outcome.success'),
+      failure: t('sync:autoSync.outcome.failure'),
+      skipped_unconfigured: t('sync:autoSync.outcome.skippedUnconfigured'),
+      skipped_busy: t('sync:autoSync.outcome.skippedBusy'),
+      skipped_lease_held: t('sync:autoSync.outcome.skippedLeaseHeld'),
+    }),
+    [t]
+  );
 
   // 合并策略（与数据治理仪表盘 SyncTab 保持一致，不再硬编码 keep_latest）
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
@@ -327,6 +361,13 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <CardTitle className="text-base">
                 {t('data:sync_settings.sync_status')}
               </CardTitle>
+              {/* 与数据治理面板 SyncTab 的同款入口保持一致：实验版徽章 + 备份提示 */}
+              <span
+                className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20"
+                title={t('sync:experimentalBadgeTooltip')}
+              >
+                {t('data:governance.experimental_badge')}
+              </span>
             </div>
             <DsButton
               variant="ghost"
@@ -388,6 +429,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               <Progress
                 value={(syncSummary.syncedDatabases / syncSummary.totalDatabases) * 100}
                 className="h-2"
+                aria-label={t('data:sync_settings.db_sync_progress_label')}
               />
               <div className="grid grid-cols-2 gap-2 mt-3">
                 {syncStatus.databases.map((db) => (
@@ -443,6 +485,71 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* 自动同步（默认关闭；未配置/缺凭据/租约被占时调度器静默跳过，不弹错） */}
+          <div className="space-y-3 rounded-lg border border-border/40 bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-sm font-medium text-foreground">
+                  {t('sync:autoSync.label')}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('sync:autoSync.description')}
+                </p>
+              </div>
+              <Switch
+                size="sm"
+                checked={autoSyncEnabled}
+                onCheckedChange={setAutoSyncEnabled}
+                aria-label={t('sync:autoSync.label')}
+              />
+            </div>
+
+            {/* 定时档位（15min / 1h / 6h），关闭时禁用但保留所选值 */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t('sync:autoSync.intervalLabel')}
+              </span>
+              <AppSelect
+                value={autoSyncIntervalPreset}
+                onValueChange={(v) =>
+                  setAutoSyncIntervalPreset(v as AutoSyncIntervalPreset)
+                }
+                options={[
+                  { value: '15m', label: t('sync:autoSync.interval.15m') },
+                  { value: '1h', label: t('sync:autoSync.interval.1h') },
+                  { value: '6h', label: t('sync:autoSync.interval.6h') },
+                ]}
+                size="sm"
+                variant="outline"
+                disabled={!autoSyncEnabled}
+              />
+            </div>
+
+            {/* 上次自动同步时间/结果（静默跳过也会记录，用户可在此看到原因） */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ClockCounterClockwise className="h-3 w-3 shrink-0" />
+              {autoSyncLastRunAtMs !== null && autoSyncLastOutcome !== null ? (
+                <span>
+                  {t('sync:autoSync.lastRun')}:{' '}
+                  {new Date(autoSyncLastRunAtMs).toLocaleString()} ·{' '}
+                  {autoSyncOutcomeLabels[autoSyncLastOutcome]}
+                  {autoSyncConsecutiveFailures > 0 && (
+                    <>
+                      {' · '}
+                      {t('sync:autoSync.consecutiveFailures', {
+                        count: autoSyncConsecutiveFailures,
+                      })}
+                    </>
+                  )}
+                </span>
+              ) : (
+                <span>
+                  {t('sync:autoSync.lastRun')}: {t('sync:autoSync.neverRan')}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* 合并策略选择 */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
@@ -518,7 +625,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   </div>
 
                   {/* 进度条 */}
-                  <Progress value={syncProgress.percent} className="h-2" />
+                  <Progress
+                    value={syncProgress.percent}
+                    className="h-2"
+                    aria-label={t('data:sync_settings.sync_progress_label')}
+                  />
 
                   {/* 详细信息 */}
                   <div className="text-sm text-muted-foreground flex justify-between flex-wrap gap-2">

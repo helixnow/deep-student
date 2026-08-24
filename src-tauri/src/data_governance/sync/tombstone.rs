@@ -456,6 +456,7 @@ where
         let watermark = watermark_for(&source)?;
         let mut expected = watermark.saturating_add(1);
         let mut max_seq = watermark;
+        let mut bad_entry_seen = false;
         for event in events.into_iter().filter(|event| event.seq > watermark) {
             if event.seq != expected {
                 return Err(SyncError::Network(format!(
@@ -463,8 +464,20 @@ where
                     device_id, expected, event.seq
                 )));
             }
-            max_seq = event.seq;
             expected = expected.saturating_add(1);
+            // [R04] 坏/超前 deleted_at 的事件：跳过该条，且 seq 水位停在它之前
+            // （包括其后的正常事件也不推进），保证时钟追上后能重新拉取应用；
+            // 正常事件本轮照常消费，重复消费是幂等的。
+            if !tombstone_deleted_at_usable(
+                &event.deleted_at,
+                &format!("{}/{}", kind, event.object_id),
+            ) {
+                bad_entry_seen = true;
+                continue;
+            }
+            if !bad_entry_seen {
+                max_seq = event.seq;
+            }
             selected.push(event);
         }
         if max_seq > watermark {
@@ -592,6 +605,29 @@ pub fn validate_tombstone_timestamp(timestamp: &str, label: &str) -> Result<(), 
     Ok(())
 }
 
+/// [R04 anti-DoS] 判断单条 tombstone 的 `deleted_at` 是否可消费。
+///
+/// 旧行为是把 `validate_tombstone_timestamp` 的错误直接 `?` 冒泡：一台坏时钟
+/// 设备发布的一条无效/超前 tombstone 会让整轮文件同步永久失败（拒绝服务）。
+/// 现在改为：坏条目跳过并记录 warning，其余条目照常处理。
+///
+/// 调用方必须保证被跳过的条目不推进水位（不计入 `max_offset` / 事件 seq 推进），
+/// 这样超前时间戳在本地时钟追上后会被重新拉取并正常应用，删除意图不丢失。
+fn tombstone_deleted_at_usable(deleted_at: &str, label: &str) -> bool {
+    match validate_tombstone_timestamp(deleted_at, label) {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(
+                "[sync] 跳过坏/超前 deleted_at 的 tombstone（该条不推进水位）: {} deleted_at={} 原因: {}",
+                label,
+                deleted_at,
+                error
+            );
+            false
+        }
+    }
+}
+
 /// [P2 fail-close] 解密失败必须硬错误，与设备清单/变更文件路径口径一致。
 /// fail-open 的两类危害：
 /// - 消费路径把"解不开"当"无 tombstone"，删除静默不传播；
@@ -668,6 +704,11 @@ fn filter_blob_tombstones_after(manifest: BlobTombstones, watermark: u64) -> (Bl
     };
     let mut max_offset = watermark;
     for (hash, entry) in manifest.entries {
+        // [R04] 坏/超前 deleted_at：跳过该条且不推进水位，避免单条坏时钟
+        // DoS 整轮文件同步；超前条目在时钟追上后会重新进入本函数并正常计入。
+        if !tombstone_deleted_at_usable(&entry.deleted_at, &format!("blob/{}", hash)) {
+            continue;
+        }
         let offset = tombstone_offset_from_deleted_at(&entry.deleted_at);
         max_offset = max_offset.max(offset);
         // Timestamps are not a safe cursor: two deletes can share one millisecond,
@@ -688,6 +729,10 @@ fn filter_asset_tombstones_after(
     };
     let mut max_offset = watermark;
     for (key, entry) in manifest.entries {
+        // [R04] 与 blob 对称：坏/超前 deleted_at 跳过且不推进水位。
+        if !tombstone_deleted_at_usable(&entry.deleted_at, &format!("asset/{}", key)) {
+            continue;
+        }
         let offset = tombstone_offset_from_deleted_at(&entry.deleted_at);
         max_offset = max_offset.max(offset);
         filtered.entries.insert(key, entry);
@@ -1266,6 +1311,8 @@ pub async fn upload_workspace_tombstones(
 
 /// 将一批 tombstone 应用到云端清单 + 本地文件：
 /// - 云端 blob 被删除；任何 I/O 失败都中止本轮，调用方不得推进 tombstone 水位
+/// - [R04] 单条坏/超前 `deleted_at` 不再 `?` 冒泡中止整批，而是跳过该条并记录
+///   warning；被跳过的条目不进入返回的 hash 列表，调用方也不得为其推进水位
 /// - 本地 blob 目录下对应文件一并删除
 ///   - 优先用 `relative_path`（由上传端在 tombstone 元数据里提供）
 ///   - 如果没有，尝试 `scan_blobs_dir` 风格的本地扫描（按 hash 前缀分桶查找）
@@ -1287,12 +1334,17 @@ pub async fn apply_blob_tombstones(
                 "拒绝非法 blob tombstone hash: {hash:?}"
             )));
         }
+        // [R04] 坏/超前 deleted_at：只跳过该条并记录，不中止整批——一台坏时钟
+        // 设备不得 DoS 整轮文件同步。被跳过条目不进入 affected，水位由下载侧
+        // 保证不推进，时钟追上后会重新应用。
+        if !tombstone_deleted_at_usable(&entry.deleted_at, &format!("blob/{}", hash)) {
+            continue;
+        }
         // 1) 本地文件：优先 relative_path，否则在分桶目录里按 stem 扫描（保留真实扩展名）
         let local_path: Option<PathBuf> = match entry.relative_path.as_deref() {
             Some(rel) => Some(validate_blob_relative_path(blobs_dir, hash, rel)?),
             None => find_blob_by_hash(blobs_dir, hash),
         };
-        validate_tombstone_timestamp(&entry.deleted_at, &format!("blob/{}", hash))?;
         deletion_plan.push((hash, entry, local_path));
     }
 
@@ -1583,18 +1635,24 @@ mod tests {
         use tempfile::TempDir;
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path();
+        // find_blob_by_hash 只接受 64 位 hex hash（内容寻址约定）
+        let hash = "ab".repeat(32);
+        let missing = "cd".repeat(32);
         std::fs::create_dir_all(dir.join("ab")).unwrap();
-        std::fs::write(dir.join("ab").join("abhash123.pdf"), b"x").unwrap();
-        let found = find_blob_by_hash(dir, "abhash123");
+        std::fs::write(dir.join("ab").join(format!("{}.pdf", hash)), b"x").unwrap();
+        let found = find_blob_by_hash(dir, &hash);
         assert!(found.is_some());
         assert_eq!(
             found.unwrap().file_name().unwrap().to_string_lossy(),
-            "abhash123.pdf"
+            format!("{}.pdf", hash)
         );
         // 不存在
-        assert!(find_blob_by_hash(dir, "ghostghost").is_none());
-        // 短 hash
+        assert!(find_blob_by_hash(dir, &missing).is_none());
+        // 短 hash（非 64 位 hex 直接拒绝）
         assert!(find_blob_by_hash(dir, "a").is_none());
+        assert!(find_blob_by_hash(dir, "abhash123").is_none());
+        let non_hex = format!("zz{}", "c".repeat(62));
+        assert!(find_blob_by_hash(dir, &non_hex).is_none());
     }
 
     #[test]
@@ -1652,6 +1710,271 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<TombstoneEvent>(&serde_json::to_vec(&event).unwrap()).unwrap(),
             event
+        );
+    }
+
+    use crate::cloud_storage::{FileInfo, Result as StorageResult};
+
+    #[derive(Default)]
+    struct MemoryStorage {
+        files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for MemoryStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-test"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), data.to_vec());
+            Ok(())
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            Ok(self.files.lock().unwrap().get(key).cloned())
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .map(|(key, value)| FileInfo {
+                    key: key.clone(),
+                    size: value.len() as u64,
+                    last_modified: Utc::now(),
+                    etag: None,
+                })
+                .collect())
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            self.files.lock().unwrap().remove(key);
+            Ok(())
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            Ok(self.files.lock().unwrap().get(key).map(|value| FileInfo {
+                key: key.to_string(),
+                size: value.len() as u64,
+                last_modified: Utc::now(),
+                etag: None,
+            }))
+        }
+    }
+
+    #[test]
+    fn bad_or_future_deleted_at_is_skipped_and_never_advances_watermark() {
+        let valid = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        let future = (Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+        let valid_offset = tombstone_offset_from_deleted_at(&valid);
+        let future_offset = tombstone_offset_from_deleted_at(&future);
+        assert!(future_offset > valid_offset);
+
+        let mut blobs = BlobTombstones::default();
+        for (hash, deleted_at) in [
+            ("good", valid.as_str()),
+            ("future", future.as_str()),
+            ("garbage", "not-a-timestamp"),
+        ] {
+            blobs.entries.insert(
+                hash.to_string(),
+                BlobTombstoneEntry {
+                    deleted_at: deleted_at.to_string(),
+                    device_id: "device-a".to_string(),
+                    size: None,
+                    relative_path: None,
+                },
+            );
+        }
+        let (filtered, max_offset) = filter_blob_tombstones_after(blobs, 0);
+        assert_eq!(filtered.entries.len(), 1, "坏/超前条目必须被剔除");
+        assert!(filtered.entries.contains_key("good"));
+        assert_eq!(
+            max_offset, valid_offset,
+            "水位只能由有效条目推进，超前时钟不得拉高水位"
+        );
+
+        let mut assets = AssetTombstones::default();
+        for (key, deleted_at) in [
+            ("active/images/good.png", valid.as_str()),
+            ("active/images/future.png", future.as_str()),
+            ("active/images/garbage.png", "not-a-timestamp"),
+        ] {
+            assets.entries.insert(
+                key.to_string(),
+                AssetTombstoneEntry {
+                    deleted_at: deleted_at.to_string(),
+                    device_id: "device-a".to_string(),
+                    size: None,
+                },
+            );
+        }
+        let (filtered, max_offset) = filter_asset_tombstones_after(assets, 0);
+        assert_eq!(filtered.entries.len(), 1, "asset 路径与 blob 对称");
+        assert!(filtered.entries.contains_key("active/images/good.png"));
+        assert_eq!(max_offset, valid_offset);
+    }
+
+    #[tokio::test]
+    async fn apply_blob_tombstones_skips_bad_clock_entries_without_failing_batch() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let blobs_dir = tmp.path();
+        let good_hash = "aa".repeat(32);
+        let future_hash = "bb".repeat(32);
+        let garbage_hash = "cc".repeat(32);
+        std::fs::create_dir_all(blobs_dir.join("aa")).unwrap();
+        std::fs::create_dir_all(blobs_dir.join("bb")).unwrap();
+        let good_file = blobs_dir.join("aa").join(format!("{}.png", good_hash));
+        let future_file = blobs_dir.join("bb").join(format!("{}.png", future_hash));
+        std::fs::write(&good_file, b"good").unwrap();
+        std::fs::write(&future_file, b"future").unwrap();
+
+        let mut tombstones = BlobTombstones::default();
+        tombstones.entries.insert(
+            good_hash.clone(),
+            BlobTombstoneEntry {
+                // 在漂移上限（60s）内、且晚于文件 mtime：正常应用
+                deleted_at: (Utc::now() + chrono::Duration::seconds(30)).to_rfc3339(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: Some(format!("aa/{}.png", good_hash)),
+            },
+        );
+        tombstones.entries.insert(
+            future_hash.clone(),
+            BlobTombstoneEntry {
+                deleted_at: (Utc::now() + chrono::Duration::hours(2)).to_rfc3339(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: Some(format!("bb/{}.png", future_hash)),
+            },
+        );
+        tombstones.entries.insert(
+            garbage_hash,
+            BlobTombstoneEntry {
+                deleted_at: "not-a-timestamp".to_string(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+
+        let storage = MemoryStorage::default();
+        let affected = apply_blob_tombstones(&storage, &tombstones, blobs_dir, "blobs", true)
+            .await
+            .expect("单条坏时钟 tombstone 不得中止整批（DoS）");
+        assert_eq!(affected, vec![good_hash], "只有有效条目被应用");
+        assert!(!good_file.exists(), "有效 tombstone 照常删除本地文件");
+        assert!(
+            future_file.exists(),
+            "超前时钟条目必须被跳过，不删除本地文件"
+        );
+    }
+
+    #[tokio::test]
+    async fn event_watermark_stops_before_bad_clock_event() {
+        let storage = MemoryStorage::default();
+        let device = "device-a";
+        let make_event = |seq: u64, object_id: &str, deleted_at: &str| {
+            let mut event = TombstoneEvent {
+                format_version: tombstone_event_format_version(),
+                device_id: device.to_string(),
+                seq,
+                operation_id: event_operation_id("blobs", device, object_id, deleted_at),
+                kind: "blobs".to_string(),
+                object_id: object_id.to_string(),
+                deleted_at: deleted_at.to_string(),
+                size: None,
+                relative_path: None,
+                payload_hash: String::new(),
+            };
+            event.payload_hash = event_payload_hash(&event);
+            event
+        };
+        let past = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        let future = (Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+        let later_past = (Utc::now() - chrono::Duration::minutes(1)).to_rfc3339();
+        for event in [
+            make_event(1, "h1", &past),
+            make_event(2, "h2", &future),
+            make_event(3, "h3", &later_past),
+        ] {
+            storage
+                .put(&event_key(&event), &serde_json::to_vec(&event).unwrap())
+                .await
+                .unwrap();
+        }
+
+        let mut watermark_for = |_: &str| -> Result<u64, SyncError> { Ok(0) };
+        let (selected, advances) =
+            download_events_after(&storage, &PlainCodec, "blobs", &mut watermark_for)
+                .await
+                .expect("坏时钟事件不得让事件下载整体失败");
+        let seqs: Vec<u64> = selected.iter().map(|event| event.seq).collect();
+        assert_eq!(seqs, vec![1, 3], "坏时钟事件被跳过，其余照常消费");
+        assert_eq!(advances.len(), 1);
+        assert_eq!(advances[0].source_device_id, "event:device-a");
+        assert_eq!(
+            advances[0].last_applied_offset, 1,
+            "seq 水位必须停在坏事件之前，时钟追上后可重新拉取"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_blob_tombstones_after_excludes_bad_entries_from_merge_and_watermark() {
+        let storage = MemoryStorage::default();
+        let past = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        let future = (Utc::now() + chrono::Duration::hours(2)).to_rfc3339();
+
+        let mut manifest = BlobTombstones::default();
+        manifest.entries.insert(
+            "good".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: past.clone(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        manifest.entries.insert(
+            "future".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: future.clone(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        storage
+            .put(
+                &blob_device_tombstone_key("device-a"),
+                &serde_json::to_vec(&manifest).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (merged, advances) = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("单条坏时钟条目不得让 tombstone 下载整体失败");
+        assert!(merged.entries.contains_key("good"));
+        assert!(
+            !merged.entries.contains_key("future"),
+            "超前条目必须在下载侧剔除，避免调用方逐条校验时 ? 冒泡 DoS"
+        );
+        let advance = advances
+            .iter()
+            .find(|advance| advance.source_device_id == "device-a")
+            .expect("有效条目照常推进设备水位");
+        assert_eq!(
+            advance.last_applied_offset,
+            tombstone_offset_from_deleted_at(&past),
+            "水位不得被超前条目拉高"
         );
     }
 }

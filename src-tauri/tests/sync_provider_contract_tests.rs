@@ -221,6 +221,14 @@ async fn run_object_semantics_contract(storage: Box<dyn CloudStorage>) {
             .is_none(),
         "deleted key stat should be None"
     );
+
+    // 删除位于从未创建过的目录下的 key 也必须幂等成功：tombstone 应用会对
+    // 遗留路径（新格式下从不存在）做删除，任何 provider 都不得报硬错误。
+    let missing_dir_key = format!("{base}never-created/deep/nested/ghost.bin");
+    storage
+        .delete(&missing_dir_key)
+        .await
+        .expect("delete under a never-created directory should be idempotent");
 }
 
 async fn run_file_checksum_contract(storage: Box<dyn CloudStorage>) {
@@ -838,7 +846,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     clear_change_log(&encrypted_vfs);
     clear_change_log(&target_vfs);
 
-    let (_plain_res_id, plain_note_id, _plain_hash, plain_title) =
+    let (_plain_res_id, plain_note_id, _plain_hash, _plain_title) =
         insert_vfs_note_bundle(&plaintext_vfs, "mixed_plaintext");
     let (_encrypted_res_id, encrypted_note_id, encrypted_hash, encrypted_title) =
         insert_vfs_note_bundle(&encrypted_vfs, "mixed_encrypted");
@@ -900,44 +908,40 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
         assert_bytes_do_not_contain(&encrypted_bytes, marker);
     }
 
-    let authenticated_download = target_manager
+    // [R04-sync-e2ee] 新契约：本端启用加密后，云端明文 payload 必须 fail-closed，
+    // 防止端到端加密被静默降级。带密码的目标不再解码混合状态，而是停在明文
+    // 变更文件的安全点，报错需指认具体文件并解释缺少 DSBK 加密头。
+    let plain_key = plain_files[0].key.clone();
+    let downgrade_error = target_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download mixed plaintext and encrypted changes with password");
+        .expect_err("password-equipped clients must fail closed on plaintext changes");
+    let downgrade_message = downgrade_error.to_string();
     assert!(
-        authenticated_download.decode_failures.is_empty(),
-        "password-equipped clients should decode both plaintext and encrypted changes"
+        downgrade_message.contains(&plain_key),
+        "anti-downgrade error should identify the plaintext change file {plain_key}: {downgrade_message}"
     );
-    assert_eq!(
-        authenticated_download.changes.len(),
-        plain_changes.len() + encrypted_changes.len(),
-        "authenticated target should receive every mixed-format change"
+    assert!(
+        downgrade_message.contains("DSBK"),
+        "anti-downgrade error should explain the missing DSBK header: {downgrade_message}"
     );
-    let applied =
-        SyncManager::apply_downloaded_changes(&target_vfs, &authenticated_download.changes, None)
-            .expect("apply mixed-format provider changes");
-    assert_eq!(
-        applied.failure_count, 0,
-        "mixed-format apply failures: {:?}",
-        applied.failures
-    );
-    for (note_id, expected_title) in [
-        (plain_note_id.as_str(), plain_title.as_str()),
-        (encrypted_note_id.as_str(), encrypted_title.as_str()),
-    ] {
-        let actual_title: String = target_vfs
+    for note_id in [plain_note_id.as_str(), encrypted_note_id.as_str()] {
+        let existing: i64 = target_vfs
             .query_row(
-                "SELECT title FROM notes WHERE id = ?1",
+                "SELECT COUNT(*) FROM notes WHERE id = ?1",
                 params![note_id],
                 |row| row.get(0),
             )
-            .unwrap_or_else(|e| panic!("target note {note_id} should exist: {e}"));
-        assert_eq!(actual_title, expected_title);
+            .expect("count target notes after fail-closed download");
+        assert_eq!(
+            existing, 0,
+            "fail-closed mixed download must not apply note {note_id} to the target"
+        );
     }
     assert_eq!(
         pending_count(&target_vfs),
         0,
-        "mixed-format replay must not create echo changes"
+        "fail-closed mixed download must not create local changes"
     );
 
     let unauthenticated_manager = SyncManager::new(unauthenticated_device_id);
@@ -1615,7 +1619,8 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
 ///
 /// tombstone 必须在未过滤的清单上解析 `object_key`，否则只能回退到 legacy 逻辑路径
 /// `data_governance/assets/{key}`——该父目录在新布局下根本不存在，FTP 会因 cwd 550
-/// 硬失败。解析成功后，内容寻址对象本身是共享 retention unit，只摘清单条目、不删对象。
+/// 硬失败。解析成功后，内容寻址对象是共享 retention unit：仍有活跃清单条目引用时
+/// 只摘清单条目、保留对象；最后一个引用消失时才物理删除（见 unreferenced 契约）。
 async fn run_asset_shared_object_tombstone_contract(storage: Box<dyn CloudStorage>) {
     storage
         .check_connection()

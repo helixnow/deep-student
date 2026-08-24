@@ -76,12 +76,14 @@ export interface BackupTabProps {
     tiers?: BackupTier[];
     includeAssets?: boolean;
     assetTypes?: AssetType[];
+    /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
+    encryptionPassword?: string;
   }) => void;
   onDeleteBackup: (backupId: string) => void;
   onVerifyBackup: (backupId: string) => void;
   onRestoreBackup: (backupId: string) => void;
-  onExportZip: (backupId: string, compressionLevel: number) => void;
-  onImportZip: () => void;
+  onExportZip: (backupId: string, compressionLevel: number, encryptionPassword?: string) => void;
+  onImportZip: (password?: string) => void;
   // 后台任务相关
   backupProgress?: BackupJobEvent | null;
   isBackupRunning?: boolean;
@@ -327,11 +329,34 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 分层备份状态
   const [useTieredBackup, setUseTieredBackup] = useState(false);
   const [addToBackupList, setAddToBackupList] = useState(true);
-  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core']);
-  const [includeAssets, setIncludeAssets] = useState(false);
+  // R04-backup-defaults：默认勾选 core + important 且包含资产，
+  // 使默认分层导出覆盖 vfs_blobs（文件库原始文件）等重要资产目录；用户仍可自由增减。
+  const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core', 'important']);
+  const [includeAssets, setIncludeAssets] = useState(true);
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<AssetType[]>([]);
   const [compressionLevel, setCompressionLevel] = useState(6);
   const [isActionRunning, setIsActionRunning] = useState(false);
+  // E2EE 备份密码（可选）：非空时导出加密全保真换机包（与后端最小长度约束一致）
+  const [encryptionPassword, setEncryptionPassword] = useState('');
+  // 导入密码对话框
+  const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
+
+  /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS 保持一致 */
+  const MIN_E2EE_PASSWORD_CHARS = 8;
+
+  /** 校验可选 E2EE 密码：为空视为不加密；非空则必须满足最小长度 */
+  const validateOptionalPassword = (password: string): boolean => {
+    if (password === '') return true;
+    if (password.trim() === '' || password.length < MIN_E2EE_PASSWORD_CHARS) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.e2ee_password_too_short', { min: MIN_E2EE_PASSWORD_CHARS })
+      );
+      return false;
+    }
+    return true;
+  };
 
   const handleAction = async () => {
     if (!selectedBackup || !actionType || isActionRunning) return;
@@ -342,7 +367,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       } else if (actionType === 'restore') {
         await onRestoreBackup(selectedBackup);
       } else if (actionType === 'export') {
-        await onExportZip(selectedBackup, compressionLevel);
+        await onExportZip(selectedBackup, compressionLevel, encryptionPassword || undefined);
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -372,12 +397,22 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     );
   };
 
+  // vfs_blobs（文件库原始文件）只由 important 层的资产目录提供（见后端 BackupTier::asset_directories）：
+  // 必须勾选 important 层并开启“包含资产文件”，且资产类型过滤为空（=全部）或显式包含 vfs_blobs。
+  const tieredSelectionCoversVfsBlobs =
+    includeAssets &&
+    selectedTiers.includes('important') &&
+    (selectedAssetTypes.length === 0 || selectedAssetTypes.includes('vfs_blobs'));
+
   const handleBackupAndExport = () => {
     if (useTieredBackup && selectedTiers.length === 0) {
       showGlobalNotification(
         'warning',
         t('data:governance.tiered_backup_select_tier_first')
       );
+      return;
+    }
+    if (!validateOptionalPassword(encryptionPassword)) {
       return;
     }
 
@@ -388,7 +423,17 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       tiers: useTieredBackup ? selectedTiers : undefined,
       includeAssets: useTieredBackup ? includeAssets : true,
       assetTypes: useTieredBackup && selectedAssetTypes.length > 0 ? selectedAssetTypes : undefined,
+      encryptionPassword: encryptionPassword || undefined,
     });
+  };
+
+  const handleImportConfirm = () => {
+    if (!validateOptionalPassword(importPassword)) {
+      return;
+    }
+    setShowImportPasswordDialog(false);
+    onImportZip(importPassword || undefined);
+    setImportPassword('');
   };
 
   return (
@@ -489,6 +534,21 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <p className="text-sm text-muted-foreground">
             {t('data:governance.export_backup_desc')}
           </p>
+          {encryptionPassword ? (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              {t('data:governance.e2ee_export_note', {
+                defaultValue:
+                  '已设置备份密码：将导出端到端加密的全保真换机包，在其他设备导入并输入同一密码后可整槽恢复。密码丢失将无法解密。',
+              })}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t('data:governance.portable_zip_honest_note', {
+                defaultValue:
+                  '未加密的导出 ZIP 是便携归档：不包含本地加密密钥与审计记录，在其他设备导入后不能整槽恢复，API 密钥等凭据需要重新录入。',
+              })}
+            </p>
+          )}
         </div>
 
         <div className="space-y-3">
@@ -517,10 +577,50 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               {t('data:governance.use_tiered_backup')}
             </Label>
           </div>
+
+          {/* E2EE 备份密码（可选）：非空时导出加密全保真换机包 */}
+          <div className="space-y-1.5">
+            <Label htmlFor="e2ee-export-password" className="text-sm">
+              {t('data:governance.e2ee_password_label')}
+            </Label>
+            <Input
+              id="e2ee-export-password"
+              type="password"
+              autoComplete="new-password"
+              className="max-w-sm h-8 text-sm"
+              value={encryptionPassword}
+              placeholder={t('data:governance.e2ee_password_placeholder')}
+              disabled={loading || isBackupRunning}
+              onChange={(e) => setEncryptionPassword(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t('data:governance.e2ee_password_hint', { min: MIN_E2EE_PASSWORD_CHARS })}
+            </p>
+          </div>
         </div>
 
         {useTieredBackup && (
           <div className="space-y-4 pl-4 border-l-2 border-border/40">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              {t('data:governance.tiered_backup_honest_note', {
+                defaultValue:
+                  '分层备份（包括默认的核心层）只覆盖所选层级，产物是部分归档，不能整槽恢复，仅支持导出与检查。',
+              })}
+            </p>
+            {!tieredSelectionCoversVfsBlobs && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400"
+              >
+                <Warning size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('data:governance.tiered_backup_vfs_blobs_missing_warning', {
+                    defaultValue:
+                      '当前选择不包含文件库原始文件（vfs_blobs）：导出的部分归档不能整槽恢复，vfs_blobs 中的文件也无法从该归档找回。如需覆盖，请勾选「重要数据 (P1)」层级并开启「包含资产文件」（若筛选了资产类型，需保留 vfs_blobs）。',
+                  })}
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {BACKUP_TIERS.map((tier) => (
                 <div
@@ -553,7 +653,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {t('data:governance.include_assets_desc')}
                 </p>
               </div>
-              <Switch checked={includeAssets} onCheckedChange={setIncludeAssets} />
+              <Switch
+                checked={includeAssets}
+                onCheckedChange={setIncludeAssets}
+                aria-label={t('data:governance.include_assets')}
+              />
             </div>
 
             {includeAssets && (
@@ -625,7 +729,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <DsButton
             variant="default"
             size="sm"
-            onClick={onImportZip}
+            onClick={() => setShowImportPasswordDialog(true)}
             disabled={loading || isBackupRunning}
             className="h-9 [@media(pointer:coarse)]:!h-11"
           >
@@ -986,7 +1090,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           actionType === 'delete'
             ? t('data:governance.delete_warning')
             : actionType === 'export'
-            ? t('data:governance.export_warning', { level: compressionLevel })
+            ? encryptionPassword
+              ? t('data:governance.export_warning_encrypted', { level: compressionLevel })
+              : t('data:governance.export_warning', { level: compressionLevel })
             : t('data:governance.restore_warning')
         }
         confirmText={
@@ -997,11 +1103,77 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             : t('data:governance.restore')
         }
         cancelText={t('common:actions.cancel')}
-        confirmVariant={actionType === 'delete' ? 'danger' : 'primary'}
+        // [R10-ux] 恢复会用备份覆盖当前数据槽（重启后切换），与云端恢复
+        // （CloudStorageSection warning）、库级冲突覆盖（SyncTab warning/danger）
+        // 同级，不能用 primary；导出不改动数据保持 primary。
+        confirmVariant={
+          actionType === 'delete'
+            ? 'danger'
+            : actionType === 'restore'
+            ? 'warning'
+            : 'primary'
+        }
         onConfirm={handleAction}
         loading={isActionRunning}
         disabled={isActionRunning}
       />
+
+      {/* 导入 ZIP：可选备份密码对话框（加密全保真包需输入导出时设置的密码） */}
+      <DsDialog
+        open={showImportPasswordDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowImportPasswordDialog(false);
+            setImportPassword('');
+          }
+        }}
+        maxWidth="max-w-md"
+      >
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-primary" />
+            {t('data:governance.import_password_title')}
+          </DsDialogTitle>
+          <DsDialogDescription>
+            {t('data:governance.import_password_desc')}
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
+          <div className="space-y-1.5">
+            <Label htmlFor="e2ee-import-password" className="text-sm">
+              {t('data:governance.import_password_label')}
+            </Label>
+            <Input
+              id="e2ee-import-password"
+              type="password"
+              autoComplete="current-password"
+              className="h-8 text-sm"
+              value={importPassword}
+              placeholder={t('data:governance.import_password_placeholder')}
+              onChange={(e) => setImportPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleImportConfirm();
+              }}
+            />
+          </div>
+        </DsDialogBody>
+        <DsDialogFooter>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setShowImportPasswordDialog(false);
+              setImportPassword('');
+            }}
+          >
+            {t('common:actions.cancel')}
+          </DsButton>
+          <DsButton variant="primary" size="sm" onClick={handleImportConfirm}>
+            <Upload className="h-4 w-4 mr-1.5" />
+            {t('data:governance.import_button')}
+          </DsButton>
+        </DsDialogFooter>
+      </DsDialog>
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
       <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>

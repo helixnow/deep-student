@@ -25,7 +25,21 @@ pub type DownloadProgressCallback = Box<dyn Fn(u64, u64) + Send + Sync>;
 
 /// 分块上传配置
 pub const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB per chunk
-pub const MIN_MULTIPART_SIZE: u64 = 100 * 1024 * 1024; // 100MB threshold for multipart
+
+/// multipart 上传阈值：16MiB。
+///
+/// 必须与 S3 客户端 120s 的 `operation_attempt_timeout` 匹配：阈值以下的文件走
+/// 单次 PUT（整个请求共用一个 120s 计时），16MiB 在 120s 内只需约 1.1Mbps 上行；
+/// 旧值 100MB 会让慢速链路上接近阈值的文件必然触发单请求超时且无法通过重试恢复。
+/// 阈值以上走 multipart，每个分块（CHUNK_SIZE）各自计时，不受总时长限制。
+pub const MIN_MULTIPART_SIZE: u64 = 16 * 1024 * 1024;
+
+/// [R09-restore-ops][P2-2] 后端不支持断点续传下载时的 fail-closed 错误文案。
+///
+/// 该错误只应在编排层误调（未先检查 [`CloudStorage::supports_resumable_download`]）
+/// 时出现：宁可明确失败，也不能让默认实现悄悄整包重下并把结果冒充"续传成功"。
+pub const RESUMABLE_DOWNLOAD_UNSUPPORTED: &str =
+    "该云存储后端不支持断点续传下载（fail-closed）：请整包重新下载，或改用支持续传的 WebDAV";
 
 /// 文件信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,8 +160,8 @@ pub trait CloudStorage: Send + Sync {
     /// 流式上传本地文件（SOTA 特性）
     ///
     /// 自动选择最优上传策略：
-    /// - 小文件（<100MB）：直接上传
-    /// - 大文件（≥100MB）：分块上传
+    /// - 小文件（< `MIN_MULTIPART_SIZE`）：直接上传
+    /// - 大文件（≥ `MIN_MULTIPART_SIZE`）：分块上传
     ///
     /// # Arguments
     /// * `key` - 远程文件路径
@@ -191,6 +205,52 @@ pub trait CloudStorage: Send + Sync {
         Ok(checksum)
     }
 
+    /// [R09-restore-ops][P2-2] 本后端是否支持断点续传下载。
+    ///
+    /// 返回 `true` 的后端必须实现 [`Self::get_file_resumable`]；编排层
+    /// （`CloudSyncManager::download_with_progress`）只在此方法返回 `true`
+    /// 时保留/复用断点文件，否则回退到整文件下载（中断后整包重下，诚实
+    /// 但不留断点）。
+    fn supports_resumable_download(&self) -> bool {
+        false
+    }
+
+    /// [R09-restore-ops][P2-2] 断点续传下载：从 `resume_from` 字节处继续，把
+    /// 剩余内容**追加**到 `dest`。
+    ///
+    /// 契约（实现方必须全部满足，违反任何一条都是数据损坏级缺陷）：
+    /// - 调用方保证 `dest` 已有恰好 `resume_from` 字节（`resume_from == 0`
+    ///   表示全新下载，`dest` 可以不存在）；
+    /// - 只允许两种成功形态：从 `resume_from` 精确续传（返回 `resume_from`），
+    ///   或服务端不支持范围请求时**从零重下**（截断 `dest` 后重写，返回 0）。
+    ///   **禁止**把错位/截断的字节流追加进 `dest` 后报告成功；
+    /// - 服务端返回的续传起点与请求不一致时必须失败（fail-closed），
+    ///   不得静默接受；
+    /// - 传输中断必须返回错误并保持 `dest` 为"前缀完整"的断点文件
+    ///   （已写入的字节都是远端对象的正确前缀），供下次续传；
+    /// - 返回成功当且仅当 `dest` 的字节数等于远端对象大小。
+    ///
+    /// 进度回调报告的是**整个对象**的 (已有+新增字节, 总字节)。
+    ///
+    /// # Returns
+    /// 实际续传起点（`resume_from` 或 0），最终完整性由调用方对整个
+    /// `dest` 做 SHA256 校验兜底。
+    ///
+    /// 默认实现 fail-closed：不支持续传的后端明确报错，绝不静默整包重下
+    /// 冒充续传。
+    async fn get_file_resumable(
+        &self,
+        key: &str,
+        dest: &Path,
+        resume_from: u64,
+        progress: Option<DownloadProgressCallback>,
+    ) -> Result<u64> {
+        let _ = (key, dest, resume_from, progress);
+        Err(AppError::configuration(
+            RESUMABLE_DOWNLOAD_UNSUPPORTED.to_string(),
+        ))
+    }
+
     /// 流式下载文件到本地（SOTA 特性）
     ///
     /// # Arguments
@@ -227,6 +287,17 @@ pub trait CloudStorage: Send + Sync {
             .get(key)
             .await?
             .ok_or_else(|| AppError::not_found("云端文件不存在"))?;
+
+        // [R10-download] 半包 fail-closed：`get` 正常返回不等于下载完整。
+        // 无 `expected_checksum` 的调用方（如文件级对象下载）没有第二道防线，
+        // 字节数与云端声明不一致（半包，或对象在 stat 与 get 之间被并发替换）
+        // 时必须失败，绝不落盘冒充成功。
+        if data.len() as u64 != total_size {
+            return Err(AppError::network(format!(
+                "下载不完整或云端对象已变更：声明 {total_size} 字节，实际收到 {} 字节，已拒绝保存（请重试）",
+                data.len()
+            )));
+        }
 
         if let Some(ref cb) = progress {
             cb(total_size / 2, total_size);

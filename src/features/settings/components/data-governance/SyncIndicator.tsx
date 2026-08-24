@@ -22,7 +22,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
   compact = false,
   refreshSignal,
 }) => {
-  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+  const [counts, setCounts] = useState<DataGovernanceApi.RecordConflictCounts | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,7 +51,8 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
 
   if (loading || !counts) return null;
 
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // 徽章展示未解决的记录组数（与冲突面板"待解决冲突"分组口径一致）
+  const total = counts.total_groups;
 
   if (total === 0) {
     if (compact) return null;
@@ -63,9 +64,9 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
     );
   }
 
-  const perDb = Object.entries(counts)
-    .filter(([, n]) => n > 0)
-    .map(([db, n]) => `${db}: ${n}`)
+  const perDb = Object.entries(counts.per_database)
+    .filter(([, entry]) => entry.groups > 0)
+    .map(([db, entry]) => `${db}: ${entry.groups} 组（${entry.rows} 行）`)
     .join(', ');
 
   return (
@@ -74,7 +75,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
       title={`未解决冲突：${perDb}`}
     >
       <Warning size={12} />
-      {total} 条冲突
+      {total} 组冲突
     </span>
   );
 };

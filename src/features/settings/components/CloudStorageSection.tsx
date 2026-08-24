@@ -1,13 +1,14 @@
 /**
  * 云存储配置面板
  * 
- * 支持 WebDAV 和 S3 兼容存储配置
+ * 支持 WebDAV；桌面端还支持 S3 兼容存储与实验性 FTP。Android 仅 WebDAV。
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle } from '@phosphor-icons/react';
+import { invoke } from '@tauri-apps/api/core';
+import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle, ShieldCheck } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -25,8 +26,73 @@ import { TauriAPI } from '@/utils/tauriApi';
 import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
+import { isMobilePlatform } from '@/utils/platform';
+import {
+  classifySyncE2eeError,
+  SYNC_E2EE_ERROR_I18N_KEYS,
+} from './data-governance/syncE2eeErrorMapping';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+// ==================== [R11-check] 云端仓库巡检（只读） ====================
+
+/** 巡检问题类别（与后端 `cloud_storage::repo_check::RepoCheckProblemKind` 对齐） */
+type RepoCheckProblemKind =
+  | 'missingObject'
+  | 'checksumMismatch'
+  | 'undecodableDsbkHeader'
+  | 'plaintextInEncryptedRepo'
+  | 'encryptedWithoutMarker'
+  | 'orphanObject'
+  | 'tempLeftover'
+  | 'corruptManifest'
+  | 'conflictingManifestEntry'
+  | 'corruptEncryptionMarker'
+  | 'objectReadFailed';
+
+interface RepoCheckProblem {
+  kind: RepoCheckProblemKind;
+  objectKey?: string;
+  versionId?: string;
+  detail: string;
+}
+
+/** 巡检报告（与后端 `RepoCheckReport` 对齐） */
+interface RepoCheckReport {
+  status: 'ok' | 'problemsFound' | 'incomplete';
+  listingTruncated: boolean;
+  encryptionMarkerPresent: boolean;
+  versionsReferenced: number;
+  objectsChecked: number;
+  bytesVerified: number;
+  orphanObjects: number;
+  problems: RepoCheckProblem[];
+  problemsTruncated: boolean;
+  checkedAt: string;
+}
+
+/** 表示某个版本已坏（无法完整恢复）的问题类别 */
+const BAD_OBJECT_KINDS: ReadonlySet<RepoCheckProblemKind> = new Set([
+  'missingObject',
+  'checksumMismatch',
+  'undecodableDsbkHeader',
+  'plaintextInEncryptedRepo',
+]);
+
+/** manifest / 加密标记层面的问题类别 */
+const MANIFEST_KINDS: ReadonlySet<RepoCheckProblemKind> = new Set([
+  'corruptManifest',
+  'conflictingManifestEntry',
+  'corruptEncryptionMarker',
+  'encryptedWithoutMarker',
+]);
+
+/** 云端仓库巡检操作（restic `check` 档，只读不修） */
+async function runCloudRepoCheck(config: cloudApi.CloudStorageConfig): Promise<RepoCheckReport> {
+  return invoke<RepoCheckReport>('data_governance_repo_check', {
+    cloudConfig: cloudApi.toRuntimeCloudStorageConfig(config),
+  });
+}
 
 /** 云端同步操作的细粒度进度状态 */
 interface SyncOpProgress {
@@ -105,6 +171,24 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPasswordConfigured: false,
   });
 
+  // [R11-android2 / P2-LOCALE] 平台能力错误只按后端稳定 code 映射。
+  // message 是诊断文本，允许改语言/措辞，禁止再以正则参与程序分派。
+  const localizeCloudError = useCallback(
+    (error: unknown): string => {
+      const raw = getErrorMessage(error);
+      // [R09-e2ee] 端到端加密三类失败（明文遗留拒收 / 错密码 / 标记损坏）
+      // 映射为可操作人话；原文附在后面供排查与关键字搜索。
+      const e2eeKind = classifySyncE2eeError(raw);
+      if (e2eeKind) {
+        return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
+      }
+      const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
+      if (platformErrorKey) return t(platformErrorKey);
+      return raw;
+    },
+    [t],
+  );
+
   const markSecureStoreIssue = useCallback(
     (error: unknown, operation: 'read' | 'write'): string | null => {
       const envelope = parseCommandErrorEnvelope(error);
@@ -133,6 +217,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 细粒度进度状态
   const [opProgress, setOpProgress] = useState<SyncOpProgress | null>(null);
 
+  // [R11-check] 云端仓库巡检状态（只读操作，独立于上传/下载进度）
+  const [repoChecking, setRepoChecking] = useState(false);
+  const [repoCheckReport, setRepoCheckReport] = useState<RepoCheckReport | null>(null);
+  const [repoCheckError, setRepoCheckError] = useState<string | null>(null);
+
   // S3 feature 状态
   const [s3Enabled, setS3Enabled] = useState<boolean | null>(null);
 
@@ -143,6 +232,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
+  // 清除配置确认对话框状态（danger 操作必须显式确认）
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  // 停用端到端加密确认对话框状态（同为 danger：删除本机加密密码后，
+  // 未另存密码的用户将永久失去已加密云端备份的解密能力）
+  const [disableEncryptionConfirmOpen, setDisableEncryptionConfirmOpen] = useState(false);
   // P2-12 移动端契约：版本删除确认改为按钮两段式行内确认（4 秒未确认自动复位）
   const { isSmallScreen } = useBreakpoint();
   const [confirmingDeleteVersionId, setConfirmingDeleteVersionId] = useState<string | null>(null);
@@ -236,7 +330,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const secureMessage = markSecureStoreIssue(e, 'write');
         showGlobalNotification(
           'error',
-          secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${getErrorMessage(e)}`,
+          secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
         );
       }
 
@@ -271,7 +365,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     return () => {
       active = false;
     };
-  }, [markSecureStoreIssue, t]);
+  }, [localizeCloudError, markSecureStoreIssue, t]);
 
   // 构建配置对象
   const buildConfig = useCallback((
@@ -357,13 +451,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
     } catch (e: unknown) {
       console.error('Failed to save credential-free cloud config SSOT:', e);
-      showGlobalNotification('error', t('cloudStorage:messages.configSsotFailed'));
+      // [R10-ux] 与加载路径对齐：带上后端拒绝原因（经 localizeCloudError 映射），
+      // 否则平台能力类拒绝（如无 S3 构建）只剩一句「配置未保存」，用户无从下手。
+      showGlobalNotification(
+        'error',
+        `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
+      );
       return;
     }
 
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
-  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, markSecureStoreIssue, t, onConfigChanged]);
+  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
 
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
@@ -450,7 +549,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setVersions(versionList);
     } catch (e: unknown) {
       setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`);
     } finally {
       setTesting(false);
     }
@@ -459,6 +558,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     buildConfig,
     encryptionPassword,
     ftpConfig.password,
+    localizeCloudError,
     provider,
     s3Config.secretAccessKey,
     t,
@@ -530,7 +630,33 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     onConfigChanged?.();
   }, [t, onConfigChanged]);
 
+  // 停用端到端加密：走后端显式 API，只删除加密密码、保留传输凭据。
+  // 留空保存不是停用（保存的合并语义把空字段视为「保留现有值」），
+  // 这里是唯一的停用入口，必须经 danger 确认框确认。
+  // 注意：停用只影响本机密码，不会移除云端加密标记——已有标记的根目录
+  // 之后的明文上传会被后端拒绝（见 enforce_encryption_policy_before_upload）。
+  const disableEncryption = useCallback(async () => {
+    try {
+      const status = await cloudApi.clearEncryptionPassword();
+      setCredentialStatus(status);
+      setEncryptionPassword('');
+      setShowEncryptionPwd(false);
+      setSecureStoreIssue(null);
+      showGlobalNotification('info', t('cloudStorage:encryption.disabledNotice'));
+      onConfigChanged?.();
+    } catch (e: unknown) {
+      console.error('Failed to disable end-to-end encryption:', e);
+      const secureMessage = markSecureStoreIssue(e, 'write');
+      showGlobalNotification(
+        'error',
+        `${secureMessage ?? t('cloudStorage:encryption.disableFailed')}: ${getErrorMessage(e)}`,
+      );
+    }
+  }, [markSecureStoreIssue, t, onConfigChanged]);
+
   const shouldShowFtpOption = FTP_STORAGE_EXPERIMENTAL_ENABLED || hasStoredFtpConfig || provider === 'ftp';
+  // Android/移动端后端未提供 FTP 支持：复用 S3 禁用卡片模式（可见但不可选）
+  const ftpDisabledOnMobile = isMobilePlatform();
 
   // 测试连接（先检查不安全连接）
   const testConnection = useCallback(async () => {
@@ -731,6 +857,24 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }));
   }, []);
 
+  // 云端整包 ZIP 密码：输入框显式密码优先；否则仅在「已配置」时让后端读安全存储。
+  // 导出：后端开关打开却读不到密码时 fail-closed，不会默默打成便携包。
+  // 导入：后端只对密封 ZIP 套用 stored；便携包忽略 stored。
+  // 不要把 secure store 密码读进 React state。
+  const resolveCloudZipEncryptionArgs = useCallback((): {
+    encryptionPassword?: string;
+    useStoredCloudEncryptionPassword?: boolean;
+  } => {
+    const explicit = encryptionPassword.trim();
+    if (explicit) {
+      return { encryptionPassword: explicit };
+    }
+    if (credentialStatus.encryptionPasswordConfigured) {
+      return { useStoredCloudEncryptionPassword: true };
+    }
+    return {};
+  }, [credentialStatus.encryptionPasswordConfigured, encryptionPassword]);
+
   // 备份并上传到云端
   const handleBackupAndUpload = useCallback(async () => {
     if (connectionStatus !== 'connected') {
@@ -761,7 +905,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setStage('upload', 2, 4, t('cloudStorage:progress.packageZip'));
       let zipPath: string;
       try {
-        const zipExportJob = await DataGovernanceApi.exportZip(backupId);
+        const zipArgs = resolveCloudZipEncryptionArgs();
+        const zipExportJob = await DataGovernanceApi.exportZip(
+          backupId,
+          undefined,
+          undefined,
+          undefined,
+          zipArgs.encryptionPassword,
+          zipArgs.useStoredCloudEncryptionPassword,
+        );
         const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
@@ -776,7 +928,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const appVersion = await TauriAPI.getAppVersion();
         result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 4/4：刷新状态
@@ -798,8 +950,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     connectionStatus,
+    localizeCloudError,
     refreshStatus,
     resolveBackupId,
+    resolveCloudZipEncryptionArgs,
     resolveExportZipPath,
     setStage,
     t,
@@ -816,12 +970,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setRestoreConfirmOpen(true);
   }, [connectionStatus, t]);
 
-  // 从云端恢复
-  const handleRestore = useCallback(async () => {
-    const versionId = pendingRestoreVersionId;
-    if (!versionId) return;
-    
-    setRestoreConfirmOpen(false);
+  // 失败重试上下文：记录最近一次恢复的版本号，供进度面板「重试」使用
+  const lastRestoreVersionIdRef = useRef<string | null>(null);
+
+  // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
+  const performRestore = useCallback(async (versionId: string) => {
+    lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
     setRestoreVersionId(versionId);
     setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
@@ -834,14 +988,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       try {
         downloadResult = await cloudApi.downloadBackup(buildConfig(), versionId, downloadDir);
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.downloadBackupFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.downloadBackupFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 2/3：导入 ZIP
       setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
       try {
-        const importJob = await DataGovernanceApi.importZip(downloadResult.localPath);
+        const zipArgs = resolveCloudZipEncryptionArgs();
+        const importJob = await DataGovernanceApi.importZip(
+          downloadResult.localPath,
+          undefined,
+          zipArgs.encryptionPassword,
+          zipArgs.useStoredCloudEncryptionPassword,
+        );
         const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
@@ -878,12 +1038,57 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
-    pendingRestoreVersionId,
+    localizeCloudError,
     resolveBackupId,
+    resolveCloudZipEncryptionArgs,
     setStage,
     t,
     waitForGovernanceJob,
   ]);
+
+  // 恢复确认框的确认回调
+  const handleRestore = useCallback(async () => {
+    const versionId = pendingRestoreVersionId;
+    if (!versionId) return;
+    setRestoreConfirmOpen(false);
+    await performRestore(versionId);
+  }, [pendingRestoreVersionId, performRestore]);
+
+  // 上传/下载失败后的重试：按失败操作类型重新触发完整流程
+  const retryFailedOperation = useCallback(() => {
+    if (!opProgress?.error) return;
+    if (opProgress.operation === 'upload') {
+      setOpProgress(null);
+      void handleBackupAndUpload();
+      return;
+    }
+    const versionId = lastRestoreVersionIdRef.current;
+    if (!versionId) {
+      setOpProgress(null);
+      return;
+    }
+    setOpProgress(null);
+    void performRestore(versionId);
+  }, [opProgress, handleBackupAndUpload, performRestore]);
+
+  // [R11-check] 执行云端仓库巡检（只读，不写入/删除任何云端对象）
+  const handleRepoCheck = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
+      return;
+    }
+    setRepoChecking(true);
+    setRepoCheckError(null);
+    try {
+      const report = await runCloudRepoCheck(buildConfig());
+      setRepoCheckReport(report);
+    } catch (e: unknown) {
+      setRepoCheckReport(null);
+      setRepoCheckError(localizeCloudError(e));
+    } finally {
+      setRepoChecking(false);
+    }
+  }, [buildConfig, connectionStatus, localizeCloudError, t]);
 
   // 打开删除确认对话框
   const openDeleteConfirm = useCallback((versionId: string) => {
@@ -902,11 +1107,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('success', t('cloudStorage:messages.versionDeleted'));
       refreshStatus();
     } catch (e: unknown) {
-      showGlobalNotification('error', `${t('cloudStorage:errors.deleteFailed')}: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', `${t('cloudStorage:errors.deleteFailed')}: ${localizeCloudError(e)}`);
     } finally {
       setPendingDeleteVersionId(null);
     }
-  }, [buildConfig, pendingDeleteVersionId, refreshStatus, t]);
+  }, [buildConfig, localizeCloudError, pendingDeleteVersionId, refreshStatus, t]);
 
   const persistedInsecureRisk =
     allowInsecure && cloudApi.requiresInsecureTransportOptIn(buildConfig());
@@ -993,27 +1198,42 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={() => setProvider('ftp')}
+            onClick={() => !ftpDisabledOnMobile && setProvider('ftp')}
+            disabled={ftpDisabledOnMobile}
             className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
-              provider === 'ftp'
-                ? 'border-primary bg-primary/5'
-                : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
+              ftpDisabledOnMobile
+                ? 'opacity-50 border-border'
+                : provider === 'ftp'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
             }`}
           >
-            {provider === 'ftp' && (
+            {provider === 'ftp' && !ftpDisabledOnMobile && (
               <div className="absolute right-2 top-2">
                 <CheckCircle size={16} className="text-primary" />
               </div>
             )}
-            <span className="font-medium">{t('cloudStorage:provider.ftp')}</span>
-            <span className="text-xs text-warning line-clamp-2 whitespace-normal">
-              {t('cloudStorage:provider.ftpDescExperimental')}
+            <span className={`font-medium ${ftpDisabledOnMobile ? 'line-through' : ''}`}>
+              {t('cloudStorage:provider.ftp')}
+            </span>
+            <span className={`text-xs line-clamp-2 whitespace-normal ${
+              ftpDisabledOnMobile ? 'text-destructive/70' : 'text-warning'
+            }`}>
+              {ftpDisabledOnMobile
+                ? t('cloudStorage:provider.ftpDisabledMobile')
+                : t('cloudStorage:provider.ftpDescExperimental')}
             </span>
           </DsButton>
         )}
       </div>
 
-      <Tabs value={provider} onValueChange={(v) => setProvider(v as cloudApi.StorageProvider)}>
+      <Tabs
+        value={provider}
+        onValueChange={(v) => {
+          if (v === 'ftp' && ftpDisabledOnMobile) return;
+          setProvider(v as cloudApi.StorageProvider);
+        }}
+      >
           {/* WebDAV 配置 */}
           <TabsContent value="webdav" className="space-y-4 mt-0">
             <div className="space-y-2">
@@ -1187,15 +1407,36 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
         {/* 端到端加密配置（可选） */}
         <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <Label htmlFor="cloud-encryption-password" className="font-medium">
               {t('cloudStorage:encryption.title')}
             </Label>
+            {/* 加密状态徽标：来自后端安全存储的 presence 标记，非本地输入框状态 */}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                credentialStatus.encryptionPasswordConfigured
+                  ? 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400'
+                  : 'border-border bg-muted/40 text-muted-foreground'
+              }`}
+            >
+              {credentialStatus.encryptionPasswordConfigured ? (
+                <CheckCircle size={12} aria-hidden />
+              ) : (
+                <XCircle size={12} aria-hidden />
+              )}
+              {credentialStatus.encryptionPasswordConfigured
+                ? t('cloudStorage:encryption.statusConfigured')
+                : t('cloudStorage:encryption.statusNotConfigured')}
+            </span>
           </div>
           <ApiKeyField
             id="cloud-encryption-password"
-            placeholder={t('cloudStorage:encryption.placeholder')}
+            placeholder={
+              credentialStatus.encryptionPasswordConfigured
+                ? t('cloudStorage:encryption.placeholderConfigured')
+                : t('cloudStorage:encryption.placeholderUnset')
+            }
             value={encryptionPassword}
             onChange={(e) => setEncryptionPassword(e.target.value)}
             autoComplete="new-password"
@@ -1209,6 +1450,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {t('cloudStorage:encryption.description')}{' '}
             <span className="text-destructive font-medium">{t('cloudStorage:encryption.warning')}</span>
           </p>
+          {/* 停用是显式操作：留空保存只会保留现有密码，绝不会静默停用加密 */}
+          {credentialStatus.encryptionPasswordConfigured && (
+            <DsButton
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => setDisableEncryptionConfirmOpen(true)}
+            >
+              {t('cloudStorage:encryption.disableAction')}
+            </DsButton>
+          )}
         </div>
 
         {/* 操作按钮 */}
@@ -1242,7 +1494,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <DsButton
             variant="danger"
             className="[@media(pointer:coarse)]:!min-h-11"
-            onClick={clearConfig}
+            onClick={() => setClearConfirmOpen(true)}
           >
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
@@ -1337,14 +1589,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 )}
 
                 {opProgress.error && (
-                  <DsButton
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
-                    onClick={() => setOpProgress(null)}
-                  >
-                    {t('common:close')}
-                  </DsButton>
+                  <div className="flex gap-2">
+                    <DsButton
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+                      disabled={uploading || downloading}
+                      onClick={retryFailedOperation}
+                    >
+                      {t('common:actions.retry')}
+                    </DsButton>
+                    <DsButton
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+                      onClick={() => setOpProgress(null)}
+                    >
+                      {t('common:actions.close')}
+                    </DsButton>
+                  </div>
                 )}
               </div>
             )}
@@ -1379,6 +1642,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 {t('cloudStorage:actions.viewHistory')}
               </DsButton>
             </div>
+            <p className="text-xs text-muted-foreground pt-1">
+              {t('cloudStorage:actions.fullZipHint')}
+            </p>
           </div>
         )}
 
@@ -1461,6 +1727,168 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             )}
           </div>
         )}
+
+        {/* [R11-check] 云端仓库巡检：独立入口区（restic `check` 档，只读不修） */}
+        {syncStatus && (
+          <div className="border rounded-lg p-4 space-y-3">
+            <h4 className="font-medium flex items-center gap-2">
+              <ShieldCheck size={16} />
+              {t('cloudStorage:repoCheck.title')}
+            </h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t('cloudStorage:repoCheck.description')}
+            </p>
+            <DsButton
+              size="sm"
+              variant="outline"
+              disabled={repoChecking || uploading || downloading || connectionStatus !== 'connected'}
+              onClick={() => void handleRepoCheck()}
+            >
+              {repoChecking ? (
+                <>
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
+                  {t('cloudStorage:repoCheck.running')}
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={16} className="mr-2" />
+                  {t('cloudStorage:repoCheck.run')}
+                </>
+              )}
+            </DsButton>
+
+            {repoCheckError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                <p className="min-w-0 leading-relaxed break-words">
+                  {t('cloudStorage:repoCheck.failed')}: {repoCheckError}
+                </p>
+              </div>
+            )}
+
+            {repoCheckReport && (
+              <div className="space-y-3 text-sm">
+                {/* 结论徽标：全绿 / 有问题 / 不完整（截断时绝不显示全绿） */}
+                {repoCheckReport.status === 'ok' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-green-500/40 bg-green-500/10 p-3 text-green-700 dark:text-green-400">
+                    <CheckCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">{t('cloudStorage:repoCheck.statusOk')}</p>
+                  </div>
+                )}
+                {repoCheckReport.status === 'problemsFound' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-destructive">
+                    <XCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">
+                      {t('cloudStorage:repoCheck.statusProblems', { count: repoCheckReport.problems.length })}
+                    </p>
+                  </div>
+                )}
+                {repoCheckReport.status === 'incomplete' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300">
+                    <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">{t('cloudStorage:repoCheck.statusIncomplete')}</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  {t('cloudStorage:repoCheck.summary', {
+                    versions: repoCheckReport.versionsReferenced,
+                    objects: repoCheckReport.objectsChecked,
+                    bytes: cloudApi.formatFileSize(repoCheckReport.bytesVerified),
+                  })}
+                  {' • '}
+                  {t('cloudStorage:repoCheck.checkedAt')}: {cloudApi.formatTimestamp(repoCheckReport.checkedAt)}
+                </p>
+                {repoCheckReport.encryptionMarkerPresent && (
+                  <p className="text-xs text-muted-foreground">{t('cloudStorage:repoCheck.encryptedRepo')}</p>
+                )}
+                {repoCheckReport.listingTruncated && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                    {t('cloudStorage:repoCheck.truncatedNotice')}
+                  </div>
+                )}
+                {repoCheckReport.orphanObjects > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('cloudStorage:repoCheck.orphanCount', { count: repoCheckReport.orphanObjects })}
+                  </p>
+                )}
+
+                {/* 问题清单 */}
+                {repoCheckReport.problems.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-sm font-medium">{t('cloudStorage:repoCheck.problemsTitle')}</h5>
+                    {repoCheckReport.problemsTruncated && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('cloudStorage:repoCheck.problemsTruncated', { count: repoCheckReport.problems.length })}
+                      </p>
+                    )}
+                    <CustomScrollArea className="max-h-64" viewportClassName="pr-1">
+                      <div className="space-y-2">
+                        {repoCheckReport.problems.map((problem, index) => (
+                          <div
+                            key={`${problem.kind}-${problem.objectKey ?? ''}-${index}`}
+                            className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs"
+                          >
+                            <div className="font-medium text-destructive">
+                              {t(`cloudStorage:repoCheck.problemKind.${problem.kind}`, {
+                                defaultValue: problem.kind,
+                              })}
+                              {problem.versionId && (
+                                <span className="ml-1 font-normal text-muted-foreground">
+                                  ({problem.versionId})
+                                </span>
+                              )}
+                            </div>
+                            {problem.objectKey && (
+                              <div className="mt-0.5 break-all font-mono text-muted-foreground">
+                                {problem.objectKey}
+                              </div>
+                            )}
+                            <div className="mt-0.5 leading-relaxed text-muted-foreground">{problem.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </CustomScrollArea>
+                  </div>
+                )}
+
+                {/* 人话处置指引：发现坏对象后该做什么 */}
+                {repoCheckReport.status !== 'ok' && (
+                  <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
+                    <h5 className="text-sm font-medium">{t('cloudStorage:repoCheck.guidance.title')}</h5>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {t('cloudStorage:repoCheck.guidance.readOnly')}
+                    </p>
+                    {repoCheckReport.problems.some((p) => BAD_OBJECT_KINDS.has(p.kind)) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.badObject')}
+                      </p>
+                    )}
+                    {repoCheckReport.orphanObjects > 0 && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.orphan')}
+                      </p>
+                    )}
+                    {repoCheckReport.problems.some((p) => MANIFEST_KINDS.has(p.kind)) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.manifest')}
+                      </p>
+                    )}
+                    {(repoCheckReport.listingTruncated
+                      || repoCheckReport.problems.some((p) => p.kind === 'objectReadFailed')) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.incomplete')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
     </div>
   );
 
@@ -1477,6 +1905,59 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       onConfirm={handleRestore}
     >
       <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.partialArchiveNotice')}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
+    </DsAlertDialog>
+  );
+
+  // 清除配置确认对话框（danger：涉及凭据与加密密码删除，必须显式确认）
+  const clearConfirmDialog = (
+    <DsAlertDialog
+      open={clearConfirmOpen}
+      onOpenChange={setClearConfirmOpen}
+      title={t('cloudStorage:clearConfirm.title')}
+      description={t('cloudStorage:clearConfirm.description')}
+      confirmText={t('cloudStorage:clearConfirm.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="danger"
+      onConfirm={() => {
+        setClearConfirmOpen(false);
+        void clearConfig();
+      }}
+    >
+      <p className="text-sm font-medium text-destructive">
+        {t('cloudStorage:clearConfirm.encryptionWarning')}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {t('cloudStorage:clearConfirm.cloudFilesKept')}
+      </p>
+    </DsAlertDialog>
+  );
+
+  // 停用端到端加密确认对话框（danger：删除本机加密密码，未另存则已加密备份永久不可解密）。
+  // [R06-e2ee-copy] 第二段说明与后端 R02 上传策略一致：已写入加密标记
+  // （.encryption-marker）的云端根目录会拒绝明文上传，而不是静默降级为明文；
+  // 用户需重新填写原密码或更换云端根目录才能继续备份。
+  const disableEncryptionConfirmDialog = (
+    <DsAlertDialog
+      open={disableEncryptionConfirmOpen}
+      onOpenChange={setDisableEncryptionConfirmOpen}
+      title={t('cloudStorage:encryption.disableConfirm.title')}
+      description={t('cloudStorage:encryption.disableConfirm.description')}
+      confirmText={t('cloudStorage:encryption.disableConfirm.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="danger"
+      onConfirm={() => {
+        setDisableEncryptionConfirmOpen(false);
+        void disableEncryption();
+      }}
+    >
+      <p className="text-sm font-medium text-destructive">
+        {t('cloudStorage:encryption.disableConfirm.existingBackupsWarning')}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {t('cloudStorage:encryption.disableConfirm.futureUploadsPlaintext')}
+      </p>
     </DsAlertDialog>
   );
 
@@ -1538,6 +2019,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         </div>
         {restoreConfirmDialog}
         {deleteConfirmDialog}
+        {clearConfirmDialog}
+        {disableEncryptionConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
       </>
@@ -1561,6 +2044,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       </Card>
       {restoreConfirmDialog}
       {deleteConfirmDialog}
+      {clearConfirmDialog}
+      {disableEncryptionConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
     </>
