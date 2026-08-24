@@ -133,6 +133,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
           className={cn(
             '!relative !p-4 !h-auto !rounded-xl border !text-left !justify-start !items-start flex-col',
             'ui-press ui-state-colors hover:shadow-md',
+            '[@media(pointer:coarse)]:min-h-11',
             currentMode === key
               ? 'border-primary/50 bg-primary/5 shadow-sm'
               : 'border-border hover:border-border/80 bg-card'
