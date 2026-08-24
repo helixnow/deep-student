@@ -357,7 +357,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
           </div>
 
           <details className="group rounded-md border border-[color:var(--border-soft)]" open={Boolean(draft.extraLines.trim())}>
-            <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground">
+            <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground [@media(pointer:coarse)]:min-h-11">
               <CaretDown className="h-3.5 w-3.5 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
               {t('settings:subagentProfiles.form.advanced')}
             </summary>
