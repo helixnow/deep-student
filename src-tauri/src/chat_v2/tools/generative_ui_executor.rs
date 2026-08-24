@@ -303,7 +303,8 @@ impl ToolExecutor for GenerativeUiExecutor {
             .get("meta")
             .and_then(|m| m.get("title"))
             .and_then(Value::as_str);
-        let hpias_question = title.or(extract_question_from_intent(&intent).as_deref());
+        let extracted_question = extract_question_from_intent(&intent);
+        let hpias_question = title.or(extracted_question.as_deref());
 
         let content_str =
             serde_json::to_string(&intent).map_err(|e| format!("intent 序列化失败: {}", e))?;
