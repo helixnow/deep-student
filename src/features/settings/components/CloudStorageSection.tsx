@@ -1857,6 +1857,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       onConfirm={handleRestore}
     >
       <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.partialArchiveNotice')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
     </DsAlertDialog>
   );

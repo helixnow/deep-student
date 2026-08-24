@@ -263,15 +263,22 @@ describe('CloudStorageSection 整包备份诚实文案', () => {
 // ============================================================================
 
 describe('CloudStorageSection 危险操作确认接线（源码契约）', () => {
-  it('恢复版本必须经 warning 确认框（含覆盖警告与重启预告）', () => {
+  it('恢复版本必须经 warning 确认框（含覆盖警告、便携归档限制与校验后重启）', () => {
     expect(componentSource).toContain("title={t('cloudStorage:download.confirmTitle')}");
     expect(componentSource).toContain("t('cloudStorage:download.warning')");
+    expect(componentSource).toContain("t('cloudStorage:download.partialArchiveNotice')");
     expect(componentSource).toContain("t('cloudStorage:download.restartNotice')");
     expect(componentSource).toContain('onConfirm={handleRestore}');
     // 恢复确认框用 warning 变体
     expect(componentSource).toMatch(
       /download\.confirmTitle'\)\}[\s\S]{0,400}confirmVariant="warning"/,
     );
+    expect(zhLocale.download.partialArchiveNotice).toContain('便携归档');
+    expect(zhLocale.download.partialArchiveNotice).toContain('整槽恢复');
+    expect(zhLocale.download.restartNotice).toContain('通过整槽恢复校验');
+    expect(enLocale.download.partialArchiveNotice).toMatch(/portable archive/i);
+    expect(enLocale.download.restartNotice).toMatch(/slot-restore validation/i);
+    expect(Object.keys(zhLocale.download).sort()).toEqual(Object.keys(enLocale.download).sort());
   });
 
   it('删除版本 / 清除配置 / 停用加密均为 danger 确认框', () => {
