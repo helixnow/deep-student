@@ -5,6 +5,12 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { usePdfSettingsStore, type PdfFitMode } from '../stores/pdfSettingsStore';
+import {
+  canNavigateNext,
+  canNavigatePrev,
+  getNextNavigationPage,
+  getPrevNavigationPage,
+} from '../pdfPageNavigation';
 import { dstu } from '@/dstu';
 import {
   CaretLeft,
@@ -535,11 +541,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const numPagesRef = useRef(numPages);
   const onPageChangeRef = useRef(onPageChange);
   const currentPageRef = useRef(currentPage);
+  const viewModeRef = useRef(viewMode);
 
   useEffect(() => {
     numPagesRef.current = numPages;
     onPageChangeRef.current = onPageChange;
     currentPageRef.current = currentPage;
+    viewModeRef.current = viewMode;
   });
 
   // ACR 4.0（A7）：agent/引用 gotoPage 跳页成功后给目标页一次高亮渐隐演出。
@@ -1707,8 +1715,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setDocumentRetryKey((k) => k + 1);
   }, []);
 
-  const handlePrevPage = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
-  const handleNextPage = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+  // 翻页步进：单页 ±1；双页按 spread ±2（对齐行首，避免同 spread 内空翻）
+  const handlePrevPage = useCallback(
+    () => goToPage(getPrevNavigationPage(currentPage, viewMode, numPages)),
+    [currentPage, viewMode, numPages, goToPage],
+  );
+  const handleNextPage = useCallback(
+    () => goToPage(getNextNavigationPage(currentPage, viewMode, numPages)),
+    [currentPage, viewMode, numPages, goToPage],
+  );
 
   const handlePageInputSubmit = useCallback(() => {
     const pageNum = parseInt(pageInputValue, 10);
@@ -2150,13 +2165,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         return;
       }
 
-      // 翻页快捷键
+      // 翻页快捷键（双页模式按 spread ±2）
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        goToPage(currentPageRef.current - 1);
+        goToPage(getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current));
       } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
         e.preventDefault();
-        goToPage(currentPageRef.current + 1);
+        goToPage(getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current));
       } else if (e.key === 'Home') {
         e.preventDefault();
         goToPage(1);
@@ -3226,7 +3241,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
           <div className="ds-toolbar-divider" />
 
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={currentPage <= 1} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={!canNavigatePrev(currentPage, viewMode)} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
             <CaretLeft size={16} />
           </DsButton>
 
@@ -3251,7 +3266,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             <span className="ds-page-total">/ {numPages || 0}</span>
           </div>
 
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={currentPage >= numPages} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={!canNavigateNext(currentPage, viewMode, numPages)} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
             <CaretRight size={16} />
           </DsButton>
         </div>
