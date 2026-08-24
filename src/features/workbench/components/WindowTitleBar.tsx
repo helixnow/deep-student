@@ -24,9 +24,12 @@ import {
 } from '../hooks/useWindowLifecycleAnim';
 import { TileMenuPopover, type TileMenuAction } from './TileMenuPopover';
 import { useTitleBarDoubleClickAction } from './titleBarBehaviorStore';
+import { TITLEBAR_HEIGHT } from '../core/metrics';
 import './WindowTitleBar.css';
 
-export const TITLEBAR_HEIGHT = 38;
+// 单一来源在 core/metrics（TS）与 --wb-titlebar-height token（CSS）；
+// 此处 re-export 维持既有 import 路径（index.ts / WindowShell 等）。
+export { TITLEBAR_HEIGHT };
 
 /** 缩放键悬停多久弹出平铺菜单（ms） */
 export const TILE_MENU_HOVER_DELAY = 350;

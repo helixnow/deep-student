@@ -336,14 +336,18 @@ export function useWindowLifecycleAnim(windowId: string): void {
 
     const runId = ++runIdRef.current;
     const lifecValue = phaseLifecValue(phase);
+
+    // 先清上一相位标记并强制回流，再量测 Dock 源点：若旧动画（如 restoring
+    // 半途又 minimizing）仍挂在壳上，getBoundingClientRect 会读到含动画
+    // transform 的中间帧矩形，把收敛点百分比算偏（genie 斜向错位飞行）。
+    // 回流同时承担「同相重复标记时强制重启动画」的旧职责。
+    clearLifecAttr(shell);
+    void shell.offsetWidth;
+
     const win = useWindowStore.getState().windows[windowId];
     if (needsDockOrigin(phase) && win) {
       injectMinimizeOrigin(shell, win.typeId, dockOriginFallback(phase));
     }
-
-    clearLifecAttr(shell);
-    // 强制重启动画（同相重复标记时）
-    void shell.offsetWidth;
     shell.setAttribute(LIFEC_ATTR, lifecValue);
 
     const fallbackMs = resolveLifecFallbackMs(shell, phase);

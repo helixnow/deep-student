@@ -38,6 +38,9 @@ export const notesAppDefinition: AppDefinition = {
   agentManifest: createNotesAgentManifest(handleNotesActivation),
   canClose: canCloseNotesWorkspace,
   handlesCloseShortcut: true,
+  // Ctrl+Tab / Ctrl+Shift+Tab 循环内部标签（NotesWorkspaceApp onWindowKeyDown
+  // 消费；壳层让位协议见 AppDefinition.handlesTabCycleShortcut）
+  handlesTabCycleShortcut: true,
 };
 
 let registered = false;

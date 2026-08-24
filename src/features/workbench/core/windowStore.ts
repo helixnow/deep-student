@@ -28,6 +28,7 @@ import type {
   WorkbenchWindow,
 } from './types';
 import { appRegistry } from './appRegistry';
+import { TITLEBAR_HEIGHT } from './metrics';
 
 const Z_BASE = 10;
 const CASCADE_STEP = 24;
@@ -35,7 +36,6 @@ const CASCADE_ORIGIN = 48;
 const SMALL_DESKTOP_WIDTH = 1280;
 /** desktopSize 收缩时保证 floating 窗口至少露出的边缘宽度 */
 const MIN_VISIBLE_EDGE = 48;
-const TITLEBAR_HEIGHT = 38;
 
 /**
  * O11：zTop 达到该值时，在同一次 set 内把全部窗口 zIndex 紧凑重排回 Z_BASE 起点

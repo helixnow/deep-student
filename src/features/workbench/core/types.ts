@@ -469,6 +469,22 @@ export interface AppDefinition {
    * opt in to receive it themselves, for example to close their active tab.
    */
   handlesCloseShortcut?: boolean;
+  /**
+   * Ctrl+Tab / Ctrl+Shift+Tab 让位协议（分层实现见 useWorkbenchShortcuts）：
+   * 默认归工作台窗口切换器；带内部标签页的应用（编辑器 / 浏览器等）声明
+   * 本标志后接管这组按键做内部标签循环。
+   *
+   * 分层规则（自上而下短路）：
+   * 1. 焦点在可编辑目标 / IME 组合中 → 壳层输入守卫本就不响应，谁也不抢；
+   * 2. 切换器会话已开启（按住 Ctrl 循环中）→ 壳层保持所有权直至松开 Ctrl，
+   *    壳层会 preventDefault —— 应用侧监听器必须跳过 defaultPrevented 事件；
+   * 3. 会话未开启且焦点应用声明本标志 → 壳层让位（不 preventDefault、
+   *    不开切换器），应用自持的 keydown 监听器消费并 preventDefault。
+   *
+   * 声明后该应用聚焦期间不可再用 Ctrl+Tab 呼出窗口切换器；窗口切换仍有
+   * Dock / 俯瞰（Ctrl+Alt+E）/ 同应用循环（Ctrl+`）等入口。
+   */
+  handlesTabCycleShortcut?: boolean;
 }
 
 // ============================================================================

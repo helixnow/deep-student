@@ -74,15 +74,15 @@ import {
   isNotesWorkspaceResourceType,
   resourceTypeToAppTypeId,
 } from '../content/typeMap';
+import { TITLEBAR_HEIGHT } from '../../core/metrics';
 
 export const DESKTOP_TYPE_ID = 'desktop';
 
 /** 观察投影上限（对齐 files 的 80 窗/60 应用截断纪律） */
 const MAX_OBSERVED_WINDOWS = 80;
 const MAX_OBSERVED_APPS = 60;
-/** moveWindow 钳制：窗口至少露出的边缘宽度 / 标题栏高度（对齐 windowStore） */
+/** moveWindow 钳制：窗口至少露出的边缘宽度（对齐 windowStore） */
 const MIN_VISIBLE_EDGE = 48;
-const TITLEBAR_HEIGHT = 38;
 const FALLBACK_MIN_SIZE = { w: 200, h: 150 } as const;
 /** tileAll 语义上限：一次平铺最多 4 扇窗 */
 const MAX_TILED_WINDOWS = 4;

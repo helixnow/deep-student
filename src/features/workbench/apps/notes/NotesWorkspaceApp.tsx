@@ -2365,12 +2365,24 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       && event.shiftKey
       && !event.altKey
       && (event.key === ']' || event.key === '[' || event.key === '}' || event.key === '{');
-    if (cyclesByPage || cyclesByBracket) {
+    // Ctrl+Tab / Ctrl+Shift+Tab（handlesTabCycleShortcut 让位协议）：
+    // - defaultPrevented = 壳层切换器会话进行中已接管，跳过（协议规则 2）；
+    // - 搜索浮层打开时它自持 Ctrl+Tab 切搜索模式，让给浮层。
+    const cyclesByTab = event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+      && event.key === 'Tab'
+      && !event.defaultPrevented
+      && !searchOpen;
+    if (cyclesByPage || cyclesByBracket || cyclesByTab) {
       event.preventDefault();
       event.stopPropagation();
-      cycleTab(event.key === 'PageDown' || event.key === ']' || event.key === '}' ? 1 : -1);
+      const backwards = cyclesByTab
+        ? event.shiftKey
+        : event.key === 'PageUp' || event.key === '[' || event.key === '{';
+      cycleTab(backwards ? -1 : 1);
     }
-  }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay]);
+  }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay, searchOpen]);
 
   useEventRegistry(
     isActive
