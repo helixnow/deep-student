@@ -807,6 +807,22 @@
           "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready.",
           "recovered": "Automatic generation did not finish; {{count}} usable cards were supplied by the fallback path.",
           "limitReached": "Reached the configured card limit ({{limit}} cards); generation finished normally."
+        },
+        "media": {
+          "label": "Media",
+          "summary": "Media: {{imported}}/{{declared}} imported, {{skipped}} skipped",
+          "skipReasonLine": "{{reason}} × {{count}}",
+          "filenamesSample": "e.g. {{names}}",
+          "reasons": {
+            "mediaImportDisabled": "Media import disabled",
+            "manifestUnparsed": "Media manifest could not be parsed",
+            "mediaDirUnavailable": "Media directory unavailable",
+            "unsafeFilename": "Unsafe filename blocked",
+            "entryMissing": "Entry missing from the package",
+            "entryOversized": "File exceeds the size limit",
+            "ioError": "Write failed (IO error)",
+            "orphanEntry": "Orphan entry (not declared in manifest)"
+          }
         }
       },
       "errors": {

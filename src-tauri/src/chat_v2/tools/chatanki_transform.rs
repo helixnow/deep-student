@@ -21,15 +21,24 @@ use serde::Deserialize;
 use super::chatanki_transform_script::{NormalizedTransformScript, TransformScriptSpec};
 
 /// 一次变换最多允许的声明式操作数。
-pub(crate) const CHATANKI_TRANSFORM_OPS_LIMIT: usize = 20;
+pub const CHATANKI_TRANSFORM_OPS_LIMIT: usize = 20;
 /// 一次变换最多允许选中的卡片数（快照上限，对齐调研报告 §6 资源边界）。
-pub(crate) const CHATANKI_TRANSFORM_CARD_LIMIT: usize = 500;
+pub const CHATANKI_TRANSFORM_CARD_LIMIT: usize = 500;
 /// 正则 pattern 长度上限。
-pub(crate) const CHATANKI_TRANSFORM_PATTERN_MAX_LEN: usize = 1024;
+pub const CHATANKI_TRANSFORM_PATTERN_MAX_LEN: usize = 1024;
 /// 正则替换串长度上限。
-pub(crate) const CHATANKI_TRANSFORM_REPLACEMENT_MAX_LEN: usize = 4096;
+pub const CHATANKI_TRANSFORM_REPLACEMENT_MAX_LEN: usize = 4096;
 /// 单个 op 携带的标签数上限。
-pub(crate) const CHATANKI_TRANSFORM_TAGS_LIMIT: usize = 50;
+pub const CHATANKI_TRANSFORM_TAGS_LIMIT: usize = 50;
+/// 单个 tag 的字符数上限（Round 4 安全复审；与 APKG 导入 MAX_TAG_BYTES 同量级）。
+pub const CHATANKI_TRANSFORM_TAG_MAX_CHARS: usize = 4_096;
+/// regex_replace 单字段输出的字节数上限（Round 4 安全复审）。
+///
+/// pattern=`(?s).` 配 4096 字符替换串可把字段每 op 放大 ~4096 倍，20 个 op
+/// 级联时第二个 op 就会试图物化 >100GB 的字符串（内存 DoS）。每次替换后
+/// 检查：结果超过本上限**且比输入更大**（= 真的在膨胀，而非存量超长字段的
+/// 原样保留/收缩）→ 该卡整体拒绝，不写库。
+pub const CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES: usize = 1024 * 1024;
 
 // ============================================================================
 // 参数（wire 形态）
@@ -37,14 +46,14 @@ pub(crate) const CHATANKI_TRANSFORM_TAGS_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum TransformMode {
+pub enum TransformMode {
     #[default]
     DryRun,
     Apply,
 }
 
 impl TransformMode {
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::DryRun => "dry_run",
             Self::Apply => "apply",
@@ -54,7 +63,7 @@ impl TransformMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum TransformFilter {
+pub enum TransformFilter {
     All,
     EditedOnly,
     ErrorOnly,
@@ -62,7 +71,7 @@ pub(crate) enum TransformFilter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum TransformField {
+pub enum TransformField {
     Front,
     Back,
     Text,
@@ -104,7 +113,7 @@ struct TransformSpecArgs {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ChatAnkiTransformArgs {
+pub struct ChatAnkiTransformArgs {
     #[serde(alias = "documentId")]
     document_id: String,
     selection: Option<TransformSelectionArgs>,
@@ -121,7 +130,7 @@ pub(crate) struct ChatAnkiTransformArgs {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NormalizedTransformOp {
+pub enum NormalizedTransformOp {
     RegexReplace {
         field: TransformField,
         pattern: String,
@@ -136,14 +145,14 @@ pub(crate) enum NormalizedTransformOp {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum NormalizedTransformKind {
+pub enum NormalizedTransformKind {
     /// 沙箱脚本变换（High 敏感度；移动端/无沙箱环境结构化拒绝）。
     Script(NormalizedTransformScript),
     Ops(Vec<NormalizedTransformOp>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum NormalizedTransformSelection {
+pub enum NormalizedTransformSelection {
     /// 缺省：文档全部 live 非诊断卡（排除 is_error_card）。
     DefaultLive,
     Filter(TransformFilter),
@@ -151,19 +160,19 @@ pub(crate) enum NormalizedTransformSelection {
 }
 
 #[derive(Debug)]
-pub(crate) struct NormalizedTransformRequest {
-    pub(crate) document_id: String,
-    pub(crate) selection: NormalizedTransformSelection,
-    pub(crate) mode: TransformMode,
-    pub(crate) kind: NormalizedTransformKind,
+pub struct NormalizedTransformRequest {
+    pub document_id: String,
+    pub selection: NormalizedTransformSelection,
+    pub mode: TransformMode,
+    pub kind: NormalizedTransformKind,
     /// apply 模式必填（cardId -> version）；dry_run 忽略并保持为空。
-    pub(crate) expected_versions: HashMap<String, String>,
+    pub expected_versions: HashMap<String, String>,
     #[allow(dead_code)] // 审计/审批展示用途；执行路径暂不消费。
-    pub(crate) purpose: Option<String>,
+    pub purpose: Option<String>,
 }
 
 impl ChatAnkiTransformArgs {
-    pub(crate) fn normalize(self) -> Result<NormalizedTransformRequest, String> {
+    pub fn normalize(self) -> Result<NormalizedTransformRequest, String> {
         let document_id = self.document_id.trim().to_string();
         if document_id.is_empty() {
             return Err("documentId is required".to_string());
@@ -351,7 +360,7 @@ fn normalize_transform_ops(
 // ============================================================================
 
 #[derive(Debug)]
-pub(crate) enum CompiledTransformOp {
+pub enum CompiledTransformOp {
     RegexReplace {
         field: TransformField,
         regex: Regex,
@@ -366,14 +375,14 @@ pub(crate) enum CompiledTransformOp {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct InvalidPatternError {
-    pub(crate) op_index: usize,
-    pub(crate) pattern: String,
-    pub(crate) error: String,
+pub struct InvalidPatternError {
+    pub op_index: usize,
+    pub pattern: String,
+    pub error: String,
 }
 
 /// 一次性编译全部正则；任一 pattern 编译失败即整批拒绝（不写库）。
-pub(crate) fn compile_transform_ops(
+pub fn compile_transform_ops(
     ops: &[NormalizedTransformOp],
 ) -> Result<Vec<CompiledTransformOp>, InvalidPatternError> {
     let mut compiled = Vec::with_capacity(ops.len());
@@ -409,15 +418,15 @@ pub(crate) fn compile_transform_ops(
 
 /// 变换作用面：卡片的可变换字段快照（全文，不经任何截断视图）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TransformFields {
-    pub(crate) front: String,
-    pub(crate) back: String,
-    pub(crate) text: Option<String>,
-    pub(crate) tags: Vec<String>,
+pub struct TransformFields {
+    pub front: String,
+    pub back: String,
+    pub text: Option<String>,
+    pub tags: Vec<String>,
 }
 
 impl TransformFields {
-    pub(crate) fn from_card(card: &crate::models::AnkiCard) -> Self {
+    pub fn from_card(card: &crate::models::AnkiCard) -> Self {
         Self {
             front: card.front.clone(),
             back: card.back.clone(),
@@ -428,7 +437,7 @@ impl TransformFields {
 }
 
 /// 按序应用全部 ops，返回变换后的字段快照（纯函数，不修改输入）。
-pub(crate) fn apply_transform_ops(
+pub fn apply_transform_ops(
     ops: &[CompiledTransformOp],
     fields: &TransformFields,
 ) -> TransformFields {
@@ -474,7 +483,7 @@ pub(crate) fn apply_transform_ops(
 }
 
 /// 变换前后字段级 diff（稳定顺序：front/back/text/tags）。
-pub(crate) fn changed_field_names(
+pub fn changed_field_names(
     before: &TransformFields,
     after: &TransformFields,
 ) -> Vec<&'static str> {
@@ -497,7 +506,7 @@ pub(crate) fn changed_field_names(
 /// 逐卡执行计划：ops 与 script 两种模式归一化后的公共形态。
 /// 执行器据此走同一套 dry_run diff 与 apply CAS 写回路径。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TransformCardPlan {
+pub enum TransformCardPlan {
     /// 变换后的字段快照（可能与 before 相同 = 未变更）。
     After(TransformFields),
     /// 该卡计划非法（如脚本输出条目违反合同），apply 时逐卡拒绝、不整批失败。
@@ -508,7 +517,7 @@ pub(crate) enum TransformCardPlan {
 }
 
 /// ops 模式：把编译后的操作序列应用到选择集，产出与 script 模式同构的逐卡计划。
-pub(crate) fn plan_transform_ops(
+pub fn plan_transform_ops(
     ops: &[CompiledTransformOp],
     selected: &[crate::models::AnkiCard],
 ) -> Vec<TransformCardPlan> {
@@ -521,7 +530,7 @@ pub(crate) fn plan_transform_ops(
 }
 
 /// 与 `card_content_is_valid` 同语义：非空 Cloze text，或非空 front+back。
-pub(crate) fn transform_fields_are_valid(fields: &TransformFields) -> bool {
+pub fn transform_fields_are_valid(fields: &TransformFields) -> bool {
     fields
         .text
         .as_deref()
@@ -536,7 +545,7 @@ pub(crate) fn transform_fields_are_valid(fields: &TransformFields) -> bool {
 // ============================================================================
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum TransformSelectionError {
+pub enum TransformSelectionError {
     /// selection.cardIds 中存在文档快照里不存在（或已删除）的 ID。
     MissingCards(Vec<String>),
     /// 选择集超出快照上限。
@@ -544,7 +553,7 @@ pub(crate) enum TransformSelectionError {
 }
 
 /// 从文档全量卡片中解析选择集（保持文档内顺序）。
-pub(crate) fn select_transform_cards(
+pub fn select_transform_cards(
     cards: Vec<crate::models::AnkiCard>,
     selection: &NormalizedTransformSelection,
 ) -> Result<Vec<crate::models::AnkiCard>, TransformSelectionError> {
@@ -590,16 +599,16 @@ pub(crate) fn select_transform_cards(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct ExpectedVersionsMismatch {
+pub struct ExpectedVersionsMismatch {
     /// 选择集中有卡但 expectedVersions 缺失。
-    pub(crate) missing_version_ids: Vec<String>,
+    pub missing_version_ids: Vec<String>,
     /// expectedVersions 中有但不在选择集内。
-    pub(crate) unexpected_version_ids: Vec<String>,
+    pub unexpected_version_ids: Vec<String>,
 }
 
 /// apply 模式的双保险校验：expectedVersions 必须与选择集精确一致
 ///（对齐 `retemplate` 的 `expected_versions_mismatch` 语义）。
-pub(crate) fn check_expected_versions(
+pub fn check_expected_versions(
     selected_card_ids: &[String],
     expected_versions: &HashMap<String, String>,
 ) -> Result<(), ExpectedVersionsMismatch> {

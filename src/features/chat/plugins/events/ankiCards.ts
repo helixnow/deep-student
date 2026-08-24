@@ -376,8 +376,12 @@ const ankiCardsEventHandler: EventHandler = {
       const existing = store.blocks.get(backendBlockId);
       const existingData = existing?.toolOutput as AnkiCardsBlockData | undefined;
       const terminal = isTerminalBlockStatus(existing?.status);
+      // 展开 existingData 保留全部既有字段（documentId/progress/ankiConnect/
+      // finalStatus/finalError/warnings/mediaReport/deletedCardIds 等），
+      // 避免重放 start 事件丢弃后端已投递的状态。
       store.updateBlock(backendBlockId, {
         toolOutput: {
+          ...existingData,
           cards: existingData?.cards || [],
           templateId: payload?.templateId ?? existingData?.templateId ?? null,
           templateIds: payload?.templateIds ?? existingData?.templateIds,
@@ -386,12 +390,6 @@ const ankiCardsEventHandler: EventHandler = {
           businessSessionId: existingData?.businessSessionId ?? store.sessionId,
           messageStableId: existingData?.messageStableId ?? messageId,
           options: (payload?.options as AnkiCardsBlockData['options']) ?? existingData?.options,
-          documentId: existingData?.documentId,
-          progress: existingData?.progress,
-          ankiConnect: existingData?.ankiConnect,
-          finalStatus: existingData?.finalStatus,
-          finalError: existingData?.finalError,
-          warnings: existingData?.warnings,
         },
         ...(terminal ? {} : { status: 'running' }),
       });
@@ -421,8 +419,10 @@ const ankiCardsEventHandler: EventHandler = {
       const existing = store.blocks.get(runningAnkiBlockId);
       const existingData = existing?.toolOutput as AnkiCardsBlockData | undefined;
       const terminal = isTerminalBlockStatus(existing?.status);
+      // 同上：展开 existingData，重放 start 不丢 mediaReport 等既有字段
       store.updateBlock(runningAnkiBlockId, {
         toolOutput: {
+          ...existingData,
           cards: existingData?.cards || [],
           templateId: payload?.templateId ?? existingData?.templateId ?? null,
           templateIds: payload?.templateIds ?? existingData?.templateIds,
@@ -431,12 +431,6 @@ const ankiCardsEventHandler: EventHandler = {
           businessSessionId: existingData?.businessSessionId ?? store.sessionId,
           messageStableId: existingData?.messageStableId ?? messageId,
           options: (payload?.options as AnkiCardsBlockData['options']) ?? existingData?.options,
-          documentId: existingData?.documentId,
-          progress: existingData?.progress,
-          ankiConnect: existingData?.ankiConnect,
-          finalStatus: existingData?.finalStatus,
-          finalError: existingData?.finalError,
-          warnings: existingData?.warnings,
         },
         ...(terminal ? {} : { status: 'running' }),
       });

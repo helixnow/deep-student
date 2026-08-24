@@ -1324,6 +1324,18 @@ pub struct AnkiGenerationOptions {
     /// 通常由服务端在生成开始时自动构建填充；调用方也可显式传入以跳过自动构建。
     #[serde(default)]
     pub user_review_profile: Option<String>,
+
+    // ===== 输出协议与 QA 扩展（Round 4 接线） =====
+    /// 请求的流式输出协议：`delimiter` / `json_object` / `json_schema`；
+    /// `None` 表示 auto（按供应商能力决策）。wire 契约与
+    /// `anki_protocol::StructuredOutputOptions` 对任务 options JSON 的二次解析一致：
+    /// 本字段序列化进 `anki_generation_options_json` 后由流式服务读取。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_protocol: Option<String>,
+    /// 是否启用字段 QA 校验留痕（`_qa_flags`）；`None` 表示默认开启。
+    /// 与 `output_protocol` 同一条 wire 契约。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_qa_pass: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

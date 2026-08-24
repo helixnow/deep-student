@@ -406,8 +406,11 @@ impl StreamingAnkiService {
         )
         .await?;
 
-        // 获取配置
-        let api_config = match self.get_configurations("通用").await {
+        // 获取配置（Sidekick 路由感知：见 get_configurations 文档）
+        let api_config = match self
+            .get_configurations(&task.anki_generation_options_json)
+            .await
+        {
             Ok(cfg) => cfg,
             Err(err) => {
                 self.handle_task_error(
@@ -588,6 +591,29 @@ impl StreamingAnkiService {
             Ok(stats) => {
                 // 先上报本次流式生成的质量统计（新增事件，前端按需消费，旧版前端会安全忽略）
                 self.emit_generation_stats(&task_id, &task.document_id, &stats, &window);
+                // Round 4 #2：生成后 LLM critic pass（opt-in，默认关闭）。
+                // 对本任务已入库卡片做一次批量 grounded 裁决（keep|revise|flag）。
+                // run_critic_pass 永不返回 Err：模型失败/解析失败一律降级为全 keep，
+                // 绝不影响整批制卡的成功收尾。
+                let critic_opts = crate::anki_critic::CriticOptions::from_options_json(
+                    &task.anki_generation_options_json,
+                );
+                if critic_opts.critic_enabled() && stats.card_count > 0 {
+                    let critic_summary = crate::anki_critic::run_critic_pass(
+                        self.db.as_ref(),
+                        self.llm_manager.as_ref(),
+                        &task,
+                        &[], // 生产收尾路径无金标参照卡（接口预留给评测 harness）
+                        &critic_opts.to_config(),
+                    )
+                    .await;
+                    self.emit_critic_summary(
+                        &task_id,
+                        &task.document_id,
+                        &critic_summary,
+                        &window,
+                    );
+                }
                 self.complete_task_successfully(
                     &task_id,
                     stats.card_count,
@@ -620,7 +646,46 @@ impl StreamingAnkiService {
     }
 
     /// 获取API配置
-    async fn get_configurations(&self, _subject_name: &str) -> Result<ApiConfig, AppError> {
+    ///
+    /// ===== Sidekick 模型分层路由（Round 4 #7）=====
+    /// 先经 `anki_model_routing` 计算完整路由计划（Planner/Generator/Critic/Vlm）
+    /// 并 debug 输出决策，本流式生成路径取 Generator 角色的模型：
+    /// - 槽位齐全时 Generator 即制卡槽模型，与旧行为完全一致；
+    /// - 制卡槽缺失时降级到主模型槽（旧路径此时会直接报配置错误）。
+    /// 路由的任何异常（探测失败/无可用槽位/配置消失）都回退到下方旧的
+    /// 单模型解析路径，绝不因路由本身阻断制卡（要求 5）。
+    async fn get_configurations(&self, options_json: &str) -> Result<ApiConfig, AppError> {
+        let mode = crate::anki_model_routing::parse_routing_mode(options_json);
+        let slots = self.llm_manager.probe_anki_routing_slots().await;
+        if let Some(plan) = crate::anki_model_routing::plan_routing(mode, &slots) {
+            plan.log_debug();
+            let generator = plan.decision(crate::anki_model_routing::AnkiModelRole::Generator);
+            match self.llm_manager.get_api_configs().await {
+                Ok(configs) => {
+                    if let Some(cfg) = configs
+                        .into_iter()
+                        .find(|c| c.id == generator.config_id && c.enabled)
+                    {
+                        debug!(
+                            "[ANKI_ROUTING] Generator 角色选定模型: id={} model={} slot={:?} degraded={}",
+                            generator.config_id, generator.model, generator.slot, generator.degraded
+                        );
+                        return Ok(cfg);
+                    }
+                    debug!(
+                        "[ANKI_ROUTING] Generator 槽位配置 {} 已不可用，回退旧单模型路径",
+                        generator.config_id
+                    );
+                }
+                Err(e) => {
+                    debug!("[ANKI_ROUTING] 读取 API 配置失败，回退旧单模型路径: {}", e);
+                }
+            }
+        } else {
+            debug!("[ANKI_ROUTING] 无可用路由槽位，回退旧单模型路径");
+        }
+
+        // ===== 旧单模型路径（保持原始错误语义） =====
         // 获取模型分配
         let model_assignments = self
             .llm_manager
@@ -1134,6 +1199,7 @@ impl StreamingAnkiService {
                                             .parse_and_save_card(
                                                 &card_json,
                                                 task_id,
+                                                document_id,
                                                 options,
                                                 qa_pass_enabled,
                                             )
@@ -1303,7 +1369,13 @@ impl StreamingAnkiService {
                     let mut handled = false;
                     if within_limit && looks_like_card {
                         match self
-                            .parse_and_save_card(&payload, task_id, options, qa_pass_enabled)
+                            .parse_and_save_card(
+                                &payload,
+                                task_id,
+                                document_id,
+                                options,
+                                qa_pass_enabled,
+                            )
                             .await
                         {
                             Ok(Some(card)) => {
@@ -1558,10 +1630,15 @@ impl StreamingAnkiService {
     }
 
     /// 解析并保存卡片 - 支持动态字段提取规则
+    ///
+    /// `document_id` 用于文档级重复/近重复指纹检测（Round 4 #3）：
+    /// 同一文档的所有 segment task 经 `anki_qa_lint::observe_document_card`
+    /// 共享同一个 FingerprintTracker，检测结果只打 flag 不丢卡。
     async fn parse_and_save_card(
         &self,
         card_json: &str,
         task_id: &str,
+        document_id: &str,
         options: &AnkiGenerationOptions,
         qa_pass_enabled: bool,
     ) -> Result<Option<AnkiCard>, AppError> {
@@ -1739,16 +1816,24 @@ impl StreamingAnkiService {
         // 默认 Flag 级别只标记不丢卡；merge_flags 保留 extract_fields_with_rules
         // 已写入 _qa_flags 的字段规则违规条目并按 (code, field) 去重。
         // extra_fields 含 _qa_flags 时，流式循环既有逻辑自动累计 StreamStats::flagged_cards。
-        let lint_issues = crate::anki_qa_lint::lint_card(
-            &crate::anki_qa_lint::CardLintInput {
-                front: &cleaned_front,
-                back: &cleaned_back,
-                text: cleaned_extra_fields.get("text").map(String::as_str),
-                tags: &cleaned_tags,
-                extra_fields: &cleaned_extra_fields,
-            },
-            &crate::anki_qa_lint::LintConfig::default(),
-        );
+        let lint_input = crate::anki_qa_lint::CardLintInput {
+            front: &cleaned_front,
+            back: &cleaned_back,
+            text: cleaned_extra_fields.get("text").map(String::as_str),
+            tags: &cleaned_tags,
+            extra_fields: &cleaned_extra_fields,
+        };
+        let mut lint_issues =
+            crate::anki_qa_lint::lint_card(&lint_input, &crate::anki_qa_lint::LintConfig::default());
+        // Round 4 #3：文档级重复/近重复指纹检测。key 与 lint_card_with_tracker
+        // 同语义（cloze 卡优先 Text 字段）；observe_document_card 内部吞掉所有
+        // 锁异常且永不返回错误——检测失败最坏结果是少打一个 flag，
+        // 卡片入库路径完全不受影响（duplicate_in_document / near_duplicate 均为
+        // Warn 级，只 flag 不丢卡；DB 唯一索引仍是精确重复的最终防线）。
+        lint_issues.extend(crate::anki_qa_lint::observe_document_card(
+            document_id,
+            crate::anki_qa_lint::duplicate_key_source(&lint_input),
+        ));
         crate::anki_qa_lint::merge_flags(&mut cleaned_extra_fields, &lint_issues);
 
         // 创建卡片
@@ -2713,6 +2798,34 @@ impl StreamingAnkiService {
         });
         if let Err(e) = window.emit("anki_generation_event", &payload) {
             error!("发送生成统计事件失败: {}", e);
+        }
+    }
+
+    /// 发送 critic pass 摘要事件（纯新增：外部标签 `CriticSummary`，旧版前端安全忽略）。
+    /// 仅在 critic 启用（opt-in）且任务收尾成功时派发，见 Round 4 #2。
+    fn emit_critic_summary(
+        &self,
+        task_id: &str,
+        document_id: &str,
+        summary: &crate::anki_critic::CriticSummary,
+        window: &Window,
+    ) {
+        let payload = json!({
+            "CriticSummary": {
+                "task_id": task_id,
+                "document_id": document_id,
+                "examined": summary.examined,
+                "kept": summary.kept,
+                "revised": summary.revised,
+                "flagged": summary.flagged,
+                "rejected_unknown_ids": summary.rejected_unknown_ids,
+                "skipped_over_budget": summary.skipped_over_budget,
+                "persist_failures": summary.persist_failures,
+                "degraded": summary.degraded,
+            }
+        });
+        if let Err(e) = window.emit("anki_generation_event", &payload) {
+            error!("发送 critic 摘要事件失败: {}", e);
         }
     }
 
@@ -4040,5 +4153,192 @@ mod tests {
             crate::anki_protocol::SchemaCapability::Unknown,
         );
         assert_eq!(protocol, crate::anki_protocol::OutputProtocol::Delimiter);
+    }
+
+    // -------------------- Round 4 #3：文档级重复/近重复指纹（真实入库路径） --------------------
+
+    /// 在测试 DB 中登记一个 document_task（parse_and_save_card 入库前置条件）。
+    fn seed_task(db: &Database, task_id: &str, document_id: &str, segment_index: u32) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: task_id.to_string(),
+            document_id: document_id.to_string(),
+            original_document_name: "指纹测试文档".to_string(),
+            segment_index,
+            content_segment: format!("segment-{}", segment_index),
+            status: TaskStatus::Streaming,
+            created_at: now.clone(),
+            updated_at: now,
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        db.save_document_task_with_cards_atomic(&task, &[])
+            .expect("seed document task");
+    }
+
+    /// front/back 基础字段提取规则的最小 options。
+    fn fingerprint_options() -> AnkiGenerationOptions {
+        let mut options = minimal_options();
+        let mut rules = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "front"));
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "back"));
+        options.field_extraction_rules = Some(rules);
+        options
+    }
+
+    fn qa_flag_codes(card: &AnkiCard) -> Vec<String> {
+        card.extra_fields
+            .get(QA_FLAGS_FIELD)
+            .map(|raw| {
+                serde_json::from_str::<Vec<Value>>(raw)
+                    .expect("qa flags must be json array")
+                    .iter()
+                    .filter_map(|v| v.get("code").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn duplicate_front_across_segments_flagged_and_still_saved() {
+        let (svc, _dir) = make_test_service();
+        let document_id = format!("doc-fp-dup-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        // 同文档两个不同 segment task —— tracker 必须跨 task 共享，不能每 task 重置
+        seed_task(&svc.db, "fp-task-a", &document_id, 0);
+        seed_task(&svc.db, "fp-task-b", &document_id, 1);
+        let options = fingerprint_options();
+
+        let first = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是 TCP？","back":"传输控制协议"}"#,
+                "fp-task-a",
+                &document_id,
+                &options,
+                true,
+            )
+            .await
+            .expect("first card parses")
+            .expect("first card saved");
+        assert!(
+            !qa_flag_codes(&first).iter().any(|c| c == "duplicate_in_document"),
+            "首见 front 不得判重复"
+        );
+
+        // 另一 segment task：front 归一化后相同（HTML/空白/标点差异），back 不同
+        // （避开 DB front|back 唯一索引，验证 flag 与入库互不干扰）
+        let second = svc
+            .parse_and_save_card(
+                r#"{"front":"<b>什么是TCP</b>","back":"Transmission Control Protocol"}"#,
+                "fp-task-b",
+                &document_id,
+                &options,
+                true,
+            )
+            .await
+            .expect("second card parses")
+            .expect("重复只打 flag，卡片必须照常入库");
+        assert!(
+            qa_flag_codes(&second).iter().any(|c| c == "duplicate_in_document"),
+            "跨 segment 重复 front 必须打 duplicate_in_document: {:?}",
+            second.extra_fields.get(QA_FLAGS_FIELD)
+        );
+        // 入库确认：两张卡都在 DB
+        let cards_a = svc.db.get_cards_for_task("fp-task-a").expect("cards a");
+        let cards_b = svc.db.get_cards_for_task("fp-task-b").expect("cards b");
+        assert_eq!(cards_a.len() + cards_b.len(), 2);
+
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn near_duplicate_front_flagged_but_not_dropped() {
+        let (svc, _dir) = make_test_service();
+        let document_id = format!("doc-fp-near-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "fp-near-task", &document_id, 0);
+        let options = fingerprint_options();
+
+        svc.parse_and_save_card(
+            r#"{"front":"细胞膜的主要成分是磷脂双分子层","back":"生物膜基础"}"#,
+            "fp-near-task",
+            &document_id,
+            &options,
+            true,
+        )
+        .await
+        .expect("first parses")
+        .expect("first saved");
+
+        // 小编辑近重复：追加两字，归一化后非精确重复但 bigram Jaccard 超阈值
+        let near = svc
+            .parse_and_save_card(
+                r#"{"front":"细胞膜的主要成分是磷脂双分子层结构","back":"生物膜基础知识"}"#,
+                "fp-near-task",
+                &document_id,
+                &options,
+                true,
+            )
+            .await
+            .expect("near-duplicate parses")
+            .expect("近重复不丢卡，必须照常入库");
+        let codes = qa_flag_codes(&near);
+        assert!(
+            codes.iter().any(|c| c == "near_duplicate"),
+            "近重复必须打 near_duplicate flag: {:?}",
+            codes
+        );
+        assert!(
+            !codes.iter().any(|c| c == "duplicate_in_document"),
+            "近重复不得误判为精确重复"
+        );
+
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn fingerprint_state_isolated_between_documents() {
+        let (svc, _dir) = make_test_service();
+        let doc_a = format!("doc-fp-iso-a-{}", uuid::Uuid::new_v4());
+        let doc_b = format!("doc-fp-iso-b-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&doc_a);
+        crate::anki_qa_lint::release_document_tracker(&doc_b);
+        seed_task(&svc.db, "fp-iso-task-a", &doc_a, 0);
+        seed_task(&svc.db, "fp-iso-task-b", &doc_b, 0);
+        let options = fingerprint_options();
+
+        svc.parse_and_save_card(
+            r#"{"front":"什么是渗透压？","back":"溶剂分子跨膜净流动的驱动力"}"#,
+            "fp-iso-task-a",
+            &doc_a,
+            &options,
+            true,
+        )
+        .await
+        .expect("doc a parses")
+        .expect("doc a saved");
+
+        // 另一文档出现相同 front：不同 document_id，不得判重复
+        let other_doc_card = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是渗透压？","back":"溶剂分子跨膜净流动的驱动力"}"#,
+                "fp-iso-task-b",
+                &doc_b,
+                &options,
+                true,
+            )
+            .await
+            .expect("doc b parses")
+            .expect("doc b saved");
+        assert!(
+            !qa_flag_codes(&other_doc_card)
+                .iter()
+                .any(|c| c == "duplicate_in_document" || c == "near_duplicate"),
+            "不同文档的指纹状态必须相互隔离: {:?}",
+            other_doc_card.extra_fields.get(QA_FLAGS_FIELD)
+        );
+
+        crate::anki_qa_lint::release_document_tracker(&doc_a);
+        crate::anki_qa_lint::release_document_tracker(&doc_b);
     }
 }

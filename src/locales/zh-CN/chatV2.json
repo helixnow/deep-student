@@ -807,6 +807,22 @@
           "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
           "recovered": "自动生成未完成，已通过备用方式补齐 {{count}} 张可用卡片。",
           "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
+        },
+        "media": {
+          "label": "媒体",
+          "summary": "媒体：导入 {{imported}}/{{declared}}，跳过 {{skipped}}",
+          "skipReasonLine": "{{reason}} × {{count}}",
+          "filenamesSample": "示例：{{names}}",
+          "reasons": {
+            "mediaImportDisabled": "媒体导入已关闭",
+            "manifestUnparsed": "媒体清单无法解析",
+            "mediaDirUnavailable": "媒体目录不可用",
+            "unsafeFilename": "文件名不安全，已拦截",
+            "entryMissing": "包内缺少对应条目",
+            "entryOversized": "文件超出大小限制",
+            "ioError": "写入失败（IO 错误）",
+            "orphanEntry": "孤立条目（清单未声明）"
+          }
         }
       },
       "errors": {

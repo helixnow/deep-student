@@ -1,5 +1,5 @@
 {
-  "$schema_note": "制卡质量 eval 回放基线清单。entry=stream 表示按 chunkSize 切块喂给流式切卡器回放；entry=direct 表示整段内容直接走 parse_and_save 路径（对应生产的错误卡修复/收尾残留入口）。outcome 取值：parse_ok（原文即合法 JSON 对象）/ repair_ok（需 clean_json_string 修复后才可解析）/ error_card（解析失败降级错误卡）。lintCodes 为测试侧确定性 lint 原型的预期命中码。droppedProse 为流收尾被丢弃的纯自然语言残留段数。",
+  "$schema_note": "制卡质量 eval 回放基线清单。entry=stream 表示按 chunkSize 切块喂给流式切卡器回放；entry=direct 表示整段内容直接走 parse_and_save 路径（对应生产的错误卡修复/收尾残留入口）。outcome 取值：parse_ok（原文即合法 JSON 对象）/ repair_ok（需 clean_json_string 修复后才可解析）/ error_card（解析失败降级错误卡）。lintCodes 为测试侧 lint 的预期命中码，snake_case 码与 Rust anki_qa_lint 的 code 字符串逐字节一致（契约清单见 src-tauri/src/anki_gold_set.rs LINT_CONTRACT_CODES；filler_phrase / fence_in_field / placeholder_text 为 eval-only 码）。droppedProse 为流收尾被丢弃的纯自然语言残留段数。",
   "delimiter": "<<<ANKI_CARD_JSON_END>>>",
   "cases": [
     {
@@ -221,7 +221,7 @@
       "chunkSize": 13,
       "description": "cloze 挖空内容为空（{{c1::}}），JSON 合法但制卡质量不合格，由 lint 捕获。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["EMPTY_CLOZE"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["cloze_empty_answer"] }],
         "droppedProse": 0
       }
     },
@@ -234,7 +234,7 @@
       "chunkSize": 13,
       "description": "正面题干直接泄露了背面答案原文，由 lint 捕获 ANSWER_LEAK。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["ANSWER_LEAK"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["answer_leak"] }],
         "droppedProse": 0
       }
     },
@@ -247,7 +247,7 @@
       "chunkSize": 13,
       "description": "back 字段仅含空白。JSON 合法但卡片不可用，由 lint 捕获 EMPTY_FIELD。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["EMPTY_FIELD"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["empty_back"] }],
         "droppedProse": 0
       }
     },
@@ -260,7 +260,7 @@
       "chunkSize": 13,
       "description": "模型客套话（好的，以下是答案：）泄漏进 back 字段正文，由 lint 捕获 FILLER_PHRASE。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["FILLER_PHRASE"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["filler_phrase"] }],
         "droppedProse": 0
       }
     },
@@ -299,7 +299,7 @@
       "chunkSize": 13,
       "description": "字段值内混入 markdown 围栏（渲染层预期 HTML），由 lint 捕获 FENCE_IN_FIELD。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["FENCE_IN_FIELD"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["fence_in_field"] }],
         "droppedProse": 0
       }
     },
@@ -312,7 +312,111 @@
       "chunkSize": 13,
       "description": "back 为占位符 TODO，模型偷懒未完成内容，由 lint 捕获 PLACEHOLDER_TEXT。",
       "expected": {
-        "cards": [{ "outcome": "parse_ok", "lintCodes": ["PLACEHOLDER_TEXT"] }],
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["placeholder_text", "todo_residue"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "23-front-back-identical",
+      "set": "bad",
+      "category": "front_back_identical",
+      "file": "cases/23-front-back-identical.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "正反面完全相同，复习无信息量。lint 边界：answer_leak 在 front==back 时让位给 front_back_identical，不得双报。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["front_back_identical"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "24-unclosed-cloze",
+      "set": "bad",
+      "category": "cloze_broken",
+      "file": "cases/24-unclosed-cloze.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "cloze 挖空缺少配对的 }}。JSON 合法但卡片不可复习，由 cloze_unclosed 捕获；含 {{c 的 text 同时豁免空字段规则（边界）。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["cloze_unclosed"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "25-cloze-bad-index",
+      "set": "bad",
+      "category": "cloze_broken",
+      "file": "cases/25-cloze-bad-index.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "cloze 序号非法（{{c0::...}}，必须 c1 起）。Anki 渲染会静默失效，由 cloze_bad_index 捕获。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["cloze_bad_index"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "26-multi-concept",
+      "set": "bad",
+      "category": "multi_concept",
+      "file": "cases/26-multi-concept.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "一卡双问（两个问号）。critic/lint 边界：双问号是确定性 lint 能接住的最小信息原则违规，更隐蔽的一卡多事实归 llm_critic。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["multi_concept"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "27-front-too-long",
+      "set": "bad",
+      "category": "front_too_long",
+      "file": "cases/27-front-too-long.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "front 238 字（>220 阈值），整段场景粘贴违反最小信息原则，由 front_too_long 捕获。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["front_too_long"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "28-placeholder-residue",
+      "set": "bad",
+      "category": "placeholder_residue",
+      "file": "cases/28-placeholder-residue.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "prompt 模板占位符 {{DOCUMENT_CONTENT}} 未替换直接漏进 front。lint 边界：大写占位符命中 placeholder_residue，但不得误伤 {{cN::...}} cloze 语法。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["placeholder_residue"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "29-cloze-missing-text",
+      "set": "bad",
+      "category": "cloze_broken",
+      "file": "cases/29-cloze-missing-text.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "cloze 模板卡的 Text 字段没有任何挖空（模型写成了陈述句），卡片不可复习，由 cloze_missing 捕获。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": ["cloze_missing"] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "30-lint-blind-spot",
+      "set": "bad",
+      "category": "lint_blind_spot",
+      "file": "cases/30-lint-blind-spot.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "critic/lint 边界样本：事实性错误（暗反应发生在叶绿体基质而非线粒体）解析正常且确定性 lint 必然零命中——此类卡属于 anki_critic（llm_critic）的 grounded 裁决域，本 fixture 固化 lint 的能力边界。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
         "droppedProse": 0
       }
     },
@@ -336,7 +440,7 @@
       "file": "good/g02-valid-cloze.txt",
       "entry": "stream",
       "chunkSize": 13,
-      "description": "合法 cloze（挖空内容非空、无 front/back 字段）。防 EMPTY_CLOZE / EMPTY_FIELD 误伤。",
+      "description": "合法 cloze（挖空内容非空、无 front/back 字段）。防 cloze_empty_answer / empty_front / empty_back 误伤。",
       "expected": {
         "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
         "droppedProse": 0
@@ -379,7 +483,7 @@
       "file": "good/g05-bilingual-term.txt",
       "entry": "stream",
       "chunkSize": 13,
-      "description": "合法中英混排术语卡（three-way handshake）。防 FILLER_PHRASE 等对双语内容误伤。",
+      "description": "合法中英混排术语卡（three-way handshake）。防 filler_phrase 等对双语内容误伤。",
       "expected": {
         "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
         "droppedProse": 0
@@ -392,7 +496,33 @@
       "file": "good/g06-short-token-overlap.txt",
       "entry": "stream",
       "chunkSize": 13,
-      "description": "front 与 back 共享短 token（HTTP）但不构成答案泄露。防 ANSWER_LEAK 阈值误伤。",
+      "description": "front 与 back 共享短 token（HTTP）但不构成答案泄露。防 answer_leak 阈值误伤。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "g07-cloze-syntax-in-qa-front",
+      "set": "good",
+      "category": "good_control",
+      "file": "good/g07-cloze-syntax-in-qa-front.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "讲解 cloze 语法本身的问答卡：front 含合法 {{c1::答案}} 字面量。防 cloze_* 与 placeholder_residue 对元语法内容误伤（lint 边界）。",
+      "expected": {
+        "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
+        "droppedProse": 0
+      }
+    },
+    {
+      "id": "g08-english-and-single-question",
+      "set": "good",
+      "category": "good_control",
+      "file": "good/g08-english-and-single-question.txt",
+      "entry": "stream",
+      "chunkSize": 13,
+      "description": "英文单问句含 and 连接的两个名词（TCP and UDP）。防 multi_concept 英文双疑问词启发式对单一问题误伤（lint 边界）。",
       "expected": {
         "cards": [{ "outcome": "parse_ok", "lintCodes": [] }],
         "droppedProse": 0

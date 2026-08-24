@@ -35,25 +35,43 @@ use super::shell_sandbox::{
 // ============================================================================
 
 /// 脚本正文长度上限（JSON Schema maxLength 同值，按 Unicode 标量计）。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_CODE_MAX_CHARS: usize = 65_536;
+pub const CHATANKI_TRANSFORM_SCRIPT_CODE_MAX_CHARS: usize = 65_536;
 /// 脚本超时下限（毫秒）。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_MIN_MS: u64 = 1_000;
+pub const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_MIN_MS: u64 = 1_000;
 /// 脚本超时上限（毫秒），与 local_shell 的 120s 对齐。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_MAX_MS: u64 = 120_000;
+pub const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_MAX_MS: u64 = 120_000;
 /// 脚本默认超时（毫秒）。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_DEFAULT_MS: u64 = 30_000;
+pub const CHATANKI_TRANSFORM_SCRIPT_TIMEOUT_DEFAULT_MS: u64 = 30_000;
 /// `CHATANKI_OUTPUT.json` 文件大小上限。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES: u64 = 32 * 1024 * 1024;
+pub const CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// 脚本回传的单卡 tags 数上限（宽于 ops 单 op 的 50：允许全量重写标签集）。
-pub(crate) const CHATANKI_TRANSFORM_SCRIPT_TAGS_LIMIT: usize = 100;
+pub const CHATANKI_TRANSFORM_SCRIPT_TAGS_LIMIT: usize = 100;
+/// 脚本**新写入**的单字段（front/back/text）字符数上限（Round 4 安全复审）：
+/// 输出文件整体有 32MB 闸门，但缺少逐字段上限时脚本可把一张卡的单字段膨胀到
+/// ~32MB 并经 CAS 写库，形成存储/渲染放大炸弹。回显既有超长字段（值与快照
+/// 完全一致 = 未修改）不受此限，避免误伤"整对象回写"模式下的存量大卡。
+pub const CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS: usize = 100_000;
+/// 脚本**新写入**的单个 tag 字符数上限（与 APKG 导入 MAX_TAG_BYTES 同量级）。
+pub const CHATANKI_TRANSFORM_SCRIPT_TAG_MAX_CHARS: usize = 4_096;
+/// 输出 `cards` 数组条目数硬上限（Round 4 安全复审）：选择集 ≤ 500，合同
+/// 容忍少量未知 id 逐项报告，但成千上万条伪造条目只可能是恶意/失控输出，
+/// fail-closed 整批拒绝，防止 unknownCardIds 洪泛撑爆工具返回值。
+pub const CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES: usize =
+    2 * super::chatanki_transform::CHATANKI_TRANSFORM_CARD_LIMIT;
+/// 输出条目 `id` 字符数上限（真实卡 id 为 UUID 量级；超长 id 只能是伪造，
+/// 且未截断回显会借 unknownCardIds 注入超大 payload）。
+pub const CHATANKI_TRANSFORM_SCRIPT_ID_MAX_CHARS: usize = 128;
+/// 逐卡拒绝 detail 中回显脚本自报内容（如未知键名）的截断长度，
+/// 防止敌意超长键名借 detail 放大工具返回值。
+const SCRIPT_ISSUE_ECHO_MAX_CHARS: usize = 64;
 /// stdout / stderr 各自保留的日志尾部字节数（数据面走文件，stdout 只承载日志）。
 const SCRIPT_STREAM_TAIL_BYTES: usize = 16 * 1024;
 /// 超时杀进程组后等待收尸 / 排空管道的宽限期。
 const SCRIPT_CLEANUP_GRACE: Duration = Duration::from_secs(5);
 
 /// job 目录内的固定文件名（同时也是环境变量指向的目标）。
-pub(crate) const CHATANKI_INPUT_FILE: &str = "CHATANKI_INPUT.json";
-pub(crate) const CHATANKI_OUTPUT_FILE: &str = "CHATANKI_OUTPUT.json";
+pub const CHATANKI_INPUT_FILE: &str = "CHATANKI_INPUT.json";
+pub const CHATANKI_OUTPUT_FILE: &str = "CHATANKI_OUTPUT.json";
 
 static JOB_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -63,13 +81,13 @@ static JOB_SEQ: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ScriptLanguage {
+pub enum ScriptLanguage {
     Python,
     Node,
 }
 
 impl ScriptLanguage {
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Python => "python",
             Self::Node => "node",
@@ -95,21 +113,21 @@ impl ScriptLanguage {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct TransformScriptSpec {
+pub struct TransformScriptSpec {
     language: ScriptLanguage,
     code: String,
     timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NormalizedTransformScript {
-    pub(crate) language: ScriptLanguage,
-    pub(crate) code: String,
-    pub(crate) timeout: Duration,
+pub struct NormalizedTransformScript {
+    pub language: ScriptLanguage,
+    pub code: String,
+    pub timeout: Duration,
 }
 
 impl TransformScriptSpec {
-    pub(crate) fn normalize(self) -> Result<NormalizedTransformScript, String> {
+    pub fn normalize(self) -> Result<NormalizedTransformScript, String> {
         let code = self.code;
         if code.trim().is_empty() {
             return Err("transform.script.code must not be empty".to_string());
@@ -146,7 +164,7 @@ impl TransformScriptSpec {
 /// 构造脚本输入 JSON。字段全文出自 DB 快照，**不经任何 2000 字符截断视图**；
 /// `version` 为快照时 Rust 记录的乐观锁版本（= `updated_at`，与 get_cards 一致），
 /// 仅供脚本参考——写回比对永远使用 Rust 侧的这份记录，脚本篡改无效。
-pub(crate) fn build_script_input(document_id: &str, cards: &[crate::models::AnkiCard]) -> Value {
+pub fn build_script_input(document_id: &str, cards: &[crate::models::AnkiCard]) -> Value {
     let cards: Vec<Value> = cards
         .iter()
         .enumerate()
@@ -176,7 +194,7 @@ pub(crate) fn build_script_input(document_id: &str, cards: &[crate::models::Anki
 
 /// 顶层输出不可用（整批失败，不写库）。
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum ScriptOutputError {
+pub enum ScriptOutputError {
     /// 输出文件超过大小上限。
     TooLarge { bytes: u64, limit: u64 },
     /// 不是合法 JSON。
@@ -186,7 +204,7 @@ pub(crate) enum ScriptOutputError {
 }
 
 impl ScriptOutputError {
-    pub(crate) fn detail(&self) -> String {
+    pub fn detail(&self) -> String {
         match self {
             Self::TooLarge { bytes, limit } => format!(
                 "CHATANKI_OUTPUT.json is {bytes} bytes, exceeding the {limit} byte limit"
@@ -198,19 +216,19 @@ impl ScriptOutputError {
 
 /// 单卡输出条目被拒绝的结构化原因（不整批失败，逐卡 invalid）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ScriptCardIssue {
-    pub(crate) code: &'static str,
-    pub(crate) detail: String,
+pub struct ScriptCardIssue {
+    pub code: &'static str,
+    pub detail: String,
 }
 
 /// 输出评估结果：与选择集**等长且同序**的逐卡计划。
 #[derive(Debug)]
-pub(crate) struct ScriptTransformEvaluation {
+pub struct ScriptTransformEvaluation {
     /// `Ok(after)`：变换后的字段快照（可能与 before 相同 = 未变更）；
     /// `Err(issue)`：该卡输出条目非法，apply 时逐卡拒绝。
-    pub(crate) card_plans: Vec<Result<TransformFields, ScriptCardIssue>>,
+    pub card_plans: Vec<Result<TransformFields, ScriptCardIssue>>,
     /// 输出中出现但不在快照内的 id（v1 禁止脚本增删卡，逐项报告）。
-    pub(crate) unknown_card_ids: Vec<String>,
+    pub unknown_card_ids: Vec<String>,
 }
 
 /// 输出条目允许的更新键。`version` / `index` / `templateId` / `extraFields`
@@ -222,7 +240,7 @@ const SCRIPT_OUTPUT_ECHO_KEYS: &[&str] = &["id", "version", "index", "templateId
 /// 与 `database::contains_valid_anki_cloze_markup` 同语义的本地实现
 /// （该函数为模块私有，此处按同一规则复刻并在单测中锁定语义）：
 /// 存在至少一个 `{{cN::非空答案}}`（N ≥ 1，答案允许 `::hint` 后缀）。
-pub(crate) fn text_has_valid_cloze_markup(text: &str) -> bool {
+pub fn text_has_valid_cloze_markup(text: &str) -> bool {
     let mut cursor = 0usize;
     while let Some(relative_start) = text[cursor..].find("{{c") {
         let start = cursor + relative_start + 3;
@@ -262,6 +280,16 @@ fn issue(code: &'static str, detail: impl Into<String>) -> ScriptCardIssue {
     }
 }
 
+/// 截断脚本自报内容的回显（按 Unicode 标量数），防止超长键名/值借 detail
+/// 放大工具返回值。截断时追加省略号标记。
+fn truncate_echo(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{truncated}…")
+}
+
 /// 从一条输出条目构造变换后的字段快照。
 ///
 /// 规则（对齐任务合同）：
@@ -283,7 +311,10 @@ fn evaluate_card_entry(
         {
             return Err(issue(
                 "unknown_output_field",
-                format!("output card contains unsupported field '{key}' (v1 allows front/back/text/tags updates only)"),
+                format!(
+                    "output card contains unsupported field '{}' (v1 allows front/back/text/tags updates only)",
+                    truncate_echo(key, SCRIPT_ISSUE_ECHO_MAX_CHARS)
+                ),
             ));
         }
     }
@@ -298,6 +329,25 @@ fn evaluate_card_entry(
                     return Err(issue(
                         "empty_field",
                         format!("output card sets '{field}' to an empty string (clearing fields is not allowed in v1)"),
+                    ));
+                }
+                // 逐字段大小闸门：只约束**新写入**的值；与快照完全一致的回显
+                // （= 未修改）放行，避免误伤存量超长字段的整对象回写。
+                let unchanged = match field {
+                    "front" => value == &before.front,
+                    "back" => value == &before.back,
+                    _ => Some(value.as_str()) == before.text.as_deref(),
+                };
+                if !unchanged
+                    && value.chars().count() > CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS
+                {
+                    return Err(issue(
+                        "field_too_large",
+                        format!(
+                            "output card sets '{field}' to {} characters, exceeding the {} character limit",
+                            value.chars().count(),
+                            CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS
+                        ),
                     ));
                 }
                 match field {
@@ -335,6 +385,19 @@ fn evaluate_card_entry(
                     return Err(issue(
                         "empty_field",
                         "output card tags must not contain empty entries",
+                    ));
+                }
+                // 新增 tag 的长度闸门；卡上既有 tag 的原样回显放行。
+                if tag.chars().count() > CHATANKI_TRANSFORM_SCRIPT_TAG_MAX_CHARS
+                    && !before.tags.iter().any(|existing| existing == &tag)
+                {
+                    return Err(issue(
+                        "tag_too_large",
+                        format!(
+                            "output card carries a {} character tag, exceeding the {} character limit",
+                            tag.chars().count(),
+                            CHATANKI_TRANSFORM_SCRIPT_TAG_MAX_CHARS
+                        ),
                     ));
                 }
                 if seen.insert(tag.clone()) {
@@ -396,7 +459,7 @@ fn json_type_name(value: &Value) -> &'static str {
 /// 顶层合同：UTF-8 JSON 对象，必须含 `cards` 数组；数组条目必须是携带非空字符串
 /// `id` 的对象；同一 `id` 不得重复出现。顶层多余键（如脚本自报统计）被忽略。
 /// 输出中**未提及**的卡 = 不修改（`Ok(before)`）。
-pub(crate) fn evaluate_script_output(
+pub fn evaluate_script_output(
     raw: &[u8],
     selected: &[crate::models::AnkiCard],
 ) -> Result<ScriptTransformEvaluation, ScriptOutputError> {
@@ -423,6 +486,15 @@ pub(crate) fn evaluate_script_output(
             "'cards' must be a JSON array".to_string(),
         ));
     };
+    // 条目洪泛闸门：合法输出条目数不可能超过选择集上限的 2 倍
+    //（选择集 ≤ 500，未知 id 只容忍少量并逐项报告）。fail-closed 整批拒绝。
+    if cards.len() > CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES {
+        return Err(ScriptOutputError::Schema(format!(
+            "'cards' contains {} entries, exceeding the {} entry limit",
+            cards.len(),
+            CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES
+        )));
+    }
 
     let mut entries: std::collections::HashMap<String, &serde_json::Map<String, Value>> =
         std::collections::HashMap::with_capacity(cards.len());
@@ -442,6 +514,14 @@ pub(crate) fn evaluate_script_output(
         if id.is_empty() {
             return Err(ScriptOutputError::Schema(format!(
                 "cards[{index}] has an empty 'id'"
+            )));
+        }
+        // 超长 id 只能是伪造（真实卡 id 为 UUID 量级）；不截断回显，直接整批拒绝。
+        if id.chars().count() > CHATANKI_TRANSFORM_SCRIPT_ID_MAX_CHARS {
+            return Err(ScriptOutputError::Schema(format!(
+                "cards[{index}] has a {} character 'id', exceeding the {} character limit",
+                id.chars().count(),
+                CHATANKI_TRANSFORM_SCRIPT_ID_MAX_CHARS
             )));
         }
         if entries.insert(id.to_string(), entry).is_some() {
@@ -538,7 +618,7 @@ fn interpreter_search_dirs() -> Vec<PathBuf> {
 }
 
 /// 在目录集中按候选名顺序解析第一个可执行文件的绝对路径（纯函数，可单测）。
-pub(crate) fn resolve_interpreter_in_dirs(
+pub fn resolve_interpreter_in_dirs(
     candidates: &[&str],
     dirs: &[PathBuf],
 ) -> Option<PathBuf> {
@@ -573,7 +653,7 @@ fn is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
-pub(crate) fn resolve_interpreter(language: ScriptLanguage) -> Option<PathBuf> {
+pub fn resolve_interpreter(language: ScriptLanguage) -> Option<PathBuf> {
     resolve_interpreter_in_dirs(language.candidate_bins(), &interpreter_search_dirs())
 }
 
@@ -584,7 +664,7 @@ pub(crate) fn resolve_interpreter(language: ScriptLanguage) -> Option<PathBuf> {
 /// macOS Seatbelt 的默认可读集不含 `/opt`（Homebrew Cellar），bwrap 则整根只读
 /// bind 无此问题。对 `/opt/<x>/...` 下的解释器额外放行其顶层前缀目录，其余场景
 /// 只补解释器所在目录（对 bwrap 恒为冗余但无害）。
-pub(crate) fn extra_readable_roots_for_interpreter(interpreter: &Path) -> Vec<PathBuf> {
+pub fn extra_readable_roots_for_interpreter(interpreter: &Path) -> Vec<PathBuf> {
     let canonical = interpreter
         .canonicalize()
         .unwrap_or_else(|_| interpreter.to_path_buf());
@@ -606,7 +686,7 @@ pub(crate) fn extra_readable_roots_for_interpreter(interpreter: &Path) -> Vec<Pa
 }
 
 /// 沙箱策略：只有 job 目录可写；网络**恒禁**（无豁免参数）。
-pub(crate) fn transform_sandbox_policy(job_dir: &Path, interpreter: &Path) -> SandboxPolicy {
+pub fn transform_sandbox_policy(job_dir: &Path, interpreter: &Path) -> SandboxPolicy {
     let mut readable_roots = vec![job_dir.to_path_buf()];
     readable_roots.extend(extra_readable_roots_for_interpreter(interpreter));
     SandboxPolicy {
@@ -628,7 +708,7 @@ fn shell_quote_powershell(value: &str) -> String {
 
 /// 构造沙箱内执行的解释器命令行。python 追加 `-I`（isolated mode：忽略
 /// PYTHONPATH / 用户 site-packages，双保险叠加环境变量白名单）。
-pub(crate) fn build_shell_command(
+pub fn build_shell_command(
     shell_kind: &str,
     language: ScriptLanguage,
     interpreter: &Path,
@@ -664,18 +744,18 @@ pub(crate) fn build_shell_command(
 // ============================================================================
 
 #[derive(Debug)]
-pub(crate) struct PreparedTransformJob {
-    pub(crate) job_dir: PathBuf,
-    pub(crate) input_path: PathBuf,
-    pub(crate) output_path: PathBuf,
-    pub(crate) script_path: PathBuf,
+pub struct PreparedTransformJob {
+    pub job_dir: PathBuf,
+    pub input_path: PathBuf,
+    pub output_path: PathBuf,
+    pub script_path: PathBuf,
     /// 相对 temp root 的展示引用（`runtime-root://temp/...`）。
-    pub(crate) job_ref: String,
+    pub job_ref: String,
 }
 
 /// 在会话 temp root 下创建一次性 job 目录并写入输入快照与脚本正文。
 /// job 目录随 temp root 生命周期保留（审计用途），不在本次调用内删除。
-pub(crate) fn prepare_transform_job(
+pub fn prepare_transform_job(
     temp_root: &Path,
     script: &NormalizedTransformScript,
     input: &Value,
@@ -689,6 +769,11 @@ pub(crate) fn prepare_transform_job(
     let job_dir = temp_root.join(&relative);
     std::fs::create_dir_all(&job_dir)
         .map_err(|error| format!("Failed to create transform job directory: {error}"))?;
+    // 规范化 job 目录（Round 4 安全复审）：temp root 可能位于符号链接路径下
+    //（如 macOS 的 /var → /private/var）。沙箱策略按字面路径匹配（Seatbelt
+    // subpath / bwrap bind），未解析的符号链接会导致策略路径与真实 vnode 路径
+    // 不一致——轻则拒写（macOS 误拒），重则策略作用在错误的路径上。
+    let job_dir = job_dir.canonicalize().unwrap_or(job_dir);
 
     let input_path = job_dir.join(CHATANKI_INPUT_FILE);
     let output_path = job_dir.join(CHATANKI_OUTPUT_FILE);
@@ -716,19 +801,19 @@ pub(crate) fn prepare_transform_job(
 
 /// 一次脚本执行的观测报告（成功与否都会尽力填充，进入工具返回值与审计）。
 #[derive(Debug, Clone)]
-pub(crate) struct ScriptExecutionReport {
-    pub(crate) language: &'static str,
-    pub(crate) exit_code: Option<i32>,
-    pub(crate) timed_out: bool,
-    pub(crate) duration_ms: u64,
-    pub(crate) stdout_tail: String,
-    pub(crate) stderr_tail: String,
-    pub(crate) sandbox_backend: &'static str,
-    pub(crate) interpreter: String,
+pub struct ScriptExecutionReport {
+    pub language: &'static str,
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub duration_ms: u64,
+    pub stdout_tail: String,
+    pub stderr_tail: String,
+    pub sandbox_backend: &'static str,
+    pub interpreter: String,
 }
 
 impl ScriptExecutionReport {
-    pub(crate) fn to_json(&self, timeout: Duration) -> Value {
+    pub fn to_json(&self, timeout: Duration) -> Value {
         json!({
             "language": self.language,
             "exitCode": self.exit_code,
@@ -745,7 +830,7 @@ impl ScriptExecutionReport {
 
 /// 脚本执行失败的结构化分类（全部映射为工具的结构化返回，不 panic）。
 #[derive(Debug)]
-pub(crate) enum ScriptRunError {
+pub enum ScriptRunError {
     /// 平台无硬沙箱（移动端 / Linux 缺 bwrap / macOS 缺 sandbox-exec）。
     SandboxUnavailable(String),
     /// 本机没有可用解释器。
@@ -835,7 +920,7 @@ fn apply_script_env(
 /// `PlatformSandboxBackend`（网络恒禁 + 仅 job 目录可写）→ 超时看门狗
 /// （超时终止整个进程组）→ 输出文件大小闸门 → 返回原始字节交由
 /// `evaluate_script_output` 校验。任何失败均为结构化 `ScriptRunError`。
-pub(crate) async fn run_transform_script(
+pub async fn run_transform_script(
     temp_root: &Path,
     document_id: &str,
     cards: &[crate::models::AnkiCard],
@@ -1284,6 +1369,124 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // Round 4 安全复审：输出合同的资源边界与伪造 id 防线
+    // ------------------------------------------------------------------
+
+    /// 安全回归：脚本新写入的超长字段被逐卡拒绝（存储放大炸弹），
+    /// 但与快照完全一致的超长回显（= 未修改）放行。
+    #[test]
+    fn security_output_rejects_oversized_new_field_but_allows_echo_of_existing() {
+        let oversized_existing = "旧".repeat(CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS + 10);
+        let cards = [
+            make_card("card-1", &oversized_existing, "A", None, &[]),
+            make_card("card-2", "Q", "A", None, &[]),
+        ];
+        let bomb = "爆".repeat(CHATANKI_TRANSFORM_SCRIPT_FIELD_MAX_CHARS + 1);
+        let raw = serde_json::to_vec(&json!({
+            "cards": [
+                // card-1 原样回显自己的超长 front：未修改，必须放行
+                { "id": "card-1", "front": oversized_existing },
+                // card-2 试图写入新的超长 back：逐卡拒绝
+                { "id": "card-2", "back": bomb },
+            ],
+        }))
+        .unwrap();
+        let evaluation = evaluate_script_output(&raw, &cards).unwrap();
+        assert!(evaluation.card_plans[0].is_ok(), "echo of existing oversized field must pass");
+        let issue = evaluation.card_plans[1].as_ref().unwrap_err();
+        assert_eq!(issue.code, "field_too_large");
+        assert!(issue.detail.contains("character limit"), "{}", issue.detail);
+    }
+
+    /// 安全回归：脚本新增的超长 tag 被逐卡拒绝；卡上既有超长 tag 的回显放行。
+    #[test]
+    fn security_output_rejects_oversized_new_tag_but_allows_existing_echo() {
+        let long_existing_tag = "既".repeat(CHATANKI_TRANSFORM_SCRIPT_TAG_MAX_CHARS + 5);
+        let cards = [
+            make_card("card-1", "Q", "A", None, &[long_existing_tag.as_str()]),
+            make_card("card-2", "Q", "A", None, &[]),
+        ];
+        let bomb_tag = "炸".repeat(CHATANKI_TRANSFORM_SCRIPT_TAG_MAX_CHARS + 1);
+        let raw = serde_json::to_vec(&json!({
+            "cards": [
+                { "id": "card-1", "tags": [long_existing_tag] },
+                { "id": "card-2", "tags": [bomb_tag] },
+            ],
+        }))
+        .unwrap();
+        let evaluation = evaluate_script_output(&raw, &cards).unwrap();
+        assert!(evaluation.card_plans[0].is_ok(), "existing tag echo must pass");
+        assert_eq!(
+            evaluation.card_plans[1].as_ref().unwrap_err().code,
+            "tag_too_large"
+        );
+    }
+
+    /// 安全回归：条目洪泛（成千上万条伪造 id）在 schema 层整批拒绝，
+    /// 防止 unknownCardIds 撑爆工具返回值。
+    #[test]
+    fn security_output_rejects_entry_floods_at_schema_level() {
+        let cards = [make_card("card-1", "Q", "A", None, &[])];
+        let flood: Vec<Value> = (0..(CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES + 1))
+            .map(|index| json!({ "id": format!("forged-{index}") }))
+            .collect();
+        let raw = serde_json::to_vec(&json!({ "cards": flood })).unwrap();
+        let error = evaluate_script_output(&raw, &cards).unwrap_err();
+        assert!(matches!(error, ScriptOutputError::Schema(_)), "{error:?}");
+        assert!(error.detail().contains("entry limit"), "{}", error.detail());
+
+        // 恰好在上限内则维持既有"容忍并报告未知 id"语义
+        let tolerated: Vec<Value> = (0..CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES)
+            .map(|index| json!({ "id": format!("forged-{index}") }))
+            .collect();
+        let raw = serde_json::to_vec(&json!({ "cards": tolerated })).unwrap();
+        let evaluation = evaluate_script_output(&raw, &cards).unwrap();
+        assert_eq!(
+            evaluation.unknown_card_ids.len(),
+            CHATANKI_TRANSFORM_SCRIPT_OUTPUT_MAX_ENTRIES
+        );
+    }
+
+    /// 安全回归：超长伪造 id 在 schema 层整批拒绝（不回显 id 本体）。
+    #[test]
+    fn security_output_rejects_overlong_forged_ids() {
+        let cards = [make_card("card-1", "Q", "A", None, &[])];
+        let forged_id = "x".repeat(CHATANKI_TRANSFORM_SCRIPT_ID_MAX_CHARS + 1);
+        let raw = serde_json::to_vec(&json!({
+            "cards": [{ "id": forged_id.clone(), "front": "伪造" }],
+        }))
+        .unwrap();
+        let error = evaluate_script_output(&raw, &cards).unwrap_err();
+        assert!(matches!(error, ScriptOutputError::Schema(_)), "{error:?}");
+        assert!(error.detail().contains("character limit"), "{}", error.detail());
+        assert!(
+            !error.detail().contains(&forged_id),
+            "detail must not echo the forged id body"
+        );
+    }
+
+    /// 安全回归：未知键名的 detail 回显被截断，敌意超长键名不能借 detail
+    /// 放大工具返回值。
+    #[test]
+    fn security_unknown_field_detail_truncates_hostile_key() {
+        let cards = [make_card("card-1", "Q", "A", None, &[])];
+        let hostile_key = "k".repeat(10_000);
+        let raw = serde_json::to_vec(&json!({
+            "cards": [{ "id": "card-1", hostile_key.clone(): "payload" }],
+        }))
+        .unwrap();
+        let evaluation = evaluate_script_output(&raw, &cards).unwrap();
+        let issue = evaluation.card_plans[0].as_ref().unwrap_err();
+        assert_eq!(issue.code, "unknown_output_field");
+        assert!(
+            issue.detail.chars().count() < 300,
+            "detail must stay bounded, got {} chars",
+            issue.detail.chars().count()
+        );
+        assert!(issue.detail.contains('…'), "truncation marker expected");
+    }
+
+    // ------------------------------------------------------------------
     // 解释器解析 / 命令行 / 沙箱策略
     // ------------------------------------------------------------------
 
@@ -1377,6 +1580,33 @@ mod tests {
             "print('ok')"
         );
         assert!(!job.output_path.exists());
+    }
+
+    /// 安全回归：temp root 位于符号链接路径下时 job 目录被规范化为真实路径，
+    /// 保证沙箱策略（Seatbelt subpath / bwrap bind）作用在真实 vnode 路径上。
+    #[cfg(unix)]
+    #[test]
+    fn security_prepare_job_canonicalizes_symlinked_temp_root() {
+        let real = tempfile::tempdir().unwrap();
+        let holder = tempfile::tempdir().unwrap();
+        let link = holder.path().join("temp-root-link");
+        std::os::unix::fs::symlink(real.path(), &link).unwrap();
+
+        let script = NormalizedTransformScript {
+            language: ScriptLanguage::Python,
+            code: "print('ok')".to_string(),
+            timeout: Duration::from_secs(5),
+        };
+        let job = prepare_transform_job(&link, &script, &json!({ "cards": [] })).unwrap();
+        let canonical_real = real.path().canonicalize().unwrap();
+        assert!(
+            job.job_dir.starts_with(&canonical_real),
+            "job dir {} must resolve under the real temp root {}",
+            job.job_dir.display(),
+            canonical_real.display()
+        );
+        assert!(job.input_path.starts_with(&canonical_real));
+        assert!(job.output_path.starts_with(&canonical_real));
     }
 
     // ------------------------------------------------------------------
@@ -1557,5 +1787,42 @@ fs.writeFileSync(process.env.CHATANKI_OUTPUT, JSON.stringify({ cards }));
             evaluation.card_plans[0].as_ref().unwrap().tags,
             vec!["旧".to_string(), "新标签".to_string()]
         );
+    }
+
+    /// 安全回归（e2e）：脚本把 CHATANKI_OUTPUT.json 写成指向沙箱外文件的
+    /// 符号链接时，Rust 侧必须结构化拒绝且**不跟随读取**链接目标。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn e2e_symlink_output_is_rejected_without_following() {
+        if !sandbox_e2e_ready(ScriptLanguage::Python) {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let cards = [make_card("card-1", "Q", "A", None, &[])];
+        let script = NormalizedTransformScript {
+            language: ScriptLanguage::Python,
+            code: r#"
+import os
+os.symlink("/etc/passwd", os.environ["CHATANKI_OUTPUT"])
+"#
+            .to_string(),
+            timeout: Duration::from_secs(30),
+        };
+        let error = run_transform_script(temp.path(), "doc-1", &cards, &script)
+            .await
+            .expect_err("symlink output must be rejected");
+        match error {
+            ScriptRunError::Setup(detail) => {
+                assert!(
+                    detail.contains("must be a regular file"),
+                    "unexpected detail: {detail}"
+                );
+                assert!(
+                    !detail.contains("root:"),
+                    "detail must not leak symlink target contents"
+                );
+            }
+            other => panic!("expected Setup rejection, got {other:?}"),
+        }
     }
 }

@@ -143,6 +143,8 @@ impl EnhancedAnkiService {
             enable_llm_boundary_detection: None,
             fsrs_feedback: None,
             user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
         });
 
         // ===== FSRS 复习数据回流（Round 3 #5）=====
@@ -200,6 +202,12 @@ impl EnhancedAnkiService {
                 .process_document_and_create_tasks(document_content, document_name, options)
                 .await?
         };
+
+        // Round 4 #3：显式初始化文档级指纹 tracker——同一文档的所有 segment task
+        // （含并发 task、统一重试任务、暂停后 resume 的任务）经 registry 共享同一
+        // 实例做重复/近重复检测，绝不每个 task 重置。完成/取消/删除时释放。
+        // （resume 路径无需显式初始化：observe_document_card 会按 document_id 懒创建）
+        let _ = crate::anki_qa_lint::document_tracker(&document_id);
 
         // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload，不包装在 StreamEvent 中
         // 前端 CardAgent.handleBackendEvent 期望直接接收 { DocumentProcessingStarted: {...} } 格式
@@ -433,6 +441,9 @@ impl EnhancedAnkiService {
                 if !entry.paused {
                     drop(entry); // 释放引用后再删除
                     DOCUMENT_STATES.remove(&document_id_for_check);
+                    // 文档处理完成：释放文档级指纹 tracker（防泄漏）。
+                    // 暂停态不释放——resume 后的任务需继续共享指纹状态。
+                    crate::anki_qa_lint::release_document_tracker(&document_id_for_check);
                 }
             }
         }
@@ -767,6 +778,7 @@ impl EnhancedAnkiService {
 
         // 清理运行状态并宣告文档已取消（与 Completed 分离，前端保留卡片）
         DOCUMENT_STATES.remove(&document_id);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
         let cancel_payload = StreamedCardPayload::DocumentProcessingCancelled {
             document_id: document_id.clone(),
         };
@@ -809,6 +821,7 @@ impl EnhancedAnkiService {
             .map_err(|e| AppError::database(format!("删除文档会话失败: {}", e)))?;
 
         DOCUMENT_STATES.remove(&document_id);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
         Ok(())
     }
 
@@ -915,6 +928,7 @@ impl EnhancedAnkiService {
 
         if let Some(doc_id) = document_id.as_ref() {
             DOCUMENT_STATES.remove(doc_id);
+            crate::anki_qa_lint::release_document_tracker(doc_id);
         }
 
         Ok(output_path.to_string_lossy().to_string())
@@ -1080,6 +1094,8 @@ mod tests {
             enable_llm_boundary_detection: None,
             fsrs_feedback: None,
             user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(
@@ -1161,6 +1177,8 @@ mod tests {
             enable_llm_boundary_detection: None,
             fsrs_feedback: None,
             user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(

@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiCardsBlockData } from '../ankiCardsBlock';
 import { parseAnkiSegmentCounts } from './ankiSegmentCounts';
+import { AnkiMediaReportView } from './AnkiMediaReportView';
+import type { AnkiMediaReport } from './ankiMediaReport';
 import './chat-anki-cards.css';
 
 type StepId = 'routing' | 'importing' | 'generating' | 'completed' | 'failed' | 'cancelled';
@@ -117,6 +119,8 @@ export const ChatAnkiProgressCompact: React.FC<{
   progress?: AnkiCardsBlockData['progress'];
   ankiConnect?: AnkiCardsBlockData['ankiConnect'];
   warnings?: AnkiCardsBlockData['warnings'];
+  /** APKG 媒体导入报告（tool_output.mediaReport，已解析）。 */
+  mediaReport?: AnkiMediaReport | null;
   cardsCount: number;
   blockStatus: string;
   finalStatus?: string;
@@ -126,6 +130,7 @@ export const ChatAnkiProgressCompact: React.FC<{
   progress,
   ankiConnect,
   warnings,
+  mediaReport,
   cardsCount,
   blockStatus,
   finalStatus,
@@ -562,6 +567,9 @@ export const ChatAnkiProgressCompact: React.FC<{
           ))}
         </div>
       )}
+
+      {/* APKG 媒体导入报告：进度/完成态均展示跳过原因（若 tool_output 有） */}
+      {mediaReport && <AnkiMediaReportView report={mediaReport} />}
 
       {ankiConnectMeta.state === 'not_connected' && ankiConnect?.error && (
         <div className="mt-1 text-xs leading-snug text-warning">

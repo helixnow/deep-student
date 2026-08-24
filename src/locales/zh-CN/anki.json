@@ -1018,6 +1018,15 @@
       "flaggedCards": "{{count}} 张卡片带质检标记",
       "hint": "字段校验发现越界项。卡片已保留入库，建议人工复查后再导出",
       "fieldLabel": "字段",
+      "cardBadge": "质检 {{count}}",
+      "showDetails": "展开质检详情",
+      "hideDetails": "收起质检详情",
+      "cardFlagsAria": "第 {{index}} 张卡片有 {{count}} 条质检标记，最高严重度：{{severity}}",
+      "severity": {
+        "info": "提示",
+        "warn": "警告",
+        "error": "错误"
+      },
       "rules": {
         "minLength": "长度低于最小要求",
         "maxLength": "长度超过最大限制",

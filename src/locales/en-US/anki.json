@@ -1018,6 +1018,15 @@
       "flaggedCards": "{{count}} cards carry QA flags",
       "hint": "Field validation found out-of-bound values. The cards were kept; review them before exporting",
       "fieldLabel": "Field",
+      "cardBadge": "QA {{count}}",
+      "showDetails": "Show QA flag details",
+      "hideDetails": "Hide QA flag details",
+      "cardFlagsAria": "Card {{index}} has {{count}} QA flags, highest severity: {{severity}}",
+      "severity": {
+        "info": "Info",
+        "warn": "Warning",
+        "error": "Error"
+      },
       "rules": {
         "minLength": "Shorter than the minimum length",
         "maxLength": "Exceeds the maximum length",

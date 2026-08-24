@@ -393,6 +393,141 @@ where
     }
 }
 
+/// 与 [`deserialize_optional_i32_flexible`] 同款的宽松解析（LLM 偶发把数字发成字符串），
+/// 用于 `maxImages` 这类非负小整数参数。
+fn deserialize_optional_u32_flexible<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Option::<Value>::deserialize(deserializer)?;
+    match raw {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(n)) => {
+            let v = n
+                .as_u64()
+                .ok_or_else(|| serde::de::Error::custom("maxImages must be a non-negative integer"))?;
+            u32::try_from(v)
+                .map(Some)
+                .map_err(|_| serde::de::Error::custom("maxImages out of u32 range"))
+        }
+        Some(Value::String(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+                .parse::<u32>()
+                .map(Some)
+                .map_err(|_| serde::de::Error::custom("maxImages string must be a valid integer"))
+        }
+        _ => Err(serde::de::Error::custom(
+            "maxImages must be integer or numeric string",
+        )),
+    }
+}
+
+/// `contentFormat` 参数：内容形态覆盖（Round 4 #1）。
+///
+/// `auto`（默认）保持既有启发式（`looks_like_glossary_content` ∪ LLM 路由 hint）；
+/// `glossary`/`prose` 显式覆盖启发式，同时作用于段落归一化与生成旋钮/默认上限。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ChatAnkiContentFormat {
+    #[default]
+    Auto,
+    Glossary,
+    Prose,
+}
+
+impl ChatAnkiContentFormat {
+    /// 显式覆盖值：`Auto` 返回 None（走启发式），其余强制 true/false。
+    fn glossary_override(self) -> Option<bool> {
+        match self {
+            Self::Auto => None,
+            Self::Glossary => Some(true),
+            Self::Prose => Some(false),
+        }
+    }
+}
+
+/// VLM 单次调用允许携带的图片数硬上限（防 payload 过大 / 供应商拒绝）。
+const MAX_VLM_IMAGES: usize = 12;
+
+/// Round 4 #1：run/start 新透出的生成调优参数（不含 maxCards，那是老参数）。
+///
+/// 打包成一个结构体在 `start_background_pipeline` → `BackgroundParams` →
+/// `build_generation_options` 之间传递，避免参数列表继续膨胀。
+#[derive(Debug, Clone, Default)]
+struct ChatAnkiGenerationTuning {
+    /// 已归一化的输出协议请求：None=auto；Some 仅可能是
+    /// delimiter/json_object/json_schema（见 [`normalize_output_protocol_arg`]）。
+    output_protocol: Option<String>,
+    /// 视觉重点提示：仅 VLM 路由使用，以数据分隔符包裹注入 VLM prompt。
+    visual_hint: Option<String>,
+    content_format: ChatAnkiContentFormat,
+    /// 字段 QA 校验留痕开关；None=默认开启（与 StructuredOutputOptions 语义一致）。
+    enable_qa_pass: Option<bool>,
+    /// FSRS 复习画像回流开关；None=默认开启（与 AnkiGenerationOptions 语义一致）。
+    enable_fsrs_feedback: Option<bool>,
+    /// VLM 图片数上限覆盖；None=按路由默认（light 6 / full 12），上限 [`MAX_VLM_IMAGES`]。
+    max_images: Option<u32>,
+    /// 偏好记忆注入开关；None=默认开启。
+    enable_preference_memory: Option<bool>,
+}
+
+impl ChatAnkiGenerationTuning {
+    fn preference_memory_enabled(&self) -> bool {
+        self.enable_preference_memory.unwrap_or(true)
+    }
+
+    /// 路由默认图片上限 + 用户覆盖（clamp 到 1..=MAX_VLM_IMAGES）。
+    fn effective_max_images(&self, route_default: usize) -> usize {
+        match self.max_images {
+            Some(v) => (v as usize).clamp(1, MAX_VLM_IMAGES),
+            None => route_default,
+        }
+    }
+}
+
+/// `outputProtocol` 参数归一化：合法值透传、auto/空 → None，其余直接报错
+/// （禁止静默回退成 delimiter——那是 `resolve_output_protocol` 对 wire 值的兜底，
+/// 工具参数层应把拼写错误拦在启动前）。
+fn normalize_output_protocol_arg(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(raw) = raw else { return Ok(None) };
+    let normalized = raw.trim().to_lowercase();
+    match normalized.as_str() {
+        "" | "auto" => Ok(None),
+        "delimiter" | "json_object" | "json_schema" => Ok(Some(normalized)),
+        other => Err(format!(
+            "invalid outputProtocol '{other}': expected auto | delimiter | json_object | json_schema"
+        )),
+    }
+}
+
+/// maxCards 硬上限（与 EnhancedAnkiService 校验一致）。
+const MAX_CARDS_HARD_LIMIT: i32 = 100;
+
+/// E3 修复升级（Round 4 #1）：maxCards 超硬上限时 clamp 到 100，且**必须**返回
+/// 结构化 warning（requested/applied）回传给调用方，禁止只打日志静默截断。
+fn clamp_max_cards_arg(requested: Option<i32>) -> (Option<i32>, Option<Value>) {
+    match requested {
+        Some(v) if v > MAX_CARDS_HARD_LIMIT => (
+            Some(MAX_CARDS_HARD_LIMIT),
+            Some(json!({
+                "code": "max_cards_clamped",
+                "messageKey": "blocks.ankiCards.warnings.maxCardsClamped",
+                "messageParams": { "requested": v, "applied": MAX_CARDS_HARD_LIMIT },
+                "requested": v,
+                "applied": MAX_CARDS_HARD_LIMIT,
+                "message": format!(
+                    "maxCards {v} exceeds the per-run hard limit; clamped to {MAX_CARDS_HARD_LIMIT}. Split into multiple runs for more cards."
+                ),
+            })),
+        ),
+        other => (other, None),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatAnkiRunArgs {
@@ -425,6 +560,31 @@ struct ChatAnkiRunArgs {
     /// 可选：附加生成要求（卡片风格/语言/格式类约束，作为高优先级规则注入生成提示）
     #[serde(alias = "extra_requirements")]
     extra_requirements: Option<String>,
+    /// 可选：流式输出协议（auto|delimiter|json_object|json_schema；默认 auto）
+    #[serde(alias = "output_protocol")]
+    output_protocol: Option<String>,
+    /// 可选：视觉重点提示（仅 VLM 路由生效；作为数据注入 VLM prompt，非指令）
+    #[serde(alias = "visual_hint")]
+    visual_hint: Option<String>,
+    /// 可选：内容形态覆盖（auto|glossary|prose；默认 auto=启发式判定）
+    #[serde(alias = "content_format", default)]
+    content_format: ChatAnkiContentFormat,
+    /// 可选：字段 QA 校验留痕开关（默认开启）
+    #[serde(alias = "enable_qa_pass")]
+    enable_qa_pass: Option<bool>,
+    /// 可选：FSRS 复习画像回流开关（默认开启）
+    #[serde(alias = "enable_fsrs_feedback")]
+    enable_fsrs_feedback: Option<bool>,
+    /// 可选：VLM 图片数上限（1~12；默认 light 6 / full 12）
+    #[serde(
+        alias = "max_images",
+        default,
+        deserialize_with = "deserialize_optional_u32_flexible"
+    )]
+    max_images: Option<u32>,
+    /// 可选：历史制卡偏好记忆注入开关（默认开启）
+    #[serde(alias = "enable_preference_memory")]
+    enable_preference_memory: Option<bool>,
     debug: Option<bool>,
 }
 
@@ -500,6 +660,21 @@ struct ChatAnkiStartArgs {
     /// 可选：附加生成要求（卡片风格/语言/格式类约束，作为高优先级规则注入生成提示）
     #[serde(alias = "extra_requirements")]
     extra_requirements: Option<String>,
+    /// 可选：流式输出协议（auto|delimiter|json_object|json_schema；默认 auto）
+    #[serde(alias = "output_protocol")]
+    output_protocol: Option<String>,
+    /// 可选：内容形态覆盖（auto|glossary|prose；默认 auto=启发式判定）
+    #[serde(alias = "content_format", default)]
+    content_format: ChatAnkiContentFormat,
+    /// 可选：字段 QA 校验留痕开关（默认开启）
+    #[serde(alias = "enable_qa_pass")]
+    enable_qa_pass: Option<bool>,
+    /// 可选：FSRS 复习画像回流开关（默认开启）
+    #[serde(alias = "enable_fsrs_feedback")]
+    enable_fsrs_feedback: Option<bool>,
+    /// 可选：历史制卡偏好记忆注入开关（默认开启）
+    #[serde(alias = "enable_preference_memory")]
+    enable_preference_memory: Option<bool>,
     debug: Option<bool>,
 }
 
@@ -1224,7 +1399,7 @@ const CHATANKI_RETEMPLATE_CARD_LIMIT: usize = 100;
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum ChatAnkiRetemplateStrategy {
+pub enum ChatAnkiRetemplateStrategy {
     MapOnly,
     FillMissing,
     /// 两阶段策略：Phase 1 与 `fill_missing` 完全相同（同一事务内映射 + 换模板），
@@ -1233,7 +1408,7 @@ enum ChatAnkiRetemplateStrategy {
 }
 
 impl ChatAnkiRetemplateStrategy {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::MapOnly => "map_only",
             Self::FillMissing => "fill_missing",
@@ -1395,14 +1570,14 @@ struct ChatAnkiAnalyzeArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ChatAnkiRoute {
+pub enum ChatAnkiRoute {
     SimpleText,
     VlmLight,
     VlmFull,
 }
 
 impl ChatAnkiRoute {
-    fn from_str(s: &str) -> Option<Self> {
+    pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "simple_text" => Some(Self::SimpleText),
             "vlm_light" => Some(Self::VlmLight),
@@ -1411,7 +1586,7 @@ impl ChatAnkiRoute {
         }
     }
 
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::SimpleText => "simple_text",
             Self::VlmLight => "vlm_light",
@@ -1491,6 +1666,137 @@ fn verify_document_ownership(
             Err("blocks.ankiCards.errors.statusNotFound".to_string())
         }
     }
+}
+
+// ============================================================================
+// Multi-agent Phase 2（QAAgent 只读卡面）：workspace coordinator 只读作用域
+// ============================================================================
+//
+// 默认所有权模型是「会话独占」：任何 chatanki 工具只能触到 `ctx.session_id`
+// 自己拥有的文档。Phase 2 为**只读**卡面工具（get_cards / status）开一个
+// 唯一豁免：worker 会话若被后端运行时（`run_workspace_agent_backend`）安装了
+// 「同 workspace coordinator 只读作用域」，则可以读取该 coordinator 会话
+// 完整拥有的文档。
+//
+// fail-closed 论证：
+// 1. 作用域只能由后端 worker 启动路径安装（`install_workspace_card_read_scope`
+//    仅在 handlers 内调用，模型工具无法触达），并以 RAII guard 绑定 worker
+//    管线生命周期——管线结束即撤销，普通交互会话永远查不到作用域；
+// 2. 每个 worker 会话至多映射到**一个** coordinator 会话；跨 workspace 的
+//    文档因不属于该 coordinator 而继续得到 `statusNotFound`（不泄露存在性）；
+// 3. 豁免只进入读路径（`resolve_chatanki_read_session` 只被 get_cards /
+//    status 调用）；全部写路径仍直接用 `ctx.session_id` 走
+//    `verify_document_ownership` / `load_owned_chatanki_card` 等原有检查，
+//    worker 对 coordinator 文档的写入照旧被拒；
+// 4. 任何一步失败（空 id、自映射、锁异常、文档混合归属）都回到默认拒绝。
+
+/// worker 会话 → 同 workspace coordinator 的只读作用域。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkspaceCardReadScope {
+    workspace_id: String,
+    coordinator_session_id: String,
+}
+
+static WORKSPACE_CARD_READ_SCOPES: OnceLock<Mutex<HashMap<String, WorkspaceCardReadScope>>> =
+    OnceLock::new();
+
+fn lock_workspace_card_read_scopes(
+) -> std::sync::MutexGuard<'static, HashMap<String, WorkspaceCardReadScope>> {
+    WORKSPACE_CARD_READ_SCOPES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!("[ChatAnkiToolExecutor] card read scope registry poisoned; recovering");
+            poisoned.into_inner()
+        })
+}
+
+/// RAII 守卫：drop 时撤销 worker 会话的只读作用域（管线正常结束 / 取消 /
+/// 超时 / panic 均触发），保证作用域寿命 ≤ worker 管线寿命。
+pub struct WorkspaceCardReadScopeGuard {
+    worker_session_id: String,
+}
+
+impl Drop for WorkspaceCardReadScopeGuard {
+    fn drop(&mut self) {
+        lock_workspace_card_read_scopes().remove(&self.worker_session_id);
+    }
+}
+
+/// 为 worker 会话安装「同 workspace coordinator 文档可读」的只读作用域。
+///
+/// 仅供后端 worker 启动路径（`run_workspace_agent_backend`）调用；
+/// fail-closed：任一 id 为空或 worker 即 coordinator（自映射无意义且可能
+/// 掩盖上游解析错误）都拒绝安装。
+pub fn install_workspace_card_read_scope(
+    worker_session_id: &str,
+    workspace_id: &str,
+    coordinator_session_id: &str,
+) -> Result<WorkspaceCardReadScopeGuard, String> {
+    let worker_session_id = worker_session_id.trim();
+    let workspace_id = workspace_id.trim();
+    let coordinator_session_id = coordinator_session_id.trim();
+    if worker_session_id.is_empty() || workspace_id.is_empty() || coordinator_session_id.is_empty()
+    {
+        return Err("workspace card read scope requires non-empty ids".to_string());
+    }
+    if worker_session_id == coordinator_session_id {
+        return Err(
+            "workspace card read scope must map a worker to a distinct coordinator session"
+                .to_string(),
+        );
+    }
+    lock_workspace_card_read_scopes().insert(
+        worker_session_id.to_string(),
+        WorkspaceCardReadScope {
+            workspace_id: workspace_id.to_string(),
+            coordinator_session_id: coordinator_session_id.to_string(),
+        },
+    );
+    log::info!(
+        "[ChatAnkiToolExecutor] installed workspace card read scope: worker={}, workspace={}, coordinator={}",
+        worker_session_id,
+        workspace_id,
+        coordinator_session_id
+    );
+    Ok(WorkspaceCardReadScopeGuard {
+        worker_session_id: worker_session_id.to_string(),
+    })
+}
+
+fn workspace_card_read_scope(session_id: &str) -> Option<WorkspaceCardReadScope> {
+    lock_workspace_card_read_scopes().get(session_id).cloned()
+}
+
+/// 只读所有权预检（仅 get_cards / status 使用）：返回本次读取应使用的
+/// 「有效读会话」。
+///
+/// - 调用会话自己完整拥有文档 → 有效读会话 = 调用会话（原有语义不变）；
+/// - 否则，仅当调用会话安装了 workspace 只读作用域、且文档**完整**归属该
+///   作用域的 coordinator 会话时 → 有效读会话 = coordinator 会话；
+/// - 其余情况（无作用域 / 跨 workspace / 混合归属 / 文档不存在）一律返回
+///   `statusNotFound`，与原有错误完全一致，不泄露文档存在性。
+fn resolve_chatanki_read_session(
+    db: &crate::database::Database,
+    document_id: &str,
+    caller_session_id: &str,
+) -> Result<String, String> {
+    if verify_document_ownership(db, document_id, caller_session_id).is_ok() {
+        return Ok(caller_session_id.to_string());
+    }
+    if let Some(scope) = workspace_card_read_scope(caller_session_id) {
+        if verify_document_ownership(db, document_id, &scope.coordinator_session_id).is_ok() {
+            log::info!(
+                "[ChatAnkiToolExecutor] read-only coordinator scope hit: worker={}, workspace={}, coordinator={}, document={}",
+                caller_session_id,
+                scope.workspace_id,
+                scope.coordinator_session_id,
+                document_id
+            );
+            return Ok(scope.coordinator_session_id);
+        }
+    }
+    Err("blocks.ankiCards.errors.statusNotFound".to_string())
 }
 
 fn verify_block_ownership(
@@ -1879,7 +2185,9 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        if let Err(error_key) = verify_document_ownership(db, &document_id, &ctx.session_id) {
+        // Phase 2 只读预检：本会话拥有 → 原语义；worker 带 coordinator 只读
+        // 作用域且文档归属该 coordinator → 放行读取。写路径不走这里。
+        if let Err(error_key) = resolve_chatanki_read_session(db, &document_id, &ctx.session_id) {
             ctx.emit_tool_call_error(&error_key);
             let result = ToolResultInfo::failure(
                 Some(call.id.clone()),
@@ -2019,7 +2327,16 @@ impl ChatAnkiToolExecutor {
         };
         let page = args.page.unwrap_or(1).max(1);
         let page_size = args.page_size.unwrap_or(20).clamp(1, 50);
-        let cards = match db.get_cards_for_document_for_session(document_id, &ctx.session_id) {
+        // Phase 2 只读预检：有效读会话 = 调用会话（自有文档）或同 workspace
+        // coordinator 会话（worker 只读作用域命中）。后续读取一律用该会话，
+        // 写路径（update/delete/add 等）不经过此解析。
+        let read_session = match resolve_chatanki_read_session(db, document_id, &ctx.session_id) {
+            Ok(session) => session,
+            Err(error_key) => {
+                return Ok(finish_chatanki_failure(call, ctx, start_time, error_key));
+            }
+        };
+        let cards = match db.get_cards_for_document_for_session(document_id, &read_session) {
             Ok(Some(cards)) => cards,
             Ok(None) => {
                 return Ok(finish_chatanki_failure(
@@ -2045,7 +2362,7 @@ impl ChatAnkiToolExecutor {
             .filter_map(|card| card.get("id").and_then(Value::as_str).map(str::to_string))
             .collect::<Vec<_>>();
         let review_states = match FsrsReviewService::new(db.clone())
-            .get_review_states_for_session(&page_card_ids, &ctx.session_id)
+            .get_review_states_for_session(&page_card_ids, &read_session)
         {
             Ok(states) => states,
             Err(error) if matches!(error.error_type, AppErrorType::NotFound) => {
@@ -2075,10 +2392,11 @@ impl ChatAnkiToolExecutor {
                 "filter": args.filter.as_str(),
                 "cards": page_cards,
                 // P8：get_cards 返回库中全部 live 卡（含超限保留卡）；该字段表示
-                // 其中有多少张因 maxCards 上限未展示在预览块里。
+                // 其中有多少张因 maxCards 上限未展示在预览块里。预览块归文档
+                // 拥有者所有，故用有效读会话查询（coordinator 作用域下同样准确）。
                 "hiddenOverLimitCount": lookup_hidden_over_limit_count(
                     ctx.chat_v2_db.as_deref(),
-                    &ctx.session_id,
+                    &read_session,
                     document_id,
                 ),
             }),
@@ -6300,6 +6618,17 @@ impl ChatAnkiToolExecutor {
             }
         };
 
+        let tuning = ChatAnkiGenerationTuning {
+            output_protocol: args.output_protocol,
+            // start 固定纯文本路径，永不触发 VLM，两个 VLM 专属参数不透出。
+            visual_hint: None,
+            content_format: args.content_format,
+            enable_qa_pass: args.enable_qa_pass,
+            enable_fsrs_feedback: args.enable_fsrs_feedback,
+            max_images: None,
+            enable_preference_memory: args.enable_preference_memory,
+        };
+
         self.start_background_pipeline(
             call,
             ctx,
@@ -6316,6 +6645,7 @@ impl ChatAnkiToolExecutor {
             None,
             args.max_cards,
             args.extra_requirements,
+            tuning,
         )
         .await
     }
@@ -6369,6 +6699,19 @@ impl ChatAnkiToolExecutor {
         // Allow content + VFS refs to be merged when both are present.
         let input = PipelineInput::VfsRef { extra_content };
 
+        let tuning = ChatAnkiGenerationTuning {
+            output_protocol: args.output_protocol,
+            visual_hint: args
+                .visual_hint
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            content_format: args.content_format,
+            enable_qa_pass: args.enable_qa_pass,
+            enable_fsrs_feedback: args.enable_fsrs_feedback,
+            max_images: args.max_images,
+            enable_preference_memory: args.enable_preference_memory,
+        };
+
         self.start_background_pipeline(
             call,
             ctx,
@@ -6385,6 +6728,7 @@ impl ChatAnkiToolExecutor {
             preferred_resource_ids,
             args.max_cards,
             args.extra_requirements,
+            tuning,
         )
         .await
     }
@@ -6406,27 +6750,42 @@ impl ChatAnkiToolExecutor {
         preferred_resource_ids: Option<Vec<String>>,
         max_cards: Option<i32>,
         extra_requirements: Option<String>,
+        mut tuning: ChatAnkiGenerationTuning,
     ) -> Result<ToolResultInfo, String> {
         // 归一化附加要求：空白输入等价于未提供，避免注入空的“补充要求”段。
         let extra_requirements = extra_requirements
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
-        // E3 修复：maxCards 超过单次硬上限时 clamp 到 100（与 EnhancedAnkiService 校验一致），
-        // 避免底层服务直接拒绝整个请求。
-        const MAX_CARDS_HARD_LIMIT: i32 = 100;
-        let max_cards = max_cards.map(|v| {
-            if v > MAX_CARDS_HARD_LIMIT {
-                log::warn!(
-                    "[ChatAnkiToolExecutor] maxCards {} exceeds hard limit, clamped to {}",
-                    v,
-                    MAX_CARDS_HARD_LIMIT
+        // outputProtocol 归一化：非法值直接失败（禁止静默回退 delimiter）。
+        match normalize_output_protocol_arg(tuning.output_protocol.as_deref()) {
+            Ok(normalized) => tuning.output_protocol = normalized,
+            Err(error_msg) => {
+                ctx.emit_tool_call_error(&error_msg);
+                let result = ToolResultInfo::failure(
+                    Some(call.id.clone()),
+                    Some(ctx.block_id.clone()),
+                    call.name.clone(),
+                    call.arguments.clone(),
+                    error_msg,
+                    start_time.elapsed().as_millis() as u64,
                 );
-                MAX_CARDS_HARD_LIMIT
-            } else {
-                v
+                let _ = ctx.save_tool_block(&result);
+                return Ok(result);
             }
-        });
+        }
+
+        // E3 修复升级（Round 4 #1）：maxCards 超过单次硬上限时 clamp 到 100
+        //（与 EnhancedAnkiService 校验一致），并生成结构化 warning（requested/applied）
+        // 回传工具输出 + 预览块，禁止只打日志静默截断。
+        let (max_cards, max_cards_warning) = clamp_max_cards_arg(max_cards);
+        if let Some(warning) = max_cards_warning.as_ref() {
+            log::warn!(
+                "[ChatAnkiToolExecutor] maxCards clamped: {}",
+                warning["messageParams"]
+            );
+        }
+        let initial_warnings: Vec<Value> = max_cards_warning.iter().cloned().collect();
 
         // Minimal validation (fail fast).
         if goal.trim().is_empty() {
@@ -6527,6 +6886,7 @@ impl ChatAnkiToolExecutor {
         let initial_tool_output = json!({
             "schemaVersion": 2,
             "stateRevision": next_chatanki_state_revision(),
+            "warnings": initial_warnings.clone(),
             "cards": [],
             "documentId": pre_allocated_document_id,
             "templateId": template_id_for_ui.clone(),
@@ -6589,12 +6949,18 @@ impl ChatAnkiToolExecutor {
 
         // Return tool result quickly to avoid tool timeout.
         let duration_ms = start_time.elapsed().as_millis() as u64;
-        let tool_output = json!({
+        let mut tool_output = json!({
             "status": "started",
             "ankiBlockId": anki_block_id,
             "documentId": pre_allocated_document_id,
             "message": "ChatAnki pipeline started (background)",
         });
+        // maxCards 钳制必须立刻回传给调用方（requested/applied），不得等终态。
+        if !initial_warnings.is_empty() {
+            if let Some(obj) = tool_output.as_object_mut() {
+                obj.insert("warnings".to_string(), json!(initial_warnings.clone()));
+            }
+        }
 
         ctx.emit_tool_call_end(Some(
             json!({ "result": tool_output, "durationMs": duration_ms }),
@@ -6652,6 +7018,8 @@ impl ChatAnkiToolExecutor {
                 pre_allocated_document_id: pre_doc_id_for_spawn.clone(),
                 max_cards,
                 extra_requirements,
+                tuning,
+                initial_warnings,
                 cancel_token: pipeline_cancel_token,
             })
             .await
@@ -6719,6 +7087,10 @@ struct BackgroundParams {
     max_cards: Option<i32>,
     /// 可选：附加生成要求（追加到高优先级 requirements）
     extra_requirements: Option<String>,
+    /// Round 4 #1：run/start 透出的生成调优参数（协议/内容形态/QA/FSRS/视觉/图片上限/偏好记忆）
+    tuning: ChatAnkiGenerationTuning,
+    /// 启动阶段已产生的 warnings（如 maxCards 钳制），作为管线 warnings 的种子
+    initial_warnings: Vec<Value>,
     /// 取消令牌：kill switch / 聊天取消触发时走非破坏性取消（保留已生成卡片）
     cancel_token: CancellationToken,
 }
@@ -6956,11 +7328,16 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         .input
         .clone()
     {
-        PipelineInput::Content(content) => {
-            (ChatAnkiRoute::SimpleText, content, None, Vec::new(), None)
-        }
+        PipelineInput::Content(content) => (
+            ChatAnkiRoute::SimpleText,
+            content,
+            None,
+            params.initial_warnings.clone(),
+            None,
+        ),
         PipelineInput::VfsRef { extra_content } => 'vfs_block: {
-            let mut warnings: Vec<Value> = Vec::new();
+            // 启动阶段的 warnings（如 maxCards 钳制）作为种子，保证进入预览块终态。
+            let mut warnings: Vec<Value> = params.initial_warnings.clone();
             let mut content_error_key: Option<String> = None;
 
             let extra_content =
@@ -7328,13 +7705,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     }
                     let merged_text = merge_with_extra(extract_result.text);
                     if merged_text.trim().is_empty() {
+                        let image_limit = params.tuning.effective_max_images(12);
                         let image_payloads = collect_image_payloads(
                             &vfs_conn,
                             vfs_db.blobs_dir(),
                             &merged_ref_data.refs,
-                            12,
+                            image_limit,
                         );
-                        add_truncation_warning(&mut warnings, &image_payloads, 12);
+                        add_truncation_warning(&mut warnings, &image_payloads, image_limit);
                         if !image_payloads.payloads.is_empty() {
                             route = ChatAnkiRoute::VlmFull;
                             emit_anki_cards_chunk(
@@ -7342,7 +7720,10 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                                 &params.anki_block_id,
                                 json!({ "progress": { "stage": "importing", "route": route.as_str(), "messageKey": "blocks.ankiCards.progress.messages.vlmExtracting" } }),
                             );
-                            let prompt = build_import_prompt(&params.goal);
+                            let prompt = build_import_prompt(
+                                &params.goal,
+                                params.tuning.visual_hint.as_deref(),
+                            );
                             let output = params
                                 .llm_manager
                                 .call_model2_raw_prompt(
@@ -7352,7 +7733,9 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                                 )
                                 .await
                                 .map_err(|e| e.to_string())?;
-                            let combined = merge_with_extra(output.assistant_message);
+                            let combined = merge_with_extra(strip_vlm_chunk_markers(
+                                &output.assistant_message,
+                            ));
                             break 'vfs_block (
                                 route,
                                 combined,
@@ -7378,13 +7761,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         warnings.push(text_truncated_warning(&extract_result));
                     }
                     let text = merge_with_extra(extract_result.text);
+                    let image_limit = params.tuning.effective_max_images(6);
                     let image_payloads = collect_image_payloads(
                         &vfs_conn,
                         vfs_db.blobs_dir(),
                         &merged_ref_data.refs,
-                        6,
+                        image_limit,
                     );
-                    add_truncation_warning(&mut warnings, &image_payloads, 6);
+                    add_truncation_warning(&mut warnings, &image_payloads, image_limit);
                     if image_payloads.payloads.is_empty() {
                         let fallback_route = ChatAnkiRoute::SimpleText;
                         emit_anki_cards_chunk(
@@ -7406,7 +7790,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         &params.anki_block_id,
                         json!({ "progress": { "stage": "importing", "route": route.as_str(), "messageKey": "blocks.ankiCards.progress.messages.vlmExtracting" } }),
                     );
-                    let prompt = build_vlm_light_prompt(&params.goal);
+                    let prompt =
+                        build_vlm_light_prompt(&params.goal, params.tuning.visual_hint.as_deref());
                     let output = params
                         .llm_manager
                         .call_model2_raw_prompt(
@@ -8483,15 +8868,15 @@ const ROUTE_PLAN_MAX_LISTED_REFS: usize = 20;
 
 /// plan_route 的解析结果（与 LLM 输出 JSON 一一对应）。
 #[derive(Debug, Clone)]
-struct RoutePlan {
-    route: ChatAnkiRoute,
-    confidence: f32,
-    glossary_mode: Option<bool>,
-    reason: Option<String>,
+pub struct RoutePlan {
+    pub route: ChatAnkiRoute,
+    pub confidence: f32,
+    pub glossary_mode: Option<bool>,
+    pub reason: Option<String>,
 }
 
 impl RoutePlan {
-    fn is_confident(&self) -> bool {
+    pub fn is_confident(&self) -> bool {
         self.confidence >= ROUTE_PLAN_MIN_CONFIDENCE
     }
 
@@ -8634,7 +9019,7 @@ fn build_route_plan_prompt(goal: &str, ref_data: &VfsContextRefData, text_sample
 ///
 /// 容错：允许 ```json 代码块包裹、允许 JSON 前后有少量说明文字。
 /// route 非法 / confidence 缺失或超出 [0,1] 一律返回 None（保守回退启发式）。
-fn parse_route_plan_response(response: &str) -> Option<RoutePlan> {
+pub fn parse_route_plan_response(response: &str) -> Option<RoutePlan> {
     let cleaned = response
         .trim()
         .trim_start_matches("```json")
@@ -8675,7 +9060,7 @@ fn parse_route_plan_response(response: &str) -> Option<RoutePlan> {
 
 /// 最终路由的来源（Round 3 #7：管线 debug 输出与 chatanki_analyze 输出契约共用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RouteSource {
+pub enum RouteSource {
     /// 调用方显式传入 route 强制指定。
     Forced,
     /// plan_route 的高置信度（>= ROUTE_PLAN_MIN_CONFIDENCE）LLM 计划。
@@ -8685,7 +9070,7 @@ enum RouteSource {
 }
 
 impl RouteSource {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Forced => "forced",
             Self::Llm => "llm",
@@ -8700,18 +9085,18 @@ impl RouteSource {
 /// [`resolve_route_decision`] 产出本结构，保证「分析预估」与「实际制卡」
 /// 永远同源，消灭 analyze 永远推荐 simple_text 的漂移。
 #[derive(Debug, Clone)]
-struct RouteDecision {
-    route: ChatAnkiRoute,
-    source: RouteSource,
+pub struct RouteDecision {
+    pub route: ChatAnkiRoute,
+    pub source: RouteSource,
     /// 仅 source=Llm 时有值（计划置信度）。
-    confidence: Option<f32>,
+    pub confidence: Option<f32>,
     /// 仅 source=Llm 时可能有值（高置信度计划的 glossaryMode 提示）。
-    glossary_mode_hint: Option<bool>,
-    reason: Option<String>,
+    pub glossary_mode_hint: Option<bool>,
+    pub reason: Option<String>,
 }
 
 impl RouteDecision {
-    fn forced(route: ChatAnkiRoute) -> Self {
+    pub fn forced(route: ChatAnkiRoute) -> Self {
         Self {
             route,
             source: RouteSource::Forced,
@@ -8744,7 +9129,7 @@ fn heuristic_route_reason(ref_data: &VfsContextRefData) -> String {
 /// 路由优先级链：forced_route > 高置信度 LLM 计划 > decide_route 启发式。
 ///
 /// 这是管线与 chatanki_analyze 共用的唯一路由决策入口。
-fn resolve_route_decision(
+pub fn resolve_route_decision(
     forced_route: Option<ChatAnkiRoute>,
     llm_plan: Option<&RoutePlan>,
     ref_data: &VfsContextRefData,
@@ -8849,7 +9234,7 @@ fn resolve_analyze_ref_data(
 ///   这些由管线内自算，run/start 没有对应参数，仅供 agent 解释预估；
 /// - 能回传 `chatanki_run` 的只有 `recommended.route`（作 route 强制）、
 ///   `recommended.maxCards`（1..=100）与调用方自己的 goal。
-fn build_analyze_output(
+pub fn build_analyze_output(
     goal: Option<&str>,
     content: &str,
     ref_data: Option<&VfsContextRefData>,
@@ -14509,6 +14894,200 @@ mod tests {
             .expect_err("cross-session access must fail");
         assert_eq!(error, "blocks.ankiCards.errors.statusNotFound");
         assert!(verify_document_ownership(&db, "doc-owner", "session-other").is_err());
+    }
+
+    /// Round 4 #4（Multi-agent Phase 2）契约：worker 安装了同 workspace
+    /// coordinator 只读作用域后，get_cards / status 的只读预检把有效读会话
+    /// 解析为 coordinator；未安装作用域的会话保持默认独占语义。
+    #[test]
+    fn test_workspace_card_read_scope_allows_same_workspace_coordinator_documents() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-scope-owner", "session-scope-coordinator");
+
+        // 未安装作用域：worker 读不到 coordinator 文档
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-owner", "session-scope-worker")
+                .expect_err("no scope installed"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+
+        let _guard = install_workspace_card_read_scope(
+            "session-scope-worker",
+            "ws-scope",
+            "session-scope-coordinator",
+        )
+        .expect("install scope");
+
+        // 命中作用域：有效读会话 = coordinator，且能真实读回卡片快照
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-owner", "session-scope-worker")
+                .expect("scope grants read"),
+            "session-scope-coordinator"
+        );
+        assert!(db
+            .get_cards_for_document_for_session("doc-scope-owner", "session-scope-coordinator")
+            .expect("load snapshot")
+            .is_some());
+
+        // 拥有者自身路径不受影响
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-owner", "session-scope-coordinator")
+                .expect("owner keeps direct access"),
+            "session-scope-coordinator"
+        );
+    }
+
+    /// 跨 workspace 拒绝契约：worker A 的作用域只指向 coordinator A；另一个
+    /// workspace 的 coordinator B 文档继续 statusNotFound（不泄露存在性），
+    /// 双向成立。
+    #[test]
+    fn test_workspace_card_read_scope_rejects_cross_workspace_documents() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-scope-a", "session-coordinator-a");
+        seed_chatanki_document(&db, "doc-scope-b", "session-coordinator-b");
+
+        let _guard_a =
+            install_workspace_card_read_scope("session-worker-a", "ws-a", "session-coordinator-a")
+                .expect("install scope A");
+        let _guard_b =
+            install_workspace_card_read_scope("session-worker-b", "ws-b", "session-coordinator-b")
+                .expect("install scope B");
+
+        // 同 workspace：可读
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-a", "session-worker-a")
+                .expect("same-workspace read"),
+            "session-coordinator-a"
+        );
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-b", "session-worker-b")
+                .expect("same-workspace read"),
+            "session-coordinator-b"
+        );
+        // 跨 workspace：双向拒绝
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-b", "session-worker-a")
+                .expect_err("cross-workspace document must stay hidden"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-a", "session-worker-b")
+                .expect_err("cross-workspace document must stay hidden"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+    }
+
+    /// 混合归属文档不因作用域而放宽：文档只要有任务不属于 coordinator，
+    /// worker 的只读预检同样拒绝（与拥有者本人的混合归属语义一致）。
+    #[test]
+    fn test_workspace_card_read_scope_mixed_owner_document_stays_hidden() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-scope-mixed", "session-mixed-coordinator");
+        seed_additional_chatanki_task(
+            &db,
+            "doc-scope-mixed",
+            "task-scope-mixed-foreign",
+            1,
+            "session-mixed-foreign",
+        );
+
+        let _guard = install_workspace_card_read_scope(
+            "session-mixed-worker",
+            "ws-mixed",
+            "session-mixed-coordinator",
+        )
+        .expect("install scope");
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-mixed", "session-mixed-worker")
+                .expect_err("mixed-owner document must stay hidden"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+    }
+
+    /// 写路径永不放宽（双向 fail-closed 之「拦截」向）：只读作用域存在时，
+    /// 写工具的所有权预检（verify_document_ownership /
+    /// load_owned_chatanki_card / update_anki_card_if_version_for_session）
+    /// 对 worker 依旧拒绝，卡片内容保持原样。
+    #[test]
+    fn test_workspace_card_read_scope_never_relaxes_write_paths() {
+        let (db, _tmp) = make_test_db();
+        let task_id = seed_chatanki_document(&db, "doc-scope-write", "session-write-coordinator");
+        let mut card = make_chatanki_card("card-scope-write", &task_id, "before", "answer");
+        assert!(db.insert_anki_card(&card).expect("insert card"));
+
+        let _guard = install_workspace_card_read_scope(
+            "session-write-worker",
+            "ws-write",
+            "session-write-coordinator",
+        )
+        .expect("install scope");
+
+        // 读预检放行……
+        assert!(
+            resolve_chatanki_read_session(&db, "doc-scope-write", "session-write-worker").is_ok()
+        );
+        // ……但全部写预检维持拒绝
+        assert!(verify_document_ownership(&db, "doc-scope-write", "session-write-worker").is_err());
+        assert_eq!(
+            load_owned_chatanki_card(&db, "card-scope-write", "session-write-worker")
+                .expect_err("write preflight must reject scoped worker"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
+        let expected_version = card.updated_at.clone();
+        card.front = "must not be written".to_string();
+        let outcome = db
+            .update_anki_card_if_version_for_session(
+                &card,
+                &expected_version,
+                "session-write-worker",
+            )
+            .expect("ownership-aware update");
+        assert!(matches!(outcome, AnkiCardVersionUpdate::NotFound));
+        let current = db
+            .get_anki_card_with_document("card-scope-write")
+            .expect("reload")
+            .expect("card remains")
+            .0;
+        assert_eq!(current.front, "before");
+    }
+
+    /// 安装 fail-closed + guard 生命周期：空 id / worker 自映射拒绝安装；
+    /// guard drop 即撤销作用域（管线结束后 worker 立刻失去只读豁免）。
+    #[test]
+    fn test_workspace_card_read_scope_install_fail_closed_and_guard_drop() {
+        let (db, _tmp) = make_test_db();
+        seed_chatanki_document(&db, "doc-scope-guard", "session-guard-coordinator");
+
+        assert!(install_workspace_card_read_scope("", "ws-g", "session-guard-coordinator").is_err());
+        assert!(install_workspace_card_read_scope("session-guard-worker", "", "coord").is_err());
+        assert!(install_workspace_card_read_scope("session-guard-worker", "ws-g", "").is_err());
+        assert!(install_workspace_card_read_scope(
+            "session-guard-worker",
+            "ws-g",
+            "session-guard-worker",
+        )
+        .is_err());
+
+        {
+            let _guard = install_workspace_card_read_scope(
+                "session-guard-worker",
+                "ws-g",
+                "session-guard-coordinator",
+            )
+            .expect("install scope");
+            assert!(resolve_chatanki_read_session(
+                &db,
+                "doc-scope-guard",
+                "session-guard-worker"
+            )
+            .is_ok());
+        }
+        // guard 已 drop：作用域撤销，回到默认拒绝
+        assert_eq!(
+            resolve_chatanki_read_session(&db, "doc-scope-guard", "session-guard-worker")
+                .expect_err("scope must be revoked after guard drop"),
+            "blocks.ankiCards.errors.statusNotFound"
+        );
     }
 
     #[test]

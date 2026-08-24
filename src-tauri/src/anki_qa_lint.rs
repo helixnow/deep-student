@@ -28,7 +28,8 @@
 //! | 6 | 最小信息原则（front 过长） | `front_too_long` | Warn |
 //! | 7 | 占位符残留 | `placeholder_residue` | Error |
 //! | 8 | tags 空 | `tags_empty` | Info |
-//! | 9 | 同文档重复卡（归一化 front 指纹） | `duplicate_card` | Warn |
+//! | 9 | 同文档重复卡（归一化 front 指纹） | `duplicate_in_document` | Warn |
+//! | 9b | 同文档近重复卡（字符 bigram Jaccard） | `near_duplicate` | Warn |
 //! | 10 | 字段 min/max/allowed/regex | `field_rule_*` | Warn |
 //! | 11 | 选择题缺选项/答案不在选项中 | `mcq_*` | Error/Warn |
 //! | 12 | 语言混杂（低置信启发式） | `mixed_language` | Info（永不拒绝） |
@@ -44,15 +45,27 @@
 //! // extra_fields 含 _qa_flags 时，流式循环已有逻辑自动累计 StreamStats::flagged_cards
 //! ```
 //!
-//! 文档级重复检测（规则 9）由 `FingerprintTracker` 提供：调用方在每个
-//! 文档/任务的生命周期内持有一个 tracker，逐卡调用
-//! `lint_card_with_tracker`。落库层的 DB 唯一索引仍是最终防线，
-//! tracker 的价值是在 flag 里显式留下 `duplicate_card` 语义。
+//! 文档级重复/近重复检测（规则 9/9b，Round 4 #3 接入真实生成路径）由
+//! `FingerprintTracker` 提供，有两种持有方式：
+//!
+//! 1. **显式持有**：调用方在文档/任务生命周期内持有一个 tracker，逐卡调用
+//!    `lint_card_with_tracker`；
+//! 2. **文档级 registry**（生产路径）：`observe_document_card(document_id, key)`
+//!    从进程级 registry 按 document_id 取共享 tracker——同一文档的所有 segment
+//!    task（含统一重试任务、暂停后 resume 的任务）天然共享同一份指纹状态，
+//!    不会每个 task 重置。文档完成/取消/删除时由调度层调用
+//!    `release_document_tracker` 释放。
+//!
+//! 重复/近重复只打 flag（Warn）不丢卡；落库层的 DB 唯一索引仍是最终防线，
+//! tracker 的价值是在 flag 里显式留下 `duplicate_in_document` / `near_duplicate`
+//! 语义。registry 内部所有锁异常均被吞掉（poison 恢复），检测失败最坏结果是
+//! 少打一个 flag，绝不影响卡片入库。
 
 use crate::models::FieldExtractionRule;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 /// 与 `streaming_anki_service::QA_FLAGS_FIELD` 保持一致的键名。
 /// 此处独立声明避免模块间循环依赖；两处均有编译期断言测试守护。
@@ -101,7 +114,7 @@ impl Default for LintLevel {
 pub struct LintIssue {
     /// 机器可读违规码，snake_case，稳定不变（前端按码分类展示/过滤）。
     pub code: String,
-    /// 违规字段名；卡片级违规（如 duplicate_card）用 `"card"`。
+    /// 违规字段名；卡片级违规（如 duplicate_in_document）用 `"card"`。
     pub field: String,
     /// 人类可读中文说明。
     pub message: String,
@@ -232,7 +245,7 @@ pub fn lint_card(input: &CardLintInput, cfg: &LintConfig) -> Vec<LintIssue> {
     issues
 }
 
-/// 带文档级重复检测的 lint：先跑无状态规则，再查/登记 front 指纹。
+/// 带文档级重复/近重复检测的 lint：先跑无状态规则，再查/登记 front 指纹。
 ///
 /// `tracker` 应与文档/任务同生命周期（每个文档一个实例）。
 pub fn lint_card_with_tracker(
@@ -241,15 +254,43 @@ pub fn lint_card_with_tracker(
     tracker: &mut FingerprintTracker,
 ) -> Vec<LintIssue> {
     let mut issues = lint_card(input, cfg);
-    let key_source = match input.text {
+    let observation = tracker.observe(duplicate_key_source(input));
+    issues.extend(issues_from_observation(&observation));
+    issues
+}
+
+/// 指纹 key 的选取规则：cloze 卡优先用 Text 字段（front 可能为空或为渲染视图），
+/// 否则用 front。与 `lint_card_with_tracker` / 生产路径保持同一语义。
+pub fn duplicate_key_source<'a>(input: &CardLintInput<'a>) -> &'a str {
+    match input.text {
         Some(t) if !t.trim().is_empty() => t,
         _ => input.front,
-    };
-    if tracker.check_and_insert(key_source) {
+    }
+}
+
+/// 把指纹观察结果转换为结构化 lint 违规。
+///
+/// - 精确重复 → `duplicate_in_document`（Warn，不丢卡）；
+/// - 近重复 → `near_duplicate`（Warn，不丢卡），message 携带相似度百分比。
+///
+/// 精确重复时不再叠加 near_duplicate（相似度恒为 1.0，属重复信息）。
+pub fn issues_from_observation(observation: &FingerprintObservation) -> Vec<LintIssue> {
+    let mut issues = Vec::new();
+    if observation.exact_duplicate {
         issues.push(LintIssue::new(
-            "duplicate_card",
+            "duplicate_in_document",
             "card",
             "同文档内已存在归一化 front 相同的卡片".to_string(),
+            LintSeverity::Warn,
+        ));
+    } else if let Some(similarity) = observation.near_duplicate {
+        issues.push(LintIssue::new(
+            "near_duplicate",
+            "card",
+            format!(
+                "与同文档已有卡片高度相似（字符 bigram Jaccard {:.0}%），疑似近重复",
+                similarity * 100.0
+            ),
             LintSeverity::Warn,
         ));
     }
@@ -394,32 +435,113 @@ pub fn lint_field_against_rule(
 }
 
 // ============================================================================
-// 规则 9：文档级重复卡指纹
+// 规则 9/9b：文档级重复卡指纹 + 近重复检测
 // ============================================================================
 
-/// 同文档归一化 front 指纹去重器。每个文档/任务持有一个实例。
+/// 近重复判定默认阈值：归一化字符 bigram 集合的 Jaccard 相似度 ≥ 0.82 视为近重复。
+///
+/// 取值依据：小编辑（增删两三个字、加语气词）后的问句相似度普遍落在 0.85+；
+/// 而问同类不同对象的卡（"什么是TCP" vs "什么是UDP"）在 0.3 以下，
+/// 0.82 在两簇之间留有余量。
+pub const DEFAULT_NEAR_DUPLICATE_THRESHOLD: f64 = 0.82;
+
+/// 近重复扫描登记的指纹上限：超过后新卡不再加入 bigram 索引
+/// （精确重复检测不受影响），把单卡近重复检测成本封顶在
+/// O(max_near_tracked × 平均 bigram 数)，防止超大文档退化为 O(n²) 长尾。
+pub const DEFAULT_MAX_NEAR_TRACKED: usize = 2048;
+
+/// 单次指纹观察的结果。
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct FingerprintObservation {
+    /// 归一化指纹与同文档已登记卡完全相同。
+    pub exact_duplicate: bool,
+    /// 非精确重复但与某张已登记卡的 bigram Jaccard 相似度达到阈值时为
+    /// `Some(最高相似度)`；精确重复时恒为 `None`（不重复报告）。
+    pub near_duplicate: Option<f64>,
+}
+
+/// 同文档归一化 front 指纹去重器 + 近重复检测器。每个文档持有一个实例
+/// （显式持有或经 `document_tracker` registry 跨 segment task 共享）。
 ///
 /// 指纹 = front（或 cloze Text）经 `normalize_for_compare` 后的字符串。
 /// 归一化会剥离 HTML 标签、折叠空白、去标点、转小写，
 /// 因此 "什么是TCP？" 与 "<b>什么是 tcp</b>" 视为同一张卡。
-#[derive(Debug, Default)]
+///
+/// 近重复 = 归一化指纹的字符 bigram 集合与任一已登记指纹的 Jaccard
+/// 相似度 ≥ 阈值。字符 bigram 对中文（无空格分词）与英文同样适用。
+#[derive(Debug)]
 pub struct FingerprintTracker {
     seen: HashSet<String>,
+    /// 已登记指纹的 bigram 集合（近重复扫描索引，长度受 max_near_tracked 封顶）。
+    shingle_sets: Vec<HashSet<String>>,
+    near_duplicate_threshold: f64,
+    max_near_tracked: usize,
+}
+
+impl Default for FingerprintTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FingerprintTracker {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            seen: HashSet::new(),
+            shingle_sets: Vec::new(),
+            near_duplicate_threshold: DEFAULT_NEAR_DUPLICATE_THRESHOLD,
+            max_near_tracked: DEFAULT_MAX_NEAR_TRACKED,
+        }
     }
 
-    /// 登记指纹；若之前已见过相同指纹则返回 true（= 重复）。
-    /// 空白/空指纹永远返回 false（空卡由 empty_front 规则处理，不算重复）。
-    pub fn check_and_insert(&mut self, front: &str) -> bool {
-        let fp = normalize_for_compare(front);
+    /// 自定义近重复阈值（clamp 到 (0, 1]；1.0 等价于只做精确重复检测）。
+    pub fn with_near_duplicate_threshold(threshold: f64) -> Self {
+        let mut tracker = Self::new();
+        tracker.near_duplicate_threshold = threshold.clamp(f64::EPSILON, 1.0);
+        tracker
+    }
+
+    /// 观察一张卡的指纹 key（front 或 cloze Text）：
+    /// 返回精确重复/近重复判定，并把新指纹登记进索引。
+    ///
+    /// - 空白/空指纹永远返回全 false（空卡由 empty_front 规则处理，不算重复）；
+    /// - 精确重复不重复登记（首次登记时 bigram 已入索引）；
+    /// - 近重复卡照常登记（后续与它相似的卡也应被 flag）。
+    pub fn observe(&mut self, key_source: &str) -> FingerprintObservation {
+        let fp = normalize_for_compare(key_source);
         if fp.is_empty() {
-            return false;
+            return FingerprintObservation::default();
         }
-        !self.seen.insert(fp)
+        if !self.seen.insert(fp.clone()) {
+            return FingerprintObservation {
+                exact_duplicate: true,
+                near_duplicate: None,
+            };
+        }
+
+        let shingles = char_bigrams(&fp);
+        let mut best_similarity = 0.0_f64;
+        for prev in &self.shingle_sets {
+            let similarity = jaccard(&shingles, prev);
+            if similarity > best_similarity {
+                best_similarity = similarity;
+            }
+        }
+        if self.shingle_sets.len() < self.max_near_tracked {
+            self.shingle_sets.push(shingles);
+        }
+
+        FingerprintObservation {
+            exact_duplicate: false,
+            near_duplicate: (best_similarity >= self.near_duplicate_threshold)
+                .then_some(best_similarity),
+        }
+    }
+
+    /// 登记指纹；若之前已见过相同指纹则返回 true（= 精确重复）。
+    /// 兼容旧调用方的薄封装，内部走 [`FingerprintTracker::observe`]。
+    pub fn check_and_insert(&mut self, front: &str) -> bool {
+        self.observe(front).exact_duplicate
     }
 
     pub fn len(&self) -> usize {
@@ -429,6 +551,80 @@ impl FingerprintTracker {
     pub fn is_empty(&self) -> bool {
         self.seen.is_empty()
     }
+}
+
+/// 归一化指纹的字符 bigram 集合；不足 2 字符时以整串为单一 shingle，
+/// 避免单字卡产生空集合（空集合 Jaccard 恒 0，会漏检单字重复的近邻）。
+fn char_bigrams(fp: &str) -> HashSet<String> {
+    let chars: Vec<char> = fp.chars().collect();
+    if chars.len() < 2 {
+        return std::iter::once(fp.to_string()).collect();
+    }
+    chars.windows(2).map(|w| w.iter().collect()).collect()
+}
+
+/// 两个 shingle 集合的 Jaccard 相似度（|A∩B| / |A∪B|）。空集合恒 0。
+fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let intersection = a.intersection(b).count();
+    let union = a.len() + b.len() - intersection;
+    intersection as f64 / union as f64
+}
+
+// ============================================================================
+// 文档级 tracker registry（生产路径：跨 segment task 共享指纹状态）
+// ============================================================================
+
+/// 进程级文档 tracker 注册表。key = document_id。
+///
+/// 同一文档的所有 segment task 并发生成时（EnhancedAnkiService 并发度 5）
+/// 经此共享同一个 tracker，暂停/恢复与统一重试任务也命中同一实例。
+/// 文档完成/取消/删除时由调度层调用 `release_document_tracker` 释放。
+static DOCUMENT_TRACKERS: LazyLock<Mutex<HashMap<String, Arc<Mutex<FingerprintTracker>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 拿 registry 锁；poison（持锁线程 panic）时恢复内部数据继续用——
+/// tracker 只是 flag 辅助状态，宁可带着可能不完整的状态继续，也不放大故障。
+fn registry_lock() -> MutexGuard<'static, HashMap<String, Arc<Mutex<FingerprintTracker>>>> {
+    DOCUMENT_TRACKERS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 取（或懒创建）document_id 对应的共享 tracker。
+pub fn document_tracker(document_id: &str) -> Arc<Mutex<FingerprintTracker>> {
+    registry_lock()
+        .entry(document_id.to_string())
+        .or_insert_with(|| Arc::new(Mutex::new(FingerprintTracker::new())))
+        .clone()
+}
+
+/// 释放 document_id 对应的 tracker（文档完成/取消/删除时调用，防泄漏）。
+pub fn release_document_tracker(document_id: &str) {
+    registry_lock().remove(document_id);
+}
+
+/// 生产路径入口：对一张卡的指纹 key 做文档级重复/近重复检测，
+/// 返回应打的 lint flag 列表（空 = 干净）。
+///
+/// 失败隔离保证：本函数**永不返回错误、永不 panic 传播锁异常**
+/// （registry 与 tracker 两级锁的 poison 均被恢复），
+/// document_id 或 key 为空白时为 no-op。检测失败最坏结果是少打 flag，
+/// 调用方无需任何错误处理，卡片入库路径完全不受影响。
+pub fn observe_document_card(document_id: &str, key_source: &str) -> Vec<LintIssue> {
+    if document_id.trim().is_empty() || key_source.trim().is_empty() {
+        return Vec::new();
+    }
+    let tracker = document_tracker(document_id);
+    let observation = {
+        let mut guard = tracker
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.observe(key_source)
+    };
+    issues_from_observation(&observation)
 }
 
 // ============================================================================
@@ -1290,7 +1486,7 @@ mod tests {
         assert!(codes(&issues).contains(&"tags_empty"));
     }
 
-    // -------- 规则 9：重复卡 --------
+    // -------- 规则 9/9b：重复卡 + 近重复 --------
 
     #[test]
     fn duplicate_front_detected_by_tracker() {
@@ -1301,12 +1497,12 @@ mod tests {
 
         let first = basic_input("什么是 TCP？", "传输控制协议", &t, &extras);
         let issues1 = lint_card_with_tracker(&first, &cfg, &mut tracker);
-        assert!(!codes(&issues1).contains(&"duplicate_card"));
+        assert!(!codes(&issues1).contains(&"duplicate_in_document"));
 
         // HTML/空白/大小写差异不影响指纹
         let second = basic_input("<b>什么是TCP</b>", "传输控制协议", &t, &extras);
         let issues2 = lint_card_with_tracker(&second, &cfg, &mut tracker);
-        assert!(codes(&issues2).contains(&"duplicate_card"));
+        assert!(codes(&issues2).contains(&"duplicate_in_document"));
         assert_eq!(tracker.len(), 1);
     }
 
@@ -1320,8 +1516,218 @@ mod tests {
         let b = basic_input("什么是 UDP？", "用户数据报协议", &t, &extras);
         lint_card_with_tracker(&a, &cfg, &mut tracker);
         let issues = lint_card_with_tracker(&b, &cfg, &mut tracker);
-        assert!(!codes(&issues).contains(&"duplicate_card"));
+        assert!(!codes(&issues).contains(&"duplicate_in_document"));
+        assert!(!codes(&issues).contains(&"near_duplicate"));
         assert_eq!(tracker.len(), 2);
+    }
+
+    #[test]
+    fn observe_first_sighting_is_clean() {
+        let mut tracker = FingerprintTracker::new();
+        let obs = tracker.observe("细胞膜的主要成分是什么？");
+        assert!(!obs.exact_duplicate);
+        assert!(obs.near_duplicate.is_none());
+        assert_eq!(tracker.len(), 1);
+    }
+
+    #[test]
+    fn near_duplicate_small_edit_flagged_with_similarity() {
+        let mut tracker = FingerprintTracker::new();
+        tracker.observe("细胞膜的主要成分是磷脂双分子层");
+        // 小编辑（追加两字）→ bigram Jaccard 13/15 ≈ 0.87 ≥ 0.82
+        let obs = tracker.observe("细胞膜的主要成分是磷脂双分子层结构");
+        assert!(!obs.exact_duplicate);
+        let sim = obs.near_duplicate.expect("小编辑必须判为近重复");
+        assert!(sim >= DEFAULT_NEAR_DUPLICATE_THRESHOLD && sim < 1.0, "sim={}", sim);
+
+        // 经 lint 输出为 near_duplicate flag（Warn，不丢卡）
+        let issues = issues_from_observation(&obs);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].code, "near_duplicate");
+        assert_eq!(issues[0].severity, LintSeverity::Warn);
+        assert!(issues[0].message.contains('%'), "message 应携带相似度百分比");
+    }
+
+    #[test]
+    fn exact_duplicate_not_double_flagged_as_near_duplicate() {
+        let mut tracker = FingerprintTracker::new();
+        tracker.observe("什么是操作系统？");
+        let obs = tracker.observe("什么是操作系统？");
+        assert!(obs.exact_duplicate);
+        assert!(obs.near_duplicate.is_none(), "精确重复不叠加 near_duplicate");
+        let issues = issues_from_observation(&obs);
+        assert_eq!(codes(&issues), vec!["duplicate_in_document"]);
+    }
+
+    #[test]
+    fn near_duplicate_threshold_is_configurable() {
+        // 阈值拉满到 1.0：小编辑不再判近重复
+        let mut strict = FingerprintTracker::with_near_duplicate_threshold(1.0);
+        strict.observe("细胞膜的主要成分是磷脂双分子层");
+        let obs = strict.observe("细胞膜的主要成分是磷脂双分子层结构");
+        assert!(obs.near_duplicate.is_none());
+
+        // 阈值放宽到 0.4：语序调整也会被捕获
+        let mut loose = FingerprintTracker::with_near_duplicate_threshold(0.4);
+        loose.observe("什么是tcp协议");
+        let obs = loose.observe("tcp协议是什么");
+        assert!(obs.near_duplicate.is_some(), "低阈值应捕获语序调整");
+    }
+
+    #[test]
+    fn empty_or_whitespace_front_never_flagged_as_duplicate() {
+        let mut tracker = FingerprintTracker::new();
+        assert_eq!(tracker.observe(""), FingerprintObservation::default());
+        assert_eq!(tracker.observe("   "), FingerprintObservation::default());
+        assert_eq!(tracker.observe("<b> </b>"), FingerprintObservation::default());
+        assert!(tracker.is_empty(), "空指纹不得登记");
+    }
+
+    #[test]
+    fn cloze_text_field_preferred_as_duplicate_key() {
+        let extras = empty_extras();
+        let t = tags(&["化学"]);
+        let cfg = LintConfig::default();
+        let mut tracker = FingerprintTracker::new();
+        // 两张卡 front 不同但 cloze Text 相同 → 判重复
+        let a = CardLintInput {
+            front: "渲染视图A",
+            back: "",
+            text: Some("水的沸点是{{c1::100}}摄氏度"),
+            tags: &t,
+            extra_fields: &extras,
+        };
+        let b = CardLintInput {
+            front: "渲染视图B",
+            back: "",
+            text: Some("水的沸点是{{c1::100}}摄氏度"),
+            tags: &t,
+            extra_fields: &extras,
+        };
+        lint_card_with_tracker(&a, &cfg, &mut tracker);
+        let issues = lint_card_with_tracker(&b, &cfg, &mut tracker);
+        assert!(codes(&issues).contains(&"duplicate_in_document"));
+    }
+
+    #[test]
+    fn near_tracked_cap_bounds_index_but_exact_dedup_survives() {
+        let mut tracker = FingerprintTracker::new();
+        tracker.max_near_tracked = 1;
+        tracker.observe("第一张完全不同的卡片内容");
+        tracker.observe("第二张也完全不同的另一内容");
+        // 超过 cap 后：与第二张近似的卡不再判近重复（第二张未入 bigram 索引）
+        let obs = tracker.observe("第二张也完全不同的另一内容啊");
+        assert!(obs.near_duplicate.is_none(), "cap 之外不做近重复扫描");
+        // 但精确重复检测不受 cap 影响
+        let obs = tracker.observe("第二张也完全不同的另一内容");
+        assert!(obs.exact_duplicate);
+    }
+
+    #[test]
+    fn duplicate_flags_are_warn_and_never_reject() {
+        let mut cfg = LintConfig::default();
+        cfg.level = LintLevel::Reject;
+        let dup = issues_from_observation(&FingerprintObservation {
+            exact_duplicate: true,
+            near_duplicate: None,
+        });
+        let near = issues_from_observation(&FingerprintObservation {
+            exact_duplicate: false,
+            near_duplicate: Some(0.9),
+        });
+        assert!(!should_reject(&dup, &cfg), "重复只 flag 不丢卡");
+        assert!(!should_reject(&near, &cfg), "近重复只 flag 不丢卡");
+    }
+
+    // -------- 文档级 tracker registry --------
+
+    #[test]
+    fn document_tracker_registry_shares_state_across_handles() {
+        let doc_id = format!("doc-registry-share-{}", std::process::id());
+        release_document_tracker(&doc_id);
+
+        // 模拟两个 segment task 各自取 handle（生产路径的并发形态）
+        let handle_a = document_tracker(&doc_id);
+        let handle_b = document_tracker(&doc_id);
+        assert!(Arc::ptr_eq(&handle_a, &handle_b), "同一文档必须共享同一 tracker");
+
+        handle_a.lock().unwrap().observe("跨segment共享的front");
+        let obs = handle_b.lock().unwrap().observe("跨segment共享的front");
+        assert!(obs.exact_duplicate, "另一 segment 的 handle 必须看到已登记指纹");
+
+        release_document_tracker(&doc_id);
+    }
+
+    #[test]
+    fn document_tracker_registry_isolates_documents() {
+        let doc_a = format!("doc-registry-iso-a-{}", std::process::id());
+        let doc_b = format!("doc-registry-iso-b-{}", std::process::id());
+        release_document_tracker(&doc_a);
+        release_document_tracker(&doc_b);
+
+        let issues_a = observe_document_card(&doc_a, "同一个front");
+        assert!(issues_a.is_empty());
+        // 不同文档看不到彼此的指纹
+        let issues_b = observe_document_card(&doc_b, "同一个front");
+        assert!(issues_b.is_empty(), "不同文档必须相互隔离: {:?}", issues_b);
+        // 同文档第二次 → 重复
+        let issues_a2 = observe_document_card(&doc_a, "同一个front");
+        assert_eq!(codes(&issues_a2), vec!["duplicate_in_document"]);
+
+        release_document_tracker(&doc_a);
+        release_document_tracker(&doc_b);
+    }
+
+    #[test]
+    fn release_document_tracker_resets_state() {
+        let doc_id = format!("doc-registry-release-{}", std::process::id());
+        release_document_tracker(&doc_id);
+
+        assert!(observe_document_card(&doc_id, "释放前的front").is_empty());
+        assert_eq!(
+            codes(&observe_document_card(&doc_id, "释放前的front")),
+            vec!["duplicate_in_document"]
+        );
+
+        release_document_tracker(&doc_id);
+        // 释放后重新懒创建，状态清零
+        assert!(
+            observe_document_card(&doc_id, "释放前的front").is_empty(),
+            "释放后不得残留旧指纹"
+        );
+        release_document_tracker(&doc_id);
+    }
+
+    #[test]
+    fn observe_document_card_blank_inputs_are_noop() {
+        assert!(observe_document_card("", "有内容的front").is_empty());
+        assert!(observe_document_card("   ", "有内容的front").is_empty());
+        let doc_id = format!("doc-registry-blank-{}", std::process::id());
+        release_document_tracker(&doc_id);
+        assert!(observe_document_card(&doc_id, "").is_empty());
+        assert!(observe_document_card(&doc_id, "  ").is_empty());
+        // 空 key 不得登记指纹：随后真实 front 首次出现仍是干净的
+        assert!(observe_document_card(&doc_id, "真实front").is_empty());
+        release_document_tracker(&doc_id);
+    }
+
+    #[test]
+    fn observe_document_card_emits_near_duplicate() {
+        let doc_id = format!("doc-registry-near-{}", std::process::id());
+        release_document_tracker(&doc_id);
+        assert!(observe_document_card(&doc_id, "细胞膜的主要成分是磷脂双分子层").is_empty());
+        let issues = observe_document_card(&doc_id, "细胞膜的主要成分是磷脂双分子层结构");
+        assert_eq!(codes(&issues), vec!["near_duplicate"]);
+        assert_eq!(issues[0].severity, LintSeverity::Warn);
+        release_document_tracker(&doc_id);
+    }
+
+    #[test]
+    fn check_and_insert_back_compat_wrapper() {
+        let mut tracker = FingerprintTracker::new();
+        assert!(!tracker.check_and_insert("什么是 TCP？"));
+        assert!(tracker.check_and_insert("<b>什么是TCP</b>"));
+        assert!(!tracker.check_and_insert(""));
     }
 
     // -------- 规则 10：字段规则 --------
