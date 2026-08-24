@@ -2,7 +2,7 @@
 
 - **分支**：`cursor/mobile-uiux-unify-0888`
 - **目标**：覆盖全部移动页面的顶栏统一、桌面组件收敛、可达/可回退，持续打磨到 SOTA。
-- **轮次**：Round 2–66 已落地；当前队列见下。
+- **轮次**：Round 2–67 已落地；当前队列见下。
 - **PR**：https://github.com/helixnow/deep-student/pull/172
 
 ## 轮次日志
@@ -76,19 +76,20 @@
 | 64 | claude-fable-5-thinking-xhigh ×10 | 每日练习；组卷；启动器返回；趋势空态；图表重试；作文重试；浏览器 chrome；复习日历关闭；冲突加载更多；题库保存 | 见 ROUND-64-FIXES.md |
 | 65 | claude-fable-5-thinking-xhigh ×10 | 收藏空态；复习关闭；技能 chip；记忆树重试；模型默认；RAG 关闭；引用展开；译文复制；子代理空态；原始请求复制 | 见 ROUND-65-FIXES.md |
 | 66 | claude-fable-5-thinking-xhigh ×10 | 历史重试；选夹底栏；桌面对话框关闭；会话重命名；作曲面板关闭；备份重试；诊断展开；试卷重试；大纲确认；回收站返回 | 见 ROUND-66-FIXES.md |
+| 67 | claude-fable-5-thinking-xhigh ×10 | 通知动作；模板加字段；画布确认；Anki 测试；预览关闭；作文取消；工作台撤销；闪卡摘要；聊天顶栏；库卡保存 | 见 ROUND-67-FIXES.md |
 
-## 进行中的修复队列（Round 67+）
+## 进行中的修复队列（Round 68+）
 
 - 内联引用 chip 设计未决；MiniCalendar/TabBar 宽 28 有意折衷
 - FinderToolbar 视觉 40 + 伪元素 48：标题栏约束，勿再硬叠 44 视觉
 - ShortcutSettings 属 #166 不碰
 - WorkbenchSidebar 桌面壳分区头属 #161，不碰
 - 翻译 SourcePanel / ComparisonView 已用 COARSE_HIT 凑 44，勿重做视觉
-- 继续扫生产路径残留（见 ROUND-66-FIXES.md）
+- 继续扫生产路径残留（见 ROUND-67-FIXES.md）
 
 ## 已落地
 
 - 本目录方案与清单
 - Round 2–11：顶栏契约、可达契约、废弃 MobileHeader 禁令；聊天/设置/沙箱/PDF/导图/热力图/Anki/Todo 移动 chrome；死代码 NotesHome / VideoPreview / AudioPreview / PreviewPanel
-- Round 41–66：DEV debug-panel 插件工具栏几乎扫完；生产路径触控残留见 ROUND-66 队列
+- Round 41–67：DEV debug-panel 插件工具栏几乎扫完；生产路径触控残留见 ROUND-67 队列
 - 契约测试：`tests/vitest/mobile-uiux/*`（非法 viewId allowlist 已清空）
