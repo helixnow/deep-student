@@ -33,6 +33,11 @@ type CloudResult<T> = Result<T, AppError>;
 
 fn write_content_addressed_blob(blobs_dir: &Path, payload: &[u8]) -> (String, String) {
     let hash = format!("{:x}", Sha256::digest(payload));
+    assert_eq!(hash.len(), 64, "场景夹具必须生成 64 位 SHA-256 hash");
+    assert!(
+        hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "场景夹具必须生成 hex hash"
+    );
     let relative_path = format!("{}/{}.pdf", &hash[..2], hash);
     let path = blobs_dir.join(&relative_path);
     std::fs::create_dir_all(path.parent().expect("content-addressed blob has parent")).unwrap();
@@ -1145,28 +1150,29 @@ async fn scenario_34_tombstone_offline_returns_error() {
 async fn scenario_35_apply_blob_tombstones_removes_local_file() {
     let tmp = TempDir::new().unwrap();
     let blobs_dir = tmp.path();
-    // 构造一个 blob 文件
-    let subdir = blobs_dir.join("ab");
-    std::fs::create_dir_all(&subdir).unwrap();
-    let blob_path = subdir.join("ab123.pdf");
-    std::fs::write(&blob_path, b"fake pdf").unwrap();
+    // 构造一个合法的 64-hex 内容寻址 blob；生产 tombstone 会拒绝短 hash。
+    let (hash, relative_path) = write_content_addressed_blob(blobs_dir, b"fake pdf");
+    let blob_path = blobs_dir.join(&relative_path);
     assert!(blob_path.exists());
 
     let storage = MockCloudStorage::new();
     // 云端也放一份（模拟）
     storage
-        .put("data_governance/blobs/ab/ab123.pdf", b"fake pdf")
+        .put(
+            &format!("data_governance/blobs/{relative_path}"),
+            b"fake pdf",
+        )
         .await
         .unwrap();
 
     let mut tombstones = tombstone::BlobTombstones::default();
     tombstones.entries.insert(
-        "ab123".into(),
+        hash,
         tombstone::BlobTombstoneEntry {
             deleted_at: chrono::Utc::now().to_rfc3339(),
             device_id: "dev_a".into(),
             size: Some(8),
-            relative_path: Some("ab/ab123.pdf".into()),
+            relative_path: Some(relative_path.clone()),
         },
     );
 
@@ -1184,7 +1190,7 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
     assert!(!blob_path.exists(), "本地 blob 应被删除");
     assert!(
         storage
-            .get("data_governance/blobs/ab/ab123.pdf")
+            .get(&format!("data_governance/blobs/{relative_path}"))
             .await
             .unwrap()
             .is_none(),

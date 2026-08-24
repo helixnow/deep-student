@@ -300,14 +300,10 @@ describe('repository-wide scrollbar integration contract', () => {
     ).toContain('.scrollbar-none [class~="os-scrollbar"] {');
   });
 
-  it(
-    'does not introduce feature-private visible scrollbar recipes',
-    () => {
-      expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
-    },
-    // 全量扫描 src 在冷缓存的 CI 分片上可能超过默认 5s，显式放宽兜底。
-    30_000,
-  );
+  // 全仓 src/**/*.{css,ts,tsx} 逐文件正则扫描，CI 慢盘上实测可超过默认 5s（shard 4 曾 8.2s）
+  it('does not introduce feature-private visible scrollbar recipes', { timeout: 30_000 }, () => {
+    expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
+  });
 
   it('does not let chat depend on the mindmap custom-scrollbar selector', () => {
     const chatCustomScrollbarUses = scrollbarSourceEntries

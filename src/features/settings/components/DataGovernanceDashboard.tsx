@@ -1075,6 +1075,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     tiers?: string[];
     includeAssets?: boolean;
     assetTypes?: string[];
+    /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
+    encryptionPassword?: string;
   }) => {
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1106,6 +1108,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         options.tiers as any,
         options.includeAssets,
         options.assetTypes as any,
+        options.encryptionPassword,
       );
 
       setBackupJobId(response.job_id);
@@ -1140,8 +1143,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [backupJobId, t]);
 
-  // 导出为 ZIP（异步）
-  const exportZip = useCallback(async (backupId: string, compressionLevel: number) => {
+  // 导出为 ZIP（异步）；encryptionPassword 非空时执行加密全保真导出
+  const exportZip = useCallback(async (backupId: string, compressionLevel: number, encryptionPassword?: string) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1171,7 +1174,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         backupId,
         savePath,
         compressionLevel,
-        true // includeChecksums
+        true, // includeChecksums
+        encryptionPassword,
       );
       setBackupJobId(response.job_id);
 
@@ -1189,8 +1193,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
-  // 从 ZIP 导入（异步）
-  const importZip = useCallback(async () => {
+  // 从 ZIP 导入（异步）；password 为加密全保真包导出时设置的 E2EE 备份密码
+  const importZip = useCallback(async (password?: string) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1232,8 +1236,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setJobOperation('zip_import');
       enterMaintenanceMode(t('data:governance.maintenance_import'));
 
-      // 启动后台 ZIP 导入任务
-      const response = await DataGovernanceApi.importZip(zipPath);
+      // 启动后台 ZIP 导入任务（password 非空时用于解封加密全保真包）
+      const response = await DataGovernanceApi.importZip(zipPath, undefined, password);
       setBackupJobId(response.job_id);
 
       showGlobalNotification('info', t('data:governance.import_started'));
