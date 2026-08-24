@@ -1023,7 +1023,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
           <button
             key={type}
             onClick={() => toggleEventType(type)}
-            className={`px-2 py-1 text-xs rounded-full transition-all ${
+            className={`px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ${
               selectedEventTypes.has(type) ? 'ring-2 ring-offset-1' : 'opacity-50'
             }`}
             style={{ 
@@ -1145,7 +1145,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
 
                       <button
                         onClick={() => copyLog(log)}
-                        className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                         title="复制日志"
                       >
                         <Copy size={12} />
