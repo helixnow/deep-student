@@ -1,6 +1,6 @@
 /**
  * Chat 导航握手（pendingChatNavigation）行为契约：
- * - 未就绪：navigate-to-session 意图挂起（不派发），最新意图覆盖旧意图；
+ * - 未就绪：navigate-to-session 意图挂起，同时派发一次标准事件供壳层开窗；
  * - 就绪（markChatPageReady）：立即消费挂起意图并重放为标准 CustomEvent；
  * - 就绪态下请求直接派发事件（既有监听者不受影响）；
  * - CHAT_NEW_SESSION 未就绪时事件照发（壳层靠它开窗/切视图），同时入 pending；
@@ -35,10 +35,12 @@ describe('pendingChatNavigation handshake', () => {
     resetChatNavigationHandshakeForTest();
   });
 
-  it('queues session navigation while the page is not ready (no event burst)', () => {
+  it('notifies the shell and queues session navigation while the page is not ready', () => {
     requestChatSessionNavigation('sess_cold');
 
-    expect(navigateListener).not.toHaveBeenCalled();
+    expect(navigateListener).toHaveBeenCalledTimes(1);
+    const event = navigateListener.mock.calls[0][0] as CustomEvent<{ sessionId: string }>;
+    expect(event.detail.sessionId).toBe('sess_cold');
     expect(peekPendingChatNavigation()).toEqual({ kind: 'session', sessionId: 'sess_cold' });
   });
 
@@ -49,14 +51,14 @@ describe('pendingChatNavigation handshake', () => {
     expect(peekPendingChatNavigation()).toEqual({ kind: 'session', sessionId: 'sess_second' });
   });
 
-  it('flushes the pending intent exactly once when the page becomes ready', () => {
+  it('replays the pending intent once when the page becomes ready', () => {
     requestChatSessionNavigation('sess_target');
 
     const release = markChatPageReady();
 
     expect(isChatPageReady()).toBe(true);
-    expect(navigateListener).toHaveBeenCalledTimes(1);
-    const event = navigateListener.mock.calls[0][0] as CustomEvent<{ sessionId: string }>;
+    expect(navigateListener).toHaveBeenCalledTimes(2);
+    const event = navigateListener.mock.calls[1][0] as CustomEvent<{ sessionId: string }>;
     expect(event.detail.sessionId).toBe('sess_target');
     expect(peekPendingChatNavigation()).toBeNull();
 
@@ -78,7 +80,8 @@ describe('pendingChatNavigation handshake', () => {
     invalidatePendingChatNavigation();
 
     markChatPageReady()();
-    expect(navigateListener).not.toHaveBeenCalled();
+    // 仅保留请求时供壳层开窗的首次事件；ready 后不再重放。
+    expect(navigateListener).toHaveBeenCalledTimes(1);
   });
 
   it('still dispatches CHAT_NEW_SESSION while not ready so the shell can open the page', () => {

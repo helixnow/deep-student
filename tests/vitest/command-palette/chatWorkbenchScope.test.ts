@@ -32,15 +32,22 @@ function createDeps(
 describe('chat command workbench scope', () => {
   const commands = getChatCommands();
   const readyCommands = commands.filter((command) => getChatCapability(command.id) === 'ready');
-  const hiddenCommands = commands.filter((command) => getChatCapability(command.id) === 'hidden');
+  const registeredCommandIds = new Set(commands.map((command) => command.id));
+  const hiddenCapabilityIds = [
+    'chat.share',
+    'chat.export',
+    'chat.import',
+    'chat.toggle-learn-mode',
+    'chat.voice-input',
+  ];
 
   afterEach(() => {
     resetChatNavigationHandshakeForTest();
   });
 
-  it('covers both ready and hidden commands', () => {
+  it('registers only commands backed by ready capabilities', () => {
     expect(readyCommands.length).toBeGreaterThan(0);
-    expect(hiddenCommands.length).toBeGreaterThan(0);
+    expect(readyCommands).toHaveLength(commands.length);
   });
 
   it('exposes every ready command in both chat-v2 and workbench views', () => {
@@ -64,11 +71,10 @@ describe('chat command workbench scope', () => {
     }
   });
 
-  it('does not extend hidden ghost commands to the workbench nor enable them anywhere', () => {
-    for (const command of hiddenCommands) {
-      expect(command.visibleInViews, command.id).not.toContain('workbench');
-      expect(command.isEnabled?.(createDeps('chat-v2')), command.id).toBe(false);
-      expect(command.isEnabled?.(createDeps('workbench', 'chat')), command.id).toBe(false);
+  it('does not register hidden ghost commands', () => {
+    for (const commandId of hiddenCapabilityIds) {
+      expect(getChatCapability(commandId), commandId).toBe('hidden');
+      expect(registeredCommandIds.has(commandId), commandId).toBe(false);
     }
   });
 

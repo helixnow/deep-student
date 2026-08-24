@@ -1,7 +1,7 @@
 /**
  * 会话分支统一路径（branchFromMessage + sessionBranchIndex）契约：
  * - 统一走 store.branchSession（不再组件内直连 invoke chat_v2_branch_session）；
- * - 成功后派发 CHAT_V2_BRANCH_SESSION（ChatV2Page 插入并切换）；
+ * - 成功后通过标准 navigate-to-session 握手切换并唤起 Chat 主窗；
  * - 成功后原会话消息立即可查到「已从此处分支」目标（recordSessionBranch）；
  * - 索引可由会话列表 metadata.branchedFrom 全量重建（重启后角标仍在）。
  */
@@ -16,6 +16,7 @@ import {
   resetSessionBranchIndexForTest,
   subscribeSessionBranchIndex,
 } from '@/features/chat/core/session/sessionBranchIndex';
+import { resetChatNavigationHandshakeForTest } from '@/features/chat/navigation/pendingChatNavigation';
 
 function createStoreStub(overrides: Partial<ChatStore> = {}): StoreApi<ChatStore> {
   const state = {
@@ -32,29 +33,31 @@ function createStoreStub(overrides: Partial<ChatStore> = {}): StoreApi<ChatStore
 }
 
 describe('branchSessionFromMessage', () => {
-  const branchEventListener = vi.fn();
+  const navigationListener = vi.fn();
 
   beforeEach(() => {
     resetSessionBranchIndexForTest();
-    branchEventListener.mockClear();
-    window.addEventListener('CHAT_V2_BRANCH_SESSION', branchEventListener);
+    resetChatNavigationHandshakeForTest();
+    navigationListener.mockClear();
+    window.addEventListener('navigate-to-session', navigationListener);
   });
 
   afterEach(() => {
-    window.removeEventListener('CHAT_V2_BRANCH_SESSION', branchEventListener);
+    window.removeEventListener('navigate-to-session', navigationListener);
     resetSessionBranchIndexForTest();
+    resetChatNavigationHandshakeForTest();
   });
 
-  it('branches through store.branchSession and dispatches CHAT_V2_BRANCH_SESSION', async () => {
+  it('branches through store.branchSession and requests standard session navigation', async () => {
     const store = createStoreStub();
 
     const result = await branchSessionFromMessage(store, 'msg_cut');
 
     expect(store.getState().branchSession).toHaveBeenCalledWith('msg_cut');
     expect(result.id).toBe('sess_branch');
-    expect(branchEventListener).toHaveBeenCalledTimes(1);
-    const event = branchEventListener.mock.calls[0][0] as CustomEvent<{ session: { id: string } }>;
-    expect(event.detail.session.id).toBe('sess_branch');
+    expect(navigationListener).toHaveBeenCalledTimes(1);
+    const event = navigationListener.mock.calls[0][0] as CustomEvent<{ sessionId: string }>;
+    expect(event.detail.sessionId).toBe('sess_branch');
   });
 
   it('records the branch so the source message immediately exposes a navigable target', async () => {
@@ -71,7 +74,7 @@ describe('branchSessionFromMessage', () => {
     const store = createStoreStub({ branchSession: undefined });
 
     await expect(branchSessionFromMessage(store, 'msg_cut')).rejects.toThrow(/branchSession/);
-    expect(branchEventListener).not.toHaveBeenCalled();
+    expect(navigationListener).not.toHaveBeenCalled();
   });
 });
 
