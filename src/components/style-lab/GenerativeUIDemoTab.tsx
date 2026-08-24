@@ -11,6 +11,7 @@ import { useHpiasStore } from '@/stores/researchStore';
 import {
   playStyleLabHpiasDemo,
   STYLE_LAB_HPIAS_DEMO_QUESTION,
+  STYLE_LAB_HPIAS_SESSION_ID,
 } from '@/features/generative-ui/demo/styleLabHpiasDemo';
 import {
   INTENT_RECIPES,
@@ -118,7 +119,7 @@ export function GenerativeUIDemoTab() {
   const startHpiasDemo = React.useCallback(() => {
     cancelHpiasDemo();
     const store = useHpiasStore.getState();
-    store.actions.clear();
+    store.actions.reset(STYLE_LAB_HPIAS_SESSION_ID, 0);
     setHpiasPlaying(true);
     setMode('research-hpias');
     hpiasCancelRef.current = playStyleLabHpiasDemo(

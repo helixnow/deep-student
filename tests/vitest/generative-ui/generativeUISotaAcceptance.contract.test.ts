@@ -457,6 +457,20 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'retainSharedHpiasEventBridge',
       ]),
   },
+  {
+    id: 'round65-reset-preserves-slices',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        'sessions: { ...state.sessions, [sessionId]: slice }',
+      ]) &&
+      fileContains('src/components/style-lab/GenerativeUIDemoTab.tsx', [
+        'STYLE_LAB_HPIAS_SESSION_ID',
+        'store.actions.reset(',
+      ]) &&
+      fileContains('src/features/generative-ui/components/MindmapEmbedBlock.tsx', [
+        'GENERATIVE_EMBED_ID_RE',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {

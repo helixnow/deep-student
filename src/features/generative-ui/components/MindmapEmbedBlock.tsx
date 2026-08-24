@@ -4,11 +4,13 @@ import { z } from 'zod';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { MindMapErrorBoundary } from '@/features/mindmap/MindMapErrorBoundary';
 
+const GENERATIVE_EMBED_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
 export const mindmapEmbedPropsSchema = z
   .object({
     id: z.string().optional(),
-    mindmapId: z.string().min(1).max(128).optional(),
-    versionId: z.string().min(1).max(128).optional(),
+    mindmapId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
+    versionId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
     title: z.string().max(120).optional(),
     height: z.number().min(200).max(600).optional().default(280),
   })
