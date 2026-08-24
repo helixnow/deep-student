@@ -240,6 +240,14 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(enLocale.upload.portableArchiveUploaded).toMatch(/portable archive/i);
     expect(enLocale.upload.portableArchiveUploaded).toMatch(/slot restore/i);
     expect(Object.keys(zhLocale.upload).sort()).toEqual(Object.keys(enLocale.upload).sort());
+    expect(uploadBlock).toContain("'disaster_recovery' : 'partial_archive'");
+    expect(componentSource).toContain("version.recoveryKind === 'partial_archive'");
+    expect(componentSource).toContain('history.portableArchiveNotRestorable');
+    expect(zhLocale.history.portableArchive).toContain('便携归档');
+    expect(zhLocale.history.fullFidelity).toContain('全保真');
+    expect(enLocale.history.portableArchive).toMatch(/portable archive/i);
+    expect(enLocale.history.fullFidelity).toMatch(/full-fidelity/i);
+    expect(Object.keys(zhLocale.history).sort()).toEqual(Object.keys(enLocale.history).sort());
 
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);

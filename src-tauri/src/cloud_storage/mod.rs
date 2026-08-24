@@ -310,6 +310,7 @@ pub async fn cloud_sync_upload(
     zip_path: String,
     app_version: Option<String>,
     note: Option<String>,
+    recovery_kind: Option<String>,
 ) -> Result<UploadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
     let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
@@ -405,7 +406,13 @@ pub async fn cloud_sync_upload(
     });
 
     let upload_result = manager
-        .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
+        .upload_with_progress(
+            &actual_upload_path,
+            app_version,
+            note,
+            recovery_kind,
+            Some(progress_cb),
+        )
         .await;
 
     // TempPath 在成功和错误路径都会自动清理，且每次操作使用独立随机文件名。

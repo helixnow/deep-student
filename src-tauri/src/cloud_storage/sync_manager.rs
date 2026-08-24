@@ -67,6 +67,9 @@ pub struct BackupVersion {
     /// 备注
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// 导入后能否整槽恢复。旧清单没有该字段，按未知处理。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_kind: Option<String>,
 }
 
 /// 云端 Manifest
@@ -773,7 +776,7 @@ impl CloudSyncManager {
         app_version: Option<String>,
         note: Option<String>,
     ) -> Result<UploadResult> {
-        self.upload_with_progress(zip_path, app_version, note, None)
+        self.upload_with_progress(zip_path, app_version, note, None, None)
             .await
     }
 
@@ -783,12 +786,14 @@ impl CloudSyncManager {
     /// * `zip_path` - 本地 ZIP 文件路径
     /// * `app_version` - 应用版本
     /// * `note` - 备注
+    /// * `recovery_kind` - 导入后能否整槽恢复（`disaster_recovery` / `partial_archive`）
     /// * `progress` - 进度回调 (uploaded_bytes, total_bytes)
     pub async fn upload_with_progress(
         &self,
         zip_path: &Path,
         app_version: Option<String>,
         note: Option<String>,
+        recovery_kind: Option<String>,
         progress: Option<super::traits::UploadProgressCallback>,
     ) -> Result<UploadResult> {
         const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024; // 提升到 10GB
@@ -859,6 +864,7 @@ impl CloudSyncManager {
             device_id: self.device_id.clone(),
             app_version,
             note,
+            recovery_kind,
         };
 
         // 更新 Manifest
@@ -1937,5 +1943,20 @@ mod tests {
             manager.ensure_plaintext_upload_allowed().await.is_err(),
             "标记损坏时必须 fail-closed，拒绝明文上传"
         );
+    }
+
+    #[test]
+    fn old_backup_version_json_without_recovery_kind_still_deserializes() {
+        let json = r#"{
+            "id": "20260101-000000-000-abcd-1234abcd",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "size": 12,
+            "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "deviceId": "device-a"
+        }"#;
+        let version: BackupVersion =
+            serde_json::from_str(json).expect("旧版本清单缺少 recoveryKind 必须仍能反序列化");
+        assert!(version.recovery_kind.is_none());
+        assert_eq!(version.device_id, "device-a");
     }
 }

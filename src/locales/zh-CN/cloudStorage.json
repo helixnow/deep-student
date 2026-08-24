@@ -153,6 +153,9 @@
     "checksum": "校验和",
     "note": "备注",
     "restore": "恢复此版本",
+    "portableArchive": "便携归档，不能整槽恢复",
+    "fullFidelity": "加密全保真，可整槽恢复",
+    "portableArchiveNotRestorable": "这份云端包是便携归档，不能替换当前数据槽。当前数据没有被改动。",
     "delete": "删除",
     "deleteConfirm": "确定要删除此版本吗？此操作不可撤销。",
     "current": "当前设备"
