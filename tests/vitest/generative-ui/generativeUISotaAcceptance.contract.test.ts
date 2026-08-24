@@ -415,6 +415,14 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'isMarkdownAutolinkTag',
       ]),
   },
+  {
+    id: 'round61-hpias-store-session-guard',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        "e.type !== 'session_started'",
+        'eventSessionId !== s.sessionId',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
