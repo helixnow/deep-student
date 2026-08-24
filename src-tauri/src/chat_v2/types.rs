@@ -455,6 +455,17 @@ pub struct SessionTag {
 /// 对象，读写只 merge 该键、绝不覆盖其他键。
 pub const FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY: &str = "frozenToolSchemaOrder";
 
+/// 🆕 P0 available_skills 会话快照：session.metadata 中持久化目录快照的键名。
+///
+/// 值为前端首次生成的 `<available_skills>` 目录字符串（可为空串——安装前
+/// 发过消息的会话冻结为无目录）。目录直接拼进 system（第 0 字节前缀），
+/// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，前端内存快照丢失
+/// 时必须从该键恢复同一字节，禁止按 live registry 重算（中途 skill_install
+/// 会让 system 从目录处变字节，整段历史缓存失效）。first-write-wins：
+/// 同一 session 首次冻结后不可覆盖。与 authority/plan 等键共存于同一
+/// metadata 对象，读写只 merge 该键、绝不覆盖其他键。
+pub const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY: &str = "availableSkillsSnapshot";
+
 /// Session-level Ask / Plan / Craft authority mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]

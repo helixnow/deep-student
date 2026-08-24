@@ -10,6 +10,8 @@ import {
   getProgressiveDisclosureConfig,
   getSessionAvailableSkillsPrompt,
   handleLoadSkillsToolCall,
+  hasSessionAvailableSkillsSnapshot,
+  hydrateSessionAvailableSkillsSnapshot,
 } from '../progressiveDisclosure';
 import { setSkillDisabled } from '../skillEnableStorage';
 import { __setRequiresGateForTest } from '../requiresGating';
@@ -33,6 +35,8 @@ describe('progressive disclosure defaults', () => {
     clearSessionAvailableSkillsSnapshot('snapshot-session-a');
     clearSessionAvailableSkillsSnapshot('snapshot-session-b');
     clearSessionAvailableSkillsSnapshot('snapshot-empty-session');
+    clearSessionAvailableSkillsSnapshot('restart-session');
+    clearSessionAvailableSkillsSnapshot('restart-fresh-session');
   });
 
   it('does not auto-load skills by default', () => {
@@ -177,6 +181,54 @@ describe('progressive disclosure defaults', () => {
     });
 
     expect(getSessionAvailableSkillsPrompt('snapshot-empty-session')).toBe(emptyCatalog);
+  });
+
+  it('restores the persisted catalog snapshot byte-for-byte after a simulated app restart', () => {
+    // P0 回归（快照跨进程）：重启 ≠ provider 冷缓存。写快照 → 清内存 Map
+    // （模拟重启）→ 用 session.metadata 持久化值 hydrate → 同一 session
+    // 读回字节不变，即使重启前 live registry 已装入新技能；新 session
+    // 仍按当前 live 目录建立快照。
+    skillRegistry.register({
+      id: 'snapshot-base-skill',
+      name: 'Snapshot Base Skill',
+      description: 'Catalog snapshot restart regression: pre-existing skill',
+      location: 'builtin',
+      sourcePath: 'builtin://snapshot-base-skill',
+      content: '# base',
+    });
+
+    // 首次生成 = 写快照（真实流程中 TauriAdapter 同步持久化到 metadata）
+    const firstCatalog = getSessionAvailableSkillsPrompt('restart-session');
+    expect(firstCatalog).toContain('id="snapshot-base-skill"');
+    const persistedSnapshot = firstCatalog;
+
+    // 重启前中途装过技能：live registry 变化
+    skillRegistry.register({
+      id: 'snapshot-installed-mid-session-skill',
+      name: 'Snapshot Mid-Session Skill',
+      description: 'Catalog snapshot restart regression: installed pre-restart',
+      location: 'global',
+      sourcePath: '/tmp/snapshot/SKILL.md',
+      trustStatus: 'trusted',
+      content: '# installed',
+    });
+
+    // 模拟应用重启：内存 Map 清空
+    clearSessionAvailableSkillsSnapshot('restart-session');
+    expect(hasSessionAvailableSkillsSnapshot('restart-session')).toBe(false);
+
+    // session 加载路径：用持久化快照回灌内存（不重算 live 目录）
+    hydrateSessionAvailableSkillsSnapshot('restart-session', persistedSnapshot);
+    expect(hasSessionAvailableSkillsSnapshot('restart-session')).toBe(true);
+
+    const restoredCatalog = getSessionAvailableSkillsPrompt('restart-session');
+    expect(restoredCatalog).toBe(persistedSnapshot);
+    expect(restoredCatalog).not.toContain('snapshot-installed-mid-session-skill');
+
+    // 新 session 无持久化快照：仍按当前 live registry 建立
+    const freshCatalog = getSessionAvailableSkillsPrompt('restart-fresh-session');
+    expect(freshCatalog).toContain('id="snapshot-installed-mid-session-skill"');
+    expect(freshCatalog).toContain('id="snapshot-base-skill"');
   });
 
   it('keeps untrusted descriptions and embedded schemas out of every runtime path', () => {

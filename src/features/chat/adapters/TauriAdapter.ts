@@ -85,8 +85,11 @@ import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { getAvailableSearchEngines } from '@/mcp/searchEngineAvailability';
 import {
   LOAD_SKILLS_TOOL_SCHEMA,
+  AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
   getLoadedSkills,
   getSessionAvailableSkillsPrompt,
+  hasSessionAvailableSkillsSnapshot,
+  hydrateSessionAvailableSkillsSnapshot,
 } from '../skills/progressiveDisclosure';
 import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
@@ -3705,6 +3708,17 @@ export class ChatV2TauriAdapter {
       // 记录会话信息供第二阶段分页补页构造合并响应
       this.lastLoadedSessionInfo = response.session;
 
+      // P0 available_skills 快照跨进程：应用重启后 provider prompt cache
+      // 可能仍存活，优先用 session.metadata 中冻结的目录快照回灌内存，
+      // 禁止按当时 live registry 重算（重启前中途装过技能会让 system 从
+      // 第 0 字节变）。缺键 = 该会话从未冻结，首次构建 system 时按 live
+      // 生成并持久化（见 buildSystemPromptWithSkills）。
+      const persistedSkillsSnapshot =
+        response.session?.metadata?.[AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY];
+      if (typeof persistedSkillsSnapshot === 'string') {
+        hydrateSessionAvailableSkillsSnapshot(this.sessionId, persistedSkillsSnapshot);
+      }
+
       // 使用 Store 的 restoreFromBackend 方法恢复状态
       this.store.restoreFromBackend(response, restoreBaseline);
       clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_load_failed']);
@@ -5277,7 +5291,13 @@ export class ChatV2TauriAdapter {
     // model-facing description or embedded-tool metadata. The per-session
     // snapshot freezes the first generated catalog so mid-session installs
     // never rewrite the already-sent system prefix.
+    const hadSnapshot = hasSessionAvailableSkillsSnapshot(this.sessionId);
     const skillMetadataPrompt = getSessionAvailableSkillsPrompt(this.sessionId);
+    if (!hadSnapshot) {
+      // 首次生成（loadSession 未能从 metadata 回灌）：异步冻结进
+      // session.metadata，重启后同一 session 逐字节复用，不重算 live 目录。
+      this.persistAvailableSkillsSnapshot(skillMetadataPrompt);
+    }
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-frozen catalog snapshot)');
 
     // 如果没有 skills 元数据，返回原始提示
@@ -5290,6 +5310,33 @@ export class ChatV2TauriAdapter {
     }
 
     return skillMetadataPrompt;
+  }
+
+  /**
+   * P0 available_skills 快照跨进程：把首次生成的目录快照异步冻结进
+   * session.metadata（后端 `chat_v2_freeze_available_skills_snapshot`，
+   * first-write-wins）。若后端已有更早冻结的快照（多窗口竞争），用返回的
+   * 生效值回灌内存，保持字节与持久化权威一致。失败只打日志（该会话本进程
+   * 内仍用内存快照，下次重启才退回 live 重算的冷缓存语义），不阻断发送。
+   */
+  private persistAvailableSkillsSnapshot(snapshot: string): void {
+    const sessionId = this.sessionId;
+    void invoke<string>('chat_v2_freeze_available_skills_snapshot', {
+      sessionId,
+      snapshot,
+    })
+      .then((effective) => {
+        if (typeof effective === 'string' && effective !== snapshot) {
+          hydrateSessionAvailableSkillsSnapshot(sessionId, effective);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          LOG_PREFIX,
+          'Failed to persist available_skills snapshot (in-memory snapshot still active):',
+          getErrorMessage(error)
+        );
+      });
   }
 
   // ========================================================================

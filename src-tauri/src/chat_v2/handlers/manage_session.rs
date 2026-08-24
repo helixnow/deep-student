@@ -375,6 +375,37 @@ pub async fn chat_v2_update_session_settings(
     Ok(session)
 }
 
+/// 🆕 P0 available_skills 会话快照跨进程：把前端首次生成的目录快照冻结进
+/// session.metadata（`availableSkillsSnapshot`，first-write-wins），返回
+/// 生效快照。
+///
+/// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，前端内存快照丢失
+/// 时从 `chat_v2_load_session` 带回的 session.metadata 恢复同一字节；该
+/// 命令负责写入侧。已冻结（含空串）绝不覆盖 —— 多窗口竞争时持久化权威
+/// 胜出，前端应以返回值回灌内存快照。
+#[tauri::command]
+pub async fn chat_v2_freeze_available_skills_snapshot(
+    session_id: String,
+    snapshot: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<String, String> {
+    if !session_id.starts_with("sess_")
+        && !session_id.starts_with("agent_")
+        && !session_id.starts_with("subagent_")
+    {
+        return Err(
+            ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
+        );
+    }
+    log::info!(
+        "[ChatV2::handlers] chat_v2_freeze_available_skills_snapshot: session_id={}, bytes={}",
+        session_id,
+        snapshot.len()
+    );
+    ChatV2Repo::freeze_session_available_skills_snapshot(&db, &session_id, &snapshot)
+        .map_err(String::from)
+}
+
 /// 归档会话
 ///
 /// 将会话标记为已归档状态。归档的会话不会在默认列表中显示，但可以恢复。

@@ -637,10 +637,20 @@ export function generateAvailableSkillsPrompt(): string {
  * 的技能不进入已发出的 system 目录 —— 新技能由 load_skills 的 tool result
  * 与瞬态技能消息表达。空目录同样冻结（安装前发过消息的会话保持无目录）。
  *
- * 模块级 Map：TauriAdapter 重建（切换会话再回来）不丢快照；应用重启后
- * 按当时 registry 重新基线（冷缓存场景）。
+ * 模块级 Map：TauriAdapter 重建（切换会话再回来）不丢快照。这里是热路径
+ * 读缓存，真身持久化在 session.metadata（`availableSkillsSnapshot`，见
+ * AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY）：应用重启后 provider 侧 prompt
+ * cache 仍可能存活，session 加载时用 hydrateSessionAvailableSkillsSnapshot
+ * 从 metadata 回灌同一字节，禁止按当时 live registry 重算（重启前中途装过
+ * 技能会让 system 从第 0 字节变）。从未冻结过的新 session 才按 live 建立。
  */
 const sessionAvailableSkillsSnapshots = new Map<string, string>();
+
+/**
+ * session.metadata 中持久化目录快照的键名（与后端
+ * `AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY` 常量对应）。
+ */
+export const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY = 'availableSkillsSnapshot';
 
 /**
  * 按 sessionId 返回冻结的 available_skills 目录。
@@ -654,6 +664,29 @@ export function getSessionAvailableSkillsPrompt(sessionId: string): string {
   const catalog = generateAvailableSkillsPrompt();
   sessionAvailableSkillsSnapshots.set(sessionId, catalog);
   return catalog;
+}
+
+/**
+ * 会话是否已有内存目录快照（用于判断本次 getSessionAvailableSkillsPrompt
+ * 是否为首次生成，首次生成后调用方负责持久化到 session.metadata）。
+ */
+export function hasSessionAvailableSkillsSnapshot(sessionId: string): boolean {
+  return sessionAvailableSkillsSnapshots.has(sessionId);
+}
+
+/**
+ * 用 session.metadata 中持久化的目录快照回灌内存（session 加载路径调用）。
+ *
+ * 持久化值是该会话首次生成后冻结的字节权威：应用重启后（内存 Map 清空）
+ * 必须先 hydrate 再构建 system，禁止按当时 live registry 重算；多窗口竞争
+ * 时后端 first-write-wins 返回的生效值也走这里回灌，保证内存与持久化一致。
+ * 空串是合法快照（安装前发过消息的会话冻结为无目录）。
+ */
+export function hydrateSessionAvailableSkillsSnapshot(
+  sessionId: string,
+  snapshot: string
+): void {
+  sessionAvailableSkillsSnapshots.set(sessionId, snapshot);
 }
 
 /**

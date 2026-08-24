@@ -20,7 +20,7 @@ use super::types::{
     CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
     MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
     SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
-    FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
+    AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY, FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
 };
 
 /// 从 session.metadata 解析持久化的 tools 会话冻结基线。
@@ -38,6 +38,18 @@ fn frozen_tool_schema_order_from_metadata(metadata: Option<&Value>) -> Vec<Strin
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// 从 session.metadata 解析持久化的 available_skills 目录快照。
+///
+/// 缺键 / metadata 非对象 / 值非字符串一律返回 None（等同该会话从未冻结，
+/// 由前端首次生成时按 live registry 建立并写回）。注意空串是合法快照
+/// （安装前发过消息的会话冻结为无目录），不能与缺键混同。
+fn available_skills_snapshot_from_metadata(metadata: Option<&Value>) -> Option<String> {
+    metadata?
+        .get(AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY)?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
@@ -2692,6 +2704,87 @@ impl ChatV2Repo {
         Self::update_session_with_conn(conn, &session)
     }
 
+    /// 🆕 P0 available_skills 会话快照：读取 session.metadata 中持久化的
+    /// 目录快照（`availableSkillsSnapshot`，首次生成后冻结的字符串）。
+    ///
+    /// 桌面 App 重启后前端内存快照丢失，session 加载时从这里恢复，保证
+    /// 同一 session 的 system 目录字节跨进程不变（provider prompt cache
+    /// 可能仍存活）。缺键返回 None（从未冻结，由前端首次生成时建立）。
+    pub fn get_session_available_skills_snapshot(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<String>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_available_skills_snapshot_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_available_skills_snapshot` 的 `_with_conn` 版本。
+    pub fn get_session_available_skills_snapshot_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<String>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(available_skills_snapshot_from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// 🆕 P0 available_skills 会话快照：把前端首次生成的目录快照冻结进
+    /// session.metadata（IMMEDIATE 事务内读-判-写，first-write-wins）。
+    ///
+    /// - 已存在快照（含空串）→ 保持不变并返回已冻结值（多窗口/竞争时
+    ///   持久化权威胜出，调用方应以返回值回灌内存）；
+    /// - 不存在 → 写入 `snapshot` 并返回它。
+    ///
+    /// 对 metadata 对象只 upsert `availableSkillsSnapshot` 一个键，
+    /// authority/plan/frozenToolSchemaOrder 等其他键原样保留；故意不推进
+    /// updated_at（内部缓存状态，不应扰动会话列表排序）。
+    pub fn freeze_session_available_skills_snapshot(
+        db: &ChatV2Database,
+        session_id: &str,
+        snapshot: &str,
+    ) -> ChatV2Result<String> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let effective =
+            Self::freeze_session_available_skills_snapshot_with_conn(&tx, session_id, snapshot)?;
+        tx.commit()?;
+        Ok(effective)
+    }
+
+    /// `freeze_session_available_skills_snapshot` 的 `_with_conn` 版本。
+    pub fn freeze_session_available_skills_snapshot_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        snapshot: &str,
+    ) -> ChatV2Result<String> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        if let Some(existing) = available_skills_snapshot_from_metadata(session.metadata.as_ref())
+        {
+            // first-write-wins：已冻结（含空串）绝不覆盖，返回持久化权威值。
+            return Ok(existing);
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY.to_string(),
+                Value::String(snapshot.to_string()),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)?;
+        Ok(snapshot.to_string())
+    }
+
     /// 删除会话（使用 ChatV2Database）
     pub fn delete_session_v2(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
         let mut conn = db.get_conn_safe()?;
@@ -4261,6 +4354,142 @@ mod tests {
             ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_empty")
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_survives_process_restart_via_session_metadata() {
+        // 回归（P0 available_skills 快照跨进程）：写快照 → 模拟桌面 App
+        // 重启（前端内存 Map 清空，只剩 DB）→ 从 session.metadata 读回
+        // 同一字节，system 目录不被 live registry 重算打碎。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_snap".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 缺键 = 该会话从未冻结（前端首次生成时建立）
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_snap")
+                .unwrap(),
+            None
+        );
+
+        let snapshot = "<available_skills>\n  <skill id=\"alpha\" tools=\"2\">\n    Alpha skill\n  </skill>\n</available_skills>";
+        let effective = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_snap",
+            snapshot,
+        )
+        .unwrap();
+        assert_eq!(effective, snapshot);
+
+        // 「重启后」session 加载路径从 metadata 恢复同一字节
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_snap")
+                .unwrap()
+                .as_deref(),
+            Some(snapshot),
+            "重启恢复的快照必须与首次冻结的字节逐字一致"
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_freeze_is_first_write_wins() {
+        // first-write-wins：中途 skill_install 后重算的 live 目录（多窗口 /
+        // 竞争写回）绝不覆盖已冻结快照；空串是合法快照，同样不可覆盖。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_fww".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let first = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_fww",
+            "catalog v1",
+        )
+        .unwrap();
+        assert_eq!(first, "catalog v1");
+
+        // 竞争写入返回已冻结值，持久化不变
+        let second = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_fww",
+            "catalog v2 (live regenerated)",
+        )
+        .unwrap();
+        assert_eq!(second, "catalog v1", "已冻结快照绝不覆盖，返回持久化权威值");
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_fww")
+                .unwrap()
+                .as_deref(),
+            Some("catalog v1")
+        );
+
+        // 空目录同样冻结（安装前发过消息的会话保持无目录）
+        let empty_session = ChatSession::new("sess_skills_empty".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &empty_session).unwrap();
+        let frozen_empty = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty",
+            "",
+        )
+        .unwrap();
+        assert_eq!(frozen_empty, "");
+        let after_install = ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty",
+            "catalog appeared after install",
+        )
+        .unwrap();
+        assert_eq!(after_install, "", "空串快照是合法冻结态，安装后不得追加目录");
+    }
+
+    #[test]
+    fn available_skills_snapshot_freeze_preserves_other_session_metadata() {
+        // merge 语义：只 upsert availableSkillsSnapshot 一个键，
+        // authority / frozenToolSchemaOrder 等既有键必须原样共存。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_skills_meta".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_skills_meta",
+            &["alpha_tool".into()],
+        )
+        .unwrap();
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_meta",
+            "catalog",
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_meta")
+            .unwrap()
+            .expect("Session should exist");
+        let metadata = reloaded.metadata.as_ref().expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan")
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_skills_meta")
+                .unwrap(),
+            vec!["alpha_tool"],
+            "tools 冻结基线必须与目录快照共存"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_meta")
+                .unwrap()
+                .as_deref(),
+            Some("catalog")
         );
     }
 
