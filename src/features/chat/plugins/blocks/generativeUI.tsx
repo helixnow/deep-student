@@ -10,7 +10,7 @@ import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRende
 import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatBlockBridge';
 
 function GenerativeUIBlockComponent({ block, isStreaming }: BlockComponentProps) {
-  const extracted = extractGenerativeUIIntent(block.toolOutput);
+  const extracted = extractGenerativeUIIntent(block.toolOutput, block.content);
   if (!extracted) {
     return (
       <div className="text-sm text-muted-foreground px-1" data-block-type="generative_ui">

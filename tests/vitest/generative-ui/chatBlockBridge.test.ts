@@ -33,4 +33,10 @@ describe('chatBlockBridge', () => {
     expect(extractGenerativeUIIntent(null)).toBeNull();
     expect(extractGenerativeUIIntent({})).toBeNull();
   });
+
+  it('extracts streaming intent from block content when toolOutput missing', () => {
+    const result = extractGenerativeUIIntent(null, JSON.stringify(LEARNING_DASHBOARD_EXAMPLE));
+    expect(result).not.toBeNull();
+    expect(result!.isStreaming).toBe(true);
+  });
 });

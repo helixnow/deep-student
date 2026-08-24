@@ -14,17 +14,29 @@ export interface GenerativeUIBlockOutput {
   isStreaming?: boolean;
 }
 
-/** 从 chat block toolOutput 提取可渲染意图 */
+/** 从 chat block toolOutput / 流式 content 提取可渲染意图 */
 export function extractGenerativeUIIntent(
   toolOutput: unknown,
+  content?: string | null,
 ): { intent: GenerativeUIIntent | string; isStreaming: boolean } | null {
-  if (!toolOutput || typeof toolOutput !== 'object') return null;
-  const data = toolOutput as GenerativeUIBlockOutput;
-  if (!data.intent) return null;
-  if (typeof data.intent === 'string') {
-    const parsed = parseGenerativeUIIntent(data.intent);
-    if (!parsed.ok) return { intent: data.intent, isStreaming: !!data.isStreaming };
-    return { intent: parsed.intent, isStreaming: !!data.isStreaming };
+  if (toolOutput && typeof toolOutput === 'object') {
+    const data = toolOutput as GenerativeUIBlockOutput;
+    if (data.intent) {
+      if (typeof data.intent === 'string') {
+        const parsed = parseGenerativeUIIntent(data.intent);
+        if (!parsed.ok) return { intent: data.intent, isStreaming: !!data.isStreaming };
+        return { intent: parsed.intent, isStreaming: !!data.isStreaming };
+      }
+      return { intent: data.intent, isStreaming: !!data.isStreaming };
+    }
   }
-  return { intent: data.intent, isStreaming: !!data.isStreaming };
+
+  const trimmed = content?.trim();
+  if (trimmed) {
+    const parsed = parseGenerativeUIIntent(trimmed);
+    if (parsed.ok) return { intent: parsed.intent, isStreaming: true };
+    return { intent: trimmed, isStreaming: true };
+  }
+
+  return null;
 }

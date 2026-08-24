@@ -59,6 +59,7 @@ export type BlockType =
   | 'graph'         // 知识图谱检索
   // 后端扩展块
   | 'paper_save'    // 论文保存
+  | 'generative_ui' // 结构化 UI 意图（GenerativeUIRenderer 桥接）
   // 通用/回退（兜底后端新增的未知块类型）
   | 'generic'
   | (string & {});  // 保持可扩展性，允许后端发送新块类型
