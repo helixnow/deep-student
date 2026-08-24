@@ -1456,8 +1456,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
             itemClassName={isSmallScreen
               // 移动端加大纵向点击区，接近触控目标标准（对齐制卡任务页做法）
-              ? '!h-auto !px-3 !py-2 text-[12px] font-medium whitespace-nowrap'
-              : '!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap'}
+              // 粗指针设备（如 iPad 横屏走桌面分支）用 !min-h-11 兜底触控高度，
+              // 需带 ! 以覆盖 .study-shell-segmented-button 的 min-height: 0
+              ? '!h-auto !px-3 !py-2 text-[12px] font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+              : '!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
             options={locationTabs
               .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
               .map((tab) => {
