@@ -16,7 +16,6 @@ export interface NoteEditSuggestionPayload {
   content?: string;
   search?: string;
   replace?: string;
-  isRegex?: boolean;
   section?: string;
   targetWindowId?: string;
 }
@@ -52,7 +51,6 @@ export function createNotesEditActionHandlers(
             content: suggestion.content,
             search: suggestion.search,
             replace: suggestion.replace,
-            isRegex: suggestion.isRegex,
             section: suggestion.section,
           },
           { onSettled: callbacks?.onSettled },

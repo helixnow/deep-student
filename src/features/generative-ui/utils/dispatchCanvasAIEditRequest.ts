@@ -6,6 +6,7 @@
  */
 
 import type { CanvasEditOperation } from '@/features/notes/hooks/useAIEditState';
+import { noteEditPayloadSchema } from './extractNoteEditPayload';
 
 export interface CanvasAIEditDispatchPayload {
   requestId: string;
@@ -42,6 +43,13 @@ export function dispatchCanvasAIEditRequest(
 ): CanvasAIEditDispatchResult {
   if (typeof window === 'undefined') {
     return { claimed: false, reason: '当前环境没有可用的建议面板' };
+  }
+
+  // Defense in depth for direct handler callers that bypass extractNoteEditPayload.
+  // In particular, never forward model-controlled regular expressions to the editor.
+  const validation = noteEditPayloadSchema.safeParse(payload);
+  if (!validation.success) {
+    return { claimed: false, reason: '笔记编辑建议无效或内容过大' };
   }
 
   let result: CanvasAIEditDispatchResult = {

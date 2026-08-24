@@ -135,9 +135,8 @@ type 必须属于 registry（含 markdown、chart、steps、table）；JSON Sche
             properties: {
               operation: { type: 'string', enum: ['append', 'replace', 'set'] },
               content: { type: 'string' },
-              search: { type: 'string' },
+              search: { type: 'string', description: 'replace 使用的字面字符串；不支持正则表达式' },
               replace: { type: 'string' },
-              isRegex: { type: 'boolean' },
               section: { type: 'string' },
             },
             required: ['operation'],

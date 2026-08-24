@@ -4,13 +4,50 @@
 
 import { z } from 'zod';
 
+/** Generative UI 模型可提交的单次笔记编辑文本上限（UTF-8，256 KiB）。 */
+export const MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES = 256 * 1024;
+const MAX_GENERATIVE_NOTE_EDIT_FIELD_LENGTH = MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES;
+const MAX_GENERATIVE_NOTE_EDIT_SECTION_LENGTH = 1024;
+
 export const noteEditPayloadSchema = z.object({
   operation: z.enum(['append', 'replace', 'set']),
-  content: z.string().optional(),
-  search: z.string().optional(),
-  replace: z.string().optional(),
-  isRegex: z.boolean().optional(),
-  section: z.string().optional(),
+  content: z.string().max(MAX_GENERATIVE_NOTE_EDIT_FIELD_LENGTH).optional(),
+  search: z.string().max(MAX_GENERATIVE_NOTE_EDIT_FIELD_LENGTH).optional(),
+  replace: z.string().max(MAX_GENERATIVE_NOTE_EDIT_FIELD_LENGTH).optional(),
+  // Generative UI payloads are model-controlled. Regex is deliberately unavailable here.
+  isRegex: z.literal(false).optional(),
+  section: z.string().max(MAX_GENERATIVE_NOTE_EDIT_SECTION_LENGTH).optional(),
+}).superRefine((payload, ctx) => {
+  if (payload.operation === 'append' && !payload.content) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['content'],
+      message: 'append requires non-empty content',
+    });
+  }
+  if (payload.operation === 'set' && payload.content === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['content'],
+      message: 'set requires content',
+    });
+  }
+  if (payload.operation === 'replace' && !payload.search) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['search'],
+      message: 'replace requires non-empty search',
+    });
+  }
+
+  const totalBytes = [payload.content, payload.search, payload.replace, payload.section]
+    .reduce((total, value) => total + (value ? new TextEncoder().encode(value).byteLength : 0), 0);
+  if (totalBytes > MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES) {
+    ctx.addIssue({
+      code: 'custom',
+      message: `note edit input exceeds ${MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES} bytes`,
+    });
+  }
 });
 
 export type NoteEditPayload = z.infer<typeof noteEditPayloadSchema>;

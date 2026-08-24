@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -11,6 +11,10 @@ import { MarkdownBlock, markdownPropsSchema } from '@/features/generative-ui/com
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
+import {
+  computeProposedContent,
+  MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES,
+} from '@/features/notes/hooks/useAIEditState';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
@@ -36,10 +40,6 @@ generativeUIRegistry.register({
 });
 
 describe('dispatchCanvasAIEditRequest', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('returns unclaimed when no editor acknowledges the event', () => {
     const result = dispatchCanvasAIEditRequest({
       requestId: 'req-1',
@@ -77,6 +77,65 @@ describe('dispatchCanvasAIEditRequest', () => {
     const b = createCanvasEditRequestId();
     expect(a).not.toBe(b);
     expect(a.startsWith('gen-ui-')).toBe(true);
+  });
+
+  it('does not dispatch model-controlled regex replacement', () => {
+    const listener = vi.fn();
+    window.addEventListener('canvas:ai-edit-request', listener);
+
+    const result = dispatchCanvasAIEditRequest({
+      requestId: 'req-regex',
+      noteId: 'note-1',
+      operation: 'replace',
+      search: '(a+)+$',
+      replace: 'x',
+      isRegex: true,
+    });
+
+    window.removeEventListener('canvas:ai-edit-request', listener);
+    expect(result).toMatchObject({ claimed: false });
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('Generative UI note edit size safety', () => {
+  it('rejects a literal replacement whose projected output exceeds the note limit', () => {
+    const result = computeProposedContent(
+      {
+        requestId: 'req-large-output',
+        noteId: 'note-1',
+        operation: 'replace',
+        search: 'a',
+        replace: 'x'.repeat(2048),
+      },
+      'a'.repeat(1024),
+    );
+
+    expect(result.error).toContain(String(MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES));
+    expect(result.content).toBe('a'.repeat(1024));
+  });
+
+  it('keeps legitimate append and literal replace edits working', () => {
+    expect(computeProposedContent(
+      {
+        requestId: 'req-append',
+        noteId: 'note-1',
+        operation: 'append',
+        content: 'Next',
+      },
+      'Start',
+    )).toMatchObject({ content: 'Start\n\nNext' });
+
+    expect(computeProposedContent(
+      {
+        requestId: 'req-replace',
+        noteId: 'note-1',
+        operation: 'replace',
+        search: 'old',
+        replace: 'new',
+      },
+      'old and old',
+    )).toMatchObject({ content: 'new and new', replaceCount: 2 });
   });
 });
 

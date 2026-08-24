@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { schemaToPromptHint } from '@/features/generative-ui/utils/schemaToPromptHint';
 import { statCardPropsSchema } from '@/features/generative-ui/schema';
-import { extractNoteEditPayload } from '@/features/generative-ui/utils/extractNoteEditPayload';
+import {
+  extractNoteEditPayload,
+  MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES,
+} from '@/features/generative-ui/utils/extractNoteEditPayload';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { buildResearchReportIntent } from '@/features/generative-ui/utils/buildResearchReportIntent';
 import {
@@ -52,6 +55,26 @@ describe('extractNoteEditPayload', () => {
 
   it('returns null for invalid noteEdit', () => {
     expect(extractNoteEditPayload({ noteEdit: { operation: 'invalid' } })).toBeNull();
+  });
+
+  it('rejects model-controlled regex replacement', () => {
+    expect(extractNoteEditPayload({
+      noteEdit: {
+        operation: 'replace',
+        search: '(a+)+$',
+        replace: 'x',
+        isRegex: true,
+      },
+    })).toBeNull();
+  });
+
+  it('rejects oversized aggregate note edit input', () => {
+    expect(extractNoteEditPayload({
+      noteEdit: {
+        operation: 'append',
+        content: 'a'.repeat(MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES + 1),
+      },
+    })).toBeNull();
   });
 });
 
