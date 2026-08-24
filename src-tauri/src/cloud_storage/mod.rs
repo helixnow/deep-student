@@ -27,6 +27,8 @@ mod ftp;
 pub mod repo_check;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
+/// [R11-lease] 记录级同步的云端目标租约（TTL、陈旧回收、两阶段选主）。
+pub mod sync_lease;
 mod sync_manager;
 mod traits;
 mod webdav;

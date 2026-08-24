@@ -158,6 +158,7 @@
     "legacyPlaintextRejected": "The cloud directory still contains unencrypted data uploaded before encryption was enabled. To keep end-to-end encryption from being bypassed, this sync stopped without reading that data. To fix it: temporarily clear the encryption password in the cloud sync settings, run one download sync to merge the cloud data into this device, then empty that cloud directory (or switch to a new one), set the password again, and run a full upload.",
     "encryptionPasswordMissing": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
     "wrongEncryptionPassword": "The cloud data could not be decrypted: the encryption password is incorrect (or the cloud data is corrupted). Update the password in the cloud sync settings to match your other devices and try again; every device connected to the same cloud directory must use the same encryption password.",
+    "leaseHeld": "Another device is syncing to the same cloud directory. This run stopped safely to prevent concurrent writes from corrupting sync state. Wait for that device to finish, then retry. If it crashed, the lease will be reclaimed automatically after its timeout; retry later and do not overwrite cloud sync files manually.",
     "technicalDetail": "Technical detail:"
   },
   "unsynced": {

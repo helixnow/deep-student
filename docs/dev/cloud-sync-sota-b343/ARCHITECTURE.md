@@ -84,3 +84,38 @@ deleted_at TEXT   -- tombstone
 E2E：`dstu-test/skills/deep-student-cloud-sync-e2e/`
 
 本程序后续极端测试优先复用这些资产，而不是另起炉灶。
+
+## 8. 记录级同步的 sync target 租约（R11）
+
+常规 record-level sync 在远端 `data_governance/locks/sync-target/` 下获取目标租约。
+上传、下载与双向同步都必须持有：下载成功后也会发布 cursor/manifest，因此并非
+严格只读。租约只保护 record-level sync，不与 Cloud backup ZIP 的版本对象混用。
+
+状态机：
+
+```text
+不存在
+  │ 写入独立 contender（activation_committed=false, expires_at=now+TTL）
+  ▼
+pending ── 完整 LIST，以 (created_at, operation_id) 确定唯一赢家
+  │ 赢家回写并回验 activation_committed=true
+  ├───────────────────────────────┐
+  ▼                               ▼
+committed（后台续租）          loser（仅删自己的 contender，返回
+  │                            E_SYNC_LEASE_HELD）
+  │ 正常结束：按 operation_id 核对后删除
+  │ 崩溃：对象残留，心跳停止
+  ▼
+不存在 ◄── expires_at 到期后由下一轮完整 LIST 回收 pending/committed
+```
+
+关键约束：
+
+- `CloudStorage` 没有 CAS/conditional PUT，禁止把租约实现成多个设备覆盖同一个 key；
+  每次操作用 UUID 独立对象，完整 LIST 后确定性选主。
+- LIST 截断、租约读取失败或新鲜但损坏的租约一律 fail-closed；损坏租约只能在
+  provider `last_modified + TTL` 后回收，避免既误删活锁又永久锁死。
+- `remote format` 门槛先检查，未来格式在**零租约写入**状态下拒绝；通过后才允许
+  写 contender。租约持有窗口覆盖 E2EE marker、文件对象、行变更、manifest 与 prune。
+- 占用错误必须包含稳定 token `E_SYNC_LEASE_HELD`；自动同步据此静默记为
+  `skipped_lease_held`，手动同步使用 `sync.errors.leaseHeld` 给出重试指引。
