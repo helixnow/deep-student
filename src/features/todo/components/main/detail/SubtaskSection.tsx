@@ -104,7 +104,8 @@ const SubtaskRow: React.FC<{
           }}
           onClick={(e) => e.stopPropagation()}
           aria-hidden="true"
-          className="flex h-4 w-3.5 flex-shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/0 transition-colors duration-150 active:cursor-grabbing group-hover/subtask:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40"
+          // 触屏：视觉 14×16 太小，实际盒撑到 44×44；负 margin 抵消宽度增量保持布局不变
+          className="flex h-4 w-3.5 flex-shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/0 transition-colors duration-150 active:cursor-grabbing group-hover/subtask:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-mx-[15px]"
         >
           <DotsSixVertical size={13} weight="bold" />
         </span>

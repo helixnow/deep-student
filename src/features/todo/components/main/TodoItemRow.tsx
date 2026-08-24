@@ -1047,9 +1047,11 @@ export const SortableTodoItemRow: React.FC<Omit<TodoItemRowProps, 'dragHandle'>>
               'group-hover:text-muted-foreground/60 hover:!text-muted-foreground',
               'focus-visible:text-muted-foreground focus:outline-none',
               // 触屏无 hover：手柄常显淡色，长按可拖拽排序（否则功能不可发现）；
-              // touch-none 防止长按判定期间被原生滚动打断，加高命中区便于点中
+              // touch-none 防止长按判定期间被原生滚动打断；盒宽撑到 44，
+              // -ml-4/-mr-2 抵消增量：图标中心与行内布局均与原 w-7 版本一致
               '[@media(pointer:coarse)]:text-muted-foreground/50',
-              '[@media(pointer:coarse)]:touch-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-7',
+              '[@media(pointer:coarse)]:touch-none [@media(pointer:coarse)]:h-11',
+              '[@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-ml-4 [@media(pointer:coarse)]:-mr-2',
             )}
           >
             <DotsSixVertical size={14} weight="bold" />
