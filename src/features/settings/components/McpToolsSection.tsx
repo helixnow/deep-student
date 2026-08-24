@@ -303,6 +303,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="ghost"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('settings:mcp_server_edit.cancel')}
@@ -310,6 +311,7 @@ function ServerListItem({
             <DsButton
               size="sm"
               variant="danger"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={deleting}
               onClick={async () => {
                 if (deleting) return;
@@ -786,11 +788,11 @@ function ServerEditPanel({
     <div className="p-4 space-y-6">
       {/* 模式切换标签 */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <FileCode className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.form_mode')}
         </DsButton>
-        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           <CodeBlock className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
         </DsButton>
@@ -995,6 +997,7 @@ function ServerEditPanel({
             type="button"
             variant="ghost"
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -1004,6 +1007,7 @@ function ServerEditPanel({
             type="submit"
             variant="primary"
             size="sm"
+            className="[@media(pointer:coarse)]:min-h-11"
             disabled={isSaving}
           >
             {t('settings:mcp_server_edit.save')}
@@ -1242,11 +1246,11 @@ function NewServerEditItem({
       <div className="p-4 space-y-6">
         {/* 模式切换标签 */}
         <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit border border-border/40">
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn(editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('form')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'form' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <FileCode className="w-3.5 h-3.5" />
             {t('settings:mcp_server_edit.form_mode')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          <DsButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn('[@media(pointer:coarse)]:min-h-11', editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
             <CodeBlock className="w-3.5 h-3.5" />
             JSON
           </DsButton>
@@ -1464,6 +1468,7 @@ function NewServerEditItem({
               type="button"
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={onCancel}
               disabled={isSubmitting}
             >
@@ -1473,6 +1478,7 @@ function NewServerEditItem({
               type="submit"
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={isSubmitting}
             >
               {t('settings:mcp_server_edit.create')}
@@ -1503,6 +1509,7 @@ function EmptyServerList({ onAdd }: { onAdd: () => void }) {
         onClick={onAdd}
         variant="primary"
         size="sm"
+        className="[@media(pointer:coarse)]:min-h-11"
       >
         <Plus className="w-4 h-4 mr-1" />
         {t('settings:mcp_server_list.add_server')}
@@ -1878,10 +1885,10 @@ export function PresetServerSelector({
 
   const permissionFooterButtons = (
     <>
-      <DsButton variant="default" size="sm" onClick={closePermissionDrawer}>
+      <DsButton variant="default" size="sm" onClick={closePermissionDrawer} className="[@media(pointer:coarse)]:min-h-11">
         {t('common:cancel')}
       </DsButton>
-      <DsButton variant="primary" size="sm" onClick={confirmInstall}>
+      <DsButton variant="primary" size="sm" onClick={confirmInstall} className="[@media(pointer:coarse)]:min-h-11">
         {t('settings:mcp_presets.confirm_install')}
       </DsButton>
     </>
@@ -2328,7 +2335,7 @@ function ShellCommandRulesSection() {
             {t('settings:tool_permissions.shell_rules.desc')}
           </p>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs">
+        <DsButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs [@media(pointer:coarse)]:min-h-11">
           <Plus className="h-3.5 w-3.5 mr-1" />
           {t('settings:tool_permissions.shell_rules.add')}
         </DsButton>
@@ -2431,8 +2438,8 @@ function ShellCommandRulesSection() {
             </div>
           )}
           <div className="mt-3 flex justify-end gap-2">
-            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs">{t('common:cancel')}</DsButton>
-            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs">
+            <DsButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs [@media(pointer:coarse)]:min-h-11">{t('common:cancel')}</DsButton>
+            <DsButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs [@media(pointer:coarse)]:min-h-11">
               {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
             </DsButton>
           </div>
