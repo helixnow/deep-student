@@ -63,7 +63,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
           )}
         </div>
         {debugPreview && (
-          <DsButton className="mr-2" size="sm" variant="ghost" onClick={onDebugExit}>
+          <DsButton className="mr-2 [@media(pointer:coarse)]:min-h-11" size="sm" variant="ghost" onClick={onDebugExit}>
             {t('data:recovery.debug_exit_preview')}
           </DsButton>
         )}
