@@ -1,7 +1,30 @@
 # 金标卡集（Gold Set）挖掘方案：从用户编辑记录中提取
 
-> 状态：方案设计（本轮不写挖库代码）。目标是把"用户实际保留/修正的卡片"
-> 变成制卡质量评估的金标数据，替代纯人工标注。
+> 状态：**部分已实现（Round 4 #10）**。标注/抽取纯函数层 + lint 契约校验 +
+> 修正对回归已落地，SQLite 埋点与离线挖掘脚本仍是后续工作。
+> 目标不变：把"用户实际保留/修正的卡片"变成制卡质量评估的金标数据，
+> 替代纯人工标注。
+>
+> 已实现（见 `src-tauri/src/anki_gold_set.rs`，纯函数、不接管线）：
+>
+> - §3 label 步骤：`classify_candidate` / `mine_gold_set`（kept_unedited /
+>   edited_minor / edited_major / deleted_early / error_card_repaired /
+>   unlabeled 六标签决策树，阈值即本文伪代码数字，`GoldMiningConfig` 可调）；
+> - 「改前=劣化、改后=金标」抽取：`RepairPair`（含字符级编辑距离比）+
+>   `lint_repair_pair`（直接调用生产 `anki_qa_lint::lint_card` 校验
+>   original 命中 / edited 零命中 / lint 盲区三态）；
+> - §2 P0 读取端：`extract_original_generation`（`_original_generation`
+>   两种存储形态的解析）；
+> - §3 export 整形：`fixture_export_bucket` + `to_fixture_json`（含 §4 的
+>   PII 样式脱敏 `scrub_pii`）；
+> - §5.2 修正对回归：`tests/fixtures/anki-eval/gold/repair-pairs/*.json`
+>   被 JS（`tests/vitest/anki/eval/goldPairs.test.ts` + CLI）与 Rust
+>   （`repo_repair_pair_fixtures_satisfy_lint_contract`）双侧消费；
+> - lint 码跨语言契约：`LINT_CONTRACT_CODES` 清单 + 双向锁定测试
+>   （详见 `eval/README.md` 对照表）。
+>
+> 未实现（后续轮）：`_original_generation` 生成路径写入埋点、
+> `anki_card_revisions` 表、FSRS 数据拼装层、离线挖掘 CLI、分层抽样器。
 
 ## 1. 核心思路
 
@@ -41,6 +64,10 @@
 
 ## 3. 挖掘管线（伪代码级）
 
+> label 与 export 两步已实现为纯函数（`anki_gold_set::classify_candidate` /
+> `fixture_export_bucket` / `to_fixture_json`）；extract（SQL 拼装）与
+> sample（分层抽样）待离线脚本落地。
+
 ```
 extract:
   SELECT c.*, t.source_type, t.source_id
@@ -74,8 +101,11 @@ export:
 
 1. **lint 校准**：正例集合上任何 lint 码命中率 > 2% 即视为误伤，规则需收紧
    阈值或加豁免（对照 `good/` 集的机制，规模从 6 张扩到 ≥100 张）。
-2. **修正对回归**：`repair-pairs` 中 original 应被 lint 命中、edited 应零命中；
-   两端都不满足的对子暴露 lint 盲区，是新规则的第一素材来源。
+2. **修正对回归**（已实现）：`repair-pairs` 中 original 应被 lint 命中、
+   edited 应零命中；两端都不满足的对子暴露 lint 盲区，是新规则的第一素材
+   来源。JS 侧 `harness.mjs::evaluateRepairPair`（vitest + CLI），Rust 侧
+   `anki_gold_set::lint_repair_pair`（生产 lint 引擎复检），盲区按失败暴露
+   而非静默通过。
 3. **生成质量 A/B**：prompt / 模型 / Structured Output 变更后，在同源材料上
    重新生成并与金标正例做嵌入相似度 + lint 命中对比，量化质量漂移。
 4. **错误卡修复评估**：用户修好的错误卡（原始坏 JSON + 人工正确答案）直接
@@ -83,8 +113,12 @@ export:
 
 ## 6. 分阶段落地
 
-- **P0（无 schema 变更）**：写入 `_original_generation`；离线脚本按第 3 节
-  规则跑通 kept_unedited 正例导出（研发自测库）。
-- **P1**：`anki_card_revisions` 表 + 编辑路径埋点；修正对导出。
-- **P2**：FSRS 留存信号并入标签；分层抽样器；金标集版本化
+- **P0（无 schema 变更）**：✅ 读取端 `extract_original_generation` +
+  全部标注/校验/导出纯函数已实现（Round 4 #10）；⬜ 生成路径写入
+  `_original_generation` 埋点；⬜ 离线脚本按第 3 节规则跑通 kept_unedited
+  正例导出（研发自测库）。
+- **P1**：`anki_card_revisions` 表 + 编辑路径埋点；修正对导出
+  （导出整形与校验已就绪，只差数据源）。
+- **P2**：FSRS 留存信号并入标签（`GoldCandidate` 已预留
+  review_count/again_count 字段与阈值）；分层抽样器；金标集版本化
   （`gold/v1/`，manifest 记录挖掘参数与日期）。
