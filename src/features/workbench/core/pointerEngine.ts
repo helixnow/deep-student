@@ -261,7 +261,10 @@ function magnetVector(zone: SnapZone): { x: number; y: number } {
     case 'right':
       return { x: 1, y: 0 };
     case 'top-maximize':
+    case 'top-half':
       return { x: 0, y: -1 };
+    case 'bottom-half':
+      return { x: 0, y: 1 };
     case 'tl':
       return { x: -DIAG, y: -DIAG };
     case 'tr':

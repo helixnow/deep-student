@@ -335,6 +335,8 @@
   "tile": {
     "left": "平铺到左半屏",
     "right": "平铺到右半屏",
+    "top": "平铺到上半屏",
+    "bottom": "平铺到下半屏",
     "topLeft": "平铺到左上角",
     "topRight": "平铺到右上角",
     "bottomLeft": "平铺到左下角",
@@ -346,6 +348,8 @@
     "zone": {
       "left": "左半屏",
       "right": "右半屏",
+      "top": "上半屏",
+      "bottom": "下半屏",
       "topLeft": "左上",
       "topRight": "右上",
       "bottomLeft": "左下",
@@ -448,12 +452,26 @@
     "close": "关闭",
     "hint": "按 ? 或 Esc 关闭 · 长按 Ctrl+Alt 随时查看",
     "hintMac": "按 ? 或 Esc 关闭 · 长按 ⌘⌥ 随时查看",
+    "replayTour": "重新播放快速上手",
     "groups": {
       "layout": "平铺与布局",
       "movement": "移动与贴边",
       "navigation": "切换与导航",
       "management": "窗口管理",
       "help": "帮助"
+    },
+    "tricks": {
+      "title": "修饰键技巧",
+      "drag": "拖拽窗口：扩大贴边/角热区；拖到顶缘变为上半屏",
+      "dragGesture": "拖拽",
+      "tileMenu": "绿灯悬停菜单：中列变为上半屏 / 填满 / 下半屏",
+      "tileMenuGesture": "悬停绿灯",
+      "zoom": "传统缩放：填满桌面 / 还原",
+      "zoomGesture": "点按绿灯",
+      "closeAll": "关闭该应用的全部窗口",
+      "closeAllGesture": "点按红灯",
+      "minimizeAll": "最小化该应用的全部窗口",
+      "minimizeAllGesture": "点按黄灯"
     }
   },
   "wallpaper": {
@@ -538,6 +556,7 @@
     "restored": "{{title}} 已恢复",
     "exposeOpened": "俯瞰已打开，共 {{count}} 个窗口",
     "exposeClosed": "俯瞰已关闭",
+    "exposeSelected": "已选中 {{title}}",
     "dropOpened": "已打开 {{title}}",
     "appCrashed": "{{name}} 出现错误，可重新加载",
     "showDesktop": "已显示桌面",
@@ -555,6 +574,8 @@
     "title": "快捷键",
     "tileLeft": "平铺到左半屏",
     "tileRight": "平铺到右半屏",
+    "tileTop": "平铺到上半屏",
+    "tileBottom": "平铺到下半屏",
     "tileTopLeft": "平铺到左上角",
     "tileTopRight": "平铺到右上角",
     "tileBottomLeft": "平铺到左下角",

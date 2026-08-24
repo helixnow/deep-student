@@ -97,11 +97,14 @@ const RESOURCE_KEY_REQUIRED_TYPE_IDS = new Set([
 ]);
 
 type DesktopSnapZone =
-  | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br' | 'maximized' | 'floating';
+  | 'left' | 'right' | 'top' | 'bottom'
+  | 'tl' | 'tr' | 'bl' | 'br' | 'maximized' | 'floating';
 
 const ZONE_TO_MODE: Record<DesktopSnapZone, DisplayMode> = {
   left: 'tiled-left',
   right: 'tiled-right',
+  top: 'tiled-top',
+  bottom: 'tiled-bottom',
   tl: 'tiled-tl',
   tr: 'tiled-tr',
   bl: 'tiled-bl',
@@ -113,6 +116,8 @@ const ZONE_TO_MODE: Record<DesktopSnapZone, DisplayMode> = {
 const MODE_TO_ZONE: Record<DisplayMode, DesktopSnapZone> = {
   'tiled-left': 'left',
   'tiled-right': 'right',
+  'tiled-top': 'top',
+  'tiled-bottom': 'bottom',
   'tiled-tl': 'tl',
   'tiled-tr': 'tr',
   'tiled-bl': 'bl',
@@ -122,7 +127,7 @@ const MODE_TO_ZONE: Record<DisplayMode, DesktopSnapZone> = {
 };
 
 const SNAP_ZONES: DesktopSnapZone[] = [
-  'left', 'right', 'tl', 'tr', 'bl', 'br', 'maximized', 'floating',
+  'left', 'right', 'top', 'bottom', 'tl', 'tr', 'bl', 'br', 'maximized', 'floating',
 ];
 
 export function desktopWindowRef(windowId: string): string {

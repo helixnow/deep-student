@@ -335,6 +335,8 @@
   "tile": {
     "left": "Tile to Left Half",
     "right": "Tile to Right Half",
+    "top": "Tile to Top Half",
+    "bottom": "Tile to Bottom Half",
     "topLeft": "Tile to Top Left",
     "topRight": "Tile to Top Right",
     "bottomLeft": "Tile to Bottom Left",
@@ -346,6 +348,8 @@
     "zone": {
       "left": "left half",
       "right": "right half",
+      "top": "top half",
+      "bottom": "bottom half",
       "topLeft": "top-left",
       "topRight": "top-right",
       "bottomLeft": "bottom-left",
@@ -448,12 +452,26 @@
     "close": "Close",
     "hint": "Press ? or Esc to close · Hold Ctrl+Alt to peek",
     "hintMac": "Press ? or Esc to close · Hold ⌘⌥ to peek",
+    "replayTour": "Replay quick tour",
     "groups": {
       "layout": "Tiling & layout",
       "movement": "Move & snap",
       "navigation": "Switch & navigate",
       "management": "Window management",
       "help": "Help"
+    },
+    "tricks": {
+      "title": "Modifier tricks",
+      "drag": "Drag a window: larger snap zones; drop on the top edge for top half",
+      "dragGesture": "drag",
+      "tileMenu": "Zoom hover menu: middle column becomes top half / fill / bottom half",
+      "tileMenuGesture": "hover zoom",
+      "zoom": "Classic zoom: fill desktop / restore",
+      "zoomGesture": "click zoom",
+      "closeAll": "Close all windows of this app",
+      "closeAllGesture": "click close",
+      "minimizeAll": "Minimize all windows of this app",
+      "minimizeAllGesture": "click minimize"
     }
   },
   "wallpaper": {
@@ -538,6 +556,7 @@
     "restored": "{{title}} restored",
     "exposeOpened": "Overview opened, {{count}} windows",
     "exposeClosed": "Overview closed",
+    "exposeSelected": "{{title}} selected",
     "dropOpened": "Opened {{title}}",
     "appCrashed": "{{name}} crashed and can be reloaded",
     "showDesktop": "Desktop shown",
@@ -555,6 +574,8 @@
     "title": "Keyboard Shortcuts",
     "tileLeft": "Tile to left half",
     "tileRight": "Tile to right half",
+    "tileTop": "Tile to top half",
+    "tileBottom": "Tile to bottom half",
     "tileTopLeft": "Tile to top-left",
     "tileTopRight": "Tile to top-right",
     "tileBottomLeft": "Tile to bottom-left",

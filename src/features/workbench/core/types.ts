@@ -34,7 +34,10 @@ export type DisplayMode =
   | 'tiled-tl'
   | 'tiled-tr'
   | 'tiled-bl'
-  | 'tiled-br';
+  | 'tiled-br'
+  // 上/下半屏（2026-08 扩展：新增联合成员，既有成员与语义不变）
+  | 'tiled-top'
+  | 'tiled-bottom';
 
 /** 由 scheduler 派生，绝不持久化 */
 export type WindowLifecycle = 'focused' | 'visible' | 'background' | 'frozen';
@@ -635,6 +638,10 @@ export type SnapZone =
   | 'left' | 'right'
   | 'tl' | 'tr' | 'bl' | 'br'
   | 'top-maximize'
+  // 上/下半屏热区（2026-08 扩展）：top-half 仅在 ⌥ 拖到顶缘时命中
+  //（对齐 macOS Sequoia：普通拖顶缘 = Fill，⌥ 拖顶缘 = 上半屏）；
+  // bottom-half 为底缘中段（角区之外）。
+  | 'top-half' | 'bottom-half'
   | null;
 
 export interface WindowPointerCallbacks {

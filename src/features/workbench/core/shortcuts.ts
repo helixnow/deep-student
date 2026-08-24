@@ -43,6 +43,9 @@ export type WorkbenchShortcutId =
   | 'tile-tr'
   | 'tile-bl'
   | 'tile-br'
+  // ---- 上/下半屏（2026-08 追加）----
+  | 'tile-top'
+  | 'tile-bottom'
   | 'move-left'
   | 'move-right'
   | 'move-up'
@@ -225,6 +228,23 @@ export const WORKBENCH_SHORTCUT_DEFINITIONS: readonly WorkbenchShortcutDefinitio
     binding: { code: 'KeyK', ctrl: true, alt: true, shift: false },
     descriptionKey: 'workbench:shortcuts.tileBottomRight',
     defaultDescription: '平铺到右下角',
+    group: 'layout',
+  },
+  // ---- 上/下半屏平铺（Ctrl+Alt+T/B；Ctrl+Alt+Shift+↑/↓ 已被贴边移动占用，
+  // T=Top / B=Bottom 助记，Ctrl+Alt 组内无冲突，macOS 映射 ⌘⌥T/⌘⌥B
+  // 亦不与 menu.rs 原生 accelerator 重叠）----
+  {
+    id: 'tile-top',
+    binding: { code: 'KeyT', ctrl: true, alt: true, shift: false },
+    descriptionKey: 'workbench:shortcuts.tileTop',
+    defaultDescription: '平铺到上半屏',
+    group: 'layout',
+  },
+  {
+    id: 'tile-bottom',
+    binding: { code: 'KeyB', ctrl: true, alt: true, shift: false },
+    descriptionKey: 'workbench:shortcuts.tileBottom',
+    defaultDescription: '平铺到下半屏',
     group: 'layout',
   },
   // ---- O12 补齐：贴边移动（保持尺寸，发送到桌面边缘） ----

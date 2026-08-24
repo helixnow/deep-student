@@ -204,7 +204,7 @@ describe('WindowPointerEngine — 拖动', () => {
     h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), h.target);
     expect(h.engine.isActive()).toBe(true);
     expect(h.engine.isArmed()).toBe(false);
-    movePointer(402, 121); // 位移 ≈ 2.24px < MOVE_ARM_THRESHOLD_PX（3px）
+    movePointer(402, 122); // 位移 ≈ 2.83px < MOVE_ARM_THRESHOLD_PX（3px）
     flushRaf();
     expect(armed).not.toHaveBeenCalled();
     expect(h.frames).toHaveLength(0);
