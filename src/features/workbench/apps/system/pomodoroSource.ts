@@ -11,6 +11,7 @@
  */
 import i18n from '@/i18n';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
+import { notifyAppBadgeChanged } from '../../core/badgeBus';
 import type { ProjectionInstance, ProjectionSource } from '../../core/projection';
 import type { AppBadge } from '../../core/types';
 
@@ -21,6 +22,25 @@ export const POMODORO_CLOSE_LINGER_MS = 2500;
 
 function isRunning(): boolean {
   return usePomodoroStore.getState().mode !== 'idle';
+}
+
+let badgeNotifierStarted = false;
+
+/**
+ * 角标推送（幂等，注册时启动）：mode 在 idle ↔ 非 idle 间翻转时经 badgeBus
+ * 通知 Dock 即时重读 badgeSource（此前依赖 Dock 侧 2s 轮询才能发现圆点变化）。
+ * store 为全局单例，订阅不退——与应用注册同生命周期。
+ */
+export function startPomodoroBadgeNotifier(): void {
+  if (badgeNotifierStarted) return;
+  badgeNotifierStarted = true;
+  let prevRunning = isRunning();
+  usePomodoroStore.subscribe((state) => {
+    const running = state.mode !== 'idle';
+    if (running === prevRunning) return;
+    prevRunning = running;
+    notifyAppBadgeChanged('pomodoro');
+  });
 }
 
 function currentInstances(): ProjectionInstance[] {

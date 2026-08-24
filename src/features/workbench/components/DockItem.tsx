@@ -3,7 +3,8 @@
  *
  * - 点击三分支：无实例 → workbenchBus.launch；单实例 → focus（已聚焦 → minimize）；
  *   多实例 → DockWindowList 弹层
- * - 角标：appRegistry badgeSource（轮询 2s + registry subscribe），wb-dock-badge
+ * - 角标：appRegistry badgeSource（badgeBus 推送为主 + 30s 低频兜底轮询 +
+ *   registry subscribe），wb-dock-badge
  * - 作为 DockContextMenu（AppMenu context 模式）的 asChild 触发器：
  *   接受并透传 className / onContextMenu 等外部 props 到根元素
  *
@@ -25,6 +26,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
+import { subscribeAppBadgeChanged } from '../core/badgeBus';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { getSortedWindows } from '../core/windowListCache';
@@ -39,7 +41,11 @@ import { useDockPinnedDragReorder } from './DockPinnedStore';
 import { useDockAgentBadge } from '../agent/visuals/dockBadgeStore';
 import '../agent/visuals/agent-visuals.css';
 
-const BADGE_POLL_MS = 2000;
+/**
+ * 角标兜底轮询间隔（2026-08：2s → 30s）。即时性由 badgeBus 推送承担
+ *（各数据源状态变化时 notifyAppBadgeChanged），轮询只作防事件丢失的对账。
+ */
+const BADGE_POLL_MS = 30_000;
 /** launch bounce 时长兜底（与 Dock.css 780ms 对齐，略加余量） */
 const BOUNCE_FALLBACK_MS = 920;
 /** 长按出窗口列表判定时长（与 WindowTitleBar 绿灯长按 400ms 基建对齐） */
@@ -57,9 +63,9 @@ function badgeEquals(a: AppBadge | null, b: AppBadge | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// 角标共享 ticker：模块级单一 setInterval（首个订阅启动，最后一个退订停止），
-// 替代每个 DockItem 自建 2s 定时器；document.hidden 时跳过 tick，
-// visibilitychange 恢复可见时立即 read 一次补齐
+// 角标共享 ticker（低频兜底）：模块级单一 setInterval（首个订阅启动，最后一个
+// 退订停止）；document.hidden 时跳过 tick，visibilitychange 恢复可见时立即
+// read 一次补齐。即时刷新走 badgeBus 推送，不依赖本 ticker。
 // ---------------------------------------------------------------------------
 
 const badgeTickSubscribers = new Set<() => void>();
@@ -92,7 +98,11 @@ function subscribeBadgeTick(cb: () => void): () => void {
   };
 }
 
-/** 角标：badgeSource 拉模式 — 共享 2s ticker + registry 变更即时刷新 */
+/**
+ * 角标：badgeSource 拉模式 —
+ * badgeBus 推送（数据源变化即时失效）为主 + 共享 30s 兜底 ticker
+ * + registry 变更即时刷新
+ */
 export function useDockBadge(typeId: string): AppBadge | null {
   const [badge, setBadge] = React.useState<AppBadge | null>(
     () => appRegistry.get(typeId)?.badgeSource?.() ?? null,
@@ -104,9 +114,11 @@ export function useDockBadge(typeId: string): AppBadge | null {
       setBadge((prev) => (badgeEquals(prev, next) ? prev : next));
     };
     read();
+    const unsubscribePush = subscribeAppBadgeChanged(typeId, read);
     const unsubscribeTick = subscribeBadgeTick(read);
     const unsubscribe = appRegistry.subscribe(read);
     return () => {
+      unsubscribePush();
       unsubscribeTick();
       unsubscribe();
     };
