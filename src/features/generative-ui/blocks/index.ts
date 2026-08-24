@@ -25,6 +25,7 @@ import { KeyValueGridBlock } from '../components/KeyValueGridBlock';
 import { FlashcardPreviewBlock } from '../components/FlashcardPreviewBlock';
 import { ReviewCalendarBlock } from '../components/ReviewCalendarBlock';
 import { MistakeAnalysisBlock } from '../components/MistakeAnalysisBlock';
+import { MindmapEmbedBlock, mindmapEmbedPropsSchema } from '../components/MindmapEmbedBlock';
 
 generativeUIRegistry.register({
   type: 'stat-card',
@@ -99,6 +100,14 @@ generativeUIRegistry.register({
   description: '错题分析：主题 + 错误率 + 建议',
 });
 
+generativeUIRegistry.register({
+  type: 'mindmap-embed',
+  component: MindmapEmbedBlock,
+  propsSchema: mindmapEmbedPropsSchema,
+  description: '思维导图嵌入：mindmapId 引用式预览',
+  allowPartialRender: false,
+});
+
 export {
   StatCardBlock,
   AlertBlock,
@@ -110,4 +119,5 @@ export {
   FlashcardPreviewBlock,
   ReviewCalendarBlock,
   MistakeAnalysisBlock,
+  MindmapEmbedBlock,
 };

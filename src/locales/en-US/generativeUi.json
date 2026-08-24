@@ -20,5 +20,8 @@
   },
   "notes": {
     "summary_title": "AI note summary"
+  },
+  "workbench": {
+    "briefing_label": "AI learning briefing"
   }
 }

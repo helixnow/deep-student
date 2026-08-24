@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 4（2026-08-24）
+
+### 父代理
+- [x] `DesktopAiBriefingWidget` — 桌面 AI 学习简报（todo + 闪卡数据源）
+- [x] `workbenchLearningHandlers` — workbenchBus 接线
+- [x] `mindmap-embed` 块（React.lazy + MindMapEmbed）
+- [x] `registryPromptSync` contract 测试
+- [x] 38 项 vitest 全绿（generative-ui + DesktopAiBriefingWidget）
+
+### Round 5（进行中）
+- Rust `generative_ui` 事件 emit
+- Learning Hub 深度集成 POC
+- AIDiffPanel 确定性变更摘要
+- Round 5 子代理调研（10 × xhigh）
+
+---
+
 ## Round 3（2026-08-24）
 
 ### 父代理

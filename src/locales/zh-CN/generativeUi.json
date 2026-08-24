@@ -20,5 +20,8 @@
   },
   "notes": {
     "summary_title": "AI 笔记摘要"
+  },
+  "workbench": {
+    "briefing_label": "AI 学习简报"
   }
 }

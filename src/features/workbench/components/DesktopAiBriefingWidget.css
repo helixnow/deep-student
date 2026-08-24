@@ -1,0 +1,47 @@
+.wb-ai-briefing-widget {
+  position: absolute;
+  z-index: var(--wb-z-desktop-ui);
+  top: 18px;
+  left: 24px;
+  width: min(360px, calc(100% - 48px));
+  max-height: min(420px, calc(100vh - var(--wb-workarea-top, 0px) - 48px));
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: var(--wb-radius-xl, 18px);
+  box-shadow: var(--wb-shadow-idle);
+  pointer-events: auto;
+  transition:
+    box-shadow 180ms ease,
+    opacity var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out);
+}
+
+.wb-ai-briefing-widget[data-wb-widget-dim] {
+  opacity: 0.55;
+}
+
+.wb-ai-briefing-widget[data-wb-widget-dim]:hover,
+.wb-ai-briefing-widget[data-wb-widget-dim]:focus-within {
+  opacity: 1;
+}
+
+:root[data-wb-material='minimal'] .wb-ai-briefing-widget[data-wb-widget-dim] {
+  opacity: 1;
+}
+
+.wb-ai-briefing-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-ai-briefing-body .generative-ui-root {
+  gap: 8px;
+}
+
+.wb-ai-briefing-body .generative-ui-panel {
+  gap: 8px;
+}

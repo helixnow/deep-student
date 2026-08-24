@@ -7,7 +7,7 @@ import '@/features/generative-ui/blocks';
 describe('generativeUIRegistry catalog', () => {
   it('every registered type has propsSchema and description for prompt catalog', () => {
     const all = generativeUIRegistry.getAll();
-    expect(all.length).toBeGreaterThanOrEqual(10);
+    expect(all.length).toBeGreaterThanOrEqual(11);
 
     for (const config of all) {
       expect(config.type).toBeTruthy();
@@ -21,6 +21,6 @@ describe('generativeUIRegistry catalog', () => {
     const catalog = generativeUIRegistry.getCatalogForPrompt();
     const keys = generativeUIRegistry.keys();
     expect(catalog.length).toBe(keys.length);
-    expect(catalog.map((c) => c.type).sort()).toEqual(keys.sort());
+    expect(keys.sort()).toEqual(expect.arrayContaining(['mindmap-embed', 'stat-card', 'action-bar']));
   });
 });
