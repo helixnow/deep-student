@@ -1605,10 +1605,90 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         !target_active_asset.exists(),
         "target active asset should be deleted after tombstone propagation"
     );
-    // Content-addressed objects are immutable retention units. Tombstones remove
-    // logical visibility; object garbage collection is deliberately separate.
-    assert_remote_file_present(storage.as_ref(), &active_remote_key).await;
+    // The deleted asset had no remaining manifest reference, so its immutable
+    // object must be reclaimed instead of leaking indefinitely.
+    assert_remote_file_missing(storage.as_ref(), &active_remote_key).await;
     assert_file_bytes(&target_app_asset, app_payload);
+}
+
+/// 同内容双 key 的删除传播不得打断另一 key。
+///
+/// tombstone 必须在未过滤的清单上解析 `object_key`，否则只能回退到 legacy 逻辑路径
+/// `data_governance/assets/{key}`——该父目录在新布局下根本不存在，FTP 会因 cwd 550
+/// 硬失败。解析成功后，内容寻址对象本身是共享 retention unit，只摘清单条目、不删对象。
+async fn run_asset_shared_object_tombstone_contract(storage: Box<dyn CloudStorage>) {
+    storage
+        .check_connection()
+        .await
+        .expect("provider connection should work");
+
+    let source_active = TempDir::new().expect("create source active dir");
+    let source_app_data = TempDir::new().expect("create source app data dir");
+    let target_active = TempDir::new().expect("create target active dir");
+    let target_app_data = TempDir::new().expect("create target app data dir");
+
+    let shared_payload = deterministic_payload(9 * 1024 + 7);
+    let shared_object_key = format!(
+        "data_governance/asset_objects/{}",
+        sha256_hex(&shared_payload)
+    );
+    let deleted_key = "active/images/shared/deleted.bin";
+    let deleted_rel = Path::new("images").join("shared").join("deleted.bin");
+    let kept_rel = Path::new("images").join("shared").join("kept.bin");
+
+    let source_deleted = source_active.path().join(&deleted_rel);
+    let source_kept = source_active.path().join(&kept_rel);
+    std::fs::create_dir_all(source_deleted.parent().expect("shared asset parent"))
+        .expect("create source shared asset dir");
+    std::fs::write(&source_deleted, &shared_payload).expect("write source deleted asset");
+    std::fs::write(&source_kept, &shared_payload).expect("write source kept asset");
+
+    let source_manager = SyncManager::new(format!("device-shared-src-{}", Uuid::new_v4()));
+    let target_manager = SyncManager::new(format!("device-shared-dst-{}", Uuid::new_v4()));
+
+    let upload = source_manager
+        .sync_asset_directories(
+            storage.as_ref(),
+            source_active.path(),
+            source_app_data.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .expect("upload shared-content assets");
+    assert_eq!(upload.uploaded, 2);
+    assert!(!upload.has_failures(), "asset upload failures: {upload:?}");
+    assert_remote_file_present(storage.as_ref(), &shared_object_key).await;
+
+    std::fs::remove_file(&source_deleted).expect("delete source asset before tombstone");
+    source_manager
+        .mark_asset_deleted(
+            storage.as_ref(),
+            deleted_key,
+            Some(shared_payload.len() as u64),
+        )
+        .await
+        .expect("upload asset tombstone");
+
+    let tombstone_sync = target_manager
+        .sync_asset_directories_with_tombstones(
+            storage.as_ref(),
+            target_active.path(),
+            target_app_data.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .expect("apply asset tombstone on target");
+    assert!(
+        !tombstone_sync.has_failures(),
+        "shared-object tombstone sync failures: {tombstone_sync:?}"
+    );
+
+    assert_remote_file_present(storage.as_ref(), &shared_object_key).await;
+    assert_file_bytes(&target_active.path().join(&kept_rel), &shared_payload);
+    assert!(
+        !target_active.path().join(&deleted_rel).exists(),
+        "tombstoned key {deleted_key} must not be rehydrated"
+    );
 }
 
 async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dyn CloudStorage>) {
@@ -2016,6 +2096,13 @@ async fn webdav_asset_directories_file_sync_and_tombstone_contract() {
 
 #[tokio::test]
 #[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn webdav_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(webdav_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
 async fn webdav_asset_remote_same_size_corruption_rejected_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_remote_same_size_corruption_rejected_contract(webdav_storage().await).await;
@@ -2171,6 +2258,14 @@ async fn s3_asset_directories_file_sync_and_tombstone_contract() {
 #[cfg(feature = "cloud_storage_s3")]
 #[tokio::test]
 #[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn s3_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(s3_storage().await).await;
+}
+
+#[cfg(feature = "cloud_storage_s3")]
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
 async fn s3_asset_remote_same_size_corruption_rejected_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_remote_same_size_corruption_rejected_contract(s3_storage().await).await;
@@ -2321,6 +2416,13 @@ async fn ftp_vfs_blob_remote_same_size_corruption_rejected_contract() {
 async fn ftp_asset_directories_file_sync_and_tombstone_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_asset_directories_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_shared_object_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_shared_object_tombstone_contract(ftp_storage().await).await;
 }
 
 #[tokio::test]

@@ -408,16 +408,73 @@ fn ensure_model_accepts_message_modalities(
     Ok(())
 }
 
+const PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS: usize = 200;
+
+/// 上游把 reason/code/message 写成字符串、数字或布尔的情况都存在，统一取标量文本。
+fn provider_stream_scalar_text(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn provider_stream_error_detail(value: &Value) -> Option<String> {
+    let raw = provider_stream_scalar_text(value.pointer("/details/message"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/error/message")))
+        .or_else(|| provider_stream_scalar_text(value.get("details")))
+        .or_else(|| provider_stream_scalar_text(value.get("message")))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/error/message")))?;
+
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() > PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS {
+        let head: String = collapsed
+            .chars()
+            .take(PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS)
+            .collect();
+        Some(format!("{head}..."))
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn provider_stream_failure_classification(prefix: &str, reason: &str) -> Option<String> {
+    match reason {
+        "max_output_tokens" | "max_tokens" => Some(format!(
+            "{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”"
+        )),
+        "response.cancelled" | "response.canceled" | "cancelled" | "canceled" => {
+            Some(format!("{prefix}（上游取消）；已保留已生成内容，可重试"))
+        }
+        "content_filter" | "safety" => {
+            Some(format!("{prefix}（内容安全策略中止）；已保留已生成内容"))
+        }
+        _ if reason.starts_with("response.incomplete") => {
+            Some(format!("{prefix}；已保留已生成内容，可重试或发送“继续”"))
+        }
+        _ => None,
+    }
+}
+
 fn provider_stream_failure_message(
     value: &Value,
     requires_explicit_completion: bool,
     is_codex: bool,
 ) -> String {
-    let terminal_reason = value.get("reason").and_then(Value::as_str);
-    let detail_reason = value
-        .pointer("/details/reason")
-        .and_then(Value::as_str)
-        .or_else(|| value.pointer("/details/code").and_then(Value::as_str));
+    let terminal_reason = provider_stream_scalar_text(value.get("reason"));
+    let detail_reason = provider_stream_scalar_text(value.pointer("/details/reason"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/code")));
     let prefix = if is_codex {
         "OpenAI Codex 回复未完整结束"
     } else if requires_explicit_completion {
@@ -426,20 +483,20 @@ fn provider_stream_failure_message(
         "模型回复未完整结束"
     };
 
-    match detail_reason.or(terminal_reason) {
-        Some("max_output_tokens" | "max_tokens") => {
-            format!("{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”")
-        }
-        Some("response.cancelled" | "response.canceled" | "cancelled" | "canceled") => {
-            format!("{prefix}（上游取消）；已保留已生成内容，可重试")
-        }
-        Some("content_filter" | "safety") => {
-            format!("{prefix}（内容安全策略中止）；已保留已生成内容")
-        }
-        Some(reason) if reason.starts_with("response.incomplete") => {
-            format!("{prefix}；已保留已生成内容，可重试或发送“继续”")
-        }
-        _ => format!("{prefix}；已保留已生成内容，可重试"),
+    // 数字状态码（如 details.code=499）无法分类，此时仍要回退到顶层 reason 的已知分类。
+    let classified = detail_reason
+        .as_deref()
+        .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        .or_else(|| {
+            terminal_reason
+                .as_deref()
+                .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        })
+        .unwrap_or_else(|| format!("{prefix}；已保留已生成内容，可重试"));
+
+    match provider_stream_error_detail(value) {
+        Some(detail) => format!("{classified}；上游返回：{detail}"),
+        None => classified,
     }
 }
 
@@ -1258,6 +1315,32 @@ mod tests {
     }
 
     #[test]
+    fn stream_input_reassembles_chinese_split_across_byte_chunks() {
+        use crate::providers::{OpenAIAdapter, StreamEvent};
+
+        // issue #122：TCP 分帧把 3 字节汉字切成两个 chunk，
+        // 管线入口不得对半截 UTF-8 做 lossy 解码。
+        let source = "data: {\"choices\":[{\"delta\":{\"content\":\"数学题\"}}]}\n\n";
+        let bytes = source.as_bytes();
+        let split = source.find('数').unwrap() + 1;
+
+        let mut buffer = crate::utils::sse_buffer::SseEventBuffer::new();
+        let first = process_sse_stream_input(&mut buffer, Some(&bytes[..split]));
+        assert!(first.is_empty(), "半截 UTF-8 不应产出事件");
+
+        let mut blocks = process_sse_stream_input(&mut buffer, Some(&bytes[split..]));
+        blocks.extend(process_sse_stream_input(&mut buffer, None));
+        assert_eq!(blocks.len(), 1);
+        assert!(!blocks[0].contains('\u{fffd}'));
+
+        let events = OpenAIAdapter.parse_stream(&blocks[0]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StreamEvent::ContentChunk(content) if content == "数学题"
+        )));
+    }
+
+    #[test]
     fn codex_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, true)
             .expect_err("Codex EOF without a terminal event must fail");
@@ -1293,6 +1376,121 @@ mod tests {
         let error = validate_stream_termination(true, true, Some(&message), true)
             .expect_err("a provider failure must not be hidden by Done");
         assert!(error.to_string().contains("输出上限"));
+    }
+
+    #[test]
+    fn provider_failure_keeps_upstream_message_for_numeric_codes() {
+        // OpenRouter/中转站风格：code 是数字，旧实现的 as_str() 失配后丢掉原文
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": {
+                    "code": 429,
+                    "message": "Provider returned error: rate limit exceeded for gpt-5"
+                }
+            }),
+            false,
+            false,
+        );
+        assert!(message.contains("模型回复未完整结束"));
+        assert!(message.contains("rate limit exceeded for gpt-5"));
+    }
+
+    #[test]
+    fn provider_failure_falls_back_to_nested_and_top_level_messages() {
+        let nested = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.failed",
+                "details": { "error": { "message": "insufficient_quota: 余额不足" } }
+            }),
+            true,
+            false,
+        );
+        assert!(nested.contains("insufficient_quota: 余额不足"));
+
+        let top_level = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "message": "upstream gateway closed the connection"
+            }),
+            false,
+            false,
+        );
+        assert!(top_level.contains("upstream gateway closed the connection"));
+
+        let plain_details = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": "Bad gateway"
+            }),
+            false,
+            false,
+        );
+        assert!(plain_details.contains("Bad gateway"));
+    }
+
+    #[test]
+    fn provider_failure_classifies_known_reasons_and_truncates_detail() {
+        let cancelled = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.cancelled",
+                "details": { "code": 499 }
+            }),
+            true,
+            true,
+        );
+        assert!(cancelled.contains("OpenAI Codex"));
+        assert!(cancelled.contains("上游取消"));
+
+        let filtered = provider_stream_failure_message(
+            &json!({
+                "type": "content_blocked",
+                "reason": "safety",
+                "stop_details": { "category": "self_harm" }
+            }),
+            false,
+            false,
+        );
+        assert!(filtered.contains("内容安全策略中止"));
+
+        // 上游把整段 HTML 塞进 message 时，只保留截断后的片段
+        let long_detail = format!("<html>{}</html>", "x".repeat(500));
+        let truncated = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "max_tokens",
+                "details": { "message": long_detail }
+            }),
+            false,
+            false,
+        );
+        assert!(truncated.contains("输出上限"));
+        assert!(truncated.contains("上游返回：<html>"));
+        assert!(truncated.ends_with("..."));
+        let detail_part = truncated
+            .rsplit("上游返回：")
+            .next()
+            .expect("appended detail must exist");
+        assert!(detail_part.chars().count() <= PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS + 3);
+    }
+
+    #[test]
+    fn provider_failure_without_upstream_message_keeps_plain_classification() {
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.incomplete",
+                "details": { "reason": "max_output_tokens" }
+            }),
+            true,
+            false,
+        );
+        assert!(message.contains("输出上限"));
+        assert!(!message.contains("上游返回"));
     }
 
     #[test]

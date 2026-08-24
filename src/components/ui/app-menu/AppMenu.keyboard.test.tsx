@@ -59,7 +59,11 @@ describe('AppMenu submenu keyboard contract', () => {
     await user.keyboard(key);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus());
+    // 打开后焦点落在菜单容器上（不预聚焦任何菜单项，避免"假悬浮"高亮）；
+    // 方向键从容器进入导航，第一次 ArrowDown 聚焦第一项。
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'First action' })).toHaveFocus();
   });
 
   it.each(['Enter', ' ', 'ArrowRight'])('%s opens the default hover submenu and focuses its first item', async (key) => {
@@ -85,9 +89,10 @@ describe('AppMenu submenu keyboard contract', () => {
       </AppMenu>
     );
     const view = render(renderMenu(1));
-    const first = await screen.findByRole('menuitem', { name: 'First action' });
+    await screen.findByRole('menuitem', { name: 'First action' });
     const second = screen.getByRole('menuitem', { name: 'Second action' });
-    await waitFor(() => expect(first).toHaveFocus());
+    // 打开后焦点先落在菜单容器上；随后模拟用户把焦点移到某个菜单项
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
     second.focus();
 
     view.rerender(renderMenu(2));

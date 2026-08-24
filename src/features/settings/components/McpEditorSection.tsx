@@ -1246,7 +1246,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       onChange={e => handleEnvValueChange(key, e.target.value)}
                       placeholder={t('settings:placeholders.env_value')}
                     />
-                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
+                    <DsButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)} aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                       <Trash size={16} />
                     </DsButton>
                   </div>

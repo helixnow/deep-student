@@ -3555,7 +3555,7 @@
     "cannotOpenLink": "无法打开链接，请复制后手动打开: {{url}}"
   },
   "imageUpload": {
-    "tooLarge": "图片超过10MB限制"
+    "tooLarge": "图片超过50MB限制"
   },
   "persistFailed": "保存更改失败",
   "aria": {
@@ -3741,6 +3741,7 @@
     "title": "应用遇到严重错误",
     "description": "应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。",
     "refresh": "刷新页面",
+    "retry": "重试",
     "show_details": "查看错误详情",
     "hide_details": "隐藏详情",
     "copy_error": "复制错误日志",

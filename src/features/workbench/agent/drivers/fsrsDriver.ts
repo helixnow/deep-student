@@ -167,6 +167,16 @@ function cardsFromCardMutationPayload(payload: unknown): ReviewCard[] {
   }));
 }
 
+/**
+ * 用户/agent 可见文案统一走 i18n（workspace:agent.fsrs.*）；defaultValue 兜底
+ * workspace namespace 尚未完成异步加载的窗口期。语言可运行时切换，故用函数而非模块级常量。
+ */
+function queueNotResetMessage(): string {
+  return i18n.t('workspace:agent.fsrs.queue_not_reset', {
+    defaultValue: '用户中断，复习队列未重置',
+  });
+}
+
 function notifyAppended(count: number): void {
   if (count <= 0) return;
   const message = i18n.t('workbench:agent.apps.flashcards.appended', {
@@ -303,7 +313,7 @@ export const fsrsDriver: CollabDriver & {
       const pause = state.aborted ? 'abort' : await run.checkPaused();
       if (pause === 'abort') {
         state.aborted = true;
-        return fsrsCancelledReceipt(state, '用户中断，复习队列未重置');
+        return fsrsCancelledReceipt(state, queueNotResetMessage());
       }
 
       const op = ops[i]!;
@@ -327,7 +337,13 @@ export const fsrsDriver: CollabDriver & {
               .queue.filter((card) => !beforeIds.has(card.id));
             if (added > 0 && addedCards.length === added) {
               state.applied += 1;
-              state.done.push(op.label || `入队 ${added} 张卡片`);
+              state.done.push(
+                op.label
+                  || i18n.t('workspace:agent.fsrs.enqueued_cards', {
+                    count: added,
+                    defaultValue: '入队 {{count}} 张卡片',
+                  }),
+              );
               for (const card of addedCards) {
                 if (!state.entityIds.includes(card.id)) state.entityIds.push(card.id);
               }
@@ -336,7 +352,13 @@ export const fsrsDriver: CollabDriver & {
               await awaitFrame();
               flashEntityIds(addedCards.map((card) => card.ankiCardId ?? card.id));
             } else {
-              state.undone.push(op.label || `${op.kind}（全部已在队列）`);
+              state.undone.push(
+                op.label
+                  || i18n.t('workspace:agent.fsrs.already_in_queue', {
+                    kind: op.kind,
+                    defaultValue: '{{kind}}（全部已在队列）',
+                  }),
+              );
             }
           }
         }
@@ -349,7 +371,7 @@ export const fsrsDriver: CollabDriver & {
     }
 
     if (state.aborted) {
-      return fsrsCancelledReceipt(state, '用户中断，复习队列未重置');
+      return fsrsCancelledReceipt(state, queueNotResetMessage());
     }
     fsrsActiveRuns.delete(run.runId);
 
@@ -372,7 +394,9 @@ export const fsrsDriver: CollabDriver & {
       undone: state.undone,
       message:
         status === 'failed'
-          ? '无可应用的 fsrs_enqueue（需处于复习 session）'
+          ? i18n.t('workspace:agent.fsrs.enqueue_requires_session', {
+              defaultValue: '无可应用的 fsrs_enqueue（需处于复习 session）',
+            })
           : undefined,
     };
   },
@@ -381,11 +405,19 @@ export const fsrsDriver: CollabDriver & {
     const state = fsrsActiveRuns.get(runId);
     if (state) {
       state.aborted = true;
-      return fsrsCancelledReceipt(state, 'flashcards 入队已中止（队列未重置）');
+      return fsrsCancelledReceipt(
+        state,
+        i18n.t('workspace:agent.fsrs.abort_queue_not_reset', {
+          defaultValue: 'flashcards 入队已中止（队列未重置）',
+        }),
+      );
     }
     return withUserPatch(
       emptyReceipt('cancelled', 0, {
-        message: `run ${runId} aborted（flashcards 队列未重置）`,
+        message: i18n.t('workspace:agent.fsrs.abort_run_not_found', {
+          runId,
+          defaultValue: 'run {{runId}} aborted（flashcards 队列未重置）',
+        }),
       }),
       TYPE_ID,
     );

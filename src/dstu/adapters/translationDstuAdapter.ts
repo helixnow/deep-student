@@ -6,6 +6,7 @@
  * @see 22-VFS与DSTU访达协议层改造任务分配.md Prompt 10
  */
 
+import i18next from 'i18next';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuListOptions } from '../types';
@@ -319,7 +320,10 @@ export const translationDstuAdapter = {
       typeFilter: 'translation',
     });
     if (!result.ok) {
-      reportError(result.error, 'List translation history');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.list_history', { defaultValue: 'List translation history' })
+      );
       return err(result.error);
     }
     // ★ 后端 list 不返回真实 total，此处返回「已见下界」（offset + 本页条数）：
@@ -343,7 +347,10 @@ export const translationDstuAdapter = {
     console.log(LOG_PREFIX, 'getTranslation via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, 'Get translation detail');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.get_detail', { defaultValue: 'Get translation detail' })
+      );
       return result;
     }
     const contentResult = await dstu.getContent(path);
@@ -380,7 +387,10 @@ export const translationDstuAdapter = {
     console.log(LOG_PREFIX, 'deleteTranslation via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, 'Delete translation');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.delete_translation', { defaultValue: 'Delete translation' })
+      );
     }
     return result;
   },
@@ -404,7 +414,10 @@ export const translationDstuAdapter = {
       // 先获取当前状态
       const getResult = await dstu.get(path);
       if (!getResult.ok) {
-        reportError(getResult.error, 'Get translation');
+        reportError(
+          getResult.error,
+          i18next.t('app_menu:dstu_translation.get_translation', { defaultValue: 'Get translation' })
+        );
         return err(getResult.error);
       }
 
@@ -414,7 +427,10 @@ export const translationDstuAdapter = {
     // 使用统一的 setFavorite API
     const setResult = await dstu.setFavorite(path, newFavorite);
     if (!setResult.ok) {
-      reportError(setResult.error, 'Toggle favorite');
+      reportError(
+        setResult.error,
+        i18next.t('app_menu:dstu_translation.toggle_favorite', { defaultValue: 'Toggle favorite' })
+      );
       return err(setResult.error);
     }
 
@@ -432,7 +448,10 @@ export const translationDstuAdapter = {
 
     const result = await dstu.setFavorite(path, isFavorite);
     if (!result.ok) {
-      reportError(result.error, 'Set favorite');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.set_favorite', { defaultValue: 'Set favorite' })
+      );
     }
     return result;
   },
@@ -475,7 +494,10 @@ export const translationDstuAdapter = {
       },
     });
     if (!result.ok) {
-      reportError(result.error, 'Create translation record');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.create_record', { defaultValue: 'Create translation record' })
+      );
       return result;
     }
 
@@ -486,7 +508,10 @@ export const translationDstuAdapter = {
       'translation'
     );
     if (!bodyResult.ok) {
-      reportError(bodyResult.error, 'Persist translation settings');
+      reportError(
+        bodyResult.error,
+        i18next.t('app_menu:dstu_translation.persist_settings', { defaultValue: 'Persist translation settings' })
+      );
       return ok(node);
     }
     return ok(mergeContentIntoNode(bodyResult.value, {
@@ -523,13 +548,19 @@ export const translationDstuAdapter = {
       isFavorite: session.isFavorite,
     });
     if (!metaResult.ok) {
-      reportError(metaResult.error, 'Update translation record');
+      reportError(
+        metaResult.error,
+        i18next.t('app_menu:dstu_translation.update_record', { defaultValue: 'Update translation record' })
+      );
       return metaResult;
     }
 
     const bodyResult = await dstu.update(path, buildTranslationContent(session), 'translation');
     if (!bodyResult.ok) {
-      reportError(bodyResult.error, 'Persist translation settings');
+      reportError(
+        bodyResult.error,
+        i18next.t('app_menu:dstu_translation.persist_settings', { defaultValue: 'Persist translation settings' })
+      );
       return err(bodyResult.error);
     }
     return ok(undefined);

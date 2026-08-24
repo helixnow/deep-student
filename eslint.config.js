@@ -4,6 +4,7 @@ import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
 import reactHooks from 'eslint-plugin-react-hooks';
 import noNativeButton from './eslint-rules/no-native-button.js';
+import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js';
 
 export default tseslint.config(
   // 基础 JS 推荐配置
@@ -22,7 +23,8 @@ export default tseslint.config(
     plugins: {
       'ds-components': {
         rules: {
-          'no-native-button': noNativeButton
+          'no-native-button': noNativeButton,
+          'no-arbitrary-font-size': noArbitraryFontSize
         }
       },
       'react-hooks': reactHooks
@@ -105,6 +107,11 @@ export default tseslint.config(
       // 6. 禁止使用原生 <button> 元素 - 必须使用 DsButton（设为 warn 便于逐步修复）
       'ds-components/no-native-button': 'warn',
 
+      // 6.1 禁止 text-[Npx] 硬编码字号（不参与 --font-size-scale 缩放）。
+      // 全仓约 950 处历史欠账，先 warn；共享 UI 基元目录（src/components/ui/**）
+      // 已清零，在下方单独升为 error，防止按钮/对话框配方再退化。
+      'ds-components/no-arbitrary-font-size': 'warn',
+
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
       'no-undef': 'off',
       'no-unused-vars': 'off',
@@ -134,6 +141,15 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': 'off',
       'ds-components/no-native-button': 'off'
+    }
+  },
+
+  // 共享 UI 基元（按钮/对话框/侧边栏配方）：字号必须走 token 类，
+  // 这里是字号缩放闭环的上游，退化一次就会扩散到全部消费方。
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'ds-components/no-arbitrary-font-size': 'error'
     }
   },
 

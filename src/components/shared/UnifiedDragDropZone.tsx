@@ -6,6 +6,7 @@ import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { ensureGlobalDragHandlers, markNativeDrop, isNativeDropRecent } from '../../hooks/useTauriDragAndDrop';
+import { getAttachmentSizeLimitForFile } from '@/features/chat/core/constants';
 
 /**
  * 扩展名到 MIME 类型的统一映射表
@@ -201,6 +202,15 @@ export const FILE_TYPES: Record<string, FileTypeDefinition> = {
   },
 };
 
+/**
+ * 浏览器上传路径（点击选择 / dataTransfer 拖拽 / Tauri 原生拖拽）的默认单文件上限（50MB）。
+ *
+ * ★ #62/ATT-09：需要 50MB 兜底的入口请引用本常量，不要各自硬编码，
+ * 超限提示文案也应由传入的 maxFileSize 派生；聊天附件入口会显式传入
+ * ATTACHMENT_MAX_SIZE（200MB）覆盖此默认值。
+ */
+export const DEFAULT_MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+
 export interface UnifiedDragDropZoneProps {
   zoneId: string;
   onFilesDropped: (files: File[]) => void | Promise<void>;
@@ -232,7 +242,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
   enabled = true,
   acceptedFileTypes = [FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT],
   maxFiles = 10,
-  maxFileSize = 50 * 1024 * 1024,
+  maxFileSize = DEFAULT_MAX_UPLOAD_FILE_SIZE,
   showOverlay = true,
   customOverlayText,
   className = '',
@@ -358,7 +368,10 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     [acceptedFileTypes]
   );
 
-  const validateFileSize = useCallback((size: number) => size <= maxFileSize, [maxFileSize]);
+  const validateFileSize = useCallback(
+    (size: number, fileName: string) => size <= getAttachmentSizeLimitForFile(fileName, maxFileSize),
+    [maxFileSize]
+  );
 
   const processFilePaths = useCallback(
     async (paths: string[]) => {
@@ -433,8 +446,8 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
           try {
             // 先检查文件大小（避免读入超大文件到内存）
             const fileSize = await invoke<number>('get_file_size', { path: p });
-            if (!validateFileSize(fileSize)) {
-              const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+            if (!validateFileSize(fileSize, name)) {
+              const sizeMB = (getAttachmentSizeLimitForFile(name, maxFileSize) / (1024 * 1024)).toFixed(1);
               const reason = `${name}: ${t('drag_drop:errors.file_too_large', { size: sizeMB })}`;
               rejected.push(reason as any);
               emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${name}`, {
@@ -670,10 +683,31 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     // 🔧 Windows 兼容：用时间戳去重替代 __TAURI_INTERNALS__ 硬判断
     if (isNativeDropRecent()) return;
     if (enabled && !isProcessing) {
-      const files = Array.from(e.dataTransfer.files);
-      void onFilesDroppedRef.current(files);
+      const incoming = Array.from(e.dataTransfer.files);
+      const files: File[] = [];
+      const rejected: string[] = [];
+      for (const file of incoming) {
+        const limit = getAttachmentSizeLimitForFile(file.name, maxFileSize);
+        if (file.size > limit) {
+          rejected.push(
+            `${file.name}: ${t('drag_drop:errors.file_too_large', {
+              size: (limit / (1024 * 1024)).toFixed(1),
+            })}`
+          );
+          continue;
+        }
+        files.push(file);
+      }
+      if (rejected.length) {
+        const err = t('drag_drop:errors.all_files_failed', { reason: rejected.join('; ') });
+        onValidationErrorRef.current?.(err as any, rejected);
+        showGlobalNotification('warning', err);
+      }
+      if (files.length) {
+        void onFilesDroppedRef.current(files);
+      }
     }
-  }, [enabled, isProcessing, updateDragState]);
+  }, [enabled, isProcessing, updateDragState, maxFileSize, t]);
 
   const getSupportedFormatsDescription = useCallback(() => {
     if (acceptedFileTypes.some((t) => t.extensions.includes('*'))) return t('drag_drop:supported_formats.all');

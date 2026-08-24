@@ -1397,5 +1397,16 @@
     "lanceHasPageIndex": "有 pageIndex",
     "lanceSampleMetadata": "抽样 metadata",
     "lanceRows": "行"
+  },
+  "agent": {
+    "unsupported_hint": "请用资源/DSTU 领域工具修改文件数据；本驱动仅支持导航类 op（openFolder）",
+    "pause_check_failed": "暂停检查失败：{{error}}",
+    "pacing_failed": "节奏控制失败：{{error}}",
+    "op_missing_folder_id": "{{label}}（缺少 folderId）",
+    "op_failed": "{{label}}（失败: {{error}}）",
+    "open_folder_label": "打开文件夹 {{folderId}}",
+    "nav_aborted": "files 导航已中止",
+    "run_not_found": "files run 不存在或已结束",
+    "run_ended": "run 已结束"
   }
 }

@@ -325,7 +325,7 @@ export const SnappySlider = React.forwardRef<HTMLDivElement, SnappySliderProps>(
           >
             {showBubble && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-0.5 whitespace-nowrap">
-                <span className={cn('text-[10px] font-medium text-muted-foreground', isOutOfBounds && 'opacity-75')}>
+                <span className={cn('text-2xs font-medium text-muted-foreground', isOutOfBounds && 'opacity-75')}>
                   {displayedBubbleValue}
                 </span>
               </div>

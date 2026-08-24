@@ -9029,6 +9029,14 @@ impl SyncManager {
         }
     }
 
+    /// 对象是否落在内容寻址前缀（`data_governance/asset_objects/<sha256>`）。
+    ///
+    /// 只有 legacy 前缀 `data_governance/assets/` 下的对象与逻辑 key 一一对应，可以
+    /// 随 tombstone 物理删除。
+    fn is_content_addressed_asset_object(key: &str) -> bool {
+        Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
+    }
+
     /// 文件级 LWW：本地文件是否胜过云端清单条目。
     ///
     /// [P0 收敛性] 设备分量必须中性（双方相同）：旧实现用 "local-file" vs
@@ -10180,6 +10188,29 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, true)
+            .await
+    }
+
+    /// 保留被 tombstone 覆盖的条目，供删除传播解析物理 object_key。
+    ///
+    /// 过滤版清单会先把 tombstoned 逻辑 key 摘掉，删除传播再去查 `object_key` 必然
+    /// miss，从而回退到 legacy 逻辑路径 `data_governance/assets/{key}`；新布局的对象
+    /// 实际在 `data_governance/asset_objects/{sha256}`，回退路径在 FTP 上会因父目录
+    /// cwd 550 直接硬失败。
+    async fn download_assets_manifest_before_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<AssetDirsManifest, SyncError> {
+        self.download_assets_manifest_with_tombstone_filter(storage, false)
+            .await
+    }
+
+    async fn download_assets_manifest_with_tombstone_filter(
+        &self,
+        storage: &dyn CloudStorage,
+        filter_tombstones: bool,
+    ) -> Result<AssetDirsManifest, SyncError> {
         let mut manifests = Vec::new();
         if let Some(bytes) = storage
             .get(Self::ASSETS_MANIFEST_KEY)
@@ -10253,15 +10284,17 @@ impl SyncManager {
                 }
             }
         }
-        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
-        for (key, tombstone) in tombstones.entries {
-            let should_remove = merged
-                .entries
-                .get(&key)
-                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
-                .unwrap_or(false);
-            if should_remove {
-                merged.entries.remove(&key);
+        if filter_tombstones {
+            let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+            for (key, tombstone) in tombstones.entries {
+                let should_remove = merged
+                    .entries
+                    .get(&key)
+                    .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                    .unwrap_or(false);
+                if should_remove {
+                    merged.entries.remove(&key);
+                }
             }
         }
         Ok(merged)
@@ -10798,7 +10831,9 @@ impl SyncManager {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
-        let cloud_manifest = self.download_assets_manifest(storage).await?;
+        let cloud_manifest = self
+            .download_assets_manifest_before_tombstones(storage)
+            .await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_asset_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
@@ -10833,7 +10868,18 @@ impl SyncManager {
                     );
                     continue;
                 }
-                // 云端删除
+                applied_tombstone_keys.push(key.clone());
+            }
+
+            // 先过滤本轮实际应用的 tombstone，再判断内容对象是否仍被活跃条目引用。
+            // 只要还有引用就保留共享对象；最后一个引用消失时立即删除，避免把所有
+            // 内容寻址对象永久交给尚不存在的 GC 而造成泄漏。
+            let mut live_manifest = cloud_manifest.clone();
+            for key in &applied_tombstone_keys {
+                live_manifest.entries.remove(key);
+            }
+            let mut deleted_remote_keys = HashSet::new();
+            for key in &applied_tombstone_keys {
                 if direction != SyncDirection::Download {
                     let remote_key = cloud_manifest
                         .entries
@@ -10841,11 +10887,24 @@ impl SyncManager {
                         .and_then(|manifest| manifest.object_key.clone())
                         .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                     Self::validate_asset_object_key(&remote_key)?;
-                    storage.delete(&remote_key).await.map_err(|e| {
-                        SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
-                    })?;
+                    let has_live_reference = Self::is_content_addressed_asset_object(&remote_key)
+                        && live_manifest.entries.values().any(|manifest| {
+                            manifest.object_key.as_deref() == Some(remote_key.as_str())
+                        });
+                    if has_live_reference {
+                        tracing::info!(
+                            "[sync] 资产 tombstone 后仍有活跃引用，保留共享对象: {} -> {}",
+                            key,
+                            remote_key
+                        );
+                    } else if deleted_remote_keys.insert(remote_key.clone()) {
+                        storage.delete(&remote_key).await.map_err(|e| {
+                            SyncError::Network(format!("删除云端资产失败 {}: {}", remote_key, e))
+                        })?;
+                    }
                 }
-                // 本地删除
+
+                let local_path = Self::asset_local_path_from_key(active_dir, app_data_dir, key);
                 if let Some(local) = local_path {
                     if local.exists() {
                         // 资产路径不是内容寻址，mtime 不能证明本地内容就是删除所针对
@@ -10855,22 +10914,21 @@ impl SyncManager {
                         std::fs::remove_file(&local)?;
                     }
                 }
-                applied_tombstone_keys.push(key.clone());
             }
             excluded_tombstone_keys.extend(applied_tombstone_keys.iter().cloned());
 
             // 从云端资产清单摘掉 tombstoned 条目
             // [P0-2] 同样需要透明 encode/decode
             if direction != SyncDirection::Download {
-                let mut mf = cloud_manifest.clone();
-                let before = mf.entries.len();
-                for key in &applied_tombstone_keys {
-                    mf.entries.remove(key);
-                }
-                if mf.entries.len() != before {
-                    mf.updated_at = chrono::Utc::now().to_rfc3339();
-                    self.publish_file_manifest(storage, Self::ASSETS_MANIFESTS_PREFIX, &mf, "资产")
-                        .await?;
+                if live_manifest.entries.len() != cloud_manifest.entries.len() {
+                    live_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+                    self.publish_file_manifest(
+                        storage,
+                        Self::ASSETS_MANIFESTS_PREFIX,
+                        &live_manifest,
+                        "资产",
+                    )
+                    .await?;
                 }
             }
         }

@@ -53,8 +53,17 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 // 测试环境不加载异步 i18n 命名空间（chatV2 等按需加载），真实 t 会原样返回
-// 未插值的 defaultValue（如 '推理: {{depth}}'）。与同目录其它测试一致，
-// mock useTranslation 并补上 {{var}} 插值，保证断言确定性。
+// key。与同目录其它测试一致，mock useTranslation 并补上 {{var}} 插值；
+// thinkingState 系列 key 现在不再携带 defaultValue，这里按 zh-CN/chatV2.json
+// 提供模板，保证断言确定性。
+const ZH_TEMPLATES = vi.hoisted(
+  (): Record<string, string> => ({
+    'chatV2:inputBar.thinkingState.unsupported': '推理: 不支持',
+    'chatV2:inputBar.thinkingState.off': '推理: 关闭',
+    'chatV2:inputBar.thinkingState.on': '推理: {{depth}}',
+  })
+);
+
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-i18next')>();
   const translate = (
@@ -70,7 +79,7 @@ vi.mock('react-i18next', async (importOriginal) => {
       (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
         ? (defaultValueOrOptions as Record<string, unknown>)
         : maybeOptions) ?? {};
-    const template = defaultValue ?? key;
+    const template = defaultValue ?? ZH_TEMPLATES[key] ?? key;
     return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
       options[name] !== undefined ? String(options[name]) : match
     );
@@ -673,6 +682,7 @@ describe('InputBarV2 stale context ref guard', () => {
       'medium',
       'high',
       'xhigh',
+      'max',
     ]);
     expect(capturedInputBarUIProps?.thinkingCanDisable).toBe(false);
 

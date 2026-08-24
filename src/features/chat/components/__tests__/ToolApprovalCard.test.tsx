@@ -57,7 +57,7 @@ describe('ToolApprovalCard', () => {
       />
     );
 
-    const title = screen.getByText('approval.title');
+    const title = screen.getByText('工具执行确认');
     const titleElement = title.closest('h3');
     expect(titleElement).not.toBeNull();
     expect(titleElement?.querySelector('svg')).toBeNull();
@@ -71,17 +71,19 @@ describe('ToolApprovalCard', () => {
     it('opens inline reason input on reject click without sending', () => {
       render(<ToolApprovalCard request={pendingRequest} sessionId="session-1" />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'approval.reject' }));
+      fireEvent.click(screen.getByRole('button', { name: '本次拒绝' }));
 
       expect(invokeMock).not.toHaveBeenCalled();
-      expect(screen.getByPlaceholderText('approval.rejectReasonPlaceholder')).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText('可选：告诉 AI 为什么拒绝或希望它怎么做'),
+      ).toBeInTheDocument();
     });
 
     it('submits rejection with custom reason on Enter', async () => {
       render(<ToolApprovalCard request={pendingRequest} sessionId="session-1" />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'approval.reject' }));
-      const input = screen.getByPlaceholderText('approval.rejectReasonPlaceholder');
+      fireEvent.click(screen.getByRole('button', { name: '本次拒绝' }));
+      const input = screen.getByPlaceholderText('可选：告诉 AI 为什么拒绝或希望它怎么做');
       fireEvent.change(input, { target: { value: '不要覆盖这个模板' } });
       fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -101,8 +103,8 @@ describe('ToolApprovalCard', () => {
     it('rejects immediately with sentinel reason via the direct-reject button', async () => {
       render(<ToolApprovalCard request={pendingRequest} sessionId="session-1" />);
 
-      fireEvent.click(screen.getByRole('button', { name: 'approval.reject' }));
-      fireEvent.click(screen.getByRole('button', { name: 'approval.rejectDirectly' }));
+      fireEvent.click(screen.getByRole('button', { name: '本次拒绝' }));
+      fireEvent.click(screen.getByRole('button', { name: '直接拒绝' }));
 
       await waitFor(() => {
         expect(invokeMock).toHaveBeenCalledWith(

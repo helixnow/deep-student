@@ -15,8 +15,10 @@ const TOKEN_GROUPS: TokenGroup[] = [
       { name: 'surface-elevated', var: '--surface-elevated', type: 'color' },
       { name: 'surface-muted', var: '--surface-muted', type: 'color' },
       { name: 'surface-overlay', var: '--surface-overlay', type: 'color' },
+      { name: 'surface-panel', var: '--surface-panel', type: 'color' },
       { name: 'surface-panel-muted', var: '--surface-panel-muted', type: 'color' },
       { name: 'surface-panel-strong', var: '--surface-panel-strong', type: 'color' },
+      { name: 'accent-primary', var: '--accent-primary', type: 'color' },
     ],
   },
   {
@@ -83,6 +85,7 @@ const TOKEN_GROUPS: TokenGroup[] = [
     title: 'Button Tonal / Outline / Plain',
     tokens: [
       { name: 'button-tonal-bg', var: '--button-tonal-bg', type: 'color' },
+      { name: 'button-secondary-surface', var: '--button-secondary-surface', type: 'color' },
       { name: 'button-tonal-hover-bg', var: '--button-tonal-hover-bg', type: 'color' },
       { name: 'button-tonal-border', var: '--button-tonal-border', type: 'color' },
       { name: 'button-outline-bg', var: '--button-outline-bg', type: 'color' },

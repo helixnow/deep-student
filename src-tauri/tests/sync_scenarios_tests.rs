@@ -43,6 +43,9 @@ fn write_content_addressed_blob(blobs_dir: &Path, payload: &[u8]) -> (String, St
 #[derive(Default)]
 struct MockCloudStorageInner {
     files: BTreeMap<String, (Vec<u8>, chrono::DateTime<Utc>)>,
+    /// 记录所有 delete 请求（含删除不存在 key 的请求），用于断言删除传播解析出的
+    /// 物理 key，而不只是断言最终残留状态。
+    delete_requests: Vec<String>,
 }
 
 pub struct MockCloudStorage {
@@ -69,6 +72,10 @@ impl MockCloudStorage {
 
     pub fn keys(&self) -> Vec<String> {
         self.inner.lock().unwrap().files.keys().cloned().collect()
+    }
+
+    pub fn delete_requests(&self) -> Vec<String> {
+        self.inner.lock().unwrap().delete_requests.clone()
     }
 
     fn fail_if_offline(&self) -> CloudResult<()> {
@@ -125,6 +132,7 @@ impl CloudStorage for MockCloudStorage {
     async fn delete(&self, key: &str) -> CloudResult<()> {
         self.fail_if_offline()?;
         let mut inner = self.inner.lock().unwrap();
+        inner.delete_requests.push(key.to_string());
         inner.files.remove(key);
         Ok(())
     }
@@ -2798,5 +2806,159 @@ async fn download_only_asset_tombstone_does_not_rehydrate_in_same_round() {
     assert!(
         !active_b.path().join("images/deleted.txt").exists(),
         "download-only 同一轮不得从陈旧清单复活刚消费的删除"
+    );
+}
+
+#[tokio::test]
+async fn asset_tombstone_deletes_unreferenced_content_object() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    let payload = b"unreferenced-asset-content";
+    std::fs::write(active_a.path().join("images/only.png"), payload).unwrap();
+
+    let manager_a = SyncManager::new(format!("unreferenced-a-{}", uuid::Uuid::new_v4()));
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .unwrap();
+    let object_key = format!(
+        "data_governance/asset_objects/{:x}",
+        Sha256::digest(payload)
+    );
+    assert!(storage.keys().contains(&object_key));
+
+    std::fs::remove_file(active_a.path().join("images/only.png")).unwrap();
+    manager_a
+        .mark_asset_deleted(
+            &storage,
+            "active/images/only.png",
+            Some(payload.len() as u64),
+        )
+        .await
+        .unwrap();
+
+    let manager_b = SyncManager::new(format!("unreferenced-b-{}", uuid::Uuid::new_v4()));
+    let active_b = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    manager_b
+        .sync_asset_directories_with_tombstones(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+
+    let delete_requests = storage.delete_requests();
+    assert!(
+        delete_requests.contains(&object_key),
+        "最后一个活跃引用被过滤后必须删除内容对象: {delete_requests:?}"
+    );
+    assert!(
+        !storage.keys().contains(&object_key),
+        "无引用内容对象不得泄漏"
+    );
+    assert!(
+        !delete_requests
+            .iter()
+            .any(|key| key.starts_with("data_governance/assets/")),
+        "删除必须使用未过滤清单解析出的 object_key: {delete_requests:?}"
+    );
+}
+
+/// 同内容双 key 的删除传播：
+///
+/// 1. tombstone 应用必须在「未按 tombstone 过滤」的清单上解析 object_key，否则
+///    条目已被摘掉，只能回退到 legacy 逻辑路径 `data_governance/assets/{key}`，
+///    在 FTP 上会因父目录 cwd 550 直接硬失败。
+/// 2. 解析出的内容寻址对象是共享 retention unit，不得随 tombstone 物理删除，
+///    否则会连带打断同内容的其他逻辑 key。
+#[tokio::test]
+async fn asset_tombstone_resolves_object_key_and_keeps_shared_content_object() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    let shared_payload = b"shared-asset-content";
+    std::fs::write(active_a.path().join("images/first.png"), shared_payload).unwrap();
+    std::fs::write(active_a.path().join("images/second.png"), shared_payload).unwrap();
+
+    let manager_a = SyncManager::new(format!("shared-object-a-{}", uuid::Uuid::new_v4()));
+    let upload = manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .unwrap();
+    assert_eq!(upload.uploaded, 2);
+
+    let shared_object_key = format!(
+        "data_governance/asset_objects/{:x}",
+        Sha256::digest(shared_payload)
+    );
+    assert!(
+        storage.keys().contains(&shared_object_key),
+        "同内容双 key 必须共用一个内容寻址对象"
+    );
+
+    std::fs::remove_file(active_a.path().join("images/first.png")).unwrap();
+    manager_a
+        .mark_asset_deleted(
+            &storage,
+            "active/images/first.png",
+            Some(shared_payload.len() as u64),
+        )
+        .await
+        .unwrap();
+
+    let active_b = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    let manager_b = SyncManager::new(format!("shared-object-b-{}", uuid::Uuid::new_v4()));
+    let outcome = manager_b
+        .sync_asset_directories_with_tombstones(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+    assert!(!outcome.has_failures(), "同步不应有失败: {outcome:?}");
+
+    let delete_requests = storage.delete_requests();
+    assert!(
+        !delete_requests
+            .iter()
+            .any(|key| key.starts_with("data_governance/assets/")),
+        "tombstone 不得回退到 legacy 逻辑路径删除: {delete_requests:?}"
+    );
+    assert!(
+        !delete_requests.contains(&shared_object_key),
+        "tombstone 不得物理删除共享的内容寻址对象: {delete_requests:?}"
+    );
+    assert!(
+        storage.keys().contains(&shared_object_key),
+        "另一逻辑 key 的内容对象必须仍在云端"
+    );
+
+    assert_eq!(
+        std::fs::read(active_b.path().join("images/second.png")).unwrap(),
+        shared_payload,
+        "未被删除的同内容 key 必须仍可下载"
+    );
+    assert!(
+        !active_b.path().join("images/first.png").exists(),
+        "被 tombstone 的 key 不得在同一轮复活"
     );
 }

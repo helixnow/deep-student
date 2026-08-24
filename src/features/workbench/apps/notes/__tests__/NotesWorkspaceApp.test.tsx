@@ -176,9 +176,18 @@ describe('NotesWorkspaceApp', () => {
     getContent.mockReset();
     getContent.mockResolvedValue({ ok: true, value: '' });
     watchState.callback = null;
+    // @tanstack/virtual-core 在清理时调用 observer.unobserve，stub 必须完整
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
+      unobserve() {}
       disconnect() {}
+    });
+    // jsdom 未实现 IntersectionObserver，提供含 observe/unobserve/disconnect 的局部 shim
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
     });
     const titlebarSlot = document.createElement('div');
     titlebarSlot.dataset.wbTitlebarSlot = '';
@@ -214,7 +223,10 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all open files/ }));
     const menu = screen.getByRole('menu');
 
-    expect(menu.parentElement).toBe(document.body);
+    // role=menu 位于滚动容器的视口上；整个溢出菜单容器 portal 到 body
+    const portalHost = menu.closest('.notes-tabs-overflow-menu');
+    expect(portalHost).not.toBeNull();
+    expect(portalHost?.parentElement).toBe(document.body);
     expect(menu.closest('[data-wb-titlebar-slot]')).toBeNull();
   });
 
@@ -363,7 +375,8 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.keyDown(firstTab, { key: 'F10', shiftKey: true });
     const menu = await screen.findByRole('menu');
     expect(firstTab).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(within(menu).getByRole('menuitemcheckbox')).toHaveFocus());
+    // 菜单现在有多个 checkbox 项（固定 / 右侧分屏），键盘展开聚焦第一项「固定」
+    await waitFor(() => expect(within(menu).getByRole('menuitemcheckbox', { name: /固定|Pin/ })).toHaveFocus());
 
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => {
@@ -669,6 +682,7 @@ describe('NotesWorkspaceApp', () => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) { resizeCallbacks.push(callback); }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -719,9 +733,14 @@ describe('NotesWorkspaceApp', () => {
       sortOrder: 0, createdAt: 1, updatedAt: 1,
     };
     vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [folder] });
+    // getFolderTree 的 items 是 VfsFolderItem（itemType/itemId），不是 DstuNode
     vi.mocked(folderApi.getFolderTree).mockResolvedValue({
       ok: true,
-      value: [{ folder, items: [nodes[0]], children: [] }],
+      value: [{
+        folder,
+        items: [{ id: 'fi_1', folderId: 'fld_course', itemType: 'note', itemId: 'note_1', sortOrder: 0, createdAt: 1 }],
+        children: [],
+      }],
     });
     const { createEmpty } = await import('@/dstu');
     vi.mocked(createEmpty).mockResolvedValueOnce({ ok: true, value: nodes[0] } as never);
@@ -796,7 +815,8 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(await within(dialog).findByRole('option', { name: /匹配笔记/ }));
 
     await screen.findByTestId('note-editor-note_1');
-    expect(consumeNotesFindQuery('note_1')).toBe('内容');
+    // publish 发生在 openResource resolve 之后的微任务里，可能晚于编辑器首帧渲染
+    await waitFor(() => expect(consumeNotesFindQuery('note_1')).toBe('内容'));
   });
 
   it('toggles the backlinks panel from a workspace command', async () => {
@@ -948,13 +968,14 @@ describe('NotesWorkspaceApp', () => {
     });
   });
 
-  it('keeps the compact explorer inside the shared aria-hidden drawer until reopened', async () => {
+  it('keeps the shared drawer aria-hidden in compact mode and opens the inline files subscreen instead', async () => {
     const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) {
         resizeCallbacks.push(callback);
       }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -968,6 +989,9 @@ describe('NotesWorkspaceApp', () => {
     const drawer = document.querySelector<HTMLElement>('[data-wb-sys-drawer]')!;
     await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'true'));
     fireEvent.click(screen.getByRole('button', { name: /显示导航|Show navigation/ }));
-    await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'false'));
+    // 窄窗契约已改为全屏内联「文件」子屏（无遮罩抽屉）；共享抽屉保持关闭
+    expect(await screen.findByRole('button', { name: /关闭文件面板|Close files/ })).toBeInTheDocument();
+    expect(document.querySelector('[data-notes-files-subscreen]')).not.toBeNull();
+    expect(drawer).toHaveAttribute('aria-hidden', 'true');
   });
 });

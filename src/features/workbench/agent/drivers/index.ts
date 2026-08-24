@@ -6,6 +6,7 @@
  *
  * 设计：docs/dev/acr/DESIGN.md；任务卡 ROUND1.md R1-16 / ROUND2.md R2-06
  */
+import i18n from '@/i18n';
 import { setupNoteBinding } from '../noteBinding';
 import type { StageManagerApi } from '../types';
 import {
@@ -27,13 +28,41 @@ let disposeDomainDrivers: Array<() => void> = [];
 
 /** R2-06：各 driver 的 userPatch diff 概述（缺省回落 DEFAULT_USER_PATCH） */
 function registerUserPatchSummarizers(): void {
-  registerUserPatchSummarizer('mindmap', () => '用户在导图中进行了手动编辑');
-  registerUserPatchSummarizer('note', () => '用户在笔记正文中进行了手动编辑');
-  registerUserPatchSummarizer('todo', () => '用户在待办列表中进行了手动编辑');
-  registerUserPatchSummarizer('files', () => '用户在文件管理器中进行了手动导航或编辑');
-  registerUserPatchSummarizer('flashcards', () => '用户在复习队列中进行了手动操作');
-  registerUserPatchSummarizer('exam', () => '用户在题库中进行了手动编辑');
-  registerUserPatchSummarizer('pomodoro', () => '用户手动操作了番茄钟');
+  registerUserPatchSummarizer('mindmap', () =>
+    i18n.t('dstu:agent.user_patch.mindmap', {
+      defaultValue: '用户在导图中进行了手动编辑',
+    }),
+  );
+  registerUserPatchSummarizer('note', () =>
+    i18n.t('dstu:agent.user_patch.note', {
+      defaultValue: '用户在笔记正文中进行了手动编辑',
+    }),
+  );
+  registerUserPatchSummarizer('todo', () =>
+    i18n.t('dstu:agent.user_patch.todo', {
+      defaultValue: '用户在待办列表中进行了手动编辑',
+    }),
+  );
+  registerUserPatchSummarizer('files', () =>
+    i18n.t('dstu:agent.user_patch.files', {
+      defaultValue: '用户在文件管理器中进行了手动导航或编辑',
+    }),
+  );
+  registerUserPatchSummarizer('flashcards', () =>
+    i18n.t('dstu:agent.user_patch.flashcards', {
+      defaultValue: '用户在复习队列中进行了手动操作',
+    }),
+  );
+  registerUserPatchSummarizer('exam', () =>
+    i18n.t('dstu:agent.user_patch.exam', {
+      defaultValue: '用户在题库中进行了手动编辑',
+    }),
+  );
+  registerUserPatchSummarizer('pomodoro', () =>
+    i18n.t('dstu:agent.user_patch.pomodoro', {
+      defaultValue: '用户手动操作了番茄钟',
+    }),
+  );
 }
 
 export function registerAllDrivers(stage: StageManagerApi): void {

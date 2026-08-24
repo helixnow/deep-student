@@ -19,11 +19,18 @@ export type ButtonPrimitiveSize = 'sm' | 'md' | 'lg' | 'icon' | 'default';
 
 // ui-press-coarse：触屏（pointer:coarse）统一按压反馈（独立 scale 属性，
 // 不影响桌面鼠标 active 手感；定义见 src/styles/ui-motion.css 移动追加区）
+//
+// 字号一律走 token 类（text-ui / text-xs / text-sm → --font-size-* ，内含
+// --font-size-scale），不写 Tailwind 任意值字号：设置里的「界面字号」缩放
+// 对硬编码 px 无效，按钮标签会成为唯一不跟随缩放的一层。高度仍是
+// --touch-target-size（移动 44px）/ --button-height（桌面 32px）等固定
+// 几何 token，字号放大不会把触控目标压小。
+// 新增违规由 eslint 规则 ds-components/no-arbitrary-font-size 拦截。
 export const buttonBaseClassName =
-  'ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+  'ui-press-coarse inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none transition-[background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
 
 export const shellNavBaseClassName =
-  'ui-press-coarse inline-flex shrink-0 appearance-none items-center gap-2 whitespace-nowrap text-[13px] leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+  'ui-press-coarse inline-flex shrink-0 appearance-none items-center gap-2 whitespace-nowrap text-ui font-normal leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
 
 export const buttonToneClassNames: Record<ButtonPrimitiveVariant, string> = {
   primary:
@@ -55,9 +62,9 @@ export const buttonToneClassNames: Record<ButtonPrimitiveVariant, string> = {
 };
 
 export const buttonSizeClassNames: Record<ButtonPrimitiveSize, string> = {
-  default: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[13px] lg:h-[var(--button-height)]',
+  default: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)]',
   sm: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-xs lg:h-[var(--button-height-sm)]',
-  md: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-[13px] lg:h-[var(--button-height)]',
+  md: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)]',
   lg: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-sm lg:h-[var(--button-height-lg)]',
   icon:
     'h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',

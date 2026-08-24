@@ -7,6 +7,7 @@ import { ModelProfile, VendorConfig, ApiConfig, type ApiProtocol, type ModelAdap
 import {
   getAllowedProtocolsForProviderType,
   providerSupportsOpenAiResponses,
+  resolveOfficialNativeProtocol,
   resolvePreferredProtocol,
 } from '@/utils/providerProtocolRegistry';
 
@@ -73,6 +74,13 @@ export const defaultApiProtocolForProvider = (
   if (allowed.includes(preferred)) {
     return preferred;
   }
+  // 官方 Anthropic/Gemini host 只说原生协议：providerType 误配为 custom/openai 时
+  // allowed 只含 OpenAI 兼容协议，不得据此把 resolvePreferredProtocol 已选出的官方
+  // 原生协议钳回 allowed[0]（openai_chat_completions）。中转/代理 host 不会命中
+  // resolveOfficialNativeProtocol，仍按 allowed 兜底。
+  if (preferred === resolveOfficialNativeProtocol(options?.baseUrl)) {
+    return preferred;
+  }
   return allowed[0] ?? 'openai_chat_completions';
 };
 
@@ -81,6 +89,12 @@ export const normalizeApiProtocolForProviderType = (
   providerType?: string | null,
   options?: { model?: string | null; baseUrl?: string | null; adapter?: string | null; supportsOpenAIResponses?: boolean | null }
 ): ApiProtocol => {
+  // 官方 Anthropic/Gemini host 无条件走原生协议（与 resolvePreferredProtocol 对齐）：
+  // 显式协议可能是旧版钳制后持久化的 openai_chat_completions，按官方 host 纠正。
+  const officialNativeProtocol = resolveOfficialNativeProtocol(options?.baseUrl);
+  if (officialNativeProtocol) {
+    return officialNativeProtocol;
+  }
   const allowed = getAllowedApiProtocolsForProviderType(providerType);
   if (explicitProtocol && allowed.includes(explicitProtocol)) {
     return explicitProtocol;
@@ -109,6 +123,14 @@ export const getAllowedApiProtocolsForModelAdapter = (
   // settings UI can display unavailable protocols as disabled options.
   if (!options) {
     return nativeProtocol ? [nativeProtocol, ...OPENAI_COMPATIBLE_PROTOCOLS] : OPENAI_COMPATIBLE_PROTOCOLS;
+  }
+
+  // 官方 Anthropic/Gemini host 只说原生协议：即使 providerType 误配为 custom/openai
+  // （其 allowed 只含 OpenAI 兼容协议），可选项也只暴露原生协议，保证 normalize/
+  // default 不会把官方端点钳回 OpenAI 兼容路由；代理/中转 host 不受影响。
+  const officialNativeProtocol = resolveOfficialNativeProtocol(options.baseUrl);
+  if (officialNativeProtocol) {
+    return [officialNativeProtocol];
   }
 
   const providerProtocols = getAllowedApiProtocolsForProviderType(options.providerType);

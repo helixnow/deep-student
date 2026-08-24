@@ -26,14 +26,21 @@ export const ContentEmptyState: React.FC<ContentEmptyStateProps> = ({
   description,
   icon,
   className,
-}) => (
-  <div className={cn('wb-content-empty', className)} role="note">
-    <div className="wb-content-empty__icon" aria-hidden="true">
-      {icon ?? <FileDashed size={30} weight="duotone" />}
+}) => {
+  // a11y：标题必须是真 heading 并作为区域的可访问名称暴露；
+  // role="note" 对「资源缺失空态」语义不符，改用命名 region。
+  const titleId = React.useId();
+  return (
+    <div className={cn('wb-content-empty', className)} role="region" aria-labelledby={titleId}>
+      <div className="wb-content-empty__icon" aria-hidden="true">
+        {icon ?? <FileDashed size={30} weight="duotone" />}
+      </div>
+      <h2 id={titleId} className="wb-content-empty__title">
+        {title}
+      </h2>
+      {description && <div className="wb-content-empty__desc">{description}</div>}
     </div>
-    <div className="wb-content-empty__title">{title}</div>
-    {description && <div className="wb-content-empty__desc">{description}</div>}
-  </div>
-);
+  );
+};
 
 export default ContentEmptyState;

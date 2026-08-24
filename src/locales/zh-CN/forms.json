@@ -3,7 +3,24 @@
     "not_configured": "未配置",
     "configured": "已配置",
     "to_be_configured": "待配置"
+  },
+  "system_validation": {
+    "max_chat_history": "最大聊天历史记录数量必须在10-1000之间",
+    "theme": "主题必须是 light、dark 或 auto",
+    "language": "语言必须是 zh-CN 或 en-US",
+    "markdown_renderer_mode": "Markdown 渲染模式必须是 legacy 或 enhanced"
+  },
+  "note_driver": {
+    "empty_search_pattern": "搜索模式为空",
+    "replacement_not_found": "未找到要替换的内容",
+    "invalid_regex": "无效的正则表达式: {{message}}",
+    "regex_syntax_error": "语法错误",
+    "unsupported_destructive_op": "不支持的破坏类 op：{{kind}}",
+    "windowed_offset_unsupported": "窗口化长笔记不支持 ProseMirror offset 锚点，请使用 end 或 afterHeading",
+    "after_heading_missing_title": "afterHeading 缺少标题",
+    "heading_not_found": "未找到标题「{{heading}}」"
+  },
+  "ocr": {
+    "system_engine_description": "调用操作系统内置 OCR 引擎"
   }
 }
-
-

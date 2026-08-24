@@ -458,7 +458,7 @@
       "paste_failed": "粘贴图片处理失败：{{error}}",
       "command_failed": "Slash 指令插入图片失败：{{error}}",
       "success": "图片已插入",
-      "too_large": "图片超过 10MB 限制",
+      "too_large": "图片超过 50MB 限制",
       "placeholder": "点击或拖拽上传图片",
       "placeholder_touch": "点击上传图片",
       "upload_button": "上传图片",

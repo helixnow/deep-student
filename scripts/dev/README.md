@@ -28,4 +28,4 @@
 
 | 文件 | 用途 |
 |------|------|
-| `docker-compose.sync-test.yml` | 云同步测试用 WebDAV 等本地服务编排 |
+| `docker-compose.sync-test.yml` | 云同步 provider contract 环境的唯一事实源：WebDAV / MinIO / FTP 编排。CI 的 Cloud Provider Contract Gate 与 `npm run dstu-test:cloud:up`、`npm run dstu-test:cloud:down` 都直接使用本文件 |

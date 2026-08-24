@@ -619,5 +619,13 @@
   "editor": {
     "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",
     "discardDraftTitle": "放弃未提交的内容？"
+  },
+  "agent": {
+    "question_not_visible": "{{label}}（可见题库未找到该题）",
+    "focus_question_done": "聚焦题目 {{questionId}}",
+    "undo_question_missing": "无法恢复已不存在的题目 {{questionId}}",
+    "unsupported_hint": "qbank driver 仅支持导航 op（qbank_focus_question）；数据修改请用领域工具",
+    "nav_aborted": "qbank 导航已中止",
+    "run_not_found": "run {{runId}} aborted"
   }
 }

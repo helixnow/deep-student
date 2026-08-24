@@ -117,6 +117,13 @@ pub use canvas_tools::{
     NoteSetTool,
 };
 
+/// Office 文档（DOCX/XLSX/PPTX）结构化读取的单文件解析安全上限（50MB）。
+///
+/// ★ #62/ATT-09：这是"整份文件读入内存解析"的安全阈值，不是附件上传上限
+/// （上传上限见 `vfs::repos::attachment_repo`：图片 50MB / 文件 200MB）。
+/// 各执行器的超限错误提示必须由本常量派生，禁止再各自硬编码 "50MB" 文案。
+pub(crate) const OFFICE_DOC_PARSE_MAX_BYTES: usize = 50 * 1024 * 1024;
+
 // 重导出注册表
 pub use registry::{get_registry, SchemaToolRegistry};
 

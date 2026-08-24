@@ -433,11 +433,35 @@ fn normalize_openai_function_name(name: &str) -> Option<String> {
     }
 }
 
+/// 工具是否声明了空白名称（扁平 `name` 或嵌套 `function.name`）。
+///
+/// OpenAI 兼容网关（如 cliproxyapi，issue #53）会以 HTTP 400 拒绝空工具名：
+/// `Invalid 'tools[0].name': empty string`。这类残缺工具必须在请求发出前
+/// 整体丢弃。未声明任何名称字段的内置工具（如 `{"type":"web_search"}`）不受影响。
+fn tool_declares_blank_name(tool: &Value) -> bool {
+    let flat_name_blank = tool
+        .get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.trim().is_empty());
+    let nested_name_blank = tool
+        .get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+        .is_some_and(|name| name.trim().is_empty());
+    flat_name_blank || nested_name_blank
+}
+
 fn sanitize_openai_tools_array(tools: &[Value]) -> Vec<Value> {
     let mut seen_names = HashSet::new();
     let mut sanitized = Vec::new();
 
     for tool in tools {
+        // 空名工具（扁平或嵌套）直接丢弃：非 function 工具的透传和
+        // function 工具的 clone 否则都会把空 `name` 原样送上线路
+        if tool_declares_blank_name(tool) {
+            continue;
+        }
+
         // 非 function 类型的工具（内置工具/服务端工具，如 web_search、openrouter:web_search）
         // 原样透传，不做名称/参数归一化
         let tool_type = tool
@@ -4390,6 +4414,82 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_openai_request_body_drops_tools_with_blank_flat_names() {
+        // issue #53：cliproxyapi 以 HTTP 400 拒绝空工具名
+        // （Invalid 'tools[0].name': empty string），扁平 name 与
+        // function.name 都必须在发送前校验
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                // 非 function 工具带空扁平 name：此前会被原样透传
+                { "type": "web_search_preview", "name": "" },
+                // function 工具带空扁平 name（嵌套 name 合法）：
+                // 此前 clone 会把空 name 字段原样送上线路
+                {
+                    "type": "function",
+                    "name": "   ",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                // 未声明名称的内置工具：合法，保留
+                { "type": "web_search" },
+                // 合法 function 工具：保留
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "rag_search",
+                        "description": "search notes",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ]
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        let tools = sanitized["tools"]
+            .as_array()
+            .expect("tools should be array");
+
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0], json!({ "type": "web_search" }));
+        assert_eq!(tools[1]["function"]["name"], json!("rag_search"));
+        // 任何幸存工具都不得携带空名称字段
+        for tool in tools {
+            let flat_blank = tool
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().is_empty());
+            let nested_blank = tool
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().is_empty());
+            assert!(
+                !flat_blank && !nested_blank,
+                "blank tool name leaked: {tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_openai_request_body_drops_all_blank_tools_and_clears_tools_field() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                { "type": "custom_gateway_tool", "name": "  " }
+            ],
+            "tool_choice": "auto"
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        assert!(sanitized.get("tools").is_none());
+        assert!(sanitized.get("tool_choice").is_none());
+    }
+
+    #[test]
     fn sanitize_openai_request_body_normalizes_missing_or_null_parameters() {
         let body = json!({
             "messages": [{ "role": "user", "content": "hi" }],
@@ -4500,6 +4600,8 @@ mod tests {
                         "parameters": { "type": "object", "properties": {} }
                     }
                 },
+                // issue #53：空扁平 name 的非 function 工具必须在发送前丢弃
+                { "type": "web_search_preview", "name": "" },
                 {
                     "type": "function",
                     "function": {

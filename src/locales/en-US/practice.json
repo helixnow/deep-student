@@ -531,5 +531,11 @@
   "stepper": {
     "decrease": "Decrease {{label}} count",
     "increase": "Increase {{label}} count"
+  },
+  "preview_persist": {
+    "save_progress": "Save reading progress",
+    "save_bookmarks": "Save bookmarks",
+    "save_bookmarks_failed": "Failed to save bookmarks",
+    "flush_unsaved": "Save unpersisted reading progress/bookmarks"
   }
 }

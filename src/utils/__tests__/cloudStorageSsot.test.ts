@@ -90,6 +90,8 @@ describe('cloud storage backend SSOT DTO', () => {
 
   it('rejects a selected provider without its config block', () => {
     expect(() => toSafeCloudStorageConfig({ provider: 'ftp' })).toThrow('Missing FTP');
+    expect(() => toSafeCloudStorageConfig({ provider: 'webdav' })).toThrow(/missing_webdav_config|Missing WebDAV/);
+    expect(() => toSafeCloudStorageConfig({ provider: 's3' })).toThrow(/missing_s3_config|Missing S3/);
   });
 
   it('never lets localStorage overwrite an existing backend config', async () => {

@@ -807,11 +807,23 @@ impl ChatV2Pipeline {
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let emitter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
 
         // Each concrete variant attempt gets a unique hook key. Variant IDs are reused by retry,
@@ -1173,11 +1185,23 @@ impl ChatV2Pipeline {
         let mut messages = chat_history;
         messages.push(current_user_message);
 
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let adapter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
         let stream_event = super::tool_loop::build_run_scoped_stream_event(
             &session_id,

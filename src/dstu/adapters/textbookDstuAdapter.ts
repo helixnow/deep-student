@@ -10,8 +10,9 @@ import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuListOptions, DstuPreviewType } from '../types';
 import { Result, VfsError, ok, err, reportError, toVfsError } from '@/shared/result';
-import { isOpaqueDocumentId } from '@/utils/fileManager';
+import { isGenericPlaceholderFileName, isOpaqueDocumentId } from '@/utils/fileManager';
 import { invoke } from '@tauri-apps/api/core';
+import i18next from 'i18next';
 
 // ============================================================================
 // 配置
@@ -112,7 +113,7 @@ export const textbookDstuAdapter = {
     console.log(LOG_PREFIX, 'listTextbooks via DSTU:', path, 'typeFilter: textbook');
     const result = await dstu.list(path, { ...options, typeFilter: 'textbook' });
     if (!result.ok) {
-      reportError(result.error, '列出教材');
+      reportError(result.error, i18next.t('card_manager:textbook.list', { defaultValue: '列出教材' }));
     }
     return result;
   },
@@ -125,7 +126,7 @@ export const textbookDstuAdapter = {
     console.log(LOG_PREFIX, 'getTextbook via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, '获取教材详情');
+      reportError(result.error, i18next.t('card_manager:textbook.get_detail', { defaultValue: '获取教材详情' }));
     }
     return result;
   },
@@ -138,7 +139,7 @@ export const textbookDstuAdapter = {
     console.log(LOG_PREFIX, 'deleteTextbook via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, '删除教材');
+      reportError(result.error, i18next.t('card_manager:textbook.delete', { defaultValue: '删除教材' }));
     }
     return result;
   },
@@ -151,7 +152,7 @@ export const textbookDstuAdapter = {
     console.log(LOG_PREFIX, 'setFavorite via DSTU:', path, isFavorite);
     const result = await dstu.setFavorite(path, isFavorite);
     if (!result.ok) {
-      reportError(result.error, '设置收藏状态');
+      reportError(result.error, i18next.t('card_manager:textbook.set_favorite', { defaultValue: '设置收藏状态' }));
     }
     return result;
   },
@@ -184,7 +185,7 @@ export const textbookDstuAdapter = {
         // ★ 移动端修复：当后端返回的 file_name 是不透明 document ID 时，
         // 生成用户友好的显示名称，避免在 UI 上显示无意义的数字 ID
         const nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
-        if (isOpaqueDocumentId(nameWithoutExt) || nameWithoutExt === '文件') {
+        if (isOpaqueDocumentId(nameWithoutExt) || isGenericPlaceholderFileName(nameWithoutExt)) {
           const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
           fileName = `导入文档_${new Date(r.created_at || Date.now()).toISOString().replace(/-|:|T/g, '').slice(0, 15)}${ext}`;
         }
@@ -230,8 +231,9 @@ export const textbookDstuAdapter = {
       
       return ok(nodes);
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '添加教材');
-      reportError(vfsError, '添加教材');
+      const context = i18next.t('card_manager:textbook.add', { defaultValue: '添加教材' });
+      const vfsError = toVfsError(error, context);
+      reportError(vfsError, context);
       return err(vfsError);
     }
   },

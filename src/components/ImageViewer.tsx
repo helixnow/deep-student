@@ -625,7 +625,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   iconOnly
                   className="!w-6 !h-6"
                   onClick={() => setShowOcrPanel(false)}
-                  aria-label="close panel"
+                  aria-label={t('a11y.close', { defaultValue: 'Close panel' })}
                 >
                   <X size={14} />
                 </DsButton>
@@ -690,23 +690,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             {internalIndex + 1} / {images.length}
           </span>
           <div className="modern-viewer-divider" />
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label={t('common:imageViewer.zoom_out')}>
             <MagnifyingGlassMinus size={16} />
           </DsButton>
           <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label="zoom in">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label={t('common:imageViewer.zoom_in')}>
             <MagnifyingGlassPlus size={16} />
           </DsButton>
           <div className="modern-viewer-divider" />
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label="rotate ccw">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label={t('common:imageViewer.rotate_ccw')}>
             <ArrowCounterClockwise size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label={t('common:imageViewer.rotate_title')}>
             <ArrowClockwise size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label="reset">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label={t('common:imageViewer.reset_title')}>
             <House size={16} />
           </DsButton>
           <div className="modern-viewer-divider" />
@@ -728,7 +728,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             }}
             className={`modern-viewer-icon-button ${isCropMode ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
             title={t('common:imageViewer.crop')}
-            aria-label="crop"
+            aria-label={t('common:imageViewer.crop')}
           >
             <Crop size={16} />
           </DsButton>
@@ -741,13 +741,13 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               onClick={() => setShowOcrPanel(prev => !prev)}
               className={`modern-viewer-icon-button ${showOcrPanel ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
               title={t('common:imageViewer.ocr_text')}
-              aria-label="ocr text"
+              aria-label={t('common:imageViewer.ocr_text')}
             >
               <TextT size={16} />
             </DsButton>
           )}
           {/* 下载 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download')} aria-label="download">
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download')} aria-label={t('common:imageViewer.download')}>
             <Download size={16} />
           </DsButton>
           <div className="modern-viewer-divider" />

@@ -333,8 +333,9 @@ function clampNumber(value: number, min: number, max: number): number {
 /**
  * 基于模型标识推断上下文窗口。
  *
- * 统一委托给 apiCapabilityEngine.inferApiCapabilities() 中的 CONTEXT_WINDOW_RULES，
- * 避免维护两套正则。当推断引擎无法匹配时，尝试根据 maxOutputTokens 启发式推导。
+ * 统一委托给 apiCapabilityEngine.inferApiCapabilities()（注册表 + CONTEXT_WINDOW_RULES），
+ * 避免维护两套正则。仅当推断引擎未命中（contextWindowSource === 'default'）时，
+ * 才根据 maxOutputTokens 启发式推导。
  *
  * 注意：这是推断默认值；用户可在 ApiConfig.contextWindow 或 Chat V2 高级面板中手动覆盖。
  */
@@ -349,12 +350,15 @@ export function inferModelContextWindow(
   // 统一调用 apiCapabilityEngine 推断
   const caps: InferredApiCapabilities = inferApiCapabilities({ id: modelId, name: modelName, providerScope });
 
-  // 如果推断引擎命中了规则，直接使用其值
-  if (caps.contextWindow > DEFAULT_FALLBACK_CONTEXT_WINDOW) {
+  // 注册表/规则命中即直通生效——包括 ≤100K 的小上下文（如 qwen3.5-32b=32768、
+  // glm-4.5v=64000）。不能用数值大小判断是否命中：那会把注册表确认的小窗口
+  // 误判为未命中，再被下方启发式抬到 ≥100K，长对话超出真实窗口后必然 400。
+  if (caps.contextWindowSource !== 'default') {
     return caps.contextWindow;
   }
 
-  // 推断引擎未命中（返回默认 32K）时，尝试根据 maxOutputTokens 启发式推导
+  // 推断引擎未命中（返回默认 100K，即 DEFAULT_FALLBACK_CONTEXT_WINDOW）时，
+  // 尝试根据 maxOutputTokens 启发式推导
   if (typeof maxOutputTokens === 'number' && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0) {
     return clampNumber(
       Math.max(DEFAULT_FALLBACK_CONTEXT_WINDOW, Math.floor(maxOutputTokens * 4)),
@@ -363,7 +367,7 @@ export function inferModelContextWindow(
     );
   }
 
-  return caps.contextWindow; // DEFAULT_FALLBACK_CONTEXT_WINDOW (32_768)
+  return caps.contextWindow; // DEFAULT_FALLBACK_CONTEXT_WINDOW (100_000)
 }
 
 export interface InputContextBudgetOptions {

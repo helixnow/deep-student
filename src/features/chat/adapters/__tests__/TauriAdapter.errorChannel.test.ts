@@ -137,7 +137,10 @@ describe('ChatV2TauriAdapter error channel surfacing', () => {
       error: 'upstream stream setup failed',
     });
 
-    expect(store.completeStream).toHaveBeenCalledWith('error');
+    expect(store.completeStream).toHaveBeenCalledWith(
+      'error',
+      expect.stringMatching(/upstream stream setup failed/i),
+    );
     expect(showGlobalNotification).toHaveBeenCalledWith(
       'error',
       expect.stringMatching(/upstream stream setup failed|Load failed|加载失败/i),

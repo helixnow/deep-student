@@ -113,7 +113,9 @@ describe('NotesSearchOverlay', () => {
       target: { value: 'chem' },
     });
     expect(screen.queryByText('Recently opened')).toBeNull();
-    expect(screen.getByRole('option', { name: /Chemistry/ })).toBeInTheDocument();
+    // 命中片段会被 <mark> 高亮拆分（"Chem" + "istry"），可访问名称计算
+    // 在元素边界插入空格，因此按 "Chem istry" 匹配当前实现。
+    expect(screen.getByRole('option', { name: /Chem ?istry/ })).toBeInTheDocument();
   });
 
   it('searches full text through DSTU, renders a safe snippet, and filters unsupported results', async () => {

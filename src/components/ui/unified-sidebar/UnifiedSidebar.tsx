@@ -51,7 +51,7 @@ const SIDEBAR_STYLES = {
     header: { height: '40px', padding: 'px-2', gap: 'gap-0.5' },
     search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
+    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-ui', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
     actions: { gap: 'gap-0.5', opacity: 'opacity-0 group-hover:opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
@@ -80,7 +80,7 @@ const SIDEBAR_STYLES = {
     header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
     search: { iconSize: 'w-4 h-4', inputPadding: 'pl-9 pr-3 py-2 text-base' },
     button: { padding: 'p-2', iconSize: 'w-5 h-5' },
-    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-[15px]', indicator: 'w-[3px] h-5' },
+    item: { padding: 'gap-3 px-3 py-2.5 mx-1 min-h-[44px]', iconSize: 'w-5 h-5', textSize: 'text-md', indicator: 'w-[3px] h-5' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
     actions: { gap: 'gap-1', opacity: 'opacity-100', btnPadding: 'p-2', iconSize: 'w-4 h-4' },
@@ -626,7 +626,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               {badge && (
                 <span className={cn(
                   'px-1.5 py-0.5 rounded bg-accent text-accent-foreground font-medium flex-shrink-0',
-                  isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-[10px]'
+                  isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-2xs'
                 )}>
                   {badge}
                 </span>
@@ -650,10 +650,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               </p>
             )}
             {stats && (
-              <div className={cn(
-                'flex items-center gap-2 mt-0.5 text-muted-foreground',
-                isMobileMode && !isMobileSlidingMode ? 'text-xs' : 'text-[11px]'
-              )}>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                 {stats}
               </div>
             )}

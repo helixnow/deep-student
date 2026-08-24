@@ -1,6 +1,10 @@
 # 本地 WebDAV + S3 (MinIO) + FTP 同步测试环境（兼容入口）
-# 启动: docker compose -f dstu-test/docker/docker-compose.sync-test.yml up -d
-# 停止: docker compose -f dstu-test/docker/docker-compose.sync-test.yml down -v
+# 首选入口是 npm run dstu-test:cloud:up / :down，它们直接使用 scripts/dev 那份，
+# 与 CI Cloud Provider Contract Gate 完全一致。本文件只为历史路径引用保留。
 # 服务、固定镜像和 healthcheck 的唯一事实源在 scripts/dev。
+
+# 与 scripts/dev 保持同一 project name，否则两个入口会各自建一组同名容器。
+name: deep-student-sync-test
+
 include:
   - path: ../../scripts/dev/docker-compose.sync-test.yml

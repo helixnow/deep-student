@@ -15,6 +15,7 @@
  * 关 tab / 切换 node 时由 dispose() 内的 flush 兜底落盘。
  */
 
+import i18n from '@/i18n';
 import { dstu } from '@/dstu';
 import { vfsFileApi } from '@/api/vfsFileApi';
 import { reportError, toVfsError, type Result } from '@/shared/result';
@@ -128,7 +129,10 @@ export function createPreviewPersistController(
     };
     const result = await setMetadataWithRetry(newMetadata, 'readingProgress');
     if (!result.ok) {
-      reportError(result.error, '保存阅读进度');
+      reportError(
+        result.error,
+        i18n.t('practice:preview_persist.save_progress', { defaultValue: '保存阅读进度' }),
+      );
       options?.onProgressError?.(result.error);
     }
   };
@@ -152,7 +156,10 @@ export function createPreviewPersistController(
 
     const result = await setMetadataWithRetry(newMetadata, 'bookmarks');
     if (!result.ok) {
-      reportError(result.error, '保存书签');
+      reportError(
+        result.error,
+        i18n.t('practice:preview_persist.save_bookmarks', { defaultValue: '保存书签' }),
+      );
       options?.onBookmarksError?.(result.error);
     }
   };
@@ -201,7 +208,15 @@ export function createPreviewPersistController(
           } catch (err: unknown) {
             // ★ flush 常在关窗/切 node 前的最后一次落盘：书签双写通道失败
             // 不能连带丢掉 pending 的阅读进度，继续走 setMetadata。
-            reportError(toVfsError(err, '保存书签失败'), '保存书签');
+            reportError(
+              toVfsError(
+                err,
+                i18n.t('practice:preview_persist.save_bookmarks_failed', {
+                  defaultValue: '保存书签失败',
+                }),
+              ),
+              i18n.t('practice:preview_persist.save_bookmarks', { defaultValue: '保存书签' }),
+            );
             options?.onBookmarksError?.(err);
           }
         }
@@ -209,7 +224,12 @@ export function createPreviewPersistController(
 
       const result = await setMetadataWithRetry(mergedMetadata, 'flush');
       if (!result.ok) {
-        reportError(result.error, '保存未持久化的阅读进度/书签');
+        reportError(
+          result.error,
+          i18n.t('practice:preview_persist.flush_unsaved', {
+            defaultValue: '保存未持久化的阅读进度/书签',
+          }),
+        );
         if (progress) options?.onProgressError?.(result.error);
         if (bookmarks) options?.onBookmarksError?.(result.error);
       }

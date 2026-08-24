@@ -20,22 +20,8 @@
 
 | 文档 | 说明 |
 |------|------|
-| [design-tokens-and-color-semantics.md](./design-tokens-and-color-semantics.md) | 设计令牌与颜色语义体系 |
-| [DEEPSEEK-V4-V32-RELEASE-NOTES.md](./DEEPSEEK-V4-V32-RELEASE-NOTES.md) | DeepSeek 系列适配器设计说明 |
 | `src/features/chat/BLOCK_RENDERING_GUIDE.md` | Chat V2 块渲染开发者手册（就地文档） |
 | `src-tauri/migrations/README.md` | 数据库迁移规范（就地文档） |
-
-## 专项进行中
-
-| 文档 | 说明 |
-|------|------|
-| [FABLE_SOTA_GOAL.md](./FABLE_SOTA_GOAL.md) | Fable SOTA 目标与进度 |
-| [cloud-sync-remediation-plan.md](./cloud-sync-remediation-plan.md) | 云同步整治计划 |
-| [cloud-sync-compatibility-analysis-2026-05-23.md](./cloud-sync-compatibility-analysis-2026-05-23.md) | 云同步兼容性分析（上文依据） |
-
-## 评审记录
-
-`reviews/` — 按日期命名的评审与修复记录（如 `docs-distribution-review-2026-06-11.md`）。
 
 ## 法务
 
@@ -45,13 +31,26 @@
 
 ## 内部目录（不随仓库发布）
 
-- `archive/` — 已完结的历史评审/计划/报告归档（git 忽略）
-- `design/` — 内部设计契约文档（git 忽略）：learning-hub-core-contracts、chat-v2-model-protocol
-- `RELEASE-WORKFLOW.md` — 发布流程（git 忽略）
+以下条目均被 `.gitignore` 排除，只存在于本地工作副本，公开仓库中访问会 404。
+可用 `git check-ignore -v <路径>` 核实。
+
+| 路径 | 说明 |
+|------|------|
+| `archive/` | 已完结的历史评审/计划/报告归档 |
+| `design/` | 内部设计契约文档：learning-hub-core-contracts、chat-v2-model-protocol |
+| `reviews/` | 按日期命名的评审与修复记录（如 `docs-distribution-review-2026-06-11.md`） |
+| `prompts/`、`superpowers/` | 内部提示词与实验性材料 |
+| `RELEASE-WORKFLOW.md` | 发布流程 |
+| `design-tokens-and-color-semantics.md` | 设计令牌与颜色语义体系 |
+| `DEEPSEEK-V4-V32-RELEASE-NOTES.md` | DeepSeek 系列适配器设计说明 |
+| `FABLE_SOTA_GOAL.md` | Fable SOTA 目标与进度 |
+| `cloud-sync-remediation-plan.md` | 云同步整治计划 |
+| `cloud-sync-compatibility-analysis-*.md` | 云同步兼容性分析（上文依据） |
+| `vfs-vector-knowledge-base-hardening.md` | VFS 向量知识库加固方案 |
 
 ## 文档放置约定
 
-1. 公开技术文档放 `docs/` 根层，评审记录放 `docs/reviews/`
+1. 公开技术文档放 `docs/` 根层，评审记录放 `docs/reviews/`（内部，git 忽略）
 2. 内部一次性产物完结后移入 `docs/archive/`
 3. 内部设计契约放 `docs/design/`
 4. 组件级文档随代码就地存放（如 `src/features/chat/`）

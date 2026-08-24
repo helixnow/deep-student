@@ -75,7 +75,7 @@ export function useMessageActions({
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
       throw error;
     }
   }, [message, extractMessageContent, t]);

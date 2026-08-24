@@ -148,6 +148,7 @@ function FinderDragDropBar({
   parentTargets?: Array<{ id: string | null; label: string }>;
   specialTargets?: Array<{ id: 'favorites' | 'trash'; label: string }>;
 }) {
+  const { t } = useTranslation('learningHub');
   const hasParent = Boolean(parentTargets?.length);
   const hasSpecial = Boolean(specialTargets?.length);
   if (!hasParent && !hasSpecial) return null;
@@ -162,7 +163,7 @@ function FinderDragDropBar({
         className="flex w-max min-w-full items-center gap-1.5 px-2 py-1.5"
         data-finder-drag-drop-bar
         role="toolbar"
-        aria-label="Drop targets"
+        aria-label={t('finder.dragDrop.overlayText')}
       >
         {hasParent && (
           <>

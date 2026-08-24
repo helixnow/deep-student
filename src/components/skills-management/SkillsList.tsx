@@ -181,7 +181,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   <DsButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
                     className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
-                    aria-label="favorite"
+                    title={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
+                    aria-label={isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
                   </DsButton>
@@ -267,19 +268,23 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       ? t('skills:package.enable')
                       : t('skills:package.disable')
                   }
-                  aria-label={isDisabledSkill ? 'enable-skill' : 'disable-skill'}
+                  aria-label={
+                    isDisabledSkill
+                      ? t('skills:package.enable')
+                      : t('skills:package.disable')
+                  }
                 >
                   {isDisabledSkill
                     ? t('skills:package.enable')
                     : t('skills:package.disable')}
                 </DsButton>
-                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
+                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label={t('common:actions.edit')}>
                   <Pencil size={14} />
                 </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label={t('common:more')}>
                       <DotsThree size={14} />
                     </DsButton>
                   </AppMenuTrigger>

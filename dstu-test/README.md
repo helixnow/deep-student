@@ -3,7 +3,7 @@
 `dstu-test/` collects the local, real-environment test system used for Deep Student Tauri testing:
 
 - `dstu-test/scripts/tauri-lab.mjs`: multi-instance Tauri control plane for real desktop UI testing.
-- `docker/docker-compose.sync-test.yml`: local WebDAV and MinIO cloud-sync fixture.
+- `docker/`: build inputs for the cloud-sync fixture's FTP image (`Dockerfile.ftp`, `ftp_server.py`). The fixture composition itself lives in `scripts/dev/docker-compose.sync-test.yml`, which is also what CI's Cloud Provider Contract Gate runs; `docker/docker-compose.sync-test.yml` is only a thin `include` wrapper kept for older references.
 - `skills/`: Codex skills that teach agents how to use `tauri-lab` and run cloud-sync E2E tests safely.
 - `docs/`: investigation notes, design docs, and run reports from the first real test passes.
 
@@ -68,12 +68,14 @@ npm run tauri-lab -- fixture webdav start sync-webdav \
 npm run tauri-lab -- fixture webdav credentials sync-webdav --json
 ```
 
-Docker Compose fixture for collaborators who want explicit WebDAV and MinIO containers:
+Docker Compose fixture for collaborators who want explicit WebDAV, MinIO, and FTP containers:
 
 ```sh
 npm run dstu-test:cloud:up
 npm run dstu-test:cloud:down
 ```
+
+These wrap `scripts/dev/docker-compose.sync-test.yml` with the same startup sequence CI's Cloud Provider Contract Gate uses (build, wait for healthchecks, then seed the MinIO bucket), so a fixture that comes up locally is the fixture CI runs against.
 
 The Compose WebDAV endpoint is `http://127.0.0.1:8080`, username `webdav`, password `webdav123`.
 
