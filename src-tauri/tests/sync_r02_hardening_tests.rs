@@ -260,7 +260,8 @@ fn r02x_local_win_fold_lands_in_next_upload_payload() {
         source_device_id: Some("device-cloud".to_string()),
         source_seq: Some(1),
     };
-    let (result, conflict) = apply_from_cloud(&conn, &[cloud_change], "device-cloud", "device-local");
+    let (result, conflict) =
+        apply_from_cloud(&conn, &[cloud_change], "device-cloud", "device-local");
     assert_eq!(result.success_count, 0, "Local 胜不应用云端整行");
     assert_eq!(conflict.rejected, 1);
 
@@ -299,11 +300,9 @@ fn r02x_local_win_fold_lands_in_next_upload_payload() {
 
     // 非可交换字段(body)不受折叠影响,保持本地值
     let body: String = conn
-        .query_row(
-            "SELECT body FROM notes WHERE id = 'note-fold'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT body FROM notes WHERE id = 'note-fold'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(body, "shared");
 }
@@ -346,7 +345,12 @@ fn new_composite_pk_db() -> Connection {
     conn
 }
 
-fn junction_delete_change(record_id: &str, changed_at: &str, device: &str, seq: u64) -> SyncChangeWithData {
+fn junction_delete_change(
+    record_id: &str,
+    changed_at: &str,
+    device: &str,
+    seq: u64,
+) -> SyncChangeWithData {
     SyncChangeWithData {
         table_name: "items".to_string(),
         record_id: record_id.to_string(),
@@ -405,7 +409,8 @@ fn r02x_composite_pk_stale_delete_rejected_fresh_delete_applies() {
     .unwrap();
 
     // 1) 较旧 DELETE(12:00 < 13:00)→ 被 LWW 拒绝
-    let stale_delete = junction_delete_change(&record_id, "2026-04-01T12:00:00Z", "device-stale", 1);
+    let stale_delete =
+        junction_delete_change(&record_id, "2026-04-01T12:00:00Z", "device-stale", 1);
     let (result, _) = apply_from_cloud(&conn, &[stale_delete], "device-stale", "device-local");
     assert_eq!(result.success_count, 0);
     assert_eq!(
@@ -425,7 +430,8 @@ fn r02x_composite_pk_stale_delete_rejected_fresh_delete_applies() {
     );
 
     // 2) 较新 DELETE(14:00 > 13:00)→ 正常生效
-    let fresh_delete = junction_delete_change(&record_id, "2026-04-01T14:00:00Z", "device-fresh", 2);
+    let fresh_delete =
+        junction_delete_change(&record_id, "2026-04-01T14:00:00Z", "device-fresh", 2);
     let (result, _) = apply_from_cloud(&conn, &[fresh_delete], "device-fresh", "device-local");
     assert_eq!(
         result.success_count, 1,
@@ -469,7 +475,12 @@ fn r02x_composite_pk_stale_delete_rejected_fresh_delete_applies() {
 // 4. 慢钟败方进冲突表且重复投递不增殖
 // ============================================================================
 
-fn slow_clock_upsert(body: &str, payload_ts: &str, changed_at: &str, seq: u64) -> SyncChangeWithData {
+fn slow_clock_upsert(
+    body: &str,
+    payload_ts: &str,
+    changed_at: &str,
+    seq: u64,
+) -> SyncChangeWithData {
     SyncChangeWithData {
         table_name: "notes".to_string(),
         record_id: "note-slow".to_string(),
@@ -564,7 +575,12 @@ fn r02x_slow_clock_loser_recorded_once_across_redeliveries() {
     assert_eq!(cloud_side_conflict_count(&conn), 2);
 
     // 语义回声:内容与本地一致、仅时间戳更旧 → 不入冲突表
-    let echo = slow_clock_upsert("newer-local", "2026-05-01T12:45:00Z", "2026-05-01T12:45:00Z", 5);
+    let echo = slow_clock_upsert(
+        "newer-local",
+        "2026-05-01T12:45:00Z",
+        "2026-05-01T12:45:00Z",
+        5,
+    );
     let (result, _) = apply_from_cloud(&conn, &[echo], "device-slow", "device-local");
     assert_eq!(result.success_count, 0);
     assert_eq!(
@@ -575,11 +591,9 @@ fn r02x_slow_clock_loser_recorded_once_across_redeliveries() {
 
     // 本地较新值全程未被覆盖
     let body: String = conn
-        .query_row(
-            "SELECT body FROM notes WHERE id = 'note-slow'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT body FROM notes WHERE id = 'note-slow'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(body, "newer-local");
 
