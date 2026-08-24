@@ -25,7 +25,23 @@
   "experimentalBadgeTooltip": "Experimental feature. We recommend backing up your data first.",
   "autoSync": {
     "label": "Auto Sync",
-    "description": "Off by default. When enabled, a bidirectional sync (keep-latest strategy) runs periodically; failures back off exponentially, and auto sync never runs while the cloud configuration is incomplete or credentials are missing."
+    "description": "Off by default. When enabled, a bidirectional sync (keep-latest strategy) runs at the selected interval; failures back off exponentially. When the cloud is not configured, a password is missing, or the sync lease is held by another device, the run is silently skipped without error popups.",
+    "intervalLabel": "Sync interval",
+    "interval": {
+      "15m": "Every 15 minutes",
+      "1h": "Every hour",
+      "6h": "Every 6 hours"
+    },
+    "lastRun": "Last auto sync",
+    "neverRan": "Never ran",
+    "outcome": {
+      "success": "Succeeded",
+      "failure": "Failed (will retry with backoff)",
+      "skippedUnconfigured": "Skipped: cloud not configured or password missing",
+      "skippedBusy": "Skipped: another sync is in progress",
+      "skippedLeaseHeld": "Skipped: sync lease held by another device"
+    },
+    "consecutiveFailures": "{{count}} consecutive failures"
   },
   "severity_low": "Low",
   "severity_medium": "Medium",

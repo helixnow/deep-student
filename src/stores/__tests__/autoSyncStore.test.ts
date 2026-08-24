@@ -356,13 +356,21 @@ describe('useAutoSyncStore', () => {
     expect(useAutoSyncStore.getState().enabled).toBe(false);
   });
 
-  it('persists only the enabled flag', () => {
+  it('persists enabled, intervalPreset and last-run status (not consecutiveFailures)', () => {
+    // [R11-autosync2] 持久化面扩展：档位与上次结果随 enabled 一起落盘，
+    // 重启后 UI 仍能回答「上次自动同步是什么时候、结果如何」；
+    // consecutiveFailures 是调度器运行时状态，仍不持久化。
     useAutoSyncStore.getState().setEnabled(true);
     try {
       const raw = localStorage.getItem('dstu-auto-sync');
       expect(raw).toBeTruthy();
       const parsed = JSON.parse(raw ?? '{}') as { state?: unknown };
-      expect(parsed.state).toEqual({ enabled: true });
+      expect(parsed.state).toEqual({
+        enabled: true,
+        intervalPreset: '15m',
+        lastOutcome: null,
+        lastRunAtMs: null,
+      });
     } finally {
       // 关闭以停掉 setEnabled(true) 启动的单例调度器，避免测试残留定时器
       useAutoSyncStore.getState().setEnabled(false);
