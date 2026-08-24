@@ -452,6 +452,18 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             return;
         }
 
+        // 幂等：Responses 流式路径会对同一 tool_call_id 触发两次 start
+        // （output_item.added 分块 + arguments.done 终态），复用已有 preparing 块
+        {
+            let guard = self
+                .preparing_block_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if guard.contains_key(tool_call_id) {
+                return;
+            }
+        }
+
         // 生成 block_id 并存储映射，供后续 args delta chunk 使用
         let block_id = ChatV2LLMAdapter::generate_block_id();
         self.ctx.emitter().register_block_event_meta(

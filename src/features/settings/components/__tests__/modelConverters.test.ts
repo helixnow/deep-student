@@ -43,7 +43,8 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const api = convertProfileToApiConfig(baseProfile, baseVendor);
 
     expect(api.modelAdapter).toBe('deepseek');
-    expect(api.apiProtocol).toBe('openai_chat_completions');
+    // v4-pro 已被官方 Responses 文档列名，默认协议为 responses
+    expect(api.apiProtocol).toBe('openai_responses');
     expect(api.providerScope).toBe('deepseek');
     expect(api.reasoningEffort).toBe('high');
     expect(api.supportsReasoning).toBe(true);
@@ -74,9 +75,9 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(api.reasoningEffort).toBeUndefined();
   });
 
-  it('keeps DeepSeek V4 semantics while rejecting an unsupported responses protocol', () => {
+  it('keeps DeepSeek V3 semantics while rejecting an unsupported responses protocol', () => {
     const api: ApiConfig = {
-      ...convertProfileToApiConfig(baseProfile, baseVendor),
+      ...convertProfileToApiConfig({ ...baseProfile, model: 'deepseek-v3.2' }, baseVendor),
       modelAdapter: 'openai',
       apiProtocol: 'openai_responses',
     };
@@ -345,8 +346,14 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(profile.contextWindow).toBe(1_000_000);
   });
 
-  it('defaults official DeepSeek V4-Flash models to Responses (2026-08 V4-Flash GA)', () => {
-    for (const model of ['deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner']) {
+  it('defaults official DeepSeek documented models to Responses (2026-08-23 docs: flash/pro/vision-exp)', () => {
+    for (const model of [
+      'deepseek-v4-flash',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash-vision-exp',
+      'deepseek-chat',
+      'deepseek-reasoner',
+    ]) {
       const profile: ModelProfile = { ...baseProfile, model };
 
       const api = convertProfileToApiConfig(profile, baseVendor);
@@ -354,18 +361,20 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       expect(api.apiProtocol, model).toBe('openai_responses');
     }
 
-    // legacy 别名映射到 flash：显式 responses 也能保留
-    const flashProfile: ModelProfile = {
-      ...baseProfile,
-      model: 'deepseek-v4-flash',
-      apiProtocol: 'openai_responses',
-    };
-    const flashApi = convertProfileToApiConfig(flashProfile, baseVendor);
-    expect(flashApi.apiProtocol).toBe('openai_responses');
+    // 列名型号显式 responses 也能保留
+    for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+      const profile: ModelProfile = {
+        ...baseProfile,
+        model,
+        apiProtocol: 'openai_responses',
+      };
+      const api = convertProfileToApiConfig(profile, baseVendor);
+      expect(api.apiProtocol, model).toBe('openai_responses');
+    }
   });
 
-  it('keeps official DeepSeek V4-Pro and V3.x on chat completions even when responses is requested', () => {
-    for (const model of ['deepseek-v4-pro', 'deepseek-v3.2', 'deepseek-v3.1']) {
+  it('keeps official DeepSeek V3.x on chat completions even when responses is requested', () => {
+    for (const model of ['deepseek-v3.2', 'deepseek-v3.1']) {
       const profile: ModelProfile = {
         ...baseProfile,
         model,
@@ -379,21 +388,23 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       expect(roundTripped.apiProtocol, model).toBe('openai_chat_completions');
     }
 
-    // 协议可选项：flash 解锁 responses，pro 不可选
-    const flashAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
-      providerType: 'deepseek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-flash',
-    });
-    expect(flashAllowed).toContain('openai_responses');
+    // 协议可选项：flash/pro 解锁 responses，V3.x 不可选
+    for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+      const allowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+        providerType: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model,
+      });
+      expect(allowed, model).toContain('openai_responses');
+    }
 
-    const proAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+    const v3Allowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
       providerType: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v3.2',
     });
-    expect(proAllowed).not.toContain('openai_responses');
-    expect(proAllowed).toContain('openai_chat_completions');
+    expect(v3Allowed).not.toContain('openai_responses');
+    expect(v3Allowed).toContain('openai_chat_completions');
 
     // 空模型（供应商级上下文）不降级
     const vendorLevel = getAllowedApiProtocolsForModelAdapter('deepseek', {

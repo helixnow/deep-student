@@ -129,7 +129,8 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(chatCaps.webSearch).toBe(true);
     expect(reasonerCaps.webSearch).toBe(true);
 
-    // V4-Pro（正式版发布前无 Responses）与 V3.x 仍视为不支持
+    // V4-Pro 虽已支持 Responses（2026-08-23 文档），但服务端 web_search 工具
+    // 当前仅确认 flash 系列及 legacy 别名；V3.x 无 Responses，同样不支持
     const proCaps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
     const v32Caps = inferApiCapabilities({ id: 'deepseek-ai/DeepSeek-V3.2', providerScope: 'siliconflow' });
     expect(proCaps.webSearch).toBe(false);

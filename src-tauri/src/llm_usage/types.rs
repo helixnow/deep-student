@@ -145,6 +145,16 @@ pub struct UsageRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
 
+    /// 适配器/协议（如 openai_chat_completions、openai_responses、
+    /// anthropic_messages、google_generate_content），用于报表按协议拆分
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+
+    /// Token 数据来源（api / tiktoken / heuristic / mixed），
+    /// 对齐 `chat_v2::types::TokenSource` 的字符串表示；缺省时落库为 "api"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_source: Option<String>,
+
     /// 输入 Token 数量（Prompt Tokens）
     pub prompt_tokens: u32,
 
@@ -161,6 +171,12 @@ pub struct UsageRecord {
     /// 缓存命中的 Token 数量（可选，如 Anthropic 的 prompt caching）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,
+
+    /// 缓存写入的 Token 数量（可选；Anthropic `cache_creation_input_tokens`、
+    /// OpenAI/DeepSeek Responses `input_tokens_details.cache_write_tokens`）。
+    /// NULL = 无测量，不等于 0（真实测得未写入）；报表据此算 write/read 比
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
 
     /// 估算成本（美元，可选）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -207,11 +223,14 @@ impl UsageRecord {
             model_id,
             config_id: None,
             provider_id: None,
+            adapter: None,
+            token_source: None,
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
             reasoning_tokens: None,
             cached_tokens: None,
+            cache_write_tokens: None,
             estimated_cost_usd: None,
             duration_ms: None,
             success: true,
@@ -238,6 +257,18 @@ impl UsageRecord {
         self
     }
 
+    /// Builder 方法：设置适配器/协议
+    pub fn with_adapter(mut self, adapter: String) -> Self {
+        self.adapter = Some(adapter);
+        self
+    }
+
+    /// Builder 方法：设置 Token 数据来源
+    pub fn with_token_source(mut self, token_source: String) -> Self {
+        self.token_source = Some(token_source);
+        self
+    }
+
     /// Builder 方法：设置思维链 Token
     pub fn with_reasoning_tokens(mut self, tokens: u32) -> Self {
         self.reasoning_tokens = Some(tokens);
@@ -247,6 +278,12 @@ impl UsageRecord {
     /// Builder 方法：设置缓存 Token
     pub fn with_cached_tokens(mut self, tokens: u32) -> Self {
         self.cached_tokens = Some(tokens);
+        self
+    }
+
+    /// Builder 方法：设置缓存写入 Token（未调用 = NULL = 无测量）
+    pub fn with_cache_write_tokens(mut self, tokens: u32) -> Self {
+        self.cache_write_tokens = Some(tokens);
         self
     }
 

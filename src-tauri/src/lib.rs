@@ -2002,6 +2002,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_create_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_get_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_update_session_settings
+            // P0 available_skills 会话快照跨进程（写入侧；读回走 chat_v2_load_session 的 session.metadata）
+            ,crate::chat_v2::handlers::manage_session::chat_v2_freeze_available_skills_snapshot
             ,crate::chat_v2::handlers::manage_session::chat_v2_archive_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_save_session
             ,crate::chat_v2::handlers::block_actions::chat_v2_delete_message

@@ -52,6 +52,8 @@ const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Default)]
 struct RequestBudgetTrim {
     removed_messages: usize,
+    /// 最近一轮易变尾被截断的字符数（首选裁剪路径，不动历史头字节）。
+    trimmed_tail_chars: usize,
     tokens_before: usize,
     tokens_after: usize,
 }
@@ -103,6 +105,55 @@ fn is_pinned_request_message(message: &Value) -> bool {
     text.contains("<compacted_context>")
         || text.contains("<skill_instructions")
         || text.contains("<request_context>")
+}
+
+/// P1-8：合并规则恒定 —— 技能/锚点瞬态 user 消息永不与邻接 user 合并，
+/// 其它真实连续 user 消息**始终**合并（此前存在任何瞬态技能就整段跳过
+/// `merge_consecutive_user_messages`，违反 DESIGN「有无瞬态技能不得改变
+/// 连续 user 合并规则」）。
+///
+/// 以瞬态消息的完整正文做精确匹配（正文由后端渲染函数生成、跨轮字节稳定）；
+/// 瞬态消息作为分段屏障，屏障两侧的真实 user 段各自照常合并。
+fn merge_consecutive_user_messages_respecting_transients(
+    messages: &mut Vec<Value>,
+    transient_user_contents: &std::collections::HashSet<&str>,
+) {
+    if transient_user_contents.is_empty() {
+        LLMManager::merge_consecutive_user_messages(messages);
+        return;
+    }
+    let is_guarded = |msg: &Value| {
+        msg.get("role").and_then(Value::as_str) == Some("user")
+            && msg
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| transient_user_contents.contains(text))
+    };
+    let drained: Vec<Value> = messages.drain(..).collect();
+    let mut segment: Vec<Value> = Vec::new();
+    for msg in drained {
+        if is_guarded(&msg) {
+            LLMManager::merge_consecutive_user_messages(&mut segment);
+            messages.append(&mut segment);
+            messages.push(msg);
+        } else {
+            segment.push(msg);
+        }
+    }
+    LLMManager::merge_consecutive_user_messages(&mut segment);
+    messages.append(&mut segment);
+}
+
+/// P1-8：从 LegacyChatMessage 历史中收集瞬态技能/锚点 user 消息正文，
+/// 作为合并屏障的精确匹配集合
+fn transient_user_contents_for_merge(
+    chat_history: &[ChatMessage],
+) -> std::collections::HashSet<&str> {
+    chat_history
+        .iter()
+        .filter(|m| crate::chat_v2::pipeline::is_transient_llm_only_message(m))
+        .map(|m| m.content.as_str())
+        .collect()
 }
 
 fn removable_request_turns(messages: &[Value]) -> Vec<(usize, usize)> {
@@ -165,6 +216,80 @@ fn redact_image_payloads_for_budget(value: &mut Value) -> usize {
     }
 }
 
+/// 尾裁截断标记：附加在被输入预算截断的易变尾文本末尾。
+const BUDGET_TAIL_TRIM_MARKER: &str = "\n…[内容超出输入预算，已截断]";
+/// 单条文本载荷的截断下限（字符）：低于该长度不再继续裁，避免把当前
+/// 请求正文裁成空文。
+const BUDGET_TAIL_TRIM_FLOOR_CHARS: usize = 2_048;
+/// 单次截断的最小进展（字符）：截掉的量必须显著大于截断标记本身，
+/// 否则视为不可裁（防止「截 10 字符、加 17 字符标记」的负进展死循环）。
+const BUDGET_TAIL_TRIM_MIN_PROGRESS_CHARS: usize = 64;
+
+/// 收集一条消息里可截断的文本载荷（content 字符串或 content 数组里的
+/// text 部件），供尾裁挑选最长者。
+fn collect_trimmable_texts<'a>(message: &'a mut Value, out: &mut Vec<&'a mut String>) {
+    match message.get_mut("content") {
+        Some(Value::String(text)) => out.push(text),
+        Some(Value::Array(parts)) => {
+            for part in parts {
+                if let Some(Value::String(text)) = part.get_mut("text") {
+                    out.push(text);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 首选裁剪路径：只截断**最近一轮**（最后一个可移除 user 轮及其后续消息）
+/// 里最大的文本载荷（附件/工具结果等易变尾），每次截半并附截断标记，直到
+/// 达标或该轮所有载荷都到下限。此路径不触碰最近一轮之前的任何消息，
+/// 跨轮历史头字节保持不变，OpenAI/DeepSeek 前缀缓存不受影响。
+fn trim_latest_turn_volatile_tail(
+    request_body: &mut Value,
+    max_input_tokens: usize,
+    estimate: &impl Fn(&Value) -> usize,
+    stats: &mut RequestBudgetTrim,
+) {
+    while stats.tokens_after > max_input_tokens {
+        let Some((start, end)) = request_body
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| removable_request_turns(messages))
+            .and_then(|ranges| ranges.last().copied())
+        else {
+            return;
+        };
+        let Some(messages) = request_body
+            .get_mut("messages")
+            .and_then(Value::as_array_mut)
+        else {
+            return;
+        };
+        let mut candidates: Vec<&mut String> = Vec::new();
+        for message in &mut messages[start..end] {
+            collect_trimmable_texts(message, &mut candidates);
+        }
+        let Some(longest) = candidates
+            .into_iter()
+            .filter(|text| {
+                text.chars().count()
+                    >= BUDGET_TAIL_TRIM_FLOOR_CHARS + BUDGET_TAIL_TRIM_MIN_PROGRESS_CHARS
+            })
+            .max_by_key(|text| text.len())
+        else {
+            return;
+        };
+        let total_chars = longest.chars().count();
+        let keep_chars = (total_chars / 2).max(BUDGET_TAIL_TRIM_FLOOR_CHARS);
+        let mut kept: String = longest.chars().take(keep_chars).collect();
+        kept.push_str(BUDGET_TAIL_TRIM_MARKER);
+        stats.trimmed_tail_chars += total_chars.saturating_sub(keep_chars);
+        *longest = kept;
+        stats.tokens_after = estimate(request_body);
+    }
+}
+
 fn enforce_request_input_budget(
     request_body: &mut Value,
     max_input_tokens: Option<usize>,
@@ -193,6 +318,14 @@ fn enforce_request_input_budget(
         tokens_after: tokens_before,
         ..Default::default()
     };
+
+    // 第一优先级：裁最近一轮的易变尾。历史头字节不动，前缀缓存不分叉。
+    trim_latest_turn_volatile_tail(request_body, max_input_tokens, &estimate, &mut stats);
+
+    // 兜底：尾裁到底仍超预算时才允许 FIFO 头删。头删会让后续所有请求的
+    // 前缀整体左移、跨轮缓存全 miss，常态禁止；触发即 warn，供上游排查
+    // 为何 compaction 没有先生效。
+    let mut warned_head_drop = false;
     while stats.tokens_after > max_input_tokens {
         let ranges = request_body
             .get("messages")
@@ -201,6 +334,13 @@ fn enforce_request_input_budget(
             .unwrap_or_default();
         if ranges.len() <= 2 {
             break;
+        }
+        if !warned_head_drop {
+            warn!(
+                "[input-budget] 最近一轮尾裁后仍超预算，回退 FIFO 头删（破坏跨轮前缀缓存，仅兜底）：estimated_input_tokens={} limit={} trimmed_tail_chars={}",
+                stats.tokens_after, max_input_tokens, stats.trimmed_tail_chars
+            );
+            warned_head_drop = true;
         }
         let (start, end) = ranges[0];
         let Some(messages) = request_body
@@ -215,8 +355,8 @@ fn enforce_request_input_budget(
     }
     if stats.tokens_after > max_input_tokens {
         return Err(AppError::llm(format!(
-            "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={}; reduce the current attachment/tool payload or choose a larger-context model",
-            stats.tokens_after, max_input_tokens, stats.removed_messages
+            "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={} trimmed_tail_chars={}; reduce the current attachment/tool payload or choose a larger-context model",
+            stats.tokens_after, max_input_tokens, stats.removed_messages, stats.trimmed_tail_chars
         )));
     }
     Ok(stats)
@@ -372,9 +512,25 @@ fn is_web_search_function_tool(tool: &Value) -> bool {
     name.trim().trim_start_matches("builtin-") == "web_search"
 }
 
+/// 官方文档列名支持服务端 web_search 的 DeepSeek 型号（2026-08-23 文档：
+/// 仅 v4-flash 系列，contains 匹配含 `deepseek-v4-flash-vision-exp`；
+/// `deepseek-v4-pro` 已列名 Responses 但 web_search 未列名，不得注入
+/// `{"type":"web_search"}`）。legacy 别名 `deepseek-chat` / `deepseek-reasoner`
+/// 官方映射到 flash，同样放行。与前端 apiCapabilityEngine 的
+/// WEB_SEARCH_WHITELIST_REGEXES DeepSeek 项对齐。
+#[inline]
+fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    normalized.contains("deepseek-v4-flash")
+        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
+}
+
 /// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
 /// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
-/// - 必须是官方 DeepSeek 端点（模型级门控已在上游保证 v4-flash 系列）
+/// - 必须是官方 DeepSeek 端点
+/// - 模型必须在官方 web_search 列名（仅 flash 系列；Responses 门控已放开
+///   v4-pro，不能再依赖「上游保证仅 flash」，见
+///   `deepseek_model_supports_server_side_web_search`）
 /// - 模型支持工具
 /// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
 ///
@@ -385,6 +541,9 @@ fn server_side_web_search_enabled(
     llm_context: &HashMap<String, Value>,
 ) -> bool {
     if !quirks.server_side_web_search {
+        return false;
+    }
+    if !deepseek_model_supports_server_side_web_search(&config.model) {
         return false;
     }
     if llm_context
@@ -406,6 +565,42 @@ fn apply_server_side_web_search_tool(tools: &mut Vec<Value>) {
         .any(|tool| tool.get("type").and_then(Value::as_str) == Some("web_search"))
     {
         tools.push(json!({ "type": "web_search" }));
+    }
+}
+
+/// P2-13：把消息 metadata 里持久化的服务端 `web_search_call` 完整 item
+/// （键 `openai_responses_web_search_items`）附着到出站 assistant 消息的
+/// `response_web_search_items`。仅 OpenAI Responses 转换层消费该键并原样
+/// 回传 `input`（DeepSeek Responses 无状态，服务端靠该 item 恢复搜索结果）；
+/// 其他协议适配器忽略该键。
+#[inline]
+fn attach_web_search_replay_items(metadata: Option<&Value>, assistant_msg: &mut Value) {
+    let Some(items) = metadata
+        .and_then(|meta| meta.get("openai_responses_web_search_items"))
+        .and_then(Value::as_array)
+    else {
+        return;
+    };
+    let replayable: Vec<Value> = items
+        .iter()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("web_search_call"))
+        .cloned()
+        .collect();
+    if !replayable.is_empty() {
+        assistant_msg["response_web_search_items"] = Value::Array(replayable);
+    }
+}
+
+/// 无工具纯文本轮的 Responses reasoning item 回放：history 重放把持久化的
+/// item 挂在 assistant 消息 metadata（键 `openai_responses_reasoning_item`），
+/// 这里附着为消息级 `response_reasoning_item`，Responses 转换层在 assistant
+/// 正文之前原样回传 input（encrypted reasoning 跨轮不丢）。
+fn attach_response_reasoning_replay_item(metadata: Option<&Value>, assistant_msg: &mut Value) {
+    let Some(item) = metadata.and_then(|meta| meta.get("openai_responses_reasoning_item")) else {
+        return;
+    };
+    if item.get("type").and_then(Value::as_str) == Some("reasoning") {
+        assistant_msg["response_reasoning_item"] = item.clone();
     }
 }
 
@@ -881,6 +1076,55 @@ mod tests {
             "multimodal_content": multimodal_content,
         }))
         .expect("valid chat message")
+    }
+
+    #[test]
+    fn prompt_cache_key_is_stable_and_never_random() {
+        assert_eq!(stable_prompt_cache_key(Some("sess_123")), "sess_123");
+        assert_eq!(stable_prompt_cache_key(Some("  sess_123  ")), "sess_123");
+        assert_eq!(stable_prompt_cache_key(Some("translation")), "translation");
+        // 空输入回落到固定常量而非随机 UUID：同一输入必须得到同一 key
+        assert_eq!(stable_prompt_cache_key(None), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(stable_prompt_cache_key(Some("   ")), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(stable_prompt_cache_key(None), stable_prompt_cache_key(None));
+    }
+
+    #[test]
+    fn prompt_cache_key_only_targets_openai_affinity_endpoints() {
+        // OpenAI 官方 Chat Completions：写（路由亲和）
+        let openai_official = ApiConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            ..Default::default()
+        };
+        assert!(provider_accepts_prompt_cache_key(&openai_official));
+
+        // OpenAI Responses 协议（含兼容网关）：写
+        let responses_gateway = ApiConfig {
+            model_adapter: "general".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            supports_openai_responses: Some(true),
+            ..Default::default()
+        };
+        assert!(provider_accepts_prompt_cache_key(&responses_gateway));
+
+        // DeepSeek 官方：官方不支持 prompt_cache_key，不写
+        let deepseek_official = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            ..Default::default()
+        };
+        assert!(!provider_accepts_prompt_cache_key(&deepseek_official));
+
+        // 第三方 Chat Completions 网关：无路由亲和语义，不写
+        let third_party_cc = ApiConfig {
+            base_url: "https://gateway.example.com/v1".to_string(),
+            model: "some-model".to_string(),
+            ..Default::default()
+        };
+        assert!(!provider_accepts_prompt_cache_key(&third_party_cc));
     }
 
     #[test]
@@ -1386,8 +1630,15 @@ mod tests {
     }
 
     #[test]
-    fn test_official_deepseek_v4_flash_defaults_to_responses() {
-        for model in ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"] {
+    fn test_official_deepseek_documented_models_default_to_responses() {
+        // 2026-08-23 官方文档列名：flash / pro / flash-vision-exp（legacy 别名映射到 flash）
+        for model in [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-vision-exp",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ] {
             let config = ApiConfig {
                 model_adapter: "deepseek".to_string(),
                 provider_type: Some("deepseek".to_string()),
@@ -1407,9 +1658,9 @@ mod tests {
     }
 
     #[test]
-    fn test_official_deepseek_v4_pro_and_v3_stay_on_chat_completions_even_with_explicit_responses()
-    {
-        for model in ["deepseek-v4-pro", "deepseek-v3.2", "deepseek-v3.1"] {
+    fn test_official_deepseek_v3_stays_on_chat_completions_even_with_explicit_responses() {
+        // V3.x 未被官方 Responses 文档列名，显式选中也回落 chat_completions
+        for model in ["deepseek-v3.2", "deepseek-v3.1"] {
             let config = ApiConfig {
                 model_adapter: "deepseek".to_string(),
                 provider_type: Some("deepseek".to_string()),
@@ -1444,8 +1695,9 @@ mod tests {
 
     #[test]
     fn test_third_party_deepseek_v4_flash_hosting_keeps_registry_default() {
-        // SiliconFlow 等第三方托管的 deepseek-v4-flash 无 Responses 端点，
-        // 即使模型名可支持也不应切到 Responses。
+        // SiliconFlow 等第三方托管的 deepseek-v4-flash 无 Responses 端点
+        // （注册表 supports_openai_responses=false），即使模型名可支持、
+        // 甚至显式选中 Responses 也不应切到 Responses。
         let config = ApiConfig {
             model_adapter: "deepseek".to_string(),
             provider_type: Some("siliconflow".to_string()),
@@ -1458,6 +1710,12 @@ mod tests {
         };
 
         assert!(!should_use_openai_responses_for_config(&config));
+
+        let explicit = ApiConfig {
+            api_protocol: Some("openai_responses".to_string()),
+            ..config
+        };
+        assert!(!should_use_openai_responses_for_config(&explicit));
     }
 
     #[test]
@@ -1505,6 +1763,12 @@ mod tests {
             &enabled_context
         ));
 
+        // provider_type=deepseek 的反代端点（即使显式走 Responses）→ 不注入
+        let mut proxy = base.clone();
+        proxy.base_url = "https://myproxy.example.com/v1".to_string();
+        proxy.api_protocol = Some("openai_responses".to_string());
+        assert!(!server_side_web_search_enabled(&proxy, &enabled_context));
+
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
         no_tools.supports_tools = false;
@@ -1512,6 +1776,54 @@ mod tests {
             &resolve_quirks(&no_tools),
             &enabled_context
         ));
+    }
+
+    /// web_search 白名单收紧回归：Responses 门控已放开 v4-pro，服务端
+    /// web_search 必须独立按官方列名（仅 flash 系列）判定，pro 不注入。
+    #[test]
+    fn server_side_web_search_whitelist_restricts_to_flash_series() {
+        let base = ApiConfig {
+            model_adapter: "deepseek".to_string(),
+            provider_type: Some("deepseek".to_string()),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            supports_tools: true,
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let context: HashMap<String, Value> = HashMap::new();
+
+        // v4-pro：官方 Responses 已列名（走 Responses 协议），但 web_search
+        // 未列名 → 不得注入 {"type":"web_search"}
+        let mut pro = base.clone();
+        pro.model = "deepseek-v4-pro".to_string();
+        assert!(
+            should_use_openai_responses_for_config(&pro),
+            "v4-pro 应走 Responses 协议（前置条件）"
+        );
+        assert!(!server_side_web_search_enabled(&pro, &context));
+
+        // flash 系列（含官方文档列名的 vision-exp）→ 注入
+        let mut vision_exp = base.clone();
+        vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
+        assert!(server_side_web_search_enabled(&vision_exp, &context));
+
+        // legacy 别名（官方映射到 flash）→ 注入
+        for alias in ["deepseek-chat", "deepseek-reasoner"] {
+            let mut legacy = base.clone();
+            legacy.model = alias.to_string();
+            assert!(
+                server_side_web_search_enabled(&legacy, &context),
+                "legacy 别名 {alias} 应放行"
+            );
+        }
+
+        // 未列名型号（V3.x 等，防御性：即使协议侧误放行也不注入）
+        assert!(!deepseek_model_supports_server_side_web_search(
+            "deepseek-v3.2-think"
+        ));
+        assert!(!deepseek_model_supports_server_side_web_search(""));
     }
 
     #[test]
@@ -1560,6 +1872,72 @@ mod tests {
         assert_eq!(numbered[0]["url"], json!("https://a.example.com"));
         assert_eq!(numbered[1]["index"], json!(2));
         assert_eq!(numbered[1]["citationTag"], json!("[搜索-2]"));
+    }
+
+    /// P2-13：消息 metadata 里的服务端 web_search_call 完整 item 附着到出站
+    /// assistant 消息（仅 web_search_call 类型；无 metadata 时不改消息）。
+    #[test]
+    fn attach_web_search_replay_items_filters_and_attaches() {
+        let metadata = json!({
+            "openai_responses_web_search_items": [
+                {
+                    "type": "web_search_call",
+                    "id": "ws_1",
+                    "status": "completed",
+                    "search_results": [{ "url": "https://a.example.com", "title": "A" }]
+                },
+                { "type": "message", "id": "not_a_search" }
+            ]
+        });
+        let mut assistant_msg = json!({ "role": "assistant", "content": "answer" });
+        attach_web_search_replay_items(Some(&metadata), &mut assistant_msg);
+
+        let items = assistant_msg["response_web_search_items"]
+            .as_array()
+            .expect("items should be attached");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], json!("ws_1"));
+        assert_eq!(items[0]["type"], json!("web_search_call"));
+
+        // 无 metadata / 无键：消息保持原样
+        let mut untouched = json!({ "role": "assistant", "content": "answer" });
+        attach_web_search_replay_items(None, &mut untouched);
+        assert!(untouched.get("response_web_search_items").is_none());
+        attach_web_search_replay_items(Some(&json!({})), &mut untouched);
+        assert!(untouched.get("response_web_search_items").is_none());
+    }
+
+    /// 无工具纯文本轮：metadata 携带的 Responses reasoning item 附着为消息级
+    /// response_reasoning_item（仅 type == reasoning 的 item），供转换层回传。
+    #[test]
+    fn attach_response_reasoning_replay_item_attaches_reasoning_only() {
+        let metadata = json!({
+            "openai_responses_reasoning_item": {
+                "type": "reasoning",
+                "id": "rs_final",
+                "encrypted_content": "enc-final"
+            }
+        });
+        let mut assistant_msg = json!({ "role": "assistant", "content": "answer" });
+        attach_response_reasoning_replay_item(Some(&metadata), &mut assistant_msg);
+        assert_eq!(
+            assistant_msg["response_reasoning_item"]["id"],
+            json!("rs_final")
+        );
+
+        // 非 reasoning 类型不附着
+        let bogus = json!({
+            "openai_responses_reasoning_item": { "type": "message", "id": "not_reasoning" }
+        });
+        let mut untouched = json!({ "role": "assistant", "content": "answer" });
+        attach_response_reasoning_replay_item(Some(&bogus), &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
+
+        // 无 metadata / 无键：消息保持原样
+        attach_response_reasoning_replay_item(None, &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
+        attach_response_reasoning_replay_item(Some(&json!({})), &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
     }
 
     #[test]
@@ -1830,6 +2208,269 @@ mod tests {
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(32)));
         assert!(!body.as_object().unwrap().contains_key("max_tokens"));
         assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
+    }
+
+    // ============================================================
+    // P1-8 合并规则恒定回归测试
+    // ============================================================
+
+    /// P1-8：有无瞬态技能时，非技能连续 user 的合并结果必须逐字节一致
+    /// （此前存在任何瞬态技能就整段跳过合并，违反 DESIGN 合并规则恒定）。
+    #[test]
+    fn p1_8_user_merge_behavior_identical_with_and_without_transient_skills() {
+        let base = vec![
+            json!({"role": "user", "content": "u1"}),
+            json!({"role": "user", "content": "u2"}),
+            json!({"role": "assistant", "content": "a1"}),
+            json!({"role": "user", "content": "u3"}),
+            json!({"role": "user", "content": "u4"}),
+        ];
+
+        // 无技能：照常合并
+        let mut without = base.clone();
+        merge_consecutive_user_messages_respecting_transients(
+            &mut without,
+            &std::collections::HashSet::new(),
+        );
+        assert_eq!(without.len(), 3);
+        assert_eq!(without[0]["content"], "u1\n\nu2");
+        assert_eq!(without[2]["content"], "u3\n\nu4");
+
+        // 有技能：技能消息作为屏障，其余真实 user 合并结果与无技能场景一致
+        let skill_content = "<skill_instructions id=\"skill-a\">\nbody\n</skill_instructions>";
+        let mut with = vec![json!({"role": "user", "content": skill_content})];
+        with.extend(base.clone());
+        let guard = std::collections::HashSet::from([skill_content]);
+        merge_consecutive_user_messages_respecting_transients(&mut with, &guard);
+
+        assert_eq!(with[0]["content"], skill_content, "技能消息不得被合并改写");
+        assert_eq!(&with[1..], &without[..], "非技能 user 合并结果必须与无技能时一致");
+    }
+
+    /// P1-8：瞬态技能/锚点消息永不与邻接 user 合并；
+    /// 屏障两侧的真实 user 段各自照常合并、不跨屏障合并。
+    #[test]
+    fn p1_8_transient_skill_message_never_merges_with_adjacent_users() {
+        let skill_content = "<skill_instructions id=\"s\">\nb\n</skill_instructions>";
+        let mut messages = vec![
+            json!({"role": "user", "content": "u1"}),
+            json!({"role": "user", "content": skill_content}),
+            json!({"role": "user", "content": "u2"}),
+            json!({"role": "user", "content": "u3"}),
+        ];
+        let guard = std::collections::HashSet::from([skill_content]);
+        merge_consecutive_user_messages_respecting_transients(&mut messages, &guard);
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["content"], "u1", "屏障前的 user 不得跨屏障合并");
+        assert_eq!(messages[1]["content"], skill_content);
+        assert_eq!(messages[2]["content"], "u2\n\nu3", "屏障后的连续 user 照常合并");
+    }
+
+    // ============================================================
+    // P0 prompt-cache：本轮检索/预取注入落当前 user，system 字节不变
+    // ============================================================
+
+    /// 与 call_unified_model_2_stream_with_config 中构建的 system 消息同形
+    /// （content array + cache_control）
+    fn system_message_fixture() -> serde_json::Value {
+        json!({
+            "role": "system",
+            "content": [
+                {"type": "text", "text": "STABLE SYSTEM PROMPT", "cache_control": {"type": "ephemeral"}}
+            ]
+        })
+    }
+
+    fn no_transients() -> std::collections::HashSet<&'static str> {
+        std::collections::HashSet::new()
+    }
+
+    /// 开/关注入时 system 与历史消息字节不变，变化只发生在当前 user 消息
+    #[test]
+    fn injection_toggle_keeps_system_and_history_bytes_unchanged() {
+        let base = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": "第一轮问题"}),
+            json!({"role": "assistant", "content": "第一轮回答"}),
+            json!({"role": "user", "content": "当前问题"}),
+        ];
+
+        // 注入关闭：messages 原样；注入开启：只动当前 user
+        let round_off = base.clone();
+        let mut round_on = base.clone();
+        LLMManager::append_injection_to_current_user_message(
+            &mut round_on,
+            "【个人图谱】\n(1) 笔记A\n片段内容",
+            &no_transients(),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&round_off[0]).unwrap(),
+            serde_json::to_string(&round_on[0]).unwrap(),
+            "开关注入不得改变 system 字节"
+        );
+        assert_eq!(round_off[1], round_on[1], "历史 user 字节不变");
+        assert_eq!(round_off[2], round_on[2], "历史 assistant 字节不变");
+
+        let current = round_on[3]["content"].as_str().unwrap();
+        assert!(current.starts_with("当前问题"), "user_query 保持在前");
+        assert!(current.contains("<injected_context>"));
+        assert!(current.contains("【个人图谱】"));
+    }
+
+    /// 跨轮：两轮注入内容不同（按各自 query 检索），system 前缀逐字节一致
+    #[test]
+    fn cross_turn_injection_changes_stay_out_of_system() {
+        let mut turn_n = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": "q1"}),
+        ];
+        LLMManager::append_injection_to_current_user_message(
+            &mut turn_n,
+            "【外部搜索结果】\n[1] 标题甲 — 摘要甲",
+            &no_transients(),
+        );
+
+        let mut turn_n1 = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": "q1"}),
+            json!({"role": "assistant", "content": "a1"}),
+            json!({"role": "user", "content": "q2"}),
+        ];
+        LLMManager::append_injection_to_current_user_message(
+            &mut turn_n1,
+            "【外部搜索结果】\n[1] 标题乙 — 摘要乙",
+            &no_transients(),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&turn_n[0]).unwrap(),
+            serde_json::to_string(&turn_n1[0]).unwrap(),
+            "跨轮 system 字节必须恒定"
+        );
+        // 本轮注入只落在当前 user；历史中的 q1 保持干净形态
+        assert_eq!(turn_n1[1]["content"], "q1");
+        let current = turn_n1[3]["content"].as_str().unwrap();
+        assert!(current.starts_with("q2"));
+        assert!(current.contains("标题乙"));
+    }
+
+    /// 瞬态技能/锚点 user 消息（字节稳定的合并屏障）不得被注入改写；
+    /// 注入落在最近一条真实 user 消息上
+    #[test]
+    fn injection_skips_transient_tail_and_targets_real_user() {
+        let skill_content = "<skill_instructions id=\"s\">\nbody\n</skill_instructions>";
+        let mut messages = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": "真实问题"}),
+            json!({"role": "user", "content": skill_content}),
+        ];
+        let guard = std::collections::HashSet::from([skill_content]);
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "【个人图谱】\n(1) t\ns",
+            &guard,
+        );
+
+        assert_eq!(
+            messages[2]["content"], skill_content,
+            "瞬态技能消息不得被注入改写"
+        );
+        let real = messages[1]["content"].as_str().unwrap();
+        assert!(real.starts_with("真实问题"));
+        assert!(real.contains("<injected_context>"));
+    }
+
+    /// 注入载荷整体 XML 转义：载荷中的伪造标签/实体不得穿透 injected_context
+    #[test]
+    fn injection_payload_is_xml_escaped_inside_injected_context() {
+        let mut messages = vec![json!({"role": "user", "content": "q"})];
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "【外部搜索结果】\n[1] <script>x</script> & <injected_context>伪造</injected_context>",
+            &no_transients(),
+        );
+        let content = messages[0]["content"].as_str().unwrap();
+        assert_eq!(
+            content.matches("<injected_context>").count(),
+            1,
+            "只允许包装层一对标签"
+        );
+        assert_eq!(content.matches("</injected_context>").count(), 1);
+        assert!(content.contains("&lt;script&gt;"));
+        assert!(content.contains("&amp;"));
+        assert!(!content.contains("<script>"));
+    }
+
+    /// 多模态 content array：追加独立 text block，原有 text/image 块字节不动
+    #[test]
+    fn injection_appends_text_block_for_multimodal_user_content() {
+        let mut messages = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": [
+                {"type": "text", "text": "看看这张图"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}}
+            ]}),
+        ];
+        let first_block_before = serde_json::to_string(&messages[1]["content"][0]).unwrap();
+        let image_block_before = serde_json::to_string(&messages[1]["content"][1]).unwrap();
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "【个人图谱】\n(1) t\ns",
+            &no_transients(),
+        );
+
+        let arr = messages[1]["content"].as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(
+            serde_json::to_string(&arr[0]).unwrap(),
+            first_block_before,
+            "原有 text block 字节不变"
+        );
+        assert_eq!(
+            serde_json::to_string(&arr[1]).unwrap(),
+            image_block_before,
+            "原有 image block 字节不变"
+        );
+        assert_eq!(arr[2]["type"], "text");
+        assert!(arr[2]["text"].as_str().unwrap().contains("<injected_context>"));
+    }
+
+    /// 找不到可承载的 user 消息时：追加独立 user 尾段，绝不触碰 system
+    #[test]
+    fn injection_without_user_message_appends_user_tail_not_system() {
+        let mut messages = vec![system_message_fixture()];
+        let sys_before = serde_json::to_string(&messages[0]).unwrap();
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "【个人图谱】\n(1) t\ns",
+            &no_transients(),
+        );
+
+        assert_eq!(
+            serde_json::to_string(&messages[0]).unwrap(),
+            sys_before,
+            "system 字节不变"
+        );
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1]["role"], "user");
+        assert!(messages[1]["content"]
+            .as_str()
+            .unwrap()
+            .contains("<injected_context>"));
+    }
+
+    /// 空白注入为 no-op：整个 messages 序列字节不变
+    #[test]
+    fn empty_injection_is_noop() {
+        let mut messages = vec![
+            system_message_fixture(),
+            json!({"role": "user", "content": "q"}),
+        ];
+        let before = serde_json::to_string(&messages).unwrap();
+        LLMManager::append_injection_to_current_user_message(&mut messages, "   ", &no_transients());
+        assert_eq!(serde_json::to_string(&messages).unwrap(), before);
     }
 }
 
@@ -2257,6 +2898,59 @@ async fn bridge_codex_nonstream_response(response: reqwest::Response) -> Result<
     rebuild_codex_response(status, version, headers, body, true)
 }
 
+/// P0 缓存：后台任务（OCR/翻译/批改/制卡等）没有 session_id 时的稳定
+/// prompt_cache_key 兜底。禁止随机 UUID 回落——随机 key 会让 OpenAI 的
+/// 路由亲和（prompt cache routing）永远 0 命中。
+const FALLBACK_PROMPT_CACHE_KEY: &str = "deep-student-background";
+
+/// 稳定 prompt_cache_key：主聊天传 session_id；非聊天调用传 caller 类型
+/// 稳定串（如 translation / analysis / ocr）。同一输入永远得到同一 key。
+fn stable_prompt_cache_key(session_id: Option<&str>) -> String {
+    session_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| FALLBACK_PROMPT_CACHE_KEY.to_string())
+}
+
+/// 是否向该配置写 `prompt_cache_key`（OpenAI 缓存路由亲和参数）。
+/// 仅 OpenAI Responses 协议与 OpenAI 官方 Chat Completions 需要；
+/// DeepSeek 官方（含其 Responses 公测端点）不支持该字段，不写。
+fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
+    if is_official_deepseek_config(config) {
+        return false;
+    }
+    should_use_openai_responses_for_config(config)
+        || super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
+}
+
+/// 是否向该配置写 OpenAI 缓存保留参数（`prompt_cache_retention` /
+/// `prompt_cache_options`）。与 `prompt_cache_key` 的口径不同：缓存保留
+/// 参数**只对 OpenAI 官方端点**合法——DeepSeek 官方明确不支持，第三方
+/// OpenAI 兼容网关/反代行为不可知（轻则静默忽略、重则 400），一律不写。
+fn provider_accepts_prompt_cache_retention(config: &ApiConfig) -> bool {
+    !is_official_deepseek_config(config)
+        && super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
+}
+
+/// P0 缓存：OpenAI 缓存保留代际分叉（延长保留到 24h，跨轮会话不再受
+/// 默认 5-10 分钟滑动窗限制）。
+/// - 旧代模型（gpt-4/gpt-5.5 及更早、o 系）：官方字段 `prompt_cache_retention:"24h"`；
+/// - GPT-5.6+（与 `prompt_cache_breakpoint` 同代引入）：官方等价新形态
+///   `prompt_cache_options:{"ttl":"24h"}`，旧字段在新代模型上不再生效。
+///
+/// 调用方已显式设置任一字段时尊重原值，不覆盖。
+fn apply_openai_prompt_cache_retention(body: &mut serde_json::Map<String, Value>, model: &str) {
+    if body.contains_key("prompt_cache_retention") || body.contains_key("prompt_cache_options") {
+        return;
+    }
+    if crate::providers::OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint(model) {
+        body.insert("prompt_cache_options".to_string(), json!({ "ttl": "24h" }));
+    } else {
+        body.insert("prompt_cache_retention".to_string(), json!("24h"));
+    }
+}
+
 impl LLMManager {
     fn is_openai_codex_oauth(config: &ApiConfig) -> bool {
         config.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
@@ -2317,7 +3011,16 @@ impl LLMManager {
         let mut prepared = PreparedProviderRequest::from_provider(provider_request);
         merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
 
+        // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
+        let session_id = stable_prompt_cache_key(session_id);
+
         if !Self::is_openai_codex_oauth(config) {
+            if provider_accepts_prompt_cache_key(config) {
+                if let Some(body) = prepared.body.as_object_mut() {
+                    body.entry("prompt_cache_key".to_string())
+                        .or_insert_with(|| Value::String(session_id.clone()));
+                }
+            }
             return Ok(prepared);
         }
         if !should_use_openai_responses_for_config(config) {
@@ -2331,11 +3034,6 @@ impl LLMManager {
             .request_auth(false)
             .await
             .map_err(|error| Self::codex_error("获取访问凭据", error))?;
-        let session_id = session_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
         prepared.url = self.openai_codex_auth.responses_endpoint().to_string();
         prepared.body = prepare_codex_responses_body(&prepared.body)
             .map_err(|error| Self::codex_error("准备 Responses 请求", error))?;
@@ -3058,6 +3756,12 @@ impl LLMManager {
                                 "content": msg.content
                             }));
                         }
+                        // P2-13：服务端 web_search_call 完整 item 随 assistant 历史回传
+                        // 无工具纯文本轮的 Responses reasoning item 同样随历史回传
+                        if let Some(last) = messages.last_mut() {
+                            attach_web_search_replay_items(msg.metadata.as_ref(), last);
+                            attach_response_reasoning_replay_item(msg.metadata.as_ref(), last);
+                        }
                     } else if msg.role == "tool" {
                         // 标准化：工具结果消息必须包含 tool_call_id 以关联到上一条assistant的tool_calls
                         if let Some(tr) = &msg.tool_result {
@@ -3079,14 +3783,14 @@ impl LLMManager {
             }
         }
 
-        // 瞬态技能指令必须保持独立 user message，不能与当前用户输入合并。
-        let has_transient_skill_messages = chat_history
-            .iter()
-            .any(crate::chat_v2::pipeline::is_transient_skill_message);
-        if !has_transient_skill_messages {
-            // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
-            Self::merge_consecutive_user_messages(&mut messages);
-        }
+        // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错。
+        // P1-8：合并规则恒定 —— 瞬态技能/锚点消息作为屏障永不参与合并，
+        // 其余真实 user 消息无论有无技能都照常合并（不再整段跳过）。
+        let transient_user_contents = transient_user_contents_for_merge(&chat_history);
+        merge_consecutive_user_messages_respecting_transients(
+            &mut messages,
+            &transient_user_contents,
+        );
 
         // 近似输入token统计（用于用量/事件）
         let _approx_tokens_in = {
@@ -3388,7 +4092,7 @@ impl LLMManager {
 
                     if !inject_texts.is_empty() {
                         debug!(
-                            "[Fallback] 收集注入文本，共 {} 段，稍后统一注入系统提示",
+                            "[Fallback] 收集注入文本，共 {} 段，稍后统一注入当前 user 消息",
                             inject_texts.len()
                         );
                         pre_call_injection_texts.extend(inject_texts);
@@ -3399,8 +4103,16 @@ impl LLMManager {
             }
         }
 
+        // P0（prompt-cache）：本轮检索/预取注入落在当前 user 消息的
+        // <injected_context>，禁止追加到 system——system 位于全部历史之前，
+        // 逐轮变化会从第 0 位打碎整段 prompt cache（P1-10 同源约束）。
+        // 瞬态技能/锚点 user 消息是字节稳定的合并屏障，注入定位时跳过。
         if let Some(inject_content) = Self::coalesce_injection_texts(&pre_call_injection_texts) {
-            Self::append_injection_to_system_message(&mut messages, &inject_content);
+            Self::append_injection_to_current_user_message(
+                &mut messages,
+                &inject_content,
+                &transient_user_contents,
+            );
         }
 
         // 注入阶段可能修改 messages，此处确保请求体携带最新副本
@@ -3439,9 +4151,10 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
-        if budget_trim.removed_messages > 0 {
+        if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
             warn!(
-                "[model2_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                "[model2_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.trimmed_tail_chars,
                 budget_trim.removed_messages,
                 budget_trim.tokens_before,
                 budget_trim.tokens_after,
@@ -3452,6 +4165,7 @@ impl LLMManager {
                 json!({
                     "messageId": message_id,
                     "removedMessages": budget_trim.removed_messages,
+                    "trimmedTailChars": budget_trim.trimmed_tail_chars,
                     "tokensBefore": budget_trim.tokens_before,
                     "tokensAfter": budget_trim.tokens_after,
                     "limit": input_limit,
@@ -3516,10 +4230,12 @@ impl LLMManager {
             self.clear_cancel_channel(stream_event).await;
             return Err(AppError::llm("请求已被用户取消"));
         }
+        // P0 缓存：cache key 兜底取稳定串而非随机 request_id，
+        // 否则无 session 作用域的调用每次请求都会打爆 prompt cache。
         let codex_session_id = chat_v2_session_scope_and_generation(stream_event)
             .map(|(session_id, _)| session_id)
             .or(message_id)
-            .unwrap_or(request_id.as_str());
+            .unwrap_or("chat_stream");
 
         // 工具与 thinking 互斥必须在 provider request 构建前处理；发送后再改
         // request_body 不会影响线上请求。
@@ -4728,7 +5444,13 @@ impl LLMManager {
             // （带真实 session_id、模型显示名和失败记录），此处不再重复写入。
             // 多变体（"chat_v2_variant"）没有 pipeline 层记录，仍依赖此处。
             if task_context != Some("chat_v2") {
-                crate::llm_usage::record_llm_usage(
+                // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
+                let token_source = if captured_usage.is_some() {
+                    crate::chat_v2::types::TokenSource::Api
+                } else {
+                    crate::chat_v2::types::TokenSource::Heuristic
+                };
+                crate::llm_usage::record_llm_usage_ext(
                     crate::llm_usage::CallerType::ChatV2,
                     &config.model,
                     actual_prompt_tokens,
@@ -4743,6 +5465,8 @@ impl LLMManager {
                     } else {
                         None
                     },
+                    Some(super::effective_api_protocol_for_config(&config)),
+                    Some(token_source.to_string()),
                 );
             }
         }
@@ -5003,13 +5727,14 @@ impl LLMManager {
 
         // 🔧 防御性合并：连续 assistant tool_calls（正常流程中是 no-op）
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        if !chat_history
-            .iter()
-            .any(crate::chat_v2::pipeline::is_transient_skill_message)
-        {
-            // 🔧 防御性合并：连续 user 消息合并
-            Self::merge_consecutive_user_messages(&mut messages);
-        }
+        // 🔧 防御性合并：连续 user 消息合并。
+        // P1-8：合并规则恒定 —— 瞬态技能/锚点消息作为屏障永不参与合并，
+        // 其余真实 user 消息无论有无技能都照常合并（不再整段跳过）。
+        let transient_user_contents = transient_user_contents_for_merge(&chat_history);
+        merge_consecutive_user_messages_respecting_transients(
+            &mut messages,
+            &transient_user_contents,
+        );
 
         let mut request_body = json!({
             "model": config.model,
@@ -5022,9 +5747,10 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
-        if budget_trim.removed_messages > 0 {
+        if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
             warn!(
-                "[model2_non_stream] final input guard removed {} message(s): {} -> {} tokens (limit={:?})",
+                "[model2_non_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
+                budget_trim.trimmed_tail_chars,
                 budget_trim.removed_messages,
                 budget_trim.tokens_before,
                 budget_trim.tokens_after,
@@ -5040,7 +5766,8 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                // 非会话入口：caller 类型稳定串作为 prompt_cache_key
+                Some("analysis"),
                 "聊天请求构建失败",
             )
             .await?;
@@ -5305,7 +6032,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 Some(&api_key),
-                None,
+                Some("chat_metadata"),
                 "生成聊天元数据请求构建失败",
             )
             .await?;
@@ -6108,13 +6835,16 @@ impl LLMManager {
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
+        // caller 类型稳定串（translation / analysis / other:essay_grading 等）
+        // 作为 prompt_cache_key，同类后台任务共享缓存前缀。
+        let prompt_cache_key = caller_type.to_string();
         let mut preq = self
             .prepare_provider_request(
                 adapter.as_ref(),
                 &config,
                 &request_body,
                 None,
-                None,
+                Some(prompt_cache_key.as_str()),
                 "RAW prompt 请求构建失败",
             )
             .await?;
@@ -6190,10 +6920,13 @@ impl LLMManager {
             ));
         }
 
+        // 生效协议归属，供本函数内所有用量记录使用（报表按协议拆分）
+        let usage_protocol = super::effective_api_protocol_for_config(&config);
+
         // 7. 解析响应
         let response_json: serde_json::Value = response.json().await.map_err(|e| {
             let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-            crate::llm_usage::record_llm_usage(
+            crate::llm_usage::record_llm_usage_ext(
                 caller_type.clone(),
                 &config.model,
                 0,
@@ -6204,6 +6937,9 @@ impl LLMManager {
                 None,
                 false,
                 Some(err_msg.clone()),
+                Some(usage_protocol.clone()),
+                // 响应解析失败没有任何 API usage，0 token 记录标注为本地估算
+                Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
             );
             AppError::llm(err_msg)
         })?;
@@ -6212,7 +6948,7 @@ impl LLMManager {
         // This also converts canonical Responses JSON produced by the Codex SSE bridge.
         let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)
             .inspect_err(|error| {
-                crate::llm_usage::record_llm_usage(
+                crate::llm_usage::record_llm_usage_ext(
                     caller_type.clone(),
                     &config.model,
                     0,
@@ -6223,6 +6959,8 @@ impl LLMManager {
                     None,
                     false,
                     Some(error.to_string()),
+                    Some(usage_protocol.clone()),
+                    Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
                 );
             })?;
 
@@ -6233,13 +6971,19 @@ impl LLMManager {
 
         // 记录成功的 LLM 使用量
         let usage = openai_like_json.get("usage");
+        // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
+        let token_source = if usage.is_some() {
+            crate::chat_v2::types::TokenSource::Api
+        } else {
+            crate::chat_v2::types::TokenSource::Heuristic
+        };
         let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
             Self::extract_usage_tokens(
                 &usage.cloned(),
                 crate::utils::token_budget::estimate_tokens(&assistant_message),
                 (user_prompt.len() / 4).max(1),
             );
-        crate::llm_usage::record_llm_usage(
+        crate::llm_usage::record_llm_usage_ext(
             caller_type,
             &config.model,
             actual_prompt_tokens,
@@ -6250,6 +6994,8 @@ impl LLMManager {
             None,
             true,
             None,
+            Some(usage_protocol),
+            Some(token_source.to_string()),
         );
 
         Ok(StandardModel2Output {
@@ -6379,7 +7125,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                Some("ocr"),
                 "OCR RAW prompt 请求构建失败",
             )
             .await?;
@@ -6486,7 +7232,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 Some(&api_key),
-                None,
+                Some("ocr"),
                 "OCR请求构建失败",
             )
             .await?;
@@ -6599,9 +7345,21 @@ impl LLMManager {
             };
 
             // 提取 reasoning_tokens（思维链，可选）
+            // 顶层 / Gemini thoughtsTokenCount / OpenAI CC completion_tokens_details
+            // / OpenAI Responses output_tokens_details
             let reasoning_tokens = usage_value
                 .get("reasoning_tokens")
                 .or_else(|| usage_value.get("thoughtsTokenCount"))
+                .or_else(|| {
+                    usage_value
+                        .get("completion_tokens_details")
+                        .and_then(|d| d.get("reasoning_tokens"))
+                })
+                .or_else(|| {
+                    usage_value
+                        .get("output_tokens_details")
+                        .and_then(|d| d.get("reasoning_tokens"))
+                })
                 .and_then(|v| v.as_u64())
                 .map(|v| v as u32);
 
@@ -6615,6 +7373,12 @@ impl LLMManager {
                 .and_then(|d| d.get("cached_tokens"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
+            // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
+            let responses_cached = usage_value
+                .get("input_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
             let deepseek_cached = usage_value
                 .get("prompt_cache_hit_tokens")
                 .and_then(|v| v.as_u64())
@@ -6623,24 +7387,40 @@ impl LLMManager {
                 .get("cached_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
-            let cached_tokens = if anthropic_cache_hit > 0
-                || openai_cached > 0
-                || deepseek_cached > 0
-                || gemini_cached > 0
-            {
-                Some(
-                    anthropic_cache_hit
-                        .max(openai_cached)
-                        .max(deepseek_cached)
-                        .max(gemini_cached),
-                )
+            let max_cached = anthropic_cache_hit
+                .max(openai_cached)
+                .max(responses_cached)
+                .max(deepseek_cached)
+                .max(gemini_cached);
+            let cached_tokens = if max_cached > 0 {
+                Some(max_cached)
             } else {
                 None
             };
 
+            // 缓存写入 token（计费元数据，不计入命中；仅观测日志）
+            // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
+            let cache_write_tokens = usage_value
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                .max(
+                    usage_value
+                        .get("input_tokens_details")
+                        .and_then(|d| d.get("cache_write_tokens"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                )
+                .max(
+                    usage_value
+                        .get("cache_write_tokens")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                ) as u32;
+
             debug!(
-                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}",
-                prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
+                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={}",
+                prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens
             );
 
             (
@@ -6764,7 +7544,7 @@ impl LLMManager {
                 &config,
                 &request_body,
                 None,
-                None,
+                Some("anki"),
                 "Anki 制卡请求构建失败",
             )
             .await?;

@@ -171,7 +171,7 @@
       "subtitle": "配置您的AI模型接口连接与基础信息",
       "protocol_label": "OpenAI 协议",
       "protocol_hint": "这里明确选择 OpenAI Chat 还是 OpenAI Responses；供应商仅提供默认值。",
-      "responses_unavailable": "当前供应商或模型暂不支持 OpenAI Responses（如 DeepSeek V4-Pro 正式版发布前仅 V4-Flash 支持）。",
+      "responses_unavailable": "当前供应商或模型暂不支持 OpenAI Responses（如 DeepSeek 仅官方端点的 V4 列名型号支持：v4-flash / v4-pro / v4-flash-vision-exp；V3.x 与反代/中转端点会回落 OpenAI Chat）。",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",

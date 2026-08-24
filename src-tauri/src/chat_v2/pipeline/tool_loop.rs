@@ -8,6 +8,171 @@ pub(crate) struct ExternalToolRoute {
     pub preferred_server_id: Option<String>,
 }
 
+/// G6 排序键：工具 schema 为 OpenAI function 格式
+/// `{"type":"function","function":{"name":...}}`，名字在 `function.name`；
+/// 顶层 `name` 仅作非标准 schema 的回退。此前只读顶层 name，
+/// function 格式下恒为 ""，排序退化为 no-op。
+pub(crate) fn tool_schema_sort_key(tool: &Value) -> &str {
+    tool.get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(|name| name.as_str())
+        .or_else(|| tool.get("name").and_then(|name| name.as_str()))
+        .unwrap_or("")
+}
+
+/// Prompt cache（G6）：工具 schema 确定性排序。Anthropic 等 provider 将
+/// tools 纳入缓存前缀，顺序跨轮漂移会整段打爆缓存；对不计前缀的
+/// provider 稳定排序亦无害。
+pub(crate) fn sort_tool_schemas_for_prompt_cache(tools: &mut [Value]) {
+    tools.sort_by(|a, b| tool_schema_sort_key(a).cmp(tool_schema_sort_key(b)));
+}
+
+/// Prompt cache（P0，DESIGN「tools 会话内冻结 + append-only」）：工具环
+/// 生命周期内 tools 顺序冻结。首轮按名字排序建立基线（G6 确定性）；
+/// 后续轮次已发出的工具严格保持基线相对顺序（前缀字节不变），环内
+/// load_skills 渐进披露的新工具按首见轮次追加到末尾（同轮新增按名字
+/// 排序保证确定性），并记入基线供之后轮次复用。禁止按字母序插入中段
+/// —— 对 Anthropic 那是 tools 第 0 字节起变化，整段缓存前缀失效。
+///
+/// `frozen_names` 由调用方在环外持有（append-only 首见序基线），
+/// 空表示首轮尚未建立基线。
+pub(crate) fn freeze_tool_schema_order_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+) {
+    if frozen_names.is_empty() {
+        sort_tool_schemas_for_prompt_cache(tools);
+    } else {
+        let frozen_index: std::collections::HashMap<&str, usize> = frozen_names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.as_str(), index))
+            .collect();
+        // stable sort：基线内按冻结序，新工具排在全部基线之后、彼此按名字
+        tools.sort_by(|a, b| {
+            let key_a = tool_schema_sort_key(a);
+            let key_b = tool_schema_sort_key(b);
+            match (frozen_index.get(key_a), frozen_index.get(key_b)) {
+                (Some(index_a), Some(index_b)) => index_a.cmp(index_b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => key_a.cmp(key_b),
+            }
+        });
+    }
+    for tool in tools.iter() {
+        let key = tool_schema_sort_key(tool);
+        if key.is_empty() {
+            continue;
+        }
+        if !frozen_names.iter().any(|name| name == key) {
+            frozen_names.push(key.to_string());
+        }
+    }
+}
+
+/// P0 tools 会话冻结：把一次执行推进后的局部基线合并回会话级基线。
+/// append-only：只把 `entry` 缺失的名字按 `baseline` 顺序追加到末尾，
+/// 绝不删除或重排 `entry` 已有条目 —— 并行变体各自写回时共享基线保持
+/// 单调，已发出的 tools 前缀序不被打乱。
+pub(crate) fn merge_frozen_tool_schema_order_baseline(
+    entry: &mut Vec<String>,
+    baseline: &[String],
+) {
+    for name in baseline {
+        if !entry.iter().any(|existing| existing == name) {
+            entry.push(name.clone());
+        }
+    }
+}
+
+/// P0 tools 冻结（字节级加强）：在名字序冻结之上，把已发出工具的
+/// **schema 序列化字节**在稳定窗口内冻结。
+///
+/// - 首见工具：记入 `frozen_schemas`（名字 → 首次发出的完整 schema）；
+/// - 已发出工具：无条件回写冻结副本 —— 同名 schema 在窗口内变化
+///   （MCP 服务器刷新、load_skills 重复披露不同版本）时本窗口继续发送
+///   冻结字节，变更延迟到下一稳定窗口（`frozen_schemas` 重建时）生效。
+///   注意 serde_json 开启 preserve_order：键序不同的 Value 可以 `==` 相等
+///   但序列化字节不同，所以不能只在 `!=` 时回写，必须无条件回写才能
+///   保证已发出前缀逐字节不变；
+/// - 新工具只追加：顺序由 `freeze_tool_schema_order_for_prompt_cache`
+///   的 append-only 首见序基线保证，禁止插入已发出前缀中段。
+///
+/// `frozen_schemas` 由调用方按稳定窗口持有（一次 `execute_with_tools`
+/// 工具环 = 一个稳定窗口）：窗口内字节冻结，跨窗口允许采纳新字节。
+/// 名字序基线（`frozen_names`）仍按会话级持有/持久化，两者分工不同。
+pub(crate) fn freeze_tool_schemas_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+    frozen_schemas: &mut HashMap<String, Value>,
+) {
+    freeze_tool_schema_order_for_prompt_cache(tools, frozen_names);
+    for tool in tools.iter_mut() {
+        let key = tool_schema_sort_key(tool).to_string();
+        if key.is_empty() {
+            continue;
+        }
+        match frozen_schemas.get(&key) {
+            Some(frozen) => {
+                if frozen != tool {
+                    log::info!(
+                        "[ChatV2::pipeline] Tool schema for '{}' changed mid-window; \
+                         serving frozen bytes, deferring change to next stable window",
+                        key
+                    );
+                }
+                *tool = frozen.clone();
+            }
+            None => {
+                frozen_schemas.insert(key, tool.clone());
+            }
+        }
+    }
+}
+
+/// Responses reasoning items 工具轮写入：adapter 已按「相邻后继
+/// function_call」配好 `(tool_call_id, item)`，逐条按 tool_call_id 键控
+/// 写入（禁止全部绑到本批第一个 tool id）。未配对残留条目（provider
+/// 把 reasoning item 发在所有 function_call 之后等异常时序）兜底挂到
+/// `fallback_tool_call_id`（本批第一个 tool_call），用 `or_insert` 只在
+/// 该 id 尚无 reasoning item 时写入 —— 绝不覆盖已配对条目。
+pub(crate) fn assign_tool_round_reasoning_items(
+    dest: &mut HashMap<String, Value>,
+    items: Vec<(Option<String>, Value)>,
+    fallback_tool_call_id: Option<&str>,
+) {
+    for (paired_tool_call_id, item) in items {
+        match paired_tool_call_id {
+            Some(tool_call_id) => {
+                dest.insert(tool_call_id, item);
+            }
+            None => {
+                if let Some(fallback_id) = fallback_tool_call_id {
+                    dest.entry(fallback_id.to_string()).or_insert(item);
+                }
+            }
+        }
+    }
+}
+
+/// Responses reasoning items 纯文本终轮写入：无 tool_call_id 可键控的
+/// 未配对条目挂到哨兵键 [`crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY`]
+/// 持久化；history 重放附到最终 assistant 文本消息 metadata，下一轮
+/// Responses input 原样回传 encrypted reasoning。多条未配对时后到覆盖
+/// （最贴近最终正文的 item 生效）；已配对条目仍按 tool_call_id 写入。
+pub(crate) fn assign_final_round_reasoning_items(
+    dest: &mut HashMap<String, Value>,
+    items: Vec<(Option<String>, Value)>,
+) {
+    for (paired_tool_call_id, item) in items {
+        let key = paired_tool_call_id.unwrap_or_else(|| {
+            crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY.to_string()
+        });
+        dest.insert(key, item);
+    }
+}
+
 /// Retain usage reported before a failed terminal event. Responses providers
 /// commonly emit usage immediately before `response.incomplete`/`failed`;
 /// losing it here would make persisted message metadata and billing logs show 0.
@@ -152,6 +317,29 @@ impl ChatV2Pipeline {
         // （此前每个检查点都 new 一个注入器，节流形同虚设）
         let mut workspace_injection_throttle =
             super::super::workspace::injector::InjectionThrottle::new();
+        // ============================================================
+        // P1-8 技能锚定：本轮注入首轮构建后冻结（位置 = 历史末尾、当前 user
+        // 之前），后续轮次逐字节复用；环内 load_skills 新加载的技能按
+        // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
+        // ============================================================
+        let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
+        // P0（DESIGN「tools 会话内冻结」）：tools 顺序基线（append-only
+        // 首见序）从会话级状态载入 —— 同一 session 内已发出的 tools 顺序
+        // 跨轮（跨 execute_with_tools 调用 / 下一稳定窗口）保持，禁止每轮
+        // 重建字母序。会话首轮基线为空，首次 freeze 按字母序建立；环内
+        // load_skills 新工具只追加末尾，推进后写回会话级状态。
+        let mut frozen_tool_schema_order: Vec<String> =
+            self.load_session_frozen_tool_schema_order(&ctx.session_id);
+        // P0 字节级冻结：已发出工具的 schema 序列化字节在本稳定窗口
+        // （本次 execute_with_tools 工具环）内不变。同名 schema 中途变化
+        // （MCP 刷新 / load_skills 披露不同版本）时本窗口继续发送首见
+        // 字节，变更延迟到下一稳定窗口生效；新工具只追加末尾。
+        // 窗口级持有（不随名字序基线持久化）：跨窗口允许采纳新字节。
+        let mut frozen_tool_schemas: HashMap<String, Value> = HashMap::new();
+        let mut injected_skill_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+        let mut cumulative_skill_audit = SkillInjectionAudit::default();
         loop {
             // WI-13: PipelineHook 回合边界 —— 每轮迭代开头、doom-loop/上限检查
             // 与本轮 LLM 调用之前触发（内置 TaskAuditHook 在此落审计日志）。
@@ -375,31 +563,50 @@ impl ChatV2Pipeline {
             // ============================================================
             let mut messages = ctx.chat_history.clone();
 
-            let skill_state =
-                self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
-            let empty_skill_contents = std::collections::HashMap::new();
-            let skill_contents = ctx
-                .options
-                .replay_skill_contents
+            // P1-8 技能锚定：本轮注入只在首轮构建并冻结。已锚定在可回放历史中
+            // 的技能（history.rs 按 meta.skill_injection_anchors 还原）不再重复
+            // 注入，注入点因此在首次注入后冻结，跨轮 [history][skills][userN]
+            // live == replay；同轮后续轮次逐字节复用冻结结果。
+            if frozen_turn_skill_injection.is_none() {
+                let skill_state =
+                    self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+                let empty_skill_contents = std::collections::HashMap::new();
+                let skill_contents = ctx
+                    .options
+                    .replay_skill_contents
+                    .as_ref()
+                    .or(ctx.options.skill_contents.as_ref())
+                    .unwrap_or(&empty_skill_contents);
+                injected_skill_ids = anchored_skill_ids_in_history(&ctx.chat_history);
+                let built = build_transient_skill_messages_with_audit_excluding(
+                    &skill_state,
+                    skill_contents,
+                    ctx.options.skill_dependencies.as_ref(),
+                    // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+                    ctx.options.context_limit.map(|v| v as usize),
+                    &injected_skill_ids,
+                );
+                injected_skill_ids.extend(built.audit.injected_skill_ids.iter().cloned());
+                cumulative_skill_audit = built.audit.clone();
+                if !built.audit.injected_skill_ids.is_empty() {
+                    let anchors = ctx
+                        .options
+                        .skill_injection_anchors
+                        .get_or_insert_with(Default::default);
+                    anchors.turn_skill_ids = built.audit.injected_skill_ids.clone();
+                    anchors.before_turn_user = ctx.options.is_continue != Some(true);
+                }
+                frozen_turn_skill_injection = Some(built);
+            }
+            let frozen_skill_messages = frozen_turn_skill_injection
                 .as_ref()
-                .or(ctx.options.skill_contents.as_ref())
-                .unwrap_or(&empty_skill_contents);
-            let transient_skill_messages = build_transient_skill_messages_with_audit(
-                &skill_state,
-                skill_contents,
-                ctx.options.skill_dependencies.as_ref(),
-                // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-                ctx.options.context_limit.map(|v| v as usize),
-            );
-            let skill_audit = transient_skill_messages.audit.clone();
+                .map(|built| built.messages.clone())
+                .unwrap_or_default();
+            let skill_audit = cumulative_skill_audit.clone();
             let injected_skill_count = skill_audit.injected_skill_ids.len();
             let round_id = format!("tool-round-{}", recursion_depth);
             let insertion_index = messages.len();
-            insert_transient_skill_messages(
-                &mut messages,
-                insertion_index,
-                transient_skill_messages.messages,
-            );
+            insert_transient_skill_messages(&mut messages, insertion_index, frozen_skill_messages);
             emitter.emit_skill_injection_audit(
                 &ctx.assistant_message_id,
                 json!({
@@ -442,6 +649,16 @@ impl ChatV2Pipeline {
                 let tool_messages = ctx.all_tool_results_to_messages();
                 let tool_count = tool_messages.len();
                 messages.extend(tool_messages);
+
+                // P1-8：环内 load_skills 新加载的技能按记录顺序回放到对应
+                // tool result 之后，当前 user 之前的内存前缀保持逐字节不变。
+                for (anchor_call_id, batch) in &in_loop_skill_batches {
+                    insert_skill_messages_after_tool_result(
+                        &mut messages,
+                        anchor_call_id,
+                        batch.clone(),
+                    );
+                }
 
                 log::debug!(
                 "[ChatV2::pipeline] Added ALL {} tool result messages to chat history (tool_results count: {})",
@@ -744,20 +961,27 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 🔧 Prompt cache（G6）：工具 schema 确定性排序。
-            // Anthropic 等 provider 将 tools 纳入缓存前缀，顺序跨轮漂移会
-            // 整段打爆缓存；DeepSeek/OpenAI 虽不把 tools 计入消息前缀，
-            // 稳定排序亦无害。custom_tools 由客户端 schema_tool_ids（注入器）
-            // 与 MCP 追加合并而来，顺序依赖客户端与发现时序，必须收敛。
+            // 🔧 Prompt cache（G6 + P0 冻结）：custom_tools 由客户端
+            // schema_tool_ids（注入器）与 MCP 追加合并而来，顺序依赖客户端与
+            // 发现时序。首轮按名字排序建立基线；后续轮次冻结基线相对顺序，
+            // 且已发出工具的 schema 序列化字节窗口内冻结（同名变更延迟到
+            // 下一稳定窗口），环内 load_skills 新工具只追加末尾，禁止
+            // 字母序插入中段打爆 Anthropic 缓存前缀。
             if let Some(custom_tools) = llm_context
                 .get_mut("custom_tools")
                 .and_then(|v| v.as_array_mut())
             {
-                custom_tools.sort_by(|a, b| {
-                    let name_a = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let name_b = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    name_a.cmp(name_b)
-                });
+                freeze_tool_schemas_for_prompt_cache(
+                    custom_tools,
+                    &mut frozen_tool_schema_order,
+                    &mut frozen_tool_schemas,
+                );
+                // 名字序基线推进后写回会话级状态，下一轮（下一稳定窗口）复用；
+                // 字节冻结（frozen_tool_schemas）保持窗口级，不写回。
+                self.store_session_frozen_tool_schema_order(
+                    &ctx.session_id,
+                    &frozen_tool_schema_order,
+                );
             }
 
             // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
@@ -1125,11 +1349,12 @@ impl ChatV2Pipeline {
 
                     // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
                     // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
-                    if !ctx.needs_compaction {
-                        let cfg = self.resolve_active_api_config(ctx).await;
-                        if super::compaction::should_compact(ctx, cfg.as_ref()) {
-                            ctx.needs_compaction = true;
-                        }
+                    // （配置只解析一次，同时供压缩判断与用量记录的协议归属使用）
+                    let active_cfg = self.resolve_active_api_config(ctx).await;
+                    if !ctx.needs_compaction
+                        && super::compaction::should_compact(ctx, active_cfg.as_ref())
+                    {
+                        ctx.needs_compaction = true;
                     }
 
                     // 记录 LLM 使用量到数据库
@@ -1139,17 +1364,27 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    crate::llm_usage::record_llm_usage_cache_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         round_usage.prompt_tokens,
                         round_usage.completion_tokens,
                         round_usage.reasoning_tokens,
                         round_usage.cached_tokens,
+                        // 缓存写入量（Anthropic cache_creation / Responses
+                        // cache_write_tokens）；无测量落 NULL，报表算 write/read 比
+                        round_usage.cache_write_tokens,
                         Some(ctx.session_id.clone()),
                         None, // duration_ms - 在 adapter 层面已记录
                         true,
                         None,
+                        // 生效协议（openai_chat_completions / openai_responses / ...），
+                        // 配置无法解析时留 NULL 而不是猜测
+                        active_cfg
+                            .as_ref()
+                            .map(crate::llm_manager::effective_api_protocol_for_config),
+                        // 真实 token 来源：API 精确值 / tiktoken / heuristic 估算
+                        Some(round_usage.source.to_string()),
                     );
                 }
                 Err(e) => {
@@ -1186,7 +1421,12 @@ impl ChatV2Pipeline {
                         .as_deref()
                         .or(ctx.options.model_id.as_deref())
                         .unwrap_or("unknown");
-                    crate::llm_usage::record_llm_usage(
+                    let failed_round_protocol = self
+                        .resolve_active_api_config(ctx)
+                        .await
+                        .as_ref()
+                        .map(crate::llm_manager::effective_api_protocol_for_config);
+                    crate::llm_usage::record_llm_usage_cache_ext(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
                         failed_round_usage
@@ -1203,6 +1443,11 @@ impl ChatV2Pipeline {
                         failed_round_usage
                             .as_ref()
                             .and_then(|usage| usage.cached_tokens),
+                        // 失败轮已上报的缓存写入量同样入账（Responses 常在
+                        // failed/incomplete 终态前发 usage）；无测量落 NULL
+                        failed_round_usage
+                            .as_ref()
+                            .and_then(|usage| usage.cache_write_tokens),
                         Some(ctx.session_id.clone()),
                         None,
                         false,
@@ -1211,6 +1456,11 @@ impl ChatV2Pipeline {
                         } else {
                             error_message.clone()
                         }),
+                        failed_round_protocol,
+                        // 失败轮保留到的部分 usage 同样带真实来源；无 usage 时留空
+                        failed_round_usage
+                            .as_ref()
+                            .map(|usage| usage.source.to_string()),
                     );
 
                     if externally_cancelled {
@@ -1306,6 +1556,19 @@ impl ChatV2Pipeline {
                     );
                     ctx.retrieved_sources.web_search = Some(web_sources);
                 }
+            }
+
+            // P2-13 收尾：服务端 web_search_call 完整 item 累积到 ctx，随
+            // assistant 消息 meta 持久化（键 openai_responses_web_search_items），
+            // history 重放时原样回传 input（DeepSeek Responses 无状态恢复搜索结果）
+            let web_search_items = adapter.take_web_search_items();
+            if !web_search_items.is_empty() {
+                log::debug!(
+                    "[ChatV2::pipeline] Collected {} server-side web_search_call item(s) for replay (session={})",
+                    web_search_items.len(),
+                    ctx.session_id
+                );
+                ctx.merge_response_web_search_items(web_search_items);
             }
 
             // 如果有工具调用，执行并递归
@@ -1513,6 +1776,69 @@ impl ChatV2Pipeline {
                                         }
                                     }
                                 }
+
+                                // ============================================================
+                                // P1-8 环内技能锚定：新加载技能（差集）锚到本次
+                                // load_skills 的 tool result 之后追加，禁止删光后
+                                // 整包重插到当前 user 之前（那会改写同轮内存前缀）。
+                                // ============================================================
+                                if let Some(anchor_call_id) = tool_result
+                                    .tool_call_id
+                                    .clone()
+                                    .filter(|id| !id.is_empty())
+                                {
+                                    let empty_skill_contents = std::collections::HashMap::new();
+                                    let batch_contents = ctx
+                                        .options
+                                        .replay_skill_contents
+                                        .as_ref()
+                                        .or(ctx.options.skill_contents.as_ref())
+                                        .unwrap_or(&empty_skill_contents);
+                                    let batch = build_in_loop_skill_messages(
+                                        &loaded_skill_ids,
+                                        batch_contents,
+                                        ctx.options.skill_dependencies.as_ref(),
+                                        ctx.options.context_limit.map(|v| v as usize),
+                                        &injected_skill_ids,
+                                        ctx.options.skill_state_version.unwrap_or(0),
+                                    );
+                                    cumulative_skill_audit
+                                        .missing_skill_ids
+                                        .extend(batch.audit.missing_skill_ids.clone());
+                                    cumulative_skill_audit
+                                        .dropped_skill_ids
+                                        .extend(batch.audit.dropped_skill_ids.clone());
+                                    if !batch.audit.injected_skill_ids.is_empty() {
+                                        injected_skill_ids.extend(
+                                            batch.audit.injected_skill_ids.iter().cloned(),
+                                        );
+                                        cumulative_skill_audit.injected_skill_ids.extend(
+                                            batch.audit.injected_skill_ids.iter().cloned(),
+                                        );
+                                        cumulative_skill_audit.estimated_tokens +=
+                                            batch.audit.estimated_tokens;
+                                        let anchors = ctx
+                                            .options
+                                            .skill_injection_anchors
+                                            .get_or_insert_with(Default::default);
+                                        anchors.tool_anchored.push(
+                                            crate::chat_v2::types::ToolAnchoredSkills {
+                                                tool_call_id: anchor_call_id.clone(),
+                                                skill_ids: batch
+                                                    .audit
+                                                    .injected_skill_ids
+                                                    .clone(),
+                                            },
+                                        );
+                                        log::info!(
+                                            "[ChatV2::pipeline] P1-8: anchored {} in-loop skill(s) after load_skills tool_call_id={}",
+                                            batch.audit.injected_skill_ids.len(),
+                                            anchor_call_id
+                                        );
+                                        in_loop_skill_batches
+                                            .push((anchor_call_id, batch.messages));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1606,15 +1932,20 @@ impl ChatV2Pipeline {
                         result
                     })
                     .collect();
-                if let (Some(item), Some(first_tool_call_id)) = (
-                    adapter.get_response_reasoning_item(),
-                    tool_results_with_reasoning
+                // Responses reasoning items 按相邻配对写入：一次响应可含多个
+                // reasoning item（每个 function_call 各带一个），按 adapter 已
+                // 配好的 tool_call_id 键控（禁止全部绑到本批第一个 tool id）。
+                // 未配对的残留条目兜底挂到第一个尚无 reasoning item 的 tool_call。
+                {
+                    let fallback_tool_call_id = tool_results_with_reasoning
                         .first()
                         .and_then(|r| r.tool_call_id.clone())
-                        .filter(|id| !id.is_empty()),
-                ) {
-                    ctx.response_reasoning_by_tool_call_id
-                        .insert(first_tool_call_id, item);
+                        .filter(|id| !id.is_empty());
+                    assign_tool_round_reasoning_items(
+                        &mut ctx.response_reasoning_by_tool_call_id,
+                        adapter.get_response_reasoning_items(),
+                        fallback_tool_call_id.as_deref(),
+                    );
                 }
                 // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
                 // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
@@ -1747,6 +2078,15 @@ impl ChatV2Pipeline {
             // 无工具调用，这是最后一轮 LLM 调用
             // 收集最终的 thinking 和 content 块
             // ============================================================
+            // Responses reasoning item：纯文本轮无 tool_call_id 可键控，挂到
+            // 哨兵键持久化；history 重放附到最终 assistant 文本消息 metadata，
+            // 下一轮 Responses input 原样回传 encrypted reasoning。
+            // 多条时后到覆盖（最贴近最终正文的 item 生效）。
+            assign_final_round_reasoning_items(
+                &mut ctx.response_reasoning_by_tool_call_id,
+                adapter.get_response_reasoning_items(),
+            );
+
             ctx.collect_round_blocks(
                 adapter.get_thinking_block_id(),
                 adapter.get_accumulated_reasoning(),
@@ -3234,6 +3574,554 @@ mod tests {
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
         ToolCall::new(id.to_string(), name.to_string(), json!({}))
+    }
+
+    #[test]
+    fn tool_schema_sort_key_reads_function_name_and_falls_back_to_top_level() {
+        let openai_format = json!({
+            "type": "function",
+            "function": { "name": "builtin-web_search" }
+        });
+        assert_eq!(tool_schema_sort_key(&openai_format), "builtin-web_search");
+
+        let top_level = json!({ "name": "legacy_tool" });
+        assert_eq!(tool_schema_sort_key(&top_level), "legacy_tool");
+
+        let nameless = json!({ "type": "function" });
+        assert_eq!(tool_schema_sort_key(&nameless), "");
+    }
+
+    #[test]
+    fn tool_schema_sort_orders_openai_function_schemas_deterministically() {
+        // G6 回归：此前排序键只读顶层 name，OpenAI function 格式下恒为 ""，
+        // 排序退化为 no-op，跨轮顺序漂移会打爆 provider 的 prompt cache 前缀。
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta" } }),
+            json!({ "name": "mid_legacy" }),
+            json!({ "type": "function", "function": { "name": "alpha" } }),
+        ];
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha", "mid_legacy", "zeta"]);
+
+        // 幂等：再次排序不改变顺序（缓存前缀跨轮稳定）
+        let before = tools.clone();
+        sort_tool_schemas_for_prompt_cache(&mut tools);
+        assert_eq!(tools, before);
+    }
+
+    #[test]
+    fn frozen_tool_order_appends_new_tools_without_touching_sent_prefix() {
+        // P0 回归（DESIGN「tools 会话内冻结」）：先发 tools A,B；环内
+        // load_skills 追加 C（字母序落在 A、B 之间）后，A,B 前缀字节
+        // 必须逐字节不变，C 只能追加到末尾 —— 字母序插入中段不得发生。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "zeta_tool"]);
+        let sent_prefix_bytes: Vec<Vec<u8>> = tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+
+        // 环内渐进披露追加 beta_tool（字母序在 alpha 与 zeta 之间）
+        tools.push(json!({ "type": "function", "function": { "name": "beta_tool" } }));
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新技能工具必须追加末尾，禁止字母序插入中段"
+        );
+        for (index, expected) in sent_prefix_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "已发出的 tools 前缀第 {} 项字节漂移",
+                index
+            );
+        }
+    }
+
+    #[test]
+    fn frozen_tool_order_survives_full_rebuild_and_stays_idempotent() {
+        // 多变体 refreshed_tools 场景：环内从 mcp_tool_schemas 全量重建
+        // （源顺序可能与已发出顺序不同），冻结基线必须还原已发出顺序，
+        // 同轮多个新工具按名字排序后一并追加到末尾。
+        let mut frozen: Vec<String> = Vec::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut tools, &mut frozen);
+        assert_eq!(frozen, vec!["mid_tool", "zeta_tool"]);
+
+        let mut rebuilt = vec![
+            json!({ "type": "function", "function": { "name": "delta_tool" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool" } }),
+            json!({ "type": "function", "function": { "name": "aardvark_tool" } }),
+            json!({ "type": "function", "function": { "name": "mid_tool" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
+        // aardvark 字母序在最前，但只能追加末尾（同轮新增按名字排序）
+        assert_eq!(
+            names,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+
+        // 幂等：再次冻结不改变顺序（后续轮次前缀字节稳定）
+        let before = rebuilt.clone();
+        freeze_tool_schema_order_for_prompt_cache(&mut rebuilt, &mut frozen);
+        assert_eq!(rebuilt, before);
+        assert_eq!(
+            frozen,
+            vec!["mid_tool", "zeta_tool", "aardvark_tool", "delta_tool"]
+        );
+    }
+
+    #[test]
+    fn frozen_tool_order_persists_across_turns_via_session_baseline() {
+        // P0 回归（跨轮会话冻结）：第一轮结束后基线写回会话级状态；
+        // 第二轮（下一稳定窗口）从会话级状态载入，即便来源顺序不同、
+        // 且新增了字母序落在中段的工具，已发出 tools 的序列化字节必须
+        // 逐字节不变，新工具只追加末尾 —— 禁止跨轮重建字母序。
+        let mut session_baseline: Vec<String> = Vec::new();
+
+        // ===== 第一轮：空基线，首次 freeze 按字母序建立 =====
+        let mut turn1_local = merge_load(&session_baseline);
+        let mut turn1_tools = vec![
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn1_tools, &mut turn1_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn1_local);
+        let sent_bytes: Vec<Vec<u8>> = turn1_tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+        assert_eq!(session_baseline, vec!["alpha_tool", "zeta_tool"]);
+
+        // ===== 第二轮：全量重建（来源顺序打乱 + 新工具 beta 字母序在中段）=====
+        let mut turn2_local = merge_load(&session_baseline);
+        let mut turn2_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "zeta_tool", "description": "Z" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn2_tools, &mut turn2_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn2_local);
+
+        let names: Vec<&str> = turn2_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "跨轮基线必须还原已发出顺序，新工具只追加末尾"
+        );
+        for (index, expected) in sent_bytes.iter().enumerate() {
+            let actual =
+                serde_json::to_vec(&turn2_tools[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "两轮请求之间已发出 tools 的序列化字节必须逐字节不变"
+            );
+        }
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+
+        // ===== 第三轮：某工具（zeta）被移除，剩余顺序仍按基线保持 =====
+        let mut turn3_local = merge_load(&session_baseline);
+        let mut turn3_tools = vec![
+            json!({ "type": "function", "function": { "name": "beta_tool", "description": "B" } }),
+            json!({ "type": "function", "function": { "name": "alpha_tool", "description": "A" } }),
+        ];
+        freeze_tool_schema_order_for_prompt_cache(&mut turn3_tools, &mut turn3_local);
+        merge_frozen_tool_schema_order_baseline(&mut session_baseline, &turn3_local);
+        let names: Vec<&str> = turn3_tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "beta_tool"]);
+        // 基线不因工具消失而删除条目（append-only），后续恢复时顺序仍稳定
+        assert_eq!(
+            session_baseline,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"]
+        );
+    }
+
+    #[test]
+    fn session_baseline_merge_is_append_only_across_parallel_variants() {
+        // 并行变体各自推进局部基线后写回：合并只追加缺失名，绝不删除
+        // 或重排共享基线已有条目。
+        let mut shared: Vec<String> = vec!["alpha_tool".into(), "zeta_tool".into()];
+        // 变体 A 环内追加了 beta_tool
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into(), "beta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+        // 变体 B 写回时还没见过 beta_tool：不得把它从共享基线抹掉
+        merge_frozen_tool_schema_order_baseline(
+            &mut shared,
+            &["alpha_tool".into(), "zeta_tool".into()],
+        );
+        assert_eq!(shared, vec!["alpha_tool", "zeta_tool", "beta_tool"]);
+    }
+
+    /// 模拟 load_session_frozen_tool_schema_order：会话级基线的克隆载入。
+    fn merge_load(session_baseline: &[String]) -> Vec<String> {
+        session_baseline.to_vec()
+    }
+
+    #[test]
+    fn frozen_tool_schema_bytes_survive_append_and_same_name_change() {
+        // P0 字节级冻结回归：A,B 发出后环内追加 C（字母序落在中段），
+        // A,B 的序列化字节必须逐字节不变；同名 schema 变更（zeta 描述被
+        // MCP 刷新改写为 v2）不得改动已发出前缀 —— 本窗口继续发送冻结
+        // 字节，变更延迟到下一稳定窗口。
+        let mut frozen_names: Vec<String> = Vec::new();
+        let mut frozen_schemas: HashMap<String, Value> = HashMap::new();
+        let mut tools = vec![
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v1",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(&mut tools, &mut frozen_names, &mut frozen_schemas);
+        let names: Vec<&str> = tools.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(names, vec!["alpha_tool", "zeta_tool"]);
+        let sent_bytes: Vec<Vec<u8>> = tools
+            .iter()
+            .map(|tool| serde_json::to_vec(tool).expect("serialize tool schema"))
+            .collect();
+
+        // 环内全量重建：zeta 同名 schema 变更（v2）+ 新工具 beta 追加
+        let mut rebuilt = vec![
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v2 CHANGED",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "beta_tool", "description": "B v1"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(
+            &mut rebuilt,
+            &mut frozen_names,
+            &mut frozen_schemas,
+        );
+        let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_tool", "zeta_tool", "beta_tool"],
+            "新工具只能追加末尾"
+        );
+        for (index, expected) in sent_bytes.iter().enumerate() {
+            let actual = serde_json::to_vec(&rebuilt[index]).expect("serialize tool schema");
+            assert_eq!(
+                &actual, expected,
+                "已发出的 tools 前缀第 {} 项字节漂移",
+                index
+            );
+        }
+        assert_eq!(
+            rebuilt[1]["function"]["description"],
+            json!("Z v1"),
+            "同名 schema 变更必须延迟到下一稳定窗口，本窗口发送冻结字节"
+        );
+
+        // 追加的 C（beta）自首见轮起字节同样冻结
+        let beta_bytes = serde_json::to_vec(&rebuilt[2]).expect("serialize tool schema");
+        let mut third_round = vec![
+            json!({ "type": "function", "function": {
+                "name": "beta_tool", "description": "B v2 CHANGED"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "alpha_tool", "description": "A v1"
+            } }),
+            json!({ "type": "function", "function": {
+                "name": "zeta_tool", "description": "Z v2 CHANGED",
+                "parameters": { "type": "object", "properties": {} }
+            } }),
+        ];
+        freeze_tool_schemas_for_prompt_cache(
+            &mut third_round,
+            &mut frozen_names,
+            &mut frozen_schemas,
+        );
+        assert_eq!(
+            serde_json::to_vec(&third_round[2]).expect("serialize tool schema"),
+            beta_bytes,
+            "环内追加的新工具在后续轮次同样按首见字节冻结"
+        );
+    }
+
+    #[test]
+    fn same_name_schema_change_applies_at_next_stable_window() {
+        // 稳定窗口边界回归：窗口 1 冻结 v1 字节，窗口内出现 v2 仍发 v1；
+        // 下一稳定窗口（新的 execute_with_tools，字节映射重建）采纳 v2
+        // 并随即冻结。名字序基线跨窗口保留（会话级），字节映射窗口级。
+        let v1 = json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A v1"
+        } });
+        let v2 = json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A v2"
+        } });
+        let mut session_names: Vec<String> = Vec::new();
+
+        // ===== 窗口 1 =====
+        let mut w1_schemas: HashMap<String, Value> = HashMap::new();
+        let mut w1_round1 = vec![v1.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w1_round1, &mut session_names, &mut w1_schemas);
+        let mut w1_round2 = vec![v2.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w1_round2, &mut session_names, &mut w1_schemas);
+        assert_eq!(w1_round2[0], v1, "窗口内同名 schema 变更必须延迟");
+
+        // ===== 窗口 2：字节映射重建，名字序沿用会话级基线 =====
+        let mut w2_schemas: HashMap<String, Value> = HashMap::new();
+        let mut w2_round1 = vec![v2.clone()];
+        freeze_tool_schemas_for_prompt_cache(&mut w2_round1, &mut session_names, &mut w2_schemas);
+        assert_eq!(w2_round1[0], v2, "变更应在下一稳定窗口生效");
+        assert_eq!(session_names, vec!["alpha_tool"]);
+
+        // 窗口 2 内 v2 字节随即冻结（旧 v1 再次出现也不得回退）
+        let mut w2_round2 = vec![v1];
+        freeze_tool_schemas_for_prompt_cache(&mut w2_round2, &mut session_names, &mut w2_schemas);
+        assert_eq!(w2_round2[0], v2, "新窗口首见字节冻结后不得再回退");
+    }
+
+    #[test]
+    fn frozen_tool_schema_bytes_normalize_key_order_permutation() {
+        // preserve_order 下键序不同的 Value `==` 相等但序列化字节不同：
+        // 同一 schema 以不同键序重建时必须回写冻结副本，仅在 `!=` 时回写
+        // 会漏掉这类字节漂移。
+        let mut frozen_names: Vec<String> = Vec::new();
+        let mut frozen_schemas: HashMap<String, Value> = HashMap::new();
+        let mut tools = vec![json!({ "type": "function", "function": {
+            "name": "alpha_tool", "description": "A"
+        } })];
+        freeze_tool_schemas_for_prompt_cache(&mut tools, &mut frozen_names, &mut frozen_schemas);
+        let sent = serde_json::to_vec(&tools[0]).expect("serialize tool schema");
+
+        // 键序扰动：function 前置 / description 与 name 互换
+        let mut permuted = vec![json!({ "function": {
+            "description": "A", "name": "alpha_tool"
+        }, "type": "function" })];
+        assert_eq!(permuted[0], tools[0], "前置条件：语义相等（仅键序不同）");
+        assert_ne!(
+            serde_json::to_vec(&permuted[0]).expect("serialize tool schema"),
+            sent,
+            "前置条件：键序不同导致序列化字节不同"
+        );
+        freeze_tool_schemas_for_prompt_cache(
+            &mut permuted,
+            &mut frozen_names,
+            &mut frozen_schemas,
+        );
+        assert_eq!(
+            serde_json::to_vec(&permuted[0]).expect("serialize tool schema"),
+            sent,
+            "冻结回写后必须恢复已发出字节"
+        );
+    }
+
+    #[test]
+    fn in_loop_load_skills_keeps_memory_prefix_byte_stable_within_turn() {
+        // 同轮回归（P1-8 + 内存前缀连续）：轮 N 消息 = history.clone()
+        // + 冻结的轮首技能注入 + 当前 user + 全量工具结果 + 环内
+        // load_skills 批次（锚到对应 tool result 之后）。
+        // 断言 1：环内 load_skills 不改当前 user 之前的任何字节；
+        // 断言 2：每一轮的消息序列都是上一轮的严格字节前缀延伸。
+        let history = vec![
+            make_empty_message("user", "turn 0 user".to_string()),
+            make_empty_message("assistant", "turn 0 reply".to_string()),
+        ];
+        let turn_skills = vec![make_transient_skill_message("skill-turn", "turn skill body")];
+        let current_user = make_empty_message("user", "turn 1 user".to_string());
+
+        // 模拟 execute_with_tools 每轮的消息组装
+        let build_round = |tool_msgs: &[LegacyChatMessage],
+                           in_loop_batches: &[(String, Vec<LegacyChatMessage>)]|
+         -> Vec<LegacyChatMessage> {
+            let mut messages = history.clone();
+            let insertion_index = messages.len();
+            insert_transient_skill_messages(&mut messages, insertion_index, turn_skills.clone());
+            messages.push(current_user.clone());
+            messages.extend(tool_msgs.to_vec());
+            for (anchor_call_id, batch) in in_loop_batches {
+                insert_skill_messages_after_tool_result(
+                    &mut messages,
+                    anchor_call_id,
+                    batch.clone(),
+                );
+            }
+            messages
+        };
+        let serialize = |messages: &[LegacyChatMessage]| -> Vec<Vec<u8>> {
+            messages
+                .iter()
+                .map(|m| serde_json::to_vec(m).expect("serialize message"))
+                .collect()
+        };
+
+        // ===== 轮 0：无工具结果 =====
+        let round0 = build_round(&[], &[]);
+        let round0_bytes = serialize(&round0);
+        let user_index = round0.len() - 1;
+        assert_eq!(round0[user_index].content, "turn 1 user");
+
+        // ===== 轮 1：load_skills 完成，新技能批次锚到其 tool result 之后 =====
+        let mut load_call = make_empty_message("assistant", String::new());
+        load_call.tool_call = Some(crate::models::ToolCall {
+            id: "call-load".to_string(),
+            tool_name: "builtin-load_skills".to_string(),
+            args_json: json!({ "skill_ids": ["skill-lazy"] }),
+        });
+        let mut load_result = make_empty_message("tool", "loaded".to_string());
+        load_result.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-load".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "loaded_skill_ids": ["skill-lazy"] })),
+            usage: None,
+            citations: None,
+        });
+        let tool_round1 = vec![load_call.clone(), load_result.clone()];
+        let batches = vec![(
+            "call-load".to_string(),
+            vec![make_transient_skill_message("skill-lazy", "lazy skill body")],
+        )];
+
+        let round1 = build_round(&tool_round1, &batches);
+        let round1_bytes = serialize(&round1);
+
+        // 断言 1：当前 user 及其之前的前缀逐字节不变
+        for index in 0..=user_index {
+            assert_eq!(
+                round1_bytes[index], round0_bytes[index],
+                "同轮 load_skills 改写了当前 user 之前的第 {} 条消息",
+                index
+            );
+        }
+        // 断言 2：轮 0 全量是轮 1 的严格字节前缀
+        assert_eq!(&round1_bytes[..round0_bytes.len()], &round0_bytes[..]);
+        // 新技能批次必须落在 load_skills tool result 之后（当前 user 之后）
+        assert!(is_transient_skill_message(round1.last().expect("non-empty")));
+
+        // ===== 轮 2：追加下一批工具结果，环内批次位置不得漂移 =====
+        let mut next_call = make_empty_message("assistant", String::new());
+        next_call.tool_call = Some(crate::models::ToolCall {
+            id: "call-next".to_string(),
+            tool_name: "builtin-web_search".to_string(),
+            args_json: json!({ "q": "x" }),
+        });
+        let mut next_result = make_empty_message("tool", "ok".to_string());
+        next_result.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-next".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "ok": true })),
+            usage: None,
+            citations: None,
+        });
+        let tool_round2 = vec![load_call, load_result, next_call, next_result];
+        let round2 = build_round(&tool_round2, &batches);
+        let round2_bytes = serialize(&round2);
+        assert_eq!(
+            &round2_bytes[..round1_bytes.len()],
+            &round1_bytes[..],
+            "同轮内存前缀连续性被破坏：轮 1 全量必须是轮 2 的字节前缀"
+        );
+        assert_eq!(round2.len(), round1.len() + 2);
+    }
+
+    #[test]
+    fn tool_round_reasoning_items_pair_by_tool_call_id() {
+        // 双 tool_call：两条已配对条目各写各的 tool_call_id，
+        // 禁止全部绑到本批第一个 tool id。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_1" })),
+                (Some("call_2".to_string()), json!({ "id": "rs_2" })),
+            ],
+            Some("call_1"),
+        );
+        assert_eq!(dest.len(), 2);
+        assert_eq!(dest["call_1"], json!({ "id": "rs_1" }));
+        assert_eq!(dest["call_2"], json!({ "id": "rs_2" }));
+    }
+
+    #[test]
+    fn tool_round_unpaired_fallback_never_overwrites_paired_item() {
+        // 未配对残留兜底挂 fallback；fallback id 已有配对条目时不得覆盖。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_paired" })),
+                (None, json!({ "id": "rs_orphan" })),
+            ],
+            Some("call_1"),
+        );
+        assert_eq!(dest.len(), 1);
+        assert_eq!(
+            dest["call_1"],
+            json!({ "id": "rs_paired" }),
+            "or_insert 不得覆盖已配对条目"
+        );
+
+        // fallback 尚无条目时，残留条目挂上去
+        let mut dest2: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(
+            &mut dest2,
+            vec![(None, json!({ "id": "rs_orphan" }))],
+            Some("call_9"),
+        );
+        assert_eq!(dest2["call_9"], json!({ "id": "rs_orphan" }));
+
+        // 无 fallback（本批无有效 tool_call_id）：未配对条目安全丢弃
+        let mut dest3: HashMap<String, Value> = HashMap::new();
+        assign_tool_round_reasoning_items(&mut dest3, vec![(None, json!({ "id": "x" }))], None);
+        assert!(dest3.is_empty());
+    }
+
+    #[test]
+    fn final_round_reasoning_unpaired_items_use_sentinel_key_last_wins() {
+        // 纯文本哨兵：未配对条目挂哨兵键；多条时后到覆盖
+        // （最贴近最终正文的 item 生效）；已配对条目仍按 tool_call_id 写入。
+        let mut dest: HashMap<String, Value> = HashMap::new();
+        assign_final_round_reasoning_items(
+            &mut dest,
+            vec![
+                (Some("call_1".to_string()), json!({ "id": "rs_tool" })),
+                (None, json!({ "id": "rs_first" })),
+                (None, json!({ "id": "rs_last" })),
+            ],
+        );
+        assert_eq!(dest.len(), 2);
+        assert_eq!(dest["call_1"], json!({ "id": "rs_tool" }));
+        assert_eq!(
+            dest[crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY],
+            json!({ "id": "rs_last" }),
+            "多条未配对时哨兵键后到覆盖"
+        );
     }
 
     #[test]

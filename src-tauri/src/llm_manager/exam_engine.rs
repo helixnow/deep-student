@@ -658,29 +658,57 @@ impl LLMManager {
 
         // 从 API 返回的 usage 数据中提取实际 token 数量
         let usage_value = response_json.get("usage");
-        let prompt_tokens = usage_value
+        let measured_prompt_tokens = usage_value
             .and_then(|u| u.get("prompt_tokens").or_else(|| u.get("input_tokens")))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
-        let completion_tokens = usage_value
+            .and_then(|v| v.as_u64());
+        let measured_completion_tokens = usage_value
             .and_then(|u| {
                 u.get("completion_tokens")
                     .or_else(|| u.get("output_tokens"))
             })
-            .and_then(|v| v.as_u64())
-            .unwrap_or(approx_tokens_out as u64) as u32;
+            .and_then(|v| v.as_u64());
+        let prompt_tokens = measured_prompt_tokens.unwrap_or(0) as u32;
+        let completion_tokens =
+            measured_completion_tokens.unwrap_or(approx_tokens_out as u64) as u32;
 
-        crate::llm_usage::record_llm_usage(
+        // 缓存命中量（整卷 OCR 逐页同前缀，命中率有真实意义）：
+        // OpenAI prompt_tokens_details.cached_tokens / DeepSeek prompt_cache_hit_tokens /
+        // Responses input_tokens_details.cached_tokens；未上报保持 NULL（无测量≠0）
+        let cached_tokens = usage_value
+            .and_then(|u| {
+                u.get("prompt_tokens_details")
+                    .or_else(|| u.get("input_tokens_details"))
+                    .and_then(|d| d.get("cached_tokens"))
+                    .or_else(|| u.get("prompt_cache_hit_tokens"))
+                    .or_else(|| u.get("cached_tokens"))
+            })
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32);
+
+        // 真实 token 来源：双端实测 api / 双端缺失 heuristic / 半测半估 mixed
+        let token_source = match (
+            measured_prompt_tokens.is_some(),
+            measured_completion_tokens.is_some(),
+        ) {
+            (true, true) => crate::chat_v2::types::TokenSource::Api,
+            (false, false) => crate::chat_v2::types::TokenSource::Heuristic,
+            _ => crate::chat_v2::types::TokenSource::Mixed,
+        };
+
+        crate::llm_usage::record_llm_usage_ext(
             crate::llm_usage::CallerType::ExamSheet,
             &config.model,
             prompt_tokens,
             completion_tokens,
             None,
-            None,
+            cached_tokens,
             None,
             None,
             true,
             None,
+            // 生效协议归属（与请求构建同一判定），报表按协议拆分
+            Some(super::effective_api_protocol_for_config(config)),
+            Some(token_source.to_string()),
         );
 
         Ok(content)

@@ -563,25 +563,19 @@ function formatRequiresMissingReason(skillId: string): string {
  * - `disableAutoInvoke` 技能不出现
  * - requires 未满足的技能标注为不可用（不要加载）
  *
- * @param excludeLoaded 是否排除已加载的 Skills
- * @param sessionId 会话 ID（用于检查已加载状态）
+ * 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
+ * 目录在会话内必须恒定——不按已加载状态收缩。技能加载后目录缩水会让
+ * system 前缀从第 0 字节变化，导致整段历史的 prompt cache 失效。
+ * 已加载状态由 load_skills 的 tool result（loaded_skill_ids 等）和
+ * 尾部瞬态技能消息表达，不从 system 目录中剔除。
  */
-export function generateAvailableSkillsPrompt(
-  excludeLoaded = false,
-  sessionId?: string
-): string {
+export function generateAvailableSkillsPrompt(): string {
   const skills = skillRegistry.getAll().filter(isSkillPromptVisible);
 
   // 过滤掉 disableAutoInvoke 的 Skills
-  let filteredSkills = skills.filter(s => !s.disableAutoInvoke);
+  const filteredSkills = skills.filter(s => !s.disableAutoInvoke);
 
   // 允许无 embeddedTools 的模式型 Skills（如 research-mode），工具数量为 0
-
-  // 如果需要排除已加载的
-  if (excludeLoaded && sessionId) {
-    const loadedIds = new Set(getLoadedSkills(sessionId).map(s => s.id));
-    filteredSkills = filteredSkills.filter(s => !loadedIds.has(s.id));
-  }
 
   // 加载期 requires 门控：与 registry.generateMetadataPrompt 保持同一语义
   const availableSkills = filteredSkills.filter((skill) =>
@@ -627,6 +621,79 @@ export function generateAvailableSkillsPrompt(
   lines.push('</tool_calling_rules>');
 
   return lines.join('\n');
+}
+
+// ============================================================================
+// available_skills 会话快照（P0 prompt cache）
+// ============================================================================
+
+/**
+ * session_id → 首次生成的 available_skills 目录快照。
+ *
+ * 缓存前缀约束（P0，与 excludeLoaded 修复同一哲学）：目录直接拼进 system，
+ * 而 system 是整段请求的第 0 字节前缀。会话中途 skill_install 改写 live
+ * registry 后若继续读 live 目录，下一轮 system 就从目录处变字节，整段
+ * 历史 prompt cache 失效。因此每个 session 首次生成后冻结快照，中途安装
+ * 的技能不进入已发出的 system 目录 —— 新技能由 load_skills 的 tool result
+ * 与瞬态技能消息表达。空目录同样冻结（安装前发过消息的会话保持无目录）。
+ *
+ * 模块级 Map：TauriAdapter 重建（切换会话再回来）不丢快照。这里是热路径
+ * 读缓存，真身持久化在 session.metadata（`availableSkillsSnapshot`，见
+ * AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY）：应用重启后 provider 侧 prompt
+ * cache 仍可能存活，session 加载时用 hydrateSessionAvailableSkillsSnapshot
+ * 从 metadata 回灌同一字节，禁止按当时 live registry 重算（重启前中途装过
+ * 技能会让 system 从第 0 字节变）。从未冻结过的新 session 才按 live 建立。
+ */
+const sessionAvailableSkillsSnapshots = new Map<string, string>();
+
+/**
+ * session.metadata 中持久化目录快照的键名（与后端
+ * `AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY` 常量对应）。
+ */
+export const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY = 'availableSkillsSnapshot';
+
+/**
+ * 按 sessionId 返回冻结的 available_skills 目录。
+ * 首次调用生成并快照；后续调用（包括 skill_install 之后）逐字节复用。
+ */
+export function getSessionAvailableSkillsPrompt(sessionId: string): string {
+  const cached = sessionAvailableSkillsSnapshots.get(sessionId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const catalog = generateAvailableSkillsPrompt();
+  sessionAvailableSkillsSnapshots.set(sessionId, catalog);
+  return catalog;
+}
+
+/**
+ * 会话是否已有内存目录快照（用于判断本次 getSessionAvailableSkillsPrompt
+ * 是否为首次生成，首次生成后调用方负责持久化到 session.metadata）。
+ */
+export function hasSessionAvailableSkillsSnapshot(sessionId: string): boolean {
+  return sessionAvailableSkillsSnapshots.has(sessionId);
+}
+
+/**
+ * 用 session.metadata 中持久化的目录快照回灌内存（session 加载路径调用）。
+ *
+ * 持久化值是该会话首次生成后冻结的字节权威：应用重启后（内存 Map 清空）
+ * 必须先 hydrate 再构建 system，禁止按当时 live registry 重算；多窗口竞争
+ * 时后端 first-write-wins 返回的生效值也走这里回灌，保证内存与持久化一致。
+ * 空串是合法快照（安装前发过消息的会话冻结为无目录）。
+ */
+export function hydrateSessionAvailableSkillsSnapshot(
+  sessionId: string,
+  snapshot: string
+): void {
+  sessionAvailableSkillsSnapshots.set(sessionId, snapshot);
+}
+
+/**
+ * 清除会话目录快照（测试与会话删除用）。
+ */
+export function clearSessionAvailableSkillsSnapshot(sessionId: string): void {
+  sessionAvailableSkillsSnapshots.delete(sessionId);
 }
 
 // ============================================================================
