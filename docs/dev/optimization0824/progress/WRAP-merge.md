@@ -1,8 +1,8 @@
 # optimization0824 WRAP 合并收尾
 
-> 代理：SA-WRAP-MERGE  
-> 模型：`gpt-5.6-sol-xhigh-fast`  
-> 集成分支：`cursor/optimization0824-5575`  
+> 代理：SA-WRAP-MERGE
+> 模型：`gpt-5.6-sol-xhigh-fast`
+> 集成分支：`cursor/optimization0824-5575`
 > 日期：2026-08-24
 
 ## 远端分支盘点
