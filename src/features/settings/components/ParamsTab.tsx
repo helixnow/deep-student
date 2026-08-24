@@ -56,7 +56,7 @@ const SwitchRow = ({
 }) => (
   // 整行可点切换，开关本体 stopPropagation 避免双重切换
   <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded [@media(pointer:coarse)]:min-h-11"
     onClick={() => {
       if (!loading) onCheckedChange(!checked);
     }}
