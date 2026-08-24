@@ -296,6 +296,9 @@ impl FtpStorage {
             return true;
         }
         let err = error.to_string().to_lowercase();
+        if Self::extract_status_code(&err) != Some(550) {
+            return false;
+        }
         let explicitly_missing = [
             "not found",
             "no such file",
@@ -307,7 +310,7 @@ impl FtpStorage {
         .iter()
         .any(|marker| err.contains(marker));
         let explicitly_gone = err.contains("410") && err.contains("gone");
-        err.contains("550") && (explicitly_missing || explicitly_gone)
+        explicitly_missing || explicitly_gone
     }
 
     fn parse_list_entry(line: &str) -> Option<FtpListEntry> {
@@ -1362,6 +1365,7 @@ mod tests {
             "FTP CWD 失败：Invalid response: [550] 550 Permission denied.",
             "FTP CWD 失败：Invalid response: [550] 550 Requested action not taken.",
             "FTP CWD 失败：Invalid response: [450] 450 No such directory.",
+            "FTP CWD 失败：Invalid response: [450] 450 /root/550: No such directory.",
         ] {
             let error = AppError::file_system(message);
             assert!(
