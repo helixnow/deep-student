@@ -338,7 +338,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <div className="sota-error">
           <WarningCircle size={48} color={DESIGN.colors.danger} />
           <p>{t('load_failed')}: {error.message}</p>
-          <DsButton onClick={refresh} className="mt-2">{tCommon('actions.retry')}</DsButton>
+          <DsButton onClick={refresh} className="mt-2 [@media(pointer:coarse)]:min-h-11">{tCommon('actions.retry')}</DsButton>
         </div>
       );
     }
