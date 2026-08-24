@@ -31,6 +31,11 @@ on:
         required: false
         default: false
         type: boolean
+      frontend_dist_artifact:
+        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -160,7 +165,26 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # ── WI-4: 预构建前端 dist（可选）──
+      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
+      # artifact 分发；传入名称时这里下载复用, tauri build 用 --config 把
+      # beforeBuildCommand 置空跳过重复的 npm run build。留空时保持原行为。
+      - name: Download prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: dist
+
+      - name: Verify prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        shell: bash
+        run: |
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
+          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+
       - name: Build Tauri app
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -169,7 +193,15 @@ jobs:
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: npx tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
+        run: |
+          CONFIG_ARGS=()
+          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
+            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
+            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
+            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
+          fi
+          npx tauri build --target x86_64-pc-windows-msvc --bundles nsis "${CONFIG_ARGS[@]}" -- --locked
 
       - name: Show sccache stats
         run: sccache --show-stats

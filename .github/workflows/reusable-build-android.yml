@@ -30,6 +30,11 @@ on:
         required: false
         default: false
         type: boolean
+      frontend_dist_artifact:
+        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端（rebuild-android.yml 走此回退路径）'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -184,6 +189,24 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # ── WI-4: 预构建前端 dist（可选）──
+      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
+      # artifact 分发；传入名称时这里下载复用, tauri android build 用
+      # --config 覆盖 beforeBuildCommand 跳过重复的 vite 构建（见下方
+      # Build Android APK 步骤的说明）。留空时保持原行为。
+      - name: Download prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: dist
+
+      - name: Verify prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        run: |
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
+          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+
       - name: Initialize Android project
         run: npx tauri android init
 
@@ -282,19 +305,31 @@ jobs:
           SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           GRADLE_OPTS: -Dorg.gradle.daemon=false
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: |
           set +e
           echo "Starting Android build with 120 minute timeout"
+          # WI-4: dist 预构建时不能把 beforeBuildCommand 直接置空 ——
+          # tauri android build 在运行 hook 之前会先用 tauri.conf.json 的
+          # 静态 versionCode 重写 gen/android/app/tauri.properties
+          # (generate_tauri_properties)，原流程靠 hook 里 npm run build 的
+          # prebuild (version:generate) 把生成器的稳定 versionCode 写回。
+          # 这里保留该生成器作为 hook（同一执行时机），只跳过昂贵的
+          # licenses:check + typecheck + vite build。
+          CONFIG_ARGS=()
+          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
+            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":"node scripts/generate-version.mjs"}}')
+          fi
           # The default Tauri command builds both APK and AAB. This release path
           # only signs and publishes the APK, while the redundant AAB task
           # invokes the Rust Android build again and keeps hosted runners alive
           # long enough to be reclaimed during the final link.
           if [[ "${{ inputs.lean_recovery }}" == "true" ]]; then
             timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci -- --locked --no-default-features --features android-release
+              npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features android-release
           else
             timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci -- --locked
+              npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked
           fi
           status=$?
           set -e

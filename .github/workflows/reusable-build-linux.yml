@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: linux-x86_64
+      frontend_dist_artifact:
+        description: 'WI-4: 预构建前端 dist 的 artifact 名称；留空则由 beforeBuildCommand 在本 job 内构建前端（hotfix-linux-release.yml 走此回退路径）'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -141,6 +146,24 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # ── WI-4: 预构建前端 dist（可选）──
+      # release/rebuild 主流程由 build-frontend job 统一构建一次前端并以
+      # artifact 分发；传入名称时这里下载复用, tauri build 用 --config 把
+      # beforeBuildCommand 置空跳过重复的 npm run build（其 Sentry 前端
+      # sourcemap 上传也已随之收敛到 build-frontend）。留空时保持原行为。
+      - name: Download prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.frontend_dist_artifact }}
+          path: dist
+
+      - name: Verify prebuilt frontend dist
+        if: ${{ inputs.frontend_dist_artifact != '' }}
+        run: |
+          test -f dist/index.html || { echo "::error::Prebuilt frontend dist artifact '${{ inputs.frontend_dist_artifact }}' is missing index.html"; exit 1; }
+          echo "✅ Prebuilt frontend dist ready ($(find dist -type f | wc -l | tr -d ' ') files)"
+
       # 2026-08-06: Linux 此前完全没有打包 libpdfium.so，PDF 预览/文本提取/OCR
       # 在 Linux 上一直不可用（老问题，随本次 OCR/pdfium 修复一并补齐）。
       # 与 macOS/Windows 一致：构建前下载 x64 pdfium 放入 resources。
@@ -162,11 +185,22 @@ jobs:
           SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # 仅回退路径（frontend_dist_artifact 为空, beforeBuildCommand 在本
+          # job 内跑 vite build）时生效；预构建 dist 路径下 vite 不运行,
+          # sourcemap 上传由 reusable-build-frontend.yml 完成。
           SENTRY_UPLOAD_SOURCEMAPS: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage -- --locked
+          FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
+        run: |
+          CONFIG_ARGS=()
+          if [ -n "$FRONTEND_DIST_ARTIFACT" ]; then
+            # dist 已由 build-frontend artifact 提供；tauri-cli 对空字符串
+            # hook 直接跳过（helpers::run_hook: Script(s) if s.is_empty()）
+            CONFIG_ARGS=(--config '{"build":{"beforeBuildCommand":""}}')
+          fi
+          npx tauri build --target x86_64-unknown-linux-gnu --bundles deb,rpm,appimage "${CONFIG_ARGS[@]}" -- --locked
 
       - name: Show sccache stats
         run: sccache --show-stats
