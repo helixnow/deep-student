@@ -652,11 +652,21 @@ const PromptEditorContent: React.FC<{
       </PanelSection>
 
       <div className="flex gap-2 justify-end">
-        <DsButton variant="outline" size="sm" onClick={onRestoreDefaultPrompt}>
+        <DsButton
+          variant="outline"
+          size="sm"
+          onClick={onRestoreDefaultPrompt}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           <ArrowCounterClockwise size={16} className="mr-2" />
           {t('translation:prompt_editor.restore_default')}
         </DsButton>
-        <DsButton variant="default" size="sm" onClick={onSavePrompt}>
+        <DsButton
+          variant="default"
+          size="sm"
+          onClick={onSavePrompt}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           <FloppyDisk size={16} className="mr-2" />
           {t('translation:prompt_editor.save')}
         </DsButton>
