@@ -570,7 +570,12 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     return (
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
-          <DsButton variant="ghost" size="sm" onClick={loadData}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={loadData}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
           </DsButton>
