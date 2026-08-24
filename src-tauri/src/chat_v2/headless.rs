@@ -444,7 +444,9 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
     // —— frontend-bridge：GeneralToolExecutor → ToolRegistry::call_frontend_mcp_tool
     //    经 `mcp-bridge-request` window 事件回前端执行，无 WebView 必死
     ("mcp_*", "frontend-bridge"),
-    // —— frontend-bridge：旧 CardForge 前端 CardAgent 桥（anki_executor.rs）
+    // —— frontend-bridge：旧 CardForge 前端 CardAgent 桥。执行器
+    //    （anki_executor.rs）与前端监听均已删除（2026-08 死链路清理），
+    //    此处防御性保留拦截，防止历史会话/外部注入的同名工具调用挂起
     ("anki_generate_cards", "frontend-bridge"),
     // —— human-in-loop：oneshot channel 永久等待用户回答，headless 必挂起
     ("ask_user", "human-in-loop"),

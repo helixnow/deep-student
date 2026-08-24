@@ -4,8 +4,7 @@ import {
   CARD_JSON_END,
   PromptKit,
   buildCardGenerationSystemPrompt,
-  buildCardGenerationUserPrompt,
-  buildErrorRepairPrompt,
+  buildContentAnalysisPrompt,
 } from '@/components/anki/cardforge/prompts';
 import type { TemplateInfo } from '@/components/anki/cardforge/types';
 
@@ -37,24 +36,26 @@ describe('PromptKit output protocol (END-only)', () => {
     expect(prompt).not.toContain('{{DOCUMENT_CONTENT}}');
   });
 
-  it('user prompt injects the real material and uses END-only protocol', () => {
+  it('content analysis prompt embeds the material and template ids', () => {
     const material = '牛顿第一定律：物体在不受外力作用时保持静止或匀速直线运动。';
-    const prompt = buildCardGenerationUserPrompt(material, [mockTemplate]);
+    const prompt = buildContentAnalysisPrompt(material, [mockTemplate]);
 
     expect(prompt).toContain(material);
-    expect(prompt).toContain(CARD_JSON_END);
-    expect(prompt).not.toContain(LEGACY_START_MARKER);
-  });
-
-  it('error repair prompt uses END-only protocol', () => {
-    const prompt = buildErrorRepairPrompt('{"front": "截断的卡片', mockTemplate);
-
-    expect(prompt).toContain(CARD_JSON_END);
-    expect(prompt).not.toContain(LEGACY_START_MARKER);
+    expect(prompt).toContain('basic');
   });
 
   it('PromptKit no longer exposes the legacy START marker', () => {
     expect(PromptKit).not.toHaveProperty('CARD_JSON_START');
     expect(PromptKit.CARD_JSON_END).toBe('<<<ANKI_CARD_JSON_END>>>');
+  });
+
+  it('PromptKit only exposes prompts that are wired to a real call path', () => {
+    // 死 prompt（boundary/user/errorRepair/qualityAssessment）已删除：
+    // - 定界 prompt：前端 LLM 定界死代码已移除（定界由后端管线执行）
+    // - user prompt：学习材料由后端注入 user 消息，前端从不组装
+    // - 修复/质量评估：流程从未接线
+    expect(Object.keys(PromptKit).sort()).toEqual(
+      ['CARD_JSON_END', 'buildCardGenerationSystemPrompt', 'buildContentAnalysisPrompt'].sort()
+    );
   });
 });
