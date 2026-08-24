@@ -722,10 +722,13 @@ pub struct SyncManager {
     /// 覆盖范围：
     /// - ✅ 加密：`SyncManifest`、`SyncChangesPayload`、`*Tombstones`、
     ///   各种 metadata manifest（workspaces/blobs/assets）
-    /// - ❌ **不**加密：VFS blob 的 raw bytes、workspace `.db` 文件。
-    ///   原因：blob 走内容寻址（sha256 作 key），加密会破坏去重语义；
-    ///   workspace DB 的完整性校验依赖明文 sha256。这两类的加密需要
-    ///   额外的密文-明文 hash 双校验，作为后续 P1 任务单独处理。
+    /// - ✅ 加密（[R07-asset-e2ee]）：文件级对象——VFS blob 内容、workspace
+    ///   `.db` 传输快照、资产文件——上传前包装为 `DSBK` 流式容器（见
+    ///   [`Self::put_file_encoded`] / [`Self::get_file_decoded`]）。内容寻址
+    ///   语义不变：对象键与清单里记录的 hash 始终是**明文**内容哈希，包装层
+    ///   与明文 hash 可分离（同一明文在不同设备会加密出不同密文，但
+    ///   hash/去重键一致；下载侧解包后按明文 hash 回验）。
+    /// - ❌ **不**加密：对象键本身（blob 键即明文内容哈希）、文件大小等元数据。
     ///
     /// 语义：
     /// - `None` 或空字符串：所有 payload 明文上传（向后兼容旧数据）
@@ -824,6 +827,219 @@ impl SyncManager {
             ))
         } else {
             Ok(data.to_vec())
+        }
+    }
+
+    // ================= [R07-asset-e2ee] 文件级对象端到端加密 =================
+    //
+    // 记录级 payload 早已通过 `encode_payload`/`decode_payload` 走 DSBK 容器，
+    // 但文件级对象（VFS blob、workspace `.db` 快照、资产文件）此前一直明文
+    // `put_file` 直传。以下辅助方法补齐文件级的加密上传 / 透明解包下载，
+    // 以及"无密码但云端已有加密标记"的上传拒绝（与 R04/R06 记录级政策一致）。
+
+    /// 云端根目录的端到端加密标记键。
+    ///
+    /// 与 `cloud_storage::sync_manager::ENCRYPTION_MARKER_FILE` 指向同一对象。
+    /// 本模块只做**存在性**探测，不解析、不写入标记内容，避免与
+    /// R06-key-verify 的标记格式（版本/密码校验子）耦合。
+    #[cfg(feature = "data_governance")]
+    const ENCRYPTION_MARKER_KEY: &'static str = ".encryption-marker";
+
+    /// [R07-asset-e2ee] 文件级上传前的加密一致性门。
+    ///
+    /// - 本端已配置加密密码：放行（上传侧会经 [`Self::put_file_encoded`]
+    ///   包装为 DSBK 密文）；
+    /// - 本端未配置密码但云端 root 已有 `.encryption-marker`：**拒绝**明文
+    ///   文件级上传——同一 root 已有端到端加密数据时，静默明文上传会造成
+    ///   明文/密文混布并破坏其他设备的防降级预期；
+    /// - 读取标记失败（网络错误等）：fail-closed，宁可本轮不传。
+    #[cfg(feature = "data_governance")]
+    async fn ensure_file_upload_encryption_policy(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<(), SyncError> {
+        if self.encryption_enabled() {
+            return Ok(());
+        }
+        let marker = storage
+            .get(Self::ENCRYPTION_MARKER_KEY)
+            .await
+            .map_err(|e| {
+                SyncError::Network(format!(
+                    "读取云端加密标记失败，无法确认加密策略，已停止文件级上传（fail-closed）: {}",
+                    e
+                ))
+            })?;
+        if marker.is_some() {
+            return Err(SyncError::Database(
+                "云端根目录已存在端到端加密标记（.encryption-marker），但本机未配置加密密码。\
+                 为避免明文文件与加密数据混布，已拒绝文件级明文上传。\
+                 请在云同步设置里填入该根目录既有的加密密码后重试，\
+                 或改用一个全新的云端根目录。"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// [R07-asset-e2ee] 文件级对象上传（透明 DSBK 包装）。
+    ///
+    /// - 已配置密码：先把 `path` 的明文内容以 DSBK v2 流式容器
+    ///   （`crypto::backup_crypto::encrypt_backup_file`，恒定内存）加密到
+    ///   临时文件，再上传密文。对象键与清单中的 hash 保持**明文内容哈希**
+    ///   不变：内容寻址与去重语义不受包装影响，包装层与明文 hash 可分离。
+    /// - 未配置密码：直接明文上传（调用方必须先通过
+    ///   [`Self::ensure_file_upload_encryption_policy`] 的一致性门）。
+    #[cfg(feature = "data_governance")]
+    async fn put_file_encoded(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        path: &std::path::Path,
+        progress: Option<crate::cloud_storage::UploadProgressCallback>,
+    ) -> Result<(), SyncError> {
+        let Some(password) = self
+            .encryption_password
+            .as_deref()
+            .filter(|pw| !pw.is_empty())
+        else {
+            storage
+                .put_file(key, path, progress)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传文件级对象失败 {}: {}", key, e)))?;
+            return Ok(());
+        };
+
+        let encrypted_tmp = tempfile::Builder::new()
+            .prefix(".sync-e2ee-upload-")
+            .suffix(".tmp")
+            .tempfile()
+            .map_err(|e| SyncError::Database(format!("创建临时加密文件失败: {}", e)))?
+            .into_temp_path();
+        crate::crypto::backup_crypto::encrypt_backup_file(path, &encrypted_tmp, password)
+            .map_err(|e| SyncError::Database(format!("文件级对象加密失败 {}: {}", key, e)))?;
+        storage
+            .put_file(key, &encrypted_tmp, progress)
+            .await
+            .map_err(|e| SyncError::Network(format!("上传加密文件级对象失败 {}: {}", key, e)))?;
+        Ok(())
+    }
+
+    /// [R07-asset-e2ee] 文件级对象下载（透明解包 + 明文哈希回验）。
+    ///
+    /// 云端对象的三种形态：
+    /// - `DSBK` 容器且本端有密码：下载密文到临时文件 → 解密 → 校验明文
+    ///   sha256 与 `expected_sha256` 一致 → 原子落盘到 `dest`；
+    /// - `DSBK` 容器但本端无密码：fail-closed 明确报错，绝不把密文当明文
+    ///   落盘（旧客户端产生的明文期望由调用方的哈希/大小校验兜底报错）；
+    /// - 明文对象（无 DSBK 魔数）：校验明文 sha256 后落盘。**注意**：与记录级
+    ///   `decode_payload` 的防降级不同，这里在本端已启用加密时也接受明文
+    ///   对象——文件级对象的完整性由清单里钉住的明文哈希保证，而清单本身
+    ///   是 DSBK（AES-GCM，带认证）加密的，攻击者无法替换对象内容并通过
+    ///   校验；同时启用加密前上传的历史明文文件必须保持可下载。
+    ///
+    /// 任何失败路径都不触碰 `dest`（临时文件自动清理），保持调用方
+    /// "下载失败保留本地既有文件"的既有语义。
+    #[cfg(feature = "data_governance")]
+    async fn get_file_decoded(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        dest: &std::path::Path,
+        expected_sha256: Option<&str>,
+        progress: Option<crate::cloud_storage::DownloadProgressCallback>,
+    ) -> Result<(), SyncError> {
+        let parent = match dest.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => std::path::PathBuf::from("."),
+        };
+        std::fs::create_dir_all(&parent)
+            .map_err(|e| SyncError::Database(format!("创建下载目录失败 {:?}: {}", parent, e)))?;
+
+        // 与 dest 同目录的临时文件：最终 persist 是同目录原子 rename。
+        let downloaded_tmp = tempfile::Builder::new()
+            .prefix(".sync-e2ee-download-")
+            .suffix(".tmp")
+            .tempfile_in(&parent)
+            .map_err(|e| SyncError::Database(format!("创建临时下载文件失败: {}", e)))?
+            .into_temp_path();
+        storage
+            .get_file(key, &downloaded_tmp, None, progress)
+            .await
+            .map_err(|e| SyncError::Network(format!("下载文件级对象失败 {}: {}", key, e)))?;
+
+        let verify_and_persist =
+            |plain_tmp: tempfile::TempPath, dest: &std::path::Path| -> Result<(), SyncError> {
+                if let Some(expected) = expected_sha256 {
+                    let actual =
+                        crate::backup_common::calculate_file_hash(&plain_tmp).map_err(|e| {
+                            SyncError::Database(format!(
+                                "计算下载对象明文校验和失败 {}: {}",
+                                key, e
+                            ))
+                        })?;
+                    if !actual.eq_ignore_ascii_case(expected) {
+                        return Err(SyncError::Database(format!(
+                            "文件级对象 {} 明文校验失败: 期望 {}, 实际 {}",
+                            key, expected, actual
+                        )));
+                    }
+                }
+                plain_tmp.persist(dest).map_err(|e| {
+                    SyncError::Database(format!("保存下载文件失败 {:?}: {}", dest, e))
+                })?;
+                Ok(())
+            };
+
+        if Self::file_has_dsbk_magic(&downloaded_tmp)? {
+            let Some(password) = self
+                .encryption_password
+                .as_deref()
+                .filter(|pw| !pw.is_empty())
+            else {
+                return Err(SyncError::Database(format!(
+                    "云端文件级对象 {} 是端到端加密的（DSBK 容器），但本机未配置加密密码。\
+                     请在云同步设置里填入正确的密码后重试。",
+                    key
+                )));
+            };
+            let decrypted_tmp = tempfile::Builder::new()
+                .prefix(".sync-e2ee-decrypt-")
+                .suffix(".tmp")
+                .tempfile_in(&parent)
+                .map_err(|e| SyncError::Database(format!("创建临时解密文件失败: {}", e)))?
+                .into_temp_path();
+            crate::crypto::backup_crypto::decrypt_backup_file(
+                &downloaded_tmp,
+                &decrypted_tmp,
+                password,
+            )
+            .map_err(|e| {
+                SyncError::Database(format!(
+                    "解密文件级对象失败 {}（密码错误或数据损坏）: {}",
+                    key, e
+                ))
+            })?;
+            verify_and_persist(decrypted_tmp, dest)
+        } else {
+            verify_and_persist(downloaded_tmp, dest)
+        }
+    }
+
+    /// 读取文件头部判断是否为 DSBK 加密容器（不足 4 字节视为非加密）。
+    #[cfg(feature = "data_governance")]
+    fn file_has_dsbk_magic(path: &std::path::Path) -> Result<bool, SyncError> {
+        use std::io::Read;
+        let mut file = std::fs::File::open(path)
+            .map_err(|e| SyncError::Database(format!("打开下载文件失败 {:?}: {}", path, e)))?;
+        let mut magic = [0u8; 4];
+        match file.read_exact(&mut magic) {
+            Ok(()) => Ok(crate::crypto::backup_crypto::is_encrypted_backup(&magic)),
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
+            Err(e) => Err(SyncError::Database(format!(
+                "读取下载文件头失败 {:?}: {}",
+                path, e
+            ))),
         }
     }
 
@@ -9500,6 +9716,8 @@ impl SyncManager {
         let mut new_manifest = cloud_manifest.clone();
         let mut failures: Vec<String> = Vec::new();
         if direction != SyncDirection::Download {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
             for (ws_id, (path, sha256, size, local_updated_at)) in &local_entries {
                 let should_upload = match cloud_manifest.entries.get(ws_id) {
                     None => true,
@@ -9549,7 +9767,12 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage.put_file(&key, &snapshot, transfer_progress).await {
+                    // [R07-asset-e2ee] 有密码时以 DSBK 密文上传；
+                    // 清单里的 hash 仍是明文快照哈希。
+                    match self
+                        .put_file_encoded(storage, &key, &snapshot, transfer_progress)
+                        .await
+                    {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 ws_id.clone(),
@@ -9627,8 +9850,15 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(&cloud_entry.sha256), transfer_progress)
+                    // [R07-asset-e2ee] 透明解包 DSBK 并按明文快照哈希回验
+                    match self
+                        .get_file_decoded(
+                            storage,
+                            &key,
+                            &dest,
+                            Some(&cloud_entry.sha256),
+                            transfer_progress,
+                        )
                         .await
                     {
                         Ok(_) => {
@@ -9890,6 +10120,8 @@ impl SyncManager {
         let mut upload_failures: Vec<String> = Vec::new();
 
         if direction != SyncDirection::Download {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
             for (hash, path) in &local_blobs {
                 if cloud_manifest.entries.contains_key(hash.as_str()) {
                     continue;
@@ -9916,7 +10148,12 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage.put_file(&key, path, transfer_progress).await {
+                    // [R07-asset-e2ee] 有密码时以 DSBK 密文上传；对象键 / 清单键
+                    // 仍是明文内容哈希（内容寻址与去重语义不变）。
+                    match self
+                        .put_file_encoded(storage, &key, path, transfer_progress)
+                        .await
+                    {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 hash.clone(),
@@ -9974,8 +10211,9 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage
-                        .get_file(&key, &dest, Some(hash), transfer_progress)
+                    // [R07-asset-e2ee] 透明解包 DSBK 并按明文内容哈希回验
+                    match self
+                        .get_file_decoded(storage, &key, &dest, Some(hash), transfer_progress)
                         .await
                     {
                         Ok(_) => {
@@ -10224,6 +10462,8 @@ impl SyncManager {
         let mut upload_failures = Vec::new();
 
         if direction != SyncDirection::Download {
+            // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
+            self.ensure_file_upload_encryption_policy(storage).await?;
             for (key, (path, sha256, size, local_updated_at)) in &local_files {
                 let should_upload = match cloud_manifest.entries.get(key) {
                     None => true,
@@ -10243,7 +10483,11 @@ impl SyncManager {
                 let remote_key = format!("{}/{}", Self::ASSET_OBJECTS_PREFIX, sha256);
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage.put_file(&remote_key, path, transfer_progress).await {
+                // [R07-asset-e2ee] 有密码时以 DSBK 密文上传；对象键仍是明文哈希。
+                match self
+                    .put_file_encoded(storage, &remote_key, path, transfer_progress)
+                    .await
+                {
                     Ok(_) => {
                         new_manifest.entries.insert(
                             key.clone(),
@@ -10314,8 +10558,15 @@ impl SyncManager {
                 Self::validate_asset_object_key(&remote_key)?;
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage
-                    .get_file(&remote_key, &dest, Some(&entry.sha256), transfer_progress)
+                // [R07-asset-e2ee] 透明解包 DSBK 并按明文哈希回验
+                match self
+                    .get_file_decoded(
+                        storage,
+                        &remote_key,
+                        &dest,
+                        Some(&entry.sha256),
+                        transfer_progress,
+                    )
                     .await
                 {
                     Ok(_) => downloaded += 1,
