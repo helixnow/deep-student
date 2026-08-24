@@ -525,7 +525,8 @@
       "viewGrid": "Grid View",
       "viewList": "List View",
       "hideSidebar": "Hide Sidebar",
-      "showSidebar": "Show Sidebar"
+      "showSidebar": "Show Sidebar",
+      "more": "More actions"
     },
     "create": {
       "folderTitle": "New Folder",
@@ -599,6 +600,19 @@
     "movedToTrashWithRefs": "Moved to Trash (referenced by {{count}} chat(s))",
     "batchMovedToTrash": "Moved {{count}} item(s) to Trash",
     "restored": "Restored",
+    "undoRenameSuccess": "Rename undone: {{name}}",
+    "undoMoveSuccess": "Move undone ({{count}} item(s))",
+    "undoMovePartial": "Undo partially failed ({{failed}} item(s) not moved back)",
+    "undoFailed": "Undo failed",
+    "quickLook": {
+      "title": "Quick Look",
+      "folder": "Folder",
+      "sizeLabel": "Size",
+      "updatedLabel": "Modified",
+      "pathLabel": "Where",
+      "closeHint": "Space / Esc to close",
+      "open": "Open"
+    },
     "error": {
       "title": "Failed to load",
       "retry": "Reload"
@@ -649,7 +663,8 @@
       "noChatSession": "Please open a chat first",
       "addToChatSuccess": "Added {{count}} items to chat",
       "addToChatPartial": "Added {{succeeded}} items, {{failed}} failed",
-      "addToChatFailed": "Failed to add"
+      "addToChatFailed": "Failed to add",
+      "openAllLimited": "Opened the first {{count}} of {{total}} selected items"
     },
     "batch": {
       "selectAll": "Select All",
