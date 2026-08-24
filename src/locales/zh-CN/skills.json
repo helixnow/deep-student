@@ -536,5 +536,10 @@
     "description_required": "请输入技能描述",
     "description_too_long": "描述不能超过 1024 个字符",
     "description_too_short": "建议描述至少 50 字符，以便 LLM 更好地理解何时使用此技能"
+  },
+
+  "storage": {
+    "save_requires_tauri": "非 Tauri 环境，无法保存自定义",
+    "reset_requires_tauri": "非 Tauri 环境，无法重置自定义"
   }
 }
