@@ -154,7 +154,8 @@
   JS 三分区表名值双对齐 + 6 边界 fixture，good 集 0 误伤
 - [x] 子代理 #4：金标集接通 LLM critic（`c48140a4`，
   详见 `round5/04-grounded-critic.md`）——同文档用户修正对作为 grounded judge
-  参照；独立金标预算；不可用时回退规则 rubric；critic 仍默认关闭
+  参照；独立金标预算；不可用时回退规则 rubric；critic 内核仍默认关闭，
+  且 ChatAnki run/start 未暴露启用参数
 - [x] 子代理 #8：文档/进度/i18n/用户指南对齐当时代码基线（`5a58a2c8`）
   - `round4/00-round4-status.md` 逐项复核修订；`round5/00-round5-summary.md` 创建
   - `02-ai-native-gap-analysis.md` 评分重算 6.5 → **8.0/10**；
@@ -169,14 +170,50 @@
   `anki` / `chatV2` key 均存在且两语言对称；用户指南只描述现行 ChatAnki 主路径；
   README 与本日志补记 grounded critic 及遮挡草稿最小接线的真实状态
 
-**尚未完成，继续按真实代码状态记录：**
+**收尾续作后的真实状态：**
 
-- [ ] 偏好记忆写入侧（extract / consolidate 持久化）；当前仅 retrieve 接线，store 恒空
+- [x] 偏好记忆写入侧：extraRequirements、成功单卡/批量编辑和删除观察已接
+      extract → consolidate → settings 持久化；下次 run/start 可检索注入
+- [x] Sidekick Planner / Vlm 按角色分槽：plan_route 消费 Planner，三条图片提取
+      路径消费 Vlm；Generator 与 Critic 的既有消费者保留，全部有 model2 降级
+- [x] `_original_generation` 首次入库埋点：清理后的 front/back/text 以 16 KiB
+      上限幂等写入，失败不阻断卡片入库
+- [x] Image Occlusion 折叠/展开预览：生产 `anki_cards` 块解析 `_occlusion`，
+      解析本地/VFS/URL 图片并挂载遮挡揭示交互
 - [ ] 图像遮挡完整闭环：VlmFull 直接图片的启发式 `_occlusion` 草稿已接；
-      PDF 页图、真实 grounding 与卡片预览/编辑仍未接
-- [ ] Sidekick Planner / Vlm 按角色分槽；Generator 与 Critic 已接并可按路由
-      选择模型，Planner/Vlm 仍未消费
-- [ ] `_original_generation` 稳定生成埋点；缺少快照时 grounded critic 会回退规则 rubric
+      PDF 页图、真实 grounding、卡片编辑器与原生 note type 仍未接
+- [ ] ChatAnki critic 用户入口：流式收尾、CAS、grounded 参照和 Critic 路由已接，
+      但 run/start schema 无开关且主入口构造值为 `None`
+
+---
+
+## Round 5 — 收尾续作 #8：现码事实账（2026-08-24）
+
+本轮仅更新调研文档，不改业务逻辑。以 PR
+[#215](https://github.com/helixnow/deep-student/pull/215) 当前分支代码为真源，重新区分
+“模块存在”“运行时接线”“ChatAnki 用户可达”：
+
+- [x] 复核 ChatAnki 工具清单仍为 **29** 项，run/start schema 与现行公开参数一致。
+- [x] 更正 QA 口径：`anki_qa_lint::codes::ALL` 当前是 **26** 个稳定 code，不是旧文档的 25。
+- [x] Structured Output、QA、FSRS、plan_route、transform ops/script、Generator
+  路由均已进入 ChatAnki 生产路径。
+- [x] critic 的流式收尾、CAS、grounded 检索和 Critic 角色模型选择属于真实内核接线；
+  但 ChatAnki 不提供开关，故不记为用户主路径已接。
+- [x] 偏好记忆写入已接 extraRequirements、成功编辑和删除观察，读取侧保持
+  run/start 检索注入；写入为 best-effort，不改变制卡操作结果。
+- [x] `_original_generation` 已在流式新卡首次入库时写入，使后续用户编辑可形成
+  grounded 修正对；历史卡和超 16 KiB 快照仍可能回退规则 rubric。
+- [x] Sidekick Planner / Generator / Vlm 均有 ChatAnki 生产消费者；Critic 有条件
+  消费者，但因 ChatAnki 无开关而不会从默认入口运行。
+- [x] 无消费者的 `chat_v2_anki_cards_result` 已从 handler、导出、注册和权限成组删除；
+  划词制卡仍使用 `CardAgent.startGeneration`，不能把整个 CardForge 模块当死代码。
+- [x] Image Occlusion 仅将 VlmFull 直接图片的文字描述变成启发式 `_occlusion`
+  网格草稿并附到首张卡；折叠/展开预览已接，但没有真实视觉坐标、PDF 页图、
+  遮挡编辑器或原生 note type 闭环。
+- [x] 现码评分更新为 **8.5/10**：偏好写入、原始快照和 Planner/Vlm 消费关闭了
+  三个实质缺口；critic 用户入口与完整图像遮挡仍使其不能标为完整 SOTA。
+
+详细证据见 `wrapup/00-final-readiness.md` 与 `wrapup/18-sota-status.md`。
 
 ---
 
@@ -191,3 +228,4 @@
 | 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 与遮挡草稿最小接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 收尾续作 #8 | 按现码更正 26 个 QA code；登记偏好写入、原始快照、四角色路由、兼容回调删除；保留 critic/遮挡未接边界；评分 8.5 | [#215](https://github.com/helixnow/deep-student/pull/215) |

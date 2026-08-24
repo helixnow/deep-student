@@ -17,6 +17,8 @@
 | [round5/00-round5-summary.md](./round5/00-round5-summary.md) | Round 5：接线收口与文档对齐（当前分支交付状态） |
 | [agents/README.md](./agents/README.md) | Multi-agent 制卡自定义档案（content-curator / card-qa / card-coordinator） |
 | [eval/README.md](./eval/README.md) | 制卡质量 eval harness 与金标集方案 |
+| [wrapup/00-final-readiness.md](./wrapup/00-final-readiness.md) | PR #215 最终就绪度、现码评分与逐项接线表 |
+| [wrapup/18-sota-status.md](./wrapup/18-sota-status.md) | 收尾续作 #8：SOTA 目标达成状态与剩余缺口 |
 
 ## 核心结论（初版评估 + 多轮修订）
 
@@ -27,17 +29,28 @@
   外加库级复习管理与 APKG 导入。**AI-Native 程度高**。
 - **生成内核（Rust Pipeline）**：`chatanki_executor` → `EnhancedAnkiService` → `StreamingAnkiService`。
   已接入 `plan_route` LLM 路由规划、Structured Output（json_schema/json_object/delimiter 自适应）、
-  brace-depth 切卡器、确定性 QA lint（25 规则码 + 跨段查重）、FSRS 复习画像回流（默认开）、
-  opt-in LLM critic 终审（可引用同文档用户修正对，缺参照时回退规则 rubric）、
-  Sidekick 模型分层路由（Generator / Critic 槽已消费）。
+  brace-depth 切卡器、确定性 QA lint（**26** 个稳定规则码 + 跨段查重）和
+  FSRS 复习画像回流（默认开）。
+- **学习与模型编排**：偏好记忆已接通 extraRequirements、成功编辑/批量编辑和删卡
+  观察的 extract → consolidate → settings 写回，下次 run/start 检索注入；生成时也会
+  首次写入有界 `_original_generation` 快照。Sidekick 的 Planner / Generator / Vlm
+  均有 ChatAnki 生产消费者，Critic 也有条件调用点。
+- **仍属内部可选的 critic**：LLM critic 已接入流式收尾、CAS 写回、同文档修正对
+  检索和 Critic 角色路由；但 ChatAnki run/start schema **没有 critic 开关**，主入口
+  构造的 `enable_critic_pass` / `enable_llm_critic` 均为 `None`，所以默认 ChatAnki
+  用户路径不会执行 critic。
 - **Script-native**：`chatanki_transform` 双模式落地——声明式 ops（纯 Rust，移动端可用）
   与沙箱脚本 script（python/node，网络恒禁、I/O 合同、CAS 写回），
   「Agent 现写脚本处理卡片」已是生产能力。
-- **CardForge 2.0**：初评时的"设计文档 vs 生产路径 divergence"已在 Round 3 收口——
-  死链路清理、划词制卡迁向 chatanki 生产路径，文档不再描述 CardForge 主路径。
+- **CardForge 2.0**：聊天内旧 executor/前端桥和无消费者结果回调已删除，ChatAnki
+  是聊天主路径；但划词制卡仍消费 `CardAgent.startGeneration`，聊天导出仍复用其
+  校验工具，因此不能把整个 `cardforge` 模块标成死代码。
 
-**AI-Native 评分：8.0 / 10**（Round 1 基线 6.5 → Round 3 预估 7.4 → Round 5 复核 8.0，
-评分依据见 [02-ai-native-gap-analysis.md](./02-ai-native-gap-analysis.md)）
+**AI-Native 评分：8.5 / 10；尚未达到完整 SOTA。** Round 1 基线 6.5 → Round 3
+预估 7.4 → Round 5 复核 8.0 → 当前现码 8.5。新增偏好写入、
+`_original_generation` 及 Planner/Vlm 消费计入评分；critic 的内部接线不按用户可用能力加分。评分明细与
+接线证据见 [最终就绪度](./wrapup/00-final-readiness.md) 和
+[SOTA 状态](./wrapup/18-sota-status.md)。
 
 ## 关键问题
 
@@ -52,15 +65,16 @@
 | Agent 动态规划步骤 | 仅 run/wait 固定流程 | ✅ `plan_route` LLM 路由规划（forced > LLM 计划 > 启发式回退），`chatanki_analyze` 与管线同源 |
 | 生成调优旋钮 | 无 | ✅ run/start 暴露 outputProtocol / contentFormat / visualHint / maxImages / enableQaPass / enableFsrsFeedback / enablePreferenceMemory |
 | LLM 内容理解与生成 | 流式 JSON 卡片 | ✅ 核心路径 + Structured Output 三协议自适应；确定性 QA lint `_qa_flags` 留痕（预览块结构化展示） |
-| LLM critic 终审 | 无 | ✅ opt-in 接入流式收尾；优先使用同文档修正对作为 grounded 参照，参照不可用时安全回退规则 rubric；开关默认关闭 |
+| LLM critic 终审 | 无 | ⚠️ 内核已接流式收尾、CAS、grounded 参照与 Critic 路由；但 ChatAnki schema 未暴露开关且主入口写 `None`，默认用户路径不执行 |
 | 启发式路由/分段 | `decide_route` 硬编码 | ✅ 启发式降级为回退路径；brace-depth 切卡器替换分隔符依赖 |
 | 复习数据回流 | 无 | ✅ FSRS 画像 + 语义干扰预警 + 拆卡建议默认注入（可关） |
-| 用户偏好记忆 | 无 | ⚠️ retrieve 已接 run/start（默认开）；**写入侧（extract/consolidate 持久化）未接**，store 恒空 |
-| 图像遮挡制卡 | 无 | ⚠️ VlmFull 直接图片已接启发式 `_occlusion` 草稿；PDF 页图与预览/编辑仍未接，非真实 grounding |
+| 用户偏好记忆 | 无 | ✅ extraRequirements、成功编辑/批量编辑、删卡观察会 best-effort 写入本地 settings；run/start 检索注入。`enablePreferenceMemory` 当前只控制检索，不关闭学习写入 |
+| 图像遮挡制卡 | 无 | ⚠️ VlmFull 直接图片已接启发式 `_occlusion` 草稿，折叠/展开卡片预览可解析图片并交互揭罩；PDF 页图、真实 grounding、编辑器与原生 note type 未接 |
+| Sidekick 角色分槽 | 无 | ✅ Planner / Generator / Vlm 已接生产调用；Critic 条件调用已接但 ChatAnki 无启用参数；失败均回退既有 model2 路径 |
 
-Grounded critic 仍有一个数据可用性限制：生成路径尚未稳定写入
-`_original_generation` 原始快照，因此很多现有文档没有可挖掘的修正对，会按设计回退到规则 rubric。
-这不影响默认路径，因为 critic 本身仍是 opt-in。
+新生成卡会写入 `_original_generation`，后续用户编辑后可形成 grounded 修正对；
+历史卡、超过 16 KiB 而跳过快照的卡仍会缺参照并回退规则 rubric。默认 ChatAnki
+路径仍不执行 critic，因为该入口当前没有启用参数。
 
 ## 调研方法
 
@@ -70,10 +84,9 @@ Grounded critic 仍有一个数据可用性限制：生成路径尚未稳定写�
 
 ## 当前收口状态
 
-- Round 4 能力扩展已完成状态盘点；Round 5 当前分支已交付 skill 参数补齐、
-  grounded critic、eval lint 对齐与文档/i18n 终检。
-- 仍未伪装成已完成的项目：偏好记忆写入侧、图像遮挡完整闭环
-  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Vlm 分槽，
-  以及 `_original_generation` 稳定埋点。
+- Round 4/5 已交付 skill 参数、critic 内核、eval lint、文档/i18n；收尾续作又接通
+  偏好写入、`_original_generation`、Sidekick Planner/Vlm 和遮挡预览，并删除旧 CardAgent 结果回调。
+- 仍未伪装成已完成的项目：图像遮挡完整闭环
+  （PDF 页图、真实 grounding、编辑器、原生 note type）和 ChatAnki critic 开关。
 - 用户可见主路径、工具数量与限制以 ChatAnki skill 和
   [用户指南](../../user-guide/12-Anki制卡与模板.md) 为准；历史调研中的阶段性设计不作为现行入口说明。
