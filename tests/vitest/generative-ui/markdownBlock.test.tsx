@@ -67,9 +67,11 @@ describe('MarkdownBlock', () => {
 
     render(<GenerativeUIRenderer intent={intent} showChrome={false} />);
 
-    expect(screen.getByText('学习笔记')).toBeInTheDocument();
+    const card = document.querySelector('[data-generative-markdown]');
+    expect(card).toBeTruthy();
+    expect(card).toHaveAttribute('data-variant', 'default');
+    expect(card).toHaveTextContent('学习笔记');
     expect(screen.getByTestId('markdown-renderer')).toHaveTextContent('这是 **正文**');
-    expect(document.querySelector('[data-generative-markdown]')).toHaveAttribute('data-variant', 'default');
   });
 
   it('shows empty fallback and does not crash on invalid schema props', () => {

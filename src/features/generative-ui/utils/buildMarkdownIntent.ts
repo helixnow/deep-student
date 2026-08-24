@@ -32,7 +32,6 @@ export function buildMarkdownIntent(input: MarkdownIntentInput): GenerativeUIInt
 
   return {
     version: '1',
-    ...(title ? { meta: { title } } : {}),
     blocks: [
       {
         type: 'markdown',
