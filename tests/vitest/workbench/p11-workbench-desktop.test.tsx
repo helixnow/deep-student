@@ -181,6 +181,9 @@ describe('P11 WorkbenchDesktop 总装', () => {
   });
 
   it('快照恢复：挂载前写入快照 → hydrate 后窗口恢复', async () => {
+    // 当前实现默认不恢复上次窗口布局（冷启动更快），需显式开启恢复设置
+    // 才会走 loadSnapshot → hydrate（key 契约见 WorkbenchSettingsSection）
+    localStorage.setItem('desktop.workbenchRestoreSession', 'true');
     const snapshot = {
       version: 1,
       windows: [

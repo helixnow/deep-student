@@ -245,8 +245,13 @@ describe('DockWindowList', () => {
       await Promise.resolve();
     });
     ownerRef.current.focus();
-    const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
-    rafSpy.mockClear();
+    // CustomScrollArea（OverlayScrollbars）会在内容更新时用 rAF 刷新滚动几何，
+    // 不能全局断言 rAF 未被调用；改为捕获全部帧回调并冲刷执行，
+    // 验证标题更新触发的任何异步回调都不会把焦点抢回列表。
+    const scheduled: FrameRequestCallback[] = [];
+    const rafSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((cb) => scheduled.push(cb));
 
     rerender(
       <DockWindowList
@@ -259,7 +264,13 @@ describe('DockWindowList', () => {
       />,
     );
 
-    expect(rafSpy).not.toHaveBeenCalled();
+    act(() => {
+      // 冲刷帧回调（回调可能续排新帧，限 10 轮防死循环）
+      for (let round = 0; round < 10 && scheduled.length > 0; round += 1) {
+        const batch = scheduled.splice(0, scheduled.length);
+        for (const cb of batch) cb(performance.now());
+      }
+    });
     expect(document.activeElement).toBe(ownerRef.current);
     rafSpy.mockRestore();
   });
