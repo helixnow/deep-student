@@ -1,5 +1,15 @@
 # Generative UI 进度日志
 
+## Round 51（2026-08-24）— 测试卫生 / 架构文档
+
+CI `32711020815`（head `c16a4fbd`）仍 queued，**本轮不 push**。
+
+1. [x] generative-ui 单测去掉 `vi.restoreAllMocks()`（避免拆掉 setup `matchMedia`）
+2. [x] ARCHITECTURE 同步到 Round 50
+3. [x] SOTA 合同补 object cap / 孤儿 action-bar / note HITL
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 50（2026-08-24）— 收尾剩余缺口
 
 用户要求继续。4 个子代理已落地并推到 `c16a4fbd`。本地门禁 **121 / 806**。当前 CI `32711020815` queued，**文档本轮不 push**。

@@ -1,6 +1,6 @@
 # Generative UI 架构方案（DeepStudent）
 
-> 分支：`Generative-UI-0824` · Round 41/42（18 块已接宿主；R42 补洞进行中）
+> 分支：`Generative-UI-0824` · Round 41–50（18 块已接宿主；收尾缺口已推远程；合入 main 仍 ⏳）
 
 ## 1. 核心结论
 
@@ -140,13 +140,17 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 | action timeout / rate-limit / live region | ✅ Round 45 |
 | URL 消毒 / intent lint / JSON Schema | ✅ Round 45 |
 | prefers-contrast / skip-to-actions / parse codes / Style Lab lint | ✅ Round 46 |
+| Chat copy-block / Rust max 32 / 宿主 i18n | ✅ Round 47–48 |
+| 快照 diff / stream codes / HPIAS copy-intent | ✅ Round 49 |
+| wrap-up：trusted label / URL allowlist / parser blocks key | ✅ Wrap-up |
+| object 256k cap / 孤儿研究 action-bar / note HITL 上限 / export i18n | ✅ Round 50 |
 
 ## 7. 测试
 
 - vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime** / isolation / sanitize，含 18 块 smoke）
 - Playwright CT：`tests/ct/generative-ui/` — 18 块 smoke（含 markdown/chart/steps/table）+ v1.1 layout 可选检查
 - Rust：`generative_ui_executor` 单元（含 v1.1 version/layout）+ hpias 模块（需 Cargo stable + Linux GTK CI）
-- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–45 本地收口；合入 main 仍 ⏳）
+- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–50 已收口；合入 main 仍 ⏳）
 - Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)
