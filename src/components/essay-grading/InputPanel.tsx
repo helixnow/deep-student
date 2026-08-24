@@ -505,7 +505,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 size="sm"
                 onClick={onGrade}
                 disabled={!canGrade}
-                className="shrink-0"
+                className={cn(COARSE_HIT, "shrink-0")}
               >
                 {t('essay_grading:actions.grade')}
               </DsButton>
