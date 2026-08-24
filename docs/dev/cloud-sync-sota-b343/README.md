@@ -94,5 +94,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [ROUND-07.md](./ROUND-07.md) — 第七轮 CI 收口、文件级 E2EE、自动同步与跨平台资产
 - [ROUND-08.md](./ROUND-08.md) — 第八轮文件级 E2EE 复审、文件名净化、Android 与 CI
 - [ROUND-10.md](./ROUND-10.md) — 第十轮大包收口（冲突 UI / 文件名 / 校验子硬化）
+- [SOTA-R10.md](./SOTA-R10.md) — R09 合入后的 SOTA 对照（我们已有 / 诚实差距 / 不该学）
+- [ROUND-11.md](./ROUND-11.md) — 第十一轮大包任务表（巡检 / 时点恢复 / 增量调研 / 可逆文件名 / 租约）
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图

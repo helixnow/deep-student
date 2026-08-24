@@ -191,3 +191,15 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **测试**：`src-tauri/tests/sync_r09_download_resume_tests.rs`（编排契约 6 例）、`src-tauri/tests/webdav_download_resume_tests.rs`（假 WebDAV 服务器 Range 行为 6 例）、`zip_export.rs` 内 P3 单测 3 例、`tests/vitest/data-governance/r09-restore-ops.source.test.ts`（指南/实现锁定）。
 
 **文件面认领**：`cloud_storage/traits.rs`、`cloud_storage/webdav.rs`（仅新增 resumable 方法与 `parse_content_range_start`）、`cloud_storage/sync_manager.rs`（仅 download 路径）、`cloud_storage/mod.rs`（仅导出）、`backup/zip_export.rs`（预检 + 测试）、用户指南 16、上述新测试文件。**与 R10 的交叠**：R10-download（下载续传+无密码早失败+指南）与 R10-verifier 的「错密码抢先升级解锁指南」两项已由本包交付，按"R09 回传只收增量"处理，R10 两路只需补本包未覆盖的部分（如 Argon2 参数钳制、S3/FTP 续传）。
+
+## Round 10 回传（增量登记）
+
+### R10-sota（分支 `cursor/cloud-sync-sota-r10-sota-b343`，只改本目录文档）
+
+模型：`claude-fable-5-thinking-high`（用户要求 xhigh，slug 当前不可用，明示降级）。交付：
+
+- [SOTA-R10.md](./SOTA-R10.md)：基于 `25519c0c`（R09 五路已合入）对十家逐一按「我们已有 / 诚实差距 / 不该学」重打分；R07 的 GAP-1/3/4/5 确认关闭或收窄，剩余差距收敛为增量去重、时点恢复、仓库巡检、文件名可逆映射、sync target 租约五件事。
+- [ROUND-11.md](./ROUND-11.md)：下一轮十路大包任务表（review / check / history / delta / names2 / lease / unsynced-ui / rotate / autosync2 / android2），每路 ≥4 交付物，文件面独占表含 `sync_manager.rs` / `SyncTab.tsx` / `commands_sync.rs` 交叉规则。
+- README 索引回写（只加链接）。
+
+**文件面认领（独占，均在 `docs/dev/cloud-sync-sota-b343/`）**：`SOTA-R10.md` 新文件、`ROUND-11.md` 新文件、`README.md` 索引两行、本文件本节。不改任何代码。与 R10-protocol 的 PROTOCOL-R10.md、R10 各实现路无文件交叠。
