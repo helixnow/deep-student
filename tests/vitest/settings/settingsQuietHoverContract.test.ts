@@ -18,6 +18,9 @@ describe('settings quiet hover contract', () => {
     expect(settingsCommon).toContain('settingsQuietButtonSelectedRowClassName');
     expect(settingsCommon).toContain('hover:!text-muted-foreground');
     expect(settingsCommon).toContain('settingsQuietTableRowClassName');
+    // settingsMobileSheetCloseButtonClassName 已随旧版移动端设置 Sheet 一起下线
+    //（统一移动壳 UnifiedMobileHeader + MobileSlidingLayout），不再是公共 token。
+    expect(settingsCommon).not.toContain('settingsMobileSheetCloseButtonClassName');
   });
 
   it('keeps settings navigation rows quiet without hover text changes', () => {

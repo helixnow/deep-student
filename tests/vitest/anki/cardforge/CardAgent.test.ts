@@ -256,7 +256,10 @@ describe('CardAgent', () => {
         }),
       })
     );
-    expect(result.ok).toBe(true);
+    // 🔧 P0：空闲超时是可区分失败，不再以 ok:true 伪装成功
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.error).toContain('空闲超时');
     expect(result.cards).toHaveLength(0);
     expect(result.paused).toBe(false);
   });

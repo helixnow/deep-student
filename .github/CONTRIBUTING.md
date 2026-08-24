@@ -41,14 +41,23 @@ npm run lint
 
 ### CI/CD
 
-本项目配置了 GitHub Actions CI 流水线，PR 提交时会自动运行：
-- **CLA 签署检查**（`.github/workflows/cla.yml`）— 首次贡献需签署 CLA
-- TypeScript 类型检查（`tsc --noEmit`）
-- ESLint 检查（`npm run lint`，error 级别问题会阻塞合并）
-- 前端单元测试（`npx vitest run`，约 1.7k 条用例）
-- Rust 编译检查（`cargo check`）
-- 同步模块回归测试（`cargo test --test sync_*`）
-- 供应链安全审计（`cargo audit`）
+本项目配置了 GitHub Actions CI 流水线（`.github/workflows/ci.yml`），PR 提交时会自动运行以下 job：
+
+| Job | 内容 |
+|-----|------|
+| Build Configuration Contracts | 版本/代理契约自测（`node --test scripts/__tests__/*.test.mjs`）、Android versionCode 生成校验 |
+| Frontend | 第三方许可证核对、`npx tsc --noEmit`、`npm run lint`（error 阻塞合并）、`npx vite build`、npm audit（非阻塞） |
+| Frontend Tests (Vitest ×4) | `npx vitest run --shard=N/4`，4 路分片 |
+| Backend | `cargo fmt --check`、`cargo clippy --all-targets -- -D clippy::correctness` |
+| Cloud Provider Contract Gate | Docker 起 MinIO/WebDAV/FTP，跑 `cargo test --test sync_provider_contract_tests -- --ignored` 全量 |
+| Windows Shell Sandbox | Windows 上 `cargo check --lib` + AppContainer 文件系统边界测试 |
+| Rust Tests · Build Archive + Rust Tests ×8 | `cargo nextest archive` 一次编译，8 路 partition 执行（新增 `tests/*.rs` 自动纳入） |
+| Migration Gate | 迁移静态门禁、迁移工具自测、生产迁移测试（强制非零用例数）、代表性 fixture 升级 |
+| Security Audit | `cargo audit`（非阻塞，忽略清单见 `src-tauri/.cargo/audit.toml`） |
+
+另有 **CLA 签署检查**（`.github/workflows/cla.yml`）— 首次贡献需签署 CLA。
+
+以上为摘要，**一律以 `.github/workflows/ci.yml` 为准**；本文档与该文件冲突时请以 workflow 定义为准。
 
 请确保 PR 提交前本地通过 `npm run lint`、`npm run test` 和 `npm run build`。
 

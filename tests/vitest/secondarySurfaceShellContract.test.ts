@@ -45,6 +45,7 @@ describe('secondary surface shell migration contract', () => {
     expect(chatPageSource).toContain('study-shell-page chat-v2 absolute inset-0 flex overflow-hidden');
     expect(chatPageSource).toContain('renderMainContent()');
     expect(chatPageSource).toContain('study-shell-panel h-full flex flex-col');
-    expect(chatPageSource).toContain('study-shell-toolbar flex items-center justify-between');
+    // 移动端全屏时工具栏隐藏（hidden/flex 由条件类切换），flex 不再写死在基类串里
+    expect(chatPageSource).toContain('study-shell-toolbar items-center justify-between');
   });
 });
