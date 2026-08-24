@@ -271,12 +271,15 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
 /// 编辑距离比：`edit_distance(original, edited) / len(original)`。
 /// 原文为空时返回 1.0（凭空长出内容视为大改）。
 pub fn edit_ratio(original: &CardSnapshot, edited: &CardSnapshot) -> f64 {
+    // `combined()` always contains the front/back separator, so testing its
+    // length cannot detect an otherwise empty snapshot.
+    if original.is_blank() {
+        return if edited.is_blank() { 0.0 } else { 1.0 };
+    }
+
     let orig = original.combined();
     let edit = edited.combined();
     let orig_len = orig.chars().count();
-    if orig_len == 0 {
-        return if edit.chars().count() == 0 { 0.0 } else { 1.0 };
-    }
     edit_distance(&orig, &edit) as f64 / orig_len as f64
 }
 
