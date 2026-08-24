@@ -113,23 +113,11 @@ impl ChatV2Pipeline {
             // 🔧 ROUND-01-pipeline #2：workspace_injection 块按 live 还原为
             // user 消息（live 注入位置 = 上轮历史之后、本轮 user 消息之前）
             if message.role == MessageRole::Assistant {
-                for block in blocks
-                    .iter()
-                    .filter(|b| b.block_type == block_types::WORKSPACE_INJECTION)
-                {
-                    let Some(text) = block.content.clone().filter(|t| !t.is_empty()) else {
-                        continue;
-                    };
-                    let injected =
-                        build_workspace_injection_user_message(text, block.tool_output.as_ref());
-                    let insert_at = last_user_message_index
-                        .unwrap_or(chat_history.len())
-                        .min(chat_history.len());
-                    chat_history.insert(insert_at, injected);
-                    if let Some(index) = last_user_message_index.as_mut() {
-                        *index += 1;
-                    }
-                }
+                restore_workspace_injection_messages(
+                    &blocks,
+                    &mut chat_history,
+                    &mut last_user_message_index,
+                );
             }
 
             // P1-8 技能锚定重放：按 meta.skill_injection_anchors 在冻结位置
@@ -286,151 +274,24 @@ impl ChatV2Pipeline {
             // 如果是 assistant 消息且有工具调用，先添加工具调用消息
             // 🔧 B1+B2+C1 修复：使用 tool_entries（含关联 thinking）替代 tool_blocks
             if role == "assistant" && !tool_entries.is_empty() {
-                // V20260806：meta 中随消息持久化的 live 工具轮数据
-                // （reasoning_content / thought_signature / Responses reasoning item）
-                let meta_tool_results: &[ToolResultInfo] = message
-                    .meta
-                    .as_ref()
-                    .and_then(|m| m.tool_results.as_deref())
-                    .unwrap_or(&[]);
-                let response_reasoning_items = message
-                    .meta
-                    .as_ref()
-                    .and_then(|m| m.response_reasoning_items.as_ref());
-
                 for (idx, (entry_thinking, tool_block)) in tool_entries.iter().enumerate() {
                     let replay = replay_map.get(tool_block.id.as_str());
-                    // V20260806 B 层：优先使用 live 持久化的 provider 原始
-                    // tool-call id；列为 NULL（老数据）时回退 tc_{block_id} 派生
-                    let tool_call_id = replay
-                        .and_then(|r| r.tool_call_id.clone())
-                        .filter(|id| !id.is_empty())
-                        .unwrap_or_else(|| format!("tc_{}", tool_block.id.replace("blk_", "")));
-                    // V20260806 B 层：该轮工具调用前的伴随文本（live 时经
-                    // round_text_by_tool_call_id 回填到 assistant 消息 content）
-                    let round_text = replay
-                        .and_then(|r| r.round_text.clone())
-                        .unwrap_or_default();
-                    // meta 回填：按 block_id 或 tool_call_id 匹配 live 工具结果
-                    let meta_result = meta_tool_results.iter().find(|r| {
-                        r.block_id.as_deref() == Some(tool_block.id.as_str())
-                            || r.tool_call_id.as_deref() == Some(tool_call_id.as_str())
-                    });
-                    let thought_signature = meta_result.and_then(|r| r.thought_signature.clone());
-                    // live 的 assistant(tool_call) 消息 thinking = 该轮 reasoning_content；
-                    // meta 缺失时回退块重建的 entry_thinking
-                    let thinking_for_replay = meta_result
-                        .and_then(|r| r.reasoning_content.clone())
-                        .or_else(|| entry_thinking.clone());
-                    // Responses reasoning item 原样回传（与 tool_results_to_messages_impl
-                    // 的 live 形态一致），跨轮不丢 encrypted reasoning
-                    let reasoning_item_metadata = response_reasoning_items
-                        .and_then(|items| items.get(tool_call_id.as_str()))
-                        .map(|item| {
-                            serde_json::json!({ "openai_responses_reasoning_item": item.clone() })
-                        });
-
-                    // 提取工具名称和输入
+                    // V20260806：tool_call_id / round_text / meta 回填（thought_signature、
+                    // reasoning_content、Responses reasoning item）/ 检索脱敏统一在
+                    // build_tool_round_messages（multi_variant 复用同一 helper）
+                    let (assistant_tool_msg, tool_msg) = build_tool_round_messages(
+                        message.meta.as_ref(),
+                        replay,
+                        tool_block,
+                        entry_thinking.clone(),
+                    );
                     let tool_name = tool_block.tool_name.clone().unwrap_or_default();
-                    let tool_input = tool_block
-                        .tool_input
-                        .clone()
-                        .unwrap_or(serde_json::Value::Null);
-                    let tool_output = tool_block
-                        .tool_output
-                        .clone()
-                        .unwrap_or(serde_json::Value::Null);
-                    let tool_success = tool_block.status == block_status::SUCCESS;
-                    let tool_error = tool_block.error.clone();
-
-                    // 1. 添加 assistant 消息（包含 tool_call）
-                    // 🔧 C1修复：携带关联的 thinking_content，用于 merge 边界检测
-                    let tool_call = crate::models::ToolCall {
-                        id: tool_call_id.clone(),
-                        tool_name: tool_name.clone(),
-                        args_json: tool_input,
-                    };
-                    let assistant_tool_msg = LegacyChatMessage {
-                        role: "assistant".to_string(),
-                        content: round_text,
-                        timestamp: chrono::Utc::now(),
-                        thinking_content: thinking_for_replay,
-                        thought_signature,
-                        rag_sources: None,
-                        memory_sources: None,
-                        graph_sources: None,
-                        web_search_sources: None,
-                        image_paths: None,
-                        image_base64: None,
-                        doc_attachments: None,
-                        multimodal_content: None,
-                        tool_call: Some(tool_call),
-                        tool_result: None,
-                        overrides: None,
-                        relations: None,
-                        persistent_stable_id: None,
-                        metadata: reasoning_item_metadata,
-                    };
-                    chat_history.push(assistant_tool_msg);
-
-                    // 2. 添加 tool 消息（包含 tool_result）
-                    // 🔧 与 context.rs tool_results_to_messages_impl 保持一致：
-                    // 失败时优先使用 error 信息，让 LLM 知道失败原因；
-                    // 成功的检索工具输出走同一份 LLM 视图脱敏（live/重放字节一致）
-                    let tool_content = if tool_success {
-                        match crate::chat_v2::context::sanitize_retrieval_output_for_llm(
-                            &tool_name,
-                            &tool_output,
-                        ) {
-                            Some(sanitized) => {
-                                serde_json::to_string(&sanitized).unwrap_or_default()
-                            }
-                            None => serde_json::to_string(&tool_output).unwrap_or_default(),
-                        }
-                    } else if let Some(ref err) = tool_error {
-                        if !err.is_empty() {
-                            format!("Error: {}", err)
-                        } else {
-                            serde_json::to_string(&tool_output).unwrap_or_default()
-                        }
-                    } else {
-                        serde_json::to_string(&tool_output).unwrap_or_default()
-                    };
-                    let tool_result = crate::models::ToolResult {
-                        call_id: tool_call_id,
-                        ok: tool_success,
-                        error: tool_error,
-                        error_details: None,
-                        data_json: Some(tool_output.clone()),
-                        usage: None,
-                        citations: None,
-                    };
-                    let tool_msg = LegacyChatMessage {
-                        role: "tool".to_string(),
-                        content: tool_content,
-                        timestamp: chrono::Utc::now(),
-                        thinking_content: None,
-                        thought_signature: None,
-                        rag_sources: None,
-                        memory_sources: None,
-                        graph_sources: None,
-                        web_search_sources: None,
-                        image_paths: None,
-                        image_base64: None,
-                        doc_attachments: None,
-                        multimodal_content: None,
-                        tool_call: None,
-                        tool_result: Some(tool_result),
-                        overrides: None,
-                        relations: None,
-                        persistent_stable_id: None,
-                        metadata: None,
-                    };
                     let anchor_call_id = tool_msg
                         .tool_result
                         .as_ref()
                         .map(|tr| tr.call_id.clone())
                         .unwrap_or_default();
+                    chat_history.push(assistant_tool_msg);
                     chat_history.push(tool_msg);
 
                     // P1-8：环内加载的技能还原到该 load_skills tool result 之后
@@ -926,6 +787,171 @@ pub(super) fn build_workspace_injection_user_message(
     }
 }
 
+/// 🔧 ROUND-01-pipeline #2：把 assistant 消息里的 workspace_injection 块
+/// 逐个还原为 live 形态的 user 消息，插到本轮 user 消息（`last_user_message_index`）
+/// 之前；插入后同步右移下标。单变体 `load_chat_history` 与
+/// `load_variant_chat_history` 共用，保证两条路径重放字节一致。
+pub(super) fn restore_workspace_injection_messages(
+    blocks: &[MessageBlock],
+    chat_history: &mut Vec<LegacyChatMessage>,
+    last_user_message_index: &mut Option<usize>,
+) {
+    for block in blocks
+        .iter()
+        .filter(|b| b.block_type == block_types::WORKSPACE_INJECTION)
+    {
+        let Some(text) = block.content.clone().filter(|t| !t.is_empty()) else {
+            continue;
+        };
+        let injected = build_workspace_injection_user_message(text, block.tool_output.as_ref());
+        let insert_at = last_user_message_index
+            .unwrap_or(chat_history.len())
+            .min(chat_history.len());
+        chat_history.insert(insert_at, injected);
+        if let Some(index) = last_user_message_index.as_mut() {
+            *index += 1;
+        }
+    }
+}
+
+/// V20260806：单个工具块还原为 live 形态的 `(assistant(tool_call), tool)` 消息对。
+///
+/// 统一承载重放旁路与 meta 回填逻辑，单变体 `load_chat_history` 与
+/// `load_variant_chat_history` 共用（禁止两处各自复制）：
+/// - tool_call_id：优先 live 持久化的 provider 原始 id，NULL 回退 tc_{block_id} 派生
+/// - round_text：该轮工具调用前的伴随文本（text-before-tool-use）
+/// - meta.tool_results 回填：thought_signature + reasoning_content
+///   （meta 缺失时 thinking 回退调用方传入的 `entry_thinking`）
+/// - meta.response_reasoning_items 回填：Responses reasoning item 挂 metadata 原样回传
+/// - 成功的检索工具输出走 `sanitize_retrieval_output_for_llm`（live/重放字节一致）
+pub(super) fn build_tool_round_messages(
+    message_meta: Option<&MessageMeta>,
+    replay: Option<&crate::chat_v2::repo::BlockReplayData>,
+    tool_block: &MessageBlock,
+    entry_thinking: Option<String>,
+) -> (LegacyChatMessage, LegacyChatMessage) {
+    let tool_call_id = replay
+        .and_then(|r| r.tool_call_id.clone())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| format!("tc_{}", tool_block.id.replace("blk_", "")));
+    let round_text = replay
+        .and_then(|r| r.round_text.clone())
+        .unwrap_or_default();
+
+    // meta 回填：按 block_id 或 tool_call_id 匹配 live 工具结果
+    let meta_tool_results: &[ToolResultInfo] = message_meta
+        .and_then(|m| m.tool_results.as_deref())
+        .unwrap_or(&[]);
+    let meta_result = meta_tool_results.iter().find(|r| {
+        r.block_id.as_deref() == Some(tool_block.id.as_str())
+            || r.tool_call_id.as_deref() == Some(tool_call_id.as_str())
+    });
+    let thought_signature = meta_result.and_then(|r| r.thought_signature.clone());
+    // live 的 assistant(tool_call) 消息 thinking = 该轮 reasoning_content；
+    // meta 缺失时回退块重建的 entry_thinking
+    let thinking_for_replay = meta_result
+        .and_then(|r| r.reasoning_content.clone())
+        .or(entry_thinking);
+    // Responses reasoning item 原样回传（与 tool_results_to_messages_impl
+    // 的 live 形态一致），跨轮不丢 encrypted reasoning
+    let reasoning_item_metadata = message_meta
+        .and_then(|m| m.response_reasoning_items.as_ref())
+        .and_then(|items| items.get(tool_call_id.as_str()))
+        .map(|item| serde_json::json!({ "openai_responses_reasoning_item": item.clone() }));
+
+    let tool_name = tool_block.tool_name.clone().unwrap_or_default();
+    let tool_input = tool_block
+        .tool_input
+        .clone()
+        .unwrap_or(serde_json::Value::Null);
+    let tool_output = tool_block
+        .tool_output
+        .clone()
+        .unwrap_or(serde_json::Value::Null);
+    let tool_success = tool_block.status == block_status::SUCCESS;
+    let tool_error = tool_block.error.clone();
+
+    // 1. assistant 消息（包含 tool_call）
+    // 🔧 C1修复：携带关联的 thinking_content，用于 merge 边界检测
+    let tool_call = crate::models::ToolCall {
+        id: tool_call_id.clone(),
+        tool_name: tool_name.clone(),
+        args_json: tool_input,
+    };
+    let assistant_tool_msg = LegacyChatMessage {
+        role: "assistant".to_string(),
+        content: round_text,
+        timestamp: chrono::Utc::now(),
+        thinking_content: thinking_for_replay,
+        thought_signature,
+        rag_sources: None,
+        memory_sources: None,
+        graph_sources: None,
+        web_search_sources: None,
+        image_paths: None,
+        image_base64: None,
+        doc_attachments: None,
+        multimodal_content: None,
+        tool_call: Some(tool_call),
+        tool_result: None,
+        overrides: None,
+        relations: None,
+        persistent_stable_id: None,
+        metadata: reasoning_item_metadata,
+    };
+
+    // 2. tool 消息（包含 tool_result）
+    // 🔧 与 context.rs tool_results_to_messages_impl 保持一致：
+    // 失败时优先使用 error 信息，让 LLM 知道失败原因；
+    // 成功的检索工具输出走同一份 LLM 视图脱敏（live/重放字节一致）
+    let tool_content = if tool_success {
+        match crate::chat_v2::context::sanitize_retrieval_output_for_llm(&tool_name, &tool_output) {
+            Some(sanitized) => serde_json::to_string(&sanitized).unwrap_or_default(),
+            None => serde_json::to_string(&tool_output).unwrap_or_default(),
+        }
+    } else if let Some(ref err) = tool_error {
+        if !err.is_empty() {
+            format!("Error: {}", err)
+        } else {
+            serde_json::to_string(&tool_output).unwrap_or_default()
+        }
+    } else {
+        serde_json::to_string(&tool_output).unwrap_or_default()
+    };
+    let tool_result = crate::models::ToolResult {
+        call_id: tool_call_id,
+        ok: tool_success,
+        error: tool_error,
+        error_details: None,
+        data_json: Some(tool_output.clone()),
+        usage: None,
+        citations: None,
+    };
+    let tool_msg = LegacyChatMessage {
+        role: "tool".to_string(),
+        content: tool_content,
+        timestamp: chrono::Utc::now(),
+        thinking_content: None,
+        thought_signature: None,
+        rag_sources: None,
+        memory_sources: None,
+        graph_sources: None,
+        web_search_sources: None,
+        image_paths: None,
+        image_base64: None,
+        doc_attachments: None,
+        multimodal_content: None,
+        tool_call: None,
+        tool_result: Some(tool_result),
+        overrides: None,
+        relations: None,
+        persistent_stable_id: None,
+        metadata: None,
+    };
+
+    (assistant_tool_msg, tool_msg)
+}
+
 pub(super) fn active_variant_artifacts_by_user(
     messages: &[ChatMessage],
 ) -> std::collections::HashMap<String, Vec<CanonicalContentPart>> {
@@ -994,19 +1020,19 @@ pub(super) fn is_tool_call_block(block: &MessageBlock) -> bool {
 }
 
 // ============================================================
-// V20260806 prompt_cache_replay_consistency 单元测试
+// V20260806 prompt_cache_replay_consistency 测试基建
+// （pub(super)：history 与 multi_variant 的回放测试共用）
 // ============================================================
 
 #[cfg(test)]
-mod replay_consistency_tests {
+pub(super) mod replay_test_support {
     use super::*;
-    use crate::chat_v2::repo::BlockReplayData;
-    use crate::chat_v2::types::{ChatSession, MessageMeta, SendMessageRequest, Variant};
-    use std::collections::HashMap;
+    use crate::chat_v2::types::SendMessageRequest;
     use std::sync::Arc;
 
     /// 构建带完整迁移（含 V20260806 三列）的真实 ChatV2Pipeline
-    fn replay_test_pipeline() -> (tempfile::TempDir, ChatV2Pipeline) {
+    pub(in crate::chat_v2::pipeline) fn replay_test_pipeline(
+    ) -> (tempfile::TempDir, ChatV2Pipeline) {
         use crate::chat_v2::database::ChatV2Database;
         use crate::data_governance::migration::coordinator::MigrationCoordinator;
         use crate::data_governance::schema_registry::DatabaseId;
@@ -1052,7 +1078,7 @@ mod replay_consistency_tests {
 
     /// 新一轮请求的 PipelineContext（当前消息 id 与历史消息不同，
     /// 避免被 load_chat_history 的当前消息排除逻辑吃掉）
-    fn next_turn_ctx(session_id: &str) -> PipelineContext {
+    pub(in crate::chat_v2::pipeline) fn next_turn_ctx(session_id: &str) -> PipelineContext {
         PipelineContext::new(SendMessageRequest {
             session_id: session_id.to_string(),
             content: "下一轮问题".to_string(),
@@ -1065,7 +1091,7 @@ mod replay_consistency_tests {
         })
     }
 
-    fn insert_user_turn(
+    pub(in crate::chat_v2::pipeline) fn insert_user_turn(
         conn: &rusqlite::Connection,
         session_id: &str,
         message_id: &str,
@@ -1085,7 +1111,7 @@ mod replay_consistency_tests {
         ChatV2Repo::create_block_with_conn(conn, &user_block).unwrap();
     }
 
-    fn content_block(
+    pub(in crate::chat_v2::pipeline) fn content_block(
         message_id: &str,
         block_id: &str,
         text: &str,
@@ -1097,6 +1123,19 @@ mod replay_consistency_tests {
         block.status = block_status::SUCCESS.to_string();
         block
     }
+}
+
+// ============================================================
+// V20260806 prompt_cache_replay_consistency 单元测试
+// ============================================================
+
+#[cfg(test)]
+mod replay_consistency_tests {
+    use super::replay_test_support::*;
+    use super::*;
+    use crate::chat_v2::repo::BlockReplayData;
+    use crate::chat_v2::types::{ChatSession, MessageMeta, SendMessageRequest, Variant};
+    use std::collections::HashMap;
 
     /// 要求 9 主测试：live 写入三列后，history 读回与 live 请求字节相等
     /// （用户包装 / provider tool_call_id / round_text / thought_signature /
