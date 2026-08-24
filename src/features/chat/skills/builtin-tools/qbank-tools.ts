@@ -526,7 +526,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_delete_questions',
-      description: '批量软删除 1-20 道题（High，Agent 不可恢复，reversible=false）。每次调用前必须用 builtin-ask_user 列明准确题目与数量取得确认，授权不得记忆或复用。以 question_id 为键传入完整版本映射；原子 OCC，冲突时整批不删。返回 deleted_count/deleted/soft_deleted/recovery。',
+      description: '批量软删除 1-20 道题（High，Agent 不可恢复，reversible=false）。每次调用前必须用 builtin-ask_user 列明准确题目与数量取得确认，授权不得记忆或复用，headless 场景不得执行。以 question_id 为键传入完整版本映射；原子 OCC，冲突时整批不删。返回 deleted_count/deleted/soft_deleted/recovery。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
