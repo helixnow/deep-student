@@ -185,13 +185,13 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
           <Badge variant="outline">F:{frontendAudits.length} / B:{backendAudits.length}</Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadLogs}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={loadLogs}>
             <ArrowClockwise size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={onCopy}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onCopy}>
             <Copy size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={onClear}>
+          <Button variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClear}>
             <Trash size={16} />
           </Button>
         </div>

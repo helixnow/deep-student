@@ -101,7 +101,7 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </label>
         <div className="ml-auto flex items-center gap-1">
           <select
-            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded"
+            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded [@media(pointer:coarse)]:min-h-11"
             value={level}
             onChange={(ev) => setLevel(ev.target.value as LevelFilter)}
           >
@@ -111,14 +111,14 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             <option value="error">ERROR</option>
           </select>
           <input
-            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded"
+            className="bg-slate-900 border border-slate-700 text-[10px] px-2 py-1 rounded [@media(pointer:coarse)]:min-h-11"
             placeholder={t('debug_panel.search_placeholder', '搜索事件/内容')}
             value={keyword}
             onChange={(ev) => setKeyword(ev.target.value)}
           />
           <button
             type="button"
-            className="text-[10px] bg-slate-800 border border-slate-700 rounded px-2 py-1 hover:bg-slate-700"
+            className="text-[10px] bg-slate-800 border border-slate-700 rounded px-2 py-1 hover:bg-slate-700 [@media(pointer:coarse)]:min-h-11"
             onClick={() => {
               clearAnkiDebugLogs();
               setLogs([]);

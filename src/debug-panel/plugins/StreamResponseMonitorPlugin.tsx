@@ -196,6 +196,7 @@ const StreamResponseMonitorPlugin: React.FC<StreamResponseMonitorPluginProps> = 
       >
         <button
           onClick={handleClear}
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{
             fontSize: 12,
             color: '#e2e8f0',
@@ -246,6 +247,7 @@ const StreamResponseMonitorPlugin: React.FC<StreamResponseMonitorPluginProps> = 
           <select
             value={filterStreamId}
             onChange={(e) => setFilterStreamId(e.target.value)}
+            className="[@media(pointer:coarse)]:min-h-11"
             style={{
               fontSize: 12,
               background: '#334155',

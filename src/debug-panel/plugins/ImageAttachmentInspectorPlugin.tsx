@@ -410,7 +410,7 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
       <div className="inspector-header">
         <h3>{t('debug_panel.plugin_image_inspector', '图片附件检查器')}</h3>
         <div className="inspector-controls">
-          <button onClick={performInspection} className="btn-inspect">
+          <button onClick={performInspection} className="btn-inspect [@media(pointer:coarse)]:min-h-11">
             🔍 立即检查
           </button>
           <label className="auto-refresh-toggle">
@@ -424,17 +424,17 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
         <div className="render-log-header">
           <h4>🎬 渲染日志追踪</h4>
           <div className="render-log-controls">
-            <button onClick={simulateRendering} className="btn-simulate">
+            <button onClick={simulateRendering} className="btn-simulate [@media(pointer:coarse)]:min-h-11">
               ▶️ 模拟渲染
             </button>
             <label className="capture-toggle">
               <Switch size="sm" checked={captureRenderLogs} onCheckedChange={setCaptureRenderLogs} />
               <span>实时捕获</span>
             </label>
-            <button onClick={copyRenderLogs} disabled={renderLogs.length === 0} className="btn-copy-logs">
+            <button onClick={copyRenderLogs} disabled={renderLogs.length === 0} className="btn-copy-logs [@media(pointer:coarse)]:min-h-11">
               📋 复制
             </button>
-            <button onClick={clearRenderLogs} disabled={renderLogs.length === 0} className="btn-clear-logs">
+            <button onClick={clearRenderLogs} disabled={renderLogs.length === 0} className="btn-clear-logs [@media(pointer:coarse)]:min-h-11">
               🗑️ 清空
             </button>
           </div>
