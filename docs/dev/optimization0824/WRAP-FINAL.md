@@ -1,8 +1,8 @@
 # optimization0824 最终验收报告
 
-> 验收代理：SA-WRAP-ACCEPT  
-> 分支：`cursor/optimization0824-5575`  
-> 验收树：`c6c9f4d4`（2026-08-24，报告提交前最新远端树）  
+> 验收代理：SA-WRAP-ACCEPT
+> 分支：`cursor/optimization0824-5575`
+> 验收树：`c6c9f4d4`（2026-08-24，报告提交前最新远端树）
 > 结论：**可以停止无边界的持续轮次；尚不能宣称 13/13 WI 全部完成。**
 
 ## 1. 验收摘要
