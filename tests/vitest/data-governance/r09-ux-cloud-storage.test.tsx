@@ -164,6 +164,18 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
       /instead of uploaded unencrypted/i,
     );
   });
+
+  it('拒绝保存短于 8 字符的云端 E2EE 密码，避免徽章冒充已配置', () => {
+    expect(componentSource).toContain('cloudStorage:encryption.tooShort');
+    expect(componentSource).toContain('[...explicitEncryptionPassword].length < 8');
+    expect(zhLocale.encryption.tooShort).toContain('至少需要');
+    expect(zhLocale.encryption.tooShort).toContain('不会保存');
+    expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);
+    expect(enLocale.encryption.tooShort).toMatch(/will not be saved/i);
+    expect(Object.keys(zhLocale.encryption).sort()).toEqual(
+      Object.keys(enLocale.encryption).sort(),
+    );
+  });
 });
 
 // ============================================================================
