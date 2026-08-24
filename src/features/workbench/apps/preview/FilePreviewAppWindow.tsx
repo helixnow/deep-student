@@ -778,6 +778,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
+                className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 aria-label={t('filePreview.moreActions')}
               >
                 <DotsThree size={16} weight="bold" />
