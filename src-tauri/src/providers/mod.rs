@@ -647,7 +647,7 @@ impl OpenAIResponsesAdapter {
     /// GPT-5.6 起提供显式 `prompt_cache_breakpoint`（断点处精确匹配，不再自动
     /// 回退到最长未标记前缀）。按模型名解析 gpt 主/次版本：gpt-5.6+ 与更高
     /// 主版本返回 true；gpt-5.5 及更早、非 gpt 系（DeepSeek/Qwen 等）返回 false。
-    fn model_supports_prompt_cache_breakpoint(model: &str) -> bool {
+    pub(crate) fn model_supports_prompt_cache_breakpoint(model: &str) -> bool {
         let lower = model.to_lowercase();
         let Some(pos) = lower.find("gpt-") else {
             return false;

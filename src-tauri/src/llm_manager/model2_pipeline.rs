@@ -257,7 +257,7 @@ fn trim_latest_turn_volatile_tail(
         let Some((start, end)) = request_body
             .get("messages")
             .and_then(Value::as_array)
-            .map(removable_request_turns)
+            .map(|messages| removable_request_turns(messages))
             .and_then(|ranges| ranges.last().copied())
         else {
             return;
