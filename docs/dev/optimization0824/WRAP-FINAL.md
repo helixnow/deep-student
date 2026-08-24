@@ -1,18 +1,20 @@
 # optimization0824 最终验收报告
 
-> 验收代理：SA-WRAP-ACCEPT
+> 验收代理：SA-WRAP-ACCEPT2
 > 分支：`cursor/optimization0824-5575`
-> 验收树：`c6c9f4d4`（2026-08-24，报告提交前最新远端树）
-> 结论：**可以停止无边界的持续轮次；尚不能宣称 13/13 WI 全部完成。**
+> 验收树：`e8051faf`（2026-08-24，报告提交前最新远端树）
+> 结论：**可以停止持续轮次；13 个 WI 为 12 个 ✅ + 1 个部分（WI-7 rolldown）。**
 
 ## 1. 验收摘要
 
 - P0（WI-1～WI-5）全部落地；P1 主体全部落地，WI-7 的 rolldown 部分因
-  Vite 6 上游兼容问题延期；P2 中 WI-12、WI-13 的本轮范围已落地，
-  WI-11 Phase 1 未交付。
-- 13 个 WI 最终口径为：**11 个 ✅、1 个部分、1 个 ❌**。
+  Vite 6 上游兼容问题延期；P2 中 WI-11 Phase 1、WI-12 与 WI-13 本轮范围
+  均已落地。
+- 13 个 WI 最终口径为：**12 个 ✅、1 个部分（WI-7 rolldown）**。
 - 最新树的 build、license、tsc/tsgo、bundle、定向 Vitest、WI-12/WI-13
-  Rust 测试均有成功记录；workflow 终检为 17 个文件、actionlint 0 诊断。
+  Rust 测试均有成功记录；Rust 定向结果为 pipeline 250、session export 11、
+  provider quirks 4、reasoning policy 33，合计 298 passed、0 failed；
+  workflow 终检为 17 个文件、actionlint 0 诊断。
 - 未发现需在本报告前修复的阻断级代码问题。合并前仍需一轮不被新 push
   取消的 GitHub CI 终态结果，并处理 PR #213 的 CLA 外部门禁。
 
@@ -26,7 +28,7 @@
 | R1 | ✅ | WI-1/2/3/5；WI-8 bundle 基线；WI-10 token 基线；provider-contract 路径过滤与 apt 缓存 | P0 快速收益均有代码或 workflow 产物 |
 | R2 | ✅ | WI-4；WI-6 编译门控；WI-8 DnD/资产；WI-9 PDF 子集；WI-10 Top 5；macOS/Windows sccache | 计划范围完成；rolldown spike 的失败结论有效但不算落地 |
 | R3 | ✅ | WI-6 CI；WI-7 SWC + tsgo spike；WI-8 依赖/门禁；WI-10 Top 6～15；WI-11 计划；WI-12 spec/stub；前端 CI 并行 | R3 交付完成；stub/计划只按中间产物计 |
-| R4/WRAP | 部分 | WI-7 tsgo；WI-8/9/10；WI-12；WI-13 第一阶段；CI/依赖/合并卫生 | 9/10 R4 工作包完成；唯一缺包为 WI-11 Phase 1 |
+| R4/WRAP | ✅ | WI-7 tsgo；WI-8/9/10；WI-11 Phase 1；WI-12；WI-13 第一阶段；CI/依赖/合并卫生 | 10/10 R4 工作包完成，收尾验收通过 |
 
 ## 3. WI 最终对照表
 
@@ -42,9 +44,9 @@
 | WI-8 依赖收敛 + bundle 门禁 | R1～R4 | ✅ | 移除 DnD 旧栈及 R4 19 个直接生产依赖；FlowToken 懒加载；7 项 gzip 预算通过 |
 | WI-9 pdfjs 按需化 | R2/R4 | ✅ | 本地 CMap/WASM 子集、三级 fallback、缺字日志、worker/legal 单源及 19 个新增测试 |
 | WI-10 Token 预算治理 | R1～R4 | ✅ | 43 个 skill 组全部处理；schema 估算 token 累计下降 13.7%，护栏收紧至约 10% 余量 |
-| WI-11 Provider 协议归一 | R3/R4 | **❌** | 只有四阶段计划；`provider_quirks.rs` 不存在，MiMo/Mistral/Qwen 判定仍在 pipeline 内 |
+| WI-11 Provider 协议归一 | R3/R4 | ✅ Phase 1 | `provider_quirks.rs` 已集中 Phase 1 quirks；旧 `is_mimo_config`/`is_mistral_config`/`is_qwen_config`/`is_mimo_endpoint` 已迁移并删除；quirks 4 + reasoning 33 tests 通过 |
 | WI-12 Session JSONL | R3/R4/WRAP | ✅ | 流式导出、默认脱敏、variant/state/compaction、Tauri command/ACL；11 个 Rust 测试通过 |
-| WI-13 Pipeline hooks | R4/WRAP | ✅ | 4 个切点、审批/审计默认 hook、安全封装与顺序守卫；pipeline 246 tests 通过 |
+| WI-13 Pipeline hooks | R4/WRAP | ✅ | 4 个切点、审批/审计默认 hook、安全封装与顺序守卫；hooks 复查发现均已修复，pipeline 250 tests 通过 |
 
 ## 4. 构建、体积与 CI 量化收益
 
@@ -97,9 +99,8 @@ rolldown 的约 11～12s transform 仅来自失败 spike，不计入已实现收
 
 ## 5. 已知限制与剩余风险
 
-1. **WI-11 缺失**：这是唯一完全未实现的 WI。应按
-   `WI-11-provider-refactor-plan.md` 的 11-1a～1d 做独立、限界明确的后续任务，
-   不能把计划文档当实现。
+1. **WI-11 验收边界**：Phase 1 已完整落地并验收；Phase 2～4 仍保留在
+   `WI-11-provider-refactor-plan.md`，不属于本轮承诺范围，也不影响停止结论。
 2. **rolldown 待 Vite 7**：Vite 6 的 `rolldown-vite` spike 在 chunk 生成阶段
    内部 panic；依赖改动已回退。升级 Vite 7 后再做同树 A/B。
 3. **CI 尚无最终样本**：sccache 命中率、release 141min 基线改善、Android
@@ -129,25 +130,24 @@ rolldown 的约 11～12s transform 仅来自失败 spike，不计入已实现收
 
 ## 6. 是否停止持续轮次
 
-**建议：可以停止 R5～R20 这种无边界、固定配额的持续优化轮次。**
+**结论：可以停止持续轮次。**
 
 理由：
 
-- P0 全部完成，主要构建/体积/依赖/Agent 基础设施收益已经落地；
+- 13 个 WI 已达到 12 个 ✅ + 1 个部分，P0 全部完成，主要构建/体积/依赖/
+  Agent 基础设施收益已经落地；
 - 继续按“大轮次 × 多代理”推进会增加热点文件冲突和 CI 取消，边际收益已低于
   集成成本；
 - 剩余事项都有清晰前置或边界，适合独立 issue/PR，而不是继续泛化清扫。
 
-停止持续轮次不等于 13/13 完成。建议保留以下有界任务：
+停止持续轮次不等于 rolldown 已落地。本轮只剩以下三个有界收尾事项：
 
-1. WI-11 Phase 1；
-2. 等 Vite 7 后重试 rolldown；
-3. 生产依赖安全升级与 bundle gate 转硬门禁；
-4. 跑一次完整 release/Android CI，回填 sccache、墙钟和产物体积。
+1. 等 Vite 7 后重试 rolldown；
+2. 取得一次未被新 push 取消的完整 CI 样本，回填 sccache、墙钟和产物体积；
+3. 由对应提交者人工签署 CLA，解除外部门禁。
 
 合并当前 PR 的最低条件是：最新报告 SHA 的 required CI 终态通过，且 CLA 门禁
-解除。若项目定义要求“所有 WI 必须完成后才能合并”，则还必须先完成 WI-11；
-否则可把 WI-11 作为明确记录的 P2 follow-up。
+解除。WI-7 rolldown 已明确延期到 Vite 7，不阻塞本轮收尾。
 
 ## 7. 验证命令
 
@@ -184,13 +184,14 @@ bash scripts/download-pdfium.sh linux-x64
 
 cd src-tauri
 cargo check --lib
-cargo test --lib session_export
-cargo test --lib chat_v2::prompt_builder
 cargo test --lib chat_v2::pipeline
+cargo test --lib chat_v2::session_export
+cargo test --lib llm_manager::provider_quirks
+cargo test --lib reasoning_policy
 ```
 
-预期关键结果：session export 11 passed；prompt builder 14 passed；
-pipeline 246 passed、0 failed。
+预期关键结果：pipeline 250 passed；session export 11 passed；
+provider quirks 4 passed；reasoning policy 33 passed，合计 298 passed、0 failed。
 
 ### Workflows 与遗留项
 
@@ -206,8 +207,8 @@ PY
 
 actionlint -no-color .github/workflows/*.yml
 
-test ! -e src-tauri/src/llm_manager/provider_quirks.rs
-rg 'fn is_(mimo|mistral|qwen)_config' \
+test -f src-tauri/src/llm_manager/provider_quirks.rs
+! rg 'fn is_(mimo|mistral|qwen)_config|fn is_mimo_endpoint' \
   src-tauri/src/llm_manager/model2_pipeline.rs
 
 gh pr checks 213 --repo helixnow/deep-student
@@ -215,5 +216,5 @@ gh run list --repo helixnow/deep-student \
   --branch cursor/optimization0824-5575 --limit 10
 ```
 
-最后两条 WI-11 命令在当前验收树上应确认“quirks 文件不存在、旧判定仍存在”；
-这是缺口证明，不是成功实现的判据。
+两条 WI-11 命令应确认 quirks 文件存在，且旧 MiMo/Mistral/Qwen 判定函数已从
+pipeline 迁移并删除。
