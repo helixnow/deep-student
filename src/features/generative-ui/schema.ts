@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import type { GenerativeLayoutMode, GenerativeLayoutUnit, GenerativeUIIntent } from './types';
+import { sanitizeGenerativeTextLeaves } from './utils/sanitizeGenerativeText';
 
 export const GENERATIVE_UI_INTENT_VERSIONS = ['1', '1.1'] as const;
 export const GENERATIVE_LAYOUT_UNITS = [1, 2, 3] as const;
@@ -217,7 +218,7 @@ export function validateBlockProps<T>(
   schema: z.ZodType<T>,
   props: unknown,
 ): { ok: true; props: T } | { ok: false; errors: string[] } {
-  const result = schema.safeParse(props);
+  const result = schema.safeParse(sanitizeGenerativeTextLeaves(props));
   if (!result.success) {
     return {
       ok: false,

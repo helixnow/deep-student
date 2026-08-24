@@ -169,6 +169,10 @@ export { schemaToPromptHint } from './utils/schemaToPromptHint';
 export { MarkdownBlock, markdownPropsSchema } from './components/MarkdownBlock';
 export { GenerativeUIErrorBoundary } from './components/GenerativeUIErrorBoundary';
 export { sanitizeGenerativeMarkdown } from './utils/sanitizeGenerativeMarkdown';
+export {
+  sanitizeGenerativeText,
+  sanitizeGenerativeTextLeaves,
+} from './utils/sanitizeGenerativeText';
 export { buildMarkdownIntent } from './utils/buildMarkdownIntent';
 export { ChartBlock, chartBlockPropsSchema, CHART_BLOCK_TYPE, registerChartBlock } from './components/ChartBlock';
 export { buildChartIntent } from './utils/buildChartIntent';
