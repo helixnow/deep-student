@@ -17,7 +17,27 @@ import {
   YAxis,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
+import { useGenerativeUICompact } from '../hooks/useGenerativeUICompact';
 import { generativeUIRegistry } from '../registry';
+
+/** 本地读 matchMedia；不引入独立 hook，避免与共享 reduced-motion hook 抢定义 */
+export const CHART_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+export function readPrefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  try {
+    return Boolean(window.matchMedia(CHART_REDUCED_MOTION_QUERY).matches);
+  } catch {
+    return false;
+  }
+}
+
+export function resolveChartAnimationActive(
+  compact: boolean,
+  prefersReducedMotion: boolean,
+): boolean {
+  return !compact && !prefersReducedMotion;
+}
 
 export const CHART_KINDS = ['bar', 'line', 'pie'] as const;
 
@@ -95,11 +115,13 @@ function ChartGraphic({
   categories,
   series,
   unit,
+  isAnimationActive,
 }: {
   kind: ChartKind;
   categories: string[];
   series: ChartSeries[];
   unit?: string;
+  isAnimationActive: boolean;
 }) {
   const cartesian = useMemo(() => toCartesianRows(categories, series), [categories, series]);
   const pieRows = useMemo(() => toPieRows(categories, series), [categories, series]);
@@ -114,7 +136,7 @@ function ChartGraphic({
             formatter={(value) => [`${value}${valueSuffix}`, undefined]}
           />
           <Legend />
-          <Pie data={pieRows} dataKey="value" nameKey="name" isAnimationActive={false}>
+          <Pie data={pieRows} dataKey="value" nameKey="name" isAnimationActive={isAnimationActive}>
             {pieRows.map((entry, index) => (
               <Cell key={entry.name} fill={SERIES_COLORS[index % SERIES_COLORS.length]} />
             ))}
@@ -141,7 +163,7 @@ function ChartGraphic({
               name={item.name || seriesKey(item, index)}
               stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
               dot={false}
-              isAnimationActive={false}
+              isAnimationActive={isAnimationActive}
             />
           ))}
         </LineChart>
@@ -163,7 +185,7 @@ function ChartGraphic({
             dataKey={seriesKey(item, index)}
             name={item.name || seriesKey(item, index)}
             fill={SERIES_COLORS[index % SERIES_COLORS.length]}
-            isAnimationActive={false}
+            isAnimationActive={isAnimationActive}
           />
         ))}
       </BarChart>
@@ -173,6 +195,9 @@ function ChartGraphic({
 
 export function ChartBlock({ id, title, kind, categories, series, unit }: ChartBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const compact = useGenerativeUICompact();
+  const prefersReducedMotion = readPrefersReducedMotion();
+  const isAnimationActive = resolveChartAnimationActive(compact, prefersReducedMotion);
   const resolvedSeries = series ?? [];
   const isEmpty = resolvedSeries.length === 0;
   const a11yLabel = t('a11y.chart_label', {
@@ -189,6 +214,7 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
       data-chart-id={id}
       data-chart-kind={kind}
       data-empty={isEmpty || undefined}
+      data-animation-active={isAnimationActive ? 'true' : 'false'}
     >
       {title ? (
         <CardHeader className="pb-2">
@@ -205,7 +231,13 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
           </div>
         ) : (
           <div role="img" aria-label={a11yLabel} className="h-64 w-full">
-            <ChartGraphic kind={kind} categories={categories} series={resolvedSeries} unit={unit} />
+            <ChartGraphic
+              kind={kind}
+              categories={categories}
+              series={resolvedSeries}
+              unit={unit}
+              isAnimationActive={isAnimationActive}
+            />
           </div>
         )}
       </CardContent>

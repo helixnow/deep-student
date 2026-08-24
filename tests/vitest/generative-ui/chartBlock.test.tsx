@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -19,15 +21,59 @@ vi.mock('react-i18next', () => ({
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import {
   CHART_BLOCK_TYPE,
+  CHART_REDUCED_MOTION_QUERY,
   ChartBlock,
   chartBlockPropsSchema,
+  readPrefersReducedMotion,
   registerChartBlock,
+  resolveChartAnimationActive,
 } from '@/features/generative-ui/components/ChartBlock';
+import { GENERATIVE_UI_COMPACT_MEDIA_QUERY } from '@/features/generative-ui/hooks/useGenerativeUICompact';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { validateBlockProps } from '@/features/generative-ui/schema';
 
+const CHART_BLOCK_SRC = path.resolve(
+  __dirname,
+  '../../../src/features/generative-ui/components/ChartBlock.tsx',
+);
+
+function mockMatchMedia(impl: (query: string) => boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: impl(query),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+function mockInnerWidth(width: number): void {
+  Object.defineProperty(window, 'innerWidth', {
+    writable: true,
+    configurable: true,
+    value: width,
+  });
+}
+
+function restoreDesktopViewport(): void {
+  mockMatchMedia(() => false);
+  mockInnerWidth(1280);
+}
+
 beforeAll(() => {
   registerChartBlock();
+  restoreDesktopViewport();
+});
+
+afterEach(() => {
+  restoreDesktopViewport();
 });
 
 const BASE_PROPS = {
@@ -128,4 +174,57 @@ describe('chart registry + renderer', () => {
       );
     },
   );
+});
+
+describe('ChartBlock animation gating', () => {
+  it('disables animation when compact or prefers-reduced-motion', () => {
+    expect(resolveChartAnimationActive(false, false)).toBe(true);
+    expect(resolveChartAnimationActive(true, false)).toBe(false);
+    expect(resolveChartAnimationActive(false, true)).toBe(false);
+    expect(resolveChartAnimationActive(true, true)).toBe(false);
+  });
+
+  it('reads prefers-reduced-motion from matchMedia', () => {
+    mockMatchMedia((query) => query === CHART_REDUCED_MOTION_QUERY);
+    expect(readPrefersReducedMotion()).toBe(true);
+    mockMatchMedia(() => false);
+    expect(readPrefersReducedMotion()).toBe(false);
+  });
+
+  it('keeps animation on desktop without reduced motion', () => {
+    restoreDesktopViewport();
+    render(<ChartBlock {...BASE_PROPS} kind="bar" />);
+    expect(document.querySelector('[data-generative-chart]')).toHaveAttribute(
+      'data-animation-active',
+      'true',
+    );
+  });
+
+  it('sets isAnimationActive=false when prefers-reduced-motion matches', () => {
+    mockInnerWidth(1280);
+    mockMatchMedia((query) => query.includes('prefers-reduced-motion'));
+    render(<ChartBlock {...BASE_PROPS} kind="line" />);
+    expect(document.querySelector('[data-generative-chart]')).toHaveAttribute(
+      'data-animation-active',
+      'false',
+    );
+    expect(window.matchMedia).toHaveBeenCalledWith(CHART_REDUCED_MOTION_QUERY);
+  });
+
+  it('sets isAnimationActive=false in compact viewport', () => {
+    mockInnerWidth(375);
+    mockMatchMedia((query) => query === GENERATIVE_UI_COMPACT_MEDIA_QUERY);
+    render(<ChartBlock {...BASE_PROPS} kind="pie" />);
+    expect(document.querySelector('[data-generative-chart]')).toHaveAttribute(
+      'data-animation-active',
+      'false',
+    );
+  });
+
+  it('wires resolve result to recharts isAnimationActive', () => {
+    const source = readFileSync(CHART_BLOCK_SRC, 'utf8');
+    expect(source).toContain('isAnimationActive={isAnimationActive}');
+    expect(source).toContain(CHART_REDUCED_MOTION_QUERY);
+    expect(source).toContain('useGenerativeUICompact');
+  });
 });
