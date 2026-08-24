@@ -9558,7 +9558,7 @@ impl SyncManager {
     /// 对象是否落在内容寻址前缀（`data_governance/asset_objects/<sha256>`）。
     ///
     /// 只有 legacy 前缀 `data_governance/assets/` 下的对象与逻辑 key 一一对应，可以
-    /// 随 tombstone 物理删除。
+    /// 随 tombstone 物理删除。共享内容对象的回收交给既有/未来 GC，本函数不做删除判定以外的事。
     fn is_content_addressed_asset_object(key: &str) -> bool {
         Self::validate_remote_object_key(key, Self::ASSET_OBJECTS_PREFIX).is_ok()
     }
@@ -11127,8 +11127,8 @@ impl SyncManager {
     ///
     /// 过滤版清单会先把 tombstoned 逻辑 key 摘掉，删除传播再去查 `object_key` 必然
     /// miss，从而回退到 legacy 逻辑路径 `data_governance/assets/{key}`；新布局的对象
-    /// 实际在 `data_governance/asset_objects/{sha256}`，回退路径在 FTP 上会因父目录
-    /// cwd 550 直接硬失败。
+    /// 实际在 `data_governance/asset_objects/{sha256}`。tombstone 应用必须在过滤前
+    /// 解析物理 key，才能显式跳过共享内容对象，而不是靠 miss 碰巧不删。
     async fn download_assets_manifest_before_tombstones(
         &self,
         storage: &dyn CloudStorage,
@@ -11844,9 +11844,9 @@ impl SyncManager {
                         .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                     Self::validate_asset_object_key(&remote_key)?;
                     if Self::is_content_addressed_asset_object(&remote_key) {
-                        // 内容寻址对象按 sha256 去重，可被多个逻辑 key 共享，是独立的
-                        // retention unit：删除传播只负责摘掉逻辑 key，物理回收交给 GC，
-                        // 否则删掉其中一个 key 会连带打断同内容的其他 key。
+                        // 内容寻址对象可被多个逻辑 key 共享，是独立的 retention unit：
+                        // 删除传播只负责摘掉逻辑 key，物理回收交给既有/未来 GC。
+                        // 不得删除 data_governance/asset_objects/ 下的共享对象。
                         tracing::info!(
                             "[sync] 资产 tombstone 保留内容寻址对象，仅摘除清单条目: {} -> {}",
                             key,

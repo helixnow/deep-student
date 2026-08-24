@@ -353,7 +353,10 @@ async fn collect_manifest(
                 RepoCheckProblemKind::CorruptManifest,
                 Some(key.to_string()),
                 Some(version.id.clone()),
-                format!("版本 {} 登记的校验和非法: {:?}", version.id, version.checksum),
+                format!(
+                    "版本 {} 登记的校验和非法: {:?}",
+                    version.id, version.checksum
+                ),
             );
         }
     }
@@ -683,7 +686,11 @@ mod tests {
         head.extend_from_slice(&(1024u32 * 1024).to_le_bytes());
         assert_eq!(DSBK_V2_MIN_OBJECT_LEN, 60);
         for len in 60..=63u64 {
-            assert_eq!(dsbk_header_error(&head, len), None, "{len} 字节不应误报截断");
+            assert_eq!(
+                dsbk_header_error(&head, len),
+                None,
+                "{len} 字节不应误报截断"
+            );
         }
         assert!(dsbk_header_error(&head, 59).is_some(), "59 字节必然被截断");
     }

@@ -4601,6 +4601,26 @@ pub async fn data_governance_resolve_record_conflict(
             if current != expected_ids {
                 return Err("冲突已在后台变化，旧决策未执行；请刷新后重新确认".to_string());
             }
+            // [R12-conflict-fast] 关闭 P2-3（FINDINGS-WRAP P2-2）：上方
+            // `already_in_desired_state` 用的是事务外快照，窗口内的纯本地编辑
+            // 不触碰 __sync_conflicts，generation 重验发现不了。这里在事务内
+            // 重读业务行，按同一套 (operation, data) 重算是否仍处于决策目标
+            // 状态；不再匹配即 fail-closed 拒绝，绝不用旧快照标 resolved。
+            let in_transaction_snapshot =
+                SyncManager::get_record_data(&conn, &table_name, &record_id, id_column)
+                    .map_err(|e| format!("提交前重读本地记录失败: {}", e))?;
+            let still_in_desired_state = match (&operation, &data) {
+                (crate::data_governance::sync::ChangeOperation::Delete, _) => {
+                    in_transaction_snapshot.is_none()
+                }
+                (_, Some(desired)) => in_transaction_snapshot.as_ref().is_some_and(|row| {
+                    SyncManager::records_semantically_equal_for_sync(row, desired)
+                }),
+                (_, None) => false,
+            };
+            if !still_in_desired_state {
+                return Err("本地记录在冲突确认期间已变化，请刷新后重新确认".to_string());
+            }
             for conflict_id in &expected_ids {
                 let updated = conn
                     .execute(

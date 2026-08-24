@@ -209,9 +209,9 @@ fn real_dsbk_v2(payload_len: usize) -> Vec<u8> {
     std::fs::read(&output).unwrap()
 }
 
-fn kinds(report: &deep_student_lib::cloud_storage::repo_check::RepoCheckReport)
-    -> Vec<RepoCheckProblemKind>
-{
+fn kinds(
+    report: &deep_student_lib::cloud_storage::repo_check::RepoCheckReport,
+) -> Vec<RepoCheckProblemKind> {
     report.problems.iter().map(|p| p.kind).collect()
 }
 
@@ -285,7 +285,10 @@ async fn missing_object_is_reported_with_version_id() {
     );
     // 未受影响的版本仍被完整校验
     assert_eq!(report.objects_checked, 1);
-    assert!(report.problems.iter().all(|p| p.version_id.as_deref() != Some(keep.as_str())));
+    assert!(report
+        .problems
+        .iter()
+        .all(|p| p.version_id.as_deref() != Some(keep.as_str())));
 }
 
 // ==================== 3. 坏密文 ====================
@@ -365,8 +368,16 @@ async fn orphan_object_is_reported_and_check_stays_read_only() {
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
     assert_eq!(report.orphan_objects, 1);
     let kinds = kinds(&report);
-    assert!(kinds.contains(&RepoCheckProblemKind::OrphanObject), "{:?}", report.problems);
-    assert!(kinds.contains(&RepoCheckProblemKind::TempLeftover), "{:?}", report.problems);
+    assert!(
+        kinds.contains(&RepoCheckProblemKind::OrphanObject),
+        "{:?}",
+        report.problems
+    );
+    assert!(
+        kinds.contains(&RepoCheckProblemKind::TempLeftover),
+        "{:?}",
+        report.problems
+    );
     let orphan = report
         .problems
         .iter()

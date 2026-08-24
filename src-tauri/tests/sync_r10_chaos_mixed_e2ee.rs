@@ -170,7 +170,11 @@ fn item_count(conn: &Connection) -> i64 {
 
 /// 手工构造一个**明文** v3 变更分片（无 DSBK 头），注入到指定设备的 seq 流。
 /// 内容格式与引擎产物一致：zstd(compact JSON of SyncChangesPayload)。
-fn plaintext_shard(device_id: &str, seq: u64, changes: Vec<SyncChangeWithData>) -> (String, Vec<u8>) {
+fn plaintext_shard(
+    device_id: &str,
+    seq: u64,
+    changes: Vec<SyncChangeWithData>,
+) -> (String, Vec<u8>) {
     let key = format!(
         "data_governance/changes/{}/{:012}-{}-{}.json.zst",
         device_id,
@@ -197,13 +201,16 @@ fn plaintext_shard(device_id: &str, seq: u64, changes: Vec<SyncChangeWithData>) 
 async fn seed_midstream_downgrade() -> (MemStorage, String, String, String) {
     let storage = MemStorage::default();
     let uploader_id = unique_device("r10-mixed-enc");
-    let uploader =
-        SyncManager::with_encryption(uploader_id.clone(), Some(PASSWORD.to_string()));
+    let uploader = SyncManager::with_encryption(uploader_id.clone(), Some(PASSWORD.to_string()));
 
     uploader
         .upload_enriched_changes(
             &storage,
-            &[insert_change("mixed-legit", "encrypted-payload", "2026-07-10T12:00:00Z")],
+            &[insert_change(
+                "mixed-legit",
+                "encrypted-payload",
+                "2026-07-10T12:00:00Z",
+            )],
             None,
         )
         .await

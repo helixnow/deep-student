@@ -66,7 +66,9 @@ async fn webdav_missing_password_fails_closed_before_any_network_io() {
 
     // 1) 配置校验必须失败，且错误信息可操作（指向密码缺失）。
     let validation = config.validate();
-    let message = validation.expect_err("空密码的 WebDAV 配置必须校验失败");
+    let message = validation
+        .expect_err("空密码的 WebDAV 配置必须校验失败")
+        .to_string();
     assert!(
         message.contains("密码"),
         "校验错误必须指向密码问题，便于用户重新录入凭据，实际: {message}"
@@ -122,7 +124,8 @@ async fn s3_missing_secret_key_fails_closed() {
     };
     let message = config
         .validate()
-        .expect_err("空 Secret Access Key 的 S3 配置必须校验失败");
+        .expect_err("空 Secret Access Key 的 S3 配置必须校验失败")
+        .to_string();
     assert!(
         message.contains("Secret Access Key"),
         "校验错误必须指向缺失的 Secret Access Key，实际: {message}"
@@ -153,7 +156,8 @@ async fn ftp_missing_password_fails_closed() {
     };
     let message = config
         .validate()
-        .expect_err("空密码的 FTP 配置必须校验失败");
+        .expect_err("空密码的 FTP 配置必须校验失败")
+        .to_string();
     assert!(
         message.contains("密码"),
         "校验错误必须指向密码问题，实际: {message}"

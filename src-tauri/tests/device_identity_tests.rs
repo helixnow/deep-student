@@ -73,11 +73,7 @@ fn two_app_data_dirs_yield_distinct_persisted_device_ids() {
     let home_guard = tempfile::tempdir().expect("isolated home");
     let dir_a_guard = tempfile::tempdir().expect("app data dir A");
     let dir_b_guard = tempfile::tempdir().expect("app data dir B");
-    let (home, dir_a, dir_b) = (
-        home_guard.path(),
-        dir_a_guard.path(),
-        dir_b_guard.path(),
-    );
+    let (home, dir_a, dir_b) = (home_guard.path(), dir_a_guard.path(), dir_b_guard.path());
 
     let id_a = probe_device_id(dir_a, home);
     let id_b = probe_device_id(dir_b, home);

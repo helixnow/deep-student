@@ -572,3 +572,86 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-format | `cursor/cloud-sync-sota-delta-format-b343` | DELTA-R11 R12-delta-format：`SnapshotDescriptorV2` / object ref / repo config codec + 上限 + 未来版本 fail-closed；**不接上传/恢复/UI** | 新 `cloud_storage/delta_format.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_format;` 一行；新 `src-tauri/tests/sync_r12_delta_format.rs` |
 
 不碰 `ftp.rs` / notes / chat / workbench / `version.ts` / pdfium。不放松 fail-closed。
+
+### wrap-conflict 回传（分支 `cursor/cloud-sync-sota-wrap-conflict-b343`，关 FINDINGS-WRAP P2-2 / PROTOCOL-R10 P2-3）
+
+首轮同名任务因环境不可达失败，本轮从 `origin/cursor/cloud-sync-sota-b343` @ `5440d582` 重做。交付：
+
+- **实现**：`commands_sync.rs` resolve 快速路径在 `BEGIN IMMEDIATE` 后、标记 resolved 前用 `SyncManager::get_record_data` 事务内重读业务行，按同一套 `(operation, data)` 重算 already-desired；不再匹配即拒绝（「本地记录在冲突确认期间已变化，请刷新后重新确认」），不用旧快照标 resolved。generation 重验保留，慢速路径语义未动。
+- **测试**：`sync_r10_protocol_locks.rs` P2-3 源码锁按其自述改写为「已关」断言（重读存在、位于标记之前、fail-closed 文案在），P2-1 / KDF 用例未动；新 `sync_r12_conflict_fast_path.rs` 两例——业务行未变时快速路径照常标 resolved（重读不误伤）、并发写锁窗口内的本地编辑被事务内重读拦下（冲突保持未解决、新编辑保留）。
+
+### wrap-v1trust 回传（分支 `cursor/cloud-sync-sota-wrap-v1trust-b343`，关 FINDINGS-WRAP P2-1）
+
+- **实现**：`verify_encryption_password_before_upload` 的 v1 升级臂先经 manifest 取最新备份，走现有 `decrypt_backup_file` 完整试解；成功才写 v2 校验子（保留 created_by/created_at）。空仓无备份保持第一台带密码设备认领。列表/下载/半包/非 DSBK/解密失败均不改标记。
+- **测试**：新 `sync_r12_v1_marker_trust.rs`。未改 `sync_r10_protocol_locks.rs` / `sync_r09_file_e2ee.rs`。
+
+### delta-format 回传（分支 `cursor/cloud-sync-sota-delta-format-b343`，codec only）
+
+前两轮环境不可达。第三轮从 `b2716f21` 交付：`delta_format.rs` + `sync_r12_delta_format.rs` 15 例；`mod.rs` 仅 `pub mod delta_format;`。**未接线**，不能宣称增量备份已实现。
+
+## Round 14（增量下一刀，codec 之后，仍不接上传）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-inventory | `cursor/cloud-sync-sota-delta-inventory-b343` | 从已验证 staging 生成规范文件表；volatile manifest 字段不进复用比较；输出可喂给 `SnapshotFileRefV2` 的 path/size/hash | 新 `data_governance/backup/delta_inventory.rs`；`backup/mod.rs` 仅 `pub mod delta_inventory;`；新 `src-tauri/tests/sync_r12_delta_inventory.rs` |
+| delta-lease | `cursor/cloud-sync-sota-delta-lease-b343` | backup-v2/GC 独立租约（contender、TTL、截断/损坏 fail-closed）；**不**复用记录级 `sync-target` namespace | 新 `cloud_storage/backup_lease.rs`；`cloud_storage/mod.rs` 仅 `pub mod backup_lease;`；新 `src-tauri/tests/sync_r12_backup_lease.rs` |
+
+两路都禁止改 `sync_manager.rs` / `delta_format.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-inventory 回传（`cursor/cloud-sync-sota-delta-inventory-b343`）
+
+`delta_inventory.rs`：磁盘 hash 为准、manifest 交叉核对、volatile 字段不进 reuse_candidates、`diff` 产出 reuse/upload-new/deleted。未分配 object_key，未接线。
+
+### delta-lease 回传（`cursor/cloud-sync-sota-delta-lease-b343`）
+
+`backup_lease.rs`：`backup-v2/locks/` + `E_BACKUP_LEASE_HELD`；不复用 sync-target。零生产接线。
+
+## Round 15（增量 upload 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-upload | `cursor/cloud-sync-sota-delta-upload-b343` | DELTA-R11 R12-delta-upload：随机不可变对象、同设备上一 descriptor 未变复用、objects→descriptor→manifest commit、失败留孤儿；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_upload.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_upload;`；新 `src-tauri/tests/sync_r12_delta_upload.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-upload 回传（`cursor/cloud-sync-sota-delta-upload-b343` @ `f65b8ecc`）
+
+`delta_upload.rs`：`publish_verified_staging` 持 backup-v2 租约，随机不可变对象、同设备 `reuse_candidates` 复用、objects→descriptor→index commit，失败留孤儿。`mod.rs` 仅 `pub mod delta_upload;`。测试 `sync_r12_delta_upload.rs` 11 例。**未接线**，不能宣称增量备份已实现。
+
+父代理合入后将 inventory / lease 源码锁放行 `delta_upload.rs`（仍禁止 `sync_manager` / 命令 / UI）。
+
+## Round 16（增量 restore 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-restore | `cursor/cloud-sync-sota-delta-restore-b343` | DELTA-R11 R12-delta-restore：v2 下载、三层校验、完整 staging/兼容 ZIP 物化、缺对象不触活动槽；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_restore.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_restore;`；新 `src-tauri/tests/sync_r12_delta_restore.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-restore 回传（`cursor/cloud-sync-sota-delta-restore-b343` @ `a58e70f3`）
+
+`delta_restore.rs`：`restore_snapshot_to_staging` 持 backup-v2 租约；三层校验（传输 SHA / AEAD / 明文 hash+size）后原子改名进空 dest；缺/坏对象 dest 为空；可选兼容 ZIP 先临时再 persist。上游 API 经钉死的 `delta_restore_upstream.rs.in` `include!` 复用（避免复制租约协议，同时不改既有 sibling 源码锁）。测试 `sync_r12_delta_restore.rs`（明文/复用/E2EE/缺对象/换包/损坏/租约/ZIP/源码锁）。**未接线**，不碰 A/B 槽，不能宣称增量备份已实现。
+
+## Round 17（增量 GC 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-gc | `cursor/cloud-sync-sota-delta-gc-b343` | DELTA-R11 R12-delta-gc：合并所有 v2 device manifests、两遍 candidate/grace GC、截断/并发/崩溃注入；共享对象绝不误删；**不接命令/UI** | 新 `cloud_storage/delta_gc.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_gc;`；新 `src-tauri/tests/sync_r12_delta_gc.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `delta_restore.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。宁留垃圾，不删仍被引用的对象。
+
+### delta-gc 回传（`cursor/cloud-sync-sota-delta-gc-b343` @ `07655585`）
+
+`delta_gc.rs`：`collect_gc_candidates` 与 `sweep_gc_candidates` 必须分两次独立全扫描；LIST 截断 / descriptor 失败 → 零删除零写 candidate；`config.dsbk` 永不删；共享对象按全仓 live set 保留；grace 未满不删。上游 API 经 `delta_gc_upstream.rs.in`。测试 `sync_r12_delta_gc.rs` 9 例。**未接线**，不能宣称增量备份 / 增量 GC 已实现。
+
+## Round 18（只审合修复/文档，不接 integration）
+
+### tombstone-port（分支 `cursor/cloud-sync-sota-tombstone-port-b343` @ `06e82848`）
+
+对照并行枝 `fix-sync-tombstone-db14` 审过：产品语义是 fail-closed（共享内容对象不得随 tombstone 物理删除）。专属枝 FTP 父目录 550 已幂等，**不**合原枝 `ftp.rs`（会放松 550 白名单）。
+
+移植到 `5aab188a`：`download_assets_manifest_before_tombstones` 仅供 tombstone 应用；内容寻址对象显式 skip delete；legacy `data_governance/assets/` 仍删。锁定测 `asset_tombstone_resolves_object_key_and_keeps_shared_content_object`（本机 1 绿）。
+
+### licenses notices（不改 lockfile）
+
+Frontend `licenses:check` 红是 `Cargo.lock` SHA 与 `THIRD_PARTY_NOTICES.txt` 不同步（R09-names 加入 `unicode-normalization@0.1.25`）。按现有锁文件重生成声明；**未改** `Cargo.lock` / `package-lock.json`。

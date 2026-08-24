@@ -1301,6 +1301,7 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         compressionLevel: 6,
         includeChecksums: true,
         encryptionPassword: undefined,
+        useStoredCloudEncryptionPassword: undefined,
       });
     });
 
@@ -1314,6 +1315,7 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         compressionLevel: undefined,
         includeChecksums: undefined,
         encryptionPassword: undefined,
+        useStoredCloudEncryptionPassword: undefined,
       });
     });
 
@@ -1327,6 +1329,21 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         compressionLevel: 6,
         includeChecksums: true,
         encryptionPassword: 'my-secret-passphrase',
+        useStoredCloudEncryptionPassword: undefined,
+      });
+    });
+
+    it('passes useStoredCloudEncryptionPassword without reading a password in the frontend', async () => {
+      mockInvoke.mockResolvedValue(mockResponse);
+      await exportZip('backup-id', undefined, undefined, undefined, undefined, true);
+
+      expectSingleInvoke('data_governance_export_zip', {
+        backupId: 'backup-id',
+        outputPath: undefined,
+        compressionLevel: undefined,
+        includeChecksums: undefined,
+        encryptionPassword: undefined,
+        useStoredCloudEncryptionPassword: true,
       });
     });
   });
@@ -1340,6 +1357,7 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         zipPath: '/tmp/backup.zip',
         backupId: 'imported-backup',
         password: undefined,
+        useStoredCloudEncryptionPassword: undefined,
       });
     });
 
@@ -1351,6 +1369,7 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         zipPath: '/tmp/backup.zip',
         backupId: undefined,
         password: undefined,
+        useStoredCloudEncryptionPassword: undefined,
       });
     });
 
@@ -1362,6 +1381,19 @@ describe('DataGovernanceApi ZIP Export/Import contract', () => {
         zipPath: '/tmp/backup.zip',
         backupId: undefined,
         password: 'my-secret-passphrase',
+        useStoredCloudEncryptionPassword: undefined,
+      });
+    });
+
+    it('passes useStoredCloudEncryptionPassword for stored-password import', async () => {
+      mockInvoke.mockResolvedValue({ ...mockResponse, kind: 'import' });
+      await importZip('/tmp/backup.zip', undefined, undefined, true);
+
+      expectSingleInvoke('data_governance_import_zip', {
+        zipPath: '/tmp/backup.zip',
+        backupId: undefined,
+        password: undefined,
+        useStoredCloudEncryptionPassword: true,
       });
     });
   });

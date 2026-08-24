@@ -2818,10 +2818,9 @@ async fn download_only_asset_tombstone_does_not_rehydrate_in_same_round() {
 /// 同内容双 key 的删除传播：
 ///
 /// 1. tombstone 应用必须在「未按 tombstone 过滤」的清单上解析 object_key，否则
-///    条目已被摘掉，只能回退到 legacy 逻辑路径 `data_governance/assets/{key}`，
-///    在 FTP 上会因父目录 cwd 550 直接硬失败。
+///    条目已被摘掉，只能回退到 legacy 逻辑路径 `data_governance/assets/{key}`。
 /// 2. 解析出的内容寻址对象是共享 retention unit，不得随 tombstone 物理删除，
-///    否则会连带打断同内容的其他逻辑 key。
+///    否则会连带打断同内容的其他逻辑 key。这是显式 skip，而不是靠 miss。
 #[tokio::test]
 async fn asset_tombstone_resolves_object_key_and_keeps_shared_content_object() {
     let storage = MockCloudStorage::new();

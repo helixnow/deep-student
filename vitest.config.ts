@@ -19,10 +19,16 @@ export default defineConfig({
     // ⚠️ 不要再开 singleFork：单进程串行会让 jsdom 内存跨文件累积，
     // 大批量文件跑到中途触发 V8 GC 抖动近似死锁（本地与 CI 分片 4 均复现过）。
     // 多进程并行 + 堆上限兜底，内存有界且显著更快。
+    // CI 分片曾把单个 worker 顶死在 4096MB（日志约 4001MB 后 OOM），
+    // 不是断言失败。CI 提高单进程堆、同时把 forks 上限收成 2，避免
+    // 4 worker × 6GB 撑爆 runner；不放宽任何用例。
     pool: 'forks',
     poolOptions: {
       forks: {
-        execArgv: ['--max-old-space-size=4096'],
+        execArgv: [
+          process.env.CI ? '--max-old-space-size=6144' : '--max-old-space-size=4096',
+        ],
+        ...(process.env.CI ? { maxForks: 2 } : {}),
       },
     },
   },
