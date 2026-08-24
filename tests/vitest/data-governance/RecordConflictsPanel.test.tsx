@@ -100,8 +100,16 @@ const defaultRows: RecordConflictRow[] = [
 beforeEach(() => {
   vi.clearAllMocks();
   mockListRecordConflicts.mockResolvedValue(defaultRows);
-  // 2 组已加载（mistakes/anki_cards/card-1 + legacy_db/notes/note-9），后端共 3 组未解决
-  mockCountRecordConflicts.mockResolvedValue({ mistakes: 2, legacy_db: 1 });
+  // 2 组已加载（mistakes/anki_cards/card-1 + legacy_db/notes/note-9），后端共 3 组未解决。
+  // 形状与 RecordConflictCounts 一致（per_database + total_groups/total_rows）。
+  mockCountRecordConflicts.mockResolvedValue({
+    per_database: {
+      mistakes: { groups: 2, rows: 3 },
+      legacy_db: { groups: 1, rows: 1 },
+    },
+    total_groups: 3,
+    total_rows: 4,
+  });
 });
 
 // ============================================================================
@@ -131,8 +139,13 @@ describe('RecordConflictsPanel 标题', () => {
     expect(calledKeys).not.toContain('data:governance.conflict_panel_title');
   });
 
-  it('计数接口尚未返回时以已加载组数兜底，标题不显示 0', async () => {
-    mockCountRecordConflicts.mockResolvedValue({});
+  it('计数接口报 0 组时以已加载组数兜底，标题不显示 0', async () => {
+    // 例如计数与列表来自不同快照：count 尚未察觉新冲突时不能把标题压成 0
+    mockCountRecordConflicts.mockResolvedValue({
+      per_database: {},
+      total_groups: 0,
+      total_rows: 0,
+    });
     render(<RecordConflictsPanel />);
 
     await waitFor(() => {

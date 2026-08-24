@@ -288,7 +288,8 @@ describe('repository-wide scrollbar integration contract', () => {
     ).toContain('.scrollbar-none [class~="os-scrollbar"] {');
   });
 
-  it('does not introduce feature-private visible scrollbar recipes', () => {
+  // 全仓 src/**/*.{css,ts,tsx} 逐文件正则扫描，CI 慢盘上实测可超过默认 5s（shard 4 曾 8.2s）
+  it('does not introduce feature-private visible scrollbar recipes', { timeout: 30_000 }, () => {
     expect(findPrivateVisibleScrollbarRecipes()).toEqual([]);
   });
 
