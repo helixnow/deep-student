@@ -34,6 +34,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Command, CommandView, DependencyResolver } from '../registry/types';
 import { isChatCommandEnabled } from '../registry/capabilityRegistry';
+import { requestChatNewSession } from '@/features/chat/navigation/pendingChatNavigation';
 
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
@@ -60,7 +61,9 @@ function createRawChatCommands(): Command[] {
       priority: 100,
       visibleInViews: ['chat-v2'],
       execute: () => {
-        window.dispatchEvent(new CustomEvent('CHAT_NEW_SESSION'));
+        // 经导航握手派发：ChatV2Page 未挂载/未完成初始加载时意图挂起，
+        // 挂载就绪后消费（CHAT_NEW_SESSION 事件本身仍照发，供壳层开窗/切视图）。
+        requestChatNewSession();
       },
     },
     {

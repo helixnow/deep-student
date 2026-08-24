@@ -49,6 +49,7 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/Desk
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入 sessionManager 以访问当前会话 store
 import { sessionManager } from '../core/session/sessionManager';
+import { invalidatePendingChatNavigation } from '../navigation/pendingChatNavigation';
 import { useUIStore } from '@/stores/uiStore';
 
 // 懒加载统一应用面板
@@ -707,13 +708,20 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
   });
 
+  // 用户手动点选会话：先作废导航握手里挂起的意图（冷启动期的自动导航
+  // 不得在就绪后把用户拽回目标会话），再执行常规切换
+  const setCurrentSessionIdByUser = useCallback<typeof setCurrentSessionId>((value) => {
+    invalidatePendingChatNavigation();
+    setCurrentSessionId(value);
+  }, [setCurrentSessionId]);
+
   // ===== 会话项渲染 hook =====
   const {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
     editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
     editingTitle, renamingSessionId, renameError, groups: visibleGroups, sessions, totalSessionCount,
-    t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
+    t, resetDeleteConfirmation, setCurrentSessionId: setCurrentSessionIdByUser, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,

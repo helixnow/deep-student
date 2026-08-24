@@ -7,6 +7,7 @@
 import { workbenchBus } from '../../core/workbenchBus';
 import type { LaunchReason } from '../../core/types';
 import { createSessionWithDefaults } from '@/features/chat/core/session/createSessionWithDefaults';
+import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 import { CHAT_APP_TYPE_ID, registerChatApp } from './register';
 
 export interface LaunchNewChatSessionOptions {
@@ -22,7 +23,7 @@ export interface LaunchNewChatSessionResult {
   windowId: string | null;
 }
 
-/** 聚焦 Chat 单例并切换到指定会话；重复事件覆盖冷启动/冻结恢复窗口。 */
+/** 聚焦 Chat 单例并切换到指定会话；冷启动/冻结恢复窗口由导航握手覆盖。 */
 export function openChatSession(sessionId: string, reason: LaunchReason = 'api'): string | null {
   registerChatApp();
   const windowId = workbenchBus.launch({
@@ -30,12 +31,9 @@ export function openChatSession(sessionId: string, reason: LaunchReason = 'api')
     instanceKey: sessionId,
     reason,
   });
-  const fire = () => {
-    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
-  };
-  fire();
-  window.setTimeout(fire, 400);
-  window.setTimeout(fire, 1200);
+  // ChatV2Page 已就绪 → 立即派发 navigate-to-session；
+  // 未就绪（窗口刚开、页面冷启动中）→ 挂起，初始加载完成后消费。
+  requestChatSessionNavigation(sessionId);
   return windowId;
 }
 

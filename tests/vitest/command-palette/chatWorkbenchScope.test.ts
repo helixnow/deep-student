@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TFunction } from 'i18next';
 
 import { getChatCommands } from '@/command-palette/modules/chat.commands';
 import { getChatCapability } from '@/command-palette/registry/capabilityRegistry';
 import type { DependencyResolver } from '@/command-palette/registry/types';
+import {
+  markChatPageReady,
+  peekPendingChatNavigation,
+  resetChatNavigationHandshakeForTest,
+} from '@/features/chat/navigation/pendingChatNavigation';
 
 function createDeps(
   view: ReturnType<DependencyResolver['getCurrentView']>,
@@ -28,6 +33,10 @@ describe('chat command workbench scope', () => {
   const commands = getChatCommands();
   const readyCommands = commands.filter((command) => getChatCapability(command.id) === 'ready');
   const hiddenCommands = commands.filter((command) => getChatCapability(command.id) === 'hidden');
+
+  afterEach(() => {
+    resetChatNavigationHandshakeForTest();
+  });
 
   it('covers both ready and hidden commands', () => {
     expect(readyCommands.length).toBeGreaterThan(0);
@@ -72,6 +81,26 @@ describe('chat command workbench scope', () => {
     try {
       newSession.execute(createDeps('workbench', 'chat'));
       expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('CHAT_NEW_SESSION', listener);
+    }
+  });
+
+  it('queues chat.new-session while ChatV2Page is not ready and replays it on ready', () => {
+    const newSession = commands.find((command) => command.id === 'chat.new-session');
+    if (!newSession) throw new Error('chat.new-session command must be registered');
+
+    // 页面未就绪：事件照发（壳层开窗依赖），意图入 pending
+    newSession.execute(createDeps('workbench', 'chat'));
+    expect(peekPendingChatNavigation()).toEqual({ kind: 'new-session' });
+
+    // 页面就绪：pending 重放为 CHAT_NEW_SESSION
+    const listener = vi.fn();
+    window.addEventListener('CHAT_NEW_SESSION', listener);
+    try {
+      markChatPageReady();
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(peekPendingChatNavigation()).toBeNull();
     } finally {
       window.removeEventListener('CHAT_NEW_SESSION', listener);
     }

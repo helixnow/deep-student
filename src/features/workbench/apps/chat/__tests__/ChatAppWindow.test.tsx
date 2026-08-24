@@ -58,6 +58,11 @@ vi.mock('../../system/SystemWindowShared', () => ({
 
 import { ChatAppWindow } from '../ChatAppWindow';
 import { STREAM_PRESET_DOWNSHIFT_DELAY_MS } from '../useDeferredStreamPreset';
+import {
+  markChatPageReady,
+  peekPendingChatNavigation,
+  resetChatNavigationHandshakeForTest,
+} from '@/features/chat/navigation/pendingChatNavigation';
 
 function makeProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -77,6 +82,7 @@ describe('ChatAppWindow', () => {
     fakeSessions.clear();
     managerListeners.clear();
     currentSessionId = null;
+    resetChatNavigationHandshakeForTest();
     document.querySelectorAll('[data-wb-titlebar-slot]').forEach((element) => element.remove());
   });
 
@@ -165,8 +171,7 @@ describe('ChatAppWindow', () => {
     expect(page).toHaveAttribute('data-stream-preset', 'silky');
   });
 
-  it('replays an initial history-session target after a cold launch', () => {
-    vi.useFakeTimers();
+  it('hands an initial history-session target to the navigation handshake on cold launch', () => {
     const received: string[] = [];
     const listener = (event: Event) => {
       received.push((event as CustomEvent<{ sessionId: string }>).detail.sessionId);
@@ -174,11 +179,24 @@ describe('ChatAppWindow', () => {
     window.addEventListener('navigate-to-session', listener);
     try {
       render(<ChatAppWindow {...makeProps({ instanceKey: 'sess_history' })} />);
-      act(() => vi.runAllTimers());
-      expect(received).toEqual(['sess_history', 'sess_history', 'sess_history']);
+
+      // 页面未就绪：不再定时三连发，意图挂起等待 ChatV2Page 完成初始加载
+      expect(received).toEqual([]);
+      expect(peekPendingChatNavigation()).toEqual({ kind: 'session', sessionId: 'sess_history' });
+
+      // ChatV2Page 就绪（初始加载完成）：意图被消费并重放一次标准事件
+      act(() => { markChatPageReady(); });
+      expect(received).toEqual(['sess_history']);
+      expect(peekPendingChatNavigation()).toBeNull();
     } finally {
       window.removeEventListener('navigate-to-session', listener);
-      vi.useRealTimers();
     }
+  });
+
+  it('skips the handshake when a current session already exists (warm focus)', () => {
+    makeFakeStore('sess_current', '当前会话');
+    currentSessionId = 'sess_current';
+    render(<ChatAppWindow {...makeProps({ instanceKey: 'sess_history' })} />);
+    expect(peekPendingChatNavigation()).toBeNull();
   });
 });

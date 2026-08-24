@@ -13,6 +13,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { DsButton } from '@/components/ui/DsButton';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
@@ -31,13 +32,6 @@ const SHELL_VAR_RESET = {
   '--shell-titlebar-height': '0px',
   '--shell-layout-gap': '0px',
 } as React.CSSProperties;
-
-function dispatchSessionNavigation(sessionId: string): () => void {
-  const timers = [0, 400, 1200].map((delay) => window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
-  }, delay));
-  return () => timers.forEach((timer) => window.clearTimeout(timer));
-}
 
 export const ChatAppWindow: React.FC<AppWindowProps> = ({
   windowId,
@@ -128,10 +122,11 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     }
   }), [activeSessionId, syncWindowTitle]);
 
-  // 首次由历史会话入口打开窗口时，在 ChatV2Page 完成冷启动后切到目标会话。
+  // 首次由历史会话入口打开窗口时：交给导航握手。ChatV2Page 完成冷启动
+  // （初始加载结束）后消费该意图；用户提前手动切会话则意图自动作废。
   useEffect(() => {
     if (!instanceKey || sessionManager.getCurrentSessionId()) return;
-    return dispatchSessionNavigation(instanceKey);
+    requestChatSessionNavigation(instanceKey);
   }, [instanceKey]);
 
   return (

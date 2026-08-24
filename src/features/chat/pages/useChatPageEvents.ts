@@ -18,6 +18,10 @@ import {
   shouldChatHandleOpenNote,
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
+import {
+  invalidatePendingChatNavigation,
+  markChatPageReady,
+} from '../navigation/pendingChatNavigation';
 import { isHiddenDraftSession } from './draftSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -85,6 +89,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     };
   }, [notesContext, t]);
 
+  // 导航握手：初始加载完成（loadSessions 已选定启动会话，不会再覆盖导航）后
+  // 进入就绪态并消费挂起的 navigate-to-session / CHAT_NEW_SESSION 意图。
+  // 卸载或重新进入加载态时解除就绪。
+  useEffect(() => {
+    if (isInitialLoading) return;
+    return markChatPageReady();
+  }, [isInitialLoading]);
+
   // 只在挂载时加载一次：loadSessions 的身份会随语言切换（t）变化，
   // 若直接依赖会导致切换语言时重新加载并把当前会话重置回启动 draft
   const hasLoadedSessionsRef = useRef(false);
@@ -146,6 +158,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     const sid = (e as CustomEvent<{ sessionId?: string }>)?.detail?.sessionId;
     if (!sid) return;
 
+    // 本次事件已被直接消费：作废更早挂起的导航意图（最新意图生效）
+    invalidatePendingChatNavigation();
     setCurrentSessionId(sid);
 
     try {
@@ -530,6 +544,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       // 新建会话
       [COMMAND_EVENTS.CHAT_NEW_SESSION]: () => {
         console.log('[ChatV2Page] CHAT_NEW_SESSION triggered');
+        // 事件已被直接消费：清掉握手挂起意图，避免就绪后重复创建
+        invalidatePendingChatNavigation();
         createSession(getCurrentSessionGroupId());
       },
       // P1-06: 新建分析会话
