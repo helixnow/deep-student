@@ -753,6 +753,12 @@
       "retryFailedSegments": "重试失败分段",
       "synced": "已同步",
       "syncToAnki": "同步到 Anki",
+      "occlusion": {
+        "badge": "图像遮挡",
+        "draftHint": "自动遮挡草稿，请在导出前检查",
+        "imageAlt": "图像遮挡卡片",
+        "imageUnavailable": "遮挡图片无法加载，已保留文字内容"
+      },
       "syncStatus": {
         "pending": "待同步",
         "syncing": "同步中...",
@@ -807,6 +813,22 @@
           "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
           "recovered": "自动生成未完成，已通过备用方式补齐 {{count}} 张可用卡片。",
           "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
+        },
+        "media": {
+          "label": "媒体",
+          "summary": "媒体：导入 {{imported}}/{{declared}}，跳过 {{skipped}}",
+          "skipReasonLine": "{{reason}} × {{count}}",
+          "filenamesSample": "示例：{{names}}",
+          "reasons": {
+            "mediaImportDisabled": "媒体导入已关闭",
+            "manifestUnparsed": "媒体清单无法解析",
+            "mediaDirUnavailable": "媒体目录不可用",
+            "unsafeFilename": "文件名不安全，已拦截",
+            "entryMissing": "包内缺少对应条目",
+            "entryOversized": "文件超出大小限制",
+            "ioError": "写入失败（IO 错误）",
+            "orphanEntry": "孤立条目（清单未声明）"
+          }
         }
       },
       "errors": {
@@ -841,6 +863,9 @@
       },
       "warnings": {
         "generationRecovered": "自动生成出现问题，已通过备用方式提供 {{count}} 张可用卡片。",
+        "maxCardsClamped": "请求生成 {{requested}} 张卡片，已按单次上限调整为 {{applied}} 张；如需更多卡片，请分批生成。",
+        "preferenceMemoryPersistFailed": "本次制卡偏好未能保存，但卡片生成与编辑结果不受影响。",
+        "preferenceMemoryStoreInvalid": "历史制卡偏好数据无效，已忽略并继续本次生成。",
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",

@@ -41,7 +41,6 @@ commands.allow = [
   "canvas_note_replace",
   "canvas_note_set",
   "chat_v2_add_tag",
-  "chat_v2_anki_cards_result",
   "chat_v2_archive_group",
   "chat_v2_archive_session",
   "chat_v2_ask_user_respond",

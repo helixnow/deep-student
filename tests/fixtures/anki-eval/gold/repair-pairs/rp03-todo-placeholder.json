@@ -1,0 +1,18 @@
+{
+  "id": "rp03-todo-placeholder",
+  "label": "edited_major",
+  "source": "synthetic-style-rewrite",
+  "description": "模型偷懒把 back 写成 TODO 占位符，用户补写完整答案。改前应命中 todo_residue（Rust 侧）/ placeholder_text + todo_residue（eval 侧），改后零命中。",
+  "original": {
+    "front": "三色标记法在垃圾回收中的作用是什么？",
+    "back": "TODO"
+  },
+  "edited": {
+    "front": "三色标记法在垃圾回收中的作用是什么？",
+    "back": "并发标记阶段用白、灰、黑三色跟踪对象可达性，配合写屏障避免漏标导致的误回收。"
+  },
+  "expected": {
+    "originalCodes": ["placeholder_text", "todo_residue"],
+    "editedCodes": []
+  }
+}

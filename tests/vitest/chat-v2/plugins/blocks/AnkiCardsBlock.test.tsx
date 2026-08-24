@@ -37,10 +37,14 @@ vi.mock('react-i18next', () => ({
         'blocks.ankiCards.progress.metrics.cardsValue': 'Cards: {{count}}',
         'blocks.ankiCards.progress.metrics.segmentsValue': 'Segments: {{completed}}/{{total}}',
       };
-      const template = dict[key] ?? options?.defaultValue ?? key;
-      return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-        options && options[name] !== undefined ? String(options[name]) : match
-      );
+      if (dict[key]) {
+        // 简易 {{var}} 插值，贴近真实 i18n 行为
+        return dict[key].replace(/\{\{(\w+)\}\}/g, (_match, name: string) =>
+          String((options as Record<string, unknown> | undefined)?.[name] ?? ''),
+        );
+      }
+      if (options?.defaultValue) return options.defaultValue;
+      return key;
     },
   }),
   // Some modules initialize i18n in test environment and expect this export.

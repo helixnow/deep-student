@@ -1313,6 +1313,43 @@ pub struct AnkiGenerationOptions {
     /// 是否启用 LLM 智能分段边界检测
     #[serde(default)]
     pub enable_llm_boundary_detection: Option<bool>,
+
+    // ===== FSRS 复习数据回流（Round 3 #5） =====
+    /// 是否将本地 FSRS 复习画像 / 语义干扰预警注入制卡 prompt。
+    /// `None` 视为开启（默认行为）；显式 `Some(false)` 可关闭。
+    /// 所有统计只读本地 SQLite，数据不出本地；查询失败时降级为不注入，绝不阻断制卡。
+    #[serde(default)]
+    pub fsrs_feedback: Option<bool>,
+    /// 本次生成实际注入的「用户复习画像」section（已渲染文本）。
+    /// 通常由服务端在生成开始时自动构建填充；调用方也可显式传入以跳过自动构建。
+    #[serde(default)]
+    pub user_review_profile: Option<String>,
+
+    // ===== 输出协议与 QA 扩展（Round 4 接线） =====
+    /// 请求的流式输出协议：`delimiter` / `json_object` / `json_schema`；
+    /// `None` 表示 auto（按供应商能力决策）。wire 契约与
+    /// `anki_protocol::StructuredOutputOptions` 对任务 options JSON 的二次解析一致：
+    /// 本字段序列化进 `anki_generation_options_json` 后由流式服务读取。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_protocol: Option<String>,
+    /// 是否启用字段 QA 校验留痕（`_qa_flags`）；`None` 表示默认开启。
+    /// 与 `output_protocol` 同一条 wire 契约。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_qa_pass: Option<bool>,
+
+    // ===== LLM critic 与 Sidekick 模型路由扩展 =====
+    /// 是否启用生成后 LLM critic；`None` 表示默认关闭。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_critic_pass: Option<bool>,
+    /// `enable_critic_pass` 的兼容别名；任一开关为 true 即启用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enable_llm_critic: Option<bool>,
+    /// critic prompt 的 token 预算覆盖；`None` 使用模块默认值。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critic_token_budget: Option<u32>,
+    /// Sidekick 模型路由模式：`auto` / `single`；`None` 表示 auto。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidekick_model_routing: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

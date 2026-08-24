@@ -70,6 +70,9 @@ interface GradingMainProps {
   isPartialResult?: boolean;
   /** 采纳批改建议：应用一处修改到原文 */
   onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 把批改结果送进制卡链路 */
+  onGenerateCards?: () => void;
+  isGeneratingCards?: boolean;
 
   // Round Props
   currentRound: number;
@@ -145,6 +148,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onRetry,
   isPartialResult,
   onApplySuggestion,
+  onGenerateCards,
+  isGeneratingCards,
   currentRound,
   onModesChange,
   settingsAsPage = false,
@@ -258,6 +263,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onRetry={onRetry}
       isPartialResult={isPartialResult}
       onApplySuggestion={onApplySuggestion}
+      onGenerateCards={onGenerateCards}
+      isGeneratingCards={isGeneratingCards}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
     />
