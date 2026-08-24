@@ -213,6 +213,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
             <span>{t('blocks.mcpTool.streamingOutput')}</span>
@@ -271,6 +272,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
             aria-label={t('blocks.mcpTool.streamingOutput')}
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
           </DsButton>
@@ -353,7 +355,10 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
             size="sm"
             onClick={onRetry}
             disabled={isRetryDisabled}
-            className={cn(isRetryDisabled ? 'bg-muted/40' : 'text-primary hover:bg-primary/10')}
+            className={cn(
+              '[@media(pointer:coarse)]:min-h-11',
+              isRetryDisabled ? 'bg-muted/40' : 'text-primary hover:bg-primary/10'
+            )}
           >
             <ArrowCounterClockwise size={14} />
             <span>{t('blocks.mcpTool.retry')}</span>
@@ -720,7 +725,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                       }
                     }));
                   }}
-                  className="bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5"
+                  className="bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5 [@media(pointer:coarse)]:min-h-11"
                 >
                   <DocIcon size={12} />
                   <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
@@ -748,7 +753,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     }
                   }));
                 }}
-                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5"
+                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5 [@media(pointer:coarse)]:min-h-11"
               >
                 <DocIcon size={12} />
                 <Eye size={10} />
@@ -770,7 +775,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     detail: { noteId, source: 'mcp_tool_block' }
                   }));
                 }}
-                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)]"
+                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               >
                 <ArrowSquareOut size={12} />
                 {t('timeline.noteTool.openNote')}
