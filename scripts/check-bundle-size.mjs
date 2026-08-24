@@ -8,8 +8,10 @@
  *
  * 必须先构建：npx vite build（脚本只测量，不构建）。
  *
- * 阈值 = 基线 × 1.05。基线为 2026-08-24 在 commit 73c05860 上
+ * 阈值 = 基线 × 1.03。基线为 2026-08-24 在 commit 1bf03a24（R2 优化
+ * 落地后：wallpapers 压缩 / pdfjs 精简 / dnd-kit 迁移）上
  * `npx vite build`（无 sourcemap）后用 zlib.gzipSync level 9 实测。
+ * R1 引入期为 +5%，R3 起收紧为 +3%（SA-R3-06）。
  * 有意降低体积后请把对应 baselineBytes 改小，收紧门禁；
  * 合理增长（新功能）需在 PR 里说明并更新基线。
  */
@@ -19,8 +21,8 @@ import { gzipSync } from 'node:zlib';
 
 const DIST_DIR = 'dist';
 const ASSETS_DIR = join(DIST_DIR, 'assets');
-/** 允许超出基线的比例（+5%）。 */
-const HEADROOM = 1.05;
+/** 允许超出基线的比例（+3%）。 */
+const HEADROOM = 1.03;
 
 /**
  * 关键 chunk 预算。kind：
@@ -30,13 +32,13 @@ const HEADROOM = 1.05;
  * baselineBytes 为 gzip(level 9) 字节数。
  */
 const BUDGETS = [
-  { name: 'entry (index-*.js)', kind: 'entry', baselineBytes: 1_217_878 },
-  { name: 'init-*.js', kind: 'chunk', pattern: /^init-[\w-]+\.js$/, baselineBytes: 1_430_457 },
-  { name: 'vendor-mermaid-*.js', kind: 'chunk', pattern: /^vendor-mermaid-[\w-]+\.js$/, baselineBytes: 734_883 },
-  { name: 'vendor-pptx-*.js', kind: 'chunk', pattern: /^vendor-pptx-[\w-]+\.js$/, baselineBytes: 436_147 },
-  { name: 'vendor-milkdown-*.js', kind: 'chunk', pattern: /^vendor-milkdown-[\w-]+\.js$/, baselineBytes: 396_386 },
+  { name: 'entry (index-*.js)', kind: 'entry', baselineBytes: 1_212_646 },
+  { name: 'init-*.js', kind: 'chunk', pattern: /^init-[\w-]+\.js$/, baselineBytes: 1_430_414 },
+  { name: 'vendor-mermaid-*.js', kind: 'chunk', pattern: /^vendor-mermaid-[\w-]+\.js$/, baselineBytes: 734_881 },
+  { name: 'vendor-pptx-*.js', kind: 'chunk', pattern: /^vendor-pptx-[\w-]+\.js$/, baselineBytes: 436_143 },
+  { name: 'vendor-milkdown-*.js', kind: 'chunk', pattern: /^vendor-milkdown-[\w-]+\.js$/, baselineBytes: 396_367 },
   { name: 'vendor-exceljs-*.js', kind: 'chunk', pattern: /^vendor-exceljs-[\w-]+\.js$/, baselineBytes: 269_554 },
-  { name: 'total JS (dist/assets/*.js)', kind: 'total', baselineBytes: 8_544_326 },
+  { name: 'total JS (dist/assets/*.js)', kind: 'total', baselineBytes: 8_510_689 },
 ];
 
 const warnOnly =
@@ -103,7 +105,7 @@ for (const budget of BUDGETS) {
   const over = actualBytes > maxBytes;
   if (over) {
     violations.push(
-      `${budget.name}: gzip ${kb(actualBytes)} exceeds limit ${kb(maxBytes)} (baseline ${kb(budget.baselineBytes)} +5%)`,
+      `${budget.name}: gzip ${kb(actualBytes)} exceeds limit ${kb(maxBytes)} (baseline ${kb(budget.baselineBytes)} +3%)`,
     );
   }
   rows.push({
@@ -116,7 +118,7 @@ for (const budget of BUDGETS) {
   });
 }
 
-console.log('\nBundle size check (gzip, limit = baseline +5%)\n');
+console.log('\nBundle size check (gzip, limit = baseline +3%)\n');
 for (const row of rows) {
   console.log(
     `  [${row.status.padEnd(4)}] ${row.name.padEnd(30)} ${kb(row.actualBytes).padStart(11)} / ${kb(row.maxBytes).padStart(11)}  (${row.deltaPct}% vs baseline)  ${row.detail}`,
