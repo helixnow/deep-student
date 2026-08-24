@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 73（2026-08-24）— 外会话 session_started / 流式订阅 / 引用 a11y
+
+1. [x] 外会话 `session_started` 只写入 `sessions[id]`，不再顶掉活跃顶层
+2. [x] Chat 在流式期间也订阅 `hpias_event`，避免漏掉早期 lifecycle
+3. [x] Rust 无 research 块时不 emit `session_started`
+4. [x] research-report 引用改为 `role="note"`，不再假装可激活链接
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 72（2026-08-24）— Markdown ping/background + 宿主 i18n
 
 1. [x] `sanitizeGenerativeMarkdown` 把 `ping` / `background` 当 URL 属性消毒

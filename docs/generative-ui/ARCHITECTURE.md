@@ -1,6 +1,6 @@
 # Generative UI 架构方案（DeepStudent）
 
-> 分支：`Generative-UI-0824` · Round 41–72（18 块已接宿主；HPIAS 共享订阅 + 多会话切片；合入 main 仍 ⏳）
+> 分支：`Generative-UI-0824` · Round 41–73（18 块已接宿主；HPIAS 共享订阅 + 多会话切片；合入 main 仍 ⏳）
 
 ## 1. 核心结论
 
@@ -152,7 +152,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 - Rust：`generative_ui_executor` 单元（含 v1.1 version/layout）+ hpias 模块（需 Cargo stable + Linux GTK CI）
 - HpiasStore 多会话切片：`sessions[sessionId]` 保活并发研究；Chat 面板按 `researchSessionId` 读取
 - HPIAS 共享订阅：`retainSharedHpiasEventBridge` 引用计数，多 Chat 块只 listen 一次
-- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–72 已收口；合入 main 仍 ⏳）
+- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–73 已收口；合入 main 仍 ⏳）
 - Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

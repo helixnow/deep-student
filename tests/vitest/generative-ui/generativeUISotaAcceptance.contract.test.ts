@@ -421,8 +421,8 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     id: 'round61-hpias-store-session-guard',
     check: () =>
       fileContains('src/stores/researchStore.ts', [
-        "e.type !== 'session_started'",
         'eventSessionId !== s.sessionId',
+        '外会话（含 session_started）',
       ]),
   },
   {
@@ -496,6 +496,22 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
         'new GenerativeActionUndoStack()',
         'undoStack={undoStack}',
+      ]),
+  },
+  {
+    id: 'round73-foreign-session-started-isolated',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        '外会话（含 session_started）',
+      ]) &&
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'enabled: shouldBridgeHpias,',
+      ]) &&
+      fileContains('src/features/generative-ui/components/ResearchReportBlock.tsx', [
+        'role="note"',
+      ]) &&
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        'intent_has_research_blocks(&intent)',
       ]),
   },
   {
