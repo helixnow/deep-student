@@ -434,7 +434,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             size="sm"
             disabled={deleting}
             onClick={onCancelDelete}
-            className="text-xs"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:cancel')}
           </DsButton>
@@ -444,7 +444,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             size="sm"
             disabled={deleting}
             onClick={onConfirmDelete}
-            className="text-xs"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             <Trash size={13} />
             {t('library.delete')}
@@ -506,7 +506,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     size="sm"
                     disabled={saving || busy}
                     onClick={() => void handleSave()}
-                    className="text-xs [@media(pointer:coarse)]:min-h-11"
+                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
                   >
                     {translate('library.save')}
                   </DsButton>
@@ -519,7 +519,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       setEditing(false);
                       setEditError(null);
                     }}
-                    className="text-xs [@media(pointer:coarse)]:min-h-11"
+                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
                   >
                     {translate('library.cancel')}
                   </DsButton>
@@ -598,7 +598,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     size="sm"
                     disabled={busy}
                     onClick={beginEdit}
-                    className="text-xs [@media(pointer:coarse)]:min-h-11"
+                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
                   >
                     <PencilSimple size={13} />
                     {translate('library.edit')}
@@ -610,7 +610,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       size="sm"
                       disabled={busy}
                       onClick={() => onUndoReview(card.id)}
-                      className="text-xs [@media(pointer:coarse)]:min-h-11"
+                      className="text-xs [@media(pointer:coarse)]:!min-h-11"
                     >
                       <ArrowCounterClockwise size={13} />
                       {translate('library.undoReview')}
@@ -630,7 +630,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                         setResetArmed(false);
                         onResetProgress(card.id);
                       }}
-                      className="text-xs [@media(pointer:coarse)]:min-h-11"
+                      className="text-xs [@media(pointer:coarse)]:!min-h-11"
                     >
                       <Eraser size={13} />
                       {resetArmed

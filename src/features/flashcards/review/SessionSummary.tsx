@@ -137,7 +137,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <DsButton
             type="button"
             variant="default"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={busy}
             onClick={onUndo}
           >
@@ -149,7 +149,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <DsButton
             type="button"
             variant="default"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={busy}
             onClick={onResume}
           >
@@ -161,7 +161,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <DsButton
             type="button"
             variant="primary"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={busy}
             onClick={onContinue}
           >
@@ -172,7 +172,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
         <DsButton
           type="button"
           variant={showContinue ? 'default' : 'primary'}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onBack}
         >
           {t('session.backToday')}

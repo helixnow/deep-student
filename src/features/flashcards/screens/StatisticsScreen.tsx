@@ -272,7 +272,7 @@ export const StatisticsScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={handleRefresh}
-          className="shrink-0 text-sm [@media(pointer:coarse)]:min-h-11"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('statistics.refresh')}
@@ -293,7 +293,7 @@ export const StatisticsScreen: React.FC = () => {
             variant="default"
             size="sm"
             onClick={() => void load()}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowClockwise size={15} />
             {t('statistics.retry')}

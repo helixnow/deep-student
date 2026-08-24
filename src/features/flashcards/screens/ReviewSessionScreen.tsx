@@ -386,7 +386,7 @@ export const ReviewSessionScreen: React.FC = () => {
           variant="default"
           disabled={ratingBusy}
           onClick={() => void rate(lastRated)}
-          className="shrink-0 text-xs [@media(pointer:coarse)]:min-h-11"
+          className="shrink-0 text-xs [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={14} />
           {t('session.retry')}
@@ -422,7 +422,7 @@ export const ReviewSessionScreen: React.FC = () => {
               type="button"
               variant="primary"
               onClick={() => void retryBatchSession()}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise size={16} />
               {t('session.retry')}
@@ -432,7 +432,7 @@ export const ReviewSessionScreen: React.FC = () => {
             type="button"
             variant="default"
             onClick={endSession}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('session.backToday')}
           </DsButton>
@@ -505,7 +505,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => setBatchNoticeDismissed(true)}
             aria-label={t('library.dismiss')}
             title={t('library.dismiss')}
-            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <X size={13} />
           </DsButton>
@@ -513,7 +513,7 @@ export const ReviewSessionScreen: React.FC = () => {
       ) : null}
 
       <div className="flex items-center justify-between gap-2">
-        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:min-h-11">
+        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:!min-h-11">
           <ArrowLeft size={14} />
           {t('session.exit')}
         </DsButton>
@@ -566,7 +566,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.undo')}
           aria-keyshortcuts="Z Control+Z Meta+Z"
           title={`${t('session.undo')} · Z`}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
@@ -580,7 +580,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => void resumeLastSuspended()}
             aria-label={t('session.resume')}
             title={t('session.resume')}
-            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Play size={16} />
           </DsButton>
@@ -595,7 +595,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.edit')}
           aria-keyshortcuts="E"
           title={`${t('session.edit')} · E`}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <PencilSimple size={16} />
         </DsButton>
@@ -609,7 +609,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('review.skip')}
           aria-keyshortcuts="S"
           title={`${t('review.skip')} · S`}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <SkipForward size={16} />
         </DsButton>
@@ -622,7 +622,7 @@ export const ReviewSessionScreen: React.FC = () => {
           onClick={() => void suspendCurrent()}
           aria-label={t('session.suspend')}
           title={t('session.suspend')}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Pause size={16} />
         </DsButton>
@@ -669,7 +669,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="ghost"
                 disabled={ratingBusy}
                 onClick={() => setEditing(false)}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <X size={16} />
                 {t('session.cancelEdit')}
@@ -679,7 +679,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="primary"
                 disabled={ratingBusy || !draftIsValid}
                 onClick={() => void saveEdit()}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <FloppyDisk size={16} />
                 {t('session.saveEdit')}

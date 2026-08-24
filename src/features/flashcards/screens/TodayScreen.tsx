@@ -166,7 +166,7 @@ export const TodayScreen: React.FC = () => {
             onClick={() => void handleRefresh()}
             aria-label={t('today.refresh')}
             title={t('today.refresh')}
-            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <ArrowClockwise size={15} />
           </DsButton>
@@ -187,7 +187,7 @@ export const TodayScreen: React.FC = () => {
               type="button"
               variant="default"
               onClick={() => void loadDue()}
-              className="text-sm [@media(pointer:coarse)]:min-h-11"
+              className="text-sm [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise size={16} />
               {t('today.retry')}
@@ -243,7 +243,7 @@ export const TodayScreen: React.FC = () => {
                   variant="primary"
                   disabled={loading || dueCards.length === 0}
                   onClick={startDueSession}
-                  className="wb-fcx-cta [@media(pointer:coarse)]:min-h-11"
+                  className="wb-fcx-cta [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Play size={16} weight="fill" />
                   {t('today.startReview')}
@@ -296,7 +296,7 @@ export const TodayScreen: React.FC = () => {
                     type="button"
                     variant="default"
                     onClick={() => setScreen('library')}
-                    className="text-sm [@media(pointer:coarse)]:min-h-11"
+                    className="text-sm [@media(pointer:coarse)]:!min-h-11"
                   >
                     <Books size={15} weight="duotone" />
                     {t('today.goLibrary')}
@@ -305,7 +305,7 @@ export const TodayScreen: React.FC = () => {
                     type="button"
                     variant="ghost"
                     onClick={() => setScreen('settings')}
-                    className="text-sm [@media(pointer:coarse)]:min-h-11"
+                    className="text-sm [@media(pointer:coarse)]:!min-h-11"
                   >
                     <ChartBar size={15} weight="duotone" />
                     {t('today.goStats')}

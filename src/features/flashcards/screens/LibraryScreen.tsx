@@ -383,7 +383,7 @@ export const LibraryScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={() => void refresh()}
-          className="shrink-0 text-sm [@media(pointer:coarse)]:min-h-11"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('library.refresh')}
@@ -408,7 +408,7 @@ export const LibraryScreen: React.FC = () => {
             className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
-        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:min-h-11">
+        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
           {t('library.search')}
         </DsButton>
       </div>
@@ -497,7 +497,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkReview}
-              className="text-xs [@media(pointer:coarse)]:min-h-11"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} weight="fill" />
               {translate('library.bulkReview', { count: reviewTargets.length })}
@@ -510,7 +510,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkEnqueue}
-              className="text-xs [@media(pointer:coarse)]:min-h-11"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <PlusCircle size={13} />
               {translate('library.bulkEnqueue', { count: enqueueTargets.length })}
@@ -523,7 +523,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkSuspend}
-              className="text-xs [@media(pointer:coarse)]:min-h-11"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Pause size={13} />
               {translate('library.bulkSuspend', { count: suspendTargets.length })}
@@ -536,7 +536,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkResume}
-              className="text-xs [@media(pointer:coarse)]:min-h-11"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} />
               {translate('library.bulkResume', { count: resumeTargets.length })}
@@ -550,8 +550,8 @@ export const LibraryScreen: React.FC = () => {
             onClick={handleBulkDelete}
             className={
               bulkDeleteArmed
-                ? 'fc-lib-armed text-xs [@media(pointer:coarse)]:min-h-11'
-                : 'text-xs [@media(pointer:coarse)]:min-h-11'
+                ? 'fc-lib-armed text-xs [@media(pointer:coarse)]:!min-h-11'
+                : 'text-xs [@media(pointer:coarse)]:!min-h-11'
             }
           >
             <Trash size={13} />
@@ -565,7 +565,7 @@ export const LibraryScreen: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={clearSelection}
-            className="text-xs [@media(pointer:coarse)]:min-h-11"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             <X size={13} />
             {translate('library.clearSelection')}
@@ -581,7 +581,7 @@ export const LibraryScreen: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={clearActionError}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('library.dismiss')}
           </DsButton>
@@ -597,7 +597,7 @@ export const LibraryScreen: React.FC = () => {
               variant="ghost"
               size="sm"
               onClick={() => void refresh()}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('library.retry')}
             </DsButton>
@@ -621,7 +621,7 @@ export const LibraryScreen: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearFilters}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {translate('library.clearFilters')}
               </DsButton>
@@ -636,7 +636,7 @@ export const LibraryScreen: React.FC = () => {
               variant="ghost"
               size="sm"
               onClick={handleClearFilters}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {translate('library.clearFilters')}
             </DsButton>
@@ -693,7 +693,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page <= 1}
             onClick={() => void goToPage(page - 1)}
             aria-label={t('library.previous')}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <CaretLeft size={14} />
             {t('library.previous')}
@@ -705,7 +705,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page >= pageCount}
             onClick={() => void goToPage(page + 1)}
             aria-label={t('library.next')}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('library.next')}
             <CaretRight size={14} />
