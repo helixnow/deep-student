@@ -1242,7 +1242,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
-              className={cn('text-success hover:bg-success/10', isBatchImporting && 'bg-success/10')}
+              className={cn('text-success hover:bg-success/10 [@media(pointer:coarse)]:min-h-11', isBatchImporting && 'bg-success/10')}
             >
               <ListPlus size={16} />
               {t('memory.batch_import')}
@@ -1250,7 +1250,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={isCreatingInline ? handleCancelCreate : handleOpenCreate}
-              className={cn('text-primary hover:bg-primary/10', isCreatingInline && 'bg-primary/10')}
+              className={cn('text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11', isCreatingInline && 'bg-primary/10')}
             >
               <Plus size={16} />
               {t('memory.new')}
@@ -1262,7 +1262,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <DsButton
               variant="ghost" size="sm"
               onClick={handleToggleSelectAll}
-              className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
+              className="text-muted-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
             >
               {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
             </DsButton>
@@ -1272,7 +1272,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 onClick={handleBatchDelete}
                 disabled={isMutating}
                 className={cn(
-                  'text-danger hover:bg-danger/10 transition-colors',
+                  'text-danger hover:bg-danger/10 transition-colors [@media(pointer:coarse)]:min-h-11',
                   confirmingBatchDelete && 'bg-danger/15 font-medium'
                 )}
               >
