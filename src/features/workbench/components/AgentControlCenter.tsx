@@ -527,6 +527,7 @@ export function AgentControlDockEntry({
                       onValueChange={(next) => void changeMode(next as AgentControlMode)}
                       size="compact"
                       className={cn('wb-agent-control-segmented', loading && 'opacity-50')}
+                      itemClassName="[@media(pointer:coarse)]:!min-h-11"
                       options={([
                         { value: 'off', label: t('settings.agentControl.off') },
                         { value: 'background', label: t('settings.agentControl.background') },
