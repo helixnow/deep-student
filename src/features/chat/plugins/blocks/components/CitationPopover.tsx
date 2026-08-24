@@ -254,7 +254,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       {/* 底部操作：有 url 时提供外链打开 */}
       {hasUrl && (
         <div className="p-2 border-t border-border/50">
-          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full [@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full [@media(pointer:coarse)]:!min-h-11">
             <ArrowSquareOut size={14} />
             <span className="truncate">{t('blocks.retrieval.openSource')}</span>
           </DsButton>
@@ -306,7 +306,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
         'text-xs font-medium',
         'bg-primary/10 text-primary',
         'hover:bg-primary/20',
-        '[@media(pointer:coarse)]:min-h-11',
+        '[@media(pointer:coarse)]:!min-h-11',
         className
       )}
     >

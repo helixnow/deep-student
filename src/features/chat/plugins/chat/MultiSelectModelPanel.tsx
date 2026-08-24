@@ -363,7 +363,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           className={cn(
             'min-w-0 flex-1 !h-auto !flex-col !items-start !justify-start !gap-0.5 !whitespace-normal !px-0 !py-0 text-left',
             // coarse 指针下 !h-auto !py-0 会把单行标签压到 ~20px，min-h 保证 ≥44px 触控命中
-            '[@media(pointer:coarse)]:min-h-11',
+            '[@media(pointer:coarse)]:!min-h-11',
             '!bg-transparent dark:!bg-transparent !hover:bg-transparent dark:!hover:bg-transparent !active:bg-transparent',
             '!text-inherit hover:!text-inherit dark:hover:!text-inherit active:!text-inherit',
             isMobile && '!gap-0',
@@ -487,13 +487,13 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                   }}
                   disabled={disabled || selectedModels.length === 0}
                   title={t('chatV2:modelMention.retry')}
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('chatV2:modelRetry.retry')}
                 </DsButton>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
+              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                 <X size={16} />
               </DsButton>
             </div>
@@ -519,7 +519,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             }}
             disabled={disabled || selectedModels.length === 0}
             title={t('chatV2:modelMention.retry')}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelRetry.retry')}

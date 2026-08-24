@@ -165,7 +165,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleDownload}
               aria-label={t('blocks.imageGen.download')}
               title={t('blocks.imageGen.download')}
@@ -176,7 +176,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleOpenInNewTab}
               aria-label={t('blocks.imageGen.openInNewTab')}
               title={t('blocks.imageGen.openInNewTab')}
@@ -187,7 +187,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={handleCollapse}
               aria-label={t('blocks.imageGen.collapse')}
               title={t('blocks.imageGen.collapse')}
@@ -262,7 +262,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           )}
         >
           <div className="flex items-center gap-2 text-white pointer-events-auto">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
               <ArrowsOut size={20} />
             </DsButton>
           </div>

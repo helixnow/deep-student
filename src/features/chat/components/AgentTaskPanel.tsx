@@ -520,7 +520,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                           workspacePage.nextCursor ?? undefined,
                           true,
                         )}
-                        className="mt-1 px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50"
+                        className="mt-1 inline-flex items-center px-2 text-2xs text-[color:hsl(var(--primary))] disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                       >
                         {workspaceLoading
                           ? t('agentPanel.loadingFiles')
@@ -586,7 +586,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                             'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
                             'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
                             // ★ 触控目标：触屏 chip 高度提到 44px
-                            '[@media(pointer:coarse)]:min-h-11',
+                            '[@media(pointer:coarse)]:!min-h-11',
                           )}
                           title={item.label}
                         >

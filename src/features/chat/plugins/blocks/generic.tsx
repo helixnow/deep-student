@@ -64,7 +64,7 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
-          className="flex-1 !justify-start gap-1.5 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+          className="flex-1 !justify-start gap-1.5 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
         >
           <CaretDown
             size={12}

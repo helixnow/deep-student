@@ -604,7 +604,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         variant="ghost"
         size="sm"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full !justify-start gap-2 !p-3 text-left [@media(pointer:coarse)]:min-h-11"
+        className="w-full !justify-start gap-2 !p-3 text-left [@media(pointer:coarse)]:!min-h-11"
       >
         {/* 折叠图标 */}
         {isCollapsed ? (

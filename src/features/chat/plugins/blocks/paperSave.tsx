@@ -243,7 +243,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11" title={t('blocks.paperSave.retryTitle')}>
+                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
                     <span>{t('blocks.paperSave.retry')}</span>
                   </DsButton>
@@ -277,7 +277,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
-                '!h-auto !py-1 [@media(pointer:coarse)]:min-h-11',
+                '!h-auto !py-1 [@media(pointer:coarse)]:!min-h-11',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',

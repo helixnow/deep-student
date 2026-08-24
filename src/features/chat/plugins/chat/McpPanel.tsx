@@ -265,7 +265,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
       aria-label={t('common:actions.refresh', '刷新')}
       title={t('common:actions.refresh', '刷新')}
       className={cn(
-        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+        '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
         loading && 'animate-spin'
       )}
     >

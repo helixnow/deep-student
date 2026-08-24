@@ -180,7 +180,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
               size="sm"
               onClick={resetTopK}
               disabled={ragControlsDisabled}
-              className="h-5 px-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="h-5 px-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               {t('common:actions.reset')}
             </DsButton>

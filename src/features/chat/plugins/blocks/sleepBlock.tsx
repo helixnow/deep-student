@@ -190,7 +190,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
         variant="ghost"
         size="sm"
         onClick={onToggle}
-        className="w-full !justify-start gap-2 !px-3 !py-2 text-left [@media(pointer:coarse)]:min-h-11"
+        className="w-full !justify-start gap-2 !px-3 !py-2 text-left [@media(pointer:coarse)]:!min-h-11"
       >
         {isCollapsed ? (
           <CaretRight size={14} className="text-muted-foreground" />
@@ -559,7 +559,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
               handleManualWake();
             }}
             disabled={isWaking}
-            className="bg-white dark:bg-gray-800 [@media(pointer:coarse)]:min-h-11"
+            className="bg-white dark:bg-gray-800 [@media(pointer:coarse)]:!min-h-11"
           >
             {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
           </DsButton>

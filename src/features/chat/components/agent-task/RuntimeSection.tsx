@@ -69,7 +69,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
           'text-ui text-[color:var(--text-primary)] transition-colors',
           '!border-none !bg-transparent !shadow-none hover:!bg-[color:var(--interactive-hover)]',
           // ★ 触控目标：coarse 指针下兜底 ≥44px（lg 断点会压缩 DsButton 高度）
-          '[@media(pointer:coarse)]:min-h-11',
+          '[@media(pointer:coarse)]:!min-h-11',
         )}
         aria-expanded={expanded}
       >
