@@ -90,8 +90,11 @@ fn seed_locally_edited_row(conn: &Connection, record_id: &str, content: &str, up
         params![record_id, updated_at],
     )
     .unwrap();
-    conn.execute("UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0",
+        [],
+    )
+    .unwrap();
     conn.execute(
         "UPDATE items SET content = ?2 WHERE id = ?1",
         params![record_id, content],
@@ -164,7 +167,10 @@ fn pending_change_log_rows(conn: &Connection, record_id: &str) -> i64 {
 
 /// 快照表中的 (batch_id, reason, existed, data_json) 列表（按 id 升序）。
 /// 表不存在（从未发生过需要快照的覆盖）时返回空。
-fn snapshot_rows(conn: &Connection, record_id: &str) -> Vec<(String, String, bool, Option<String>)> {
+fn snapshot_rows(
+    conn: &Connection,
+    record_id: &str,
+) -> Vec<(String, String, bool, Option<String>)> {
     let table_exists: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_record_history')",
@@ -199,7 +205,11 @@ fn overwrite_with_policy(conn: &Connection, record_id: &str) -> String {
     seed_locally_edited_row(conn, record_id, "local-edit", "2026-07-10T13:00:00Z");
     let (result, _) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         conn,
-        &[cloud_update_change(record_id, "cloud-wins", "2026-07-10T14:00:00Z")],
+        &[cloud_update_change(
+            record_id,
+            "cloud-wins",
+            "2026-07-10T14:00:00Z",
+        )],
         None,
         ConflictPolicy::KeepCloud,
         Some("device-cloud"),
@@ -249,7 +259,11 @@ fn r11_local_win_does_not_snapshot() {
     seed_locally_edited_row(&conn, "rec-localwin", "local-edit", "2026-07-10T13:00:00Z");
     let (_, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
-        &[cloud_update_change("rec-localwin", "cloud-loses", "2026-07-10T14:00:00Z")],
+        &[cloud_update_change(
+            "rec-localwin",
+            "cloud-loses",
+            "2026-07-10T14:00:00Z",
+        )],
         None,
         ConflictPolicy::KeepLocal,
         Some("device-cloud"),
@@ -272,11 +286,21 @@ fn r11_snapshot_dedup_within_batch_keeps_first_state() {
     let first = serde_json::json!({"id": "rec-dedup", "content": "first"});
     let second = serde_json::json!({"id": "rec-dedup", "content": "second"});
     assert!(history::snapshot_record_with_data(
-        &conn, &batch, history::REASON_POLICY_OVERRIDE, "items", "rec-dedup", Some(&first)
+        &conn,
+        &batch,
+        history::REASON_POLICY_OVERRIDE,
+        "items",
+        "rec-dedup",
+        Some(&first)
     )
     .unwrap());
     assert!(!history::snapshot_record_with_data(
-        &conn, &batch, history::REASON_POLICY_OVERRIDE, "items", "rec-dedup", Some(&second)
+        &conn,
+        &batch,
+        history::REASON_POLICY_OVERRIDE,
+        "items",
+        "rec-dedup",
+        Some(&second)
     )
     .unwrap());
     let snaps = snapshot_rows(&conn, "rec-dedup");
@@ -299,8 +323,11 @@ fn r11_rollback_restores_record_and_leaves_pending_upload() {
     ensure_schema(&conn);
     let batch = overwrite_with_policy(&conn, "rec-rollback");
     // 清空历史 pending，让断言只看回退产生的条目
-    conn.execute("UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0",
+        [],
+    )
+    .unwrap();
 
     let outcome = history::rollback_batch(&conn, &batch, None, Some("vfs")).unwrap();
     assert_eq!(outcome.restored, 1);
@@ -338,7 +365,9 @@ fn r11_rollback_restores_record_and_leaves_pending_upload() {
     // 回退前自动创建了撤销点批次（内容 = 回退前的云端胜方值）
     let undo_rows: Vec<_> = snapshot_rows(&conn, "rec-rollback")
         .into_iter()
-        .filter(|(b, reason, _, _)| b == &outcome.undo_batch_id && reason == history::REASON_ROLLBACK_UNDO)
+        .filter(|(b, reason, _, _)| {
+            b == &outcome.undo_batch_id && reason == history::REASON_ROLLBACK_UNDO
+        })
         .collect();
     assert_eq!(undo_rows.len(), 1, "回退前必须创建 rollback_undo 撤销点");
     assert!(
@@ -354,8 +383,11 @@ fn r11_rollback_not_reoverwritten_by_lww_replay_or_echo_suppression() {
     let conn = Connection::open_in_memory().unwrap();
     ensure_schema(&conn);
     let batch = overwrite_with_policy(&conn, "rec-replay");
-    conn.execute("UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE __change_log SET sync_version = 1 WHERE sync_version = 0",
+        [],
+    )
+    .unwrap();
     history::rollback_batch(&conn, &batch, None, Some("vfs")).unwrap();
     let pending_before = pending_change_log_rows(&conn, "rec-replay");
     assert!(pending_before > 0, "前提：回退留下了待上传条目");
@@ -388,7 +420,10 @@ fn r11_rollback_not_reoverwritten_by_lww_replay_or_echo_suppression() {
         Some("device-local"),
     )
     .unwrap();
-    assert_eq!(guard_result.success_count, 0, "KeepLatest 下旧云端值不得胜出");
+    assert_eq!(
+        guard_result.success_count, 0,
+        "KeepLatest 下旧云端值不得胜出"
+    );
     assert_eq!(
         record_content(&conn, "rec-replay").as_deref(),
         Some("local-edit"),
@@ -413,7 +448,10 @@ fn r11_delete_overwrite_rollback_resurrects_then_undo_deletes_again() {
     )
     .unwrap();
     assert_eq!(result.success_count, 1, "KeepCloud 下云端 DELETE 必须生效");
-    assert!(record_content(&conn, "rec-del").is_none(), "前提：本地行已被删除");
+    assert!(
+        record_content(&conn, "rec-del").is_none(),
+        "前提：本地行已被删除"
+    );
 
     let snaps = snapshot_rows(&conn, "rec-del");
     assert_eq!(snaps.len(), 1, "DELETE 覆盖前也必须留快照");
@@ -564,7 +602,11 @@ fn r11_resolve_command_snapshots_and_new_commands_browse_and_rollback() {
         seed_locally_edited_row(&conn, record_id, "local-edit", "2026-07-10T13:00:00Z");
         let (_, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
             &conn,
-            &[cloud_update_change(record_id, "cloud-candidate", "2026-07-10T14:00:00Z")],
+            &[cloud_update_change(
+                record_id,
+                "cloud-candidate",
+                "2026-07-10T14:00:00Z",
+            )],
             None,
             ConflictPolicy::KeepLocal,
             Some("device-cloud"),

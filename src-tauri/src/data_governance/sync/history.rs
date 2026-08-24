@@ -157,7 +157,14 @@ pub fn snapshot_record(
     id_column: &str,
 ) -> Result<bool, SyncError> {
     let current = SyncManager::get_record_data(conn, table_name, record_id, id_column)?;
-    snapshot_record_with_data(conn, batch_id, reason, table_name, record_id, current.as_ref())
+    snapshot_record_with_data(
+        conn,
+        batch_id,
+        reason,
+        table_name,
+        record_id,
+        current.as_ref(),
+    )
 }
 
 /// 保留策略：只保留最新的 `max_batches` 个批次，更旧的批次整批删除。
@@ -407,7 +414,11 @@ pub fn rollback_batch(
                 .map(String::as_str)
                 .unwrap_or("id")
                 .to_string();
-            (change.table_name.clone(), change.record_id.clone(), id_column)
+            (
+                change.table_name.clone(),
+                change.record_id.clone(),
+                id_column,
+            )
         })
         .collect();
     let undo_batch_for_hook = undo_batch_id.clone();
@@ -435,9 +446,7 @@ pub fn rollback_batch(
                     "UPDATE __sync_record_history SET rolled_back_at = ?1 WHERE batch_id = ?2",
                     params![&mark_now, &mark_batch_id],
                 )
-                .map_err(|e| {
-                    SyncError::Database(format!("标记快照批次已回退失败: {}", e))
-                })?;
+                .map_err(|e| SyncError::Database(format!("标记快照批次已回退失败: {}", e)))?;
             Ok(())
         },
     )?;
