@@ -642,7 +642,12 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           {t('review:session.otherExamDescription')}
         </p>
         {onClose && (
-          <DsButton variant="ghost" size="sm" onClick={onClose} className="mt-1">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="mt-1 [@media(pointer:coarse)]:min-h-11"
+          >
             {t('common:close')}
           </DsButton>
         )}
