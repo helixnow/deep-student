@@ -753,6 +753,23 @@ pub struct PreparedTransformJob {
     pub job_ref: String,
 }
 
+#[cfg(unix)]
+fn set_private_job_permissions(path: &Path, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|error| {
+        format!(
+            "Failed to restrict permissions for {}: {error}",
+            path.display()
+        )
+    })
+}
+
+#[cfg(not(unix))]
+fn set_private_job_permissions(_path: &Path, _mode: u32) -> Result<(), String> {
+    // Windows job files inherit the app-data directory ACL.
+    Ok(())
+}
+
 /// 在会话 temp root 下创建一次性 job 目录并写入输入快照与脚本正文。
 /// job 目录随 temp root 生命周期保留（审计用途），不在本次调用内删除。
 pub fn prepare_transform_job(
@@ -774,6 +791,10 @@ pub fn prepare_transform_job(
     // subpath / bwrap bind），未解析的符号链接会导致策略路径与真实 vnode 路径
     // 不一致——轻则拒写（macOS 误拒），重则策略作用在错误的路径上。
     let job_dir = job_dir.canonicalize().unwrap_or(job_dir);
+    // 快照含未截断卡片全文，且 job 会保留用于审计。不能依赖进程 umask：
+    // 常见 0022 会创建 0755/0644，令同机其他用户可读。目录先收紧到
+    // owner-only，再创建文件，避免文件 chmod 前的短暂暴露窗口。
+    set_private_job_permissions(&job_dir, 0o700)?;
 
     let input_path = job_dir.join(CHATANKI_INPUT_FILE);
     let output_path = job_dir.join(CHATANKI_OUTPUT_FILE);
@@ -785,6 +806,8 @@ pub fn prepare_transform_job(
         .map_err(|error| format!("Failed to write {CHATANKI_INPUT_FILE}: {error}"))?;
     std::fs::write(&script_path, script.code.as_bytes())
         .map_err(|error| format!("Failed to write transform script file: {error}"))?;
+    set_private_job_permissions(&input_path, 0o600)?;
+    set_private_job_permissions(&script_path, 0o600)?;
 
     Ok(PreparedTransformJob {
         job_dir,
@@ -1580,6 +1603,42 @@ mod tests {
             "print('ok')"
         );
         assert!(!job.output_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prepare_job_keeps_full_card_snapshot_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let script = NormalizedTransformScript {
+            language: ScriptLanguage::Python,
+            code: "print('ok')".to_string(),
+            timeout: Duration::from_secs(5),
+        };
+        let job = prepare_transform_job(
+            temp.path(),
+            &script,
+            &json!({ "cards": [{ "front": "private material" }] }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::metadata(&job.job_dir)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        for path in [&job.input_path, &job.script_path] {
+            assert_eq!(
+                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o600,
+                "{} must be owner-only",
+                path.display()
+            );
+        }
     }
 
     /// 安全回归：temp root 位于符号链接路径下时 job 目录被规范化为真实路径，
