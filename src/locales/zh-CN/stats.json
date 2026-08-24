@@ -133,5 +133,10 @@
     "loadMore": "加载更多",
     "recordCount": "{{count}} 条",
     "noFilterResult": "当前筛选下没有记录"
+  },
+  "dstu": {
+    "load_list": "加载列表",
+    "create_empty": "创建空资源",
+    "unknown_resource_type": "未知的资源类型: {{type}}"
   }
 }
