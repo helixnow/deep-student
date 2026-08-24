@@ -4,12 +4,12 @@
 //! 分裂），并留下两个 `#[ignore]` 的理想行为断言。R09-names 落地净化引擎
 //! （`data_governance/sync/asset_filenames.rs`）后，本文件改为锁定新行为：
 //!
-//! 1. **Windows 非法字符**在 key 生成时替换为 `_`——云端 key 三平台可物化，
-//!    Linux ↔ Linux round-trip 落地净化后的文件名；
+//! 1. **Windows 非法字符**使用 rclone 风格安全码点编码——云端 key 三平台可
+//!    物化，并可由 decoder 无损还原；
 //! 2. **大小写冲突**不再静默互相覆盖：与云端既有 key 仅大小写不同的新文件
 //!    拒绝上传并在 outcome 报告（原 `#[ignore]` 测试转正）；
-//! 3. **Unicode 归一化**：NFC/NFD 同名文件收敛到同一 NFC key，不再分裂为
-//!    两个清单条目（原 `#[ignore]` 测试转正）。
+//! 3. **Unicode 归一化安全**：NFC/NFD 生成两个互不碰撞的 NFC 安全 key，
+//!    两者都可还原原始字节。
 //!
 //! 更全面的边界矩阵（保留名/尾部点空格/空名回退/遗留 key 迁移等）见
 //! `sync_r09_filenames.rs`。
@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::data_governance::sync::{
-    AssetDirsManifest, SyncDirection, SyncManager, FILENAME_CONFLICT_MARKER,
+    asset_filenames, AssetDirsManifest, SyncDirection, SyncManager, FILENAME_CONFLICT_MARKER,
 };
 use deep_student_lib::models::AppError;
 use tempfile::TempDir;
@@ -171,8 +171,8 @@ fn unique_device(prefix: &str) -> String {
 // 1. Windows 非法字符 `:` `?`
 // ============================================================================
 
-/// [R09-names 后] Linux 设备创建的含 `:`/`?` 文件名在 key 生成时净化为 `_`：
-/// 云端 key 三平台可物化，第二台设备下载落地净化后的文件名，且后续同步稳定
+/// [R11-names2 后] Linux 设备创建的含 `:`/`?` 文件名在 key 生成时可逆编码：
+/// 云端 key 三平台可物化，第二台设备下载落地安全编码名，且后续同步稳定
 /// （无乒乓上传/重复下载）。
 #[tokio::test]
 async fn r07_windows_reserved_chars_are_sanitized_in_keys_and_roundtrip() {
@@ -189,14 +189,25 @@ async fn r07_windows_reserved_chars_are_sanitized_in_keys_and_roundtrip() {
     assert_eq!(out_a.uploaded, 2, "两个文件都应净化后上传成功");
     assert!(!out_a.has_failures(), "{:?}", out_a.failure_summary());
 
+    let screenshot =
+        asset_filenames::encode_segment("screenshot 12:30:45.png").expect("文件名可编码");
+    let question = asset_filenames::encode_segment("page?query=1.pdf").expect("文件名可编码");
     let keys = all_manifest_keys(&storage);
     assert!(
-        keys.contains(&"active/images/screenshot 12_30_45.png".to_string()),
-        "key 中 `:` 应净化为 `_`，实际: {keys:?}"
+        keys.contains(&format!("active/images/{screenshot}")),
+        "key 中 `:` 应使用可逆安全码点，实际: {keys:?}"
     );
     assert!(
-        keys.contains(&"active/documents/page_query=1.pdf".to_string()),
-        "key 中 `?` 应净化为 `_`，实际: {keys:?}"
+        keys.contains(&format!("active/documents/{question}")),
+        "key 中 `?` 应使用可逆安全码点，实际: {keys:?}"
+    );
+    assert_eq!(
+        asset_filenames::decode_segment(&screenshot).unwrap(),
+        "screenshot 12:30:45.png"
+    );
+    assert_eq!(
+        asset_filenames::decode_segment(&question).unwrap(),
+        "page?query=1.pdf"
     );
 
     // 第二台设备下载：落地净化后的文件名（Windows 上同样可行）
@@ -215,11 +226,11 @@ async fn r07_windows_reserved_chars_are_sanitized_in_keys_and_roundtrip() {
     assert_eq!(out_b.downloaded, 2);
     assert!(!out_b.has_failures());
     assert_eq!(
-        std::fs::read(active_b.path().join("images/screenshot 12_30_45.png")).unwrap(),
+        std::fs::read(active_b.path().join("images").join(&screenshot)).unwrap(),
         b"colon-bytes"
     );
     assert_eq!(
-        std::fs::read(active_b.path().join("documents/page_query=1.pdf")).unwrap(),
+        std::fs::read(active_b.path().join("documents").join(&question)).unwrap(),
         b"question-bytes"
     );
 
@@ -228,23 +239,23 @@ async fn r07_windows_reserved_chars_are_sanitized_in_keys_and_roundtrip() {
     assert_eq!(
         (out_b2.uploaded, out_b2.downloaded),
         (0, 0),
-        "净化幂等：下载落地的文件再扫描必须命中同一 key"
+        "编码名再次扫描必须命中同一 key"
     );
     assert!(!out_b2.has_failures(), "{:?}", out_b2.failure_summary());
 
-    // 设备 A（原始带 `:` 文件仍在本地）再同步：净化等价匹配 → 同样稳定
+    // 设备 A（原始带 `:` 文件仍在本地）再同步：可逆 key 匹配 → 同样稳定
     let out_a2 = sync_bidirectional(&manager_a, &storage, &active_a, &app_a).await;
     assert_eq!(
         (out_a2.uploaded, out_a2.downloaded),
         (0, 0),
-        "上传方本地原名文件与云端净化 key 必须视为同一文件"
+        "上传方本地原名文件与云端可逆 key 必须视为同一文件"
     );
     assert!(!out_a2.has_failures(), "{:?}", out_a2.failure_summary());
 }
 
 /// 单个资产下载失败（这里用"内容对象缺失"模拟）仍只进入
 /// `download_failures`，`sync_asset_directories` 返回 `Ok`——软失败通道保持
-/// R07 的可观测语义，key 现在是净化后的形态。
+/// R07 的可观测语义，key 现在是可逆编码形态。
 #[tokio::test]
 async fn r07_single_asset_download_failure_is_soft_and_only_visible_in_outcome() {
     let storage = MemoryCloudStorage::default();
@@ -278,20 +289,18 @@ async fn r07_single_asset_download_failure_is_soft_and_only_visible_in_outcome()
         .expect("单文件下载失败不应使整体同步返回 Err");
 
     assert_eq!(out_b.downloaded, 0);
+    let broken = asset_filenames::encode_segment("broken:on-windows.png").unwrap();
     assert_eq!(
         out_b.download_failures,
-        vec!["active/images/broken_on-windows.png".to_string()],
-        "失败必须可在 outcome 中定位到具体（净化后的）key"
+        vec![format!("active/images/{broken}")],
+        "失败必须可在 outcome 中定位到具体可逆 key"
     );
     assert!(
         out_b.has_failures() && out_b.failure_summary().is_some(),
         "调用方唯一的发现渠道是 has_failures()/failure_summary()"
     );
     assert!(
-        !active_b
-            .path()
-            .join("images/broken_on-windows.png")
-            .exists(),
+        !active_b.path().join("images").join(&broken).exists(),
         "失败的资产不应留下半成品文件"
     );
 }
@@ -323,10 +332,7 @@ async fn r07_case_insensitive_key_collision_surfaces_a_warning_and_blocks_upload
     let out_b = sync_bidirectional(&manager_b, &storage, &active_b, &app_b).await;
 
     assert_eq!(out_b.uploaded, 0, "大小写冲突的新文件必须拒绝上传");
-    assert!(
-        out_b.has_failures(),
-        "冲突必须在 outcome 中给出可观测信号"
-    );
+    assert!(out_b.has_failures(), "冲突必须在 outcome 中给出可观测信号");
     assert!(
         out_b
             .upload_failures
@@ -350,7 +356,10 @@ async fn r07_case_insensitive_key_collision_surfaces_a_warning_and_blocks_upload
 
     // 云端清单只有一个变体
     let keys = all_manifest_keys(&storage);
-    assert!(keys.contains(&"active/images/Logo.png".to_string()), "{keys:?}");
+    assert!(
+        keys.contains(&"active/images/Logo.png".to_string()),
+        "{keys:?}"
+    );
     assert!(
         !keys.contains(&"active/images/logo.png".to_string()),
         "冲突变体不得进入云端清单: {keys:?}"
@@ -381,13 +390,9 @@ async fn r07_case_insensitive_key_collision_surfaces_a_warning_and_blocks_upload
 // 3. Unicode 归一化（NFC / NFD）
 // ============================================================================
 
-/// [R09-names 后] NFC `café.png` 与 NFD `café.png` 收敛到同一 NFC key：
-/// macOS（NFD 文件系统）与 Linux/Windows（NFC）设备对同一逻辑文件不再分裂
-/// 为两个清单条目，也不再重复下载。
-///
-/// （原 R07 `#[ignore]` 理想行为测试转正。）
+/// [R11-names2 后] NFC 与 NFD 都生成 NFC 安全 key，但逐字节可逆且互不碰撞。
 #[tokio::test]
-async fn r07_unicode_normalization_unifies_nfc_nfd_keys() {
+async fn r07_unicode_normalization_forms_are_distinct_and_reversible() {
     // 同一视觉名字 "café.png" 的两种编码（在源码里用转义写死，防编辑器归一化）
     let nfc_name = "images/caf\u{e9}.png"; // é = U+00E9
     let nfd_name = "images/cafe\u{301}.png"; // e + U+0301 组合重音
@@ -410,29 +415,33 @@ async fn r07_unicode_normalization_unifies_nfc_nfd_keys() {
     let manager_b = SyncManager::new(unique_device("dev-b"));
     let out_b = sync_bidirectional(&manager_b, &storage, &active_b, &app_b).await;
 
-    assert_eq!(
-        (out_b.uploaded, out_b.downloaded),
-        (0, 0),
-        "归一化后 NFC/NFD 是同一 key、内容相同 → 无需上传或下载"
-    );
+    assert_eq!((out_b.uploaded, out_b.downloaded), (1, 1));
     assert!(!out_b.has_failures(), "{:?}", out_b.failure_summary());
 
-    // 设备 B 本地不出现第二个变体文件
-    assert!(active_b.path().join(nfc_name).exists());
-    assert!(
-        !active_b.path().join(nfd_name).exists(),
-        "NFD 变体不得被当作'云端新文件'重复下载"
+    let encoded_nfc = asset_filenames::encode_segment("caf\u{e9}.png").unwrap();
+    let encoded_nfd = asset_filenames::encode_segment("cafe\u{301}.png").unwrap();
+    assert_ne!(encoded_nfc, encoded_nfd);
+    assert_eq!(
+        asset_filenames::decode_segment(&encoded_nfc).unwrap(),
+        "caf\u{e9}.png"
+    );
+    assert_eq!(
+        asset_filenames::decode_segment(&encoded_nfd).unwrap(),
+        "cafe\u{301}.png"
     );
 
-    // 云端清单只有一个 NFC key
+    // NFC 原文件保留，NFD 云端条目以安全编码名下载。
+    assert!(active_b.path().join(nfc_name).exists());
+    assert!(
+        active_b.path().join("images").join(&encoded_nfd).exists(),
+        "NFD 变体必须以 NFC 安全编码名独立物化"
+    );
+
+    // 云端清单同时保留两个无损 key。
     let keys = all_manifest_keys(&storage);
-    let cafe_entries: Vec<_> = keys
-        .iter()
-        .filter(|key| key.starts_with("active/images/caf"))
-        .collect();
-    assert_eq!(
-        cafe_entries,
-        vec![&format!("active/{nfc_name}")],
-        "同一逻辑文件在清单中只允许一个 NFC key: {keys:?}"
+    assert!(
+        keys.contains(&format!("active/images/{encoded_nfc}"))
+            && keys.contains(&format!("active/images/{encoded_nfd}")),
+        "NFC/NFD key 都必须存在: {keys:?}"
     );
 }

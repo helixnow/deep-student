@@ -209,25 +209,27 @@ fn p2_1_marker_upgrade_unlock_guide_doc_lock() {
 }
 
 // ============================================================================
-// R01-P2（部分）：资产文件名长度仍未钳制
+// R01-P2（R11-names2 关闭）：资产文件名长度 fail-closed
 // ============================================================================
 
-/// 行为锁定（诚实仍开）：`sanitize_segment` 处理了 Windows 非法字符/保留名/
-/// 尾点空格/NFD，但**不限制段长**——300 字符的段原样通过，Windows 默认
-/// MAX_PATH（260）下可能无法物化。锁定两点：
-/// 1. 幂等不变量对超长段同样成立（净化两次结果一致，防乒乓同步）；
-/// 2. 长度确实未被截断（若未来加了长度钳制，本用例失败，提醒同步处理
-///    截断碰撞与云端既有 key 的迁移，并回写台账）。
+/// 段长与完整资产 key 总长都必须在编码阶段拒绝，不能截断或哈希改名制造碰撞。
 #[test]
-fn r01_p2_filename_length_still_unclamped_lock() {
+fn r01_p2_filename_length_is_clamped_fail_closed() {
     let long_name = "a".repeat(300);
-    let once = asset_filenames::sanitize_segment(&long_name);
-    let twice = asset_filenames::sanitize_segment(&once);
-    assert_eq!(once, twice, "净化必须幂等（超长段不例外），否则乒乓同步");
-    assert_eq!(
-        once.chars().count(),
-        300,
-        "段长被改变：若已加长度钳制（好事），请同步处理截断碰撞/云端 key 迁移，\
-         更新本用例并回写 PROTOCOL-R10 / FIX-QUEUE"
+    assert!(
+        asset_filenames::encode_segment(&long_name).is_err(),
+        "超长段必须 fail-closed，不能截断后继续"
+    );
+    assert_eq!(asset_filenames::sanitize_segment(&long_name), None);
+
+    let nested = ["a".repeat(120), "b".repeat(120)];
+    assert!(
+        asset_filenames::encode_asset_key_segments(
+            "active",
+            "images",
+            &[nested[0].as_str(), nested[1].as_str()],
+        )
+        .is_err(),
+        "完整资产 key 超过可移植总长时必须 fail-closed"
     );
 }

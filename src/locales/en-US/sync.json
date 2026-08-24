@@ -191,9 +191,9 @@
         "suggestion": "What to do: rename one of the files to a clearly different name on the source device, then sync again."
       },
       "sanitizedNameConflict": {
-        "label": "Duplicate after name sanitization (skipped)",
-        "reason": "These filenames contain characters that are invalid on some platforms. After sanitization they collide with another file that has different content, so both versions cannot be kept locally.",
-        "suggestion": "What to do: rename the file on the source device (avoid characters like \\ / : * ? \" < > |), then sync again."
+        "label": "Legacy filename mapping conflict (skipped)",
+        "reason": "These cloud entries use different generations of filename mapping and resolve to the same local path with different content. The new mapping can restore names losslessly, but it cannot guess an old entry's original name, so the download was skipped to prevent overwriting.",
+        "suggestion": "What to do: rename one file on a source device that still has the originals, then sync again. Once its content changes, the entry is migrated to the new reversible name."
       },
       "invalidKey": {
         "label": "Invalid path (rejected)",
