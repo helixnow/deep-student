@@ -6356,6 +6356,10 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     );
 
     // 2) Resolve content (from direct content or from VFS refs).
+    // LLM 路由计划的 glossaryMode 提示（仅高置信度计划会设置），
+    // 与后面的 looks_like_glossary_content 启发式取并集。
+    let mut llm_glossary_hint: Option<bool> = None;
+
     let (route, mut content_text, debug_ref, mut warnings, content_error_key) = match params
         .input
         .clone()
@@ -6628,7 +6632,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     );
                 }
             }
-            let debug_ref = if debug_ref.as_object().map(|v| v.is_empty()).unwrap_or(true) {
+            let mut debug_ref = if debug_ref.as_object().map(|v| v.is_empty()).unwrap_or(true) {
                 None
             } else {
                 Some(debug_ref)
@@ -6664,9 +6668,42 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 );
             }
 
-            let mut route = params
-                .forced_route
-                .unwrap_or_else(|| decide_route(&merged_ref_data));
+            // LLM 路由规划：forced_route 优先（此时跳过 LLM 调用省成本），
+            // 计划置信度 < ROUTE_PLAN_MIN_CONFIDENCE 或调用失败时回退 decide_route。
+            let route_plan = if params.forced_route.is_some() {
+                None
+            } else {
+                let text_sample = sample_ref_text_for_routing(
+                    &vfs_conn,
+                    &merged_ref_data,
+                    merged_extra.as_deref(),
+                );
+                plan_route(
+                    &params.llm_manager,
+                    &params.goal,
+                    &merged_ref_data,
+                    &text_sample,
+                )
+                .await
+            };
+            if let Some(plan) = route_plan.as_ref() {
+                if plan.is_confident() {
+                    llm_glossary_hint = plan.glossary_mode;
+                }
+                let plan_json = plan.to_debug_json();
+                debug_ref = match debug_ref {
+                    Some(mut v) => {
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert("routePlan".to_string(), plan_json);
+                        }
+                        Some(v)
+                    }
+                    None => Some(json!({ "routePlan": plan_json })),
+                };
+            }
+
+            let mut route =
+                resolve_planned_route(params.forced_route, route_plan.as_ref(), &merged_ref_data);
             let merge_with_extra = |base: String| merge_optional_texts(base, merged_extra.clone());
             let add_truncation_warning =
                 |warnings: &mut Vec<Value>, batch: &ImagePayloadBatch, limit: usize| {
@@ -6853,7 +6890,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
 
     // Glossary-like inputs (e.g. 120 term definitions) often use single newlines instead of blank lines.
     // Our default segmenter splits paragraphs by "\n\n"; normalize to preserve entry boundaries.
-    if looks_like_glossary_content(&content_text) {
+    // LLM 路由计划的 glossaryMode（高置信度时）可补捞启发式漏判的词汇表材料。
+    if llm_glossary_hint.unwrap_or(false) || looks_like_glossary_content(&content_text) {
         content_text = normalize_glossary_paragraphs(&content_text);
     }
 
@@ -7821,6 +7859,277 @@ fn decide_route(ref_data: &VfsContextRefData) -> ChatAnkiRoute {
     }
 
     ChatAnkiRoute::VlmFull
+}
+
+// ============================================================================
+// LLM 路由规划（plan_route）
+//
+// decide_route 的启发式只看引用类型计数，无法判断“PDF 提取文本质量差需要走
+// VLM”这类语义信息。plan_route 用一次轻量 LLM 调用（goal + 引用元数据 +
+// 文本采样）产出路由计划；置信度不足或调用/解析失败时回退 decide_route，
+// forced_route 始终最高优先级。
+// ============================================================================
+
+/// LLM 路由计划的最低置信度。低于该值视为模型不确定，回退启发式路由。
+const ROUTE_PLAN_MIN_CONFIDENCE: f32 = 0.7;
+
+/// 路由采样总预算（字符）。只用于路由判断，刻意保持很小以控制成本与延迟。
+const ROUTE_PLAN_SAMPLE_TOTAL_CHARS: usize = 1200;
+
+/// 单个引用的采样上限（字符）。
+const ROUTE_PLAN_SAMPLE_PER_REF_CHARS: usize = 400;
+
+/// 路由提示词中列出的引用清单上限，避免超大引用集撑爆提示词。
+const ROUTE_PLAN_MAX_LISTED_REFS: usize = 20;
+
+/// plan_route 的解析结果（与 LLM 输出 JSON 一一对应）。
+#[derive(Debug, Clone)]
+struct RoutePlan {
+    route: ChatAnkiRoute,
+    confidence: f32,
+    glossary_mode: Option<bool>,
+    reason: Option<String>,
+}
+
+impl RoutePlan {
+    fn is_confident(&self) -> bool {
+        self.confidence >= ROUTE_PLAN_MIN_CONFIDENCE
+    }
+
+    fn to_debug_json(&self) -> Value {
+        json!({
+            "route": self.route.as_str(),
+            "confidence": self.confidence,
+            "glossaryMode": self.glossary_mode,
+            "reason": self.reason,
+            "applied": self.is_confident(),
+        })
+    }
+}
+
+/// 为路由判断做轻量文本采样。
+///
+/// 与 extract_text_from_refs 不同，这里刻意不解析 blob（可能是几十 MB 的
+/// PDF）：文件引用只取 files.extracted_text 的开头片段（SQL substr，不整段
+/// 读入），其余引用用快照 snippet。采样为空本身就是有效信号（说明提取文本
+/// 缺失，可能需要 VLM）。
+fn sample_ref_text_for_routing(
+    conn: &Connection,
+    ref_data: &VfsContextRefData,
+    extra_text: Option<&str>,
+) -> String {
+    let mut out = String::new();
+    let mut remaining = ROUTE_PLAN_SAMPLE_TOTAL_CHARS;
+
+    let mut push_sample = |out: &mut String, label: &str, text: &str, remaining: &mut usize| {
+        let trimmed = text.trim();
+        if trimmed.is_empty() || *remaining == 0 {
+            return;
+        }
+        let take = ROUTE_PLAN_SAMPLE_PER_REF_CHARS.min(*remaining);
+        let sampled = safe_truncate_chars(trimmed, take);
+        *remaining = remaining.saturating_sub(sampled.chars().count());
+        out.push_str(&format!("[{}]\n{}\n\n", label, sampled));
+    };
+
+    if let Some(extra) = extra_text {
+        push_sample(&mut out, "用户输入文本", extra, &mut remaining);
+    }
+
+    for r in ref_data.refs.iter() {
+        if remaining == 0 {
+            break;
+        }
+        match r.resource_type {
+            VfsResourceType::Image => {}
+            VfsResourceType::File => {
+                let head: Option<String> = conn
+                    .query_row(
+                        "SELECT substr(extracted_text, 1, ?2) FROM files WHERE id = ?1",
+                        rusqlite::params![r.source_id, ROUTE_PLAN_SAMPLE_PER_REF_CHARS as i64],
+                        |row| row.get(0),
+                    )
+                    .ok()
+                    .flatten();
+                if let Some(text) = head {
+                    push_sample(&mut out, &r.name, &text, &mut remaining);
+                }
+            }
+            _ => {
+                if let Some(snippet) = r.snippet.as_deref() {
+                    push_sample(&mut out, &r.name, snippet, &mut remaining);
+                }
+            }
+        }
+    }
+
+    out.trim_end().to_string()
+}
+
+fn build_route_plan_prompt(goal: &str, ref_data: &VfsContextRefData, text_sample: &str) -> String {
+    let mut image_count = 0usize;
+    let mut file_count = 0usize;
+    let mut other_count = 0usize;
+    let mut ref_lines = String::new();
+    for (idx, r) in ref_data.refs.iter().enumerate() {
+        match r.resource_type {
+            VfsResourceType::Image => image_count += 1,
+            VfsResourceType::File => file_count += 1,
+            _ => other_count += 1,
+        }
+        if idx < ROUTE_PLAN_MAX_LISTED_REFS {
+            ref_lines.push_str(&format!("- {} ({})\n", r.name, r.resource_type));
+        }
+    }
+    if ref_data.refs.len() > ROUTE_PLAN_MAX_LISTED_REFS {
+        ref_lines.push_str(&format!(
+            "- ...（其余 {} 项省略）\n",
+            ref_data.refs.len() - ROUTE_PLAN_MAX_LISTED_REFS
+        ));
+    }
+
+    let sample_block = if text_sample.trim().is_empty() {
+        "（无可用文本采样：提取文本缺失或为空）".to_string()
+    } else {
+        text_sample.to_string()
+    };
+
+    format!(
+        "你是 ChatAnki 的「导入路由规划器」。根据学习目标、资源元数据和文本采样，为制卡管线选择最合适的导入路由。\n\
+\n\
+可选路由：\n\
+- simple_text：材料以可靠文本为主（提取文本质量良好），直接用文本制卡。\n\
+- vlm_light：文本为主，但有少量图片/图表需要视觉补充识别。\n\
+- vlm_full：图片为主，或提取文本质量差（乱码/缺失/明显 OCR 噪声），需要视觉模型完整识别。\n\
+\n\
+学习目标：{goal}\n\
+\n\
+资源元数据（共 {total} 项：文件 {file_count}，图片 {image_count}，其他 {other_count}）：\n\
+{ref_lines}\
+\n\
+文本采样（每项截取开头片段，可能为空）：\n\
+\"\"\"\n\
+{sample_block}\n\
+\"\"\"\n\
+\n\
+判断要点：\n\
+1) 无图片且文本采样可读连贯 → simple_text。\n\
+2) 有少量图片（≤3）且文本可读 → vlm_light。\n\
+3) 图片为主 / 无可靠文本 / 采样明显是乱码或 OCR 噪声 → vlm_full。\n\
+4) glossaryMode：材料是否是「术语 / 名词解释 / 词汇表」类条目清单。\n\
+5) confidence 表示你对本次选择的确定程度（0.0-1.0），不确定时请如实给低值。\n\
+\n\
+只输出一行 JSON，不要解释、不要代码块：\n\
+{{\"route\":\"simple_text|vlm_light|vlm_full\",\"confidence\":0.0,\"glossaryMode\":false,\"reason\":\"简短理由\"}}\n",
+        goal = goal,
+        total = ref_data.refs.len(),
+        file_count = file_count,
+        image_count = image_count,
+        other_count = other_count,
+        ref_lines = ref_lines,
+        sample_block = sample_block,
+    )
+}
+
+/// 解析 plan_route 的 LLM 响应。
+///
+/// 容错：允许 ```json 代码块包裹、允许 JSON 前后有少量说明文字。
+/// route 非法 / confidence 缺失或超出 [0,1] 一律返回 None（保守回退启发式）。
+fn parse_route_plan_response(response: &str) -> Option<RoutePlan> {
+    let cleaned = response
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let value: Value = serde_json::from_str(cleaned).ok().or_else(|| {
+        let start = cleaned.find('{')?;
+        let end = cleaned.rfind('}')?;
+        if end <= start {
+            return None;
+        }
+        serde_json::from_str(&cleaned[start..=end]).ok()
+    })?;
+
+    let route = value
+        .get("route")?
+        .as_str()
+        .and_then(ChatAnkiRoute::from_str)?;
+    let confidence = value.get("confidence")?.as_f64()? as f32;
+    if !(0.0..=1.0).contains(&confidence) {
+        return None;
+    }
+    let glossary_mode = value.get("glossaryMode").and_then(|v| v.as_bool());
+    let reason = value
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Some(RoutePlan {
+        route,
+        confidence,
+        glossary_mode,
+        reason,
+    })
+}
+
+/// 路由优先级链：forced_route > 高置信度 LLM 计划 > decide_route 启发式。
+fn resolve_planned_route(
+    forced_route: Option<ChatAnkiRoute>,
+    llm_plan: Option<&RoutePlan>,
+    ref_data: &VfsContextRefData,
+) -> ChatAnkiRoute {
+    if let Some(forced) = forced_route {
+        return forced;
+    }
+    if let Some(plan) = llm_plan {
+        if plan.is_confident() {
+            return plan.route;
+        }
+    }
+    decide_route(ref_data)
+}
+
+/// 用 LLM 规划导入路由。任何失败（调用出错 / 输出不可解析）都返回 None，
+/// 由调用方回退 decide_route，保证制卡管线不因路由规划失败而中断。
+async fn plan_route(
+    llm_manager: &crate::llm_manager::LLMManager,
+    goal: &str,
+    ref_data: &VfsContextRefData,
+    text_sample: &str,
+) -> Option<RoutePlan> {
+    let prompt = build_route_plan_prompt(goal, ref_data, text_sample);
+    let output = match llm_manager
+        .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Anki)
+        .await
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("[chatanki] plan_route LLM 调用失败，回退启发式路由: {}", e);
+            return None;
+        }
+    };
+
+    match parse_route_plan_response(&output.assistant_message) {
+        Some(plan) => {
+            log::info!(
+                "[chatanki] plan_route: route={} confidence={:.2} glossaryMode={:?} reason={:?}",
+                plan.route.as_str(),
+                plan.confidence,
+                plan.glossary_mode,
+                plan.reason
+            );
+            Some(plan)
+        }
+        None => {
+            log::warn!(
+                "[chatanki] plan_route 响应解析失败，回退启发式路由: {}",
+                safe_truncate_chars(&output.assistant_message, 200)
+            );
+            None
+        }
+    }
 }
 
 fn build_import_prompt(goal: &str) -> String {
@@ -15419,6 +15728,150 @@ mod tests {
             total_count: 4,
         };
         assert_eq!(decide_route(&full_refs), ChatAnkiRoute::VlmFull);
+    }
+
+    #[test]
+    fn test_parse_route_plan_response_variants() {
+        // 纯 JSON
+        let plan = parse_route_plan_response(
+            r#"{"route":"vlm_full","confidence":0.92,"glossaryMode":false,"reason":"图片为主"}"#,
+        )
+        .expect("plain JSON should parse");
+        assert_eq!(plan.route, ChatAnkiRoute::VlmFull);
+        assert!((plan.confidence - 0.92).abs() < 1e-6);
+        assert_eq!(plan.glossary_mode, Some(false));
+        assert_eq!(plan.reason.as_deref(), Some("图片为主"));
+        assert!(plan.is_confident());
+
+        // ```json 代码块包裹
+        let fenced = "```json\n{\"route\":\"simple_text\",\"confidence\":0.8,\"glossaryMode\":true,\"reason\":\"词汇表\"}\n```";
+        let plan = parse_route_plan_response(fenced).expect("fenced JSON should parse");
+        assert_eq!(plan.route, ChatAnkiRoute::SimpleText);
+        assert_eq!(plan.glossary_mode, Some(true));
+
+        // JSON 前后带说明文字
+        let wrapped = "根据分析：{\"route\":\"vlm_light\",\"confidence\":0.75} 以上。";
+        let plan = parse_route_plan_response(wrapped).expect("wrapped JSON should parse");
+        assert_eq!(plan.route, ChatAnkiRoute::VlmLight);
+        assert_eq!(plan.glossary_mode, None);
+        assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn test_parse_route_plan_response_rejects_invalid() {
+        // 非 JSON
+        assert!(parse_route_plan_response("这不是 JSON").is_none());
+        // 非法 route
+        assert!(
+            parse_route_plan_response(r#"{"route":"unknown_route","confidence":0.9}"#).is_none()
+        );
+        // 缺失 route
+        assert!(parse_route_plan_response(r#"{"confidence":0.9}"#).is_none());
+        // 缺失 confidence
+        assert!(parse_route_plan_response(r#"{"route":"vlm_full"}"#).is_none());
+        // confidence 超出 [0,1]（如模型误输出百分数）
+        assert!(parse_route_plan_response(r#"{"route":"vlm_full","confidence":1.5}"#).is_none());
+        assert!(parse_route_plan_response(r#"{"route":"vlm_full","confidence":-0.1}"#).is_none());
+    }
+
+    #[test]
+    fn test_resolve_planned_route_priority_and_fallback() {
+        // 启发式基线：单文件 → SimpleText
+        let ref_data = VfsContextRefData {
+            refs: vec![make_ref(VfsResourceType::File)],
+            truncated: false,
+            total_count: 1,
+        };
+        assert_eq!(decide_route(&ref_data), ChatAnkiRoute::SimpleText);
+
+        let high = RoutePlan {
+            route: ChatAnkiRoute::VlmFull,
+            confidence: 0.9,
+            glossary_mode: None,
+            reason: None,
+        };
+        let low = RoutePlan {
+            route: ChatAnkiRoute::VlmFull,
+            confidence: 0.69,
+            glossary_mode: None,
+            reason: None,
+        };
+        let boundary = RoutePlan {
+            route: ChatAnkiRoute::VlmLight,
+            confidence: ROUTE_PLAN_MIN_CONFIDENCE,
+            glossary_mode: None,
+            reason: None,
+        };
+
+        // forced_route 永远最高优先级
+        assert_eq!(
+            resolve_planned_route(Some(ChatAnkiRoute::VlmLight), Some(&high), &ref_data),
+            ChatAnkiRoute::VlmLight
+        );
+        // 高置信度计划生效
+        assert_eq!(
+            resolve_planned_route(None, Some(&high), &ref_data),
+            ChatAnkiRoute::VlmFull
+        );
+        // 低置信度（< 0.7）→ 回退启发式
+        assert_eq!(
+            resolve_planned_route(None, Some(&low), &ref_data),
+            ChatAnkiRoute::SimpleText
+        );
+        // 阈值边界（= 0.7 生效）
+        assert_eq!(
+            resolve_planned_route(None, Some(&boundary), &ref_data),
+            ChatAnkiRoute::VlmLight
+        );
+        // 无计划（LLM 调用/解析失败）→ 回退启发式
+        assert_eq!(
+            resolve_planned_route(None, None, &ref_data),
+            ChatAnkiRoute::SimpleText
+        );
+    }
+
+    #[test]
+    fn test_build_route_plan_prompt_contains_context() {
+        let mut file_ref = make_ref(VfsResourceType::File);
+        file_ref.name = "细胞呼吸讲义.pdf".to_string();
+        let ref_data = VfsContextRefData {
+            refs: vec![file_ref, make_ref(VfsResourceType::Image)],
+            truncated: false,
+            total_count: 2,
+        };
+
+        let prompt = build_route_plan_prompt("掌握细胞呼吸", &ref_data, "线粒体是细胞的能量工厂");
+        // goal / 元数据 / 采样均进入提示词
+        assert!(prompt.contains("掌握细胞呼吸"));
+        assert!(prompt.contains("细胞呼吸讲义.pdf"));
+        assert!(prompt.contains("文件 1，图片 1"));
+        assert!(prompt.contains("线粒体是细胞的能量工厂"));
+        // 输出契约字段
+        assert!(prompt.contains("simple_text"));
+        assert!(prompt.contains("vlm_light"));
+        assert!(prompt.contains("vlm_full"));
+        assert!(prompt.contains("glossaryMode"));
+        assert!(prompt.contains("confidence"));
+
+        // 空采样时给出显式占位说明（缺文本本身是 vlm 信号）
+        let empty_sample_prompt = build_route_plan_prompt("goal", &ref_data, "  ");
+        assert!(empty_sample_prompt.contains("无可用文本采样"));
+    }
+
+    #[test]
+    fn test_route_plan_debug_json() {
+        let plan = RoutePlan {
+            route: ChatAnkiRoute::VlmLight,
+            confidence: 0.55,
+            glossary_mode: Some(true),
+            reason: Some("少量图表".to_string()),
+        };
+        let debug = plan.to_debug_json();
+        assert_eq!(debug["route"], "vlm_light");
+        assert_eq!(debug["glossaryMode"], true);
+        assert_eq!(debug["reason"], "少量图表");
+        // 低置信度：记录但不生效
+        assert_eq!(debug["applied"], false);
     }
 
     #[test]
