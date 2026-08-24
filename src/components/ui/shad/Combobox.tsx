@@ -126,7 +126,7 @@ export function Combobox({
                     <li key={o.value}>
                       <button
                         className={cn(
-                          'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+                          'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:min-h-11',
                           'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
                           selected
                             ? 'bg-accent text-accent-foreground'
