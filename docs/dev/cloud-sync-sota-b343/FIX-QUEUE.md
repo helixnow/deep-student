@@ -384,6 +384,21 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 
 **已知基线红灯（非本包引入）**：`sync_scenarios_tests.rs` 5 个 blob tombstone 场景（scenario_35/37/57/58/59）因基线 `c006f457` 收紧 tombstone hash 校验（拒绝非 64 位 hex 的 `"ab123"`）而失败，`a5333474` 只修了单测未跟进场景测；本分支文件面不含 `tombstone.rs`，留待专路修复。本分支已验证通过：`--lib data_governance::sync::` 191 例、`sync_r05_regression` / `sync_r06_delete_resolve` / `sync_r07_delete_resolve_lock` / `sync_r10_protocol_locks` / `sync_integration_deep` / `sync_r11_history` 全绿。
 
+## Round 12 回传（增量登记）
+
+### R12-repocheck-fix（分支 `cursor/cloud-sync-sota-r12-repocheck-fix-b343`，FINDINGS-R11 P1-1 修复）
+
+模型 claude-fable-5-thinking-high。修复 R11-check 的 DSBK v2 头解析偏移错误（加密仓库约 98.4% 误报「头不可解」）。交付：
+
+- **① 偏移修正 + SSOT 化**：`cloud_storage/repo_check.rs` 的 DSBK 布局常量不再本地复制——v2 头长 48→**44**、chunk 读取 `head[44..48]`→**`head[40..44)`**、v2 最小体积 64→**60**，全部改为引用 `crypto/backup_crypto.rs` 新导出的容器布局 SSOT 常量（`DSBK_MAGIC` / `DSBK_V1_HEADER_LEN` / `DSBK_V2_HEADER_LEN` / `DSBK_V2_CHUNK_OFFSET` / `DSBK_GCM_TAG_LEN` / `DSBK_MAX_PLAINTEXT_CHUNK`），杜绝再次复制错偏移。
+- **② 测试改真实 fixture**：`sync_r11_repo_check.rs` 的加密对象 fixture 从手写 48 字节错偏移假头改为**真实 `encrypt_backup_file` 产物**；`repo_check.rs` 单测段补真实产物头核查与 60–63 字节不误报截断边界（FINDINGS-R11 §3.2 三断言全落）。
+- **③ E0117 顺带修**：`sync_r11_repo_check.rs` 的 `impl CloudStorage for Arc<MemoryStorage>`（孤儿规则，基线编译红灯，R10-verifier 曾登记）按其他测试文件先例改 newtype `SharedStorage(Arc<MemoryStorage>)`。
+- **④ 台账回写**：FINDINGS-R11 P1-1 置已关、本文件 R11-check 节状态更新、R10-verifier 节红灯 ② 销项。用户指南 16 巡检小节复核无「头长 48」类字节数表述，无需改。
+
+**实现改动登记（backup_crypto.rs，按规则先登记）**：`crypto/backup_crypto.rs` **只新增 DSBK 容器布局 pub 常量导出与布局锁定单测**（常量值锚定真实 `encrypt_backup` / `encrypt_backup_file` 产物长度），不改 KDF 钳制、加解密与记忆存储的任何逻辑。
+
+**文件面认领（独占）**：`cloud_storage/repo_check.rs`、`src-tauri/tests/sync_r11_repo_check.rs`、`crypto/backup_crypto.rs`（仅上述常量段 + 单测）、FINDINGS-R11 回写、本节。不改 `sync_manager.rs` / notes / chat / workbench。
+
 ### R11-unsynced-ui（分支 `cursor/cloud-sync-sota-r11-unsynced-ui-b343`，未同步文件清单常驻面板）
 
 模型 claude-fable-5-thinking-high。Dropbox 档「未同步文件清单」一整包。交付：
