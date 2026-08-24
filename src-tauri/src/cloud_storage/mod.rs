@@ -20,28 +20,44 @@
 //! storage.put("backups/data.zip", &data).await?;
 //! ```
 
+/// [R12-delta-lease] backup-v2 / GC 独立仓库租约（`backup-v2/locks/`，零生产接线）。
+pub mod backup_lease;
 mod config;
+pub mod delta_format;
+pub mod delta_gc;
+pub mod delta_restore;
+pub mod delta_upload;
 #[cfg(not(target_os = "android"))]
 mod ftp;
+/// [R11-check] 云端仓库巡检（restic `check` 档，只读不修）
+pub mod repo_check;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
+/// [R11-lease] 记录级同步的云端目标租约（TTL、陈旧回收、两阶段选主）。
+pub mod sync_lease;
 mod sync_manager;
 mod traits;
 mod webdav;
 
-pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
+pub use config::{
+    CloudStorageConfig, CloudStorageConfigError, FtpConfig, PlatformStorageCapabilities, S3Config,
+    StorageProvider, WebDavConfig,
+};
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
     generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
     rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
-    SyncStatus, UploadResult,
+    EncryptionMarker, SyncStatus, UploadResult,
 };
-pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
+pub use traits::{
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    RESUMABLE_DOWNLOAD_UNSUPPORTED,
+};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::models::AppError;
+use crate::models::{AppError, AppErrorType};
 #[cfg(not(target_os = "android"))]
 use ftp::FtpStorage;
 #[cfg(feature = "cloud_storage_s3")]
@@ -82,8 +98,23 @@ fn emit_sync_progress(app: &AppHandle, event: CloudSyncProgressEvent) {
 /// # Returns
 /// 实现了 CloudStorage trait 的存储实例
 pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn CloudStorage>> {
-    // 验证配置
-    config.validate().map_err(AppError::validation)?;
+    create_storage_with_capabilities(config, PlatformStorageCapabilities::current()).await
+}
+
+/// 同 [`create_storage`]，显式注入后端能力（测试钩子，行为等价）。
+///
+/// 校验先行：能力不支持的 provider 在 `validate_with_capabilities` 即被拒绝，
+/// 稳定 code 与 SSOT 保存/加载路径一致；下方按编译期能力保留的兜底分支使用
+/// 同一 code/message 常量，保证任何路径都不会把面向编译者的提示暴露给终端用户
+/// （RESTORE-MATRIX P3-2）。
+pub async fn create_storage_with_capabilities(
+    config: &CloudStorageConfig,
+    capabilities: PlatformStorageCapabilities,
+) -> Result<Box<dyn CloudStorage>> {
+    // 验证配置（含不可用 provider 的显式拒绝）
+    config
+        .validate_with_capabilities(capabilities)
+        .map_err(config_error_to_app_error)?;
 
     let root = config.root();
 
@@ -106,8 +137,9 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
             Ok(Box::new(storage))
         }
         #[cfg(not(feature = "cloud_storage_s3"))]
-        StorageProvider::S3 => Err(AppError::configuration(
-            "S3 存储支持未启用，请在编译时启用 cloud_storage_s3 feature".to_string(),
+        StorageProvider::S3 => Err(platform_capability_app_error(
+            crate::cloud_config_commands::S3_UNSUPPORTED_IN_BUILD_CODE,
+            crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
         )),
         #[cfg(not(target_os = "android"))]
         StorageProvider::Ftp => {
@@ -119,9 +151,25 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
             Ok(Box::new(storage))
         }
         #[cfg(target_os = "android")]
-        StorageProvider::Ftp => Err(AppError::configuration(
-            "FTP/FTPS storage is not available on Android.".to_string(),
+        StorageProvider::Ftp => Err(platform_capability_app_error(
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_CODE,
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
         )),
+    }
+}
+
+fn platform_capability_app_error(code: &'static str, message: impl Into<String>) -> AppError {
+    AppError::with_details(
+        AppErrorType::Configuration,
+        message,
+        serde_json::json!({ "code": code }),
+    )
+}
+
+fn config_error_to_app_error(error: CloudStorageConfigError) -> AppError {
+    match error.code() {
+        Some(code) => platform_capability_app_error(code, error.to_string()),
+        None => AppError::validation(error.to_string()),
     }
 }
 
@@ -256,14 +304,26 @@ pub async fn cloud_sync_upload(
     )?;
     let operation_id = _operation.operation_id().to_string();
 
+    let storage = create_storage(&config).await?;
+    let manager = CloudSyncManager::new(storage, get_device_id());
+
+    let encryption_password = config.encryption_password.clone().filter(|s| !s.is_empty());
+
+    // [R02-e2ee][R06-e2ee-verifier] 上传前执行端到端加密一致性策略：
+    // - 有密码：校验云端加密标记（.encryption-marker）中的不可逆密码校验子——
+    //   配错密码的设备在写入任何 backups/ 对象之前即失败，不会向同一 root 写入
+    //   另一套无法互解的密文；无标记时登记带校验子的标记，旧版无校验子标记
+    //   以本机密码一次性升级（损坏/异常标记 fail-closed）；
+    // - 无密码：若该 root 已有加密标记，直接拒绝明文上传，避免同一恢复链上
+    //   明文/密文混布（换机无密码时可能误还原明文旧版本、泄露本应加密的数据）。
+    manager
+        .enforce_encryption_policy_before_upload_with_password(encryption_password.as_deref())
+        .await?;
+
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
     let mut encrypted_temp: Option<tempfile::TempPath> = None;
-    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = config
-        .encryption_password
-        .as_deref()
-        .filter(|s| !s.is_empty())
-    {
+    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = encryption_password.as_deref() {
         tracing::info!("[CloudSync] 端到端加密已启用，流式加密上传...");
         // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
         // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。
@@ -294,9 +354,6 @@ pub async fn cloud_sync_upload(
             ))
         })?
         .len();
-
-    let storage = create_storage(&config).await?;
-    let manager = CloudSyncManager::new(storage, get_device_id());
 
     emit_sync_progress(
         &app_handle,

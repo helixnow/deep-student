@@ -5,6 +5,90 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+/// 当前构建/平台可用的云存储后端能力。
+///
+/// 生产入口一律通过 [`PlatformStorageCapabilities::current`] 取当前编译目标的
+/// 真实能力；`*_with_capabilities` 变体接受显式注入，使宿主机测试可以按
+/// Android / mobile-slim 的能力矩阵验证同一套拒绝逻辑（R09-android 测试钩子，
+/// 不是运行时开关——序列化/IPC 均无法构造或篡改该值）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlatformStorageCapabilities {
+    /// FTP/FTPS 后端是否可用（Android 上为编译期排除）。
+    pub ftp_supported: bool,
+    /// S3 兼容后端是否编入当前构建（`cloud_storage_s3` feature）。
+    pub s3_supported: bool,
+}
+
+impl PlatformStorageCapabilities {
+    /// 当前编译目标的真实能力。
+    pub fn current() -> Self {
+        Self {
+            ftp_supported: cfg!(not(target_os = "android")),
+            s3_supported: cfg!(feature = "cloud_storage_s3"),
+        }
+    }
+
+    /// Android 发行版（`android-release` / `mobile-slim`）的能力矩阵：
+    /// 仅 WebDAV 可用。供测试与文档锚定，生产路径不直接使用。
+    pub fn android_release() -> Self {
+        Self {
+            ftp_supported: false,
+            s3_supported: false,
+        }
+    }
+}
+
+/// 云存储配置校验错误。
+///
+/// `message` 面向日志/用户，可随本地化调整；平台能力拒绝额外携带稳定 `code`，
+/// IPC 层必须按 code 分派，禁止再匹配 message。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudStorageConfigError {
+    message: String,
+    code: Option<&'static str>,
+}
+
+impl CloudStorageConfigError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    fn platform(code: &'static str, message: &'static str) -> Self {
+        Self {
+            message: message.to_string(),
+            code: Some(code),
+        }
+    }
+
+    /// 稳定机器码；普通字段校验错误暂未迁移时返回 `None`。
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+}
+
+impl std::fmt::Display for CloudStorageConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CloudStorageConfigError {}
+
+impl From<&str> for CloudStorageConfigError {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}
+
+impl From<String> for CloudStorageConfigError {
+    fn from(message: String) -> Self {
+        Self::new(message)
+    }
+}
+
 /// 存储提供商类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -220,8 +304,20 @@ impl CloudStorageConfig {
             .unwrap_or(false)
     }
 
-    /// 验证配置是否完整
-    pub fn validate(&self) -> Result<(), String> {
+    /// 验证配置是否完整（按当前编译目标的后端能力）
+    pub fn validate(&self) -> Result<(), CloudStorageConfigError> {
+        self.validate_with_capabilities(PlatformStorageCapabilities::current())
+    }
+
+    /// 验证配置是否完整（显式注入后端能力，测试钩子）。
+    ///
+    /// 不可用的 provider 必须在此显式拒绝（不能静默通过后在更深处失败），
+    /// 且稳定错误码与 `create_storage` / SSOT 保存与加载路径保持一致；
+    /// message 仅作诊断，前端不得据此分派。
+    pub fn validate_with_capabilities(
+        &self,
+        capabilities: PlatformStorageCapabilities,
+    ) -> Result<(), CloudStorageConfigError> {
         match self.provider {
             StorageProvider::WebDav => {
                 let config = self.webdav.as_ref().ok_or("缺少 WebDAV 配置")?;
@@ -255,6 +351,12 @@ impl CloudStorageConfig {
                 Ok(())
             }
             StorageProvider::S3 => {
+                if !capabilities.s3_supported {
+                    return Err(CloudStorageConfigError::platform(
+                        crate::cloud_config_commands::S3_UNSUPPORTED_IN_BUILD_CODE,
+                        crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
+                    ));
+                }
                 let config = self.s3.as_ref().ok_or("缺少 S3 配置")?;
                 if config.endpoint.trim().is_empty() {
                     return Err("S3 endpoint 不能为空".into());
@@ -280,10 +382,13 @@ impl CloudStorageConfig {
                 }
                 Ok(())
             }
-            #[cfg(target_os = "android")]
-            StorageProvider::Ftp => Err("FTP/FTPS storage is not available on Android.".into()),
-            #[cfg(not(target_os = "android"))]
             StorageProvider::Ftp => {
+                if !capabilities.ftp_supported {
+                    return Err(CloudStorageConfigError::platform(
+                        crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_CODE,
+                        crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+                    ));
+                }
                 let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
                 if config.host.trim().is_empty() {
                     return Err("FTP host 不能为空".into());
@@ -623,6 +728,30 @@ mod tests {
         config.ftp.as_mut().unwrap().host = "localhost".into();
         config.ftp.as_mut().unwrap().use_tls = false;
         assert!(config.validate().is_ok());
+    }
+
+    #[cfg(target_os = "android")]
+    #[test]
+    fn test_ftp_rejected_on_android() {
+        // 即使配置完整,Android 运行时校验也必须以与 create_storage
+        // 相同的可映射错误信息拒绝 FTP。
+        let config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "ftp.example.com".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            config
+                .validate()
+                .expect_err("FTP must be rejected on Android"),
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+        );
     }
 
     #[test]
