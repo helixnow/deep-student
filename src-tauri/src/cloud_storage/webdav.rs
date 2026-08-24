@@ -413,9 +413,15 @@ impl WebDavStorage {
         self.ensure_directory_tracked(path).await.map(|_| ())
     }
 
-    /// 同 `ensure_directory`，但额外返回最后一次确定性 MKCOL 失败的状态码
-    /// （403 权限拒绝、507 配额耗尽、重试耗尽后仍持续的 5xx 等）。
-    /// 405/409 是"已存在/父目录缺失"语义，不算失败；3xx 等非错误状态也不算。
+    /// 同 `ensure_directory`，但额外返回"链路末端仍未被后续成功覆盖"的
+    /// MKCOL 失败状态码（403 权限拒绝、507 配额耗尽、重试耗尽后仍持续的
+    /// 5xx/423/429，以及整链 409）。
+    ///
+    /// 409 CONFLICT 在部分服务上表示"已存在"，但也可能表示"父目录缺失、
+    /// 什么都没建成"——单看 MKCOL 无法区分，因此这里记录下来，交由调用方
+    /// 结合后续 PROPFIND 探测结果判定（探测到目录存在则无害，探测 404 则
+    /// 说明整链确实没建成）。任何一段 MKCOL 成功（200/201/405）都证明该层
+    /// 已存在，此前记录的失败随即清空。
     async fn ensure_directory_tracked(&self, path: &str) -> Result<Option<StatusCode>> {
         let parts: Vec<&str> = path
             .trim_matches('/')
@@ -453,8 +459,15 @@ impl WebDavStorage {
                         .lock()
                         .expect("created_dirs 锁中毒")
                         .insert(current.clone());
+                    // 本层已确认存在：更浅层的 409/瞬时失败不再影响
+                    // "同步根目录能否存在"的判定。
+                    mkcol_failure = None;
                 }
-                StatusCode::CONFLICT => {}
+                StatusCode::CONFLICT => {
+                    // 可能是"已存在"也可能是"父目录缺失"，不进缓存；
+                    // 记录下来供调用方与 PROPFIND 404 联合判定整链失败。
+                    mkcol_failure = Some(StatusCode::CONFLICT);
+                }
                 other if other.is_client_error() || other.is_server_error() => {
                     // 确定性失败（403/507，或 request_with_path 重试耗尽后仍
                     // 持续的 5xx）。这里不中断：目录可能已存在，由调用方决定
@@ -468,6 +481,36 @@ impl WebDavStorage {
             }
         }
         Ok(mkcol_failure)
+    }
+
+    /// `check_connection` 专用：同步根目录既不存在（探测 404）又建不成时的错误。
+    ///
+    /// 423/429 是瞬时状态（其他客户端持锁 / 服务端限流），重试耗尽只说明
+    /// "现在不行"，不能误导成"目录无法创建"的确定性结论——那会让用户去
+    /// 排查权限/路径配置而不是稍后重试。
+    fn root_unavailable_error(mkcol_status: StatusCode) -> AppError {
+        match mkcol_status {
+            StatusCode::LOCKED => AppError::network(
+                "WebDAV 同步目录不存在，且服务器暂时锁定资源（423 Locked）：\
+                 可能有其他客户端正在操作，请稍后重试"
+                    .to_string(),
+            ),
+            StatusCode::TOO_MANY_REQUESTS => AppError::network(
+                "WebDAV 同步目录不存在，且服务器正在限流（429 Too Many Requests）：\
+                 请稍后重试"
+                    .to_string(),
+            ),
+            StatusCode::CONFLICT => AppError::network(
+                "WebDAV 同步目录不存在且无法创建：MKCOL 全链返回 409 Conflict\
+                 （父目录缺失或路径被占用），PROPFIND 返回 404"
+                    .to_string(),
+            ),
+            other => AppError::network(format!(
+                "WebDAV 同步目录不存在且无法创建：MKCOL 返回 {} {}，PROPFIND 返回 404",
+                other,
+                other.canonical_reason().unwrap_or("")
+            )),
+        }
     }
 
     /// 解析 PROPFIND 响应获取文件列表（使用 roxmltree 安全解析，防止 XXE 注入）
@@ -704,10 +747,10 @@ impl CloudStorage for WebDavStorage {
         // 探测用 PROPFIND Depth:0（WebDAV 核心方法，所有实现必须支持）。
         // 此前用 GET 根集合探测：Nextcloud/sabre-dav 对集合 GET 返回 501，
         // 会把完全健康的服务器误报为连接失败。
-        // 207 Multi-Status（2xx）视为连接正常；404 仅在 MKCOL 未确定性失败时
-        // 容忍（服务器可达、认证通过但目录尚不存在）——若 MKCOL 已实际失败
-        // 且目录确实不存在，说明同步根目录既不存在也创建不了，后续同步必然
-        // 失败，不得报连接成功。
+        // 207 Multi-Status（2xx）视为连接正常；404 仅在 MKCOL 链路末端成功
+        // （或已缓存确认）时容忍（服务器可达、认证通过但目录尚不存在）——
+        // 若 MKCOL 已实际失败（含整链 409）且目录确实不存在，说明同步根目录
+        // 既不存在也创建不了，后续同步必然失败，不得报连接成功。
         let root_path = if self.root.is_empty() {
             String::new()
         } else {
@@ -718,20 +761,19 @@ impl CloudStorage for WebDavStorage {
             Ok(Some(_)) => Ok(()),
             Ok(None) => match mkcol_failure {
                 None => Ok(()),
-                Some(status) => Err(AppError::network(format!(
-                    "WebDAV 同步目录不存在且无法创建：MKCOL 返回 {} {}，PROPFIND 返回 404",
-                    status,
-                    status.canonical_reason().unwrap_or("")
-                ))),
+                Some(status) => Err(Self::root_unavailable_error(status)),
             },
             Err(propfind_err) => {
                 // 极少数残缺实现 PROPFIND 不可用时回退 GET：2xx 视为可达；
-                // 404 与上面同一判定，仅在 MKCOL 未确定性失败时视为可达。
+                // 404 与上面同一判定，仅在 MKCOL 未失败时视为可达。
                 let res = self.request(Method::GET, "", None).await?;
-                if res.status().is_success()
-                    || (res.status() == StatusCode::NOT_FOUND && mkcol_failure.is_none())
-                {
+                if res.status().is_success() {
                     Ok(())
+                } else if res.status() == StatusCode::NOT_FOUND {
+                    match mkcol_failure {
+                        None => Ok(()),
+                        Some(status) => Err(Self::root_unavailable_error(status)),
+                    }
                 } else {
                     Err(propfind_err)
                 }
@@ -1463,6 +1505,103 @@ mod tests {
             .check_connection()
             .await
             .expect("MKCOL 成功时 PROPFIND 404 仍应视为连接正常");
+    }
+
+    #[tokio::test]
+    async fn check_connection_fails_when_mkcol_chain_conflicts_and_root_missing() {
+        // 整链 MKCOL 都 409（父目录缺失、什么都没建成）且 PROPFIND 404：
+        // 同步根目录既不存在也建不成，不得报连接成功。
+        // 此前 409 被无条件容忍（部分服务用它表示"已存在"），导致该场景漏报。
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (409, vec![], String::new()),
+            "PROPFIND" => (404, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync/nested");
+
+        let err = storage
+            .check_connection()
+            .await
+            .expect_err("整链 MKCOL 409 + PROPFIND 404 不得报连接成功");
+        assert!(
+            err.to_string().contains("409") && err.to_string().contains("无法创建"),
+            "错误信息应说明 409 冲突导致目录无法创建: {err}"
+        );
+        assert_eq!(count_method(&log, "MKCOL"), 2, "两段路径各发一次 MKCOL");
+    }
+
+    #[tokio::test]
+    async fn check_connection_tolerates_409_when_root_exists() {
+        // 部分服务对已存在目录的 MKCOL 返回 409：只要 PROPFIND 证实目录
+        // 存在，409 就无害，不得因此报失败（回归保护）。
+        let responder: Responder = Arc::new(|method, _path, _idx| match method {
+            "MKCOL" => (409, vec![], String::new()),
+            "PROPFIND" => (207, vec![], multistatus_xml("/sync/", 0)),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        storage
+            .check_connection()
+            .await
+            .expect("MKCOL 409 但目录确实存在时应视为连接正常");
+    }
+
+    #[tokio::test]
+    async fn check_connection_deeper_mkcol_success_clears_earlier_conflict() {
+        // 浅层段 409（该服务用 409 表示已存在）、末段 201 建成：
+        // 链路末端成功证明根目录存在，早前的 409 不应再触发失败，
+        // 即使 PROPFIND 因最终一致窗口暂时 404。
+        let responder: Responder = Arc::new(|method, path, _idx| match method {
+            "MKCOL" if path == "/a/" => (409, vec![], String::new()),
+            "MKCOL" => (201, vec![], String::new()),
+            "PROPFIND" => (404, vec![], String::new()),
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "a/b");
+
+        storage
+            .check_connection()
+            .await
+            .expect("末段 MKCOL 成功后早前 409 不应导致探活失败");
+    }
+
+    #[tokio::test]
+    async fn check_connection_reports_lock_and_rate_limit_instead_of_create_failure() {
+        // MKCOL 重试耗尽后仍持续 423/429 且 PROPFIND 404：探活必须失败，
+        // 但 423/429 是瞬时状态（锁定/限流），文案不得误导为
+        // "目录无法创建"的确定性结论。
+        for (status, keyword) in [(423u16, "锁定"), (429, "限流")] {
+            let responder: Responder = Arc::new(move |method, _path, _idx| match method {
+                // Retry-After: 0 让有界重试立即耗尽，避免测试等退避
+                "MKCOL" => (status, vec![("Retry-After", "0".to_string())], String::new()),
+                "PROPFIND" => (404, vec![], String::new()),
+                _ => (500, vec![], String::new()),
+            });
+            let (endpoint, _log) = spawn_fake_dav(responder).await;
+            let storage = storage_for(&endpoint, "sync");
+
+            let err = storage
+                .check_connection()
+                .await
+                .expect_err(&format!("MKCOL {status} + PROPFIND 404 不得报连接成功"));
+            let msg = err.to_string();
+            assert!(
+                msg.contains(keyword),
+                "status={status} 错误信息应提示{keyword}: {msg}"
+            );
+            assert!(
+                msg.contains("稍后重试"),
+                "status={status} 错误信息应建议稍后重试: {msg}"
+            );
+            assert!(
+                !msg.contains("无法创建"),
+                "status={status} 不应误导为确定性的「无法创建目录」: {msg}"
+            );
+        }
     }
 
     #[tokio::test]
