@@ -89,6 +89,12 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   } | null>(null);
   const lastReportedPageRef = useRef<number | null>(null);
 
+  // 同一组件实例可切换资源；页码去重基线不能跨文档沿用，否则新文档
+  // 第一次跳到“恰好等于旧文档末页”的页码时会被误判为重复而不落进度。
+  useEffect(() => {
+    lastReportedPageRef.current = null;
+  }, [resourcePath, filePath]);
+
   // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
   // StrictMode / 并发渲染下 useMemo 可能重复执行或结果被丢弃，
   // 在其中 create/revoke 会误 revoke 仍在使用的 URL。

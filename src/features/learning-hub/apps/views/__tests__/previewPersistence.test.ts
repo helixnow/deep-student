@@ -116,9 +116,10 @@ describe('previewPersistence', () => {
 
   it('dispose flush uses the creation-time snapshot, not later mutations (cross-node isolation)', async () => {
     // 模拟组件层活 ref：控制器创建后对象被切换成"新 node"的 metadata
+    const oldBookmark = { id: 'old', page: 4, title: 'Old', createdAt: 4 };
     const liveMetadata: Record<string, unknown> = {
       readingProgress: { page: 4, lastReadAt: 40 },
-      bookmarks: [{ id: 'old', page: 4, title: 'Old', createdAt: 4 }],
+      bookmarks: [oldBookmark],
     };
     const controller = createPreviewPersistController({
       kind: 'file',
@@ -133,6 +134,9 @@ describe('previewPersistence', () => {
     liveMetadata.bookmarks = [{ id: 'next-node', page: 99, title: 'Next', createdAt: 99 }];
     liveMetadata.readingProgress = { page: 99, lastReadAt: 999 };
     liveMetadata.highlights = [{ id: 'next-node-highlight' }];
+    // 即便旧数组元素被调用方原地改写，控制器也必须持有创建时的深快照。
+    oldBookmark.title = 'Mutated after snapshot';
+    oldBookmark.page = 88;
 
     await controller.dispose();
 
@@ -141,6 +145,35 @@ describe('previewPersistence', () => {
       readingProgress: { page: 5, lastReadAt: 50 },
       bookmarks: [{ id: 'old', page: 4, title: 'Old', createdAt: 4 }],
     });
+  });
+
+  it('dispose flush clones scheduled values and keeps highlights out of the combined payload', async () => {
+    const controller = createPreviewPersistController({
+      kind: 'textbook',
+      nodeId: 'tb-flush',
+      nodePath: '/tb-flush',
+      metadata: {
+        highlights: [{ id: 'must-not-leak' }],
+        annotationRevision: 'stale-revision',
+      },
+    }, { progressDebounceMs: 100, bookmarksDebounceMs: 100 });
+    const progress = { page: 6, lastReadAt: 60 };
+    const bookmarks = [{ id: 'scheduled', page: 6, title: 'Scheduled', createdAt: 6 }];
+
+    controller.scheduleProgress(progress);
+    controller.scheduleBookmarks(bookmarks);
+    progress.page = 66;
+    bookmarks[0].title = 'Mutated after scheduling';
+    await controller.dispose();
+
+    expect(setMetadata).toHaveBeenCalledTimes(1);
+    expect(setMetadata).toHaveBeenLastCalledWith('/tb-flush', {
+      readingProgress: { page: 6, lastReadAt: 60 },
+      bookmarks: [{ id: 'scheduled', page: 6, title: 'Scheduled', createdAt: 6 }],
+    });
+    const payload = setMetadata.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('highlights');
+    expect(payload).not.toHaveProperty('annotationRevision');
   });
 
   it('flush without pending changes does not write', async () => {
@@ -172,6 +205,7 @@ describe('sanitizeProgressChannelMetadata', () => {
       bookmarks,
     });
     expect(snapshot.bookmarks).not.toBe(bookmarks);
+    expect(snapshot.bookmarks?.[0]).not.toBe(bookmarks[0]);
     expect(snapshot.readingProgress).not.toBe(source.readingProgress);
   });
 

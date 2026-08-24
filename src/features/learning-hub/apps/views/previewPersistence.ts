@@ -54,6 +54,17 @@ interface ProgressChannelSnapshot {
   bookmarks?: Bookmark[];
 }
 
+function cloneReadingProgress(progress: ReadingProgress): ReadingProgress {
+  return {
+    page: progress.page,
+    ...(typeof progress.lastReadAt === 'number' ? { lastReadAt: progress.lastReadAt } : {}),
+  };
+}
+
+function cloneBookmarks(bookmarks: Bookmark[]): Bookmark[] {
+  return bookmarks.map((bookmark) => ({ ...bookmark }));
+}
+
 /**
  * 从 node metadata 中提取进度通道白名单字段（readingProgress / bookmarks）。
  * 返回值为拷贝，调用方后续修改源对象不影响快照。
@@ -78,7 +89,7 @@ export function sanitizeProgressChannelMetadata(
 
   const bookmarks = metadata.bookmarks;
   if (Array.isArray(bookmarks)) {
-    snapshot.bookmarks = (bookmarks as Bookmark[]).slice();
+    snapshot.bookmarks = cloneBookmarks(bookmarks as Bookmark[]);
   }
 
   return snapshot;
@@ -133,14 +144,9 @@ export function createPreviewPersistController(
   const mergeBase = (): Record<string, unknown> => {
     const merged: Record<string, unknown> = {};
     const progress = latestProgress ?? metadataSnapshot.readingProgress ?? null;
-    if (progress) {
-      merged.readingProgress = {
-        page: progress.page,
-        lastReadAt: progress.lastReadAt,
-      };
-    }
+    if (progress) merged.readingProgress = cloneReadingProgress(progress);
     const bookmarks = latestBookmarks ?? metadataSnapshot.bookmarks ?? null;
-    if (bookmarks) merged.bookmarks = bookmarks;
+    if (bookmarks) merged.bookmarks = cloneBookmarks(bookmarks);
     return merged;
   };
 
@@ -177,13 +183,11 @@ export function createPreviewPersistController(
   };
 
   const persistProgress = async (progress: ReadingProgress) => {
-    latestProgress = progress;
+    const ownedProgress = cloneReadingProgress(progress);
+    latestProgress = ownedProgress;
     const newMetadata = {
       ...mergeBase(),
-      readingProgress: {
-        page: progress.page,
-        lastReadAt: progress.lastReadAt,
-      },
+      readingProgress: ownedProgress,
     };
     const result = await setMetadataWithRetry(newMetadata, 'readingProgress');
     if (!result.ok) {
@@ -193,15 +197,16 @@ export function createPreviewPersistController(
   };
 
   const persistBookmarks = async (bookmarks: Bookmark[]) => {
-    latestBookmarks = bookmarks;
+    const ownedBookmarks = cloneBookmarks(bookmarks);
+    latestBookmarks = ownedBookmarks;
     const newMetadata = {
       ...mergeBase(),
-      bookmarks,
+      bookmarks: ownedBookmarks,
     };
 
     if (currentTarget.kind === 'textbook') {
       try {
-        await updateBookmarksWithRetry(bookmarks);
+        await updateBookmarksWithRetry(ownedBookmarks);
       } catch (err: unknown) {
         options?.onBookmarksError?.(err);
         throw err;
@@ -247,16 +252,14 @@ export function createPreviewPersistController(
     const pendingWrite = enqueue(async () => {
       const mergedMetadata = mergeBase();
       if (progress) {
-        mergedMetadata.readingProgress = {
-          page: progress.page,
-          lastReadAt: progress.lastReadAt,
-        };
+        mergedMetadata.readingProgress = cloneReadingProgress(progress);
       }
       if (bookmarks) {
-        mergedMetadata.bookmarks = bookmarks;
+        const ownedBookmarks = cloneBookmarks(bookmarks);
+        mergedMetadata.bookmarks = ownedBookmarks;
         if (currentTarget.kind === 'textbook') {
           try {
-            await updateBookmarksWithRetry(bookmarks);
+            await updateBookmarksWithRetry(ownedBookmarks);
           } catch (err: unknown) {
             // ★ flush 常在关窗/切 node 前的最后一次落盘：书签双写通道失败
             // 不能连带丢掉 pending 的阅读进度，继续走 setMetadata。
@@ -282,8 +285,9 @@ export function createPreviewPersistController(
   return {
     scheduleProgress: (progress) => {
       if (disposed) return;
-      latestProgress = progress;
-      pendingProgress = progress;
+      const ownedProgress = cloneReadingProgress(progress);
+      latestProgress = ownedProgress;
+      pendingProgress = ownedProgress;
       if (progressTimer != null) window.clearTimeout(progressTimer);
       progressTimer = window.setTimeout(() => {
         progressTimer = null;
@@ -299,8 +303,9 @@ export function createPreviewPersistController(
 
     scheduleBookmarks: (bookmarks) => {
       if (disposed) return;
-      latestBookmarks = bookmarks;
-      pendingBookmarks = bookmarks;
+      const ownedBookmarks = cloneBookmarks(bookmarks);
+      latestBookmarks = ownedBookmarks;
+      pendingBookmarks = ownedBookmarks;
       if (bookmarksTimer != null) window.clearTimeout(bookmarksTimer);
       bookmarksTimer = window.setTimeout(() => {
         bookmarksTimer = null;
