@@ -35,6 +35,7 @@
 | `builtin-chatanki_undo_library_last_review` | 按复习版本撤销库卡片最后评分 | 全库 | 是 |
 | `builtin-chatanki_delete_library_card` | 按内容及复习版本删除库卡片 | 全库 | 是 |
 | `builtin-chatanki_retemplate` | 乐观锁批量换模板 | 当前会话的文档或卡片 | 是 |
+| `builtin-chatanki_transform` | 批量程序化变换（ops 声明式 / script 沙箱脚本），dry_run 出 diff、apply 乐观锁写回 | 当前会话的 `documentId` 或选择集 | 是（dry_run 否） |
 | `builtin-chatanki_control` | 暂停、恢复、重试或取消生成 | 当前会话的 `documentId` | 是 |
 | `builtin-chatanki_export` | 导出 APKG 或 JSON | 当前会话的 `documentId` | 是，写文件 |
 | `builtin-chatanki_sync` | 通过 AnkiConnect 同步到桌面 Anki | 当前会话的 `documentId` | 是，写外部 Anki |
@@ -868,6 +869,130 @@ FSRS 状态在读取后发生入队、评分、暂停、恢复或撤销时，返
 目标模板不存在/未激活分别以工具失败消息 `target_template_not_found`、`target_template_inactive` 返回。成功写入后也可能出现 `status=partial`，含义与其他写卡工具相同。
 
 当前会话没有该文档的预览块时，换模板仍会在完整的 Anki 所有权与乐观锁校验后写入，`uiSync.status=not_required` 且 `eventAttempted=false`。
+
+### `builtin-chatanki_transform`
+
+对选中卡片执行批量程序化变换（批量挖空、术语替换、格式清洗、批量增删标签）。快照直接出自数据库全文（**无 2000 字符截断视图**，不存在截断毒化，无需 `allowTruncatedSource`），写回逐卡复用与 `batch_update_cards` 同源的乐观锁原语，成功项汇总为一次预览块 patch + `fsrs://changed`。
+
+两种互斥的变换定义（`transform.script` 与 `transform.ops` 必须且只能提供一个）：
+
+| 模式 | 能力 | 执行面 | 敏感度 | 平台 |
+|---|---|---|---|---|
+| `ops` | 声明式安全子集（`regex_replace` / `tag_add` / `tag_remove`，≤20 个按序应用） | 纯 Rust（regex crate，无回溯灾难） | Medium | 全平台（含移动端） |
+| `script` | Agent 现写 python/node 脚本（能力全集） | 平台硬沙箱（macOS Seatbelt / Linux bwrap / Windows AppContainer），网络恒禁、仅 job 目录可写 | **High**（审批卡完整展示脚本正文） | 仅桌面端；移动端/缺沙箱/缺解释器结构化拒绝 |
+
+参数：
+
+| 参数 | 必填 | 约束 |
+|---|---|---|
+| `documentId` | 是 | 当前会话拥有的制卡任务 |
+| `selection` | 否 | `cardIds`（1..500 个真实 ID）与 `filter`（`all`/`edited_only`/`error_only`）互斥；缺省为文档全部 live 非诊断卡 |
+| `mode` | 否 | `dry_run`（默认，只出 diff 不写库）或 `apply` |
+| `transform.ops` | 与 script 二选一 | 声明式操作序列；正则 pattern ≤1024、replacement ≤4096、单 op tags ≤50 |
+| `transform.script` | 与 ops 二选一 | `language`（`python`/`node`）+ `code`（≤65536 字符）+ `timeoutMs`（1000..120000，默认 30000） |
+| `expectedVersions` | apply 必填 | `cardId -> version` 完整映射，必须与选择集精确一致（与 `retemplate` 相同 CAS 语义）；dry_run 忽略 |
+| `purpose` | 否 | 一句话目的说明，进入审批卡与审计 |
+
+#### ops 模式契约
+
+- 全部正则一次性编译，任一失败整批返回 `error=invalid_pattern`（`blocked`，附 `opIndex`/`pattern`/`detail`），不写库。
+- `regex_replace` 作用于 `front`/`back`/`text`（`text=null` 的卡自动跳过），替换串支持 `$1`/`$name` 捕获组引用；`tag_add` 去重追加，`tag_remove` 精确删除。
+
+#### script 模式契约（I/O 合同）
+
+执行链：DB 无截断快照 → 会话 temp root 的 job 目录（`runtime-root://temp/chatanki_transform/job-<ts>-<seq>`，保留至会话清理供审计）→ 平台硬沙箱运行脚本 → 输出严格校验 → 与 ops 模式**同一条** CAS 写回路径。
+
+脚本从环境变量 `CHATANKI_INPUT` 指向的 UTF-8 JSON 文件读输入：
+
+```json
+{
+  "documentId": "…",
+  "cards": [
+    {
+      "id": "…",
+      "index": 1,
+      "front": "全文，无 2000 字符截断",
+      "back": "…",
+      "text": null,
+      "tags": ["…"],
+      "templateId": "design-swiss",
+      "extraFields": {},
+      "version": "2026-08-24T…Z"
+    }
+  ]
+}
+```
+
+把结果写到 `CHATANKI_OUTPUT` 指向的路径（≤32 MiB）：
+
+```json
+{
+  "cards": [
+    { "id": "…", "text": "变换后的 {{c1::术语}} 全文" },
+    { "id": "…", "front": "更新的问题", "tags": ["生物", "重点"] }
+  ]
+}
+```
+
+输出校验规则（违反者**逐卡**拒绝，不整批失败）：
+
+| 规则 | 违反时逐卡 `error` |
+|---|---|
+| 只允许 `front`/`back`/`text`/`tags` 更新键；输入合同键（`id`/`version`/`index`/`templateId`/`extraFields`）回显被静默忽略；其余键拒绝 | `unknown_output_field` |
+| `null`/缺省 = 不修改；字符串字段 trim 后必须非空（v1 不支持清空字段）；tags 元素非空 | `empty_field` |
+| 字段类型必须匹配（字符串/字符串数组） | `invalid_field_type` |
+| 修改 `text` 必须携带合法 `{{cN::答案}}` 挖空标记（N ≥ 1，答案非空，允许 `::hint`） | `invalid_cloze_text` |
+| 单卡 tags 去重后 ≤100 | `tags_limit_exceeded` |
+
+不可绕过的硬防线：
+
+- **`version` 回传一律忽略**：CAS 只认快照时 Rust 记录的版本，脚本篡改无效；`apply` 还要求显式携带 `expectedVersions` 双保险。
+- **v1 禁止脚本增删卡**：输出中快照之外的 `id` 记入顶层 `unknownCardIds`（不写库、不整批失败）；输出未提及的卡不修改。增删卡走 `add_cards`/`delete_cards` 正门。
+- **网络恒禁**（无豁免参数）、只挂载 job 目录可写、环境变量白名单（仅 `CHATANKI_INPUT`/`CHATANKI_OUTPUT`/净化 PATH/UTF-8 locale 等，python 以 `-I` 隔离模式运行）。
+- stdout/stderr 仅承载日志，各保留末尾 16KB 进 `script.stdoutTail`/`stderrTail`。
+
+顶层合同违规（非 JSON / 缺 `cards` / 条目缺字符串 `id` / 重复 `id` / 超 32 MiB）整批返回 `error=invalid_script_output`（`failed`），不写库。
+
+#### 返回值
+
+dry_run 返回逐卡 `diff`（before/after 仅展示用途截断；`Invalid` 计划以 `invalid: true` 条目呈现）；apply 返回逐卡 `results`（`ok`/`unchanged`/`invalid`/`conflict`/`not_found`/`failed`，语义与 `batch_update_cards` 一致）。script 模式两者均追加：
+
+```json
+{
+  "script": {
+    "language": "python",
+    "exitCode": 0,
+    "timedOut": false,
+    "timeoutMs": 30000,
+    "durationMs": 812,
+    "stdoutTail": "…",
+    "stderrTail": "",
+    "sandbox": "linux_bwrap",
+    "interpreter": "/usr/bin/python3"
+  },
+  "jobPath": "runtime-root://temp/chatanki_transform/job-1756005600000-0001",
+  "unknownCardIds": []
+}
+```
+
+结构化拒绝/失败（均 `mutationApplied=false`，不写库）：
+
+| `error` | `status` | 含义与处理 |
+|---|---|---|
+| `invalid_pattern` | `blocked` | ops 正则编译失败；按 `opIndex` 修正 |
+| `selection_changed` / `selection_too_large` | `conflict` / `blocked` | 与 ops 模式共用的选择集防线 |
+| `expected_versions_mismatch` | `conflict` | apply 前置校验（script 模式在沙箱执行**之前** fail-fast） |
+| `script_sandbox_unavailable` | `rejected` | 移动端 / Linux 缺 bwrap / macOS 缺 sandbox-exec；改用 ops |
+| `script_environment_unavailable` | `rejected` | 无窗口环境无法解析会话 temp root；改用 ops |
+| `interpreter_unavailable` | `rejected` | 本机无 python3/python 或 node；装解释器、换 language 或改用 ops |
+| `script_setup_failed` | `failed` | job 目录/命令构造/spawn 基础设施失败 |
+| `script_timed_out` | `failed` | 超时，进程组已终止；提高 `timeoutMs` 或缩小选择集 |
+| `script_failed` | `failed` | 非零退出（含被信号杀死 `exitCode=null`）；看 `stderrTail` |
+| `script_output_missing` | `failed` | 0 退出但未写 `$CHATANKI_OUTPUT` |
+| `script_output_too_large` | `failed` | 输出超 32 MiB；只回传变更卡与变更字段 |
+| `invalid_script_output` | `failed` | 顶层输出合同违规，见 `detail` |
+
+敏感度：`transform.ops` Medium；`transform.script` **High**（`sensitivity_level_for_call` 按参数动态分级，对齐 shell script-runner 恒 High 的纪律）。审批卡展示的参数对 chatanki 工具原样透传，因此脚本正文完整可见。技能层纪律：首次变换必须先 dry_run；apply 影响超过 3 张卡先 `ask_user`。
 
 ### `builtin-chatanki_control`
 

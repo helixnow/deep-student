@@ -1,22 +1,24 @@
 //! `builtin-chatanki_transform` 声明式变换引擎（ops 模式，纯 Rust）。
 //!
-//! Round 2 骨架，参考 `docs/research/anki-ai-native/round1/04-shell-script-integration.md`
+//! 参考 `docs/research/anki-ai-native/round1/04-shell-script-integration.md`
 //! 的方案 B/C 组合：
 //! - **ops 声明式子集**（`regex_replace` / `tag_add` / `tag_remove`）：纯 Rust 执行
 //!   （regex crate，无回溯灾难），移动端可用，本文件完整实现；
-//! - **script（沙箱脚本）模式**：TODO，参数面已在 `NormalizedTransformKind::Script`
-//!   预留，执行器返回结构化 `script_mode_unimplemented`。后续实现需复用
-//!   `shell_sandbox::SandboxPolicy`（网络恒禁 + job 目录挂载）与
-//!   `skill_requires::probe_bin` 解释器探测，详见调研报告 §5.1/§6。
+//! - **script（沙箱脚本）模式**：Round 3 已生产化，参数归一化 / I/O 合同 /
+//!   解释器探测 / 沙箱执行 / 输出校验在 `chatanki_transform_script.rs`，
+//!   实现说明见 `docs/research/anki-ai-native/round3/01-transform-script.md`。
 //!
-//! 本模块只承载「参数解析/归一化 + 纯函数变换引擎 + expectedVersions 校验」，
-//! 不触达数据库；DB 全文快照读取（无 2000 字符截断）、逐卡 CAS 写回与预览块
-//! UI 同步在 `chatanki_executor.rs` 的 `execute_transform` 中复用既有原语完成。
+//! 本模块只承载「参数解析/归一化 + 纯函数变换引擎 + 逐卡计划（`TransformCardPlan`）
+//! + expectedVersions 校验」，不触达数据库；DB 全文快照读取（无 2000 字符截断）、
+//! 逐卡 CAS 写回与预览块 UI 同步在 `chatanki_executor.rs` 的 `execute_transform`
+//! 中复用既有原语完成——ops 与 script 两种模式共用同一条 CAS 写回路径。
 
 use std::collections::{HashMap, HashSet};
 
 use regex::Regex;
 use serde::Deserialize;
+
+use super::chatanki_transform_script::{NormalizedTransformScript, TransformScriptSpec};
 
 /// 一次变换最多允许的声明式操作数。
 pub(crate) const CHATANKI_TRANSFORM_OPS_LIMIT: usize = 20;
@@ -95,8 +97,8 @@ struct TransformSelectionArgs {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TransformSpecArgs {
-    /// TODO(script mode)：沙箱脚本变换。当前仅接受参数占位，执行器结构化拒绝。
-    script: Option<serde_json::Value>,
+    /// 沙箱脚本变换（python/node，网络恒禁，I/O 走 CHATANKI_INPUT/OUTPUT 合同）。
+    script: Option<TransformScriptSpec>,
     ops: Option<Vec<TransformOpSpec>>,
 }
 
@@ -135,8 +137,8 @@ pub(crate) enum NormalizedTransformOp {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum NormalizedTransformKind {
-    /// TODO(script mode)：沙箱脚本变换尚未实现，执行器返回 `script_mode_unimplemented`。
-    Script,
+    /// 沙箱脚本变换（High 敏感度；移动端/无沙箱环境结构化拒绝）。
+    Script(NormalizedTransformScript),
     Ops(Vec<NormalizedTransformOp>),
 }
 
@@ -174,7 +176,7 @@ impl ChatAnkiTransformArgs {
             (None, None) => {
                 return Err("transform requires exactly one of script or ops".to_string());
             }
-            (Some(_), None) => NormalizedTransformKind::Script,
+            (Some(script), None) => NormalizedTransformKind::Script(script.normalize()?),
             (None, Some(ops)) => NormalizedTransformKind::Ops(normalize_transform_ops(ops)?),
         };
 
@@ -492,6 +494,32 @@ pub(crate) fn changed_field_names(
     changed
 }
 
+/// 逐卡执行计划：ops 与 script 两种模式归一化后的公共形态。
+/// 执行器据此走同一套 dry_run diff 与 apply CAS 写回路径。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TransformCardPlan {
+    /// 变换后的字段快照（可能与 before 相同 = 未变更）。
+    After(TransformFields),
+    /// 该卡计划非法（如脚本输出条目违反合同），apply 时逐卡拒绝、不整批失败。
+    Invalid {
+        code: &'static str,
+        detail: String,
+    },
+}
+
+/// ops 模式：把编译后的操作序列应用到选择集，产出与 script 模式同构的逐卡计划。
+pub(crate) fn plan_transform_ops(
+    ops: &[CompiledTransformOp],
+    selected: &[crate::models::AnkiCard],
+) -> Vec<TransformCardPlan> {
+    selected
+        .iter()
+        .map(|card| {
+            TransformCardPlan::After(apply_transform_ops(ops, &TransformFields::from_card(card)))
+        })
+        .collect()
+}
+
 /// 与 `card_content_is_valid` 同语义：非空 Cloze text，或非空 front+back。
 pub(crate) fn transform_fields_are_valid(fields: &TransformFields) -> bool {
     fields
@@ -671,14 +699,60 @@ mod tests {
     }
 
     #[test]
-    fn normalize_script_mode_is_reserved_todo() {
+    fn normalize_script_mode_carries_language_code_and_default_timeout() {
         let request = parse(json!({
             "documentId": "doc-1",
             "transform": { "script": { "language": "python", "code": "print(1)" } },
         }))
         .unwrap();
-        assert_eq!(request.kind, NormalizedTransformKind::Script);
+        match &request.kind {
+            NormalizedTransformKind::Script(script) => {
+                assert_eq!(script.language.as_str(), "python");
+                assert_eq!(script.code, "print(1)");
+                assert_eq!(script.timeout, std::time::Duration::from_millis(30_000));
+            }
+            other => panic!("unexpected kind: {other:?}"),
+        }
         assert_eq!(request.mode, TransformMode::DryRun);
+    }
+
+    #[test]
+    fn normalize_script_mode_propagates_script_contract_errors() {
+        let error = parse(json!({
+            "documentId": "doc-1",
+            "transform": { "script": { "language": "python", "code": "  " } },
+        }))
+        .unwrap_err();
+        assert!(error.contains("must not be empty"), "{error}");
+
+        let error = parse(json!({
+            "documentId": "doc-1",
+            "transform": { "script": { "language": "python", "code": "1", "timeoutMs": 500 } },
+        }))
+        .unwrap_err();
+        assert!(error.contains("1000..=120000"), "{error}");
+    }
+
+    #[test]
+    fn plan_transform_ops_produces_after_plans_in_selection_order() {
+        let ops = vec![NormalizedTransformOp::TagAdd {
+            tags: vec!["新".to_string()],
+        }];
+        let compiled = compile_transform_ops(&ops).unwrap();
+        let cards = vec![
+            make_card("card-1", false, false),
+            make_card("card-2", false, false),
+        ];
+        let plans = plan_transform_ops(&compiled, &cards);
+        assert_eq!(plans.len(), 2);
+        for plan in &plans {
+            match plan {
+                TransformCardPlan::After(after) => {
+                    assert_eq!(after.tags, vec!["新".to_string()]);
+                }
+                other => panic!("unexpected plan: {other:?}"),
+            }
+        }
     }
 
     #[test]

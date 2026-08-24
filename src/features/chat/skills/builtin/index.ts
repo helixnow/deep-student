@@ -473,7 +473,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_transform',
       description:
-        '对当前会话文档的卡片执行批量声明式变换（字段内正则替换、批量增删标签），纯本地执行。后端直接从数据库读取选中卡片的无截断全文快照做变换，不存在截断毒化，无需 allowTruncatedSource。默认 mode=dry_run：只返回逐卡 diff 摘要不写库，用于向用户展示效果；确认后再用 mode=apply 经逐卡乐观锁写回，apply 必须携带与选择集精确一致的完整 expectedVersions（cardId -> version，来自最近一次 get_cards）。首次变换必须先 dry_run；一次 apply 影响超过 3 张卡前必须先用 ask_user 征得用户确认。沙箱脚本模式（transform.script）为后续版本预留，当前传入将返回 error=script_mode_unimplemented。',
+        '对当前会话文档的卡片执行批量程序化变换（批量挖空、术语替换、格式清洗、批量增删标签）。transform.ops（声明式安全子集，纯 Rust，移动端可用，Medium）与 transform.script（沙箱 python/node 脚本，能力全集，High，由平台审批卡统一承接、审批卡会完整展示脚本正文，不要在正文自行索要确认）二选一。后端直接从数据库读取选中卡片的无截断全文快照做变换，不存在截断毒化，无需 allowTruncatedSource。script 模式：快照导出到会话 temp root 的 job 目录，脚本在本地硬沙箱内运行——网络恒禁、只能读 $CHATANKI_INPUT 指向的 JSON、把 {"cards":[{id, front?, back?, text?, tags?}]} 写到 $CHATANKI_OUTPUT，不能触达数据库；输出中的 version 一律被忽略（乐观锁只认后端快照时记录的版本），未提及的卡不修改，v1 禁止脚本新增/删除卡片（快照之外的 id 记入 unknownCardIds）。移动端或缺少沙箱/解释器时结构化返回 script_sandbox_unavailable / interpreter_unavailable，ops 模式不受影响。默认 mode=dry_run：只返回逐卡 diff 摘要不写库，用于向用户展示效果；确认后再用 mode=apply 经逐卡乐观锁写回，apply 必须携带与选择集精确一致的完整 expectedVersions（cardId -> version，来自最近一次 get_cards）。首次变换必须先 dry_run；一次 apply 影响超过 3 张卡前必须先用 ask_user 征得用户确认。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -509,8 +509,35 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           transform: {
             type: 'object',
-            description: '变换定义。当前版本仅支持 ops 声明式操作序列（纯 Rust 执行，移动端可用）；script 沙箱脚本模式预留未实现。',
+            description: '变换定义：script（沙箱脚本，能力全集，High 审批）或 ops（声明式安全子集，纯 Rust，移动端可用）二选一，不得同时提供。',
+            oneOf: [{ required: ['script'] }, { required: ['ops'] }],
             properties: {
+              script: {
+                type: 'object',
+                description:
+                  '沙箱脚本变换。脚本合同：从环境变量 CHATANKI_INPUT 指向的 UTF-8 JSON 读 {documentId, cards:[{id,index,front,back,text,tags,templateId,extraFields,version}]}（全文无截断），把 {"cards":[{id, front?, back?, text?, tags?}]} 写到 CHATANKI_OUTPUT 指向的路径；null/缺省字段 = 不修改，空字符串会被逐卡拒绝（empty_field），修改 text 必须携带合法 {{cN::答案}} 挖空标记（invalid_cloze_text），未知字段逐卡拒绝（unknown_output_field），version 回传无效。stdout/stderr 仅用于日志（各保留末尾 16KB）。沙箱强制：网络恒禁、只挂载 job 目录可写、环境变量白名单。',
+                properties: {
+                  language: {
+                    type: 'string',
+                    enum: ['python', 'node'],
+                    description: '解释器。后端按固定安装目录 + PATH 探测本机可用解释器（python3/python 或 node），缺失时结构化返回 interpreter_unavailable。',
+                  },
+                  code: {
+                    type: 'string',
+                    maxLength: 65536,
+                    description: '脚本正文（python 以 -I 隔离模式运行）。禁止网络与文件系统漫游（沙箱强制，非君子协定）。',
+                  },
+                  timeoutMs: {
+                    type: 'integer',
+                    minimum: 1000,
+                    maximum: 120000,
+                    default: 30000,
+                    description: '脚本超时；超时终止整个进程组并返回 error=script_timed_out，不写库。',
+                  },
+                },
+                required: ['language', 'code'],
+                additionalProperties: false,
+              },
               ops: {
                 type: 'array',
                 minItems: 1,
@@ -553,7 +580,6 @@ export const chatAnkiSkill: SkillDefinition = {
                 },
               },
             },
-            required: ['ops'],
             additionalProperties: false,
           },
           expectedVersions: {
@@ -1115,12 +1141,14 @@ export const chatAnkiSkill: SkillDefinition = {
 
 ## 批量程序化变换（chatanki_transform）
 
-- 用户要求对多张卡做**同构的机械变换**（统一术语替换、清理格式、批量加/删标签）时，优先一次 \`builtin-chatanki_transform\`，不要循环调用 update_card 或把 get_cards 的截断输出拼进 batch_update_cards。
+- 用户要求对多张卡做**同构的机械变换**（统一术语替换、清理格式、批量加/删标签、批量挖空）时，优先一次 \`builtin-chatanki_transform\`，不要循环调用 update_card 或把 get_cards 的截断输出拼进 batch_update_cards。
 - 固定流程：\`builtin-chatanki_get_cards\`（收集选择集的 \`cardId -> version\`）-> \`transform(mode=dry_run)\` 查看逐卡 diff -> 向用户展示效果（影响超过 3 张卡时用 \`builtin-ask_user\` 确认）-> \`transform(mode=apply, expectedVersions=完整映射)\` -> \`get_cards\` 复核。
 - 后端直接读数据库全文快照做变换，**不受 2000 字符截断影响**；diff 里的 before/after 截断仅为展示，写库路径不经过它。
 - \`apply\` 的 \`expectedVersions\` 必须与选择集精确一致：缺卡/多卡返回 \`expected_versions_mismatch\`，任一版本过期该卡返回 \`conflict\`（其余卡照常生效）；冲突后必须重新 \`get_cards\` 重建映射，不得复用旧版本。
-- 当前仅支持声明式 \`ops\`（\`regex_replace\` / \`tag_add\` / \`tag_remove\`，≤20 个按序应用）；正则用 Rust regex 语法，编译失败整批返回 \`invalid_pattern\` 且不写库。沙箱脚本模式（\`transform.script\`）尚未实现，传入会返回 \`script_mode_unimplemented\`。
-- dry_run 返回 \`wouldBeInvalid=true\` 的卡说明变换后内容不合法（front+back 为空且无 Cloze text），apply 会逐卡拒绝；先调整 ops 再 apply。
+- **模式选择**：能用声明式 \`ops\`（\`regex_replace\` / \`tag_add\` / \`tag_remove\`，≤20 个按序应用，正则用 Rust regex 语法，编译失败整批返回 \`invalid_pattern\` 且不写库）表达的变换**优先用 ops**（Medium，移动端可用）；需要真正编程逻辑（批量挖空、条件变换、跨字段推导）时才用 \`transform.script\` 现写 python/node 脚本（High，平台审批卡会完整展示脚本正文，不要在正文自行索要确认）。
+- **script 合同**：从 \`$CHATANKI_INPUT\` 读 \`{documentId, cards:[{id,index,front,back,text,tags,templateId,extraFields,version}]}\`，把 \`{"cards":[{id, front?, back?, text?, tags?}]}\` 写到 \`$CHATANKI_OUTPUT\`；null/缺省 = 不修改、空字符串逐卡拒绝、改 \`text\` 必须含合法 \`{{cN::答案}}\`、未知字段逐卡拒绝、\`version\` 回传无效（乐观锁只认后端快照）。v1 禁止脚本新增/删除卡（快照外 id 记入 \`unknownCardIds\`）；沙箱网络恒禁、只有 job 目录可写，stdout 只用于日志。
+- **script 失败处理**：\`script_sandbox_unavailable\`（移动端/无硬沙箱）与 \`interpreter_unavailable\` 时改用 ops 或告知用户；\`script_failed\` / \`script_timed_out\` / \`invalid_script_output\` 均未写库，按 \`stderrTail\`/\`detail\` 修脚本后重试。
+- dry_run 返回 \`wouldBeInvalid=true\` 或 \`invalid: true\` 的卡说明变换后内容不合法或脚本输出违反合同，apply 会逐卡拒绝；先调整 ops/脚本再 apply。
 
 ## 更换模板（必须完整走版本化流程）
 

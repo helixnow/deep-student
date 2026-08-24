@@ -50,7 +50,8 @@ pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP �
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
-pub mod chatanki_transform; // 🆕 chatanki_transform 声明式变换引擎（ops 模式纯 Rust；script 模式 TODO）
+pub mod chatanki_transform; // 🆕 chatanki_transform 声明式变换引擎（ops 模式纯 Rust）
+pub mod chatanki_transform_script; // 🆕 chatanki_transform 沙箱脚本模式（temp root job 目录 + 平台沙箱 + I/O 合同）
 pub mod connector_executor; // First-class connector registry and draft/confirm/commit bridge
 pub mod custom_agent_executor; // 🆕 custom_agent_* 自定义子代理 persona 管理（提案+审批两段式）
 pub mod data_governance_executor; // Agent-safe backup and sync tools

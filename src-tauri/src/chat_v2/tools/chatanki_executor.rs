@@ -45,15 +45,19 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 
 use super::chatanki_transform::{
-    apply_transform_ops, changed_field_names, check_expected_versions, compile_transform_ops,
+    changed_field_names, check_expected_versions, compile_transform_ops, plan_transform_ops,
     select_transform_cards, transform_fields_are_valid, ChatAnkiTransformArgs,
-    NormalizedTransformKind, NormalizedTransformRequest, TransformFields, TransformMode,
-    TransformSelectionError,
+    NormalizedTransformKind, NormalizedTransformRequest, TransformCardPlan, TransformFields,
+    TransformMode, TransformSelectionError,
+};
+use super::chatanki_transform_script::{
+    evaluate_script_output, run_transform_script, NormalizedTransformScript, ScriptRunError,
+    ScriptTransformEvaluation,
 };
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
@@ -1597,15 +1601,37 @@ impl ToolExecutor for ChatAnkiToolExecutor {
             // 批量写工具：单次可影响 ≤100 张卡（含批量删除），定级 Medium。
             | "chatanki_batch_update_cards"
             | "chatanki_delete_cards"
-            // transform（ops 声明式模式）：纯 Rust 批量变换，Medium 与其它批量写
-            // 工具对齐。TODO(script mode)：脚本模式实现后需按参数动态升 High
-            //（对齐 shell script-runner 分级，见调研报告 §6 审批表）。
+            // transform 名字级基线：ops 声明式模式（纯 Rust 批量变换）Medium，
+            // 与其它批量写工具对齐；script 模式在 sensitivity_level_for_call
+            // 中按参数动态升 High（对齐 shell script-runner 恒 High 的分级）。
             | "chatanki_transform" => ToolSensitivity::Medium,
             // export/sync can send complete card data outside the local card
             // generation flow, so both use the Medium data-egress baseline.
             "chatanki_export" | "chatanki_sync" | "chatanki_import_apkg" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
+    }
+
+    /// `chatanki_transform` 按参数动态分级：`transform.script`（沙箱任意脚本）
+    /// 恒 High——对齐 `shell_command_tool_sensitivity` 中「任何 script runner 恒
+    /// High」的纪律；`transform.ops` 维持名字级 Medium。审批卡展示的参数经
+    /// `approval_scope::redact_tool_arguments_for_display` 对非 shell 工具原样
+    /// 透传，因此脚本正文（`transform.script.code`）会完整呈现给用户审阅。
+    fn sensitivity_level_for_call(&self, tool_name: &str, arguments: &Value) -> ToolSensitivity {
+        if strip_tool_namespace(tool_name) == "chatanki_transform" {
+            let has_script = arguments
+                .get("transform")
+                .and_then(|transform| transform.get("script"))
+                .is_some_and(|script| !script.is_null());
+            if has_script {
+                return ToolSensitivity::High;
+            }
+        }
+        self.sensitivity_level(tool_name)
+    }
+
+    fn has_dynamic_sensitivity(&self, tool_name: &str) -> bool {
+        strip_tool_namespace(tool_name) == "chatanki_transform"
     }
 
     fn name(&self) -> &'static str {
@@ -4054,7 +4080,7 @@ impl ChatAnkiToolExecutor {
         Ok(finish_chatanki_success(call, ctx, start_time, payload))
     }
 
-    /// `builtin-chatanki_transform`：对选中卡片执行批量声明式变换（ops 模式）。
+    /// `builtin-chatanki_transform`：对选中卡片执行批量变换（ops / script 双模式）。
     ///
     /// 快照直接出自 DB（无 2000 字符截断视图），不存在截断毒化；写回逐卡复用
     /// `update_anki_card_if_version_for_session` 的 IMMEDIATE 事务 CAS 原语，
@@ -4064,12 +4090,13 @@ impl ChatAnkiToolExecutor {
     /// - `mode=apply`：必须携带与选择集精确一致的完整 `expectedVersions`
     ///   （与 retemplate 相同的 `expected_versions_mismatch` 语义），逐卡 CAS 写回。
     ///
-    /// TODO(script mode)：`transform.script`（沙箱 python/node 脚本变换）尚未实现，
-    /// 当前结构化返回 `script_mode_unimplemented`。落地方案见
-    /// `docs/research/anki-ai-native/round1/04-shell-script-integration.md` §5：
-    /// 快照导出到 temp root job 目录 → 复用 `shell_sandbox::SandboxPolicy`（网络恒禁、
-    /// CHATANKI_INPUT/OUTPUT 环境变量合同）→ 校验后走本函数同一条 CAS 写回路径；
-    /// 实现时敏感度需按参数升 High 并接入审批卡展示脚本正文。
+    /// **script 模式**（`transform.script`，High 敏感度）：把选择集的无截断快照导出
+    /// 到会话 temp root 的 job 目录，在平台硬沙箱（Seatbelt/bwrap/AppContainer，
+    /// 网络恒禁、仅 job 目录可写）内运行 Agent 现写的 python/node 脚本，输出经
+    /// 严格合同校验后与 ops 模式走**同一条**逐卡计划（`TransformCardPlan`）→
+    /// dry_run diff / CAS 写回路径。脚本回传的 `version` 一律忽略；v1 只允许
+    /// update 既有卡字段、禁止脚本增删卡。移动端/无沙箱/无解释器时结构化拒绝。
+    /// 详见 `docs/research/anki-ai-native/round3/01-transform-script.md`。
     async fn execute_transform(
         &self,
         call: &ToolCall,
@@ -4106,46 +4133,31 @@ impl ChatAnkiToolExecutor {
             return Ok(finish_chatanki_failure(call, ctx, start_time, error));
         }
 
-        let ops = match &request.kind {
-            NormalizedTransformKind::Script => {
-                // TODO(script mode)：沙箱脚本模式尚未实现（见函数级注释）。
-                return Ok(finish_chatanki_success(
-                    call,
-                    ctx,
-                    start_time,
-                    json!({
-                        "status": "rejected",
-                        "error": "script_mode_unimplemented",
-                        "documentId": document_id,
-                        "mode": request.mode.as_str(),
-                        "mutationApplied": false,
-                        "retryable": false,
-                        "guidance": "transform.script (sandboxed python/node) is reserved but not implemented yet; use transform.ops (regex_replace / tag_add / tag_remove) instead.",
-                    }),
-                ));
-            }
-            NormalizedTransformKind::Ops(ops) => ops,
-        };
-        let compiled_ops = match compile_transform_ops(ops) {
-            Ok(compiled) => compiled,
-            Err(invalid) => {
-                return Ok(finish_chatanki_success(
-                    call,
-                    ctx,
-                    start_time,
-                    json!({
-                        "status": "blocked",
-                        "error": "invalid_pattern",
-                        "documentId": document_id,
-                        "opIndex": invalid.op_index,
-                        "pattern": invalid.pattern,
-                        "detail": invalid.error,
-                        "mutationApplied": false,
-                        "retryable": false,
-                        "guidance": "Fix the Rust regex (regex crate syntax) at ops[opIndex] and retry; no card was modified.",
-                    }),
-                ));
-            }
+        // ops 模式先整批编译正则（编译失败无需读库即拒绝）；script 模式的
+        // 沙箱执行延后到选择集与 expectedVersions 校验之后（fail-fast）。
+        let compiled_ops = match &request.kind {
+            NormalizedTransformKind::Ops(ops) => match compile_transform_ops(ops) {
+                Ok(compiled) => Some(compiled),
+                Err(invalid) => {
+                    return Ok(finish_chatanki_success(
+                        call,
+                        ctx,
+                        start_time,
+                        json!({
+                            "status": "blocked",
+                            "error": "invalid_pattern",
+                            "documentId": document_id,
+                            "opIndex": invalid.op_index,
+                            "pattern": invalid.pattern,
+                            "detail": invalid.error,
+                            "mutationApplied": false,
+                            "retryable": false,
+                            "guidance": "Fix the Rust regex (regex crate syntax) at ops[opIndex] and retry; no card was modified.",
+                        }),
+                    ));
+                }
+            },
+            NormalizedTransformKind::Script(_) => None,
         };
 
         let cards = match db.get_cards_for_document_for_session(&document_id, &ctx.session_id) {
@@ -4204,21 +4216,175 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        match request.mode {
-            TransformMode::DryRun => Ok(finish_chatanki_success(
-                call,
-                ctx,
-                start_time,
-                transform_dry_run_payload(&document_id, &selected, &compiled_ops),
-            )),
-            TransformMode::Apply => {
-                self.apply_transform(call, ctx, start_time, db, &request, &selected, &compiled_ops)
+        // apply 模式：expectedVersions 与选择集精确一致性前置校验。script 模式
+        // 借此在花费沙箱执行之前 fail-fast；ops 模式行为与既有语义一致。
+        if request.mode == TransformMode::Apply {
+            let selected_ids: Vec<String> = selected.iter().map(|card| card.id.clone()).collect();
+            if let Err(mismatch) =
+                check_expected_versions(&selected_ids, &request.expected_versions)
+            {
+                return Ok(finish_chatanki_success(
+                    call,
+                    ctx,
+                    start_time,
+                    json!({
+                        "status": "conflict",
+                        "error": "expected_versions_mismatch",
+                        "documentId": document_id,
+                        "missingVersionIds": mismatch.missing_version_ids,
+                        "unexpectedVersionIds": mismatch.unexpected_version_ids,
+                        "mutationApplied": false,
+                        "retryable": true,
+                        "guidance": "expectedVersions must contain exactly one current version for every selected card. Call builtin-chatanki_get_cards before retrying.",
+                    }),
+                ));
+            }
+        }
+
+        // 生成逐卡计划：ops 纯 Rust 应用；script 走沙箱执行 + 输出合同校验。
+        // 两种模式此后共用同一条 dry_run diff / apply CAS 写回路径。
+        let (plans, script_meta) = match &request.kind {
+            NormalizedTransformKind::Ops(_) => {
+                let compiled = compiled_ops
+                    .as_ref()
+                    .expect("ops mode always compiles before selection");
+                (plan_transform_ops(compiled, &selected), None)
+            }
+            NormalizedTransformKind::Script(script) => {
+                match self
+                    .run_transform_script_mode(ctx, &request, &selected, script)
                     .await
+                {
+                    Ok((plans, meta)) => (plans, Some(meta)),
+                    Err(payload) => {
+                        return Ok(finish_chatanki_success(call, ctx, start_time, payload));
+                    }
+                }
+            }
+        };
+
+        match request.mode {
+            TransformMode::DryRun => {
+                let mut payload = transform_dry_run_payload(&document_id, &selected, &plans);
+                merge_transform_script_meta(&mut payload, script_meta);
+                Ok(finish_chatanki_success(call, ctx, start_time, payload))
+            }
+            TransformMode::Apply => {
+                self.apply_transform(
+                    call,
+                    ctx,
+                    start_time,
+                    db,
+                    &request,
+                    &selected,
+                    &plans,
+                    script_meta,
+                )
+                .await
             }
         }
     }
 
-    /// transform apply 模式：expectedVersions 精确校验 → 逐卡 CAS 写回 → 一次 UI 同步。
+    /// script 模式：会话 temp root job 目录 → 沙箱执行 → 输出合同校验 → 逐卡计划。
+    ///
+    /// 任何失败（无窗口环境 / 平台无硬沙箱 / 无解释器 / 超时 / 非零退出 /
+    /// 输出非法）都以结构化 payload 返回（`Err(Value)`），绝不 panic、不写库。
+    async fn run_transform_script_mode(
+        &self,
+        ctx: &ExecutionContext,
+        request: &NormalizedTransformRequest,
+        selected: &[crate::models::AnkiCard],
+        script: &NormalizedTransformScript,
+    ) -> Result<(Vec<TransformCardPlan>, serde_json::Map<String, Value>), Value> {
+        let document_id = request.document_id.as_str();
+        // 无窗口环境（headless 集成测试等）没有 AppHandle，无法解析会话
+        // temp root；与移动端一样结构化拒绝而不是 panic（window_ref 会 panic）。
+        if ctx.tauri_window.is_none() {
+            return Err(json!({
+                "status": "rejected",
+                "error": "script_environment_unavailable",
+                "documentId": document_id,
+                "mode": request.mode.as_str(),
+                "detail": "script mode requires a desktop app window to resolve the session temp root",
+                "mutationApplied": false,
+                "retryable": false,
+                "guidance": "Use transform.ops (regex_replace / tag_add / tag_remove) in this environment.",
+            }));
+        }
+        let temp = crate::chat_v2::runtime_roots::temp_root(
+            ctx.window_ref().app_handle(),
+            &ctx.session_id,
+            true,
+        )
+        .map_err(|error| {
+            json!({
+                "status": "failed",
+                "error": "script_setup_failed",
+                "documentId": document_id,
+                "mode": request.mode.as_str(),
+                "detail": format!("Failed to resolve the session temp root: {error}"),
+                "mutationApplied": false,
+                "retryable": false,
+            })
+        })?;
+
+        let (report, output_bytes, job_ref) =
+            match run_transform_script(&temp.path, document_id, selected, script).await {
+                Ok(success) => success,
+                Err(error) => {
+                    return Err(transform_script_run_error_payload(
+                        document_id,
+                        request.mode.as_str(),
+                        script,
+                        error,
+                    ));
+                }
+            };
+
+        let ScriptTransformEvaluation {
+            card_plans,
+            unknown_card_ids,
+        } = match evaluate_script_output(&output_bytes, selected) {
+            Ok(evaluation) => evaluation,
+            Err(error) => {
+                return Err(json!({
+                    "status": "failed",
+                    "error": "invalid_script_output",
+                    "documentId": document_id,
+                    "mode": request.mode.as_str(),
+                    "detail": error.detail(),
+                    "script": report.to_json(script.timeout),
+                    "jobPath": job_ref,
+                    "mutationApplied": false,
+                    "retryable": false,
+                    "guidance": "CHATANKI_OUTPUT.json must be a JSON object with a 'cards' array of {id, front?, back?, text?, tags?} entries. Fix the script and retry; no card was modified.",
+                }));
+            }
+        };
+
+        let plans = card_plans
+            .into_iter()
+            .map(|plan| match plan {
+                Ok(after) => TransformCardPlan::After(after),
+                Err(issue) => TransformCardPlan::Invalid {
+                    code: issue.code,
+                    detail: issue.detail,
+                },
+            })
+            .collect();
+
+        let mut meta = serde_json::Map::new();
+        meta.insert("script".to_string(), report.to_json(script.timeout));
+        meta.insert("jobPath".to_string(), json!(job_ref));
+        if !unknown_card_ids.is_empty() {
+            // v1 禁止脚本增删卡：快照之外的 id 逐项报告（不整批失败，不写库）。
+            meta.insert("unknownCardIds".to_string(), json!(unknown_card_ids));
+        }
+        Ok((plans, meta))
+    }
+
+    /// transform apply 模式：逐卡 CAS 写回 → 一次 UI 同步。
+    /// expectedVersions 精确校验已在 `execute_transform` 中前置完成。
     #[allow(clippy::too_many_arguments)]
     async fn apply_transform(
         &self,
@@ -4228,27 +4394,10 @@ impl ChatAnkiToolExecutor {
         db: &crate::database::Database,
         request: &NormalizedTransformRequest,
         selected: &[crate::models::AnkiCard],
-        compiled_ops: &[super::chatanki_transform::CompiledTransformOp],
+        plans: &[TransformCardPlan],
+        script_meta: Option<serde_json::Map<String, Value>>,
     ) -> Result<ToolResultInfo, String> {
         let document_id = request.document_id.clone();
-        let selected_ids: Vec<String> = selected.iter().map(|card| card.id.clone()).collect();
-        if let Err(mismatch) = check_expected_versions(&selected_ids, &request.expected_versions) {
-            return Ok(finish_chatanki_success(
-                call,
-                ctx,
-                start_time,
-                json!({
-                    "status": "conflict",
-                    "error": "expected_versions_mismatch",
-                    "documentId": document_id,
-                    "missingVersionIds": mismatch.missing_version_ids,
-                    "unexpectedVersionIds": mismatch.unexpected_version_ids,
-                    "mutationApplied": false,
-                    "retryable": true,
-                    "guidance": "expectedVersions must contain exactly one current version for every selected card. Call builtin-chatanki_get_cards before retrying.",
-                }),
-            ));
-        }
         let mutation_target =
             match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
             {
@@ -4271,11 +4420,25 @@ impl ChatAnkiToolExecutor {
         let mut invalid_count = 0usize;
         let mut failed_count = 0usize;
 
-        for source in selected {
+        for (source, plan) in selected.iter().zip(plans) {
             let card_id = source.id.clone();
+            let after = match plan {
+                TransformCardPlan::Invalid { code, detail } => {
+                    // script 输出条目违反合同：逐卡拒绝，不影响其余卡（对齐
+                    // batch_update_cards 的逐卡语义）。
+                    invalid_count += 1;
+                    results.push(json!({
+                        "cardId": card_id,
+                        "status": "invalid",
+                        "error": code,
+                        "detail": detail,
+                    }));
+                    continue;
+                }
+                TransformCardPlan::After(after) => after,
+            };
             let before = TransformFields::from_card(source);
-            let after = apply_transform_ops(compiled_ops, &before);
-            let changed_fields = changed_field_names(&before, &after);
+            let changed_fields = changed_field_names(&before, after);
             if changed_fields.is_empty() {
                 unchanged_count += 1;
                 results.push(json!({
@@ -4284,7 +4447,7 @@ impl ChatAnkiToolExecutor {
                 }));
                 continue;
             }
-            if !transform_fields_are_valid(&after) {
+            if !transform_fields_are_valid(after) {
                 invalid_count += 1;
                 results.push(json!({
                     "cardId": card_id,
@@ -4403,26 +4566,23 @@ impl ChatAnkiToolExecutor {
             "failed"
         };
 
-        Ok(finish_chatanki_success(
-            call,
-            ctx,
-            start_time,
-            json!({
-                "status": status,
-                "mode": "apply",
-                "documentId": document_id,
-                "total": total,
-                "updated": updated_count,
-                "unchanged": unchanged_count,
-                "conflicts": conflict_count,
-                "invalid": invalid_count,
-                "failed": failed_count,
-                "results": results,
-                "mutationApplied": updated_count > 0,
-                "retryable": conflict_count > 0,
-                "uiSync": ui_sync,
-            }),
-        ))
+        let mut payload = json!({
+            "status": status,
+            "mode": "apply",
+            "documentId": document_id,
+            "total": total,
+            "updated": updated_count,
+            "unchanged": unchanged_count,
+            "conflicts": conflict_count,
+            "invalid": invalid_count,
+            "failed": failed_count,
+            "results": results,
+            "mutationApplied": updated_count > 0,
+            "retryable": conflict_count > 0,
+            "uiSync": ui_sync,
+        });
+        merge_transform_script_meta(&mut payload, script_meta);
+        Ok(finish_chatanki_success(call, ctx, start_time, payload))
     }
 
     async fn execute_wait(
@@ -10670,29 +10830,43 @@ fn select_chatanki_cards_page(
     (total, page_cards)
 }
 
-/// transform dry_run：执行变换但不写库，返回逐卡 diff 摘要。
+/// transform dry_run：执行变换但不写库，返回逐卡 diff 摘要（ops / script 共用）。
 ///
 /// diff 的 before/after 仅为展示用途按 `CHATANKI_CARD_FIELD_LIMIT` 截断——
 /// 写库路径（apply 模式）直接使用内存中的全文快照，不经过该截断视图。
+/// `plans` 与 `selected` 等长同序；`Invalid` 计划（script 输出条目违反合同）
+/// 以 `invalid: true` 条目进入 diff，apply 时将逐卡拒绝。
 fn transform_dry_run_payload(
     document_id: &str,
     selected: &[crate::models::AnkiCard],
-    compiled_ops: &[super::chatanki_transform::CompiledTransformOp],
+    plans: &[TransformCardPlan],
 ) -> Value {
     let mut diff: Vec<Value> = Vec::new();
     let mut changed_count = 0usize;
     let mut unchanged_count = 0usize;
     let mut invalid_count = 0usize;
-    for card in selected {
+    for (card, plan) in selected.iter().zip(plans) {
+        let after = match plan {
+            TransformCardPlan::Invalid { code, detail } => {
+                invalid_count += 1;
+                diff.push(json!({
+                    "cardId": card.id,
+                    "invalid": true,
+                    "error": code,
+                    "detail": detail,
+                }));
+                continue;
+            }
+            TransformCardPlan::After(after) => after,
+        };
         let before = TransformFields::from_card(card);
-        let after = apply_transform_ops(compiled_ops, &before);
-        let changed_fields = changed_field_names(&before, &after);
+        let changed_fields = changed_field_names(&before, after);
         if changed_fields.is_empty() {
             unchanged_count += 1;
             continue;
         }
         changed_count += 1;
-        let valid = transform_fields_are_valid(&after);
+        let valid = transform_fields_are_valid(after);
         if !valid {
             invalid_count += 1;
         }
@@ -10700,7 +10874,7 @@ fn transform_dry_run_payload(
             "cardId": card.id,
             "fields": changed_fields,
             "before": transform_fields_display(&before, &changed_fields),
-            "after": transform_fields_display(&after, &changed_fields),
+            "after": transform_fields_display(after, &changed_fields),
             "wouldBeInvalid": !valid,
         }));
     }
@@ -10717,11 +10891,114 @@ fn transform_dry_run_payload(
         "retryable": false,
         "uiSync": { "status": "not_required", "eventAttempted": false },
         "guidance": if invalid_count > 0 {
-            "Some cards would become invalid (empty front+back and no cloze text) after this transform; apply would reject them per-card. Adjust the ops before applying."
+            "Some cards would be rejected per-card on apply (invalid transform output or empty front+back with no cloze text). Adjust the transform before applying."
         } else {
             "Review the diff with the user, then re-run with mode=apply and the complete expectedVersions from the latest get_cards."
         },
     })
+}
+
+/// 把 script 模式的执行元数据（`script` 报告 / `jobPath` / `unknownCardIds`）
+/// 合并进 dry_run / apply 的顶层返回值；ops 模式传 `None` 时是 no-op。
+fn merge_transform_script_meta(
+    payload: &mut Value,
+    script_meta: Option<serde_json::Map<String, Value>>,
+) {
+    let Some(meta) = script_meta else {
+        return;
+    };
+    if let Some(object) = payload.as_object_mut() {
+        for (key, value) in meta {
+            object.insert(key, value);
+        }
+    }
+}
+
+/// script 模式沙箱执行失败 → 结构化 payload（不写库、不 panic）。
+fn transform_script_run_error_payload(
+    document_id: &str,
+    mode: &str,
+    script: &NormalizedTransformScript,
+    error: ScriptRunError,
+) -> Value {
+    match error {
+        ScriptRunError::SandboxUnavailable(reason) => json!({
+            "status": "rejected",
+            "error": "script_sandbox_unavailable",
+            "documentId": document_id,
+            "mode": mode,
+            "detail": reason,
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "Script mode requires the desktop hard sandbox (macOS Seatbelt / Linux bubblewrap / Windows AppContainer) and is unavailable on this platform (e.g. mobile). Use transform.ops instead.",
+        }),
+        ScriptRunError::InterpreterUnavailable { language, detail } => json!({
+            "status": "rejected",
+            "error": "interpreter_unavailable",
+            "documentId": document_id,
+            "mode": mode,
+            "language": language,
+            "detail": detail,
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "No usable interpreter was found on this machine. Ask the user to install it, switch transform.script.language, or use transform.ops.",
+        }),
+        ScriptRunError::Setup(detail) => json!({
+            "status": "failed",
+            "error": "script_setup_failed",
+            "documentId": document_id,
+            "mode": mode,
+            "detail": detail,
+            "mutationApplied": false,
+            "retryable": false,
+        }),
+        ScriptRunError::TimedOut(report) => json!({
+            "status": "failed",
+            "error": "script_timed_out",
+            "documentId": document_id,
+            "mode": mode,
+            "script": report.to_json(script.timeout),
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "The script exceeded timeoutMs and its process group was terminated; no card was modified. Optimize the script, raise timeoutMs (max 120000), or narrow the selection.",
+        }),
+        ScriptRunError::NonZeroExit(report) => json!({
+            "status": "failed",
+            "error": "script_failed",
+            "documentId": document_id,
+            "mode": mode,
+            "script": report.to_json(script.timeout),
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "The script exited non-zero; see stderrTail. Fix the script and retry; no card was modified.",
+        }),
+        ScriptRunError::OutputMissing(report) => json!({
+            "status": "failed",
+            "error": "script_output_missing",
+            "documentId": document_id,
+            "mode": mode,
+            "script": report.to_json(script.timeout),
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "The script exited 0 but never wrote $CHATANKI_OUTPUT. Write the full {\"cards\": [...]} JSON to the CHATANKI_OUTPUT path and retry.",
+        }),
+        ScriptRunError::OutputTooLarge {
+            report,
+            bytes,
+            limit,
+        } => json!({
+            "status": "failed",
+            "error": "script_output_too_large",
+            "documentId": document_id,
+            "mode": mode,
+            "outputBytes": bytes,
+            "limitBytes": limit,
+            "script": report.to_json(script.timeout),
+            "mutationApplied": false,
+            "retryable": false,
+            "guidance": "CHATANKI_OUTPUT.json exceeds the size limit. Only include changed cards and changed fields in the output.",
+        }),
+    }
 }
 
 /// 仅序列化发生变化的字段，长字段按展示上限截断（不影响写库路径）。
