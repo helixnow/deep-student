@@ -8,6 +8,10 @@
 - **派出前先收 R10 十路**：R10-conflict-ui（P1-1）/ verifier / names / download / ux / providers / protocol / chaos / android 若已合入，R11 对应路只收增量、不重做；若某路未交付，其任务并入下表同域代理（在 FIX-QUEUE 登记后接手其文件面）。
 - 全轮避开 notes / chat / workbench / 移动全局规范 / 协议缓存等并行任务文件面；允许改动面以 [README](./README.md) 白名单为准。
 
+## 派出状态
+
+R10 已合入：conflict-ui / sota / ux / protocol / android / download / chaos。R11 已合入：rotate / check。**未回传**（重派）：verifier（P2-2 KDF 钳制）、names、providers、delta。本轮同时开 history / unsynced-ui / autosync2 / review / android2 / lease（lease 用新文件，不改 `sync_manager.rs`，避免与 verifier 撞车）。xhigh 不可用，明示用 high。不合并 `r07-docs`。
+
 ## 十路大包
 
 | 代理 | 模型 | 分支 | 一整包必须交付（每路 ≥4） |
