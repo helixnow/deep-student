@@ -34,7 +34,9 @@
 
 ## P2 — 手感 / 视觉 / 无障碍
 
-- [ ] 中枢遗留红灯 7 个：`workbenchWindowsChromeLayoutContract` ×2、`p11-workbench-desktop` 快照恢复、`DockContextMenu`、`DockWindowList`、`StatusBar` Windows inset、`NotesSearchOverlay`（→ R2-11）
+- [ ] 中枢遗留红灯 4 个：`workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset（→ R2-11）
+- [ ] 合流后完整 workbench 广集尚未重跑；2026-08-24 已覆盖波次变更 9 文件 / 167 用例全绿，并定向复核旧红灯 71 通过 / 4 失败（→ R2-11）
+- [x] 原 7 个遗留红灯中的 `p11-workbench-desktop`、`DockWindowList`、`NotesSearchOverlay` 已在补扫复核中转绿
 - [ ] Quick Look 缩略图：Finder/preview 壳 Quick Look 已通（`ea41e92c`/`00aef429`），网格视图与 Quick Look 内缺真缩略图（→ R2-02）
 - [ ] 无障碍横切：焦点陷阱、roving tabindex、aria-live、对比度全面审计（→ R2-08）
 - [ ] 移动端经典壳（非 workbench）：导航/手势/安全区问题清单化（→ R2-09；「不做移动端 workbench」纪律不变）

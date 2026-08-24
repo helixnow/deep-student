@@ -3,7 +3,8 @@
 - 开始：2026-08-23；合流收尾：2026-08-24
 - 审阅模型：`claude-fable-5-thinking-xhigh`；实现模型：`claude-fable-5-thinking-high`
 - 状态：审阅 12/12 完成；落地席全部合流入中枢 `cursor/sota-subapp-polish-2399`
-- 集成方式：中枢直落 + 3 个卫星分支合并（`learning-hub-finder-polish-a9c5`、`deepstudent-reader-landing-d033`、`preview-media-browser-polish-8dd9`），合并提交 `1d9a6287` / `f5f658e6` / `f11356c0`
+- 指定卫星：`learning-hub-finder-polish-a9c5`、`deepstudent-reader-landing-d033`、`preview-media-browser-polish-8dd9`，合并提交 `1d9a6287` / `f5f658e6` / `f11356c0`
+- `fetch --prune` 补扫卫星：`files-preview-fixes-901a`、`workbench-shell-wave2-98eb`，合并提交 `63d74b95` / `1d73d793`
 
 ## 本轮 12 个审阅席位
 
@@ -48,6 +49,12 @@
 - `30ba1854` 媒体单键快捷键放行 ⌘/Ctrl/Alt 组合；进度提交降频 ~10Hz；`fe4c8116` 音视频扩展名/MIME 单一真源
 - `7e529b3d` 保存链路 blob→base64 双通道共享实现；`1309ba9f` 压缩包清单语言中立机器标记
 - `2d375ffb` 补测试：快捷键守卫 / 扩展名 SSOT / 停止加载 / 保存双通道 / 清单标记
+
+### 补扫卫星收口 — 完成
+
+- `cursor/files-preview-fixes-901a`（tip `9cfd3c34`，合并 `63d74b95`）：类型映射、Cmd+A、乐观导航、进度 metadata 白名单均已被后续指定卫星的更完整实现覆盖；四个冲突文件保留中枢版本，只补齐分支历史归并。
+- `cursor/workbench-shell-wave2-98eb`（tip `7c73fbb2`，合并 `1d73d793`）：合入 Ctrl+Tab 让位、窗口崩溃冷却、Dock 触屏容差/⌥角标、Exposé 停绘占位、TITLEBAR 单一来源、genie 源点修复及对应测试。
+- `DockItem.tsx` 冲突同时保留中枢的触屏 tooltip 驻留，并采用卫星 `dockGestures` 的 pointer-type 分档容差；删除被共享手势常量替代的局部 5px 常量。
 
 ### translation — 完成（中枢直落）
 
@@ -104,10 +111,12 @@
 3. **flashcards P1**：调度设置移出统计页 + guide 13 文档漂移、`fsrs_rate` 作答用时、多级撤销、牌组/标签组限额（→ R2-01）
 4. **Exposé OOM**：本轮只做了非焦点重窗降级（`1973383b`），活体 DOM 缩放 heap OOM 根因未消（→ R2-06）
 5. **notes 图谱**：本地图谱视图完全缺失（→ R2-03）
-6. **中枢遗留红灯 7 个**（合并前后一致，非合流引入）：`workbenchWindowsChromeLayoutContract` ×2、`p11-workbench-desktop` 快照恢复、`DockContextMenu` 键盘、`DockWindowList` 焦点、`StatusBar` Windows inset、`NotesSearchOverlay` quick-open 分组（→ R2-11）
+6. **中枢遗留红灯 4 个**（非本次合流引入）：`workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset（→ R2-11）；原清单中的 `p11-workbench-desktop`、`DockWindowList`、`NotesSearchOverlay` 已转绿。
 
-## 合流验证记录（2026-08-24）
+## 合流验证记录（2026-08-24，补扫后）
 
-- `tsc --noEmit`：0 错误（`src/version.ts` 需先 `npm run version:generate` 生成，属环境准备非代码问题）
-- vitest 子集 `src/features/learning-hub src/features/pdf tests/vitest/learning-hub tests/vitest/browser`：38 文件 207 用例全绿（含 1 处合流修复 `56865ccc`）
-- vitest 子集 `tests/vitest/workbench src/features/workbench`：1964 通过 / 7 失败；7 个失败在合并前基线 `32658194` 上逐一复现为同名失败，确认为中枢历史遗留，与本次合流无关
+- `npx tsc --noEmit`：生成环境缺失的 `src/version.ts` 后 0 错误（`npm run version:generate`，生成文件被忽略）。
+- vitest 子集 `src/features/learning-hub src/features/pdf tests/vitest/learning-hub tests/vitest/browser`：44 文件 / 260 用例全绿。
+- workbench 波次变更子集：9 文件 / 167 用例全绿（Dock 手势、长按、固定区、Exposé、Snap、快捷键、窗口体/错误边界、NotesWorkspace）。
+- 旧红灯定向复核：6 文件共 75 用例，71 通过 / 4 失败；失败仍为 `workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu`、`StatusBar`，其余原红灯已转绿。
+- 剩余验证风险：本次未重跑完整 workbench 广集，只覆盖波次变更子集与旧红灯定向集。
