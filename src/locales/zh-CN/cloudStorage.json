@@ -1,6 +1,6 @@
 {
   "title": "云存储",
-  "description": "配置云端备份存储，支持 WebDAV 和 S3 兼容存储",
+  "description": "配置云端备份与记录级同步使用的存储。Android 仅支持 WebDAV；桌面端还支持 S3 兼容存储与实验性的 FTP/FTPS。",
   
   "provider": {
     "label": "存储类型",
@@ -8,11 +8,11 @@
     "webdavDesc": "坚果云、Nextcloud、自建 WebDAV 等",
     "s3": "S3 兼容存储",
     "s3Desc": "AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等",
-    "s3Disabled": "此版本暂不支持 S3。请改用 WebDAV；或在桌面端将数据导出为 ZIP 备份后，再导入到本设备。",
+    "s3Disabled": "当前平台或安装包不支持 S3。请改用 WebDAV；或在桌面端将数据导出为 ZIP 备份后，再导入到本设备。",
     "ftp": "FTP/FTPS",
     "ftpDesc": "传统 FTP 服务器、支持显式 FTPS 加密",
     "ftpDescExperimental": "实验性后端，当前存在已知数据风险",
-    "ftpDisabledMobile": "移动端暂不支持 FTP。请改用 WebDAV，或在桌面端使用 FTP 同步。"
+    "ftpDisabledMobile": "Android 不支持 FTP/FTPS。请改用 WebDAV，或在桌面端使用 FTP 同步。"
   },
   
   "webdav": {

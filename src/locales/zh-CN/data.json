@@ -691,7 +691,7 @@
     "cloud_sync_title": "云端同步",
     "open_cloud_settings": "打开云存储设置",
     "cloud_sync_not_configured": "尚未配置云存储",
-    "cloud_sync_not_configured_desc": "请先配置云存储（WebDAV/S3），然后再执行同步或冲突检测。",
+    "cloud_sync_not_configured_desc": "请先配置本平台可用的云存储。Android 仅支持 WebDAV；桌面端还可使用 S3，FTP/FTPS 为实验性。配置后才能执行同步或冲突检测。",
     "cloud_sync_configure_now": "去配置云存储",
     "cloud_sync_provider": "提供商",
     "cloud_sync_root": "根目录",
