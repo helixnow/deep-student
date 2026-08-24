@@ -314,6 +314,39 @@
   --citation-source-memory: var(--warning);
   --citation-source-web-search: var(--success);
   --diagram-node-contrast-text: hsl(var(--destructive-foreground));
+
+  /* Learning-hub 资源图标插画色
+     ------------------------------------------------------------
+     消费方：src/features/learning-hub/icons/ResourceIcons.tsx
+     `-ink` 是与主题无关的色相锚点（原先直接写死在 tsx 里的浅色 hex）。
+     bg / border 与当前卡片表面混合，fg 在暗色下往 --foreground 提亮，
+     因此同一套 SVG 在 .dark 下不再是刺眼的浅色块。调档只需改下面三个
+     mix 比例，不必逐个 hue 重配。派生的 -bg/-fg/-border 依赖 color-mix，
+     收在文件末尾的 @supports 块里；无 color-mix 的运行时退回 tsx 内联
+     的浅色 fallback。 */
+  --resource-icon-gray-ink: #787774;
+  --resource-icon-brown-ink: #976d57;
+  --resource-icon-orange-ink: #cc782f;
+  --resource-icon-yellow-ink: #cf9232;
+  --resource-icon-green-ink: #4f9779;
+  --resource-icon-blue-ink: #2b59c3;
+  --resource-icon-purple-ink: #9a6dd7;
+  --resource-icon-pink-ink: #d65c9d;
+  --resource-icon-red-ink: #d44c47;
+  --resource-icon-surface: hsl(var(--card));
+  --resource-icon-bg-mix: 9%;
+  --resource-icon-border-mix: 26%;
+  --resource-icon-ink-mix: 100%;
+  --resource-icon-ink-tint: hsl(var(--foreground));
+  /* 纸面/高光/暗角：原先是写死的 #FFFFFF 与 black/5% */
+  --resource-icon-paper: hsl(0 0% 100%);
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.35);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.5);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.05);
+  --resource-icon-folder-back: #e8b849;
+  --resource-icon-folder-tab: #d4a53a;
+  --resource-icon-folder-front: #f5c85c;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.4);
 }
 
 :root.dark {
@@ -407,6 +440,20 @@
   --settings-nav-accent-green: hsl(157 55% 58%);
   --settings-nav-accent-sky: hsl(208 70% 70%);
   --settings-nav-accent-pink: hsl(327 52% 74%);
+
+  /* 资源图标：底更沉、边更实、前景往 --foreground 提亮，
+     -bg / -fg / -border 的 color-mix 公式在亮色档已写好，这里只翻比例。
+     （暗色 --resource-icon-paper 依赖 color-mix，见文件末尾 @supports。） */
+  --resource-icon-bg-mix: 22%;
+  --resource-icon-border-mix: 40%;
+  --resource-icon-ink-mix: 64%;
+  --resource-icon-paper-veil: hsl(0 0% 100% / 0.06);
+  --resource-icon-fold-highlight: hsl(0 0% 100% / 0.07);
+  --resource-icon-fold-shade: hsl(0 0% 0% / 0.28);
+  --resource-icon-folder-back: #a9791f;
+  --resource-icon-folder-tab: #8e6519;
+  --resource-icon-folder-front: #c7962f;
+  --resource-icon-folder-highlight: hsl(0 0% 100% / 0.14);
 }
 
 /* 高对比偏好：分类 accent 再抬一档亮度/饱和（亮色压暗、暗色提亮），
@@ -447,12 +494,46 @@
   :where(:root) {
     --surface-panel: color-mix(in hsl, var(--surface-elevated) 78%, var(--surface-root) 22%);
     --button-secondary-surface: var(--button-tonal-bg);
+
+    /* 资源图标派生色：bg/border 与卡片表面混合、fg 往 ink-tint 提亮。
+       mix 比例（--resource-icon-*-mix）在 :root / :root.dark 主块里定义，
+       var() 在使用处求值，暗色翻比例自动生效。 */
+    --resource-icon-gray-bg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-gray-fg: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-gray-border: color-mix(in oklab, var(--resource-icon-gray-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-brown-bg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-brown-fg: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-brown-border: color-mix(in oklab, var(--resource-icon-brown-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-orange-bg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-orange-fg: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-orange-border: color-mix(in oklab, var(--resource-icon-orange-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-yellow-bg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-yellow-fg: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-yellow-border: color-mix(in oklab, var(--resource-icon-yellow-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-green-bg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-green-fg: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-green-border: color-mix(in oklab, var(--resource-icon-green-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-blue-bg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-blue-fg: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-blue-border: color-mix(in oklab, var(--resource-icon-blue-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-purple-bg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-purple-fg: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-purple-border: color-mix(in oklab, var(--resource-icon-purple-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-pink-bg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-pink-fg: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-pink-border: color-mix(in oklab, var(--resource-icon-pink-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
+    --resource-icon-red-bg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-bg-mix), var(--resource-icon-surface));
+    --resource-icon-red-fg: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-ink-mix), var(--resource-icon-ink-tint));
+    --resource-icon-red-border: color-mix(in oklab, var(--resource-icon-red-ink) var(--resource-icon-border-mix), var(--resource-icon-surface));
   }
 
   :root.dark {
     /* 暗色下面板要比 root 明显抬起一档，否则故障面板与背板同色 */
     --surface-panel: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
     --button-secondary-surface: var(--button-tonal-bg);
+
+    /* 暗色纸面：往前景抬 24%，白纸在深底上不再刺眼 */
+    --resource-icon-paper: color-mix(in oklab, hsl(var(--card)) 76%, hsl(var(--foreground)) 24%);
   }
 }
 
