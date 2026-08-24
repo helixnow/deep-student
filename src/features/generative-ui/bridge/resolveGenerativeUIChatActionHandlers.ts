@@ -3,7 +3,16 @@
  */
 
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
+import { intentHasResearchBlocks } from '../bridge/hpiasEventBridge';
 import { workbenchLearningHandlers } from '../handlers/workbenchLearningHandlers';
+import {
+  createResearchBriefingActionHandlers,
+  type ResearchBriefingActionLabels,
+} from '../handlers/researchBriefingActionHandlers';
+import {
+  buildResearchExportMarkdownFromIntent,
+  extractResearchReportBody,
+} from '../utils/extractResearchContentFromIntent';
 import {
   createNotesEditActionHandlers,
   type NotesEditActionLabels,
@@ -17,6 +26,7 @@ import { extractNoteEditPayload } from '../utils/extractNoteEditPayload';
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
 export const FLASHCARD_ACTION_IDS = ['save-to-library'] as const;
+export const RESEARCH_ACTION_IDS = ['copy-report', 'export-plan'] as const;
 
 export function collectGenerativeUIActionIds(intent: GenerativeUIIntent): string[] {
   return intent.blocks
@@ -35,6 +45,7 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   noteEditLabels?: NotesEditActionLabels;
   flashcardLabels?: FlashcardActionLabels;
   flashcardContext?: FlashcardSaveContext;
+  researchLabels?: ResearchBriefingActionLabels;
 }
 
 /**
@@ -78,6 +89,29 @@ export function resolveGenerativeUIChatActionHandlers(
         input.intent,
         input.flashcardContext ?? {},
         input.flashcardLabels ?? { saveToLibrary: '保存到闪卡库' },
+      ),
+    );
+  }
+
+  const hasResearchBlocks = intentHasResearchBlocks(input.intent);
+  const needsResearchHandlers =
+    hasResearchBlocks && RESEARCH_ACTION_IDS.some((id) => actionIds.has(id));
+  if (needsResearchHandlers) {
+    Object.assign(
+      handlers,
+      createResearchBriefingActionHandlers(
+        {
+          getReportBody: () => extractResearchReportBody(input.intent) ?? '',
+          getExportMarkdown: () =>
+            buildResearchExportMarkdownFromIntent(
+              input.intent,
+              input.intent.meta?.title,
+            ),
+        },
+        input.researchLabels ?? {
+          copyReport: '复制报告',
+          exportPlan: '导出计划',
+        },
       ),
     );
   }

@@ -18,6 +18,8 @@ export interface HpiasResearchDashboardLabels extends HpiasResearchPlanLabels {
   selectedStatTitle: string;
   reportMetaTitle: string;
   citationStatTitle: string;
+  copyReport: string;
+  exportPlan: string;
 }
 
 export interface HpiasResearchDashboardInput {
@@ -79,6 +81,38 @@ export function buildHpiasResearchDashboardIntent(
       },
     });
     blocks.push(...reportIntent.blocks);
+  }
+
+  const actions: Array<{
+    id: string;
+    label: string;
+    variant: 'primary' | 'default';
+    riskLevel: 'low' | 'medium';
+  }> = [];
+
+  if (snapshot.synthesis?.trim()) {
+    actions.push({
+      id: 'copy-report',
+      label: labels.copyReport,
+      variant: 'primary',
+      riskLevel: 'low',
+    });
+  }
+
+  if (steps.length > 0) {
+    actions.push({
+      id: 'export-plan',
+      label: labels.exportPlan,
+      variant: 'default',
+      riskLevel: 'medium',
+    });
+  }
+
+  if (actions.length > 0) {
+    blocks.push({
+      type: 'action-bar',
+      props: { actions },
+    });
   }
 
   return {

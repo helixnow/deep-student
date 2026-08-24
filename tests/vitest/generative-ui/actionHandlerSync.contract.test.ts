@@ -14,6 +14,8 @@ import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/bu
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
 import { buildFlashcardPreviewIntent } from '@/features/generative-ui/utils/buildFlashcardPreviewIntent';
 import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
+import { buildHpiasResearchDashboardIntent } from '@/features/generative-ui/utils/buildHpiasResearchDashboardIntent';
+import { createResearchBriefingActionHandlers } from '@/features/generative-ui/handlers/researchBriefingActionHandlers';
 import { createFlashcardSaveActionHandlers } from '@/features/generative-ui/handlers/flashcardActionHandlers';
 import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
@@ -232,5 +234,43 @@ describe('generativeUI actionHandlerSync contract', () => {
       { saveToLibrary: 'Save' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildFlashcardPreviewIntent');
+  });
+
+  it('hpias research dashboard action ids exist in createResearchBriefingActionHandlers', () => {
+    const intent = buildHpiasResearchDashboardIntent({
+      snapshot: {
+        sessionId: 's1',
+        round: 1,
+        plan: { core: { queries: ['Q1'] } },
+        synthesis: 'Finding [paper-1]',
+        retrievalCount: 5,
+        selectedCount: 2,
+        subAgents: {},
+      },
+      question: 'Test?',
+      labels: {
+        metaTitle: 'Research',
+        roundLabel: 'Round',
+        planTitle: 'Task',
+        stepPlan: 'Plan',
+        stepRetrieval: 'Retrieval',
+        stepSelection: 'Selection',
+        stepSubagents: 'Subagents',
+        stepSynthesis: 'Synthesis',
+        subagentFallback: 'Sub {{id}}',
+        retrievalStatTitle: 'Retrieved',
+        selectedStatTitle: 'Selected',
+        reportMetaTitle: 'Report',
+        citationStatTitle: 'Citations',
+        copyReport: 'Copy',
+        exportPlan: 'Export',
+      },
+    });
+    expect(intent).not.toBeNull();
+    const handlers = createResearchBriefingActionHandlers(
+      { getReportBody: () => 'Finding', getExportMarkdown: () => '# export' },
+      { copyReport: 'Copy', exportPlan: 'Export' },
+    );
+    expectActionIdsRegistered(intent!, handlers, 'buildHpiasResearchDashboardIntent');
   });
 });

@@ -1,12 +1,14 @@
 /**
  * HpiasStore → Generative UI 研究仪表盘面板（Research #7 实时接线）
  */
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHpiasStore } from '@/stores/researchStore';
 import { GenerativeUIPanel } from './GenerativeUIPanel';
 import { buildHpiasResearchDashboardIntent } from '../utils/buildHpiasResearchDashboardIntent';
+import { buildResearchExportMarkdownFromSnapshot } from '../utils/buildResearchExportMarkdown';
 import { pickHpiasResearchSnapshot } from '../utils/mapHpiasStoreToResearchPlan';
+import { createResearchBriefingActionHandlers } from '../handlers/researchBriefingActionHandlers';
 
 export interface HpiasGenerativeResearchPanelProps {
   showChrome?: boolean;
@@ -53,28 +55,81 @@ export function HpiasGenerativeResearchPanel({
     ],
   );
 
+  const stepLabels = useMemo(
+    () => ({
+      stepPlan: t('research.hpias.step_plan'),
+      stepRetrieval: t('research.hpias.step_retrieval'),
+      stepSelection: t('research.hpias.step_selection'),
+      stepSubagents: t('research.hpias.step_subagents'),
+      stepSynthesis: t('research.hpias.step_synthesis'),
+      subagentFallback: t('research.hpias.subagent_fallback'),
+    }),
+    [t],
+  );
+
+  const dashboardLabels = useMemo(
+    () => ({
+      metaTitle: t('research.hpias.meta_title'),
+      roundLabel: t('research.plan.round_label'),
+      planTitle: t('research.hpias.plan_title'),
+      stepPlan: stepLabels.stepPlan,
+      stepRetrieval: stepLabels.stepRetrieval,
+      stepSelection: stepLabels.stepSelection,
+      stepSubagents: stepLabels.stepSubagents,
+      stepSynthesis: stepLabels.stepSynthesis,
+      subagentFallback: stepLabels.subagentFallback,
+      retrievalStatTitle: t('research.hpias.retrieval_stat'),
+      selectedStatTitle: t('research.hpias.selected_stat'),
+      reportMetaTitle: t('research.report.meta_title'),
+      citationStatTitle: t('research.report.citation_stat'),
+      copyReport: t('research.actions.copy_report'),
+      exportPlan: t('research.actions.export_plan'),
+    }),
+    [stepLabels, t],
+  );
+
   const intent = useMemo(
     () =>
       buildHpiasResearchDashboardIntent({
         snapshot,
         question,
-        labels: {
-          metaTitle: t('research.hpias.meta_title'),
-          roundLabel: t('research.plan.round_label'),
-          planTitle: t('research.hpias.plan_title'),
-          stepPlan: t('research.hpias.step_plan'),
-          stepRetrieval: t('research.hpias.step_retrieval'),
-          stepSelection: t('research.hpias.step_selection'),
-          stepSubagents: t('research.hpias.step_subagents'),
-          stepSynthesis: t('research.hpias.step_synthesis'),
-          subagentFallback: t('research.hpias.subagent_fallback'),
-          retrievalStatTitle: t('research.hpias.retrieval_stat'),
-          selectedStatTitle: t('research.hpias.selected_stat'),
-          reportMetaTitle: t('research.report.meta_title'),
-          citationStatTitle: t('research.report.citation_stat'),
-        },
+        labels: dashboardLabels,
       }),
-    [question, snapshot, t],
+    [dashboardLabels, question, snapshot],
+  );
+
+  const getReportBody = useCallback(
+    () => snapshot.synthesis?.trim() ?? '',
+    [snapshot.synthesis],
+  );
+
+  const getExportMarkdown = useCallback(
+    () =>
+      buildResearchExportMarkdownFromSnapshot({
+        snapshot,
+        question,
+        planTitle: dashboardLabels.planTitle,
+        roundLabel: dashboardLabels.roundLabel,
+        stepLabels,
+      }),
+    [dashboardLabels.planTitle, dashboardLabels.roundLabel, question, snapshot, stepLabels],
+  );
+
+  const actionHandlers = useMemo(
+    () =>
+      createResearchBriefingActionHandlers(
+        { getReportBody, getExportMarkdown },
+        {
+          copyReport: dashboardLabels.copyReport,
+          exportPlan: dashboardLabels.exportPlan,
+        },
+      ),
+    [
+      dashboardLabels.copyReport,
+      dashboardLabels.exportPlan,
+      getExportMarkdown,
+      getReportBody,
+    ],
   );
 
   if (!sessionId || !intent) {
@@ -83,7 +138,7 @@ export function HpiasGenerativeResearchPanel({
 
   return (
     <div data-testid="hpias-generative-research-panel">
-      <GenerativeUIPanel intent={intent} showChrome={showChrome} />
+      <GenerativeUIPanel intent={intent} showChrome={showChrome} actionHandlers={actionHandlers} />
     </div>
   );
 }

@@ -23,6 +23,8 @@ const dashboardLabels = {
   selectedStatTitle: 'Selected',
   reportMetaTitle: 'Report',
   citationStatTitle: 'Citations',
+  copyReport: 'Copy report',
+  exportPlan: 'Export plan',
 };
 
 describe('mapHpiasStoreToResearchPlanSteps', () => {
@@ -98,5 +100,6 @@ describe('buildHpiasResearchDashboardIntent', () => {
     expect(intent!.blocks.some((b) => b.type === 'stat-card')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'research-plan')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'research-report')).toBe(true);
+    expect(intent!.blocks.some((b) => b.type === 'action-bar')).toBe(true);
   });
 });

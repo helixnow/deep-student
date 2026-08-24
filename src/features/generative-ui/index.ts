@@ -111,7 +111,18 @@ export {
   collectGenerativeUIActionIds,
   NOTE_EDIT_ACTION_IDS,
   FLASHCARD_ACTION_IDS,
+  RESEARCH_ACTION_IDS,
 } from './bridge/resolveGenerativeUIChatActionHandlers';
+export { createResearchBriefingActionHandlers } from './handlers/researchBriefingActionHandlers';
+export type {
+  ResearchBriefingActionCallbacks,
+  ResearchBriefingActionLabels,
+} from './handlers/researchBriefingActionHandlers';
+export {
+  extractResearchReportBody,
+  buildResearchExportMarkdownFromIntent,
+} from './utils/extractResearchContentFromIntent';
+export { buildResearchExportMarkdownFromSnapshot } from './utils/buildResearchExportMarkdown';
 export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
 export type { NoteEditPayload } from './utils/extractNoteEditPayload';
 export { schemaToPromptHint } from './utils/schemaToPromptHint';

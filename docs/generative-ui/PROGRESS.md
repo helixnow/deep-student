@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 18（2026-08-24）
+
+- [x] **Research action handlers** — `createResearchBriefingActionHandlers`（`copy-report` / `export-plan`）
+- [x] `buildResearchExportMarkdownFromSnapshot` + `extractResearchContentFromIntent` 导出工具
+- [x] `buildHpiasResearchDashboardIntent` 追加 action-bar；Hpias 面板 + Chat resolve 接线
+- [x] Research 上下文 `export-plan` 覆盖 workbench handler（剪贴板导出 Markdown）
+- [x] i18n `research.actions.*` + vitest + 文档更新
+
 ## Round 17（2026-08-24）
 
 - [x] **流式翻译简报** — `translationStreamBridge` + `useTranslationStream({ publishKey })`

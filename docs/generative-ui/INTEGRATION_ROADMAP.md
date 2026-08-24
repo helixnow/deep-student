@@ -27,6 +27,7 @@
 | 翻译会话简报 | `TranslationContentView` | ✅ Round 15 |
 | 流式翻译简报 | `translationStreamBridge` + `streamKey` | ✅ Round 17 |
 | HPIAS Chat 实时研究 | `generative_ui` 块 + `hpias_event` | ✅ Round 16 |
+| Research action handlers | `copy-report` / `export-plan` Chat+HPIAS | ✅ Round 18 |
 
 ## 安全 / HITL（#8）
 

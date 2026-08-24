@@ -87,6 +87,7 @@ Translation 流式简报（Round 17）：
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
 | HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14 |
 | Hpias Chat 事件桥 | `hpiasEventBridge` + Chat 块挂载 ✅ Round 16 |
+| Research action handlers | `copy-report` / `export-plan` ✅ Round 18 |
 | Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15 |
 | Translation 流式简报 | `translationStreamBridge` + streamKey ✅ Round 17 |
 
