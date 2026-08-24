@@ -302,6 +302,23 @@
 }
 
 /*
+ * 俯瞰重窗降级（2026-08）：非焦点重应用窗（memoryWeight ≥ 2）在缩略态下
+ * 关掉 box-shadow 与窗内 backdrop-filter（选择器组与拖拽跟手期
+ * .wb-shell-dragging 同款，见 workbench.css），缓解全窗同屏缩放的合成/
+ * 内存压力。由 TS 打 data-expose-degrade，飞回收尾/卸载时移除。
+ */
+[data-wb-window-id][data-expose-degrade] {
+  box-shadow: none !important;
+}
+
+[data-wb-window-id][data-expose-degrade] .wb-glass,
+[data-wb-window-id][data-expose-degrade] .wb-sys-drawer-handle,
+[data-wb-window-id][data-expose-degrade] [data-wb-blur-surface] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/*
  * P2 GPU 缓解：俯瞰 FLIP 期间窗口内 backdrop-filter 每帧重采样成本高。
  * `.wb-titlebar` 契约本身无 blur；`.wb-glass` 等有。对已 FLIP 的窗临时关掉。
  * 缩略态下玻璃变实色 tint，退出俯瞰即恢复——可接受，无明显闪变。
