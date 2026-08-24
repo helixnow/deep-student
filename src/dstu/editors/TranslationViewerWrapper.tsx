@@ -116,7 +116,11 @@ const CopyIconButton: React.FC<{ text: string; label: string; copiedLabel: strin
       title={copied ? copiedLabel : label}
       disabled={!text}
       onClick={() => void handleCopy()}
-      className={copied ? 'text-success hover:text-success' : undefined}
+      className={cn(
+        copied ? 'text-success hover:text-success' : undefined,
+        // 📱 粗指针（触屏）：保证 ≥44px 命中区；细指针沿用 DsButton 紧凑尺寸
+        '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
+      )}
     >
       <IconSwap
         active={copied}
