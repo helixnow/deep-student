@@ -69,4 +69,17 @@ describe('chatBlockBridge', () => {
     expect(normalized).not.toBeNull();
     expect(typeof normalized).not.toBe('string');
   });
+
+  it('recovers intent from toolInput when toolOutput lacks intent (history reload)', () => {
+    const result = extractGenerativeUIIntent(
+      { status: 'rendered', blockCount: 4 },
+      null,
+      { intent: LEARNING_DASHBOARD_EXAMPLE },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.isStreaming).toBe(false);
+    if (typeof result!.intent !== 'string') {
+      expect(result!.intent.meta?.title).toBe('本周学习概览');
+    }
+  });
 });

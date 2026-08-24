@@ -14,7 +14,8 @@
     "confirm_title": "Confirm: {{label}}",
     "confirm_inline": "Confirm: {{label}}",
     "confirm_desc": "This action may have irreversible effects.",
-    "confirm_execute": "Confirm"
+    "confirm_execute": "Confirm",
+    "unregistered_hint": "This action is not registered and cannot run"
   },
   "flashcard": {
     "preview_title": "Flashcard preview",

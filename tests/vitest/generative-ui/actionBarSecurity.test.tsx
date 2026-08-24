@@ -7,8 +7,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       if (key === 'action.confirm_title') return `确认：${params?.label ?? ''}`;
+      if (key === 'action.confirm_inline') return `确认：${params?.label ?? ''}`;
       if (key === 'action.confirm_desc') return '确认描述';
       if (key === 'action.confirm_execute') return '确认执行';
+      if (key === 'action.unregistered_hint') return '未注册';
       return key;
     },
   }),
@@ -41,5 +43,32 @@ describe('ActionBarBlock security', () => {
     await user.click(screen.getByRole('button', { name: '删除全部' }));
     expect(screen.getByText('确认：删除全部')).toBeInTheDocument();
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('uses handler label in confirm dialog when model label is misleading', async () => {
+    const user = userEvent.setup();
+    const handler = vi.fn();
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'delete-all', label: '查看详情', riskLevel: 'low' }]}
+        actionHandlers={{
+          'delete-all': { id: 'delete-all', label: '删除全部', riskLevel: 'high', handler },
+        }}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '查看详情' }));
+    expect(screen.getByText('确认：删除全部')).toBeInTheDocument();
+  });
+
+  it('disables unregistered action ids when handlers registry is provided', () => {
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'fake-action', label: '伪造操作', riskLevel: 'low' }]}
+        actionHandlers={{
+          'start-review': { id: 'start-review', label: '复习', riskLevel: 'low', handler: vi.fn() },
+        }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: '伪造操作' })).toBeDisabled();
   });
 });

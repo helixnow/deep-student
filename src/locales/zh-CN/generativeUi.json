@@ -14,7 +14,8 @@
     "confirm_title": "确认：{{label}}",
     "confirm_inline": "确认：{{label}}",
     "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
-    "confirm_execute": "确认执行"
+    "confirm_execute": "确认执行",
+    "unregistered_hint": "该操作未注册，无法执行"
   },
   "flashcard": {
     "preview_title": "闪卡预览",

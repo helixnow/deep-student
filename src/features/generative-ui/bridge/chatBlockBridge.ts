@@ -32,10 +32,11 @@ export function normalizeGenerativeUIEndIntent(intent: unknown): GenerativeUIInt
   return validateIntentObject(intent);
 }
 
-/** 从 chat block toolOutput / 流式 content 提取可渲染意图 */
+/** 从 chat block toolOutput / 流式 content / toolInput 提取可渲染意图 */
 export function extractGenerativeUIIntent(
   toolOutput: unknown,
   content?: string | null,
+  toolInput?: unknown,
 ): { intent: GenerativeUIIntent | string; isStreaming: boolean } | null {
   if (toolOutput && typeof toolOutput === 'object') {
     const data = toolOutput as GenerativeUIBlockOutput;
@@ -65,6 +66,14 @@ export function extractGenerativeUIIntent(
     if (parsed.ok) return { intent: parsed.intent, isStreaming: true };
     const partial = tryParsePartialIntent(trimmed);
     return { intent: partial ?? EMPTY_STREAMING_INTENT, isStreaming: true };
+  }
+
+  if (toolInput && typeof toolInput === 'object' && 'intent' in toolInput) {
+    const raw = (toolInput as { intent?: unknown }).intent;
+    const normalized = normalizeGenerativeUIEndIntent(raw);
+    if (normalized !== null) {
+      return { intent: normalized, isStreaming: false };
+    }
   }
 
   return null;

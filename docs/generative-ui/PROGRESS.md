@@ -17,7 +17,8 @@
 - [x] `buildAIDiffSummaryIntent` + AIDiffPanel 确定性变更摘要头
 - [x] `LearningHubGenerativeBriefing` POC（finderStore 数据源）
 - [x] 40 项 vitest 全绿
-- [ ] Round 5 子代理调研合并（10 × xhigh 进行中）
+- [x] Round 5 子代理跟进：P0 i18n 块组件、actionHandlerSync 契约、learningHubActionHandlers、简报去重 meta
+- [ ] Round 5 子代理调研合并（文档归档 Round 6 路线图）
 
 ### Round 6+
 - `render_generative_ui` builtin skill / schema 注入
