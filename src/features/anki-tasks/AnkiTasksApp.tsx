@@ -707,7 +707,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
               />
               {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                   <X size={12} />
                 </DsButton>
               )}
