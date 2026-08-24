@@ -147,7 +147,7 @@ export const ColorPalette: React.FC<{
             className={cn(
               '!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0',
               'motion-reduce:hover:scale-100',
-              '[@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10',
+              '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
               selected ? 'border-primary scale-110' : 'border-transparent',
             )}
             style={{ backgroundColor: color }}
@@ -158,7 +158,7 @@ export const ColorPalette: React.FC<{
           />
         );
       })}
-      <DsButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
+      <DsButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
         <X className="w-2.5 h-2.5" />
       </DsButton>
     </div>

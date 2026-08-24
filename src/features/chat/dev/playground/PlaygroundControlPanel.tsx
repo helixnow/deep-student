@@ -236,7 +236,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onPresetChange(p)}
                 title={getStreamingPresetHint(p)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
+                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:min-h-11 text-2xs rounded transition-colors',
                   preset === p
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -262,7 +262,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onRenderModeChange(m)}
                 title={getRenderModeHint(m)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
+                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:min-h-11 text-2xs rounded transition-colors',
                   renderMode === m
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -456,7 +456,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingAskUser}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `ask_user`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -466,7 +466,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingApproval}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_approval`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -476,7 +476,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingToolLimit}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_limit`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -497,7 +497,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectTodoSample}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">Todo sample 数据</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -549,7 +549,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   <div className="border-b border-border">
     <button
       onClick={onToggle}
-      className="w-full px-3 py-2 flex items-center justify-between hover:bg-muted/30 transition-colors"
+      className="w-full px-3 py-2 [@media(pointer:coarse)]:min-h-11 flex items-center justify-between hover:bg-muted/30 transition-colors"
     >
       <div className="flex items-center gap-1.5 text-xs font-medium">
       {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}

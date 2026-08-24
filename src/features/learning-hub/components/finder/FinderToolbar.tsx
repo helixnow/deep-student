@@ -213,14 +213,14 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     : searchPlaceholder || t('finder.search.placeholder');
 
   // 触屏图标钮：视觉保持 40px（44px 会溢出 38px 窗口标题栏 chrome），
-  // 伪元素 after:-inset-0.5 外扩 2px 使触控命中区达 44px（对齐 FinderQuickAccess 范式）
+  // 伪元素 after:-inset-1 外扩 4px 使触控命中区达 48px，明确 ≥44px（对齐 FinderQuickAccess 范式）
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
       <DsButton
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
         onClick={onBack}
         disabled={!canGoBack}
         title={t('finder.toolbar.back')}
@@ -232,7 +232,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         variant="ghost"
         size="icon"
         iconOnly
-        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
+        className="pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] text-foreground/70 hover:bg-background/70"
         onClick={onForward}
         disabled={!canGoForward}
         title={t('finder.toolbar.forward')}
@@ -254,7 +254,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               size="icon"
               iconOnly
               className={cn(
-                "pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-['']",
+                "pointer-events-auto relative !h-7 !w-7 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']",
                 viewMode === mode ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65 hover:bg-background/70'
               )}
               onClick={() => onViewModeChange(mode)}
@@ -275,7 +275,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               variant="ghost"
               size="icon"
               iconOnly
-              className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+              className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
               title={t('finder.sort.title')}
               aria-label={t('finder.sort.title')}
             >
@@ -314,7 +314,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
           onClick={onNewFolder}
           title={t('finder.toolbar.newFolder')}
           aria-label={t('finder.toolbar.newFolder')}
@@ -328,7 +328,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           variant="ghost"
           size="icon"
           iconOnly
-          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
           onClick={onRefresh}
           title={t('common:refresh')}
           aria-label={t('common:refresh')}
