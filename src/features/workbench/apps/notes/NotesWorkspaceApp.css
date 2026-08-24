@@ -348,6 +348,14 @@
   outline-offset: 1px;
 }
 
+/* 触屏：树加载失败重试按钮固定 26px 压死触控目标，改 auto 并升到 ≥44px（桌面 26px 密度不变） */
+@media (pointer: coarse) {
+  .notes-tree-message button {
+    min-height: 44px;
+    height: auto;
+  }
+}
+
 .notes-tree-loading {
   padding: 8px 6px;
   display: grid;
@@ -520,6 +528,16 @@
   display: grid;
   place-items: center;
   pointer-events: auto;
+}
+
+/* 触屏：溢出触发按钮 28px 目标过小，扩到 44px，负 margin 抵消占位
+   （每边 -8px，槽位仍占 32px，视觉图标不变） */
+@media (pointer: coarse) {
+  .notes-tabs-overflow .notes-icon-button {
+    width: 44px;
+    height: 44px;
+    margin: -8px;
+  }
 }
 
 .notes-tabs-overflow-menu {
@@ -964,6 +982,14 @@
 .notes-inline-confirm-actions button.is-danger:hover {
   border-color: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
   background: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+}
+
+/* 触屏：删除确认条按钮固定 26px 压死触控目标，改 auto 并升到 ≥44px（桌面 26px 密度不变） */
+@media (pointer: coarse) {
+  .notes-inline-confirm-actions button {
+    min-height: 44px;
+    height: auto;
+  }
 }
 
 .notes-inline-error {
