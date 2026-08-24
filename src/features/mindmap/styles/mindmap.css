@@ -2046,11 +2046,13 @@
     inset: -13px;
   }
 
-  /* 顶部工具栏按钮（28px 高）扩大命中区到 44px，视觉尺寸不变 */
-  .mm-toolbar .mm-toolbar-button {
+  /* 顶部工具栏按钮 / 学习组按钮（28px 高）扩大命中区到 44px，视觉尺寸不变 */
+  .mm-toolbar .mm-toolbar-button,
+  .mm-toolbar .mm-learning-button {
     position: relative;
   }
-  .mm-toolbar .mm-toolbar-button::after {
+  .mm-toolbar .mm-toolbar-button::after,
+  .mm-toolbar .mm-learning-button::after {
     content: '';
     position: absolute;
     inset: -8px;
@@ -2523,8 +2525,9 @@
     min-width: 44px;
   }
 
-  /* 搜索条关闭钮（24px）与大纲多选操作钮（28px）不带 ds-btn 类，
+  /* 搜索条关闭钮/结果导航钮（24px）与大纲多选操作钮（28px）不带 ds-btn 类，
      不被上方规则覆盖：触屏补足 44px（min-h-11）最小命中 */
+  .mm-search-nav-button,
   .mm-search-close,
   .outline-multiselect-btn {
     min-width: 44px;
@@ -2553,6 +2556,45 @@
 
   .mm-search-mode-button {
     height: auto;
+    min-height: 44px;
+  }
+
+  /* 演示退出钮（36px）触屏补足 44px 命中：视觉不变，::after 外扩 4px */
+  .mm-presentation-exit::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+  }
+
+  /* 结构预设（38px）/主题行（28px）：平板 popover 触屏补足 44px 命中；
+     手机走 .mm-mobile-subview 子屏规则（特异性更高，56/48px 不受影响） */
+  .mm-structure-preset {
+    min-height: 44px;
+  }
+
+  .mm-theme-option {
+    height: auto;
+    min-height: 44px;
+  }
+
+  /* 字号控件（26px 容器 + 24px 输入框）：容器对齐同面板 44px 图标钮，
+     输入框 16px 字号防 iOS 聚焦缩放（同 .mm-mobile-subview 范式） */
+  .mm-font-size-control {
+    height: 44px;
+  }
+
+  .mm-font-size-input {
+    height: 42px;
+    font-size: 16px;
+  }
+
+  /* 内联横幅按钮（ds-btn 28px）触屏补足 44px（与窄屏 max-width 规则同值互不冲突） */
+  .mm-inline-banner .ds-btn {
+    min-height: 44px;
+  }
+
+  /* 画布面包屑容器（26px 硬高）：内部按钮已 min-h-11，容器放开避免溢出 */
+  .mm-canvas-breadcrumb {
     min-height: 44px;
   }
 }

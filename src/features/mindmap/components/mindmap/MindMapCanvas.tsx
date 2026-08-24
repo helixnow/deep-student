@@ -1758,7 +1758,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           <DsButton
             variant="ghost"
             onClick={() => setViewRootId(null)}
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:min-h-11"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title={t('outline.exitFocusMode')}
           >
             <House size={14} />

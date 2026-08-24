@@ -34,7 +34,7 @@ export const OutlineBreadcrumb: React.FC<{
       >
         <DsButton variant="ghost"
           onClick={() => onNavigate(null)}
-          className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
+          className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           aria-label={t('outline.exitFocusMode')}
         >
           <House size={14} />
