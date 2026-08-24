@@ -113,7 +113,7 @@
 
 - [x] 子代理 #2：LLM critic 生成后终审（`anki_critic.rs` + streaming 收尾）——
   opt-in（`enable_critic_pass`，默认关），模型/解析失败一律降级全 keep，
-  成功派发 `CriticSummary` 事件；尚未暴露为 chatanki 工具参数
+  成功派发 `CriticSummary` 事件；本轮尚未暴露，后续收尾续作 #9 已接公开开关
 - [x] 子代理 #5：AI 图像遮挡制卡首版（详见 `round4/05-image-occlusion.md`）
   - 新增 `anki_image_occlusion.rs` 纯函数层：`OcclusionSpec{imageRef, boxes}`
     归一化坐标（0-1）校验（越界/重叠 IoU/空盒/零序号 结构化拒绝）、
@@ -154,8 +154,8 @@
   JS 三分区表名值双对齐 + 6 边界 fixture，good 集 0 误伤
 - [x] 子代理 #4：金标集接通 LLM critic（`c48140a4`，
   详见 `round5/04-grounded-critic.md`）——同文档用户修正对作为 grounded judge
-  参照；独立金标预算；不可用时回退规则 rubric；critic 内核仍默认关闭，
-  且 ChatAnki run/start 未暴露启用参数
+  参照；独立金标预算；不可用时回退规则 rubric；critic 内核仍默认关闭；
+  run/start 开关在后续收尾续作 #9 接入
 - [x] 子代理 #8：文档/进度/i18n/用户指南对齐当时代码基线（`5a58a2c8`）
   - `round4/00-round4-status.md` 逐项复核修订；`round5/00-round5-summary.md` 创建
   - `02-ai-native-gap-analysis.md` 评分重算 6.5 → **8.0/10**；
@@ -182,8 +182,8 @@
       解析本地/VFS/URL 图片并挂载遮挡揭示交互
 - [ ] 图像遮挡完整闭环：VlmFull 直接图片的启发式 `_occlusion` 草稿已接；
       PDF 页图、真实 grounding、卡片编辑器与原生 note type 仍未接
-- [ ] ChatAnki critic 用户入口：流式收尾、CAS、grounded 参照和 Critic 路由已接，
-      但 run/start schema 无开关且主入口构造值为 `None`
+- [x] ChatAnki critic 用户入口：流式收尾、CAS、grounded 参照和 Critic 路由已接，
+      run/start 公开 `enableCriticPass`；缺省 `false`，仅显式 `true` 时运行
 
 ---
 
@@ -198,27 +198,40 @@
 - [x] Structured Output、QA、FSRS、plan_route、transform ops/script、Generator
   路由均已进入 ChatAnki 生产路径。
 - [x] critic 的流式收尾、CAS、grounded 检索和 Critic 角色模型选择属于真实内核接线；
-  但 ChatAnki 不提供开关，故不记为用户主路径已接。
+  run/start 已提供默认关闭的 `enableCriticPass`，只在用户明确要求时启用。
 - [x] 偏好记忆写入已接 extraRequirements、成功编辑和删除观察，读取侧保持
   run/start 检索注入；写入为 best-effort，不改变制卡操作结果。
 - [x] `_original_generation` 已在流式新卡首次入库时写入，使后续用户编辑可形成
   grounded 修正对；历史卡和超 16 KiB 快照仍可能回退规则 rubric。
-- [x] Sidekick Planner / Generator / Vlm 均有 ChatAnki 生产消费者；Critic 有条件
-  消费者，但因 ChatAnki 无开关而不会从默认入口运行。
+- [x] Sidekick Planner / Generator / Vlm 均有 ChatAnki 生产消费者；Critic 可由
+  `enableCriticPass=true` 触发，但缺省值仍保证默认入口不运行。
 - [x] 无消费者的 `chat_v2_anki_cards_result` 已从 handler、导出、注册和权限成组删除；
   划词制卡仍使用 `CardAgent.startGeneration`，不能把整个 CardForge 模块当死代码。
 - [x] Image Occlusion 仅将 VlmFull 直接图片的文字描述变成启发式 `_occlusion`
   网格草稿并附到首张卡；折叠/展开预览已接，但没有真实视觉坐标、PDF 页图、
   遮挡编辑器或原生 note type 闭环。
 - [x] 现码评分更新为 **8.5/10**：偏好写入、原始快照和 Planner/Vlm 消费关闭了
-  三个实质缺口；critic 用户入口与完整图像遮挡仍使其不能标为完整 SOTA。
+  三个实质缺口；critic 公开开关保持默认关闭且不单独上调评分，完整图像遮挡仍未闭环。
 - [x] PR [#215](https://github.com/helixnow/deep-student/pull/215) 最终文档口径统一：
   偏好写入、遮挡预览、Planner/Generator/Vlm 和 `_original_generation` 均记为已接；
-  critic 只记内核接线，因 run/start 无开关而仍默认关闭。
+  critic 的 run/start 开关已接，但缺省 `false`，默认路径仍关闭。
 - [ ] 发布状态仍由 required CI 决定；检查未全绿前保持发布门禁，不以本轮文档收尾
   替代平台矩阵验证。
 
-详细证据见 `wrapup/00-final-readiness.md` 与 `wrapup/18-sota-status.md`。
+详细证据见 `wrapup/00-final-readiness.md`、`wrapup/18-sota-status.md` 与
+`wrapup/21-critic-switch.md`。
+
+---
+
+## Round 5 — 收尾续作 #9：critic 默认关闭开关（2026-08-24）
+
+- [x] `builtin-chatanki_run` / `builtin-chatanki_start` schema 公开
+  `enableCriticPass`，Rust 端精确透传到 `enable_critic_pass`。
+- [x] 缺省值保持 `false`；省略参数时不收集金标、不调用 critic 模型，只有用户明确
+  要求质检/复审/critic 时才传 `true`。
+- [x] 最终评分保持 **8.5/10**；PR
+  [#215](https://github.com/helixnow/deep-student/pull/215) 仍以 required CI
+  全绿作为发布门禁。
 
 ---
 
@@ -233,4 +246,5 @@
 | 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 与遮挡草稿最小接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |
-| 2026-08-24 | 收尾续作 #8 | 按现码登记偏好写入、遮挡预览、Planner/Generator/Vlm、`_original_generation` 已接；critic 默认关闭；评分 8.5；CI 保持发布门禁 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 收尾续作 #8 | 按现码登记偏好写入、遮挡预览、Planner/Generator/Vlm、`_original_generation` 已接；评分 8.5；CI 保持发布门禁 | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 收尾续作 #9 | run/start 接入 `enableCriticPass`，默认 `false`、仅按用户明确要求开启；评分仍为 8.5 | [#215](https://github.com/helixnow/deep-student/pull/215) |
