@@ -621,7 +621,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                 size="sm"
                 onClick={handleLoadMore}
                 disabled={isLoadingMore}
-                className="text-muted-foreground"
+                className="text-muted-foreground [@media(pointer:coarse)]:min-h-11"
               >
                 {isLoadingMore ? (
                   <CircleNotch size={14} className="animate-spin" />
