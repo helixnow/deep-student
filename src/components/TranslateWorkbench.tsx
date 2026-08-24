@@ -33,6 +33,7 @@ import {
   DOMAIN_DEFAULT_PROMPT_KEYS,
   isPromptCustomized as isPromptCustomizedBy,
   promptAfterDomainSwitch,
+  promptForSessionLoad,
 } from '@/translation/promptPresets';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -229,6 +230,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     initialResolvedPrefs.formality
   );
   const [domain, setDomain] = useState<string>(initialSession?.domain || 'general');
+  const domainRef = useRef(domain);
+  domainRef.current = domain;
   const [glossary, setGlossary] = useState<Array<[string, string]>>(initialSession?.glossary || []);
 
   // 已知默认/模板文案集合：当前提示词命中即视为「未显式修改」
@@ -497,13 +500,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       try {
         const saved = await TauriAPI.getSetting('translation.prompt');
         if (cancelled) return;
-        const value = saved || t('translation:prompt_editor.default_prompt');
+        const value = promptForSessionLoad(
+          saved,
+          defaultPromptForDomain(domainRef.current),
+          knownDefaultPrompts,
+        );
         setCustomPrompt(value);
         syncRestoredSigWithPrompt(value);
       } catch (error: unknown) {
         if (cancelled) return;
         console.error('[Translation] Failed to load prompt:', error);
-        const fallback = t('translation:prompt_editor.default_prompt');
+        const fallback = defaultPromptForDomain(domainRef.current);
         setCustomPrompt(fallback);
         syncRestoredSigWithPrompt(fallback);
       }
@@ -512,7 +519,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [t, initialSession?.customPrompt, syncRestoredSigWithPrompt]);
+  }, [
+    initialSession?.customPrompt,
+    syncRestoredSigWithPrompt,
+    defaultPromptForDomain,
+    knownDefaultPrompts,
+  ]);
 
   // 字符统计
   const sourceCharCount = sourceText.length;
@@ -728,12 +740,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 保存Prompt
   const handleSavePrompt = useCallback(async () => {
     try {
-      await TauriAPI.saveSetting('translation.prompt', customPrompt);
+      // 默认/领域模板由后端按 domain 组装，不写入全局 override 设置；
+      // 否则下次打开不同领域时会显示旧领域模板，且跨语言后可能被误判为自定义覆盖。
+      await TauriAPI.saveSetting(
+        'translation.prompt',
+        isPromptCustomized ? customPrompt : '',
+      );
       showGlobalNotification('success', t('translation:prompt_editor.saved'));
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
     }
-  }, [customPrompt, t]);
+  }, [customPrompt, isPromptCustomized, t]);
 
   // 恢复默认 Prompt：跟随当前领域的默认/模板文案（命中已知默认集合，
   // 因此恢复后 isPromptCustomized=false，不会发送 prompt_override 覆盖领域预设）

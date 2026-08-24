@@ -43,3 +43,20 @@ export function promptAfterDomainSwitch(
     ? prevPrompt
     : nextDomainDefaultPrompt;
 }
+
+/**
+ * 会话没有独立提示词时，从全局设置恢复编辑器文案。
+ *
+ * 全局设置可能由旧版本写入某个领域的默认模板；这类文案不是用户覆盖，
+ * 应按当前会话领域重新取默认值，避免界面显示学术模板、实际后端却使用
+ * 通用领域预设。只有真正自定义的全局提示词才跨会话恢复。
+ */
+export function promptForSessionLoad(
+  savedPrompt: string | null | undefined,
+  currentDomainDefaultPrompt: string,
+  knownDefaultPrompts: ReadonlySet<string>,
+): string {
+  return isPromptCustomized(savedPrompt ?? '', knownDefaultPrompts)
+    ? savedPrompt!
+    : currentDomainDefaultPrompt;
+}

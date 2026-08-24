@@ -202,6 +202,14 @@ function mergeContentIntoNode(node: DstuNode, parsed: ParsedTranslationContent):
     translatedText: parsed.translated,
   };
   if (parsed.meta) {
+    // v2 正文是会话设置的完整 SSOT。字段缺失表示已清空，必须先移除节点
+    // metadata 中可能残留的旧值；否则清空术语表/恢复默认 Prompt 后重开会复活。
+    // 无 schemaVersion 的历史嵌套 meta 仍按增量覆盖处理，避免破坏旧数据。
+    if ((parsed.meta.schemaVersion ?? 0) >= TRANSLATION_CONTENT_SCHEMA_VERSION) {
+      for (const key of ['srcLang', 'tgtLang', 'formality', 'domain', 'glossary', 'customPrompt']) {
+        delete metadata[key];
+      }
+    }
     if (parsed.meta.srcLang) metadata.srcLang = parsed.meta.srcLang;
     if (parsed.meta.tgtLang) metadata.tgtLang = parsed.meta.tgtLang;
     if (parsed.meta.formality) metadata.formality = parsed.meta.formality;
@@ -505,11 +513,12 @@ export const translationDstuAdapter = {
       reportError(bodyResult.error, 'Persist translation settings');
       return ok(node);
     }
-    return ok(mergeContentIntoNode(bodyResult.value, {
-      source: session.sourceText,
-      translated: session.translatedText,
-      meta: null,
-    }));
+    return ok(
+      mergeContentIntoNode(
+        bodyResult.value,
+        parseTranslationContent(buildTranslationContent({ ...session, id: node.id }))
+      )
+    );
   },
 
   /**
