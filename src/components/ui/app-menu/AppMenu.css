@@ -527,10 +527,11 @@
   }
 }
 
-/* 触屏设备（无 hover）：菜单项触控目标 ≥40px（移动端契约），
-   用 pointer:coarse 而非视口宽度判定，覆盖 640-767px 触屏平板 */
-@media (hover: none) and (pointer: coarse) {
+/* 触屏设备：菜单项触控目标 ≥44px（iOS HIG 基线）。
+   只判定 pointer:coarse，不叠加 hover:none——iPad 外接触控板时
+   hover:hover 与 pointer:coarse 并存，叠加条件会导致规则失效 */
+@media (pointer: coarse) {
   .app-menu-item {
-    min-height: 40px;
+    min-height: 44px;
   }
 }
