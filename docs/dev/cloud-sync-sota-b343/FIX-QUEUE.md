@@ -317,3 +317,14 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **文档**：用户指南 16 新增「云端仓库巡检（只读体检）」小节。
 
 **文件面认领（独占）**：`cloud_storage/repo_check.rs` 新文件、`cloud_storage/mod.rs`（仅 `pub mod repo_check;` 一行）、`commands_sync.rs` 巡检命令段（只加不改）、`lib.rs` 注册一行、`data_governance/mod.rs` re-export 一行、`permissions/application-commands.toml` 一行、`CloudStorageSection.tsx` 巡检区、`cloudStorage.json`（zh/en）`repoCheck.*`、`sync_r11_repo_check.rs` 新文件、用户指南 16 巡检小节、本节。与 R11-lease 的 `sync_manager.rs`、R11-unsynced-ui 的 `commands_sync.rs` 查询段无交叠（各自只加新段，推前 rebase 消解）。
+
+### R11-unsynced-ui（分支 `cursor/cloud-sync-sota-r11-unsynced-ui-b343`，未同步文件清单常驻面板）
+
+模型 claude-fable-5-thinking-high。Dropbox 档「未同步文件清单」一整包。交付：
+
+- **后端只读命令（新增，不改既有签名）**：`commands_sync.rs` 末尾新增独立段 `data_governance_list_unsynced_items`——对照云端 blob / 资产清单与本地文件，把「云端有、本地没有」的对象按原因分类：`downloadPending`（download_failures 对应对象：下载失败或尚未下载）、`legacyPlaintext`（本端启用 E2EE 后防降级拒收的明文遗留对象）、`caseConflict`（大小写槽位被占跳过下载）、`sanitizedNameConflict`（净化后重名且内容不同）、`invalidKey`（key 结构非法/越界）。**只读契约**：对云端只 GET/LIST、对本地只探测存在性；tombstone 已删除条目不计入；清单列表截断时如实报错拒绝出报告。清单解码复用 `SyncManager` 公开实现的 `tombstone::PayloadCodec`（不复制加密逻辑）；清单 key 布局常量与分类语义按 `repo_check.rs` 先例在新段内镜像 `sync/mod.rs`（净化等价视图 / casefold 槽位 / 密文优先合并），并注明来源——**未改 `sync/mod.rs`**（本轮其他代理文件面）。条目上限 500，超出置 `items_truncated` 并保留全量计数。段尾新增 `unsynced_items_tests` 单测 4 例（blob 三态分类+非法路径、资产大小写/净化/非法 key 分类、密文条目合并不被明文降级、资产 revision 合并）。
+- **前端**：新文件 `data-governance/UnsyncedItemsPanel.tsx` 常驻面板——自取云配置（`resolveCloudStorageConfig`，未配置不发查询）、按类别分组展示，每组人话原因 + 可执行建议（重试下载 / 源设备重传加密 / 改名），冲突类条目展示冲突对方 key，技术细节折叠保留；downloadPending 组带「重试下载同步」按钮。`SyncTab.tsx` **仅加挂载行**（import + 挂载两行，`onRetrySync` 接 `onRunSync("download", syncStrategy)`），classifySyncError / classifySyncE2eeError 双轨未动。
+- **locale**：`sync.json`（zh/en）新增 `unsynced.*`（含五类 `kind.*.{label,reason,suggestion}`）。
+- **测试**：新文件 `tests/vitest/data-governance/r11-unsynced-items-panel.test.tsx`（空态/未配置/多类目/截断/重试动作/失败重试/locale 契约，10 例）与 `r11-unsynced-mount.test.tsx`（SyncTab 挂载行锁定 3 例）。
+
+**文件面认领（独占）**：`UnsyncedItemsPanel.tsx` 新文件、`SyncTab.tsx` 挂载行（import + 挂载）、`sync.json`（zh/en）`unsynced.*`、`commands_sync.rs` 未同步查询段（只加不改，含段尾新测试模块）、`lib.rs` 注册一行、`data_governance/mod.rs` re-export 一行、`permissions/application-commands.toml` 一行、`r11-unsynced-*.test.tsx` 两个新文件、本节。与 R11-check 的 `commands_sync.rs` 巡检段各自只加新段无交叠；未动 RecordConflictsPanel / repo_check / notes / chat / workbench。
