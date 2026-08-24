@@ -639,3 +639,7 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-gc | `cursor/cloud-sync-sota-delta-gc-b343` | DELTA-R11 R12-delta-gc：合并所有 v2 device manifests、两遍 candidate/grace GC、截断/并发/崩溃注入；共享对象绝不误删；**不接命令/UI** | 新 `cloud_storage/delta_gc.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_gc;`；新 `src-tauri/tests/sync_r12_delta_gc.rs` |
 
 禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `delta_restore.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。宁留垃圾，不删仍被引用的对象。
+
+### delta-gc 回传（`cursor/cloud-sync-sota-delta-gc-b343` @ `07655585`）
+
+`delta_gc.rs`：`collect_gc_candidates` 与 `sweep_gc_candidates` 必须分两次独立全扫描；LIST 截断 / descriptor 失败 → 零删除零写 candidate；`config.dsbk` 永不删；共享对象按全仓 live set 保留；grace 未满不删。上游 API 经 `delta_gc_upstream.rs.in`。测试 `sync_r12_delta_gc.rs` 9 例。**未接线**，不能宣称增量备份 / 增量 GC 已实现。

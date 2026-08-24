@@ -452,5 +452,5 @@ v1 与 v2 的「10 版」过渡不能假装是原子操作：
 > staging 规范清单、`backup-v2/locks/` 租约、未接线的
 > `publish_verified_staging` 与 `restore_snapshot_to_staging` 已落地。
 > 生产上传仍是整 ZIP 单对象 `put_file`，上表「Cloud backup 增量传输/去重」
-> 判定不变，仍为**不能宣称**。Round 17 认领 GC 积木。GC/integration 未齐且
-> 未接命令/UI 前，功能不可暴露。
+> 判定不变，仍为**不能宣称**。GC 积木已合、未接线。integration 未接命令/UI
+> 前，功能不可暴露。
