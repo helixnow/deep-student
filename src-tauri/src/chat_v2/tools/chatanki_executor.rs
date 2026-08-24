@@ -467,6 +467,8 @@ struct ChatAnkiGenerationTuning {
     content_format: ChatAnkiContentFormat,
     /// 字段 QA 校验留痕开关；None=默认开启（与 StructuredOutputOptions 语义一致）。
     enable_qa_pass: Option<bool>,
+    /// 生成后 LLM critic 开关；None=默认关闭，仅显式 true 时启用。
+    enable_critic_pass: Option<bool>,
     /// FSRS 复习画像回流开关；None=默认开启（与 AnkiGenerationOptions 语义一致）。
     enable_fsrs_feedback: Option<bool>,
     /// VLM 图片数上限覆盖；None=按路由默认（light 6 / full 12），上限 [`MAX_VLM_IMAGES`]。
@@ -572,6 +574,9 @@ struct ChatAnkiRunArgs {
     /// 可选：字段 QA 校验留痕开关（默认开启）
     #[serde(alias = "enable_qa_pass")]
     enable_qa_pass: Option<bool>,
+    /// 可选：生成后 LLM critic（默认关闭，仅在用户明确要求质检/复审时开启）
+    #[serde(alias = "enable_critic_pass")]
+    enable_critic_pass: Option<bool>,
     /// 可选：FSRS 复习画像回流开关（默认开启）
     #[serde(alias = "enable_fsrs_feedback")]
     enable_fsrs_feedback: Option<bool>,
@@ -669,6 +674,9 @@ struct ChatAnkiStartArgs {
     /// 可选：字段 QA 校验留痕开关（默认开启）
     #[serde(alias = "enable_qa_pass")]
     enable_qa_pass: Option<bool>,
+    /// 可选：生成后 LLM critic（默认关闭，仅在用户明确要求质检/复审时开启）
+    #[serde(alias = "enable_critic_pass")]
+    enable_critic_pass: Option<bool>,
     /// 可选：FSRS 复习画像回流开关（默认开启）
     #[serde(alias = "enable_fsrs_feedback")]
     enable_fsrs_feedback: Option<bool>,
@@ -6667,6 +6675,7 @@ impl ChatAnkiToolExecutor {
             visual_hint: None,
             content_format: args.content_format,
             enable_qa_pass: args.enable_qa_pass,
+            enable_critic_pass: args.enable_critic_pass,
             enable_fsrs_feedback: args.enable_fsrs_feedback,
             max_images: None,
             enable_preference_memory: args.enable_preference_memory,
@@ -6750,6 +6759,7 @@ impl ChatAnkiToolExecutor {
                 .filter(|s| !s.is_empty()),
             content_format: args.content_format,
             enable_qa_pass: args.enable_qa_pass,
+            enable_critic_pass: args.enable_critic_pass,
             enable_fsrs_feedback: args.enable_fsrs_feedback,
             max_images: args.max_images,
             enable_preference_memory: args.enable_preference_memory,
@@ -10982,7 +10992,8 @@ fn build_generation_options(
         // StreamingAnkiService 经 anki_protocol::StructuredOutputOptions 读取。
         output_protocol: tuning.output_protocol.clone(),
         enable_qa_pass: tuning.enable_qa_pass,
-        enable_critic_pass: None,
+        // LLM critic 默认关闭；仅 run/start 显式 enableCriticPass=true 时透传开启。
+        enable_critic_pass: tuning.enable_critic_pass,
         enable_llm_critic: None,
         critic_token_budget: None,
         sidekick_model_routing: None,
@@ -18582,6 +18593,92 @@ mod tests {
         assert_eq!(args.resource_id.as_deref(), Some("file_a"));
         assert_eq!(args.resource_ids.unwrap_or_default().len(), 2);
         assert_eq!(args.extra_requirements, None);
+    }
+
+    #[test]
+    fn test_chatanki_run_critic_defaults_off_when_omitted() {
+        let args: ChatAnkiRunArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "templateMode": "all"
+        }))
+        .expect("should parse run args");
+
+        assert_eq!(args.enable_critic_pass, None);
+    }
+
+    #[test]
+    fn test_chatanki_start_critic_defaults_off_when_omitted() {
+        let args: ChatAnkiStartArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "content": "some content",
+            "templateMode": "all"
+        }))
+        .expect("should parse start args");
+
+        assert_eq!(args.enable_critic_pass, None);
+    }
+
+    #[test]
+    fn test_chatanki_critic_switch_accepts_camel_and_snake_case() {
+        let run_args: ChatAnkiRunArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "templateMode": "all",
+            "enableCriticPass": true
+        }))
+        .expect("should parse camelCase run arg");
+        let start_args: ChatAnkiStartArgs = serde_json::from_value(serde_json::json!({
+            "goal": "test",
+            "content": "some content",
+            "templateMode": "all",
+            "enable_critic_pass": true
+        }))
+        .expect("should parse snake_case start alias");
+
+        assert_eq!(run_args.enable_critic_pass, Some(true));
+        assert_eq!(start_args.enable_critic_pass, Some(true));
+    }
+
+    #[test]
+    fn test_chatanki_critic_switch_rejects_non_boolean_values() {
+        let invalid_run = serde_json::from_value::<ChatAnkiRunArgs>(serde_json::json!({
+            "goal": "test",
+            "templateMode": "all",
+            "enableCriticPass": "true"
+        }));
+        let invalid_start = serde_json::from_value::<ChatAnkiStartArgs>(serde_json::json!({
+            "goal": "test",
+            "content": "some content",
+            "templateMode": "all",
+            "enable_critic_pass": 1
+        }));
+
+        assert!(invalid_run.is_err());
+        assert!(invalid_start.is_err());
+    }
+
+    #[test]
+    fn test_build_generation_options_propagates_critic_switch() {
+        let options_for = |enable_critic_pass| {
+            build_generation_options(
+                "goal",
+                "Default",
+                "Basic",
+                "content",
+                None,
+                None,
+                None,
+                &ChatAnkiGenerationTuning {
+                    enable_critic_pass,
+                    ..Default::default()
+                },
+                None,
+            )
+        };
+
+        assert_eq!(options_for(None).enable_critic_pass, None);
+        assert_eq!(options_for(Some(false)).enable_critic_pass, Some(false));
+        assert_eq!(options_for(Some(true)).enable_critic_pass, Some(true));
+        assert_eq!(options_for(Some(true)).enable_llm_critic, None);
     }
 
     #[test]

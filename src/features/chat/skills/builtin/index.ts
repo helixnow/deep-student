@@ -204,7 +204,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_run',
       description:
-        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。可选生成调优旋钮：outputProtocol/contentFormat/visualHint/maxImages/enableQaPass/enableFsrsFeedback/enablePreferenceMemory（默认全部 auto/开启，仅在有明确理由时覆盖）。',
+        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。可选生成调优旋钮：outputProtocol/contentFormat/visualHint/maxImages/enableQaPass/enableFsrsFeedback/enablePreferenceMemory（默认 auto/开启）及 enableCriticPass（默认关闭；仅当用户明确要求“质检/复审/critic”时开启）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -285,6 +285,12 @@ export const chatAnkiSkill: SkillDefinition = {
             description:
               '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
           },
+          enableCriticPass: {
+            type: 'boolean',
+            default: false,
+            description:
+              '可选：生成后 grounded LLM critic 质检/复审开关，默认 false（不传=关闭）。仅当用户明确要求“质检/复审/critic”时传 true；会增加一次模型评审调用。',
+          },
           enableFsrsFeedback: {
             type: 'boolean',
             description:
@@ -318,7 +324,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_start',
       description:
-        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。固定纯文本路径，不接受 route/resourceId/resourceIds，也没有 VLM 专属参数（visualHint/maxImages）；可选生成调优旋钮：outputProtocol/contentFormat/enableQaPass/enableFsrsFeedback/enablePreferenceMemory。',
+        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。固定纯文本路径，不接受 route/resourceId/resourceIds，也没有 VLM 专属参数（visualHint/maxImages）；可选生成调优旋钮：outputProtocol/contentFormat/enableQaPass/enableFsrsFeedback/enablePreferenceMemory（默认 auto/开启）及 enableCriticPass（默认关闭；仅当用户明确要求“质检/复审/critic”时开启）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -369,6 +375,12 @@ export const chatAnkiSkill: SkillDefinition = {
             type: 'boolean',
             description:
               '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
+          },
+          enableCriticPass: {
+            type: 'boolean',
+            default: false,
+            description:
+              '可选：生成后 grounded LLM critic 质检/复审开关，默认 false（不传=关闭）。仅当用户明确要求“质检/复审/critic”时传 true；会增加一次模型评审调用。',
           },
           enableFsrsFeedback: {
             type: 'boolean',
@@ -1267,7 +1279,7 @@ export const chatAnkiSkill: SkillDefinition = {
 
 ## 生成调优参数（run/start 可选旋钮，何时用哪个）
 
-run/start 除必需参数外还有一组可选调优旋钮，**默认全部 auto/开启，绝大多数调用一个都不用传**。判别标准是"约束作用在哪一层"：
+run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticPass\` 默认关闭外，其余保持 auto/开启，绝大多数调用一个都不用传。判别标准是"约束作用在哪一层"：
 
 - **goal**：学习目标 + 卡型偏好 + 粒度要求（"要做什么卡"）。永远必传。
 - **extraRequirements**：卡片成品的风格/语言/格式约束（"卡片长什么样"，如"答案统一用英文""每张卡背面附一个例句"）。作为高优先级规则注入生成提示；不要把学习目标或看图指引混进来。
@@ -1275,6 +1287,7 @@ run/start 除必需参数外还有一组可选调优旋钮，**默认全部 auto
 - **contentFormat**：材料形态覆盖（"材料是什么体裁"）。auto（默认）走启发式；用户明确说是词汇表/术语清单（逐条条目、每条一张卡）时传 \`glossary\`，明确是叙述性文章、启发式却误判成清单时传 \`prose\`。与 \`chatanki_analyze\` 的 \`routing.glossaryMode\` 对应：analyze 判定为 glossary 而你要强制固化该行为时传 \`glossary\`。
 - **outputProtocol**：卡片生成的流式输出协议（\`auto|delimiter|json_object|json_schema\`，"管线怎么跟模型说话"）。与卡片内容无关，默认 auto 即可；仅在用户明确指定，或同一模型反复产出解析失败的坏卡需要换协议排障时覆盖。**非法值会被后端在启动前直接拒绝**（不会静默回退），拼写务必与 enum 一致。
 - **enableQaPass / enableFsrsFeedback / enablePreferenceMemory**：三个默认开启的布尔开关（QA 校验留痕 \`_qa_flags\` / FSRS 复习画像回流 / 历史制卡偏好注入）。只有用户明确说"不要 QA 标记""别按我的复习记录调整""忽略我以前的偏好"时才传 false，禁止自行关闭。
+- **enableCriticPass**：生成后的 grounded LLM critic 质检/复审，默认关闭且不传即不运行。**仅当用户明确要求“质检/复审/critic”时才传 true**；不要因一般制卡、默认验收流程或 Agent 自行判断而开启。
 - **maxImages**（仅 run + VLM 路由）：单次 VLM 调用图片数上限 1~12（默认 vlm_light 6 / vlm_full 12）。图片特别多想控制成本、或用户只要求覆盖前几张图时下调；超出范围会被后端 clamp。
 
 速查：语言/风格/格式 → extraRequirements；看图重点 → visualHint；词汇表 vs 文章 → contentFormat；模型输出协议排障 → outputProtocol；其余保持默认。

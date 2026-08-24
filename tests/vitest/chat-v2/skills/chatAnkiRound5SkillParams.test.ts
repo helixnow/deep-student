@@ -6,7 +6,8 @@ import { chatAnkiSkill } from '@/features/chat/skills/builtin';
  *
  * Rust 侧真源：`src-tauri/src/chat_v2/tools/chatanki_executor.rs`
  * - `ChatAnkiRunArgs`：outputProtocol / visualHint / contentFormat / enableQaPass /
- *   enableFsrsFeedback / maxImages / enablePreferenceMemory（serde camelCase alias）；
+ *   enableCriticPass / enableFsrsFeedback / maxImages / enablePreferenceMemory
+ *   （serde camelCase + snake_case alias）；
  * - `ChatAnkiStartArgs`：同上但**没有** route / resourceId(s) / visualHint / maxImages
  *   （start 固定纯文本路径，永不触发 VLM）；
  * - `normalize_output_protocol_arg`：仅接受 auto|delimiter|json_object|json_schema，
@@ -90,6 +91,7 @@ describe('ChatAnki Round 5 skill params contract', () => {
         'visualHint',
         'contentFormat',
         'enableQaPass',
+        'enableCriticPass',
         'enableFsrsFeedback',
         'maxImages',
         'enablePreferenceMemory',
@@ -143,6 +145,42 @@ describe('ChatAnki Round 5 skill params contract', () => {
     }
   });
 
+  it('exposes enableCriticPass as a default-off boolean on run and start', () => {
+    for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
+      const prop = schemaOf(name).properties.enableCriticPass;
+      expect(prop?.type, `${name}.enableCriticPass`).toBe('boolean');
+      expect(prop?.default, `${name}.enableCriticPass`).toBe(false);
+      expect(prop?.description, `${name}.enableCriticPass`).toContain('默认 false');
+      expect(prop?.description, `${name}.enableCriticPass`).toContain('质检/复审/critic');
+    }
+  });
+
+  it('rejects non-boolean enableCriticPass values in both public schemas', () => {
+    const invalidValues = ['true', 'false', 1, 0, null, {}, []];
+    for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
+      const prop = schemaOf(name).properties.enableCriticPass;
+      for (const invalid of invalidValues) {
+        const accepted = prop.type === 'boolean' && typeof invalid === 'boolean';
+        expect(accepted, `${name} must reject enableCriticPass=${JSON.stringify(invalid)}`).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it('keeps the critic switch limited to allowlisted run/start entry points', () => {
+    const allowed = chatAnkiSkill.allowedTools ?? [];
+    const criticTools = embedded
+      .filter((tool) => (tool.inputSchema as any)?.properties?.enableCriticPass)
+      .map((tool) => tool.name)
+      .sort();
+
+    expect(criticTools).toEqual(['builtin-chatanki_run', 'builtin-chatanki_start']);
+    for (const name of criticTools) {
+      expect(allowed, `${name} must remain in the ChatAnki allowlist`).toContain(name);
+    }
+  });
+
   it('bounds maxImages to the Rust MAX_VLM_IMAGES clamp window (run only)', () => {
     const prop = schemaOf('builtin-chatanki_run').properties.maxImages;
     expect(prop.type).toBe('integer');
@@ -186,6 +224,7 @@ describe('ChatAnki Round 5 skill params contract', () => {
         'outputProtocol',
         'contentFormat',
         'enableQaPass',
+        'enableCriticPass',
         'enableFsrsFeedback',
         'enablePreferenceMemory',
         'debug',
@@ -241,13 +280,17 @@ describe('ChatAnki Round 5 skill params contract', () => {
   });
 
   it('keeps required sets unchanged: tuning knobs are all optional', () => {
-    expect(schemaOf('builtin-chatanki_run').required).toEqual(['goal', 'maxCards', 'templateMode']);
-    expect(schemaOf('builtin-chatanki_start').required).toEqual([
+    const runRequired = schemaOf('builtin-chatanki_run').required;
+    const startRequired = schemaOf('builtin-chatanki_start').required;
+    expect(runRequired).toEqual(['goal', 'maxCards', 'templateMode']);
+    expect(startRequired).toEqual([
       'goal',
       'content',
       'maxCards',
       'templateMode',
     ]);
+    expect(runRequired).not.toContain('enableCriticPass');
+    expect(startRequired).not.toContain('enableCriticPass');
   });
 
   // --------------------------------------------------------------------
@@ -270,6 +313,9 @@ describe('ChatAnki Round 5 skill params contract', () => {
     expect(content).toContain('非法值会被后端在启动前直接拒绝');
     // 默认开启的开关不得由 Agent 自行关闭
     expect(content).toContain('禁止自行关闭');
+    // critic 是唯一默认关闭的生成后 LLM 复审；不得由 Agent 自行开启
+    expect(content).toContain('enableCriticPass');
+    expect(content).toContain('仅当用户明确要求“质检/复审/critic”时才传 true');
     // start 没有 VLM 专属参数的边界也要可见（仅 run + VLM 路由）
     expect(content).toContain('仅 run + VLM 路由');
   });
@@ -277,10 +323,12 @@ describe('ChatAnki Round 5 skill params contract', () => {
   it('advertises the tuning knobs in the run/start tool descriptions', () => {
     const runDesc = findTool('builtin-chatanki_run')?.description ?? '';
     const startDesc = findTool('builtin-chatanki_start')?.description ?? '';
-    for (const knob of ['outputProtocol', 'contentFormat', 'enableQaPass']) {
+    for (const knob of ['outputProtocol', 'contentFormat', 'enableQaPass', 'enableCriticPass']) {
       expect(runDesc, `run description mentions ${knob}`).toContain(knob);
       expect(startDesc, `start description mentions ${knob}`).toContain(knob);
     }
+    expect(runDesc).toContain('默认关闭');
+    expect(startDesc).toContain('默认关闭');
     expect(runDesc).toContain('visualHint');
     expect(runDesc).toContain('maxImages');
     // start 明确声明不接受 VLM/路由参数
