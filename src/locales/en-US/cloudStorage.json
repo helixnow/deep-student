@@ -104,7 +104,9 @@
     "refreshStatus": "Refreshing status...",
     "downloadCloud": "Downloading from cloud...",
     "importZip": "Importing ZIP...",
-    "restoreDatabase": "Restoring database..."
+    "restoreDatabase": "Restoring database...",
+    "maintenanceBackup": "Backing up and uploading to the cloud. Do not edit study data or close the app.",
+    "maintenanceRestore": "Restoring from the cloud. Do not edit study data or close the app."
   },
   
   "actions": {

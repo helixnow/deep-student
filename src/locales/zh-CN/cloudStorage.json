@@ -104,7 +104,9 @@
     "refreshStatus": "正在刷新状态...",
     "downloadCloud": "正在从云端下载...",
     "importZip": "正在导入 ZIP...",
-    "restoreDatabase": "正在恢复数据库..."
+    "restoreDatabase": "正在恢复数据库...",
+    "maintenanceBackup": "正在备份并上传到云端，请勿编辑学习数据或关闭应用",
+    "maintenanceRestore": "正在从云端恢复，请勿编辑学习数据或关闭应用"
   },
   
   "actions": {

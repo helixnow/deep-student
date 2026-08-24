@@ -225,6 +225,14 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       uploadBlock.indexOf('setUploading(true)'),
     );
+    expect(uploadBlock.indexOf('enterMaintenanceMode')).toBeGreaterThan(
+      uploadBlock.indexOf('setUploading(true)'),
+    );
+    expect(uploadBlock.indexOf('enterMaintenanceMode')).toBeLessThan(
+      uploadBlock.indexOf('backupTiered'),
+    );
+    expect(uploadBlock).toContain('exitMaintenanceMode');
+    expect(uploadBlock).toContain('progress.maintenanceBackup');
 
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
@@ -245,6 +253,25 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(spaceIdx).toBeGreaterThan(kindIdx);
     expect(spaceIdx).toBeLessThan(restoreIdx);
     expect(restoreBlock).toContain('restoreInsufficientSpace');
+    expect(restoreBlock.indexOf('enterMaintenanceMode')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('enterMaintenanceMode')).toBeLessThan(
+      restoreBlock.indexOf('downloadBackup'),
+    );
+    expect(restoreBlock.indexOf('requireMaintenanceRestart')).toBeGreaterThan(
+      restoreBlock.indexOf('restoreBackup('),
+    );
+    expect(restoreBlock.indexOf('requireMaintenanceRestart')).toBeLessThan(
+      restoreBlock.indexOf('restartApp'),
+    );
+    expect(restoreBlock).toContain('exitMaintenanceMode');
+    expect(restoreBlock).toContain('progress.maintenanceRestore');
+    expect(zhLocale.progress.maintenanceBackup).toContain('请勿');
+    expect(zhLocale.progress.maintenanceRestore).toContain('请勿');
+    expect(enLocale.progress.maintenanceBackup).toMatch(/Do not/i);
+    expect(enLocale.progress.maintenanceRestore).toMatch(/Do not/i);
+    expect(Object.keys(zhLocale.progress).sort()).toEqual(
+      Object.keys(enLocale.progress).sort(),
+    );
 
     expect(componentSource).toContain('localizeCloudStorageError');
     expect(localizeSource).toContain('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT');

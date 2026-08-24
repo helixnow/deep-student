@@ -27,6 +27,8 @@ import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
+import { useShallow } from 'zustand/react/shallow';
+import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
   localizeCloudStorageError,
@@ -131,7 +133,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   onConfigChanged,
 }) => {
   const { t } = useTranslation(['cloudStorage', 'common']);
-  
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
+    useShallow((state) => ({
+      enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
+      exitMaintenanceMode: state.exitMaintenanceMode,
+    })),
+  );
+
   // 配置状态
   const [provider, setProvider] = useState<cloudApi.StorageProvider>('webdav');
   const [webdavConfig, setWebdavConfig] = useState<cloudApi.WebDavConfig>({
@@ -924,6 +933,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
     setUploading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceBackup'));
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
     try {
       // 阶段 1/4：创建备份
@@ -987,12 +997,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      exitMaintenanceMode();
       setUploading(false);
     }
   }, [
     buildConfig,
     connectionStatus,
     encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -1027,6 +1040,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceRestore'));
     setRestoreVersionId(versionId);
     setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
 
@@ -1105,6 +1119,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // The restored slot is pending activation. Continuing to edit the old
       // slot can create writes that disappear at the next launch, so cut over
       // immediately after a verified restore.
+      requireMaintenanceRestart(t('cloudStorage:progress.maintenanceRestore'));
       await TauriAPI.restartApp();
       if (import.meta.env.DEV) {
         window.location.reload();
@@ -1114,6 +1129,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      // 切槽成功后 store 会因 requireMaintenanceRestart 拒绝撤掉写屏障。
+      exitMaintenanceMode();
       setDownloading(false);
       setRestoreVersionId(null);
       setPendingRestoreVersionId(null);
@@ -1121,7 +1138,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
+    requireMaintenanceRestart,
     resolveBackupId,
     resolveCloudZipEncryptionArgs,
     setStage,
