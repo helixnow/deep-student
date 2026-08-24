@@ -1,0 +1,290 @@
+[
+  {
+    "case": "openai_chat_completions/official/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "openai_chat_completions/official/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "deep_seek_style",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "openai_chat_completions/third_party/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": true,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "openai_chat_completions/third_party/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": true,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "deep_seek_style",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "openai_responses/official/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": true,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": "none"
+      }
+    }
+  },
+  {
+    "case": "openai_responses/official/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": true,
+      "reasoning_passback": "deep_seek_style",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": "none"
+      }
+    }
+  },
+  {
+    "case": "openai_responses/third_party/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": "none"
+      }
+    }
+  },
+  {
+    "case": "openai_responses/third_party/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "deep_seek_style",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": "none"
+      }
+    }
+  },
+  {
+    "case": "anthropic_messages/official/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "anthropic_messages/official/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "anthropic_messages/third_party/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "anthropic_messages/third_party/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "google_generate_content/official/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "reasoning_details",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "google_generate_content/official/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "reasoning_details",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "google_generate_content/third_party/reasoning=false",
+    "quirks": {
+      "max_tokens_field": "max_tokens",
+      "preserve_existing_max_tokens": false,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": true,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "no_passback",
+      "passback_plain_assistant_reasoning": false,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  },
+  {
+    "case": "google_generate_content/third_party/reasoning=true",
+    "quirks": {
+      "max_tokens_field": "max_completion_tokens",
+      "preserve_existing_max_tokens": true,
+      "legacy_max_tokens_field": "max_tokens",
+      "sampling_params_allowed": false,
+      "strip_tool_choice_on_tool_result": false,
+      "server_side_web_search": false,
+      "force_json_response_format": false,
+      "reasoning_passback": "deep_seek_style",
+      "passback_plain_assistant_reasoning": true,
+      "runtime_reasoning": {
+        "force_enabled": false,
+        "disabled_effort": null
+      }
+    }
+  }
+]

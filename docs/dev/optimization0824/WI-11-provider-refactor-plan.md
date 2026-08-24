@@ -6,6 +6,7 @@
 > 审计对象：`src-tauri/src/llm_manager/model2_pipeline.rs`（6901 行，基于 commit `1bf03a24`）
 > 关联上下文：`llm_manager/mod.rs`（协议分发）、`llm_manager/adapters/`（方言适配器）、
 > `providers/mod.rs`（传输适配器）、`reasoning_policy.rs`（思维链回传策略）
+> 阶段状态：**阶段 1（11-1a～11-1d）已由 SA-WRAP-WI11 落地（2026-08-24）**
 
 ## 0. 结论速览
 
@@ -132,7 +133,7 @@
 原则：每阶段独立可合并、行为等价（除明确列出的 bug fix）、现有单测全绿 +
 每阶段新增快照测试。阶段间无回滚耦合——任何阶段完成后停下，代码库都处于比之前更好的状态。
 
-### 阶段 1：嗅探收口 —— 声明式 ProviderQuirks（纯重构，零行为变化）
+### 阶段 1：嗅探收口 —— 声明式 ProviderQuirks（已完成）
 
 **目标**：把 §1.1 全部判定函数和 §2.3 横切策略收进单一 `provider_quirks` 模块，
 从 `ApiConfig` 一次解析出不可变 quirks 结构体，model2_pipeline 只消费字段、不再嗅探。
@@ -162,6 +163,23 @@ pub(crate) fn resolve_quirks(config: &ApiConfig) -> ProviderQuirks;
 | 11-1d | 审计快照测试：对代表性 config（4 协议 × 官方/第三方 × reasoning 开关）固化 `resolve_quirks` 输出 + `prepare_provider_request` 产物（URL/headers 键集/body 键集），作为后续阶段的回归基线 | 新增 snapshot 测试落盘 |
 
 **风险**：低。纯移动 + 表驱动化；快照基线（11-1d）是后续所有阶段的安全网，必须先行合并。
+
+#### 阶段 1 完成记录（SA-WRAP-WI11）
+
+- [x] **11-1a**：新增 `llm_manager/provider_quirks.rs`，统一 S1～S4、
+  B1～B3 的判定；model2 已删除散装 `is_qwen_config`、`is_mimo_config`、
+  `is_mistral_config`、`is_mimo_endpoint`。
+- [x] **11-1b**：B4/B9 改读 `reasoning_passback` /
+  `passback_plain_assistant_reasoning`，B13 两处改读
+  `force_json_response_format`。
+- [x] **11-1c**：S7 改为 `RuntimeReasoningOverride`，强制推理模型模式由
+  `FORCED_REASONING_MODEL_PATTERNS` 及相邻边界表集中维护。
+- [x] **11-1d**：固化 4 协议 × 官方/第三方 × reasoning 开关共 16 组
+  quirks 快照，以及对应 `prepare_provider_request` URL、header 键集、body 键集快照：
+  - `llm_manager/snapshots/provider_quirks_phase1.json`
+  - `llm_manager/snapshots/provider_requests_phase1.json`
+
+阶段 2～4 保持未开始；本轮未改 `chat_v2/pipeline/tool_loop.rs`。
 
 ### 阶段 2：请求组装归一 —— 每协议一个 RequestBuilder
 
