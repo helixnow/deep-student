@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:native": "tsgo --noEmit -p tsconfig.json",
     "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
     "analyze": "ANALYZE=1 npm run build",
     "prebuild": "npm run version:generate && npm run licenses:check && npm run typecheck",
@@ -211,6 +212,7 @@
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@types/uuid": "^10.0.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260707.2",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitejs/plugin-react-swc": "^4.3.3",
     "autoprefixer": "^10.5.0",

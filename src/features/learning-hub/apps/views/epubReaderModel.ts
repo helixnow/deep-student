@@ -302,7 +302,9 @@ async function resourceUrl(zip: JSZip, chapterPath: string, href: string, urls: 
   const path = resolveArchivePath(chapterPath, href);
   const file = findZipFile(zip, path);
   if (!file) return null;
-  const blob = new Blob([await file.async('uint8array')], { type: mimeTypeForPath(path) });
+  // JSZip 类型返回裸 Uint8Array；TS 5.7+ 的 BlobPart 要求 ArrayBuffer 背书的
+  // 视图（排除 SharedArrayBuffer），运行时值满足该约束，收窄为 BlobPart。
+  const blob = new Blob([(await file.async('uint8array')) as BlobPart], { type: mimeTypeForPath(path) });
   const url = URL.createObjectURL(blob);
   urls.push(url);
   return url;

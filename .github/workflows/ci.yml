@@ -88,9 +88,35 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
-      - name: Type check
+      # WI-7/R4：typecheck 双编译器硬门禁 —— tsc 5.6（项目锁定，权威）与
+      # tsgo（@typescript/native-preview，TS7 原生编译器，~8× 快，详见
+      # docs/dev/optimization0824/progress/R4-tsgo-land.md）在同一 leg 内
+      # 并行同跑，任一非零即红。tsgo ~7s 完全被 tsc ~50s 遮蔽，不增加
+      # leg 时长；tsgo 仍是 preview，双跑期保留 tsc 作为权威信号，
+      # 待 TS 7.0 正式发布升级 typescript 依赖后再收敛为单跑。
+      - name: Type check (tsc + tsgo in parallel, both blocking)
         if: matrix.task == 'typecheck'
-        run: npx tsc --noEmit
+        run: |
+          run_compiler() {
+            local t0=$SECONDS code=0
+            npx "$@" || code=$?
+            echo "--- $1 finished: exit=$code duration=$((SECONDS - t0))s"
+            return "$code"
+          }
+          run_compiler tsc --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsc.log" 2>&1 &
+          TSC_PID=$!
+          run_compiler tsgo --noEmit -p tsconfig.json > "$RUNNER_TEMP/tsgo.log" 2>&1 &
+          TSGO_PID=$!
+          TSC_CODE=0; wait "$TSC_PID" || TSC_CODE=$?
+          TSGO_CODE=0; wait "$TSGO_PID" || TSGO_CODE=$?
+          echo "== tsc (exit $TSC_CODE) =="
+          cat "$RUNNER_TEMP/tsc.log"
+          echo "== tsgo (exit $TSGO_CODE) =="
+          cat "$RUNNER_TEMP/tsgo.log"
+          if [ "$TSC_CODE" -ne 0 ] || [ "$TSGO_CODE" -ne 0 ]; then
+            echo "::error::Type check failed (tsc exit=$TSC_CODE, tsgo exit=$TSGO_CODE)"
+            exit 1
+          fi
 
       - name: Lint (ESLint, errors block merge)
         if: matrix.task == 'lint'
