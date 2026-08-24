@@ -22,7 +22,7 @@ const ImmersiveHintComponent: React.FC = () => {
   const immersiveWindowId = useImmersiveWindowId();
   const [visible, setVisible] = useState(false);
   const [coarse, setCoarse] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
 
   const reveal = useCallback(() => {
     setVisible(true);

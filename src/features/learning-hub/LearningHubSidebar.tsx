@@ -3246,7 +3246,7 @@ export function LearningHubSidebar({
         e.key === ' ' && !cmdOrCtrl && !e.altKey &&
         !e.defaultPrevented && !quickLookItem && selectedIds.size > 0
       ) {
-        const anchorId = mode === 'canvas' ? canvasLastSelectedId : useFinderStore.getState().lastSelectedId;
+        const anchorId = mode === 'canvas' ? canvasLastSelectedId : finderStore.getState().lastSelectedId;
         const anchor =
           (anchorId && selectedIds.has(anchorId)
             ? displayedItems.find((item) => item.id === anchorId)
