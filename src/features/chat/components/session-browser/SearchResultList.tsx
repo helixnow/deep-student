@@ -62,7 +62,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           <DsButton
             variant="default"
             size="sm"
-            className="mt-3 min-h-11 gap-1.5"
+            className="mt-3 !min-h-11 gap-1.5"
             onClick={onRetry}
           >
             <ArrowClockwise size={15} />

@@ -685,7 +685,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('tree')}
-            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewMode === 'tree' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'tree' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.treeView')}
             title={t('learningHub:exam.library.treeView')}
           >
@@ -695,7 +695,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => handleViewModeChange('cloud')}
-            className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewMode === 'cloud' && 'bg-background shadow-sm')}
+            className={cn('ui-state-colors !h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewMode === 'cloud' && 'bg-background shadow-sm')}
             aria-label={t('learningHub:exam.library.cloudView')}
             title={t('learningHub:exam.library.cloudView')}
           >

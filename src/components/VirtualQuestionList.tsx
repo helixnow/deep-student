@@ -177,7 +177,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                     variant="ghost"
                     size="icon"
                     aria-label={t('questionBank.favorite', { defaultValue: 'favorite' })}
-                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-m-2"
+                    className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-2"
                     onClick={(e) => handleFavorite(e, question.id)}
                   >
                     <Star

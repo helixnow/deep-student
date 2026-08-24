@@ -108,7 +108,7 @@ greeting('Crepe');
         <div className="flex items-center justify-between mb-6 p-6 pb-0">
           <div className="flex items-center gap-4">
             {onBack && (
-              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置" className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
+              <DsButton variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="返回设置" className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                 <ArrowLeft size={20} />
               </DsButton>
             )}
@@ -117,7 +117,7 @@ greeting('Crepe');
               <p className="text-muted-foreground">基于 @milkdown/crepe 的现代化 Markdown 编辑器</p>
             </div>
           </div>
-          <DsButton variant="ghost" size="sm" onClick={handleCopyMarkdown} className="[@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={handleCopyMarkdown} className="[@media(pointer:coarse)]:!min-h-11">
             {copied ? <Check size={16} className="mr-2" /> : <Copy size={16} className="mr-2" />}
             {copied ? '已复制' : '复制 Markdown'}
           </DsButton>

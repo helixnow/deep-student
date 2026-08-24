@@ -2592,7 +2592,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <DsButton
               variant="outline"
               size="sm"
-              className="!h-11 min-w-11"
+              className="!h-11 !min-w-11"
               onClick={() => fileInputRef.current?.click()}
             >
               + {t('analysis:input_bar.attachments.add')}
