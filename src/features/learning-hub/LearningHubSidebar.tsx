@@ -80,8 +80,6 @@ const getFileExtension = (name: string): string =>
 const IndexStatusView = lazy(() => import('./views/IndexStatusView'));
 // ★ 2026-01-19: 懒加载 VFS 记忆管理视图
 const MemoryView = lazy(() => import('./views/MemoryView'));
-// ★ 2026-01-31: 懒加载桌面视图
-import { DesktopView, type CreateResourceType } from './components/finder';
 import { useDesktopStore, type DesktopRootConfig } from './stores/desktopStore';
 import { useFinderStore, type FinderPath, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
@@ -96,6 +94,8 @@ import {
   FinderBatchToolbar,
   FinderQuickLook,
   FolderPickerDialog,
+  DesktopView,
+  type CreateResourceType,
 } from './components/finder';
 import {
   finderUndoStack,
