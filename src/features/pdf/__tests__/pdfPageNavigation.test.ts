@@ -6,6 +6,7 @@ import {
   getNextNavigationPage,
   getPrevNavigationPage,
   getSpreadStart,
+  resolvePageScrollKeyAction,
 } from '../pdfPageNavigation';
 
 describe('getSpreadStart', () => {
@@ -81,5 +82,25 @@ describe('toolbar availability', () => {
   it('handles empty documents', () => {
     expect(canNavigateNext(1, 'single', 0)).toBe(false);
     expect(canNavigateNext(1, 'dual', 0)).toBe(false);
+  });
+});
+
+describe('resolvePageScrollKeyAction (PageUp/PageDown semantics)', () => {
+  it('scrolls one screen when the page is taller than the viewport (zoomed in)', () => {
+    expect(resolvePageScrollKeyAction(1600, 800)).toBe('scroll');
+    expect(resolvePageScrollKeyAction(802, 800)).toBe('scroll');
+  });
+
+  it('navigates by page when the page fits the viewport', () => {
+    expect(resolvePageScrollKeyAction(800, 800)).toBe('navigate');
+    expect(resolvePageScrollKeyAction(801, 800)).toBe('navigate'); // 1px 容差内视为可见
+    expect(resolvePageScrollKeyAction(400, 800)).toBe('navigate');
+  });
+
+  it('falls back to navigate on degenerate metrics', () => {
+    expect(resolvePageScrollKeyAction(0, 800)).toBe('navigate');
+    expect(resolvePageScrollKeyAction(800, 0)).toBe('navigate');
+    expect(resolvePageScrollKeyAction(Number.NaN, 800)).toBe('navigate');
+    expect(resolvePageScrollKeyAction(800, Number.POSITIVE_INFINITY)).toBe('navigate');
   });
 });

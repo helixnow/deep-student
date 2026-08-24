@@ -1,25 +1,59 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Eye, EyeSlash, X } from '@phosphor-icons/react';
+import { BookOpen, CaretLeft, CaretRight, Eye, EyeSlash, Fire, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
-import { useMindMapStore } from '../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
+
+/** 复习导航后把目标行/节点滚入视野（大纲行有 data-node-id；画布由 focus effect 居中） */
+function scrollNodeRowIntoView(nodeId: string) {
+  requestAnimationFrame(() => {
+    const row = globalThis.document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
+    if (!row) return;
+    const prefersReduced =
+      !!globalThis.window?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    row.scrollIntoView({ block: 'center', behavior: prefersReduced ? 'auto' : 'smooth' });
+  });
+}
 
 export const ReciteStatusBar: React.FC = () => {
   const { t } = useTranslation('mindmap');
+  const storeApi = useMindMapStoreApi();
   const reciteMode = useMindMapStore(s => s.reciteMode);
   const document = useMindMapStore(s => s.document);
   const revealedBlanks = useMindMapStore(s => s.revealedBlanks);
   const revealAllBlanks = useMindMapStore(s => s.revealAllBlanks);
   const resetAllBlanks = useMindMapStore(s => s.resetAllBlanks);
   const setReciteMode = useMindMapStore(s => s.setReciteMode);
+  const reviewQueue = useMindMapStore(s => s.reciteReviewQueue);
+  const reviewIndex = useMindMapStore(s => s.reciteReviewIndex);
+  const startReciteReview = useMindMapStore(s => s.startReciteReview);
+  const stepReciteReview = useMindMapStore(s => s.stepReciteReview);
+  const stopReciteReview = useMindMapStore(s => s.stopReciteReview);
 
   const progress = useMemo(() => {
     if (!reciteMode) return { total: 0, revealed: 0 };
     return countBlankProgress(document.root, revealedBlanks);
   }, [reciteMode, document.root, revealedBlanks]);
 
+  const scrollToCurrentReviewNode = useCallback(() => {
+    const { reciteReviewQueue, reciteReviewIndex } = storeApi.getState();
+    const item = reciteReviewQueue?.[reciteReviewIndex];
+    if (item) scrollNodeRowIntoView(item.nodeId);
+  }, [storeApi]);
+
+  const handleStartReview = useCallback(() => {
+    if (startReciteReview() > 0) scrollToCurrentReviewNode();
+  }, [startReciteReview, scrollToCurrentReviewNode]);
+
+  const handleStep = useCallback((delta: number) => {
+    stepReciteReview(delta);
+    scrollToCurrentReviewNode();
+  }, [stepReciteReview, scrollToCurrentReviewNode]);
+
   if (!reciteMode) return null;
+
+  const inReview = !!reviewQueue && reviewQueue.length > 0;
 
   // 顶部内联占位条：占用文档流（父容器 flex-col），不再作为悬浮层遮挡画布顶部节点
   return (
@@ -64,6 +98,60 @@ export const ReciteStatusBar: React.FC = () => {
           onClick={() => setReciteMode(false)}
         >
           {t('recite.createBlankCta')}
+        </DsButton>
+      )}
+
+      <div className="w-px h-4 bg-[var(--mm-border)]" />
+
+      {/* 难点优先复习：按历史错误率排序逐节点走查（会话统计在退出背诵时持久化） */}
+      {inReview ? (
+        <div
+          className="flex items-center gap-1"
+          role="group"
+          aria-label={t('recite.reviewNavLabel', { defaultValue: '难点优先复习导航' })}
+        >
+          <Fire size={14} className="text-[var(--mm-warning)] shrink-0" />
+          <DsButton
+            variant="ghost"
+            className="mm-recite-status-action h-7 w-7 p-0"
+            onClick={() => handleStep(-1)}
+            disabled={reviewIndex <= 0}
+            aria-label={t('recite.reviewPrev', { defaultValue: '上一个难点' })}
+          >
+            <CaretLeft size={14} />
+          </DsButton>
+          <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap tabular-nums">
+            {reviewIndex + 1}/{reviewQueue.length}
+          </span>
+          <DsButton
+            variant="ghost"
+            className="mm-recite-status-action h-7 w-7 p-0"
+            onClick={() => handleStep(1)}
+            disabled={reviewIndex >= reviewQueue.length - 1}
+            aria-label={t('recite.reviewNext', { defaultValue: '下一个难点' })}
+          >
+            <CaretRight size={14} />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            className="mm-recite-status-action h-7 px-2 text-xs"
+            onClick={stopReciteReview}
+          >
+            {t('recite.reviewStop', { defaultValue: '结束复习' })}
+          </DsButton>
+        </div>
+      ) : (
+        <DsButton
+          variant="ghost"
+          onClick={handleStartReview}
+          className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+          disabled={progress.total === 0}
+          title={t('recite.reviewStartHint', {
+            defaultValue: '按历史错误率从难到易逐节点复习（翻开=没背出来）',
+          })}
+        >
+          <Fire size={14} />
+          {t('recite.reviewStart', { defaultValue: '难点优先' })}
         </DsButton>
       )}
 

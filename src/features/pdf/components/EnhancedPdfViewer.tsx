@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Document, Page, Thumbnail, pdfjs, PasswordResponses } from 'react-pdf';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -10,7 +10,15 @@ import {
   canNavigatePrev,
   getNextNavigationPage,
   getPrevNavigationPage,
+  resolvePageScrollKeyAction,
 } from '../pdfPageNavigation';
+import {
+  resolveSelectionMenuFrame,
+  type PdfSelectionPayload,
+  type SelectionMenuAnchor,
+  type SelectionMenuFrame,
+} from '../pdfSelectionActions';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { dstu } from '@/dstu';
 import {
   CaretLeft,
@@ -42,7 +50,10 @@ import {
   Sun,
   ArrowCounterClockwise,
   LockSimple,
-  Translate
+  Translate,
+  Copy,
+  ChatCircleText,
+  NotePencil
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -183,6 +194,10 @@ export interface EnhancedPdfViewerProps {
   bookmarks?: Bookmark[];
   /** 书签变更回调 */
   onBookmarksChange?: (bookmarks: Bookmark[]) => void;
+  /** 划词「引用到对话」（selectedText + 页码），缺省时隐藏该入口 */
+  onQuoteToChat?: (payload: PdfSelectionPayload) => void;
+  /** 划词「做笔记」（摘录笔记），缺省时隐藏该入口 */
+  onCreateNote?: (payload: PdfSelectionPayload) => void;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
@@ -279,6 +294,33 @@ const HIGHLIGHT_COLORS = {
 
 const MemoPage = React.memo(Page);
 
+/**
+ * 浮动菜单视口钳位：挂载后测量真实尺寸，经 resolveSelectionMenuFrame
+ * 计算钳位坐标。frame 为 null 期间调用方应隐藏菜单（visibility: hidden），
+ * 避免未钳位坐标闪现。
+ */
+function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [frame, setFrame] = useState<SelectionMenuFrame | null>(null);
+  useLayoutEffect(() => {
+    if (!anchor) {
+      setFrame(null);
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setFrame(
+      resolveSelectionMenuFrame(
+        anchor,
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight }
+      )
+    );
+  }, [anchor]);
+  return { ref, frame };
+}
+
 const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   data,
   url,
@@ -300,6 +342,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   onHighlightsChange,
   bookmarks: externalBookmarks,
   onBookmarksChange,
+  onQuoteToChat,
+  onCreateNote,
 }) => {
   const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
@@ -318,6 +362,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 无法构造 DSTU resourcePath —— 此时隐藏高亮入口，避免"创建后静默丢失"。
   const canPersistAnnotations =
     Boolean(resourcePath) || initialHighlights !== undefined || Boolean(onHighlightsChange);
+
+  // 划词菜单是否可用：有高亮落盘通道，或上层注入了引用/笔记动作
+  const selectionMenuAvailable =
+    canPersistAnnotations || Boolean(onQuoteToChat) || Boolean(onCreateNote);
 
   // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
   // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
@@ -449,7 +497,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 批注状态
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [showHighlightMenu, setShowHighlightMenu] = useState<boolean>(false);
-  const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // 划词菜单锚点（选区 rect 的中点与上下边缘，viewport 坐标）；
+  // 实际渲染坐标由 useClampedMenuFrame 钳位到视口内（贴顶时翻转到选区下方）
+  const [highlightMenuPos, setHighlightMenuPos] = useState<SelectionMenuAnchor>({ x: 0, top: 0, bottom: 0 });
   const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[]; context: { before: string; after: string } } | null>(null);
   // 划词翻译卡片（选区工具条「翻译」打开；与聊天划词共用 TranslationPopover）
   const [selectionTranslation, setSelectionTranslation] = useState<{
@@ -458,8 +508,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     contextAfter: string;
   } | null>(null);
   const [showHighlightList, setShowHighlightList] = useState<boolean>(false);
-  // 触屏点击页面内高亮块后弹出的轻量操作条（title tooltip 在触屏不可达）
+  // 点击页面内高亮块后的操作入口：
+  // 触屏 → 底部轻量操作条；桌面 → 锚定高亮块的改色/删除浮层（anchor 非空时）
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const [activeHighlightAnchor, setActiveHighlightAnchor] = useState<SelectionMenuAnchor | null>(null);
   
   // 书签状态
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(externalBookmarks ?? []);
@@ -1144,6 +1196,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
       if (activeHighlightId !== null) {
         setActiveHighlightId(null);
+        setActiveHighlightAnchor(null);
         return true;
       }
       if (showMoreMenu) {
@@ -1185,10 +1238,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     handleCloseSearch,
   ]);
 
-  // 文本选择处理（用于高亮批注）
+  // 文本选择处理（用于高亮批注 / 划词动作）
   const handleTextSelection = useCallback(() => {
-    // 无落盘通道时不提供高亮入口（选择/复制文本仍可用）
-    if (!canPersistAnnotations) return;
+    // 无落盘通道且无划词动作时不弹菜单（选择/复制文本仍可用）
+    if (!selectionMenuAvailable) return;
 
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
@@ -1261,9 +1314,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       : { before: '', after: '' };
 
     setPendingHighlight({ text, pageIndex, rects, context });
-    setHighlightMenuPos({ x: rect.left + rect.width / 2, y: rect.top - 10 });
+    setHighlightMenuPos({ x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom });
     setShowHighlightMenu(true);
-  }, [canPersistAnnotations, currentPage, rotation, t]);
+  }, [selectionMenuAvailable, currentPage, rotation, t]);
 
   // 打开划词翻译卡片（收起高亮菜单、释放选区）
   const openSelectionTranslation = useCallback(() => {
@@ -1302,6 +1355,42 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     window.getSelection()?.removeAllRanges();
   }, [pendingHighlight]);
 
+  // 划词动作统一收尾：关菜单 + 清选区
+  const closeSelectionMenu = useCallback(() => {
+    setShowHighlightMenu(false);
+    setPendingHighlight(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  // 划词：复制原文
+  const handleCopySelection = useCallback(() => {
+    if (!pendingHighlight) return;
+    const text = pendingHighlight.text;
+    closeSelectionMenu();
+    void copyTextToClipboard(text).then((ok) => {
+      showGlobalNotification(
+        ok ? 'success' : 'error',
+        ok ? t('pdf:selection.copied') : t('pdf:selection.copy_failed')
+      );
+    });
+  }, [pendingHighlight, closeSelectionMenu, t]);
+
+  // 划词：引用到对话（selectedText + 页码，由上层视图接 useReferenceToChat）
+  const handleQuoteSelection = useCallback(() => {
+    if (!pendingHighlight || !onQuoteToChat) return;
+    const payload = { text: pendingHighlight.text, page: pendingHighlight.pageIndex };
+    closeSelectionMenu();
+    onQuoteToChat(payload);
+  }, [pendingHighlight, onQuoteToChat, closeSelectionMenu]);
+
+  // 划词：做笔记（摘录笔记，由上层视图落库）
+  const handleNoteSelection = useCallback(() => {
+    if (!pendingHighlight || !onCreateNote) return;
+    const payload = { text: pendingHighlight.text, page: pendingHighlight.pageIndex };
+    closeSelectionMenu();
+    onCreateNote(payload);
+  }, [pendingHighlight, onCreateNote, closeSelectionMenu]);
+
   const highlightsByPage = useMemo(() => {
     const map = new Map<number, Highlight[]>();
     for (const hl of highlights) {
@@ -1324,6 +1413,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const removeHighlight = useCallback((id: string) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
     setActiveHighlightId(prev => (prev === id ? null : prev));
+    setActiveHighlightAnchor(null);
+  }, []);
+
+  // 修改已存在高亮的颜色（点击高亮块弹出的操作层入口）
+  const updateHighlightColor = useCallback((id: string, color: string) => {
+    setHighlights(prev => prev.map(h => (h.id === id ? { ...h, color } : h)));
   }, []);
 
   const activeHighlight = useMemo(
@@ -1331,13 +1426,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     [activeHighlightId, highlights]
   );
 
-  // 点按其他区域关闭高亮操作条（操作条自身与高亮块内不关闭）
+  // 两个浮动菜单的视口钳位（贴顶时翻转到锚点下方，水平方向夹在视口内）
+  const selectionMenu = useClampedMenuFrame(
+    showHighlightMenu && !isMobileLike ? highlightMenuPos : null
+  );
+  const highlightActionMenu = useClampedMenuFrame(
+    activeHighlight && activeHighlightAnchor ? activeHighlightAnchor : null
+  );
+
+  // 点按其他区域关闭高亮操作条/浮层（操作条自身与高亮块内不关闭）
   useEffect(() => {
     if (!activeHighlightId) return;
     const handlePointerDown = (e: PointerEvent) => {
       const target = e.target as Element | null;
-      if (target?.closest('.ds-pdf__highlight-bar, .ds-pdf__highlight-rect')) return;
+      if (target?.closest('.ds-pdf__highlight-bar, .ds-pdf__highlight-rect, .ds-highlight-menu')) return;
       setActiveHighlightId(null);
+      setActiveHighlightAnchor(null);
     };
     const timer = window.setTimeout(
       () => document.addEventListener('pointerdown', handlePointerDown),
@@ -1615,6 +1719,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         const getResult = await dstu.get(resourcePath);
         if (!getResult.ok) {
           console.warn('[EnhancedPdfViewer] 获取资源元数据失败，跳过保存高亮:', getResult.error);
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           return;
         }
         
@@ -1628,6 +1733,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         );
         if (baseline.status === 'missing_revision') {
           console.warn('[EnhancedPdfViewer] 缺少批注版本，重新加载后再保存');
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           return;
         }
         if (baseline.status === 'reload') {
@@ -1635,6 +1741,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           lastSavedHighlightsRef.current = JSON.stringify(baseline.highlights);
           annotationRevisionRef.current = baseline.revision;
           console.warn('[EnhancedPdfViewer] 批注已在其他窗口更新，已加载最新版本');
+          // 本地修改被服务端版本覆盖 —— 必须让用户知道，而不是静默回滚
+          showGlobalNotification('warning', t('pdf:annotations.remote_updated'));
           return;
         }
         const expectedRevision = baseline.expectedRevision;
@@ -1659,6 +1767,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           // OCC conflicts and failed writes must not leave an unsaved local
           // view masquerading as committed state. Reload the authoritative
           // annotations and revision so the next user edit has a valid base.
+          // 回滚对用户必须可见：弹错误提示而非静默丢弃本地修改。
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           const current = await dstu.get(resourcePath);
           if (current.ok) {
             const serverHighlights = current.value.metadata?.highlights;
@@ -1676,6 +1786,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         }
       } catch (err) {
         console.error('[EnhancedPdfViewer] 保存高亮批注异常:', err);
+        showGlobalNotification('error', t('pdf:annotations.save_failed'));
         const current = await dstu.get(resourcePath);
         if (current.ok) {
           const serverHighlights = current.value.metadata?.highlights;
@@ -1701,7 +1812,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         highlightsSaveTimerRef.current = null;
       }
     };
-  }, [highlights, resourcePath, onHighlightsChange]);
+  }, [highlights, resourcePath, onHighlightsChange, t]);
   
   // 组件卸载时清理定时器并刷新待保存高亮
   useEffect(() => {
@@ -2214,6 +2325,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       
       if (isInputFocused) return;
 
+      // 进度条（role=slider）持有焦点时，翻页类按键交给它自己的 onKeyDown
+      // 处理（本监听是容器上的原生监听，先于 React 合成事件触发，
+      // 不做豁免会双跳一页）。
+      const sliderFocused = Boolean(
+        (e.target as HTMLElement | null)?.closest?.('.ds-pdf__progress-bar')
+      );
+
       // 空格：按标准阅读器行为滚动一屏（Shift+空格向上），不再抢占为翻页。
       // 焦点在按钮/链接等可激活控件上时不拦截（空格应触发该控件）。
       if (e.key === ' ') {
@@ -2230,16 +2348,40 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
 
       // 翻页快捷键（双页模式按 spread ±2）
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      if (!sliderFocused && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
-        goToPage(getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current));
-      } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        goToPage(
+          e.key === 'ArrowLeft'
+            ? getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current)
+            : getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current)
+        );
+      } else if (!sliderFocused && (e.key === 'PageUp' || e.key === 'PageDown')) {
+        // ★ 明确语义：页面放大到一屏放不下时 PageUp/Down 滚一屏
+        // （避免跳页略过当前页未读部分）；页面完整可见时按 spread/页翻页。
         e.preventDefault();
-        goToPage(getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current));
-      } else if (e.key === 'Home') {
+        const viewport = pageContainerRef.current;
+        const pageEl = viewport?.querySelector(
+          `[data-page-number="${currentPageRef.current}"]`
+        );
+        const action = resolvePageScrollKeyAction(
+          pageEl?.getBoundingClientRect().height ?? 0,
+          viewport?.clientHeight ?? 0
+        );
+        if (action === 'scroll' && viewport) {
+          const delta = viewport.clientHeight * 0.88 * (e.key === 'PageUp' ? -1 : 1);
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          viewport.scrollBy({ top: delta, behavior: reduceMotion ? 'auto' : 'smooth' });
+        } else {
+          goToPage(
+            e.key === 'PageUp'
+              ? getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current)
+              : getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current)
+          );
+        }
+      } else if (!sliderFocused && e.key === 'Home') {
         e.preventDefault();
         goToPage(1);
-      } else if (e.key === 'End') {
+      } else if (!sliderFocused && e.key === 'End') {
         e.preventDefault();
         goToPage(numPagesRef.current);
       }
@@ -2273,6 +2415,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     container.addEventListener('keydown', handleKeyDown);
     return () => container.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, showHighlightMenu, goToPage, abortSearchTask, handleRotate, handleRotateCcw, handleZoomIn, handleZoomOut, handleZoomModeSelect]);
+
+  // ========== 壳层搜索转发 ==========
+  // 文件预览窗（FilePreviewAppWindow）的 Cmd/Ctrl+F 通过自定义事件转发到
+  // 本组件的全文搜索，与 EPUB 的 epub-preview-open-search 同构。
+  // 依赖 file：无文档时根节点走空态分支、containerRef 为 null，文档就绪后再绑。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const openSearch = () => {
+      setShowSearch(true);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+    container.addEventListener('pdf-preview-open-search', openSearch);
+    return () => container.removeEventListener('pdf-preview-open-search', openSearch);
+  }, [file]);
 
   // ========== 键盘焦点保障 ==========
   // 快捷键监听挂在容器上，需要容器持有焦点。文档就绪后自动 focus 容器
@@ -2371,6 +2528,40 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     scrubbingRef.current = false;
     setScrubPage(null);
   }, []);
+
+  // role=slider 键盘操作（WAI-ARIA slider pattern）：
+  // ←/↓ 上一页、→/↑ 下一页（双页按 spread 步进）、PageUp/Down ±10 页、Home/End 首末页。
+  // 容器级快捷键监听对 slider 焦点已豁免这些按键，此处不会双跳。
+  const handleProgressKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (numPages <= 0) return;
+    let target: number;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        target = getNextNavigationPage(currentPage, viewMode, numPages);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        target = getPrevNavigationPage(currentPage, viewMode, numPages);
+        break;
+      case 'PageUp':
+        target = Math.max(1, currentPage - 10);
+        break;
+      case 'PageDown':
+        target = Math.min(numPages, currentPage + 10);
+        break;
+      case 'Home':
+        target = 1;
+        break;
+      case 'End':
+        target = numPages;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    goToPage(target);
+  }, [numPages, currentPage, viewMode, goToPage]);
 
   const pageRowCount = useMemo(() => (
     viewMode === 'dual' ? Math.ceil(numPages / 2) : numPages
@@ -2695,11 +2886,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       }
                 }
                 title={hl.text}
-                // 触屏 hover tooltip 不可达：点按高亮块弹出底部轻量操作条
-                onClick={isCoarsePointer ? (e) => {
+                // 触屏 → 底部轻量操作条；桌面 → 锚定高亮块的改色/删除浮层
+                onClick={(e) => {
                   e.stopPropagation();
+                  if (isCoarsePointer) {
+                    setActiveHighlightAnchor(null);
+                  } else {
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setActiveHighlightAnchor({ x: r.left + r.width / 2, top: r.top, bottom: r.bottom });
+                  }
                   setActiveHighlightId(prev => (prev === hl.id ? null : hl.id));
-                } : undefined}
+                }}
               />
             ))}
           </div>
@@ -2799,6 +2996,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', ...style }}
       ref={containerRef}
       tabIndex={0}
+      data-pdf-preview
       onPointerDown={handleRootPointerDown}
     >
       {/* 搜索栏 */}
@@ -2841,23 +3039,44 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
-      {/* 高亮菜单：桌面为选区上方浮动菜单；移动端改为 viewer 内底部内联色板条
-          （absolute bottom，非 fixed body 层，避让底栏与 safe-area） */}
+      {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
+          移动端改为 viewer 内底部内联色板条
+          （absolute bottom，非 fixed body 层，避让底栏与 safe-area）。
+          4 色高亮之外提供 复制/引用到对话/做笔记 动作（对标 MarginNote 划词入口）。 */}
       {showHighlightMenu && !isMobileLike && (
         <div
+          ref={selectionMenu.ref}
           className="ds-highlight-menu"
-          style={{
-            position: 'fixed',
-            left: highlightMenuPos.x,
-            top: highlightMenuPos.y,
-            transform: 'translate(-50%, -100%)',
-          }}
+          role="toolbar"
+          aria-label={t('pdf:selection.menu_label')}
+          style={
+            selectionMenu.frame
+              ? { position: 'fixed', left: selectionMenu.frame.left, top: selectionMenu.frame.top }
+              : { position: 'fixed', left: highlightMenuPos.x, top: highlightMenuPos.top, visibility: 'hidden' }
+          }
         >
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
-          <span className="ds-highlight-menu__divider" aria-hidden="true" />
+          {canPersistAnnotations && (
+            <>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+              <span className="ds-highlight-menu__divider" aria-hidden="true" />
+            </>
+          )}
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
+            <Copy size={16} />
+          </DsButton>
+          {onQuoteToChat && (
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleQuoteSelection} title={t('pdf:selection.quote_to_chat')} aria-label={t('pdf:selection.quote_to_chat')}>
+              <ChatCircleText size={16} />
+            </DsButton>
+          )}
+          {onCreateNote && (
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNoteSelection} title={t('pdf:selection.create_note')} aria-label={t('pdf:selection.create_note')}>
+              <NotePencil size={16} />
+            </DsButton>
+          )}
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={openSelectionTranslation} title={t('pdf:toolbar.translate_selection')} aria-label={t('pdf:toolbar.translate_selection')}>
             <Translate size={16} />
           </DsButton>
@@ -2865,12 +3084,29 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       )}
 
       {showHighlightMenu && isMobileLike && (
-        <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlight')}>
+        <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:selection.menu_label')}>
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          {canPersistAnnotations && (
+            <>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+            </>
+          )}
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
+            <Copy size={16} />
+          </DsButton>
+          {onQuoteToChat && (
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleQuoteSelection} title={t('pdf:selection.quote_to_chat')} aria-label={t('pdf:selection.quote_to_chat')}>
+              <ChatCircleText size={16} />
+            </DsButton>
+          )}
+          {onCreateNote && (
+            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNoteSelection} title={t('pdf:selection.create_note')} aria-label={t('pdf:selection.create_note')}>
+              <NotePencil size={16} />
+            </DsButton>
+          )}
           <DsButton
             variant="ghost"
             size="icon"
@@ -2898,14 +3134,65 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
-      {/* 触屏点按页面内高亮块后的轻量操作条（复用底部选色条样式） */}
-      {activeHighlight && !showHighlightMenu && (
+      {/* 桌面端点按高亮块后的浮动操作层：改色 + 删除（锚定高亮块，钳位到视口内） */}
+      {activeHighlight && activeHighlightAnchor && !showHighlightMenu && (
+        <div
+          ref={highlightActionMenu.ref}
+          className="ds-highlight-menu"
+          role="toolbar"
+          aria-label={t('pdf:toolbar.highlights')}
+          style={
+            highlightActionMenu.frame
+              ? { position: 'fixed', left: highlightActionMenu.frame.left, top: highlightActionMenu.frame.top }
+              : { position: 'fixed', left: activeHighlightAnchor.x, top: activeHighlightAnchor.top, visibility: 'hidden' }
+          }
+        >
+          {(Object.entries(HIGHLIGHT_COLORS) as [keyof typeof HIGHLIGHT_COLORS, string][]).map(([name, color]) => (
+            <DsButton
+              key={name}
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={`ds-highlight-color ${activeHighlight.color === color ? 'ds-highlight-color--current' : ''}`}
+              style={{ background: color }}
+              onClick={() => updateHighlightColor(activeHighlight.id, color)}
+              title={t(`pdf:toolbar.highlight_${name}`)}
+              aria-label={t(`pdf:toolbar.highlight_${name}`)}
+              aria-pressed={activeHighlight.color === color}
+            />
+          ))}
+          <span className="ds-highlight-menu__divider" aria-hidden="true" />
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="ds-btn ds-btn-sm"
+            onClick={() => removeHighlight(activeHighlight.id)}
+            title={t('pdf:toolbar.delete_highlight')}
+            aria-label={t('pdf:a11y.delete')}
+          >
+            <Trash size={16} />
+          </DsButton>
+        </div>
+      )}
+
+      {/* 触屏点按页面内高亮块后的轻量操作条（复用底部选色条样式）：改色 + 删除 */}
+      {activeHighlight && !activeHighlightAnchor && !showHighlightMenu && (
         <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlights')}>
-          <span
-            className="ds-highlight-color"
-            style={{ backgroundColor: activeHighlight.color, cursor: 'default' }}
-            aria-hidden="true"
-          />
+          {(Object.entries(HIGHLIGHT_COLORS) as [keyof typeof HIGHLIGHT_COLORS, string][]).map(([name, color]) => (
+            <DsButton
+              key={name}
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={`ds-highlight-color ${activeHighlight.color === color ? 'ds-highlight-color--current' : ''}`}
+              style={{ background: color }}
+              onClick={() => updateHighlightColor(activeHighlight.id, color)}
+              title={t(`pdf:toolbar.highlight_${name}`)}
+              aria-label={t(`pdf:toolbar.highlight_${name}`)}
+              aria-pressed={activeHighlight.color === color}
+            />
+          ))}
           <span className="ds-pdf__highlight-bar-text">{activeHighlight.text}</span>
           <DsButton
             variant="ghost"
@@ -3491,14 +3778,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         <div
           className={`ds-pdf__progress-bar ${scrubPage !== null ? 'scrubbing' : ''}`}
           role="slider"
+          tabIndex={0}
+          aria-orientation="horizontal"
           aria-valuemin={1}
           aria-valuemax={numPages}
           aria-valuenow={scrubPage ?? currentPage}
+          aria-valuetext={t('pdf:page_info', { current: scrubPage ?? currentPage, total: numPages })}
           aria-label={t('pdf:page_info', { current: scrubPage ?? currentPage, total: numPages })}
           onPointerDown={handleProgressPointerDown}
           onPointerMove={handleProgressPointerMove}
           onPointerUp={handleProgressPointerUp}
           onPointerCancel={handleProgressPointerCancel}
+          onKeyDown={handleProgressKeyDown}
         >
           <div
             className="ds-pdf__progress-fill"

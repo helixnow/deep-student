@@ -172,7 +172,24 @@ export const ankiTaskProjectionSource: ProjectionSource = {
   },
 };
 
+/**
+ * 活跃任务数 → 角标的纯换算。Dock 角标与窗口标题后缀共用此函数，
+ * 保证两处口径永远一致（角标亮则标题带数、数值相同）。
+ */
+export function ankiTaskBadgeForCount(count: number): AppBadge | null {
+  return count > 0 ? { kind: 'count', value: count } : null;
+}
+
+/**
+ * 窗口标题：进行中任务数以「基础名 · N」后缀呈现（O18）。
+ * 后缀数与 Dock 角标同源自 ankiTaskBadgeForCount：角标无值时标题不带后缀。
+ */
+export function formatAnkiTaskWindowTitle(base: string, count: number): string {
+  const badge = ankiTaskBadgeForCount(count);
+  return badge ? `${base} · ${badge.value}` : base;
+}
+
 /** Dock 角标源：活跃制卡任务数量（0 = 无角标） */
 export function ankiTaskBadgeSource(): AppBadge | null {
-  return activeTaskCount > 0 ? { kind: 'count', value: activeTaskCount } : null;
+  return ankiTaskBadgeForCount(activeTaskCount);
 }

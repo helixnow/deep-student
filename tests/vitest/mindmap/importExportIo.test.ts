@@ -299,7 +299,7 @@ describe('.xmind import report (P3, dropped items)', () => {
 
     const report = createXmindImportReport();
     await importFromXmindZip(bytes, report);
-    expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0 });
+    expect(report).toEqual({ droppedImages: 0, droppedSummaries: 0, embeddedImages: 0 });
   });
 });
 

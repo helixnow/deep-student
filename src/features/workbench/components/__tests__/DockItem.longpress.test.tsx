@@ -13,7 +13,7 @@ import { appRegistry } from '../../core/appRegistry';
 import { useWindowStore } from '../../core/windowStore';
 import { useWorkbenchOverlay } from '../../core/shortcuts';
 import { workbenchBus } from '../../core/workbenchBus';
-import { DockItem, DOCK_LONGPRESS_DELAY } from '../DockItem';
+import { DockItem, DOCK_LONGPRESS_DELAY, DOCK_TIP_LINGER_MS } from '../DockItem';
 
 const NullApp: React.FC<AppWindowProps> = () => null;
 
@@ -175,6 +175,51 @@ describe('DockItem 长按出窗口列表', () => {
     const after = useWindowStore.getState();
     expect(after.focusStack[after.focusStack.length - 1]).toBe(b);
     expect(screen.queryByTestId('wb-dock-window-list')).toBeNull();
+  });
+
+  it('未运行应用长按 → 钉住 tooltip（触屏应用名途径）且不触发 launch', () => {
+    vi.useFakeTimers();
+    const launchSpy = vi.spyOn(workbenchBus, 'launch');
+    render(<DockItem typeId="chat" />);
+    const wrap = screen.getByTestId('wb-dock-item-chat');
+    const button = dockButton('chat');
+
+    firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 });
+    expect(wrap.getAttribute('data-tip-pinned')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
+    });
+    expect(wrap.getAttribute('data-tip-pinned')).toBe('true');
+    expect(screen.queryByTestId('wb-dock-window-list')).toBeNull();
+
+    // 松手后的 click 被抑制：长按只是看应用名，不 launch
+    firePointer(button, 'pointerup', { clientX: 10, clientY: 10 });
+    fireEvent.click(button);
+    expect(launchSpy).not.toHaveBeenCalled();
+
+    // 驻留期结束后气泡解除钉住
+    act(() => {
+      vi.advanceTimersByTime(DOCK_TIP_LINGER_MS);
+    });
+    expect(wrap.getAttribute('data-tip-pinned')).toBeNull();
+    launchSpy.mockRestore();
+  });
+
+  it('长按开列表时头部显示应用名（tooltip 触屏等价）', () => {
+    vi.useFakeTimers();
+    openWin('chat', 'a', '会话 A');
+    render(<DockItem typeId="chat" />);
+    const button = dockButton('chat');
+
+    firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 });
+    act(() => {
+      vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
+    });
+    const header = screen.getByTestId('wb-docklist-header');
+    // i18n mock 下 t(nameKey, typeId) 回落到 typeId 兜底
+    expect(header.textContent).not.toBe('');
+    expect(header.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('「显示全部窗口」入口触发本应用的 App Exposé 过滤俯瞰', () => {

@@ -374,6 +374,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         <MenuItem
           icon={<Pencil className="w-4 h-4" />}
           label={t('association.editLabel', { defaultValue: '编辑标签' })}
+          shortcut="Enter"
           onClick={() => exec(() => onEditAssociationLabel?.(association.id))}
         />
         <MenuSeparator />
@@ -522,6 +523,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       <MenuItem
         icon={<LineSegment className="w-4 h-4" />}
         label={t('association.add', { defaultValue: '添加关联线' })}
+        shortcut="⌘L"
         onClick={() => exec(() => {
           if (nodeId) onStartAssociation?.(nodeId);
         })}

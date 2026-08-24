@@ -119,7 +119,7 @@
     "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
     "markersNote": ".xmind 标记：{{markers}}",
-    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，当前版本导入不保留图片",
+    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "importing": "正在导入导图，请稍候…",
     "saveAndImport": "保存并导入"
   },
@@ -171,6 +171,7 @@
     "panCanvasKeysPanMode": "拖拽空白处",
     "associationEntryKeys": "右键节点",
     "associationAdd": "添加关联线（再点目标）",
+    "associationStart": "添加关联线（点击目标完成，Esc 取消）",
     "groupRecite": "背诵模式",
     "reciteNavigate": "在节点间导航",
     "reciteReveal": "揭示下一个挖空",
@@ -417,7 +418,13 @@
     "openLink": "打开链接",
     "priorityBadge": "优先级 {{level}}",
     "progressLabel": "进度 {{percent}}%",
-    "toggleComplete": "切换完成状态"
+    "toggleComplete": "切换完成状态",
+    "imageAlt": "节点图片"
+  },
+  "sheets": {
+    "switcherLabel": "切换 Sheet",
+    "switcherHint": "多 Sheet 导入：切换聚焦到对应画布分支",
+    "all": "全部 Sheet"
   },
   "errorDetails": "查看错误详情",
   "canvas": {
@@ -456,7 +463,13 @@
     "blankBranch": "挖空整个分支",
     "blankBranchDone": "已挖空 {{count}} 个节点",
     "clearBranchBlanks": "清除分支挖空",
-    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空"
+    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空",
+    "reviewStart": "难点优先",
+    "reviewStartHint": "按历史错误率从难到易逐节点复习（翻开=没背出来）",
+    "reviewNavLabel": "难点优先复习导航",
+    "reviewPrev": "上一个难点",
+    "reviewNext": "下一个难点",
+    "reviewStop": "结束复习"
   },
   "errors": {
     "notFound": "未找到思维导图"

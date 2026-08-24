@@ -21,6 +21,8 @@
  * - 运行指示点：wb-dock-ind 淡入（静态点；定位仍由契约类 wb-dock-indicator 提供）
  * - tooltip：wb-dock-tip 玻璃气泡带箭头（hover/focus-within 显示；弹层打开时不渲染）；
  *   原生 title 已移除避免双气泡，可访问名仍由 aria-label 提供
+ * - 触屏等价（a11y 清单 §4）：未运行应用长按 = 钉住 tooltip 显示应用名且不触发
+ *   launch；运行中应用长按开列表后，应用名由 DockWindowList 头部提供
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +52,8 @@ const BADGE_POLL_MS = 30_000;
 const BOUNCE_FALLBACK_MS = 920;
 /** 长按出窗口列表判定时长（与 WindowTitleBar 绿灯长按 400ms 基建对齐） */
 export const DOCK_LONGPRESS_DELAY = 400;
+/** 长按钉住的 tooltip 在松手后的驻留时长（触屏用户读完应用名再消失） */
+export const DOCK_TIP_LINGER_MS = 1600;
 /**
  * 长按期间的移动容差：与固定区拖拽阈值（DockPinnedStore DRAG_THRESHOLD_PX = 5）
  * 一致——移动超过该距离即判定为拖拽重排/滑动，取消长按，两条手势互不打架。
@@ -182,6 +186,28 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressFiredRef = React.useRef(false);
     const longPressStartRef = React.useRef<{ x: number; y: number } | null>(null);
+
+    // ---- 触屏 tooltip 等价（a11y 清单 §4）----
+    // 无 hover 环境下，未运行应用的长按把 tooltip 钉住显示应用名
+    //（运行中应用的长按被窗口列表占用，应用名由列表头部提供）。
+    // 松手后驻留 DOCK_TIP_LINGER_MS 再消失，保证触屏用户来得及读。
+    const [tipPinned, setTipPinned] = React.useState(false);
+    const tipLingerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const scheduleTipUnpin = React.useCallback(() => {
+      if (tipLingerTimerRef.current !== null) clearTimeout(tipLingerTimerRef.current);
+      tipLingerTimerRef.current = setTimeout(() => {
+        tipLingerTimerRef.current = null;
+        setTipPinned(false);
+      }, DOCK_TIP_LINGER_MS);
+    }, []);
+
+    React.useEffect(
+      () => () => {
+        if (tipLingerTimerRef.current !== null) clearTimeout(tipLingerTimerRef.current);
+      },
+      [],
+    );
 
     const clearLongPress = React.useCallback(() => {
       if (longPressTimerRef.current !== null) {
@@ -362,6 +388,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         ref={setWrapRef}
         data-testid={`wb-dock-item-${typeId}`}
         data-wb-dock-item-wrap=""
+        data-tip-pinned={tipPinned || undefined}
         className={cn('wb-dock-item-wrap relative flex flex-col items-center', className)}
         {...rest}
         {...pinnedDataAttrs}
@@ -371,10 +398,11 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           // 新一轮按下先清掉上次长按的 click 抑制标记（长按后在 wrap 外松手时
           // click 不会发生，标记会残留到下一次交互）
           longPressFiredRef.current = false;
-          // 长按判定只从图标按钮本体开始（弹层/角标区域不算）
+          // 长按判定只从图标按钮本体开始（弹层/角标区域不算）。
+          // 运行中 → 窗口列表；未运行 → 钉住 tooltip（触屏应用名获取途径），
+          // 两条路径都抑制随后的 click（长按不该触发 launch/focus）。
           if (
             event.button === 0 &&
-            running &&
             !listOpen &&
             (event.target as HTMLElement | null)?.closest?.('button.wb-dock-item')
           ) {
@@ -384,7 +412,15 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
               longPressTimerRef.current = null;
               longPressStartRef.current = null;
               longPressFiredRef.current = true;
-              setListOpen(true);
+              if (running) {
+                setListOpen(true);
+              } else {
+                if (tipLingerTimerRef.current !== null) {
+                  clearTimeout(tipLingerTimerRef.current);
+                  tipLingerTimerRef.current = null;
+                }
+                setTipPinned(true);
+              }
             }, DOCK_LONGPRESS_DELAY);
           }
         }}
@@ -401,6 +437,8 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         onPointerUp={(event) => {
           onPointerUp?.(event);
           clearLongPress();
+          // 钉住的 tooltip：松手后驻留一段时间再消失
+          if (tipPinned) scheduleTipUnpin();
           // 长按开列表后按住滑到列表项上松手 = 直接选中（对齐 macOS 长按菜单滑选）
           if (longPressFiredRef.current) {
             const target = event.target as HTMLElement | null;
@@ -419,10 +457,12 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         onPointerLeave={(event) => {
           onPointerLeave?.(event);
           clearLongPress();
+          if (tipPinned) scheduleTipUnpin();
         }}
         onPointerCancel={(event) => {
           onPointerCancel?.(event);
           clearLongPress();
+          if (tipPinned) scheduleTipUnpin();
         }}
         onPointerEnter={(event) => {
           onPointerEnter?.(event);

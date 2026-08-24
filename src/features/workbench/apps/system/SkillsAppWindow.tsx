@@ -14,7 +14,7 @@ import { WbSysFade, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 
 const SkillsManagementPage = React.lazy(() =>
-  import('@/components/skills-management/SkillsManagementPage').then((m) => ({
+  import('@/features/skills-management').then((m) => ({
     default: m.SkillsManagementPage,
   })),
 );
