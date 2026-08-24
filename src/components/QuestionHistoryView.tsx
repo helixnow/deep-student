@@ -296,7 +296,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
           variant="ghost"
           size="icon"
           onClick={handleJumpToQuestion}
-          className="h-11 w-11 text-primary"
+          className="!h-11 !w-11 text-primary"
           aria-label={t('learningHub:exam.library.viewQuestion')}
           title={t('learningHub:exam.library.viewQuestion')}
         >
