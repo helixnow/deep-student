@@ -861,7 +861,7 @@ export const SubagentProfilesSection: React.FC = () => {
               <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:subagentProfiles.empty.description')}
               </p>
-              <DsButton variant="primary" size="sm" className="mt-4" onClick={openCreate}>
+              <DsButton variant="primary" size="sm" className="mt-4 [@media(pointer:coarse)]:min-h-11" onClick={openCreate}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 {t('settings:subagentProfiles.empty.cta')}
               </DsButton>
