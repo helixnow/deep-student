@@ -70,11 +70,14 @@ function firePointer(
   el: Element,
   type: 'pointerdown' | 'pointermove' | 'pointerup',
   init: MouseEventInit = {},
+  pointerType?: string,
 ) {
-  fireEvent(
-    el,
-    new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init }),
-  );
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init });
+  if (pointerType !== undefined) {
+    // MouseEventInit 不含 pointerType：直接定义在实例上，React 合成事件会透传
+    Object.defineProperty(event, 'pointerType', { value: pointerType });
+  }
+  fireEvent(el, event);
 }
 
 beforeAll(() => {
@@ -126,6 +129,52 @@ describe('DockItem 长按出窗口列表', () => {
 
     firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 });
     firePointer(wrap, 'pointermove', { clientX: 22, clientY: 10 });
+    act(() => {
+      vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
+    });
+    expect(screen.queryByTestId('wb-dock-window-list')).toBeNull();
+  });
+
+  it('触屏容差放宽：8px 抖动不取消长按（同距离鼠标会取消）', () => {
+    vi.useFakeTimers();
+    openWin('chat', 'a', '会话 A');
+    render(<DockItem typeId="chat" />);
+    const wrap = screen.getByTestId('wb-dock-item-chat');
+    const button = dockButton('chat');
+
+    // 手指按下 + 8px 抖动（< 10px 触屏容差）→ 长按照常触发
+    firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 }, 'touch');
+    firePointer(wrap, 'pointermove', { clientX: 18, clientY: 10 }, 'touch');
+    act(() => {
+      vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
+    });
+    expect(screen.getByTestId('wb-dock-window-list')).toBeInTheDocument();
+  });
+
+  it('鼠标 8px 移动仍取消长按（精确指点维持 5px 容差）', () => {
+    vi.useFakeTimers();
+    openWin('chat', 'a', '会话 A');
+    render(<DockItem typeId="chat" />);
+    const wrap = screen.getByTestId('wb-dock-item-chat');
+    const button = dockButton('chat');
+
+    firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 }, 'mouse');
+    firePointer(wrap, 'pointermove', { clientX: 18, clientY: 10 }, 'mouse');
+    act(() => {
+      vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
+    });
+    expect(screen.queryByTestId('wb-dock-window-list')).toBeNull();
+  });
+
+  it('触屏移动超过 10px 容差同样取消长按（真拖动让位）', () => {
+    vi.useFakeTimers();
+    openWin('chat', 'a', '会话 A');
+    render(<DockItem typeId="chat" />);
+    const wrap = screen.getByTestId('wb-dock-item-chat');
+    const button = dockButton('chat');
+
+    firePointer(button, 'pointerdown', { clientX: 10, clientY: 10 }, 'touch');
+    firePointer(wrap, 'pointermove', { clientX: 22, clientY: 10 }, 'touch');
     act(() => {
       vi.advanceTimersByTime(DOCK_LONGPRESS_DELAY);
     });
