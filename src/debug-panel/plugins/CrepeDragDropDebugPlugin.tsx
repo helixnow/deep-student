@@ -946,7 +946,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setIsRecording(!isRecording)}
-            className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded flex items-center gap-1 ${
               isRecording ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'
             }`}
           >
@@ -955,33 +955,33 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
           </button>
           <button
             onClick={() => setShowIssuesOnly(!showIssuesOnly)}
-            className={`px-3 py-1 text-sm rounded ${showIssuesOnly ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${showIssuesOnly ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             <Warning size={16} />
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`px-3 py-1 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
             自动滚动
           </button>
           <button
             onClick={runDiagnosis}
-            className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center gap-1"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center gap-1"
           >
             <Target size={16} />
             运行诊断
           </button>
           <button
             onClick={copyAllLogs}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
             disabled={filteredLogs.length === 0}
           >
             <Clipboard size={16} />
           </button>
           <button
             onClick={clearLogs}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
           >
             <Trash size={16} />
           </button>

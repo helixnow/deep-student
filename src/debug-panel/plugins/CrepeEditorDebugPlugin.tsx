@@ -427,7 +427,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={triggerSnapshot}
-            className="px-3 py-1 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600"
             title="手动捕获 DOM 快照"
           >
             <Eye size={16} className="inline mr-1" />
@@ -435,21 +435,21 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={() => setErrorsOnly(!errorsOnly)}
-            className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
             <Funnel size={16} />
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`px-3 py-1 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm rounded ${autoScroll ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="自动滚动到底部"
           >
             自动滚动
           </button>
           <button
             onClick={copyAllLogs}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
@@ -457,7 +457,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={exportLogs}
-            className="px-3 py-1 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
@@ -465,7 +465,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           </button>
           <button
             onClick={clearLogs}
-            className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+            className="px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
             title="清空日志"
           >
             <Trash size={16} />

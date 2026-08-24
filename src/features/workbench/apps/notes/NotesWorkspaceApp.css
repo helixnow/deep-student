@@ -188,8 +188,13 @@
   height: 20px;
 }
 
-/* 触屏：20px 目标过小，扩到 44px，负 margin 抵消占位（30px 搜索栏不被撑高） */
+/* 触屏：20px 目标过小，扩到 44px，负 margin 抵消占位；搜索栏本身也升到 ≥44px 触控高度
+   （min-height 优先于桌面 height: 30px，桌面密度不受影响） */
 @media (pointer: coarse) {
+  .notes-search {
+    min-height: 44px;
+  }
+
   .notes-search .notes-icon-button {
     width: 44px;
     height: 44px;

@@ -215,7 +215,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
         <select
           value={filter}
           onChange={e => setFilter(e.target.value as any)}
-          className="px-2 py-1 text-xs bg-background border border-border rounded"
+          className="px-2 py-1 text-xs bg-background border border-border rounded [@media(pointer:coarse)]:min-h-11"
         >
           <option value="all">全部</option>
           <option value="call">调用</option>
@@ -229,7 +229,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
           placeholder="过滤方法..."
           value={methodFilter}
           onChange={e => setMethodFilter(e.target.value)}
-          className="px-2 py-1 text-xs bg-background border border-border rounded w-32"
+          className="px-2 py-1 text-xs bg-background border border-border rounded w-32 [@media(pointer:coarse)]:min-h-11"
         />
 
         <div className="flex-1" />

@@ -1576,7 +1576,7 @@
 
   .ds-input {
     width: 50px;
-    height: 40px;
+    height: 44px;
     /* iOS 聚焦输入框 <16px 会触发页面自动放大 */
     font-size: 16px;
   }
