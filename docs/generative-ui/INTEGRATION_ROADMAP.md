@@ -8,7 +8,7 @@
 |------|--------|-----------------|
 | 复习概览 | stat-card + progress + list | `start-review` → `fsrsReviewStore.startDueSession` |
 | 错题诊断 | mistake-analysis + list | `open-qbank` → qbankDriver |
-| 闪卡预览 | flashcard-preview（已落地） | `save-to-library` → chat/anki 管线 |
+| 闪卡预览 | flashcard-preview（已落地） | `save-to-library` → `saveCardsToLibrary` ✅ |
 
 **原则**：不重写 `anki_cards` 专用块；generative-ui 做轻量摘要入口。
 
@@ -47,7 +47,7 @@
 | Rust SSE → Tauri 事件 → chunkBuffer | 既有 Chat V2 管道 |
 | `plugins/events/generativeUI.ts` | ✅ |
 | 块级增量 parser（闭合 block 提交 + last-good） | ✅ |
-| 后端 emit `generative_ui` 事件 | 📋 Rust 侧待补 |
+| 后端 emit `generative_ui` 事件 | ✅ |
 
 ## Notes（#3）
 

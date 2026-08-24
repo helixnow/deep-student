@@ -13,6 +13,15 @@ describe('generativeUIArchitectureContract', () => {
     expect(indexSrc).toContain('generativeUIRegistry');
     expect(indexSrc).toContain('GenerativeUIRenderer');
     expect(indexSrc).toContain('parseGenerativeUIIntent');
+    expect(indexSrc).toContain('resolveGenerativeUIChatActionHandlers');
+    expect(indexSrc).toContain('dispatchCanvasAIEditRequest');
+    expect(indexSrc).toContain('createFlashcardSaveActionHandlers');
+  });
+
+  it('bridge layer connects chat stream and action handlers', () => {
+    expect(fs.existsSync(path.join(root, 'bridge/chatBlockBridge.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'bridge/generativeUIStreamRegistry.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'bridge/resolveGenerativeUIChatActionHandlers.ts'))).toBe(true);
   });
 
   it('uses zod in schema.ts', () => {

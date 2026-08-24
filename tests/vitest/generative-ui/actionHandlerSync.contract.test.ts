@@ -11,6 +11,8 @@ import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/b
 import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildMemoryBriefingIntent';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
+import { buildFlashcardPreviewIntent } from '@/features/generative-ui/utils/buildFlashcardPreviewIntent';
+import { createFlashcardSaveActionHandlers } from '@/features/generative-ui/handlers/flashcardActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -173,5 +175,19 @@ describe('generativeUI actionHandlerSync contract', () => {
       { applyEdit: 'Apply', dismissSuggestion: 'Dismiss' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildNoteEditSuggestionIntent');
+  });
+
+  it('flashcard preview intent action ids exist in createFlashcardSaveActionHandlers', () => {
+    const intent = buildFlashcardPreviewIntent({
+      front: 'Front',
+      back: 'Back',
+      labels: { metaTitle: 'Preview', saveToLibrary: 'Save' },
+    });
+    const handlers = createFlashcardSaveActionHandlers(
+      intent,
+      { blockId: 'blk-1' },
+      { saveToLibrary: 'Save' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildFlashcardPreviewIntent');
   });
 });

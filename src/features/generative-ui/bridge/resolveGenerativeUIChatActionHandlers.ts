@@ -8,9 +8,15 @@ import {
   createNotesEditActionHandlers,
   type NotesEditActionLabels,
 } from '../handlers/notesEditActionHandlers';
+import {
+  createFlashcardSaveActionHandlers,
+  type FlashcardActionLabels,
+  type FlashcardSaveContext,
+} from '../handlers/flashcardActionHandlers';
 import { extractNoteEditPayload } from '../utils/extractNoteEditPayload';
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
+export const FLASHCARD_ACTION_IDS = ['save-to-library'] as const;
 
 export function collectGenerativeUIActionIds(intent: GenerativeUIIntent): string[] {
   return intent.blocks
@@ -27,6 +33,8 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   toolInput?: unknown;
   toolOutput?: unknown;
   noteEditLabels?: NotesEditActionLabels;
+  flashcardLabels?: FlashcardActionLabels;
+  flashcardContext?: FlashcardSaveContext;
 }
 
 /**
@@ -60,6 +68,18 @@ export function resolveGenerativeUIChatActionHandlers(
         ),
       );
     }
+  }
+
+  const needsFlashcardHandlers = FLASHCARD_ACTION_IDS.some((id) => actionIds.has(id));
+  if (needsFlashcardHandlers) {
+    Object.assign(
+      handlers,
+      createFlashcardSaveActionHandlers(
+        input.intent,
+        input.flashcardContext ?? {},
+        input.flashcardLabels ?? { saveToLibrary: '保存到闪卡库' },
+      ),
+    );
   }
 
   return handlers;

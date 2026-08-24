@@ -64,10 +64,10 @@
 | 流式 parser P0 | ✅（tryParsePartialIntent + chunkBuffer + streamRegistry 状态机） |
 | mindmap-embed | ✅（schema + E2E renderer 全链路） |
 | prompt sync | ✅（目录行 + props schema 摘要进 prompt） |
-| Learning Hub 挂载 | Exam 简报 ✅；Memory/IndexStatus 待做 |
+| Learning Hub 挂载 | Exam / Memory / IndexStatus ✅ |
 | i18n | 部分（P0 块组件 ✅；builder 持续跟进） |
 | Security HITL | ✅（ActionBar + Notes dispatch 链 + Chat 块挂载；OCC 终态落盘仍走 AIDiffPanel） |
-| Rust emit | 部分（skill+toolInput ✅；execute 测试待做） |
+| Rust emit | ✅（execute + noteEdit 校验；本环境 Cargo 1.83 暂无法跑通 cargo test） |
 
 ---
 

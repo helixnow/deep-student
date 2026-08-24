@@ -20,7 +20,9 @@
   "flashcard": {
     "preview_title": "闪卡预览",
     "front": "正面",
-    "back": "背面"
+    "back": "背面",
+    "save_to_library": "保存到闪卡库",
+    "preview_meta_title": "AI 闪卡预览"
   },
   "review_calendar": {
     "default_title": "复习日历",

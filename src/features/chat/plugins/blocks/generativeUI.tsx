@@ -40,8 +40,15 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
         applyEdit: t('notes.edit_apply'),
         dismissSuggestion: t('notes.edit_dismiss'),
       },
+      flashcardLabels: {
+        saveToLibrary: t('flashcard.save_to_library'),
+      },
+      flashcardContext: {
+        blockId: block.id,
+        businessSessionId: store?.getState().sessionId,
+      },
     });
-  }, [block.toolInput, block.toolOutput, canvasNoteId, extracted, t]);
+  }, [block.id, block.toolInput, block.toolOutput, canvasNoteId, extracted, store, t]);
 
   if (!extracted) {
     return (

@@ -66,10 +66,18 @@ export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
+export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
+export {
+  extractFlashcardsFromIntent,
+  flashcardPreviewToAnkiCards,
+} from './utils/extractFlashcardsFromIntent';
+export { createFlashcardSaveActionHandlers } from './handlers/flashcardActionHandlers';
+export type { FlashcardSaveContext, FlashcardActionLabels } from './handlers/flashcardActionHandlers';
 export {
   resolveGenerativeUIChatActionHandlers,
   collectGenerativeUIActionIds,
   NOTE_EDIT_ACTION_IDS,
+  FLASHCARD_ACTION_IDS,
 } from './bridge/resolveGenerativeUIChatActionHandlers';
 export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
 export type { NoteEditPayload } from './utils/extractNoteEditPayload';
