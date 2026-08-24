@@ -89,5 +89,8 @@ Round 64：Chat 共享一条 `hpias_event` 订阅；Markdown 剥 `style`/`srcdoc
 Round 65：`reset` 保活其它会话切片；Style Lab 不再全量 `clear`；mindmap embed ID 白名单。
 Round 66：强制 handler 注册表时不渲染未注册 ActionBar 按钮。
 Round 67：无可见操作时不输出空 toolbar。
+Round 68：全未登记 ActionBar 不渲染 skip-to-actions。
+Round 69：每个 Renderer 独立 HITL 撤销栈。
+Round 70：skip-to-actions 落到第一个可达 ActionBar 槽位。
 
 不改 Goal 为 complete；合入 main 仍 ⏳。
