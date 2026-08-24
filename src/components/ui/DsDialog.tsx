@@ -477,12 +477,19 @@ export function DsAlertDialog({
 
           {/* 按钮行 */}
           <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
-            <DsButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
+            <DsButton
+              variant="ghost"
+              size={confirmSize}
+              className="[@media(pointer:coarse)]:min-h-11"
+              onClick={handleCancel}
+              disabled={loading}
+            >
               {resolvedCancelText}
             </DsButton>
             <DsButton
               variant={confirmVariant}
               size={confirmSize}
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={onConfirm}
               disabled={disabled || loading}
             >
