@@ -668,6 +668,19 @@
   border-color: hsl(var(--foreground) / .3);
 }
 
+/* 高亮操作层中标记当前颜色 */
+.ds-highlight-color--current {
+  border-color: hsl(var(--foreground) / .55);
+}
+
+/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线 */
+.ds-highlight-menu__divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 2px;
+  background: hsl(var(--border));
+}
+
 /* ============================================================================
    阅读进度条
    ============================================================================ */
@@ -694,6 +707,12 @@
 
 .ds-pdf__progress-bar.scrubbing .ds-pdf__progress-fill {
   transition: none;
+}
+
+/* 键盘可达（role=slider）：细线自身高度不足以呈现 outline，外扩 2px */
+.ds-pdf__progress-bar:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
 
 .ds-pdf__progress-fill {
