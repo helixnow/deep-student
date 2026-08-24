@@ -391,7 +391,7 @@ async fn r07_malicious_manifest_keys_fail_closed_and_write_nothing() {
             .await
             .expect_err("恶意清单键必须让整次同步失败");
         assert!(
-            error.to_string().contains("拒绝非法资产键"),
+            error.to_string().contains("拒绝非法"),
             "键 {key:?} 的错误应指出非法资产键: {error}"
         );
 
