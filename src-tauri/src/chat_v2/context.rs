@@ -440,6 +440,12 @@ pub(crate) struct PipelineContext {
     /// each round. Kept in memory and replayed on the next stateless request.
     pub(crate) response_reasoning_by_tool_call_id: HashMap<String, Value>,
 
+    /// P2-13 收尾：本次运行收集到的服务端 `web_search_call` 完整 item
+    /// （按 id 去重、后到覆盖）。随 assistant 消息 meta 持久化
+    /// （键 `openai_responses_web_search_items`），history 重放时挂回出站
+    /// assistant 消息 metadata，Responses 转换层原样回传 input。
+    pub(crate) response_web_search_items: Vec<Value>,
+
     /// Gemini 3 思维签名缓存（工具调用迭代时回传）
     /// 在工具调用场景下，API 返回的 thoughtSignature 需要缓存并在后续请求中回传
     pub(crate) pending_thought_signature: Option<String>,
@@ -540,6 +546,7 @@ impl PipelineContext {
             pending_reasoning_for_api: None,
             round_text_by_tool_call_id: HashMap::new(),
             response_reasoning_by_tool_call_id: HashMap::new(),
+            response_web_search_items: Vec::new(),
             pending_thought_signature: None,
             current_adapter: None,
             // 统一上下文注入系统支持
@@ -584,6 +591,23 @@ impl PipelineContext {
     /// 添加工具调用结果
     pub(crate) fn add_tool_results(&mut self, results: Vec<ToolResultInfo>) {
         self.tool_results.extend(results);
+    }
+
+    /// P2-13 收尾：合并本轮流式收集的服务端 web_search_call 完整 item
+    /// （按 id 去重、后到覆盖，与 adapter 侧缓存语义一致）。
+    pub(crate) fn merge_response_web_search_items(&mut self, items: Vec<Value>) {
+        for item in items {
+            let id = item.get("id").and_then(Value::as_str).map(str::to_string);
+            let existing = id.as_deref().and_then(|id| {
+                self.response_web_search_items
+                    .iter_mut()
+                    .find(|existing| existing.get("id").and_then(Value::as_str) == Some(id))
+            });
+            match existing {
+                Some(existing) => *existing = item,
+                None => self.response_web_search_items.push(item),
+            }
+        }
     }
 
     /// 将**所有**工具调用结果转换为 LLM 消息格式

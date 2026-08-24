@@ -595,6 +595,30 @@ impl ChatV2Pipeline {
                 content
             };
 
+            // P2-13 收尾：live 持久化的服务端 web_search_call 完整 item 挂回
+            // 出站 assistant 消息 metadata（键名与 meta 持久化键一致），由
+            // attach_web_search_replay_items 附着后原样回传 Responses input
+            let mut history_metadata = serde_json::Map::new();
+            if let Some(parts) = canonical_content_for_history(
+                &message,
+                active_variant_artifacts.get(&message.id),
+            ) {
+                history_metadata.insert("canonicalContent".to_string(), serde_json::json!(parts));
+            }
+            if role == "assistant" {
+                if let Some(items) = message
+                    .meta
+                    .as_ref()
+                    .and_then(|m| m.response_web_search_items.as_ref())
+                    .filter(|items| !items.is_empty())
+                {
+                    history_metadata.insert(
+                        "openai_responses_web_search_items".to_string(),
+                        serde_json::json!(items),
+                    );
+                }
+            }
+
             let legacy_message = LegacyChatMessage {
                 role: role.to_string(),
                 content: content.clone(),
@@ -614,11 +638,8 @@ impl ChatV2Pipeline {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: message.persistent_stable_id.clone(),
-                metadata: canonical_content_for_history(
-                    &message,
-                    active_variant_artifacts.get(&message.id),
-                )
-                .map(|parts| serde_json::json!({ "canonicalContent": parts })),
+                metadata: (!history_metadata.is_empty())
+                    .then(|| serde_json::Value::Object(history_metadata)),
             };
 
             if role == "user" {
@@ -1346,6 +1367,75 @@ mod replay_consistency_tests {
             ctx.chat_history[1].content, "B 变体回答",
             "只应包含 active variant 的 CONTENT，禁止 join 全部变体"
         );
+    }
+
+    /// P2-13 收尾：assistant 消息 meta 持久化的服务端 web_search_call 完整
+    /// item 在 history 重放时挂回出站 assistant 消息 metadata
+    /// （键 openai_responses_web_search_items），供 Responses 转换层原样回传 input
+    #[tokio::test]
+    async fn replay_attaches_web_search_items_from_meta() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_ws";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_ws_u1",
+            "blk_ws_u1",
+            "今天有什么新闻",
+            1_000,
+        );
+
+        let web_search_item = serde_json::json!({
+            "type": "web_search_call",
+            "id": "ws_live_1",
+            "status": "completed",
+            "search_results": [{ "url": "https://a.example.com", "title": "A" }]
+        });
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_ws_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_ws_c1".to_string()];
+        assistant_msg.meta = Some(MessageMeta {
+            response_web_search_items: Some(vec![web_search_item.clone()]),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_ws_a1", "blk_ws_c1", "根据搜索结果……", 0),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 2);
+
+        let assistant = &ctx.chat_history[1];
+        assert_eq!(assistant.role, "assistant");
+        let metadata = assistant
+            .metadata
+            .as_ref()
+            .expect("assistant 消息应带回 web_search metadata");
+        assert_eq!(
+            metadata.get("openai_responses_web_search_items"),
+            Some(&serde_json::json!([web_search_item])),
+            "meta 持久化的完整 item 必须原样挂回出站 assistant 消息 metadata"
+        );
+
+        // 无 meta 的普通消息不受影响（用户消息无该键）
+        assert!(ctx.chat_history[0]
+            .metadata
+            .as_ref()
+            .map(|m| m.get("openai_responses_web_search_items").is_none())
+            .unwrap_or(true));
     }
 
     /// ROUND-01-pipeline #2：workspace_injection 块按 live 还原为 user 消息，

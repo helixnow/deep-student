@@ -211,6 +211,10 @@ pub struct ChatV2LLMAdapter {
     web_search_started_at: std::sync::Mutex<Option<std::time::Instant>>,
     /// 🆕 服务端搜索收集到的来源（供 pipeline 持久化检索块）
     cached_web_search_sources: std::sync::Mutex<Option<Vec<SourceInfo>>>,
+    /// P2-13 收尾：服务端 `web_search_call` 完整 item（流事件 `item` 键，
+    /// 按 id 去重、后到覆盖），供 pipeline 写入 assistant 消息 meta 并在
+    /// 下一轮 Responses 请求中原样回传 input
+    cached_web_search_items: std::sync::Mutex<Vec<Value>>,
 }
 
 impl ChatV2LLMAdapter {
@@ -245,6 +249,7 @@ impl ChatV2LLMAdapter {
             web_search_block_id: std::sync::Mutex::new(None),
             web_search_started_at: std::sync::Mutex::new(None),
             cached_web_search_sources: std::sync::Mutex::new(None),
+            cached_web_search_items: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -628,10 +633,46 @@ impl ChatV2LLMAdapter {
             .take()
     }
 
+    /// P2-13 收尾：获取并清空服务端 `web_search_call` 完整 item（供 pipeline
+    /// 累积到 ctx 并随 assistant 消息 meta 持久化）。
+    pub fn take_web_search_items(&self) -> Vec<Value> {
+        std::mem::take(
+            &mut *self
+                .cached_web_search_items
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        )
+    }
+
+    /// 缓存流事件载荷里的完整 web_search_call item：按 id 去重，后到覆盖
+    /// （completed 带 search_results，覆盖 in_progress 的骨架 item）。
+    fn cache_web_search_item(&self, item: &Value) {
+        let mut items = self
+            .cached_web_search_items
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let id = item.get("id").and_then(Value::as_str);
+        let existing = id.and_then(|id| {
+            items
+                .iter_mut()
+                .find(|existing| existing.get("id").and_then(Value::as_str) == Some(id))
+        });
+        match existing {
+            Some(existing) => *existing = item.clone(),
+            None => items.push(item.clone()),
+        }
+    }
+
     /// 🆕 把服务端搜索载荷渲染为前端检索块事件。
     /// 载荷格式见 `StreamEvent::WebSearchCall`：
     /// `{"id","stage":"in_progress"|"searching"|"completed","sources":[{"title","url","snippet"}]}`
     fn handle_web_search(&self, payload: &Value) {
+        // P2-13 收尾：载荷携带完整 web_search_call item 时缓存（写入 assistant
+        // 消息 meta 键 openai_responses_web_search_items，下一轮原样回传 input）
+        if let Some(item) = payload.get("item") {
+            self.cache_web_search_item(item);
+        }
+
         let stage = payload
             .get("stage")
             .and_then(Value::as_str)
@@ -1302,5 +1343,67 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // post-processed text in the terminal block event so the frontend can
         // reconcile a delayed or dropped tail before marking the block complete.
         self.finalize_all_with_authoritative_content();
+    }
+}
+
+#[cfg(test)]
+mod web_search_item_tests {
+    use super::*;
+
+    fn test_adapter() -> ChatV2LLMAdapter {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_ws_items".to_string(),
+        ));
+        ChatV2LLMAdapter::new(emitter, "msg_ws_items".to_string(), false, None, None)
+    }
+
+    /// P2-13 收尾：流事件载荷携带的完整 web_search_call item 被缓存，
+    /// 同 id 后到覆盖（completed 带 search_results 覆盖 in_progress 骨架），
+    /// take 后清空。
+    #[test]
+    fn handle_web_search_caches_full_items_deduped_by_id() {
+        let adapter = test_adapter();
+
+        // in_progress：骨架 item
+        adapter.handle_web_search(&json!({
+            "id": "ws_1",
+            "stage": "in_progress",
+            "item": { "type": "web_search_call", "id": "ws_1", "status": "in_progress" }
+        }));
+        // completed：完整 item（带 search_results），覆盖骨架
+        adapter.handle_web_search(&json!({
+            "id": "ws_1",
+            "stage": "completed",
+            "sources": [{ "title": "A", "url": "https://a.example.com" }],
+            "item": {
+                "type": "web_search_call",
+                "id": "ws_1",
+                "status": "completed",
+                "search_results": [{ "url": "https://a.example.com", "title": "A" }]
+            }
+        }));
+        // 第二个搜索调用
+        adapter.handle_web_search(&json!({
+            "id": "ws_2",
+            "stage": "completed",
+            "sources": [],
+            "item": { "type": "web_search_call", "id": "ws_2", "status": "completed" }
+        }));
+        // 无 item 键的载荷（进度事件）不影响缓存
+        adapter.handle_web_search(&json!({ "id": "ws_3", "stage": "searching" }));
+
+        let items = adapter.take_web_search_items();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["id"], json!("ws_1"));
+        assert_eq!(
+            items[0]["status"],
+            json!("completed"),
+            "同 id 后到的 completed item 应覆盖 in_progress 骨架"
+        );
+        assert!(items[0].get("search_results").is_some());
+        assert_eq!(items[1]["id"], json!("ws_2"));
+
+        // take 后清空
+        assert!(adapter.take_web_search_items().is_empty());
     }
 }

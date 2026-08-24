@@ -1727,6 +1727,20 @@ pub struct MessageMeta {
     /// history 重放按锚点用当轮 skill_contents 重建 live 字节。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_injection_anchors: Option<SkillInjectionAnchors>,
+
+    /// P2-13 收尾：服务端 `web_search_call` 完整 item（OpenAI Responses 形态）。
+    ///
+    /// live 时由流事件 `WebSearchCall` 的 `item` 键收集到
+    /// `PipelineContext.response_web_search_items`，这里随助手消息 meta 持久化；
+    /// history 重放挂回出站 assistant 消息 metadata 的同名键，由
+    /// `attach_web_search_replay_items` 附着为 `response_web_search_items`，
+    /// Responses 转换层原样回传 `input`（DeepSeek Responses 无状态，服务端靠
+    /// 该 item 恢复搜索结果）。序列化键名与出站 metadata 键对齐。
+    #[serde(
+        rename = "openai_responses_web_search_items",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub response_web_search_items: Option<Vec<Value>>,
 }
 
 impl MessageMeta {
@@ -4040,6 +4054,38 @@ mod tests {
             "Expected camelCase 'promptTokens' in usage, got: {}",
             json
         );
+    }
+
+    /// P2-13 收尾：web_search item 的持久化键名必须与出站 assistant 消息
+    /// metadata 键（attach_web_search_replay_items 消费）逐字对齐。
+    #[test]
+    fn test_message_meta_web_search_items_serde_key() {
+        let meta = MessageMeta {
+            response_web_search_items: Some(vec![serde_json::json!({
+                "type": "web_search_call",
+                "id": "ws_1",
+                "status": "completed"
+            })]),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&meta).unwrap();
+        assert_eq!(
+            json.get("openai_responses_web_search_items")
+                .and_then(|v| v.as_array())
+                .map(|items| items.len()),
+            Some(1),
+            "序列化键名必须是 openai_responses_web_search_items, got: {json}"
+        );
+
+        let roundtrip: MessageMeta = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            roundtrip.response_web_search_items.as_ref().map(Vec::len),
+            Some(1)
+        );
+
+        // None 不序列化
+        let empty = serde_json::to_string(&MessageMeta::default()).unwrap();
+        assert!(!empty.contains("openai_responses_web_search_items"));
     }
 
     #[test]

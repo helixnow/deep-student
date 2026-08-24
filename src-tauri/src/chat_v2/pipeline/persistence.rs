@@ -1135,6 +1135,10 @@ impl ChatV2Pipeline {
                 .skill_injection_anchors
                 .clone()
                 .filter(|anchors| !anchors.is_empty()),
+            // P2-13 收尾：服务端 web_search_call 完整 item 随消息 meta 持久化
+            // （键 openai_responses_web_search_items），history 重放原样回传 input
+            response_web_search_items: (!ctx.response_web_search_items.is_empty())
+                .then(|| ctx.response_web_search_items.clone()),
         };
 
         let assistant_message = ChatMessage {

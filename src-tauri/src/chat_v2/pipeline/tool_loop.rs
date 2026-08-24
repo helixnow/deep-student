@@ -1372,6 +1372,19 @@ impl ChatV2Pipeline {
                 }
             }
 
+            // P2-13 收尾：服务端 web_search_call 完整 item 累积到 ctx，随
+            // assistant 消息 meta 持久化（键 openai_responses_web_search_items），
+            // history 重放时原样回传 input（DeepSeek Responses 无状态恢复搜索结果）
+            let web_search_items = adapter.take_web_search_items();
+            if !web_search_items.is_empty() {
+                log::debug!(
+                    "[ChatV2::pipeline] Collected {} server-side web_search_call item(s) for replay (session={})",
+                    web_search_items.len(),
+                    ctx.session_id
+                );
+                ctx.merge_response_web_search_items(web_search_items);
+            }
+
             // 如果有工具调用，执行并递归
             if !tool_calls.is_empty() {
                 log::info!(
