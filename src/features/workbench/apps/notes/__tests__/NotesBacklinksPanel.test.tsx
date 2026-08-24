@@ -168,6 +168,36 @@ describe('NotesBacklinksPanel', () => {
     await waitFor(() => expect(screen.getByLabelText('active tab')).toHaveTextContent('properties'));
   });
 
+  it('renders a graph tab only when graphContent is provided and switches into it', async () => {
+    const { rerender } = renderPanel({
+      propertiesContent: <div>props body</div>,
+      graphContent: <div data-testid="graph-body">graph body</div>,
+    });
+
+    const graphTab = screen.getByRole('tab', { name: '图谱' });
+    expect(graphTab).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(graphTab);
+    expect(screen.getByRole('tab', { name: '图谱' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('graph-body')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('tab', { name: '链接' })).toBeInTheDocument());
+
+    // 不提供 graphContent 时页签消失，且已选中的 graph 回退到链接页
+    rerender(
+      <NotesBacklinksPanel
+        open
+        activeResource={notes[0]}
+        notes={notes}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+        propertiesContent={<div>props body</div>}
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: '图谱' })).toBeNull();
+    await waitFor(() => (
+      expect(screen.getByRole('tab', { name: '链接' })).toHaveAttribute('aria-selected', 'true')
+    ));
+  });
+
   it('loads only the active note and narrow backlink candidates', async () => {
     const { rerender } = renderPanel({ open: false });
     expect(getContent).not.toHaveBeenCalled();
