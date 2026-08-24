@@ -1088,7 +1088,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <DsButton
                     key={folder.id}
                     variant="ghost" size="sm"
-                    className="w-full !justify-start !px-3 !py-2"
+                    className="w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-11"
                     onClick={() => handleSelectRootFolder(folder.id)}
                   >
                     <FolderOpen size={14} className="text-muted-foreground" />
@@ -1099,7 +1099,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </CustomScrollArea>
           </div>
         ) : (
-          <DsButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4">
+          <DsButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4 [@media(pointer:coarse)]:min-h-11">
             {loadingFolders ? (
               <CircleNotch size={16} className="animate-spin" />
             ) : (
@@ -1137,10 +1137,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
                 />
                 <div className="flex gap-2">
-                  <DsButton variant="ghost" size="sm" className="flex-1" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
+                  <DsButton variant="ghost" size="sm" className="flex-1 [@media(pointer:coarse)]:min-h-11" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
                     {t('common:cancel')}
                   </DsButton>
-                  <DsButton variant="primary" size="sm" className="flex-1" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
+                  <DsButton variant="primary" size="sm" className="flex-1 [@media(pointer:coarse)]:min-h-11" onClick={handleCreateRootFolder} disabled={isMutating || !newRootFolderTitle.trim()}>
                     {isMutating && <CircleNotch size={16} className="animate-spin" />}
                     {t('common:create')}
                   </DsButton>
@@ -1149,7 +1149,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </motion.div>
           ) : (
             <motion.div key="create-root-button" {...disclosureMotion} className="overflow-hidden">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10">
+              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11">
                 <Plus size={16} />
                 {t('memory.create_folder')}
               </DsButton>
