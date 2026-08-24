@@ -71,3 +71,20 @@ R09/R10 已有宿主机契约与 Android 壳层测试，但当前文档目录没
 2. 合入并验证常规 sync-target 租约（双设备并发、TTL 回收、崩溃残锁、格式门槛叠加）；
 3. 合入 Android2 手册并至少完成一次真实 WebDAV 配置→同步→恢复→重启核对，记录设备/API/结果；
 4. 对外文案继续明确“整包备份无块级增量去重、改密码需换目录全量重传”，直到对应能力真正落地。
+
+## 5. 收尾合入后的状态回写（`b0450bdb`，父代理）
+
+本节不改写上面基于 `d746da20` 的原始复审正文，只标注其后继已交付、因而过时的条目：
+
+| 原条目 | 现状态 | 证据 |
+|---|---|---|
+| §2 P2-4 / §3.3 常规 sync-target 租约未合 | **已合** | `cloud_storage/sync_lease.rs` + 两入口接线；占用码 `E_SYNC_LEASE_HELD`；`sync_r11_lease.rs` 7 例通过 |
+| §2 P2-5 / §3.4 Android2 手册未合 | **手册已合，真机未签** | [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md)；8 项 SAF/重启缺口仍开 |
+| §2 P2-6 平台错误靠正则 | **机制半边已关** | `E_FTP_UNSUPPORTED_ON_ANDROID` / `E_S3_UNSUPPORTED_IN_BUILD`；前端只按 code 映射 |
+| §2 P2-3 文件名有损 | **仍开** | `asset_filenames.rs` 仍是 `_` 替换；R11-names2 未合 |
+| §3.1 增量去重 | **仍开** | 无 `DELTA-R11.md`；整 ZIP 仍整对象上传 |
+| §4 条件 1 完整 CI 绿灯 | **仍开** | 后继 HEAD CI 多为 pending/queued |
+| §4 条件 2 租约 | **已合** | 见上 |
+| §4 条件 3 Android 真机核对 | **仍开** | 手册有、真机签字无 |
+
+**生产放量仍 NO-GO。** 当前最短剩余：可逆文件名、增量调研、完整 CI 绿灯、Android 真机签字。
