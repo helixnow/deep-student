@@ -1902,6 +1902,24 @@ pub struct CloudStorageCredentials {
     pub encryption_password: Option<String>,
 }
 
+/// 与 ZIP 全保真导出 `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。
+/// 短于此长度的密码不能导出加密全保真包，禁止写入安全存储冒充「已配置」。
+pub const MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS: usize = 8;
+
+pub(crate) fn cloud_encryption_password_too_short(password: Option<&str>) -> bool {
+    password
+        .map(str::trim)
+        .filter(|password| !password.is_empty())
+        .is_some_and(|password| password.chars().count() < MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS)
+}
+
+pub fn cloud_encryption_password_too_short_message() -> String {
+    format!(
+        "云端端到端加密密码至少需要 {} 个字符（不能为空白）",
+        MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS
+    )
+}
+
 /// 手写 Debug：secret 字段一律脱敏为 `[REDACTED]`，仅保留 Some/None 的存在性
 /// 信息（排障需要知道哪些凭据已配置，但绝不需要明文值）。
 impl std::fmt::Debug for CloudStorageCredentials {
@@ -2037,6 +2055,11 @@ impl SecureStore {
         &self,
         update: &CloudStorageCredentials,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        if cloud_encryption_password_too_short(update.encryption_password.as_deref()) {
+            return Err(SecureStoreError::Other(
+                cloud_encryption_password_too_short_message(),
+            ));
+        }
         let mut credentials = self.get_cloud_credentials()?.unwrap_or_default();
         credentials.apply_nonempty_update(update);
         if credentials.has_any_secret() {
@@ -2517,6 +2540,38 @@ mod cloud_hydration_tests {
             Some("stored-encryption")
         );
         assert_eq!(credentials.s3_secret_access_key.as_deref(), Some("new-s3"));
+    }
+
+    #[test]
+    fn short_encryption_password_is_rejected_and_does_not_mark_configured() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let error = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("short".to_string()),
+                ..Default::default()
+            })
+            .expect_err("短于 8 字符的云端加密密码必须拒绝");
+        assert!(
+            error
+                .to_string()
+                .contains(&MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
+            "unexpected error: {error}"
+        );
+        assert!(store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .is_none());
+
+        let status = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("long-enough-password".to_string()),
+                ..Default::default()
+            })
+            .expect("8+ 字符密码应写入");
+        assert!(status.encryption_password_configured);
     }
 
     #[test]

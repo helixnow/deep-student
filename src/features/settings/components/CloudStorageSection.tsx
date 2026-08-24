@@ -34,6 +34,14 @@ import {
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+/** 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS` / ZIP `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。 */
+const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
+
+function isExplicitCloudEncryptionPasswordTooShort(password: string): boolean {
+  const trimmed = password.trim();
+  return trimmed.length > 0 && [...trimmed].length < CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS;
+}
+
 // ==================== [R11-check] 云端仓库巡检（只读） ====================
 
 /** 巡检问题类别（与后端 `cloud_storage::repo_check::RepoCheckProblemKind` 对齐） */
@@ -182,6 +190,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       if (e2eeKind) {
         return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
       }
+      // 安全存储 / ZIP 解析拒绝短密码：中文诊断原文，映射为同一条 i18n。
+      if (/云端端到端加密密码至少需要|备份密码至少需要/.test(raw)) {
+        return t('cloudStorage:encryption.tooShort', {
+          min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+        });
+      }
+      // 开关打开却读不到已存密码：后端 fail-closed 中文长文案。
+      if (/无法整槽恢复的便携归档当成加密全保真/.test(raw)) {
+        return t('cloudStorage:encryption.storedPasswordRequired');
+      }
+      if (/Missing WebDAV configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingWebdavConfig');
+      }
+      if (/Missing S3 configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingS3Config');
+      }
+      if (/Missing FTP configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingFtpConfig');
+      }
       const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
       if (platformErrorKey) return t(platformErrorKey);
       return raw;
@@ -327,7 +354,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }
       } catch (e: unknown) {
         console.error('Failed to resolve backend cloud storage config:', e);
-        const secureMessage = markSecureStoreIssue(e, 'write');
+        const secureMessage = markSecureStoreIssue(e, 'read');
         showGlobalNotification(
           'error',
           secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
@@ -407,6 +434,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行保存逻辑
   const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+
     const config = buildConfig(allowInsecureOverride);
 
     // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
@@ -506,50 +541,82 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行测试连接逻辑
   const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+
     setTesting(true);
     setConnectionStatus('unknown');
     try {
       const config = buildConfig(allowInsecureOverride);
       // Testing newly-entered credentials commits them once to secure storage;
       // routine connection/status IPC below carries only empty placeholders.
-      const status = await cloudApi.saveCredentials({
-        webdavPassword:
-          provider === 'webdav' && webdavConfig.password.trim()
-            ? webdavConfig.password
-            : undefined,
-        s3SecretAccessKey:
-          provider === 's3' && s3Config.secretAccessKey.trim()
-            ? s3Config.secretAccessKey
-            : undefined,
-        ftpPassword:
-          provider === 'ftp' && ftpConfig.password.trim()
-            ? ftpConfig.password
-            : undefined,
-        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-      });
-      setCredentialStatus(status);
+      try {
+        const status = await cloudApi.saveCredentials({
+          webdavPassword:
+            provider === 'webdav' && webdavConfig.password.trim()
+              ? webdavConfig.password
+              : undefined,
+          s3SecretAccessKey:
+            provider === 's3' && s3Config.secretAccessKey.trim()
+              ? s3Config.secretAccessKey
+              : undefined,
+          ftpPassword:
+            provider === 'ftp' && ftpConfig.password.trim()
+              ? ftpConfig.password
+              : undefined,
+          encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
+        });
+        setCredentialStatus(status);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        const secureMessage = markSecureStoreIssue(e, 'write');
+        showGlobalNotification(
+          'error',
+          `${secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed')}: ${getErrorMessage(e)}`,
+        );
+        return;
+      }
+
       // Persist every tested non-secret config first. Backend operations ignore
       // IPC metadata and rebuild exclusively from this SSOT record.
-      const saved = await cloudApi.saveCloudConfigSsot(config);
-      if (saved.config) {
-        setAllowInsecure(saved.config.allowInsecure ?? false);
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
-        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      try {
+        const saved = await cloudApi.saveCloudConfigSsot(config);
+        if (saved.config) {
+          setAllowInsecure(saved.config.allowInsecure ?? false);
+          localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
+          localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+        }
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
+        );
+        return;
       }
-      await cloudApi.checkConnection(config);
-      setConnectionStatus('connected');
-      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-      
-      // 获取同步状态
-      const latestSyncStatus = await cloudApi.getSyncStatus(config);
-      setSyncStatus(latestSyncStatus);
-      
-      // 获取版本列表
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`);
+
+      try {
+        await cloudApi.checkConnection(config);
+        setConnectionStatus('connected');
+        showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+
+        const latestSyncStatus = await cloudApi.getSyncStatus(config);
+        setSyncStatus(latestSyncStatus);
+
+        const versionList = await cloudApi.listVersions(config);
+        setVersions(versionList);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`,
+        );
+      }
     } finally {
       setTesting(false);
     }
@@ -559,6 +626,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPassword,
     ftpConfig.password,
     localizeCloudError,
+    markSecureStoreIssue,
     provider,
     s3Config.secretAccessKey,
     t,
@@ -881,6 +949,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
     setUploading(true);
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
     try {
@@ -918,7 +993,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 3/4：上传至云端（字节进度由 Tauri 事件驱动）
@@ -950,6 +1025,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     connectionStatus,
+    encryptionPassword,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -975,6 +1051,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
   const performRestore = useCallback(async (versionId: string) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
     lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
     setRestoreVersionId(versionId);
@@ -1006,7 +1089,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.importZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.importZipFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 3/3：恢复数据库
@@ -1015,7 +1098,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
         await waitForGovernanceJob(restoreJob.job_id, 'import');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }));
       }
 
       setOpProgress(null);
@@ -1038,6 +1121,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
+    encryptionPassword,
     localizeCloudError,
     resolveBackupId,
     resolveCloudZipEncryptionArgs,

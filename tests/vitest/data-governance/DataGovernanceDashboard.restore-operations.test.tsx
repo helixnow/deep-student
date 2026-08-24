@@ -192,6 +192,24 @@ async function navigateToBackupTab() {
   });
 }
 
+/** 导入入口先打开可选密码对话框；空密码表示便携包，确认后才选文件。 */
+async function confirmImportWithoutPassword() {
+  const importBtn = screen.getByRole('button', {
+    name: importButtonName,
+  });
+  await act(async () => {
+    fireEvent.click(importBtn);
+  });
+  const dialog = await screen.findByRole('dialog');
+  const confirmBtn = within(dialog).getByRole('button', {
+    name: importButtonName,
+  });
+  await act(async () => {
+    fireEvent.click(confirmBtn);
+  });
+  return importBtn;
+}
+
 // ============================================================================
 // 测试组 1：恢复确认流程
 // ============================================================================
@@ -628,13 +646,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     // open dialog 应被调用
     await waitFor(() => {
@@ -643,7 +655,11 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
 
     // importZip API 应被调用
     await waitFor(() => {
-      expect(mockDataGovernanceApi.importZip).toHaveBeenCalledWith('/path/to/backup.zip');
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalledWith(
+        '/path/to/backup.zip',
+        undefined,
+        undefined,
+      );
     });
 
     // startListening 应被调用来监听导入进度
@@ -659,13 +675,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockOpenDialog).toHaveBeenCalled();
@@ -685,13 +695,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockOpenDialog).toHaveBeenCalled();
@@ -726,13 +730,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -777,13 +775,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -821,13 +813,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const importBtn = screen.getByRole('button', {
-      name: importButtonName,
-    });
-
-    await act(async () => {
-      fireEvent.click(importBtn);
-    });
+    const importBtn = await confirmImportWithoutPassword();
 
     await waitFor(() => {
       expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
@@ -910,6 +896,7 @@ describe('DataGovernanceDashboard export ZIP flow', () => {
         '/path/to/output.zip',
         6, // 默认压缩级别
         true, // includeChecksums
+        undefined, // 未填备份密码：便携归档
       );
     });
   });

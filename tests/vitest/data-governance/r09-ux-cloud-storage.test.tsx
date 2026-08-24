@@ -164,6 +164,77 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
       /instead of uploaded unencrypted/i,
     );
   });
+
+  it('拒绝保存短于 8 字符的云端 E2EE 密码，避免徽章冒充已配置', () => {
+    expect(componentSource).toContain('cloudStorage:encryption.tooShort');
+    expect(componentSource).toContain('isExplicitCloudEncryptionPasswordTooShort');
+    expect(componentSource).toContain('CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS');
+
+    const saveStart = componentSource.indexOf('const doSaveConfig = useCallback');
+    const saveEnd = componentSource.indexOf('const saveConfig = useCallback', saveStart);
+    const saveBlock = componentSource.slice(saveStart, saveEnd);
+    expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      saveBlock.indexOf('await cloudApi.saveCredentials'),
+    );
+
+    const testStart = componentSource.indexOf('const doTestConnection = useCallback');
+    const testEnd = componentSource.indexOf('const handleConfirmInsecureFtpSave = useCallback', testStart);
+    const testBlock = componentSource.slice(testStart, testEnd);
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      testBlock.indexOf('setTesting(true)'),
+    );
+    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      testBlock.indexOf('await cloudApi.saveCredentials'),
+    );
+    expect(testBlock).toContain('cloudStorage:messages.configSavedButCredentialsFailed');
+    expect(testBlock).toContain('cloudStorage:messages.configSsotFailed');
+    expect(testBlock).toContain('cloudStorage:errors.connectionFailed');
+    expect(testBlock.indexOf('configSavedButCredentialsFailed')).toBeLessThan(
+      testBlock.indexOf('errors.connectionFailed'),
+    );
+
+    const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
+    const uploadEnd = componentSource.indexOf('const openRestoreConfirm = useCallback', uploadStart);
+    const uploadBlock = componentSource.slice(uploadStart, uploadEnd);
+    expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      uploadBlock.indexOf('setUploading(true)'),
+    );
+
+    const restoreStart = componentSource.indexOf('const performRestore = useCallback');
+    const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
+    const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
+    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      restoreBlock.indexOf('setDownloading(true)'),
+    );
+
+    expect(componentSource).toContain('云端端到端加密密码至少需要');
+    expect(componentSource).toContain('备份密码至少需要');
+    expect(componentSource).toContain("packageZipFailed', { error: localizeCloudError(e) }");
+    expect(componentSource).toContain("importZipFailed', { error: localizeCloudError(e) }");
+
+    expect(zhLocale.encryption.tooShort).toContain('至少需要');
+    expect(zhLocale.encryption.tooShort).toContain('不会保存');
+    expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);
+    expect(enLocale.encryption.tooShort).toMatch(/will not be saved/i);
+    expect(componentSource).toContain('无法整槽恢复的便携归档当成加密全保真');
+    expect(componentSource).toContain('cloudStorage:encryption.storedPasswordRequired');
+    expect(zhLocale.encryption.storedPasswordRequired).toContain('便携归档');
+    expect(enLocale.encryption.storedPasswordRequired).toMatch(/portable archive/i);
+    expect(componentSource).toContain('Missing WebDAV configuration');
+    expect(componentSource).toContain('cloudStorage:errors.missingWebdavConfig');
+    expect(componentSource).toContain('cloudStorage:errors.missingS3Config');
+    expect(componentSource).toContain('cloudStorage:errors.missingFtpConfig');
+    expect(Object.keys(zhLocale.encryption).sort()).toEqual(
+      Object.keys(enLocale.encryption).sort(),
+    );
+    expect(Object.keys(zhLocale.errors).sort()).toEqual(
+      Object.keys(enLocale.errors).sort(),
+    );
+  });
 });
 
 // ============================================================================
@@ -275,6 +346,8 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
     expect(guide).toContain('拒绝导出');
     expect(guide).toContain('不会套用已存密码');
+    expect(guide).toContain('至少 **8** 个字符');
+    expect(guide).toContain('拒绝保存');
     expect(guide).not.toContain('产物永远是便携归档');
     expect(guide).not.toContain('适合迁移学习数据本身');
     expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');

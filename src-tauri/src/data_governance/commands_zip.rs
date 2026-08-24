@@ -83,21 +83,30 @@ pub const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED: &str =
 /// 优先级：调用方显式传入的非空密码 >（开关打开时）安全存储里的已存密码。
 /// 空串视为未配置，不发明密码。开关打开却没有可用密码时返回错误，禁止默默导出便携包。
 /// 未请求 stored 时返回 `Ok(None)`，保持便携 ZIP。
+/// 显式或已存密码短于最小长度时也拒绝：接线前写入的短密码仍可能留在安全存储，
+/// 不能把它交给导出层半路失败，更不能为了「看起来未配置」而静默打成便携包。
 pub fn resolve_zip_encryption_password(
     explicit_password: Option<String>,
     use_stored_cloud_encryption_password: Option<bool>,
     stored_password: Option<String>,
 ) -> Result<Option<String>, String> {
     if let Some(password) = explicit_password.filter(|password| !password.trim().is_empty()) {
-        return Ok(Some(password));
+        return accept_zip_encryption_password(password);
     }
     if use_stored_cloud_encryption_password.unwrap_or(false) {
         return match stored_password.filter(|password| !password.trim().is_empty()) {
-            Some(password) => Ok(Some(password)),
+            Some(password) => accept_zip_encryption_password(password),
             None => Err(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED.to_string()),
         };
     }
     Ok(None)
+}
+
+fn accept_zip_encryption_password(password: String) -> Result<Option<String>, String> {
+    if crate::secure_store::cloud_encryption_password_too_short(Some(&password)) {
+        return Err(crate::secure_store::cloud_encryption_password_too_short_message());
+    }
+    Ok(Some(password))
 }
 
 /// 解析 ZIP 导入所用的备份密码。
@@ -2468,6 +2477,62 @@ mod resolve_zip_encryption_password_tests {
         assert_eq!(
             resolve_import_zip_password(None, Some(true), None, true).unwrap_err(),
             STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
+        );
+    }
+
+    #[test]
+    fn short_stored_password_is_fail_closed() {
+        let error =
+            resolve_zip_encryption_password(None, Some(true), Some("short".into())).unwrap_err();
+        assert!(
+            error.contains(&crate::secure_store::MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn short_explicit_password_is_fail_closed() {
+        let error = resolve_zip_encryption_password(
+            Some("short".into()),
+            Some(true),
+            Some("stored-passphrase".into()),
+        )
+        .unwrap_err();
+        assert!(
+            error.contains(&crate::secure_store::MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn short_leftover_does_not_force_portable_when_flag_off() {
+        assert_eq!(
+            resolve_zip_encryption_password(None, Some(false), Some("short".into())).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn sealed_import_short_stored_is_fail_closed() {
+        let error =
+            resolve_import_zip_password(None, Some(true), Some("short".into()), true).unwrap_err();
+        assert!(
+            error.contains(&crate::secure_store::MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn portable_import_keeps_short_explicit_for_existing_reject() {
+        assert_eq!(
+            resolve_import_zip_password(
+                Some("short".into()),
+                Some(true),
+                Some("stored-passphrase".into()),
+                false
+            )
+            .unwrap(),
+            Some("short".into())
         );
     }
 }
