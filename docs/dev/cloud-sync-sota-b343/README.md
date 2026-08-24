@@ -80,7 +80,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R07 CI 收口与文件级 E2EE | 部分合入 | 已合文件级 DSBK、自动同步、记录级校验子、WebDAV 409、文件名测试；文案已回写不再称文件级明文，见 [ROUND-07](./ROUND-07.md) |
 | R08 复审与收口 | 进行中 | 见 [ROUND-08](./ROUND-08.md) |
 | R09–R10 大包 | 进行中 | 每路 ≥4 交付物；P1-1 冲突 UI 已关；P2-2 KDF 钳制已合，见 [ROUND-10](./ROUND-10.md) |
-| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 / lease 已合；delta 调研已交付、names2 未齐，见 [ROUND-11](./ROUND-11.md) |
+| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 / lease / names2 / delta 调研已合，见 [ROUND-11](./ROUND-11.md) |
 | 收尾 | 进行中 | P1 巡检头 + P2 死代码/WebDAV 字节已合；见 [WRAP-CLOSE.md](./WRAP-CLOSE.md) |
 
 ## 文档索引
