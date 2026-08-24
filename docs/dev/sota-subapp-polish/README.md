@@ -60,7 +60,7 @@
 ## W10 验证与交付结论
 
 - `npx tsc --noEmit`：生成被忽略的 `src/version.ts` 后 0 错误。
-- 变更相关 vitest：100 文件 / 1126 用例，1125 通过；唯一失败是已知 `StatusBar` Windows inset。
+- 最终 rebase 后变更相关 vitest：103 文件 / 1143 用例，1142 通过；唯一失败是已知 `StatusBar` Windows inset。
 - 已知基线红灯定向复核：3 文件 / 43 用例，39 通过 / 4 失败。
 - 结论：当前分支达到本轮「可交付」标准；没有为过检查删除功能，也未改动无关业务模块。
 

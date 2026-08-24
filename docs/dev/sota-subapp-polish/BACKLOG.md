@@ -35,7 +35,7 @@
 ## P2 — 手感 / 视觉 / 无障碍
 
 - [ ] 中枢遗留红灯 4 个：`workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu` 键盘焦点、`StatusBar` Windows inset（→ R2-11）
-- [ ] 仓库全量 vitest / Tauri / Rust 测试未在 W10 运行；已覆盖变更相关 100 文件 / 1126 用例（1125 通过，唯一失败为已知 `StatusBar` 基线项），基线红灯定向集 39 通过 / 4 失败
+- [ ] 仓库全量 vitest / Tauri / Rust 测试未在 W10 运行；最终 rebase 后已覆盖变更相关 103 文件 / 1143 用例（1142 通过，唯一失败为已知 `StatusBar` 基线项），基线红灯定向集 39 通过 / 4 失败
 - [x] 原 7 个遗留红灯中的 `p11-workbench-desktop`、`DockWindowList`、`NotesSearchOverlay` 已在补扫复核中转绿
 - [ ] Quick Look 缩略图：Finder/preview 壳 Quick Look 已通（`ea41e92c`/`00aef429`），网格视图与 Quick Look 内缺真缩略图（→ R2-02）
 - [ ] 无障碍横切：焦点陷阱、roving tabindex、aria-live、对比度全面审计（→ R2-08）
