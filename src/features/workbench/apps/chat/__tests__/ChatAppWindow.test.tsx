@@ -58,6 +58,11 @@ vi.mock('../../system/SystemWindowShared', () => ({
 
 import { ChatAppWindow } from '../ChatAppWindow';
 import { STREAM_PRESET_DOWNSHIFT_DELAY_MS } from '../useDeferredStreamPreset';
+import {
+  markChatPageReady,
+  peekPendingChatNavigation,
+  resetChatNavigationHandshakeForTest,
+} from '@/features/chat/navigation/pendingChatNavigation';
 
 function makeProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -77,6 +82,7 @@ describe('ChatAppWindow', () => {
     fakeSessions.clear();
     managerListeners.clear();
     currentSessionId = null;
+    resetChatNavigationHandshakeForTest();
     document.querySelectorAll('[data-wb-titlebar-slot]').forEach((element) => element.remove());
   });
 
@@ -103,6 +109,55 @@ describe('ChatAppWindow', () => {
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'true');
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('CHAT_TOGGLE_SIDEBAR'));
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('sidebar-layout')).toHaveAttribute('data-sidebar-collapsed', 'false');
+  });
+
+  it('disconnects the titlebar observer as soon as its slot is found', async () => {
+    const observers: Array<{
+      callback: MutationCallback;
+      disconnect: ReturnType<typeof vi.fn>;
+      options?: MutationObserverInit;
+    }> = [];
+    const MockMutationObserver = vi.fn(function (this: MutationObserver, cb: MutationCallback) {
+      const record = {
+        callback: cb,
+        disconnect: vi.fn(),
+        options: undefined as MutationObserverInit | undefined,
+      };
+      observers.push(record);
+      Object.assign(this, {
+        observe: vi.fn((_target: Node, options?: MutationObserverInit) => {
+          record.options = options;
+        }),
+        disconnect: record.disconnect,
+        takeRecords: () => [],
+      });
+    });
+    vi.stubGlobal('MutationObserver', MockMutationObserver);
+
+    try {
+      render(<ChatAppWindow {...makeProps()} />);
+      const titlebarObserver = observers.find((observer) => observer.options?.childList);
+      expect(titlebarObserver).toBeDefined();
+
+      const titlebarSlot = document.createElement('div');
+      titlebarSlot.dataset.wbTitlebarSlot = '';
+      titlebarSlot.dataset.windowId = 'chat-window';
+      document.body.appendChild(titlebarSlot);
+      act(() => {
+        titlebarObserver?.callback([], {} as MutationObserver);
+      });
+
+      expect(await screen.findByRole('button', { name: '切换边栏' })).toBeInTheDocument();
+      expect(titlebarObserver?.disconnect).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('tracks the selected session title inside the singleton window', () => {
@@ -165,8 +220,7 @@ describe('ChatAppWindow', () => {
     expect(page).toHaveAttribute('data-stream-preset', 'silky');
   });
 
-  it('replays an initial history-session target after a cold launch', () => {
-    vi.useFakeTimers();
+  it('hands an initial history-session target to the navigation handshake on cold launch', () => {
     const received: string[] = [];
     const listener = (event: Event) => {
       received.push((event as CustomEvent<{ sessionId: string }>).detail.sessionId);
@@ -174,11 +228,24 @@ describe('ChatAppWindow', () => {
     window.addEventListener('navigate-to-session', listener);
     try {
       render(<ChatAppWindow {...makeProps({ instanceKey: 'sess_history' })} />);
-      act(() => vi.runAllTimers());
-      expect(received).toEqual(['sess_history', 'sess_history', 'sess_history']);
+
+      // 页面未就绪：标准事件先派发给壳层开窗，同时保留意图等待页面完成初始加载
+      expect(received).toEqual(['sess_history']);
+      expect(peekPendingChatNavigation()).toEqual({ kind: 'session', sessionId: 'sess_history' });
+
+      // ChatV2Page 就绪（初始加载完成）：意图被消费并向页面重放一次标准事件
+      act(() => { markChatPageReady(); });
+      expect(received).toEqual(['sess_history', 'sess_history']);
+      expect(peekPendingChatNavigation()).toBeNull();
     } finally {
       window.removeEventListener('navigate-to-session', listener);
-      vi.useRealTimers();
     }
+  });
+
+  it('skips the handshake when a current session already exists (warm focus)', () => {
+    makeFakeStore('sess_current', '当前会话');
+    currentSessionId = 'sess_current';
+    render(<ChatAppWindow {...makeProps({ instanceKey: 'sess_history' })} />);
+    expect(peekPendingChatNavigation()).toBeNull();
   });
 });

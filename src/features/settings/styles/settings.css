@@ -919,3 +919,39 @@ body .settings-mobile-sheet-scroll-viewport {
     transition: none;
   }
 }
+
+/* ============ 设置搜索定位高亮 ============ */
+
+/*
+ * 侧栏搜索命中 → 内容区目标行一次性脉冲（settingsSearchReveal.ts 施加/移除）。
+ * 用 outline + 背景渐隐提示落点，不改变布局；圆角对齐行 hover 造型。
+ */
+@keyframes settings-search-hit-pulse {
+  0% {
+    outline-color: color-mix(in srgb, var(--primary) 70%, transparent);
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+  60% {
+    outline-color: color-mix(in srgb, var(--primary) 45%, transparent);
+    background-color: color-mix(in srgb, var(--primary) 8%, transparent);
+  }
+  100% {
+    outline-color: transparent;
+    background-color: transparent;
+  }
+}
+
+.settings-search-hit {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  border-radius: var(--radius, 8px);
+  animation: settings-search-hit-pulse 2.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-search-hit {
+    animation: none;
+    outline-color: color-mix(in srgb, var(--primary) 55%, transparent);
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  }
+}

@@ -727,8 +727,8 @@ export const qbankToolsSkill: SkillDefinition = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
-          count: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '每日练习题数' },
+          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          count: { type: 'integer', minimum: 1, maximum: 50, default: 10, description: '每日练习题数，最多 50（与练习面板的每日目标范围一致）' },
         },
         required: ['session_id'],
       },
@@ -741,8 +741,9 @@ export const qbankToolsSkill: SkillDefinition = {
         additionalProperties: false,
         properties: {
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为全局' },
-          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '年份' },
-          month: { type: 'integer', minimum: 1, maximum: 12, description: '月份' },
+          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '【必填】年份' },
+          month: { type: 'integer', minimum: 1, maximum: 12, description: '【必填】月份' },
+          daily_target: { type: 'integer', minimum: 1, maximum: 50, description: '可选达标判定目标题数（缺省 10，跟随用户每日一练目标）' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },

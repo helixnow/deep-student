@@ -174,6 +174,51 @@
   color: currentColor;
 }
 
+/* ==== automation 状态项（2026-08：自 StatusBarItems 内联 <style> 迁入） ====
+   running 呼吸脉冲 + failed 红点角标；prefers-reduced-motion 下取消动画。 */
+
+@keyframes wb-menubar-automation-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.wb-menubar-automation-iconwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
+  animation: wb-menubar-automation-pulse 1.6s ease-in-out infinite;
+}
+
+.wb-menubar-automation-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--destructive));
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-menubar-automation-iconwrap[data-pulse='true'] .wb-menubar-item-icon {
+    animation: none;
+  }
+}
+
+/* 番茄状态项：暂停态数字压暗，与「已暂停」文案呼应（data-status 由 TSX 提供） */
+.wb-menubar-item[data-wb-status-item='pomodoro'][data-status='paused'] .wb-menubar-item-value {
+  opacity: 0.55;
+}
+
 .wb-menubar-item-icon {
   display: inline-flex;
   flex-shrink: 0;

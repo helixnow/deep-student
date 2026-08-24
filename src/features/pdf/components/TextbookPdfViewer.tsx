@@ -4,6 +4,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import '../styles/textbook-pdf-viewer.css';
 import { EnhancedPdfViewer, type Bookmark } from './EnhancedPdfViewer';
+import type { PdfSelectionPayload } from '../pdfSelectionActions';
 import { usePdfRenderTracker } from '@/utils/pdfDebug';
 import useTheme from '@/hooks/useTheme';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -44,6 +45,10 @@ interface TextbookPdfViewerProps {
   resourcePath?: string;
   bookmarks?: Bookmark[];
   onBookmarksChange?: (bookmarks: Bookmark[]) => void;
+  /** 划词「引用到对话」（selectedText + 页码），透传给 EnhancedPdfViewer */
+  onQuoteToChat?: (payload: PdfSelectionPayload) => void;
+  /** 划词「做笔记」，透传给 EnhancedPdfViewer */
+  onCreateNote?: (payload: PdfSelectionPayload) => void;
   /** @deprecated 自动导出已移除，此参数无效 */
   enableAutoPrepare?: boolean;
 }
@@ -65,6 +70,8 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   resourcePath,
   bookmarks,
   onBookmarksChange,
+  onQuoteToChat,
+  onCreateNote,
 }) => {
   const { t } = useTranslation(['pdf', 'common', 'textbook']);
   const { isDarkMode } = useTheme();
@@ -81,6 +88,12 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
     isStale?: () => boolean;
   } | null>(null);
   const lastReportedPageRef = useRef<number | null>(null);
+
+  // 同一组件实例可切换资源；页码去重基线不能跨文档沿用，否则新文档
+  // 第一次跳到“恰好等于旧文档末页”的页码时会被误判为重复而不落进度。
+  useEffect(() => {
+    lastReportedPageRef.current = null;
+  }, [resourcePath, filePath]);
 
   // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
   // StrictMode / 并发渲染下 useMemo 可能重复执行或结果被丢弃，
@@ -257,7 +270,10 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
             resourcePath={resourcePath}
             bookmarks={bookmarks}
             onBookmarksChange={onBookmarksChange}
+            onQuoteToChat={onQuoteToChat}
+            onCreateNote={onCreateNote}
           />
+
         </div>
       )}
     </div>

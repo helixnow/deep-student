@@ -49,9 +49,16 @@ vi.mock('@/components/layout', () => ({
   DEFAULT_GESTURE_IGNORE_SELECTOR: '[data-no-gesture]',
 }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
-vi.mock('@/features/learning-hub/stores/finderStore', () => ({
-  useFinderStore: (selector: (state: typeof finderState) => unknown) => selector(finderState),
-}));
+vi.mock('@/features/learning-hub/stores/finderStore', () => {
+  const useFinderStore = (selector: (state: typeof finderState) => unknown) => selector(finderState);
+  return {
+    useFinderStore,
+    // LH-HOST：页面按宿主取 store；本测试只跑桌面宿主，回同一个 mock 即可
+    useFinderStoreFor: () => useFinderStore,
+    getFinderStore: () => useFinderStore,
+    FINDER_HOST_IDS: { page: 'page', pageMobile: 'page-mobile' },
+  };
+});
 vi.mock('@/features/learning-hub/components/DstuAppLauncher', () => ({ DstuAppLauncher: () => null }));
 vi.mock('@/features/learning-hub/components/TabBar', () => ({ TabBar: () => null }));
 vi.mock('@/features/learning-hub/apps/TabPanelContainer', () => ({

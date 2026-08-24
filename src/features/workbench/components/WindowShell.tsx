@@ -98,6 +98,8 @@ const TILE_ZONE_I18N_KEY: Partial<Record<DisplayMode, string>> = {
   'tiled-tr': 'tile.zone.topRight',
   'tiled-bl': 'tile.zone.bottomLeft',
   'tiled-br': 'tile.zone.bottomRight',
+  'tiled-top': 'tile.zone.top',
+  'tiled-bottom': 'tile.zone.bottom',
 };
 
 function cursorForResizeEdge(dir: ResizeDirection): WorkbenchCursorKind {
@@ -160,6 +162,10 @@ export function snapZoneToDisplayMode(zone: Exclude<SnapZone, null>): DisplayMod
       return 'tiled-bl';
     case 'br':
       return 'tiled-br';
+    case 'top-half':
+      return 'tiled-top';
+    case 'bottom-half':
+      return 'tiled-bottom';
     case 'top-maximize':
     default:
       return 'maximized';

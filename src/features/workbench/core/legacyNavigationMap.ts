@@ -5,7 +5,7 @@
  * bus 会把请求交给这里翻译回现有 CustomEvent 导航（设计 §9.3：
  * 调用方无感知，legacy 路径 100% 复用现有 App.tsx / 页面监听链路）。
  *
- * 本模块保持零重依赖（只 import types 与 workbenchBus），
+ * 本模块保持零重依赖（只 import types、workbenchBus 与零依赖的导航握手模块），
  * App.tsx 启动时深路径引入并 install，一次注册全局生效。
  *
  * 映射表（typeId → legacy 行为）：
@@ -21,6 +21,7 @@
  */
 import type { ActivateRequest, LaunchRequest } from './types';
 import { workbenchBus } from './workbenchBus';
+import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 
 const RESOURCE_TYPE_IDS = new Set([
   'note',
@@ -76,10 +77,8 @@ export function translateLegacyNavigation(
   if (typeId === 'chat') {
     dispatch('NAVIGATE_TO_VIEW', { view: 'chat-v2' });
     if (instanceKey) {
-      // ChatV2Page 可能尚未挂载，按命令面板同款节奏多次派发（setCurrentSessionId 幂等）
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 0);
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 400);
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 1200);
+      // ChatV2Page 可能尚未挂载：交给导航握手（就绪立即派发，未就绪挂起待消费）
+      requestChatSessionNavigation(instanceKey);
     }
     if (kind === 'activate') {
       const activate = req as ActivateRequest;

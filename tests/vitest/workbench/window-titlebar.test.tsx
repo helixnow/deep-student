@@ -120,6 +120,35 @@ describe('WindowTitleBar 三键与双击', () => {
     expect(bar.className).not.toContain('wb-title-dragging');
   });
 
+  it('拖拽中窗口失焦会清理 dragging 视觉态与本轮监听', () => {
+    const { container } = renderBar();
+    const bar = container.querySelector('[data-wb-titlebar]')!;
+    fireEvent(bar, new MouseEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 100,
+      clientY: 10,
+    }));
+    fireEvent(window, new MouseEvent('pointermove', {
+      bubbles: true,
+      clientX: 104,
+      clientY: 10,
+    }));
+    expect(bar.className).toContain('wb-title-dragging');
+
+    fireEvent(window, new Event('blur'));
+    expect(bar.className).not.toContain('wb-title-dragging');
+
+    // blur 后旧 move listener 已摘除，后续游标事件不得把 class 重新挂回。
+    fireEvent(window, new MouseEvent('pointermove', {
+      bubbles: true,
+      clientX: 130,
+      clientY: 10,
+    }));
+    expect(bar.className).not.toContain('wb-title-dragging');
+  });
+
   it('挂载 O3 类契约：wb-title-bar / wb-title-key / glyph / draggable', () => {
     const { container } = renderBar();
     const bar = container.querySelector('[data-wb-titlebar]')!;

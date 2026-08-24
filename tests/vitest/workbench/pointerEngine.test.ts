@@ -204,11 +204,11 @@ describe('WindowPointerEngine — 拖动', () => {
     h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), h.target);
     expect(h.engine.isActive()).toBe(true);
     expect(h.engine.isArmed()).toBe(false);
-    movePointer(400.4, 120); // 亚像素位移 < 1px
+    movePointer(402, 122); // 位移 ≈ 2.83px < MOVE_ARM_THRESHOLD_PX（3px）
     flushRaf();
     expect(armed).not.toHaveBeenCalled();
     expect(h.frames).toHaveLength(0);
-    releasePointer(400.4, 120);
+    releasePointer(402, 121);
     expect(h.commits).toHaveLength(0);
     expect(h.engine.isActive()).toBe(false);
   });
@@ -217,14 +217,24 @@ describe('WindowPointerEngine — 拖动', () => {
     const armed = vi.fn();
     const h = createHarness({ onMoveArmed: armed });
     h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), h.target);
-    movePointer(402, 122); // > 1px
+    movePointer(404, 123); // 位移 5px > MOVE_ARM_THRESHOLD_PX（3px）
     flushRaf();
     expect(armed).toHaveBeenCalledTimes(1);
     expect(h.engine.isArmed()).toBe(true);
     expect(h.frames).toHaveLength(1);
-    expect(h.frames[0]).toEqual({ x: 102, y: 102, w: 600, h: 400 });
-    releasePointer(402, 122);
+    expect(h.frames[0]).toEqual({ x: 104, y: 103, w: 600, h: 400 });
+    releasePointer(404, 123);
     expect(h.commits).toHaveLength(1);
+  });
+
+  it(`位移恰为 ${MOVE_ARM_THRESHOLD_PX}px（等于阈值）即武装`, () => {
+    const armed = vi.fn();
+    const h = createHarness({ onMoveArmed: armed });
+    h.engine.startMove(pointerEvent('pointerdown', { clientX: 400, clientY: 120 }), h.target);
+    movePointer(400 + MOVE_ARM_THRESHOLD_PX, 120);
+    flushRaf();
+    expect(armed).toHaveBeenCalledTimes(1);
+    expect(h.engine.isArmed()).toBe(true);
   });
 
   it('零位移松手不 commit（避免无谓 store 写）', () => {

@@ -48,6 +48,8 @@ export type {
   WindowShellPointerResult,
 } from './components/WindowShell';
 export { WindowTitleBar, TITLEBAR_HEIGHT } from './components/WindowTitleBar';
+// 标题栏高度单一来源（TS 常量 + CSS token 名 + 子应用安全区 var() 写法）
+export { TITLEBAR_HEIGHT_CSS_VAR, titlebarHeightCss } from './core/metrics';
 export { TileMenuPopover, TILE_MENU_GRID } from './components/TileMenuPopover';
 export type { TileMenuAction } from './components/TileMenuPopover';
 export { WindowResizeHandles, RESIZE_DIRECTIONS } from './components/WindowResizeHandles';
