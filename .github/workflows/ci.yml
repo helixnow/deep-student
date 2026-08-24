@@ -121,6 +121,8 @@ jobs:
   # vitest.config.ts 为规避 Node22 tinypool 崩溃使用 forks 多进程池
   # （不要改回 singleFork：单进程串行会因 jsdom 内存跨文件累积触发
   # GC 抖动近似死锁，分片会卡死直到 45 分钟超时）。4 路分片并行跑。
+  # worker 堆在 vitest.config.ts execArgv=6144；这里再限 --maxWorkers=2，
+  # 避免多 fork 各要 6GiB 把 runner 打满（26bfcb33 分片 2/4 在 4096 处 OOM）。
   # ============================================
   frontend-tests:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
@@ -144,7 +146,7 @@ jobs:
         run: node scripts/generate-version.mjs
 
       - name: Run vitest shard
-        run: npx vitest run --shard=${{ matrix.shard }}/4
+        run: npx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2
         env:
           NODE_OPTIONS: '--max-old-space-size=6144'
 

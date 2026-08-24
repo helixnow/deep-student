@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 74（2026-08-24）— CI：worker 堆 / 分片并发 / 平台断言
+
+1. [x] Vitest forks `execArgv` 从 4096 提到 6144，与 CI `NODE_OPTIONS` 对齐（26bfcb33 分片 2/4 在 worker 4GiB 处 OOM）
+2. [x] CI 分片加 `--maxWorkers=2`，避免多 fork × 6GiB 挤爆 runner
+3. [x] StatusBar Windows chrome-inset 显式 stub UA（Linux jsdom 不再默认 windows）
+4. [x] scrollbar 私有 recipe 扫描移出 5s testTimeout
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 73（2026-08-24）— 外会话 session_started / 流式订阅 / 引用 a11y
 
 1. [x] 外会话 `session_started` 只写入 `sessions[id]`，不再顶掉活跃顶层
