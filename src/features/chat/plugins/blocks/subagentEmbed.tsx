@@ -686,8 +686,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             className={cn(
               'px-1.5 py-0.5 rounded border border-border/60 text-xs text-muted-foreground',
               'hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0',
-              // 触屏扩大命中区至 ≥44px：本体 ~22px（text-xs 16 + py 4 + border 2），-inset-3 → 46px
-              "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']",
+              // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免相邻操作命中区互相覆盖
+              "[@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[11px] [@media(pointer:coarse)]:after:content-['']",
               isCancelling && 'opacity-50 pointer-events-none'
             )}
             aria-label={t('workspace:subagentEmbed.cancel')}
@@ -718,8 +718,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               handleOpenFullView();
             }
           }}
-          // 触屏：本体 ~26px（icon 14 + p-1.5 12，DsButton leading-none 无 strut），-inset-2.5 → 46px 命中
-          className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
+          // 触屏：水平用真实 44px 占位，垂直由伪元素补到 44px，避免与尺寸切换命中区重叠
+          className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
           aria-label={t('workspace:subagentEmbed.openFull')}
           title={t('workspace:subagentEmbed.openFull')}
         >
@@ -740,8 +740,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 setIsFullHeight(!isFullHeight);
               }
             }}
-            // 触屏：同 open-full 范式，-inset-2.5 → 46px 命中
-            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
+            // 触屏：同 open-full 范式，真实水平占位防止相邻操作互相截获点击
+            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-[9px]"
             aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
             title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}
           >

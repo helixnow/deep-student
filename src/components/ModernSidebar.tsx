@@ -1121,7 +1121,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               tabIndex={collapsed ? -1 : undefined}
               isActive={isActive}
               hideLeadingSlot={pinned}
-              className={pinned ? '!pl-3' : undefined}
+              className={cn(
+                // coarse 下行高容纳 44px 操作钮；右侧为 44+4+44px 操作簇留位，
+                // 避免常显按钮跨行命中或盖住会话标题。
+                '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!pr-[4.25rem]',
+                pinned && '!pl-3',
+              )}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
               ) : hasBlockingInteraction ? (
