@@ -12,7 +12,7 @@
 - [x] generative-ui skill ↔ Rust parse_intent contract 测试
 - [x] Rust execute 级测试（`generative_ui_executor` 单元 + `generative_ui_executor_e2e`；本环境 Cargo 1.83 暂无法跑通 `cargo test`）
 - [x] generativeUiRustMapping contract（context/pipeline 双映射）
-- [x] 77 项 vitest 全绿（+3 Rust mapping contract）
+- [x] 78 项 vitest 全绿（含 Hub 组件 + Rust mapping contract）
 
 ### Round 6+
 - chunkBuffer 增量流式状态机
