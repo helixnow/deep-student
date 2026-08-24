@@ -218,7 +218,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     ? 'flex items-center gap-0.5 transition-opacity'
     : 'flex items-center gap-0.5 transition-opacity md:pointer-events-none md:w-0 md:overflow-hidden md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:w-auto md:group-hover:overflow-visible md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:w-auto md:group-focus-within:overflow-visible md:group-focus-within:opacity-100';
   const desktopCopyButton = showInlineCopyOnly ? (
-    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+    <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
       <IconSwap
         active={copied}
         a={<CopySimple className="w-4 h-4" />}
@@ -336,13 +336,13 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 
       <div className={desktopSecondaryActionsClassName}>
         {showInlineRetry && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
             <ArrowCounterClockwise className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
           </DsButton>
         )}
 
         {showInlineEdit && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
             <PencilSimple className="w-4 h-4" />
           </DsButton>
         )}
