@@ -77,6 +77,9 @@ interface GradingMainProps {
   appliedSuggestionKeys?: ReadonlySet<string>;
   /** 把当前轮批改结果存为笔记 */
   onSaveAsNote?: () => void;
+  /** 把批改结果送进制卡链路 */
+  onGenerateCards?: () => void;
+  isGeneratingCards?: boolean;
 
   // Round Props
   currentRound: number;
@@ -155,6 +158,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onUndoSuggestion,
   appliedSuggestionKeys,
   onSaveAsNote,
+  onGenerateCards,
+  isGeneratingCards,
   currentRound,
   onModesChange,
   settingsAsPage = false,
@@ -271,6 +276,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onUndoSuggestion={onUndoSuggestion}
       appliedSuggestionKeys={appliedSuggestionKeys}
       onSaveAsNote={onSaveAsNote}
+      onGenerateCards={onGenerateCards}
+      isGeneratingCards={isGeneratingCards}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
     />

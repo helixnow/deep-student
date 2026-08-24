@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   Pen,
+  Cards,
   Copy,
   Check,
   Download,
@@ -39,6 +40,9 @@ interface ResultPanelProps {
   appliedSuggestionKeys?: ReadonlySet<string>;
   /** 把当前轮批改结果存为笔记 */
   onSaveAsNote?: () => void;
+  /** 把批改结果送进制卡链路（由 Workbench 提供） */
+  onGenerateCards?: () => void;
+  isGeneratingCards?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -114,6 +118,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   onUndoSuggestion,
   appliedSuggestionKeys,
   onSaveAsNote,
+  onGenerateCards,
+  isGeneratingCards,
   roundNavigation,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
@@ -137,6 +143,12 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   );
 
   const showEmptyState = !gradingResult && !isGrading && !error;
+  // 无批改结果 / 批改进行中都没有可提炼的错点，按钮 disabled 并说明原因
+  const generateCardsDisabledReason = isGrading
+    ? t('essay_grading:make_cards.disabled_grading')
+    : !gradingResult
+      ? t('essay_grading:make_cards.disabled_no_result')
+      : null;
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
@@ -300,6 +312,30 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           </div>
         )}
       </div>
+
+      {/* 生成卡片：常显次级动作条（移动端整行，桌面右对齐），不藏进 hover 层 */}
+      {onGenerateCards && !showEmptyState && (
+        <div className="shrink-0 border-t border-border/30 px-3 py-2 sm:px-4">
+          <DsButton
+            variant="secondary"
+            size="sm"
+            onClick={onGenerateCards}
+            disabled={Boolean(generateCardsDisabledReason) || Boolean(isGeneratingCards)}
+            title={generateCardsDisabledReason ?? undefined}
+            className="w-full justify-center sm:ml-auto sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+          >
+            <Cards size={14} />
+            {isGeneratingCards
+              ? t('essay_grading:make_cards.running')
+              : t('essay_grading:make_cards.label')}
+          </DsButton>
+          {generateCardsDisabledReason && (
+            <p className="mt-1.5 text-xs text-muted-foreground sm:text-right">
+              {generateCardsDisabledReason}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 });
