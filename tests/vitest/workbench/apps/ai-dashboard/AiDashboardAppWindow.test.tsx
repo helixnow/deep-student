@@ -55,6 +55,12 @@ vi.mock('@/features/workbench/apps/system/todoAgendaSource', () => ({
 
 import AiDashboardAppWindow from '@/features/workbench/apps/ai-dashboard/AiDashboardAppWindow';
 
+function expectChartOrTable(scope: HTMLElement) {
+  const chart = scope.querySelector('[data-testid="generative-ui-chart"], [data-generative-chart]');
+  const table = scope.querySelector('[data-testid="generative-ui-table"], [data-generative-table]');
+  expect(chart || table).toBeTruthy();
+}
+
 describe('AiDashboardAppWindow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,11 +68,13 @@ describe('AiDashboardAppWindow', () => {
 
   it('renders dashboard window with briefing stats', () => {
     render(<AiDashboardAppWindow windowId="w1" onTitleChange={vi.fn()} isVisible />);
-    expect(screen.getByTestId('wb-ai-dashboard-window')).toBeInTheDocument();
+    const dashboard = screen.getByTestId('wb-ai-dashboard-window');
+    expect(dashboard).toBeInTheDocument();
     expect(screen.getByText('AI 学习仪表盘')).toBeInTheDocument();
     expect(screen.getByText('到期闪卡')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
     expect(screen.getByText('进行中制卡')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
+    expectChartOrTable(dashboard);
   });
 });

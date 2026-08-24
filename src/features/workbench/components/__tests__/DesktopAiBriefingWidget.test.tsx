@@ -26,8 +26,10 @@ vi.mock('@/features/generative-ui/handlers/workbenchLearningHandlers', () => ({
   workbenchLearningHandlers: {},
 }));
 
+const flashcardsDueState = { count: 3 };
+
 vi.mock('../../apps/system/flashcardsDueSource', () => ({
-  getFlashcardsDueCount: () => 3,
+  getFlashcardsDueCount: () => flashcardsDueState.count,
   subscribeFlashcardsDueCount: () => () => {},
 }));
 
@@ -46,15 +48,25 @@ vi.mock('../../apps/system/todoAgendaSource', () => ({
 
 import { DesktopAiBriefingWidget } from '../DesktopAiBriefingWidget';
 
+function expectChartOrTable(scope: HTMLElement) {
+  const chart = scope.querySelector('[data-testid="generative-ui-chart"], [data-generative-chart]');
+  const table = scope.querySelector('[data-testid="generative-ui-table"], [data-generative-table]');
+  expect(chart || table).toBeTruthy();
+}
+
 describe('DesktopAiBriefingWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    flashcardsDueState.count = 3;
+    todoAgendaSnapshot.items = [{ id: '1', dueDate: '2000-01-01', status: 'pending' as const }];
   });
 
   it('renders briefing widget with due flashcards stat', () => {
     render(<DesktopAiBriefingWidget />);
-    expect(screen.getByTestId('wb-ai-briefing-widget')).toBeInTheDocument();
+    const widget = screen.getByTestId('wb-ai-briefing-widget');
+    expect(widget).toBeInTheDocument();
     expect(screen.getByText('到期闪卡')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
+    expectChartOrTable(widget);
   });
 });

@@ -184,6 +184,7 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
   return (
     <Card
       className="min-w-0"
+      data-testid="generative-ui-chart"
       data-generative-chart
       data-chart-id={id}
       data-chart-kind={kind}

@@ -1,4 +1,5 @@
 import type { GenerativeUIIntent } from '../types';
+import { buildTableIntent } from './buildTableIntent';
 
 export interface LearningBriefingInput {
   dueFlashcards?: number;
@@ -17,11 +18,38 @@ export interface LearningBriefingLabels {
   openQbank: string;
 }
 
+function categoryFromCountLabel(template: string, fallback: string): string {
+  const stripped = template.replace(/\{\{count\}\}/g, '').replace(/\s+/g, ' ').trim();
+  return stripped || fallback;
+}
+
 export function buildLearningBriefingIntent(
   input: LearningBriefingInput,
   labels: LearningBriefingLabels,
 ): GenerativeUIIntent {
   const { dueFlashcards = 0, pendingTodos = 0, overdueTodos = 0 } = input;
+  const hasWorkload = dueFlashcards > 0 || pendingTodos > 0 || overdueTodos > 0;
+  const workloadTable = hasWorkload
+    ? buildTableIntent({
+        title: labels.progressTitle,
+        columns: [
+          { key: 'metric', label: labels.progressTitle.slice(0, 80) },
+          { key: 'count', label: labels.dueTrendDue.slice(0, 80), align: 'right' },
+        ],
+        rows: [
+          { metric: labels.dueFlashcardsTitle, count: dueFlashcards },
+          {
+            metric: categoryFromCountLabel(labels.pendingLabel, labels.progressTitle),
+            count: pendingTodos,
+          },
+          {
+            metric: categoryFromCountLabel(labels.overdueLabel, labels.progressTitle),
+            count: overdueTodos,
+          },
+        ],
+        labels: {},
+      }).blocks
+    : [];
 
   return {
     version: '1',
@@ -47,6 +75,7 @@ export function buildLearningBriefingIntent(
               : labels.pendingLabel.replace('{{count}}', String(pendingTodos)),
         },
       },
+      ...workloadTable,
       {
         type: 'action-bar',
         props: {

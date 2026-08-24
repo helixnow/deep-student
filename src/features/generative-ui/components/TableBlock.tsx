@@ -62,6 +62,7 @@ export function TableBlock({ id, title, columns, rows, emptyLabel, caption }: Ta
   return (
     <Card
       className="min-w-0"
+      data-testid="generative-ui-table"
       data-generative-table
       data-table-id={id}
       data-empty={isEmpty || undefined}
