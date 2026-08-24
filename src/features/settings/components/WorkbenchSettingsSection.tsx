@@ -465,6 +465,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleProfileChange(next as PerformanceProfile);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'quality',
@@ -499,6 +500,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleTierChange(next as MaterialTierSetting);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             { value: 'auto', label: t('workbench:settings.materialTier.auto') },
             { value: 'full', label: t('workbench:settings.materialTier.full') },
@@ -529,6 +531,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               }
             }}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             options={[
               { value: 'theme', label: t('workbench:settings.wallpaper.kindTheme') },
               { value: 'image', label: t('workbench:settings.wallpaper.kindImage') },
@@ -701,6 +704,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             void persist(WORKBENCH_SETTING_KEYS.titleBarDoubleClick, value, value);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             { value: 'zoom', label: t('workbench:settings.titleBarDoubleClick.zoom') },
             { value: 'minimize', label: t('workbench:settings.titleBarDoubleClick.minimize') },
@@ -754,6 +758,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleBrowserNetworkModeChange(next as BrowserNetworkMode);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'local_whitelist',
@@ -806,6 +811,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               void persist(WORKBENCH_SETTING_KEYS.agentControl, value, value);
             }}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             options={[
               {
                 value: 'off',
@@ -863,6 +869,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             void persist(WORKBENCH_SETTING_KEYS.agentPacing, value, value);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'fast',
