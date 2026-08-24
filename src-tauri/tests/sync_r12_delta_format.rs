@@ -232,14 +232,20 @@ fn r12_file_count_over_limit_is_rejected() {
 #[test]
 fn r12_path_and_object_key_length_limits_reject_not_truncate() {
     // path 上限按字节计：恰好 4096 合法，4097 拒绝。
+    // objectKey 固定为短值，避免 helper 由 path 派生的 key 先触发 512 上限。
+    let short_key = |path: &str| {
+        let mut f = file_ref(path, 1);
+        f.object_key = "backup-v2/objects/device-1/fixed.dsbk".to_string();
+        f
+    };
     let at_limit = format!("d/{}", "p".repeat(MAX_LOGICAL_PATH_BYTES - 2));
     assert_eq!(at_limit.len(), MAX_LOGICAL_PATH_BYTES);
-    descriptor(vec![file_ref(&at_limit, 1)])
+    descriptor(vec![short_key(&at_limit)])
         .validate()
         .expect("4096-byte path is legal");
 
     let over = format!("d/{}", "p".repeat(MAX_LOGICAL_PATH_BYTES - 1));
-    let d = descriptor(vec![file_ref(&over, 1)]);
+    let d = descriptor(vec![short_key(&over)]);
     let err = d.encode().expect_err("4097-byte path must be rejected");
     assert!(
         format!("{err:?}").contains("4096"),
