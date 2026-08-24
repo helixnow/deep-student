@@ -65,6 +65,8 @@
 `enforce_encryption_policy_before_upload_with_password`。与 R07-asset-e2ee 的文件级明文上传
 缺口同域，建议合并登记 FIX-QUEUE，本代理不改代码。
 
+> **父代理回写（基线之后）**：本复审基于 `871528a3`。随后合入的 `r07-record-verifier` 已让记录级四个上传入口走 `enforce_encryption_policy_before_upload_with_password`；文件级对象亦已由 `r07-file-e2ee` 加密。P1-1 视为关闭，勿再按旧入口派修。
+
 ### P2-1 旧标记一次性升级的信任边界
 
 v≤1 标记的升级信任"第一个带密码上传的设备"（`sync_manager.rs:536-554`，注释已声明与旧行为
