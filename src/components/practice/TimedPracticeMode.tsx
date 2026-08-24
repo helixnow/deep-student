@@ -284,6 +284,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                     variant={durationMinutes === preset ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setDurationMinutes(preset)}
+                    className="[@media(pointer:coarse)]:min-h-11"
                   >
                     {t('timed.minutesShort', { count: preset })}
                   </DsButton>
@@ -326,7 +327,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:min-h-11"
           >
             {isLoadingPractice ? (
               <>
@@ -412,7 +413,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               size="sm"
               onClick={() => setShowAnswerSheet((prev) => !prev)}
               aria-expanded={showAnswerSheet}
-              className="w-full"
+              className="w-full [@media(pointer:coarse)]:min-h-11"
             >
               {showAnswerSheet ? (
                 <CaretUp size={14} className="mr-1.5" />
@@ -438,7 +439,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           <DsButton
             variant="outline"
             onClick={togglePause}
-            className="flex-1"
+            className="flex-1 [@media(pointer:coarse)]:min-h-11"
           >
             {isPaused ? (
               <>
@@ -456,7 +457,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
             variant="default"
             onClick={() => setShowSubmitConfirm(true)}
             disabled={showSubmitConfirm}
-            className="flex-1"
+            className="flex-1 [@media(pointer:coarse)]:min-h-11"
           >
             <StopCircle size={16} className="mr-2" />
             {t('timed.submit')}
@@ -481,7 +482,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="flex-1"
+                className="flex-1 [@media(pointer:coarse)]:min-h-11"
                 onClick={() => setShowSubmitConfirm(false)}
               >
                 {t('timed.cancel')}
@@ -489,7 +490,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
               <DsButton
                 variant="default"
                 size="sm"
-                className="flex-1"
+                className="flex-1 [@media(pointer:coarse)]:min-h-11"
                 onClick={handleSubmit}
               >
                 <CheckCircle size={14} className="mr-1" />
