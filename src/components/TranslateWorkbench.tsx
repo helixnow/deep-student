@@ -45,6 +45,20 @@ interface WorkbenchPrefs {
   formality?: 'formal' | 'casual' | 'auto';
 }
 
+/**
+ * 各领域的默认提示词文案 key（无专属模板的领域回落到通用默认）。
+ * 命中任一默认/模板文案即视为「用户未显式修改提示词」：
+ * - 不发送 prompt_override（后端按语向/领域参数自行组装默认提示词）；
+ * - 切换领域时默认文案跟随领域模板。
+ */
+const DOMAIN_DEFAULT_PROMPT_KEYS: Record<string, string> = {
+  general: 'translation:prompt_editor.default_prompt',
+  academic: 'translation:prompt_panel.template_prompts.academic',
+  technical: 'translation:prompt_panel.template_prompts.technical',
+  literary: 'translation:prompt_panel.template_prompts.literary',
+  casual: 'translation:prompt_panel.template_prompts.conversational',
+};
+
 function loadWorkbenchPrefs(): WorkbenchPrefs {
   try {
     const raw = localStorage.getItem(WORKBENCH_PREFS_KEY);
@@ -215,6 +229,29 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const [domain, setDomain] = useState<string>(initialSession?.domain || 'general');
   const [glossary, setGlossary] = useState<Array<[string, string]>>(initialSession?.glossary || []);
 
+  // 已知默认/模板文案集合：当前提示词命中即视为「未显式修改」
+  const knownDefaultPrompts = useMemo(
+    () => new Set(Object.values(DOMAIN_DEFAULT_PROMPT_KEYS).map((key) => t(key).trim())),
+    [t]
+  );
+  const defaultPromptForDomain = useCallback(
+    (d: string) => t(DOMAIN_DEFAULT_PROMPT_KEYS[d] ?? DOMAIN_DEFAULT_PROMPT_KEYS.general),
+    [t]
+  );
+  // 仅用户显式改过提示词才发送 prompt_override / 持久化 customPrompt
+  const isPromptCustomized =
+    customPrompt.trim() !== '' && !knownDefaultPrompts.has(customPrompt.trim());
+
+  // 切换领域时默认文案跟随：提示词仍为默认/模板文案（或为空）才替换，显式修改过则保留
+  const handleSetDomain = useCallback((nextDomain: string) => {
+    setDomain(nextDomain);
+    setCustomPrompt((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed !== '' && !knownDefaultPrompts.has(trimmed)) return prev;
+      return defaultPromptForDomain(nextDomain);
+    });
+  }, [knownDefaultPrompts, defaultPromptForDomain]);
+
   // 右栏状态
   const [isEditingTranslation, setIsEditingTranslation] = useState(false);
   const [editedTranslation, setEditedTranslation] = useState('');
@@ -230,7 +267,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // 偏好持久化：开关走包装 setter，语向/正式度统一走 effect
+  // 偏好持久化：一律走包装 setter（仅用户操作时回写）。
+  // 语向/正式度不再用 effect 持久化——effect 无法区分「用户修改」与
+  // 「加载历史会话的程序性赋值」，后者会用会话残留污染新建翻译的偏好。
   const setIsSyncScroll = useCallback((value: boolean) => {
     setIsSyncScrollState(value);
     saveWorkbenchPrefs({ syncScroll: value });
@@ -239,9 +278,18 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     setIsAutoTranslateState(value);
     saveWorkbenchPrefs({ autoTranslate: value });
   }, []);
-  useEffect(() => {
-    saveWorkbenchPrefs({ srcLang, tgtLang, formality });
-  }, [srcLang, tgtLang, formality]);
+  const handleSetSrcLang = useCallback((value: string) => {
+    setSrcLang(value);
+    saveWorkbenchPrefs({ srcLang: value });
+  }, []);
+  const handleSetTgtLang = useCallback((value: string) => {
+    setTgtLang(value);
+    saveWorkbenchPrefs({ tgtLang: value });
+  }, []);
+  const handleSetFormality = useCallback((value: 'formal' | 'casual' | 'auto') => {
+    setFormality(value);
+    saveWorkbenchPrefs({ formality: value });
+  }, []);
 
   // 网络状态监听
   // NOTE: 'online'/'offline' are standard browser events on window — not a custom event violation.
@@ -344,7 +392,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 初始化会话数据（编辑已有记录时）
   // 无条件赋值（含空字符串），确保父级会话被清空/刷新时本地状态一致
   useEffect(() => {
-    if (!initialSession?.id) return;
+    if (!initialSession?.id) {
+      // 新建翻译：语向/正式度回到用户持久化偏好，不残留上一个会话的设置
+      const restoredPrefs = loadWorkbenchPrefs();
+      setSrcLang(restoredPrefs.srcLang || 'auto');
+      setTgtLang(restoredPrefs.tgtLang || 'zh-CN');
+      setFormality(restoredPrefs.formality || 'auto');
+      return;
+    }
     setSourceText(initialSession.sourceText ?? '');
     setTranslatedText(initialSession.translatedText ?? '');
     setSrcLang(initialSession.srcLang || 'auto');
@@ -559,7 +614,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
         text: sourceText,
         src_lang: srcLang,
         tgt_lang: tgtLang,
-        prompt_override: customPrompt || undefined,
+        // 仅用户显式改过提示词才覆盖（默认/模板文案交由后端按参数组装）
+        prompt_override: isPromptCustomized ? customPrompt : undefined,
         formality: formality,
         glossary: glossary.length > 0 ? glossary : undefined,
         domain: domain !== 'general' ? domain : undefined,
@@ -580,7 +636,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               srcLang,
               tgtLang,
               formality,
-              customPrompt: customPrompt || undefined,
+              customPrompt: isPromptCustomized ? customPrompt : undefined,
               // domain / glossary 完整传入（含默认值），确保 DSTU metadata 落盘与清空生效
               domain,
               glossary,
@@ -615,7 +671,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, isPromptCustomized, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted]);
 
   // 取消流式翻译（按钮 / Esc 快捷键共用；hook 内先本地 settle，反馈即时）
   const handleCancelTranslation = useCallback(() => {
@@ -665,14 +721,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       showGlobalNotification('warning', t('translation:errors.cannot_swap_auto'));
       return;
     }
-    setSrcLang(tgtLang);
-    setTgtLang(effectiveSrcLang);
+    handleSetSrcLang(tgtLang);
+    handleSetTgtLang(effectiveSrcLang);
     // 同时交换文本（清除旧错误，让自动翻译对交换后的内容重新生效）
     const tempText = sourceText;
     setSourceText(translatedText);
     setTranslatedText(tempText);
     setTranslationError(null);
-  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation]);
+  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation, handleSetSrcLang, handleSetTgtLang]);
 
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
@@ -698,11 +754,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     setEditedTranslation(translatedText);
   }, [translatedText]);
 
+  // 保存编辑后的译文：本地 DSTU 写入不依赖网络，不做 navigator.onLine 拦截
   const handleSaveEditedTranslation = useCallback(async () => {
-    if (!navigator.onLine) {
-      showGlobalNotification('warning', t('translation:errors.offline_save'));
-      return;
-    }
     try {
       // 更新前端状态
       setTranslatedText(editedTranslation);
@@ -718,7 +771,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
           srcLang,
           tgtLang,
           formality,
-          customPrompt: customPrompt || undefined,
+          customPrompt: isPromptCustomized ? customPrompt : undefined,
           domain,
           glossary,
           quality: translationQuality ?? undefined,
@@ -732,7 +785,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     } catch (error: unknown) {
       showGlobalNotification('error', t('translation:toast.update_failed', { error: getErrorMessage(error) }));
     }
-  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, domain, glossary, customPrompt, translationQuality, initialSession, markTranslationPersisted]);
+  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, domain, glossary, customPrompt, isPromptCustomized, translationQuality, initialSession, markTranslationPersisted]);
 
   const handleCancelEdit = useCallback(() => {
     setIsEditingTranslation(false);
@@ -845,12 +898,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     };
   }, []);
 
-  // 翻译质量评分
+  // 翻译质量评分：本地 DSTU 写入不依赖网络，不做 navigator.onLine 拦截
   const handleRateTranslation = useCallback(async (rating: number) => {
-    if (!navigator.onLine) {
-      showGlobalNotification('warning', t('translation:errors.offline_rate'));
-      return;
-    }
     setTranslationQuality(rating);
     
     // 通过回调保存评分到 DSTU
@@ -864,7 +913,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
           srcLang,
           tgtLang,
           formality,
-          customPrompt: customPrompt || undefined,
+          customPrompt: isPromptCustomized ? customPrompt : undefined,
           domain,
           glossary,
           quality: rating,
@@ -878,7 +927,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
         showGlobalNotification('error', getErrorMessage(error));
       }
     }
-  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession, markTranslationPersisted]);
+  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, isPromptCustomized, initialSession, markTranslationPersisted]);
 
   // 快捷键支持（注册在 document 上，处理后 stopPropagation 阻止冒泡到命令系统）
   // ★ A6-28 标签页保活：非活跃实例不注册，防止多个翻译标签页同时响应同一按键
@@ -1019,9 +1068,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
         <div className="flex-1 min-h-0 flex flex-col relative">
           <TranslationMain
               srcLang={srcLang}
-              setSrcLang={setSrcLang}
+              setSrcLang={handleSetSrcLang}
               tgtLang={tgtLang}
-              setTgtLang={setTgtLang}
+              setTgtLang={handleSetTgtLang}
               sourceText={sourceText}
               setSourceText={handleSetSourceText}
               sourceMaxChars={TRANSLATION_MAX_CHARS}
@@ -1033,9 +1082,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               showPromptEditor={showPromptEditor}
               setShowPromptEditor={setShowPromptEditor}
               formality={formality}
-              setFormality={setFormality}
+              setFormality={handleSetFormality}
               domain={domain}
-              setDomain={setDomain}
+              setDomain={handleSetDomain}
               glossary={glossary}
               setGlossary={setGlossary}
               isEditingTranslation={isEditingTranslation}

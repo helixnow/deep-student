@@ -219,6 +219,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     topicImages,
   });
 
+  // ★ 仅在会话 id 变化（真正换会话）时重置脏基准。父级刷新 initialSession 对象
+  // （如保存回写后）不应把基准重置回空题目/空图片，否则已批改落盘的题目/图片
+  // 会被误判为未保存修改（restoreFromDstu 已按恢复结果修正过基准）。
   useEffect(() => {
     persistedDirtySnapshotRef.current = essayDirtySnapshot({
       inputText: initialSession?.inputText ?? '',
@@ -226,7 +229,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       uploadedImages: [],
       topicImages: [],
     });
-  }, [initialSession]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSession?.id]);
 
   useEffect(() => {
     const resourceId = dstuMode.resourceId ?? initialSession?.id;
@@ -450,15 +454,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // ★ S-012: debounce 保存草稿到 localStorage（1s）
   // 草稿为 JSON 结构 {inputText, topicText}（图片 base64 体积过大，不进草稿）
   // 恢复完成前不写入/删除，避免挂载初期把待恢复的草稿冲掉
+  // ★ 回看轮次时正文等于已批改轮次文本，不属于未保存编辑：不把旧轮次正文写进
+  // 草稿（否则下次打开会被当作「未保存修改」覆盖最新轮次正文）
   useEffect(() => {
     if (!draftRestoredRef.current) return;
     const timer = setTimeout(() => {
+      const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
       try {
-        if (!inputText && !topicText) {
-          // 用户主动清空后移除草稿，防止下次进入被"恢复"回已删除内容
+        if (!draftInputText && !topicText) {
+          // 无未保存内容（用户主动清空 / 正文与轮次一致）时移除草稿，
+          // 防止下次进入被"恢复"回已删除或已批改的内容
           localStorage.removeItem(draftKey);
         } else {
-          localStorage.setItem(draftKey, JSON.stringify({ inputText, topicText }));
+          localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
         }
       } catch (e: unknown) {
         console.warn('[EssayGrading] S-012: Failed to save draft', e);
@@ -560,15 +568,22 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   }, [setGradingResult, markInputAsGraded]);
 
   // 切换轮次（批改中禁止切换，避免覆盖流式结果）
+  // ★ 正文相对当前展示轮次有未保存编辑时先确认——切换会用目标轮次正文覆盖输入区
   const handleSelectRound = useCallback((index: number) => {
     if (isGrading) return;
     if (index < 0 || index >= rounds.length || index === currentRoundIndex) return;
+    if (
+      inputText !== lastGradedInputRef.current &&
+      !window.confirm(t('essay_grading:round.switch_unsaved_confirm'))
+    ) {
+      return;
+    }
     setCurrentRoundIndex(index);
     const round = rounds[index];
     setInputText(round.input_text);
     setGradingResult(round.grading_result);
     markInputAsGraded(round.input_text);
-  }, [isGrading, currentRoundIndex, rounds, setGradingResult, markInputAsGraded]);
+  }, [isGrading, currentRoundIndex, rounds, inputText, setGradingResult, markInputAsGraded, t]);
 
   const handlePrevRound = useCallback(() => {
     handleSelectRound(currentRoundIndex - 1);

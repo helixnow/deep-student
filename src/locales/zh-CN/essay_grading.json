@@ -62,7 +62,8 @@
     "previous": "上一轮",
     "next": "下一轮",
     "new": "提交下一轮",
-    "total": "共 {{count}} 轮"
+    "total": "共 {{count}} 轮",
+    "switch_unsaved_confirm": "当前正文有未保存的修改，切换轮次将用所选轮次的正文覆盖它们。确定继续吗？"
   },
   "actions": {
     "grade": "开始批改",

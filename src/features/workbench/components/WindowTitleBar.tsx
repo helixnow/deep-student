@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DisplayMode } from '../core/types';
+import { MOVE_ARM_THRESHOLD_PX } from '../core/pointerEngine';
 import { useWindowDirty } from '../core/windowCloseGuard';
 import { toggleImmersive, useWindowImmersive } from '../core/immersiveMode';
 import {
@@ -327,10 +328,10 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       // 每次按下重置"拖过"标记：仅当本次双击序列中发生拖拽才抑制 zoom
       recentDragRef.current = false;
       const bar = barRef.current;
-      // 3px（9px²）：触控板/高分屏双击常伴随 1–2px 微抖，1px 阈值会把双击
-      // 误判成「拖过」而吞掉 zoom；与内核 pointerEngine MOVE_ARM_THRESHOLD_PX
-      // （同步放宽到 3–4px）协同，视觉 dragging 态与真实起拖近似同刻武装。
-      const THRESHOLD_SQ = 9; // 3px²
+      // 直接共用内核 pointerEngine 的 MOVE_ARM_THRESHOLD_PX（3px）：
+      // 视觉 dragging 态与真实起拖同刻武装；触控板/高分屏双击的 1–2px 微抖
+      // 不会被误判成「拖过」而吞掉 zoom。
+      const THRESHOLD_SQ = MOVE_ARM_THRESHOLD_PX * MOVE_ARM_THRESHOLD_PX;
       const onMove = (ev: PointerEvent) => {
         const arm = dragArmRef.current;
         if (!arm || arm.armed) return;
