@@ -579,3 +579,8 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 
 - **实现**：`commands_sync.rs` resolve 快速路径在 `BEGIN IMMEDIATE` 后、标记 resolved 前用 `SyncManager::get_record_data` 事务内重读业务行，按同一套 `(operation, data)` 重算 already-desired；不再匹配即拒绝（「本地记录在冲突确认期间已变化，请刷新后重新确认」），不用旧快照标 resolved。generation 重验保留，慢速路径语义未动。
 - **测试**：`sync_r10_protocol_locks.rs` P2-3 源码锁按其自述改写为「已关」断言（重读存在、位于标记之前、fail-closed 文案在），P2-1 / KDF 用例未动；新 `sync_r12_conflict_fast_path.rs` 两例——业务行未变时快速路径照常标 resolved（重读不误伤）、并发写锁窗口内的本地编辑被事务内重读拦下（冲突保持未解决、新编辑保留）。
+
+### wrap-v1trust 回传（分支 `cursor/cloud-sync-sota-wrap-v1trust-b343`，关 FINDINGS-WRAP P2-1）
+
+- **实现**：`verify_encryption_password_before_upload` 的 v1 升级臂先经 manifest 取最新备份，走现有 `decrypt_backup_file` 完整试解；成功才写 v2 校验子（保留 created_by/created_at）。空仓无备份保持第一台带密码设备认领。列表/下载/半包/非 DSBK/解密失败均不改标记。
+- **测试**：新 `sync_r12_v1_marker_trust.rs`。未改 `sync_r10_protocol_locks.rs` / `sync_r09_file_e2ee.rs`。
