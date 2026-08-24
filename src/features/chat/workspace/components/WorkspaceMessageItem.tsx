@@ -229,7 +229,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                 setIsSubagentCollapsed(!isSubagentCollapsed);
               }
             }}
-            className="flex w-full items-center gap-2 p-2 [@media(pointer:coarse)]:min-h-11 text-left cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+            className="flex w-full items-center gap-2 p-2 [@media(pointer:coarse)]:!min-h-11 text-left cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
           >
             {isSubagentCollapsed ? (
               <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />

@@ -293,7 +293,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="flex items-center justify-between px-3 py-2 [@media(pointer:coarse)]:min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex items-center justify-between px-3 py-2 [@media(pointer:coarse)]:!min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;

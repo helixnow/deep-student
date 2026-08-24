@@ -254,7 +254,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
         'bg-muted text-muted-foreground border border-border',
         'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground hover:border-primary/30',
         sizeClasses[size],
-        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
+        '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5',
         className
       )}
       aria-label={t('skills:selectSkill')}

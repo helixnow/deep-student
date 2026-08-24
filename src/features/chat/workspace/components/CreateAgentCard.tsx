@@ -270,7 +270,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={handleClose}
           disabled={creating}
         >
@@ -279,7 +279,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
         <DsButton
           variant="primary"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={handleCreate}
           disabled={creating || !selectedSkillId || !currentSessionId}
         >
