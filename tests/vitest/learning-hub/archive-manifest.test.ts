@@ -27,14 +27,22 @@ describe('archive manifest marker', () => {
   it('rejects unrelated placeholder/inline text', () => {
     expect(isArchiveManifestText('[文档: report.pdf]')).toBe(false);
     expect(isArchiveManifestText('plain extracted text')).toBe(false);
+    expect(isArchiveManifestText(`${ARCHIVE_MANIFEST_MARKER}-lookalike`)).toBe(false);
+    expect(isArchiveManifestText(`${ARCHIVE_MANIFEST_MARKER} inline text`)).toBe(false);
   });
 
   it('strips the marker line for display; legacy text passes through unchanged', () => {
     expect(archiveManifestDisplayText(`${ARCHIVE_MANIFEST_MARKER}\nline1\nline2`)).toBe(
       'line1\nline2',
     );
+    expect(archiveManifestDisplayText(`${ARCHIVE_MANIFEST_MARKER}\r\nline1\r\nline2`)).toBe(
+      'line1\r\nline2',
+    );
     expect(archiveManifestDisplayText('[压缩包清单] 共 3 个条目')).toBe('[压缩包清单] 共 3 个条目');
     expect(archiveManifestDisplayText(ARCHIVE_MANIFEST_MARKER)).toBe('');
+    expect(archiveManifestDisplayText(`${ARCHIVE_MANIFEST_MARKER} inline text`)).toBe(
+      `${ARCHIVE_MANIFEST_MARKER} inline text`,
+    );
   });
 
   it('stays aligned with the Rust-side marker and manifest builder', () => {

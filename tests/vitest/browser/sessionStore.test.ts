@@ -296,6 +296,9 @@ describe('useBrowserSessionStore', () => {
     });
     expect(useBrowserSessionStore.getState().sessionId).toBe('bs_new');
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://baidu.com');
+    // Command completion only means the native WebView accepted navigation.
+    // Preserve Rust's page-loading state so chrome keeps showing the stop action.
+    expect(useBrowserSessionStore.getState().loading).toBe(true);
   });
 
   it('back/forward only invoke when canGo* allows, then mirror Rust flags', async () => {
