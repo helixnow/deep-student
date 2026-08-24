@@ -20,8 +20,9 @@
 //!   `apply_downloaded_changes_force_exact_with_hooks` 以
 //!   `suppress_change_log=false` 写回——业务表触发器产生的 change_log 条目
 //!   保持 `sync_version=0`（待上传），其他设备能看到回退结果；同时把
-//!   `updated_at` 刷新为回退时刻，旧的云端胜方值在后续下载重放中输掉
-//!   LWW 门，不会把回退结果又覆盖回去（见 `sync_r11_history.rs`）。
+//!   `updated_at` 提升到当前行/DELETE 版本之后，旧的云端胜方值在后续下载
+//!   重放中输掉 LWW 门，不会把回退结果又覆盖回去（见
+//!   `sync_r11_history.rs`）。
 //! - **回退自身可撤销**：回退前先把当前状态快照成 `rollback_undo` 批次。
 //! - **保留策略**：每库最多保留 [`DEFAULT_MAX_BATCHES`] 个批次，新批次
 //!   落地时自动清理最旧的批次（按批次内最大行 id 排序）。
@@ -253,17 +254,86 @@ pub struct RollbackOutcome {
     pub undo_batch_id: String,
 }
 
-/// 把 `updated_at` 刷新为"现在"（保留原值的数值/字符串形态）。
+/// 读取一份记录里参与 UPSERT / DELETE LWW 的时间戳下界。
+fn record_lww_millis(data: &serde_json::Value) -> Option<i64> {
+    ["updated_at", "deleted_at"]
+        .iter()
+        .filter_map(|key| {
+            data.get(*key)
+                .and_then(SyncManager::timestamp_value_to_lww_string)
+                .and_then(|value| SyncManager::lww_timestamp_millis(&value))
+        })
+        .max()
+}
+
+/// 生成严格晚于当前胜方的回退时间戳。
 ///
-/// 这是"回退不被再覆盖"的关键：旧的云端胜方 changed_at 早于回退时刻，
-/// 后续下载重放会输掉 LWW 门；回退产生的待上传变更则以新时间戳胜出。
-fn refresh_updated_at(data: &mut serde_json::Value, now_rfc3339: &str) {
+/// 不能只使用本机 `now`：同步入口允许远端 wall clock 在
+/// `MAX_DRIFT_MS` 范围内超前。若刚应用一条未来数十秒的合法云端胜方后立即
+/// 回退，单纯写 `now` 会让旧云端值在下一次重放时再次赢得 LWW；硬删除还会
+/// 被 `__sync_delete_versions` 阻止复活。这里同时观察当前行、目标快照和
+/// DELETE 版本账本，并在最大物理毫秒后加一。
+fn next_rollback_timestamp(
+    conn: &Connection,
+    table_name: &str,
+    record_id: &str,
+    current: Option<&serde_json::Value>,
+    snapshot: Option<&serde_json::Value>,
+) -> Result<(i64, String), SyncError> {
+    let now_millis = chrono::Utc::now().timestamp_millis();
+    let mut observed_millis = current
+        .and_then(record_lww_millis)
+        .into_iter()
+        .chain(snapshot.and_then(record_lww_millis))
+        .max();
+
+    let has_delete_versions: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM sqlite_master
+                 WHERE type='table' AND name='__sync_delete_versions'
+             )",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if has_delete_versions {
+        let delete_timestamp: Option<String> = conn
+            .query_row(
+                "SELECT changed_at FROM __sync_delete_versions
+                 WHERE table_name = ?1 AND record_id = ?2",
+                params![table_name, record_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| SyncError::Database(format!("读取回退 DELETE 版本失败: {}", e)))?;
+        if let Some(delete_millis) = delete_timestamp
+            .as_deref()
+            .and_then(SyncManager::lww_timestamp_millis)
+        {
+            observed_millis =
+                Some(observed_millis.map_or(delete_millis, |value| value.max(delete_millis)));
+        }
+    }
+
+    let rollback_millis = match observed_millis {
+        Some(value) if value >= now_millis => value.saturating_add(1),
+        _ => now_millis,
+    };
+    let rollback_rfc3339 = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(rollback_millis)
+        .ok_or_else(|| SyncError::Database("生成回退 LWW 时间戳失败".to_string()))?
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    Ok((rollback_millis, rollback_rfc3339))
+}
+
+/// 把 `updated_at` 提升到回退 LWW 时间（保留原值的数值/字符串形态）。
+fn refresh_updated_at(data: &mut serde_json::Value, rollback_millis: i64, rollback_rfc3339: &str) {
     if let Some(obj) = data.as_object_mut() {
         if let Some(current) = obj.get("updated_at") {
             let refreshed = if current.is_number() {
-                serde_json::Value::Number(chrono::Utc::now().timestamp_millis().into())
+                serde_json::Value::Number(rollback_millis.into())
             } else {
-                serde_json::Value::String(now_rfc3339.to_string())
+                serde_json::Value::String(rollback_rfc3339.to_string())
             };
             obj.insert("updated_at".to_string(), refreshed);
         }
@@ -345,7 +415,7 @@ pub fn rollback_batch(
             .map(String::as_str)
             .unwrap_or("id");
         let current = SyncManager::get_record_data(conn, table_name, record_id, id_column)?;
-        let (operation, data) = if *existed {
+        let (operation, data, changed_at) = if *existed {
             let raw = data_json.as_deref().ok_or_else(|| {
                 SyncError::Database(format!(
                     "快照数据缺失: {}.{}（existed=1 但 data_json 为空）",
@@ -361,23 +431,32 @@ pub fn rollback_batch(
                     continue;
                 }
             }
-            refresh_updated_at(&mut value, &now);
+            let (rollback_millis, rollback_rfc3339) = next_rollback_timestamp(
+                conn,
+                table_name,
+                record_id,
+                current.as_ref(),
+                Some(&value),
+            )?;
+            refresh_updated_at(&mut value, rollback_millis, &rollback_rfc3339);
             restored += 1;
-            (ChangeOperation::Update, Some(value))
+            (ChangeOperation::Update, Some(value), rollback_rfc3339)
         } else {
             if current.is_none() {
                 skipped += 1;
                 continue;
             }
+            let (_, rollback_rfc3339) =
+                next_rollback_timestamp(conn, table_name, record_id, current.as_ref(), None)?;
             deleted += 1;
-            (ChangeOperation::Delete, None)
+            (ChangeOperation::Delete, None, rollback_rfc3339)
         };
         changes.push(SyncChangeWithData {
             table_name: table_name.clone(),
             record_id: record_id.clone(),
             operation,
             data,
-            changed_at: now.clone(),
+            changed_at,
             change_log_id: None,
             database_name: database_name.map(str::to_string),
             // 回退结果必须进 change_log 才能上传广播、并以新时间戳压过旧值
