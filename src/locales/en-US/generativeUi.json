@@ -17,6 +17,7 @@
     "confirm_desc": "This action may have irreversible effects.",
     "confirm_execute": "Confirm",
     "unregistered_hint": "This action is not registered and cannot run",
+    "unregistered_label": "Unregistered action",
     "live_ok": "{{label}} completed",
     "live_error": "{{label}} failed",
     "live_undo": "Last action undone",

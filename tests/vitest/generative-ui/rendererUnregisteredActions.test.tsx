@@ -20,6 +20,7 @@ vi.mock('react-i18next', () => ({
         'a11y.skip_to_actions': '跳到操作栏',
         'a11y.action_bar_label': '操作栏',
         'action.unregistered_hint': '未注册',
+        'action.unregistered_label': '未注册操作',
       };
       return map[key] ?? key;
     },
@@ -80,9 +81,10 @@ describe('GenerativeUIRenderer unregistered action-bar ids', () => {
         actionHandlers={{}}
       />,
     );
-    expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
     expect(button).toHaveAttribute('data-action-unregistered', '');
     expect(button).toHaveAttribute('title', '未注册');
+    expect(screen.queryByRole('button', { name: 'Ghost' })).not.toBeInTheDocument();
     expect(unregisteredHint()).not.toBeNull();
   });
 });

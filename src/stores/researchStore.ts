@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { t } from '../utils/i18n';
+import {
+  applyHpiasEventToSessionSlice,
+  createEmptyHpiasSessionSlice,
+  pickHpiasSessionSliceFromStore,
+  pruneHpiasSessionSlices,
+  type HpiasSessionSlice,
+} from './hpiasSessionSlice';
 
 export type HpiasEvent =
   | { type: 'session_started'; session_id: string; question: string; options_json?: string | null; ts?: string }
@@ -90,6 +97,8 @@ interface HpiasStore {
   subAgents: Record<number, SubAgentState>;
   artifactsByRound: Record<number, ResearchArtifact[]>;
   ingestion: { total: number; completed: number; percent: number } | null;
+  /** 多会话切片：Chat 并发研究按 sessionId 读取，不被最新 session_started 顶掉。 */
+  sessions: Record<string, HpiasSessionSlice>;
   actions: {
     reset: (sessionId: string, round: number) => void;
     handleEvent: (e: HpiasEvent) => void;
@@ -148,10 +157,30 @@ export const useHpiasStore = create<HpiasStore>()(
       roundsView: {},
       artifactsByRound: {},
       ingestion: null,
+      sessions: {},
       actions: {
-        reset: (sessionId, round) => { clearEventLog(); set({ sessionId, round, executionMode: null, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {} }); },
+        reset: (sessionId, round) => {
+          clearEventLog();
+          const slice = { ...createEmptyHpiasSessionSlice(sessionId), round };
+          set({
+            sessionId,
+            round,
+            executionMode: null,
+            plan: null,
+            synthesis: null,
+            critic: null,
+            retrievalCount: null,
+            selectedCount: null,
+            metrics: null,
+            retrievedItems: null,
+            eventsLog: [],
+            roundsView: {},
+            subAgents: {},
+            sessions: { [sessionId]: slice },
+          });
+        },
         // 完全重置所有状态，eventsLog 清空释放全部内存
-        clear: () => { clearEventLog(); set({ sessionId: null, round: 0, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {}, artifactsByRound: {}, ingestion: null }); },
+        clear: () => { clearEventLog(); set({ sessionId: null, round: 0, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {}, artifactsByRound: {}, ingestion: null, sessions: {} }); },
         setRound: (round) => set({ round }),
         mergeArtifacts: (round, items) => set(state => {
           const prev = state.artifactsByRound[round] || [];
@@ -213,13 +242,28 @@ export const useHpiasStore = create<HpiasStore>()(
             'session_id' in e && typeof e.session_id === 'string' && e.session_id
               ? e.session_id
               : undefined;
-          // 已有活跃会话时，忽略其他 session 的非 session_started 事件，避免并发研究串台。
+          // 外会话非 session_started：只写入 sessions[id]，不覆盖活跃顶层字段。
           if (
             s.sessionId &&
             eventSessionId &&
             eventSessionId !== s.sessionId &&
             e.type !== 'session_started'
           ) {
+            const prevSlice = s.sessions[eventSessionId] ?? createEmptyHpiasSessionSlice(eventSessionId);
+            const nextSlice = applyHpiasEventToSessionSlice(prevSlice, e);
+            try {
+              if (e.type !== 'ingestion_progress') {
+                appendEventLog(e);
+              }
+            } catch (err: unknown) {
+              console.warn('[HpiasStore] eventsLog recording failed:', err);
+            }
+            set({
+              sessions: pruneHpiasSessionSlices(
+                { ...s.sessions, [eventSessionId]: nextSlice },
+                [s.sessionId, eventSessionId],
+              ),
+            });
             return;
           }
           // 🚀 P0-3: 事件记录到模块级数组，不触发 store 更新
@@ -240,7 +284,21 @@ export const useHpiasStore = create<HpiasStore>()(
                   if (m === 'autonomous' || m === 'supervised') mode = m;
                 }
               } catch { /* 非关键：options_json 解析失败时默认 mode=null，不影响会话启动 */ }
-              set({ sessionId: e.session_id, round: 0, executionMode: mode });
+              set({
+                sessionId: e.session_id,
+                round: 0,
+                executionMode: mode,
+                plan: null,
+                synthesis: null,
+                critic: null,
+                retrievalCount: null,
+                selectedCount: null,
+                metrics: null,
+                retrievedItems: null,
+                roundsView: {},
+                subAgents: {},
+                artifactsByRound: {},
+              });
               break;
             }
             case 'round_started':
@@ -503,6 +561,18 @@ export const useHpiasStore = create<HpiasStore>()(
               break;
             default:
               break;
+          }
+          const after = get();
+          if (after.sessionId) {
+            const slice = pickHpiasSessionSliceFromStore(after);
+            if (slice) {
+              set({
+                sessions: pruneHpiasSessionSlices(
+                  { ...after.sessions, [after.sessionId]: slice },
+                  [after.sessionId, eventSessionId],
+                ),
+              });
+            }
           }
         },
         getSubAgentProgress: (subId: number, defaultMax: number = 8) => {

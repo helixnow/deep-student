@@ -423,6 +423,28 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'eventSessionId !== s.sessionId',
       ]),
   },
+  {
+    id: 'round63-hpias-multi-session-slices',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        'applyHpiasEventToSessionSlice',
+        'sessions:',
+      ]) &&
+      fileContains('src/stores/hpiasSessionSlice.ts', [
+        'MAX_HPIAS_SESSION_SLICES',
+        'applyHpiasEventToSessionSlice',
+      ]) &&
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'liveSessionSlice',
+      ]),
+  },
+  {
+    id: 'round63-unregistered-trusted-label',
+    check: () =>
+      fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
+        "t('action.unregistered_label')",
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {

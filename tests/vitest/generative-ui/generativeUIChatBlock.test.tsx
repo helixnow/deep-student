@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
         'chrome.dismiss': '忽略',
         'chrome.streaming': '生成中',
         'action.unregistered_hint': '未注册',
+        'action.unregistered_label': '未注册操作',
         'action.copy_intent': '复制意图',
         'action.copy_block': '复制该组件',
         'panel.no_intent': '无 UI 意图数据',
@@ -188,7 +189,10 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: '应用到笔记' })).toBeDisabled();
+    const unregistered = screen.getAllByRole('button', { name: '未注册操作' });
+    expect(unregistered.length).toBeGreaterThan(0);
+    expect(unregistered.every((button) => button.hasAttribute('disabled'))).toBe(true);
+    expect(screen.queryByRole('button', { name: '应用到笔记' })).not.toBeInTheDocument();
   });
 
   it('enables hpias event bridge when researchSessionId is present', () => {
@@ -281,6 +285,48 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     );
 
     expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getByText('Research starting…')).toBeInTheDocument();
+  });
+
+  it('keeps the live panel for session A after session B starts', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research question?' },
+    });
+    intent.blocks.unshift({ type: 'text', props: { body: 'Research starting…' } });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent, researchSessionId: 'live-a' },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    act(() => {
+      const handleEvent = useHpiasStore.getState().actions.handleEvent;
+      handleEvent({ type: 'session_started', session_id: 'live-a', question: 'A' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 'live-a',
+        round: 1,
+        plan: { core: { queries: ['Topic A stays'] } },
+      });
+      handleEvent({ type: 'session_started', session_id: 'live-b', question: 'B' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 'live-b',
+        round: 1,
+        plan: { core: { queries: ['Topic B wins'] } },
+      });
+    });
+
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getAllByText('Topic A stays').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Topic B wins')).not.toBeInTheDocument();
     expect(screen.getByText('Research starting…')).toBeInTheDocument();
   });
 });
