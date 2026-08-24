@@ -247,6 +247,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         onClick={handleOpenSkillMarket}
         aria-label={t('skills:selector.installMore')}
         title={t('skills:selector.installMore')}
+        className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
       >
         <Storefront size={16} />
       </DsButton>
@@ -259,7 +260,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           disabled={isRefreshing}
           aria-label={t('skills:selector.refresh')}
           title={t('skills:selector.refresh')}
-          className={cn(isRefreshing && 'animate-spin')}
+          className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', isRefreshing && 'animate-spin')}
         >
           <ArrowClockwise size={16} />
         </DsButton>
@@ -588,7 +589,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedSkillId(null)}
-                  className="mb-2 shrink-0"
+                  className="mb-2 shrink-0 [@media(pointer:coarse)]:min-h-11"
                 >
                   <CaretLeft size={14} />
                   <span>{t('common:actions.back')}</span>
