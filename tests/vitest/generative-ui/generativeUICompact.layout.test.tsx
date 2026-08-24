@@ -246,4 +246,12 @@ describe('generative-ui compact CSS token contract', () => {
     expect(spacingSection).toContain('.generative-ui-compact');
     expect(spacingSection).toContain('generative-ui.css');
   });
+
+  it('keeps [data-generative-ui] :focus-visible ring token in the same stylesheet', () => {
+    const css = fs.readFileSync(cssPath, 'utf8');
+    expect(css).toContain(':focus-visible');
+    expect(css).toContain('--ring');
+    expect(css).toMatch(/hsl\(\s*var\(\s*--ring\s*\)\s*\)/);
+    expect(css).not.toMatch(/:focus-visible[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
+  });
 });

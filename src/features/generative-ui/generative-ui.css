@@ -1,7 +1,8 @@
 /**
- * Generative UI 样式：compact 间距 token + chrome 流式指示。
+ * Generative UI 样式：compact 间距 token + chrome 流式指示 + 键盘 focus-visible 语义环。
  * compact：`.generative-ui-compact` 仅 4/8/12 档。
  * 动效降级：@media (prefers-reduced-motion: reduce) 与根节点 [data-reduced-motion]。
+ * 焦点环：button / a / [tabindex] 走 --ring token，不用裸蓝。
  */
 
 .generative-ui-stream-indicator {
@@ -77,6 +78,19 @@
 
 [data-generative-ui][data-reduced-motion] .animate-spin {
   animation: none;
+}
+
+/**
+ * 键盘焦点语义环：仅 :focus-visible（鼠标点击不出环）。
+ * 颜色走 --ring token，禁止裸蓝 / 裸 hex。
+ */
+[data-generative-ui] :is(button, a, [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+[data-generative-ui] :is(button, a, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
 }
 
 /**

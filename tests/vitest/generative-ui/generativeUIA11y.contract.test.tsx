@@ -1,6 +1,9 @@
 /**
  * Generative UI a11y contract — 18 内置块 landmark / progressbar / alert / live region
+ * + [data-generative-ui] 内 button/a/[tabindex] 的 :focus-visible ring token
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
@@ -255,5 +258,19 @@ describe('generativeUIA11y.contract', () => {
         expect(header).toHaveAttribute('scope', 'col');
       }
     }
+  });
+
+  it('ships :focus-visible semantic ring token for button/a/[tabindex]', () => {
+    const css = fs.readFileSync(
+      path.join(process.cwd(), 'src/features/generative-ui/generative-ui.css'),
+      'utf8',
+    );
+    expect(css).toContain('[data-generative-ui]');
+    expect(css).toContain(':focus-visible');
+    expect(css).toContain('--ring');
+    expect(css).toMatch(/\[data-generative-ui\]\s+:is\(button,\s*a,\s*\[tabindex\]\):focus-visible/);
+    expect(css).toMatch(/hsl\(\s*var\(\s*--ring\s*\)\s*\)/);
+    expect(css).not.toMatch(/:focus-visible[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
+    expect(css).not.toMatch(/:focus-visible[^{]*\{[^}]*(?:#0000ff|#0066ff|#3b82f6|rgb\(\s*0\s*,\s*0\s*,\s*255)/i);
   });
 });

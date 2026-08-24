@@ -209,6 +209,14 @@ export {
   FINGERPRINT_HEX_LENGTH,
 } from './utils/fingerprintGenerativeUIIntent';
 export type { FingerprintGenerativeUIIntentOptions } from './utils/fingerprintGenerativeUIIntent';
+export {
+  diffGenerativeUIIntent,
+  generativeBlockIdentity,
+} from './utils/diffGenerativeUIIntent';
+export type {
+  DiffGenerativeUIIntentResult,
+  GenerativeBlockIdentity,
+} from './utils/diffGenerativeUIIntent';
 export { buildIntentExportMarkdown } from './utils/buildIntentExportMarkdown';
 export {
   createCopyIntentActionHandlers,
