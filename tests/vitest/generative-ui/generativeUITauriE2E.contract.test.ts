@@ -41,6 +41,7 @@ describe('generativeUI Tauri E2E contract', () => {
     expect(src).toContain('capture_hpias_events');
     expect(src).toContain('execute_with_research_session_emits_hpias_session_started');
     expect(src).toContain('execute_hpias_stub_pipeline_emits_plan_generated');
+    expect(src).toContain('execute_rejects_unknown_block_type');
     expect(src).toContain('HPIAS_EVENT_CHANNEL');
   });
 
