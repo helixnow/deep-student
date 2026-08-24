@@ -88,3 +88,19 @@ describe('云存储 API 兼容错误形态时保留 code', () => {
     expect(parseCommandErrorEnvelope(normalized)?.code).toBe(S3_UNSUPPORTED_IN_BUILD_CODE);
   });
 });
+
+describe('移动端指南对 Android 云存储诚实', () => {
+  const guide = readFileSync(
+    resolve(process.cwd(), 'docs/user-guide/17-移动端指南.md'),
+    'utf-8',
+  );
+
+  it('对照表与 FAQ 写明 Android 仅 WebDAV，不把 S3 写成手机可用', () => {
+    expect(guide).toContain('Android 仅 WebDAV');
+    expect(guide).toContain('S3 与 FTP 均不可用');
+    expect(guide).toContain('Android 目前只能配置 **WebDAV**');
+    expect(guide).toContain('桌面写入的 S3 / FTP 配置在 Android 上不会被加载');
+    expect(guide).not.toMatch(/云同步（WebDAV\/S3，实验性）/);
+    expect(guide).not.toMatch(/两端配置同一个 WebDAV\/S3/);
+  });
+});
