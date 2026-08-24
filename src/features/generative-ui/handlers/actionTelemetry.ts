@@ -15,6 +15,12 @@ export interface GenerativeActionTelemetryEvent {
   ok: boolean;
   error?: unknown;
   phase?: GenerativeActionTelemetryPhase;
+  /** 可选 intent fingerprint，不影响既有 sink 必填字段 */
+  fingerprint?: string;
+}
+
+export interface WrapActionWithTelemetryExtras {
+  fingerprint?: string;
 }
 
 export type GenerativeActionTelemetrySink = (event: GenerativeActionTelemetryEvent) => void;
@@ -32,6 +38,16 @@ export function emitGenerativeActionTelemetry(
   sink(event);
 }
 
+function attachOptionalFingerprint(
+  event: GenerativeActionTelemetryEvent,
+  fingerprint?: string,
+): GenerativeActionTelemetryEvent {
+  if (typeof fingerprint === 'string' && fingerprint.length > 0) {
+    return { ...event, fingerprint };
+  }
+  return event;
+}
+
 /**
  * 记录 actionId / riskLevel / startedAt / durationMs / ok|error。
  * 错误先写入 sink，再原样 rethrow，不吞异常。
@@ -39,6 +55,7 @@ export function emitGenerativeActionTelemetry(
 export function wrapActionWithTelemetry(
   def: GenerativeActionDefinition,
   sink: GenerativeActionTelemetrySink = defaultGenerativeActionTelemetrySink,
+  extras?: WrapActionWithTelemetryExtras,
 ): GenerativeActionDefinition {
   return {
     ...def,
@@ -47,28 +64,34 @@ export function wrapActionWithTelemetry(
       try {
         const result = await def.handler(payload);
         emitGenerativeActionTelemetry(
-          {
-            actionId: def.id,
-            riskLevel: def.riskLevel,
-            startedAt,
-            durationMs: Date.now() - startedAt,
-            ok: true,
-            phase: 'execute',
-          },
+          attachOptionalFingerprint(
+            {
+              actionId: def.id,
+              riskLevel: def.riskLevel,
+              startedAt,
+              durationMs: Date.now() - startedAt,
+              ok: true,
+              phase: 'execute',
+            },
+            extras?.fingerprint,
+          ),
           sink,
         );
         return result;
       } catch (error) {
         emitGenerativeActionTelemetry(
-          {
-            actionId: def.id,
-            riskLevel: def.riskLevel,
-            startedAt,
-            durationMs: Date.now() - startedAt,
-            ok: false,
-            error,
-            phase: 'execute',
-          },
+          attachOptionalFingerprint(
+            {
+              actionId: def.id,
+              riskLevel: def.riskLevel,
+              startedAt,
+              durationMs: Date.now() - startedAt,
+              ok: false,
+              error,
+              phase: 'execute',
+            },
+            extras?.fingerprint,
+          ),
           sink,
         );
         throw error;

@@ -7,6 +7,7 @@ export type {
   GenerativeActionTelemetryEvent,
   GenerativeActionTelemetrySink,
   GenerativeActionTelemetryPhase,
+  WrapActionWithTelemetryExtras,
 } from './actionTelemetry';
 
 export {

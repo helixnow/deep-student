@@ -65,6 +65,7 @@ export type {
   GenerativeActionTelemetryEvent,
   GenerativeActionTelemetrySink,
   GenerativeActionTelemetryPhase,
+  WrapActionWithTelemetryExtras,
   GenerativeActionUndoEntry,
   GenerativeActionUndoStackOptions,
   ReversibleGenerativeActionDefinition,
@@ -201,6 +202,13 @@ export type {
   NormalizeGenerativeUIIntentOptions,
   NormalizeGenerativeUIIntentResult,
 } from './utils/normalizeGenerativeUIIntent';
+export {
+  fingerprintGenerativeUIIntent,
+  stableStringify,
+  hashToShortHex,
+  FINGERPRINT_HEX_LENGTH,
+} from './utils/fingerprintGenerativeUIIntent';
+export type { FingerprintGenerativeUIIntentOptions } from './utils/fingerprintGenerativeUIIntent';
 export { buildIntentExportMarkdown } from './utils/buildIntentExportMarkdown';
 export {
   createCopyIntentActionHandlers,

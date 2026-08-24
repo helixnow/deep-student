@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import type { GenerativeActionDefinition } from '@/features/generative-ui/types';
+import type { GenerativeActionDefinition, GenerativeUIIntent } from '@/features/generative-ui/types';
 import {
   wrapActionWithTelemetry,
   defaultGenerativeActionTelemetrySink,
   type GenerativeActionTelemetryEvent,
 } from '@/features/generative-ui/handlers/actionTelemetry';
 import { withGenerativeActionInstrumentation } from '@/features/generative-ui/actions';
+import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
 
 function makeDef(
   overrides: Partial<GenerativeActionDefinition> & Pick<GenerativeActionDefinition, 'handler'>,
@@ -157,5 +158,46 @@ describe('withGenerativeActionInstrumentation', () => {
     expect(inner).toHaveBeenCalledTimes(1);
     expect(events[0]?.ok).toBe(true);
     expect(events[0]?.actionId).toBe('start-review');
+    expect(events[0]?.fingerprint).toBeUndefined();
+  });
+
+  it('attaches optional fingerprint from intent without changing required sink fields', async () => {
+    const events: GenerativeActionTelemetryEvent[] = [];
+    const intent: GenerativeUIIntent = {
+      version: '1',
+      blocks: [{ type: 'text', props: { body: 'hello' } }],
+    };
+    const handlers = withGenerativeActionInstrumentation(
+      {
+        'copy-intent': makeDef({
+          id: 'copy-intent',
+          handler: () => undefined,
+        }),
+      },
+      { sink: (event) => events.push(event), intent },
+    );
+
+    await handlers['copy-intent']?.handler();
+    expect(events[0]).toMatchObject({
+      actionId: 'copy-intent',
+      riskLevel: 'medium',
+      ok: true,
+      phase: 'execute',
+      fingerprint: fingerprintGenerativeUIIntent(intent),
+    });
+  });
+});
+
+describe('wrapActionWithTelemetry extras', () => {
+  it('passes through an explicit fingerprint', async () => {
+    const events: GenerativeActionTelemetryEvent[] = [];
+    const wrapped = wrapActionWithTelemetry(
+      makeDef({ handler: () => undefined }),
+      (event) => events.push(event),
+      { fingerprint: 'deadbeefcafebabe' },
+    );
+
+    await wrapped.handler();
+    expect(events[0]?.fingerprint).toBe('deadbeefcafebabe');
   });
 });
