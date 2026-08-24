@@ -1309,6 +1309,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           size="icon"
                           iconOnly
                           onClick={handleMultiVariantCopy}
+                          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                           aria-label={t('messageItem.actions.copy')}
                           title={t('messageItem.actions.copy')}
                         >
@@ -1320,6 +1321,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleBranch}
                           disabled={isReadOnlySession || isLocked}
+                          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                           aria-label={t('messageItem.actions.branch')}
                           title={t('messageItem.actions.branch')}
                         >
@@ -1331,6 +1333,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleRetryAllVariantsInline}
                           disabled={isReadOnlySession || isLocked || isRetryingAllVariants}
+                          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
@@ -1342,7 +1345,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleDeleteMultiMessageInline}
                           disabled={!canDelete || isDeletingMultiMessage}
-                          className={cn(!canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive')}
+                          className={cn(
+                            '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                            !canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive'
+                          )}
                           aria-label={t('messageItem.actions.delete')}
                           title={t('messageItem.actions.delete')}
                         >
