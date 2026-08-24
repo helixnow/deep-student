@@ -1624,7 +1624,11 @@
     "makeCardsFailed": "Failed to start card generation",
     "makeCardsDeckName": "Selection cards",
     "makeCardsRequirements": "Generate high-quality memory cards from the selected excerpt, prioritizing key concepts and facts in the selection.",
-    "openTaskDashboard": "Open task dashboard"
+    "openTaskDashboard": "Open task dashboard",
+    "saveAsNote": "Save as note",
+    "saveAsNotePickFolder": "Choose a folder",
+    "saveAsNoteDefaultTitle": "Untitled note",
+    "openNote": "Open note"
   },
   "explainPopover": {
     "thinking": "Thinking...",

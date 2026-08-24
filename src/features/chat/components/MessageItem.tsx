@@ -48,7 +48,7 @@ import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { branchSessionFromMessage } from './message/branchFromMessage';
 import { useSessionBranchTargets } from '../core/session/sessionBranchIndex';
 import { requestChatSessionNavigation } from '../navigation/pendingChatNavigation';
-import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { useTextSelection } from '../hooks/useTextSelection';
@@ -762,7 +762,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [isReadOnlySession, isLocked, store, messageId, activeVariant?.id, t]);
 
-  // 🆕 保存为 VFS 笔记
+  // 🆕 保存为 VFS 笔记：先让用户选目录（复用 Finder 的 FolderPickerDialog），
+  // 写入成功后 toast 带「打开笔记」动作，不再是只给个 toast 的无落点保存
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'chat-message' });
+  const startSaveAsNote = saveAsNoteFlow.start;
   const handleSaveAsNote = useCallback(async () => {
     if (!message) return;
     const text = extractMessageContent();
@@ -770,19 +773,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
       return;
     }
-    const title = extractNoteTitle(text);
-    try {
-      const result = await notesDstuAdapter.createNote(title, text);
-      if (result.ok) {
-        showGlobalNotification('success', t('messageItem.actions.saveAsNoteSuccess', { title }));
-      } else {
-        showGlobalNotification('error', result.error.toUserMessage(), t('messageItem.actions.saveAsNoteFailed'));
-      }
-    } catch (error: unknown) {
-      console.error('[MessageItem] Save as note failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.saveAsNoteFailed'));
-    }
-  }, [message, extractMessageContent, extractNoteTitle, t]);
+    startSaveAsNote({ content: text, title: extractNoteTitle(text) });
+  }, [message, extractMessageContent, extractNoteTitle, startSaveAsNote, t]);
+
+  // 划词「保存为笔记」：走同一套目录选择 + 打开笔记
+  const handleSelectionSaveAsNote = useCallback((text: string) => {
+    startSaveAsNote({ content: text });
+  }, [startSaveAsNote]);
 
   // 🆕 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);
@@ -1477,7 +1474,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
         onMakeCards={handleSelectionMakeCards}
+        onSaveAsNote={handleSelectionSaveAsNote}
       />
+
+      {/* 保存为笔记的目录选择器（窄屏走全屏子屏，Android 返回键先关它） */}
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
 
       {/* 🆕 翻译/解释内联卡片（P0-3: DOM 流内展开在消息下方，与消息列对齐） */}
       {(translationPopoverState.isVisible || explainPopoverState.isVisible) && (
