@@ -1,4 +1,123 @@
-# 0824 第三轮复查：主题仓推送核验与 leftover 审计
+# 0824 leftover 审计
+
+## 第四轮：开放 PR → 主题仓完整性对照（#158–#223）
+
+日期：2026-08-24
+
+本轮在第三轮结果之上重新 fetch 了 9 个主题仓及全部开放 PR tip，并对 #158–#223 的 66 个 PR 逐一做祖先、patch-id 和已知内容级覆盖复核；没有抽样。分类统计：`IN_THEME` 56 个、`LEFTOVER` 5 个、`IGNORE` 5 个。
+
+主题仓缩写：
+
+| 缩写 | 分支 | 本轮 tip |
+|---|---|---|
+| A | `cursor/0824-theme-wrapup-cde6` | `1f8d9850d1` |
+| B | `cursor/0824-theme-cloud-cde6` | `493c4c7423` |
+| C | `cursor/0824-theme-genui-cde6` | `bc26f121a8` |
+| D | `cursor/0824-theme-anki-cde6` | `07146ea9fd` |
+| E | `cursor/0824-theme-opt-cde6` | `ae3207fff6` |
+| F | `cursor/0824-theme-subapp-cde6` | `115b202a19` |
+| G | `cursor/0824-theme-mobile-cde6` | `4ab24435bb` |
+| H | `cursor/0824-theme-cache-cde6` | `9101aa0bef` |
+| T | `cursor/0824-theme-tests-cde6` | `02a1d03a56` |
+| 0824 | `cursor/0824-cde6` | `e54603a0f6` |
+
+### 完整处置表
+
+| PR | 当前 tip | 分类 | 完整性结论 |
+|---|---|---|---|
+| #158 | `9c01e4ffbd` | `IN_THEME(A/T)` | 9/11 patch-id 覆盖；删 `utf8_stream` 被 A 有意否决，剩余差异仅测试注释，产品行为已覆盖 |
+| #159 | `8f08b3c9c5` | `IN_THEME(A)` | ErrorBoundary 真重试和 ResourceIcons 暗色 token 已入 A；其余由 #164 超集替代 |
+| #160 | `7c1a509459` | `LEFTOVER` | F 只部分吸收；手动建卡库/APKG 导入、番茄钟宿主仲裁、题库会话进度、死组件删除已在第三轮收集到本分支 |
+| #161 | `d7fdb76d2d` | `LEFTOVER` | F 只部分吸收；workbench 引导入口、桌面组件开关、inert/恢复 CTA 等已在第三轮收集到本分支 |
+| #162 | `10685f44de` | `IN_THEME(F)` | tip 提交为 F 祖先；其余两个提交互相回退，净行为已在 F |
+| #163 | `1ce06e5bb7` | `IN_THEME(F)` | shared selection/notes、PDF 接线及测试按文件覆盖；中间回退导致 tip 非祖先 |
+| #164 | `d15d9ff6e1` | `IN_THEME(A/T)` | 2/3 patch-id 覆盖，finder host 分桶由 A 重放，剩余为 #166 超集 |
+| #165 | `0589b9491b` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #166 | `c67fcce6f2` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #167 | `94239510da` | `IN_THEME(F)` | F 以 cardAgent 直连超集吸收，其他文件字节级覆盖 |
+| #168 | `c67a30cd20` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #169 | `08238dfc4c` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先；FTP tombstone 行为也已移植到 B |
+| #170 | `3f9620cda2` | `IGNORE` | mythos-5 为虚构模型，按合并计划否决 |
+| #171 | `5a213b1eac` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #172 | `e963b6df94` | `IN_THEME(G)` | PR tip 是 G 祖先 |
+| #173 | `6918134171` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #174 | `fb0a08f53b` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先；WebDAV/S3 行为也已移植到 B |
+| #175 | `5e5d7fea00` | `IN_THEME(A/H/0824)` | PR tip 是 A、H、统一仓祖先 |
+| #176 | `97ee408c8b` | `IN_THEME(F)` | PR tip 是 F 祖先 |
+| #177 | `bcd61eec3e` | `LEFTOVER` | B 停在 PR 的 `5440d582`；当前 PR 比 B 多 44 个提交（第三轮记录 tip 后又增加 40 个，其中 10 个非 docs/style/test/ci 非合并提交），B 另有 5 个主题专用提交 |
+| #178 | `e10a94292b` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #179 | `6b519562ce` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #180 | `0b5e20393f` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #181 | `786014062b` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #182 | `21d60585e5` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #183 | `59c7f0aa0a` | `IN_THEME(H/0824)` | PR tip 是 H、统一仓祖先 |
+| #184 | `2a75d0a694` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #185 | `ec807e03df` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #186 | `2f4fe78b2f` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #187 | `909386dec1` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #188 | `e47515b6e6` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #189 | `c49629c5e6` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #190 | `ec21c436b2` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #191 | `b5b06ca0af` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #192 | `aebb5b2057` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #193 | `bcba9a4dd8` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #194 | `ef43401e4a` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #195 | `b6864dbe00` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #196 | `6425589b7d` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #197 | `f46d56f044` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #198 | `9f0c03cc9f` | `IGNORE` | 与“文件 200MB / 图片 50MB”既定限制冲突 |
+| #199 | `7ec24ebb29` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #200 | `a1fc845169` | `IGNORE` | 被 #268 的统一 special-token 实现取代 |
+| #201 | `88d40382ef` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #202 | `1b0a362402` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #203 | `e76b1d5491` | `IGNORE` | 与 #209 冲突，T 采用 #209 契约 |
+| #204 | `9e4c6224cd` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #205 | `62877e961d` | `IN_THEME(T)` | patch-id 全覆盖 |
+| #206 | `7370c20510` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #207 | `48d0cd29a5` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #208 | `01c4597ed0` | `IN_THEME(T)` | patch-id 全覆盖 |
+| #209 | `98e312436f` | `IN_THEME(T)` | 15/17 文件字节级一致，另两文件为 T 的有意超集 |
+| #210 | `8e071fd253` | `IN_THEME(T)` | patch-id 全覆盖 |
+| #211 | `3238941299` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #212 | `61e17f3498` | `IN_THEME(T)` | patch-id 全覆盖 |
+| #213 | `746445fc61` | `LEFTOVER` | 旧表误把统一仓重放提交 `65bad3ed` 当 PR tip；真实 tip 比 E/0824 多 4 个 Rust 格式、CI 与契约修复，现已全部收集 |
+| #214 | `c2786d4b60` | `LEFTOVER` | 旧表误把已合基线 `c16a4fbd` 当 PR tip；真实 tip 多 30 个提交，其中 28 个非文档产品/测试/CI 提交现已收集，2 个进度文档提交不搬 |
+| #215 | `f4f1300e85` | `IN_THEME(D)` | PR tip 是 D 祖先 |
+| #216 | `8660061784` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #217 | `3221291867` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #218 | `850bdccb6f` | `IGNORE` | 图标契约部分已在 T；hunyuan-2.0 可解析语义与注册表退役决策冲突，PR 整体否决 |
+| #219 | `5d5d2ce72b` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #220 | `f9499d870f` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #221 | `78774130f0` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #222 | `b95a49fb06` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+| #223 | `fae6707d9f` | `IN_THEME(A/T)` | PR tip 是 A/T 祖先 |
+
+### 本轮新收集
+
+`cursor/0824-leftovers-cde6` 在第三轮 tip `f2a8f675` 之上新增 32 个提交：
+
+- #213：`c986c8d1`、`a40c16a0`、`e311daa4`、`746445fc` 的 4 个提交全部按序 cherry-pick。
+- #214：`c16a4fbd..c2786d4b` 的 28 个非文档提交按序 cherry-pick；跳过 `95e59c3b`、`40b7b062` 两个进度文档提交。冲突只涉及已并入 E 的 CI/测试契约和旧版 generative-ui 进度文档；产品代码采用 #214 后续版本，CI 保留 matrix 条件并叠加内存限制，进度文档不搬。
+
+#177 没有伪装成可独立 cherry-pick 的 leftover：其 44 个提交建立在 B 的云同步重写上，而当前 leftovers 基座尚不含 B。正确动作是把 B 更新到 #177 当前 tip，再重放 B 独有的 #169/#174/R02/auto-sync 修复；直接摘到当前基座会产生不完整的云同步实现。
+
+### #224–#267 快速确认
+
+重新 fetch 44 个 PR tip 后逐一执行祖先检查，`44/44` 均为 A (`cursor/0824-theme-wrapup-cde6`) 祖先，失败数 `0`。
+
+### 本轮门禁
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ |
+| `npm run version:generate && npm run typecheck` | ✅ |
+| `npx vite build` | ✅（仅既有循环 re-export、动态/静态 import 与大 chunk 警告） |
+| `cargo +stable check --manifest-path src-tauri/Cargo.toml --lib` | ✅（stable 1.98；默认 Cargo 1.83 不支持锁定依赖所需 edition 2024） |
+| 聚焦 Vitest（generative-ui + 受冲突影响契约） | ✅ 131 files / 905 tests |
+
+---
+
+## 第三轮存档：主题仓推送核验与 leftover 审计
 
 日期：2026-08-24
 复查范围：开放 PR #158–#268（共 111 个，区间内无已关闭编号）对照 `docs/0824-MERGE-PLAN.md` 与 9 个主题仓 + 统一仓。
