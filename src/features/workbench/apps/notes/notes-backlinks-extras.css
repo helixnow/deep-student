@@ -236,6 +236,13 @@
     height: 44px;
     margin: -4px;
   }
+
+  /* 「展开上下文」文字链同样补足 44px 触控高度，保持文字链视觉 */
+  .notes-backlinks-panel-more-context {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
 }
 
 .notes-backlinks-panel-create-button:disabled {
