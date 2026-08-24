@@ -447,3 +447,7 @@ v1 与 v2 的「10 版」过渡不能假装是原子操作：
 | Cloud backup CDC/块级去重 | **不能** |
 
 本轮只有调研、可复现的合成基准和协议草案；没有任何生产上传、恢复或 GC 行为改变。
+
+> 进度注记（R12-delta-format）：`delta_format.rs` codec 已落地（schema、上限校验、
+> fail-closed、往返测试），**未接线**——生产上传仍是整 ZIP 单对象 `put_file`，
+> 上表「Cloud backup 增量传输/去重」判定不变，仍为**不能宣称**。
