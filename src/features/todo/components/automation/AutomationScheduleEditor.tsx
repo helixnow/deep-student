@@ -114,9 +114,10 @@ function defaultsForKind(kind: AutomationScheduleKind, previous: AutomationSched
 }
 
 const fieldClassName = cn(
-  // 触屏：36px 输入框不足触控标准，统一升到 44px（对照时区搜索框的处理）
+  // 触屏：36px 输入框不足触控标准，统一升到 44px（对照时区搜索框的处理）；
+  // 字号同步升到 16px 防 iOS Safari 聚焦自动放大（覆盖调用侧 text-xs 覆写）
   'h-9 w-full rounded-[var(--radius-shell-control)] border border-[color:var(--border-soft)]',
-  '[@media(pointer:coarse)]:h-11',
+  '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
   'bg-transparent px-3 text-sm text-foreground outline-none',
   'transition-colors duration-150 motion-reduce:transition-none',
   'focus:border-[color:hsl(var(--primary))] disabled:cursor-not-allowed disabled:opacity-50',

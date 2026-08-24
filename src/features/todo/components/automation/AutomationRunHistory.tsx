@@ -635,7 +635,7 @@ export function AutomationRunHistory({
             onChange={(event) => setAutomationFilter(event.target.value)}
             aria-label={t('todo:automation.history.filterByTask')}
             className={cn(
-              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11',
+              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
               'transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             )}
             style={{
