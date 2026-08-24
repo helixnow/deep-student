@@ -171,9 +171,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPasswordConfigured: false,
   });
 
-  // Android 后端对 FTP provider 返回硬编码英文文案（见 src-tauri cloud_storage
-  // create_storage / config validate），且 AppError 无稳定错误码可依赖。
-  // 在展示层按已知文案映射为 i18n；后端引入稳定错误码后应改为按 code 匹配。
+  // [R11-android2 / P2-LOCALE] 平台能力错误只按后端稳定 code 映射。
+  // message 是诊断文本，允许改语言/措辞，禁止再以正则参与程序分派。
   const localizeCloudError = useCallback(
     (error: unknown): string => {
       const raw = getErrorMessage(error);
@@ -183,16 +182,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       if (e2eeKind) {
         return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
       }
-      if (/FTP\/FTPS storage is not available on Android/i.test(raw)) {
-        return t('cloudStorage:errors.ftpDisabledAndroid');
-      }
-      // [R10-ux / P2-LOCALE-PLATFORM-MSG] 无 S3 构建（Android 发行版）的拒绝
-      // 常量 S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE 是中文，en 用户不可读。
-      // 四条后端路径（validate / create_storage / SSOT 保存与加载）字节一致，
-      // 按稳定片段映射为 i18n。
-      if (/当前安装包不支持\s*S3\s*兼容存储/.test(raw)) {
-        return t('cloudStorage:errors.s3DisabledInBuild');
-      }
+      const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
+      if (platformErrorKey) return t(platformErrorKey);
       return raw;
     },
     [t],

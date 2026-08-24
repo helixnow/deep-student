@@ -80,7 +80,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 | R07 CI 收口与文件级 E2EE | 部分合入 | 已合文件级 DSBK、自动同步、记录级校验子、WebDAV 409、文件名测试；文案已回写不再称文件级明文，见 [ROUND-07](./ROUND-07.md) |
 | R08 复审与收口 | 进行中 | 见 [ROUND-08](./ROUND-08.md) |
 | R09–R10 大包 | 进行中 | 每路 ≥4 交付物；P1-1 冲突 UI 已关；P2-2 KDF 钳制已合，见 [ROUND-10](./ROUND-10.md) |
-| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate 已合，见 [ROUND-11](./ROUND-11.md) |
+| R11 大包 | 部分合入 | history / unsynced-ui / autosync2 / check / review / rotate / android2 已合；names2 / delta 未齐，见 [ROUND-11](./ROUND-11.md) |
 | 收尾 | 进行中 | P1 巡检头 + P2 死代码/WebDAV 字节已合；见 [WRAP-CLOSE.md](./WRAP-CLOSE.md) |
 
 ## 文档索引
@@ -103,5 +103,6 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [WRAP-CLOSE.md](./WRAP-CLOSE.md) — 收尾 go/no-go 与已合/未关清单
 - [FINDINGS-R11.md](./FINDINGS-R11.md) — R10 七路 + R11 两路合入项核销、新发现（含 repo_check DSBK v2 头偏移 P1）、锁定测清单与 SOTA-R10 §3 改判建议
 - [FINDINGS-WRAP.md](./FINDINGS-WRAP.md) — 收尾只读复审：四类 P0 核销、仍开 P1/P2、诚实未达与生产 Go/No-Go
+- [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md) — Android WebDAV/SAF/恢复重启真机核对单、已知缺口、mobile-slim + S3 量化评估
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图

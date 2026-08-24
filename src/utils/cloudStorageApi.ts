@@ -5,7 +5,80 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { getErrorMessage } from './errorUtils';
+
+export const FTP_UNSUPPORTED_ON_ANDROID_CODE = 'E_FTP_UNSUPPORTED_ON_ANDROID';
+export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
+
+type ErrorWithCode = Error & { code?: string };
+
+function asErrorRecord(raw: unknown): Record<string, unknown> | null {
+  let candidate = raw instanceof Error ? raw.message : raw;
+  if (typeof candidate === 'string') {
+    const text = candidate.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      candidate = JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+  return typeof candidate === 'object' && candidate !== null
+    ? candidate as Record<string, unknown>
+    : null;
+}
+
+/**
+ * Extract the backend's stable cloud-storage code from either the canonical
+ * CommandError envelope or the legacy AppError `{ details: { code } }` shape.
+ * Messages are intentionally ignored for dispatch.
+ */
+export function getCloudStorageErrorCode(error: unknown): string | undefined {
+  const envelope = parseCommandErrorEnvelope(error)
+    ?? (error instanceof Error ? parseCommandErrorEnvelope(error.message) : null);
+  if (envelope) return envelope.code;
+
+  const record = asErrorRecord(error);
+  if (!record) return undefined;
+  if (typeof record.code === 'string') return record.code;
+  if (typeof record.errorCode === 'string') return record.errorCode;
+
+  const details = typeof record.details === 'object' && record.details !== null
+    ? record.details as Record<string, unknown>
+    : null;
+  if (typeof details?.code === 'string') return details.code;
+  if (typeof details?.errorCode === 'string') return details.errorCode;
+  return undefined;
+}
+
+/**
+ * Keep a stable backend code when legacy API wrappers normalize an invoke
+ * rejection into `Error`; CloudStorageSection can then localize by code.
+ */
+export function normalizeCloudStorageError(error: unknown): ErrorWithCode {
+  const normalized = new Error(getErrorMessage(error)) as ErrorWithCode;
+  normalized.code = getCloudStorageErrorCode(error);
+  return normalized;
+}
+
+export type CloudPlatformErrorI18nKey =
+  | 'cloudStorage:errors.ftpDisabledAndroid'
+  | 'cloudStorage:errors.s3DisabledInBuild';
+
+/** Platform capability errors are localized exclusively by stable backend code. */
+export function getCloudPlatformErrorI18nKey(
+  error: unknown,
+): CloudPlatformErrorI18nKey | undefined {
+  switch (getCloudStorageErrorCode(error)) {
+    case FTP_UNSUPPORTED_ON_ANDROID_CODE:
+      return 'cloudStorage:errors.ftpDisabledAndroid';
+    case S3_UNSUPPORTED_IN_BUILD_CODE:
+      return 'cloudStorage:errors.s3DisabledInBuild';
+    default:
+      return undefined;
+  }
+}
 
 // ============== 类型定义 ==============
 
@@ -438,7 +511,7 @@ export async function checkConnection(config: CloudStorageConfig): Promise<boole
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -457,7 +530,7 @@ export async function putFile(
       data: Array.from(data),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -475,7 +548,7 @@ export async function getFile(
     });
     return data ? new Uint8Array(data) : null;
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -492,7 +565,7 @@ export async function listFiles(
       prefix,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -509,7 +582,7 @@ export async function deleteFile(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -526,7 +599,7 @@ export async function statFile(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -543,7 +616,7 @@ export async function fileExists(
       key,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -558,7 +631,7 @@ export async function getSyncStatus(config: CloudStorageConfig): Promise<SyncSta
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -571,7 +644,7 @@ export async function listVersions(config: CloudStorageConfig): Promise<BackupVe
       config: toRuntimeCloudStorageConfig(config),
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -592,7 +665,7 @@ export async function uploadBackup(
       note,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -613,7 +686,7 @@ export async function downloadBackup(
       localDir,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -630,7 +703,7 @@ export async function deleteVersion(
       versionId,
     });
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -641,7 +714,7 @@ export async function getDeviceId(): Promise<string> {
   try {
     return await invoke<string>('cloud_sync_get_device_id');
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 
@@ -804,7 +877,7 @@ export async function deleteCredentials(): Promise<void> {
   try {
     await invoke('secure_delete_cloud_credentials');
   } catch (error: unknown) {
-    throw new Error(getErrorMessage(error));
+    throw normalizeCloudStorageError(error);
   }
 }
 

@@ -31,7 +31,8 @@ use std::sync::{Arc, Mutex};
 use deep_student_lib::cloud_config_commands::{
     load_cloud_config_ssot_with_capabilities, save_cloud_config_ssot_with_capabilities,
     CloudConfigSsotError, SafeCloudStorageConfig, SafeFtpConfig, SafeS3Config,
-    CLOUD_CONFIG_SSOT_SETTING_KEY, FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+    CLOUD_CONFIG_SSOT_SETTING_KEY, FTP_UNSUPPORTED_ON_ANDROID_CODE,
+    FTP_UNSUPPORTED_ON_ANDROID_MESSAGE, S3_UNSUPPORTED_IN_BUILD_CODE,
     S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
 };
 use deep_student_lib::cloud_storage::{
@@ -467,28 +468,42 @@ fn read_marker(db_path: &Path) -> Option<String> {
 // 1. Android 拒 FTP：create_storage + 配置 SSOT 保存/加载
 // ============================================================================
 
-/// Android 能力下，运行时校验与 `create_storage` 都必须以前端可映射的
-/// 同一常量拒绝 FTP（RESTORE-MATRIX 场景 7 的显式拒绝要求）。
+/// Android 能力下，运行时校验与 `create_storage` 都必须以同一稳定 code
+/// 拒绝 FTP（RESTORE-MATRIX 场景 7 的显式拒绝要求）。
 #[tokio::test]
 async fn android_create_storage_rejects_ftp_with_mappable_message() {
     let config = valid_ftp_runtime_config();
 
+    let validation_error = config
+        .validate_with_capabilities(android_capabilities())
+        .expect_err("Android 能力下 FTP 校验必须失败");
     assert_eq!(
-        config
-            .validate_with_capabilities(android_capabilities())
-            .expect_err("Android 能力下 FTP 校验必须失败"),
+        validation_error.code(),
+        Some(FTP_UNSUPPORTED_ON_ANDROID_CODE)
+    );
+    assert_eq!(
+        validation_error.to_string(),
         FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
-        "校验层的拒绝文案必须与前端映射常量字节一致"
+        "展示文案仍可读；程序分派只依赖稳定 code"
     );
 
     let error = create_storage_with_capabilities(&config, android_capabilities())
         .await
         .err()
-        .expect("Android 能力下 create_storage 必须拒绝 FTP")
-        .to_string();
+        .expect("Android 能力下 create_storage 必须拒绝 FTP");
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("code"))
+            .and_then(|code| code.as_str()),
+        Some(FTP_UNSUPPORTED_ON_ANDROID_CODE),
+        "create_storage AppError 必须携带机器码"
+    );
+    let error = error.to_string();
     assert!(
         error.contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE),
-        "create_storage 的拒绝必须携带可映射常量，实际: {error}"
+        "create_storage 的拒绝仍应携带可读诊断，实际: {error}"
     );
 
     // 对照组：桌面能力（当前宿主构建）下同一份配置可以通过校验。
@@ -523,10 +538,8 @@ fn android_ssot_rejects_ftp_on_save_and_load() {
     let denied =
         save_cloud_config_ssot_with_capabilities(&database, ftp_config, android_capabilities())
             .expect_err("Android 能力下 FTP 不得持久化");
-    assert_eq!(
-        denied,
-        CloudConfigSsotError::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string())
-    );
+    assert!(matches!(&denied, CloudConfigSsotError::Invalid(_)));
+    assert_eq!(denied.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
     assert!(
         matches!(
             load_cloud_config_ssot_with_capabilities(&database, android_capabilities()),
@@ -542,11 +555,10 @@ fn android_ssot_rejects_ftp_on_save_and_load() {
             r#"{"provider":"ftp","ftp":{"host":"ftp.example.test","port":21,"username":"student","useTls":true}}"#,
         )
         .expect("seed desktop-written ftp record");
-    assert_eq!(
-        load_cloud_config_ssot_with_capabilities(&database, android_capabilities())
-            .expect_err("桌面写入的 FTP 记录在 Android 上必须 fail-closed"),
-        CloudConfigSsotError::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string())
-    );
+    let load_error = load_cloud_config_ssot_with_capabilities(&database, android_capabilities())
+        .expect_err("桌面写入的 FTP 记录在 Android 上必须 fail-closed");
+    assert!(matches!(&load_error, CloudConfigSsotError::Invalid(_)));
+    assert_eq!(load_error.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
 }
 
 // ============================================================================
@@ -572,17 +584,28 @@ async fn build_without_s3_rejects_s3_with_user_facing_message() {
     }
 
     let config = valid_s3_runtime_config();
+    let validation_error = config
+        .validate_with_capabilities(android_capabilities())
+        .expect_err("无 S3 构建必须拒绝 S3 配置");
+    assert_eq!(validation_error.code(), Some(S3_UNSUPPORTED_IN_BUILD_CODE));
     assert_eq!(
-        config
-            .validate_with_capabilities(android_capabilities())
-            .expect_err("无 S3 构建必须拒绝 S3 配置"),
+        validation_error.to_string(),
         S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
     );
     let error = create_storage_with_capabilities(&config, android_capabilities())
         .await
         .err()
-        .expect("无 S3 构建 create_storage 必须拒绝 S3")
-        .to_string();
+        .expect("无 S3 构建 create_storage 必须拒绝 S3");
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("code"))
+            .and_then(|code| code.as_str()),
+        Some(S3_UNSUPPORTED_IN_BUILD_CODE),
+        "create_storage AppError 必须携带机器码"
+    );
+    let error = error.to_string();
     assert!(
         error.contains(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE),
         "create_storage 的拒绝必须携带用户级常量，实际: {error}"
@@ -607,10 +630,8 @@ async fn build_without_s3_rejects_s3_with_user_facing_message() {
         android_capabilities(),
     )
     .expect_err("无 S3 构建的 SSOT 不得持久化 S3 配置");
-    assert_eq!(
-        denied,
-        CloudConfigSsotError::Invalid(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string())
-    );
+    assert!(matches!(&denied, CloudConfigSsotError::Invalid(_)));
+    assert_eq!(denied.stable_code(), S3_UNSUPPORTED_IN_BUILD_CODE);
 
     // 桌面端（有 S3 的构建）写入的记录在无 S3 构建上加载必须拒绝。
     let stored = save_cloud_config_ssot_with_capabilities(
@@ -623,11 +644,10 @@ async fn build_without_s3_rejects_s3_with_user_facing_message() {
     )
     .expect("桌面能力下保存 S3 配置应成功");
     assert_eq!(stored.provider_name(), "s3");
-    assert_eq!(
-        load_cloud_config_ssot_with_capabilities(&database, android_capabilities())
-            .expect_err("桌面写入的 S3 记录在无 S3 构建上必须 fail-closed"),
-        CloudConfigSsotError::Invalid(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string())
-    );
+    let load_error = load_cloud_config_ssot_with_capabilities(&database, android_capabilities())
+        .expect_err("桌面写入的 S3 记录在无 S3 构建上必须 fail-closed");
+    assert!(matches!(&load_error, CloudConfigSsotError::Invalid(_)));
+    assert_eq!(load_error.stable_code(), S3_UNSUPPORTED_IN_BUILD_CODE);
 }
 
 /// feature 清单锚定：`mobile-slim` 与 `android-release` 都不得包含
@@ -675,8 +695,13 @@ fn mobile_feature_profiles_exclude_s3_backend() {
 fn platform_capability_constants_stay_mappable() {
     assert_eq!(
         FTP_UNSUPPORTED_ON_ANDROID_MESSAGE, "FTP/FTPS storage is not available on Android.",
-        "该文案是前端 CloudStorageSection 正则映射的契约，不得改动"
+        "展示文案保留为可读诊断；前端不再匹配该字符串"
     );
+    assert_eq!(
+        FTP_UNSUPPORTED_ON_ANDROID_CODE,
+        "E_FTP_UNSUPPORTED_ON_ANDROID"
+    );
+    assert_eq!(S3_UNSUPPORTED_IN_BUILD_CODE, "E_S3_UNSUPPORTED_IN_BUILD");
     let current = PlatformStorageCapabilities::current();
     assert_eq!(current.ftp_supported, cfg!(not(target_os = "android")));
     assert_eq!(current.s3_supported, cfg!(feature = "cloud_storage_s3"));
