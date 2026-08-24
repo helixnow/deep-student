@@ -151,7 +151,10 @@ export {
   extractHpiasEventTypes,
 } from './contracts/hpiasLifecycleContract';
 export type { HpiasPipelineLifecycleType } from './contracts/hpiasLifecycleContract';
-export { extractResearchSessionId } from './utils/extractResearchSessionId';
+export {
+  extractResearchSessionId,
+  MAX_RESEARCH_SESSION_ID_LENGTH,
+} from './utils/extractResearchSessionId';
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
 export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
 export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';
