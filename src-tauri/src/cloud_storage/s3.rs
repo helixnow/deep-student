@@ -415,6 +415,15 @@ impl CloudStorage for S3Storage {
                 .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
         }
 
+        // [R10-download] 半包 fail-closed：响应流读到 EOF 不等于下载完成。
+        // 流提前结束（半包）或对象在 stat 与 GET 之间被并发替换（大小不同）
+        // 都在此拒绝——无 expected_checksum 的调用方没有第二道防线。
+        if downloaded != total_size {
+            return Err(AppError::network(format!(
+                "S3 下载不完整或对象已变更：声明 {total_size} 字节，实际收到 {downloaded} 字节，已拒绝保存（请重试）"
+            )));
+        }
+
         let checksum = format!("{:x}", hasher.finalize());
         if let Some(expected) = expected_checksum {
             if expected != checksum {
