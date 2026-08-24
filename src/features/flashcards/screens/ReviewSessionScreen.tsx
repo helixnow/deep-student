@@ -386,7 +386,7 @@ export const ReviewSessionScreen: React.FC = () => {
           variant="default"
           disabled={ratingBusy}
           onClick={() => void rate(lastRated)}
-          className="shrink-0 text-xs"
+          className="shrink-0 text-xs [@media(pointer:coarse)]:min-h-11"
         >
           <ArrowClockwise size={14} />
           {t('session.retry')}
@@ -418,12 +418,22 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {retryBatchRequest ? (
-            <DsButton type="button" variant="primary" onClick={() => void retryBatchSession()}>
+            <DsButton
+              type="button"
+              variant="primary"
+              onClick={() => void retryBatchSession()}
+              className="[@media(pointer:coarse)]:min-h-11"
+            >
               <ArrowClockwise size={16} />
               {t('session.retry')}
             </DsButton>
           ) : null}
-          <DsButton type="button" variant="default" onClick={endSession}>
+          <DsButton
+            type="button"
+            variant="default"
+            onClick={endSession}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('session.backToday')}
           </DsButton>
         </div>
@@ -495,7 +505,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => setBatchNoticeDismissed(true)}
             aria-label={t('library.dismiss')}
             title={t('library.dismiss')}
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           >
             <X size={13} />
           </DsButton>
@@ -659,6 +669,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="ghost"
                 disabled={ratingBusy}
                 onClick={() => setEditing(false)}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 <X size={16} />
                 {t('session.cancelEdit')}
@@ -668,6 +679,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="primary"
                 disabled={ratingBusy || !draftIsValid}
                 onClick={() => void saveEdit()}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 <FloppyDisk size={16} />
                 {t('session.saveEdit')}
