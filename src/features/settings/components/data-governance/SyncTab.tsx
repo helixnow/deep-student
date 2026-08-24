@@ -47,6 +47,7 @@ import {
 } from "./syncE2eeErrorMapping";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
 import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
+import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
 import { SyncIndicator } from "./SyncIndicator";
 import { settingsQuietTableRowClassName } from "../SettingsCommon";
 import type {
@@ -723,6 +724,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       {/* 记录级冲突面板（__sync_conflicts 表） */}
       <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
       <SyncQuarantinePanel refreshSignal={conflictRefreshSignal} />
+      {/* [R11-unsynced-ui] 未同步文件清单常驻面板（仅挂载行） */}
+      <UnsyncedItemsPanel refreshSignal={conflictRefreshSignal} onRetrySync={() => onRunSync("download", syncStrategy)} />
     </div>
   );
 };

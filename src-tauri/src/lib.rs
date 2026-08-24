@@ -2622,6 +2622,8 @@ pub fn run() {
             // [R11-history] 记录级时点恢复（快照浏览 / 单批回退）
             ,crate::data_governance::commands_sync::data_governance_list_sync_snapshot_batches
             ,crate::data_governance::commands_sync::data_governance_rollback_sync_snapshot_batch
+            // [R11-unsynced-ui] 未同步文件清单（只读）
+            ,crate::data_governance::commands_sync::data_governance_list_unsynced_items
             // 任务恢复命令（断点续传支持）
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
