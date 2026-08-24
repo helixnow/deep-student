@@ -2,13 +2,15 @@
 
 ## 范围
 
-- 基线：`origin/cursor/0824-cde6` @ `af3e39d818cf557e4f1434dd909442b4aae6d490`
+- 最终基线：`origin/cursor/0824-cde6` @ `8b70b2d7950ecc014f010591fd998350f9cb8c4e`
+- 建分支时的基线：`af3e39d818cf557e4f1434dd909442b4aae6d490`
 - F：`origin/cursor/0824-theme-subapp-cde6` @ `575fee7f475a83de5c0edd3dd378015495fb22ad`
 - G：`origin/cursor/0824-theme-mobile-cde6` @ `4ab24435bb998f7d24fed9e80e39746a4f44edb3`
 - 热区参考：F × G rehearsal `ec8a2524`
 - 预演分支：`cursor/0824-rehearse-step3-fg-cde6`
 - F 合并提交：`7d7064cb54ebcddeda22f8d14f67c74a8793ef51`
 - G 合并提交：`2a6ffedb50707b2b26a805fd05e66af597daffdb`
+- 最新 0824 刷新合并：`078b82db1b132ee84856999a3fc4b84d0458ca02`
 
 本轮只提交并推送预演分支，未改动或推送 `main` / `cursor/0824-cde6`。
 
@@ -20,6 +22,8 @@
 3. 再 merge 最新 G，按 `ec8a2524` 的「F 主体 + G 热区」规则，把移动端返回键、
    coarse pointer 触控区、窄屏固定布局和可见性守卫重放到 F 的新组件边界。
 4. G 已删除的 legacy notes 实现继续删除，不因 modify/delete 冲突而复活。
+5. 执行期间 0824 又合入 cloud-sync 并推进到 `8b70b2d7`，因此将这段推进量反向
+   merge 到预演分支；只解决预演分支上的冲突，不改写 0824。
 
 G 热区回放复用了 `ec8a2524` 文档和已验证 F × G 树的逐文件取舍，而不是整文件采用
 G 的旧结构。重点覆盖 InputBar、Learning Hub/finder、PDF/EPUB、Todo、Anki、
@@ -57,17 +61,21 @@ legacy notes 删除集合保持删除，包括 `DndFileTree/**`、旧 PreviewPan
 - `1b289aa7`：删除被 F 新测试完整替代、且仍断言旧共桶语义的
   `finderStoreHostBuckets.test.ts`。保留的新测试锁定每个 host 独立分桶和
   active-host 导航协议。
+- `078b82db`：合入执行期间新增的 0824 cloud-sync 基线。两个冲突均组合双方契约：
+  `CloudStorageSection` 保留最新的清配置确认与失败重试，并给新增操作补 G 的 44px
+  触控热区；`RecordConflictsPanel` 保留 cloud-only DELETE 可执行 keep-local 的新语义，
+  同时保留窄屏/coarse pointer 44px 热区。
 
 ## 门禁结果
 
 - `npm run typecheck`：通过。
 - `npm run build`：通过。prebuild 内的版本生成、许可证检查和二次 typecheck
-  全部通过；Vite 转换 19799 个模块。输出仅有既存的循环 chunk、重复静态/动态导入
+  全部通过；Vite 转换 19801 个模块。输出仅有既存的循环 chunk、重复静态/动态导入
   和大 chunk 警告。
 - `rustup run stable cargo check --manifest-path src-tauri/Cargo.toml`：通过，
-  24 个既存 warning、0 error。环境默认 Cargo 1.83 不支持锁定依赖所需的
+  25 个 warning、0 error。环境默认 Cargo 1.83 不支持锁定依赖所需的
   edition 2024，因此使用已安装的 stable Cargo/Rust 1.98。
-- 热点契约测试：通过（6 files / 41 tests），覆盖 qbank tools、finder host buckets
-  和 MCP permission/bypass contracts。
+- 热点契约测试：通过（8 files / 58 tests），覆盖 qbank tools、finder host buckets、
+  MCP permission/bypass、CloudStorage UI 和 cloud-only conflict contracts。
 
 门禁运行后工作区无生成物或未提交改动。
