@@ -338,7 +338,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                 <DsButton
                   variant="danger"
                   size="sm"
-                  className="gap-1 [@media(pointer:coarse)]:min-h-11"
+                  className="gap-1 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     setConfirmingDelete(false);
                     setOpen(false);
@@ -352,7 +352,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                   ref={cancelDeleteRef}
                   variant="utility"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setConfirmingDelete(false)}
                 >
                   {t('outlineV2.cancel', { defaultValue: '取消' })}

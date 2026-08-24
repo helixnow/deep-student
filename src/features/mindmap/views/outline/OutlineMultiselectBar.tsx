@@ -99,7 +99,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             <DsButton
               variant="danger"
               size="sm"
-              className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
+              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 setConfirmingDelete(false);
                 onDelete();
@@ -112,7 +112,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
               ref={cancelRef}
               variant="utility"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => setConfirmingDelete(false)}
             >
               {t('outlineV2.cancel', { defaultValue: '取消' })}
@@ -132,7 +132,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </span>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11"
               onClick={onComplete}
               title={t('outline.batchComplete')}
             >
@@ -141,7 +141,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11"
               onClick={onIndent}
               title={`${t('mindmap:outline.batchIndent', { defaultValue: '缩进' })} (Tab)`}
             >
@@ -150,7 +150,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11"
               onClick={onOutdent}
               title={`${t('mindmap:outline.batchOutdent', { defaultValue: '反缩进' })} (Shift+Tab)`}
             >
@@ -159,7 +159,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11"
               onClick={onCopy}
               title={t('mindmap:outline.batchCopy', { defaultValue: '复制' })}
             >
@@ -168,7 +168,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11"
               onClick={onCollapse}
               title={t('mindmap:outline.batchCollapse', { defaultValue: '折叠' })}
             >
@@ -177,7 +177,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn destructive [@media(pointer:coarse)]:min-h-11"
+              className="outline-multiselect-btn destructive [@media(pointer:coarse)]:!min-h-11"
               onClick={() => setConfirmingDelete(true)}
               title={t('actions.delete')}
             >
@@ -186,7 +186,7 @@ export const OutlineMultiselectBar: React.FC<OutlineMultiselectBarProps> = ({
             </DsButton>
             <DsButton
               variant="ghost"
-              className="outline-multiselect-btn [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="outline-multiselect-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={onClear}
               title={t('outline.clearSelection')}
               aria-label={t('outline.clearSelection')}

@@ -1274,7 +1274,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           {/* Mobile: 「更多」入口 → 全屏内联子屏（同结构/样式子屏范式，替代浮层菜单） */}
           <DsButton
             variant="ghost"
-            className="ds-btn mm-mobile-more w-10 h-10 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 justify-center px-0 md:hidden"
+            className="ds-btn mm-mobile-more w-10 h-10 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 justify-center px-0 md:hidden"
             aria-label={t('mindmap:toolbar.moreActions')}
             title={t('mindmap:toolbar.moreActions')}
             onClick={openMobileMore}
@@ -1596,7 +1596,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
               <DsButton variant="ghost"
-                className="ds-btn mt-4 mx-auto [@media(pointer:coarse)]:min-h-11"
+                className="ds-btn mt-4 mx-auto [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void tryLoadMindMap()}
               >
                 <ArrowClockwise size={16} />

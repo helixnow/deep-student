@@ -1758,7 +1758,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           <DsButton
             variant="ghost"
             onClick={() => setViewRootId(null)}
-            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title={t('outline.exitFocusMode')}
           >
             <House size={14} />
@@ -1770,7 +1770,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
                 variant="ghost"
                 onClick={() => setViewRootId(node.id)}
                 className={cn(
-                  "px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] truncate max-w-[100px] [@media(pointer:coarse)]:min-h-11",
+                  "px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] truncate max-w-[100px] [@media(pointer:coarse)]:!min-h-11",
                   index === breadcrumbPath.length - 1
                     ? "text-[var(--mm-text)] font-medium"
                     : "",
