@@ -682,7 +682,7 @@ fn qa_lint_duplicate_tracking_and_reject_semantics() {
         &mut tracker,
     );
     assert!(
-        second.iter().any(|i| i.code == "duplicate_card"),
+        second.iter().any(|i| i.code == "duplicate_in_document"),
         "HTML/大小写/空白差异不影响指纹: {second:?}"
     );
 
@@ -921,6 +921,10 @@ fn protocol_capability_detection_and_resolution_matrix() {
 #[test]
 fn protocol_multi_template_schema_uses_one_of_with_discriminator() {
     let options_json = json!({
+        "deck_name": "integration-test",
+        "note_type": "Basic",
+        "enable_images": false,
+        "max_cards_per_mistake": 10,
         "max_cards_per_batch": 10,
         "template_fields_by_id": {
             "basic": ["front", "back", "tags"],
