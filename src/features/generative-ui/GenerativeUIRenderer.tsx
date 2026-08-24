@@ -13,6 +13,7 @@ import {
   layoutGridClassName,
   type ActionBarProps,
 } from './schema';
+import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { coercePartialIntent } from './utils/coercePartialIntent';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
 import {
@@ -184,6 +185,10 @@ export function GenerativeUIRenderer({
   );
 
   const displayIntent = resolved.intent;
+  const keyedIntent = useMemo(
+    () => (displayIntent ? assignStableBlockIds(displayIntent) : null),
+    [displayIntent],
+  );
   const parseError = resolved.parseError;
   const streamingFallback = resolved.streamFallback;
   const showTruncatedHint =
@@ -250,7 +255,7 @@ export function GenerativeUIRenderer({
         data-layout-mode={mode}
         data-layout-columns={columns}
       >
-        {displayIntent.blocks.map((block, index) => {
+        {(keyedIntent ?? displayIntent).blocks.map((block, index) => {
           const slot = (node: React.ReactNode) => (
             <GenerativeBlockSlot
               key={block.id ?? index}

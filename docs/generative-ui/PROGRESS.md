@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 45（2026-08-24）— 10 子代理：守卫 / 导出 / a11y
+
+在 Round 44 之上并行 10 项。旧 CI `32701178039` 已被后续 push 取消；新 run `32704302688`（head `af00a73c`）仍 queued，**本轮其余提交不 push**。
+
+1. [x] action timeout — `wrapActionWithTimeout`（15s）编入 instrumentation
+2. [x] action rate-limit — `wrapActionWithRateLimit`（400ms + in-flight）
+3. [x] ActionBar live region — `aria-live` + `data-action-unregistered`
+4. [x] forced-colors / print — 系统色焦点环 + 打印藏 chrome
+5. [x] URL 消毒 — `sanitizeGenerativeUrl`（markdown 复用）
+6. [x] intent lint — `lintGenerativeUIIntent`
+7. [x] JSON Schema 导出 — `exportGenerativeUIJsonSchema`（18 type enum）
+8. [x] 稳定 block id — `assignStableBlockIds`（Renderer + normalize `assignIds`）
+9. [x] locale 数字 — StatCard `formatGenerativeStatValue`
+10. [x] telemetry ring — 最近 50 条 + instrumentation 默认写入
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 44（2026-08-24）— 10 子代理：SOTA 体验加固
 
 在 Round 43 之上并行 10 项（**本地完成，未 push**，保护 CI `32701178039`）：

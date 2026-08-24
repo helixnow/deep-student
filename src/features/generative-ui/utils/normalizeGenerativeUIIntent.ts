@@ -13,6 +13,7 @@ import {
   recoverGenerativeUIIntent,
 } from '../schema';
 import type { GenerativeBlockIntent, GenerativeUIIntent } from '../types';
+import { assignStableBlockIds } from './assignStableBlockIds';
 import { coercePartialIntent } from './coercePartialIntent';
 import { migrateIntentToV11 } from './migrateIntentToV11';
 
@@ -21,6 +22,8 @@ export interface NormalizeGenerativeUIIntentOptions {
   migrateToV11?: boolean;
   /** 额外块数上限（再钳制到 schema 的 32） */
   maxBlocks?: number;
+  /** 为缺失的 block.id 补确定性 id（不改已有非空 id） */
+  assignIds?: boolean;
 }
 
 export interface NormalizeGenerativeUIIntentResult {
@@ -151,6 +154,10 @@ export function normalizeGenerativeUIIntent(
 
   if (options.migrateToV11) {
     intent = migrateIntentToV11(intent);
+  }
+
+  if (options.assignIds) {
+    intent = assignStableBlockIds(intent);
   }
 
   return {

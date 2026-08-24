@@ -283,6 +283,36 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'coercePartialIntent',
       ]),
   },
+  {
+    id: 'round45-action-timeout',
+    check: () =>
+      fileContains('src/features/generative-ui/handlers/actionTimeout.ts', [
+        'export function wrapActionWithTimeout',
+        'GENERATIVE_ACTION_TIMEOUT_MS',
+      ]),
+  },
+  {
+    id: 'round45-action-rate-limit',
+    check: () =>
+      fileContains('src/features/generative-ui/handlers/actionRateLimit.ts', [
+        'export function wrapActionWithRateLimit',
+        'GENERATIVE_ACTION_COOLDOWN_MS',
+      ]),
+  },
+  {
+    id: 'round45-intent-lint',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/lintGenerativeUIIntent.ts', [
+        'export function lintGenerativeUIIntent',
+      ]),
+  },
+  {
+    id: 'round45-json-schema-export',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/exportGenerativeUIJsonSchema.ts', [
+        'export function exportGenerativeUIJsonSchema',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
@@ -310,6 +340,10 @@ describe('generativeUISotaAcceptance contract', () => {
       'StepsBlock',
       'TableBlock',
       'coercePartialIntent',
+      'lintGenerativeUIIntent',
+      'exportGenerativeUIJsonSchema',
+      'wrapActionWithTimeout',
+      'wrapActionWithRateLimit',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }

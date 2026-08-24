@@ -1,6 +1,6 @@
 # Generative UI SOTA 验收清单
 
-> 分支 `Generative-UI-0824` · Round 41/42/43/44 · 对照目标态「结构化意图 + 组件注册表」
+> 分支 `Generative-UI-0824` · Round 41–45 · 对照目标态「结构化意图 + 组件注册表」
 
 ## 架构核心
 
@@ -24,16 +24,21 @@
 | i18n 完整合同 | `generativeUiI18n.parity.contract.test.ts` | ✅ Round 42 |
 | 18 块 testid 合同 | `data-generative-block` | ✅ Round 42 |
 | v1 → v1.1 migrate | `migrateIntentToV11` | ✅ Round 42 |
-| export | `buildResearchExportMarkdown` / 通用 intent 导出合同 | ⏳ Round 43 进行中 |
-| reduced-motion | `prefers-reduced-motion` 流式/图表/过渡降级 | ⏳ Round 43 进行中 |
-| normalize | `normalizeIntent` 公开契约 | ⏳ Round 43 进行中 |
-| color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ Round 43 进行中 |
-| buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ Round 43 进行中 |
-| 禁裸 px 合同 | 宪法 §3 字号禁裸 px | ⏳ Round 44 进行中 |
-| overflow UX | `MAX_GENERATIVE_UI_BLOCKS` 溢出降级 | ⏳ Round 44 进行中 |
-| intent fingerprint | 意图指纹公开契约 | ⏳ Round 44 进行中 |
-| 文本字段消毒 | 非 markdown 文本 props XSS/注入消毒 | ⏳ Round 44 进行中 |
-| 明暗主题合同 | 宪法 §7 token 单一来源 / 9 palette × 明暗 | ⏳ Round 44 进行中 |
+| export | `buildIntentExportMarkdown` + research 导出 | ✅ Round 43 |
+| reduced-motion | `prefers-reduced-motion` 流式/图表/过渡降级 | ✅ Round 43 |
+| normalize | `normalizeGenerativeUIIntent` 公开契约 | ✅ Round 43 |
+| color contract | 宪法 §4 语义色 / 禁裸 hex | ✅ Round 43 |
+| buffer cap | `streamBufferGuard` 256KB 硬上限 | ✅ Round 43 |
+| 禁裸 px 合同 | 宪法 §3 字号禁裸 px | ✅ Round 44 |
+| overflow UX | `MAX_GENERATIVE_UI_BLOCKS` + `data-blocks-truncated` | ✅ Round 44 |
+| intent fingerprint | `fingerprintGenerativeUIIntent` | ✅ Round 44 |
+| 文本字段消毒 | `sanitizeGenerativeText` 进 `validateBlockProps` | ✅ Round 44 |
+| 明暗主题合同 | `themeToken.contract` | ✅ Round 44 |
+| action timeout / rate-limit | `wrapActionWithTimeout` + `wrapActionWithRateLimit` | ✅ Round 45 |
+| action live region | ActionBar `aria-live` + 未注册标记 | ✅ Round 45 |
+| forced-colors / print | `generative-ui.css` | ✅ Round 45 |
+| URL 消毒 | `sanitizeGenerativeUrl` | ✅ Round 45 |
+| intent lint / JSON Schema | `lintGenerativeUIIntent` / `exportGenerativeUIJsonSchema` | ✅ Round 45 |
 
 ## Chat 桥接
 
@@ -72,30 +77,45 @@
 | last-good 持久化 | `generativeUIStreamPersistence` | ✅ |
 | SOTA 文档补洞 | 本清单 + ARCHITECTURE / ROADMAP / PROGRESS | ✅ |
 
-## Round 43 进行中
+## Round 43（本地完成）
 
 | 项 | 证据 / 落点 | 状态 |
 |----|-------------|------|
-| export | `buildResearchExportMarkdown` / 通用 intent 导出合同 | ⏳ |
-| reduced-motion | `prefers-reduced-motion` 流式/图表/过渡降级 | ⏳ |
-| normalize | `normalizeIntent` 公开契约 | ⏳ |
-| color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ |
-| buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ |
+| export | `buildIntentExportMarkdown` | ✅ |
+| reduced-motion | chrome / progress / chart | ✅ |
+| normalize | `normalizeGenerativeUIIntent` | ✅ |
+| color contract | 禁裸 hex | ✅ |
+| buffer cap | 256KB 硬上限 | ✅ |
 
-## Round 44 进行中
+## Round 44（本地完成）
 
 | 项 | 证据 / 落点 | 状态 |
 |----|-------------|------|
-| 禁裸 px 合同 | 宪法 §3 字号禁裸 px | ⏳ |
-| overflow UX | `MAX_GENERATIVE_UI_BLOCKS` 溢出降级 | ⏳ |
-| intent fingerprint | 意图指纹公开契约 | ⏳ |
-| 文本字段消毒 | 非 markdown 文本 props XSS/注入消毒 | ⏳ |
-| 明暗主题合同 | 宪法 §7 token 单一来源 / 9 palette × 明暗 | ⏳ |
-| focus-visible | 交互块键盘焦点环 | ⏳ |
-| intent diff | 意图差分 / 变更摘要 | ⏳ |
-| 新块流式 parser | markdown/chart/steps/table 增量提交 | ⏳ |
-| recipe i18n | Style Lab `intentRecipes` 词条对齐 | ⏳ |
-| SOTA 文档对齐 | 本清单 + PROGRESS Round 44 小节 | ✅ |
+| 禁裸 px 合同 | `fontSizeToken.contract` | ✅ |
+| overflow UX | `data-blocks-truncated` | ✅ |
+| intent fingerprint | 稳定 16 hex | ✅ |
+| 文本字段消毒 | `sanitizeGenerativeText` | ✅ |
+| 明暗主题合同 | `themeToken.contract` | ✅ |
+| focus-visible | `--ring` 语义环 | ✅ |
+| intent diff | `diffGenerativeUIIntent` | ✅ |
+| 新块流式 parser | markdown/chart/steps/table last-good | ✅ |
+| recipe i18n | Style Lab `demo.recipes.*` | ✅ |
+| SOTA 文档对齐 | 本清单 + PROGRESS | ✅ |
+
+## Round 45
+
+| 项 | 证据 / 落点 | 状态 |
+|----|-------------|------|
+| action timeout | `wrapActionWithTimeout` 15s | ✅ |
+| action rate-limit | `wrapActionWithRateLimit` 400ms | ✅ |
+| action live region | `[data-action-live]` | ✅ |
+| forced-colors / print | CSS 合同 | ✅ |
+| URL 消毒 | `sanitizeGenerativeUrl` | ✅ |
+| intent lint | `lintGenerativeUIIntent` | ✅ |
+| JSON Schema 导出 | `exportGenerativeUIJsonSchema` | ✅ |
+| 稳定 block id | `assignStableBlockIds` | ✅ |
+| locale 数字 | `formatGenerativeStatValue` | ✅ |
+| telemetry ring | 最近 50 条 | ✅ |
 
 ## HPIAS 后端
 
@@ -125,17 +145,16 @@
 
 1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
 2. **合并 main** — 待 CI 绿 + 人工 approve（仍 ⏳，Goal 未标 complete）
-3. ~~**Round 42 补洞**~~ — ✅ 本地完成（未 push，保护 CI）
-4. **Round 43 契约加固** — export / reduced-motion / normalize / color contract / buffer cap（⏳ 进行中）
-5. **Round 44 体验加固** — 禁裸 px / overflow UX / fingerprint / 文本消毒 / 明暗主题 / focus-visible / intent diff / 新块流式 parser / recipe i18n（⏳ 进行中）
-6. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+3. ~~**Round 42–44 补洞**~~ — ✅ 本地完成
+4. ~~**Round 45 守卫 / 导出 / a11y**~~ — ✅ 本地完成（timeout / rate-limit / live region / URL / lint / JSON Schema）
+5. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
-| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41/42） |
-| 多轮迭代至 SOTA | Round 6–44；R44 禁裸 px / overflow / fingerprint / 文本消毒 / 主题 / focus-visible / diff / 流式 parser / recipe i18n 未收口 | ⏳ 进行中（不标 complete） |
+| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
+| 多轮迭代至 SOTA | Round 6–45 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

@@ -16,6 +16,10 @@
     "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
     "confirm_execute": "确认执行",
     "unregistered_hint": "该操作未注册，无法执行",
+    "live_ok": "{{label}} 已完成",
+    "live_error": "{{label}} 失败",
+    "live_undo": "已撤销上一操作",
+    "live_undo_error": "撤销失败",
     "undo": "撤销",
     "undo_empty": "没有可撤销的操作",
     "copy_intent": "复制意图"

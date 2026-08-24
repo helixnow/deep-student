@@ -136,14 +136,16 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 | Research action handlers | `copy-report` / `export-plan` ✅ Round 18 |
 | Translation 会话简报 | `TranslationGenerativeBriefing` ✅ Round 15；Round 41 接入新块 |
 | Translation 流式简报 | `translationStreamBridge` + streamKey ✅ Round 17 |
-| compact / i18n / testid / migrateToV11 | ⏳ Round 42 进行中 |
+| compact / i18n / testid / migrateToV11 | ✅ Round 42 |
+| action timeout / rate-limit / live region | ✅ Round 45 |
+| URL 消毒 / intent lint / JSON Schema | ✅ Round 45 |
 
 ## 7. 测试
 
 - vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime** / isolation / sanitize，含 18 块 smoke）
 - Playwright CT：`tests/ct/generative-ui/` — 18 块 smoke（含 markdown/chart/steps/table）+ v1.1 layout 可选检查
 - Rust：`generative_ui_executor` 单元（含 v1.1 version/layout）+ hpias 模块（需 Cargo stable + Linux GTK CI）
-- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42 compact/i18n/testid/migrate 仍 ⏳）
+- SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)（Round 42–45 本地收口；合入 main 仍 ⏳）
 - Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

@@ -200,6 +200,23 @@ describe('normalizeGenerativeUIIntent', () => {
     });
   });
 
+  it('assignIds fills missing block ids without changing existing ones', () => {
+    const result = normalizeGenerativeUIIntent(
+      {
+        version: '1',
+        blocks: [
+          { type: 'text', id: 'keep-me', props: { body: 'ok' } },
+          { type: 'stat-card', props: { title: 'Due', value: 2 } },
+        ],
+      },
+      { assignIds: true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.intent?.blocks[0]?.id).toBe('keep-me');
+    expect(result.intent?.blocks[1]?.id).toBe('gen-block-stat-card-1');
+  });
+
   it('does not mutate the source object', () => {
     const source = {
       version: '1' as const,

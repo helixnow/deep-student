@@ -106,6 +106,22 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(sanitized).toContain('<script>alert(1)</script>');
     expect(sanitized).toContain('后记');
   });
+
+  it('blocks file: and protocol-relative // URLs via shared sanitizer', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      '<a href="file:///etc/passwd">f</a><img src="//evil.test/x.png">',
+    );
+    expect(sanitized).not.toMatch(/file:/i);
+    expect(sanitized).not.toContain('//evil.test');
+  });
+
+  it('keeps safe https and data:image URLs', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      '<a href="https://ok.test">ok</a><img src="data:image/png;base64,xx">',
+    );
+    expect(sanitized).toContain('https://ok.test');
+    expect(sanitized).toContain('data:image/png;base64,xx');
+  });
 });
 
 describe('MarkdownBlock', () => {

@@ -54,6 +54,18 @@ export {
   wrapActionWithTelemetry,
   emitGenerativeActionTelemetry,
   defaultGenerativeActionTelemetrySink,
+  wrapActionWithTimeout,
+  GENERATIVE_ACTION_TIMEOUT_MS,
+  GenerativeActionTimeoutError,
+  wrapActionWithRateLimit,
+  createActionRateLimiter,
+  GENERATIVE_ACTION_COOLDOWN_MS,
+  GenerativeActionRateLimitError,
+  GenerativeActionTelemetryRing,
+  getDefaultGenerativeActionTelemetryRing,
+  resetDefaultGenerativeActionTelemetryRing,
+  pushDefaultGenerativeActionTelemetry,
+  GENERATIVE_ACTION_TELEMETRY_RING_LIMIT,
   GenerativeActionUndoStack,
   wrapReversibleAction,
   resolveGenerativeActionUndo,
@@ -66,6 +78,8 @@ export type {
   GenerativeActionTelemetrySink,
   GenerativeActionTelemetryPhase,
   WrapActionWithTelemetryExtras,
+  WrapActionWithTimeoutOptions,
+  WrapActionWithRateLimitOptions,
   GenerativeActionUndoEntry,
   GenerativeActionUndoStackOptions,
   ReversibleGenerativeActionDefinition,
@@ -222,6 +236,32 @@ export {
   createCopyIntentActionHandlers,
   COPY_INTENT_ACTION_ID,
 } from './handlers/copyIntentActionHandlers';
+export { lintGenerativeUIIntent } from './utils/lintGenerativeUIIntent';
+export type {
+  GenerativeUILintIssue,
+  GenerativeUILintSeverity,
+  LintGenerativeUIIntentOptions,
+  LintGenerativeUIIntentResult,
+} from './utils/lintGenerativeUIIntent';
+export {
+  assignStableBlockIds,
+  makeStableBlockId,
+  GENERATED_BLOCK_ID_PREFIX,
+} from './utils/assignStableBlockIds';
+export type { AssignableBlock } from './utils/assignStableBlockIds';
+export {
+  formatGenerativeNumber,
+  formatGenerativeStatValue,
+} from './utils/formatGenerativeNumber';
+export {
+  isDangerousGenerativeUrl,
+  isAllowedGenerativeUrl,
+  sanitizeGenerativeUrl,
+} from './utils/sanitizeGenerativeUrl';
+export {
+  exportGenerativeUIJsonSchema,
+  GENERATIVE_UI_JSON_SCHEMA_ID,
+} from './utils/exportGenerativeUIJsonSchema';
 
 // 注册内置块
 import './blocks';

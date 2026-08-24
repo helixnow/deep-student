@@ -16,6 +16,10 @@
     "confirm_desc": "This action may have irreversible effects.",
     "confirm_execute": "Confirm",
     "unregistered_hint": "This action is not registered and cannot run",
+    "live_ok": "{{label}} completed",
+    "live_error": "{{label}} failed",
+    "live_undo": "Last action undone",
+    "live_undo_error": "Undo failed",
     "undo": "Undo",
     "undo_empty": "Nothing to undo",
     "copy_intent": "Copy intent"

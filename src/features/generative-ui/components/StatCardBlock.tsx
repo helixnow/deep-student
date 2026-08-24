@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/utils/cn';
 import type { StatCardProps } from '../schema';
+import { formatGenerativeStatValue } from '../utils/formatGenerativeNumber';
 import { TrendUp, TrendDown, Minus } from '@phosphor-icons/react';
 
 const trendIcon = {
@@ -13,13 +14,16 @@ const trendIcon = {
 export function StatCardBlock({ title, value, subtitle, trend, trendLabel }: StatCardProps) {
   const titleId = React.useId();
   const TrendIcon = trend ? trendIcon[trend] : null;
+  const formattedValue = formatGenerativeStatValue(value);
   return (
     <Card className="min-w-0" role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2">
         <CardTitle id={titleId} className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1">
-        <div className="text-2xl font-semibold tabular-nums">{value}</div>
+        <div className="text-2xl font-semibold tabular-nums" data-stat-value={formattedValue}>
+          {formattedValue}
+        </div>
         {(subtitle || trendLabel) && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {TrendIcon && (

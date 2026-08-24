@@ -38,6 +38,7 @@ export function ActionBarBlock({
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
   const [dialogActionId, setDialogActionId] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
+  const [liveMessage, setLiveMessage] = useState('');
   const [showUndoControl, setShowUndoControl] = useState(() => undoStack.canUndo());
   const [undoAvailable, setUndoAvailable] = useState(() => undoStack.canUndo());
   const executingRef = useRef(false);
@@ -118,6 +119,11 @@ export function ActionBarBlock({
     async (actionId: string) => {
       if (executingRef.current) return;
       if (enforceHandlerRegistry && !actionHandlers?.[actionId]) return;
+      const label = trustedLabel(
+        actionId,
+        actions.find((action) => action.id === actionId)?.label ?? '',
+        actionHandlers,
+      );
       executingRef.current = true;
       setExecuting(true);
       try {
@@ -135,7 +141,10 @@ export function ActionBarBlock({
             setUndoAvailable(undoStack.canUndo());
           }
           onAction?.({ type: 'execute', actionId });
+          setLiveMessage(t('action.live_ok', { label }));
         }
+      } catch {
+        setLiveMessage(t('action.live_error', { label }));
       } finally {
         executingRef.current = false;
         setExecuting(false);
@@ -143,7 +152,7 @@ export function ActionBarBlock({
         setDialogActionId(null);
       }
     },
-    [actionHandlers, enforceHandlerRegistry, onAction, undoStack],
+    [actionHandlers, actions, enforceHandlerRegistry, onAction, t, undoStack],
   );
 
   const runUndo = useCallback(async () => {
@@ -152,12 +161,15 @@ export function ActionBarBlock({
     setExecuting(true);
     try {
       await undoStack.undo();
+      setLiveMessage(t('action.live_undo'));
+    } catch {
+      setLiveMessage(t('action.live_undo_error'));
     } finally {
       executingRef.current = false;
       setExecuting(false);
       setUndoAvailable(undoStack.canUndo());
     }
-  }, [undoStack]);
+  }, [t, undoStack]);
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {
@@ -252,6 +264,7 @@ export function ActionBarBlock({
               disabled={!itemEnabled}
               tabIndex={itemEnabled && resolvedTabStop === action.id ? 0 : -1}
               title={!isRegistered ? t('action.unregistered_hint') : undefined}
+              {...(!isRegistered ? { 'data-action-unregistered': '' } : {})}
               onFocus={() => {
                 if (itemEnabled) setTabStopId(action.id);
               }}
@@ -285,6 +298,9 @@ export function ActionBarBlock({
           </DsButton>
         ) : null}
       </div>
+      <p data-action-live role="status" aria-live="polite" className="sr-only">
+        {liveMessage}
+      </p>
 
       <DsAlertDialog
         open={dialogActionId != null}

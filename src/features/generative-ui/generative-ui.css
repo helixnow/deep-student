@@ -133,3 +133,57 @@
 .generative-ui-compact [data-block-type] > div {
   padding: var(--generative-ui-space-2);
 }
+
+/**
+ * Round 45 a11y/print rules.
+ * forced-colors：按钮/链接/焦点环走系统色，避免语义 hsl 在 Windows 高对比下消失。
+ * print：只藏 chrome / 工具栏，块内容保留，避免槽内分页切断。
+ */
+@media (forced-colors: active) {
+  [data-generative-ui] {
+    forced-color-adjust: auto;
+    color: CanvasText;
+    border: 1px solid CanvasText;
+  }
+
+  [data-generative-ui] :is(button, [role='button']) {
+    color: ButtonText;
+    border: 1px solid ButtonBorder;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] a {
+    color: LinkText;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] :is(button, a, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  [data-generative-ui] .generative-ui-stream-dot {
+    background: CanvasText;
+    opacity: 1;
+    animation: none;
+    forced-color-adjust: auto;
+  }
+
+  [data-generative-ui] [role='region'],
+  [data-generative-ui] [data-generative-block] {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media print {
+  [data-generative-ui-chrome],
+  .generative-ui-stream-indicator,
+  [data-generative-ui] [role='toolbar'],
+  [data-generative-ui] [data-action-live] {
+    display: none;
+  }
+
+  [data-generative-block] {
+    break-inside: avoid;
+  }
+}

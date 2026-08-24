@@ -1,8 +1,18 @@
 import type { GenerativeActionDefinition, GenerativeUIIntent, RiskLevel } from './types';
 import {
+  defaultGenerativeActionTelemetrySink,
   wrapActionWithTelemetry,
   type GenerativeActionTelemetrySink,
 } from './handlers/actionTelemetry';
+import { pushDefaultGenerativeActionTelemetry } from './handlers/actionTelemetryRing';
+import {
+  wrapActionWithTimeout,
+  GENERATIVE_ACTION_TIMEOUT_MS,
+} from './handlers/actionTimeout';
+import {
+  wrapActionWithRateLimit,
+  GENERATIVE_ACTION_COOLDOWN_MS,
+} from './handlers/actionRateLimit';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 
 const RISK_RANK: Record<RiskLevel, number> = {
@@ -18,6 +28,10 @@ export interface GenerativeActionInstrumentationOptions {
   /** 传入则自动计算 fingerprint 写入 telemetry 事件 */
   intent?: GenerativeUIIntent;
   ignoreBlockOrder?: boolean;
+  /** handler 超时，默认 15s；0 表示跳过 timeout 包装 */
+  timeoutMs?: number;
+  /** 同 action 冷却，默认 400ms；0 表示跳过 rate-limit 包装 */
+  cooldownMs?: number;
 }
 
 function resolveInstrumentationFingerprint(
@@ -34,16 +48,42 @@ function resolveInstrumentationFingerprint(
   return undefined;
 }
 
-/** 最小侵入：为 handler 表统一套上 telemetry，不改各 createXxxHandlers 签名 */
+function composeInstrumentationSink(
+  sink?: GenerativeActionTelemetrySink,
+): GenerativeActionTelemetrySink {
+  return (event) => {
+    pushDefaultGenerativeActionTelemetry(event);
+    (sink ?? defaultGenerativeActionTelemetrySink)(event);
+  };
+}
+
+function applyActionGuards(
+  def: GenerativeActionDefinition,
+  options?: GenerativeActionInstrumentationOptions,
+): GenerativeActionDefinition {
+  const timeoutMs = options?.timeoutMs ?? GENERATIVE_ACTION_TIMEOUT_MS;
+  const cooldownMs = options?.cooldownMs ?? GENERATIVE_ACTION_COOLDOWN_MS;
+  let next = def;
+  if (cooldownMs > 0) {
+    next = wrapActionWithRateLimit(next, { cooldownMs });
+  }
+  if (timeoutMs > 0) {
+    next = wrapActionWithTimeout(next, { timeoutMs });
+  }
+  return next;
+}
+
+/** 最小侵入：为 handler 表统一套上 rate-limit / timeout / telemetry，不改各 createXxxHandlers 签名 */
 export function withGenerativeActionInstrumentation(
   handlers: Record<string, GenerativeActionDefinition>,
   options?: GenerativeActionInstrumentationOptions,
 ): Record<string, GenerativeActionDefinition> {
   const fingerprint = resolveInstrumentationFingerprint(options);
   const extras = fingerprint ? { fingerprint } : undefined;
+  const sink = composeInstrumentationSink(options?.sink);
   const instrumented: Record<string, GenerativeActionDefinition> = {};
   for (const [id, def] of Object.entries(handlers)) {
-    instrumented[id] = wrapActionWithTelemetry(def, options?.sink, extras);
+    instrumented[id] = wrapActionWithTelemetry(applyActionGuards(def, options), sink, extras);
   }
   return instrumented;
 }

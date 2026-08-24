@@ -10,6 +10,7 @@
  */
 
 import { defaultSchema } from 'rehype-sanitize';
+import { isDangerousGenerativeUrl } from './sanitizeGenerativeUrl';
 
 const ALLOWED_TAGS = new Set(
   (defaultSchema.tagNames ?? []).map((name) => name.toLowerCase()),
@@ -44,13 +45,6 @@ const URL_ATTR_RE =
 
 export const GENERATIVE_MARKDOWN_SANITIZE_SCHEMA = defaultSchema;
 
-function isDangerousUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (/^(?:javascript|vbscript)\s*:/i.test(trimmed)) return true;
-  if (/^data:/i.test(trimmed) && !/^data:image\//i.test(trimmed)) return true;
-  return false;
-}
-
 function sanitizeOpenTag(tag: string): string {
   const nameMatch = tag.match(/^<\s*([a-zA-Z][\w:-]*)/);
   const name = nameMatch?.[1]?.toLowerCase() ?? '';
@@ -59,7 +53,7 @@ function sanitizeOpenTag(tag: string): string {
   let cleaned = tag.replace(EVENT_HANDLER_ATTR_RE, '');
   cleaned = cleaned.replace(URL_ATTR_RE, (full, prefix: string, d?: string, s?: string, u?: string) => {
     const value = d ?? s ?? u ?? '';
-    if (isDangerousUrl(value)) return `${prefix}""`;
+    if (isDangerousGenerativeUrl(value)) return `${prefix}""`;
     return full;
   });
   return cleaned;
