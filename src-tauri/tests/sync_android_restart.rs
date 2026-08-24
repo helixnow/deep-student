@@ -66,13 +66,9 @@ fn platform_rejection_codes_are_stable_contract() {
         FTP_UNSUPPORTED_ON_ANDROID_CODE,
         "E_FTP_UNSUPPORTED_ON_ANDROID"
     );
+    assert_eq!(S3_UNSUPPORTED_IN_BUILD_CODE, "E_S3_UNSUPPORTED_IN_BUILD");
     assert_eq!(
-        S3_UNSUPPORTED_IN_BUILD_CODE,
-        "E_S3_UNSUPPORTED_IN_BUILD"
-    );
-    assert_eq!(
-        FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
-        "FTP/FTPS storage is not available on Android.",
+        FTP_UNSUPPORTED_ON_ANDROID_MESSAGE, "FTP/FTPS storage is not available on Android.",
         "message 仍应面向用户，但不再参与前端分派"
     );
 }
@@ -299,10 +295,7 @@ mod android_only {
             .expect("seed desktop-written FTP record");
         let load_denied = load_cloud_config_ssot(&database)
             .expect_err("桌面写入的 FTP 记录在 Android 上必须拒绝加载");
-        assert_eq!(
-            load_denied.stable_code(),
-            FTP_UNSUPPORTED_ON_ANDROID_CODE
-        );
+        assert_eq!(load_denied.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
         assert!(load_denied.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
     }
 
