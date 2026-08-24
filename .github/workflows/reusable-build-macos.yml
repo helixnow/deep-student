@@ -62,6 +62,11 @@ jobs:
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
       CARGO_PROFILE_RELEASE_DEBUG: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && '1' || '0' }}
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ secrets.SENTRY_AUTH_TOKEN != '' && secrets.SENTRY_ORG != '' && secrets.SENTRY_PROJECT != '' && 'packed' || 'off' }}
+      # sccache（GHA cache 后端）与 rust-cache 叠加：rust-cache 负责 registry/
+      # git 依赖与 target 目录整体缓存，sccache 按编译单元缓存 rustc 输出，
+      # 依赖版本或 profile 变化导致 rust-cache miss 时仍可大量命中。
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: sccache
     strategy:
       fail-fast: false
       matrix:
@@ -140,6 +145,11 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      # 必须先于任何 cargo 调用：RUSTC_WRAPPER 是 job 级 env，
+      # sccache 二进制不存在时 cargo 会直接报错。
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
@@ -173,10 +183,11 @@ jobs:
           echo "cargo           : $(cargo --version)"
           echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
           echo "runner          : ${{ matrix.runner }} ($(uname -m))"
+          echo "sccache         : $(sccache --version) (RUSTC_WRAPPER, GHA cache backend)"
           echo "release profile : lto=${CARGO_PROFILE_RELEASE_LTO}, codegen-units=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS}, debug=${CARGO_PROFILE_RELEASE_DEBUG}, split-debuginfo=${CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO}"
           echo "sentry-cli      : ${SENTRY_CLI_VERSION} (pinned; installed only when Sentry secrets present)"
           echo "xcode           : $(xcodebuild -version | tr '\n' ' ')"
-          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / rust-toolchain stable / sccache-action v0.0.11 / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
 
       - name: Generate version info
         run: node scripts/generate-version.mjs
@@ -278,6 +289,9 @@ jobs:
             unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           fi
           npx tauri build --target ${{ matrix.target }} -- --locked
+
+      - name: Show sccache stats
+        run: sccache --show-stats
 
       # ── 签名/公证结果强制验证（fail-closed）──
       # codesign --verify --strict + stapler validate + spctl --assess:
