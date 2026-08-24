@@ -498,6 +498,7 @@ export function AutomationScheduleEditor({
           onValueChange={handleKindChange}
           size="compact"
           className="max-w-full flex-wrap gap-y-[3px]"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={KIND_ORDER.map((kind) => ({
             value: kind,
             label: t(`${P}.kinds.${kind}`),
