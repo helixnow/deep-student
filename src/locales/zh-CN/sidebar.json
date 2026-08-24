@@ -73,6 +73,10 @@
   "delete": {
     "confirm_hint": "永久删除？不可恢复"
   },
+  "notes_import": {
+    "markdown": "导入 Markdown 笔记",
+    "markdown_batch": "批量导入 Markdown 笔记"
+  },
   "search": {
     "placeholder": "搜索会话...",
     "clear": "清除搜索",

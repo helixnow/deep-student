@@ -73,6 +73,10 @@
   "delete": {
     "confirm_hint": "Delete permanently? This cannot be undone"
   },
+  "notes_import": {
+    "markdown": "Import Markdown note",
+    "markdown_batch": "Batch import Markdown notes"
+  },
   "search": {
     "placeholder": "Search sessions...",
     "clear": "Clear search",
