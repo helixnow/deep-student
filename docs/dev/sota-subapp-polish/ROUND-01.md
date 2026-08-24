@@ -3,7 +3,7 @@
 - 开始：2026-08-23
 - 审阅模型：`claude-fable-5-thinking-xhigh`
 - 实现模型：`claude-fable-5-thinking-high`
-- 状态：10/12 审阅完成，R1-06 / R1-09 待补发；P0 落地进行中
+- 状态：12/12 审阅完成；P0 落地进行中
 
 ## 本轮 12 个审阅席位
 
@@ -14,10 +14,10 @@
 | R1-03 | chat | ChatGPT / Claude / Cursor | 完成 |
 | R1-04 | mindmap | XMind / MindMaster / Canvas | 完成 |
 | R1-05 | textbook / PDF / 阅读 | Preview / Acrobat / MarginNote | 完成 |
-| R1-06 | exam / 题库练习 | Quizlet / 作业帮 | 待补发 |
+| R1-06 | exam / 题库练习 | Quizlet / 作业帮 | 完成（[报告](./R1-06-exam.md)） |
 | R1-07 | translation | DeepL / 沉浸式翻译 | 完成 |
 | R1-08 | essay | Grammarly / 批改网 | 完成 |
-| R1-09 | flashcards / Anki | Anki / SuperMemo / Quizlet | 待补发 |
+| R1-09 | flashcards / Anki | Anki / SuperMemo / Quizlet | 完成（[报告](./R1-09-flashcards.md)） |
 | R1-10 | workbench 桌面壳 | macOS Tahoe / Sequoia | 完成 |
 | R1-11 | todo / pomodoro / 系统工具 | Things / Forest / Linear | 完成 |
 | R1-12 | preview / media / browser / sandbox | Quick Look / VLC / Safari / CodePen | 完成 |
@@ -32,6 +32,7 @@
 4. **essay**：轮次导航静默覆盖未批改修改稿，1s 后草稿被冲掉（数据丢失）。
 5. **workbench**：`pointerEngine` 武装阈值 1px，与标题栏 3px 注释不一致，双击 zoom 易被吞、最大化易误撕出。
 6. **todo**：`TodoMainPanel` 仍用 legacy `currentView === 'todo'` 门禁，学习桌面下 j/k、`/`、`n`、Space 等全部失效。
+7. **exam**（R1-06 补发）：每日一练进度死数据——后端 `get_daily_practice` 恒返 `completed_count: 0`，前端 `setDailyPractice` 无调用方，进度条 / 达标庆祝 / 续练全链路失效。
 
 ## 关键 P1（本轮尽量落地）
 
@@ -43,6 +44,8 @@
 - 双页 PDF 翻页只步进 1 页，同 spread 无视觉变化。
 - 番茄多重投影 + 结束无切闪卡/回待办联动。
 - PDF 壳层搜索与阅读器全文搜索双轨分叉。
+- exam 打卡达标硬编码 `>=10` 题、自评 `markCorrect` 重复提交双计、限时/模拟考不持久化。
+- flashcards 调度设置藏在统计页且 guide 13 仍称"不可调"；`fsrs_rate` 不上报作答用时；撤销仅单级。
 
 ## 落地席位（实现代理，文件互斥）
 
