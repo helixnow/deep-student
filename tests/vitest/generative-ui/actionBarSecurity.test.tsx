@@ -111,7 +111,7 @@ describe('ActionBarBlock security', () => {
         }}
       />,
     );
-    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '伪造' })).not.toBeInTheDocument();
   });
 
@@ -137,7 +137,7 @@ describe('ActionBarBlock security', () => {
         }}
       />,
     );
-    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '伪造操作' })).not.toBeInTheDocument();
   });
 });

@@ -132,7 +132,7 @@ jobs:
       - name: Build production bundle
         if: matrix.task == 'build'
         env:
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npx vite build
 
       # WI-8：bundle 体积门禁。阈值 = R3 刷新后的 2026-08-24 基线（commit
