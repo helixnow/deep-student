@@ -29,6 +29,10 @@ use std::path::Path;
 
 use super::sync_manager::CloudManifest;
 use super::traits::{CloudStorage, Result};
+use crate::crypto::backup_crypto::{
+    DSBK_GCM_TAG_LEN, DSBK_MAGIC, DSBK_MAX_PLAINTEXT_CHUNK, DSBK_V1_HEADER_LEN,
+    DSBK_V2_CHUNK_OFFSET, DSBK_V2_HEADER_LEN,
+};
 use crate::models::AppError;
 
 /// 备份对象目录（与 `sync_manager.rs` 的布局常量一致；对象布局是跨版本
@@ -41,16 +45,15 @@ const LEGACY_MANIFEST_KEYS: [&str; 2] = ["manifest.json", "manifest.json.bak"];
 /// 云端加密标记对象。
 const ENCRYPTION_MARKER_KEY: &str = ".encryption-marker";
 
-/// DSBK 容器魔数（与 `crypto::backup_crypto::BACKUP_MAGIC` 一致）。
-const DSBK_MAGIC: &[u8; 4] = b"DSBK";
-/// DSBK v1（整文件单块）头长：magic4 + ver1 + params12 + salt16 + nonce12。
-const DSBK_V1_HEADER_LEN: u64 = 45;
-/// DSBK v2（分块流式）头长：magic4 + ver1 + params12 + salt16 + nonce_prefix7 + chunk4。
-const DSBK_V2_HEADER_LEN: u64 = 48;
-/// AES-256-GCM 认证标签长度。
-const DSBK_GCM_TAG_LEN: u64 = 16;
-/// v2 允许的最大明文分块（与 `backup_crypto::STREAM_MAX_PLAINTEXT_CHUNK` 对齐）。
-const DSBK_MAX_PLAINTEXT_CHUNK: u32 = 64 * 1024 * 1024;
+// DSBK 容器布局常量一律引用 `crypto::backup_crypto` 的 SSOT 导出（见上方
+// use），**禁止在此复制字面量**——R11-check 曾把 v2 头长抄成 48（真实 44）、
+// chunk 字段从密文区读取，造成加密仓库约 98.4% 误报「头不可解」
+// （FINDINGS-R11 P1-1，R12-repocheck-fix 修复）。
+
+/// DSBK v1 对象最小体积：头 + 单块 GCM tag。
+const DSBK_V1_MIN_OBJECT_LEN: u64 = (DSBK_V1_HEADER_LEN + DSBK_GCM_TAG_LEN) as u64;
+/// DSBK v2 对象最小体积：头 + 一个（空 final 块的）GCM tag。
+const DSBK_V2_MIN_OBJECT_LEN: u64 = (DSBK_V2_HEADER_LEN + DSBK_GCM_TAG_LEN) as u64;
 /// 读取对象头部做 DSBK 判定所需的探针长度（覆盖 v1/v2 头）。
 const HEAD_PROBE_LEN: usize = 64;
 
@@ -182,11 +185,9 @@ fn dsbk_header_error(head: &[u8], object_len: u64) -> Option<String> {
     };
     match version {
         1 => {
-            if object_len < DSBK_V1_HEADER_LEN + DSBK_GCM_TAG_LEN {
+            if object_len < DSBK_V1_MIN_OBJECT_LEN {
                 return Some(format!(
-                    "DSBK v1 对象被截断：{} 字节 < 最小 {} 字节",
-                    object_len,
-                    DSBK_V1_HEADER_LEN + DSBK_GCM_TAG_LEN
+                    "DSBK v1 对象被截断：{object_len} 字节 < 最小 {DSBK_V1_MIN_OBJECT_LEN} 字节"
                 ));
             }
             let Some((m, t, p)) = parse_params(head) else {
@@ -198,14 +199,12 @@ fn dsbk_header_error(head: &[u8], object_len: u64) -> Option<String> {
             None
         }
         2 => {
-            if object_len < DSBK_V2_HEADER_LEN + DSBK_GCM_TAG_LEN {
+            if object_len < DSBK_V2_MIN_OBJECT_LEN {
                 return Some(format!(
-                    "DSBK v2 对象被截断：{} 字节 < 最小 {} 字节",
-                    object_len,
-                    DSBK_V2_HEADER_LEN + DSBK_GCM_TAG_LEN
+                    "DSBK v2 对象被截断：{object_len} 字节 < 最小 {DSBK_V2_MIN_OBJECT_LEN} 字节"
                 ));
             }
-            if head.len() < DSBK_V2_HEADER_LEN as usize {
+            if head.len() < DSBK_V2_HEADER_LEN {
                 return Some("DSBK v2 头被截断，读不到分块参数".to_string());
             }
             let Some((m, t, p)) = parse_params(head) else {
@@ -214,7 +213,12 @@ fn dsbk_header_error(head: &[u8], object_len: u64) -> Option<String> {
             if m == 0 || t == 0 || p == 0 {
                 return Some(format!("DSBK v2 头 Argon2 参数非法: m={m}, t={t}, p={p}"));
             }
-            let chunk = u32::from_le_bytes(head[44..48].try_into().expect("已校验长度"));
+            // chunk 字段位于头尾 `[40..44)`（SSOT 偏移，勿用字面量）。
+            let chunk = u32::from_le_bytes(
+                head[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN]
+                    .try_into()
+                    .expect("已校验长度"),
+            );
             if chunk == 0 || chunk > DSBK_MAX_PLAINTEXT_CHUNK {
                 return Some(format!("DSBK v2 头分块大小非法: {chunk}"));
             }
@@ -639,6 +643,18 @@ mod tests {
 
     #[test]
     fn dsbk_v2_header_roundtrip_is_decodable() {
+        // [R12-repocheck-fix] fixture 以真实 `encrypt_backup_file` 产物为准，
+        // 不再手写偏移（FINDINGS-R11 P1-1：手写假头曾掩盖 48/44 偏移错误）。
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("plain.bin");
+        let enc = dir.path().join("cipher.dsbk");
+        std::fs::write(&input, vec![0x5Au8; 4096]).unwrap();
+        crate::crypto::backup_crypto::encrypt_backup_file(&input, &enc, "repo-check-pw").unwrap();
+        let object = std::fs::read(&enc).unwrap();
+        let head = &object[..HEAD_PROBE_LEN.min(object.len())];
+        assert_eq!(dsbk_header_error(head, object.len() as u64), None);
+
+        // 按 SSOT 布局手工构造的 44 字节头同样必须可解（钉死解析端偏移）。
         let mut head = Vec::new();
         head.extend_from_slice(b"DSBK");
         head.push(2);
@@ -648,7 +664,28 @@ mod tests {
         head.extend_from_slice(&[0u8; 16]); // salt
         head.extend_from_slice(&[0u8; 7]); // nonce prefix
         head.extend_from_slice(&(1024u32 * 1024).to_le_bytes());
-        assert_eq!(dsbk_header_error(&head, 48 + 16 + 100), None);
+        assert_eq!(head.len(), DSBK_V2_HEADER_LEN, "真实 v2 头长为 44 字节");
+        assert_eq!(dsbk_header_error(&head, DSBK_V2_MIN_OBJECT_LEN + 100), None);
+    }
+
+    #[test]
+    fn dsbk_v2_min_object_len_boundary_is_exact() {
+        // FINDINGS-R11 §3.2 ③：v2 最小体积是 44 + 16 = 60。旧实现按 64 判定，
+        // 60–63 字节的合法对象会被误报「截断」。
+        let mut head = Vec::new();
+        head.extend_from_slice(b"DSBK");
+        head.push(2);
+        head.extend_from_slice(&65536u32.to_le_bytes());
+        head.extend_from_slice(&3u32.to_le_bytes());
+        head.extend_from_slice(&4u32.to_le_bytes());
+        head.extend_from_slice(&[0u8; 16]);
+        head.extend_from_slice(&[0u8; 7]);
+        head.extend_from_slice(&(1024u32 * 1024).to_le_bytes());
+        assert_eq!(DSBK_V2_MIN_OBJECT_LEN, 60);
+        for len in 60..=63u64 {
+            assert_eq!(dsbk_header_error(&head, len), None, "{len} 字节不应误报截断");
+        }
+        assert!(dsbk_header_error(&head, 59).is_some(), "59 字节必然被截断");
     }
 
     #[test]
