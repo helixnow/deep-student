@@ -194,14 +194,17 @@ export type TextBlockProps = z.infer<typeof textBlockPropsSchema>;
 export type KeyValueGridProps = z.infer<typeof keyValueGridPropsSchema>;
 
 /** 从 JSON 字符串解析并校验 UI 意图 */
-export function parseGenerativeUIIntent(raw: string): {
+export function parseGenerativeUIIntent(
+  raw: string,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+): {
   ok: true;
   intent: GenerativeUIIntentSchema;
 } | {
   ok: false;
   errors: string[];
 } {
-  if (isStreamBufferOverCap(raw.length)) {
+  if (isStreamBufferOverCap(raw.length, maxChars)) {
     return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
   }
   let parsed: unknown;
@@ -332,7 +335,10 @@ export function recoverGenerativeUIIntent(value: unknown): RecoveredGenerativeUI
 }
 
 /** 宽松 parse helper：完整 JSON 失败时尽量保留合法 blocks */
-export function parseGenerativeUIIntentRecovered(input: string | unknown):
+export function parseGenerativeUIIntentRecovered(
+  input: string | unknown,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+):
   | {
       ok: true;
       intent: GenerativeUIIntentSchema;
@@ -346,7 +352,7 @@ export function parseGenerativeUIIntentRecovered(input: string | unknown):
     } {
   let value: unknown = input;
   if (typeof input === 'string') {
-    if (isStreamBufferOverCap(input.length)) {
+    if (isStreamBufferOverCap(input.length, maxChars)) {
       return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
     }
     try {

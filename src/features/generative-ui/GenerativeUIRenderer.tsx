@@ -21,6 +21,7 @@ import { collectUnregisteredActionIds } from './utils/collectUnregisteredActionI
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
   STREAM_BUFFER_CAPPED_WARNING,
   isSerializedStreamValueOverCap,
   isStreamBufferOverCap,
@@ -91,6 +92,7 @@ function resolveDisplayIntent(
   incomingWarnings: string[] | undefined,
   truncatedCount: number | undefined,
   isStreaming: boolean,
+  maxStreamChars: number,
 ): {
   intent: GenerativeUIIntent | null;
   warnings: string[];
@@ -103,7 +105,7 @@ function resolveDisplayIntent(
   const explicitCount = positiveCount(truncatedCount);
 
   if (typeof input !== 'string') {
-    if (isStreaming && isSerializedStreamValueOverCap(input)) {
+    if (isStreaming && isSerializedStreamValueOverCap(input, maxStreamChars)) {
       return {
         intent: null,
         warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
@@ -131,7 +133,7 @@ function resolveDisplayIntent(
     };
   }
 
-  if (isStreaming && isStreamBufferOverCap(input.length)) {
+  if (isStreaming && isStreamBufferOverCap(input.length, maxStreamChars)) {
     return {
       intent: null,
       warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
@@ -142,7 +144,7 @@ function resolveDisplayIntent(
     };
   }
 
-  const parsed = parseGenerativeUIIntent(input);
+  const parsed = parseGenerativeUIIntent(input, maxStreamChars);
   if (parsed.ok) {
     const capped = capIntentBlocks(parsed.intent);
     const warnings = mergeWarnings(
@@ -159,7 +161,7 @@ function resolveDisplayIntent(
     };
   }
 
-  const recovered = parseGenerativeUIIntentRecovered(input);
+  const recovered = parseGenerativeUIIntentRecovered(input, maxStreamChars);
   if (recovered.ok) {
     const warnings = mergeWarnings(extra, recovered.warnings);
     let recoveredOverflow: number | undefined;
@@ -185,7 +187,7 @@ function resolveDisplayIntent(
   }
 
   if (isStreaming) {
-    const coerced = coercePartialIntent(input);
+    const coerced = coercePartialIntent(input, maxStreamChars);
     if (coerced.intent) {
       const capped = capIntentBlocks(coerced.intent);
       const warnings = mergeWarnings(
@@ -230,6 +232,7 @@ export function GenerativeUIRenderer({
   actionHandlers,
   warnings: incomingWarnings,
   truncatedCount: incomingTruncatedCount,
+  maxStreamChars = MAX_GENERATIVE_UI_STREAM_CHARS,
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
@@ -239,8 +242,15 @@ export function GenerativeUIRenderer({
   const rendererId = useId();
   const actionsTargetId = `generative-ui-actions-${rendererId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const resolved = useMemo(
-    () => resolveDisplayIntent(intentInput, incomingWarnings, incomingTruncatedCount, isStreaming),
-    [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming],
+    () =>
+      resolveDisplayIntent(
+        intentInput,
+        incomingWarnings,
+        incomingTruncatedCount,
+        isStreaming,
+        maxStreamChars,
+      ),
+    [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming, maxStreamChars],
   );
   const actionBarRenderContext = useMemo(
     () => ({ actionHandlers, onAction }),

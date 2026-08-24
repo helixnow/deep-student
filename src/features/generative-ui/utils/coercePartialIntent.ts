@@ -38,7 +38,10 @@ function parseVersionHint(sanitized: string): NonNullable<GenerativeUIIntent['ve
  * 从半截 JSON 抽出已闭合 blocks：丢弃非法块，保留合法块。
  * `truncated` 在 JSON 未闭合或超过 32 块上限时为 true。
  */
-export function coercePartialIntent(raw: string): CoercePartialIntentResult {
+export function coercePartialIntent(
+  raw: string,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+): CoercePartialIntentResult {
   const empty: CoercePartialIntentResult = {
     intent: null,
     dropped: 0,
@@ -46,7 +49,7 @@ export function coercePartialIntent(raw: string): CoercePartialIntentResult {
     warnings: [],
   };
   if (!raw) return empty;
-  if (isStreamBufferOverCap(raw.length, MAX_GENERATIVE_UI_STREAM_CHARS)) {
+  if (isStreamBufferOverCap(raw.length, maxChars)) {
     return {
       intent: null,
       dropped: 0,
