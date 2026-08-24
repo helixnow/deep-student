@@ -175,7 +175,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="sm"
                 onClick={confirmClear}
-                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
+                className="h-6 px-1.5 text-destructive hover:bg-destructive/15 font-medium [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3"
             >
                 {t('translation:actions.clear')}
             </DsButton>
@@ -183,7 +183,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 variant="ghost"
                 size="icon"
                 onClick={dismissClearConfirm}
-                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-6 w-6 text-destructive/70 hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('common:cancel')}
             >
                 <X size={12} />
@@ -196,7 +196,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                 size="icon"
                 onClick={requestClear}
                 disabled={!sourceText}
-                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9")}
+                className={cn(COARSE_HIT, "h-7 w-7 text-muted-foreground/60 hover:text-destructive [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9")}
                 aria-label={t('translation:actions.clear')}
             >
                 <Trash size={14} />

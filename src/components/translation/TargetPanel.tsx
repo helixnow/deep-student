@@ -308,10 +308,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 {editedTranslation.length.toLocaleString()} {t('translation:stats.characters')}
                             </span>
                             <div className="flex gap-2">
-                                <DsButton variant="outline" size="sm" onClick={onCancelEdit} className="[@media(pointer:coarse)]:min-h-11">
+                                <DsButton variant="outline" size="sm" onClick={onCancelEdit} className="[@media(pointer:coarse)]:!min-h-11">
                                     {t('common:cancel')}
                                 </DsButton>
-                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation} className="[@media(pointer:coarse)]:min-h-11">
+                                <DsButton variant="default" size="sm" onClick={onSaveEditedTranslation} className="[@media(pointer:coarse)]:!min-h-11">
                                     <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
                                 </DsButton>
@@ -350,7 +350,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             size="icon"
                                             onClick={() => onRateTranslation(rating)}
                                             aria-label={t('translation:panel_ux.rate_star', { count: rating })}
-                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                         >
                                             <Star
                                                 weight={translationQuality && rating <= translationQuality ? 'fill' : 'regular'}

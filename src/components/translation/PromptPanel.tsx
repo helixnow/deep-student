@@ -259,7 +259,7 @@ const GlossaryEditor: React.FC<{
           onClick={handleAdd}
           disabled={!newSrc.trim() || !newTgt.trim()}
           aria-label={t('translation:prompt_editor.glossary_add')}
-          className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 text-primary hover:bg-primary/10"
+          className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 text-primary hover:bg-primary/10"
         >
           <Plus size={16} />
         </DsButton>
@@ -307,7 +307,7 @@ const GlossaryEditor: React.FC<{
                       onClick={commitEdit}
                       disabled={!editDraft[0].trim() || !editDraft[1].trim()}
                       aria-label={t('translation:prompt_panel.glossary.confirm_edit')}
-                      className="w-6 h-6 shrink-0 text-primary hover:bg-primary/10 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11"
+                      className="w-6 h-6 shrink-0 text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
                     >
                       <Check size={14} />
                     </DsButton>
@@ -316,7 +316,7 @@ const GlossaryEditor: React.FC<{
                       size="icon"
                       onClick={cancelEdit}
                       aria-label={t('translation:prompt_panel.glossary.cancel_edit')}
-                      className="w-6 h-6 shrink-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11"
+                      className="w-6 h-6 shrink-0 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
                     >
                       <X size={14} />
                     </DsButton>
@@ -331,7 +331,7 @@ const GlossaryEditor: React.FC<{
                       size="icon"
                       onClick={() => startEdit(entryKey, src, tgt)}
                       aria-label={t('translation:prompt_panel.glossary.edit')}
-                      className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 p-0.5 shrink-0 text-muted-foreground/60 hover:text-foreground"
+                      className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 p-0.5 shrink-0 text-muted-foreground/60 hover:text-foreground"
                     >
                       <PencilSimple size={14} />
                     </DsButton>
@@ -340,7 +340,7 @@ const GlossaryEditor: React.FC<{
                       size="icon"
                       onClick={() => handleRemove(entryKey)}
                       aria-label={t('translation:prompt_panel.glossary.remove')}
-                      className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 p-0.5 shrink-0 hover:bg-destructive/10 hover:text-destructive"
+                      className="w-6 h-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 p-0.5 shrink-0 hover:bg-destructive/10 hover:text-destructive"
                     >
                       <X size={14} />
                     </DsButton>
@@ -401,7 +401,7 @@ const PromptTemplates: React.FC<{
 
   const chipClass = (active: boolean) =>
     cn(
-      'h-7 px-2.5 text-xs ui-state-colors [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3',
+      'h-7 px-2.5 text-xs ui-state-colors [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3',
       active
         ? '!bg-primary/10 !text-primary !border-primary/40'
         : 'text-muted-foreground hover:text-foreground',
@@ -444,7 +444,7 @@ const PromptTemplates: React.FC<{
                 size="icon"
                 onClick={() => handleDeleteTemplate(tpl.id)}
                 aria-label={t('translation:prompt_panel.templates.delete', { name: tpl.name })}
-                className="w-5 h-5 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11"
+                className="w-5 h-5 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
               >
                 <X size={11} />
               </DsButton>
@@ -479,7 +479,7 @@ const PromptTemplates: React.FC<{
             onClick={handleSaveTemplate}
             disabled={!templateName.trim() || !normalizedPrompt}
             aria-label={t('translation:prompt_panel.templates.confirm_save')}
-            className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 text-primary hover:bg-primary/10"
+            className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 text-primary hover:bg-primary/10"
           >
             <Check size={16} />
           </DsButton>
@@ -491,7 +491,7 @@ const PromptTemplates: React.FC<{
               setTemplateName('');
             }}
             aria-label={t('translation:prompt_panel.templates.cancel_save')}
-            className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 text-muted-foreground/60 hover:text-foreground"
+            className="w-8 h-8 shrink-0 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 text-muted-foreground/60 hover:text-foreground"
           >
             <X size={16} />
           </DsButton>
@@ -502,7 +502,7 @@ const PromptTemplates: React.FC<{
           size="sm"
           onClick={() => setIsNaming(true)}
           disabled={!normalizedPrompt}
-          className="h-7 px-2 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground hover:text-foreground"
+          className="h-7 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground hover:text-foreground"
         >
           <BookmarkSimple size={13} className="mr-1" />
           {t('translation:prompt_panel.templates.save_as')}
@@ -657,7 +657,7 @@ const PromptEditorContent: React.FC<{
           variant="outline"
           size="sm"
           onClick={onRestoreDefaultPrompt}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowCounterClockwise size={16} className="mr-2" />
           {t('translation:prompt_editor.restore_default')}
@@ -666,7 +666,7 @@ const PromptEditorContent: React.FC<{
           variant="default"
           size="sm"
           onClick={onSavePrompt}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           <FloppyDisk size={16} className="mr-2" />
           {t('translation:prompt_editor.save')}
@@ -763,7 +763,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
           variant="ghost"
           size="icon"
           onClick={() => setIsOpen(false)}
-          className="h-7 w-7 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+          className="h-7 w-7 text-muted-foreground/60 hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           aria-label={t('common:close')}
         >
           <X size={16} />
