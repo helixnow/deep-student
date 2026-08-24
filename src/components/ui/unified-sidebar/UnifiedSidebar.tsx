@@ -332,7 +332,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
+          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
           </DsButton>
         </div>
@@ -411,7 +411,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
+            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
               <CaretLeft size={16} weight="regular" />
             </DsButton>
           )}
