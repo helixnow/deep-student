@@ -103,4 +103,19 @@ describe('移动端指南对 Android 云存储诚实', () => {
     expect(guide).not.toMatch(/云同步（WebDAV\/S3，实验性）/);
     expect(guide).not.toMatch(/两端配置同一个 WebDAV\/S3/);
   });
+
+  it('隐私数据流向不把云同步写成笼统的 WebDAV/S3', () => {
+    const zh = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'src/locales/zh-CN/common.json'), 'utf-8'),
+    );
+    const en = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'src/locales/en-US/common.json'), 'utf-8'),
+    );
+    expect(zh.legal.settingsSection.dataFlow.syncDataDesc).toContain('Android 仅 WebDAV');
+    expect(zh.legal.settingsSection.dataFlow.syncDataDesc).not.toMatch(/WebDAV\/S3 服务/);
+    expect(en.legal.settingsSection.dataFlow.syncDataDesc).toMatch(/WebDAV on Android/i);
+    expect(en.legal.settingsSection.dataFlow.syncDataDesc).not.toMatch(/configured WebDAV\/S3 service/);
+    expect(zh.legal.privacyPolicy.sections.cloudSync.content).toContain('Android 仅支持 WebDAV');
+    expect(en.legal.privacyPolicy.sections.cloudSync.content).toMatch(/Android supports WebDAV only/i);
+  });
 });
