@@ -1187,7 +1187,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={handleRetryFromFailureBar}
                   disabled={isReadOnlySession || isLocked || isRetryingFailure}
-                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground [@media(pointer:coarse)]:min-h-11"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
@@ -1210,7 +1210,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
               </span>
               <div className="ml-auto flex items-center gap-1">
-                <DsButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRetryConfirmCancel}
+                  className="[@media(pointer:coarse)]:min-h-11"
+                >
                   {t('common:actions.cancel')}
                 </DsButton>
                 <DsButton
@@ -1218,7 +1223,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={performRetry}
                   disabled={isReadOnlySession || isLocked}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:min-h-11"
                 >
                   <ArrowCounterClockwise className="w-3.5 h-3.5" />
                   {t('messageItem.actions.retryConfirmAction')}
