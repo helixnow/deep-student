@@ -104,7 +104,9 @@
     "refreshStatus": "正在刷新状态...",
     "downloadCloud": "正在从云端下载...",
     "importZip": "正在导入 ZIP...",
-    "restoreDatabase": "正在恢复数据库..."
+    "restoreDatabase": "正在恢复数据库...",
+    "maintenanceBackup": "正在备份并上传到云端，请勿编辑学习数据或关闭应用",
+    "maintenanceRestore": "正在从云端恢复，请勿编辑学习数据或关闭应用"
   },
   
   "actions": {
@@ -164,6 +166,7 @@
     "confirm": "开始备份",
     "success": "备份成功",
     "successDetail": "版本 {{version}} 已上传到云端",
+    "portableArchiveUploaded": "这次上传的是便携归档，换机整槽恢复会被拒绝。要得到可整槽恢复的云端包，请在两端配置同一云端端到端加密密码后重新「立即备份到云端」。",
     "pruned": "已自动清理 {{count}} 个旧版本"
   },
   
@@ -210,6 +213,7 @@
     "downloadBackupFailed": "下载备份失败: {{error}}",
     "importZipFailed": "导入 ZIP 失败: {{error}}",
     "restoreDatabaseFailed": "恢复数据库失败: {{error}}",
+    "restoreInsufficientSpace": "磁盘空间不足：需要 {{required}} GB，可用 {{available}} GB。当前数据没有被改动。请释放空间后重试。",
     "missingWebdavConfig": "缺少 WebDAV 配置",
     "missingS3Config": "缺少 S3 配置",
     "missingFtpConfig": "缺少 FTP 配置",

@@ -19,6 +19,21 @@ export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
 export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
 
+/**
+ * Whether an imported ZIP's job stats say the archive can replace the data slot.
+ *
+ * Missing stats (older backends) return true so `restoreBackup` still decides.
+ * `partial_archive` or explicit `restorable: false` must not start slot restore.
+ */
+export function isImportedArchiveSlotRestorable(
+  stats: { recovery_kind?: unknown; restorable?: unknown } | null | undefined,
+): boolean {
+  if (!stats || typeof stats !== 'object') return true;
+  if (stats.recovery_kind === 'partial_archive') return false;
+  if (stats.restorable === false) return false;
+  return true;
+}
+
 type ErrorWithCode = Error & { code?: string };
 
 function asErrorRecord(raw: unknown): Record<string, unknown> | null {

@@ -27,6 +27,7 @@
 - `src-tauri/src/cloud_config_commands.rs`
 - `src/features/settings/components/data-governance/**`
 - `src/features/settings/components/{SyncSettingsSection,CloudStorageSection}.tsx`
+- `src/components/DataImportExport.tsx`（仅本地 ZIP 导入后的整槽拒绝门，不改其它页）
 - `src/utils/cloudStorageApi.ts`、`src/stores/syncStatusStore.ts`、`src/hooks/useBackupJobListener.ts`
 - `src/locales/*/sync.json`、`src/locales/*/cloudStorage.json`
 - `src-tauri/tests/sync_*.rs`、`tests/vitest/data-governance/**`

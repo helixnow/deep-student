@@ -27,6 +27,8 @@ import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
+import { useShallow } from 'zustand/react/shallow';
+import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
   localizeCloudStorageError,
@@ -131,7 +133,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   onConfigChanged,
 }) => {
   const { t } = useTranslation(['cloudStorage', 'common']);
-  
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
+    useShallow((state) => ({
+      enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
+      exitMaintenanceMode: state.exitMaintenanceMode,
+    })),
+  );
+
   // 配置状态
   const [provider, setProvider] = useState<cloudApi.StorageProvider>('webdav');
   const [webdavConfig, setWebdavConfig] = useState<cloudApi.WebDavConfig>({
@@ -924,7 +933,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
     setUploading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceBackup'));
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+    let uploadedArchiveSlotRestorable = true;
     try {
       // 阶段 1/4：创建备份
       let backupId: string;
@@ -959,6 +970,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
+        uploadedArchiveSlotRestorable = cloudApi.isImportedArchiveSlotRestorable(
+          zipExportSummary.result?.stats,
+        );
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.packageZipFailed', { error: localizeCloudError(e) }));
       }
@@ -979,6 +993,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
       setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:upload.successDetail', { version: result.version.id }));
+      if (!uploadedArchiveSlotRestorable) {
+        showGlobalNotification('warning', t('cloudStorage:upload.portableArchiveUploaded'));
+      }
       if (result.prunedVersions.length > 0) {
         showGlobalNotification('info', t('cloudStorage:upload.pruned', { count: result.prunedVersions.length }));
       }
@@ -987,12 +1004,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      exitMaintenanceMode();
       setUploading(false);
     }
   }, [
     buildConfig,
     connectionStatus,
     encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -1027,6 +1047,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceRestore'));
     setRestoreVersionId(versionId);
     setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
 
@@ -1044,6 +1065,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // 阶段 2/3：导入 ZIP
       setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
+      let importSummary: BackupJobSummary;
       try {
         const zipArgs = resolveCloudZipEncryptionArgs();
         const importJob = await DataGovernanceApi.importZip(
@@ -1052,11 +1074,42 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           zipArgs.encryptionPassword,
           zipArgs.useStoredCloudEncryptionPassword,
         );
-        const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
+        importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.importZipFailed', { error: localizeCloudError(e) }));
+      }
+
+      // 导入已写 recovery_kind / restorable：便携/部分归档不要再启动整槽恢复。
+      // stats 缺失（旧后端）仍走 restore 门，由 E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE 兜底。
+      if (!cloudApi.isImportedArchiveSlotRestorable(importSummary.result?.stats)) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', {
+            error: localizeCloudError({
+              code: cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+              message: `[${cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] portable or partial archive`,
+            }),
+          }),
+        );
+      }
+
+      // 整槽恢复前先看磁盘：与 Dashboard / 本地 ZIP 同一条预检，失败 fail-closed。
+      let spaceCheck: Awaited<ReturnType<typeof DataGovernanceApi.checkDiskSpaceForRestore>>;
+      try {
+        spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);
+      } catch (e: unknown) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }),
+        );
+      }
+      if (!spaceCheck.has_enough_space) {
+        throw new Error(
+          t('cloudStorage:errors.restoreInsufficientSpace', {
+            required: (spaceCheck.required_bytes / 1024 / 1024 / 1024).toFixed(2),
+            available: (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2),
+          }),
+        );
       }
 
       // 阶段 3/3：恢复数据库
@@ -1073,6 +1126,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // The restored slot is pending activation. Continuing to edit the old
       // slot can create writes that disappear at the next launch, so cut over
       // immediately after a verified restore.
+      requireMaintenanceRestart(t('cloudStorage:progress.maintenanceRestore'));
       await TauriAPI.restartApp();
       if (import.meta.env.DEV) {
         window.location.reload();
@@ -1082,6 +1136,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      // 切槽成功后 store 会因 requireMaintenanceRestart 拒绝撤掉写屏障。
+      exitMaintenanceMode();
       setDownloading(false);
       setRestoreVersionId(null);
       setPendingRestoreVersionId(null);
@@ -1089,7 +1145,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [
     buildConfig,
     encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
+    requireMaintenanceRestart,
     resolveBackupId,
     resolveCloudZipEncryptionArgs,
     setStage,

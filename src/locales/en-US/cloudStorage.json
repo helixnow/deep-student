@@ -104,7 +104,9 @@
     "refreshStatus": "Refreshing status...",
     "downloadCloud": "Downloading from cloud...",
     "importZip": "Importing ZIP...",
-    "restoreDatabase": "Restoring database..."
+    "restoreDatabase": "Restoring database...",
+    "maintenanceBackup": "Backing up and uploading to the cloud. Do not edit study data or close the app.",
+    "maintenanceRestore": "Restoring from the cloud. Do not edit study data or close the app."
   },
   
   "actions": {
@@ -164,6 +166,7 @@
     "confirm": "Start Backup",
     "success": "Backup Successful",
     "successDetail": "Version {{version}} has been uploaded to cloud",
+    "portableArchiveUploaded": "This upload is a portable archive. A slot restore on another device will be refused. To get a cloud package that can replace the data slot, configure the same cloud end-to-end encryption password on both devices and run Backup to Cloud Now again.",
     "pruned": "Automatically cleaned up {{count}} old version(s)"
   },
   
@@ -210,6 +213,7 @@
     "downloadBackupFailed": "Backup download failed: {{error}}",
     "importZipFailed": "ZIP import failed: {{error}}",
     "restoreDatabaseFailed": "Database restore failed: {{error}}",
+    "restoreInsufficientSpace": "Not enough disk space: {{required}} GB needed, {{available}} GB available. Your current data was not changed. Free up space and try again.",
     "missingWebdavConfig": "WebDAV configuration is missing",
     "missingS3Config": "S3 configuration is missing",
     "missingFtpConfig": "FTP configuration is missing",

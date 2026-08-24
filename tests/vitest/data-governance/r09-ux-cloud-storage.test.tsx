@@ -55,6 +55,7 @@ vi.mock('@/api/dataGovernance', () => ({
     exportZip: vi.fn(),
     importZip: vi.fn(),
     restoreBackup: vi.fn(),
+    checkDiskSpaceForRestore: vi.fn(),
     getBackupJob: vi.fn(),
     cancelBackup: vi.fn(),
   },
@@ -97,6 +98,13 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
   getCloudPlatformErrorI18nKey: () => undefined,
+  PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE: 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE',
+  isImportedArchiveSlotRestorable: (stats?: { recovery_kind?: unknown; restorable?: unknown } | null) => {
+    if (!stats) return true;
+    if (stats.recovery_kind === 'partial_archive') return false;
+    if (stats.restorable === false) return false;
+    return true;
+  },
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -217,6 +225,21 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(uploadBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       uploadBlock.indexOf('setUploading(true)'),
     );
+    expect(uploadBlock.indexOf('enterMaintenanceMode')).toBeGreaterThan(
+      uploadBlock.indexOf('setUploading(true)'),
+    );
+    expect(uploadBlock.indexOf('enterMaintenanceMode')).toBeLessThan(
+      uploadBlock.indexOf('backupTiered'),
+    );
+    expect(uploadBlock).toContain('exitMaintenanceMode');
+    expect(uploadBlock).toContain('progress.maintenanceBackup');
+    expect(uploadBlock).toContain('isImportedArchiveSlotRestorable');
+    expect(uploadBlock).toContain('portableArchiveUploaded');
+    expect(zhLocale.upload.portableArchiveUploaded).toContain('便携归档');
+    expect(zhLocale.upload.portableArchiveUploaded).toContain('整槽恢复');
+    expect(enLocale.upload.portableArchiveUploaded).toMatch(/portable archive/i);
+    expect(enLocale.upload.portableArchiveUploaded).toMatch(/slot restore/i);
+    expect(Object.keys(zhLocale.upload).sort()).toEqual(Object.keys(enLocale.upload).sort());
 
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
@@ -224,6 +247,37 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       restoreBlock.indexOf('setDownloading(true)'),
+    );
+    const importIdx = restoreBlock.indexOf('importZip(');
+    const restoreIdx = restoreBlock.indexOf('restoreBackup(');
+    const kindIdx = restoreBlock.indexOf('isImportedArchiveSlotRestorable');
+    expect(importIdx).toBeGreaterThan(-1);
+    expect(restoreIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeLessThan(restoreIdx);
+    expect(restoreBlock).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
+    const spaceIdx = restoreBlock.indexOf('checkDiskSpaceForRestore(');
+    expect(spaceIdx).toBeGreaterThan(kindIdx);
+    expect(spaceIdx).toBeLessThan(restoreIdx);
+    expect(restoreBlock).toContain('restoreInsufficientSpace');
+    expect(restoreBlock.indexOf('enterMaintenanceMode')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('enterMaintenanceMode')).toBeLessThan(
+      restoreBlock.indexOf('downloadBackup'),
+    );
+    expect(restoreBlock.indexOf('requireMaintenanceRestart')).toBeGreaterThan(
+      restoreBlock.indexOf('restoreBackup('),
+    );
+    expect(restoreBlock.indexOf('requireMaintenanceRestart')).toBeLessThan(
+      restoreBlock.indexOf('restartApp'),
+    );
+    expect(restoreBlock).toContain('exitMaintenanceMode');
+    expect(restoreBlock).toContain('progress.maintenanceRestore');
+    expect(zhLocale.progress.maintenanceBackup).toContain('请勿');
+    expect(zhLocale.progress.maintenanceRestore).toContain('请勿');
+    expect(enLocale.progress.maintenanceBackup).toMatch(/Do not/i);
+    expect(enLocale.progress.maintenanceRestore).toMatch(/Do not/i);
+    expect(Object.keys(zhLocale.progress).sort()).toEqual(
+      Object.keys(enLocale.progress).sort(),
     );
 
     expect(componentSource).toContain('localizeCloudStorageError');
@@ -251,6 +305,10 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(Object.keys(zhLocale.encryption).sort()).toEqual(
       Object.keys(enLocale.encryption).sort(),
     );
+    expect(zhLocale.errors.restoreInsufficientSpace).toContain('磁盘空间不足');
+    expect(zhLocale.errors.restoreInsufficientSpace).toContain('没有被改动');
+    expect(enLocale.errors.restoreInsufficientSpace).toMatch(/disk space/i);
+    expect(enLocale.errors.restoreInsufficientSpace).toMatch(/not changed/i);
     expect(Object.keys(zhLocale.errors).sort()).toEqual(
       Object.keys(enLocale.errors).sort(),
     );
