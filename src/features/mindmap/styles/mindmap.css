@@ -2025,6 +2025,17 @@
     inset: -14px;
   }
 
+  /* 大纲：折叠态「+N」胶囊（约 15px 高，可点展开）命中扩到 ≥44px，
+     视觉保持小胶囊；行与 .node-left-controls 均无 overflow 裁剪 */
+  .outline-collapse-count {
+    position: relative;
+  }
+  .outline-collapse-count::after {
+    content: '';
+    position: absolute;
+    inset: -15px;
+  }
+
   /* 大纲：bullet（拖拽手柄，18px）扩大命中区到 44px */
   .node-bullet-container {
     position: relative;
