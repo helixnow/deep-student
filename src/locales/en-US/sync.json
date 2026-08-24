@@ -23,6 +23,10 @@
   "confirmConflictResolveDescription": "\"{{strategy}}\" will be applied, overwriting the other version's data. This cannot be undone. We recommend creating a local backup first.",
   "confirmConflictBatchResolveDescription": "{{strategy}} will be applied to {{count}} conflicts, replacing the other versions. This cannot be undone.",
   "experimentalBadgeTooltip": "Experimental feature. We recommend backing up your data first.",
+  "autoSync": {
+    "label": "Auto Sync",
+    "description": "Off by default. When enabled, a bidirectional sync (keep-latest strategy) runs periodically; failures back off exponentially, and auto sync never runs while the cloud configuration is incomplete or credentials are missing."
+  },
   "severity_low": "Low",
   "severity_medium": "Medium",
   "severity_high": "High",
