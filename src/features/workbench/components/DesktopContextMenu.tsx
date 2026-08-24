@@ -28,6 +28,7 @@ import {
   GearSix,
   GridFour,
   Image,
+  Keyboard,
   SquaresFour,
   Stack,
 } from '@phosphor-icons/react';
@@ -579,6 +580,11 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     }
   }, [onClose]);
 
+  const openCheatsheet = useCallback(() => {
+    onClose();
+    useWorkbenchOverlay.getState().openCheatsheet({ sticky: true });
+  }, [onClose]);
+
   const selectTier = useCallback(
     (next: MaterialTierSetting) => {
       setTierSetting(next);
@@ -722,6 +728,14 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
         <div className="wb-desk-menu-sep" role="separator" />
 
+        <ActionItem
+          icon={<Keyboard size={15} weight="duotone" />}
+          label={t('workbench:desktopMenu.shortcuts')}
+          shortcut={shortcutHintFor('cheatsheet')}
+          testId="wb-desk-menu-shortcuts"
+          onClick={openCheatsheet}
+          onPointerEnter={() => setOpenSub(null)}
+        />
         <ActionItem
           icon={<Stack size={15} weight="duotone" />}
           label={t('workbench:desktopMenu.arrange')}

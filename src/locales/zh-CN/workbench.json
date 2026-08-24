@@ -456,7 +456,13 @@
     "materialTier": "视觉材质",
     "showDesktop": "显示桌面",
     "restoreWindows": "恢复窗口",
+    "shortcuts": "键盘快捷键",
     "settings": "桌面设置…"
+  },
+  "immersive": {
+    "hint": "已进入沉浸模式，按 Esc 退出",
+    "hintTouch": "已进入沉浸模式，点「退出沉浸」或窗口标题栏绿灯退出",
+    "exit": "退出沉浸"
   },
   "cheatsheet": {
     "title": "键盘快捷键",

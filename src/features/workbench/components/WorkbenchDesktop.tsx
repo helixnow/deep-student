@@ -54,6 +54,7 @@ import { WallpaperManagerDialog, OPEN_WALLPAPER_MANAGER_EVENT } from './Wallpape
 import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
 import { DesktopAgendaWidget } from './DesktopAgendaWidget';
+import { ImmersiveHint } from './ImmersiveHint';
 import { DesktopShortcutsLayer } from './DesktopShortcuts';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
@@ -605,6 +606,9 @@ export const WorkbenchDesktop: React.FC = () => {
 
         <WorkbenchEventBridge />
       </div>
+
+      {/* 菜单栏与 Dock 收起后仍可见、可触控的沉浸退出路径。 */}
+      <ImmersiveHint />
 
       {/* SnapPreview 使用工作区测得的物理偏移，固定层也不会碰到顶栏。 */}
       <SnapPreview margin={tileMargin} desktopOffset={desktopOffset} />

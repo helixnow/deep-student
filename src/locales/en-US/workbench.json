@@ -456,7 +456,13 @@
     "materialTier": "Visual material",
     "showDesktop": "Show desktop",
     "restoreWindows": "Restore windows",
+    "shortcuts": "Keyboard shortcuts",
     "settings": "Desktop settings…"
+  },
+  "immersive": {
+    "hint": "Immersive mode — press Esc to exit",
+    "hintTouch": "Immersive mode — tap Exit, or the green button in the window title bar",
+    "exit": "Exit immersive"
   },
   "cheatsheet": {
     "title": "Keyboard shortcuts",

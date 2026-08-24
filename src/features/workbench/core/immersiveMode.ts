@@ -137,6 +137,11 @@ export function useWindowImmersive(windowId: string): boolean {
   return useImmersiveStore((s) => s.windowId === windowId);
 }
 
+/** 当前沉浸窗口 id，供壳层渲染始终可达的退出提示。 */
+export function useImmersiveWindowId(): string | null {
+  return useImmersiveStore((s) => s.windowId);
+}
+
 /** 仅供单元测试：清空沉浸状态与监听 */
 export function resetImmersiveModeForTests(): void {
   clearImmersiveState();
