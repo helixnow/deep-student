@@ -1689,9 +1689,7 @@ mod tests {
         // 同理 mythos-5 仅存在于适配层代际判定，不应作为内置模型下发
         assert!(!BUILTIN_MODELS.iter().any(|m| m.model.contains("mythos")));
         // Haiku 线内置的就是 4.5
-        assert!(BUILTIN_MODELS
-            .iter()
-            .any(|m| m.model == "claude-haiku-4-5"));
+        assert!(BUILTIN_MODELS.iter().any(|m| m.model == "claude-haiku-4-5"));
     }
 
     #[test]
