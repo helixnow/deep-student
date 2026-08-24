@@ -138,6 +138,14 @@
     }
   },
   "agent": {
-    "you": "You"
+    "you": "You",
+    "fsrs": {
+      "queue_not_reset": "Interrupted by user; the review queue was not reset",
+      "enqueue_requires_session": "No applicable fsrs_enqueue (requires an active review session)",
+      "enqueued_cards": "Enqueued {{count}} cards",
+      "already_in_queue": "{{kind}} (all cards already in queue)",
+      "abort_queue_not_reset": "Flashcards enqueue aborted (queue was not reset)",
+      "abort_run_not_found": "Run {{runId}} aborted (flashcards queue was not reset)"
+    }
   }
 }
