@@ -485,7 +485,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={4}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-[11px] [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
@@ -534,7 +534,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={3}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-[11px] [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
