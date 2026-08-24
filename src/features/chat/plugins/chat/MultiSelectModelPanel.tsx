@@ -570,7 +570,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                       'hover:bg-[var(--interactive-hover)] active:bg-muted/80',
-                      'select-none cursor-pointer'
+                      'select-none cursor-pointer',
+                      '[@media(pointer:coarse)]:min-h-11'
                     )}
                   >
                     {isCollapsed ? (
