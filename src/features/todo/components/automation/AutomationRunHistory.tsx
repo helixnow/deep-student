@@ -274,7 +274,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
         borderColor: 'var(--border-soft, var(--border))',
         // 长列表滚动性能：视窗外的折叠行跳过渲染
         contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 42px',
+        containIntrinsicSize: 'auto 44px',
       } as React.CSSProperties}
     >
       <button
@@ -283,7 +283,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
         aria-controls={detailId}
         onClick={() => onToggle(run.id)}
         className={cn(
-          'group flex w-full min-w-0 items-center gap-2.5 px-3 py-2.5 text-left',
+          'group flex w-full min-w-0 items-center gap-2.5 px-3 py-2.5 text-left [@media(pointer:coarse)]:min-h-11',
           'transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         )}
         style={{ borderRadius: 'var(--radius-shell-row, 6px)', transitionTimingFunction: EASE }}
