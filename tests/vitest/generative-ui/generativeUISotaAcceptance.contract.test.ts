@@ -499,6 +499,16 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ]),
   },
   {
+    id: 'round78-generative-ui-skill-display-name',
+    check: () =>
+      fileContains('src/locales/zh-CN/skills.json', [
+        '"generative-ui": "生成式界面"',
+      ]) &&
+      fileContains('src/locales/en-US/skills.json', [
+        '"generative-ui": "Generative UI"',
+      ]),
+  },
+  {
     id: 'round75-rust-block-type-allowlist',
     check: () =>
       fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [

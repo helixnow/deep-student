@@ -13,14 +13,11 @@ describe('desktop shell two-column surface contract', () => {
     )?.[0] ?? '';
 
     expect(visibleTitlebarBlock).toContain('linear-gradient(');
-    expect(visibleTitlebarBlock).toContain('transparent 0');
-    expect(visibleTitlebarBlock).toContain('transparent var(--shell-navigation-width)');
-    expect(visibleTitlebarBlock).not.toContain('var(--shell-navigation-surface)');
-    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-width)');
-    expect(visibleTitlebarBlock).toContain('var(--shell-workspace-panel)');
-    expect(shellStylesSource).toMatch(
-      /\.desktop-shell-sidebar-titlebar-surface\s*\{[\s\S]*?background:\s*var\(--shell-navigation-surface\);/,
+    expect(visibleTitlebarBlock).toContain('var(--shell-navigation-surface) 0');
+    expect(visibleTitlebarBlock).toContain(
+      'var(--shell-navigation-surface-width, var(--shell-navigation-width))',
     );
+    expect(visibleTitlebarBlock).toContain('var(--shell-workspace-panel)');
   });
 
   it('keeps the header cells transparent so the shell reads as left column plus right column', () => {

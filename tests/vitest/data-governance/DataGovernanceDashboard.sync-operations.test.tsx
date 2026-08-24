@@ -74,6 +74,7 @@ const mockLoadStoredCloudStorageConfigSafe = vi.hoisted(() => vi.fn());
 const mockLoadStoredCloudStorageConfigWithCredentials = vi.hoisted(() => vi.fn());
 
 vi.mock('@/utils/cloudStorageApi', () => ({
+  CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY: 'cloud_storage_config_v2',
   loadStoredCloudStorageConfigSafe: mockLoadStoredCloudStorageConfigSafe,
   loadStoredCloudStorageConfigWithCredentials: mockLoadStoredCloudStorageConfigWithCredentials,
 }));
