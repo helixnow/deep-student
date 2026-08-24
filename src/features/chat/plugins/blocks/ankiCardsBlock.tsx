@@ -656,6 +656,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               variant="ghost"
               onClick={() => onToggleEdit(index)}
               disabled={savePending}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               {t('chatV2.cancelEdit')}
             </DsButton>
@@ -666,6 +667,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={handleSave}
               disabled={savePending}
               aria-busy={savePending}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               {savePending ? (
                 <CircleNotch size={14} className="animate-spin" />
@@ -701,7 +703,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 onClick={(e) => { e.stopPropagation(); onQuote(index); }}
                 data-wb-blur-surface
                 className={cn(
-                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                   isTouchPrimary
                     ? '!h-11 !w-11 opacity-100'
                     : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
@@ -719,7 +721,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 isTouchPrimary
                   ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
@@ -736,7 +738,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onDelete(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-destructive/10',
+                'bg-background/80 backdrop-blur border hover:bg-destructive/10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 isTouchPrimary
                   ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
