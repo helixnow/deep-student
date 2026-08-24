@@ -982,7 +982,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       let result: cloudApi.UploadResult;
       try {
         const appVersion = await TauriAPI.getAppVersion();
-        result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
+        result = await cloudApi.uploadBackup(
+          buildConfig(),
+          zipPath,
+          appVersion,
+          undefined,
+          uploadedArchiveSlotRestorable ? 'disaster_recovery' : 'partial_archive',
+        );
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: localizeCloudError(e) }));
       }
@@ -1765,14 +1771,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <div className="text-xs text-muted-foreground">
                         {cloudApi.formatFileSize(version.size)} • {cloudApi.formatTimestamp(version.timestamp)}
                         {version.note && ` • ${version.note}`}
+                        {version.recoveryKind === 'partial_archive'
+                          ? ` • ${t('cloudStorage:history.portableArchive')}`
+                          : version.recoveryKind === 'disaster_recovery'
+                            ? ` • ${t('cloudStorage:history.fullFidelity')}`
+                            : null}
                       </div>
                     </div>
                     <div className="flex gap-1">
                       <DsButton
                         size="sm"
                         variant="ghost"
-                        title={t('cloudStorage:history.restore')}
-                        disabled={downloading}
+                        title={
+                          version.recoveryKind === 'partial_archive'
+                            ? t('cloudStorage:history.portableArchiveNotRestorable')
+                            : t('cloudStorage:history.restore')
+                        }
+                        disabled={downloading || version.recoveryKind === 'partial_archive'}
                         onClick={() => openRestoreConfirm(version.id)}
                       >
                         {downloading && restoreVersionId === version.id ? (
