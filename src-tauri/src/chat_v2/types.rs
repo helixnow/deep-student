@@ -106,6 +106,9 @@ pub mod block_types {
     // 🆕 用户提问块
     pub const ASK_USER: &str = "ask_user";
 
+    /// 结构化 UI 意图块（Generative UI 桥接）
+    pub const GENERATIVE_UI: &str = "generative_ui";
+
     // ACR R1-01：工作台操作工具卡（前端 remap workbench_* → 此块类型）
     pub const WORKBENCH_OPS: &str = "workbench_ops";
 

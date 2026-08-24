@@ -23,5 +23,8 @@
   },
   "workbench": {
     "briefing_label": "AI 学习简报"
+  },
+  "learningHub": {
+    "briefing_label": "AI 资源简报"
   }
 }

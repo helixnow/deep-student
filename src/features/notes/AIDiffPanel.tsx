@@ -4,6 +4,8 @@ import { Check, X, Robot } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
+import { buildAIDiffSummaryIntent } from '@/features/generative-ui/utils/buildAIDiffSummaryIntent';
 import { isMacOS } from '@/utils/platform';
 import type { AIEditState, CanvasEditOperation, DiffLine } from './hooks/useAIEditState';
 
@@ -154,6 +156,13 @@ export function AIDiffPanel({
   const addedCount = diffLines.filter(line => line.type === 'added').length;
   const removedCount = diffLines.filter(line => line.type === 'removed').length;
 
+  const summaryIntent = buildAIDiffSummaryIntent({
+    operation: request.operation,
+    addedCount,
+    removedCount,
+    hasChanges,
+  });
+
   return (
     <section
       aria-label={t('aiDiff.title')}
@@ -212,6 +221,10 @@ export function AIDiffPanel({
                 {t('aiDiff.accept')}
               </DsButton>
             </div>
+          </div>
+
+          <div className="flex-shrink-0 border-b border-border/40 px-3 py-2">
+            <GenerativeUIPanel intent={summaryIntent} showChrome={false} />
           </div>
 
           <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">

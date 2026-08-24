@@ -307,6 +307,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
+        executors.push(Arc::new(super::tools::GenerativeUiExecutor::new())); // 🆕 生成式 UI 工具执行器
         executors.push(Arc::new(WorkspaceFsExecutor::new()));
         executors.push(Arc::new(FileManagerExecutor::new()));
         executors.push(Arc::new(
@@ -410,6 +411,7 @@ impl ChatV2Pipeline {
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
+            "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
