@@ -426,7 +426,7 @@ describe('generativeUIChatBlock new types runtime', () => {
 
     expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
       enabled: false,
-      sessionId: null,
+      sessionId: undefined,
     });
   });
 });
