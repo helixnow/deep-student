@@ -45,7 +45,7 @@
 | 可替换后端 trait | `hpias/service.rs` `HpiasResearchBackend` | ✅ |
 | 跨语言 lifecycle 契约 | `contracts/hpiasLifecycleContract.ts` | ✅ |
 | 渐进式 runtime 验收 | `hpiasPipelineRuntime.integration.test.tsx` | ✅ |
-| **VFS 检索 pipeline** | `RetrievalHpiasResearchService` + `DEEP_STUDENT_HPIAS_BACKEND=retrieval` | ✅ Round 24（检索真实；synthesis 确定性拼接，LLM 综合待续） |
+| **VFS 检索 + LLM synthesis pipeline** | `RetrievalHpiasResearchService` + `hpias/synthesis.rs` | ✅ Round 25（LLM 综合 + 确定性回退） |
 | Tauri 应用级 E2E | 桌面手动 / Playwright | ⏳ 待实现 |
 
 ## 测试门禁
@@ -59,8 +59,7 @@
 
 ## 距 SOTA 完整态剩余项
 
-1. **LLM synthesis 综合** — retrieval 后端当前为确定性片段拼接，待接入 LLM 生成 research-report
-2. **Tauri 桌面 E2E** — Chat 中触发 `render_generative_ui` + 观察 live 面板（非 vitest mock）
-3. **PR Ready for Review** — 人工 review 后合并 main
+1. **Tauri 桌面 E2E** — Chat 中触发 `render_generative_ui` + 观察 live 面板（非 vitest mock）
+2. **PR Ready for Review** — 人工 review 后合并 main
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

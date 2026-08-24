@@ -15,7 +15,7 @@ use super::retrieval_backend::{HpiasResearchDeps, RetrievalHpiasResearchService}
 pub enum HpiasBackendKind {
     /// Style Lab 时间线 stub（默认）
     Stub,
-    /// VFS UnifiedRetriever 驱动检索 + 确定性 synthesis
+    /// VFS UnifiedRetriever 驱动检索 + LLM synthesis（失败回退确定性拼接）
     Retrieval,
 }
 

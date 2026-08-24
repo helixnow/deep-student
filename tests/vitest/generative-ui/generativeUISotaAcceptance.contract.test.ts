@@ -141,6 +141,10 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/retrieval_backend.rs')),
   },
   {
+    id: 'hpias-llm-synthesis',
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/synthesis.rs')),
+  },
+  {
     id: 'sota-checklist-doc',
     check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/SOTA_CHECKLIST.md')),
   },

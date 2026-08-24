@@ -84,8 +84,17 @@ describe('generativeUI Rust dual-mapping contract', () => {
       'utf8',
     );
     expect(retrievalSrc).toContain('VfsUnifiedRetriever');
-    expect(retrievalSrc).toContain('UnifiedRetrievalRequest');
-    expect(retrievalSrc).toContain('build_synthesis_markdown');
+    expect(retrievalSrc).toContain('generate_synthesis_with_llm');
+  });
+
+  it('hpias synthesis module uses LLM with markdown fallback', () => {
+    const synthesisSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/synthesis.rs'),
+      'utf8',
+    );
+    expect(synthesisSrc).toContain('generate_synthesis_with_llm');
+    expect(synthesisSrc).toContain('call_with_config_id_raw_prompt');
+    expect(synthesisSrc).toContain('build_synthesis_markdown');
   });
 
   it('hpias payloads align with frontend lifecycle events', () => {

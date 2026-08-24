@@ -1,7 +1,7 @@
 //! HPIAS retrieval 后端 — VFS UnifiedRetriever 驱动真实检索 pipeline（Round 24）
 //!
 //! `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 且 ExecutionContext 注入 VFS/LLM 时启用；
-//! 否则回退 stub。Synthesis 为检索片段确定性拼接（LLM 综合留待后续轮次）。
+//! 否则回退 stub。Round 25：synthesis 优先 LLM 综合，失败回退确定性拼接。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +26,7 @@ use super::payloads::{
 };
 use super::orchestrator::HpiasPipelineOrchestrator;
 use super::service::{HpiasResearchBackend, HpiasResearchSessionRequest};
+use super::synthesis::generate_synthesis_with_llm;
 
 const DEFAULT_TOP_K: usize = 8;
 const SUBAGENT_INTERVAL_MS: u64 = 120;
@@ -101,6 +102,7 @@ impl RetrievalHpiasResearchService {
             }
         };
 
+        let llm_for_synthesis = Arc::clone(&llm);
         let retriever = VfsUnifiedRetriever::new(db, lance, llm);
         let mut all_hits: Vec<FusedRetrievalHit> = Vec::new();
         let mut per_query: Vec<(String, Vec<FusedRetrievalHit>)> = Vec::new();
@@ -177,7 +179,8 @@ impl RetrievalHpiasResearchService {
             Some(json!({ "items": [] })),
         ));
 
-        let synthesis = build_synthesis_markdown(question.as_deref(), &per_query);
+        let synthesis =
+            generate_synthesis_with_llm(&llm_for_synthesis, question.as_deref(), &per_query).await;
         let _ = emitter.emit_raw(build_synthesis_updated_payload(
             &session_id, round, &synthesis,
         ));

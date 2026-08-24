@@ -59,6 +59,15 @@ describe('hpiasPayloadParity contract', () => {
       'utf8',
     );
     expect(retrievalSrc).toContain('RetrievalHpiasResearchService');
-    expect(retrievalSrc).toContain('DEEP_STUDENT_HPIAS_BACKEND');
+    expect(retrievalSrc).toContain('generate_synthesis_with_llm');
+  });
+
+  it('synthesis module wires LLM markdown generation', () => {
+    const synthesisSrc = fs.readFileSync(
+      path.join(REPO, 'src-tauri/src/hpias/synthesis.rs'),
+      'utf8',
+    );
+    expect(synthesisSrc).toContain('build_synthesis_llm_prompt');
+    expect(synthesisSrc).toContain('generate_synthesis_with_llm');
   });
 });

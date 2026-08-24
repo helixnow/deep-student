@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 25（2026-08-24）
+
+- [x] **`hpias/synthesis.rs`** — `generate_synthesis_with_llm`（Model2 Markdown + 90s 超时）
+- [x] `build_synthesis_llm_prompt` — 检索证据 → LLM prompt；失败回退确定性拼接
+- [x] `retrieval_backend` 接线 LLM synthesis
+- [x] contract / SOTA_CHECKLIST 更新
+
 ## Round 24（2026-08-24）
 
 - [x] **`hpias/retrieval_backend.rs`** — `RetrievalHpiasResearchService` 经 `VfsUnifiedRetriever` 真实检索
