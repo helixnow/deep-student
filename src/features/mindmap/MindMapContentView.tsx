@@ -1023,6 +1023,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           <SegmentedControl<'outline' | 'mindmap'>
             ariaLabel={t('mindmap:toolbar.view')}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             value={currentView === 'outline' ? 'outline' : 'mindmap'}
             onValueChange={(next) => switchView(next)}
             options={[
