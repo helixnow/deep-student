@@ -33,8 +33,8 @@ describe('ChatAnki agent acceptance loop', () => {
       .filter((name) => name.startsWith('builtin-chatanki_'));
     const embeddedChatAnkiTools = (chatAnkiSkill.embeddedTools ?? [])
       .filter((tool) => tool.name.startsWith('builtin-chatanki_'));
-    expect(allowedChatAnkiTools).toHaveLength(26);
-    expect(embeddedChatAnkiTools).toHaveLength(26);
+    expect(allowedChatAnkiTools).toHaveLength(28);
+    expect(embeddedChatAnkiTools).toHaveLength(28);
     for (const name of requiredTools) {
       expect(chatAnkiSkill.allowedTools).toContain(name);
       expect(chatAnkiSkill.embeddedTools?.some((tool) => tool.name === name)).toBe(true);

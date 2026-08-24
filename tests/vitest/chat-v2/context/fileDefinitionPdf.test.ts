@@ -74,7 +74,13 @@ describe('fileDefinition (PDF multimodal)', () => {
       }],
     };
 
-    const blocks = fileDefinition.formatToBlocks(resource, { isMultimodal: false } as any);
+    // ★ P0 契约（2026-07）：injectModes 在 ContextRef 创建时显式写入，缺省不再
+    // 隐式双开 text+image（缺省对齐 DEFAULT_PDF_INJECT_MODES = ['text']）。
+    // 这里显式声明 text+image，验证 OCR 仍是 opt-in（不随 image 模式带出）。
+    const blocks = fileDefinition.formatToBlocks(
+      resource,
+      { isMultimodal: false, injectModes: { pdf: ['text', 'image'] } } as any
+    );
     expect(blocks.filter(isImageContentBlock)).toHaveLength(1);
     const text = blocks.filter(isTextContentBlock).map((block: any) => block.text).join('\n');
     expect(text).toContain('native extracted text');

@@ -12,7 +12,8 @@ describe('transitions-dev card resize hook', () => {
     expect(css).toContain('.t-resize {');
     expect(css).toContain('width  var(--resize-dur) var(--resize-ease)');
     expect(css).toContain('height var(--resize-dur) var(--resize-ease)');
-    expect(css).toContain('will-change: width, height;');
+    // .t-resize 不再声明 will-change: width/height（持续占用合成层的反模式已移除）
+    expect(css).not.toContain('will-change: width, height;');
 
     const reducedMotion = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
     expect(reducedMotion).toContain('.t-resize { transition: none !important; }');

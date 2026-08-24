@@ -15,10 +15,10 @@ import type { Block } from '@/features/chat/core/types';
 import type { AnkiCardsBlockData } from '@/features/chat/plugins/blocks/ankiCardsBlock';
 import { blockRegistry } from '@/features/chat/registry';
 
-// Mock i18n（仅覆盖本组件使用的 key）
+// Mock i18n（仅覆盖本组件使用的 key，支持 {{var}} 插值）
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => {
+    t: (key: string, options?: { defaultValue?: string } & Record<string, unknown>) => {
       const dict: Record<string, string> = {
         'blocks.ankiCards.edit': 'Edit',
         'blocks.ankiCards.save': 'Save',
@@ -34,10 +34,13 @@ vi.mock('react-i18next', () => ({
         'blocks.ankiCards.progress.ankiConnect.refresh': 'Refresh AnkiConnect status',
         'blocks.ankiCards.progress.ankiConnect.checking': 'checking',
         'blocks.ankiCards.progress.ankiConnect.notConnected': 'not connected',
+        'blocks.ankiCards.progress.metrics.cardsValue': 'Cards: {{count}}',
+        'blocks.ankiCards.progress.metrics.segmentsValue': 'Segments: {{completed}}/{{total}}',
       };
-      if (dict[key]) return dict[key];
-      if (options?.defaultValue) return options.defaultValue;
-      return key;
+      const template = dict[key] ?? options?.defaultValue ?? key;
+      return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+        options && options[name] !== undefined ? String(options[name]) : match
+      );
     },
   }),
   // Some modules initialize i18n in test environment and expect this export.
