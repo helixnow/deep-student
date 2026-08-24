@@ -725,7 +725,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
       <SyncQuarantinePanel refreshSignal={conflictRefreshSignal} />
       {/* [R11-unsynced-ui] 未同步文件清单常驻面板（仅挂载行） */}
-      <UnsyncedItemsPanel refreshSignal={conflictRefreshSignal} onRetrySync={() => onRunSync("download", syncStrategy)} />
+      <UnsyncedItemsPanel refreshSignal={conflictRefreshSignal} />
     </div>
   );
 };

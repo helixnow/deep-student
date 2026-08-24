@@ -2,13 +2,13 @@
  * [R11-unsynced-ui] SyncTab 挂载行锁定测试
  *
  * 锁定：未同步文件清单面板在 SyncTab 常驻挂载（不依赖云端已配置 / 有无冲突），
- * 且拿到 refreshSignal 与接到下载同步的 onRetrySync。SyncTab 本轮只允许加
- * 挂载行——双轨错误分类器（classifySyncError / classifySyncE2eeError）不动，
+ * 且只拿到 refreshSignal，不接收任何同步写入口。SyncTab 本轮只允许加挂载
+ * 行——双轨错误分类器（classifySyncError / classifySyncE2eeError）不动，
  * 由既有 r09-ux-sync-tab 测试继续钉住。
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 // ============================================================================
 // Mocks（与 r09-ux-sync-tab 相同的隔离策略）
@@ -65,23 +65,16 @@ vi.mock('@/components/ui/DsDialog', () => ({
 
 // 捕获挂载 props 的未同步面板桩
 const unsyncedPanelProps = vi.hoisted(
-  () => [] as Array<{ refreshSignal?: string | number; onRetrySync?: () => void }>,
+  () => [] as Array<{ refreshSignal?: string | number }>,
 );
 vi.mock(
   '@/features/settings/components/data-governance/UnsyncedItemsPanel',
   () => ({
     UnsyncedItemsPanel: (props: {
       refreshSignal?: string | number;
-      onRetrySync?: () => void;
     }) => {
       unsyncedPanelProps.push(props);
-      return (
-        <div data-testid="unsynced-items-stub">
-          <button type="button" onClick={props.onRetrySync}>
-            stub-retry
-          </button>
-        </div>
-      );
+      return <div data-testid="unsynced-items-stub" />;
     },
   }),
 );
@@ -126,17 +119,7 @@ describe('SyncTab 未同步清单面板挂载', () => {
     expect(screen.getByTestId('unsynced-items-stub')).toBeInTheDocument();
     expect(unsyncedPanelProps.length).toBeGreaterThan(0);
     // refreshSignal 与冲突面板同源（pending:synced 计数），同步后自动刷新
-    expect(unsyncedPanelProps[0].refreshSignal).toBe('0:0');
-    expect(typeof unsyncedPanelProps[0].onRetrySync).toBe('function');
-  });
-
-  it('onRetrySync 接到下载方向的 onRunSync（带当前策略）', () => {
-    const props = makeProps({ syncStrategy: 'keep_local' });
-    render(<SyncTab {...props} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'stub-retry' }));
-    expect(props.onRunSync).toHaveBeenCalledTimes(1);
-    expect(props.onRunSync).toHaveBeenCalledWith('download', 'keep_local');
+    expect(unsyncedPanelProps[0]).toEqual({ refreshSignal: '0:0' });
   });
 
   it('refreshSignal 跟随同步计数变化（同步完成后面板自动重查）', () => {
