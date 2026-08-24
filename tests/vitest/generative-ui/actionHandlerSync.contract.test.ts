@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildLearningBriefingIntent } from '@/features/generative-ui/utils/buildLearningBriefingIntent';
+import { buildAiDashboardIntent } from '@/features/generative-ui/utils/buildAiDashboardIntent';
 import { buildLearningHubBriefingIntent } from '@/features/generative-ui/utils/buildLearningHubBriefingIntent';
 import { buildExamBriefingIntent } from '@/features/generative-ui/utils/buildExamBriefingIntent';
 import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
@@ -53,6 +54,19 @@ describe('generativeUI actionHandlerSync contract', () => {
       briefingLabels,
     );
     expectActionIdsRegistered(intent, workbenchLearningHandlers, 'buildLearningBriefingIntent');
+  });
+
+  it('ai dashboard intent action ids exist in workbenchLearningHandlers', () => {
+    const intent = buildAiDashboardIntent(
+      { dueFlashcards: 2, pendingTodos: 1, overdueTodos: 0, activeAnkiTasks: 3 },
+      {
+        ...briefingLabels,
+        ankiTasksTitle: 'Tasks',
+        ankiTasksTrendActive: 'Running',
+        openTaskDashboard: 'Tasks panel',
+      },
+    );
+    expectActionIdsRegistered(intent, workbenchLearningHandlers, 'buildAiDashboardIntent');
   });
 
   it('learning hub briefing action ids exist in learningHubActionHandlers', () => {

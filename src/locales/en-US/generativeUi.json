@@ -109,6 +109,12 @@
       "pending_label": "{{count}} pending",
       "start_review": "Start review",
       "open_qbank": "Open question bank"
+    },
+    "dashboard": {
+      "title": "AI learning dashboard",
+      "anki_tasks_title": "Active card generation",
+      "anki_tasks_trend_active": "Running in background",
+      "open_task_dashboard": "Open task dashboard"
     }
   },
   "learningHub": {

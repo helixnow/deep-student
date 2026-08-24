@@ -42,4 +42,12 @@ export const workbenchLearningHandlers: Record<string, GenerativeActionDefinitio
       workbenchBus.launch({ typeId: 'learning-hub', reason: 'api' });
     },
   },
+  'open-task-dashboard': {
+    id: 'open-task-dashboard',
+    label: '制卡任务',
+    riskLevel: 'low',
+    handler: async () => {
+      workbenchBus.launch({ typeId: 'taskDashboard', reason: 'api' });
+    },
+  },
 };

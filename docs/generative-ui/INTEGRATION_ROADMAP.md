@@ -36,9 +36,9 @@
 
 | 场景 | 落点 | 状态 |
 |------|------|------|
-| AI 学习简报 widget | `DesktopAgendaWidget` 同级 | 📋 Round 3 |
+| AI 学习简报 widget | `DesktopAgendaWidget` 同级 | ✅ |
 | Chat generative_ui 块 | blockRegistry + eventRegistry | ✅ |
-| AI 仪表盘应用窗口 | 新 `AppDefinition` + agentManifest | 📋 Round 4 |
+| AI 仪表盘应用窗口 | 新 `AppDefinition` + agentManifest | ✅ Round 13 |
 
 ## 流式管道（#9）
 

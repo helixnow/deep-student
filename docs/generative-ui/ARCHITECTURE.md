@@ -69,6 +69,7 @@ Rust render_generative_ui
 | Notes 摘要 + HITL 写入 | ✅ |
 | Learning Hub 简报（Exam/Memory/IndexStatus） | ✅ |
 | Workbench DesktopAiBriefingWidget | ✅ |
+| Workbench AiDashboardAppWindow + agentManifest | ✅ Round 13 |
 | mindmap-embed E2E | ✅ |
 | prompt props 同步 | ✅ |
 | 闪卡 save-to-library | ✅ Round 10 |

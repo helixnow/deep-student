@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 13（2026-08-24）
+
+- [x] Workbench **AI 仪表盘应用窗口** — `AiDashboardAppWindow` + `AppDefinition` + `agentManifest`
+- [x] `buildAiDashboardIntent` — 学习简报 + 制卡任务 stat-card / action-bar 扩展
+- [x] `workbenchLearningHandlers` 扩展 `open-task-dashboard`
+- [x] i18n（workbench.dashboard.* / apps.aiDashboard）
+- [x] vitest：buildAiDashboardIntent / AiDashboardAppWindow / aiDashboardAgentManifest
+
 ## Round 12（2026-08-24）
 
 - [x] `research-report` 块 — 流式正文 + `[type-N]` 引用 badge 渲染

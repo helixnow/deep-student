@@ -233,7 +233,8 @@
     "settings": "设置",
     "sandbox": "沙箱工作台",
     "pomodoro": "番茄钟",
-    "browser": "浏览器"
+    "browser": "浏览器",
+    "aiDashboard": "AI 仪表盘"
   },
   "dock": {
     "label": "程序坞",

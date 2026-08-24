@@ -109,6 +109,12 @@
       "pending_label": "{{count}} 项待办",
       "start_review": "开始复习",
       "open_qbank": "打开题库"
+    },
+    "dashboard": {
+      "title": "AI 学习仪表盘",
+      "anki_tasks_title": "进行中制卡",
+      "anki_tasks_trend_active": "后台运行",
+      "open_task_dashboard": "打开制卡任务"
     }
   },
   "learningHub": {

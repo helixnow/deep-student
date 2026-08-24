@@ -39,6 +39,7 @@ export { resolveEffectiveRiskLevel } from './actions';
 export { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from './prompts';
 export { buildNoteSummaryIntent } from './utils/buildNoteSummaryIntent';
 export { buildLearningBriefingIntent } from './utils/buildLearningBriefingIntent';
+export { buildAiDashboardIntent } from './utils/buildAiDashboardIntent';
 export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
 export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
 export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
