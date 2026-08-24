@@ -41,7 +41,8 @@ import {
   Moon,
   Sun,
   ArrowCounterClockwise,
-  LockSimple
+  LockSimple,
+  Translate
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -60,6 +61,36 @@ import {
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
+
+// 划词翻译卡片（与聊天划词共用组件；懒加载避免把翻译链路打进 PDF chunk）
+const SelectionTranslationPopover = React.lazy(
+  () => import('@/features/chat/components/TranslationPopover')
+);
+
+/**
+ * 提取选区在所在页文字层内的前后上下文（用于划词翻译消歧；不参与翻译本身）。
+ * 折叠空白：PDF 文字层由大量 span 组成，原始 textContent 充满换行/重复空格。
+ */
+function extractSelectionContext(
+  range: Range,
+  pageWrapper: Element
+): { before: string; after: string } {
+  try {
+    const pageRange = document.createRange();
+    pageRange.selectNodeContents(pageWrapper);
+    const before = pageRange.cloneRange();
+    before.setEnd(range.startContainer, range.startOffset);
+    const after = pageRange.cloneRange();
+    after.setStart(range.endContainer, range.endOffset);
+    return {
+      before: before.toString().replace(/\s+/g, ' ').slice(-200),
+      after: after.toString().replace(/\s+/g, ' ').slice(0, 200),
+    };
+  } catch {
+    // Range 端点跨 shadow/detached 节点等异常场景：放弃上下文，不阻塞翻译
+    return { before: '', after: '' };
+  }
+}
 
 /** PDF 目录项 */
 interface OutlineItem {
@@ -419,7 +450,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [showHighlightMenu, setShowHighlightMenu] = useState<boolean>(false);
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[] } | null>(null);
+  const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[]; context: { before: string; after: string } } | null>(null);
+  // 划词翻译卡片（选区工具条「翻译」打开；与聊天划词共用 TranslationPopover）
+  const [selectionTranslation, setSelectionTranslation] = useState<{
+    text: string;
+    contextBefore: string;
+    contextAfter: string;
+  } | null>(null);
   const [showHighlightList, setShowHighlightList] = useState<boolean>(false);
   // 触屏点击页面内高亮块后弹出的轻量操作条（title tooltip 在触屏不可达）
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
@@ -1097,6 +1134,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       showBookmarkList || showHighlightList || sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
     return registerBackHandler(() => {
+      if (selectionTranslation) {
+        setSelectionTranslation(null);
+        return true;
+      }
       if (showHighlightMenu) {
         setShowHighlightMenu(false);
         return true;
@@ -1132,6 +1173,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       return false;
     }, BACK_PRIORITY.overlay);
   }, [
+    selectionTranslation,
     showHighlightMenu,
     activeHighlightId,
     showMoreMenu,
@@ -1213,10 +1255,32 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
     }
     
-    setPendingHighlight({ text, pageIndex, rects });
+    // 上下文消歧：提取选区前后各 ~200 字符（划词翻译用；不参与翻译本身）
+    const context = pageWrapper
+      ? extractSelectionContext(range, pageWrapper)
+      : { before: '', after: '' };
+
+    setPendingHighlight({ text, pageIndex, rects, context });
     setHighlightMenuPos({ x: rect.left + rect.width / 2, y: rect.top - 10 });
     setShowHighlightMenu(true);
   }, [canPersistAnnotations, currentPage, rotation, t]);
+
+  // 打开划词翻译卡片（收起高亮菜单、释放选区）
+  const openSelectionTranslation = useCallback(() => {
+    if (!pendingHighlight?.text) return;
+    setSelectionTranslation({
+      text: pendingHighlight.text,
+      contextBefore: pendingHighlight.context.before,
+      contextAfter: pendingHighlight.context.after,
+    });
+    setShowHighlightMenu(false);
+    setPendingHighlight(null);
+    window.getSelection()?.removeAllRanges();
+  }, [pendingHighlight]);
+
+  const closeSelectionTranslation = useCallback(() => {
+    setSelectionTranslation(null);
+  }, []);
 
   // 添加高亮
   const addHighlight = useCallback((color: string) => {
@@ -2793,6 +2857,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          <span className="ds-highlight-menu__divider" aria-hidden="true" />
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={openSelectionTranslation} title={t('pdf:toolbar.translate_selection')} aria-label={t('pdf:toolbar.translate_selection')}>
+            <Translate size={16} />
+          </DsButton>
         </div>
       )}
 
@@ -2803,6 +2871,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
           <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="ds-btn ds-btn-sm"
+            onClick={openSelectionTranslation}
+            title={t('pdf:toolbar.translate_selection')}
+            aria-label={t('pdf:toolbar.translate_selection')}
+          >
+            <Translate size={16} />
+          </DsButton>
           <DsButton
             variant="ghost"
             size="icon"
@@ -2849,6 +2928,26 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           >
             <X size={16} />
           </DsButton>
+        </div>
+      )}
+
+      {/* 划词翻译卡片：viewer 内底部浮层，复用聊天划词的 TranslationPopover
+          （自动检测语向 + 上下文消歧 + 流式对照/纯译文） */}
+      {selectionTranslation && (
+        <div
+          className="ds-pdf__translation-panel"
+          role="complementary"
+          aria-label={t('pdf:toolbar.translate_selection')}
+        >
+          <React.Suspense fallback={null}>
+            <SelectionTranslationPopover
+              sourceText={selectionTranslation.text}
+              isVisible
+              contextBefore={selectionTranslation.contextBefore}
+              contextAfter={selectionTranslation.contextAfter}
+              onClose={closeSelectionTranslation}
+            />
+          </React.Suspense>
         </div>
       )}
 

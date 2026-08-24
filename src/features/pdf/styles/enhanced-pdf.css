@@ -1868,6 +1868,40 @@
 }
 
 /* ============================================================================
+   划词翻译卡片（复用聊天 TranslationPopover，viewer 内底部浮层）
+   ============================================================================ */
+
+/* 高亮色板与翻译按钮之间的细分隔线 */
+.ds-highlight-menu__divider {
+  width: 1px;
+  height: 18px;
+  background: hsl(var(--border));
+  flex-shrink: 0;
+}
+
+.ds-pdf__translation-panel {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+  width: min(600px, calc(100% - 24px));
+  z-index: 140;
+  border-radius: 12px;
+  background: hsl(var(--popover));
+  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
+}
+
+/* 卡片自带 mt-2（消息流内联布局残留），浮层场景抵消掉 */
+.ds-pdf__translation-panel > [data-translation-popover] {
+  margin-top: 0;
+}
+
+/* chrome 隐藏时贴底（保留 safe-area），与高亮操作条同规则 */
+.ds-pdf-viewer.chrome-hidden .ds-pdf__translation-panel {
+  bottom: calc(var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+}
+
+/* ============================================================================
    Reduced motion（置于文件末尾，覆盖上方所有 media 块内的过渡声明）
    ============================================================================ */
 
