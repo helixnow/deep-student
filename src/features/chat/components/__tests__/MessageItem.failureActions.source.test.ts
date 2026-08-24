@@ -14,7 +14,7 @@ describe('MessageItem failure actions source', () => {
   });
 
   it('shows a dedicated zero-output failure bar with retry and error details affordances', () => {
-    expect(messageItemSource).toContain('showActions && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure');
+    expect(messageItemSource).toContain('showActions && !isReadOnlySession && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure');
     expect(messageItemSource).toContain("text-muted-foreground hover:bg-muted/50 hover:text-foreground");
     expect(messageItemSource).toContain('messageItem.failure.retry');
     expect(messageItemSource).not.toContain('messageItem.failure.viewErrorDetails');
@@ -28,7 +28,7 @@ describe('MessageItem failure actions source', () => {
     expect(messageItemSource).toContain('const shouldShowReconnectInline = !isUser && Boolean(streamReconnectState);');
     expect(messageItemSource).toContain("t('messageItem.reconnect.inline'");
     expect(messageItemSource).toContain('if (shouldShowReconnectInline && streamReconnectState)');
-    expect(messageItemSource).toContain('TextShimmer className="text-md leading-relaxed tracking-wide text-foreground"');
+    expect(messageItemSource).toContain('TextShimmer className="chat-message-status__text"');
     expect(messageItemSource).toContain('{reconnectInlineText}');
     expect(messageItemSource).not.toContain('reconnect...(');
     expect(messageItemSource).not.toContain('PulseDot className="w-1.5 h-1.5 text-foreground/60"');
