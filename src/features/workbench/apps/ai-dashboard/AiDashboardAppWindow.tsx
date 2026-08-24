@@ -52,6 +52,10 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           pendingTodos,
           overdueTodos,
           activeAnkiTasks: activeTasks,
+          reviewDays:
+            dueCount > 0
+              ? [{ date: formatLocalDateKey(new Date()), dueCount: dueCount }]
+              : undefined,
         },
         {
           dueFlashcardsTitle: t('generativeUi:workbench.briefing.due_flashcards_title'),
@@ -64,7 +68,13 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           openQbank: t('generativeUi:workbench.briefing.open_qbank'),
           ankiTasksTitle: t('generativeUi:workbench.dashboard.anki_tasks_title'),
           ankiTasksTrendActive: t('generativeUi:workbench.dashboard.anki_tasks_trend_active'),
+          ankiTasksTrendIdle: t('generativeUi:workbench.dashboard.anki_tasks_trend_idle'),
           openTaskDashboard: t('generativeUi:workbench.dashboard.open_task_dashboard'),
+          reviewCalendarTitle: t('generativeUi:workbench.dashboard.review_calendar_title'),
+          reviewEmptyTitle: t('generativeUi:workbench.dashboard.review_empty_title'),
+          reviewEmpty: t('generativeUi:workbench.dashboard.review_empty'),
+          idleAlertTitle: t('generativeUi:workbench.dashboard.idle_alert_title'),
+          idleAlertDescription: t('generativeUi:workbench.dashboard.idle_alert_description'),
         },
       ),
     [activeTasks, dueCount, overdueTodos, pendingTodos, t],

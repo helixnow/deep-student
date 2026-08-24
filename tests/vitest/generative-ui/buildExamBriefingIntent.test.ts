@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildExamBriefingIntent } from '@/features/generative-ui/utils/buildExamBriefingIntent';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const LABELS = {
   totalTitle: 'Total',
@@ -11,6 +12,13 @@ const LABELS = {
   correctRateRow: 'Correct',
   startReview: 'Start review',
   openPractice: 'Practice',
+  emptyBankTitle: 'Bank empty',
+  emptyBankDescription: 'Add questions first',
+  mistakeSuggestion: 'Review weak topics',
+  statusListTitle: 'Status',
+  inProgressRow: 'In progress',
+  newCountRow: 'New',
+  statusEmpty: 'No status',
 };
 
 const BASE_STATS = {
@@ -22,16 +30,30 @@ const BASE_STATS = {
   correctRate: 0.75,
 };
 
+function expectValidIntent(intent: ReturnType<typeof buildExamBriefingIntent>) {
+  const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
+  expect(parsed.ok).toBe(true);
+  expect(intent.version).toBe('1');
+}
+
 describe('buildExamBriefingIntent', () => {
-  it('includes stat-card, progress, key-value-grid and action-bar', () => {
+  it('includes stat-card, progress, key-value-grid, list and action-bar', () => {
     const intent = buildExamBriefingIntent({
       stats: BASE_STATS,
       examName: 'Linear Algebra',
       labels: LABELS,
     });
     const types = intent.blocks.map((b) => b.type);
-    expect(types).toEqual(['stat-card', 'progress', 'key-value-grid', 'action-bar']);
+    expect(types).toEqual([
+      'stat-card',
+      'progress',
+      'key-value-grid',
+      'mistake-analysis',
+      'list',
+      'action-bar',
+    ]);
     expect(intent.meta?.description).toBe('Linear Algebra');
+    expectValidIntent(intent);
   });
 
   it('shows start-review when review count > 0', () => {
@@ -51,6 +73,8 @@ describe('buildExamBriefingIntent', () => {
     const ids = (bar?.props as { actions: Array<{ id: string }> }).actions.map((a) => a.id);
     expect(ids).not.toContain('start-review');
     expect(ids).toContain('open-practice');
+    expect(intent.blocks.some((b) => b.type === 'mistake-analysis')).toBe(false);
+    expectValidIntent(intent);
   });
 
   it('formats correct rate as percent in key-value grid', () => {
@@ -58,5 +82,19 @@ describe('buildExamBriefingIntent', () => {
     const grid = intent.blocks.find((b) => b.type === 'key-value-grid');
     const rows = (grid?.props as { rows: Array<{ key: string; value: string }> }).rows;
     expect(rows.find((r) => r.key === 'Correct')?.value).toBe('75%');
+  });
+
+  it('adds empty-bank alert and empty status list when the bank is empty', () => {
+    const intent = buildExamBriefingIntent({
+      stats: { total: 0, mastered: 0, review: 0, inProgress: 0, newCount: 0, correctRate: 0 },
+      labels: LABELS,
+    });
+    const alert = intent.blocks.find((b) => b.type === 'alert');
+    expect(alert?.props).toMatchObject({ title: 'Bank empty', variant: 'info' });
+    const list = intent.blocks.find((b) => b.type === 'list');
+    expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
+    expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No status');
+    expect(intent.blocks.some((b) => b.type === 'mistake-analysis')).toBe(false);
+    expectValidIntent(intent);
   });
 });

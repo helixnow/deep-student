@@ -27,16 +27,34 @@ export interface GenerativeComponentConfig<TProps extends GenerativeBlockProps =
   allowPartialRender?: boolean;
 }
 
+/** Intent 文档版本：v1 基线，v1.1 增加 layout / span */
+export type GenerativeUIIntentVersion = '1' | '1.1';
+
+/** 顶层布局模式 */
+export type GenerativeLayoutMode = 'stack' | 'grid';
+
+/** 栅格列数 / 块跨列（仅 1|2|3，禁止模型任意 class） */
+export type GenerativeLayoutUnit = 1 | 2 | 3;
+
+/** v1.1 顶层布局；缺省等价 stack 单列 */
+export interface GenerativeLayout {
+  mode: GenerativeLayoutMode;
+  columns?: GenerativeLayoutUnit;
+}
+
 /** 模型输出的单个块意图 */
 export interface GenerativeBlockIntent {
   type: string;
   props?: Record<string, unknown>;
   id?: string;
+  /** grid 下占列数；stack 忽略。非法值由 schema 钳制到 1|2|3 */
+  span?: GenerativeLayoutUnit;
 }
 
 /** 模型输出的完整 UI 意图文档 */
 export interface GenerativeUIIntent {
-  version?: '1';
+  version?: GenerativeUIIntentVersion;
+  layout?: GenerativeLayout;
   blocks: GenerativeBlockIntent[];
   meta?: {
     title?: string;

@@ -1,6 +1,12 @@
 import type { AutoExtractFrequency } from '@/api/memoryApi';
 import type { GenerativeUIIntent } from '../types';
 
+export interface MemoryBriefingListItem {
+  label: string;
+  description?: string;
+  badge?: string;
+}
+
 export interface MemoryBriefingLabels {
   countTitle: string;
   activeTrend: string;
@@ -13,12 +19,16 @@ export interface MemoryBriefingLabels {
   freqAggressive: string;
   refresh: string;
   createMemory: string;
+  recentListTitle?: string;
+  recentEmpty?: string;
+  openMemory?: string;
 }
 
 export interface MemoryBriefingInput {
   memoryCount: number;
   rootFolderTitle?: string;
   autoExtractFrequency?: AutoExtractFrequency;
+  recentItems?: MemoryBriefingListItem[];
   labels: MemoryBriefingLabels;
 }
 
@@ -38,7 +48,15 @@ function resolveFrequencyLabel(
 }
 
 export function buildMemoryBriefingIntent(input: MemoryBriefingInput): GenerativeUIIntent {
-  const { memoryCount, rootFolderTitle, autoExtractFrequency, labels } = input;
+  const { memoryCount, rootFolderTitle, autoExtractFrequency, recentItems = [], labels } = input;
+  const listItems = recentItems
+    .filter((item) => item.label.trim().length > 0)
+    .slice(0, 8)
+    .map((item) => ({
+      label: item.label.slice(0, 200),
+      ...(item.description ? { description: item.description.slice(0, 300) } : {}),
+      ...(item.badge ? { badge: item.badge.slice(0, 40) } : {}),
+    }));
 
   return {
     version: '1',
@@ -68,10 +86,24 @@ export function buildMemoryBriefingIntent(input: MemoryBriefingInput): Generativ
         },
       },
       {
+        type: 'list',
+        props: {
+          title: labels.recentListTitle ?? labels.overviewTitle,
+          items: listItems,
+          emptyLabel: labels.recentEmpty ?? labels.emptyTrend,
+        },
+      },
+      {
         type: 'action-bar',
         props: {
           actions: [
             { id: 'create-memory', label: labels.createMemory, variant: 'primary', riskLevel: 'low' },
+            {
+              id: 'open-memory',
+              label: labels.openMemory ?? labels.countTitle,
+              variant: 'default',
+              riskLevel: 'low',
+            },
             { id: 'refresh-memory', label: labels.refresh, variant: 'default', riskLevel: 'low' },
           ],
         },

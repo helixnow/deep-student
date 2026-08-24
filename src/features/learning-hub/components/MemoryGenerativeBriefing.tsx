@@ -7,16 +7,24 @@ import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildM
 import { createMemoryBriefingActionHandlers } from '@/features/generative-ui/handlers/memoryBriefingActionHandlers';
 import './MemoryGenerativeBriefing.css';
 
+export interface MemoryGenerativeBriefingListItem {
+  label: string;
+  description?: string;
+  badge?: string;
+}
+
 export interface MemoryGenerativeBriefingProps {
   memoryCount: number;
   rootFolderTitle?: string;
   autoExtractFrequency?: AutoExtractFrequency;
+  recentItems?: MemoryGenerativeBriefingListItem[];
   onRefresh: () => void;
   onCreateMemory: () => void;
+  onOpenMemory?: () => void;
 }
 
 export const MemoryGenerativeBriefing: React.FC<MemoryGenerativeBriefingProps> = React.memo(
-  ({ memoryCount, rootFolderTitle, autoExtractFrequency, onRefresh, onCreateMemory }) => {
+  ({ memoryCount, rootFolderTitle, autoExtractFrequency, recentItems, onRefresh, onCreateMemory, onOpenMemory }) => {
     const { t } = useTranslation(['generativeUi']);
 
     const labels = useMemo(
@@ -32,6 +40,9 @@ export const MemoryGenerativeBriefing: React.FC<MemoryGenerativeBriefingProps> =
         freqAggressive: t('generativeUi:memory.briefing.freq_aggressive'),
         refresh: t('generativeUi:memory.briefing.refresh'),
         createMemory: t('generativeUi:memory.briefing.create_memory'),
+        recentListTitle: t('generativeUi:memory.briefing.recent_list_title'),
+        recentEmpty: t('generativeUi:memory.briefing.recent_empty'),
+        openMemory: t('generativeUi:memory.briefing.open_memory'),
       }),
       [t],
     );
@@ -42,18 +53,23 @@ export const MemoryGenerativeBriefing: React.FC<MemoryGenerativeBriefingProps> =
           memoryCount,
           rootFolderTitle,
           autoExtractFrequency,
+          recentItems,
           labels,
         }),
-      [autoExtractFrequency, labels, memoryCount, rootFolderTitle],
+      [autoExtractFrequency, labels, memoryCount, recentItems, rootFolderTitle],
     );
 
     const actionHandlers = useMemo(
       () =>
         createMemoryBriefingActionHandlers(
-          { onRefresh, onCreateMemory },
-          { refresh: labels.refresh, createMemory: labels.createMemory },
+          { onRefresh, onCreateMemory, onOpenMemory },
+          {
+            refresh: labels.refresh,
+            createMemory: labels.createMemory,
+            openMemory: labels.openMemory,
+          },
         ),
-      [labels.createMemory, labels.refresh, onCreateMemory, onRefresh],
+      [labels.createMemory, labels.openMemory, labels.refresh, onCreateMemory, onOpenMemory, onRefresh],
     );
 
     return (

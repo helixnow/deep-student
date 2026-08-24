@@ -29,4 +29,13 @@ describe('generative-ui parser block-level', () => {
     parser.append(',{"type":"stat-card","props":{"title":"X","val');
     expect(parser.append('')?.blocks.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('does not drop earlier good blocks when a closed slice fails validation', () => {
+    const parser = new GenerativeUIStreamParser();
+    parser.appendChunk(
+      '{"version":"1","blocks":[{"type":"text","props":{"body":"good"}}',
+    );
+    const snap = parser.appendChunk(',{"type":""},{"type":"stat-card","props":{"title":"T","value":1}}]');
+    expect(snap.intent?.blocks.map((b) => b.type)).toEqual(['text', 'stat-card']);
+  });
 });

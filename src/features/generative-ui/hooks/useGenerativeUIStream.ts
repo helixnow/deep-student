@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { GenerativeUIStreamParser } from '../parser';
 import { parseGenerativeUIIntent, isGenerativeUIParseFailure } from '../schema';
+import { coercePartialIntent } from '../utils/coercePartialIntent';
 import type { GenerativeUIIntent } from '../types';
 
 export interface UseGenerativeUIStreamOptions {
@@ -52,9 +53,11 @@ export function useGenerativeUIStream(
     if (buffer) {
       const parsed = parseGenerativeUIIntent(buffer);
       if (isGenerativeUIParseFailure(parsed)) {
+        const recovered = finalPartial ?? coercePartialIntent(buffer).intent;
         setErrors(parsed.errors);
-        options.onComplete?.(finalPartial);
-        return finalPartial;
+        if (recovered) setPartialIntent(recovered);
+        options.onComplete?.(recovered);
+        return recovered;
       }
       setIntentState(parsed.intent);
       setPartialIntent(parsed.intent);

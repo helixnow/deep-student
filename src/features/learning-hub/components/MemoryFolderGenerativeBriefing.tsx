@@ -51,6 +51,9 @@ export const MemoryFolderGenerativeBriefing: React.FC<MemoryFolderGenerativeBrie
           memoryCount={items.length}
           rootFolderTitle={rootFolderTitle}
           autoExtractFrequency={config?.autoExtractFrequency}
+          recentItems={items.slice(0, 8).map((item) => ({
+            label: item.name,
+          }))}
           onRefresh={handleRefresh}
           onCreateMemory={handleCreateMemory}
         />
@@ -59,7 +62,7 @@ export const MemoryFolderGenerativeBriefing: React.FC<MemoryFolderGenerativeBrie
         config?.autoExtractFrequency,
         handleCreateMemory,
         handleRefresh,
-        items.length,
+        items,
         rootFolderTitle,
       ],
     );

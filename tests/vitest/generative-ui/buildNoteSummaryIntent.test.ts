@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildNoteSummaryIntent } from '@/features/generative-ui/utils/buildNoteSummaryIntent';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const LABELS = {
   defaultTitle: 'Summary',
@@ -10,7 +11,17 @@ const LABELS = {
   tagsKey: 'Tags',
   tagsEmpty: '—',
   headingsTitle: 'Headings',
+  updatedAtKey: 'Updated at',
+  emptyNoteTitle: 'Empty note',
+  emptyNoteDescription: 'Write something',
+  emptyHeadings: 'No headings',
 };
+
+function expectValidIntent(intent: ReturnType<typeof buildNoteSummaryIntent>) {
+  const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
+  expect(parsed.ok).toBe(true);
+  expect(intent.version).toBe('1');
+}
 
 describe('buildNoteSummaryIntent', () => {
   it('builds valid intent from note metadata with injected labels', () => {
@@ -19,6 +30,7 @@ describe('buildNoteSummaryIntent', () => {
       tags: ['math', 'exam'],
       headingCount: 4,
       charCount: 1200,
+      updatedAtLabel: 'Aug 24, 2026',
       topHeadings: ['Eigenvalues', 'Matrix factorization'],
       labels: LABELS,
     });
@@ -30,9 +42,13 @@ describe('buildNoteSummaryIntent', () => {
     const grid = intent.blocks.find((b) => b.type === 'key-value-grid');
     const rows = (grid?.props as { rows: Array<{ key: string; value: string }> }).rows;
     expect(rows.find((r) => r.key === 'Tags')?.value).toBe('math、exam');
+    expect(rows.find((r) => r.key === 'Chars')?.value).toBe('1200');
+    expect(rows.find((r) => r.key === 'Updated at')?.value).toBe('Aug 24, 2026');
+    expect(intent.blocks.some((b) => b.type === 'list')).toBe(true);
+    expectValidIntent(intent);
   });
 
-  it('uses default title and tags empty placeholder', () => {
+  it('uses default title, tags empty placeholder and empty-state blocks', () => {
     const intent = buildNoteSummaryIntent({
       title: '',
       labels: LABELS,
@@ -41,5 +57,12 @@ describe('buildNoteSummaryIntent', () => {
     const grid = intent.blocks.find((b) => b.type === 'key-value-grid');
     const rows = (grid?.props as { rows: Array<{ key: string; value: string }> }).rows;
     expect(rows.find((r) => r.key === 'Tags')?.value).toBe('—');
+    expect(rows.find((r) => r.key === 'Chars')).toBeUndefined();
+    expect(rows.find((r) => r.key === 'Updated at')).toBeUndefined();
+    expect(intent.blocks.some((b) => b.type === 'alert')).toBe(true);
+    const list = intent.blocks.find((b) => b.type === 'list');
+    expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
+    expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No headings');
+    expectValidIntent(intent);
   });
 });

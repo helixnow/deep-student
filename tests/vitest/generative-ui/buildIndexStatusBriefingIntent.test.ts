@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/buildIndexStatusBriefingIntent';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const LABELS = {
   totalTitle: 'Total',
@@ -12,10 +13,22 @@ const LABELS = {
   needsAttentionTrend: 'Attention',
   batchIndex: 'Index all',
   refresh: 'Refresh',
+  failedAlertTitle: 'Index errors',
+  failedAlertDescription: 'Retry failed items',
+  emptyIndexTitle: 'No resources',
+  emptyIndexDescription: 'Nothing to index',
+  scanProgressTitle: 'Scan',
+  scanProgressLabel: '{{count}} scanning',
 };
 
+function expectValidIntent(intent: ReturnType<typeof buildIndexStatusBriefingIntent>) {
+  const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
+  expect(parsed.ok).toBe(true);
+  expect(intent.version).toBe('1');
+}
+
 describe('buildIndexStatusBriefingIntent', () => {
-  it('includes progress and status grid', () => {
+  it('includes progress, status grid and failure alert', () => {
     const intent = buildIndexStatusBriefingIntent({
       summary: {
         totalResources: 10,
@@ -27,7 +40,10 @@ describe('buildIndexStatusBriefingIntent', () => {
       labels: LABELS,
     });
     const types = intent.blocks.map((b) => b.type);
-    expect(types).toEqual(['stat-card', 'progress', 'key-value-grid', 'action-bar']);
+    expect(types).toEqual(['alert', 'stat-card', 'progress', 'key-value-grid', 'action-bar']);
+    const alert = intent.blocks.find((b) => b.type === 'alert');
+    expect(alert?.props).toMatchObject({ title: 'Index errors', variant: 'destructive' });
+    expectValidIntent(intent);
   });
 
   it('shows batch-index when work remains', () => {
@@ -61,5 +77,41 @@ describe('buildIndexStatusBriefingIntent', () => {
     const ids = (bar?.props as { actions: Array<{ id: string }> }).actions.map((a) => a.id);
     expect(ids).not.toContain('batch-index-pending');
     expect(ids).toContain('refresh-index-status');
+    expect(intent.blocks.some((b) => b.type === 'alert')).toBe(false);
+    expectValidIntent(intent);
+  });
+
+  it('adds empty alert and scan progress when those states exist', () => {
+    const empty = buildIndexStatusBriefingIntent({
+      summary: {
+        totalResources: 0,
+        indexedCount: 0,
+        pendingCount: 0,
+        failedCount: 0,
+        indexingCount: 0,
+      },
+      labels: LABELS,
+    });
+    expect(empty.blocks.some((b) => b.type === 'alert')).toBe(true);
+    expect((empty.blocks.find((b) => b.type === 'alert')?.props as { title?: string }).title).toBe(
+      'No resources',
+    );
+
+    const scanning = buildIndexStatusBriefingIntent({
+      summary: {
+        totalResources: 6,
+        indexedCount: 2,
+        pendingCount: 3,
+        failedCount: 0,
+        indexingCount: 1,
+      },
+      labels: LABELS,
+    });
+    const progressTitles = scanning.blocks
+      .filter((b) => b.type === 'progress')
+      .map((b) => (b.props as { title?: string }).title);
+    expect(progressTitles).toContain('Scan');
+    expectValidIntent(empty);
+    expectValidIntent(scanning);
   });
 });

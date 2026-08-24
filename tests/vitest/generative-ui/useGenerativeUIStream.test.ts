@@ -34,4 +34,15 @@ describe('useGenerativeUIStream', () => {
     });
     expect(result.current.intent).toBeNull();
   });
+
+  it('keeps last-good intent when finalize JSON is truncated', () => {
+    const { result } = renderHook(() => useGenerativeUIStream());
+    act(() => {
+      result.current.append('{"version":"1","blocks":[{"type":"text","props":{"body":"held"}}');
+    });
+    act(() => {
+      result.current.finalize();
+    });
+    expect(result.current.partialIntent?.blocks[0]?.props?.body).toBe('held');
+  });
 });

@@ -161,11 +161,12 @@ describe('generativeUI actionHandlerSync contract', () => {
         freqAggressive: 'Aggressive',
         refresh: 'Refresh',
         createMemory: 'Create',
+        openMemory: 'Open',
       },
     });
     const handlers = createMemoryBriefingActionHandlers(
-      { onRefresh: () => {}, onCreateMemory: () => {} },
-      { refresh: 'Refresh', createMemory: 'Create' },
+      { onRefresh: () => {}, onCreateMemory: () => {}, onOpenMemory: () => {} },
+      { refresh: 'Refresh', createMemory: 'Create', openMemory: 'Open' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildMemoryBriefingIntent');
   });

@@ -11,6 +11,7 @@ import type { GenerativeUIIntent } from '../types';
 interface StreamEntry {
   parser: GenerativeUIStreamParser;
   lastLength: number;
+  lastGoodIntent: GenerativeUIIntent | null;
 }
 
 const entries = new Map<string, StreamEntry>();
@@ -18,10 +19,20 @@ const entries = new Map<string, StreamEntry>();
 function getOrCreateEntry(blockId: string): StreamEntry {
   let entry = entries.get(blockId);
   if (!entry) {
-    entry = { parser: new GenerativeUIStreamParser(), lastLength: 0 };
+    entry = { parser: new GenerativeUIStreamParser(), lastLength: 0, lastGoodIntent: null };
     entries.set(blockId, entry);
   }
   return entry;
+}
+
+function rememberLastGood(entry: StreamEntry, snap: GenerativeUIStreamSnapshot): GenerativeUIStreamSnapshot {
+  if (snap.intent) {
+    entry.lastGoodIntent = snap.intent;
+  }
+  return {
+    ...snap,
+    intent: snap.intent ?? entry.lastGoodIntent,
+  };
 }
 
 /** 将 block.content 增量喂入解析器，返回当前 snapshot */
@@ -34,6 +45,7 @@ export function appendGenerativeUIStreamContent(
   if (fullContent.length < entry.lastLength) {
     entry.parser.reset();
     entry.lastLength = 0;
+    entry.lastGoodIntent = null;
   }
 
   const delta = fullContent.slice(entry.lastLength);
@@ -43,15 +55,17 @@ export function appendGenerativeUIStreamContent(
     entry.parser.appendChunk(delta);
   }
 
-  return entry.parser.getSnapshot();
+  return rememberLastGood(entry, entry.parser.getSnapshot());
 }
 
-/** 终态：finalize 并清理 registry */
+/** 终态：finalize；最终 JSON 失败时回退 lastGoodIntent */
 export function finalizeGenerativeUIStream(blockId: string): GenerativeUIIntent | null {
   const entry = entries.get(blockId);
   if (!entry) return null;
+  const lastGood = entry.lastGoodIntent;
   entries.delete(blockId);
-  return entry.parser.finalize();
+  const final = entry.parser.finalize();
+  return final ?? lastGood;
 }
 
 export function resetGenerativeUIStream(blockId: string): void {
@@ -59,7 +73,13 @@ export function resetGenerativeUIStream(blockId: string): void {
 }
 
 export function getGenerativeUIStreamSnapshot(blockId: string): GenerativeUIStreamSnapshot | null {
-  return entries.get(blockId)?.parser.getSnapshot() ?? null;
+  const entry = entries.get(blockId);
+  if (!entry) return null;
+  return rememberLastGood(entry, entry.parser.getSnapshot());
+}
+
+export function getLastGoodGenerativeUIIntent(blockId: string): GenerativeUIIntent | null {
+  return entries.get(blockId)?.lastGoodIntent ?? null;
 }
 
 /** 测试专用 */

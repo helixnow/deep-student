@@ -43,4 +43,13 @@ describe('generativeUIStreamRegistry', () => {
     const snap = appendGenerativeUIStreamContent(blockId, '{"version":"1"}');
     expect(snap.committedBlockCount).toBe(0);
   });
+
+  it('falls back to lastGoodIntent when end-event JSON cannot be finalized', () => {
+    const blockId = 'blk-stream-last-good';
+    const open = '{"version":"1","blocks":[{"type":"text","props":{"body":"alpha"}}';
+    appendGenerativeUIStreamContent(blockId, open);
+    appendGenerativeUIStreamContent(blockId, `${open},{"type":"stat-card","props":{`);
+    const final = finalizeGenerativeUIStream(blockId);
+    expect(final?.blocks[0]?.props?.body).toBe('alpha');
+  });
 });

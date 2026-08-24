@@ -60,6 +60,9 @@ export function GenerativeUIRenderer({
           data-generative-ui
           data-streaming
           data-stream-fallback
+          role="region"
+          aria-label={t('a11y.region_label')}
+          aria-busy
         >
           {showChrome ? <GenerativeUIChrome isStreaming onAction={onAction} /> : null}
         </div>

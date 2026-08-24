@@ -84,6 +84,12 @@ export function HpiasGenerativeResearchPanel({
       citationStatTitle: t('research.report.citation_stat'),
       copyReport: t('research.actions.copy_report'),
       exportPlan: t('research.actions.export_plan'),
+      stepsListTitle: t('research.hpias.steps_list_title'),
+      stepStatusPending: t('research.hpias.step_status_pending'),
+      stepStatusActive: t('research.hpias.step_status_active'),
+      stepStatusDone: t('research.hpias.step_status_done'),
+      digestFallbackTitle: t('research.hpias.digest_fallback_title'),
+      emptySteps: t('research.hpias.empty_steps'),
     }),
     [stepLabels, t],
   );

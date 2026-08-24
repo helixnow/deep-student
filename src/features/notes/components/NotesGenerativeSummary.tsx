@@ -53,6 +53,10 @@ export function NotesGenerativeSummary({
         tagsKey: t('generativeUi:notes.summary_tags'),
         tagsEmpty: t('generativeUi:notes.summary_tags_empty'),
         headingsTitle: t('generativeUi:notes.summary_headings_title'),
+        updatedAtKey: t('generativeUi:notes.summary_updated_at'),
+        emptyNoteTitle: t('generativeUi:notes.summary_empty_note_title'),
+        emptyNoteDescription: t('generativeUi:notes.summary_empty_note_description'),
+        emptyHeadings: t('generativeUi:notes.summary_empty_headings'),
       },
     });
   }, [content, headingLabels, i18n.language, tags, title, updatedAt, t]);

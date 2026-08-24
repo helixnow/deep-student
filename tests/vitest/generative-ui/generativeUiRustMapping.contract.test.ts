@@ -25,6 +25,14 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('const TOOL_NAME: &str = "render_generative_ui"');
   });
 
+  it('Rust executor accepts intent version 1 and 1.1, rejects unknown', () => {
+    expect(executorSrc).toContain('fn validate_intent_version');
+    expect(executorSrc).toContain('"1.1"');
+    expect(executorSrc).toContain('parse_intent_accepts_version_1_1');
+    expect(executorSrc).toContain('parse_intent_rejects_unknown_version');
+    expect(executorSrc).toContain('"version": "1"');
+  });
+
   it('event type constant matches frontend GENERATIVE_UI_BLOCK_TYPE', () => {
     const typesSrc = fs.readFileSync(
       path.join(process.cwd(), 'src-tauri/src/chat_v2/types.rs'),

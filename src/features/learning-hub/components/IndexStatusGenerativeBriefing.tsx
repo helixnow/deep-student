@@ -32,6 +32,12 @@ export const IndexStatusGenerativeBriefing: React.FC<IndexStatusGenerativeBriefi
         needsAttentionTrend: t('generativeUi:indexStatus.briefing.trend_needs_attention'),
         batchIndex: t('generativeUi:indexStatus.briefing.batch_index'),
         refresh: t('generativeUi:indexStatus.briefing.refresh'),
+        failedAlertTitle: t('generativeUi:indexStatus.briefing.failed_alert_title'),
+        failedAlertDescription: t('generativeUi:indexStatus.briefing.failed_alert_description'),
+        emptyIndexTitle: t('generativeUi:indexStatus.briefing.empty_index_title'),
+        emptyIndexDescription: t('generativeUi:indexStatus.briefing.empty_index_description'),
+        scanProgressTitle: t('generativeUi:indexStatus.briefing.scan_progress_title'),
+        scanProgressLabel: t('generativeUi:indexStatus.briefing.scan_progress_label'),
       }),
       [t],
     );

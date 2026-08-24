@@ -19,15 +19,25 @@ export const LearningHubGenerativeBriefing: React.FC = React.memo(() => {
       buildLearningHubBriefingIntent({
         resourceCount: items.length,
         folderLabel,
+        recentResources: items.slice(0, 8).map((item) => ({
+          label: item.name,
+        })),
         labels: {
           statTitle: t('generativeUi:learningHub.briefing.stat_title'),
           emptyTrend: t('generativeUi:learningHub.briefing.trend_empty'),
           activeTrend: t('generativeUi:learningHub.briefing.trend_active'),
           startReview: t('generativeUi:learningHub.briefing.start_review'),
           openQbank: t('generativeUi:learningHub.briefing.open_qbank'),
+          dueReviewTitle: t('generativeUi:learningHub.briefing.due_review_title'),
+          dueReviewTrend: t('generativeUi:learningHub.briefing.due_review_trend'),
+          reviewCalendarTitle: t('generativeUi:learningHub.briefing.review_calendar_title'),
+          recentListTitle: t('generativeUi:learningHub.briefing.recent_list_title'),
+          recentEmpty: t('generativeUi:learningHub.briefing.recent_empty'),
+          emptyAlertTitle: t('generativeUi:learningHub.briefing.empty_alert_title'),
+          emptyAlertDescription: t('generativeUi:learningHub.briefing.empty_alert_description'),
         },
       }),
-    [folderLabel, items.length, t],
+    [folderLabel, items, t],
   );
 
   return (

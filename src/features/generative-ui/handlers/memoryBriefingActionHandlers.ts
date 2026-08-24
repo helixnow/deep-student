@@ -3,11 +3,13 @@ import type { GenerativeActionDefinition } from '../types';
 export interface MemoryBriefingActionCallbacks {
   onRefresh: () => void;
   onCreateMemory: () => void;
+  onOpenMemory?: () => void;
 }
 
 export interface MemoryBriefingActionLabels {
   refresh: string;
   createMemory: string;
+  openMemory?: string;
 }
 
 export function createMemoryBriefingActionHandlers(
@@ -29,6 +31,18 @@ export function createMemoryBriefingActionHandlers(
       riskLevel: 'low',
       handler: async () => {
         callbacks.onCreateMemory();
+      },
+    },
+    'open-memory': {
+      id: 'open-memory',
+      label: labels.openMemory ?? labels.createMemory,
+      riskLevel: 'low',
+      handler: async () => {
+        if (callbacks.onOpenMemory) {
+          callbacks.onOpenMemory();
+          return;
+        }
+        callbacks.onRefresh();
       },
     },
   };

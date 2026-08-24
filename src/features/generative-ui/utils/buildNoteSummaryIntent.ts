@@ -13,6 +13,10 @@ export interface NoteSummaryLabels {
   tagsKey: string;
   tagsEmpty: string;
   headingsTitle: string;
+  updatedAtKey?: string;
+  emptyNoteTitle?: string;
+  emptyNoteDescription?: string;
+  emptyHeadings?: string;
 }
 
 export interface NoteSummaryInput {
@@ -29,6 +33,23 @@ export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIInt
   const tags = input.tags ?? [];
   const headings = input.topHeadings ?? [];
   const { labels } = input;
+  const rows: Array<{ key: string; value: string }> = [];
+
+  if (input.charCount != null) {
+    rows.push({ key: labels.charCountKey, value: String(input.charCount) });
+  }
+  if (input.updatedAtLabel) {
+    rows.push({
+      key: labels.updatedAtKey ?? labels.updatedPrefix,
+      value: input.updatedAtLabel,
+    });
+  }
+  rows.push({
+    key: labels.tagsKey,
+    value: tags.length > 0 ? tags.join('、') : labels.tagsEmpty,
+  });
+
+  const isEmptyNote = (input.charCount ?? 0) === 0 && headings.length === 0;
 
   return {
     version: '1',
@@ -39,37 +60,40 @@ export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIInt
         : undefined,
     },
     blocks: [
+      ...(isEmptyNote
+        ? [
+            {
+              type: 'alert' as const,
+              props: {
+                variant: 'info' as const,
+                title: labels.emptyNoteTitle ?? labels.defaultTitle,
+                description: labels.emptyNoteDescription,
+              },
+            },
+          ]
+        : []),
       {
         type: 'stat-card',
         props: {
           title: labels.headingStatTitle,
-          value: input.headingCount ?? 0,
+          value: input.headingCount ?? headings.length,
         },
       },
       {
         type: 'key-value-grid',
         props: {
           title: labels.overviewTitle,
-          rows: [
-            { key: labels.charCountKey, value: String(input.charCount ?? 0) },
-            {
-              key: labels.tagsKey,
-              value: tags.length > 0 ? tags.join('、') : labels.tagsEmpty,
-            },
-          ],
+          rows,
         },
       },
-      ...(headings.length > 0
-        ? [
-            {
-              type: 'list' as const,
-              props: {
-                title: labels.headingsTitle,
-                items: headings.slice(0, 5).map((label) => ({ label })),
-              },
-            },
-          ]
-        : []),
+      {
+        type: 'list',
+        props: {
+          title: labels.headingsTitle,
+          items: headings.slice(0, 5).map((label) => ({ label: label.slice(0, 200) })),
+          emptyLabel: labels.emptyHeadings ?? labels.tagsEmpty,
+        },
+      },
     ],
   };
 }

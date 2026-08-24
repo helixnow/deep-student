@@ -55,6 +55,10 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
         glossaryRow: t('generativeUi:translation.briefing.glossary_row'),
         openSettings: t('generativeUi:translation.briefing.open_settings'),
         copyTranslation: t('generativeUi:translation.briefing.copy_translation'),
+        emptySourceTitle: t('generativeUi:translation.briefing.empty_source_title'),
+        emptySourceDescription: t('generativeUi:translation.briefing.empty_source_description'),
+        segmentsTitle: t('generativeUi:translation.briefing.segments_title'),
+        segmentsEmpty: t('generativeUi:translation.briefing.segments_empty'),
       }),
       [t],
     );
@@ -70,6 +74,20 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
           domainLabel: session.domain,
           glossaryCount: session.glossary?.length ?? 0,
           isStreaming: metrics.isStreaming,
+          recentSegments: [
+            ...(session.sourceText.trim()
+              ? [{
+                  label: session.sourceText.trim().split(/\n/)[0]?.slice(0, 200) ?? '',
+                  badge: srcLangLabel.slice(0, 40),
+                }]
+              : []),
+            ...(metrics.translatedText.trim()
+              ? [{
+                  label: metrics.translatedText.trim().split(/\n/)[0]?.slice(0, 200) ?? '',
+                  badge: tgtLangLabel.slice(0, 40),
+                }]
+              : []),
+          ],
           labels,
         }),
       [
@@ -78,8 +96,10 @@ export const TranslationGenerativeBriefing: React.FC<TranslationGenerativeBriefi
         metrics.isStreaming,
         metrics.sourceChars,
         metrics.translatedChars,
+        metrics.translatedText,
         session.domain,
         session.glossary?.length,
+        session.sourceText,
         srcLangLabel,
         tgtLangLabel,
       ],

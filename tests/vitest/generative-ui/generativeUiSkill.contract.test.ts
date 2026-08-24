@@ -38,8 +38,12 @@ describe('generativeUiSkill contract', () => {
   it('embedded tool schema requires intent.blocks array', () => {
     const tool = generativeUiSkill.embeddedTools?.[0];
     expect(tool?.name).toBe('builtin-render_generative_ui');
-    const intentSchema = tool?.inputSchema?.properties?.intent as { required?: string[] };
+    const intentSchema = tool?.inputSchema?.properties?.intent as {
+      required?: string[];
+      properties?: { version?: { enum?: string[] } };
+    };
     expect(intentSchema?.required).toContain('blocks');
+    expect(intentSchema?.properties?.version?.enum).toEqual(['1', '1.1']);
     const noteEditSchema = tool?.inputSchema?.properties?.noteEdit as { properties?: Record<string, unknown> };
     expect(noteEditSchema?.properties?.operation).toBeDefined();
     const researchSessionSchema = tool?.inputSchema?.properties?.researchSessionId as { type?: string };

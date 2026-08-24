@@ -40,6 +40,8 @@ impl GenerativeUiExecutor {
             return Err("intent 必须是 JSON 对象".to_string());
         }
 
+        Self::validate_intent_version(&intent)?;
+
         let blocks = intent
             .get("blocks")
             .and_then(Value::as_array)
@@ -50,6 +52,19 @@ impl GenerativeUiExecutor {
         }
 
         Ok(intent)
+    }
+
+    /// Intent version 字面量：缺省视为 v1；仅允许 "1" / "1.1"
+    fn validate_intent_version(intent: &Value) -> Result<(), String> {
+        match intent.get("version") {
+            None => Ok(()),
+            Some(Value::String(v)) if v == "1" || v == "1.1" => Ok(()),
+            Some(Value::String(v)) => Err(format!(
+                "intent.version 不支持: {}（支持 \"1\" / \"1.1\"）",
+                v
+            )),
+            Some(_) => Err("intent.version 必须是字符串 \"1\" 或 \"1.1\"".to_string()),
+        }
     }
 
     fn parse_research_session_id(arguments: &Value) -> Option<String> {
@@ -345,6 +360,31 @@ mod tests {
         });
         let intent = GenerativeUiExecutor::parse_intent(&args).expect("parse");
         assert_eq!(intent.get("version").and_then(Value::as_str), Some("1"));
+    }
+
+    #[test]
+    fn parse_intent_accepts_version_1_1() {
+        let args = json!({
+            "intent": {
+                "version": "1.1",
+                "layout": { "mode": "grid", "columns": 2 },
+                "blocks": [{ "type": "text", "props": { "text": "hi" }, "span": 2 }]
+            }
+        });
+        let intent = GenerativeUiExecutor::parse_intent(&args).expect("parse v1.1");
+        assert_eq!(intent.get("version").and_then(Value::as_str), Some("1.1"));
+    }
+
+    #[test]
+    fn parse_intent_rejects_unknown_version() {
+        let args = json!({
+            "intent": {
+                "version": "2",
+                "blocks": [{ "type": "text", "props": { "text": "hi" } }]
+            }
+        });
+        let err = GenerativeUiExecutor::parse_intent(&args).expect_err("unknown version");
+        assert!(err.contains("version"));
     }
 
     #[test]

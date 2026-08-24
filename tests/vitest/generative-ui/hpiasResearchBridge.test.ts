@@ -4,6 +4,7 @@ import {
   type HpiasResearchSnapshot,
 } from '@/features/generative-ui/utils/mapHpiasStoreToResearchPlan';
 import { buildHpiasResearchDashboardIntent } from '@/features/generative-ui/utils/buildHpiasResearchDashboardIntent';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 
 const labels = {
   stepPlan: 'Plan',
@@ -100,6 +101,9 @@ describe('buildHpiasResearchDashboardIntent', () => {
     expect(intent!.blocks.some((b) => b.type === 'stat-card')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'research-plan')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'research-report')).toBe(true);
+    expect(intent!.blocks.some((b) => b.type === 'list')).toBe(true);
+    expect(intent!.blocks.some((b) => b.type === 'paper-digest')).toBe(true);
     expect(intent!.blocks.some((b) => b.type === 'action-bar')).toBe(true);
+    expect(parseGenerativeUIIntent(JSON.stringify(intent)).ok).toBe(true);
   });
 });

@@ -12,6 +12,12 @@ export interface IndexStatusBriefingLabels {
   needsAttentionTrend: string;
   batchIndex: string;
   refresh: string;
+  failedAlertTitle?: string;
+  failedAlertDescription?: string;
+  emptyIndexTitle?: string;
+  emptyIndexDescription?: string;
+  scanProgressTitle?: string;
+  scanProgressLabel?: string;
 }
 
 export interface IndexStatusBriefingInput {
@@ -27,6 +33,7 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
   const { totalResources, indexedCount, pendingCount, failedCount, indexingCount } = summary;
   const needsWork = pendingCount + failedCount + indexingCount;
   const progressRatio = totalResources > 0 ? indexedCount / totalResources : 0;
+  const isEmpty = totalResources === 0;
 
   const batchActions =
     needsWork > 0
@@ -43,6 +50,30 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
   return {
     version: '1',
     blocks: [
+      ...(isEmpty
+        ? [
+            {
+              type: 'alert' as const,
+              props: {
+                variant: 'info' as const,
+                title: labels.emptyIndexTitle ?? labels.totalTitle,
+                description: labels.emptyIndexDescription ?? labels.allIndexedTrend,
+              },
+            },
+          ]
+        : []),
+      ...(failedCount > 0
+        ? [
+            {
+              type: 'alert' as const,
+              props: {
+                variant: 'destructive' as const,
+                title: labels.failedAlertTitle ?? labels.needsAttentionTrend,
+                description: labels.failedAlertDescription ?? `${labels.failedRow}: ${failedCount}`,
+              },
+            },
+          ]
+        : []),
       {
         type: 'stat-card',
         props: {
@@ -61,6 +92,22 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
           label: labels.indexedRow.replace('{{count}}', String(indexedCount)),
         },
       },
+      ...(indexingCount > 0
+        ? [
+            {
+              type: 'progress' as const,
+              props: {
+                title: labels.scanProgressTitle ?? labels.indexingRow,
+                current: indexingCount,
+                total: Math.max(pendingCount + indexingCount, indexingCount, 1),
+                label: (labels.scanProgressLabel ?? labels.indexingRow).replace(
+                  '{{count}}',
+                  String(indexingCount),
+                ),
+              },
+            },
+          ]
+        : []),
       {
         type: 'key-value-grid',
         props: {

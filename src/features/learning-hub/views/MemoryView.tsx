@@ -1292,8 +1292,17 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           memoryCount={memories.length}
           rootFolderTitle={config.memoryRootFolderTitle || t('memory.defaultRootTitle')}
           autoExtractFrequency={config.autoExtractFrequency}
+          recentItems={memories.slice(0, 8).map((memory) => ({
+            label: memory.title,
+            badge: memory.memoryType,
+          }))}
           onRefresh={loadMemories}
           onCreateMemory={handleOpenCreate}
+          onOpenMemory={
+            memories[0]
+              ? () => handleOpenInEditor(memories[0].id, memories[0].title)
+              : undefined
+          }
         />
       )}
 

@@ -32,6 +32,14 @@ src/features/generative-ui/
 └── components/
 ```
 
+### Intent v1.1 layout
+
+- `version` 为 `'1' | '1.1'`，缺省仍为 `'1'`；v1 文档（无 `layout`）继续合法
+- v1.1 可选顶层 `layout: { mode: 'stack' | 'grid', columns?: 1|2|3 }`
+- 块级可选 `span?: 1|2|3`（仅 grid 下映射到 `sm:col-span-*`），非法值钳制到 1–3
+- Renderer：`stack` 保持 `grid gap-3` 单列；`grid` 按 columns 加 `sm:grid-cols-2` / `sm:grid-cols-3`，并写 `data-layout-mode` / `data-layout-columns`
+- 未知 version（如 `'2'`）：`parseGenerativeUIIntent` 失败；流式 parser 降级为 v1 last-good blocks（layout 未闭合时同样保留已提交块）
+
 ## 3. 内置块（14 种）
 
 `stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`, `paper-digest`, `research-plan`, `research-report`

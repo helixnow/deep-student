@@ -20,6 +20,12 @@ export interface HpiasResearchDashboardLabels extends HpiasResearchPlanLabels {
   citationStatTitle: string;
   copyReport: string;
   exportPlan: string;
+  stepsListTitle?: string;
+  stepStatusPending?: string;
+  stepStatusActive?: string;
+  stepStatusDone?: string;
+  digestFallbackTitle?: string;
+  emptySteps?: string;
 }
 
 export interface HpiasResearchDashboardInput {
@@ -28,7 +34,23 @@ export interface HpiasResearchDashboardInput {
   labels: HpiasResearchDashboardLabels;
 }
 
-/** 将 HpiasStore 快照合成为 research-plan + 可选 research-report 块 */
+function extractPlanQueries(plan: unknown): string[] {
+  if (!plan || typeof plan !== 'object') return [];
+  const core = (plan as { core?: { queries?: unknown } }).core;
+  if (!Array.isArray(core?.queries)) return [];
+  return core.queries.filter((q): q is string => typeof q === 'string' && q.trim().length > 0);
+}
+
+function stepStatusBadge(
+  status: 'pending' | 'active' | 'done' | undefined,
+  labels: HpiasResearchDashboardLabels,
+): string {
+  if (status === 'done') return labels.stepStatusDone ?? 'done';
+  if (status === 'active') return labels.stepStatusActive ?? 'active';
+  return labels.stepStatusPending ?? 'pending';
+}
+
+/** 将 HpiasStore 快照合成为 research-plan + 子步骤 list + 可选 paper-digest / research-report */
 export function buildHpiasResearchDashboardIntent(
   input: HpiasResearchDashboardInput,
 ): GenerativeUIIntent | null {
@@ -69,6 +91,33 @@ export function buildHpiasResearchDashboardIntent(
   }
   if (statBlocks.length > 0) {
     blocks.unshift(...statBlocks);
+  }
+
+  blocks.push({
+    type: 'list',
+    props: {
+      title: labels.stepsListTitle ?? labels.planTitle,
+      items: steps.slice(0, 12).map((step, index) => ({
+        id: `hpias-step-${index}`,
+        label: step.label.slice(0, 200),
+        badge: stepStatusBadge(step.status, labels).slice(0, 40),
+      })),
+      emptyLabel: labels.emptySteps,
+    },
+  });
+
+  const queries = extractPlanQueries(snapshot.plan);
+  const synthesisExcerpt = snapshot.synthesis?.trim();
+  const digestTitle = (question?.trim() || labels.digestFallbackTitle || labels.planTitle).slice(0, 300);
+  if (synthesisExcerpt || queries.length > 0) {
+    blocks.push({
+      type: 'paper-digest',
+      props: {
+        title: digestTitle,
+        keyFindings: queries.slice(0, 8).map((query) => query.slice(0, 300)),
+        abstractExcerpt: synthesisExcerpt ? synthesisExcerpt.slice(0, 500) : undefined,
+      },
+    });
   }
 
   if (snapshot.synthesis?.trim()) {

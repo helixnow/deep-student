@@ -29,6 +29,13 @@ export const ExamGenerativeBriefing: React.FC<ExamGenerativeBriefingProps> = Rea
         correctRateRow: t('generativeUi:exam.briefing.correct_rate_row'),
         startReview: t('generativeUi:exam.briefing.start_review'),
         openPractice: t('generativeUi:exam.briefing.open_practice'),
+        emptyBankTitle: t('generativeUi:exam.briefing.empty_bank_title'),
+        emptyBankDescription: t('generativeUi:exam.briefing.empty_bank_description'),
+        mistakeSuggestion: t('generativeUi:exam.briefing.mistake_suggestion'),
+        statusListTitle: t('generativeUi:exam.briefing.status_list_title'),
+        inProgressRow: t('generativeUi:exam.briefing.in_progress_row'),
+        newCountRow: t('generativeUi:exam.briefing.new_count_row'),
+        statusEmpty: t('generativeUi:exam.briefing.status_empty'),
       }),
       [t],
     );
