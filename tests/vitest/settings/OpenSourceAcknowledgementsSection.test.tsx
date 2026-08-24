@@ -72,7 +72,9 @@ describe('OpenSourceAcknowledgementsSection', () => {
     expect(screen.queryByText('Tailwind CSS')).not.toBeInTheDocument();
   });
 
-  it('opens the full acknowledgements list in a dialog only after the user clicks the trigger', async () => {
+  it('expands the full acknowledgements list inline only after the user clicks the trigger', async () => {
+    // vitest.setup 的 matchMedia mock 恒为 false ⇒ useBreakpoint().isSmallScreen 为 true，
+    // 组件走 P1-9 移动端分支：致谢名单在 About 页内联展开，而不是打开 Dialog。
     const user = userEvent.setup();
 
     render(<OpenSourceAcknowledgementsSection />);
@@ -83,7 +85,8 @@ describe('OpenSourceAcknowledgementsSection', () => {
 
     await user.click(screen.getByRole('button', { name: '查看致谢名单' }));
 
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看致谢名单' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByText('9 个生态分组，77 个项目')).not.toBeInTheDocument();
     expect(screen.queryAllByText('6 项')).toHaveLength(0);
     expect(screen.queryAllByText('7 项')).toHaveLength(0);
@@ -98,9 +101,11 @@ describe('OpenSourceAcknowledgementsSection', () => {
     expect(screen.queryByText('Reactour')).not.toBeInTheDocument();
     expect(screen.queryByText('Defuddle')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '关闭' }));
+    await user.click(screen.getByRole('button', { name: '查看致谢名单' }));
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看致谢名单' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('React 18')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tailwind CSS')).not.toBeInTheDocument();
   });
 
   it('loads the bundled third-party notices and returns to the acknowledgement list', async () => {
