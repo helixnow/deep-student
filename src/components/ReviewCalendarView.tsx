@@ -685,7 +685,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             size="sm"
             onClick={onClose}
             aria-label={t('common:close')}
-            className="shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <X size={18} />
           </DsButton>
