@@ -671,6 +671,18 @@ pub fn extra_readable_roots_for_interpreter(interpreter: &Path) -> Vec<PathBuf> 
     let mut roots = Vec::new();
     if let Some(parent) = canonical.parent() {
         roots.push(parent.to_path_buf());
+        // Version-managed interpreters commonly live at <prefix>/bin while
+        // their standard library/native modules live at <prefix>/lib. Expose
+        // that sibling only; never expose the whole prefix (which may also
+        // contain user application data such as ~/.local/share).
+        if parent.file_name() == Some(std::ffi::OsStr::new("bin")) {
+            if let Some(prefix) = parent.parent() {
+                let lib = prefix.join("lib");
+                if lib.is_dir() {
+                    roots.push(lib);
+                }
+            }
+        }
     }
     let mut components = canonical.components();
     if let (Some(std::path::Component::RootDir), Some(std::path::Component::Normal(first))) =
@@ -694,6 +706,9 @@ pub fn transform_sandbox_policy(job_dir: &Path, interpreter: &Path) -> SandboxPo
         writable_roots: vec![job_dir.to_path_buf()],
         protected_read_roots: Vec::new(),
         protected_write_roots: Vec::new(),
+        // Script bodies are untrusted. In particular, Linux must not inherit
+        // shell_sandbox's compatibility-mode read-only bind of the host root.
+        restrict_read_to_roots: true,
         allow_network: false,
     }
 }
@@ -1574,6 +1589,7 @@ mod tests {
         assert!(policy.readable_roots.contains(&job_dir));
         assert!(policy.protected_read_roots.is_empty());
         assert!(policy.protected_write_roots.is_empty());
+        assert!(policy.restrict_read_to_roots);
     }
 
     #[test]
@@ -1755,6 +1771,43 @@ with open(os.environ["CHATANKI_OUTPUT"], "w", encoding="utf-8") as fh:
             run_transform_script(temp.path(), "doc-1", &cards, &script)
                 .await
                 .expect("script itself should exit 0");
+        let evaluation = evaluate_script_output(&output, &cards).unwrap();
+        assert_eq!(evaluation.card_plans[0].as_ref().unwrap().front, "denied");
+    }
+
+    /// 安全回归（e2e）：脚本只能读取 job 快照及解释器运行时，不能借 Linux
+    /// bwrap 的只读根挂载读取 job 外的宿主文件后通过卡片字段外带。
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn e2e_host_files_outside_job_are_unreadable() {
+        if !sandbox_e2e_ready(ScriptLanguage::Python) {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let secret = temp.path().join("host-secret.txt");
+        std::fs::write(&secret, "must-not-leak").unwrap();
+        let secret_literal = serde_json::to_string(&secret.to_string_lossy().to_string()).unwrap();
+        let cards = [make_card("card-1", "Q", "A", None, &[])];
+        let script = NormalizedTransformScript {
+            language: ScriptLanguage::Python,
+            code: format!(
+                r#"
+import json, os
+try:
+    with open({secret_literal}, encoding="utf-8") as fh:
+        result = "leaked:" + fh.read()
+except OSError:
+    result = "denied"
+with open(os.environ["CHATANKI_OUTPUT"], "w", encoding="utf-8") as fh:
+    json.dump({{"cards": [{{"id": "card-1", "front": result}}]}}, fh)
+"#
+            ),
+            timeout: Duration::from_secs(30),
+        };
+        let (_report, output, _job_ref) =
+            run_transform_script(temp.path(), "doc-1", &cards, &script)
+                .await
+                .expect("sandboxed script should still write its declared output");
         let evaluation = evaluate_script_output(&output, &cards).unwrap();
         assert_eq!(evaluation.card_plans[0].as_ref().unwrap().front, "denied");
     }

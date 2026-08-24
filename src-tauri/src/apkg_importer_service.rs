@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Cursor, Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -701,11 +701,27 @@ fn extract_declared_media<R: Read + Seek>(
             skip_tracker.record(MEDIA_SKIP_REASON_UNSAFE_FILENAME, raw_name.clone());
             continue;
         }
-        if target.exists() {
-            // Anki 媒体按文件名寻址：同名文件视为同一媒体，直接复用
-            media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
-            imported_keys += 1;
-            continue;
+        match std::fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                // `Path::exists` follows links, so a dangling symlink used to
+                // fall through to File::create and create/truncate its target
+                // outside media_dir. Never reuse or follow non-regular entries.
+                warnings.push(format!("媒体目标已存在但不是普通文件，已跳过: {file_name}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                continue;
+            }
+            Ok(_) => {
+                // Anki 媒体按文件名寻址：既有同名普通文件视为同一媒体，直接复用
+                media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+                imported_keys += 1;
+                continue;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                warnings.push(format!("检查媒体目标失败，已跳过 {file_name}: {error}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                continue;
+            }
         }
         let mut entry = match archive.by_name(key) {
             Ok(entry) => entry,
@@ -717,7 +733,13 @@ fn extract_declared_media<R: Read + Seek>(
                 continue;
             }
         };
-        let mut output = match File::create(&target) {
+        // create_new maps to O_CREAT|O_EXCL on Unix and refuses symlinks. This
+        // closes the check/create race without ever truncating an existing path.
+        let mut output = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
             Ok(file) => file,
             Err(error) => {
                 warnings.push(format!("创建媒体文件失败，已跳过 {file_name}: {error}"));
@@ -3774,6 +3796,46 @@ mod tests {
         assert_eq!(
             result.media_report.skips[0].filenames,
             vec!["C:\\evil.exe"]
+        );
+    }
+
+    /// 安全回归：媒体目录中的悬空符号链接不能让 File::create 跟随链接并在
+    /// media_dir 外创建文件；该条媒体结构化降级，卡片本身仍可导入。
+    #[cfg(unix)]
+    #[test]
+    fn media_import_refuses_dangling_symlink_targets() {
+        let (db, _dir) = setup_migrated_db();
+        let parent = tempdir().expect("parent dir");
+        let media_dir = parent.path().join("media");
+        std::fs::create_dir(&media_dir).expect("media dir");
+        let outside = parent.path().join("outside-created.txt");
+        let link = media_dir.join("escape.png");
+        std::os::unix::fs::symlink(&outside, &link).expect("dangling symlink");
+
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"escape.png"}"#.to_vec()),
+            ("0", b"attacker-controlled".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir)
+            .import_bytes(&apkg, Some("symlink-media.apkg"), None)
+            .expect("unsafe media target must degrade without failing card import");
+
+        assert_eq!(result.imported_cards, 1);
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_IO_ERROR
+        );
+        assert!(!outside.exists(), "symlink referent must never be created");
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .expect("link remains")
+                .file_type()
+                .is_symlink()
         );
     }
 

@@ -35,9 +35,9 @@ pub const CHATANKI_TRANSFORM_TAG_MAX_CHARS: usize = 4_096;
 /// regex_replace 单字段输出的字节数上限（Round 4 安全复审）。
 ///
 /// pattern=`(?s).` 配 4096 字符替换串可把字段每 op 放大 ~4096 倍，20 个 op
-/// 级联时第二个 op 就会试图物化 >100GB 的字符串（内存 DoS）。每次替换后
-/// 检查：结果超过本上限**且比输入更大**（= 真的在膨胀，而非存量超长字段的
-/// 原样保留/收缩）→ 该卡整体拒绝，不写库。
+/// 级联时第二个 op 就会试图物化 >100GB 的字符串（内存 DoS）。每次替换前
+/// 精确预检展开后的字节数：结果超过本上限**且比输入更大**（= 真的在膨胀，
+/// 而非存量超长字段的原样保留/收缩）→ 该卡整体拒绝，不分配结果、不写库。
 pub const CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES: usize = 1024 * 1024;
 
 // ============================================================================
@@ -449,42 +449,156 @@ pub struct TransformFieldGrowthError {
     pub op_index: usize,
     /// 被膨胀的字段名。
     pub field: &'static str,
-    /// 膨胀后的字节数。
+    /// 预检时已确认至少会达到的字节数。
     pub bytes: usize,
 }
 
 impl TransformFieldGrowthError {
     pub fn detail(&self) -> String {
         format!(
-            "ops[{}] grew field '{}' to {} bytes, exceeding the {} byte limit",
+            "ops[{}] would grow field '{}' to at least {} bytes, exceeding the {} byte limit",
             self.op_index, self.field, self.bytes, CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES
         )
     }
 }
 
-/// 单次 regex_replace 后的膨胀闸门：结果超限**且比输入更大**才算膨胀
-///（存量超长字段的原样保留/收缩不受影响）。
-fn check_field_growth(
+fn capture_reference_len(captures: &regex::Captures<'_>, reference: &str) -> usize {
+    match reference.parse::<usize>() {
+        Ok(index) => captures.get(index).map_or(0, |matched| matched.as_str().len()),
+        Err(_) => captures
+            .name(reference)
+            .map_or(0, |matched| matched.as_str().len()),
+    }
+}
+
+/// 精确计算 regex crate 替换串在一组 captures 上的展开字节数，语义覆盖
+/// `$name` / `$1` / `${name}` / `${1}` / `$$`。只做整数运算，不物化展开串。
+fn expanded_replacement_len(
+    captures: &regex::Captures<'_>,
+    replacement: &str,
+) -> usize {
+    let bytes = replacement.as_bytes();
+    let mut cursor = 0usize;
+    let mut expanded = 0usize;
+
+    while cursor < bytes.len() {
+        let Some(relative_dollar) = bytes[cursor..].iter().position(|byte| *byte == b'$') else {
+            return expanded.saturating_add(bytes.len() - cursor);
+        };
+        expanded = expanded.saturating_add(relative_dollar);
+        let dollar = cursor + relative_dollar;
+
+        match bytes.get(dollar + 1).copied() {
+            Some(b'$') => {
+                expanded = expanded.saturating_add(1);
+                cursor = dollar + 2;
+            }
+            Some(b'{') => {
+                let reference_start = dollar + 2;
+                let Some(relative_end) = bytes[reference_start..]
+                    .iter()
+                    .position(|byte| *byte == b'}')
+                else {
+                    expanded = expanded.saturating_add(1);
+                    cursor = dollar + 1;
+                    continue;
+                };
+                let reference_end = reference_start + relative_end;
+                expanded = expanded.saturating_add(capture_reference_len(
+                    captures,
+                    &replacement[reference_start..reference_end],
+                ));
+                cursor = reference_end + 1;
+            }
+            Some(next) if next.is_ascii_alphanumeric() || next == b'_' => {
+                let reference_start = dollar + 1;
+                let mut reference_end = reference_start;
+                while bytes
+                    .get(reference_end)
+                    .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+                {
+                    reference_end += 1;
+                }
+                expanded = expanded.saturating_add(capture_reference_len(
+                    captures,
+                    &replacement[reference_start..reference_end],
+                ));
+                cursor = reference_end;
+            }
+            _ => {
+                expanded = expanded.saturating_add(1);
+                cursor = dollar + 1;
+            }
+        }
+    }
+    expanded
+}
+
+fn add_projected_bytes(
+    projected: &mut usize,
+    additional: usize,
+    limit: usize,
+) -> Result<(), usize> {
+    *projected = projected.saturating_add(additional);
+    if *projected > limit {
+        Err(*projected)
+    } else {
+        Ok(())
+    }
+}
+
+/// 单次 regex_replace 的分配前膨胀闸门。结果超限且比输入更大才拒绝；
+/// 存量超长字段的原样保留或收缩仍可通过。
+fn bounded_regex_replace(
     op_index: usize,
     field: &'static str,
-    before_bytes: usize,
-    after: &str,
-) -> Result<(), TransformFieldGrowthError> {
-    if after.len() > CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES && after.len() > before_bytes {
+    regex: &Regex,
+    before: &str,
+    replacement: &str,
+) -> Result<String, TransformFieldGrowthError> {
+    let allocation_limit = CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES.max(before.len());
+    let mut projected = 0usize;
+    let mut previous_end = 0usize;
+    for captures in regex.captures_iter(before) {
+        let matched = captures
+            .get(0)
+            .expect("regex captures always include the full match");
+        for additional in [
+            matched.start().saturating_sub(previous_end),
+            expanded_replacement_len(&captures, replacement),
+        ] {
+            if let Err(bytes) = add_projected_bytes(&mut projected, additional, allocation_limit) {
+                return Err(TransformFieldGrowthError {
+                    op_index,
+                    field,
+                    bytes,
+                });
+            }
+        }
+        previous_end = matched.end();
+    }
+    if let Err(bytes) = add_projected_bytes(
+        &mut projected,
+        before.len().saturating_sub(previous_end),
+        allocation_limit,
+    ) {
         return Err(TransformFieldGrowthError {
             op_index,
             field,
-            bytes: after.len(),
+            bytes,
         });
     }
-    Ok(())
+
+    let after = regex.replace_all(before, replacement).into_owned();
+    debug_assert_eq!(after.len(), projected);
+    Ok(after)
 }
 
 /// 按序应用全部 ops，返回变换后的字段快照（纯函数，不修改输入）。
 ///
-/// 每次 regex_replace 后立即做膨胀检查（见
-/// [`CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES`]），在级联放大物化为
-/// 不可控内存之前提前终止；触发时该卡整体拒绝（`Err`），不写库。
+/// 每次 regex_replace 先做精确字节数预检（见
+/// [`CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES`]），在级联放大分配内存前
+/// 提前终止；触发时该卡整体拒绝（`Err`），不写库。
 pub fn apply_transform_ops(
     ops: &[CompiledTransformOp],
     fields: &TransformFields,
@@ -498,28 +612,33 @@ pub fn apply_transform_ops(
                 replacement,
             } => match field {
                 TransformField::Front => {
-                    let before_bytes = result.front.len();
-                    let after = regex
-                        .replace_all(&result.front, replacement.as_str())
-                        .into_owned();
-                    check_field_growth(op_index, "front", before_bytes, &after)?;
-                    result.front = after;
+                    result.front = bounded_regex_replace(
+                        op_index,
+                        "front",
+                        regex,
+                        &result.front,
+                        replacement,
+                    )?;
                 }
                 TransformField::Back => {
-                    let before_bytes = result.back.len();
-                    let after = regex
-                        .replace_all(&result.back, replacement.as_str())
-                        .into_owned();
-                    check_field_growth(op_index, "back", before_bytes, &after)?;
-                    result.back = after;
+                    result.back = bounded_regex_replace(
+                        op_index,
+                        "back",
+                        regex,
+                        &result.back,
+                        replacement,
+                    )?;
                 }
                 TransformField::Text => {
                     // text 为 null 的卡（非 Cloze 卡）自动跳过，不视为错误。
                     if let Some(text) = result.text.as_ref() {
-                        let before_bytes = text.len();
-                        let after = regex.replace_all(text, replacement.as_str()).into_owned();
-                        check_field_growth(op_index, "text", before_bytes, &after)?;
-                        result.text = Some(after);
+                        result.text = Some(bounded_regex_replace(
+                            op_index,
+                            "text",
+                            regex,
+                            text,
+                            replacement,
+                        )?);
                     }
                 }
             },
@@ -1062,9 +1181,44 @@ mod tests {
         assert_eq!(after.front, "wolf");
     }
 
+    #[test]
+    fn bounded_replace_preserves_regex_capture_expansion_semantics() {
+        let ops = vec![NormalizedTransformOp::RegexReplace {
+            field: TransformField::Front,
+            pattern: "(?P<letter>[a-z])|(?P<number>[0-9])".to_string(),
+            replacement: "${letter}${number}$$".to_string(),
+        }];
+        let compiled = compile_transform_ops(&ops).unwrap();
+        let before = fields("ab12", "A", None, &[]);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
+        assert_eq!(after.front, "a$b$1$2$");
+    }
+
     // ------------------------------------------------------------------
     // Round 4 安全复审：regex 输出膨胀炸弹与 tag 资源边界
     // ------------------------------------------------------------------
+
+    /// 安全回归：必须在 `replace_all` 分配结果前拒绝。旧实现会先尝试物化
+    /// 1 MiB × 4096（约 4 GiB）的字符串，事后检查来不及阻止 OOM。
+    #[test]
+    fn security_regex_growth_is_rejected_before_result_allocation() {
+        let ops = vec![NormalizedTransformOp::RegexReplace {
+            field: TransformField::Front,
+            pattern: "(?s).".to_string(),
+            replacement: "x".repeat(CHATANKI_TRANSFORM_REPLACEMENT_MAX_LEN),
+        }];
+        let compiled = compile_transform_ops(&ops).unwrap();
+        let before = fields(
+            &"a".repeat(CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES),
+            "A",
+            None,
+            &[],
+        );
+        let error = apply_transform_ops(&compiled, &before).unwrap_err();
+        assert_eq!(error.op_index, 0);
+        assert_eq!(error.field, "front");
+        assert!(error.bytes > CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES);
+    }
 
     /// 安全回归：`(?s).` + 长替换串的级联放大在第一次超限时逐卡拦截，
     /// 不物化天文数字大小的字符串（内存 DoS）。
