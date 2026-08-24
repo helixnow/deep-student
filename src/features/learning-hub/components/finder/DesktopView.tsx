@@ -499,7 +499,7 @@ function AddShortcutDialog({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="default" size="sm" onClick={() => onOpenChange(false)}>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => onOpenChange(false)}>
             {t('common:close')}
           </DsButton>
         </DsDialogFooter>
