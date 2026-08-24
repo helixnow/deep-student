@@ -433,7 +433,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                           </span>
                           <DsButton
                             variant="ghost"
-                            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+                            className="ds-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)] [@media(pointer:coarse)]:min-h-11"
                             onClick={() => void handleConfirmRestore(version.versionId)}
                             disabled={isRestoring}
                           >
@@ -450,7 +450,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                           </DsButton>
                           <DsButton
                             variant="ghost"
-                            className="ds-btn shrink-0 text-[var(--mm-text-muted)]"
+                            className="ds-btn shrink-0 text-[var(--mm-text-muted)] [@media(pointer:coarse)]:min-h-11"
                             onClick={() => setConfirmingId(null)}
                             disabled={isRestoring}
                           >
