@@ -285,7 +285,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                   size="sm"
                   onClick={handleLocateOriginal}
                   disabled={isLocating}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="[@media(pointer:coarse)]:min-h-11 text-muted-foreground hover:text-foreground"
                   aria-label={t('blocks.compactionSummary.locateOriginal')}
                   title={t('blocks.compactionSummary.locateOriginal')}
                 >
@@ -305,7 +305,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                   size="sm"
                   onClick={handleUndo}
                   disabled={isUndoing || isUndone}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="[@media(pointer:coarse)]:min-h-11 text-muted-foreground hover:text-foreground"
                   aria-label={t('blocks.compactionSummary.undo')}
                   title={t('blocks.compactionSummary.undoHint')}
                 >
@@ -327,7 +327,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                 variant="ghost"
                 size="sm"
                 onClick={handleCopy}
-                className="text-muted-foreground hover:text-foreground"
+                className="[@media(pointer:coarse)]:min-h-11 text-muted-foreground hover:text-foreground"
                 aria-label={t('blocks.compactionSummary.copy')}
                 title={t('blocks.compactionSummary.copy')}
               >
