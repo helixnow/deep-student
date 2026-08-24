@@ -2352,7 +2352,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                   }
                 }}
                 autoFocus
-                className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"
+                className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:min-h-11"
               />
               <div className="flex gap-2">
                 <DsButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:min-h-11">
