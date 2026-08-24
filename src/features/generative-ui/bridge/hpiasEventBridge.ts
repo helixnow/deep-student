@@ -11,6 +11,31 @@ import { useHpiasStore, type HpiasEvent } from '@/stores/researchStore';
 export const HPIAS_EVENT_CHANNEL = 'hpias_event';
 
 const RESEARCH_BLOCK_TYPES = new Set(['research-plan', 'research-report', 'paper-digest']);
+const RESEARCH_SURFACE_ACTION_IDS = new Set([
+  'copy-report',
+  'export-plan',
+  'export-intent',
+  'copy-intent',
+]);
+
+function isResearchOnlyActionBar(block: { type: string; props?: unknown }): boolean {
+  if (block.type !== 'action-bar' || !block.props || typeof block.props !== 'object') {
+    return false;
+  }
+
+  const actions = (block.props as { actions?: unknown }).actions;
+  return (
+    Array.isArray(actions) &&
+    actions.length > 0 &&
+    actions.every(
+      (action) =>
+        action &&
+        typeof action === 'object' &&
+        typeof (action as { id?: unknown }).id === 'string' &&
+        RESEARCH_SURFACE_ACTION_IDS.has((action as { id: string }).id),
+    )
+  );
+}
 
 /** intent 是否含 Research 类块（触发 HPIAS 实时接线） */
 export function intentHasResearchBlocks(intent: unknown): boolean {
@@ -26,13 +51,23 @@ export function intentHasResearchBlocks(intent: unknown): boolean {
   );
 }
 
-/** 活跃 HPIAS 会话时从 intent 移除 Research 块，避免与实时面板重复 */
-export function omitResearchBlocksFromIntent<T extends { blocks: Array<{ type: string }> }>(
+/** 活跃 HPIAS 会话时移除 Research 块及其孤立操作栏，避免与实时面板重复 */
+export function omitResearchBlocksFromIntent<
+  T extends { blocks: Array<{ type: string; props?: unknown }> },
+>(
   intent: T,
 ): T {
+  const removesResearchBlocks = intent.blocks.some((block) =>
+    RESEARCH_BLOCK_TYPES.has(block.type),
+  );
+
   return {
     ...intent,
-    blocks: intent.blocks.filter((b) => !RESEARCH_BLOCK_TYPES.has(b.type)),
+    blocks: intent.blocks.filter(
+      (block) =>
+        !RESEARCH_BLOCK_TYPES.has(block.type) &&
+        !(removesResearchBlocks && isResearchOnlyActionBar(block)),
+    ),
   };
 }
 

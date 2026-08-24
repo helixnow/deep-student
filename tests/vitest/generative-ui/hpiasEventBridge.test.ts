@@ -74,4 +74,64 @@ describe('hpiasEventBridge', () => {
     const filtered = omitResearchBlocksFromIntent(intent);
     expect(filtered.blocks.map((b) => b.type)).toEqual(['text']);
   });
+
+  it('drops orphaned research-only action bars when live panel takes over', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'research-report', props: { body: 'Done' } },
+        {
+          type: 'action-bar',
+          props: {
+            actions: [
+              { id: 'copy-report', label: 'Copy report' },
+              { id: 'export-plan', label: 'Export plan' },
+              { id: 'export-intent', label: 'Export intent' },
+              { id: 'copy-intent', label: 'Copy intent' },
+            ],
+          },
+        },
+      ],
+    };
+
+    expect(omitResearchBlocksFromIntent(intent).blocks).toEqual([]);
+  });
+
+  it('preserves action bars containing non-research actions', () => {
+    const mixedActionBar = {
+      type: 'action-bar',
+      props: {
+        actions: [
+          { id: 'copy-report', label: 'Copy report' },
+          { id: 'start-review', label: 'Start review' },
+        ],
+      },
+    };
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'research-plan', props: { title: 'Plan', steps: [] } },
+        mixedActionBar,
+      ],
+    };
+
+    expect(omitResearchBlocksFromIntent(intent).blocks).toEqual([mixedActionBar]);
+  });
+
+  it('preserves research-like action bars when no research block is omitted', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'text', props: { body: 'Learning plan' } },
+        {
+          type: 'action-bar',
+          props: {
+            actions: [{ id: 'export-plan', label: 'Export plan' }],
+          },
+        },
+      ],
+    };
+
+    expect(omitResearchBlocksFromIntent(intent).blocks).toEqual(intent.blocks);
+  });
 });

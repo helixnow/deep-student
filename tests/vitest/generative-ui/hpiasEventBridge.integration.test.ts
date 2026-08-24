@@ -71,6 +71,16 @@ describe('hpiasEventBridge integration', () => {
         { type: 'text' as const, props: { body: 'Status' } },
         { type: 'research-plan' as const, props: { title: 'Plan', steps: [] } },
         { type: 'research-report' as const, props: { body: 'Done' } },
+        {
+          type: 'action-bar' as const,
+          props: {
+            actions: [
+              { id: 'copy-report', label: 'Copy' },
+              { id: 'export-plan', label: 'Export' },
+              { id: 'copy-intent', label: 'Copy intent' },
+            ],
+          },
+        },
       ],
     };
     expect(intentHasResearchBlocks(intent)).toBe(true);
