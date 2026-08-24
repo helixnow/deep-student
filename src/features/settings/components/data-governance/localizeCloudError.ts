@@ -1,13 +1,14 @@
 /**
  * 云存储 / ZIP 备份错误的展示层映射。
  *
- * 短密码 / 读不到已存密码已有稳定 code，优先按 code 映射；
- * 其余 E2EE 诊断多数仍是中文原文。云设置页与本地 ZIP 导入导出共用这一层。
+ * 短密码 / 读不到已存密码 / E2EE 三类失败优先按稳定 code 映射；
+ * 接线前或旧客户端的中文诊断仍兜底。云设置页与本地 ZIP 导入导出共用这一层。
  */
 import { getErrorMessage } from '@/utils/errorUtils';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import {
   classifySyncE2eeError,
+  classifySyncE2eeErrorCode,
   SYNC_E2EE_ERROR_I18N_KEYS,
 } from './syncE2eeErrorMapping';
 
@@ -15,6 +16,15 @@ import {
 export const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+function readCloudStorageErrorCode(error: unknown): string | undefined {
+  try {
+    return cloudApi.getCloudStorageErrorCode(error);
+  } catch {
+    // 部分 vitest mock 没导出该函数。
+    return undefined;
+  }
+}
 
 function readCloudEncryptionI18nKey(
   error: unknown,
@@ -44,7 +54,9 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   if (encryptionKey === 'cloudStorage:encryption.storedPasswordRequired') {
     return t(encryptionKey);
   }
-  const e2eeKind = classifySyncE2eeError(raw);
+  const e2eeKind =
+    classifySyncE2eeErrorCode(readCloudStorageErrorCode(error)) ??
+    classifySyncE2eeError(raw);
   if (e2eeKind) {
     return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
   }

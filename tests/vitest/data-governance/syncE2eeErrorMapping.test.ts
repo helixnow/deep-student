@@ -13,6 +13,9 @@ import { describe, expect, it } from 'vitest';
 import {
   classifySyncE2eeError,
   SYNC_E2EE_ERROR_I18N_KEYS,
+  SYNC_E2EE_MARKER_CORRUPTED_CODE,
+  SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+  SYNC_E2EE_WRONG_PASSWORD_CODE,
 } from '@/features/settings/components/data-governance/syncE2eeErrorMapping';
 
 // ---------------------------------------------------------------------------
@@ -109,6 +112,49 @@ describe('classifySyncE2eeError', () => {
     expect(classifySyncE2eeError('manifest 损坏: unexpected EOF')).toBeNull();
     expect(classifySyncE2eeError('磁盘空间不足')).toBeNull();
     expect(classifySyncE2eeError('')).toBeNull();
+  });
+
+  it('classifies rewritten messages by stable code', () => {
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE}] rewritten plaintext`,
+      ),
+    ).toBe('plaintextLegacyRejected');
+    expect(
+      classifySyncE2eeError(`[${SYNC_E2EE_WRONG_PASSWORD_CODE}] rewritten password`),
+    ).toBe('wrongPassword');
+    expect(
+      classifySyncE2eeError(`[${SYNC_E2EE_MARKER_CORRUPTED_CODE}] rewritten marker`),
+    ).toBe('markerCorrupted');
+  });
+
+  it('prefers marker-corrupted code when a rewritten message also looks like a password error', () => {
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_MARKER_CORRUPTED_CODE}] 密码不一致且密码错误或数据损坏`,
+      ),
+    ).toBe('markerCorrupted');
+  });
+});
+
+describe('E2EE 三类稳定 code 跨层契约', () => {
+  it('Rust 与 TypeScript 使用同一组 code', () => {
+    const rust = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/cloud_storage/mod.rs'),
+      'utf8',
+    );
+    const api = readFileSync(
+      resolve(process.cwd(), 'src/utils/cloudStorageApi.ts'),
+      'utf8',
+    );
+    for (const code of [
+      SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+      SYNC_E2EE_WRONG_PASSWORD_CODE,
+      SYNC_E2EE_MARKER_CORRUPTED_CODE,
+    ]) {
+      expect(rust).toContain(`"${code}"`);
+      expect(api).toContain(`'${code}'`);
+    }
   });
 });
 

@@ -13,6 +13,9 @@ export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
 export const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT';
 export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
   'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
+export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
+export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
+export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 
 type ErrorWithCode = Error & { code?: string };
 
@@ -43,15 +46,16 @@ export function getCloudStorageErrorCode(error: unknown): string | undefined {
   if (envelope) return envelope.code;
 
   const record = asErrorRecord(error);
-  if (!record) return undefined;
-  if (typeof record.code === 'string') return record.code;
-  if (typeof record.errorCode === 'string') return record.errorCode;
+  if (record) {
+    if (typeof record.code === 'string') return record.code;
+    if (typeof record.errorCode === 'string') return record.errorCode;
 
-  const details = typeof record.details === 'object' && record.details !== null
-    ? record.details as Record<string, unknown>
-    : null;
-  if (typeof details?.code === 'string') return details.code;
-  if (typeof details?.errorCode === 'string') return details.errorCode;
+    const details = typeof record.details === 'object' && record.details !== null
+      ? record.details as Record<string, unknown>
+      : null;
+    if (typeof details?.code === 'string') return details.code;
+    if (typeof details?.errorCode === 'string') return details.errorCode;
+  }
   return codeFromDiagnosticText(getErrorMessage(error));
 }
 
@@ -61,6 +65,15 @@ function codeFromDiagnosticText(text: string): string | undefined {
   }
   if (text.includes(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE)) {
     return STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_MARKER_CORRUPTED_CODE)) {
+    return SYNC_E2EE_MARKER_CORRUPTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_WRONG_PASSWORD_CODE)) {
+    return SYNC_E2EE_WRONG_PASSWORD_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE)) {
+    return SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE;
   }
   return undefined;
 }

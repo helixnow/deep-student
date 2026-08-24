@@ -878,9 +878,9 @@ impl SyncManager {
         if crate::crypto::backup_crypto::is_encrypted_backup(data) {
             match self.file_cipher()? {
                 Some(cipher) => cipher.decrypt_bytes(data).map_err(|e| {
-                    SyncError::Database(format!(
-                        "解密 sync payload 失败（密码错误或数据损坏）: {}",
-                        e
+                    SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                        crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                        format!("解密 sync payload 失败（密码错误或数据损坏）: {}", e),
                     ))
                 }),
                 None => Err(SyncError::Database(
@@ -890,14 +890,14 @@ impl SyncManager {
                 )),
             }
         } else if self.encryption_enabled() {
-            Err(SyncError::Database(
+            Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "本机已启用同步加密，但云端 payload 缺少 DSBK 加密头（明文数据）。\
                  为防止端到端加密被静默降级，已拒绝读取该数据。\
                  若这是启用加密前遗留的旧明文数据：请先在云同步设置里暂时清除加密密码，\
                  完成一次下载同步把云端数据合并到本地，再清空该云端目录（或改用新目录）\
-                 并重新配置密码后执行完整上传；若确认不需要加密，请清除加密密码后重试。"
-                    .to_string(),
-            ))
+                 并重新配置密码后执行完整上传；若确认不需要加密，请清除加密密码后重试。",
+            )))
         } else {
             Ok(data.to_vec())
         }
@@ -9445,12 +9445,15 @@ impl SyncManager {
     ) -> Result<(), SyncError> {
         let Some(expected_cipher) = cipher_sha256 else {
             if self.encryption_enabled() {
-                return Err(SyncError::Database(format!(
-                    "{label} 的云端条目是启用加密前的明文对象（缺少 cipher_sha256），\
-                     本端已启用端到端加密，为防止密文被明文静默替换已拒绝下载。\
-                     处理办法：在仍持有该数据的设备上配置同一加密密码并执行一次上传同步\
-                     （会自动把该对象重新加密上传）；或暂时清除本端加密密码取回旧明文数据后，\
-                     重新配置密码并执行一次完整上传。"
+                return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                    crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+                    format!(
+                        "{label} 的云端条目是启用加密前的明文对象（缺少 cipher_sha256），\
+                         本端已启用端到端加密，为防止密文被明文静默替换已拒绝下载。\
+                         处理办法：在仍持有该数据的设备上配置同一加密密码并执行一次上传同步\
+                         （会自动把该对象重新加密上传）；或暂时清除本端加密密码取回旧明文数据后，\
+                         重新配置密码并执行一次完整上传。"
+                    ),
                 )));
             }
             storage
@@ -9493,7 +9496,10 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
             .into_temp_path();
         cipher.decrypt_file(&cipher_tmp, &plain_tmp).map_err(|e| {
-            SyncError::Database(format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"))
+            SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"),
+            ))
         })?;
         if let Some(expected_plain) = expected_plain_sha256 {
             let actual = crate::backup_common::calculate_file_hash(&plain_tmp)
@@ -10351,9 +10357,10 @@ impl SyncManager {
                 // 不做无意义的网络重试；错误给出可操作的迁移指引。
                 if self.encryption_enabled() && cloud_entry.cipher_sha256.is_none() {
                     tracing::error!(
-                        "[sync] blob 下载被拒绝（明文遗留对象，本端已启用端到端加密）: {}。\
+                        "[sync] [{}] blob 下载被拒绝（明文遗留对象，本端已启用端到端加密）: {}。\
                          请在仍持有该附件的设备上配置同一加密密码并执行一次上传同步，\
                          该对象会被自动重新加密上传。",
+                        crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                         hash
                     );
                     download_failures.push(hash.clone());
@@ -11962,6 +11969,10 @@ mod tests {
             .decode_payload(br#"{"hello":"world"}"#)
             .expect_err("本机启用加密时必须拒绝无 DSBK 头的明文 payload");
         let message = error.to_string();
+        assert!(
+            message.contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文 payload 拒绝必须带稳定 code: {message}"
+        );
         assert!(
             message.contains("已启用同步加密"),
             "错误应说明原因: {message}"
@@ -16530,6 +16541,10 @@ mod tests {
             .await
             .expect_err("本端启用加密时必须拒收明文遗留 workspace 对象")
             .to_string();
+        assert!(
+            error.contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文遗留 workspace 拒收必须带稳定 code: {error}"
+        );
         assert!(
             error.contains("cipher_sha256"),
             "错误应指出缺少密文哈希: {error}"

@@ -17,6 +17,7 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
 import {
   CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
   STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
+  SYNC_E2EE_WRONG_PASSWORD_CODE,
 } from '@/utils/cloudStorageApi';
 
 import {
@@ -89,6 +90,15 @@ describe('localizeCloudStorageError', () => {
         t,
       ),
     ).toBe('cloudStorage:encryption.storedPasswordRequired');
+  });
+
+  it('maps rewritten E2EE diagnostics by stable code', () => {
+    expect(
+      localizeCloudStorageError(
+        { code: SYNC_E2EE_WRONG_PASSWORD_CODE, message: 'rewritten password' },
+        t,
+      ),
+    ).toBe('cloudStorage:errors.e2eeWrongPassword\n(rewritten password)');
   });
 
   it('keeps unmapped diagnostics as the original message', () => {
