@@ -358,13 +358,13 @@ export const TodoQuickAdd: React.FC<{
             })}
           />
 
-          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1 [@media(pointer:coarse)]:min-h-11">
             <Calendar size={14} className="text-muted-foreground" />
             <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto"
+              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto [@media(pointer:coarse)]:!min-h-11"
             />
           </div>
         </div>
