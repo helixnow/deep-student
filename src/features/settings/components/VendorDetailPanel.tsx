@@ -788,12 +788,12 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             {!isCodexOAuthVendor && <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               {isEditingVendor ? (
                 <>
-                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
-                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</DsButton>
+                  <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</DsButton>
                 </>
               ) : (
                 <>
-                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
+                  <DsButton size="sm" variant="ghost" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</DsButton>
                   {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
                     // 桌面：确认对话框；移动端：行内二次确认（P0-5），删除后回到供应商列表屏
                     <DsButton
@@ -1006,7 +1006,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     {t('settings:vendor_panel.fetch_models_button')}
                   </DsButton>
                 )}
-                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none" onClick={() => {
+                <DsButton size="sm" variant="primary" className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11" onClick={() => {
                   if (usePanelModelEditor) {
                     if (isAddingNewModel) handleCancelAddModel();
                     setInlineEditState(null);
