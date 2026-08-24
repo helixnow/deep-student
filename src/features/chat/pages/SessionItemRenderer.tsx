@@ -446,6 +446,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   cancelEditSession();
@@ -459,6 +460,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="primary"
                 size="sm"
+                className="[@media(pointer:coarse)]:min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   saveSessionTitle(session.id);
