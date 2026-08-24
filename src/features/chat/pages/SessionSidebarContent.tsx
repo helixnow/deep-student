@@ -649,7 +649,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     size="sm"
                     onClick={() => { void loadMoreSessions(); }}
                     disabled={isLoadingMore}
-                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)] [@media(pointer:coarse)]:min-h-11"
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
                     <span>{t('page.loadMore')}</span>
