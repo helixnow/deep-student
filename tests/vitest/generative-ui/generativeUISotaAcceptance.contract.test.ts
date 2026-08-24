@@ -499,6 +499,16 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ]),
   },
   {
+    id: 'round75-rust-block-type-allowlist',
+    check: () =>
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        'ALLOWED_GENERATIVE_UI_BLOCK_TYPES',
+        'fn validate_block_types',
+        'parse_intent_rejects_unknown_block_type',
+        'parse_intent_accepts_all_registered_block_types',
+      ]),
+  },
+  {
     id: 'round74-vitest-worker-heap-and-ci-workers',
     check: () =>
       fileContains('vitest.config.ts', [

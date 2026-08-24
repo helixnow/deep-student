@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 75（2026-08-24）— Rust 18 块类型白名单
+
+1. [x] `parse_intent` 拒绝未知 / 缺 type / 非对象块
+2. [x] `ALLOWED_GENERATIVE_UI_BLOCK_TYPES` 与前端 18 种内置块对齐
+3. [x] 合同 + 单测锁定白名单
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 74（2026-08-24）— CI：worker 堆 / 分片并发 / 平台断言
 
 1. [x] Vitest forks `execArgv` 从 4096 提到 6144，与 CI `NODE_OPTIONS` 对齐（26bfcb33 分片 2/4 在 worker 4GiB 处 OOM）

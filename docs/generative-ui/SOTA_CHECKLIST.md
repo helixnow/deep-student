@@ -177,14 +177,15 @@
 26. ~~**Round 72 Markdown ping/background**~~ — ✅ URL 属性消毒 + 宿主简报去掉 defaultValue
 27. ~~**Round 73 外会话 / 流式订阅 / 引用 a11y**~~ — ✅ `session_started` 切片隔离；流式也 listen；假 link 改为 note
 28. ~~**Round 74 CI worker 堆**~~ — ✅ forks `execArgv` 6144 + `--maxWorkers=2`；Windows UA stub；scrollbar 扫描超时
-29. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+29. ~~**Round 75 Rust 块类型白名单**~~ — ✅ executor 入口只接受 18 种内置 `type`
+30. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–74 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–75 本地完成；合入 main 仍待 CI + 批准 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
