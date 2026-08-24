@@ -313,6 +313,7 @@ function HotkeyModeSegmented({
       value={value}
       onValueChange={onChange}
       size="compact"
+      itemClassName="[@media(pointer:coarse)]:!min-h-11"
       options={segments.map((segment) => ({
         value: segment.mode,
         label: segment.label,
