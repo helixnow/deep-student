@@ -638,7 +638,7 @@ export const TodoItemDetail: React.FC<{
               }}
               size="compact"
               className="flex-wrap"
-              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium"
+              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11"
               options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
                 const isActive = priority === p;
                 return {
@@ -811,7 +811,7 @@ export const TodoItemDetail: React.FC<{
               onValueChange={handleRepeatChange}
               size="compact"
               className="flex-wrap"
-              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium"
+              itemClassName="!h-auto !px-2 !py-0.5 text-xs font-medium [@media(pointer:coarse)]:!min-h-11"
               options={REPEAT_OPTIONS.map((opt) => ({
                 value: opt.value,
                 title: t(opt.labelKey),
