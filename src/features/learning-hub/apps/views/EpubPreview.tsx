@@ -31,76 +31,76 @@ import {
 import { PreviewStatus } from './PreviewStatus';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import {
+  buildEpubReadingProgress,
+  parseEpubReaderState,
+  resolveInitialEpubLocation,
+  EPUB_DEFAULT_LINE_HEIGHT,
+  EPUB_DEFAULT_PAGE_MARGIN,
+  EPUB_MAX_FONT_SCALE,
+  EPUB_MAX_LINE_HEIGHT,
+  EPUB_MIN_FONT_SCALE,
+  EPUB_MIN_LINE_HEIGHT,
+  type EpubReaderTheme,
+  type PersistedEpubReaderState,
+} from './epubReaderState';
 import './EpubPreview.css';
 
-type ReaderTheme = 'light' | 'sepia' | 'dark' | 'app';
+type ReaderTheme = EpubReaderTheme;
 
 const THEME_OPTIONS: ReaderTheme[] = ['app', 'light', 'sepia', 'dark'];
 const FONT_FAMILY_OPTIONS: EpubReaderFontFamily[] = ['book', 'serif', 'sans'];
-const MIN_FONT_SCALE = 0.75;
-const MAX_FONT_SCALE = 1.8;
-const DEFAULT_LINE_HEIGHT = 1.75;
-const MIN_LINE_HEIGHT = 1.3;
-const MAX_LINE_HEIGHT = 2.2;
-const DEFAULT_PAGE_MARGIN = 0.4;
+const MIN_FONT_SCALE = EPUB_MIN_FONT_SCALE;
+const MAX_FONT_SCALE = EPUB_MAX_FONT_SCALE;
+const DEFAULT_LINE_HEIGHT = EPUB_DEFAULT_LINE_HEIGHT;
+const MIN_LINE_HEIGHT = EPUB_MIN_LINE_HEIGHT;
+const MAX_LINE_HEIGHT = EPUB_MAX_LINE_HEIGHT;
+const DEFAULT_PAGE_MARGIN = EPUB_DEFAULT_PAGE_MARGIN;
 const MAX_FRAME_MARKS = 400;
 
-interface PersistedReaderState {
-  chapterIndex: number;
-  chapterProgress: number;
-  theme: ReaderTheme;
-  fontScale: number;
-  fontFamily: EpubReaderFontFamily;
-  lineHeight: number;
-  pageMargin: number;
-}
+type PersistedReaderState = PersistedEpubReaderState;
 
 export interface EpubPreviewProps {
   base64Content: string;
   fileName: string;
   resourceId: string;
-}
-
-function loadReaderState(key: string): PersistedReaderState {
-  const fallback: PersistedReaderState = {
-    chapterIndex: 0,
-    chapterProgress: 0,
-    theme: 'light',
-    fontScale: 1,
-    fontFamily: 'book',
-    lineHeight: DEFAULT_LINE_HEIGHT,
-    pageMargin: DEFAULT_PAGE_MARGIN,
-  };
-  try {
-    const value = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<PersistedReaderState>;
-    // Older persisted payloads only carried {chapterIndex, chapterProgress,
-    // theme, fontScale}; every field falls back independently so they still load.
-    const pageMargin = Number(value.pageMargin);
-    return {
-      chapterIndex: Math.max(0, Math.floor(Number(value.chapterIndex) || 0)),
-      chapterProgress: Math.min(1, Math.max(0, Number(value.chapterProgress) || 0)),
-      theme: value.theme === 'dark' || value.theme === 'sepia' || value.theme === 'app' ? value.theme : 'light',
-      fontScale: Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, Number(value.fontScale) || 1)),
-      fontFamily: value.fontFamily === 'serif' || value.fontFamily === 'sans' ? value.fontFamily : 'book',
-      lineHeight: Math.min(MAX_LINE_HEIGHT, Math.max(MIN_LINE_HEIGHT, Number(value.lineHeight) || DEFAULT_LINE_HEIGHT)),
-      pageMargin: Number.isFinite(pageMargin) ? Math.min(1, Math.max(0, pageMargin)) : DEFAULT_PAGE_MARGIN,
-    };
-  } catch {
-    return fallback;
-  }
+  /**
+   * 资源 metadata 中的章节级进度（page = 1-based 章节序号）。
+   * 与本机 localStorage 状态按时间戳合并决定初始位置（epubReaderState）。
+   */
+  metadataProgress?: { page: number; lastReadAt?: number } | null;
+  /**
+   * 章节切换时上报章节级进度（page = 章节序号），由上层视图接
+   * previewPersistence 控制器写入资源 metadata；不传则保持仅 localStorage。
+   */
+  onProgressChange?: (progress: { page: number; lastReadAt?: number }) => void;
 }
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, resourceId }) => {
+const EpubPreview: React.FC<EpubPreviewProps> = ({
+  base64Content,
+  fileName,
+  resourceId,
+  metadataProgress,
+  onProgressChange,
+}) => {
   const { t } = useTranslation(['learningHub', 'common']);
   // 与 App shell 同源的移动端判定（<768px）；旧实现自造 700px 断点，
   // 700-767px 区间会与 EpubPreview.css 的移动样式及全局移动壳分叉
   const isNarrow = useIsMobile();
   const storageKey = `epub-reader:${resourceId}`;
-  const initialState = useMemo(() => loadReaderState(storageKey), [storageKey]);
+  // 初始位置 = 本机 localStorage 状态 × metadata 章节级进度（时间戳合并）。
+  // 依赖刻意只留 storageKey：metadataProgress 在每次进度落盘后都会变化，
+  // 若进依赖会让下方按 initialState 身份重置的加载 effect 反复重载整本书。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialState = useMemo(() => {
+    const local = parseEpubReaderState(localStorage.getItem(storageKey));
+    const location = resolveInitialEpubLocation(local, metadataProgress);
+    return { ...local, ...location };
+  }, [storageKey]);
   const rootRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
@@ -248,7 +248,17 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
   }, [storageKey]);
 
   useEffect(() => {
-    persistStateRef.current = { chapterIndex, chapterProgress, theme, fontScale, fontFamily, lineHeight, pageMargin };
+    persistStateRef.current = {
+      chapterIndex,
+      chapterProgress,
+      theme,
+      fontScale,
+      fontFamily,
+      lineHeight,
+      pageMargin,
+      // 写入时间戳：跨设备恢复时与 metadata.readingProgress.lastReadAt 比较
+      updatedAt: Date.now(),
+    };
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
       persistTimerRef.current = 0;
@@ -259,6 +269,21 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
       }
     }, 500);
   }, [chapterIndex, chapterProgress, theme, fontScale, fontFamily, lineHeight, pageMargin, storageKey]);
+
+  // 章节级进度写入资源 metadata（page = 章节序号）。章内滚动仍只进
+  // localStorage —— 后端进度通道只落库 readingProgress.page / lastReadAt。
+  const lastReportedChapterRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!onProgressChange) return;
+    if (lastReportedChapterRef.current === chapterIndex) return;
+    // 首次挂载只记基线，不上报（避免打开即写一次无变化进度）
+    if (lastReportedChapterRef.current === null) {
+      lastReportedChapterRef.current = chapterIndex;
+      return;
+    }
+    lastReportedChapterRef.current = chapterIndex;
+    onProgressChange(buildEpubReadingProgress(chapterIndex));
+  }, [chapterIndex, onProgressChange]);
 
   useEffect(() => {
     // Flushing pending reading progress on window close cannot go through the
