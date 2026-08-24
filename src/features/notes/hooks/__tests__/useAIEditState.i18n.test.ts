@@ -1,12 +1,13 @@
 /**
  * useAIEditState 用户可见错误文案 i18n 契约测试。
  *
- * 错误文案走 `i18n.t('learningHub:ai_edit.*', { defaultValue: 主干中文原文 })`，
- * 同时在两个 locale 中注册与 defaultValue 一致的消息。
+ * 错误文案统一经 `guardText(key, 中文原文, vars)` helper 走
+ * `notes:aiDiff.errors.*`（defaultValue 保留主干中文，覆盖延迟命名空间
+ * 未加载完成的窗口期），并在两个 locale 的 notes.json 注册完整 errors 段。
  * 因此分两层守卫：
- * 1. source 守卫：每条错误必须经 i18n.t 且 defaultValue 与主干原文逐字相等，
- *    不允许硬编码中文直接赋给 error；learningHub locale JSON 必须包含完整
- *    ai_edit 段。
+ * 1. source 守卫：每条错误必须经 guardText（即 i18n.t + defaultValue），
+ *    不允许硬编码中文直接赋给 error；notes locale JSON 必须包含完整
+ *    aiDiff.errors 段。
  * 2. 行为守卫：mock `@/i18n` 复刻 i18next 的 defaultValue + {{var}} 插值语义，
  *    断言 computeProposedContent / reject 返回给 UI 的中文与切换前完全一致。
  */
@@ -40,13 +41,14 @@ const source = readFileSync(
   'utf8',
 );
 
-/** key ↔ 主干中文原文（defaultValue 必须逐字相等，插值统一 {{var}}） */
-const EXPECTED_MESSAGES: Array<[key: string, defaultValue: string]> = [
-  ['append_content_empty', '追加内容为空'],
-  ['search_pattern_empty', '搜索模式为空'],
+/** key ↔ locale 注册的主干中文原文（notes:aiDiff.errors.*，插值统一 {{var}}） */
+const EXPECTED_MESSAGES: Array<[key: string, zhMessage: string]> = [
+  ['output_too_large', '建议后的笔记超过 {{maxBytes}} 字节上限'],
+  ['append_empty', '追加内容为空'],
+  ['search_empty', '搜索模式为空'],
   ['invalid_regex', '无效的正则表达式: {{message}}'],
   ['regex_syntax_error', '语法错误'],
-  ['replace_target_not_found', '未找到要替换的内容'],
+  ['replace_not_found', '未找到要替换的内容'],
   ['unknown_operation', '未知的操作类型: {{operation}}'],
   ['section_not_found', '未找到章节: {{section}}'],
   ['user_rejected', '用户拒绝修改'],
@@ -57,10 +59,11 @@ describe('useAIEditState i18n source contract', () => {
     expect(source).toContain("import i18n from '@/i18n';");
   });
 
-  it('routes every user-facing error through learningHub:ai_edit.* with the original text as defaultValue', () => {
-    for (const [key, defaultValue] of EXPECTED_MESSAGES) {
-      expect(source).toContain(`i18n.t('learningHub:ai_edit.${key}'`);
-      expect(source).toContain(`defaultValue: '${defaultValue}'`);
+  it('routes every user-facing error through guardText → notes:aiDiff.errors.*', () => {
+    // guardText 是唯一的 i18n 出口：helper 内部拼 notes:aiDiff.errors.${key}。
+    expect(source).toContain('i18n.t(`notes:aiDiff.errors.${key}`, { defaultValue, ...vars })');
+    for (const [key] of EXPECTED_MESSAGES) {
+      expect(source).toMatch(new RegExp(`guardText\\(\\s*'${key}'`));
     }
   });
 
@@ -70,13 +73,18 @@ describe('useAIEditState i18n source contract', () => {
     expect(source).not.toMatch(/error:\s*['"`]/);
   });
 
-  it('registers every defaultValue in both learningHub locale bundles', () => {
+  it('registers every error key in both notes locale bundles', () => {
     for (const lang of ['zh-CN', 'en-US']) {
       const bundle = JSON.parse(
-        readFileSync(resolve(process.cwd(), `src/locales/${lang}/learningHub.json`), 'utf8'),
-      ) as { ai_edit?: Record<string, string> };
-      for (const [key, defaultValue] of EXPECTED_MESSAGES) {
-        expect(bundle.ai_edit?.[key]).toBe(defaultValue);
+        readFileSync(resolve(process.cwd(), `src/locales/${lang}/notes.json`), 'utf8'),
+      ) as { aiDiff?: { errors?: Record<string, string> } };
+      for (const [key, zhMessage] of EXPECTED_MESSAGES) {
+        const registered = bundle.aiDiff?.errors?.[key];
+        if (lang === 'zh-CN') {
+          expect(registered).toBe(zhMessage);
+        } else {
+          expect(registered, `${lang} notes:aiDiff.errors.${key}`).toBeTruthy();
+        }
       }
     }
   });

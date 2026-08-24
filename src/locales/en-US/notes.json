@@ -75,6 +75,17 @@
     "accept": "Accept",
     "reject": "Reject",
     "no_changes": "No changes detected",
+    "errors": {
+      "output_too_large": "The suggested note exceeds the {{maxBytes}}-byte limit",
+      "append_empty": "Append content is empty",
+      "search_empty": "Search pattern is empty",
+      "invalid_regex": "Invalid regular expression: {{message}}",
+      "regex_syntax_error": "syntax error",
+      "replace_not_found": "No matching content found to replace",
+      "unknown_operation": "Unknown operation type: {{operation}}",
+      "section_not_found": "Section not found: {{section}}",
+      "user_rejected": "Edit rejected by user"
+    },
     "summary": {
       "meta_title": "Change summary",
       "meta_description": "Deterministic preview from diff stats",

@@ -65,6 +65,60 @@ wrapup 的 i18n、a11y、UTF-8/流式处理、模型注册与 special-token 修�
    `npx vitest run tests/vitest/question-bank-editor-ai-markdown.test.tsx tests/vitest/chat-v2/context/fileDefinitionPdf.test.ts tests/vitest/settings/settingsQuietHoverContract.test.ts tests/vitest/ui-shell/smokeRender.test.tsx`
    通过（4 files、9 tests）。
 
+## 第四轮复查（0824，基于 fe71256a）
+
+### 门禁复跑
+
+在 `fe71256a` 上重新执行四项门禁与冲突覆盖测试，全部通过：
+`npm run version:generate` + `npm run typecheck`、`npx vite build`（19732 模块）、
+`cargo check --lib`（stable 1.98，22 warning / 0 error）、四个冲突覆盖测试
+（4 files / 9 tests）以及 `useAIEditState.i18n.test.ts` + `notesEditHitl.test.tsx`。
+
+### 0824 已推进，fast-forward 不再成立
+
+`origin/cursor/0824-cde6` 已从预演基线 `8361e6b7` 推进到 `e54603a0`
+（合入 theme-cache：#175+#183）。正式合入必须走 merge，不能 fast-forward。
+
+### 预演分支已预对齐 useAIEditState（本轮新增提交）
+
+模拟 `e54603a0` + 预演分支的合并，唯一内容冲突是
+`src/features/notes/hooks/useAIEditState.ts`：双方把同一批硬编码错误文案
+接到了不同 i18n 契约（0824 侧 `guardText` → `notes:aiDiff.errors.*`，
+wrapup 侧 `i18n.t('learningHub:ai_edit.*')`）。0824 侧更优：keys 与 aiDiff UI
+文案同域、en-US 有真实英文翻译（wrapup 侧 en 包注册的是中文），且带
+延迟命名空间窗口期兜底。本轮已在预演分支上：
+
+1. 将 `useAIEditState.ts` 对齐为 `e54603a0` 版本（逐字节一致，消除冲突）；
+2. 把 `notes.json`（zh/en）的 `aiDiff.errors` 段补成与 0824 侧一致
+   （保留 wrapup 的 `aiDiff.summary` 段）；
+3. 把 `useAIEditState.i18n.test.ts` 源码契约断言改为
+   `guardText → notes:aiDiff.errors.*`（行为守卫不变，中文文案逐字保留）；
+4. 删除 `learningHub.json`（zh/en）中仅为旧契约服务的 `ai_edit` 死键段。
+
+对齐后重新模拟合并：零冲突。
+
+### ⚠️ 阻塞项：`e54603a0`（0824 当前 tip）自身编译不过
+
+纯 `e54603a0` 的 `cargo check --lib` 失败（3 error），与预演分支无关，
+是 theme-cache 合并（`e54603a0`）解 `model2_pipeline.rs` 冲突时引入：
+
+- `server_side_web_search_enabled` 的签名取了 0824 侧
+  `(quirks: &ProviderQuirks, llm_context)`，函数体却保留 cache 侧的
+  `deepseek_model_supports_server_side_web_search(&config.model)`，
+  `config` 不在作用域（E0423）；
+- `use super::{...}` 导入块取了 0824 侧，丢了 cache 侧的
+  `is_official_deepseek_config`，导致 `provider_accepts_prompt_cache_key` /
+  `provider_accepts_prompt_cache_retention` 两处 E0425；
+- `#[cfg(test)]` 内混用两侧传参风格（`resolve_quirks(&cfg)` 与直接
+  `&ApiConfig`），`cargo test` / `--all-targets` 下还会再炸。
+
+修复方向（须在 0824 上做，本分支未动）：函数签名并为
+`(config: &ApiConfig, quirks: &ProviderQuirks, llm_context)`，函数体按
+`e54603a0` 现有合并意图（quirks 门控 + DeepSeek 型号白名单 +
+`web_search_enabled` 开关）；生产调用点（原 `(&quirks, context)` 两处）补传
+config；`use super::{}` 补回 `is_official_deepseek_config`；tests 统一按新
+签名重写。cache 侧原实现见 `e54603a0^2`（`9101aa0b`）:522-572 可对照。
+
 ## 正式合入注意事项
 
 1. 正式分支应再次 fetch 并核对三个远端 tip；若 0824、wrapup 或 tests 已推进，
