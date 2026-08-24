@@ -1130,8 +1130,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 <SidebarUnreadReplyDot />
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)] group-hover/thread-row:opacity-0 group-focus-within/thread-row:opacity-0">
-                  {/* 触屏（coarse pointer）没有 hover：活动行的操作簇常显，时间戳同步让位 */}
-                  <span className={cn(pinned && 'mr-12 inline-block', isActive && '[@media(pointer:coarse)]:opacity-0')}>{relativeTime}</span>
+                  {/* 触屏（coarse pointer）没有 hover：操作簇在所有行常显，时间戳同步让位 */}
+                  <span className={cn(pinned && 'mr-12 inline-block', '[@media(pointer:coarse)]:opacity-0')}>{relativeTime}</span>
                 </span>
               )}
             >
@@ -1205,14 +1205,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </div>
         )}
 
-        {/* 行内快捷操作：置顶与归档组成右侧操作簇，hover 或 focus 时可见；
-            触屏（coarse pointer）没有 hover，活动行常显保证可达。 */}
+        {/* 行内快捷操作：置顶与归档组成右侧操作簇，细指针 hover 或 focus 时渐显；
+            触屏（coarse pointer）没有 hover，所有行常显保证可达——
+            仅活动行常显会让非活动会话在 iPad 上无法置顶/归档。 */}
         {!collapsed && (
           <div
-            className={cn(
-              'pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100',
-              isActive && '[@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100'
-            )}
+            className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100"
           >
             {/* eslint-disable-next-line ds-components/no-native-button */}
             <button

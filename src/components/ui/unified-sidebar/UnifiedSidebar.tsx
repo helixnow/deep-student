@@ -46,12 +46,18 @@ import type {
  * 根据显示模式（桌面端/移动端/移动滑动模式）提供不同的样式值
  */
 const SIDEBAR_STYLES = {
-  /** 桌面端样式 */
+  /**
+   * 桌面端样式。
+   * 2026-08 移动端审计：≥768 的触屏平板（iPad 竖/横屏）也走本档——
+   * coarse 指针下列表项补 min-h-11（否则 py-2 行仅 ~29–36px），搜索框
+   * 字号抬到 16px 防 iOS 聚焦自动放大（高度由 Input 基类 coarse !min-h 44 保证）。
+   * 细指针桌面维持原紧凑密度。
+   */
   desktop: {
     header: { height: '40px', padding: 'px-2', gap: 'gap-0.5' },
-    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
+    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[16px]' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
+    item: { padding: 'gap-2.5 px-2 py-2 mx-1 [@media(pointer:coarse)]:min-h-11', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
     /**
@@ -331,7 +337,8 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
   if (collapsed && !isMobileMode) {
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
-        <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
+        {/* coarse 指针下 min-h 压过 40px 固定高度，容纳 44px 触控按钮 */}
+        <div className="flex items-center justify-center px-1 [@media(pointer:coarse)]:min-h-11" style={{ height: '40px' }}>
           <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
           </DsButton>
@@ -360,7 +367,8 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 搜索框和操作按钮行 - 只在有内容时显示 */}
       {(showSearch || showRefresh || showCreate || (showCollapse && !isMobileMode) || extraActions || rightActions || (!isMobileMode && title)) && (
         <div
-          className={cn('flex items-center gap-1.5', styles.header.padding)}
+          // coarse 指针下 min-h 压过桌面档 40px 固定高度，容纳 44px 搜索框/按钮
+          className={cn('flex items-center gap-1.5 [@media(pointer:coarse)]:min-h-11', styles.header.padding)}
           style={{ height: styles.header.height }}
         >
           {/* 搜索框或标题 */}
