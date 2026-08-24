@@ -59,6 +59,8 @@ export interface EpubPreviewProps {
   base64Content: string;
   fileName: string;
   resourceId: string;
+  /** 宿主标签页是否活跃；隐藏 tab 不注册返回键 handler（对照 NoteContentView） */
+  isActive?: boolean;
 }
 
 function loadReaderState(key: string): PersistedReaderState {
@@ -94,7 +96,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, resourceId }) => {
+const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, resourceId, isActive = true }) => {
   const { t } = useTranslation(['learningHub', 'common']);
   // 与 App shell 同源的移动端判定（<768px）；旧实现自造 700px 断点，
   // 700-767px 区间会与 EpubPreview.css 的移动样式及全局移动壳分叉
@@ -142,13 +144,15 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     if (isNarrow) setSidebarOpen(false);
   }, [isNarrow, resourceId]);
 
+  // isActive 守卫：保活隐藏的 tab 不注册，避免消费当前活跃视图的返回键；
+  // 失活仅注销 handler，不动 sidebarOpen（隐藏 tab 不关侧栏）
   useEffect(() => {
-    if (!isNarrow || !sidebarOpen) return;
+    if (!isActive || !isNarrow || !sidebarOpen) return;
     return registerBackHandler(() => {
       setSidebarOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [isNarrow, sidebarOpen]);
+  }, [isActive, isNarrow, sidebarOpen]);
 
   // Follow app theme (html.dark) for the "auto" reading theme.
   useEffect(() => {

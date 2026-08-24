@@ -52,7 +52,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
-          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs">
+          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs [@media(pointer:coarse)]:!h-11">
             {t('tags.clearFilter')}
           </DsButton>
         )}
@@ -65,8 +65,8 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
               key={tag}
               onClick={() => onToggleTag(tag)}
               className={cn(
-                // min-h-7 保证触屏可点（面板现已在移动端可达）
-                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors',
+                // min-h-7 桌面紧凑；coarse 指针下抬到 44px 触控目标
+                'inline-flex items-center gap-1 px-2 py-1 min-h-7 rounded-full text-[11px] border transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
                 isSelected
                   ? 'bg-primary/10 border-primary/50 text-primary'
                   : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-[var(--interactive-hover)]'
@@ -81,7 +81,8 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
       {allTags.length > 12 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-2xs text-muted-foreground/60 hover:text-muted-foreground"
+          // min-h 保证触屏可点（coarse 下达到 44px 触控目标）
+          className="flex items-center gap-1 min-h-7 text-2xs text-muted-foreground/60 hover:text-muted-foreground [@media(pointer:coarse)]:min-h-11"
         >
           <CaretDown size={12} className={cn('transition-transform', expanded && 'rotate-180')} />
           {expanded ? t('tags.showLess') : t('tags.showMore', { count: allTags.length - 12 })}
@@ -119,7 +120,8 @@ export const SessionTagBadges: React.FC<{
               }}
               aria-label={tag}
               // 触屏无 hover：pointer-coarse 下常显；伪元素扩大命中区（视觉仍为 10px 图标）
-              className="ml-0.5 relative opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-60 after:absolute after:-inset-2 after:content-['']"
+              // coarse 下 -inset-[17px]：10px 图标 + 2×17px = 44px 触控目标
+              className="ml-0.5 relative opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:opacity-60 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[17px]"
             >
               <X size={10} />
             </button>
@@ -157,8 +159,9 @@ export const AddTagInput: React.FC<{
       <button
         onClick={() => setShowInput(true)}
         aria-label={t('tags.addPlaceholder')}
-        // 伪元素扩大触控命中区（视觉保持紧凑）
-        className="relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors after:absolute after:-inset-2 after:content-['']"
+      // 伪元素扩大触控命中区（视觉保持紧凑）
+      // coarse 下 -inset-[14px]：16px 按钮（12px 图标 + py-0.5）+ 2×14px = 44px 触控目标
+      className="relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[14px]"
       >
         <Plus size={12} />
       </button>
@@ -184,8 +187,8 @@ export const AddTagInput: React.FC<{
       autoFocus
       placeholder={t('tags.addPlaceholder')}
       // 📱 16px 输入契约：2xs（10px）在 coarse 指针下会触发 iOS 聚焦放大且难以点按，
-      // 放大字号并加宽输入框（桌面视觉不变）
-      className="h-7 w-24 text-2xs [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-32"
+      // 放大字号并加宽输入框（桌面视觉不变）；min-h-11 抬到 44px 触控目标（min-height 压过 h-7）
+      className="h-7 w-24 text-2xs [@media(pointer:coarse)]:text-[16px] [@media(pointer:coarse)]:w-32 [@media(pointer:coarse)]:min-h-11"
     />
   );
 };

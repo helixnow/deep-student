@@ -1,9 +1,10 @@
 /**
  * 图片全屏预览（portal 到 document.body）
- * 原尺寸 / 适应屏幕切换；Esc 或点击遮罩关闭；← → 切换同文档图片。
+ * 原尺寸 / 适应屏幕切换；Esc / Android 返回键 / 点击遮罩关闭；← → 切换同文档图片。
  */
 
 import i18next from 'i18next';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 export type LightboxFitMode = 'contain' | 'original';
 
@@ -25,6 +26,7 @@ export interface OpenImageLightboxOptions {
 
 let activeRoot: HTMLDivElement | null = null;
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+let unregisterBack: (() => void) | null = null;
 
 function t(key: string): string {
   try {
@@ -94,6 +96,10 @@ export function closeImageLightbox(): void {
   if (keyHandler) {
     document.removeEventListener('keydown', keyHandler, true);
     keyHandler = null;
+  }
+  if (unregisterBack) {
+    unregisterBack();
+    unregisterBack = null;
   }
   const root = activeRoot;
   activeRoot = null;
@@ -241,6 +247,13 @@ export function openImageLightbox(
   root.append(backdrop, toolbar, stage, counter);
   document.body.appendChild(root);
   activeRoot = root;
+
+  // 📱 Android 系统返回键：灯箱打开时先关灯箱（overlay 级），对齐块菜单接入方式。
+  // root 无 data-state="open"，Radix Escape 兜底探测不会命中，必须显式注册。
+  unregisterBack = registerBackHandler(() => {
+    closeImageLightbox();
+    return true;
+  }, BACK_PRIORITY.overlay);
 
   // 聚焦关闭按钮，便于键盘操作
   requestAnimationFrame(() => {

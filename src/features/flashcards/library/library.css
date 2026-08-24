@@ -182,7 +182,9 @@
   opacity: 1;
 }
 
-@media (hover: none) {
+/* 触屏常显行内操作：按指针类型而非 hover 能力区分，
+   覆盖报告 hover 能力的触屏平板（对照 FavoritesSection .nfs-unfavorite） */
+@media (pointer: coarse) {
   .fc-lib-row-actions {
     opacity: 1;
   }
@@ -412,11 +414,18 @@
 /* ---------- 触屏适配 ---------- */
 
 /* 筛选/排序 chips 是库页主操作，基准 ~24px 触控过小；
-   仅触屏放大到 ≥40px（与 flashcards.css 的 wb-fc-tab 同基线） */
+   仅触屏放大到 ≥44px（与 flashcards.css 的 wb-fc-tab 同基线） */
 @media (pointer: coarse) {
   .fc-lib-chip {
-    min-height: 40px;
+    min-height: 44px;
     padding: 8px 12px;
+  }
+
+  /* 行内操作钮（入队/复习/暂停/删除/展开）：DsButton 在 lg 断点后压缩高度，
+     宽屏触屏平板会跌破触控基线，这里兜底 ≥44px */
+  .fc-lib-row-actions button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 

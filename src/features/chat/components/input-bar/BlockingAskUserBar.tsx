@@ -218,7 +218,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
             <button
               type="button"
               aria-label={t('askUser.optionReasonLabel')}
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -272,7 +272,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                   <label
                     key={index}
                     className={cn(
-                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-11',
                       isChecked
                         ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                       : isRecommended
@@ -307,7 +307,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                 <div
                   key={index}
                   className={cn(
-                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none',
+                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none [@media(pointer:coarse)]:min-h-11',
                     isChecked
                       ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                     : isRecommended
@@ -320,7 +320,9 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                     type="button"
                     onClick={() => handleSingleSelect(index)}
                     disabled={disabled}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
+                    // ★ 触控目标：内容仅 24px 高（leading-6），触屏用伪元素纵向补满
+                    // 行内 py-2.5 得 44px；横向不外扩，避免盖住右侧原因按钮/选中指示
+                    className="relative flex min-w-0 flex-1 items-center gap-3 text-left outline-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2.5 [@media(pointer:coarse)]:after:content-['']"
                   >
                     <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
                       {numberLabel}
@@ -386,7 +388,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               size="sm"
               onClick={handleIgnore}
               disabled={disabled}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
             >
               {t('askUser.ignore')}
             </DsButton>
@@ -397,6 +399,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               disabled={disabled || !canSubmit}
               className={cn(
                 'rounded-full px-4',
+                '[@media(pointer:coarse)]:!min-h-11',
                 'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)]'
               )}
             >

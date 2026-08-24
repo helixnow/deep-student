@@ -82,7 +82,7 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
       {isOverflow && (
         <button
           type="button"
-          className="user-message-bubble__toggle"
+          className="user-message-bubble__toggle [@media(pointer:coarse)]:min-h-11"
           onClick={toggleExpand}
           aria-expanded={isExpanded}
         >

@@ -188,3 +188,12 @@
     transition: none;
   }
 }
+
+/* 触屏：清除钮 / 标签胶囊放大到 ≥44px 触控目标（桌面保持 ~22px 胶囊密度；
+   行内溢出走横向滚动，加高不撑破侧栏） */
+@media (pointer: coarse) {
+  .notes-tag-filter-clear,
+  .notes-tag-filter-chip {
+    min-height: 44px;
+  }
+}

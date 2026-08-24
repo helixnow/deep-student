@@ -216,7 +216,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
           disabled={suspendDisabled}
           aria-label={t('review:actions.suspend')}
           title={t('review:actions.suspend')}
-          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:bg-[var(--interactive-hover)] hover:text-foreground hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:bg-[var(--interactive-hover)] hover:text-foreground hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Pause size={14} />
         </DsButton>
@@ -280,7 +280,7 @@ const AllDoneState: React.FC<{
             variant="ghost"
             size="sm"
             onClick={onViewCalendar}
-            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            className="[@media(pointer:coarse)]:!min-h-11 gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <Calendar size={14} />
             {t('review:empty.viewCalendar')}
@@ -682,7 +682,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <DsButton
               variant="primary"
               onClick={handleStartReview}
-              className="min-h-10 gap-2 px-4 shadow-soft"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 gap-2 px-4 shadow-soft"
             >
               <Play size={16} weight="fill" />
               {t('review:startReview')}
@@ -827,7 +827,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               size="sm"
               onClick={() => void handleCreatePlansForExam()}
               disabled={isCreatingPlans}
-              className="min-h-10 gap-2"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 gap-2"
             >
               <ArrowClockwise
                 size={14}

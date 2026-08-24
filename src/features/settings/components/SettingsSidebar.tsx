@@ -97,7 +97,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             variant="nav"
             size="md"
             onClick={onBack}
-            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
+            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 [@media(pointer:coarse)]:!min-h-11 text-left"
           >
             <ArrowLeft size={18} className="h-[18px] w-[18px]" />
             <span className="truncate">
@@ -124,8 +124,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               placeholder={t('sidebar.search_placeholder')}
               aria-label={t('sidebar.search_placeholder')}
               className={cn(
-                'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
-                'pl-8 pr-2.5 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
+                'h-8 [@media(pointer:coarse)]:h-11 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
+                'pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:text-[16px] text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                 'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                 'focus-visible:outline-none focus-visible:ring-0 focus-visible:border-[color:var(--border)] focus-visible:bg-background',
                 '[&::-webkit-search-cancel-button]:hidden'

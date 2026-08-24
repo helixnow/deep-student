@@ -13,6 +13,7 @@ import {
   ArrowLeft,
 } from '@phosphor-icons/react';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMobileSubviewChrome } from '@/components/layout';
 import { CustomScrollArea } from './custom-scroll-area';
 
 // ============================================================================
@@ -42,6 +43,8 @@ export interface ImageCropDialogProps {
    * @deprecated 组件现恒以内联裁剪工具渲染（模块规范禁模态），该 prop 仅为兼容保留、不再参与逻辑。
    */
   inline?: boolean;
+  /** ★ 标签页：宿主标签页是否活跃（保活 display:none 实例不得接管统一顶栏） */
+  isActive?: boolean;
 }
 
 // ============================================================================
@@ -54,6 +57,7 @@ export function ImageCropDialog({
   examId,
   questionId,
   onImageAdded,
+  isActive,
 }: ImageCropDialogProps) {
   const { t } = useTranslation('common');
 
@@ -68,6 +72,8 @@ export function ImageCropDialog({
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  // 内联工具根节点：Android 返回键 handler 的可见性守卫用（保活隐藏实例不吞返回键）
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Load source images when dialog opens
   useEffect(() => {
@@ -213,10 +219,29 @@ export function ImageCropDialog({
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 可见性守卫（同 EnhancedPdfViewer）：保活但不可见的实例（display:none
+      // 标签页）不得吞掉活跃视图的返回键、不得触发关闭回调。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = rootRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onOpenChange(false);
       return true;
     }, BACK_PRIORITY.overlay);
   }, [open, onOpenChange]);
+
+  // 📱 小屏 learning-hub 承载：标题/返回上移 App 级统一顶栏，页内不再自绘
+  // 第二条顶栏；「裁剪并添加」确认钮改渲染到下方提示条（见 hosted 分支）。
+  // 返回箭头与系统返回键同语义（取消关闭）。无宿主（桌面分栏等）保持自绘顶栏。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('question_bank.source_images'),
+      onBack: () => onOpenChange(false),
+    },
+    [t, onOpenChange],
+    open && isActive !== false,
+  );
 
   // 裁剪主体（Dialog 与 inline 工具共用）
   const cropBody = (
@@ -244,7 +269,7 @@ export function ImageCropDialog({
                   disabled={currentPage === 0}
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
                   aria-label={t('prev')}
-                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <CaretLeft size={16} />
                 </DsButton>
@@ -258,7 +283,7 @@ export function ImageCropDialog({
                   disabled={currentPage === sourceImages.length - 1}
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
                   aria-label={t('next')}
-                  className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <CaretRight size={16} />
                 </DsButton>
@@ -344,47 +369,51 @@ export function ImageCropDialog({
   if (!open) return null;
   return (
     <div
+      ref={rootRef}
       className="absolute inset-0 z-30 flex flex-col bg-background"
       role="dialog"
       aria-label={t('question_bank.source_images')}
     >
-        {/* 顶栏：取消 + 标题 + 确认 */}
-        <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={() => onOpenChange(false)}
-            aria-label={t('cancel')}
-            className="!h-11 !w-11 text-muted-foreground"
-          >
-            <ArrowLeft size={20} />
-          </DsButton>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <ImageIcon size={16} className="flex-shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm font-medium text-foreground">
-              {t('question_bank.source_images')}
-            </span>
+        {/* 顶栏：取消 + 标题 + 确认（小屏由 App 级统一顶栏接管返回与标题，
+            此处不再自绘；确认钮改渲染到下方提示条） */}
+        {!subviewChromeHosted && (
+          <div className="flex h-12 flex-shrink-0 items-center gap-1.5 border-b border-border/60 px-2">
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => onOpenChange(false)}
+              aria-label={t('cancel')}
+              className="!h-11 !w-11 text-muted-foreground"
+            >
+              <ArrowLeft size={20} />
+            </DsButton>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <ImageIcon size={16} className="flex-shrink-0 text-muted-foreground" />
+              <span className="truncate text-sm font-medium text-foreground">
+                {t('question_bank.source_images')}
+              </span>
+            </div>
+            <DsButton
+              variant="primary"
+              size="sm"
+              disabled={!cropRect || cropping}
+              onClick={handleCrop}
+              className="!h-9 flex-shrink-0 px-3 [@media(pointer:coarse)]:!h-11"
+            >
+              {cropping ? (
+                <CircleNotch size={14} className="mr-1 animate-spin" />
+              ) : (
+                <Crop size={14} className="mr-1" />
+              )}
+              {t('question_bank.crop_and_add')}
+            </DsButton>
           </div>
-          <DsButton
-            variant="primary"
-            size="sm"
-            disabled={!cropRect || cropping}
-            onClick={handleCrop}
-            className="!h-9 flex-shrink-0 px-3 [@media(pointer:coarse)]:!h-11"
-          >
-            {cropping ? (
-              <CircleNotch size={14} className="mr-1 animate-spin" />
-            ) : (
-              <Crop size={14} className="mr-1" />
-            )}
-            {t('question_bank.crop_and_add')}
-          </DsButton>
-        </div>
+        )}
 
-        {/* 提示条：拖选提示 / 已选中 + 清除 */}
-        <div className="flex min-h-[36px] flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 px-4 py-1.5">
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
+        {/* 提示条：拖选提示 / 已选中 + 清除（+ 顶栏被接管时的确认钮） */}
+        <div className="flex min-h-[36px] flex-shrink-0 items-center gap-2 border-b border-border/40 px-4 py-1.5">
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {cropRect ? (
               <span className="font-medium text-primary">
                 {t('question_bank.crop_selected')}
@@ -404,6 +433,22 @@ export function ImageCropDialog({
             >
               <Trash size={14} className="mr-1" />
               {t('question_bank.clear_selection')}
+            </DsButton>
+          )}
+          {subviewChromeHosted && (
+            <DsButton
+              variant="primary"
+              size="sm"
+              disabled={!cropRect || cropping}
+              onClick={handleCrop}
+              className="!h-9 flex-shrink-0 px-3 [@media(pointer:coarse)]:!h-11"
+            >
+              {cropping ? (
+                <CircleNotch size={14} className="mr-1 animate-spin" />
+              ) : (
+                <Crop size={14} className="mr-1" />
+              )}
+              {t('question_bank.crop_and_add')}
             </DsButton>
           )}
         </div>

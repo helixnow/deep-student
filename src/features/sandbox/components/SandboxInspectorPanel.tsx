@@ -54,7 +54,7 @@ export function SandboxInspectorPanel({
             onClick={onClose}
             title={t('sandbox.collapse')}
             aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:-my-1.5"
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2"
           >
             <X size={14} />
           </DsButton>
@@ -84,7 +84,7 @@ export function SandboxInspectorPanel({
               <button
                 type="button"
                 onClick={() => onSetViewportPreset('desktop')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
                   viewportPreset === 'desktop'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'
@@ -97,7 +97,7 @@ export function SandboxInspectorPanel({
               <button
                 type="button"
                 onClick={() => onSetViewportPreset('tablet')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
                   viewportPreset === 'tablet'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'
@@ -110,7 +110,7 @@ export function SandboxInspectorPanel({
               <button
                 type="button"
                 onClick={() => onSetViewportPreset('mobile')}
-                className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
                   viewportPreset === 'mobile'
                   ? 'border-foreground/30 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent'

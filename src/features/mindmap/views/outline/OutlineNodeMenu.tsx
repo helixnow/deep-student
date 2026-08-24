@@ -179,38 +179,38 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             {t('mindmap:outline.convertToTask', { defaultValue: '转为任务' })}
           </AppMenuItem>
         )}
-        {/* 文本格式 B / I / U / S */}
-        <div className="flex items-center gap-1 px-2 py-1">
+        {/* 文本格式 B / I / U / S；coarse 下按钮放大到 44px，允许换行防溢出（菜单 max-w 280px） */}
+        <div className="flex flex-wrap items-center gap-1 px-2 py-1">
           <DsButton variant="ghost"
-            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' } }); }}
             title={t('contextMenu.bold')}
           ><TextB size={16} /></DsButton>
           <DsButton variant="ghost"
-            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' } }); }}
             title={t('contextMenu.italic')}
           ><TextItalic size={16} /></DsButton>
           <DsButton variant="ghost"
-            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline' } }); }}
             title={t('contextMenu.underline')}
           ><TextUnderline size={16} /></DsButton>
           <DsButton variant="ghost"
-            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through' } }); }}
             title={t('contextMenu.strikethrough')}
           ><TextStrikethrough size={16} /></DsButton>
           <div className="w-px h-4 bg-border mx-0.5" />
           {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
             <DsButton variant="ghost" key={level}
-              className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
+              className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
               onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }); }}
               title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
             ><Icon size={16} /></DsButton>
           ))}
           <DsButton variant="ghost"
-            className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
             onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: undefined } }); }}
             title={t('contextMenu.normalText')}
           ><TextT size={16} /></DsButton>
@@ -220,12 +220,13 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
           <Palette size={16} className="flex-shrink-0" />
           <span>{t('contextMenu.textColor')}</span>
         </div>
-        <div className="flex items-center gap-1 px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-1 [@media(pointer:coarse)]:gap-3 px-2 py-1.5">
           {QUICK_TEXT_COLORS.map(color => (
             <DsButton variant="ghost"
               key={color}
               className={cn(
-                "w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                "relative w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                 node.style?.textColor === color ? "border-primary scale-110" : "border-transparent"
               )}
               style={{ backgroundColor: color }}
@@ -236,7 +237,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             />
           ))}
           <DsButton variant="ghost"
-            className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
             onClick={(e) => {
               e.stopPropagation();
               updateNode(node.id, { style: { ...node.style, textColor: undefined } });
@@ -249,12 +250,13 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
           <Highlighter size={16} className="flex-shrink-0" />
           <span>{t('contextMenu.highlight')}</span>
         </div>
-        <div className="flex items-center gap-1 px-2 py-1.5">
+        <div className="flex flex-wrap items-center gap-1 [@media(pointer:coarse)]:gap-3 px-2 py-1.5">
           {QUICK_BG_COLORS.map(color => (
             <DsButton variant="ghost"
               key={color}
               className={cn(
-                "w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                "relative w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                 node.style?.bgColor === color ? "border-primary scale-110" : "border-transparent"
               )}
               style={{ backgroundColor: color }}
@@ -265,7 +267,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             />
           ))}
           <DsButton variant="ghost"
-            className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
             onClick={(e) => {
               e.stopPropagation();
               updateNode(node.id, { style: { ...node.style, bgColor: undefined } });
@@ -336,7 +338,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                 <DsButton
                   variant="danger"
                   size="sm"
-                  className="gap-1"
+                  className="gap-1 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     setConfirmingDelete(false);
                     setOpen(false);
@@ -350,6 +352,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                   ref={cancelDeleteRef}
                   variant="utility"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setConfirmingDelete(false)}
                 >
                   {t('outlineV2.cancel', { defaultValue: '取消' })}

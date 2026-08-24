@@ -383,7 +383,7 @@ export const LibraryScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={() => void refresh()}
-          className="shrink-0 text-sm"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('library.refresh')}
@@ -405,10 +405,10 @@ export const LibraryScreen: React.FC = () => {
               if (event.key === 'Enter') handleSearchNow();
             }}
             placeholder={t('library.searchPlaceholder')}
-            className="h-9 pl-8 text-sm"
+            className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
-        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm">
+        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
           {t('library.search')}
         </DsButton>
       </div>
@@ -497,7 +497,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkReview}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} weight="fill" />
               {translate('library.bulkReview', { count: reviewTargets.length })}
@@ -510,7 +510,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkEnqueue}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <PlusCircle size={13} />
               {translate('library.bulkEnqueue', { count: enqueueTargets.length })}
@@ -523,7 +523,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkSuspend}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Pause size={13} />
               {translate('library.bulkSuspend', { count: suspendTargets.length })}
@@ -536,7 +536,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkResume}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} />
               {translate('library.bulkResume', { count: resumeTargets.length })}
@@ -548,7 +548,11 @@ export const LibraryScreen: React.FC = () => {
             size="sm"
             disabled={rowBusy}
             onClick={handleBulkDelete}
-            className={bulkDeleteArmed ? 'fc-lib-armed text-xs' : 'text-xs'}
+            className={
+              bulkDeleteArmed
+                ? 'fc-lib-armed text-xs [@media(pointer:coarse)]:!min-h-11'
+                : 'text-xs [@media(pointer:coarse)]:!min-h-11'
+            }
           >
             <Trash size={13} />
             {bulkDeleteArmed
@@ -561,7 +565,7 @@ export const LibraryScreen: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={clearSelection}
-            className="text-xs"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             <X size={13} />
             {translate('library.clearSelection')}
@@ -572,7 +576,13 @@ export const LibraryScreen: React.FC = () => {
       {actionError ? (
         <div role="alert" className="wb-fc-banner flex items-center justify-between gap-3 text-destructive">
           <span className="min-w-0 break-words">{actionError}</span>
-          <DsButton type="button" variant="ghost" size="sm" onClick={clearActionError}>
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={clearActionError}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
             {t('library.dismiss')}
           </DsButton>
         </div>
@@ -582,7 +592,13 @@ export const LibraryScreen: React.FC = () => {
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {t('library.retry')}
             </DsButton>
           </div>
@@ -600,7 +616,13 @@ export const LibraryScreen: React.FC = () => {
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{query ? translate('library.noMatches') : t('library.empty')}</p>
             {query ? (
-              <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
                 {translate('library.clearFilters')}
               </DsButton>
             ) : null}
@@ -609,7 +631,13 @@ export const LibraryScreen: React.FC = () => {
           <div className="wb-fc-empty">
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{translate('library.noMatches')}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {translate('library.clearFilters')}
             </DsButton>
           </div>
@@ -665,6 +693,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page <= 1}
             onClick={() => void goToPage(page - 1)}
             aria-label={t('library.previous')}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <CaretLeft size={14} />
             {t('library.previous')}
@@ -676,6 +705,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page >= pageCount}
             onClick={() => void goToPage(page + 1)}
             aria-label={t('library.next')}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('library.next')}
             <CaretRight size={14} />

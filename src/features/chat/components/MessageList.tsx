@@ -39,6 +39,7 @@ import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
 import { findMessageSearchMatches } from './messageSearch';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
+import { useViewStore } from '@/stores/viewStore';
 
 // ============================================================================
 // 常量定义
@@ -299,6 +300,17 @@ const MessageListInner: React.FC<MessageListProps> = ({
     setSearchQuery('');
     setActiveSearchIndex(0);
   }, []);
+
+  // 全局视图切走 chat-v2 时强制关闭搜索：搜索条两种形态都 portal 在宿主视图
+  // 之外（body / 桌面壳顶栏），ViewLayer 保活（visibility:hidden）不会连带
+  // 隐藏它。状态驱动兜底，覆盖不派发 app:view-switched 的切换路径
+  // （对照 InlineImageViewer 在 currentView !== 'chat-v2' 时关闭预览）。
+  const currentView = useViewStore((s) => s.currentView);
+  useEffect(() => {
+    if (isSearchOpen && currentView !== 'chat-v2') {
+      closeSearch();
+    }
+  }, [isSearchOpen, currentView, closeSearch]);
 
   const moveToSearchMatch = useCallback((direction: 1 | -1) => {
     if (searchMatches.length === 0) return;
@@ -1237,6 +1249,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
       onNavigate={scrollToMessageForAgent}
     />
   ) : null;
+  // header 形态 portal 到桌面壳顶栏插槽；floating 形态（小屏 / 无顶栏插槽）由
+  // MessageSearchBar 自身 portal 到 document.body——小屏下本组件位于
+  // MobileSlidingLayout 的 track 内（常驻 transform），in-tree fixed 会错位。
   const searchBarPortal = searchBar && desktopChatHeaderTarget && !isSmallScreen
     ? createPortal(searchBar, desktopChatHeaderTarget)
     : searchBar;

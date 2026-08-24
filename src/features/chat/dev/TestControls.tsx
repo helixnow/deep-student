@@ -218,7 +218,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleSendTest}
               disabled={!canSend || loading}
               className={cn(
-                'px-3 py-2 min-h-8 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-2 min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-primary text-primary-foreground',
                 'hover:bg-primary/90 transition-colors',
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
@@ -231,7 +231,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleSendCustom}
               disabled={!canSend || loading}
               className={cn(
-                'px-3 py-2 min-h-8 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-2 min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-secondary text-secondary-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors',
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
@@ -244,7 +244,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleStop}
               disabled={!canAbort || loading}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-destructive text-destructive-foreground',
                 'hover:bg-destructive/90 transition-colors',
                 (!canAbort || loading) && 'opacity-50 cursor-not-allowed'
@@ -264,7 +264,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleClear}
               disabled={messageCount === 0 || sessionStatus !== 'idle'}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors',
                 (messageCount === 0 || sessionStatus !== 'idle') &&
@@ -278,7 +278,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleReset}
               disabled={sessionStatus !== 'idle'}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors',
                 sessionStatus !== 'idle' && 'opacity-50 cursor-not-allowed'
@@ -291,7 +291,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               onClick={handleSimulateComplete}
               disabled={sessionStatus !== 'streaming'}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors',
                 sessionStatus !== 'streaming' && 'opacity-50 cursor-not-allowed'
@@ -312,7 +312,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 key={feature}
                 onClick={() => handleToggleFeature(feature)}
                 className={cn(
-                  'px-2 py-1 text-xs rounded-md transition-colors',
+                  'px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md transition-colors',
                   features.get(feature)
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-muted-foreground'
@@ -331,7 +331,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
             <button
               onClick={onToggleDarkMode}
               className={cn(
-                'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
+                'px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
                 'hover:bg-[var(--interactive-hover)] transition-colors'
               )}

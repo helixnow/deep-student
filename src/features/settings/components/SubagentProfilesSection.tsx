@@ -68,7 +68,7 @@ const UNSUPPORTED_RUNTIME_FIELDS = new Set([
 const REASONING_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'x_high']);
 
 const inputClassName = cn(
-  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9',
+  'h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground sm:h-9 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]',
   'outline-none transition-colors duration-150 placeholder:text-muted-foreground/60 focus:border-ring focus:ring-2 focus:ring-ring/20',
   'disabled:cursor-not-allowed disabled:opacity-50',
 );
@@ -357,7 +357,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
           </div>
 
           <details className="group rounded-md border border-[color:var(--border-soft)]" open={Boolean(draft.extraLines.trim())}>
-            <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground">
+            <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground [@media(pointer:coarse)]:min-h-11">
               <CaretDown className="h-3.5 w-3.5 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
               {t('settings:subagentProfiles.form.advanced')}
             </summary>
@@ -382,10 +382,10 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
       {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft)] pt-3">
-        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={onCancel}>
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0" disabled={saving} onClick={() => void handleSubmit()}>
+        <DsButton variant="primary" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" disabled={saving} onClick={() => void handleSubmit()}>
           {saving && <CircleNotch className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {mode === 'create'
             ? t('settings:subagentProfiles.form.create_submit')
@@ -628,7 +628,7 @@ export const SubagentProfilesSection: React.FC = () => {
               {t('settings:subagentProfiles.delete.inline_confirm')}
             </span>
             <div className="flex items-center gap-2">
-              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setConfirmingDeleteFile(null)}>
+              <DsButton size="sm" variant="ghost" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => setConfirmingDeleteFile(null)}>
                 {t('common:cancel')}
               </DsButton>
               <DsButton
@@ -636,7 +636,7 @@ export const SubagentProfilesSection: React.FC = () => {
                 variant="danger"
                 disabled={deleteBusy}
                 onClick={() => void handleConfirmDelete(file.fileName)}
-                className="min-h-11 sm:min-h-0"
+                className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11"
               >
                 {deleteBusy && <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {t('settings:subagentProfiles.delete.confirm')}
@@ -647,7 +647,7 @@ export const SubagentProfilesSection: React.FC = () => {
 
         {/* 点击行主体展开/收起编辑；键盘用户通过铅笔按钮（aria-expanded）操作。 */}
         <div
-          className="group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left sm:flex-nowrap"
+          className="group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left sm:flex-nowrap [@media(pointer:coarse)]:min-h-11"
           onClick={() => (expanded ? closeEditor() : void openEdit(file.fileName))}
         >
           <div className="min-w-0 flex-1">
@@ -759,7 +759,7 @@ export const SubagentProfilesSection: React.FC = () => {
         title={t('settings:subagentProfiles.actions.refresh')}
         disabled={loading}
         onClick={() => void load()}
-        className="max-lg:!h-11 max-lg:!w-11"
+        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       >
         <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
       </DsButton>
@@ -771,7 +771,7 @@ export const SubagentProfilesSection: React.FC = () => {
         title={t('settings:subagentProfiles.actions.open_dir')}
         disabled={!agentsDir}
         onClick={() => void handleOpenDir()}
-        className="max-lg:!h-11 max-lg:!w-11"
+        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       >
         <FolderOpen className="h-4 w-4" aria-hidden="true" />
       </DsButton>
@@ -780,7 +780,7 @@ export const SubagentProfilesSection: React.FC = () => {
         size="sm"
         disabled={!isTauri || expandedId === 'create'}
         onClick={openCreate}
-        className="max-lg:min-h-11"
+        className="max-lg:min-h-11 [@media(pointer:coarse)]:!min-h-11"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
         {t('settings:subagentProfiles.actions.create')}
@@ -807,7 +807,7 @@ export const SubagentProfilesSection: React.FC = () => {
             <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="break-words">{error}</span>
           </span>
-          <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={() => void load()}>
+          <DsButton variant="ghost" size="sm" className="min-h-11 sm:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={() => void load()}>
             {t('settings:subagentProfiles.actions.retry')}
           </DsButton>
         </div>
@@ -861,7 +861,7 @@ export const SubagentProfilesSection: React.FC = () => {
               <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
                 {t('settings:subagentProfiles.empty.description')}
               </p>
-              <DsButton variant="primary" size="sm" className="mt-4" onClick={openCreate}>
+              <DsButton variant="primary" size="sm" className="mt-4 [@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 {t('settings:subagentProfiles.empty.cta')}
               </DsButton>

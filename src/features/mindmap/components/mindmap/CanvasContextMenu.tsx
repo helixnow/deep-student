@@ -97,7 +97,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive,
     {...{ [MENU_ITEM_ATTR]: '' }}
     className={cn(
       'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[var(--menu-shell-row-radius)] text-[13px] text-left transition-colors',
-      '[@media(pointer:coarse)]:min-h-[44px]',
+      '[@media(pointer:coarse)]:!min-h-[44px]',
       'focus-visible:outline-none focus-visible:bg-[var(--menu-shell-row-hover)]',
       destructive
         ? 'text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10'
@@ -147,7 +147,7 @@ export const ColorPalette: React.FC<{
             className={cn(
               '!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0',
               'motion-reduce:hover:scale-100',
-              '[@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10',
+              '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
               selected ? 'border-primary scale-110' : 'border-transparent',
             )}
             style={{ backgroundColor: color }}
@@ -158,7 +158,7 @@ export const ColorPalette: React.FC<{
           />
         );
       })}
-      <DsButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:!h-10 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
+      <DsButton variant="ghost" size="icon" iconOnly {...{ [MENU_ITEM_ATTR]: '' }} className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 border border-[var(--menu-shell-border)] text-muted-foreground hover:bg-[var(--menu-shell-row-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
         <X className="w-2.5 h-2.5" />
       </DsButton>
     </div>
@@ -442,7 +442,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
   /** 格式类快捷按钮（加粗/标题等）：保持菜单打开，可连续操作 */
   const formatBtnClass = (activeState: boolean) => cn(
-    'w-7 h-7 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-[var(--menu-shell-row-radius)]',
+    'w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded-[var(--menu-shell-row-radius)]',
     'hover:bg-[var(--menu-shell-row-hover)] focus-visible:outline-none focus-visible:bg-[var(--menu-shell-row-hover)]',
     activeState && 'bg-[var(--menu-shell-row-active)] text-primary',
   );
@@ -670,6 +670,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                 <DsButton
                   variant="danger"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   {...{ [MENU_ITEM_ATTR]: '' }}
                   onClick={() => exec(() => deleteNode(nodeId))}
                 >
@@ -678,6 +679,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
                 <DsButton
                   variant="utility"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   autoFocus
                   {...{ [MENU_ITEM_ATTR]: '' }}
                   onClick={() => setConfirmingDelete(false)}

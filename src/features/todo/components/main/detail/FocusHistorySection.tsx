@@ -124,7 +124,7 @@ export const FocusHistorySection: React.FC<{
           <button
             type="button"
             onClick={onStartFocus}
-            className="flex flex-shrink-0 items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+            className="flex flex-shrink-0 items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5"
             title={t('todo:actions.startFocusSession')}
           >
             <Play size={12} />
@@ -149,7 +149,7 @@ export const FocusHistorySection: React.FC<{
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className="flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1 py-0.5 text-xs text-muted-foreground/70 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+              className="flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1 py-0.5 text-xs text-muted-foreground/70 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5"
             >
               <CaretDown
                 size={11}

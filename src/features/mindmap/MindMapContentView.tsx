@@ -1002,12 +1002,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     [isActive, resourceId]
   );
 
+  // 移动全屏子屏打开时给容器打标，CSS 据此在移动断点内隐藏 mm-toolbar
+  // （对照演示模式 is-presentation）：避免宿主顶栏+工具栏+子屏顶栏三层
+  // chrome 叠加，且被子屏覆盖不到的工具条不再可点。
+  // showShortcutHelp 在桌面渲染为内联面板，CSS 规则限定移动断点，不影响桌面。
+  const hasMobileSubview =
+    showMobileStructure || showMobileStyle || showMobileMore || showShortcutHelp;
+
   return (
     <>
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
-    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", className)}>
+    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", hasMobileSubview && "has-mobile-subview", className)}>
       {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
@@ -1016,6 +1023,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           <SegmentedControl<'outline' | 'mindmap'>
             ariaLabel={t('mindmap:toolbar.view')}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             value={currentView === 'outline' ? 'outline' : 'mindmap'}
             onValueChange={(next) => switchView(next)}
             options={[
@@ -1266,7 +1274,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
           {/* Mobile: 「更多」入口 → 全屏内联子屏（同结构/样式子屏范式，替代浮层菜单） */}
           <DsButton
             variant="ghost"
-            className="ds-btn mm-mobile-more w-10 h-10 justify-center px-0 md:hidden"
+            className="ds-btn mm-mobile-more w-10 h-10 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 justify-center px-0 md:hidden"
             aria-label={t('mindmap:toolbar.moreActions')}
             title={t('mindmap:toolbar.moreActions')}
             onClick={openMobileMore}
@@ -1420,6 +1428,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 variant="ghost"
                 className={cn(
                   'ds-btn h-6 px-1.5 text-xs font-medium',
+                  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                   searchCaseSensitive
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
@@ -1436,6 +1445,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 variant="ghost"
                 className={cn(
                   'ds-btn h-6 px-1.5 text-xs font-medium',
+                  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
                   searchWholeWord
                     ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
                     : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
@@ -1586,7 +1596,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
               <DsButton variant="ghost"
-                className="ds-btn mt-4 mx-auto"
+                className="ds-btn mt-4 mx-auto [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void tryLoadMindMap()}
               >
                 <ArrowClockwise size={16} />

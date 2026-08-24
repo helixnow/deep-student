@@ -91,21 +91,21 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsPaused(!isPaused)}
-            className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-warning' : 'text-muted-foreground'}`}
+            className={`p-1.5 rounded hover:bg-muted [@media(pointer:coarse)]:min-h-11 ${isPaused ? 'text-warning' : 'text-muted-foreground'}`}
             title={isPaused ? '继续记录' : '暂停记录'}
           >
             {isPaused ? <Play size={16} /> : <Pause size={16} />}
           </button>
           <button
             onClick={copyToClipboard}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground [@media(pointer:coarse)]:min-h-11"
             title="复制日志"
           >
             <Copy size={16} />
           </button>
           <button
             onClick={clearEvents}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground [@media(pointer:coarse)]:min-h-11"
             title="清除日志"
           >
             <Trash size={16} />

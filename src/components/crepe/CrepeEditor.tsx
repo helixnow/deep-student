@@ -76,6 +76,7 @@ import {
   isCrepeBlockMenuDocCurrent,
   shouldDismissCrepeBlockMenuForKey,
 } from './blockMenuState';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 type BlockMenuState = { pos: number; x: number; y: number; doc: unknown } | null;
 type BlockMenuAction = CrepeBlockTurnInto | 'duplicate' | 'delete';
@@ -381,6 +382,17 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       window.removeEventListener('resize', close);
     };
   }, [blockMenu, runBlockAction, setBlockMenuActiveIndex]);
+
+  // 📱 Android 系统返回键：块菜单打开时先关菜单（overlay 级），避免返回键穿透到
+  // 底层视图/导航。仅随开合注册注销，菜单位置变化不重挂 handler。
+  const blockMenuOpen = !!blockMenu;
+  useEffect(() => {
+    if (!blockMenuOpen) return;
+    return registerBackHandler(() => {
+      setBlockMenu(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [blockMenuOpen]);
   
   // 保持回调/配置引用最新（初始化 effect 只依赖 noteId，闭包内一律经 ref 读取）
   onChangeRef.current = onChange;

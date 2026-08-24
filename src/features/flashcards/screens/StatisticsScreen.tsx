@@ -272,7 +272,7 @@ export const StatisticsScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={handleRefresh}
-          className="shrink-0 text-sm"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('statistics.refresh')}
@@ -288,7 +288,13 @@ export const StatisticsScreen: React.FC = () => {
             </p>
             <p className="max-w-md break-words text-xs text-destructive/90">{error}</p>
           </div>
-          <DsButton type="button" variant="default" size="sm" onClick={() => void load()}>
+          <DsButton
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => void load()}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
             <ArrowClockwise size={15} />
             {t('statistics.retry')}
           </DsButton>

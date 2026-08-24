@@ -124,7 +124,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   variant="ghost"
                   size="sm"
                   onClick={this.handleCopyError}
-                  className={this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}
+                  className={`[@media(pointer:coarse)]:!min-h-11 ${this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}`}
                 >
                   {this.state.copied
                     ? i18n.t('common:error_boundary.copied', 'Copied')
@@ -140,7 +140,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           )}
           {/* 这个按钮只重挂子树，不重载页面——文案必须是「重试」。
               真正的刷新在 TopLevelFallback（那里才用 error_boundary.refresh）。 */}
-          <DsButton variant="primary" size="md" onClick={this.resetError}>
+          <DsButton variant="primary" size="md" onClick={this.resetError} className="[@media(pointer:coarse)]:!min-h-11">
             {i18n.t('common:error_boundary.retry', 'Try again')}
           </DsButton>
         </div>

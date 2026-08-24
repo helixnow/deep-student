@@ -503,7 +503,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
               variant="outline"
               size="sm"
               onClick={handleOpenTarget}
-              className="lg:h-7 gap-1.5 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
+              className="lg:h-7 [@media(pointer:coarse)]:!min-h-11 gap-1.5 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
               data-testid="workbench-ops-open"
               aria-label={t('blocks.workbenchOps.openTarget')}
               title={t('blocks.workbenchOps.openTarget')}
@@ -705,7 +705,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             size="sm"
             onClick={() => void handleUndo()}
             disabled={!canUndo}
-            className="text-xs sm:text-sm gap-1.5"
+            className="text-xs sm:text-sm gap-1.5 [@media(pointer:coarse)]:!min-h-11"
             data-testid="workbench-ops-undo"
             title={
               undoExpired

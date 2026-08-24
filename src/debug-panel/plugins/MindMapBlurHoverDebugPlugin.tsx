@@ -164,18 +164,18 @@ export default function MindMapBlurHoverDebugPlugin({ isActive }: DebugPanelPlug
         <DsButton
           variant={enabled ? 'warning' : 'success'}
           onClick={() => setEnabled(prev => !prev)}
-          className="h-8 px-3"
+          className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11"
         >
           {enabled ? <Pause size={16} className="mr-1" /> : <Play size={16} className="mr-1" />}
           {enabled
             ? t('debug_panel.mindmap_blur_monitor.pause')
             : t('debug_panel.mindmap_blur_monitor.resume')}
         </DsButton>
-        <DsButton variant="ghost" onClick={() => setSamples([])} className="h-8 px-3">
+        <DsButton variant="ghost" onClick={() => setSamples([])} className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11">
           <Trash size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.clear')}
         </DsButton>
-        <DsButton variant="primary" onClick={() => void copyLogs()} className="h-8 px-3" disabled={samples.length === 0}>
+        <DsButton variant="primary" onClick={() => void copyLogs()} className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11" disabled={samples.length === 0}>
           <Copy size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.copy')}
         </DsButton>

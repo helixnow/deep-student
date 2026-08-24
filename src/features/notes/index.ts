@@ -2,37 +2,21 @@
  * Notes feature - public API
  */
 
-// Main components
-export { default as NotesHome } from './NotesHome';
+// Main components（历史 NotesHome 视图已下线删除，2026-08）
 export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
-export { NotesHeader } from './NotesHeader';
 export { NotesLibraryManager } from './NotesLibraryManager';
-export { NotesSidebarV2 } from './NotesSidebarV2';
-export { default as NotesTabsBar } from './NotesTabsBar';
-export { PreviewPanel } from './PreviewPanel';
 export { AIDiffPanel } from './AIDiffPanel';
-export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
 
 // Context
 export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';
 export type { CanvasAIStatus, CanvasNoteMetadata, CanvasModeState, LearningHubContent } from './NotesContext';
 
-// DndFileTree
-export { DndFileTree, ReferenceIcon } from './DndFileTree';
-export type { TreeData, TreeNode, DragInfo, TreeCallbacks, NodeType, ReferenceData, ReferenceNode, SourceDatabase, PreviewType } from './DndFileTree';
+// DndFileTree 组件已于 2026-08 零挂载删除（workbench 笔记树独立实现，见
+// src/features/workbench/apps/notes/tree/）；树数据类型迁至 notesUtils（见下方导出）。
 
-// Reference selector
-export { ReferenceSelector, ReferenceSelectorItem, listTextbooks } from './reference-selector';
-export type { ReferenceSelectorProps, ReferenceSelectorType, ReferenceSelectResult, TextbookListItem, UnifiedResourceItem } from './reference-selector';
-
-// Preview
-export { MarkdownPreview } from './preview/MarkdownPreview';
-export { PDFPreview } from './preview/PDFPreview';
-export { ImagePreview } from './preview/ImagePreview';
-export { ExamPreview } from './preview/ExamPreview';
-export { AudioPreview } from './preview/AudioPreview';
-export { VideoPreview } from './preview/VideoPreview';
+// Preview 组件组（MarkdownPreview/PDFPreview/ImagePreview/ExamPreview）
+// 已于 2026-08 确认零消费方后删除；预览统一走 learning-hub 与 DSTU editors。
 
 // Types
 export {
@@ -59,9 +43,16 @@ export {
   isValidReferenceNode,
   createReferenceNode,
 } from './types';
-export type { ExtendedFolderStructure, CreateReferenceNodeParams, ExtendedSourceDatabase } from './types';
+export type {
+  ExtendedFolderStructure,
+  CreateReferenceNodeParams,
+  ExtendedSourceDatabase,
+  ReferenceNode,
+  SourceDatabase,
+  PreviewType,
+} from './types';
 
-// Store（兼容空壳，勿在新代码使用；树状态走 DndFileTree/TreeContext）
+// Store（兼容空壳，勿在新代码使用；树状态由 workbench NotesWorkspaceTree 自持）
 export { useNotesTreeStore } from './stores/notesTreeStore';
 
 // Utilities
@@ -162,7 +153,7 @@ export type { NotesFocusModeEventDetail } from './focusModeOwnership';
 export { getNoteTemplates, renderNoteTemplate, applyNoteTemplate } from './noteTemplates';
 export type { NoteTemplate, NoteTemplateId, NoteTemplateVariables } from './noteTemplates';
 
-// 树 / 内容工具（NotesHeader / 侧栏等消费）
+// 树 / 内容工具（NotesEditorHeader / 侧栏等消费）
 export {
   normalizeContentForEditor,
   sortTreeChildren,
@@ -170,4 +161,11 @@ export {
   buildTreeData,
   deriveNoteTitleText,
 } from './notesUtils';
-export type { TreeBuildParams, TreeSortMethod } from './notesUtils';
+export type {
+  TreeBuildParams,
+  TreeSortMethod,
+  TreeData,
+  TreeNode,
+  NodeType,
+  ReferenceData,
+} from './notesUtils';

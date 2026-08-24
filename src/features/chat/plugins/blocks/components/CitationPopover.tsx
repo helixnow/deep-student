@@ -29,6 +29,7 @@ import {
 } from '@phosphor-icons/react';
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { CitationSourceContext } from '../../../utils/citationSourceContext';
 
 // ============================================================================
@@ -166,6 +167,17 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
     };
   }, [anchorEl, onClose]);
 
+  // 📱 Android 系统返回键：浮层挂载即处于打开态，返回键先关浮层（overlay 级），
+  // 避免穿透到底层导航。onClose 经 ref 读取，保持注册在整个挂载期稳定。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
+
   if (typeof document === 'undefined') {
     return null;
   }
@@ -242,7 +254,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       {/* 底部操作：有 url 时提供外链打开 */}
       {hasUrl && (
         <div className="p-2 border-t border-border/50">
-          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full [@media(pointer:coarse)]:!min-h-11">
             <ArrowSquareOut size={14} />
             <span className="truncate">{t('blocks.retrieval.openSource')}</span>
           </DsButton>
@@ -294,6 +306,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
         'text-xs font-medium',
         'bg-primary/10 text-primary',
         'hover:bg-primary/20',
+        '[@media(pointer:coarse)]:!min-h-11',
         className
       )}
     >
