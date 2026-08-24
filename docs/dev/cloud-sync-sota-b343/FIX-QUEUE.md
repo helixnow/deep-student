@@ -619,3 +619,11 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 `delta_upload.rs`：`publish_verified_staging` 持 backup-v2 租约，随机不可变对象、同设备 `reuse_candidates` 复用、objects→descriptor→index commit，失败留孤儿。`mod.rs` 仅 `pub mod delta_upload;`。测试 `sync_r12_delta_upload.rs` 11 例。**未接线**，不能宣称增量备份已实现。
 
 父代理合入后将 inventory / lease 源码锁放行 `delta_upload.rs`（仍禁止 `sync_manager` / 命令 / UI）。
+
+## Round 16（增量 restore 积木，仍不接命令/UI）
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| delta-restore | `cursor/cloud-sync-sota-delta-restore-b343` | DELTA-R11 R12-delta-restore：v2 下载、三层校验、完整 staging/兼容 ZIP 物化、缺对象不触活动槽；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_restore.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_restore;`；新 `src-tauri/tests/sync_r12_delta_restore.rs` |
+
+禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `delta_upload.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
