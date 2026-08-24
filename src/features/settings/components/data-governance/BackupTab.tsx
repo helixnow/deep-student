@@ -438,7 +438,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onCancelBackup}
-                className="text-destructive hover:text-destructive"
+                className="text-destructive hover:text-destructive [@media(pointer:coarse)]:min-h-11"
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
