@@ -164,7 +164,8 @@
 13. ~~**Round 59 合同 / 防御纵深**~~ — ✅ meta sessionId、孤儿 copy-block、markdown 链接、Object.hasOwn
 14. ~~**Round 60 HPIAS 隔离 / 宿主守卫**~~ — ✅ 无 session 不订阅；Panel 统一 action 守卫；markdown ref/srcset
 15. ~~**Round 61 store 会话守卫**~~ — ✅ 外会话 plan/synthesis 不覆盖活跃 HPIAS store
-16. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+16. ~~**Round 62 文本消毒 lint**~~ — ✅ `sanitizeGenerativeText` 去掉控制字符字面量正则
+17. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 

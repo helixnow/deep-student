@@ -1,5 +1,11 @@
 # Generative UI 进度日志
 
+## Round 62（2026-08-24）— 文本消毒 no-control-regex
+
+CI Frontend（`98cb146f`）ESLint 失败：`sanitizeGenerativeText` 控制字符正则。改为 `new RegExp` + `fromCharCode`，与 URL 消毒一致。
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 61（2026-08-24）— store 层会话守卫
 
 1. [x] `HpiasStore.handleEvent` 在已有 session 时忽略其他 `session_id` 的非 `session_started` 事件
