@@ -97,6 +97,13 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
   getCloudPlatformErrorI18nKey: () => undefined,
+  PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE: 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE',
+  isImportedArchiveSlotRestorable: (stats?: { recovery_kind?: unknown; restorable?: unknown } | null) => {
+    if (!stats) return true;
+    if (stats.recovery_kind === 'partial_archive') return false;
+    if (stats.restorable === false) return false;
+    return true;
+  },
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -225,6 +232,14 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       restoreBlock.indexOf('setDownloading(true)'),
     );
+    const importIdx = restoreBlock.indexOf('importZip(');
+    const restoreIdx = restoreBlock.indexOf('restoreBackup(');
+    const kindIdx = restoreBlock.indexOf('isImportedArchiveSlotRestorable');
+    expect(importIdx).toBeGreaterThan(-1);
+    expect(restoreIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeLessThan(restoreIdx);
+    expect(restoreBlock).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
 
     expect(componentSource).toContain('localizeCloudStorageError');
     expect(localizeSource).toContain('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT');

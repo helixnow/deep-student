@@ -16,6 +16,7 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
 
 import {
   CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+  isImportedArchiveSlotRestorable,
   PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
   STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
   SYNC_E2EE_WRONG_PASSWORD_CODE,
@@ -119,6 +120,50 @@ describe('localizeCloudStorageError', () => {
       'utf-8',
     );
     expect(restore).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
+  });
+
+  it('cloud and local ZIP restore paths refuse before restoreBackup', () => {
+    const cloud = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/CloudStorageSection.tsx'),
+      'utf-8',
+    );
+    const cloudRestore = cloud.slice(
+      cloud.indexOf('const performRestore = useCallback'),
+      cloud.indexOf('const handleRestore = useCallback'),
+    );
+    const local = readFileSync(
+      resolve(process.cwd(), 'src/components/DataImportExport.tsx'),
+      'utf-8',
+    );
+    const localImport = local.slice(
+      local.indexOf('const handleImportZipBackup'),
+      local.indexOf('const handleSaveBackup'),
+    );
+    for (const src of [cloudRestore, localImport]) {
+      const importIdx = src.indexOf('importZip(');
+      const restoreIdx = src.indexOf('restoreBackup(');
+      const kindIdx = src.indexOf('isImportedArchiveSlotRestorable');
+      expect(importIdx).toBeGreaterThan(-1);
+      expect(restoreIdx).toBeGreaterThan(importIdx);
+      expect(kindIdx).toBeGreaterThan(importIdx);
+      expect(kindIdx).toBeLessThan(restoreIdx);
+    }
+  });
+
+  it('refuses portable/partial import stats before slot restore, and lets missing stats fall through', () => {
+    expect(isImportedArchiveSlotRestorable(undefined)).toBe(true);
+    expect(isImportedArchiveSlotRestorable(null)).toBe(true);
+    expect(isImportedArchiveSlotRestorable({})).toBe(true);
+    expect(isImportedArchiveSlotRestorable({ recovery_kind: 'disaster_recovery' })).toBe(true);
+    expect(isImportedArchiveSlotRestorable({ restorable: true })).toBe(true);
+    expect(isImportedArchiveSlotRestorable({ recovery_kind: 'partial_archive' })).toBe(false);
+    expect(isImportedArchiveSlotRestorable({ restorable: false })).toBe(false);
+    expect(
+      isImportedArchiveSlotRestorable({
+        recovery_kind: 'disaster_recovery',
+        restorable: false,
+      }),
+    ).toBe(false);
   });
 
   it('maps rewritten E2EE diagnostics by stable code', () => {

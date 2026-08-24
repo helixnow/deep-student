@@ -1044,6 +1044,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // 阶段 2/3：导入 ZIP
       setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
+      let importSummary: BackupJobSummary;
       try {
         const zipArgs = resolveCloudZipEncryptionArgs();
         const importJob = await DataGovernanceApi.importZip(
@@ -1052,11 +1053,24 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           zipArgs.encryptionPassword,
           zipArgs.useStoredCloudEncryptionPassword,
         );
-        const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
+        importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.importZipFailed', { error: localizeCloudError(e) }));
+      }
+
+      // 导入已写 recovery_kind / restorable：便携/部分归档不要再启动整槽恢复。
+      // stats 缺失（旧后端）仍走 restore 门，由 E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE 兜底。
+      if (!cloudApi.isImportedArchiveSlotRestorable(importSummary.result?.stats)) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', {
+            error: localizeCloudError({
+              code: cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+              message: `[${cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] portable or partial archive`,
+            }),
+          }),
+        );
       }
 
       // 阶段 3/3：恢复数据库
