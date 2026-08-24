@@ -22,7 +22,7 @@
 | R1 | ✅ | 10 | P0 构建快速 wins（WI-1/2/3/5/8/10 + CI 降频） | 本 PR |
 | R2 | ✅ | 10 | P0 WI-4 + P1 静态资源/前端/Agent schema | 本 PR |
 | R3 | ✅ | 10 | deps/CI/Agent schema/P2 前置 | 本 PR |
-| R4 | 🔄 | 10 | tsgo 落地、WI-12 实现、WI-11 Phase1 | — |
+| R4 | ⚠️ 收尾 | 10 | 9/10 工作包已合入；WI-11 Phase1 产物缺失 | 本 PR |
 | … | ⏳ | … | 持续至 ≥R20 | — |
 
 ## Work Item 总表（来源：初始调研 WI-1..13）
@@ -35,13 +35,13 @@
 | WI-4 | P0 | Release 前端一次构建 | ✅ R2 `2ee0039d` |
 | WI-5 | P0 | PDF worker 冗余清理 | ✅ R1 `39579e63` |
 | WI-6 | P1 | Android mobile-slim | 🔄 R2 compile ✅ / R3 CI |
-| WI-7 | P1 | rolldown-vite + swc + tsgo | 🔄 R2 rolldown❌ / R3 swc+tsgo |
-| WI-8 | P1 | 依赖收敛 + bundle 门禁 | 🔄 R2 DnD ✅ / R3 删依赖 |
-| WI-9 | P1 | pdfjs 按需化 | 🔄 R2 子集 ✅ / R4 运行时 fallback + legal 去重 ✅ |
-| WI-10 | P1 | Token 预算治理 | 🔄 R2 -15.8% / R3 继续 |
-| WI-11 | P2 | Provider 协议归一 | R10+ |
-| WI-12 | P2 | Session JSONL replay | R12+ |
-| WI-13 | P2 | Tool loop hooks | R15+ |
+| WI-7 | P1 | rolldown-vite + swc + tsgo | ✅ R4 tsgo 落地（rolldown 留待 Vite 7） |
+| WI-8 | P1 | 依赖收敛 + bundle 门禁 | ✅ R4 再删 19 个生产依赖，FlowToken 改懒加载 |
+| WI-9 | P1 | pdfjs 按需化 | ✅ R4 运行时 fallback + legal 去重 |
+| WI-10 | P1 | Token 预算治理 | ✅ R4 43 个 skill 组全部精简，护栏收紧 |
+| WI-11 | P2 | Provider 协议归一 | ⚠️ R4 Phase1 未交付：`provider_quirks.rs` 缺失 |
+| WI-12 | P2 | Session JSONL replay | ✅ R4 JSONL export + 测试 + Tauri command（`ae714af9`） |
+| WI-13 | P2 | Tool loop hooks | 🔄 R4 已落审批/审计 hooks 第一阶段（`728472b4`） |
 
 ## R1 成果摘要（2026-08-24）
 
@@ -62,20 +62,33 @@
 - tsgo spike：7.8× 提速，待 R4 落地；schema batch2 -11.4%；bundle 基线收紧
 - WI-12 spec+stub；WI-11 四阶段计划；frontend CI 并行；actionlint 复审无新增告警
 
-## R4 子代理分配（大工作包，进行中）
+## R4 成果摘要与遗留（2026-08-24）
 
-| # | 工作包 | 子代理 |
-| --- | --- | --- |
-| 1 | tsgo 全量落地：tsconfig + Blob 修复 + CI 双跑 | SA-R4-01 |
-| 2 | WI-12 JSONL 导出完整实现 + 测试 + Tauri command | SA-R4-02 |
-| 3 | WI-11 Phase1 全部 11-1a~1d（quirks + 快照） | SA-R4-03 |
-| 4 | 前端未用依赖清扫 + licenses + 低频库评估落地 | SA-R4-04 |
-| 5 | WI-10 剩余全部 skill 组精简 + 首轮 token CI 报告 | SA-R4-05 |
-| 6 | WI-13：tool_loop 横切抽 PipelineHook（审批+审计） | SA-R4-06 |
-| 7 | CI 剩余：linux apt、36 条 actionlint、注释与门禁 | SA-R4-07 |
-| 8 | WI-9：pdfjs 运行时下载 + legal 去重 + 静态资产 | SA-R4-08 |
-| 9 | Rust 编译卫生：大文件拆分非 pipeline 热点 + 测试 | SA-R4-09 |
-| 10 | 复审 R1–R3 遗漏并落地修复（质量债清扫） | SA-R4-10 |
+- 已合入 tsgo、WI-12 JSONL export、WI-10 收口、WI-13 hooks 第一阶段、CI/质量债、
+  PDF 运行时 fallback、Rust 大文件拆分，以及 R4-04 依赖清扫（`e31ace7b`）。
+- R4-04 从生产依赖再移除 19 项，FlowToken 改为懒加载；`THIRD_PARTY_NOTICES`
+  冲突按最终 lockfile 重新对齐，保留依赖清扫后的 1847 个组件清单。
+- **唯一缺失工作包是 WI-11 Phase1**：远端未发现对应 R4 分支，集成分支没有
+  `llm_manager/provider_quirks.rs`，`model2_pipeline.rs` 仍保留
+  `is_mimo_config` / `is_mistral_config` / `is_qwen_config` 等原判定函数。
+  后续收尾代理应按 `WI-11-provider-refactor-plan.md` 的 11-1a..1d 单独实现。
+- 依赖清扫遗留：framer-motion LazyMotion 迁移需动画回归；另行核验
+  `vite.config.ts` 中历史 `react-hotkeys-hook` optimizeDeps 条目。
+
+## R4 子代理分配（收尾）
+
+| # | 工作包 | 子代理 | 收尾状态 |
+| --- | --- | --- | --- |
+| 1 | tsgo 全量落地：tsconfig + Blob 修复 + CI 双跑 | SA-R4-01 | ✅ `bd145465` |
+| 2 | WI-12 JSONL 导出完整实现 + 测试 + Tauri command | SA-R4-02 | ✅ `ae714af9` |
+| 3 | WI-11 Phase1 全部 11-1a~1d（quirks + 快照） | SA-R4-03 | ❌ 未发现产物/远端分支 |
+| 4 | 前端未用依赖清扫 + licenses + 低频库评估落地 | SA-R4-04 | ✅ `e31ace7b`（WRAP 合入） |
+| 5 | WI-10 剩余全部 skill 组精简 + 首轮 token CI 报告 | SA-R4-05 | ✅ `2b98a42f` |
+| 6 | WI-13：tool_loop 横切抽 PipelineHook（审批+审计） | SA-R4-06 | ✅ `728472b4` + `8454faf9` |
+| 7 | CI 剩余：linux apt、36 条 actionlint、注释与门禁 | SA-R4-07 | ✅ `82bbc874` |
+| 8 | WI-9：pdfjs 运行时下载 + legal 去重 + 静态资产 | SA-R4-08 | ✅ `d248cbab` + `53057822` |
+| 9 | Rust 编译卫生：大文件拆分非 pipeline 热点 + 测试 | SA-R4-09 | ✅ `83e344e6` |
+| 10 | 复审 R1–R3 遗漏并落地修复（质量债清扫） | SA-R4-10 | ✅ `f881b4b7` + `94d4e69d` |
 
 ## R3 子代理分配（已完成）
 
