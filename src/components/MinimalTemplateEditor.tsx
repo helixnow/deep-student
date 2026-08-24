@@ -697,23 +697,23 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {!hideSidebar && (
         <div className="editor-sidebar">
           <nav className="editor-nav scrollbar-none">
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:min-h-11 ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
               <FileText size={18} />
               {t('basic_info')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:min-h-11 ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
               <Code size={18} />
               {t('template_code')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:min-h-11 ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
               <Database size={18} />
               {t('preview_data')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:min-h-11 ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
               <Gear size={18} />
               {t('extraction_rules')}
             </DsButton>
-            <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
+            <DsButton variant="ghost" size="sm" className={`nav-item [@media(pointer:coarse)]:min-h-11 ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
               <Gear size={18} />
               {t('advanced_settings')}
             </DsButton>
@@ -987,6 +987,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   <DsButton
                     type="button"
                     variant="ghost"
+                    className="[@media(pointer:coarse)]:min-h-11"
                     onClick={copyJsonTemplate}
                   >
                     <Copy size={16} className="mr-2" />
@@ -1118,6 +1119,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         type="button"
                         variant="ghost"
                         size="sm"
+                        className="[@media(pointer:coarse)]:min-h-11"
                         onClick={() => setShowPromptPreview(!showPromptPreview)}
                       >
                         {showPromptPreview ? <EyeSlash size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
@@ -1179,11 +1181,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             )}
           </div>
           <div className="flex gap-3 shrink-0">
-            <DsButton type="button" variant="ghost" onClick={onCancel}>
+            <DsButton type="button" variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onCancel}>
               {t('cancel_button')}
             </DsButton>
             <DsButton
               type="button"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={handleSubmit}
               disabled={isSubmitting}
             >
