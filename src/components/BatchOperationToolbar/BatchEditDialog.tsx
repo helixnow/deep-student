@@ -349,7 +349,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                       {changes.tags!.value.map((tag, index) => (
                         <span key={index} className="tag">
                           {tag}
-                          <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label="remove">
+                          <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(index)} className="tag-remove" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                             <X size={14} />
                           </DsButton>
                         </span>
