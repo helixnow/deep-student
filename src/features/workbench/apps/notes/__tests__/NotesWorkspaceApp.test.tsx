@@ -921,7 +921,12 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(await within(dialog).findByRole('option', { name: /匹配笔记/ }));
 
     await screen.findByTestId('note-editor-note_1');
-    expect(consumeNotesFindQuery('note_1')).toBe('内容');
+    // publish 在 openResource await 之后的续体中落地，编辑器挂载可能先一步
+    // 被 findByTestId 捕获 —— 用 waitFor 容忍这一微任务间隙（consume 读到
+    // null 不删除 pending，重试安全）
+    await waitFor(() => {
+      expect(consumeNotesFindQuery('note_1')).toBe('内容');
+    });
   });
 
   it('toggles the backlinks panel from a workspace command', async () => {
