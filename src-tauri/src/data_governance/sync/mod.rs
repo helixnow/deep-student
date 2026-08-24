@@ -37,6 +37,7 @@
 //! - 进度回调和实时状态更新
 
 // 子模块声明
+pub mod asset_filenames;
 pub mod classification;
 pub mod conflict_resolver;
 pub mod emitter;
@@ -48,6 +49,7 @@ pub mod state;
 pub mod tombstone;
 
 // 重新导出常用类型
+pub use asset_filenames::FILENAME_CONFLICT_MARKER;
 pub use conflict_resolver::{
     ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
     ConflictResolver, ConflictSide,
@@ -582,11 +584,23 @@ impl AssetSyncOutcome {
         if !self.has_failures() {
             return None;
         }
-        Some(format!(
+        let mut summary = format!(
             "资产目录同步部分失败：{} 个上传失败，{} 个下载失败",
             self.upload_failures.len(),
             self.download_failures.len()
-        ))
+        );
+        // [R09-names] 文件名冲突需要用户改名才能消解：把第一条冲突详情（含稳定
+        // 标记）带进 summary，前端据标记映射为人话错误。
+        if let Some(conflict) = self
+            .upload_failures
+            .iter()
+            .chain(self.download_failures.iter())
+            .find(|message| message.contains(asset_filenames::FILENAME_CONFLICT_MARKER))
+        {
+            summary.push_str("；");
+            summary.push_str(conflict);
+        }
+        Some(summary)
     }
 }
 
@@ -10707,12 +10721,22 @@ impl SyncManager {
 
         let mut local_files: HashMap<String, (std::path::PathBuf, String, u64, String)> =
             HashMap::new();
+        // [R09-names] 本地两个文件净化后重名（`file.` vs `file`、NFC vs NFD）的
+        // 冲突记录，稍后并入 upload_failures。
+        let mut scan_conflicts: Vec<String> = Vec::new();
         for dir_name in Self::ACTIVE_ASSET_DIRS {
             let dir = active_dir.join(dir_name);
             if !dir.exists() {
                 continue;
             }
-            Self::scan_asset_tree("active", dir_name, &dir, &dir, &mut local_files)?;
+            Self::scan_asset_tree(
+                "active",
+                dir_name,
+                &dir,
+                &dir,
+                &mut local_files,
+                &mut scan_conflicts,
+            )?;
         }
 
         let app_side = app_data_dir.join("pdf_ocr_sessions");
@@ -10723,18 +10747,124 @@ impl SyncManager {
                 &app_side,
                 &app_side,
                 &mut local_files,
+                &mut scan_conflicts,
             )?;
+        }
+
+        // [R09-names] 云端 key 的净化等价视图：
+        // - `canonical_to_cloud[净化 key] = 该等价组的代表云端 key`（已净化的 key
+        //   幂等映射到自身；净化前上传的遗留 key 映射到其净化形态）。
+        // - 同一净化形态下出现多个云端 key（遗留混乱）时，优先取「key 本身即
+        //   净化形态」的条目，否则字典序最小；被遮蔽者记入 shadowed_cloud_keys。
+        let mut canonical_to_cloud: HashMap<String, String> = HashMap::new();
+        let mut shadowed_cloud_keys: Vec<(String, String)> = Vec::new(); // (被遮蔽, 代表)
+        {
+            let mut sorted_cloud_keys: Vec<&String> = cloud_manifest.entries.keys().collect();
+            sorted_cloud_keys.sort();
+            for cloud_key in sorted_cloud_keys {
+                let canonical = asset_filenames::sanitize_asset_key(cloud_key)
+                    .unwrap_or_else(|| cloud_key.clone());
+                match canonical_to_cloud.entry(canonical) {
+                    std::collections::hash_map::Entry::Vacant(vacant) => {
+                        vacant.insert(cloud_key.clone());
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut occupied) => {
+                        let incoming_is_canonical = cloud_key == occupied.key();
+                        let current_is_canonical = occupied.get() == occupied.key();
+                        if incoming_is_canonical && !current_is_canonical {
+                            shadowed_cloud_keys.push((occupied.get().clone(), cloud_key.clone()));
+                            occupied.insert(cloud_key.clone());
+                        } else {
+                            shadowed_cloud_keys.push((cloud_key.clone(), occupied.get().clone()));
+                        }
+                    }
+                }
+            }
+        }
+        // 大小写折叠视图（冲突检测）：casefold -> 字典序最小的净化 key
+        let mut cloud_casefold: HashMap<String, String> = HashMap::new();
+        {
+            let mut canonicals: Vec<&String> = canonical_to_cloud.keys().collect();
+            canonicals.sort();
+            for canonical in canonicals {
+                cloud_casefold
+                    .entry(asset_filenames::casefold_key(canonical))
+                    .or_insert_with(|| canonical.clone());
+            }
         }
 
         let mut new_manifest = cloud_manifest.clone();
         let mut uploaded = 0usize;
         let mut upload_failures = Vec::new();
+        // [R09-names] 净化 key -> 被迁移的遗留云端 key（内容更新时改名迁移）
+        let mut migrated_from: HashMap<String, String> = HashMap::new();
 
         if direction != SyncDirection::Download {
             // [R07-asset-e2ee] 无密码但云端已有加密标记 → 拒绝明文文件级上传
             self.ensure_file_upload_encryption_policy(storage).await?;
-            for (key, (path, sha256, size, local_updated_at)) in &local_files {
-                let should_upload = match cloud_manifest.entries.get(key) {
+            upload_failures.append(&mut scan_conflicts);
+
+            // 本地 key 之间的大小写冲突：每个 casefold 槽位保留一个（优先云端已
+            // 存在的 key，其次字典序最小），其余跳过上传并报告。
+            let mut local_case_losers: HashMap<String, String> = HashMap::new(); // 败方 -> 胜方
+            {
+                let mut groups: HashMap<String, Vec<&String>> = HashMap::new();
+                for key in local_files.keys() {
+                    groups
+                        .entry(asset_filenames::casefold_key(key))
+                        .or_default()
+                        .push(key);
+                }
+                for (_, mut group) in groups {
+                    if group.len() < 2 {
+                        continue;
+                    }
+                    group.sort();
+                    let winner = group
+                        .iter()
+                        .find(|key| canonical_to_cloud.contains_key(key.as_str()))
+                        .copied()
+                        .unwrap_or(group[0]);
+                    for key in group {
+                        if key != winner {
+                            local_case_losers.insert(key.clone(), winner.clone());
+                        }
+                    }
+                }
+            }
+
+            let mut sorted_local: Vec<(&String, &(std::path::PathBuf, String, u64, String))> =
+                local_files.iter().collect();
+            sorted_local.sort_by(|a, b| a.0.cmp(b.0));
+            for (key, (path, sha256, size, local_updated_at)) in sorted_local {
+                if let Some(winner) = local_case_losers.get(key) {
+                    upload_failures.push(asset_filenames::local_case_conflict_message(key, winner));
+                    continue;
+                }
+                // 云端等价条目：exact 优先，其次净化等价的遗留 key
+                let cloud_alias: Option<&String> = if cloud_manifest.entries.contains_key(key) {
+                    Some(key)
+                } else {
+                    canonical_to_cloud
+                        .get(key)
+                        .filter(|alias| alias.as_str() != key.as_str())
+                };
+                if cloud_alias.is_none() {
+                    // 新文件：与云端既有 key 仅大小写不同 → 拒绝上传，防止在
+                    // 大小写不敏感设备上互相覆盖。
+                    if let Some(occupied) =
+                        cloud_casefold.get(&asset_filenames::casefold_key(key))
+                    {
+                        if occupied != key {
+                            upload_failures.push(asset_filenames::upload_case_conflict_message(
+                                key, occupied,
+                            ));
+                            continue;
+                        }
+                    }
+                }
+                let cloud_entry = cloud_alias.and_then(|alias| cloud_manifest.entries.get(alias));
+                let should_upload = match cloud_entry {
                     None => true,
                     Some(entry) => {
                         let unchanged = entry.sha256 == *sha256 && entry.size == *size;
@@ -10782,13 +10912,8 @@ impl SyncManager {
                                 size: *size,
                                 updated_at: local_updated_at.clone(),
                                 object_key: Some(remote_key.clone()),
-                                base_sha256: cloud_manifest
-                                    .entries
-                                    .get(key)
-                                    .map(|entry| entry.sha256.clone()),
-                                revision: cloud_manifest
-                                    .entries
-                                    .get(key)
+                                base_sha256: cloud_entry.map(|entry| entry.sha256.clone()),
+                                revision: cloud_entry
                                     .map(|entry| entry.revision.saturating_add(1).max(1))
                                     .unwrap_or(1),
                                 device_id: Some(self.device_id.clone()),
@@ -10796,6 +10921,14 @@ impl SyncManager {
                                 cipher_size,
                             },
                         );
+                        // [R09-names] 内容更新时把净化前的遗留 key 迁移为净化 key
+                        //（清单里删旧名、写新名；对象本身是内容寻址，不受影响）。
+                        if let Some(alias) = cloud_alias {
+                            if alias.as_str() != key.as_str() {
+                                new_manifest.entries.remove(alias);
+                                migrated_from.insert(key.clone(), alias.clone());
+                            }
+                        }
                         uploaded += 1;
                     }
                     Err(e) => {
@@ -10809,8 +10942,26 @@ impl SyncManager {
         let mut downloaded = 0usize;
         let mut download_failures = Vec::new();
         if direction != SyncDirection::Upload {
-            for (key, entry) in &cloud_manifest.entries {
-                let should_download = match local_files.get(key) {
+            // [R09-names] 每个 casefold 槽位只允许一个净化 key 物化为新文件；
+            // 本地已存在的 key 优先占位（字典序最小者，确定性）。已存在于本地
+            // 的 key 的更新下载不受槽位限制（更新的是用户自己的文件）。
+            let mut claimed_slots: HashMap<String, String> = HashMap::new();
+            {
+                let mut sorted_local_keys: Vec<&String> = local_files.keys().collect();
+                sorted_local_keys.sort();
+                for key in sorted_local_keys {
+                    claimed_slots
+                        .entry(asset_filenames::casefold_key(key))
+                        .or_insert_with(|| key.clone());
+                }
+            }
+
+            let mut sorted_canonicals: Vec<(&String, &String)> = canonical_to_cloud.iter().collect();
+            sorted_canonicals.sort();
+            for (canonical, cloud_key) in sorted_canonicals {
+                let entry = &cloud_manifest.entries[cloud_key];
+                let local = local_files.get(canonical);
+                let should_download = match local {
                     None => true,
                     Some((_path, sha256, size, local_updated_at)) => {
                         (*sha256 != entry.sha256 || *size != entry.size)
@@ -10825,27 +10976,50 @@ impl SyncManager {
                 if !should_download {
                     continue;
                 }
-                let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
-                else {
-                    return Err(SyncError::Database(format!(
-                        "拒绝非法资产键，未推进文件同步: {key:?}"
-                    )));
+                let dest = match local {
+                    // 本地已有等价文件：落回其真实路径（净化前的原名保留在本地）
+                    Some((path, _, _, _)) => path.clone(),
+                    None => {
+                        // 新物化文件：大小写槽位被其他 key 占用 → 跳过并报告，
+                        // 防止在大小写不敏感文件系统上互相覆盖。
+                        let slot = asset_filenames::casefold_key(canonical);
+                        if let Some(owner) = claimed_slots.get(&slot) {
+                            if owner != canonical {
+                                download_failures.push(
+                                    asset_filenames::download_case_conflict_message(
+                                        cloud_key, owner,
+                                    ),
+                                );
+                                continue;
+                            }
+                        }
+                        let Some(dest) =
+                            Self::asset_local_path_from_key(active_dir, app_data_dir, canonical)
+                        else {
+                            return Err(SyncError::Database(format!(
+                                "拒绝非法资产键，未推进文件同步: {cloud_key:?}"
+                            )));
+                        };
+                        dest
+                    }
                 };
                 if let Some(parent) = dest.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if dest.exists() {
                     if let Err(e) = Self::save_conflict_copy(&dest, &self.device_id) {
-                        tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", key, e);
+                        tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", cloud_key, e);
                     }
                 }
                 let remote_key = entry
                     .object_key
                     .clone()
-                    .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
+                    .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, cloud_key));
                 Self::validate_asset_object_key(&remote_key)?;
-                let transfer_progress =
-                    Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
+                let transfer_progress = Self::file_transfer_progress(
+                    progress.as_ref(),
+                    format!("资产文件 {}", cloud_key),
+                );
                 // [R07-file-e2ee] 加密对象先校验密文哈希再解密并校验明文哈希；
                 // 明文遗留条目在本端启用加密时拒收（可操作错误见日志）。
                 match self
@@ -10856,18 +11030,48 @@ impl SyncManager {
                         Some(&entry.sha256),
                         entry.cipher_sha256.as_deref(),
                         transfer_progress,
-                        &format!("资产文件 {}", key),
+                        &format!("资产文件 {}", cloud_key),
                     )
                     .await
                 {
-                    Ok(_) => downloaded += 1,
+                    Ok(_) => {
+                        downloaded += 1;
+                        claimed_slots
+                            .insert(asset_filenames::casefold_key(canonical), canonical.clone());
+                    }
                     Err(e) => {
-                        tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
+                        tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", cloud_key, e);
                         // Provider downloads verify into a sibling temporary file and only
                         // replace `dest` after checksum success. Keep an existing local file
                         // when the remote object is corrupt or disappears mid-transfer.
-                        download_failures.push(key.clone());
+                        download_failures.push(cloud_key.clone());
                     }
+                }
+            }
+
+            // 云端遗留的「净化后重名」条目：内容不同且被遮蔽方按 LWW 更新时，
+            // 无法同时物化 → 显式报告而非静默丢弃。被遮蔽方较旧（典型：改名
+            // 迁移后残留在旧 append-only 清单文件里的原条目）走正常 LWW 静默
+            // 让位，避免迁移后每轮同步都报假冲突。
+            for (shadowed, kept) in &shadowed_cloud_keys {
+                let shadowed_wins = match (
+                    cloud_manifest.entries.get(shadowed),
+                    cloud_manifest.entries.get(kept),
+                ) {
+                    (Some(a), Some(b)) => {
+                        a.sha256 != b.sha256
+                            && Self::local_file_wins(
+                                &a.updated_at,
+                                &b.updated_at,
+                                &a.sha256,
+                                &b.sha256,
+                            )
+                    }
+                    _ => false,
+                };
+                if shadowed_wins {
+                    download_failures
+                        .push(asset_filenames::shadowed_divergent_message(shadowed, kept));
                 }
             }
         }
@@ -10882,12 +11086,23 @@ impl SyncManager {
                     cloud_manifest.clone()
                 }
             };
+            // [R09-names] 改名迁移失败（云端并发变化）的遗留 key：不得从合并
+            // 清单里删除，否则会丢数据。
+            let mut failed_migrations: HashSet<String> = HashSet::new();
             for (key, entry) in &new_manifest.entries {
                 let ours_changed = cloud_manifest.entries.get(key) != Some(entry);
                 if !ours_changed {
                     continue;
                 }
-                let base_matches = match merged.entries.get(key) {
+                // [R09-names] 改名迁移的条目：base 校验对象是被迁移的遗留 key。
+                let counterpart_key: &String = if merged.entries.contains_key(key) {
+                    key
+                } else if let Some(alias) = migrated_from.get(key) {
+                    alias
+                } else {
+                    key
+                };
+                let base_matches = match merged.entries.get(counterpart_key) {
                     Some(theirs) => {
                         entry.base_sha256.as_deref() == Some(theirs.sha256.as_str())
                             && (theirs.revision == 0
@@ -10899,13 +11114,16 @@ impl SyncManager {
                     if let Some((path, _, _, _)) = local_files.get(key) {
                         Self::save_conflict_copy(path, &self.device_id)?;
                     }
+                    if let Some(alias) = migrated_from.get(key) {
+                        failed_migrations.insert(alias.clone());
+                    }
                     upload_failures.push(format!(
                         "{}: 云端 base hash/revision 已变化，本地资产保留为冲突副本",
                         key
                     ));
                     continue;
                 }
-                let theirs_newer = merged.entries.get(key).is_some_and(|theirs| {
+                let theirs_newer = merged.entries.get(counterpart_key).is_some_and(|theirs| {
                     Self::local_file_wins(
                         &theirs.updated_at,
                         &entry.updated_at,
@@ -10917,14 +11135,16 @@ impl SyncManager {
                 let ours_upgrades_encryption = entry.cipher_sha256.is_some()
                     && merged
                         .entries
-                        .get(key)
+                        .get(counterpart_key)
                         .is_some_and(|theirs| theirs.cipher_sha256.is_none());
                 if !theirs_newer || ours_upgrades_encryption {
                     merged.entries.insert(key.clone(), entry.clone());
+                } else if let Some(alias) = migrated_from.get(key) {
+                    failed_migrations.insert(alias.clone());
                 }
             }
             for key in cloud_manifest.entries.keys() {
-                if !new_manifest.entries.contains_key(key) {
+                if !new_manifest.entries.contains_key(key) && !failed_migrations.contains(key) {
                     merged.entries.remove(key);
                 }
             }
@@ -11038,6 +11258,7 @@ impl SyncManager {
         base_dir: &std::path::Path,
         current_dir: &std::path::Path,
         out: &mut HashMap<String, (std::path::PathBuf, String, u64, String)>,
+        conflicts: &mut Vec<String>,
     ) -> Result<(), SyncError> {
         for entry in std::fs::read_dir(current_dir)
             .map_err(|e| SyncError::Database(format!("读取资产目录失败: {}", e)))?
@@ -11046,7 +11267,7 @@ impl SyncManager {
                 entry.map_err(|e| SyncError::Database(format!("读取资产条目失败: {}", e)))?;
             let path = entry.path();
             if path.is_dir() {
-                Self::scan_asset_tree(root_alias, top_dir, base_dir, &path, out)?;
+                Self::scan_asset_tree(root_alias, top_dir, base_dir, &path, out, conflicts)?;
                 continue;
             }
             if !path.is_file() {
@@ -11058,7 +11279,31 @@ impl SyncManager {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let key = format!("{}/{}/{}", root_alias, top_dir, rel);
+            // [R09-names] 云端 key 使用净化后的文件名（Windows 非法字符/保留名/
+            // 尾部点空格/NFC/空名回退），本地路径保持原样。
+            let key = format!(
+                "{}/{}/{}",
+                root_alias,
+                top_dir,
+                asset_filenames::sanitize_rel_path(&rel)
+            );
+            // 两个本地文件净化后重名（如 `file.` vs `file`、NFC vs NFD 同名）：
+            // 按原始路径字典序确定性保留较小者，另一方跳过并报告。
+            if let Some((existing_path, _, _, _)) = out.get(&key) {
+                if *existing_path <= path {
+                    conflicts.push(asset_filenames::local_duplicate_message(
+                        &key,
+                        &existing_path.to_string_lossy(),
+                        &path.to_string_lossy(),
+                    ));
+                    continue;
+                }
+                conflicts.push(asset_filenames::local_duplicate_message(
+                    &key,
+                    &path.to_string_lossy(),
+                    &existing_path.to_string_lossy(),
+                ));
+            }
             let sha256 = crate::backup_common::calculate_file_hash(&path).map_err(|e| {
                 SyncError::Database(format!("计算资产文件校验和失败 {:?}: {}", path, e))
             })?;
