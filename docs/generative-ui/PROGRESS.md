@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 63（2026-08-24）— HPIAS 多会话切片
+
+1. [x] `HpiasStore.sessions` 按 sessionId 保活，外会话事件不再丢弃
+2. [x] `session_started` 切换活跃会话时重置顶层字段，旧切片保留
+3. [x] Chat / Research 面板按 `researchSessionId` 读切片，并发研究不串台
+4. [x] 未注册 ActionBar 按钮改用 i18n 标签，不再渲染模型文案
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 62（2026-08-24）— 文本消毒 no-control-regex
 
 CI Frontend（`98cb146f`）ESLint 失败：`sanitizeGenerativeText` 控制字符正则。改为 `new RegExp` + `fromCharCode`，与 URL 消毒一致。
