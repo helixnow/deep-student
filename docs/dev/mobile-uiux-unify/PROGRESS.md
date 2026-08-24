@@ -69,5 +69,5 @@
 
 - 本目录方案与清单
 - Round 2–11：顶栏契约、可达契约、废弃 MobileHeader 禁令；聊天/设置/沙箱/PDF/导图/热力图/Anki/Todo 移动 chrome；死代码 NotesHome / VideoPreview / AudioPreview / PreviewPanel
-- Round 41–44：DEV debug-panel 插件工具栏几乎扫完；生产路径触控残留见 ROUND-44 队列
+- Round 41–45：DEV debug-panel 插件工具栏几乎扫完；生产路径触控残留见 ROUND-45 队列
 - 契约测试：`tests/vitest/mobile-uiux/*`（非法 viewId allowlist 已清空）
