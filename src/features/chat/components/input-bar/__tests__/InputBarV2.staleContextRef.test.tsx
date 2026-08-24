@@ -52,9 +52,9 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
-// 测试环境不加载异步 i18n 命名空间（chatV2 等按需加载），真实 t 会原样返回
-// 未插值的 defaultValue（如 '推理: {{depth}}'）。与同目录其它测试一致，
-// mock useTranslation 并补上 {{var}} 插值，保证断言确定性。
+// 与同目录其它测试一致，mock useTranslation：t 返回 defaultValue（若有）并做
+// {{var}} 插值，否则原样返回 key。产品代码的 thinkingStateLabel 已改为纯 i18n
+// key 调用（不带 defaultValue），因此下方对 thinkingStateLabel 的断言使用 key。
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-i18next')>();
   const translate = (
@@ -238,7 +238,7 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
-    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('chatV2:inputBar.thinkingState.on');
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
@@ -277,7 +277,7 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
-    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 不支持');
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('chatV2:inputBar.thinkingState.unsupported');
     expect(capturedInputBarUIProps?.thinkingUnsupported).toBe(true);
     expect(capturedInputBarUIProps?.enableThinking).toBe(false);
     expect(capturedInputBarUIProps?.thinkingDepthOptions).toEqual([]);
@@ -766,7 +766,7 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
-    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('chatV2:inputBar.thinkingState.on');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
   });
 
@@ -848,7 +848,7 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
-    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('chatV2:inputBar.thinkingState.on');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
   });
 
@@ -882,7 +882,7 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
-    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 超高');
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('chatV2:inputBar.thinkingState.on');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
       'settings:api.modal.deepseek.depth.low',
