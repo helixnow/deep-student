@@ -1,6 +1,6 @@
 # Anki 卡片生成 AI-Native 调研与 SOTA 优化
 
-> 专属分支：`cursor/anki-ai-native-research-bfca`  
+> 专属分支：`cursor/anki-ai-native-research-bfca`
 > Goal：深度评估 DeepStudent Anki 制卡逻辑的 AI-Native 符合度，并持续优化至 SOTA 级别。
 
 ## 文档索引
