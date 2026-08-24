@@ -123,6 +123,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               onBlur={() => setSidebarSearchFocused(false)}
               placeholder={t('sidebar.search_placeholder')}
               aria-label={t('sidebar.search_placeholder')}
+              data-settings-search
               className={cn(
                 'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
                 'pl-8 pr-2.5 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
