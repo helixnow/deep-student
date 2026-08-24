@@ -212,7 +212,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         <div className="flex flex-col items-center justify-center py-6 gap-2">
           <WarningCircle size={24} className="text-destructive/60" />
           <span className="text-xs text-muted-foreground">{t('settings:memory.loadError')}</span>
-          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-primary">
+          <DsButton variant="ghost" size="sm" onClick={loadData} className="text-primary [@media(pointer:coarse)]:min-h-11">
             <ArrowClockwise size={14} />
             {t('common:retry')}
           </DsButton>
@@ -282,6 +282,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               size="sm"
               onClick={() => setShowCreateInput(!showCreateInput)}
               disabled={saving}
+              className="[@media(pointer:coarse)]:min-h-11"
             >
               <Plus size={14} className="mr-1" />
               {t('settings:memory.createFolder')}
@@ -309,6 +310,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 variant="primary"
                 onClick={handleCreateFolder}
                 disabled={saving || !newFolderName.trim()}
+                className="[@media(pointer:coarse)]:min-h-11"
               >
                 {saving ? (
                   <CircleNotch size={14} className="animate-spin" />
