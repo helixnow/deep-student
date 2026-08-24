@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { buildLearningBriefingIntent } from '@/features/generative-ui/utils/buildLearningBriefingIntent';
 import { buildLearningHubBriefingIntent } from '@/features/generative-ui/utils/buildLearningHubBriefingIntent';
+import { buildExamBriefingIntent } from '@/features/generative-ui/utils/buildExamBriefingIntent';
 import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import { learningHubActionHandlers } from '@/features/generative-ui/handlers/learningHubActionHandlers';
+import { createExamBriefingActionHandlers } from '@/features/generative-ui/handlers/examBriefingActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -58,6 +60,35 @@ describe('generativeUI actionHandlerSync contract', () => {
       },
     });
     expectActionIdsRegistered(intent, learningHubActionHandlers, 'buildLearningHubBriefingIntent');
+  });
+
+  it('exam briefing action ids exist in createExamBriefingActionHandlers', () => {
+    const intent = buildExamBriefingIntent({
+      stats: {
+        total: 10,
+        mastered: 4,
+        review: 2,
+        inProgress: 2,
+        newCount: 2,
+        correctRate: 0.6,
+      },
+      labels: {
+        totalTitle: 'Total',
+        masteryTrend: '{{percent}}%',
+        emptyTrend: 'Empty',
+        progressTitle: 'Progress',
+        masteredRow: '{{count}}',
+        reviewRow: 'Review',
+        correctRateRow: 'Correct',
+        startReview: 'Review',
+        openPractice: 'Practice',
+      },
+    });
+    const handlers = createExamBriefingActionHandlers(
+      { onStartReview: () => {}, onOpenPractice: () => {} },
+      { startReview: 'Review', openPractice: 'Practice' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildExamBriefingIntent');
   });
 
   it('LEARNING_DASHBOARD_EXAMPLE action ids exist in workbenchLearningHandlers', () => {

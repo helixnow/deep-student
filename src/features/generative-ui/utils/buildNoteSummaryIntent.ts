@@ -4,6 +4,17 @@
 
 import type { GenerativeUIIntent } from '../types';
 
+export interface NoteSummaryLabels {
+  defaultTitle: string;
+  updatedPrefix: string;
+  headingStatTitle: string;
+  overviewTitle: string;
+  charCountKey: string;
+  tagsKey: string;
+  tagsEmpty: string;
+  headingsTitle: string;
+}
+
 export interface NoteSummaryInput {
   title: string;
   tags?: string[];
@@ -11,33 +22,40 @@ export interface NoteSummaryInput {
   charCount?: number;
   updatedAtLabel?: string;
   topHeadings?: string[];
+  labels: NoteSummaryLabels;
 }
 
 export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIIntent {
   const tags = input.tags ?? [];
   const headings = input.topHeadings ?? [];
+  const { labels } = input;
 
   return {
     version: '1',
     meta: {
-      title: input.title || '笔记摘要',
-      description: input.updatedAtLabel ? `更新于 ${input.updatedAtLabel}` : undefined,
+      title: input.title || labels.defaultTitle,
+      description: input.updatedAtLabel
+        ? `${labels.updatedPrefix} ${input.updatedAtLabel}`
+        : undefined,
     },
     blocks: [
       {
         type: 'stat-card',
         props: {
-          title: '章节数',
+          title: labels.headingStatTitle,
           value: input.headingCount ?? 0,
         },
       },
       {
         type: 'key-value-grid',
         props: {
-          title: '概览',
+          title: labels.overviewTitle,
           rows: [
-            { key: '字符数', value: String(input.charCount ?? 0) },
-            { key: '标签', value: tags.length > 0 ? tags.join('、') : '—' },
+            { key: labels.charCountKey, value: String(input.charCount ?? 0) },
+            {
+              key: labels.tagsKey,
+              value: tags.length > 0 ? tags.join('、') : labels.tagsEmpty,
+            },
           ],
         },
       },
@@ -46,7 +64,7 @@ export function buildNoteSummaryIntent(input: NoteSummaryInput): GenerativeUIInt
             {
               type: 'list' as const,
               props: {
-                title: '主要章节',
+                title: labels.headingsTitle,
                 items: headings.slice(0, 5).map((label) => ({ label })),
               },
             },

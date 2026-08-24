@@ -9,6 +9,24 @@
 - [x] `registryPromptSync` contract 测试
 - [x] 38 项 vitest 全绿（generative-ui + DesktopAiBriefingWidget）
 
+### Round 6（2026-08-24）
+
+### 父代理
+- [x] `buildExamBriefingIntent` + `ExamGenerativeBriefing` — ExamContentView 题库简报 POC（stats + handleStartReview）
+- [x] `createExamBriefingActionHandlers` — 上下文回调注入（start-review / open-practice）
+- [x] `buildNoteSummaryIntent` labels/i18n 注入（对齐其他 builder 模式）
+- [x] actionHandlerSync contract 扩展 exam briefing
+- [ ] Memory/IndexStatus Hub 挂载点
+- [ ] generative-ui skill ↔ Rust parse_intent contract 测试
+- [ ] Rust execute 级测试
+
+### Round 6+
+- Learning Hub Memory/IndexStatus 挂载点
+- mindmap-embed E2E
+- chunkBuffer 增量流式状态机
+
+---
+
 ### Round 5（2026-08-24）
 
 ### 父代理
@@ -18,11 +36,11 @@
 - [x] `LearningHubGenerativeBriefing` POC（finderStore 数据源）
 - [x] 40 项 vitest 全绿
 - [x] Round 5 子代理跟进：P0 i18n 块组件、actionHandlerSync 契约、learningHubActionHandlers、简报去重 meta
-- [ ] Round 5 子代理调研合并（文档归档 Round 6 路线图）
+- [x] Round 5 子代理调研合并（Round 6 路线图见上）
 
 ### Round 6+
-- `render_generative_ui` builtin skill / schema 注入
-- Learning Hub action 深度接线
+- ~~`render_generative_ui` builtin skill / schema 注入~~（Round 5 已落地 skill + toolInput）
+- Learning Hub Memory/IndexStatus 深度挂载
 - mindmap-embed E2E
 
 ---

@@ -35,7 +35,29 @@
     "empty": "暂无 AI 界面内容"
   },
   "notes": {
-    "summary_title": "AI 笔记摘要"
+    "summary_title": "AI 笔记摘要",
+    "summary_default_title": "笔记摘要",
+    "summary_updated_prefix": "更新于",
+    "summary_heading_stat": "章节数",
+    "summary_overview_title": "概览",
+    "summary_char_count": "字符数",
+    "summary_tags": "标签",
+    "summary_tags_empty": "—",
+    "summary_headings_title": "主要章节"
+  },
+  "exam": {
+    "briefing_label": "AI 题库简报",
+    "briefing": {
+      "total_title": "题目总数",
+      "mastery_trend": "掌握率 {{percent}}%",
+      "empty_trend": "暂无题目",
+      "progress_title": "掌握进度",
+      "mastered_row": "已掌握 {{count}} 题",
+      "review_row": "待复习",
+      "correct_rate_row": "正确率",
+      "start_review": "复习错题",
+      "open_practice": "开始练习"
+    }
   },
   "workbench": {
     "briefing_label": "AI 学习简报",

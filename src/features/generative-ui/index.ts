@@ -34,6 +34,8 @@ export { buildNoteSummaryIntent } from './utils/buildNoteSummaryIntent';
 export { buildLearningBriefingIntent } from './utils/buildLearningBriefingIntent';
 export { buildAIDiffSummaryIntent } from './utils/buildAIDiffSummaryIntent';
 export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefingIntent';
+export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
+export { createExamBriefingActionHandlers } from './handlers/examBriefingActionHandlers';
 export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';

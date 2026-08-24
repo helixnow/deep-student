@@ -44,6 +44,16 @@ export function NotesGenerativeSummary({
       charCount,
       updatedAtLabel,
       topHeadings: headingLabels,
+      labels: {
+        defaultTitle: t('generativeUi:notes.summary_default_title'),
+        updatedPrefix: t('generativeUi:notes.summary_updated_prefix'),
+        headingStatTitle: t('generativeUi:notes.summary_heading_stat'),
+        overviewTitle: t('generativeUi:notes.summary_overview_title'),
+        charCountKey: t('generativeUi:notes.summary_char_count'),
+        tagsKey: t('generativeUi:notes.summary_tags'),
+        tagsEmpty: t('generativeUi:notes.summary_tags_empty'),
+        headingsTitle: t('generativeUi:notes.summary_headings_title'),
+      },
     });
   }, [content, headingLabels, i18n.language, tags, title, updatedAt, t]);
 

@@ -35,7 +35,29 @@
     "empty": "No AI UI content"
   },
   "notes": {
-    "summary_title": "AI note summary"
+    "summary_title": "AI note summary",
+    "summary_default_title": "Note summary",
+    "summary_updated_prefix": "Updated",
+    "summary_heading_stat": "Sections",
+    "summary_overview_title": "Overview",
+    "summary_char_count": "Characters",
+    "summary_tags": "Tags",
+    "summary_tags_empty": "—",
+    "summary_headings_title": "Main sections"
+  },
+  "exam": {
+    "briefing_label": "AI question bank briefing",
+    "briefing": {
+      "total_title": "Total questions",
+      "mastery_trend": "Mastery {{percent}}%",
+      "empty_trend": "No questions yet",
+      "progress_title": "Mastery progress",
+      "mastered_row": "{{count}} mastered",
+      "review_row": "To review",
+      "correct_rate_row": "Correct rate",
+      "start_review": "Review mistakes",
+      "open_practice": "Start practice"
+    }
   },
   "workbench": {
     "briefing_label": "AI learning briefing",
