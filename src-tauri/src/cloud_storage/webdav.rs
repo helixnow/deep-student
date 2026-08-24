@@ -2076,5 +2076,13 @@ mod tests {
             source.contains("is_collection || href.ends_with('/')"),
             "Directory detection must use resourcetype with href suffix only as fallback"
         );
+        assert!(
+            source.contains("fn decode_path"),
+            "WebDAV href/base comparison must decode percent-encoded paths"
+        );
+        assert!(
+            source.contains("map(Self::decode_path)"),
+            "WebDAV URL builder must decode base segments before a single encode"
+        );
     }
 }

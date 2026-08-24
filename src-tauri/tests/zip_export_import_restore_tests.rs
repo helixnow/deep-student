@@ -31,7 +31,8 @@ use std::path::{Path, PathBuf};
 use deep_student_lib::data_governance::backup::{
     export_backup_to_zip,
     zip_export::{
-        import_backup_from_zip, import_backup_from_zip_with_password, zip_contains_encrypted_secrets,
+        import_backup_from_zip, import_backup_from_zip_with_password,
+        zip_contains_encrypted_secrets,
     },
     BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
@@ -648,12 +649,9 @@ fn stored_password_resolution_selects_portable_or_encrypted_export() {
         "便携云端包不得套用已存密码"
     );
 
-    let stored_password = resolve_zip_encryption_password(
-        None,
-        Some(true),
-        Some(ENCRYPTION_PASSWORD.to_string()),
-    )
-    .expect("stored 应解析成功");
+    let stored_password =
+        resolve_zip_encryption_password(None, Some(true), Some(ENCRYPTION_PASSWORD.to_string()))
+            .expect("stored 应解析成功");
     assert_eq!(stored_password.as_deref(), Some(ENCRYPTION_PASSWORD));
     let stored_zip = export_root.path().join("resolved-stored.zip");
     export_backup_to_zip(

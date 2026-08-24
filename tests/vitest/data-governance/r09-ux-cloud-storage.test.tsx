@@ -279,6 +279,12 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).not.toContain('适合迁移学习数据本身');
     expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');
   });
+
+  it('写明坚果云中文路径与 S3 控制台 bucket 前缀域名', () => {
+    expect(guide).toContain('我的坚果云');
+    expect(guide).toContain('静默列空');
+    expect(guide).toContain('bucket.bucket');
+  });
 });
 
 // ============================================================================

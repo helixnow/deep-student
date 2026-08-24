@@ -2434,13 +2434,8 @@ mod resolve_zip_encryption_password_tests {
     #[test]
     fn portable_import_ignores_stored_password() {
         assert_eq!(
-            resolve_import_zip_password(
-                None,
-                Some(true),
-                Some("stored-passphrase".into()),
-                false
-            )
-            .unwrap(),
+            resolve_import_zip_password(None, Some(true), Some("stored-passphrase".into()), false)
+                .unwrap(),
             None
         );
     }
@@ -2462,13 +2457,8 @@ mod resolve_zip_encryption_password_tests {
     #[test]
     fn sealed_import_uses_stored_password() {
         assert_eq!(
-            resolve_import_zip_password(
-                None,
-                Some(true),
-                Some("stored-passphrase".into()),
-                true
-            )
-            .unwrap(),
+            resolve_import_zip_password(None, Some(true), Some("stored-passphrase".into()), true)
+                .unwrap(),
             Some("stored-passphrase".into())
         );
     }
