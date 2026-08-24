@@ -5,6 +5,7 @@ import { showGlobalNotification } from '../components/UnifiedNotification';
 import {
   ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_ALLOWED_EXTENSIONS,
+  getAttachmentSizeLimitForFile,
 } from '@/features/chat/core/constants';
 import i18n from '@/i18n';
 
@@ -241,11 +242,13 @@ export const useTauriDragAndDrop = ({
           
           try {
             // 先检查文件大小（避免读入超大文件到内存）
+            // 图片即使入口传 200MB 也按 VFS Image 50MB 拦截。
             if (maxFileSize) {
               const fileSize = await invoke<number>('get_file_size', { path });
-              if (fileSize > maxFileSize) {
+              const effectiveMaxSize = getAttachmentSizeLimitForFile(fileName, maxFileSize);
+              if (fileSize > effectiveMaxSize) {
                 oversizeCount++;
-                const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+                const sizeMB = (effectiveMaxSize / (1024 * 1024)).toFixed(1);
                 rejectedFiles.push(`${fileName}: ${i18n.t('drag_drop:errors.file_too_large', { size: sizeMB })}`);
                 emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
                   fileName,

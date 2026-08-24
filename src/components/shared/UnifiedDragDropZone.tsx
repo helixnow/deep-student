@@ -6,6 +6,7 @@ import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { ensureGlobalDragHandlers, markNativeDrop, isNativeDropRecent } from '../../hooks/useTauriDragAndDrop';
+import { getAttachmentSizeLimitForFile } from '@/features/chat/core/constants';
 
 /**
  * 扩展名到 MIME 类型的统一映射表
@@ -367,7 +368,10 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     [acceptedFileTypes]
   );
 
-  const validateFileSize = useCallback((size: number) => size <= maxFileSize, [maxFileSize]);
+  const validateFileSize = useCallback(
+    (size: number, fileName: string) => size <= getAttachmentSizeLimitForFile(fileName, maxFileSize),
+    [maxFileSize]
+  );
 
   const processFilePaths = useCallback(
     async (paths: string[]) => {
@@ -442,8 +446,8 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
           try {
             // 先检查文件大小（避免读入超大文件到内存）
             const fileSize = await invoke<number>('get_file_size', { path: p });
-            if (!validateFileSize(fileSize)) {
-              const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
+            if (!validateFileSize(fileSize, name)) {
+              const sizeMB = (getAttachmentSizeLimitForFile(name, maxFileSize) / (1024 * 1024)).toFixed(1);
               const reason = `${name}: ${t('drag_drop:errors.file_too_large', { size: sizeMB })}`;
               rejected.push(reason as any);
               emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${name}`, {
@@ -679,10 +683,31 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
     // 🔧 Windows 兼容：用时间戳去重替代 __TAURI_INTERNALS__ 硬判断
     if (isNativeDropRecent()) return;
     if (enabled && !isProcessing) {
-      const files = Array.from(e.dataTransfer.files);
-      void onFilesDroppedRef.current(files);
+      const incoming = Array.from(e.dataTransfer.files);
+      const files: File[] = [];
+      const rejected: string[] = [];
+      for (const file of incoming) {
+        const limit = getAttachmentSizeLimitForFile(file.name, maxFileSize);
+        if (file.size > limit) {
+          rejected.push(
+            `${file.name}: ${t('drag_drop:errors.file_too_large', {
+              size: (limit / (1024 * 1024)).toFixed(1),
+            })}`
+          );
+          continue;
+        }
+        files.push(file);
+      }
+      if (rejected.length) {
+        const err = t('drag_drop:errors.all_files_failed', { reason: rejected.join('; ') });
+        onValidationErrorRef.current?.(err as any, rejected);
+        showGlobalNotification('warning', err);
+      }
+      if (files.length) {
+        void onFilesDroppedRef.current(files);
+      }
     }
-  }, [enabled, isProcessing, updateDragState]);
+  }, [enabled, isProcessing, updateDragState, maxFileSize, t]);
 
   const getSupportedFormatsDescription = useCallback(() => {
     if (acceptedFileTypes.some((t) => t.extensions.includes('*'))) return t('drag_drop:supported_formats.all');

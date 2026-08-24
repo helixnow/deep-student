@@ -3,6 +3,7 @@ import {
   ATTACHMENT_IMAGE_MAX_SIZE,
   ATTACHMENT_MAX_SIZE,
   getAttachmentSizeLimit,
+  getAttachmentSizeLimitForFile,
 } from '@/features/chat/core/constants';
 import { FILE_SIZE_LIMIT, IMAGE_SIZE_LIMIT } from '@/features/chat/resources/types';
 
@@ -17,5 +18,10 @@ describe('chat attachment size limits', () => {
     expect(ATTACHMENT_MAX_SIZE).toBe(200 * 1024 * 1024);
     expect(ATTACHMENT_MAX_SIZE).toBe(FILE_SIZE_LIMIT);
     expect(getAttachmentSizeLimit(false)).toBe(FILE_SIZE_LIMIT);
+  });
+
+  it('caps image names at 50MB even when the entry limit is 200MB', () => {
+    expect(getAttachmentSizeLimitForFile('photo.JPG', ATTACHMENT_MAX_SIZE)).toBe(ATTACHMENT_IMAGE_MAX_SIZE);
+    expect(getAttachmentSizeLimitForFile('notes.pdf', ATTACHMENT_MAX_SIZE)).toBe(ATTACHMENT_MAX_SIZE);
   });
 });

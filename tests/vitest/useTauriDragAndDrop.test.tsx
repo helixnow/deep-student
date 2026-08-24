@@ -240,4 +240,39 @@ describe('useTauriDragAndDrop', () => {
     expect(message).toContain('huge-notes.pdf: drag_drop:errors.file_too_large{size=2.0}');
     expect(message).not.toContain('文件过大');
   });
+
+  it('rejects images above 50MB even when the drop zone allows 200MB files', async () => {
+    const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_file_size') return 80 * 1024 * 1024;
+      if (command === 'read_file_bytes') return readFileBytes();
+      return null;
+    });
+    const dropZoneRef = createVisibleDropZoneRef();
+    const onDropFiles = vi.fn();
+
+    renderHook(() =>
+      useTauriDragAndDrop({
+        dropZoneRef,
+        onDropFiles,
+        maxFileSize: 200 * 1024 * 1024,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(nativeDragDropHandler).not.toBeNull();
+
+    await act(async () => {
+      nativeDragDropHandler?.({ payload: { type: 'drop', paths: ['/tmp/huge-photo.jpg'] } });
+    });
+    await vi.waitFor(() => expect(showGlobalNotificationMock).toHaveBeenCalled());
+
+    expect(onDropFiles).not.toHaveBeenCalled();
+    expect(readFileBytes).not.toHaveBeenCalled();
+    const [type, message] = showGlobalNotificationMock.mock.calls.at(-1) as [string, string];
+    expect(type).toBe('error');
+    expect(message).toContain('huge-photo.jpg: drag_drop:errors.file_too_large{size=50.0}');
+  });
 });

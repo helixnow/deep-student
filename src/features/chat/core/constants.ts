@@ -354,6 +354,20 @@ export const ATTACHMENT_ALLOWED_EXTENSIONS = [
   ...ATTACHMENT_MINDMAP_EXTENSIONS,
 ];
 
+export function isAttachmentImageName(fileName: string): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  return ATTACHMENT_IMAGE_EXTENSIONS.includes(ext);
+}
+
+export function getAttachmentSizeLimitForFile(
+  fileName: string,
+  maxFileSize: number = ATTACHMENT_MAX_SIZE,
+): number {
+  return isAttachmentImageName(fileName)
+    ? Math.min(maxFileSize, ATTACHMENT_IMAGE_MAX_SIZE)
+    : maxFileSize;
+}
+
 // ==================== 格式化工具 ====================
 
 /** 格式化文件大小为人类可读字符串 */

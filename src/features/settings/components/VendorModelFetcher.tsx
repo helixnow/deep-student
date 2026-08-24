@@ -17,7 +17,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { groupByModelFamily } from './modelFamily';
-import { fetchModelsFromVendor } from './vendorModelService';
+import { fetchModelsFromVendor, INVALID_VENDOR_MODEL_RESPONSE } from './vendorModelService';
 import type { FetchedModel } from './vendorModelService';
 import type { VendorConfig } from '@/types';
 
@@ -154,7 +154,11 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       showGlobalNotification('success', t('settings:vendor_model_fetcher.fetch_success', { count: result.length }));
     } catch (err: unknown) {
       console.error(`[VendorModelFetcher] fetch failed for ${vendor.id}:`, err);
-      showGlobalNotification('error', t('settings:vendor_model_fetcher.fetch_failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+      const raw = err instanceof Error ? err.message : 'Unknown error';
+      const error = raw === INVALID_VENDOR_MODEL_RESPONSE
+        ? t('settings:vendor_model_fetcher.invalid_response')
+        : raw;
+      showGlobalNotification('error', t('settings:vendor_model_fetcher.fetch_failed', { error }));
     } finally {
       setLoading(false);
     }

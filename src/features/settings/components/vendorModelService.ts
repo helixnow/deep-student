@@ -22,6 +22,9 @@ export interface FetchedModel {
   label: string;
 }
 
+/** 供应商模型列表 JSON 形状不对时的稳定错误码，由 UI 映射到 i18n */
+export const INVALID_VENDOR_MODEL_RESPONSE = 'INVALID_VENDOR_MODEL_RESPONSE';
+
 /** OpenAI 兼容 API 返回的模型对象 */
 interface OpenAIModelItem {
   id: string;
@@ -231,7 +234,7 @@ async function fetchOpenAICompatible(
   }
 
   if (!body?.data || !Array.isArray(body.data)) {
-    throw new Error('Invalid API response: missing data array');
+    throw new Error(INVALID_VENDOR_MODEL_RESPONSE);
   }
 
   return body.data
@@ -288,7 +291,7 @@ async function fetchGemini(
   }
 
   if (!body?.models || !Array.isArray(body.models)) {
-    throw new Error('Invalid Gemini API response: missing models array');
+    throw new Error(INVALID_VENDOR_MODEL_RESPONSE);
   }
 
   return body.models
@@ -343,7 +346,7 @@ async function fetchAnthropic(
   }
 
   if (!body?.data || !Array.isArray(body.data)) {
-    throw new Error('Invalid Anthropic API response: missing data array');
+    throw new Error(INVALID_VENDOR_MODEL_RESPONSE);
   }
 
   return body.data
