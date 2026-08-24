@@ -112,6 +112,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           variant="primary"
           size="icon"
           iconOnly
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           onClick={() => {
             setViewMode('sidebar');
             void createSession();
@@ -131,6 +132,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
             variant="ghost"
             size="icon"
             iconOnly
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             onClick={openCurrentSessionSettings}
             aria-label={t('common:mobile_header.open_session_settings')}
             title={t('common:mobile_header.open_session_settings')}
@@ -142,6 +144,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           variant="ghost"
           size="icon"
           iconOnly
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           onClick={() => createSession()}
           disabled={isLoading || isEmptyNewChat}
           aria-label={t('page.newSession')}
