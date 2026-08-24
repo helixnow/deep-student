@@ -159,16 +159,14 @@ describe('ChatAnki Round 4 contract', () => {
     expect(schema.properties.route.description).toContain('forced');
   });
 
-  it('keeps the route enum identical across run, start and analyze', () => {
+  it('keeps the route enum identical across run and analyze (start has no route)', () => {
     const routes = ['simple_text', 'vlm_light', 'vlm_full'];
-    for (const name of [
-      'builtin-chatanki_run',
-      'builtin-chatanki_start',
-      'builtin-chatanki_analyze',
-    ]) {
+    for (const name of ['builtin-chatanki_run', 'builtin-chatanki_analyze']) {
       const schema = schemaOf(name);
       expect(schema.properties.route.enum, name).toEqual(routes);
     }
+    // Rust ChatAnkiStartArgs 没有 route 字段（start 固定纯文本路径），schema 不得虚构该参数
+    expect(schemaOf('builtin-chatanki_start').properties.route).toBeUndefined();
   });
 
   it('limits analyze feedback into run to route and maxCards only', () => {

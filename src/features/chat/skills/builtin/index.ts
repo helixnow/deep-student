@@ -204,7 +204,7 @@ export const chatAnkiSkill: SkillDefinition = {
     {
       name: 'builtin-chatanki_run',
       description:
-        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。',
+        '将文本/上传的文档转成可复习的 Anki 卡片，并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。支持自动路由（simple_text/vlm_light/vlm_full）与可选覆盖；支持直接传入 content。可选生成调优旋钮：outputProtocol/contentFormat/visualHint/maxImages/enableQaPass/enableFsrsFeedback/enablePreferenceMemory（默认全部 auto/开启，仅在有明确理由时覆盖）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -262,6 +262,46 @@ export const chatAnkiSkill: SkillDefinition = {
             description:
               '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
           },
+          outputProtocol: {
+            type: 'string',
+            enum: ['auto', 'delimiter', 'json_object', 'json_schema'],
+            description:
+              '可选：卡片生成的流式输出协议。默认 auto=由管线按模型能力自选，绝大多数情况不要传；仅在用户明确要求或某模型持续产出坏卡时覆盖。非法值会被后端在启动前直接拒绝（不会静默回退成 delimiter）。',
+          },
+          visualHint: {
+            type: 'string',
+            description:
+              '可选：视觉重点提示（"看图看哪里"，如"重点提取第 3 页流程图的每个节点与箭头方向"）。仅 VLM 路由（vlm_light/vlm_full）生效，以数据块形式注入 VLM prompt（不是指令）；simple_text 路由与 chatanki_start 均忽略。卡片风格/语言约束不要写这里，放 extraRequirements。',
+          },
+          contentFormat: {
+            type: 'string',
+            enum: ['auto', 'glossary', 'prose'],
+            default: 'auto',
+            description:
+              '可选：材料形态覆盖。auto（默认）=启发式判定；明确是词汇表/术语清单（逐条条目型）时传 glossary，明确是叙述性文章时传 prose。与 chatanki_analyze 返回的 routing.glossaryMode 对应。',
+          },
+          enableQaPass: {
+            type: 'boolean',
+            description:
+              '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
+          },
+          enableFsrsFeedback: {
+            type: 'boolean',
+            description:
+              '可选：FSRS 复习画像回流开关，默认 true（根据用户历史复习数据微调生成）。仅在用户明确要求忽略复习画像时传 false。',
+          },
+          maxImages: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 12,
+            description:
+              '可选：VLM 单次调用图片数上限（1~12；默认 vlm_light 6 / vlm_full 12）。仅 VLM 路由生效；超出范围会被后端 clamp 到 1~12。',
+          },
+          enablePreferenceMemory: {
+            type: 'boolean',
+            description:
+              '可选：历史制卡偏好记忆注入开关，默认 true。仅在用户明确要求"忽略我以前的偏好"时传 false。',
+          },
           debug: { type: 'boolean', description: '可选：输出更多调试信息（路由决策/分块统计等）' },
         },
         required: ['goal', 'maxCards', 'templateMode'],
@@ -272,12 +312,13 @@ export const chatAnkiSkill: SkillDefinition = {
             then: { required: ['templateIds'] },
           },
         ],
+        additionalProperties: false,
       },
     },
     {
       name: 'builtin-chatanki_start',
       description:
-        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。',
+        '从已准备好的 content（纯文本/Markdown）直接开始制卡并由系统自动生成 anki_cards 预览块（不要在正文手写标签）。用于“纯文本→卡片”或已完成外部解析的场景。固定纯文本路径，不接受 route/resourceId/resourceIds，也没有 VLM 专属参数（visualHint/maxImages）；可选生成调优旋钮：outputProtocol/contentFormat/enableQaPass/enableFsrsFeedback/enablePreferenceMemory。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -311,6 +352,34 @@ export const chatAnkiSkill: SkillDefinition = {
             description:
               '可选：附加生成要求（卡片风格/语言/格式类约束，如"答案统一用英文""每张卡背面附一个例句""避免直接照抄原文"）。会作为高优先级规则注入生成提示；学习目标仍放 goal，不要混写。',
           },
+          outputProtocol: {
+            type: 'string',
+            enum: ['auto', 'delimiter', 'json_object', 'json_schema'],
+            description:
+              '可选：卡片生成的流式输出协议。默认 auto=由管线按模型能力自选，绝大多数情况不要传；仅在用户明确要求或某模型持续产出坏卡时覆盖。非法值会被后端在启动前直接拒绝（不会静默回退成 delimiter）。',
+          },
+          contentFormat: {
+            type: 'string',
+            enum: ['auto', 'glossary', 'prose'],
+            default: 'auto',
+            description:
+              '可选：材料形态覆盖。auto（默认）=启发式判定；明确是词汇表/术语清单（逐条条目型）时传 glossary，明确是叙述性文章时传 prose。与 chatanki_analyze 返回的 routing.glossaryMode 对应。',
+          },
+          enableQaPass: {
+            type: 'boolean',
+            description:
+              '可选：字段 QA 校验留痕开关，默认 true（不传=开启，产出 _qa_flags 留痕）。仅在用户明确不要 QA 留痕时传 false。',
+          },
+          enableFsrsFeedback: {
+            type: 'boolean',
+            description:
+              '可选：FSRS 复习画像回流开关，默认 true（根据用户历史复习数据微调生成）。仅在用户明确要求忽略复习画像时传 false。',
+          },
+          enablePreferenceMemory: {
+            type: 'boolean',
+            description:
+              '可选：历史制卡偏好记忆注入开关，默认 true。仅在用户明确要求"忽略我以前的偏好"时传 false。',
+          },
           debug: { type: 'boolean', description: '可选：输出更多调试信息' },
         },
         required: ['goal', 'content', 'maxCards', 'templateMode'],
@@ -321,6 +390,7 @@ export const chatAnkiSkill: SkillDefinition = {
             then: { required: ['templateIds'] },
           },
         ],
+        additionalProperties: false,
       },
     },
     {
@@ -1132,6 +1202,20 @@ export const chatAnkiSkill: SkillDefinition = {
 3. **生成**：\`builtin-chatanki_run\`（文件/引用）或 \`builtin-chatanki_start\`（已清洗文本）→ 下一轮 \`builtin-chatanki_wait\`。
 4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
 5. **交付**：向用户汇报生成/修改/删除统计 → 征求同意后再 enqueue_review / export / sync。
+
+## 生成调优参数（run/start 可选旋钮，何时用哪个）
+
+run/start 除必需参数外还有一组可选调优旋钮，**默认全部 auto/开启，绝大多数调用一个都不用传**。判别标准是"约束作用在哪一层"：
+
+- **goal**：学习目标 + 卡型偏好 + 粒度要求（"要做什么卡"）。永远必传。
+- **extraRequirements**：卡片成品的风格/语言/格式约束（"卡片长什么样"，如"答案统一用英文""每张卡背面附一个例句"）。作为高优先级规则注入生成提示；不要把学习目标或看图指引混进来。
+- **visualHint**（仅 run + VLM 路由）：视觉注意力引导（"看图看哪里"，如"重点提取第 3 页流程图的节点与箭头方向""忽略页眉水印"）。以数据块注入 VLM prompt、不是指令；simple_text 路由与 start 均忽略。材料是含图 PDF/截图且用户点名了某张图/某块区域时才传。
+- **contentFormat**：材料形态覆盖（"材料是什么体裁"）。auto（默认）走启发式；用户明确说是词汇表/术语清单（逐条条目、每条一张卡）时传 \`glossary\`，明确是叙述性文章、启发式却误判成清单时传 \`prose\`。与 \`chatanki_analyze\` 的 \`routing.glossaryMode\` 对应：analyze 判定为 glossary 而你要强制固化该行为时传 \`glossary\`。
+- **outputProtocol**：卡片生成的流式输出协议（\`auto|delimiter|json_object|json_schema\`，"管线怎么跟模型说话"）。与卡片内容无关，默认 auto 即可；仅在用户明确指定，或同一模型反复产出解析失败的坏卡需要换协议排障时覆盖。**非法值会被后端在启动前直接拒绝**（不会静默回退），拼写务必与 enum 一致。
+- **enableQaPass / enableFsrsFeedback / enablePreferenceMemory**：三个默认开启的布尔开关（QA 校验留痕 \`_qa_flags\` / FSRS 复习画像回流 / 历史制卡偏好注入）。只有用户明确说"不要 QA 标记""别按我的复习记录调整""忽略我以前的偏好"时才传 false，禁止自行关闭。
+- **maxImages**（仅 run + VLM 路由）：单次 VLM 调用图片数上限 1~12（默认 vlm_light 6 / vlm_full 12）。图片特别多想控制成本、或用户只要求覆盖前几张图时下调；超出范围会被后端 clamp。
+
+速查：语言/风格/格式 → extraRequirements；看图重点 → visualHint；词汇表 vs 文章 → contentFormat；模型输出协议排障 → outputProtocol；其余保持默认。
 
 ## APKG 导入闭环（必须完整执行）
 

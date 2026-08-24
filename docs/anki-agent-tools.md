@@ -222,9 +222,19 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
 | `resourceIds` | 否 | 指定多个资源；实现会与 `resourceId` 合并并去重 |
 | `deckName` | 否 | 后续导出/同步默认牌组；默认取设置或 `Default` |
 | `noteType` | 否 | 后续导出/同步默认笔记类型；默认取设置或 `Basic` |
+| `extraRequirements` | 否 | 附加生成要求（卡片风格/语言/格式类约束），作为高优先级规则注入生成提示；学习目标仍放 `goal` |
+| `outputProtocol` | 否 | 流式输出协议：`auto`（默认，管线按模型能力自选）、`delimiter`、`json_object`、`json_schema`。非法值在启动前被 `normalize_output_protocol_arg` 直接拒绝，不会静默回退成 `delimiter` |
+| `visualHint` | 否 | 视觉重点提示（"看图看哪里"）。仅 VLM 路由（`vlm_light`/`vlm_full`）生效，以数据分隔符包裹注入 VLM prompt（非指令）；`simple_text` 路由忽略 |
+| `contentFormat` | 否 | 材料形态覆盖：`auto`（默认，启发式判定）、`glossary`（词汇表/术语清单，逐条条目制卡）、`prose`（叙述性文章）。与 `analyze` 的 `routing.glossaryMode` 对应 |
+| `enableQaPass` | 否 | 字段 QA 校验留痕开关；缺省 = `true`（产出 `_qa_flags` 留痕） |
+| `enableFsrsFeedback` | 否 | FSRS 复习画像回流开关；缺省 = `true` |
+| `maxImages` | 否 | VLM 单次调用图片数上限，整数 `1..12`（默认 `vlm_light` 6 / `vlm_full` 12）；超出范围被 clamp 到 `1..=12`，仅 VLM 路由生效 |
+| `enablePreferenceMemory` | 否 | 历史制卡偏好记忆注入开关；缺省 = `true` |
 | `debug` | 否 | 是否在预览块中附加路由和资源诊断信息 |
 
 `templateMode=all` 使用全部激活模板；若目标明确是选择题，实现可能收敛到匹配的单模板。Schema 已强制 `maxCards<=100`，超过 100 张必须拆批，不应依赖执行器的兼容性截断。
+
+调优参数（`outputProtocol` 起的 7 个）默认全部 auto/开启，绝大多数调用不需要传；参数名与 Rust `ChatAnkiRunArgs` 的 serde camelCase alias 一一对应（同时兼容 snake_case alias，如 `output_protocol`）。Schema 已声明 `additionalProperties: false`：`temperature`、`segmentOverlapSize` 等 `analyze` 预估参数不是 run/start 参数，不得传入。
 
 立即返回，不等待后台完成：
 
@@ -247,10 +257,13 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
 
 从已经准备好的纯文本或 Markdown 直接启动制卡，跳过文件解析并固定走文本路径。
 
-参数与 `run` 的模板、牌组、卡数和 `debug` 参数相同，但有两点不同：
+参数与 `run` 的模板、牌组、卡数和 `debug` 参数相同，但有三点不同：
 
 - `content` 必填且应为实际材料正文；
-- 不接受 `route`、`resourceId` 或 `resourceIds`。
+- 不接受 `route`、`resourceId` 或 `resourceIds`；
+- 固定纯文本路径、永不触发 VLM，因此也没有 `visualHint` 和 `maxImages`（Rust `ChatAnkiStartArgs` 无这两个字段）。
+
+其余调优参数与 `run` 一致：`extraRequirements`、`outputProtocol`（非法值同样在启动前被拒绝）、`contentFormat`、`enableQaPass`、`enableFsrsFeedback`、`enablePreferenceMemory`。
 
 成功返回与 `run` 相同：`status=started`、真实 `ankiBlockId`、预分配的真实 `documentId` 和后台启动消息。参数/模板/运行环境失败语义也与 `run` 相同。
 
