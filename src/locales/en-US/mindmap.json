@@ -119,8 +119,8 @@
     "multiSheetNote": "Merged from {{count}} .xmind sheets: {{titles}}",
     "labelsNote": "Labels: {{labels}}",
     "markersNote": ".xmind markers: {{markers}}",
-    "imagePlaceholderNote_one": "[Image placeholder] The original topic contained {{count}} image, which imports do not preserve yet",
-    "imagePlaceholderNote_other": "[Image placeholder] The original topic contained {{count}} images, which imports do not preserve yet",
+    "imagePlaceholderNote_one": "[Image placeholder] The original topic contained {{count}} image that could not be embedded (missing resource or above the inline size limit)",
+    "imagePlaceholderNote_other": "[Image placeholder] The original topic contained {{count}} images that could not be embedded (missing resource or above the inline size limit)",
     "importing": "Importing mind map…",
     "saveAndImport": "Save & Import"
   },
@@ -175,6 +175,7 @@
     "panCanvasKeysPanMode": "Drag blank area",
     "associationEntryKeys": "Right-click node",
     "associationAdd": "Add association (then click target)",
+    "associationStart": "Add association (click target to finish, Esc to cancel)",
     "groupRecite": "Recite Mode",
     "reciteNavigate": "Navigate between nodes",
     "reciteReveal": "Reveal next blank",
@@ -421,7 +422,13 @@
     "openLink": "Open link",
     "priorityBadge": "Priority {{level}}",
     "progressLabel": "Progress {{percent}}%",
-    "toggleComplete": "Toggle completed"
+    "toggleComplete": "Toggle completed",
+    "imageAlt": "Node image"
+  },
+  "sheets": {
+    "switcherLabel": "Switch sheet",
+    "switcherHint": "Multi-sheet import: focus the branch of a sheet",
+    "all": "All sheets"
   },
   "errorDetails": "Error details",
   "canvas": {
@@ -463,7 +470,13 @@
     "blankBranchDone_other": "Blanked {{count}} nodes",
     "clearBranchBlanks": "Clear branch blanks",
     "clearBranchBlanksDone_one": "Cleared blanks on {{count}} node",
-    "clearBranchBlanksDone_other": "Cleared blanks on {{count}} nodes"
+    "clearBranchBlanksDone_other": "Cleared blanks on {{count}} nodes",
+    "reviewStart": "Hardest first",
+    "reviewStartHint": "Review node by node from highest historical miss rate (revealing = missed)",
+    "reviewNavLabel": "Hardest-first review navigation",
+    "reviewPrev": "Previous difficult item",
+    "reviewNext": "Next difficult item",
+    "reviewStop": "End review"
   },
   "clipboard": {
     "pasteParseFailed": "Pasted content is too large or too deep to parse"

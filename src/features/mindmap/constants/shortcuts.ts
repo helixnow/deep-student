@@ -66,6 +66,7 @@ export type ShortcutAction =
   | 'escape'
   | 'focusParent'
   | 'focusFirstChild'
+  | 'associationStart'
   | 'reciteNavigate'
   | 'reciteReveal'
   | 'reciteExit';
@@ -185,6 +186,8 @@ const CANVAS_BINDINGS: ShortcutBinding[] = [
   { action: 'bold', labelKey: 'bold', keys: ['mod+b'] },
   { action: 'italic', labelKey: 'italic', keys: ['mod+i'] },
   { action: 'underline', labelKey: 'underline', keys: ['mod+u'] },
+  // 关联线：以当前聚焦节点为起点进入连线模式（点击目标节点完成，Esc 取消）
+  { action: 'associationStart', labelKey: 'associationStart', keys: ['mod+l'] },
   { action: 'copy', labelKey: 'copy', keys: ['mod+c'] },
   { action: 'cut', labelKey: 'cut', keys: ['mod+x'] },
   { action: 'paste', labelKey: 'paste', keys: ['mod+v'] },

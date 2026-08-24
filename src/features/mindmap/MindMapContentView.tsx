@@ -121,6 +121,7 @@ import {
 } from './utils/mindmapPreferences';
 import { useCoarsePointer, useMobileScreen } from './hooks/useCoarsePointer';
 import { getAncestors } from './utils/node/traverse';
+import { getAliveSheetTabs, resolveActiveSheet } from './utils/sheetTabs';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -235,7 +236,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   
   // 工具栏面板互斥状态：同一时间只允许打开一个面板
-  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | null>(null);
+  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | 'sheets' | null>(null);
 
   // 移动端全屏内联子屏状态
   const [showMobileStructure, setShowMobileStructure] = useState(false);
@@ -494,6 +495,25 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     setViewRootId,
     viewRootId,
   ]);
+
+  // 多 sheet 消费：meta.sheets 记录「哪个一级子节点来自哪个源 sheet」。
+  // 切换器把 viewRootId 聚焦到对应一级子树（侵入最小的多画布形态）；
+  // 仅当仍有 ≥2 个 sheet 的根节点存活时显示（节点被删则对应项自动消失）。
+  const sheetTabs = useMemo(
+    () => getAliveSheetTabs(mindmapDocument),
+    [mindmapDocument],
+  );
+
+  const activeSheet = useMemo(
+    // 专注在 sheet 根或继续下钻其子孙时，切换器都指示所属 sheet
+    () => resolveActiveSheet(mindmapDocument, sheetTabs, viewRootId),
+    [mindmapDocument, sheetTabs, viewRootId],
+  );
+
+  const handleSelectSheet = useCallback((rootNodeId: string | null) => {
+    setViewRootId(rootNodeId);
+    setActivePanel(null);
+  }, [setViewRootId]);
 
   // 快捷键面板已内联到工具栏下方文档流（同版本历史范式），
   // 由 Esc / 关闭按钮 / 面板互斥收起，不再做点击外部关闭。
@@ -1057,7 +1077,53 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               },
             ]}
           />
-          
+
+          {/* 多 sheet 切换器：仅多 sheet 导入的文档显示（见 sheetTabs memo） */}
+          {sheetTabs && (
+            <AppMenu
+              open={activePanel === 'sheets'}
+              onOpenChange={(open) => setActivePanel(open ? 'sheets' : null)}
+            >
+              <AppMenuTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="ds-btn max-w-[200px]"
+                  aria-label={t('mindmap:sheets.switcherLabel')}
+                  title={t('mindmap:sheets.switcherHint')}
+                  data-testid="mm-sheet-switcher"
+                >
+                  <TreeStructure size={15} />
+                  <span className="text-xs truncate">
+                    {activeSheet ? activeSheet.title : t('mindmap:sheets.all')}
+                  </span>
+                  <CaretDown size={10} />
+                </DsButton>
+              </AppMenuTrigger>
+              <AppMenuContent align="start" width={220}>
+                <AppMenuItem
+                  icon={!activeSheet ? <Check size={14} /> : <span className="w-3.5" />}
+                  onClick={() => handleSelectSheet(null)}
+                >
+                  {t('mindmap:sheets.all')}
+                </AppMenuItem>
+                <AppMenuSeparator />
+                {sheetTabs.map((sheet) => (
+                  <AppMenuItem
+                    key={sheet.id}
+                    icon={
+                      activeSheet?.id === sheet.id
+                        ? <Check size={14} />
+                        : <span className="w-3.5" />
+                    }
+                    onClick={() => handleSelectSheet(sheet.rootNodeId)}
+                  >
+                    {sheet.title}
+                  </AppMenuItem>
+                ))}
+              </AppMenuContent>
+            </AppMenu>
+          )}
+
           <div className="w-px h-4 bg-[var(--mm-border)] hidden md:block" />
           
           <div className="flex items-center gap-0.5">
@@ -1227,7 +1293,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
                 {t('mindmap:presentation.enter')}
               </AppMenuItem>
-              <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
+              <AppMenuItem icon={<ShareNetwork size={16} />} shortcut="⌘L" onClick={handleStartAssociation}>
                 {t('mindmap:association.add')}
               </AppMenuItem>
               <AppMenuSeparator />

@@ -46,6 +46,21 @@ export interface NodeStyle {
 // 兼容别名
 export type MindMapNodeStyle = NodeStyle;
 
+/**
+ * 节点内嵌图片（导入时从 .xmind/.mmap 压缩包提取的小图，以 data URL 内联存储）。
+ * 超过大小阈值的图片不内联，仍走备注占位文案；见 importers 中的 resource 提取逻辑。
+ */
+export interface MindMapImage {
+  /** data URL（data:image/png;base64,...）或安全的 http(s) 地址 */
+  src: string;
+  /** 原始文件名（可选，悬停提示用） */
+  name?: string;
+  /** 原始宽度（px，可选） */
+  width?: number;
+  /** 原始高度（px，可选） */
+  height?: number;
+}
+
 /** 节点关联的 VFS 资源引用（轻量级，只存引用信息） */
 export interface MindMapNodeRef {
   /** 稳定的业务 ID（note_abc, tb_xyz, mm_xxx 等） */
@@ -85,6 +100,8 @@ export interface MindMapNode {
    * 节点超链接（http/https/mailto）。渲染为正文后的链接图标，点击经安全白名单打开。
    */
   href?: string;
+  /** 内嵌图片列表（导入内联小图；画布渲染缩略图，大纲渲染角标） */
+  images?: MindMapImage[];
   // 运行时注入属性
   branchColor?: string;
 }
@@ -115,6 +132,8 @@ export interface UpdateNodeParams {
   progress?: number;
   /** 超链接（显式 undefined 移除） */
   href?: string;
+  /** 内嵌图片列表（显式 undefined 移除） */
+  images?: MindMapImage[];
 }
 
 /** 节点路径（从根到当前节点的 ID 数组） */
