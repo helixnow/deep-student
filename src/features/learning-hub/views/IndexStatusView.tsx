@@ -1492,7 +1492,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 操作按钮 - 简洁风格 */}
           <div className="flex-shrink-0 w-8 [@media(pointer:coarse)]:w-11 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
                 {isReindexing ? (
                   <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (
@@ -1724,7 +1724,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectOcr(resource.resourceId); }}
                     className={cn(
-                      'text-xs gap-1.5',
+                      'text-xs gap-1.5 [@media(pointer:coarse)]:min-h-11',
                       inspectingResourceId === resource.resourceId && inspectMode === 'ocr' && 'bg-primary/10 text-primary border-primary/20'
                     )}
                   >
@@ -1737,7 +1737,7 @@ export const IndexStatusView: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
-                    className="text-xs gap-1.5"
+                    className="text-xs gap-1.5 [@media(pointer:coarse)]:min-h-11"
                   >
                     <Stack className="h-3.5 w-3.5" />
                     {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
@@ -1749,7 +1749,7 @@ export const IndexStatusView: React.FC = () => {
                     size="sm"
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
                     disabled={clearingOcr}
-                    className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                    className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:min-h-11"
                   >
                     {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                     {t('indexStatus.action.clearOcrAndReindex')}
@@ -1934,7 +1934,7 @@ export const IndexStatusView: React.FC = () => {
                                   size="sm"
                                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleClearOcrAndReindex(resource.resourceId); }}
                                   disabled={clearingOcr}
-                                  className="text-xs gap-1.5 text-destructive hover:text-destructive"
+                                  className="text-xs gap-1.5 text-destructive hover:text-destructive [@media(pointer:coarse)]:min-h-11"
                                 >
                                   {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                                   {t('indexStatus.action.clearOcrAndReindex')}
@@ -1986,7 +1986,7 @@ export const IndexStatusView: React.FC = () => {
         {isDbError && (
           <p className="text-xs text-warning">{t('indexStatus.notification.checkDb')}</p>
         )}
-        <DsButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={() => { loadData(); }} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:min-h-11">
           {t('indexStatus.action.retry')}
         </DsButton>
       </div>
@@ -2047,17 +2047,17 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 第三行：操作按钮独占一行 */}
           <div className="flex items-center gap-1.5">
-            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+            <DsButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3 [@media(pointer:coarse)]:min-h-11', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
               {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </DsButton>
-            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
+            <DsButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} className="[@media(pointer:coarse)]:min-h-11">
               <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
             </DsButton>
             {/* 更多操作下拉 */}
             <div className="relative" ref={mobileMoreRef}>
-              <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
+              <DsButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn('[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', mobileMoreOpen && 'bg-accent text-accent-foreground')}>
                 <DotsThree className="h-3.5 w-3.5" />
               </DsButton>
               {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
