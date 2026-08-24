@@ -12,11 +12,17 @@ import {
   playStyleLabHpiasDemo,
   STYLE_LAB_HPIAS_DEMO_QUESTION,
 } from '@/features/generative-ui/demo/styleLabHpiasDemo';
+import {
+  INTENT_RECIPES,
+  getIntentRecipe,
+  type IntentRecipeId,
+} from '@/features/generative-ui/demo/intentRecipes';
+import { buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
-type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap' | 'research-hpias';
+type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap' | 'research-hpias' | 'recipe' | 'showcase';
 
 const DEMO_NOTE_ID = 'style-lab-note-demo';
 
@@ -46,6 +52,7 @@ export function GenerativeUIDemoTab() {
   const { t } = useTranslation('generativeUi');
   const stream = useGenerativeUIStream();
   const [mode, setMode] = useState<DemoMode>('static');
+  const [recipeId, setRecipeId] = useState<IntentRecipeId>('learning-dashboard');
   const [noteEditStatus, setNoteEditStatus] = useState<string | null>(null);
   const [hpiasPlaying, setHpiasPlaying] = useState(false);
   const hpiasCancelRef = React.useRef<(() => void) | null>(null);
@@ -80,6 +87,7 @@ export function GenerativeUIDemoTab() {
           previewTitle: t('notes.edit_preview_title'),
           applyEdit: t('notes.edit_apply'),
           dismissSuggestion: t('notes.edit_dismiss'),
+          suggestionMarkdownTitle: t('notes.edit_suggestion_markdown_title'),
         },
       }),
     [t],
@@ -178,6 +186,24 @@ export function GenerativeUIDemoTab() {
             />
           </div>
         );
+      case 'recipe': {
+        const recipe = getIntentRecipe(recipeId) ?? INTENT_RECIPES[0]!;
+        return (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground" data-testid="generative-ui-demo-recipe-desc">
+              {recipe.title} — {recipe.description}
+            </p>
+            <GenerativeUIRenderer intent={recipe.intent} showChrome={false} />
+          </div>
+        );
+      }
+      case 'showcase':
+        return (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">18 块最小合法 props · v1.1 两列 grid</p>
+            <GenerativeUIRenderer intent={buildAllBlocksGridIntent()} showChrome={false} />
+          </div>
+        );
       case 'static':
       default:
         return (
@@ -236,6 +262,30 @@ export function GenerativeUIDemoTab() {
             >
               Research HPIAS
             </DsButton>
+            <DsButton
+              size="sm"
+              variant={mode === 'showcase' ? 'default' : 'outline'}
+              onClick={() => setMode('showcase')}
+              data-testid="generative-ui-demo-showcase"
+            >
+              18 块 Showcase
+            </DsButton>
+          </div>
+          <div className="flex flex-wrap gap-2" data-testid="generative-ui-demo-recipes">
+            {INTENT_RECIPES.map((recipe) => (
+              <DsButton
+                key={recipe.id}
+                size="sm"
+                variant={mode === 'recipe' && recipeId === recipe.id ? 'default' : 'outline'}
+                onClick={() => {
+                  setRecipeId(recipe.id);
+                  setMode('recipe');
+                }}
+                data-testid={`generative-ui-demo-recipe-${recipe.id}`}
+              >
+                {recipe.title}
+              </DsButton>
+            ))}
           </div>
         </CardContent>
       </Card>

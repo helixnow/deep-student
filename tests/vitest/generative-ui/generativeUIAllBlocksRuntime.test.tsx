@@ -7,6 +7,7 @@ import React from 'react';
 import { GenerativeUIRenderer, generativeUIRegistry } from '@/features/generative-ui';
 import {
   ALL_BLOCK_TYPES,
+  buildAllBlocksGridIntent,
   buildAllBlocksIntent,
   buildSingleBlockIntent,
 } from '@/features/generative-ui/demo/allBlocksFixture';
@@ -65,5 +66,17 @@ describe('generativeUIAllBlocksRuntime', () => {
     expect(document.querySelector('[data-generative-research-plan]')).toBeTruthy();
     expect(document.querySelector('[data-generative-research-report]')).toBeTruthy();
     expect(screen.getByTestId('mindmap-embed-mock')).toBeInTheDocument();
+  });
+
+  it('renders v1.1 two-column grid showcase without validation errors', () => {
+    const { container } = render(
+      <GenerativeUIRenderer intent={buildAllBlocksGridIntent()} showChrome={false} />,
+    );
+    expect(container.querySelector('[data-generative-validation-error]')).toBeNull();
+    expect(container.querySelector('[data-generative-unknown-block]')).toBeNull();
+    const layout = container.querySelector('[data-layout-mode="grid"]');
+    expect(layout).toBeTruthy();
+    expect(layout?.className).toContain('sm:grid-cols-2');
+    expect(ALL_BLOCK_TYPES).toHaveLength(18);
   });
 });

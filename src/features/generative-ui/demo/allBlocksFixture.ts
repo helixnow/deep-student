@@ -67,3 +67,31 @@ export function buildAllBlocksIntent(): GenerativeUIIntent {
     })),
   };
 }
+
+/** 宽块跨两列，避免 chart / table / report 挤在半列 */
+const WIDE_SHOWCASE_TYPES = new Set([
+  'chart',
+  'table',
+  'markdown',
+  'research-report',
+  'mindmap-embed',
+  'steps',
+]);
+
+/** 18 块 v1.1 两列 grid Showcase（最小合法 props） */
+export function buildAllBlocksGridIntent(): GenerativeUIIntent {
+  return {
+    version: '1.1',
+    layout: { mode: 'grid', columns: 2 },
+    meta: {
+      title: '18 块 Showcase · v1.1 grid',
+      description: '全部内置块最小合法 props，两列栅格',
+    },
+    blocks: ALL_BLOCK_TYPES.map((type) => ({
+      type,
+      id: `showcase-${type}`,
+      span: WIDE_SHOWCASE_TYPES.has(type) ? 2 : 1,
+      props: ALL_BLOCKS_MINIMAL_PROPS[type]!,
+    })),
+  };
+}

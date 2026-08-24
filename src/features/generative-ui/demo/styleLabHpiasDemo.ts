@@ -1,7 +1,9 @@
 /**
  * Style Lab — HpiasStore 研究事件模拟序列
+ * 并提供研究配方（markdown + research-plan）供 intentRecipes / Demo Tab 复用。
  */
 import type { HpiasEvent } from '@/stores/researchStore';
+import type { GenerativeUIIntent } from '../types';
 
 export const STYLE_LAB_HPIAS_SESSION_ID = 'style-lab-hpias-demo';
 
@@ -96,6 +98,48 @@ export function buildStyleLabHpiasDemoTimeline(): HpiasEvent[] {
       round: 1,
     },
   ];
+}
+
+/** 研究配方：markdown + research-plan，对齐 Style Lab HPIAS 演示问题 */
+export function buildStyleLabHpiasResearchIntent(): GenerativeUIIntent {
+  return {
+    version: '1.1',
+    layout: { mode: 'stack', columns: 1 },
+    meta: {
+      title: 'HPIAS 研究简报',
+      description: STYLE_LAB_HPIAS_DEMO_QUESTION,
+    },
+    blocks: [
+      {
+        type: 'markdown',
+        id: 'hpias-research-brief',
+        props: {
+          title: STYLE_LAB_HPIAS_DEMO_QUESTION,
+          body: [
+            '演示会话按 **plan → retrieval → synthesis** 推送事件。',
+            '',
+            '- 检索：2024-2026 医学影像深度学习综述',
+            '- 监管：FDA 批准的 AI 影像诊断产品',
+            '',
+            '综合阶段会写入多模态融合与可解释性结论。',
+          ].join('\n'),
+        },
+      },
+      {
+        type: 'research-plan',
+        id: 'hpias-research-plan',
+        props: {
+          title: '研究计划',
+          round: 1,
+          steps: [
+            { label: '检索核心论文', status: 'done' },
+            { label: '筛选高引文献', status: 'active' },
+            { label: '综合写作', status: 'pending' },
+          ],
+        },
+      },
+    ],
+  };
 }
 
 /** 按间隔推送演示事件；返回 cancel 函数 */

@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
       const map: Record<string, string> = {
         'notes.edit_suggestion_title': '笔记编辑建议',
         'notes.edit_suggestion_description': '确认后打开 diff',
+        'notes.edit_suggestion_markdown_title': '建议正文',
         'notes.edit_operation_key': '操作',
         'notes.edit_preview_title': '预览',
         'notes.edit_apply': '应用到笔记',
@@ -61,5 +62,29 @@ describe('GenerativeUIDemoTab', () => {
     await user.click(screen.getByRole('button', { name: '笔记 HITL' }));
     expect(screen.getByText('笔记编辑建议')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '应用到笔记' })).toBeInTheDocument();
+  });
+
+  it('mounts combination recipes and switches to learning dashboard', async () => {
+    const user = userEvent.setup();
+    render(<GenerativeUIDemoTab />);
+    expect(screen.getByTestId('generative-ui-demo-recipes')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-learning-dashboard')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-research-briefing')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-translation-chart')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-mistake-table')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-empty-markdown')).toBeInTheDocument();
+    expect(screen.getByTestId('generative-ui-demo-recipe-v11-grid-two-col')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('generative-ui-demo-recipe-learning-dashboard'));
+    expect(screen.getByText('本周复习节奏')).toBeInTheDocument();
+    expect(screen.getByText('每日复习量')).toBeInTheDocument();
+  });
+
+  it('switches to 18-block v1.1 grid showcase', async () => {
+    const user = userEvent.setup();
+    render(<GenerativeUIDemoTab />);
+    await user.click(screen.getByTestId('generative-ui-demo-showcase'));
+    expect(screen.getByText('18 块 Showcase · v1.1 grid')).toBeInTheDocument();
+    expect(await screen.findByTestId('mindmap-embed-mock')).toBeInTheDocument();
   });
 });
