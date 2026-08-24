@@ -28,6 +28,8 @@ export interface NormalizeGenerativeUIIntentResult {
   intent?: GenerativeUIIntent;
   dropped: unknown[];
   warnings: string[];
+  /** recover / maxBlocks 是否截断了超出上限的块 */
+  truncated: boolean;
 }
 
 function resolveMaxBlocks(maxBlocks?: number): number {
@@ -112,7 +114,7 @@ export function normalizeGenerativeUIIntent(
   options: NormalizeGenerativeUIIntentOptions = {},
 ): NormalizeGenerativeUIIntentResult {
   if (input == null) {
-    return { ok: false, dropped: [], warnings: ['unable-to-recover'] };
+    return { ok: false, dropped: [], warnings: ['unable-to-recover'], truncated: false };
   }
 
   let intent: GenerativeUIIntent | null = null;
@@ -129,7 +131,7 @@ export function normalizeGenerativeUIIntent(
       warnings = [...recovered.warnings];
     }
   } else {
-    return { ok: false, dropped: [], warnings: ['unable-to-recover'] };
+    return { ok: false, dropped: [], warnings: ['unable-to-recover'], truncated: false };
   }
 
   const rawBlocks = extractRawBlocks(input);
@@ -140,6 +142,7 @@ export function normalizeGenerativeUIIntent(
       ok: false,
       dropped,
       warnings: warnings.length > 0 ? warnings : ['unable-to-recover'],
+      truncated: warnings.includes('blocks-truncated'),
     };
   }
 
@@ -150,5 +153,11 @@ export function normalizeGenerativeUIIntent(
     intent = migrateIntentToV11(intent);
   }
 
-  return { ok: true, intent, dropped, warnings };
+  return {
+    ok: true,
+    intent,
+    dropped,
+    warnings,
+    truncated: warnings.includes('blocks-truncated'),
+  };
 }

@@ -13,6 +13,9 @@ export interface GenerativeUIPanelProps {
   onAction?: (action: GenerativeUIAction) => void;
   actionHandlers?: Record<string, GenerativeActionDefinition>;
   emptyLabel?: string;
+  /** 透传到 Renderer，用于截断提示 */
+  warnings?: string[];
+  truncatedCount?: number;
 }
 
 /**
@@ -27,6 +30,8 @@ export function GenerativeUIPanel({
   onAction,
   actionHandlers,
   emptyLabel,
+  warnings,
+  truncatedCount,
 }: GenerativeUIPanelProps) {
   const { t } = useTranslation('generativeUi');
   const resolvedEmpty = emptyLabel ?? t('panel.empty');
@@ -53,6 +58,8 @@ export function GenerativeUIPanel({
         showChrome={showChrome}
         onAction={onAction}
         actionHandlers={actionHandlers}
+        warnings={warnings}
+        truncatedCount={truncatedCount}
       />
     </div>
   );

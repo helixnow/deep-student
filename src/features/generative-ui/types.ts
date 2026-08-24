@@ -106,5 +106,9 @@ export interface GenerativeUIRendererProps {
   onAction?: (action: GenerativeUIAction) => void;
   /** 注册的 action handlers（提交/删除等副作用） */
   actionHandlers?: Record<string, GenerativeActionDefinition>;
+  /** parse / normalize / recover 警告（含 `blocks-truncated`） */
+  warnings?: string[];
+  /** 被截断未显示的块数；有则显示 overflow 提示 */
+  truncatedCount?: number;
   className?: string;
 }

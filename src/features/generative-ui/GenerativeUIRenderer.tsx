@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
 import {
+  MAX_GENERATIVE_UI_BLOCKS,
   parseGenerativeUIIntent,
+  parseGenerativeUIIntentRecovered,
   validateBlockProps,
-  isGenerativeUIParseFailure,
   isBlockPropsValidationFailure,
   resolveGenerativeLayout,
   layoutGridClassName,
@@ -26,6 +27,135 @@ import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
 import './blocks';
 import './generative-ui.css';
 
+const BLOCKS_TRUNCATED_WARNING = 'blocks-truncated';
+
+function mergeWarnings(...lists: Array<readonly string[] | undefined>): string[] {
+  const out: string[] = [];
+  for (const list of lists) {
+    if (!list) continue;
+    for (const item of list) {
+      if (!out.includes(item)) out.push(item);
+    }
+  }
+  return out;
+}
+
+function positiveCount(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.floor(value);
+}
+
+function capIntentBlocks(intent: GenerativeUIIntent): {
+  intent: GenerativeUIIntent;
+  overflowCount: number;
+} {
+  if (intent.blocks.length <= MAX_GENERATIVE_UI_BLOCKS) {
+    return { intent, overflowCount: 0 };
+  }
+  return {
+    intent: { ...intent, blocks: intent.blocks.slice(0, MAX_GENERATIVE_UI_BLOCKS) },
+    overflowCount: intent.blocks.length - MAX_GENERATIVE_UI_BLOCKS,
+  };
+}
+
+function resolveDisplayIntent(
+  input: string | GenerativeUIIntent,
+  incomingWarnings: string[] | undefined,
+  truncatedCount: number | undefined,
+  isStreaming: boolean,
+): {
+  intent: GenerativeUIIntent | null;
+  warnings: string[];
+  parseError: string[] | null;
+  truncatedCount?: number;
+  streamFallback: boolean;
+} {
+  const extra = incomingWarnings;
+  const explicitCount = positiveCount(truncatedCount);
+
+  if (typeof input !== 'string') {
+    const capped = capIntentBlocks(input);
+    const warnings = mergeWarnings(
+      extra,
+      capped.overflowCount > 0 ? [BLOCKS_TRUNCATED_WARNING] : undefined,
+    );
+    return {
+      intent: capped.intent,
+      warnings,
+      parseError: null,
+      truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
+      streamFallback: false,
+    };
+  }
+
+  const parsed = parseGenerativeUIIntent(input);
+  if (parsed.ok) {
+    const capped = capIntentBlocks(parsed.intent);
+    const warnings = mergeWarnings(
+      extra,
+      capped.overflowCount > 0 ? [BLOCKS_TRUNCATED_WARNING] : undefined,
+    );
+    return {
+      intent: capped.intent,
+      warnings,
+      parseError: null,
+      truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
+      streamFallback: false,
+    };
+  }
+
+  const recovered = parseGenerativeUIIntentRecovered(input);
+  if (recovered.ok) {
+    const warnings = mergeWarnings(extra, recovered.warnings);
+    let recoveredOverflow: number | undefined;
+    if (recovered.truncated) {
+      try {
+        const raw = JSON.parse(input) as { blocks?: unknown };
+        if (Array.isArray(raw.blocks)) {
+          const extraBlocks = raw.blocks.length - recovered.intent.blocks.length;
+          recoveredOverflow = extraBlocks > 0 ? extraBlocks : undefined;
+        }
+      } catch {
+        recoveredOverflow = undefined;
+      }
+    }
+    return {
+      intent: recovered.intent,
+      warnings,
+      parseError: null,
+      truncatedCount: explicitCount ?? recoveredOverflow,
+      streamFallback: false,
+    };
+  }
+
+  if (isStreaming) {
+    const coerced = coercePartialIntent(input);
+    if (coerced.intent) {
+      const capped = capIntentBlocks(coerced.intent);
+      const warnings = mergeWarnings(
+        extra,
+        coerced.warnings,
+        capped.overflowCount > 0 ? [BLOCKS_TRUNCATED_WARNING] : undefined,
+      );
+      return {
+        intent: capped.intent,
+        warnings,
+        parseError: null,
+        truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
+        streamFallback: true,
+      };
+    }
+  }
+
+  return {
+    intent: null,
+    warnings: mergeWarnings(extra),
+    parseError: parsed.errors,
+    truncatedCount: explicitCount,
+    streamFallback: false,
+  };
+}
+
 function generativeUIRootClassName(compact: boolean, className?: string): string {
   return cn(
     'generative-ui-root min-w-0',
@@ -34,39 +164,30 @@ function generativeUIRootClassName(compact: boolean, className?: string): string
   );
 }
 
-function normalizeIntent(input: string | GenerativeUIIntent): GenerativeUIIntent | null {
-  if (typeof input === 'string') {
-    const result = parseGenerativeUIIntent(input);
-    return result.ok ? result.intent : null;
-  }
-  return input;
-}
-
 export function GenerativeUIRenderer({
   intent: intentInput,
   isStreaming = false,
   showChrome = true,
   onAction,
   actionHandlers,
+  warnings: incomingWarnings,
+  truncatedCount: incomingTruncatedCount,
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
   const compact = useGenerativeUICompact();
   const reducedMotion = usePrefersReducedMotion();
-  const intent = useMemo(() => normalizeIntent(intentInput), [intentInput]);
-  const parseError = useMemo(() => {
-    if (typeof intentInput !== 'string') return null;
-    const result = parseGenerativeUIIntent(intentInput);
-    if (isGenerativeUIParseFailure(result)) return result.errors;
-    return null;
-  }, [intentInput]);
+  const resolved = useMemo(
+    () => resolveDisplayIntent(intentInput, incomingWarnings, incomingTruncatedCount, isStreaming),
+    [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming],
+  );
 
-  const streamingFallback = useMemo(() => {
-    if (intent || !isStreaming || typeof intentInput !== 'string') return null;
-    return coercePartialIntent(intentInput).intent;
-  }, [intent, isStreaming, intentInput]);
-
-  const displayIntent = intent ?? streamingFallback;
+  const displayIntent = resolved.intent;
+  const parseError = resolved.parseError;
+  const streamingFallback = resolved.streamFallback;
+  const showTruncatedHint =
+    resolved.warnings.includes(BLOCKS_TRUNCATED_WARNING) ||
+    positiveCount(resolved.truncatedCount) !== undefined;
 
   if (!displayIntent) {
     if (isStreaming) {
@@ -176,6 +297,19 @@ export function GenerativeUIRenderer({
           return slot(<Component {...validation.props} />);
         })}
       </div>
+
+      {showTruncatedHint ? (
+        <Alert
+          variant="warning"
+          role="status"
+          data-blocks-truncated
+          data-truncated-count={resolved.truncatedCount}
+        >
+          <AlertDescription>
+            {t('overflow.truncated', { max: MAX_GENERATIVE_UI_BLOCKS })}
+          </AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

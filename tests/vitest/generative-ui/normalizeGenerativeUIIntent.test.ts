@@ -42,6 +42,7 @@ describe('normalizeGenerativeUIIntent', () => {
     expect(result.intent?.blocks).toEqual([{ type: 'text', props: { body: 'hello' } }]);
     expect(result.dropped).toEqual([]);
     expect(result.warnings).toEqual([]);
+    expect(result.truncated).toBe(false);
   });
 
   it('accepts a JSON string and fenced markdown JSON via coerce', () => {
@@ -112,6 +113,7 @@ describe('normalizeGenerativeUIIntent', () => {
     expect(result.intent?.blocks.map((b) => b.id)).toEqual(['b-0', 'b-1']);
     expect(result.dropped).toEqual(blocks.slice(2));
     expect(result.warnings).toContain('blocks-truncated');
+    expect(result.truncated).toBe(true);
   });
 
   it('still respects the schema max of 32 when maxBlocks is larger', () => {
@@ -126,6 +128,7 @@ describe('normalizeGenerativeUIIntent', () => {
     expect(result.intent?.blocks).toHaveLength(MAX_GENERATIVE_UI_BLOCKS);
     expect(result.dropped).toHaveLength(8);
     expect(result.warnings).toContain('blocks-truncated');
+    expect(result.truncated).toBe(true);
   });
 
   it('migrates to v1.1 when requested and leaves v1 otherwise', () => {
@@ -193,6 +196,7 @@ describe('normalizeGenerativeUIIntent', () => {
       ok: false,
       dropped: [],
       warnings: ['unable-to-recover'],
+      truncated: false,
     });
   });
 
