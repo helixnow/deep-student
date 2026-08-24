@@ -8,6 +8,7 @@
  * - abort 运行追踪：参照 finderDriver 的 activeRuns 表，abort 返回真实 applied
  *   前缀（done/undone 为当刻已知状态），不再返回空回执。
  */
+import i18n from '@/i18n';
 import {
   LEGACY_SANDBOX_OWNER_KEY,
   selectSandboxWorkbenchOwnerState,
@@ -25,7 +26,7 @@ import type {
 const TYPE_ID = 'sandbox';
 const VIEWPORTS = new Set<SandboxViewportPreset>(['desktop', 'tablet', 'mobile']);
 
-const SET_MODE_UNSUPPORTED =
+export const SET_MODE_UNSUPPORTED =
   'Sandbox 渲染面固定为安全预览（safe-preview），不存在可切换的运行模式；能力已从清单撤除';
 
 interface ActiveRun {
@@ -120,7 +121,10 @@ export const sandboxDriver: CollabDriver & {
         pause = await run.checkPaused();
       } catch (err) {
         state.aborted = true;
-        state.errorMessage = `暂停检查失败：${err instanceof Error ? err.message : String(err)}`;
+        state.errorMessage = i18n.t('console:agent.pause_check_failed', {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: '暂停检查失败：{{error}}',
+        });
         markRemaining(state);
         break;
       }
@@ -138,16 +142,28 @@ export const sandboxDriver: CollabDriver & {
       run.reportProgress(index + 1, ops.length, label);
 
       if (op.kind === 'sandbox_refresh') {
-        if (!before.activeSession) state.undone.push(`${label}（无活动会话）`);
-        else {
+        if (!before.activeSession) {
+          state.undone.push(
+            i18n.t('console:agent.no_active_session', {
+              label,
+              defaultValue: '{{label}}（无活动会话）',
+            }),
+          );
+        } else {
           store.refreshSession(LEGACY_SANDBOX_OWNER_KEY);
           state.done.push(label);
           state.applied += 1;
         }
       } else if (op.kind === 'sandbox_set_viewport') {
         const viewport = payload.viewport as SandboxViewportPreset;
-        if (!VIEWPORTS.has(viewport)) state.undone.push(`${label}（viewport 无效）`);
-        else {
+        if (!VIEWPORTS.has(viewport)) {
+          state.undone.push(
+            i18n.t('console:agent.viewport_invalid', {
+              label,
+              defaultValue: '{{label}}（viewport 无效）',
+            }),
+          );
+        } else {
           store.setViewportPreset(viewport, LEGACY_SANDBOX_OWNER_KEY);
           run.ledger.record(
             run.runId,
@@ -161,8 +177,14 @@ export const sandboxDriver: CollabDriver & {
           state.applied += 1;
         }
       } else if (op.kind === 'sandbox_set_inspector') {
-        if (typeof payload.open !== 'boolean') state.undone.push(`${label}（open 无效）`);
-        else {
+        if (typeof payload.open !== 'boolean') {
+          state.undone.push(
+            i18n.t('console:agent.open_invalid', {
+              label,
+              defaultValue: '{{label}}（open 无效）',
+            }),
+          );
+        } else {
           store.setInspectorOpen(payload.open, LEGACY_SANDBOX_OWNER_KEY);
           run.ledger.record(
             run.runId,
@@ -177,10 +199,24 @@ export const sandboxDriver: CollabDriver & {
         }
       } else if (op.kind === 'sandbox_set_mode') {
         // 诚实回执：不改 store、不记 inverse、不按 store 判成功
-        state.undone.push(`${label} — ${SET_MODE_UNSUPPORTED}`);
-        state.errorMessage ??= SET_MODE_UNSUPPORTED;
+        const reason = i18n.t('console:agent.set_mode_unsupported', {
+          defaultValue: SET_MODE_UNSUPPORTED,
+        });
+        state.undone.push(
+          i18n.t('console:agent.set_mode_undone', {
+            label,
+            reason,
+            defaultValue: '{{label}} — {{reason}}',
+          }),
+        );
+        state.errorMessage ??= reason;
       } else {
-        state.undone.push(`${label}（不支持的 sandbox op）`);
+        state.undone.push(
+          i18n.t('console:agent.unsupported_op', {
+            label,
+            defaultValue: '{{label}}（不支持的 sandbox op）',
+          }),
+        );
       }
 
       state.nextOpIndex = index + 1;
@@ -188,7 +224,10 @@ export const sandboxDriver: CollabDriver & {
         await run.pacing.tick();
       } catch (err) {
         state.aborted = true;
-        state.errorMessage = `节奏控制失败：${err instanceof Error ? err.message : String(err)}`;
+        state.errorMessage = i18n.t('console:agent.pacing_failed', {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: '节奏控制失败：{{error}}',
+        });
         markRemaining(state);
         break;
       }
@@ -211,7 +250,11 @@ export const sandboxDriver: CollabDriver & {
     if (state) {
       state.aborted = true;
       markRemaining(state);
-      return buildReceipt(state, 'cancelled', 'sandbox 操作已中止');
+      return buildReceipt(
+        state,
+        'cancelled',
+        i18n.t('console:agent.op_aborted', { defaultValue: 'sandbox 操作已中止' }),
+      );
     }
     return {
       status: 'cancelled',
@@ -220,8 +263,10 @@ export const sandboxDriver: CollabDriver & {
       totalOps: 0,
       entityIds: [],
       done: [],
-      undone: ['run 已结束'],
-      message: 'sandbox run 不存在或已结束',
+      undone: [i18n.t('console:agent.run_ended', { defaultValue: 'run 已结束' })],
+      message: i18n.t('console:agent.run_not_found', {
+        defaultValue: 'sandbox run 不存在或已结束',
+      }),
     };
   },
 };
