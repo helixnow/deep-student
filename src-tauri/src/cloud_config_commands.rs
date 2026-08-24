@@ -13,13 +13,19 @@ use crate::cloud_storage::{
 
 pub const CLOUD_CONFIG_SSOT_SETTING_KEY: &str = "cloud_storage.config.safe_v1";
 
+/// Android 构建拒绝 FTP/FTPS 时的稳定 IPC 错误码。
+pub const FTP_UNSUPPORTED_ON_ANDROID_CODE: &str = "E_FTP_UNSUPPORTED_ON_ANDROID";
+
 /// Stable message for every backend path that rejects FTP on Android.
 ///
-/// Must stay byte-identical to the message emitted by
-/// `cloud_storage::create_storage` and `CloudStorageConfig::validate` so the
-/// frontend can map all rejection paths to one localized notice.
+/// Shared by `cloud_storage::create_storage` and `CloudStorageConfig::validate`
+/// for consistent diagnostics. Frontend dispatch uses the stable code above,
+/// never this message.
 pub const FTP_UNSUPPORTED_ON_ANDROID_MESSAGE: &str =
     "FTP/FTPS storage is not available on Android.";
+
+/// 当前构建未编入 S3 后端时的稳定 IPC 错误码。
+pub const S3_UNSUPPORTED_IN_BUILD_CODE: &str = "E_S3_UNSUPPORTED_IN_BUILD";
 
 /// Stable, user-actionable message for every backend path that rejects S3 on
 /// builds compiled without the `cloud_storage_s3` feature (Android
@@ -27,11 +33,10 @@ pub const FTP_UNSUPPORTED_ON_ANDROID_MESSAGE: &str =
 ///
 /// [R09-android / RESTORE-MATRIX P3-2] The old message told end users to
 /// "enable the cloud_storage_s3 feature at compile time" — actionable only
-/// for compiler operators. Must stay byte-identical across
+/// for compiler operators. Shared across
 /// `cloud_storage::create_storage`, `CloudStorageConfig::validate` and the
-/// SSOT save/load paths so the frontend can map them to one notice.
-/// (Locale inconsistency with the English FTP constant is tracked in
-/// FIX-QUEUE, not silently "fixed" here.)
+/// SSOT save/load paths for consistent diagnostics; frontend dispatch uses
+/// `S3_UNSUPPORTED_IN_BUILD_CODE`.
 pub const S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE: &str =
     "当前安装包不支持 S3 兼容存储，请改用 WebDAV。";
 
@@ -119,12 +124,44 @@ pub struct CloudConfigSsotResponse {
     pub config: Option<SafeCloudStorageConfig>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudConfigInvalid {
+    message: String,
+    code: Option<&'static str>,
+}
+
+impl CloudConfigInvalid {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    fn platform(code: &'static str, message: &'static str) -> Self {
+        Self {
+            message: message.to_string(),
+            code: Some(code),
+        }
+    }
+
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+}
+
+impl std::fmt::Display for CloudConfigInvalid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CloudConfigSsotError {
     #[error("cloud sync is not configured in the backend SSOT")]
     NotConfigured,
     #[error("invalid non-secret cloud configuration: {0}")]
-    Invalid(String),
+    Invalid(CloudConfigInvalid),
     #[error("cloud configuration storage failed: {0}")]
     Storage(String),
     #[error("cloud credentials are unavailable or incomplete: {0}")]
@@ -132,21 +169,45 @@ pub enum CloudConfigSsotError {
 }
 
 impl CloudConfigSsotError {
+    fn invalid(message: impl Into<String>) -> Self {
+        Self::Invalid(CloudConfigInvalid::new(message))
+    }
+
+    /// 稳定 IPC 错误码。平台能力错误使用产品约定的 `E_*` code；
+    /// 其余 SSOT 错误也提供机器码，避免命令退回纯字符串。
+    pub fn stable_code(&self) -> &'static str {
+        match self {
+            Self::NotConfigured => "E_CLOUD_CONFIG_NOT_CONFIGURED",
+            Self::Invalid(error) => error.code().unwrap_or("E_CLOUD_CONFIG_INVALID"),
+            Self::Storage(_) => "E_CLOUD_CONFIG_STORAGE",
+            Self::CredentialsUnavailable(_) => "E_CLOUD_CREDENTIALS_UNAVAILABLE",
+        }
+    }
+
+    fn into_command_error(self) -> crate::error_details::CommandError {
+        crate::error_details::CommandError::new(self.stable_code(), self.to_string())
+    }
+
     /// FTP can never work on this platform, so neither saving nor loading such
     /// a record is allowed. Carried as `Invalid` (so existing consumers such
     /// as the data-governance tool map it to `CLOUD_CONFIG_INVALID`) with a
-    /// message identical to the `create_storage` rejection for frontend
-    /// mapping.
+    /// message identical to the `create_storage` rejection for diagnostics.
     fn ftp_unsupported_on_platform() -> Self {
-        Self::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string())
+        Self::Invalid(CloudConfigInvalid::platform(
+            FTP_UNSUPPORTED_ON_ANDROID_CODE,
+            FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+        ))
     }
 
     /// S3 can never work on a build compiled without `cloud_storage_s3`, so
     /// neither saving nor loading such a record is allowed (same zombie-config
     /// reasoning as FTP-on-Android). Message identical to the
-    /// `create_storage` / `validate` rejection for frontend mapping.
+    /// `create_storage` / `validate` rejection for diagnostics.
     fn s3_unsupported_in_build() -> Self {
-        Self::Invalid(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string())
+        Self::Invalid(CloudConfigInvalid::platform(
+            S3_UNSUPPORTED_IN_BUILD_CODE,
+            S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
+        ))
     }
 }
 
@@ -157,17 +218,17 @@ fn bounded_text(
 ) -> Result<String, CloudConfigSsotError> {
     let value = value.trim();
     if value.is_empty() {
-        return Err(CloudConfigSsotError::Invalid(format!(
+        return Err(CloudConfigSsotError::invalid(format!(
             "{field} must not be blank"
         )));
     }
     if value.chars().count() > max_chars {
-        return Err(CloudConfigSsotError::Invalid(format!(
+        return Err(CloudConfigSsotError::invalid(format!(
             "{field} exceeds {max_chars} characters"
         )));
     }
     if value.chars().any(char::is_control) {
-        return Err(CloudConfigSsotError::Invalid(format!(
+        return Err(CloudConfigSsotError::invalid(format!(
             "{field} contains control characters"
         )));
     }
@@ -180,14 +241,14 @@ fn validated_http_endpoint(
 ) -> Result<(String, url::Url), CloudConfigSsotError> {
     let value = bounded_text(value, field, MAX_ENDPOINT_CHARS)?;
     let url = url::Url::parse(&value)
-        .map_err(|_| CloudConfigSsotError::Invalid(format!("{field} must be a valid URL")))?;
+        .map_err(|_| CloudConfigSsotError::invalid(format!("{field} must be a valid URL")))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(CloudConfigSsotError::Invalid(format!(
+        return Err(CloudConfigSsotError::invalid(format!(
             "{field} must use http or https and include a host"
         )));
     }
     if !url.username().is_empty() || url.password().is_some() {
-        return Err(CloudConfigSsotError::Invalid(format!(
+        return Err(CloudConfigSsotError::invalid(format!(
             "{field} must not embed credentials"
         )));
     }
@@ -209,7 +270,7 @@ fn validated_root(root: Option<String>) -> Result<Option<String>, CloudConfigSso
             .split('/')
             .any(|component| component.is_empty() || matches!(component, "." | ".."))
     {
-        return Err(CloudConfigSsotError::Invalid(
+        return Err(CloudConfigSsotError::invalid(
             "root must be a bounded relative cloud key without traversal".to_string(),
         ));
     }
@@ -265,7 +326,7 @@ impl SafeCloudStorageConfig {
                 let loopback = parsed.host_str().is_some_and(is_loopback_host);
                 let insecure = parsed.scheme() == "http" && !loopback;
                 if insecure && !allow_insecure {
-                    return Err(CloudConfigSsotError::Invalid(
+                    return Err(CloudConfigSsotError::invalid(
                         "public HTTP WebDAV requires persisted allowInsecure=true".to_string(),
                     ));
                 }
@@ -295,7 +356,7 @@ impl SafeCloudStorageConfig {
                 }
                 let (endpoint, parsed) = validated_http_endpoint(&s3.endpoint, "s3.endpoint")?;
                 if parsed.scheme() == "http" && !parsed.host_str().is_some_and(is_loopback_host) {
-                    return Err(CloudConfigSsotError::Invalid(
+                    return Err(CloudConfigSsotError::invalid(
                         "public S3 endpoints must use HTTPS".to_string(),
                     ));
                 }
@@ -330,7 +391,7 @@ impl SafeCloudStorageConfig {
                     return Err(CloudConfigSsotError::ftp_unsupported_on_platform());
                 }
                 if ftp.port == 0 {
-                    return Err(CloudConfigSsotError::Invalid(
+                    return Err(CloudConfigSsotError::invalid(
                         "ftp.port must be between 1 and 65535".to_string(),
                     ));
                 }
@@ -340,14 +401,14 @@ impl SafeCloudStorageConfig {
                     || host.contains('@')
                     || host.contains(char::is_whitespace)
                 {
-                    return Err(CloudConfigSsotError::Invalid(
+                    return Err(CloudConfigSsotError::invalid(
                         "ftp.host must be a hostname or IP address without scheme or credentials"
                             .to_string(),
                     ));
                 }
                 let insecure = !ftp.use_tls && !is_loopback_host(&host);
                 if insecure && !allow_insecure {
-                    return Err(CloudConfigSsotError::Invalid(
+                    return Err(CloudConfigSsotError::invalid(
                         "public FTP without TLS requires persisted allowInsecure=true".to_string(),
                     ));
                 }
@@ -442,9 +503,9 @@ pub fn save_cloud_config_ssot_with_capabilities(
 ) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
     let config = config.validate_and_normalize_with_capabilities(capabilities)?;
     let encoded = serde_json::to_string(&config)
-        .map_err(|_| CloudConfigSsotError::Invalid("configuration is not serializable".into()))?;
+        .map_err(|_| CloudConfigSsotError::invalid("configuration is not serializable"))?;
     if encoded.len() > MAX_STORED_CONFIG_BYTES {
-        return Err(CloudConfigSsotError::Invalid(
+        return Err(CloudConfigSsotError::invalid(
             "serialized configuration is too large".to_string(),
         ));
     }
@@ -473,12 +534,12 @@ pub fn load_cloud_config_ssot_with_capabilities(
         .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?
         .ok_or(CloudConfigSsotError::NotConfigured)?;
     if encoded.len() > MAX_STORED_CONFIG_BYTES {
-        return Err(CloudConfigSsotError::Invalid(
+        return Err(CloudConfigSsotError::invalid(
             "stored configuration is too large".to_string(),
         ));
     }
     let config = serde_json::from_str::<SafeCloudStorageConfig>(&encoded)
-        .map_err(|_| CloudConfigSsotError::Invalid("stored configuration is malformed".into()))?
+        .map_err(|_| CloudConfigSsotError::invalid("stored configuration is malformed"))?
         .validate_and_normalize_with_capabilities(capabilities)?;
     Ok(config)
 }
@@ -491,7 +552,7 @@ pub fn load_hydrated_cloud_config_ssot(
     crate::secure_store::hydrate_cloud_config_credentials(app, &mut config);
     config
         .validate()
-        .map_err(CloudConfigSsotError::CredentialsUnavailable)?;
+        .map_err(|error| CloudConfigSsotError::CredentialsUnavailable(error.to_string()))?;
     Ok(config)
 }
 
@@ -499,9 +560,9 @@ pub fn load_hydrated_cloud_config_ssot(
 pub async fn cloud_config_ssot_save(
     state: tauri::State<'_, crate::commands::AppState>,
     config: SafeCloudStorageConfig,
-) -> Result<CloudConfigSsotResponse, String> {
-    let config =
-        save_cloud_config_ssot(&state.database, config).map_err(|error| error.to_string())?;
+) -> Result<CloudConfigSsotResponse, crate::error_details::CommandError> {
+    let config = save_cloud_config_ssot(&state.database, config)
+        .map_err(CloudConfigSsotError::into_command_error)?;
     Ok(CloudConfigSsotResponse {
         configured: true,
         provider: Some(config.provider_name().to_string()),
@@ -513,7 +574,7 @@ pub async fn cloud_config_ssot_save(
 #[tauri::command]
 pub async fn cloud_config_ssot_get(
     state: tauri::State<'_, crate::commands::AppState>,
-) -> Result<CloudConfigSsotResponse, String> {
+) -> Result<CloudConfigSsotResponse, crate::error_details::CommandError> {
     match load_cloud_config_ssot(&state.database) {
         Ok(config) => Ok(CloudConfigSsotResponse {
             configured: true,
@@ -527,7 +588,7 @@ pub async fn cloud_config_ssot_get(
             root: None,
             config: None,
         }),
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err(error.into_command_error()),
     }
 }
 
@@ -658,23 +719,40 @@ mod tests {
     }
 
     #[test]
-    fn ftp_platform_error_matches_create_storage_message() {
+    fn ftp_platform_error_has_stable_code_and_shared_diagnostic() {
         assert_eq!(
             FTP_UNSUPPORTED_ON_ANDROID_MESSAGE, "FTP/FTPS storage is not available on Android.",
-            "message must stay identical to the create_storage rejection so \
-             the frontend can map every backend path the same way",
+            "shared diagnostic must remain user-readable; dispatch uses code",
         );
         let error = CloudConfigSsotError::ftp_unsupported_on_platform();
-        assert_eq!(
-            error,
-            CloudConfigSsotError::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string()),
-        );
+        assert!(matches!(&error, CloudConfigSsotError::Invalid(_)));
+        assert_eq!(error.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
         assert!(
             error
                 .to_string()
                 .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE),
             "the IPC string must contain the mappable create_storage message"
         );
+
+        let envelope = error.into_command_error();
+        assert_eq!(envelope.code, FTP_UNSUPPORTED_ON_ANDROID_CODE);
+        assert!(
+            envelope
+                .message
+                .contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE),
+            "message remains diagnostic, but frontend dispatches only by code"
+        );
+    }
+
+    #[test]
+    fn s3_platform_error_has_stable_code_independent_of_message() {
+        let error = CloudConfigSsotError::s3_unsupported_in_build();
+        assert_eq!(error.stable_code(), S3_UNSUPPORTED_IN_BUILD_CODE);
+        let envelope = error.into_command_error();
+        assert_eq!(envelope.code, S3_UNSUPPORTED_IN_BUILD_CODE);
+        assert!(envelope
+            .message
+            .contains(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE));
     }
 
     #[cfg(target_os = "android")]

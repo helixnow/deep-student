@@ -32,8 +32,8 @@ mod traits;
 mod webdav;
 
 pub use config::{
-    CloudStorageConfig, FtpConfig, PlatformStorageCapabilities, S3Config, StorageProvider,
-    WebDavConfig,
+    CloudStorageConfig, CloudStorageConfigError, FtpConfig, PlatformStorageCapabilities, S3Config,
+    StorageProvider, WebDavConfig,
 };
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
@@ -42,14 +42,14 @@ pub use sync_manager::{
     EncryptionMarker, SyncStatus, UploadResult,
 };
 pub use traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result,
-    UploadProgressCallback, RESUMABLE_DOWNLOAD_UNSUPPORTED,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    RESUMABLE_DOWNLOAD_UNSUPPORTED,
 };
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use crate::models::AppError;
+use crate::models::{AppError, AppErrorType};
 #[cfg(not(target_os = "android"))]
 use ftp::FtpStorage;
 #[cfg(feature = "cloud_storage_s3")]
@@ -96,8 +96,8 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
 /// 同 [`create_storage`]，显式注入后端能力（测试钩子，行为等价）。
 ///
 /// 校验先行：能力不支持的 provider 在 `validate_with_capabilities` 即被拒绝，
-/// 文案与 SSOT 保存/加载路径字节一致；下方按编译期能力保留的兜底分支使用
-/// 同一常量，保证任何路径都不会把面向编译者的提示暴露给终端用户
+/// 稳定 code 与 SSOT 保存/加载路径一致；下方按编译期能力保留的兜底分支使用
+/// 同一 code/message 常量，保证任何路径都不会把面向编译者的提示暴露给终端用户
 /// （RESTORE-MATRIX P3-2）。
 pub async fn create_storage_with_capabilities(
     config: &CloudStorageConfig,
@@ -106,7 +106,7 @@ pub async fn create_storage_with_capabilities(
     // 验证配置（含不可用 provider 的显式拒绝）
     config
         .validate_with_capabilities(capabilities)
-        .map_err(AppError::validation)?;
+        .map_err(config_error_to_app_error)?;
 
     let root = config.root();
 
@@ -129,8 +129,9 @@ pub async fn create_storage_with_capabilities(
             Ok(Box::new(storage))
         }
         #[cfg(not(feature = "cloud_storage_s3"))]
-        StorageProvider::S3 => Err(AppError::configuration(
-            crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string(),
+        StorageProvider::S3 => Err(platform_capability_app_error(
+            crate::cloud_config_commands::S3_UNSUPPORTED_IN_BUILD_CODE,
+            crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
         )),
         #[cfg(not(target_os = "android"))]
         StorageProvider::Ftp => {
@@ -142,9 +143,25 @@ pub async fn create_storage_with_capabilities(
             Ok(Box::new(storage))
         }
         #[cfg(target_os = "android")]
-        StorageProvider::Ftp => Err(AppError::configuration(
-            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string(),
+        StorageProvider::Ftp => Err(platform_capability_app_error(
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_CODE,
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
         )),
+    }
+}
+
+fn platform_capability_app_error(code: &'static str, message: impl Into<String>) -> AppError {
+    AppError::with_details(
+        AppErrorType::Configuration,
+        message,
+        serde_json::json!({ "code": code }),
+    )
+}
+
+fn config_error_to_app_error(error: CloudStorageConfigError) -> AppError {
+    match error.code() {
+        Some(code) => platform_capability_app_error(code, error.to_string()),
+        None => AppError::validation(error.to_string()),
     }
 }
 

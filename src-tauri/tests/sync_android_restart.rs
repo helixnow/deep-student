@@ -5,7 +5,7 @@
 //!   不在其 feature 列表中，S3 请求走既有"未启用"fail-closed 路径）；
 //! - Android 上 FTP 后端**编译期移除**（`cloud_storage/mod.rs` 的
 //!   `#[cfg(not(target_os = "android"))] mod ftp`），运行时校验、`create_storage`
-//!   与 SSOT 存取三条路径都必须以同一条可映射错误信息拒绝 FTP；
+//!   与 SSOT 存取三条路径都必须携带同一稳定错误码拒绝 FTP；
 //! - 换机（旧手机 → 新手机）在移动端事实上只有 WebDAV 一条传输路径：
 //!   上传备份 → 新设备发现版本 → 下载 → 字节一致；
 //! - 恢复走 A/B 双槽：恢复内容写入**非活动槽**，仅登记切槽租约；数据槽切换
@@ -31,7 +31,7 @@
 //! 3. **Android 目标门控测试仅在 Android 交叉测试运行时执行**：
 //!    `#[cfg(target_os = "android")]` 的用例在桌面 CI 中不编译不运行；
 //!    宿主侧以"桌面接受完整 FTP 配置"锁定平台门是两端唯一分歧点，
-//!    并以常量文本契约锁定前端可映射的拒绝信息。
+//!    并以稳定 code 契约锁定前端本地化分派。
 //! 4. **假 WebDAV 服务器代替真实服务**（坚果云/Nextcloud）：进程内 TCP 服务
 //!    实现 MKCOL/PUT(含 chunked)/GET/DELETE/PROPFIND 子集，覆盖客户端协议
 //!    行为，但不覆盖真实服务的配额/限速/分页形态（后者由
@@ -44,7 +44,10 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use deep_student_lib::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE;
+use deep_student_lib::cloud_config_commands::{
+    FTP_UNSUPPORTED_ON_ANDROID_CODE, FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+    S3_UNSUPPORTED_IN_BUILD_CODE, S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
+};
 use deep_student_lib::cloud_storage::{
     create_storage, CloudStorageConfig, CloudSyncManager, StorageProvider, WebDavConfig,
 };
@@ -56,15 +59,21 @@ use tokio::net::TcpListener;
 // 第一部分：Android 拒 FTP / mobile-slim 无 S3（cfg / feature 门）
 // ============================================================================
 
-/// 前端把所有后端 FTP 拒绝路径映射为同一条本地化提示，依赖这段文本逐字稳定。
-/// `create_storage`、`CloudStorageConfig::validate` 与 SSOT 存取共享该常量。
+/// 前端只按稳定 code 本地化；message 是可变诊断文本。
 #[test]
-fn ftp_android_rejection_message_is_frontend_mappable_contract() {
+fn platform_rejection_codes_are_stable_contract() {
+    assert_eq!(
+        FTP_UNSUPPORTED_ON_ANDROID_CODE,
+        "E_FTP_UNSUPPORTED_ON_ANDROID"
+    );
+    assert_eq!(
+        S3_UNSUPPORTED_IN_BUILD_CODE,
+        "E_S3_UNSUPPORTED_IN_BUILD"
+    );
     assert_eq!(
         FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
         "FTP/FTPS storage is not available on Android.",
-        "该文本被前端逐字映射为本地化提示，任何改动必须同步 create_storage / \
-         validate / SSOT 三条路径与前端映射表"
+        "message 仍应面向用户，但不再参与前端分派"
     );
 }
 
@@ -155,9 +164,19 @@ async fn s3_disabled_build_fails_closed_like_mobile_slim() {
     let error = create_storage(&config)
         .await
         .expect_err("S3 未编译的构建必须拒绝创建 S3 存储");
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("code"))
+            .and_then(|code| code.as_str()),
+        Some(S3_UNSUPPORTED_IN_BUILD_CODE)
+    );
     assert!(
-        error.to_string().contains("cloud_storage_s3"),
-        "错误必须指向缺失的 feature，便于诊断: {error}"
+        error
+            .to_string()
+            .contains(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE),
+        "诊断必须面向用户并给出 WebDAV 替代，不暴露编译 feature: {error}"
     );
 }
 
@@ -212,16 +231,15 @@ mod android_only {
         (dir, database)
     }
 
-    /// Android 运行时校验必须以与 `create_storage` 相同的可映射信息拒绝
+    /// Android 运行时校验必须以与 `create_storage` 相同的稳定 code 拒绝
     /// **配置完整**的 FTP（拒绝原因是平台，不是配置缺项）。
     #[test]
     fn android_validate_rejects_complete_ftp_config() {
-        assert_eq!(
-            complete_ftp_config()
-                .validate()
-                .expect_err("Android 必须拒绝 FTP"),
-            FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
-        );
+        let error = complete_ftp_config()
+            .validate()
+            .expect_err("Android 必须拒绝 FTP");
+        assert_eq!(error.code(), Some(FTP_UNSUPPORTED_ON_ANDROID_CODE));
+        assert_eq!(error.to_string(), FTP_UNSUPPORTED_ON_ANDROID_MESSAGE);
     }
 
     /// `create_storage` 是所有云命令的公共入口：Android 上 FTP 必须在任何
@@ -231,9 +249,14 @@ mod android_only {
         let error = create_storage(&complete_ftp_config())
             .await
             .expect_err("Android 无 FTP 后端，创建必须失败");
-        assert!(
-            error.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE),
-            "错误必须携带前端可映射文本，实际: {error}"
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details.get("code"))
+                .and_then(|code| code.as_str()),
+            Some(FTP_UNSUPPORTED_ON_ANDROID_CODE),
+            "错误必须携带前端稳定 code，实际: {error}"
         );
     }
 
@@ -257,6 +280,7 @@ mod android_only {
             },
         )
         .expect_err("Android 上 FTP 记录不得持久化");
+        assert_eq!(denied.stable_code(), FTP_UNSUPPORTED_ON_ANDROID_CODE);
         assert!(denied.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
         assert!(
             matches!(
@@ -275,6 +299,10 @@ mod android_only {
             .expect("seed desktop-written FTP record");
         let load_denied = load_cloud_config_ssot(&database)
             .expect_err("桌面写入的 FTP 记录在 Android 上必须拒绝加载");
+        assert_eq!(
+            load_denied.stable_code(),
+            FTP_UNSUPPORTED_ON_ANDROID_CODE
+        );
         assert!(load_denied.to_string().contains(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE));
     }
 

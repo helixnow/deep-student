@@ -1,11 +1,11 @@
 /**
- * CloudStorageSection 平台能力拒绝映射测试（R10-ux / P2-LOCALE-PLATFORM-MSG）
+ * CloudStorageSection 平台能力拒绝映射测试（R11-android2 / P2-LOCALE）
  *
  * 覆盖（与 r09-ux-cloud-storage.test.tsx、CloudStorageSection.cloudUi.test.tsx 不重复）：
- * 1. 后端 S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE（中文常量）→ 前端映射为
+ * 1. 后端稳定 code（message 可任意变化）→ 前端映射为
  *    cloudStorage:errors.s3DisabledInBuild（zh/en 均有键，en 用户可读）；
- * 2. 跨层契约：用 src-tauri 源码里的常量原文钉死前端匹配片段；
- * 3. 回归：FTP-on-Android 英文常量映射不受影响；E2EE 分类优先于平台能力映射；
+ * 2. 跨层契约：Rust/TypeScript 的两个 code 常量逐字一致，组件不再含平台文案正则；
+ * 3. 回归：FTP-on-Android code 映射；E2EE 分类优先于平台能力映射；
  * 4. 源码契约：SSOT 保存失败通知必须带 localizeCloudError 映射后的原因
  *    （与加载路径对齐，不再吞掉后端拒绝原因）。
  */
@@ -32,6 +32,7 @@ vi.mock('react-i18next', () => {
 });
 
 const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
+const mockGetCloudPlatformErrorI18nKey = vi.hoisted(() => vi.fn());
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: mockShowGlobalNotification,
 }));
@@ -96,6 +97,7 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   isPublicHttpEndpoint: vi.fn(() => false),
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
+  getCloudPlatformErrorI18nKey: mockGetCloudPlatformErrorI18nKey,
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -139,13 +141,18 @@ const S3_BACKEND_MESSAGE = extractRustStringConst(
 const FTP_BACKEND_MESSAGE = extractRustStringConst(
   'FTP_UNSUPPORTED_ON_ANDROID_MESSAGE',
 );
-
-/** 与 CloudStorageSection.localizeCloudError 内的匹配片段保持一致 */
-const S3_FRONTEND_PATTERN = /当前安装包不支持\s*S3\s*兼容存储/;
+const S3_BACKEND_CODE = extractRustStringConst('S3_UNSUPPORTED_IN_BUILD_CODE');
+const FTP_BACKEND_CODE = extractRustStringConst('FTP_UNSUPPORTED_ON_ANDROID_CODE');
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockParseEnvelope.mockReturnValue(null);
+  mockGetCloudPlatformErrorI18nKey.mockImplementation((error: unknown) => {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === S3_BACKEND_CODE) return 'cloudStorage:errors.s3DisabledInBuild';
+    if (code === FTP_BACKEND_CODE) return 'cloudStorage:errors.ftpDisabledAndroid';
+    return undefined;
+  });
   localStorage.clear();
 });
 
@@ -153,17 +160,20 @@ beforeEach(() => {
 // 跨层契约：后端常量 ↔ 前端匹配片段 ↔ locale 键
 // ============================================================================
 
-describe('S3 拒绝文案跨层契约（P2-LOCALE-PLATFORM-MSG）', () => {
-  it('前端匹配片段命中后端常量原文（后端改文案必须同步前端映射）', () => {
-    expect(S3_FRONTEND_PATTERN.test(S3_BACKEND_MESSAGE)).toBe(true);
+describe('平台拒绝 code 跨层契约（P2-LOCALE）', () => {
+  it('后端稳定 code 与产品契约一致，message 仅保留面向用户的诊断', () => {
+    expect(S3_BACKEND_CODE).toBe('E_S3_UNSUPPORTED_IN_BUILD');
+    expect(FTP_BACKEND_CODE).toBe('E_FTP_UNSUPPORTED_ON_ANDROID');
     // 后端常量保持面向用户（R09-android P3-2 修复不回退）
     expect(S3_BACKEND_MESSAGE).toContain('WebDAV');
     expect(S3_BACKEND_MESSAGE).not.toMatch(/feature|编译/);
+    expect(FTP_BACKEND_MESSAGE).toContain('Android');
   });
 
-  it('组件源码使用同一匹配片段并映射到 s3DisabledInBuild 键', () => {
-    expect(componentSource).toContain('当前安装包不支持\\s*S3\\s*兼容存储');
-    expect(componentSource).toContain("t('cloudStorage:errors.s3DisabledInBuild')");
+  it('组件委托 code 映射，源码不再匹配 FTP/S3 平台文案', () => {
+    expect(componentSource).toContain('getCloudPlatformErrorI18nKey(error)');
+    expect(componentSource).not.toContain('FTP\\/FTPS storage is not available on Android');
+    expect(componentSource).not.toContain('当前安装包不支持\\s*S3\\s*兼容存储');
   });
 
   it('zh/en locale 均有 s3DisabledInBuild 键且给出可操作替代（WebDAV / ZIP 导入）', () => {
@@ -183,9 +193,9 @@ describe('S3 拒绝文案跨层契约（P2-LOCALE-PLATFORM-MSG）', () => {
 // ============================================================================
 
 describe('平台能力拒绝的加载路径映射', () => {
-  it('后端 S3 拒绝原文 → 通知携带 s3DisabledInBuild（不再裸透中文常量）', async () => {
+  it('S3 code → 通知携带 s3DisabledInBuild，message 改写不影响映射', async () => {
     vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValue(
-      new Error(S3_BACKEND_MESSAGE),
+      { code: S3_BACKEND_CODE, message: 'arbitrary changed S3 diagnostic' },
     );
 
     render(<CloudStorageSection />);
@@ -198,9 +208,9 @@ describe('平台能力拒绝的加载路径映射', () => {
     });
   });
 
-  it('回归：FTP-on-Android 英文常量仍映射到 ftpDisabledAndroid', async () => {
+  it('FTP-on-Android code 映射到 ftpDisabledAndroid，message 不参与分派', async () => {
     vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValue(
-      new Error(FTP_BACKEND_MESSAGE),
+      { code: FTP_BACKEND_CODE, message: '任意语言的 FTP 诊断' },
     );
 
     render(<CloudStorageSection />);
@@ -215,7 +225,9 @@ describe('平台能力拒绝的加载路径映射', () => {
 
   it('E2EE 分类优先于平台能力映射（同时命中时归 E2EE 且保留原文供排查）', async () => {
     const mixed = `解密失败（密码不一致）；${S3_BACKEND_MESSAGE}`;
-    vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValue(new Error(mixed));
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValue(
+      Object.assign(new Error(mixed), { code: S3_BACKEND_CODE }),
+    );
 
     render(<CloudStorageSection />);
 

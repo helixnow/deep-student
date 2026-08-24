@@ -38,6 +38,57 @@ impl PlatformStorageCapabilities {
     }
 }
 
+/// 云存储配置校验错误。
+///
+/// `message` 面向日志/用户，可随本地化调整；平台能力拒绝额外携带稳定 `code`，
+/// IPC 层必须按 code 分派，禁止再匹配 message。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudStorageConfigError {
+    message: String,
+    code: Option<&'static str>,
+}
+
+impl CloudStorageConfigError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: None,
+        }
+    }
+
+    fn platform(code: &'static str, message: &'static str) -> Self {
+        Self {
+            message: message.to_string(),
+            code: Some(code),
+        }
+    }
+
+    /// 稳定机器码；普通字段校验错误暂未迁移时返回 `None`。
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+}
+
+impl std::fmt::Display for CloudStorageConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CloudStorageConfigError {}
+
+impl From<&str> for CloudStorageConfigError {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}
+
+impl From<String> for CloudStorageConfigError {
+    fn from(message: String) -> Self {
+        Self::new(message)
+    }
+}
+
 /// 存储提供商类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -254,19 +305,19 @@ impl CloudStorageConfig {
     }
 
     /// 验证配置是否完整（按当前编译目标的后端能力）
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), CloudStorageConfigError> {
         self.validate_with_capabilities(PlatformStorageCapabilities::current())
     }
 
     /// 验证配置是否完整（显式注入后端能力，测试钩子）。
     ///
     /// 不可用的 provider 必须在此显式拒绝（不能静默通过后在更深处失败），
-    /// 且错误文案与 `create_storage` / SSOT 保存与加载路径保持字节一致，
-    /// 以便前端把所有拒绝路径映射到同一条用户提示。
+    /// 且稳定错误码与 `create_storage` / SSOT 保存与加载路径保持一致；
+    /// message 仅作诊断，前端不得据此分派。
     pub fn validate_with_capabilities(
         &self,
         capabilities: PlatformStorageCapabilities,
-    ) -> Result<(), String> {
+    ) -> Result<(), CloudStorageConfigError> {
         match self.provider {
             StorageProvider::WebDav => {
                 let config = self.webdav.as_ref().ok_or("缺少 WebDAV 配置")?;
@@ -301,9 +352,10 @@ impl CloudStorageConfig {
             }
             StorageProvider::S3 => {
                 if !capabilities.s3_supported {
-                    return Err(
-                        crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.into(),
-                    );
+                    return Err(CloudStorageConfigError::platform(
+                        crate::cloud_config_commands::S3_UNSUPPORTED_IN_BUILD_CODE,
+                        crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
+                    ));
                 }
                 let config = self.s3.as_ref().ok_or("缺少 S3 配置")?;
                 if config.endpoint.trim().is_empty() {
@@ -332,9 +384,10 @@ impl CloudStorageConfig {
             }
             StorageProvider::Ftp => {
                 if !capabilities.ftp_supported {
-                    return Err(
-                        crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.into(),
-                    );
+                    return Err(CloudStorageConfigError::platform(
+                        crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_CODE,
+                        crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE,
+                    ));
                 }
                 let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
                 if config.host.trim().is_empty() {

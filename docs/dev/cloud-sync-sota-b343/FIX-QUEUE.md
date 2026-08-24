@@ -433,3 +433,37 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **台账回写**：FINDINGS-R11 §2 P2-1 状态更新（已关）、§3.2 表 P2-1 行、§5 去向 5 号划线；本文件 Round 11 待修表 P2-1 行标已关。
 
 **文件面认领（独占）**：`data_governance/sync/mod.rs`（仅删两函数 + 墓碑注释）、`sync_r10_download.rs`（仅两处注释）、`sync_r12_decoded_dead.rs` 新文件、FINDINGS-R11 三处回写、PROTOCOL-R10 一句、本文件 R10-download 节一句 + 待修表一行 + 本节。不改 vfs_blobs / repo_check / webdav / notes / chat / workbench。
+
+### R11-android2（分支 `cursor/cloud-sync-sota-wrap-android2-b343`，Android 收尾一整包）
+
+模型：`gpt-5.6-sol-xhigh-fast`。交付：
+
+- **Android 手册 + SAF 审计**：新增
+  [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md)，覆盖 WebDAV 配置与
+  A→B→A 记录同步、云端部分归档的诚实恢复边界、SAF 加密全保真 ZIP
+  导出→导入→A/B 槽恢复→重启、强杀/断网/ENOSPC 矩阵及真机签字模板。
+  如实登记 8 项 SAF/重启缺口：真机 ContentResolver 自动化、persistable URI grant、
+  目标回读 SHA256、空间预检、OpenableColumns 元数据、双重编码 URI、真实 restart、
+  受控 MainActivity 与生成工程同步门禁。宿主测不能冒充真机绿灯。
+- **mobile-slim + S3 依赖评估**：对 lockfile 的
+  `aarch64-linux-android` resolve 图实测，`mobile-slim` 705 节点，
+  加 `cloud_storage_s3` 后 732，增 **27（3.8%）**，其中 AWS/Smithy 20。
+  没有同工具链 paired APK，故不伪造 APK MB 数；保留 WebDAV-only，列出后续 APK /
+  `.so` / RSS / 真机 provider 契约门槛。
+- **P2-LOCALE-PLATFORM-MSG 机制半边关闭**：后端新增稳定 code
+  `E_FTP_UNSUPPORTED_ON_ANDROID` / `E_S3_UNSUPPORTED_IN_BUILD`。
+  `CloudStorageConfigError` 在 validate 路径携码，`create_storage` 的 AppError
+  在 `details.code` 携码，SSOT save/get 改发标准 `CommandError {code,message}`。
+  `cloudStorageApi` 在 legacy 包装时保留 code，`CloudStorageSection` 只按 code
+  选择 R10 已落的 zh/en locale 键，删除 FTP/S3 message 正则；message 可任意改写。
+- **测试**：更新 `sync_android_device_switch.rs`，锁定 validate/create/SSOT
+  save+load 的 code；更新 R10 UI 映射测为 code 契约；新增
+  `r11-android-platform-error-codes.test.ts`，覆盖 Rust↔TS 常量、对象/JSON envelope、
+  legacy AppError.details、message 改写与未知 code 不误映射。
+
+**文件面增量登记**：除 ROUND-11 原列的手册、`CloudStorageSection.tsx`、
+`sync_android_device_switch.rs` 与 vitest 外，为让四条后端路径真正携码，本包最小改动
+`cloud_config_commands.rs`、`cloud_storage/config.rs`、`cloud_storage/mod.rs`；
+为防既有 API wrapper 丢码，改 `src/utils/cloudStorageApi.ts`。R10 已有 zh/en
+`ftpDisabledAndroid` / `s3DisabledInBuild` 键，无需重复改 locale。未改 notes / chat /
+workbench。
