@@ -160,7 +160,8 @@
 9. ~~**Wrap-up 收尾审查**~~ — ✅ 本地完成（leftover `cursor/*` 已覆盖，不 merge 旧 tip）
 10. ~~**Round 50 剩余缺口**~~ — ✅ object cap / HPIAS 孤儿 action-bar / motion+dir / note HITL / export i18n
 11. ~~**Round 51 测试卫生 / 架构文档**~~ — ✅ 去掉 `restoreAllMocks` + ARCHITECTURE 对齐
-12. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+12. ~~**Round 58 CI 修复**~~ — ✅ Rust E0716/E0515、`no-control-regex`、Vitest 256k OOM
+13. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 

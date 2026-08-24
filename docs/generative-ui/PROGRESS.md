@@ -1,5 +1,16 @@
 # Generative UI 进度日志
 
+## Round 58（2026-08-24）— 修复 CI 红灯并 push
+
+远程 head `c16a4fbd` 的 run `32711020815` 失败：Rust 生命周期、ESLint `no-control-regex`、Vitest shard OOM。本轮修复并连同 R51–57 未推送提交一起 push。
+
+1. [x] `hpias_question` 先绑定 `extract_question_from_intent` 再 `or`
+2. [x] `parse_note_edit` 测试不再对 owned `Value` 返回引用
+3. [x] URL 混淆正则改为 `new RegExp` + `fromCharCode`，保留 `SCHEME_OBFUSCATION_RE`
+4. [x] parser / schema / registry / renderer 可注入 `maxChars`；单测不再分配 256KiB 大串
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 57（2026-08-24）— parse error code buffer-capped
 
 CI `32711020815` 仍 queued，**本轮不 push**。

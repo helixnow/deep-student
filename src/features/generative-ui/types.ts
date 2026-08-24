@@ -110,5 +110,7 @@ export interface GenerativeUIRendererProps {
   warnings?: string[];
   /** 被截断未显示的块数；有则显示 overflow 提示 */
   truncatedCount?: number;
+  /** 流式字符上限；测试可注入，生产默认 256_000 */
+  maxStreamChars?: number;
   className?: string;
 }

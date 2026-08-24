@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GENERATIVE_UI_BLOCKS, parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 import { classifyGenerativeUIParseErrors } from '@/features/generative-ui/utils/classifyGenerativeUIParseErrors';
-import {
-  MAX_GENERATIVE_UI_STREAM_CHARS,
-  STREAM_BUFFER_CAPPED_WARNING,
-} from '@/features/generative-ui/utils/streamBufferGuard';
+import { STREAM_BUFFER_CAPPED_WARNING } from '@/features/generative-ui/utils/streamBufferGuard';
 
 describe('classifyGenerativeUIParseErrors', () => {
   it('maps Invalid JSON / JSON.parse strings to invalid-json', () => {
@@ -144,7 +141,8 @@ describe('classifyGenerativeUIParseErrors', () => {
     ]);
 
     const oversized = parseGenerativeUIIntent(
-      `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS)}"}}]}`,
+      `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(128)}"}}]}`,
+      128,
     );
     expect(oversized.ok).toBe(false);
     if (!oversized.ok) {

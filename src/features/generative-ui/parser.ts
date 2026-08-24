@@ -256,11 +256,14 @@ function ingestNewBlockSlices(
 }
 
 /** 块级增量解析：返回已闭合 blocks + 可选 meta（无状态单次调用） */
-export function tryParsePartialIntent(buffer: string): GenerativeUIIntent | null {
+export function tryParsePartialIntent(
+  buffer: string,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+): GenerativeUIIntent | null {
   if (!buffer.trim()) return null;
-  if (buffer.length > MAX_GENERATIVE_UI_STREAM_CHARS) return null;
+  if (buffer.length > maxChars) return null;
 
-  const parser = new GenerativeUIStreamParser();
+  const parser = new GenerativeUIStreamParser(maxChars);
   parser.appendChunk(buffer);
   return parser.getSnapshot().intent;
 }
@@ -273,6 +276,11 @@ export class GenerativeUIStreamParser {
   private phase: GenerativeUIStreamPhase = 'idle';
   private warnings: string[] = [];
   private bufferCapped = false;
+  private readonly maxChars: number;
+
+  constructor(maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS) {
+    this.maxChars = maxChars;
+  }
 
   /** 追加 chunk 并返回 snapshot（增量状态机入口） */
   appendChunk(chunk: string): GenerativeUIStreamSnapshot {
@@ -280,7 +288,11 @@ export class GenerativeUIStreamParser {
       return this.getSnapshot();
     }
 
-    const { accepted, capped } = guardStreamBufferAppend(this.buffer.length, chunk);
+    const { accepted, capped } = guardStreamBufferAppend(
+      this.buffer.length,
+      chunk,
+      this.maxChars,
+    );
     if (capped) {
       this.markBufferCapped();
       return this.getSnapshot();
