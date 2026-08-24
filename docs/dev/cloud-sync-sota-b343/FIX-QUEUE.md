@@ -65,6 +65,11 @@
 
 任务定义见 [ROUND-07](./ROUND-07.md)。测试代理各写**独立新测试文件**；若必须改既有文件，先在此登记。
 
+### Round 07 实现改动登记
+
+- **R07-contract → `cloud_storage/ftp.rs`**：Contract Gate（run 32679534026）暴露 FTP `delete` 在目标 key 的父目录不存在时 CWD 550 硬失败，而 S3/WebDAV 对不存在 key 的删除是幂等成功（WebDAV 显式把 404 当成功）。资产 tombstone 应用会对遗留路径 `data_governance/assets/<key>` 做删除，该路径在新格式下从不存在，FTP 因此三家中唯一挂掉。修复：`delete` 中父目录 CWD 失败且可归类 not-found（沿用 R02 收紧后的 550/501 白名单）时按幂等成功返回；无法归类的 550 仍硬抛。同时在 `run_object_semantics_contract` 补「删除位于不存在目录下的 key 幂等成功」断言钉死三家语义。
+- **R07-contract → `sync_provider_contract_tests.rs` 混合明文/密文契约**：R04/R06 起 `decode_payload` 对「本端已启用加密但云端 payload 无 DSBK 头」fail-closed（防静默降级），旧测试仍断言带密码客户端能解码混合变更，属测试与新契约脱节，按新契约改写（带密码端必须停在明文变更文件的安全点）。R05/R06 的 `check_connection` 改动（MKCOL 失败 + PROPFIND 404 不假成功）与本次失败无关：失败 run 中所有 `check_connection` 前置断言均通过。
+
 | 代理 | 模型 | 范围 | 文件面（独占） |
 |---|---|---|---|
 | R07-review | claude-fable-5-thinking-xhigh | 只读复审 R06 合入，产出 FINDINGS-R07 | 只读（产出文档归父代理/本目录） |

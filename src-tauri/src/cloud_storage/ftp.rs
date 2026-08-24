@@ -966,13 +966,22 @@ impl CloudStorage for FtpStorage {
             self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&Self::absolute_path(&self.root)).await?;
 
-            // 切换到文件所在目录
+            // 切换到文件所在目录。父目录不存在时目标文件必然不存在：
+            // 与 S3/WebDAV 的幂等删除语义对齐（删除不存在的 key 视为成功），
+            // 否则资产 tombstone 等对遗留路径的删除会在 FTP 上误报硬错误。
+            // 无法归类为 not-found 的 CWD 失败（如权限问题）仍按真实错误上抛。
             let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
                     let full_parent = self.remote_path(parent_path);
-                    client.cwd(&Self::absolute_path(&full_parent)).await?;
+                    if let Err(e) = client.cwd(&Self::absolute_path(&full_parent)).await {
+                        if Self::is_not_found_error(&e) {
+                            let _ = client.quit().await;
+                            return Ok(());
+                        }
+                        return Err(e);
+                    }
                 }
             }
 
