@@ -102,6 +102,8 @@ describe('移动端指南对 Android 云存储诚实', () => {
     expect(guide).toContain('桌面写入的 S3 / FTP 配置在 Android 上不会被加载');
     expect(guide).not.toMatch(/云同步（WebDAV\/S3，实验性）/);
     expect(guide).not.toMatch(/两端配置同一个 WebDAV\/S3/);
+    expect(guide).not.toMatch(/一端「立即备份到云端」，另一端「从云端恢复」/);
+    expect(guide).toContain('便携归档');
   });
 
   it('隐私数据流向不把云同步写成笼统的 WebDAV/S3', () => {

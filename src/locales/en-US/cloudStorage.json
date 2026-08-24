@@ -167,10 +167,10 @@
   
   "download": {
     "title": "Restore from Cloud",
-    "description": "Download cloud backup and restore data",
-    "warning": "Warning: Restore will overwrite local data!",
+    "description": "Download a cloud backup and attempt a slot restore. The default cloud package is a portable archive, so validation usually refuses.",
+    "warning": "Warning: Local data is overwritten only after slot-restore validation succeeds.",
     "warningDetail": "Make a local full backup first. Do not treat this cloud package as your only copy.",
-    "partialArchiveNotice": "Backup to Cloud Now usually uploads a portable archive. Unencrypted packages strip local keys and audit data, so they cannot do a full A/B slot restore like a local backup (validation refuses and current data is left unchanged). For full-fidelity migration, export with a backup password. Even after a successful restore, API keys may need to be entered again.",
+    "partialArchiveNotice": "Backup to Cloud Now always exports the ZIP without a backup password, so the package is always a portable archive that strips local keys and audit data. Cloud end-to-end encryption only wraps that portable ZIP; after unwrap it still cannot do a full A/B slot restore (validation refuses and current data is left unchanged). For full-fidelity migration, use Export Backup with a backup password and import that ZIP on the new device. Do not treat the default cloud package as a complete device-migration backup.",
     "selectVersion": "Select version to restore",
     "latest": "Latest version",
     "confirm": "Start Restore",

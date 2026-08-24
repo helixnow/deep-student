@@ -22,7 +22,7 @@
 
 ## 诚实未关（不阻塞「备份/换机可用」，但是差距）
 
-- **增量备份**：`DELTA-R11.md` 已合；codec + inventory + backup-v2 租约 + upload + restore + 两遍 GC 积木已落。**未接线**：生产仍整 ZIP 单对象 PUT。用户指南 16 与设置页 `actions.fullZipHint` 已写明没有增量传输/去重/CDC。云端恢复确认已写明便携归档不能整槽恢复、校验拒绝时不覆盖。下一刀才是 integration（本阶段不接命令/UI）。
+- **增量备份**：`DELTA-R11.md` 已合；codec + inventory + backup-v2 租约 + upload + restore + 两遍 GC 积木已落。**未接线**：生产仍整 ZIP 单对象 PUT。用户指南 16 与设置页 `actions.fullZipHint` 已写明没有增量传输/去重/CDC。云端恢复确认与用户指南已写明：默认「立即备份到云端」**不会**带备份密码，产物永远是便携归档（云端 E2EE 只整包加密，不解成全保真），「从云端恢复」整槽校验会拒绝且不覆盖。下一刀才是 integration（本阶段不接命令/UI）。
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
@@ -30,7 +30,7 @@
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
-- **CI / Rust 门禁**：`8de4b63d` 的 Frontend `licenses:check` 已过；同 run 的 `tsc` 红在 `syncStatusStore` persist `migrate` 把 `Partial` 当成完整切片（已修，未改调度语义）。完整 CI 未宣称全绿。
+- **CI / Rust 门禁**：`8de4b63d` 的 Frontend `licenses:check` 已过；同 run 的 `tsc` 红在 `syncStatusStore` persist `migrate` 把 `Partial` 当成完整切片（已修，未改调度语义）。`963e4cc3` 的 Frontend（含 tsc）已过。完整 CI 未宣称全绿。
 
 ## go/no-go
 

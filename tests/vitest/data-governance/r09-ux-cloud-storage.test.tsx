@@ -258,6 +258,21 @@ describe('CloudStorageSection 整包备份诚实文案', () => {
   });
 });
 
+describe('用户指南 16 不把默认云端整包写成可换机', () => {
+  const guide = readFileSync(
+    resolve(process.cwd(), 'docs/user-guide/16-数据管理与云同步.md'),
+    'utf-8',
+  );
+
+  it('写明默认云端包不能整槽恢复，并不再说适合迁移学习数据', () => {
+    expect(guide).toContain('**不会**带备份密码');
+    expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
+    expect(guide).toContain('不要指望默认云端整包能完成「从云端恢复」');
+    expect(guide).not.toContain('适合迁移学习数据本身');
+    expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');
+  });
+});
+
 // ============================================================================
 // 危险操作确认源码契约
 // ============================================================================
@@ -275,8 +290,13 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     );
     expect(zhLocale.download.partialArchiveNotice).toContain('便携归档');
     expect(zhLocale.download.partialArchiveNotice).toContain('整槽恢复');
+    expect(zhLocale.download.partialArchiveNotice).toContain('不会带备份密码');
+    expect(zhLocale.download.partialArchiveNotice).toContain('永远是便携归档');
+    expect(zhLocale.download.warning).toContain('通过整槽恢复校验');
     expect(zhLocale.download.restartNotice).toContain('通过整槽恢复校验');
     expect(enLocale.download.partialArchiveNotice).toMatch(/portable archive/i);
+    expect(enLocale.download.partialArchiveNotice).toMatch(/always exports/i);
+    expect(enLocale.download.warning).toMatch(/only after slot-restore validation/i);
     expect(enLocale.download.restartNotice).toMatch(/slot-restore validation/i);
     expect(Object.keys(zhLocale.download).sort()).toEqual(Object.keys(enLocale.download).sort());
   });
