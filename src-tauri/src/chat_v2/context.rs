@@ -1018,6 +1018,7 @@ impl PipelineContext {
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "arxiv_search" | "scholar_search" => block_types::ACADEMIC_SEARCH.to_string(),
             "image_generate" => block_types::IMAGE_GEN.to_string(),
+            "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
             "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
             // 🆕 契约 C11 配套（缺口 2 历史加载侧）：前端为 workspace_send 建专属块，

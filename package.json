@@ -151,6 +151,7 @@
     "remark-math": "^6.0.0",
     "uuid": "^11.1.0",
     "yaml": "^2.8.2",
+    "zod": "^4.4.3",
     "zustand": "^5.0.6"
   },
   "overrides": {

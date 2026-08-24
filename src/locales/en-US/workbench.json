@@ -233,7 +233,8 @@
     "settings": "Settings",
     "sandbox": "Sandbox",
     "pomodoro": "Pomodoro",
-    "browser": "Browser"
+    "browser": "Browser",
+    "aiDashboard": "AI Dashboard"
   },
   "dock": {
     "label": "Dock",

@@ -74,7 +74,18 @@
     "operation_set": "Set content",
     "accept": "Accept",
     "reject": "Reject",
-    "no_changes": "No changes detected"
+    "no_changes": "No changes detected",
+    "summary": {
+      "meta_title": "Change summary",
+      "meta_description": "Deterministic preview from diff stats",
+      "stat_title": "Changed lines",
+      "no_change_trend": "No substantive change",
+      "added": "Added",
+      "removed": "Removed",
+      "operation": "Operation",
+      "no_diff_title": "No visible diff",
+      "no_diff_description": "The AI suggestion matches the current content; accepting will make no changes."
+    }
   },
   "aiCheckpoint": {
     "applied": "AI edit applied",

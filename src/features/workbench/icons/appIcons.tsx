@@ -18,6 +18,7 @@ import imageUrl from './app-icons/image.svg';
 import fileUrl from './app-icons/file.svg';
 import filePreviewUrl from './app-icons/file-preview.svg';
 import taskDashboardUrl from './app-icons/taskDashboard.svg';
+import aiDashboardUrl from './app-icons/aiDashboard.svg';
 import filesUrl from './app-icons/files.svg';
 import mindmapUrl from './app-icons/mindmap.svg';
 
@@ -44,6 +45,7 @@ export const APP_ICON_URLS: Record<string, string> = {
   file: fileUrl,
   'file-preview': filePreviewUrl,
   taskDashboard: taskDashboardUrl,
+  aiDashboard: aiDashboardUrl,
   files: filesUrl,
   mindmap: mindmapUrl,
 };

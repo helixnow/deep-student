@@ -6,6 +6,7 @@ import { MigrationOverviewTab } from './MigrationOverviewTab';
 import { ComponentCompareTab } from './ComponentCompareTab';
 import { TokenInspectorTab } from './TokenInspectorTab';
 import { MixedUsageTab } from './MixedUsageTab';
+import { GenerativeUIDemoTab } from './GenerativeUIDemoTab';
 import type { ScanData } from './types';
 import scanDataJson from './scan-data.json';
 
@@ -39,6 +40,7 @@ export function StyleDebugPage() {
             <TabsTrigger value="compare">组件对比</TabsTrigger>
             <TabsTrigger value="tokens">Token 校对</TabsTrigger>
             <TabsTrigger value="mixed">混用清单</TabsTrigger>
+            <TabsTrigger value="generative-ui">Generative UI</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -55,6 +57,10 @@ export function StyleDebugPage() {
 
           <TabsContent value="mixed">
             <MixedUsageTab data={scanData} />
+          </TabsContent>
+
+          <TabsContent value="generative-ui">
+            <GenerativeUIDemoTab />
           </TabsContent>
         </Tabs>
       </div>

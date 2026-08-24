@@ -74,7 +74,18 @@
     "operation_set": "设置内容",
     "accept": "接受",
     "reject": "拒绝",
-    "no_changes": "未检测到变更"
+    "no_changes": "未检测到变更",
+    "summary": {
+      "meta_title": "变更摘要",
+      "meta_description": "基于 diff 统计的确定性预览",
+      "stat_title": "变更行数",
+      "no_change_trend": "无实质变更",
+      "added": "新增",
+      "removed": "删除",
+      "operation": "操作",
+      "no_diff_title": "无可见差异",
+      "no_diff_description": "AI 建议与当前正文一致，接受后将不会产生变更。"
+    }
   },
   "aiCheckpoint": {
     "applied": "AI 编辑已应用",

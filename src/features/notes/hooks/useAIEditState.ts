@@ -3,6 +3,9 @@ import * as Diff from 'diff';
 
 export type CanvasEditOperation = 'append' | 'replace' | 'set';
 
+/** 与 Notes 持久化层的 1 MiB 正文上限保持一致。 */
+export const MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES = 1024 * 1024;
+
 export interface CanvasAIEditRequest {
   requestId: string;
   noteId: string;
@@ -65,6 +68,18 @@ export interface UseAIEditStateReturn {
   clear: () => void;
 }
 
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function projectedOutputTooLarge(byteLength: number): boolean {
+  return byteLength > MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES;
+}
+
+function outputTooLargeError(): string {
+  return `建议后的笔记超过 ${MAX_AI_EDIT_PROJECTED_OUTPUT_BYTES} 字节上限`;
+}
+
 /**
  * 由请求与给定原文推导建议后的全文。
  * 导出给 useCanvasAIEditHandler：内联 diff 下编辑器保持可编辑，
@@ -80,6 +95,13 @@ export function computeProposedContent(
       if (!contentToAppend) {
         return { content: originalContent, error: '追加内容为空' };
       }
+
+      // Use a conservative newline allowance so no oversized string is constructed first.
+      const projectedBytes =
+        utf8ByteLength(originalContent) + utf8ByteLength(contentToAppend) + 3;
+      if (projectedOutputTooLarge(projectedBytes)) {
+        return { content: originalContent, error: outputTooLargeError() };
+      }
       
       if (request.section) {
         const result = appendToSection(originalContent, request.section, contentToAppend);
@@ -93,7 +115,11 @@ export function computeProposedContent(
     }
     
     case 'set': {
-      return { content: request.content || '' };
+      const content = request.content || '';
+      if (projectedOutputTooLarge(utf8ByteLength(content))) {
+        return { content: originalContent, error: outputTooLargeError() };
+      }
+      return { content };
     }
     
     case 'replace': {
@@ -121,8 +147,22 @@ export function computeProposedContent(
           };
         }
       } else {
+        let offset = 0;
+        while (offset <= originalContent.length - searchPattern.length) {
+          const matchIndex = originalContent.indexOf(searchPattern, offset);
+          if (matchIndex === -1) break;
+          replaceCount++;
+          offset = matchIndex + searchPattern.length;
+        }
+
+        const projectedBytes =
+          utf8ByteLength(originalContent) +
+          replaceCount * (utf8ByteLength(replaceWith) - utf8ByteLength(searchPattern));
+        if (projectedOutputTooLarge(projectedBytes)) {
+          return { content: originalContent, error: outputTooLargeError() };
+        }
+
         const parts = originalContent.split(searchPattern);
-        replaceCount = parts.length - 1;
         newContent = parts.join(replaceWith);
       }
 

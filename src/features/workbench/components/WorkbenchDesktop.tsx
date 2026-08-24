@@ -54,6 +54,7 @@ import { WallpaperManagerDialog, OPEN_WALLPAPER_MANAGER_EVENT } from './Wallpape
 import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
 import { DesktopAgendaWidget } from './DesktopAgendaWidget';
+import { DesktopAiBriefingWidget } from './DesktopAiBriefingWidget';
 import { DesktopShortcutsLayer } from './DesktopShortcuts';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
@@ -550,6 +551,7 @@ export const WorkbenchDesktop: React.FC = () => {
         onDoubleClick={gestures.onDesktopDoubleClick}
       >
         {hydrated && <DesktopAgendaWidget />}
+        {hydrated && <DesktopAiBriefingWidget />}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
         {hydrated && <DesktopShortcutsLayer />}
         {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}

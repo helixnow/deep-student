@@ -45,6 +45,7 @@ import {
     NOTES_ACTIVE_HEADING_EVENT,
     type NotesActiveHeadingDetail,
 } from './components/outlineActiveHeadingBridge';
+import { NotesGenerativeSummary } from './components/NotesGenerativeSummary';
 import './NotesContextPanel.css';
 
 // ============================================================================
@@ -713,6 +714,18 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     </div>
                 </div>
             </div>
+
+            <Separator />
+
+            {effectiveActive ? (
+                <NotesGenerativeSummary
+                    title={effectiveActive.title}
+                    tags={effectiveActive.tags}
+                    content={effectiveActive.content_md}
+                    headingLabels={headings.map((h) => h.text)}
+                    updatedAt={effectiveActive.updated_at}
+                />
+            ) : null}
 
             <Separator />
 

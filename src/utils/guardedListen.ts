@@ -35,6 +35,7 @@ function isWhitelistedNonChat(name: string): boolean {
     n.startsWith('irec_') ||
     n.startsWith('mistake_') ||
     n.startsWith('unified_chat_save_') ||
+    n === 'hpias_event' ||
     n === 'stream_error'
   );
 }

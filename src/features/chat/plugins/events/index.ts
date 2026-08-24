@@ -44,6 +44,9 @@ import './toolLimit';
 // ✅ Anki 卡片事件（CardForge 2.0 集成）
 import './ankiCards';
 
+// Generative UI 结构化意图事件
+import './generativeUI';
+
 // 🆕 C11: 工作区消息注入事件（主代理 → 运行中子代理的插话可见化）
 import './workspaceInjection';
 
@@ -75,6 +78,8 @@ export { toolLimitEventHandler } from './toolLimit';
 
 // ✅ Anki 卡片事件处理器（CardForge 2.0 集成）
 export { ankiCardsEventHandler } from './ankiCards';
+
+export { generativeUIEventHandler } from './generativeUI';
 
 // 🆕 C11: 工作区消息注入事件处理器
 export { workspaceInjectionEventHandler } from './workspaceInjection';
