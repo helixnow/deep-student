@@ -35,9 +35,8 @@ use deep_student_lib::cloud_config_commands::{
     S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE,
 };
 use deep_student_lib::cloud_storage::{
-    create_storage, create_storage_with_capabilities, CloudStorage, CloudStorageConfig,
-    CloudSyncManager, FtpConfig, PlatformStorageCapabilities, S3Config, StorageProvider,
-    WebDavConfig,
+    create_storage, create_storage_with_capabilities, CloudStorageConfig, CloudSyncManager,
+    FtpConfig, PlatformStorageCapabilities, S3Config, StorageProvider, WebDavConfig,
 };
 use deep_student_lib::data_governance::backup::{
     export_backup_to_zip,
@@ -261,102 +260,83 @@ impl FakeDavServer {
             .to_string();
         let depth = header("depth").unwrap_or_else(|| "1".to_string());
 
-        match method.as_str() {
-            "MKCOL" => {
-                let mut guard = state.lock().expect("state lock");
-                if guard.collections.contains(&path) {
-                    drop(guard);
-                    Self::respond(conn, 405, "Method Not Allowed", &[], b"").await
-                } else {
-                    guard.collections.insert(path);
-                    drop(guard);
-                    Self::respond(conn, 201, "Created", &[], b"").await
+        // 同步计算响应（锁绝不跨 await 持有，tokio::spawn 要求 future: Send），
+        // 随后统一发送。
+        let (status, reason, is_xml, response_body): (u16, &'static str, bool, Vec<u8>) = {
+            let mut guard = state.lock().expect("state lock");
+            match method.as_str() {
+                "MKCOL" => {
+                    if guard.collections.contains(&path) {
+                        (405, "Method Not Allowed", false, Vec::new())
+                    } else {
+                        guard.collections.insert(path);
+                        (201, "Created", false, Vec::new())
+                    }
                 }
-            }
-            "PUT" => {
-                state
-                    .lock()
-                    .expect("state lock")
-                    .files
-                    .insert(path, body.clone());
-                Self::respond(conn, 201, "Created", &[], b"").await
-            }
-            "GET" => {
-                let data = state.lock().expect("state lock").files.get(&path).cloned();
-                match data {
-                    Some(data) => Self::respond(conn, 200, "OK", &[], &data).await,
-                    None => Self::respond(conn, 404, "Not Found", &[], b"").await,
+                "PUT" => {
+                    guard.files.insert(path, body);
+                    (201, "Created", false, Vec::new())
                 }
-            }
-            "DELETE" => {
-                let mut guard = state.lock().expect("state lock");
-                let existed =
-                    guard.files.remove(&path).is_some() || guard.collections.remove(&path);
-                drop(guard);
-                if existed {
-                    Self::respond(conn, 204, "No Content", &[], b"").await
-                } else {
-                    Self::respond(conn, 404, "Not Found", &[], b"").await
+                "GET" => match guard.files.get(&path) {
+                    Some(data) => (200, "OK", false, data.clone()),
+                    None => (404, "Not Found", false, Vec::new()),
+                },
+                "DELETE" => {
+                    let existed =
+                        guard.files.remove(&path).is_some() || guard.collections.remove(&path);
+                    if existed {
+                        (204, "No Content", false, Vec::new())
+                    } else {
+                        (404, "Not Found", false, Vec::new())
+                    }
                 }
-            }
-            "PROPFIND" => {
-                let guard = state.lock().expect("state lock");
-                let is_file = guard.files.contains_key(&path);
-                let child_prefix = format!("{path}/");
-                let is_dir = guard.collections.contains(&path)
-                    || guard.files.keys().any(|key| key.starts_with(&child_prefix));
-                if is_file {
-                    let size = guard.files.get(&path).map(Vec::len).unwrap_or(0);
-                    drop(guard);
-                    let body = multistatus(&dav_file_response(&path, size));
-                    return Self::respond_xml(conn, &body).await;
-                }
-                if !is_dir {
-                    drop(guard);
-                    return Self::respond(conn, 404, "Not Found", &[], b"").await;
-                }
-
-                let mut inner = dav_collection_response(&path);
-                if depth != "0" {
-                    let mut sub_collections: BTreeSet<String> = BTreeSet::new();
-                    for (key, data) in guard.files.iter() {
-                        let Some(relative) = key.strip_prefix(&child_prefix) else {
-                            continue;
-                        };
-                        match relative.split_once('/') {
-                            None => inner.push_str(&dav_file_response(key, data.len())),
-                            Some((first_segment, _)) => {
-                                sub_collections.insert(format!("{path}/{first_segment}"));
+                "PROPFIND" => {
+                    let child_prefix = format!("{path}/");
+                    if let Some(data) = guard.files.get(&path) {
+                        let xml = multistatus(&dav_file_response(&path, data.len()));
+                        (207, "Multi-Status", true, xml.into_bytes())
+                    } else if guard.collections.contains(&path)
+                        || guard.files.keys().any(|key| key.starts_with(&child_prefix))
+                    {
+                        let mut inner = dav_collection_response(&path);
+                        if depth != "0" {
+                            let mut sub_collections: BTreeSet<String> = BTreeSet::new();
+                            for (key, data) in guard.files.iter() {
+                                let Some(relative) = key.strip_prefix(&child_prefix) else {
+                                    continue;
+                                };
+                                match relative.split_once('/') {
+                                    None => inner.push_str(&dav_file_response(key, data.len())),
+                                    Some((first_segment, _)) => {
+                                        sub_collections.insert(format!("{path}/{first_segment}"));
+                                    }
+                                }
+                            }
+                            for collection in guard.collections.iter() {
+                                if let Some(relative) = collection.strip_prefix(&child_prefix) {
+                                    if !relative.is_empty() && !relative.contains('/') {
+                                        sub_collections.insert(collection.clone());
+                                    }
+                                }
+                            }
+                            for sub in sub_collections {
+                                inner.push_str(&dav_collection_response(&sub));
                             }
                         }
-                    }
-                    for collection in guard.collections.iter() {
-                        if let Some(relative) = collection.strip_prefix(&child_prefix) {
-                            if !relative.is_empty() && !relative.contains('/') {
-                                sub_collections.insert(collection.clone());
-                            }
-                        }
-                    }
-                    for sub in sub_collections {
-                        inner.push_str(&dav_collection_response(&sub));
+                        (207, "Multi-Status", true, multistatus(&inner).into_bytes())
+                    } else {
+                        (404, "Not Found", false, Vec::new())
                     }
                 }
-                drop(guard);
-                Self::respond_xml(conn, &multistatus(&inner)).await
+                _ => (405, "Method Not Allowed", false, Vec::new()),
             }
-            _ => Self::respond(conn, 405, "Method Not Allowed", &[], b"").await,
-        }
-    }
-
-    async fn respond_xml(conn: &mut HttpConn, body: &str) -> std::io::Result<()> {
-        Self::respond(
-            conn,
-            207,
-            "Multi-Status",
-            &[("Content-Type", "application/xml; charset=utf-8")],
-            body.as_bytes(),
-        )
-        .await
+        };
+        let extra_headers: &[(&str, &str)] = if is_xml {
+            &[("Content-Type", "application/xml; charset=utf-8")]
+        } else {
+            &[]
+        };
+        Self::respond(conn, status, reason, extra_headers, &response_body).await
     }
 
     async fn respond(
