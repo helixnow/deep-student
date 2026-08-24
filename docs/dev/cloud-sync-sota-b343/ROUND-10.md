@@ -23,4 +23,4 @@
 
 ## 派出状态
 
-R09 十路仍占满异步名额（尚未推回 r09* 分支）。本轮任务表已写好，空档后按上表原样派 Fable 大包，优先 R10-conflict-ui（P1-1）。不合并过时的 `r07-docs`（会覆盖现行 ROUND-07/08/10）。
+R09 五路已合入专属枝 `cursor/cloud-sync-sota-b343`（names / e2ee / android / restore-ops / ux）。R10 空档已开，优先 R10-conflict-ui（P1-1）。R10-names / R10-download / R10-ux / R10-android 改为**增量复审+补洞**，不要重做 R09 已交付的主路径。不合并过时的 `r07-docs`（会覆盖现行 ROUND-07/08/10）。

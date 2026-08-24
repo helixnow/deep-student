@@ -80,7 +80,7 @@
 | R08-e2ee-tests | high | 文件级 E2EE 极端测 | `src-tauri/tests/sync_r08_*.rs` 新文件 |
 | R08-legacy-ux | high | 明文遗留拒收人话 | `SyncTab.tsx` / locale `sync.json`；不改引擎 |
 
-## Round 09（进行中）
+## Round 09（已合入专属枝）
 
 | 代理 | 模型 | 范围 | 文件面（独占） |
 |---|---|---|---|
