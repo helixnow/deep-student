@@ -216,6 +216,30 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     });
   });
 
+  it('subscribes to hpias_event while the research block is still streaming', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research' },
+    });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: true },
+          toolInput: { intent, researchSessionId: 'chat-hpias-stream' },
+        })}
+        isStreaming
+        store={makeStore()}
+      />,
+    );
+
+    expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
+      enabled: true,
+      sessionId: 'chat-hpias-stream',
+    });
+  });
+
   it('does not subscribe to hpias_event when research blocks lack a session id', () => {
     const intent = buildResearchPlanIntent({
       title: 'Deep research',

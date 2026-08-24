@@ -244,12 +244,11 @@ export const useHpiasStore = create<HpiasStore>()(
             'session_id' in e && typeof e.session_id === 'string' && e.session_id
               ? e.session_id
               : undefined;
-          // 外会话非 session_started：只写入 sessions[id]，不覆盖活跃顶层字段。
+          // 外会话（含 session_started）：只写入 sessions[id]，不覆盖活跃顶层字段。
           if (
             s.sessionId &&
             eventSessionId &&
-            eventSessionId !== s.sessionId &&
-            e.type !== 'session_started'
+            eventSessionId !== s.sessionId
           ) {
             const prevSlice = s.sessions[eventSessionId] ?? createEmptyHpiasSessionSlice(eventSessionId);
             const nextSlice = applyHpiasEventToSessionSlice(prevSlice, e);
