@@ -647,7 +647,7 @@ export const SubagentProfilesSection: React.FC = () => {
 
         {/* 点击行主体展开/收起编辑；键盘用户通过铅笔按钮（aria-expanded）操作。 */}
         <div
-          className="group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left sm:flex-nowrap"
+          className="group flex w-full cursor-pointer flex-wrap items-center gap-3 px-3 py-2.5 text-left sm:flex-nowrap [@media(pointer:coarse)]:min-h-11"
           onClick={() => (expanded ? closeEditor() : void openEdit(file.fileName))}
         >
           <div className="min-w-0 flex-1">
