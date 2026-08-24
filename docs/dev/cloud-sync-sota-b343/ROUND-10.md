@@ -20,3 +20,7 @@
 | R10-android | high | `r10-android-b343` | 在已合 android 测试上补缺口：S3 用户文案、content URI、指南；能修的修 |
 
 文件面独占见 FIX-QUEUE。避开 notes/chat/workbench/移动全局规范/协议缓存。
+
+## 派出状态
+
+R09 十路仍占满异步名额（尚未推回 r09* 分支）。本轮任务表已写好，空档后按上表原样派 Fable 大包，优先 R10-conflict-ui（P1-1）。不合并过时的 `r07-docs`（会覆盖现行 ROUND-07/08/10）。
