@@ -201,6 +201,15 @@ export const FILE_TYPES: Record<string, FileTypeDefinition> = {
   },
 };
 
+/**
+ * 浏览器上传路径（点击选择 / dataTransfer 拖拽 / Tauri 原生拖拽）的默认单文件上限（50MB）。
+ *
+ * ★ #62/ATT-09：需要 50MB 兜底的入口请引用本常量，不要各自硬编码，
+ * 超限提示文案也应由传入的 maxFileSize 派生；聊天附件入口会显式传入
+ * ATTACHMENT_MAX_SIZE（200MB）覆盖此默认值。
+ */
+export const DEFAULT_MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+
 export interface UnifiedDragDropZoneProps {
   zoneId: string;
   onFilesDropped: (files: File[]) => void | Promise<void>;
@@ -232,7 +241,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
   enabled = true,
   acceptedFileTypes = [FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT],
   maxFiles = 10,
-  maxFileSize = 50 * 1024 * 1024,
+  maxFileSize = DEFAULT_MAX_UPLOAD_FILE_SIZE,
   showOverlay = true,
   customOverlayText,
   className = '',

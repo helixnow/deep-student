@@ -127,8 +127,9 @@ export const GRAPH_TOPK_MAX = 50;
 
 // ==================== 文件配置 ====================
 
-/** 文件大小限制（50MB） */
-export const FILE_SIZE_LIMIT = 50 * 1024 * 1024;
+// ★ #62/ATT-09：此处曾有 FILE_SIZE_LIMIT = 50MB 的残留副本（与实际上限不符且无人引用，已删除）。
+// 附件上传上限统一使用下方 ATTACHMENT_MAX_SIZE（200MB）；
+// 资源库层上限见 features/chat/resources/types.ts 的 FILE_SIZE_LIMIT / IMAGE_SIZE_LIMIT。
 
 /** 文本文件最大长度（100KB） */
 export const TEXT_FILE_MAX_LENGTH = 100 * 1024;

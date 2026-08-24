@@ -39,7 +39,7 @@ import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { emitImportDebug } from '@/debug-panel/plugins/QuestionImportDebugPlugin';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
-import { UnifiedDragDropZone, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
+import { UnifiedDragDropZone, DEFAULT_MAX_UPLOAD_FILE_SIZE, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -95,10 +95,11 @@ interface FileInfo {
 const IMAGE_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
 const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf'];
 
-// ★ 上传文件大小上限：与 UnifiedDragDropZone 的 Tauri 原生拖拽路径保持一致（50MB）。
+// ★ 上传文件大小上限：引用 UnifiedDragDropZone 的统一默认上限（#62/ATT-09，
+// 与 Tauri 原生拖拽路径保持一致，不再各自硬编码 50MB）。
 // 点击选择 / 浏览器 dataTransfer 拖拽路径不经过原生路径校验，必须在此兜底，
 // 否则超大文件会被整体 FileReader→base64 读入内存。
-const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_UPLOAD_FILE_SIZE = DEFAULT_MAX_UPLOAD_FILE_SIZE;
 
 // 处理步骤
 type ProcessStep = 'select' | 'preview' | 'processing' | 'summary';
