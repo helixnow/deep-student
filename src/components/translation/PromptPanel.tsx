@@ -592,6 +592,7 @@ const PromptEditorContent: React.FC<{
           value={formality}
           onValueChange={setFormality}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
             { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
