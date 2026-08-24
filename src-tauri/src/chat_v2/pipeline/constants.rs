@@ -63,8 +63,8 @@ pub(crate) const DEFAULT_MAX_HISTORY_TOKENS: usize = 32_000;
 /// - 未配置或非法值（0）时回退 DEFAULT_MAX_HISTORY_TOKENS。
 pub(crate) fn effective_history_token_budget(context_limit: Option<u32>) -> usize {
     match context_limit {
-        Some(v) => v as usize,
-        None => DEFAULT_MAX_HISTORY_TOKENS,
+        Some(v) if v > 0 => v as usize,
+        _ => DEFAULT_MAX_HISTORY_TOKENS,
     }
 }
 
