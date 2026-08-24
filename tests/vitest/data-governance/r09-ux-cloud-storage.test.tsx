@@ -105,6 +105,14 @@ vi.mock('@/utils/cloudStorageApi', () => ({
     if (stats.restorable === false) return false;
     return true;
   },
+  findCloudBackupVersion: (
+    versionId: string | null | undefined,
+    versions: Array<{ id: string }>,
+    latest?: { id: string } | null,
+  ) => versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined),
+  isKnownPortableCloudBackup: (version?: { recoveryKind?: string } | null) =>
+    version?.recoveryKind === 'partial_archive',
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -218,6 +226,15 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
       testBlock.indexOf('errors.connectionFailed'),
     );
 
+    const openRestoreStart = componentSource.indexOf('const openRestoreConfirm = useCallback');
+    const openRestoreEnd = componentSource.indexOf('const lastRestoreVersionIdRef', openRestoreStart);
+    const openRestoreBlock = componentSource.slice(openRestoreStart, openRestoreEnd);
+    expect(openRestoreBlock).toContain('isKnownPortableCloudBackup');
+    expect(openRestoreBlock).toContain('portableArchiveNotRestorable');
+    expect(openRestoreBlock.indexOf('isKnownPortableCloudBackup')).toBeLessThan(
+      openRestoreBlock.lastIndexOf('setRestoreConfirmOpen(true)'),
+    );
+
     const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
     const uploadEnd = componentSource.indexOf('const openRestoreConfirm = useCallback', uploadStart);
     const uploadBlock = componentSource.slice(uploadStart, uploadEnd);
@@ -254,6 +271,10 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      restoreBlock.indexOf('setDownloading(true)'),
+    );
+    expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeLessThan(
       restoreBlock.indexOf('setDownloading(true)'),
     );
     const importIdx = restoreBlock.indexOf('importZip(');

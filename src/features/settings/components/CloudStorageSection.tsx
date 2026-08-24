@@ -1035,9 +1035,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      return;
+    }
     setPendingRestoreVersionId(versionId);
     setRestoreConfirmOpen(true);
-  }, [connectionStatus, t]);
+  }, [connectionStatus, syncStatus?.latestVersion, t, versions]);
 
   // 失败重试上下文：记录最近一次恢复的版本号，供进度面板「重试」使用
   const lastRestoreVersionIdRef = useRef<string | null>(null);
@@ -1049,6 +1058,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         'error',
         t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
       );
+      return;
+    }
+    const knownVersion = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(knownVersion)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
       return;
     }
     lastRestoreVersionIdRef.current = versionId;
@@ -1158,7 +1176,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     resolveBackupId,
     resolveCloudZipEncryptionArgs,
     setStage,
+    syncStatus?.latestVersion,
     t,
+    versions,
     waitForGovernanceJob,
   ]);
 
@@ -1166,9 +1186,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleRestore = useCallback(async () => {
     const versionId = pendingRestoreVersionId;
     if (!versionId) return;
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      setRestoreConfirmOpen(false);
+      setPendingRestoreVersionId(null);
+      return;
+    }
     setRestoreConfirmOpen(false);
     await performRestore(versionId);
-  }, [pendingRestoreVersionId, performRestore]);
+  }, [pendingRestoreVersionId, performRestore, syncStatus?.latestVersion, t, versions]);
 
   // 上传/下载失败后的重试：按失败操作类型重新触发完整流程
   const retryFailedOperation = useCallback(() => {
@@ -2026,11 +2057,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </div>
   );
 
-  const pendingRestoreVersion =
-    versions.find((version) => version.id === pendingRestoreVersionId)
-    ?? (syncStatus?.latestVersion?.id === pendingRestoreVersionId
-      ? syncStatus.latestVersion
-      : undefined);
+  const pendingRestoreVersion = cloudApi.findCloudBackupVersion(
+    pendingRestoreVersionId,
+    versions,
+    syncStatus?.latestVersion,
+  );
 
   // 恢复确认对话框
   const restoreConfirmDialog = (
@@ -2042,6 +2073,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       confirmText={t('cloudStorage:download.confirm')}
       cancelText={t('cloudStorage:download.cancel')}
       confirmVariant="warning"
+      disabled={cloudApi.isKnownPortableCloudBackup(pendingRestoreVersion)}
       onConfirm={handleRestore}
     >
       {pendingRestoreVersionId && (

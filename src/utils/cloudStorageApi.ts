@@ -542,6 +542,22 @@ export interface BackupVersion {
   recoveryKind?: 'disaster_recovery' | 'partial_archive' | string;
 }
 
+export function findCloudBackupVersion(
+  versionId: string | null | undefined,
+  versions: readonly BackupVersion[],
+  latest?: BackupVersion | null,
+): BackupVersion | undefined {
+  if (!versionId) return undefined;
+  return versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined);
+}
+
+export function isKnownPortableCloudBackup(
+  version: Pick<BackupVersion, 'recoveryKind'> | null | undefined,
+): boolean {
+  return version?.recoveryKind === 'partial_archive';
+}
+
 /** 同步状态 */
 export interface SyncStatus {
   /** 是否已连接 */
