@@ -49,6 +49,39 @@ describe('HpiasGenerativeResearchPanel', () => {
     expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
   });
 
+  it('keeps session A live after session B becomes the active store session', () => {
+    render(
+      <HpiasGenerativeResearchPanel
+        sessionId="s-a"
+        question="Session A?"
+        emptyFallback={<span data-testid="empty">empty</span>}
+      />,
+    );
+
+    act(() => {
+      const handleEvent = useHpiasStore.getState().actions.handleEvent;
+      handleEvent({ type: 'session_started', session_id: 's-a', question: 'A' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 's-a',
+        round: 1,
+        plan: { core: { queries: ['keep-session-a'] } },
+      });
+      handleEvent({ type: 'session_started', session_id: 's-b', question: 'B' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 's-b',
+        round: 1,
+        plan: { core: { queries: ['clobber-session-b'] } },
+      });
+    });
+
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getAllByText('keep-session-a').length).toBeGreaterThan(0);
+    expect(screen.queryByText('clobber-session-b')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('empty')).not.toBeInTheDocument();
+  });
+
   it('ignores a store session that does not match the expected sessionId', () => {
     vi.useFakeTimers();
     render(

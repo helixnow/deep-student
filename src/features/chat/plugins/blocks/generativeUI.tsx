@@ -58,9 +58,11 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     sessionId: researchSessionId ?? undefined,
   });
 
-  const hpiasSessionId = useHpiasStore((s) => s.sessionId);
+  const liveSessionSlice = useHpiasStore((s) =>
+    researchSessionId ? s.sessions[researchSessionId] : undefined,
+  );
   const showLiveResearch = Boolean(
-    researchSessionId && hpiasSessionId && hpiasSessionId === researchSessionId,
+    researchSessionId && liveSessionSlice?.sessionId === researchSessionId,
   );
 
   const displayIntent = useMemo(() => {

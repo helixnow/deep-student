@@ -41,12 +41,26 @@ describe('HpiasStore session isolation', () => {
     expect(state.sessionId).toBe('s-a');
     expect(state.plan).toEqual({ core: { queries: ['keep'] } });
     expect(state.synthesis).toBeNull();
+    expect(state.sessions['s-b']?.plan).toEqual({ core: { queries: ['clobber'] } });
+    expect(state.sessions['s-b']?.synthesis).toBe('foreign');
+    expect(state.sessions['s-a']?.plan).toEqual({ core: { queries: ['keep'] } });
   });
 
   it('lets a new session_started replace the active session', () => {
     const handleEvent = useHpiasStore.getState().actions.handleEvent;
     handleEvent({ type: 'session_started', session_id: 's-a', question: 'A' });
+    handleEvent({
+      type: 'plan_generated',
+      session_id: 's-a',
+      round: 1,
+      plan: { core: { queries: ['keep'] } },
+    });
     handleEvent({ type: 'session_started', session_id: 's-b', question: 'B' });
-    expect(useHpiasStore.getState().sessionId).toBe('s-b');
+    const state = useHpiasStore.getState();
+    expect(state.sessionId).toBe('s-b');
+    expect(state.plan).toBeNull();
+    expect(state.sessions['s-a']?.plan).toEqual({ core: { queries: ['keep'] } });
+    expect(state.sessions['s-b']?.sessionId).toBe('s-b');
+    expect(state.sessions['s-b']?.plan).toBeNull();
   });
 });
