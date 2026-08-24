@@ -203,3 +203,24 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - README 索引回写（只加链接）。
 
 **文件面认领（独占，均在 `docs/dev/cloud-sync-sota-b343/`）**：`SOTA-R10.md` 新文件、`ROUND-11.md` 新文件、`README.md` 索引两行、本文件本节。不改任何代码。与 R10-protocol 的 PROTOCOL-R10.md、R10 各实现路无文件交叠。
+
+### R10-ux（分支 `cursor/cloud-sync-sota-r10-ux-b343`，设置/数据治理同步面 only，不碰 RecordConflictsPanel）
+
+复审结论（SyncTab / CloudStorageSection / BackupTab）：
+
+- 自动同步默认关 ✓（`useAutoSyncStore` 默认 `enabled: false`，仅持久化该字段）；SyncTab 库级冲突四策略均先弹确认 ✓；E2EE 覆盖/标记损坏文案（`markerCorrupted` → `e2eeMarkerCorrupted`）接线完好 ✓；`classifySyncError`（sync.json）与 `classifySyncE2eeError`（cloudStorage.json）双轨保留、UX 键优先 ✓。
+- **缺口 1（P2-LOCALE-PLATFORM-MSG 前端半边，本包关闭）**：后端 `S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE`（中文）在前端 `localizeCloudError` 无映射、无 locale 键——en 用户在无 S3 构建上加载/保存/测试 S3 配置时看到裸中文。
+- **缺口 2**：BackupTab 恢复确认框 `confirmVariant` 为 `primary`，与云端恢复（warning）/库级冲突覆盖（warning/danger）分级不一致——恢复会覆盖当前数据槽。
+- **缺口 3**：`doSaveConfig` 的 SSOT 保存失败通知吞掉后端拒绝原因（加载路径带原因，保存路径只报「配置未保存」）。
+
+交付（文件面独占）：
+
+| 文件 | 改动 |
+|---|---|
+| `src/features/settings/components/CloudStorageSection.tsx` | `localizeCloudError` 只新增 S3 映射片段（`当前安装包不支持\s*S3\s*兼容存储` → `errors.s3DisabledInBuild`，不重写整段）；`doSaveConfig` SSOT catch 补 `localizeCloudError(e)` 原因（对齐加载路径） |
+| `src/features/settings/components/data-governance/BackupTab.tsx` | 恢复确认框变体 `primary` → `warning`（删除仍 danger、导出仍 primary） |
+| `src/locales/{zh-CN,en-US}/cloudStorage.json` | 新增 `errors.s3DisabledInBuild`（面向用户：改用 WebDAV 或桌面导出 ZIP 导入；不含 feature/编译字样） |
+| `tests/vitest/data-governance/r10-ux-cloud-error-mapping.test.tsx` | 跨层契约：从 `cloud_config_commands.rs` 原文提取 S3/FTP 常量钉死前端匹配；加载路径 S3/FTP 映射 + E2EE 分类优先级；SSOT 保存失败带原因源码契约 |
+| `tests/vitest/data-governance/r10-ux-backup-restore-confirm.test.tsx` | 恢复 warning / 删除 danger / 导出 primary 变体分级 |
+
+**遗留（未在本包处理）**：P2-LOCALE-PLATFORM-MSG 的机制统一半边——FTP（英文常量）与 S3（中文常量）仍靠字符串正则映射，后端引入稳定错误码后应改为按 code 匹配（两处映射与 `syncE2eeErrorMapping.ts` 一并迁移）。
