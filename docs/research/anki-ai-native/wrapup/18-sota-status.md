@@ -1,7 +1,7 @@
 # 收尾续作 #8：Anki AI-Native SOTA 状态
 
-> 日期：2026-08-24  
-> 分支：`cursor/anki-ai-native-research-bfca`  
+> 日期：2026-08-24
+> 分支：`cursor/anki-ai-native-research-bfca`
 > PR：[#215](https://github.com/helixnow/deep-student/pull/215)
 
 ## 结论
