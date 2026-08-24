@@ -3,6 +3,8 @@
     "configured": "Configured",
     "not_configured": "Not configured",
     "to_be_configured": "Pending configuration"
+  },
+  "ocr": {
+    "system_engine_description": "Uses the operating system built-in OCR engine"
   }
 }
-

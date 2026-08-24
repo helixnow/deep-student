@@ -3,7 +3,8 @@
     "not_configured": "未配置",
     "configured": "已配置",
     "to_be_configured": "待配置"
+  },
+  "ocr": {
+    "system_engine_description": "调用操作系统内置 OCR 引擎"
   }
 }
-
-
