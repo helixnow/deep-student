@@ -1,6 +1,6 @@
 # Generative UI SOTA 验收清单
 
-> 分支 `Generative-UI-0824` · Round 41/42/43 · 对照目标态「结构化意图 + 组件注册表」
+> 分支 `Generative-UI-0824` · Round 41/42/43/44 · 对照目标态「结构化意图 + 组件注册表」
 
 ## 架构核心
 
@@ -29,6 +29,11 @@
 | normalize | `normalizeIntent` 公开契约 | ⏳ Round 43 进行中 |
 | color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ Round 43 进行中 |
 | buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ Round 43 进行中 |
+| 禁裸 px 合同 | 宪法 §3 字号禁裸 px | ⏳ Round 44 进行中 |
+| overflow UX | `MAX_GENERATIVE_UI_BLOCKS` 溢出降级 | ⏳ Round 44 进行中 |
+| intent fingerprint | 意图指纹公开契约 | ⏳ Round 44 进行中 |
+| 文本字段消毒 | 非 markdown 文本 props XSS/注入消毒 | ⏳ Round 44 进行中 |
+| 明暗主题合同 | 宪法 §7 token 单一来源 / 9 palette × 明暗 | ⏳ Round 44 进行中 |
 
 ## Chat 桥接
 
@@ -77,6 +82,21 @@
 | color contract | 宪法 §4 语义色 / 禁裸 hex | ⏳ |
 | buffer cap | `parser.ts` `MAX_BUFFER_BYTES` 上限合同 | ⏳ |
 
+## Round 44 进行中
+
+| 项 | 证据 / 落点 | 状态 |
+|----|-------------|------|
+| 禁裸 px 合同 | 宪法 §3 字号禁裸 px | ⏳ |
+| overflow UX | `MAX_GENERATIVE_UI_BLOCKS` 溢出降级 | ⏳ |
+| intent fingerprint | 意图指纹公开契约 | ⏳ |
+| 文本字段消毒 | 非 markdown 文本 props XSS/注入消毒 | ⏳ |
+| 明暗主题合同 | 宪法 §7 token 单一来源 / 9 palette × 明暗 | ⏳ |
+| focus-visible | 交互块键盘焦点环 | ⏳ |
+| intent diff | 意图差分 / 变更摘要 | ⏳ |
+| 新块流式 parser | markdown/chart/steps/table 增量提交 | ⏳ |
+| recipe i18n | Style Lab `intentRecipes` 词条对齐 | ⏳ |
+| SOTA 文档对齐 | 本清单 + PROGRESS Round 44 小节 | ✅ |
+
 ## HPIAS 后端
 
 | 要求 | 证据 | 状态 |
@@ -107,14 +127,15 @@
 2. **合并 main** — 待 CI 绿 + 人工 approve（仍 ⏳，Goal 未标 complete）
 3. ~~**Round 42 补洞**~~ — ✅ 本地完成（未 push，保护 CI）
 4. **Round 43 契约加固** — export / reduced-motion / normalize / color contract / buffer cap（⏳ 进行中）
-5. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+5. **Round 44 体验加固** — 禁裸 px / overflow UX / fingerprint / 文本消毒 / 明暗主题 / focus-visible / intent diff / 新块流式 parser / recipe i18n（⏳ 进行中）
+6. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41/42） |
-| 多轮迭代至 SOTA | Round 6–43；R43 export/reduced-motion/normalize/color/buffer 未收口 | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–44；R44 禁裸 px / overflow / fingerprint / 文本消毒 / 主题 / focus-visible / diff / 流式 parser / recipe i18n 未收口 | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
