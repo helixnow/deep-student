@@ -218,7 +218,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       if (cancelled) return;
 
       if (!result.ok) {
-        reportError(result.error, '加载资源');
+        reportError(result.error, t('error.loadFailedRetry'));
         setError(result.error.toUserMessage());
         setIsLoading(false);
         return;
