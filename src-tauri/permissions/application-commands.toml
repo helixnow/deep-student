@@ -79,6 +79,7 @@ commands.allow = [
   "chat_v2_emergency_stop",
   "chat_v2_empty_deleted_sessions",
   "chat_v2_export_session",
+  "chat_v2_export_session_jsonl",
   "chat_v2_get_anki_cards_from_block_by_document_id",
   "chat_v2_get_emit_failure_count",
   "chat_v2_get_group",

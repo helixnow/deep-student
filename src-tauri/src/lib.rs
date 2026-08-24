@@ -2079,6 +2079,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_sessions
             // 会话导出（markdown / json）
             ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session
+            // 会话 JSONL 时间线导出（WI-12，流式写文件 + 默认脱敏）
+            ,crate::chat_v2::handlers::export_handlers::chat_v2_export_session_jsonl
             // 事件发射失败计数（只读诊断）
             ,crate::chat_v2::events::chat_v2_get_emit_failure_count
             ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts

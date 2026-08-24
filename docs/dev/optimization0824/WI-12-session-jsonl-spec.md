@@ -1,6 +1,8 @@
 # WI-12：Session JSONL 导出格式规范 v1
 
-> 状态：Draft（本轮只定格式 + Rust stub，实现排期 R12+）  
+> 状态：Implemented（R4 落地：`export_session_jsonl` 实现 + 单测 +
+> Tauri command `chat_v2_export_session_jsonl`；实现报告见
+> `progress/R4-WI-12-impl.md`）  
 > Schema 版本：`1`  
 > 负责模块：`src-tauri/src/chat_v2/session_export.rs`  
 > 数据来源：`chat_v2.db`（`ChatV2Repo` / `ChatV2Database`）
@@ -19,8 +21,8 @@ deep-student 当前会话数据分散在 `chat_v2.db` 三张表
 2. **外部分析**：token 消耗、工具调用成功率等指标用脚本直接统计；
 3. **用户数据可携带**：导出即备份，未来可支持导入。
 
-**本轮非目标**：导入（import）、回放执行器（replayer）、前端导出 UI、
-Tauri command 注册——全部属于 R12+ 实现轮次。
+**仍属非目标**：导入（import）、回放执行器（replayer）、前端导出 UI
+（R4 已落地导出实现 + Tauri command，其余另行排期）。
 
 ## 2. 文件约定
 
@@ -159,7 +161,7 @@ header (message block*)* compaction* footer
 - 单行大小无硬上限，但受 repo 层 `variants_json` 256KB 截断上限约束，
   实现必须**逐行流式写出**（`io::Write`），禁止整文件缓冲。
 
-## 6. Rust API（本轮落地的 stub）
+## 6. Rust API（已实现）
 
 ```rust
 pub fn export_session_jsonl<W: std::io::Write>(
@@ -171,10 +173,13 @@ pub fn export_session_jsonl<W: std::io::Write>(
 ```
 
 - 会话不存在 ⇒ `ChatV2Error::SessionNotFound`；写失败 ⇒ `ChatV2Error::IoError`；
-- `SessionExportSummary` 与 footer 字段一致，供调用方（未来的
-  `chat_v2_export_session_jsonl` command / headless 归档钩子）直接回传前端。
+- 另有 repo 惯例的 `export_session_jsonl_with_conn` 连接级变体；
+- `SessionExportSummary` 与 footer 字段一致，Tauri command
+  `chat_v2_export_session_jsonl(session_id, target_path, options?)`
+  （`handlers/export_handlers.rs`）流式写入目标 `.jsonl` 文件后
+  将其直接回传前端；headless 归档钩子（R13+）复用同一函数。
 
-## 7. 验收标准（R12+ 实现轮）
+## 7. 验收标准（已由 `session_export` 单测覆盖）
 
 1. 对含多变体 + 工具块 + 压缩记录的会话导出，`jq -c .type` 输出满足
    §3 状态机，footer 计数与实际行数一致；
@@ -186,9 +191,10 @@ pub fn export_session_jsonl<W: std::io::Write>(
 
 ## 8. 后续工作
 
-| 轮次 | 内容 |
-| --- | --- |
-| R12+ | 实现 `export_session_jsonl` + 单测（含 round-trip） |
-| R12+ | Tauri command `chat_v2_export_session_jsonl` + 前端会话菜单入口 |
-| R13+ | headless/automations 运行归档钩子（跑完自动落 JSONL） |
-| 后续 | import / replay 执行器（schemaVersion 协商） |
+| 轮次 | 内容 | 状态 |
+| --- | --- | --- |
+| R4 | 实现 `export_session_jsonl` + 单测（含 round-trip） | ✅ 已完成 |
+| R4 | Tauri command `chat_v2_export_session_jsonl` | ✅ 已完成 |
+| 后续 | 前端会话菜单导出入口 | 待排期 |
+| R13+ | headless/automations 运行归档钩子（跑完自动落 JSONL） | 待排期 |
+| 后续 | import / replay 执行器（schemaVersion 协商） | 待排期 |
