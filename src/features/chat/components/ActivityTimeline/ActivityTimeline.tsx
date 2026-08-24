@@ -1385,7 +1385,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
             size="sm"
             onClick={handleContinue}
             disabled={isContinuing}
-            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30"
+            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30 [@media(pointer:coarse)]:min-h-11"
           >
             {isContinuing ? (
               <CircleNotch size={14} className="flex-shrink-0 animate-spin" />
