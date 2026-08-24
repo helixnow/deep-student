@@ -101,7 +101,7 @@ THIRD_PARTY_NOTICES 相应减项。
 - `src/features/chat/components/renderers/__tests__/MarkdownRenderer.flowtoken.test.tsx`：beforeAll 预载
 - `src/main.tsx`、`.env.example`：移除 react-grab 钩子与配置项
 - `src/types/shims-tauri-plugins.d.ts`：删 plugin-os shim
-- `public/legal/THIRD_PARTY_NOTICES.txt`：再生成
+- `legal/THIRD_PARTY_NOTICES.txt`：再生成（集成分支最终权威路径；合并时保留本轮减项）
 
 ## 遗留 / 后续建议
 
@@ -109,5 +109,5 @@ THIRD_PARTY_NOTICES 相应减项。
   注入，预计可从启动包再挪出 ~100 KiB gzip；需要动画全量回归，建议单开工作包。
 - `react-is` 是 legacy-peer-deps 环境下的 peer 供给位，勿再当零引用清理（本次已实测
   删除即断 recharts 解析，已回补）。
-- `vite.config.ts` `optimizeDeps.include` 里的 `react-hotkeys-hook` 并非依赖（疑似
-  历史残留），本次未动，可另行清理。
+- `vite.config.ts` `optimizeDeps.include` 里的 `react-hotkeys-hook` 并非依赖；已由
+  SA-WRAP-HYGIENE 在合并收尾时移除。

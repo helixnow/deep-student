@@ -22,7 +22,7 @@
 | R1 | ✅ | 10 | P0 构建快速 wins（WI-1/2/3/5/8/10 + CI 降频） | 本 PR |
 | R2 | ✅ | 10 | P0 WI-4 + P1 静态资源/前端/Agent schema | 本 PR |
 | R3 | ✅ | 10 | deps/CI/Agent schema/P2 前置 | 本 PR |
-| R4 | ⚠️ 收尾 | 10 | 9/10 工作包已合入；WI-11 Phase1 产物缺失 | 本 PR |
+| R4 | ✅ 收尾中 | 10 | 9/10 工作包已合入；合并卫生已清扫，WI-11 Phase1 仍缺失 | 本 PR |
 | … | ⏳ | … | 持续至 ≥R20 | — |
 
 ## Work Item 总表（来源：初始调研 WI-1..13）
@@ -33,15 +33,15 @@
 | WI-2 | P0 | Windows release profile 对齐 | ✅ R1 `edc626be` |
 | WI-3 | P0 | CI 启用 sccache | ✅ R1 `841eb06a`+`6bf5e0e3` |
 | WI-4 | P0 | Release 前端一次构建 | ✅ R2 `2ee0039d` |
-| WI-5 | P0 | PDF worker 冗余清理 | ✅ R1 `39579e63` |
-| WI-6 | P1 | Android mobile-slim | 🔄 R2 compile ✅ / R3 CI |
+| WI-5 | P0 | PDF worker 冗余清理 | ✅ R1 删 v3 副本；R4 改为 `pdfjs-dist` 构建单源 |
+| WI-6 | P1 | Android mobile-slim | ✅ R2 编译门控 + R3 release/recovery CI 落地 |
 | WI-7 | P1 | rolldown-vite + swc + tsgo | ✅ R4 tsgo 落地（rolldown 留待 Vite 7） |
 | WI-8 | P1 | 依赖收敛 + bundle 门禁 | ✅ R4 再删 19 个生产依赖，FlowToken 改懒加载 |
 | WI-9 | P1 | pdfjs 按需化 | ✅ R4 运行时 fallback + legal 去重 |
 | WI-10 | P1 | Token 预算治理 | ✅ R4 43 个 skill 组全部精简，护栏收紧 |
-| WI-11 | P2 | Provider 协议归一 | ⚠️ R4 Phase1 未交付：`provider_quirks.rs` 缺失 |
+| WI-11 | P2 | Provider 协议归一 | ❌ R4 Phase1 未交付：`provider_quirks.rs` 缺失 |
 | WI-12 | P2 | Session JSONL replay | ✅ R4 JSONL export + 测试 + Tauri command（`ae714af9`） |
-| WI-13 | P2 | Tool loop hooks | 🔄 R4 已落审批/审计 hooks 第一阶段（`728472b4`） |
+| WI-13 | P2 | Tool loop hooks | ✅ R4 第一阶段：4 切点 + 审批/审计 hooks（`728472b4`） |
 
 ## R1 成果摘要（2026-08-24）
 
@@ -72,8 +72,10 @@
   `llm_manager/provider_quirks.rs`，`model2_pipeline.rs` 仍保留
   `is_mimo_config` / `is_mistral_config` / `is_qwen_config` 等原判定函数。
   后续收尾代理应按 `WI-11-provider-refactor-plan.md` 的 11-1a..1d 单独实现。
-- 依赖清扫遗留：framer-motion LazyMotion 迁移需动画回归；另行核验
-  `vite.config.ts` 中历史 `react-hotkeys-hook` optimizeDeps 条目。
+- WRAP hygiene 已确认无合并冲突标记、`public/` 无重复 worker，并移除
+  `vite.config.ts` 中已卸载的 `react-hotkeys-hook` optimizeDeps 条目；许可证与
+  worker 文档路径已对齐当前构建链。
+- 依赖清扫遗留：framer-motion LazyMotion 迁移需动画回归，仍应作为独立工作包。
 
 ## R4 子代理分配（收尾）
 

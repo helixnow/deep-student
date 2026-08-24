@@ -95,7 +95,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
   - 源代码获取：Chromium 仓库 https://pdfium.googlesource.com/pdfium/
   - 法律材料：下载脚本保留上游 `LICENSE` 和完整 `licenses/`，涵盖 FreeType、ICU、OpenJPEG、libjpeg-turbo、libpng、zlib、Abseil 等组件
 
-- **PDF.js Worker**：`public/pdf.worker.min.mjs`（经 `public/pdf.worker.wrapper.mjs` 加载）
+- **PDF.js Worker**：构建时从 `node_modules/pdfjs-dist/build/pdf.worker.min.mjs` 复制到 dist 根（经 `public/pdf.worker.wrapper.mjs` 加载；`public/` 不保留 worker 副本）
   - 上游来源：[Mozilla PDF.js](https://mozilla.github.io/pdf.js/)
   - 许可证：Apache-2.0
 
