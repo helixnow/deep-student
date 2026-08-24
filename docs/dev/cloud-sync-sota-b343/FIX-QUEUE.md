@@ -597,3 +597,11 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-lease | `cursor/cloud-sync-sota-delta-lease-b343` | backup-v2/GC 独立租约（contender、TTL、截断/损坏 fail-closed）；**不**复用记录级 `sync-target` namespace | 新 `cloud_storage/backup_lease.rs`；`cloud_storage/mod.rs` 仅 `pub mod backup_lease;`；新 `src-tauri/tests/sync_r12_backup_lease.rs` |
 
 两路都禁止改 `sync_manager.rs` / `delta_format.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-inventory 回传（`cursor/cloud-sync-sota-delta-inventory-b343`）
+
+`delta_inventory.rs`：磁盘 hash 为准、manifest 交叉核对、volatile 字段不进 reuse_candidates、`diff` 产出 reuse/upload-new/deleted。未分配 object_key，未接线。
+
+### delta-lease 回传（`cursor/cloud-sync-sota-delta-lease-b343`）
+
+`backup_lease.rs`：`backup-v2/locks/` + `E_BACKUP_LEASE_HELD`；不复用 sync-target。零生产接线。
