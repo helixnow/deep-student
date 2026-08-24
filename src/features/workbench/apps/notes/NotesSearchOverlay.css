@@ -413,6 +413,11 @@
     height: 44px;
   }
 
+  .notes-search-overlay-message button {
+    min-height: 44px;
+    height: auto;
+  }
+
   /* 键盘提示对触屏无意义 */
   .notes-search-overlay-footer {
     display: none;
