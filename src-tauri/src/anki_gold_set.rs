@@ -986,7 +986,8 @@ mod tests {
             snap("TODO 问题", "TODO"),
             snap("什么是加速度？", "请参考 {{DOCUMENT_CONTENT}}"),
         );
-        let picked = select_grounded_reference_pairs(&[clean, dirty_gold], &cfg, 10);
+        let samples = [clean, dirty_gold];
+        let picked = select_grounded_reference_pairs(&samples, &cfg, 10);
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].edited.front, "什么是惯性？");
     }
@@ -1001,7 +1002,8 @@ mod tests {
             snap("什么是惯性？", "物体保持运动状态的性质"),
             snap("什么是惯性？", "物体保持原有运动状态不变的固有属性"),
         );
-        let picked = select_grounded_reference_pairs(&[blind], &cfg, 10);
+        let samples = [blind];
+        let picked = select_grounded_reference_pairs(&samples, &cfg, 10);
         assert_eq!(picked.len(), 1, "lint 盲区对不得被 original_flagged 门槛挡掉");
     }
 
@@ -1043,11 +1045,8 @@ mod tests {
             reason: "x".to_string(),
             repair_pair: None,
         };
-        let picked = select_grounded_reference_pairs(
-            &[wrong_label, blank_gold, valid, dup_front, no_pair],
-            &cfg,
-            10,
-        );
+        let samples = [wrong_label, blank_gold, valid, dup_front, no_pair];
+        let picked = select_grounded_reference_pairs(&samples, &cfg, 10);
         assert_eq!(picked.len(), 1, "只有首个干净且不重复的修正对入选");
         assert_eq!(picked[0].edited.back, "系统混乱程度的度量");
     }

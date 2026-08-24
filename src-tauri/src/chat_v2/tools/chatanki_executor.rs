@@ -17988,6 +17988,8 @@ mod tests {
             None,
             None,
             None,
+            &ChatAnkiGenerationTuning::default(),
+            None,
         );
         assert_eq!(glossary.output["recommended"]["glossaryMode"], json!(true));
         assert_eq!(
@@ -18018,8 +18020,17 @@ mod tests {
         // 非词汇表文本同样逐字段对齐
         let plain_content = "这是一段普通的学习材料。\n它没有词典式结构。";
         let plain = run_analyze(plain_content, None).await;
-        let plain_opts =
-            build_generation_options("goal", "Default", "Basic", plain_content, None, None, None);
+        let plain_opts = build_generation_options(
+            "goal",
+            "Default",
+            "Basic",
+            plain_content,
+            None,
+            None,
+            None,
+            &ChatAnkiGenerationTuning::default(),
+            None,
+        );
         assert_eq!(plain.output["recommended"]["glossaryMode"], json!(false));
         assert_eq!(
             plain.output["recommended"]["temperature"].as_f64().unwrap() as f32,
@@ -18324,15 +18335,16 @@ mod tests {
 
     #[test]
     fn test_build_chatanki_requirements_appends_extra_requirements() {
-        let base = build_chatanki_requirements("记忆名词解释", None);
+        let base = build_chatanki_requirements("记忆名词解释", None, None);
         assert!(base.contains("学习目标：记忆名词解释"));
         assert!(!base.contains("补充要求"));
 
         // 空白输入等价于未提供
-        let blank = build_chatanki_requirements("记忆名词解释", Some("   "));
+        let blank = build_chatanki_requirements("记忆名词解释", Some("   "), None);
         assert_eq!(blank, base);
 
-        let with_extra = build_chatanki_requirements("记忆名词解释", Some(" 答案统一使用英文 "));
+        let with_extra =
+            build_chatanki_requirements("记忆名词解释", Some(" 答案统一使用英文 "), None);
         assert!(with_extra.starts_with(&base));
         assert!(with_extra.contains("补充要求（调用方指定，优先遵守）"));
         assert!(with_extra.contains("答案统一使用英文"));
