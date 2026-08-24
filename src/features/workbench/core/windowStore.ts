@@ -305,6 +305,10 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     const id = nanoid(10);
     const now = Date.now();
     const smallDesktop = state.desktopSize.w < SMALL_DESKTOP_WIDTH;
+    // background 开窗（投射类自动开窗）：不夺取当前焦点窗的栈顶地位
+    const prevTopId = input.background
+      ? state.focusStack[state.focusStack.length - 1]
+      : undefined;
     const win: WorkbenchWindow = {
       id,
       typeId: input.typeId,
@@ -319,7 +323,14 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
       lastFocusedAt: now,
     };
     set((s) => {
-      const windows = maybeCompactZ({ ...s.windows, [id]: win });
+      const draft: Record<string, WorkbenchWindow> = { ...s.windows, [id]: win };
+      // 把原焦点窗重新顶回全局最高（zIndex 与 lastFocusedAt 均压过新窗），
+      // focusStack / 切换器 MRU 的派生不变量维持成立
+      const prevTop = prevTopId && prevTopId !== id ? draft[prevTopId] : undefined;
+      if (prevTop && !prevTop.minimized) {
+        draft[prevTopId!] = { ...prevTop, zIndex: ++zTop, lastFocusedAt: now + 1 };
+      }
+      const windows = maybeCompactZ(draft);
       return {
         windows,
         focusStack: deriveFocusStack(windows),

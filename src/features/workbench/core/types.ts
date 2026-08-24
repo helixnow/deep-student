@@ -498,6 +498,8 @@ export interface ProjectRequest {
   instanceKey: string;
   title: string;
   initialFrame?: Partial<Frame>;
+  /** true = 在后台开窗（不夺取焦点窗的顶层地位）；投射管理器默认走后台 */
+  background?: boolean;
 }
 
 // ============================================================================
@@ -552,6 +554,12 @@ export interface OpenWindowInput {
   initialFrame?: Partial<Frame>;
   /** 桌面坐标系落点；仅新建窗口生效。非法坐标忽略并回退级联落位。 */
   dropPoint?: { x: number; y: number };
+  /**
+   * true = 后台开窗：新窗创建后仍让当前焦点窗保持栈顶（投射类自动开窗
+   * 不打断用户正在操作的窗口）。仅对「真的新建」生效；命中去重复用时
+   * 维持既有 focus 语义。
+   */
+  background?: boolean;
 }
 
 export interface WorkbenchStoreState {
