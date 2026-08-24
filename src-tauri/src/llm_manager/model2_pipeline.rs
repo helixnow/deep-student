@@ -8,10 +8,7 @@ use crate::openai_codex::{
     CodexRequestAuth,
 };
 use crate::providers::{ProviderAdapter, ProviderRequest};
-use crate::reasoning_policy::{
-    get_passback_policy, requires_reasoning_passback, should_passback_plain_assistant_reasoning,
-    ReasoningPassbackPolicy,
-};
+use crate::reasoning_policy::ReasoningPassbackPolicy;
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
@@ -26,8 +23,9 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    build_provider_adapter, is_official_deepseek_config, normalize_nonstream_response_to_openai,
-    parser, request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
+    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    provider_quirks::{resolve_endpoint_quirks, resolve_quirks, MaxTokensField, ProviderQuirks},
+    request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
     ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 
@@ -361,16 +359,6 @@ fn process_sse_stream_input(
     }
 }
 
-#[inline]
-fn is_qwen_config(config: &ApiConfig) -> bool {
-    config
-        .provider_type
-        .as_deref()
-        .map(|value| value.eq_ignore_ascii_case("qwen"))
-        .unwrap_or(false)
-        || config.model_adapter.eq_ignore_ascii_case("qwen")
-}
-
 /// 是否为 function 类型的 web_search 工具定义（本地执行路径，前端注入的
 /// `{"type":"function","function":{"name":"web_search",...}}` 或扁平格式）。
 #[inline]
@@ -393,13 +381,10 @@ fn is_web_search_function_tool(tool: &Value) -> bool {
 /// 启用后本地 function 版 web_search 会被替换为服务端原生工具，避免双重搜索。
 #[inline]
 fn server_side_web_search_enabled(
-    config: &ApiConfig,
+    quirks: &ProviderQuirks,
     llm_context: &HashMap<String, Value>,
 ) -> bool {
-    if !config.supports_tools || !should_use_openai_responses_for_config(config) {
-        return false;
-    }
-    if !is_official_deepseek_config(config) {
+    if !quirks.server_side_web_search {
         return false;
     }
     if llm_context
@@ -476,85 +461,36 @@ fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -
     }
 }
 
-fn is_mimo_config(config: &ApiConfig) -> bool {
-    config
-        .provider_scope
-        .as_deref()
-        .map(|value| value.eq_ignore_ascii_case("mimo"))
-        .unwrap_or(false)
-        || config
-            .provider_type
-            .as_deref()
-            .map(|value| value.eq_ignore_ascii_case("mimo"))
-            .unwrap_or(false)
-        || config.model_adapter.eq_ignore_ascii_case("mimo")
-        || config.base_url.to_lowercase().contains("xiaomimimo.com")
-        || config.model.to_lowercase().starts_with("mimo-v")
-}
-
-fn is_mistral_config(config: &ApiConfig) -> bool {
-    let model = config.model.to_lowercase();
-    let model_slug = model.rsplit('/').next().unwrap_or(&model);
-    config
-        .provider_scope
-        .as_deref()
-        .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
-        || config
-            .provider_type
-            .as_deref()
-            .is_some_and(|value| value.eq_ignore_ascii_case("mistral"))
-        || config.model_adapter.eq_ignore_ascii_case("mistral")
-        || config.base_url.to_lowercase().contains("mistral.ai")
-        || model_slug.starts_with("mistral-")
-        || model_slug.starts_with("magistral-")
-}
-
-fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
-    if is_mimo_config(config) {
-        body["max_completion_tokens"] = json!(max_tokens);
-        if let Some(map) = body.as_object_mut() {
-            map.remove("max_tokens");
-        }
-    } else if is_mistral_config(config) {
-        // Mistral Chat Completions（含 Medium 3.5 / Small 4 reasoning）仍使用
-        // max_tokens；不能因 is_reasoning=true 套用 OpenAI 的 completion 字段。
-        body["max_tokens"] = json!(max_tokens);
-        if let Some(map) = body.as_object_mut() {
-            map.remove("max_completion_tokens");
-        }
-    } else if config.is_reasoning {
-        body["max_completion_tokens"] = json!(max_tokens);
-    } else {
-        body["max_tokens"] = json!(max_tokens);
-        if let Some(map) = body.as_object_mut() {
-            map.remove("max_completion_tokens");
-        }
+fn apply_token_limit(body: &mut Value, field: MaxTokensField, max_tokens: u32) {
+    let (field, stale_field) = match field {
+        MaxTokensField::MaxTokens => ("max_tokens", "max_completion_tokens"),
+        MaxTokensField::MaxCompletionTokens => ("max_completion_tokens", "max_tokens"),
+    };
+    body[field] = json!(max_tokens);
+    if let Some(map) = body.as_object_mut() {
+        map.remove(stale_field);
     }
 }
 
-fn apply_max_tokens_or_mimo_completion_limit(
-    body: &mut Value,
-    config: &ApiConfig,
-    max_tokens: u32,
-) {
-    if is_mimo_config(config) {
+fn apply_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks, max_tokens: u32) {
+    if quirks.max_tokens_field == MaxTokensField::MaxCompletionTokens
+        && quirks.preserve_existing_max_tokens
+    {
         body["max_completion_tokens"] = json!(max_tokens);
-        if let Some(map) = body.as_object_mut() {
-            map.remove("max_tokens");
-        }
     } else {
-        body["max_tokens"] = json!(max_tokens);
-        if let Some(map) = body.as_object_mut() {
-            map.remove("max_completion_tokens");
-        }
+        apply_token_limit(body, quirks.max_tokens_field, max_tokens);
     }
 }
 
-fn apply_generation_params(body: &mut Value, config: &ApiConfig) {
+fn apply_legacy_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks, max_tokens: u32) {
+    apply_token_limit(body, quirks.legacy_max_tokens_field, max_tokens);
+}
+
+fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
     let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-    apply_generation_token_limit(body, config, max_tokens);
+    apply_generation_token_limit(body, quirks, max_tokens);
 
-    if !config.is_reasoning || is_mimo_config(config) {
+    if quirks.sampling_params_allowed {
         body["temperature"] = json!(config.temperature);
         if let Some(top_p) = config.top_p_override {
             body["top_p"] = json!(top_p);
@@ -570,10 +506,10 @@ fn apply_generation_params(body: &mut Value, config: &ApiConfig) {
 
 fn attach_reasoning_passback_payload(
     assistant_msg: &mut Value,
-    config: &ApiConfig,
+    policy: ReasoningPassbackPolicy,
     thinking: &str,
 ) {
-    match get_passback_policy(config) {
+    match policy {
         ReasoningPassbackPolicy::DeepSeekStyle => {
             assistant_msg["reasoning_content"] = json!(thinking);
         }
@@ -587,12 +523,8 @@ fn attach_reasoning_passback_payload(
     }
 }
 
-fn is_mimo_endpoint(model: &str, base_url: &str) -> bool {
-    model.to_lowercase().starts_with("mimo-v") || base_url.to_lowercase().contains("xiaomimimo.com")
-}
-
 fn build_test_chat_request_body(model: &str, base_url: &str) -> Value {
-    if is_mimo_endpoint(model, base_url) {
+    if resolve_endpoint_quirks(model, base_url).use_mimo_test_payload {
         json!({
             "model": model,
             "messages": [
@@ -799,11 +731,15 @@ fn redact_skill_instruction_blocks_in_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::Database;
+    use crate::file_manager::FileManager;
     use crate::llm_manager::ApiConfig;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{Body, Request, Response};
     use serde_json::json;
     use std::convert::Infallible;
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
     struct DropNotice(Option<tokio::sync::oneshot::Sender<()>>);
 
@@ -813,6 +749,122 @@ mod tests {
                 let _ = sender.send(());
             }
         }
+    }
+
+    fn create_test_llm_manager(temp_dir: &TempDir) -> LLMManager {
+        let db_path = temp_dir.path().join("provider-snapshot.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(Database::new(&db_path).expect("create test database"));
+        let file_manager =
+            Arc::new(FileManager::new(temp_dir.path().to_path_buf()).expect("create file manager"));
+        LLMManager::new(db, file_manager).expect("create llm manager")
+    }
+
+    fn provider_snapshot_configs() -> Vec<(String, ApiConfig)> {
+        let protocols = [
+            (
+                "openai_chat_completions/official",
+                "mistral",
+                "mistral",
+                "https://api.mistral.ai/v1",
+                "mistral-small-latest",
+                "openai_chat_completions",
+            ),
+            (
+                "openai_chat_completions/third_party",
+                "qwen",
+                "qwen",
+                "https://proxy.example.com/v1",
+                "qwen3-max",
+                "openai_chat_completions",
+            ),
+            (
+                "openai_responses/official",
+                "openai",
+                "general",
+                "https://api.openai.com/v1",
+                "gpt-5.5",
+                "openai_responses",
+            ),
+            (
+                "openai_responses/third_party",
+                "custom",
+                "general",
+                "https://responses.example.com/v1",
+                "openai/gpt-5.5",
+                "openai_responses",
+            ),
+            (
+                "anthropic_messages/official",
+                "anthropic",
+                "anthropic",
+                "https://api.anthropic.com/v1",
+                "claude-sonnet-4-5",
+                "anthropic_messages",
+            ),
+            (
+                "anthropic_messages/third_party",
+                "custom",
+                "anthropic",
+                "https://anthropic-proxy.example.com/v1",
+                "claude-sonnet-4-5",
+                "anthropic_messages",
+            ),
+            (
+                "google_generate_content/official",
+                "google",
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                "gemini-3-flash",
+                "google_generate_content",
+            ),
+            (
+                "google_generate_content/third_party",
+                "custom",
+                "gemini",
+                "https://gemini-proxy.example.com",
+                "gemini-3-flash",
+                "google_generate_content",
+            ),
+        ];
+
+        protocols
+            .into_iter()
+            .flat_map(|(name, provider, adapter, base_url, model, protocol)| {
+                [false, true].into_iter().map(move |reasoning| {
+                    let mut headers = HashMap::new();
+                    headers.insert("X-Snapshot-Route".to_string(), "phase-1".to_string());
+                    (
+                        format!("{name}/reasoning={reasoning}"),
+                        ApiConfig {
+                            provider_type: Some(provider.to_string()),
+                            provider_scope: Some(provider.to_string()),
+                            model_adapter: adapter.to_string(),
+                            base_url: base_url.to_string(),
+                            model: model.to_string(),
+                            api_protocol: Some(protocol.to_string()),
+                            supports_openai_responses: (protocol == "openai_responses")
+                                .then_some(true),
+                            api_key: "snapshot-key".to_string(),
+                            is_reasoning: reasoning,
+                            supports_reasoning: reasoning,
+                            supports_tools: true,
+                            headers: Some(headers),
+                            ..Default::default()
+                        },
+                    )
+                })
+            })
+            .collect()
     }
 
     fn message_with_modal_fields(
@@ -1145,6 +1197,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prepared_provider_request_phase1_snapshot() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let request_body = json!({
+            "model": "snapshot-placeholder",
+            "messages": [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "hello"}
+            ],
+            "max_tokens": 32,
+            "stream": false
+        });
+        let mut snapshot = Vec::new();
+
+        for (name, config) in provider_snapshot_configs() {
+            let adapter = build_provider_adapter(&config);
+            let prepared = manager
+                .prepare_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &request_body,
+                    None,
+                    None,
+                    "phase-1 snapshot",
+                )
+                .await
+                .expect("request should prepare");
+            let mut headers = prepared
+                .headers
+                .iter()
+                .map(|(name, _)| name.to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            headers.sort();
+            headers.dedup();
+            let mut body_keys = prepared
+                .body
+                .as_object()
+                .expect("prepared body must be an object")
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            body_keys.sort();
+            snapshot.push(json!({
+                "case": name,
+                "url": prepared.url.replace("snapshot-key", "<api-key>"),
+                "header_keys": headers,
+                "body_keys": body_keys,
+            }));
+        }
+
+        let actual = serde_json::to_string_pretty(&snapshot).unwrap();
+        assert_eq!(
+            actual,
+            include_str!("snapshots/provider_requests_phase1.json").trim_end()
+        );
+    }
+
+    #[tokio::test]
     async fn codex_transport_bridges_sse_and_maps_usage_limit_404() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -1364,18 +1474,24 @@ mod tests {
         };
         let enabled_context: HashMap<String, Value> = HashMap::new();
 
-        assert!(server_side_web_search_enabled(&base, &enabled_context));
+        assert!(server_side_web_search_enabled(
+            &resolve_quirks(&base),
+            &enabled_context
+        ));
 
         // 会话显式关闭 web 搜索 → 不注入
         let mut disabled_context = enabled_context.clone();
         disabled_context.insert("web_search_enabled".to_string(), json!(false));
-        assert!(!server_side_web_search_enabled(&base, &disabled_context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&base),
+            &disabled_context
+        ));
 
         // chat completions 协议 → 不注入
         let mut chat_config = base.clone();
         chat_config.api_protocol = Some("openai_chat_completions".to_string());
         assert!(!server_side_web_search_enabled(
-            &chat_config,
+            &resolve_quirks(&chat_config),
             &enabled_context
         ));
 
@@ -1385,14 +1501,17 @@ mod tests {
         third_party.provider_scope = Some("siliconflow".to_string());
         third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
         assert!(!server_side_web_search_enabled(
-            &third_party,
+            &resolve_quirks(&third_party),
             &enabled_context
         ));
 
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
         no_tools.supports_tools = false;
-        assert!(!server_side_web_search_enabled(&no_tools, &enabled_context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&no_tools),
+            &enabled_context
+        ));
     }
 
     #[test]
@@ -1499,7 +1618,11 @@ mod tests {
             }]
         });
 
-        attach_reasoning_passback_payload(&mut assistant_msg, &config, "");
+        attach_reasoning_passback_payload(
+            &mut assistant_msg,
+            resolve_quirks(&config).reasoning_passback,
+            "",
+        );
 
         assert_eq!(assistant_msg.get("reasoning_content"), Some(&json!("")));
     }
@@ -1647,7 +1770,7 @@ mod tests {
             "stream": true
         });
 
-        apply_generation_params(&mut body, &config);
+        apply_generation_params(&mut body, &config, &resolve_quirks(&config));
 
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(131_072)));
         assert!(!body.as_object().unwrap().contains_key("max_tokens"));
@@ -1673,7 +1796,7 @@ mod tests {
             "max_tokens": 32_000
         });
 
-        apply_generation_params(&mut body, &config);
+        apply_generation_params(&mut body, &config, &resolve_quirks(&config));
 
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
         assert_eq!(body.get("max_tokens"), Some(&json!(32_000)));
@@ -1694,7 +1817,7 @@ mod tests {
             "max_tokens": 8000
         });
 
-        apply_max_tokens_or_mimo_completion_limit(&mut body, &config, 4096);
+        apply_legacy_generation_token_limit(&mut body, &resolve_quirks(&config), 4096);
 
         assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
         assert!(!body.as_object().unwrap().contains_key("max_tokens"));
@@ -1720,61 +1843,14 @@ fn apply_runtime_reasoning_overrides(
         // Runtime off must win over both profile defaults and stale UI depth values.
         // Sending `disabled` together with a positive effort/budget is ambiguous and
         // several compatible gateways choose the depth field, silently re-enabling reasoning.
-        let provider_type = config.provider_type.as_deref().unwrap_or_default();
-        let provider_scope = config.provider_scope.as_deref().unwrap_or_default();
-        let protocol = config.api_protocol.as_deref().unwrap_or_default();
-        let has_explicit_openai_protocol =
-            matches!(protocol, "openai_chat_completions" | "openai_responses");
-        let is_codex = provider_type.eq_ignore_ascii_case("openai_codex")
-            || provider_scope.eq_ignore_ascii_case("openai_codex");
-        let model = config.model.to_lowercase();
-        let is_openai_o_family = ["o1", "o3", "o4"].iter().any(|family| {
-            model == *family
-                || model.starts_with(&format!("{family}-"))
-                || model.ends_with(&format!("/{family}"))
-                || model.contains(&format!("/{family}-"))
-        });
-        let is_openai_reasoning_model = (model.contains("gpt-5") && !model.contains("gpt-5-chat"))
-            || model.contains("codex")
-            || model.contains("gpt-oss")
-            || is_openai_o_family;
-        // Legacy profiles may not persist api_protocol. An empty protocol is only
-        // treated as OpenAI-compatible when the provider/model identifies that
-        // contract; an arbitrary `-pro` model must not become forced reasoning.
-        let is_openai_protocol = has_explicit_openai_protocol
-            || (protocol.is_empty() && (is_codex || is_openai_reasoning_model));
-        let modern_gpt5_supports_none = [
-            "gpt-5.1", "gpt-5.2", "gpt-5.3", "gpt-5.4", "gpt-5.5", "gpt-5.6",
-        ]
-        .iter()
-        .any(|prefix| model.contains(prefix))
-            && !model.contains("-pro")
-            && !model.contains("codex")
-            && !model.contains("-chat");
-        let initial_gpt5 = (model == "gpt-5"
-            || model.ends_with("/gpt-5")
-            || model.contains("gpt-5-mini")
-            || model.contains("gpt-5-nano"))
-            && !model.contains("gpt-5.");
-        let forced_openai_reasoning = (is_codex || is_openai_reasoning_model)
-            && (is_codex
-                || model.contains("codex")
-                || model.contains("-pro")
-                || model.contains("gpt-oss")
-                || initial_gpt5
-                || is_openai_o_family);
-
-        if is_openai_protocol && forced_openai_reasoning {
+        let policy = resolve_quirks(config).runtime_reasoning;
+        if policy.force_enabled {
             config.enable_thinking = Some(true);
             return;
         }
 
         config.enable_thinking = Some(false);
-        config.reasoning_effort = if is_openai_protocol && modern_gpt5_supports_none {
-            Some("none".to_string())
-        } else {
-            None
-        };
+        config.reasoning_effort = policy.disabled_effort.map(str::to_string);
         config.thinking_budget = None;
         return;
     }
@@ -2580,6 +2656,7 @@ impl LLMManager {
 
         let config = resolved_config;
         ensure_model_accepts_message_modalities(&config, chat_history)?;
+        let quirks = resolve_quirks(&config);
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();
@@ -2698,9 +2775,9 @@ impl LLMManager {
                                 tool_calls.len(),
                                 thinking_content.as_ref().map(|s| s.len()).unwrap_or(0)
                             );
-                        } else if requires_reasoning_passback(&config) {
+                        } else if quirks.reasoning_passback != ReasoningPassbackPolicy::NoPassback {
                             // 其他推理模型（DeepSeek 等）：使用 reasoning_content 字段
-                            let policy = get_passback_policy(&config);
+                            let policy = quirks.reasoning_passback;
                             let mut assistant_msg = json!({
                                 "role": "assistant",
                                 "content": content,
@@ -2710,7 +2787,7 @@ impl LLMManager {
                             if let Some(ref thinking) = thinking_content {
                                 attach_reasoning_passback_payload(
                                     &mut assistant_msg,
-                                    &config,
+                                    policy,
                                     thinking,
                                 );
                             }
@@ -2738,8 +2815,10 @@ impl LLMManager {
                                 tool_calls.len()
                             );
                         }
-                    } else if has_thinking_payload && requires_reasoning_passback(&config) {
-                        let policy = get_passback_policy(&config);
+                    } else if has_thinking_payload
+                        && quirks.reasoning_passback != ReasoningPassbackPolicy::NoPassback
+                    {
+                        let policy = quirks.reasoning_passback;
                         let mut assistant_msg = json!({
                             "role": "assistant",
                             "content": content,
@@ -2747,11 +2826,7 @@ impl LLMManager {
                         });
 
                         if let Some(ref thinking) = thinking_content {
-                            attach_reasoning_passback_payload(
-                                &mut assistant_msg,
-                                &config,
-                                thinking,
-                            );
+                            attach_reasoning_passback_payload(&mut assistant_msg, policy, thinking);
                         }
 
                         inject_provider_state(&mut assistant_msg);
@@ -2943,11 +3018,10 @@ impl LLMManager {
                                     "content": content_blocks
                                 }));
                             }
-                        } else if has_thinking && should_passback_plain_assistant_reasoning(&config)
-                        {
+                        } else if has_thinking && quirks.passback_plain_assistant_reasoning {
                             // 🔧 思维链回传策略（文档 29 第 7 节）
                             // 使用统一的 reasoning_policy 模块判断是否需要回传
-                            let policy = get_passback_policy(&config);
+                            let policy = quirks.reasoning_passback;
                             let mut assistant_msg = json!({
                                 "role": "assistant",
                                 "content": msg.content
@@ -3098,7 +3172,7 @@ impl LLMManager {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
             let mut tools = custom_tools.unwrap_or_default();
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&config, context) {
+            if server_side_web_search_enabled(&quirks, context) {
                 apply_server_side_web_search_tool(&mut tools);
                 debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
             }
@@ -3108,7 +3182,7 @@ impl LLMManager {
                 tools.as_array().map(|a| a.len()).unwrap_or(0)
             );
             request_body["tools"] = tools;
-            if !(is_qwen_config(&config) && has_tool_result_messages) {
+            if !(quirks.strip_tool_choice_on_tool_result && has_tool_result_messages) {
                 request_body["tool_choice"] = json!("auto");
             } else if let Some(map) = request_body.as_object_mut() {
                 map.remove("tool_choice");
@@ -3120,7 +3194,7 @@ impl LLMManager {
             // 构建工具列表，包含本地工具和 MCP 工具
             let mut tools = self.build_tools_with_mcp(&window).await;
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&config, context) {
+            if server_side_web_search_enabled(&quirks, context) {
                 if let Some(tools_array) = tools.as_array_mut() {
                     apply_server_side_web_search_tool(tools_array);
                     debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
@@ -3130,7 +3204,7 @@ impl LLMManager {
             // 只有在工具列表非空时才设置 tools 和 tool_choice
             if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {
                 request_body["tools"] = tools;
-                if !(is_qwen_config(&config) && has_tool_result_messages) {
+                if !(quirks.strip_tool_choice_on_tool_result && has_tool_result_messages) {
                     request_body["tool_choice"] = json!("auto");
                 } else if let Some(map) = request_body.as_object_mut() {
                     map.remove("tool_choice");
@@ -3362,7 +3436,7 @@ impl LLMManager {
 
         // 简化：不再在此处估算输入token
 
-        apply_generation_params(&mut request_body, &config);
+        apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
         if budget_trim.removed_messages > 0 {
@@ -4585,7 +4659,7 @@ impl LLMManager {
 
         // 如果启用了思维链，尝试提取思维链详情（文档 29 第 7 节）
         let chain_of_thought_details = if enable_chain_of_thought {
-            let needs_passback = requires_reasoning_passback(&config);
+            let needs_passback = quirks.reasoning_passback != ReasoningPassbackPolicy::NoPassback;
             if needs_passback {
                 // 推理模型自动包含思维链
                 let reference = if !reasoning_content.is_empty() {
@@ -4593,7 +4667,7 @@ impl LLMManager {
                 } else {
                     parser::extract_reasoning_sections(&full_content)
                 };
-                let policy = get_passback_policy(&config);
+                let policy = quirks.reasoning_passback;
                 Some(json!({
                     "full_response": full_content,
                     "reasoning_content": if reasoning_content.is_empty() { Value::Null } else { json!(reasoning_content) },
@@ -4753,6 +4827,7 @@ impl LLMManager {
         max_input_tokens_override: Option<usize>,
     ) -> Result<StandardModel2Output> {
         ensure_model_accepts_message_modalities(&config, chat_history)?;
+        let quirks = resolve_quirks(&config);
         info!(
             "调用统一模型二接口: 科目={}, 思维链={}, 图片数量={}, model={}",
             subject,
@@ -4944,7 +5019,7 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
-        apply_generation_params(&mut request_body, &config);
+        apply_generation_params(&mut request_body, &config, &quirks);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit)?;
         if budget_trim.removed_messages > 0 {
@@ -5958,6 +6033,7 @@ impl LLMManager {
                 config.id
             )));
         }
+        let quirks = resolve_quirks(&config);
 
         // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
@@ -6000,7 +6076,7 @@ impl LLMManager {
         });
 
         Self::apply_reasoning_config(&mut request_body, &config, None);
-        apply_generation_params(&mut request_body, &config);
+        apply_generation_params(&mut request_body, &config, &quirks);
         if let Some(max_tokens) = request_body
             .get("max_completion_tokens")
             .or_else(|| request_body.get("max_tokens"))
@@ -6010,7 +6086,7 @@ impl LLMManager {
         }
 
         // 如果是 OpenAI GPT 模型 且调用方允许（compaction 等 Markdown 场景会关掉）
-        if opts.force_json && config.model.starts_with("gpt-") {
+        if opts.force_json && quirks.force_json_response_format {
             request_body["response_format"] = json!({"type": "json_object"});
         }
 
@@ -6192,6 +6268,7 @@ impl LLMManager {
     ) -> Result<StandardModel2Output> {
         // 1. 获取 OCR 模型配置及其有效引擎，确保适配器与实际模型一致
         let (config, effective_engine) = self.get_ocr_config_with_effective_engine().await?;
+        let quirks = resolve_quirks(&config);
         let ocr_adapter = crate::ocr_adapters::OcrAdapterFactory::create(effective_engine);
         let ocr_mode = crate::ocr_adapters::OcrMode::FreeOcr;
         let prompt_text = ocr_adapter.build_custom_prompt(user_prompt, ocr_mode);
@@ -6252,7 +6329,7 @@ impl LLMManager {
             .min(ocr_adapter.recommended_max_tokens(ocr_mode))
             .max(2048)
             .min(8000);
-        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
+        apply_legacy_generation_token_limit(&mut request_body, &quirks, max_tokens);
 
         if let Some(extra) = ocr_adapter.get_extra_request_params() {
             if let Some(obj) = request_body.as_object_mut() {
@@ -6372,6 +6449,7 @@ impl LLMManager {
     #[allow(dead_code)]
     pub async fn convert_image_to_markdown(&self, image_path: &str) -> Result<String> {
         let config = self.get_exam_segmentation_model_config().await?;
+        let quirks = resolve_quirks(&config);
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
         let mime = Self::infer_image_mime(image_path);
@@ -6398,7 +6476,7 @@ impl LLMManager {
             "temperature": 0.0,
             "stream": false,
         });
-        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
+        apply_legacy_generation_token_limit(&mut request_body, &quirks, max_tokens);
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
@@ -6636,6 +6714,7 @@ impl LLMManager {
 
         // 1. 获取 Anki 制卡模型配置
         let config = self.get_anki_model_config().await?;
+        let quirks = resolve_quirks(&config);
 
         // 2. 获取科目特定的 Anki 制卡 Prompt
         let subject_prompt = self.get_subject_prompt(subject_name, "anki_generation");
@@ -6667,11 +6746,11 @@ impl LLMManager {
             "temperature": temperature
         });
 
-        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
+        apply_legacy_generation_token_limit(&mut request_body, &quirks, max_tokens);
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         // 如果支持JSON模式，添加response_format
-        if config.model.starts_with("gpt-") {
+        if quirks.force_json_response_format {
             request_body["response_format"] = json!({"type": "json_object"});
         }
 

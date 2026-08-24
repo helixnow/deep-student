@@ -22,7 +22,7 @@
 | R1 | ✅ | 10 | P0 构建快速 wins（WI-1/2/3/5/8/10 + CI 降频） | 本 PR |
 | R2 | ✅ | 10 | P0 WI-4 + P1 静态资源/前端/Agent schema | 本 PR |
 | R3 | ✅ | 10 | deps/CI/Agent schema/P2 前置 | 本 PR |
-| R4 | ✅ 收尾中 | 10 | 9/10 工作包已合入；合并卫生已清扫，WI-11 Phase1 仍缺失 | 本 PR |
+| R4 | ✅ | 10 | 10/10 工作包已合入；WI-11 Phase 1 与合并卫生收尾完成 | 本 PR |
 | … | ⏳ | … | 持续至 ≥R20 | — |
 
 ## Work Item 总表（来源：初始调研 WI-1..13）
@@ -39,7 +39,7 @@
 | WI-8 | P1 | 依赖收敛 + bundle 门禁 | ✅ R4 再删 19 个生产依赖，FlowToken 改懒加载 |
 | WI-9 | P1 | pdfjs 按需化 | ✅ R4 运行时 fallback + legal 去重 |
 | WI-10 | P1 | Token 预算治理 | ✅ R4 43 个 skill 组全部精简，护栏收紧 |
-| WI-11 | P2 | Provider 协议归一 | ❌ R4 Phase1 未交付：`provider_quirks.rs` 缺失 |
+| WI-11 | P2 | Provider 协议归一 | ✅ R4 Phase 1：quirks 归一 + 请求快照（`72fed933`）；Phase 2～4 待后续 |
 | WI-12 | P2 | Session JSONL replay | ✅ R4 JSONL export + 测试 + Tauri command（`ae714af9`） |
 | WI-13 | P2 | Tool loop hooks | ✅ R4 第一阶段：4 切点 + 审批/审计 hooks（`728472b4`） |
 
@@ -68,10 +68,10 @@
   PDF 运行时 fallback、Rust 大文件拆分，以及 R4-04 依赖清扫（`e31ace7b`）。
 - R4-04 从生产依赖再移除 19 项，FlowToken 改为懒加载；`THIRD_PARTY_NOTICES`
   冲突按最终 lockfile 重新对齐，保留依赖清扫后的 1847 个组件清单。
-- **唯一缺失工作包是 WI-11 Phase1**：远端未发现对应 R4 分支，集成分支没有
-  `llm_manager/provider_quirks.rs`，`model2_pipeline.rs` 仍保留
-  `is_mimo_config` / `is_mistral_config` / `is_qwen_config` 等原判定函数。
-  后续收尾代理应按 `WI-11-provider-refactor-plan.md` 的 11-1a..1d 单独实现。
+- WI-11 Phase 1（11-1a～11-1d）已由 `72fed933` 合入：新增
+  `llm_manager/provider_quirks.rs`，迁移 S1～S4、B1～B4、B9、B13 与 S7，
+  删除 pipeline 内 MiMo/Mistral/Qwen 判定函数，并新增两组 16 场景请求快照。
+- WI-11 Phase 2～4 仍按 `WI-11-provider-refactor-plan.md` 作为后续工作。
 - WRAP hygiene 已确认无合并冲突标记、`public/` 无重复 worker，并移除
   `vite.config.ts` 中已卸载的 `react-hotkeys-hook` optimizeDeps 条目；许可证与
   worker 文档路径已对齐当前构建链。
@@ -83,7 +83,7 @@
 | --- | --- | --- | --- |
 | 1 | tsgo 全量落地：tsconfig + Blob 修复 + CI 双跑 | SA-R4-01 | ✅ `bd145465` |
 | 2 | WI-12 JSONL 导出完整实现 + 测试 + Tauri command | SA-R4-02 | ✅ `ae714af9` |
-| 3 | WI-11 Phase1 全部 11-1a~1d（quirks + 快照） | SA-R4-03 | ❌ 未发现产物/远端分支 |
+| 3 | WI-11 Phase1 全部 11-1a~1d（quirks + 快照） | SA-R4-03 / SA-WRAP-WI11 | ✅ `72fed933`（WRAP 合入） |
 | 4 | 前端未用依赖清扫 + licenses + 低频库评估落地 | SA-R4-04 | ✅ `e31ace7b`（WRAP 合入） |
 | 5 | WI-10 剩余全部 skill 组精简 + 首轮 token CI 报告 | SA-R4-05 | ✅ `2b98a42f` |
 | 6 | WI-13：tool_loop 横切抽 PipelineHook（审批+审计） | SA-R4-06 | ✅ `728472b4` + `8454faf9` |
