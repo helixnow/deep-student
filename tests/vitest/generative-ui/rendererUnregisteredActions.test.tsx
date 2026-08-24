@@ -127,4 +127,19 @@ describe('collectUnregisteredActionIds', () => {
       'missing-b',
     ]);
   });
+
+  it('does not treat inherited prototype keys as registered handlers', () => {
+    const intent: GenerativeUIIntent = {
+      version: '1',
+      blocks: [
+        {
+          type: 'action-bar',
+          props: { actions: [{ id: 'toString', label: 'Proto' }] },
+        },
+      ],
+    };
+
+    expect(collectUnregisteredActionIds(intent, Object.create(null))).toEqual(['toString']);
+    expect(collectUnregisteredActionIds(intent, {})).toEqual(['toString']);
+  });
 });

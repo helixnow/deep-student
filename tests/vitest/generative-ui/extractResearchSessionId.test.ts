@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 import { extractResearchSessionId } from '@/features/generative-ui/utils/extractResearchSessionId';
 
 describe('extractResearchSessionId', () => {
@@ -39,5 +40,32 @@ describe('extractResearchSessionId', () => {
     expect(
       extractResearchSessionId({ researchSessionId: 'sess_2026-08-24.1' }, undefined, undefined),
     ).toBe('sess_2026-08-24.1');
+  });
+
+  it('keeps sanitized intent.meta.researchSessionId after schema parse', () => {
+    const parsed = parseGenerativeUIIntent(
+      JSON.stringify({
+        version: '1',
+        meta: { title: 'Plan', researchSessionId: ' meta-s1 ' },
+        blocks: [{ type: 'text', props: { body: 'ok' } }],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.intent.meta?.researchSessionId).toBe('meta-s1');
+    expect(extractResearchSessionId(undefined, undefined, parsed.intent)).toBe('meta-s1');
+  });
+
+  it('strips unsafe intent.meta.researchSessionId instead of failing the intent', () => {
+    const parsed = parseGenerativeUIIntent(
+      JSON.stringify({
+        version: '1',
+        meta: { researchSessionId: '../evil' },
+        blocks: [{ type: 'text', props: { body: 'ok' } }],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.intent.meta?.researchSessionId).toBeUndefined();
   });
 });

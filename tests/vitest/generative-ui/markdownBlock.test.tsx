@@ -122,6 +122,17 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(sanitized).toContain('https://ok.test');
     expect(sanitized).toContain('data:image/png;base64,xx');
   });
+
+  it('rewrites markdown javascript: / file: links without touching fenced code', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      'See [click](javascript:alert(1)) and ![x](file:///etc/passwd)\n```md\n[keep](javascript:alert(1))\n```',
+    );
+    expect(sanitized).toContain('[click](#)');
+    expect(sanitized).toContain('![x](#)');
+    expect(sanitized).not.toMatch(/\[click]\(javascript:/);
+    expect(sanitized).not.toMatch(/file:/);
+    expect(sanitized).toContain('[keep](javascript:alert(1))');
+  });
 });
 
 describe('MarkdownBlock', () => {

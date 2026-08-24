@@ -271,6 +271,9 @@ export function GenerativeUIRenderer({
     () => (displayIntent ? collectUnregisteredActionIds(displayIntent, actionHandlers) : []),
     [actionHandlers, displayIntent],
   );
+  const hasActionBar = Boolean(
+    displayIntent?.blocks.some((block) => block.type === 'action-bar'),
+  );
 
   useEffect(() => {
     if (!displayIntent || !resolved.snapshotEligible) return;
@@ -330,13 +333,15 @@ export function GenerativeUIRenderer({
       aria-label={t('a11y.region_label')}
       aria-busy={isStreaming || undefined}
     >
-      <a
-        href={`#${actionsTargetId}`}
-        className="sr-only focus:not-sr-only"
-        data-skip-to-actions
-      >
-        {t('a11y.skip_to_actions')}
-      </a>
+      {hasActionBar ? (
+        <a
+          href={`#${actionsTargetId}`}
+          className="sr-only focus:not-sr-only"
+          data-skip-to-actions
+        >
+          {t('a11y.skip_to_actions')}
+        </a>
+      ) : null}
       {showChrome ? (
         <GenerativeUIChrome
           key="generative-ui-chrome"

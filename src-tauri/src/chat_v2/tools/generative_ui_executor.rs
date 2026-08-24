@@ -101,9 +101,8 @@ impl GenerativeUiExecutor {
         }
     }
 
-    fn parse_research_session_id(arguments: &Value) -> Option<String> {
+    fn sanitize_research_session_id(raw: &str) -> Option<String> {
         const MAX_RESEARCH_SESSION_ID_LENGTH: usize = 128;
-        let raw = arguments.get("researchSessionId").and_then(Value::as_str)?;
         let trimmed = raw.trim();
         if trimmed.is_empty() || trimmed.len() > MAX_RESEARCH_SESSION_ID_LENGTH {
             return None;
@@ -112,6 +111,20 @@ impl GenerativeUiExecutor {
             ch.is_ascii_alphanumeric() || ((ch == '.' || ch == '_' || ch == '-') && index > 0)
         });
         valid.then(|| trimmed.to_string())
+    }
+
+    fn parse_research_session_id(arguments: &Value, intent: Option<&Value>) -> Option<String> {
+        if let Some(id) = arguments
+            .get("researchSessionId")
+            .and_then(Value::as_str)
+            .and_then(Self::sanitize_research_session_id)
+        {
+            return Some(id);
+        }
+        intent
+            .and_then(|value| value.pointer("/meta/researchSessionId"))
+            .and_then(Value::as_str)
+            .and_then(Self::sanitize_research_session_id)
     }
 
     fn parse_note_edit(arguments: &Value) -> Result<Option<Value>, String> {
@@ -164,8 +177,14 @@ impl GenerativeUiExecutor {
             Value::String(operation.to_string()),
         );
         for key in ["content", "search", "replace", "section"] {
-            if let Some(value) = raw.get(key).cloned() {
-                sanitized.insert(key.to_string(), value);
+            match raw.get(key) {
+                Some(Value::String(value)) => {
+                    sanitized.insert(key.to_string(), Value::String(value.clone()));
+                }
+                Some(_) => {
+                    return Err(format!("noteEdit.{} 必须是字符串", key));
+                }
+                None => {}
             }
         }
         Ok(Some(Value::Object(sanitized)))
@@ -335,7 +354,7 @@ impl ToolExecutor for GenerativeUiExecutor {
             }
         };
 
-        let research_session_id = Self::parse_research_session_id(&call.arguments);
+        let research_session_id = Self::parse_research_session_id(&call.arguments, Some(&intent));
 
         if Self::intent_has_apply_note_edit(&intent) && note_edit.is_none() {
             let error = "intent 含 apply-note-edit 时必须提供 noteEdit 参数".to_string();
@@ -566,7 +585,7 @@ mod tests {
     fn parse_research_session_id_accepts_non_empty_string() {
         let args = json!({ "researchSessionId": " hpias-s1 " });
         assert_eq!(
-            GenerativeUiExecutor::parse_research_session_id(&args).as_deref(),
+            GenerativeUiExecutor::parse_research_session_id(&args, None).as_deref(),
             Some("hpias-s1")
         );
     }
@@ -574,17 +593,43 @@ mod tests {
     #[test]
     fn parse_research_session_id_rejects_blank() {
         let args = json!({ "researchSessionId": "   " });
-        assert!(GenerativeUiExecutor::parse_research_session_id(&args).is_none());
+        assert!(GenerativeUiExecutor::parse_research_session_id(&args, None).is_none());
     }
 
     #[test]
     fn parse_research_session_id_rejects_unsafe_or_oversized() {
         let oversized = json!({ "researchSessionId": "x".repeat(129) });
-        assert!(GenerativeUiExecutor::parse_research_session_id(&oversized).is_none());
+        assert!(GenerativeUiExecutor::parse_research_session_id(&oversized, None).is_none());
         let traversal = json!({ "researchSessionId": "../evil" });
-        assert!(GenerativeUiExecutor::parse_research_session_id(&traversal).is_none());
+        assert!(GenerativeUiExecutor::parse_research_session_id(&traversal, None).is_none());
         let scheme = json!({ "researchSessionId": "javascript:alert(1)" });
-        assert!(GenerativeUiExecutor::parse_research_session_id(&scheme).is_none());
+        assert!(GenerativeUiExecutor::parse_research_session_id(&scheme, None).is_none());
+    }
+
+    #[test]
+    fn parse_research_session_id_falls_back_to_intent_meta() {
+        let intent = json!({
+            "version": "1",
+            "meta": { "researchSessionId": " meta-s1 " },
+            "blocks": [{ "type": "research-plan", "props": { "title": "Plan", "steps": [] } }]
+        });
+        let args = json!({ "intent": intent });
+        assert_eq!(
+            GenerativeUiExecutor::parse_research_session_id(&args, Some(&intent)).as_deref(),
+            Some("meta-s1")
+        );
+    }
+
+    #[test]
+    fn parse_research_session_id_prefers_top_level_over_meta() {
+        let intent = json!({
+            "meta": { "researchSessionId": "meta-s1" }
+        });
+        let args = json!({ "researchSessionId": "top-s1" });
+        assert_eq!(
+            GenerativeUiExecutor::parse_research_session_id(&args, Some(&intent)).as_deref(),
+            Some("top-s1")
+        );
     }
 
     #[tokio::test]
@@ -677,6 +722,15 @@ mod tests {
         );
         assert!(!obj.contains_key("className"));
         assert!(!obj.contains_key("isRegex"));
+    }
+
+    #[test]
+    fn parse_note_edit_rejects_non_string_fields() {
+        let args = json!({
+            "noteEdit": { "operation": "append", "content": ["not", "a", "string"] }
+        });
+        let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("type");
+        assert!(error.contains("content"));
     }
 
     #[test]

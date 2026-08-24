@@ -43,6 +43,9 @@ const EVENT_HANDLER_ATTR_RE = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
 const URL_ATTR_RE =
   /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
+/** Markdown 链接 / 图片：`[text](url)` 与 `![alt](url)`，不含围栏代码。 */
+const MD_LINK_RE = /(!?\[[^\]]*]\()([^)]*)(\))/g;
+
 export const GENERATIVE_MARKDOWN_SANITIZE_SCHEMA = defaultSchema;
 
 function sanitizeOpenTag(tag: string): string {
@@ -59,6 +62,16 @@ function sanitizeOpenTag(tag: string): string {
   return cleaned;
 }
 
+function sanitizeMarkdownLinks(prose: string): string {
+  return prose.replace(MD_LINK_RE, (full, prefix: string, url: string, suffix: string) => {
+    const trimmed = url.trim().replace(/^<|>$/g, '');
+    if (!trimmed || isDangerousGenerativeUrl(trimmed)) {
+      return `${prefix}#${suffix}`;
+    }
+    return full;
+  });
+}
+
 function sanitizeProseHtml(prose: string): string {
   let out = prose.replace(PAIRED_STRIP_RE, '');
   out = out.replace(LOOSE_STRIP_RE, '');
@@ -71,7 +84,7 @@ function sanitizeProseHtml(prose: string): string {
     if (/^<\s*!(?:--|$)/.test(tag) || /^<\s*\?/.test(tag)) return '';
     return sanitizeOpenTag(tag);
   });
-  return out;
+  return sanitizeMarkdownLinks(out);
 }
 
 function splitFencedSegments(source: string): Array<{ code: boolean; text: string }> {

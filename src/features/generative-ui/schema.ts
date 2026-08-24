@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import type { GenerativeLayoutMode, GenerativeLayoutUnit, GenerativeUIIntent } from './types';
+import { sanitizeResearchSessionId } from './utils/extractResearchSessionId';
 import { sanitizeGenerativeTextLeaves } from './utils/sanitizeGenerativeText';
 import {
   MAX_GENERATIVE_UI_STREAM_CHARS,
@@ -54,6 +55,10 @@ const generativeUIMetaSchema = z
   .object({
     title: z.string().max(200).optional(),
     description: z.string().max(1000).optional(),
+    researchSessionId: z
+      .unknown()
+      .optional()
+      .transform((value) => sanitizeResearchSessionId(value) ?? undefined),
   })
   .optional();
 
