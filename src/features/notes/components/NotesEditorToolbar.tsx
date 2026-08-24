@@ -318,7 +318,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                     iconOnly
                     disabled={isDisabled}
                     aria-label={item.label}
-                    className="flex-none ui-press hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                    className="flex-none ui-press [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={item.action}
                   >
