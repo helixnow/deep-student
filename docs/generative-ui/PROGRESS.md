@@ -9,22 +9,24 @@
 - [x] Chat `generative_ui` 块桥接
 - [x] 新增测试 useGenerativeUIStream + chatBlockBridge
 
-### Round 1 子代理结论（已合并 3/10）
+### Round 1 子代理结论（已合并 4/10）
 
 | # | 子代理 | 要点 | 跟进 |
 |---|--------|------|------|
 | 1 | [Chat 块注册表](bc-78a45f92-2d86-5c9c-bfe1-4bdc37dc8710) | 双注册表 + `generative_ui` 桥接；`content` 流式 JSON | ✅ 桥接已实现；content fallback 已补 |
 | 2 | [设计系统审计](bc-d88c5979-bb89-5636-b38c-2c62f473436b) | token 扎实；宪法层约束间距/字号/色 | ✅ `DESIGN_CONSTITUTION.md` |
-| 10 | [测试契约](bc-f87bbba8-a0b2-5979-a04d-a9c202cc7e29) | contract + schema + renderer 测试 | ✅ 26 tests |
+| 6 | [Mindmap 注册表复用](bc-b0635482-e1a3-5f0b-bae0-7301e62d59f2) | 分层复用不合并；`mindmap-embed` 引用式嵌入 | ✅ 常量规范化；embed block 待 Round 4 |
+| 10 | [测试契约](bc-f87bbba8-a0b2-5979-a04d-a9c202cc7e29) | contract + schema + renderer 测试 | ✅ 27 tests |
 
-待合并：#3–9（Notes、题库、Workbench、Mindmap、Research、安全、流式）
+待合并：#3–5、#7–9（Notes、题库、Workbench、Research、安全、流式）
 
 ### 子代理（Round 1 调研，10 × xhigh）
 | # | 任务 | 状态 |
 |---|------|------|
 | 1 | Chat blockRegistry | ✅ |
 | 2 | 设计系统审计 | ✅ |
-| 3-9 | 其余模块调研 | 进行中 |
+| 6 | Mindmap Registry 复用 | ✅ |
+| 3-5, 7-9 | 其余模块调研 | 进行中 |
 | 10 | 测试契约模式 | ✅ |
 
 ### 下一轮计划（Round 3）

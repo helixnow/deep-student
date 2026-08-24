@@ -7,13 +7,16 @@
 import React from 'react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
-import { extractGenerativeUIIntent } from '@/features/generative-ui/bridge/chatBlockBridge';
+import {
+  extractGenerativeUIIntent,
+  GENERATIVE_UI_BLOCK_TYPE,
+} from '@/features/generative-ui/bridge/chatBlockBridge';
 
 function GenerativeUIBlockComponent({ block, isStreaming }: BlockComponentProps) {
   const extracted = extractGenerativeUIIntent(block.toolOutput, block.content);
   if (!extracted) {
     return (
-      <div className="text-sm text-muted-foreground px-1" data-block-type="generative_ui">
+      <div className="text-sm text-muted-foreground px-1" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
         无 UI 意图数据
       </div>
     );
@@ -28,8 +31,8 @@ function GenerativeUIBlockComponent({ block, isStreaming }: BlockComponentProps)
   );
 }
 
-blockRegistry.register('generative_ui', {
-  type: 'generative_ui',
+blockRegistry.register(GENERATIVE_UI_BLOCK_TYPE, {
+  type: GENERATIVE_UI_BLOCK_TYPE,
   component: GenerativeUIBlockComponent,
   onAbort: 'keep-content',
 });

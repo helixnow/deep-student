@@ -56,6 +56,8 @@ props 中颜色/状态仅允许：
 
 已落地：`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`
 
+| `mindmap-embed` | P3 | `MindMapEmbed` 引用式嵌入（`mindmapId` props，`React.lazy`） |
+
 ## 7. Token 单一来源
 
 - 原始/语义 token：`src/styles/shadcn-variables.css`、`theme-colors.css`
