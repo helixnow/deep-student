@@ -177,7 +177,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
           {/* 完整 JSON（可选） */}
           {paramKeys.length > 3 && (
             <details className="mt-2">
-              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11">
                 {t('blocks.mcpTool.showFullJson')}
               </summary>
               <pre className="mt-1 text-xs whitespace-pre-wrap break-words text-muted-foreground font-mono">
