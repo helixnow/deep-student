@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import type { ActionBarProps } from '../schema';
@@ -11,6 +12,7 @@ export interface ActionBarBlockProps extends ActionBarProps {
 }
 
 export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarBlockProps) {
+  const { t } = useTranslation('generativeUi');
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
   const [dialogActionId, setDialogActionId] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
@@ -92,9 +94,9 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
         onOpenChange={(open) => {
           if (!open) setDialogActionId(null);
         }}
-        title={dialogAction ? `确认：${dialogAction.label}` : '确认操作'}
-        description="此操作可能产生不可逆影响，请确认后继续。"
-        confirmText="确认执行"
+        title={dialogAction ? t('action.confirm_title', { label: dialogAction.label }) : t('action.confirm_execute')}
+        description={t('action.confirm_desc')}
+        confirmText={t('action.confirm_execute')}
         loading={executing}
         disabled={executing}
         onConfirm={() => {

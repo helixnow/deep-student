@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { GenerativeUIRenderer } from '../GenerativeUIRenderer';
 import type { GenerativeUIAction, GenerativeActionDefinition, GenerativeUIIntent } from '../types';
@@ -6,6 +7,7 @@ import type { GenerativeUIAction, GenerativeActionDefinition, GenerativeUIIntent
 export interface GenerativeUIPanelProps {
   intent: GenerativeUIIntent | string | null;
   isStreaming?: boolean;
+  showChrome?: boolean;
   title?: string;
   className?: string;
   onAction?: (action: GenerativeUIAction) => void;
@@ -19,12 +21,15 @@ export interface GenerativeUIPanelProps {
 export function GenerativeUIPanel({
   intent,
   isStreaming = false,
+  showChrome = true,
   title,
   className,
   onAction,
   actionHandlers,
-  emptyLabel = '暂无 AI 界面内容',
+  emptyLabel,
 }: GenerativeUIPanelProps) {
+  const { t } = useTranslation('generativeUi');
+  const resolvedEmpty = emptyLabel ?? t('panel.empty');
   if (!intent) {
     return (
       <div
@@ -34,7 +39,7 @@ export function GenerativeUIPanel({
         )}
         data-generative-ui-panel-empty
       >
-        {emptyLabel}
+        {resolvedEmpty}
       </div>
     );
   }
@@ -45,6 +50,7 @@ export function GenerativeUIPanel({
       <GenerativeUIRenderer
         intent={intent}
         isStreaming={isStreaming}
+        showChrome={showChrome}
         onAction={onAction}
         actionHandlers={actionHandlers}
       />

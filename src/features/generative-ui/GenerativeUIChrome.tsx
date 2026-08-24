@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, Check, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
@@ -11,8 +12,9 @@ export interface GenerativeUIChromeProps {
   className?: string;
 }
 
-/** AI 生成标记 + Human-in-the-loop 操作栏 */
 export function GenerativeUIChrome({ isStreaming, onAction, className }: GenerativeUIChromeProps) {
+  const { t } = useTranslation('generativeUi');
+
   return (
     <div
       className={cn(
@@ -24,22 +26,22 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
       <div className="flex items-center gap-1.5">
         <AiContentLabel variant="badge" showIcon />
         {isStreaming ? (
-          <span className="text-xs text-muted-foreground">生成中…</span>
+          <span className="text-xs text-muted-foreground">{t('chrome.streaming')}</span>
         ) : null}
       </div>
       {!isStreaming && onAction ? (
         <div className="flex items-center gap-1">
           <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'accept' })}>
             <Check className="mr-1 h-3.5 w-3.5" aria-hidden />
-            接受
+            {t('chrome.accept')}
           </DsButton>
           <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'regenerate' })}>
             <ArrowClockwise className="mr-1 h-3.5 w-3.5" aria-hidden />
-            重新生成
+            {t('chrome.regenerate')}
           </DsButton>
           <DsButton variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onAction({ type: 'dismiss' })}>
             <X className="mr-1 h-3.5 w-3.5" aria-hidden />
-            忽略
+            {t('chrome.dismiss')}
           </DsButton>
         </div>
       ) : null}

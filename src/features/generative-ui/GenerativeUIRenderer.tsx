@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
 import { parseGenerativeUIIntent, validateBlockProps } from './schema';
@@ -7,7 +8,6 @@ import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
 
-// 确保内置块已注册
 import './blocks';
 
 function normalizeIntent(input: string | GenerativeUIIntent): GenerativeUIIntent | null {
@@ -26,6 +26,7 @@ export function GenerativeUIRenderer({
   actionHandlers,
   className,
 }: GenerativeUIRendererProps) {
+  const { t } = useTranslation('generativeUi');
   const intent = useMemo(() => normalizeIntent(intentInput), [intentInput]);
   const parseError = useMemo(() => {
     if (typeof intentInput !== 'string') return null;
@@ -36,9 +37,9 @@ export function GenerativeUIRenderer({
   if (!intent) {
     return (
       <Alert variant="destructive" className={className}>
-        <AlertTitle>无法解析 AI 界面意图</AlertTitle>
+        <AlertTitle>{t('parse_error_title')}</AlertTitle>
         <AlertDescription>
-          {parseError?.join('; ') ?? '格式无效'}
+          {parseError?.join('; ') ?? t('parse_error_invalid')}
         </AlertDescription>
       </Alert>
     );
@@ -69,8 +70,8 @@ export function GenerativeUIRenderer({
           if (!config) {
             return (
               <Alert key={block.id ?? index} variant="warning">
-                <AlertTitle>未知组件：{block.type}</AlertTitle>
-                <AlertDescription>已跳过，请检查组件注册表</AlertDescription>
+                <AlertTitle>{t('unknown_block_title', { type: block.type })}</AlertTitle>
+                <AlertDescription>{t('unknown_block_desc')}</AlertDescription>
               </Alert>
             );
           }
@@ -79,7 +80,7 @@ export function GenerativeUIRenderer({
           if (!validation.ok) {
             return (
               <Alert key={block.id ?? index} variant="destructive">
-                <AlertTitle>{block.type} 参数校验失败</AlertTitle>
+                <AlertTitle>{t('validation_failed_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{validation.errors.join('; ')}</AlertDescription>
               </Alert>
             );

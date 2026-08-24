@@ -1,0 +1,24 @@
+{
+  "parse_error_title": "无法解析 AI 界面意图",
+  "parse_error_invalid": "格式无效",
+  "unknown_block_title": "未知组件：{{type}}",
+  "unknown_block_desc": "已跳过，请检查组件注册表",
+  "validation_failed_title": "{{type}} 参数校验失败",
+  "chrome": {
+    "streaming": "生成中…",
+    "accept": "接受",
+    "regenerate": "重新生成",
+    "dismiss": "忽略"
+  },
+  "action": {
+    "confirm_title": "确认：{{label}}",
+    "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
+    "confirm_execute": "确认执行"
+  },
+  "panel": {
+    "empty": "暂无 AI 界面内容"
+  },
+  "notes": {
+    "summary_title": "AI 笔记摘要"
+  }
+}

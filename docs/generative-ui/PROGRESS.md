@@ -1,5 +1,23 @@
 # Generative UI 进度日志
 
+## Round 3（2026-08-24）
+
+### 父代理
+- [x] `NotesGenerativeSummary` — NotesContextPanel 只读摘要 POC
+- [x] `buildNoteSummaryIntent` 确定性意图构建
+- [x] Style Lab `GenerativeUIDemoTab` 演示页签
+- [x] `learningActionHandlers` 学习 action 注册表
+- [x] generative-ui i18n（zh-CN / en-US）
+- [x] 组件 i18n 化（Renderer / Chrome / Panel / ActionBar）
+
+### 下一轮（Round 4）
+- Workbench `AiBriefingWidget` 桌面 widget
+- Rust 后端 `generative_ui` 事件 emit
+- `mindmap-embed` 块
+- schema↔registry↔prompts 三处同步 contract
+
+---
+
 ## Round 2（2026-08-24）
 
 ### 父代理

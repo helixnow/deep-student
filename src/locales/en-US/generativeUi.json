@@ -1,0 +1,24 @@
+{
+  "parse_error_title": "Unable to parse AI UI intent",
+  "parse_error_invalid": "Invalid format",
+  "unknown_block_title": "Unknown component: {{type}}",
+  "unknown_block_desc": "Skipped — check component registry",
+  "validation_failed_title": "{{type}} props validation failed",
+  "chrome": {
+    "streaming": "Generating…",
+    "accept": "Accept",
+    "regenerate": "Regenerate",
+    "dismiss": "Dismiss"
+  },
+  "action": {
+    "confirm_title": "Confirm: {{label}}",
+    "confirm_desc": "This action may have irreversible effects.",
+    "confirm_execute": "Confirm"
+  },
+  "panel": {
+    "empty": "No AI UI content"
+  },
+  "notes": {
+    "summary_title": "AI note summary"
+  }
+}

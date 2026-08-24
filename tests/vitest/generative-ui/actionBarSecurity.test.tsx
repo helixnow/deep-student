@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, params?: Record<string, unknown>) => {
+      if (key === 'action.confirm_title') return `确认：${params?.label ?? ''}`;
+      if (key === 'action.confirm_desc') return '确认描述';
+      if (key === 'action.confirm_execute') return '确认执行';
+      return key;
+    },
+  }),
+}));
 import { ActionBarBlock } from '@/features/generative-ui/components/ActionBarBlock';
 import { resolveEffectiveRiskLevel } from '@/features/generative-ui/actions';
 

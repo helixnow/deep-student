@@ -30,6 +30,8 @@ export { GenerativeUIPanel } from './components/GenerativeUIPanel';
 export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
 export { resolveEffectiveRiskLevel } from './actions';
 export { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from './prompts';
+export { buildNoteSummaryIntent } from './utils/buildNoteSummaryIntent';
+export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 
 // 注册内置块
