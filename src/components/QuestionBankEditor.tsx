@@ -1526,6 +1526,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           iconOnly
           onClick={() => setShowSettingsPanel(false)}
           aria-label={t('common:close')}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <X size={16} />
         </DsButton>
@@ -1594,7 +1595,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </div>
               </div>
               {allowTimerControl && (
-                <DsButton variant="ghost" size="sm" onClick={toggleTimer}>
+                <DsButton variant="ghost" size="sm" onClick={toggleTimer} className="[@media(pointer:coarse)]:!min-h-11">
                   {isTimerRunning ? t('editor.pause') : t('editor.resume')}
                 </DsButton>
               )}
@@ -2315,7 +2316,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         size="icon"
                         iconOnly
                         onClick={() => setShowSettingsPanel(true)}
-                        className="ml-auto"
+                        className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         aria-label={t('questionBank.settings', 'Settings')}
                         title={t('questionBank.settings', 'Settings')}
                       >
@@ -2374,7 +2375,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setCropDialogOpen(true)}
                     >
                       <Crop size={14} className="mr-1.5" />
@@ -2658,7 +2659,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   aria-label={t('editor.settings')}
                   aria-pressed={showSettingsPanel}
                   title={t('editor.settings')}
-                  className="ml-auto"
+                  className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <GearSix size={16} />
                 </DsButton>
@@ -2726,7 +2727,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setCropDialogOpen(true)}
               >
                 <Crop size={14} className="mr-1.5" />
@@ -2893,6 +2894,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           size="sm"
                           onClick={handleSaveNote}
                           disabled={!onUpdateUserNote || noteSaveState === 'saving'}
+                          className="[@media(pointer:coarse)]:!min-h-11"
                         >
                           {t('editor.noteDone')}
                         </DsButton>
@@ -2916,7 +2918,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
                       disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
+                      className="w-full !justify-start !h-auto [@media(pointer:coarse)]:!min-h-11 !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
                     >
                       <div className="flex items-center gap-2 text-sm w-full">
                         <Note size={16} className="text-warning" />
