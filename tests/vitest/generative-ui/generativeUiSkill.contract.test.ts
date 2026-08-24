@@ -21,6 +21,7 @@ const SKILL_BLOCK_TYPES = [
   'mindmap-embed',
   'paper-digest',
   'research-plan',
+  'research-report',
 ];
 
 const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'apply-note-edit', 'save-to-library'];

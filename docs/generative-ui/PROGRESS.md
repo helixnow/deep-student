@@ -22,6 +22,22 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 12（2026-08-24）
+
+- [x] `research-report` 块 — 流式正文 + `[type-N]` 引用 badge 渲染
+- [x] `parseResearchReportCitations` + `buildResearchReportIntent`
+- [x] Research/Translation #7 三路 POC 齐备（paper-digest / research-plan / research-report）
+- [x] 121 项 generative-ui vitest 全绿
+
+## Round 11（2026-08-24）
+
+- [x] Research POC — `paper-digest` + `research-plan` 块组件与 registry 注册
+- [x] `buildPaperDigestIntent` / `buildResearchPlanIntent` 确定性 builder（labels i18n 注入）
+- [x] generativeUi research.* i18n 词条（zh-CN / en-US）
+- [x] builderI18n contract — 所有 build*Intent 必须支持 labels
+- [x] researchBlocks E2E 测试 + skill/registry catalog 同步
+- [x] 117 项 generative-ui vitest 全绿
+
 ## Round 10（2026-08-24）
 
 - [x] 闪卡 `save-to-library` action handler — `createFlashcardSaveActionHandlers` → `saveCardsToLibrary`
@@ -75,7 +91,7 @@
 | mindmap-embed | ✅（schema + E2E renderer 全链路） |
 | prompt sync | ✅（目录行 + props schema 摘要进 prompt） |
 | Learning Hub 挂载 | Exam / Memory / IndexStatus ✅ |
-| i18n | 部分（P0 块组件 ✅；builder 持续跟进） |
+| i18n | ✅（块组件 + builder labels 注入 + builderI18n contract） |
 | Security HITL | ✅（ActionBar + Notes dispatch 链 + Chat 块挂载；OCC 终态落盘仍走 AIDiffPanel） |
 | Rust emit | ✅（execute + noteEdit 校验；本环境 Cargo 1.83 暂无法跑通 cargo test） |
 

@@ -28,6 +28,7 @@ import { MistakeAnalysisBlock } from '../components/MistakeAnalysisBlock';
 import { MindmapEmbedBlock, mindmapEmbedPropsSchema } from '../components/MindmapEmbedBlock';
 import { PaperDigestBlock, paperDigestPropsSchema } from '../components/PaperDigestBlock';
 import { ResearchPlanBlock, researchPlanPropsSchema } from '../components/ResearchPlanBlock';
+import { ResearchReportBlock, researchReportPropsSchema } from '../components/ResearchReportBlock';
 
 generativeUIRegistry.register({
   type: 'stat-card',
@@ -126,6 +127,14 @@ generativeUIRegistry.register({
   allowPartialRender: true,
 });
 
+generativeUIRegistry.register({
+  type: 'research-report',
+  component: ResearchReportBlock,
+  propsSchema: researchReportPropsSchema,
+  description: '研究报告：正文 + [类型-N] 引用标记（可流式 partial body）',
+  allowPartialRender: true,
+});
+
 export {
   StatCardBlock,
   AlertBlock,
@@ -140,4 +149,5 @@ export {
   MindmapEmbedBlock,
   PaperDigestBlock,
   ResearchPlanBlock,
+  ResearchReportBlock,
 };

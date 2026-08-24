@@ -27,13 +27,13 @@ src/features/generative-ui/
 │   └── resolveGenerativeUIChatActionHandlers.ts
 ├── handlers/              # workbench / notes / flashcard action handlers
 ├── utils/                 # build*Intent + dispatchCanvasAIEditRequest
-├── blocks/index.ts        # 11 种内置块（import 即注册）
+├── blocks/index.ts        # 14 种内置块（import 即注册）
 └── components/
 ```
 
-## 3. 内置块（11 种）
+## 3. 内置块（14 种）
 
-`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`
+`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`, `paper-digest`, `research-plan`, `research-report`
 
 ## 4. Human-in-the-loop
 
@@ -72,7 +72,7 @@ Rust render_generative_ui
 | mindmap-embed E2E | ✅ |
 | prompt props 同步 | ✅ |
 | 闪卡 save-to-library | ✅ Round 10 |
-| Research/Translation 专用块 | paper-digest + research-plan POC ✅ Round 11 |
+| Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
 
 ## 7. 测试
 

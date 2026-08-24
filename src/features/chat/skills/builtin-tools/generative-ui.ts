@@ -42,7 +42,7 @@ export const generativeUiSkill: SkillDefinition = {
 
 ## 可用 block type
 
-stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-preview, review-calendar, mistake-analysis, mindmap-embed, paper-digest, research-plan
+stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-preview, review-calendar, mistake-analysis, mindmap-embed, paper-digest, research-plan, research-report
 
 ## 规则
 

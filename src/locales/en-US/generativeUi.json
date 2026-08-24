@@ -134,6 +134,11 @@
       "round_label": "Round",
       "round": "Round {{round}}",
       "progress": "{{done}} / {{total}} steps done"
+    },
+    "report": {
+      "meta_title": "Research report",
+      "citation_stat": "Citations",
+      "citation_aria": "Citation {{label}}"
     }
   }
 }

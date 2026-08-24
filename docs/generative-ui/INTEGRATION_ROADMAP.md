@@ -14,11 +14,11 @@
 
 ## Research / Translation（#7）
 
-| 建议块 | 协议 |
-|--------|------|
-| `paper_digest` | NDJSON 快照（参照 `paperSave.tsx`） |
-| `research_report` | 流式 markdown + citation `[类型-N]` |
-| `research_plan` | 映射休眠 HpiasStore 事件词汇表 |
+| 建议块 | 协议 | 状态 |
+|--------|------|------|
+| `paper_digest` | NDJSON 快照（参照 `paperSave.tsx`） | ✅ generative-ui `paper-digest` 块 POC |
+| `research_report` | 流式 markdown + citation `[类型-N]` | ✅ generative-ui `research-report` 块 POC |
+| `research_plan` | 映射 HpiasStore 事件词汇表 | ✅ generative-ui `research-plan` 块 POC |
 
 **原则**：rAF 批处理 + 终态 `toolOutput` 双通道；引用走 `BackendSourceInfo` / `Block.citations`。
 

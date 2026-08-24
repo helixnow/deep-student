@@ -134,6 +134,11 @@
       "round_label": "第",
       "round": "第 {{round}} 轮",
       "progress": "已完成 {{done}} / {{total}} 步"
+    },
+    "report": {
+      "meta_title": "研究报告",
+      "citation_stat": "引用数",
+      "citation_aria": "引用 {{label}}"
     }
   }
 }

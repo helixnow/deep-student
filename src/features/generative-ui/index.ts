@@ -69,6 +69,12 @@ export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/ch
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
 export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
 export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';
+export { buildResearchReportIntent } from './utils/buildResearchReportIntent';
+export {
+  parseResearchReportCitations,
+  countResearchReportCitations,
+  RESEARCH_REPORT_CITATION_PATTERN,
+} from './utils/parseResearchReportCitations';
 export {
   extractFlashcardsFromIntent,
   flashcardPreviewToAnkiCards,
