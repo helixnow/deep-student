@@ -2228,3 +2228,62 @@
     opacity: 1;
   }
 }
+
+/* 📱 触屏：任务列表复选框（.label-wrapper 基线 24×32px，pointerdown 切换勾选）
+   命中区扩到 44px：::after 向左 20px、上下各 6px 外扩；右侧是正文起点不外扩，
+   避免抢占「点行首定位光标」的触点。仅限勾选项（bullet/ordered 的 label 无
+   切换行为且 pointerdown 会 preventDefault，外扩会拦截选区起点）；仅编辑态
+   （contenteditable=true，只读态 label 点击无效果，不扩大吞事件区）。
+   须位于上方 .label-wrapper 基线规则之后（同源序覆盖约定）。 */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-list-item-block li .label-wrapper:has(.checked),
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-list-item-block li .label-wrapper:has(.unchecked) {
+    position: relative;
+  }
+
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-list-item-block li .label-wrapper:has(.checked)::after,
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-list-item-block li .label-wrapper:has(.unchecked)::after {
+    content: '';
+    position: absolute;
+    inset: -6px 0 -6px -20px;
+  }
+}
+
+/* 📱 触屏：图片块题注开关（基线 32px、hover 显示）与缩放柄（基线 4px、hover 显示）
+   在触屏上不可达（点图片走 lightbox，无稳定 hover）：编辑态常显 + 命中扩到 ≥44px。
+   只读态两者 pointerdown 直接 return（缩放柄不 preventDefault），保持基线 hover
+   隐藏、不扩大吞事件区。基线 opacity:0 / 4px 来自 crepe 包 image-block.css
+   （特异性 0,4,0），此处 0,6,0 覆盖，无需 !important。 */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper .operation,
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper > .image-resize-handle {
+    opacity: 1;
+  }
+
+  /* 题注开关 32px + 四周 6px ::after = 44px 命中（视觉不变，不多遮图；
+     相邻 item 间距 12px，两侧各扩 6px 恰好不重叠） */
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper .operation > .operation-item {
+    position: relative;
+  }
+
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper .operation > .operation-item::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+
+  /* 缩放柄：视觉 4→6px；命中 上10 + 6 + 下28 = 44px，主要向下（图外）外扩，
+     少量向上避免抢占图片本体的 lightbox 触点。touch-action:none 使
+     pointerdown + window pointermove 的拖拽在触屏可用（不被滚动手势接管） */
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper > .image-resize-handle {
+    height: 6px;
+    bottom: -3px;
+    touch-action: none;
+  }
+
+  .crepe-editor-wrapper .milkdown [contenteditable='true'] .milkdown-image-block > .image-wrapper > .image-resize-handle::after {
+    content: '';
+    position: absolute;
+    inset: -10px -8px -28px;
+  }
+}
