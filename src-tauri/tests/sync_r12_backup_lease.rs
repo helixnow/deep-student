@@ -391,12 +391,25 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
         let content = std::fs::read_to_string(path).unwrap();
 
         if relative == "cloud_storage/backup_lease.rs" {
-            // 模块自身：必须固定 namespace 与错误码，且绝不引用 sync-target 目录。
-            assert!(content.contains("\"backup-v2/locks/\""), "{relative}");
-            assert!(content.contains("E_BACKUP_LEASE_HELD"), "{relative}");
+            // 只锁生产段：单元测试里允许出现 sync-target 字面量做「不得落入」断言。
+            let production = content.split("#[cfg(test)]").next().unwrap_or(&content);
+            assert!(production.contains("\"backup-v2/locks/\""), "{relative}");
+            assert!(production.contains("E_BACKUP_LEASE_HELD"), "{relative}");
+            assert!(
+                !production.contains("\"data_governance/locks/sync-target\""),
+                "backup_lease 不得写入 sync-target namespace: {relative}"
+            );
+            continue;
+        }
+        if relative == "cloud_storage/delta_upload.rs" {
+            // 未接线的 upload 积木持有 backup-v2 租约；仍禁止引用 sync-target。
+            assert!(
+                content.contains("acquire_backup_repo_lease"),
+                "delta_upload 必须在发布窗口持有 backup-v2 租约"
+            );
             assert!(
                 !content.contains("\"data_governance/locks/sync-target\""),
-                "backup_lease 不得写入 sync-target namespace: {relative}"
+                "delta_upload 不得写入 sync-target namespace"
             );
             continue;
         }

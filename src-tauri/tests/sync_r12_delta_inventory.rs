@@ -2,8 +2,9 @@
 //!
 //! 只测清单本身：小 staging 往返、volatile-only 变化的复用判定、SQLite
 //! 单行变化的最小 upload-new 集、路径穿越/超长拒绝，以及一条**源码锁**：
-//! 生产 `sync_manager.rs` 仍是整 ZIP 单对象 `put_file`，`delta_inventory`
-//! 在生产代码里零调用方。本文件全绿**不代表**增量备份已实现。
+//! 生产 `sync_manager.rs` 仍是整 ZIP 单对象 `put_file`；`delta_inventory`
+//! 仅被未接线的 `delta_upload` 积木复用，命令/UI 零调用方。本文件全绿
+//! **不代表**增量备份已实现。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -384,7 +385,7 @@ fn r12_source_lock_inventory_has_no_production_callers() {
         "delta_inventory must not talk to cloud storage"
     );
 
-    // 全 src 扫描：除声明行（backup/mod.rs）与模块自身外，生产代码零引用。
+    // 全 src 扫描：除声明行、模块自身、未接线 upload 积木外，生产代码零引用。
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut referencing_files = Vec::new();
     collect_files_mentioning(&src_root, "delta_inventory", &mut referencing_files);
@@ -401,10 +402,12 @@ fn r12_source_lock_inventory_has_no_production_callers() {
     assert_eq!(
         names,
         vec![
+            "cloud_storage/delta_upload.rs".to_string(),
             "data_governance/backup/delta_inventory.rs".to_string(),
             "data_governance/backup/mod.rs".to_string(),
         ],
-        "delta_inventory must have zero production callers"
+        "delta_inventory callers must stay unwired primitives only \
+         (upload 积木可复用清单；sync_manager / 命令 / UI 仍不得引用)"
     );
 
     // backup/mod.rs 只允许出现声明行本身。

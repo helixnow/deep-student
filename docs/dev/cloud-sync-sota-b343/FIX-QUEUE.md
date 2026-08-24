@@ -613,3 +613,9 @@ workbench / `ftp.rs` / 增量备份 / 租约。
 | delta-upload | `cursor/cloud-sync-sota-delta-upload-b343` | DELTA-R11 R12-delta-upload：随机不可变对象、同设备上一 descriptor 未变复用、objects→descriptor→manifest commit、失败留孤儿；不做 GC；**不接命令/UI** | 新 `cloud_storage/delta_upload.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_upload;`；新 `src-tauri/tests/sync_r12_delta_upload.rs` |
 
 禁止改 `sync_manager.rs` / `delta_format.rs` / `delta_inventory.rs` / `backup_lease.rs` / `ftp.rs` / notes / chat / workbench。写完立刻 push，不要开 PR。不能宣称增量备份已实现。
+
+### delta-upload 回传（`cursor/cloud-sync-sota-delta-upload-b343` @ `f65b8ecc`）
+
+`delta_upload.rs`：`publish_verified_staging` 持 backup-v2 租约，随机不可变对象、同设备 `reuse_candidates` 复用、objects→descriptor→index commit，失败留孤儿。`mod.rs` 仅 `pub mod delta_upload;`。测试 `sync_r12_delta_upload.rs` 11 例。**未接线**，不能宣称增量备份已实现。
+
+父代理合入后将 inventory / lease 源码锁放行 `delta_upload.rs`（仍禁止 `sync_manager` / 命令 / UI）。
