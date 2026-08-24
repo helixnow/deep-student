@@ -9605,7 +9605,7 @@ fn build_import_prompt(goal: &str, visual_hint: Option<&str>) -> String {
 5) 输出语言与文档原文语言一致（英文文档输出英文，不要翻译）。\n\
 6) 若图像含适合遮挡复习的关键视觉区域，可额外输出一个坐标块；没有则省略：\n\
    [OCCLUSION_BOXES]\n\
-   [{\"x\":0.1,\"y\":0.2,\"w\":0.3,\"h\":0.15,\"label\":\"关键区域\"}]\n\
+   [{{\"x\":0.1,\"y\":0.2,\"w\":0.3,\"h\":0.15,\"label\":\"关键区域\"}}]\n\
    [/OCCLUSION_BOXES]\n\
    x/y/w/h 必须是 0-1 归一化坐标，原点在左上角。只框关键、可复习的局部区域，禁止框整页或大段无关背景。\n",
         goal_block = render_goal_data_block(goal),
