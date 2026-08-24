@@ -940,7 +940,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                   iconOnly
                   aria-label={t('settings:automation.actions.refresh')}
                   title={t('settings:automation.actions.refresh')}
-                  className="max-lg:!h-11 max-lg:!w-11"
+                  className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   disabled={loading}
                   onClick={() => void refresh()}
                 >
@@ -950,7 +950,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                   <DsButton
                     variant="primary"
                     size="sm"
-                    className="max-lg:min-h-11"
+                    className="max-lg:min-h-11 [@media(pointer:coarse)]:min-h-11"
                     disabled={desktopUnavailable || capacityFull || expandedId === 'create'}
                     onClick={handleRequestCreate}
                   >
