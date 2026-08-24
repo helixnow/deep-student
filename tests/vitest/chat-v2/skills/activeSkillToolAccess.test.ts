@@ -1,11 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('i18next', () => ({
-  default: {
-    t: (_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? _key,
-  },
-}));
-
 import { createSkillActions } from '@/features/chat/core/store/skillActions';
 import type { ChatStoreState, GetState, SetState } from '@/features/chat/core/store/types';
 import { skillRegistry } from '@/features/chat/skills/registry';
