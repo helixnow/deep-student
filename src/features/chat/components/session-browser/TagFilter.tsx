@@ -159,8 +159,9 @@ export const AddTagInput: React.FC<{
       <button
         onClick={() => setShowInput(true)}
         aria-label={t('tags.addPlaceholder')}
-        // 伪元素扩大触控命中区（视觉保持紧凑）
-        className="relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors after:absolute after:-inset-2 after:content-['']"
+      // 伪元素扩大触控命中区（视觉保持紧凑）
+      // coarse 下 -inset-[14px]：16px 按钮（12px 图标 + py-0.5）+ 2×14px = 44px 触控目标
+      className="relative inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[14px]"
       >
         <Plus size={12} />
       </button>

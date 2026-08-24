@@ -320,7 +320,9 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                     type="button"
                     onClick={() => handleSingleSelect(index)}
                     disabled={disabled}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
+                    // ★ 触控目标：内容仅 24px 高（leading-6），触屏用伪元素纵向补满
+                    // 行内 py-2.5 得 44px；横向不外扩，避免盖住右侧原因按钮/选中指示
+                    className="relative flex min-w-0 flex-1 items-center gap-3 text-left outline-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2.5 [@media(pointer:coarse)]:after:content-['']"
                   >
                     <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
                       {numberLabel}
