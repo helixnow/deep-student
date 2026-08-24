@@ -405,7 +405,7 @@ export const LibraryScreen: React.FC = () => {
               if (event.key === 'Enter') handleSearchNow();
             }}
             placeholder={t('library.searchPlaceholder')}
-            className="h-9 pl-8 text-sm [@media(pointer:coarse)]:h-11"
+            className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
         <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:min-h-11">

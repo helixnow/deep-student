@@ -388,7 +388,7 @@ const DonutChart: React.FC<DonutChartProps> = ({ icon, title, data, centerLabel 
               key={i}
               className={cn(
                 'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 cursor-default transition-colors',
-                '[@media(pointer:coarse)]:min-h-[2.5rem]',
+                '[@media(pointer:coarse)]:min-h-11',
                 activeIndex === i && 'bg-muted/50'
               )}
               onMouseEnter={() => setActiveIndex(i)}

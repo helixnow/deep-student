@@ -710,7 +710,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px] [@media(pointer:coarse)]:h-11"
+                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px] [@media(pointer:coarse)]:!h-11"
               />
               {search && (
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">

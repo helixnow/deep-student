@@ -493,7 +493,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     value={draftTags}
                     disabled={saving}
                     onChange={(event) => setDraftTags(event.target.value)}
-                    className="h-8 text-sm [@media(pointer:coarse)]:h-11"
+                    className="h-8 text-sm [@media(pointer:coarse)]:!h-11"
                   />
                 </div>
                 {editError ? (
