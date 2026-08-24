@@ -705,7 +705,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             size="sm"
             onClick={() => void handleUndo()}
             disabled={!canUndo}
-            className="text-xs sm:text-sm gap-1.5"
+            className="text-xs sm:text-sm gap-1.5 [@media(pointer:coarse)]:min-h-11"
             data-testid="workbench-ops-undo"
             title={
               undoExpired
