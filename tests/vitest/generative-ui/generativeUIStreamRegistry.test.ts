@@ -6,6 +6,10 @@ import {
   finalizeGenerativeUIStream,
   getLastGoodGenerativeUIIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+} from '@/features/generative-ui/utils/streamBufferGuard';
 
 describe('generativeUIStreamRegistry', () => {
   beforeEach(() => {
@@ -53,6 +57,20 @@ describe('generativeUIStreamRegistry', () => {
     appendGenerativeUIStreamContent(blockId, `${open},{"type":"stat-card","props":{`);
     const final = finalizeGenerativeUIStream(blockId);
     expect(final?.blocks[0]?.props?.body).toBe('alpha');
+  });
+
+  it('stops appending when fullContent exceeds the stream char cap', () => {
+    const blockId = 'blk-stream-buffer-capped';
+    const open = '{"version":"1","blocks":[{"type":"text","props":{"body":"alpha"}}';
+    appendGenerativeUIStreamContent(blockId, open);
+    const snap = appendGenerativeUIStreamContent(
+      blockId,
+      open + 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS),
+    );
+    expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
+    expect(snap.intent?.blocks[0]?.props?.body).toBe('alpha');
+    expect(snap.bufferLength).toBe(open.length);
+    expect(getLastGoodGenerativeUIIntent(blockId)?.blocks[0]?.props?.body).toBe('alpha');
   });
 
   it('optionally persists lastGoodIntent when persistKey + storage are injected', () => {

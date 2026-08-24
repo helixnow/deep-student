@@ -14,8 +14,20 @@ import {
   MAX_GENERATIVE_UI_BLOCKS,
 } from './schema';
 import type { GenerativeBlockIntent, GenerativeLayout, GenerativeUIIntent } from './types';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+  guardStreamBufferAppend,
+  withStreamBufferCappedWarning,
+} from './utils/streamBufferGuard';
 
-const MAX_BUFFER_BYTES = 256 * 1024;
+export {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+} from './utils/streamBufferGuard';
+
+/** @deprecated 与 MAX_GENERATIVE_UI_STREAM_CHARS 同值；按字符计硬上限 */
+export const MAX_BUFFER_BYTES = MAX_GENERATIVE_UI_STREAM_CHARS;
 
 export type GenerativeUIStreamPhase = 'idle' | 'streaming' | 'complete' | 'overflow';
 
@@ -232,7 +244,7 @@ function ingestNewBlockSlices(
 /** 块级增量解析：返回已闭合 blocks + 可选 meta（无状态单次调用） */
 export function tryParsePartialIntent(buffer: string): GenerativeUIIntent | null {
   if (!buffer.trim()) return null;
-  if (buffer.length > MAX_BUFFER_BYTES) return null;
+  if (buffer.length > MAX_GENERATIVE_UI_STREAM_CHARS) return null;
 
   const parser = new GenerativeUIStreamParser();
   parser.appendChunk(buffer);
@@ -246,29 +258,26 @@ export class GenerativeUIStreamParser {
   private parsedSliceCount = 0;
   private phase: GenerativeUIStreamPhase = 'idle';
   private warnings: string[] = [];
+  private bufferCapped = false;
 
   /** 追加 chunk 并返回 snapshot（增量状态机入口） */
   appendChunk(chunk: string): GenerativeUIStreamSnapshot {
-    if (chunk) {
-      this.buffer += chunk;
+    const { accepted, capped } = guardStreamBufferAppend(this.buffer.length, chunk);
+    if (capped) {
+      this.markBufferCapped();
+      return this.getSnapshot();
+    }
+
+    if (accepted) {
+      this.buffer += accepted;
       if (this.phase === 'idle') {
         this.phase = 'streaming';
       }
     }
 
-    if (this.buffer.length > MAX_BUFFER_BYTES) {
-      this.buffer = this.buffer.slice(-MAX_BUFFER_BYTES);
-      this.phase = 'overflow';
-      this.committedBlocks = [];
-      this.parsedSliceCount = 0;
-    }
-
     const partial = this.reconcileIntent();
     if (partial) {
       this.lastGood = partial;
-      if (this.phase === 'overflow') {
-        this.phase = 'streaming';
-      }
     }
 
     return this.getSnapshot();
@@ -280,12 +289,15 @@ export class GenerativeUIStreamParser {
   }
 
   getSnapshot(): GenerativeUIStreamSnapshot {
+    const warnings = this.bufferCapped
+      ? withStreamBufferCappedWarning(this.warnings)
+      : [...this.warnings];
     return {
       phase: this.phase,
       intent: this.lastGood,
       committedBlockCount: this.committedBlocks.length,
       bufferLength: this.buffer.length,
-      warnings: [...this.warnings],
+      warnings,
     };
   }
 
@@ -300,6 +312,17 @@ export class GenerativeUIStreamParser {
     this.parsedSliceCount = 0;
     this.phase = 'idle';
     this.warnings = [];
+    this.bufferCapped = false;
+  }
+
+  private markBufferCapped(): void {
+    this.bufferCapped = true;
+    if (this.phase !== 'complete') {
+      this.phase = 'overflow';
+    }
+    if (!this.warnings.includes(STREAM_BUFFER_CAPPED_WARNING)) {
+      this.warnings.push(STREAM_BUFFER_CAPPED_WARNING);
+    }
   }
 
   finalize(): GenerativeUIIntent | null {

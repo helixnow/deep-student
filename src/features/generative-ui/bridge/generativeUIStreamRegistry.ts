@@ -11,6 +11,11 @@
 import { GenerativeUIStreamParser, type GenerativeUIStreamSnapshot } from '../parser';
 import type { GenerativeUIIntent } from '../types';
 import {
+  STREAM_BUFFER_CAPPED_WARNING,
+  isStreamBufferOverCap,
+  withStreamBufferCappedWarning,
+} from '../utils/streamBufferGuard';
+import {
   clearPersistedLastGoodIntent,
   readPersistedLastGoodIntent,
   writePersistedLastGoodIntent,
@@ -30,6 +35,7 @@ interface StreamEntry {
   lastGoodIntent: GenerativeUIIntent | null;
   persistKey?: string;
   storage?: GenerativeUIStreamPersistStorage | null;
+  bufferCapped: boolean;
 }
 
 const entries = new Map<string, StreamEntry>();
@@ -63,7 +69,12 @@ function persistLastGood(entry: StreamEntry): void {
 function getOrCreateEntry(blockId: string, options?: GenerativeUIStreamPersistOptions): StreamEntry {
   let entry = entries.get(blockId);
   if (!entry) {
-    entry = { parser: new GenerativeUIStreamParser(), lastLength: 0, lastGoodIntent: null };
+    entry = {
+      parser: new GenerativeUIStreamParser(),
+      lastLength: 0,
+      lastGoodIntent: null,
+      bufferCapped: false,
+    };
     bindPersist(entry, options);
     hydrateLastGood(entry);
     entries.set(blockId, entry);
@@ -78,9 +89,24 @@ function rememberLastGood(entry: StreamEntry, snap: GenerativeUIStreamSnapshot):
     entry.lastGoodIntent = snap.intent;
     persistLastGood(entry);
   }
-  return {
+  return applyBufferCap(entry, {
     ...snap,
     intent: snap.intent ?? entry.lastGoodIntent,
+  });
+}
+
+function applyBufferCap(
+  entry: StreamEntry,
+  snap: GenerativeUIStreamSnapshot,
+): GenerativeUIStreamSnapshot {
+  if (!entry.bufferCapped && !snap.warnings.includes(STREAM_BUFFER_CAPPED_WARNING)) {
+    return snap;
+  }
+  entry.bufferCapped = true;
+  return {
+    ...snap,
+    phase: snap.phase === 'complete' ? snap.phase : 'overflow',
+    warnings: withStreamBufferCappedWarning(snap.warnings),
   };
 }
 
@@ -106,14 +132,24 @@ export function appendGenerativeUIStreamContent(
     entry.parser.reset();
     entry.lastLength = 0;
     entry.lastGoodIntent = null;
+    entry.bufferCapped = false;
     clearPersistedLastGoodIntent(entry.persistKey, entry.storage);
+  }
+
+  if (entry.bufferCapped || isStreamBufferOverCap(fullContent.length)) {
+    entry.bufferCapped = true;
+    entry.lastLength = fullContent.length;
+    return rememberLastGood(entry, entry.parser.getSnapshot());
   }
 
   const delta = fullContent.slice(entry.lastLength);
   entry.lastLength = fullContent.length;
 
   if (delta) {
-    entry.parser.appendChunk(delta);
+    const snap = entry.parser.appendChunk(delta);
+    if (snap.warnings.includes(STREAM_BUFFER_CAPPED_WARNING)) {
+      entry.bufferCapped = true;
+    }
   }
 
   return rememberLastGood(entry, entry.parser.getSnapshot());
