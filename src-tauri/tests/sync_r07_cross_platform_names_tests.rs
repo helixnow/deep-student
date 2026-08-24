@@ -38,8 +38,12 @@ struct MemoryCloudStorage {
     files: Mutex<BTreeMap<String, (Vec<u8>, DateTime<Utc>)>>,
 }
 
+/// 本地 newtype：孤儿规则不允许测试 crate 为 `Arc<本地类型>` 实现外部 trait。
+#[derive(Clone)]
+struct SharedStorage(Arc<MemoryCloudStorage>);
+
 #[async_trait]
-impl CloudStorage for Arc<MemoryCloudStorage> {
+impl CloudStorage for SharedStorage {
     fn provider_name(&self) -> &'static str {
         "memory"
     }
@@ -49,7 +53,8 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
     }
 
     async fn put(&self, key: &str, data: &[u8]) -> CloudResult<()> {
-        self.files
+        self.0
+            .files
             .lock()
             .unwrap()
             .insert(key.to_string(), (data.to_vec(), Utc::now()));
@@ -58,6 +63,7 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
 
     async fn get(&self, key: &str) -> CloudResult<Option<Vec<u8>>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -67,6 +73,7 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
 
     async fn list(&self, prefix: &str) -> CloudResult<Vec<FileInfo>> {
         let mut files: Vec<FileInfo> = self
+            .0
             .files
             .lock()
             .unwrap()
@@ -84,12 +91,13 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
     }
 
     async fn delete(&self, key: &str) -> CloudResult<()> {
-        self.files.lock().unwrap().remove(key);
+        self.0.files.lock().unwrap().remove(key);
         Ok(())
     }
 
     async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -143,7 +151,7 @@ fn image_bytes(active: &tempfile::TempDir, name: &str) -> Vec<u8> {
 #[cfg(unix)]
 #[tokio::test]
 async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
-    let storage = Arc::new(MemoryCloudStorage::default());
+    let cloud = SharedStorage(Arc::new(MemoryCloudStorage::default()));
     let manager_a = SyncManager::new("device-a".to_string());
     let (active_a, app_a) = empty_workspace();
 
@@ -164,7 +172,7 @@ async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
 
     let outcome = manager_a
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_a.path(),
             app_a.path(),
             SyncDirection::Bidirectional,
@@ -179,7 +187,7 @@ async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
     let (active_b, app_b) = empty_workspace();
     let outcome = manager_b
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_b.path(),
             app_b.path(),
             SyncDirection::Download,
@@ -218,7 +226,7 @@ async fn r07_windows_hostile_names_roundtrip_bytewise_on_unix() {
 #[cfg(unix)]
 #[tokio::test]
 async fn r07_case_only_different_names_stay_distinct_entries() {
-    let storage = Arc::new(MemoryCloudStorage::default());
+    let cloud = SharedStorage(Arc::new(MemoryCloudStorage::default()));
     let manager_a = SyncManager::new("device-a".to_string());
     let (active_a, app_a) = empty_workspace();
     write_image(&active_a, "R07x-Case.md", b"UPPER variant");
@@ -226,7 +234,7 @@ async fn r07_case_only_different_names_stay_distinct_entries() {
 
     let outcome = manager_a
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_a.path(),
             app_a.path(),
             SyncDirection::Bidirectional,
@@ -239,7 +247,7 @@ async fn r07_case_only_different_names_stay_distinct_entries() {
     let (active_b, app_b) = empty_workspace();
     let outcome = manager_b
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_b.path(),
             app_b.path(),
             SyncDirection::Download,
@@ -271,7 +279,7 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
         "前提校验：字节序列不同"
     );
 
-    let storage = Arc::new(MemoryCloudStorage::default());
+    let cloud = SharedStorage(Arc::new(MemoryCloudStorage::default()));
     let manager_a = SyncManager::new("device-a".to_string());
     let (active_a, app_a) = empty_workspace();
     write_image(&active_a, nfc_name, b"NFC payload");
@@ -279,7 +287,7 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
 
     let outcome = manager_a
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_a.path(),
             app_a.path(),
             SyncDirection::Bidirectional,
@@ -295,7 +303,7 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
     let (active_b, app_b) = empty_workspace();
     let outcome = manager_b
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_b.path(),
             app_b.path(),
             SyncDirection::Download,
@@ -322,7 +330,7 @@ async fn r07_nfc_and_nfd_names_stay_distinct_without_normalization() {
 // ============================================================================
 
 /// 构造包含指定键的（明文）旧版资产清单与对应对象。
-async fn seed_manifest_with_key(storage: &Arc<MemoryCloudStorage>, key: &str) {
+async fn seed_manifest_with_key(storage: &SharedStorage, key: &str) {
     // sha256("r07-malicious-payload") 占位：64 个十六进制字符即可通过形状校验
     let sha256 = "a".repeat(64);
     let object_key = format!("data_governance/asset_objects/{sha256}");
@@ -364,14 +372,14 @@ async fn r07_malicious_manifest_keys_fail_closed_and_write_nothing() {
     ];
 
     for key in malicious_keys {
-        let storage = Arc::new(MemoryCloudStorage::default());
-        seed_manifest_with_key(&storage, key).await;
+        let cloud = SharedStorage(Arc::new(MemoryCloudStorage::default()));
+        seed_manifest_with_key(&cloud, key).await;
 
         let manager = SyncManager::new("device-victim".to_string());
         let (active, app_data) = empty_workspace();
         let error = manager
             .sync_asset_directories(
-                &storage,
+                &cloud,
                 active.path(),
                 app_data.path(),
                 SyncDirection::Download,

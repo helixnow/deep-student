@@ -182,6 +182,21 @@ fn build_headless_app() -> tauri::App {
         .expect("构建无窗口 tauri App 失败")
 }
 
+/// 进程级共享 AppHandle：GTK/tao 事件循环每进程只能创建一次，
+/// 本文件多个测试并发各建一个 App 会在第二次初始化时 panic。
+/// 首个调用方构建 App 并有意泄漏（存活到进程结束），其余测试复用 handle。
+fn shared_app_handle() -> tauri::AppHandle {
+    static HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+    HANDLE
+        .get_or_init(|| {
+            let app = build_headless_app();
+            let handle = app.handle().clone();
+            std::mem::forget(app);
+            handle
+        })
+        .clone()
+}
+
 /// 串行化生产命令调用（内部有全局 BACKUP_GLOBAL_LIMITER）。
 fn command_serial_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
@@ -202,8 +217,7 @@ fn r07_one_sided_delete_conflict_keep_cloud_applies_delete() {
     let expected_ids = seed_one_sided_delete_conflict(&conn, record_id, 701);
     drop(conn);
 
-    let app = build_headless_app();
-    let handle = app.handle().clone();
+    let handle = shared_app_handle();
 
     tauri::async_runtime::block_on(data_governance_resolve_record_conflict(
         handle.clone(),
@@ -256,8 +270,7 @@ fn r07_one_sided_delete_conflict_merged_null_applies_delete() {
     let expected_ids = seed_one_sided_delete_conflict(&conn, record_id, 702);
     drop(conn);
 
-    let app = build_headless_app();
-    let handle = app.handle().clone();
+    let handle = shared_app_handle();
 
     tauri::async_runtime::block_on(data_governance_resolve_record_conflict(
         handle,
@@ -301,8 +314,7 @@ fn r07_one_sided_delete_conflict_stale_expected_ids_rejected_without_side_effect
     let expected_ids = seed_one_sided_delete_conflict(&conn, record_id, 703);
     drop(conn);
 
-    let app = build_headless_app();
-    let handle = app.handle().clone();
+    let handle = shared_app_handle();
 
     // 故意传一个不存在的冲突 id（旧客户端 / 并发刷新场景）
     let stale_ids = vec![expected_ids[0] + 999_999];

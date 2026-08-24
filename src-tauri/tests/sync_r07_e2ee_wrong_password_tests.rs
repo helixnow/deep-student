@@ -64,8 +64,12 @@ impl MemoryCloudStorage {
     }
 }
 
+/// 本地 newtype：孤儿规则不允许测试 crate 为 `Arc<本地类型>` 实现外部 trait。
+#[derive(Clone)]
+struct SharedStorage(Arc<MemoryCloudStorage>);
+
 #[async_trait]
-impl CloudStorage for Arc<MemoryCloudStorage> {
+impl CloudStorage for SharedStorage {
     fn provider_name(&self) -> &'static str {
         "memory"
     }
@@ -75,7 +79,8 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
     }
 
     async fn put(&self, key: &str, data: &[u8]) -> CloudResult<()> {
-        self.files
+        self.0
+            .files
             .lock()
             .unwrap()
             .insert(key.to_string(), (data.to_vec(), Utc::now()));
@@ -84,6 +89,7 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
 
     async fn get(&self, key: &str) -> CloudResult<Option<Vec<u8>>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -93,6 +99,7 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
 
     async fn list(&self, prefix: &str) -> CloudResult<Vec<FileInfo>> {
         let mut files: Vec<FileInfo> = self
+            .0
             .files
             .lock()
             .unwrap()
@@ -110,12 +117,13 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
     }
 
     async fn delete(&self, key: &str) -> CloudResult<()> {
-        self.files.lock().unwrap().remove(key);
+        self.0.files.lock().unwrap().remove(key);
         Ok(())
     }
 
     async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -130,7 +138,10 @@ impl CloudStorage for Arc<MemoryCloudStorage> {
 }
 
 fn zip_manager(storage: &Arc<MemoryCloudStorage>, device_id: &str) -> CloudSyncManager {
-    CloudSyncManager::new(Box::new(Arc::clone(storage)), device_id.to_string())
+    CloudSyncManager::new(
+        Box::new(SharedStorage(Arc::clone(storage))),
+        device_id.to_string(),
+    )
 }
 
 // ============================================================================
@@ -221,7 +232,10 @@ async fn r07_zip_near_miss_password_variants_all_rejected() {
 
     let device_b = zip_manager(&storage, "device-b");
     for (label, candidate) in near_misses {
-        assert_ne!(candidate, correct, "{label}: 测试用例本身必须与正确密码不同");
+        assert_ne!(
+            candidate, correct,
+            "{label}: 测试用例本身必须与正确密码不同"
+        );
         let error = device_b
             .enforce_encryption_policy_before_upload_with_password(Some(candidate))
             .await
@@ -274,6 +288,7 @@ fn asset_workspace(name: &str, content: &[u8]) -> (tempfile::TempDir, tempfile::
 #[tokio::test]
 async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
     let storage = Arc::new(MemoryCloudStorage::default());
+    let cloud = SharedStorage(Arc::clone(&storage));
 
     // 设备 A（正确密码）先把一份资产同步上云：清单进 DSBK 容器
     let manager_a =
@@ -281,7 +296,7 @@ async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
     let (active_a, app_a) = asset_workspace("r07-e2ee-origin.bin", b"origin asset payload");
     let outcome_a = manager_a
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_a.path(),
             app_a.path(),
             SyncDirection::Bidirectional,
@@ -303,7 +318,7 @@ async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
 
     for direction in [SyncDirection::Bidirectional, SyncDirection::Download] {
         let error = manager_b
-            .sync_asset_directories(&storage, active_b.path(), app_b.path(), direction)
+            .sync_asset_directories(&cloud, active_b.path(), app_b.path(), direction)
             .await
             .expect_err("错密码设备的资产同步必须整体失败");
         let message = error.to_string();
@@ -334,7 +349,7 @@ async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
     let (active_c, app_c) = asset_workspace("r07-e2ee-plain.bin", b"plaintext device payload");
     let error = manager_plain
         .sync_asset_directories(
-            &storage,
+            &cloud,
             active_c.path(),
             app_c.path(),
             SyncDirection::Bidirectional,
@@ -345,7 +360,11 @@ async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
         error.to_string().contains("未配置加密密码"),
         "错误应提示设置密码: {error}"
     );
-    assert_eq!(storage.byte_snapshot(), snapshot, "明文设备失败后同样零污染");
+    assert_eq!(
+        storage.byte_snapshot(),
+        snapshot,
+        "明文设备失败后同样零污染"
+    );
 }
 
 /// VFS blobs 通道与资产通道同一防线：错密码解不开 blobs 清单，
@@ -353,6 +372,7 @@ async fn r07_file_level_wrong_password_fails_closed_without_polluting_root() {
 #[tokio::test]
 async fn r07_file_level_wrong_password_blobs_channel_fails_closed() {
     let storage = Arc::new(MemoryCloudStorage::default());
+    let cloud = SharedStorage(Arc::clone(&storage));
 
     // 设备 A 上传一个内容寻址 blob（文件名 = hash stem）
     let manager_a =
@@ -362,7 +382,7 @@ async fn r07_file_level_wrong_password_blobs_channel_fails_closed() {
     std::fs::create_dir_all(&shard).unwrap();
     std::fs::write(shard.join("r07blobhash001.bin"), b"blob payload A").unwrap();
     let outcome_a = manager_a
-        .sync_vfs_blobs(&storage, blobs_a.path(), SyncDirection::Bidirectional)
+        .sync_vfs_blobs(&cloud, blobs_a.path(), SyncDirection::Bidirectional)
         .await
         .expect("正确密码设备的 blob 同步应成功");
     assert_eq!(outcome_a.uploaded, 1, "前提校验：应恰好上传一个 blob");
@@ -376,7 +396,7 @@ async fn r07_file_level_wrong_password_blobs_channel_fails_closed() {
     std::fs::create_dir_all(&shard_b).unwrap();
     std::fs::write(shard_b.join("r07blobhash002.bin"), b"blob payload B").unwrap();
     let error = manager_b
-        .sync_vfs_blobs(&storage, blobs_b.path(), SyncDirection::Bidirectional)
+        .sync_vfs_blobs(&cloud, blobs_b.path(), SyncDirection::Bidirectional)
         .await
         .expect_err("错密码设备的 blob 同步必须整体失败");
     let message = error.to_string();
