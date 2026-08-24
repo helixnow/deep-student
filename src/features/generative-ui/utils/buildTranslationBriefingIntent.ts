@@ -2,6 +2,7 @@
  * 翻译会话简报 — 确定性意图构建（Translation #7 POC）
  */
 import type { GenerativeUIIntent } from '../types';
+import type { ActionBarProps } from '../schema';
 
 export interface TranslationBriefingLabels {
   sourceStatTitle: string;
@@ -66,7 +67,7 @@ export function buildTranslationBriefingIntent(input: TranslationBriefingInput):
     });
   }
 
-  const actions = [
+  const actions: ActionBarProps['actions'] = [
     {
       id: 'open-settings',
       label: labels.openSettings,

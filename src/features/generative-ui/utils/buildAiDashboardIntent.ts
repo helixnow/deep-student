@@ -1,4 +1,5 @@
 import type { GenerativeUIIntent } from '../types';
+import type { ActionBarProps } from '../schema';
 import {
   buildLearningBriefingIntent,
   type LearningBriefingInput,
@@ -42,7 +43,10 @@ export function buildAiDashboardIntent(
   if (actionBarIdx >= 0) {
     const actionBar = blocks[actionBarIdx];
     if (actionBar.type === 'action-bar') {
-      const actions = [...actionBar.props.actions];
+      const existingActions = actionBar.props.actions;
+      const actions: ActionBarProps['actions'] = Array.isArray(existingActions)
+        ? [...existingActions]
+        : [];
       if (activeAnkiTasks > 0) {
         actions.push({
           id: 'open-task-dashboard',

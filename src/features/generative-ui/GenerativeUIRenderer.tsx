@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
-import { parseGenerativeUIIntent, validateBlockProps } from './schema';
+import { parseGenerativeUIIntent, validateBlockProps, isGenerativeUIParseFailure, isBlockPropsValidationFailure, type ActionBarProps } from './schema';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
 import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
@@ -31,7 +31,8 @@ export function GenerativeUIRenderer({
   const parseError = useMemo(() => {
     if (typeof intentInput !== 'string') return null;
     const result = parseGenerativeUIIntent(intentInput);
-    return result.ok ? null : result.errors;
+    if (isGenerativeUIParseFailure(result)) return result.errors;
+    return null;
   }, [intentInput]);
 
   if (!intent) {
@@ -77,7 +78,7 @@ export function GenerativeUIRenderer({
           }
 
           const validation = validateBlockProps(config.propsSchema, block.props ?? {});
-          if (!validation.ok) {
+          if (isBlockPropsValidationFailure(validation)) {
             return (
               <Alert key={block.id ?? index} variant="destructive">
                 <AlertTitle>{t('validation_failed_title', { type: block.type })}</AlertTitle>
@@ -88,10 +89,11 @@ export function GenerativeUIRenderer({
 
           const Component = config.component;
           if (block.type === 'action-bar') {
+            const actionBarProps = validation.props as ActionBarProps;
             return (
               <ActionBarBlock
                 key={block.id ?? index}
-                {...validation.props}
+                {...actionBarProps}
                 actionHandlers={actionHandlers}
                 onAction={onAction}
               />

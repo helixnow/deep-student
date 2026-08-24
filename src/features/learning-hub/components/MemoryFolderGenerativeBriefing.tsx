@@ -16,7 +16,7 @@ export const MemoryFolderGenerativeBriefing: React.FC<MemoryFolderGenerativeBrie
   ({ onRefresh, onCreateMemory }) => {
     const { t } = useTranslation(['learningHub']);
     const items = useFinderStore((s) => s.items);
-    const breadcrumbs = useFinderStore((s) => s.breadcrumbs);
+    const breadcrumbs = useFinderStore((s) => s.currentPath.breadcrumbs);
     const [config, setConfig] = useState<MemoryConfig | null>(null);
 
     useEffect(() => {

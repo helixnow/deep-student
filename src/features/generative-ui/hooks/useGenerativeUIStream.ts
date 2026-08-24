@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { GenerativeUIStreamParser } from '../parser';
-import { parseGenerativeUIIntent } from '../schema';
+import { parseGenerativeUIIntent, isGenerativeUIParseFailure } from '../schema';
 import type { GenerativeUIIntent } from '../types';
 
 export interface UseGenerativeUIStreamOptions {
@@ -51,16 +51,16 @@ export function useGenerativeUIStream(
     const buffer = parser.getBuffer().trim();
     if (buffer) {
       const parsed = parseGenerativeUIIntent(buffer);
-      if (parsed.ok) {
-        setIntentState(parsed.intent);
-        setPartialIntent(parsed.intent);
-        setErrors([]);
-        options.onComplete?.(parsed.intent);
-        return parsed.intent;
+      if (isGenerativeUIParseFailure(parsed)) {
+        setErrors(parsed.errors);
+        options.onComplete?.(finalPartial);
+        return finalPartial;
       }
-      setErrors(parsed.errors);
-      options.onComplete?.(finalPartial);
-      return finalPartial;
+      setIntentState(parsed.intent);
+      setPartialIntent(parsed.intent);
+      setErrors([]);
+      options.onComplete?.(parsed.intent);
+      return parsed.intent;
     }
     options.onComplete?.(finalPartial);
     return finalPartial;
@@ -69,13 +69,13 @@ export function useGenerativeUIStream(
   const setIntent = useCallback((raw: string | GenerativeUIIntent) => {
     if (typeof raw === 'string') {
       const parsed = parseGenerativeUIIntent(raw);
-      if (parsed.ok) {
-        setIntentState(parsed.intent);
-        setPartialIntent(parsed.intent);
-        setErrors([]);
-      } else {
+      if (isGenerativeUIParseFailure(parsed)) {
         setErrors(parsed.errors);
+        return;
       }
+      setIntentState(parsed.intent);
+      setPartialIntent(parsed.intent);
+      setErrors([]);
       return;
     }
     setIntentState(raw);

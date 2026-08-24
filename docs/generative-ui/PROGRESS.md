@@ -22,6 +22,13 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 28（2026-08-24）— CI tsc 修复
+
+- [x] `ai-dashboard/register.ts` → `register.tsx`（JSX 扩展名）
+- [x] **22 项 tsc 错误清零** — discriminated union 类型守卫、Finder breadcrumbs、MemoryIcon import、ActivationDispatchResult 对齐
+- [x] `schema.ts` 增加 `isGenerativeUIParseFailure` / `isBlockPropsValidationFailure`
+- [x] 210 项 generative-ui vitest + tsc `--noEmit` 全绿
+
 ## Round 27（2026-08-24）— Goal 收尾
 
 - [x] 最终验收：210 项 generative-ui vitest 全绿

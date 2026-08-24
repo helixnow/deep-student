@@ -10,7 +10,7 @@ import './LearningHubGenerativeBriefing.css';
 export const LearningHubGenerativeBriefing: React.FC = React.memo(() => {
   const { t } = useTranslation(['generativeUi']);
   const items = useFinderStore((s) => s.items);
-  const breadcrumbs = useFinderStore((s) => s.breadcrumbs);
+  const breadcrumbs = useFinderStore((s) => s.currentPath.breadcrumbs);
 
   const folderLabel = breadcrumbs?.[breadcrumbs.length - 1]?.name ?? t('generativeUi:learningHub.briefing.default_folder');
 

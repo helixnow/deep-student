@@ -61,6 +61,7 @@ import {
   ListPlus,
   Sparkle,
 } from '@phosphor-icons/react';
+import { MemoryIcon } from '../icons/ResourceIcons';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';

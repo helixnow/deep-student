@@ -52,7 +52,8 @@
 
 | 门禁 | 命令 / 文件 | 状态 |
 |------|-------------|------|
-| generative-ui vitest | `npm run test -- tests/vitest/generative-ui/` | ✅ 190+ |
+| generative-ui vitest | `npm run test -- tests/vitest/generative-ui/` | ✅ 210 |
+| Frontend tsc | `npx tsc --noEmit`（Round 28 22 项修复） | ✅ |
 | SOTA 静态验收 | `generativeUISotaAcceptance.contract.test.ts` | ✅ |
 | 全模块 integration contract | `generativeUIModuleIntegration.contract.test.ts` | ✅ |
 | Rust hpias 单测 | `cargo test hpias` | ⏳ 需 GTK + stable Rust CI |

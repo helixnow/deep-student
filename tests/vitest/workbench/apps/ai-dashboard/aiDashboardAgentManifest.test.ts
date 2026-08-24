@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { aiDashboardAgentManifest } from '@/features/workbench/apps/ai-dashboard/agentManifest';
 
 const launchSpy = vi.fn(() => 'win-task');
-const activateSpy = vi.fn(async () => ({ handled: true, acknowledged: true }));
+const activateSpy = vi.fn(async () => ({
+  delivered: true,
+  result: { handled: true, acknowledged: true },
+}));
 
 vi.mock('@/features/workbench/core/workbenchBus', () => ({
   workbenchBus: {

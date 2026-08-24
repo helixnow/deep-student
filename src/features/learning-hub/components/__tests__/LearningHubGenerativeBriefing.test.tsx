@@ -19,9 +19,9 @@ const mockBreadcrumbs = [{ id: 'f1', name: 'Notes', dstuPath: '/Notes' }];
 vi.mock('../../stores/finderStore', () => ({
   useFinderStore: (selector: (s: {
     items: typeof mockItems;
-    breadcrumbs: typeof mockBreadcrumbs;
+    currentPath: { breadcrumbs: typeof mockBreadcrumbs };
   }) => unknown) =>
-    selector({ items: mockItems, breadcrumbs: mockBreadcrumbs }),
+    selector({ items: mockItems, currentPath: { breadcrumbs: mockBreadcrumbs } }),
 }));
 
 import { LearningHubGenerativeBriefing } from '../LearningHubGenerativeBriefing';

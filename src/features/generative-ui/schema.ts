@@ -154,3 +154,18 @@ export function validateBlockProps<T>(
   }
   return { ok: true, props: result.data };
 }
+
+export type ParseGenerativeUIIntentResult = ReturnType<typeof parseGenerativeUIIntent>;
+export type ValidateBlockPropsResult<T> = ReturnType<typeof validateBlockProps<T>>;
+
+export function isGenerativeUIParseFailure(
+  result: ParseGenerativeUIIntentResult,
+): result is Extract<ParseGenerativeUIIntentResult, { ok: false }> {
+  return result.ok === false;
+}
+
+export function isBlockPropsValidationFailure<T>(
+  result: ValidateBlockPropsResult<T>,
+): result is Extract<ValidateBlockPropsResult<T>, { ok: false }> {
+  return result.ok === false;
+}

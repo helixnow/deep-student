@@ -4,6 +4,7 @@
  * 观察闪卡到期 / 待办 / 制卡任务指标；execute 映射 workbenchBus 快捷动作。
  */
 import { workbenchBus } from '../../core/workbenchBus';
+import type { ActivationDispatchResult } from '../../core/workbenchBus';
 import type {
   AgentActionResult,
   AppAgentManifest,
@@ -82,6 +83,23 @@ function launchAck(typeId: string): AgentActionResult {
     changed: true,
     acknowledged: true,
     details: { windowId, typeId },
+  };
+}
+
+function activationActionResult(
+  activation: ActivationDispatchResult,
+  failureHint: string,
+): AgentActionResult {
+  const activationResult = activation.result ?? { handled: false };
+  const handled = activation.delivered && activationResult.handled;
+  return {
+    handled,
+    changed: handled,
+    acknowledged: activationResult.acknowledged ?? handled,
+    ...(handled ? {} : {
+      code: activationResult.code ?? 'ACTIVATION_FAILED',
+      hint: activationResult.hint ?? failureHint,
+    }),
   };
 }
 
@@ -174,17 +192,7 @@ export const aiDashboardAgentManifest: AppAgentManifest = {
     switch (action.name) {
       case 'startReview': {
         const result = await workbenchBus.activateDetailed(FLASHCARDS_DUE_ACTIVATE);
-        return {
-          handled: result.handled,
-          changed: result.handled,
-          acknowledged: result.acknowledged,
-          ...(result.handled ? {} : {
-            code: 'ACTIVATION_FAILED',
-            hint: 'hint' in result && typeof result.hint === 'string'
-              ? result.hint
-              : '无法启动到期闪卡复习',
-          }),
-        };
+        return activationActionResult(result, '无法启动到期闪卡复习');
       }
       case 'openQbank':
         return launchAck('exam');
@@ -209,17 +217,7 @@ export const aiDashboardAgentManifest: AppAgentManifest = {
           : undefined;
         if (actionId === 'start-review') {
           const result = await workbenchBus.activateDetailed(FLASHCARDS_DUE_ACTIVATE);
-          return {
-            handled: result.handled,
-            changed: result.handled,
-            acknowledged: result.acknowledged,
-            ...(result.handled ? {} : {
-              code: 'ACTIVATION_FAILED',
-              hint: 'hint' in result && typeof result.hint === 'string'
-                ? result.hint
-                : '无法启动到期闪卡复习',
-            }),
-          };
+          return activationActionResult(result, '无法启动到期闪卡复习');
         }
         if (actionId === 'open-qbank') {
           return launchAck('exam');
