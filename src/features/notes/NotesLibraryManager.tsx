@@ -127,7 +127,7 @@ export function NotesLibraryPanel({
         <DsButton
           variant="ghost"
           size="icon"
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           onClick={onClose}
           disabled={exporting || importing}
           aria-label={t('common:actions.close', '关闭')}
@@ -191,7 +191,7 @@ export function NotesLibraryPanel({
                 <DsButton
                   variant="outline"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={onPickExportPath}
                   disabled={exportPathLoading || exporting}
                 >
@@ -208,7 +208,7 @@ export function NotesLibraryPanel({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="[@media(pointer:coarse)]:min-h-11"
+                    className="[@media(pointer:coarse)]:!min-h-11"
                     onClick={() => onExportTargetPathChange('')}
                     disabled={exporting || exportPathLoading}
                   >
@@ -251,7 +251,7 @@ export function NotesLibraryPanel({
                 <DsButton
                   variant="outline"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={onPickImportFile}
                   disabled={importing}
                 >
@@ -261,7 +261,7 @@ export function NotesLibraryPanel({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="[@media(pointer:coarse)]:min-h-11"
+                    className="[@media(pointer:coarse)]:!min-h-11"
                     onClick={() => onImportFilePathChange('')}
                     disabled={importing}
                   >
@@ -369,7 +369,7 @@ export function NotesLibraryPanel({
       <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3">
         <DsButton
           variant="ghost"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onClose}
           disabled={exporting || importing}
         >
@@ -377,7 +377,7 @@ export function NotesLibraryPanel({
         </DsButton>
         {activeTab === 'export' ? (
           <DsButton
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={onConfirmExport}
             disabled={exporting || !exportTargetPath}
           >
@@ -392,7 +392,7 @@ export function NotesLibraryPanel({
           </DsButton>
         ) : (
           <DsButton
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={onConfirmImport}
             disabled={importing || !importFilePath}
           >

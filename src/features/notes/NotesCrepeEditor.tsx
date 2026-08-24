@@ -1849,7 +1849,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               variant="ghost"
               size="sm"
               className={cn(
-                'h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11',
+                'h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11',
                 conflictDiffOpen
                   ? 'bg-[var(--interactive-hover)] text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -1866,7 +1866,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
+              className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               onClick={() => resolveConflict('mine', conflictAction)}
             >
               {t('notes:editor.conflict_restore_mine')}
@@ -1874,7 +1874,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
               onClick={() => resolveConflict('remote', conflictAction)}
             >
               {t('notes:editor.conflict_keep_remote', 'Keep remote')}
@@ -1943,7 +1943,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
+                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => { void fetchConflictRemote(); }}
                     >
                       {t('notes:editorV2.conflict_diff_retry', 'Retry')}
@@ -1960,14 +1960,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   <DsButton
                     variant="outline"
                     size="sm"
-                    className="h-7 [@media(pointer:coarse)]:min-h-11"
+                    className="h-7 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => resolveConflict('remote', conflictAction)}
                   >
                     {t('notes:editor.conflict_keep_remote', 'Keep remote')}
                   </DsButton>
                   <DsButton
                     size="sm"
-                    className="h-7 [@media(pointer:coarse)]:min-h-11"
+                    className="h-7 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => resolveConflict('mine', conflictAction)}
                   >
                     {t('notes:editor.conflict_restore_mine')}
@@ -1992,7 +1992,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   iconOnly
                   size="sm"
                   className={cn(
-                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                     templateMenuOpen
                       ? 'bg-[var(--interactive-hover)] text-foreground'
                       : 'text-muted-foreground hover:text-foreground',
@@ -2011,7 +2011,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 variant="ghost"
                 iconOnly
                 size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={() => { void openQuickAssistantWindow(); }}
                 aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
               >
@@ -2025,7 +2025,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 iconOnly
                 size="sm"
                 className={cn(
-                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                   isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
@@ -2046,7 +2046,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   iconOnly
                   size="sm"
                   className={cn(
-                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11",
+                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11",
                     readingMode
                       ? "bg-[var(--interactive-hover)] text-foreground"
                       : "text-muted-foreground hover:text-foreground"
@@ -2075,7 +2075,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 variant="ghost"
                 iconOnly
                 size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={toggleFocusMode}
                 aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
                 aria-pressed={focusMode}
@@ -2111,7 +2111,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => { void rollbackCheckpoint(); }}
                 >
                   <ArrowCounterClockwise size={12} className="mr-1" />
@@ -2120,7 +2120,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 <DsButton
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   onClick={dismissCheckpoint}
                   aria-label={t('notes:aiCheckpoint.keep')}
                 >
@@ -2138,7 +2138,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             variant="ghost"
             iconOnly
             size="sm"
-            className="notes-focus-exit h-8 w-8 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+            className="notes-focus-exit h-8 w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={toggleFocusMode}
             aria-label={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')}
           >
@@ -2225,7 +2225,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs [@media(pointer:coarse)]:min-h-11"
+                    className="h-7 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                     onClick={onRetryLoadMore}
                   >
                     {t('notes:editor.windowing.retry')}
