@@ -153,6 +153,9 @@
     "checksum": "Checksum",
     "note": "Note",
     "restore": "Restore this version",
+    "portableArchive": "Portable archive, cannot replace the data slot",
+    "fullFidelity": "Encrypted full-fidelity, can replace the data slot",
+    "portableArchiveNotRestorable": "This cloud package is a portable archive and cannot replace the current data slot. Your current data was not changed.",
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this version? This action cannot be undone.",
     "current": "Current device"
