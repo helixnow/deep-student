@@ -202,19 +202,20 @@ properties，避免被 `additionalProperties: false` 误伤。
 
 ## 10. 测试
 
-新增 24 个单测（要求 ≥10）：
+新增 28 个单测（要求 ≥10）：
 
-- `anki_protocol.rs` 内 19 个：常量一致性、协议指令（delimiter 引用共享常量 /
+- `anki_protocol.rs` 内 21 个：常量一致性、协议指令（delimiter 引用共享常量 /
   结构化不含分隔符）、协议决策（auto×3 能力、显式覆盖、非法值）、能力探测矩阵、
   schema 生成（类型/required/enum、长度约束/描述、无规则历史默认、多模板
   oneOf+template_id）、response_format 三形态、is_multi_template 四来源、
   repair（尾逗号/补括号/截尾垃圾/不可修复/字符串内分隔符不受扰）、wrapper
   剥离（完整/不完整/非 wrapper/空白变体）、wrapper 展开、StructuredOutputOptions
   解析（新字段/旧版缺省/坏 JSON）；
-- `streaming_anki_service.rs` 内 5 个：测试模块分隔符常量与 anki_protocol 一致性、
-  wrapper 剥离后 brace 切卡器逐卡流式切出、build_prompt delimiter/json_schema
-  两协议的指令差异与中性示例、custom_anki_prompt 附加语义、repair 接入
-  parse 路径（通过 expand_wrapper_payloads 验证）。
+- `streaming_anki_service.rs` 内 7 个：prompt 与解析侧共用分隔符常量、结构化
+  指令不含分隔符且引用 wrapper 键、示例 JSON 语言中性、custom_anki_prompt 附加
+  语义、wrapper 剥离后 brace 切卡器逐卡流式切出（跨 chunk）、
+  expand_wrapper_payloads 展开 + 截断修复、response_format 注入矩阵。
 
-既有测试（brace 切卡器、字段 QA、模板解析等）全部保持通过；`cargo test` 结果
-见提交说明。
+测试结果（2026-08-24，`cargo test --lib -- anki_protocol:: streaming_anki_service::`）：
+**81 passed / 0 failed**（anki_protocol 21 + streaming_anki_service 60，其中含
+Round 2 全部既有测试：brace 切卡器、字段 QA、模板解析、clean_json_string 等）。
