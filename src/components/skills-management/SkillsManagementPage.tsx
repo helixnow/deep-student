@@ -92,6 +92,13 @@ interface SkillsManagementPageProps {
   className?: string;
   /** Workbench 窗口 id：提供时注册 skills agent 观察/操作面（ACR 4.0 A3） */
   workbenchWindowId?: string;
+  /**
+   * Workbench 窗口内容区尺寸分级（data-wb-sys-size 同源，SkillsAppWindow 下传）。
+   * 页面自身的 viewport 断点在窗口里恒为桌面大屏；非 wide 档时工具栏的
+   * 七个次级操作收进「⋯」溢出菜单，避免窄窗横向溢出。legacy 页面不传，
+   * 维持纯 viewport 断点行为。
+   */
+  windowSizeClass?: 'compact' | 'medium' | 'wide';
 }
 
 // ============================================================================
@@ -188,11 +195,15 @@ const InlineConfirmSection: React.FC<InlineConfirmSectionProps> = ({
 export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   className,
   workbenchWindowId,
+  windowSizeClass,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
+  // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
+  const collapseToolbarActions =
+    isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -1051,6 +1062,45 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setSkillToDelete(null);
   }, []);
 
+  // ========== / 聚焦搜索（非输入态） ==========
+  // 门禁与 TodoMainPanel 同范式：workbench 窗口承载（祖先带
+  // data-wb-sys-app="skills"）时要求所在窗口聚焦（data-focused）且事件
+  // 发生在窗内；legacy 页面承载时要求页面可见（离场层 visibility:hidden 不消费）。
+  const pageRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const root = pageRootRef.current;
+      if (!root || !root.isConnected) return;
+      const target = e.target as HTMLElement | null;
+      const wbHost = root.closest<HTMLElement>('[data-wb-sys-app="skills"]');
+      if (wbHost) {
+        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+        const scope = windowShell ?? wbHost;
+        if (!target || !scope.contains(target)) return;
+      } else if (root.getClientRects().length === 0) {
+        return;
+      }
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const input = root.querySelector<HTMLInputElement>('[data-skills-search]');
+      if (!input) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
   const anyInlineConfirmOpen =
@@ -1283,7 +1333,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               </>
             )}
 
-            {!isSmallScreen ? (
+            {!collapseToolbarActions ? (
               <>
                 <DsButton
                   variant="ghost"
@@ -1365,15 +1415,15 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 </DsButton>
               </>
             ) : (
-              /* 移动端：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
-                 主操作（搜索/筛选在下一行，新建在应用顶栏）保持直达 */
+              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
+                 主操作（搜索/筛选在下一行，新建在应用顶栏或本行首）保持直达 */
               <AppMenu>
                 <AppMenuTrigger asChild>
                   <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="!h-11 !w-11 text-muted-foreground"
+                    className={cn('text-muted-foreground', isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
                     aria-label={t('common:more')}
                     title={t('common:more')}
                   >
@@ -1435,6 +1485,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder')}
+              data-skills-search
               className={cn(
                 'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
                 // 移动端加高到触控目标标准，桌面保持紧凑
@@ -1920,7 +1971,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
           sidebar={
             // 本页无页内工具，抽屉只承载统一应用导航；
@@ -1963,7 +2014,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 桌面端布局 ==========
   return (
     <LayoutGroup>
-      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
+      <div ref={pageRootRef} className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
         {/* 桌面端编辑器：页面容器内的内联全区编辑视图（absolute 于本页面内，不逃出 OS 窗口）。
