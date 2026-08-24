@@ -406,6 +406,112 @@ pub fn is_encrypted_backup(data: &[u8]) -> bool {
     data.len() >= 4 && &data[0..4] == BACKUP_MAGIC
 }
 
+// =====================================================================================
+// [R06-e2ee-verifier] 云端加密标记（.encryption-marker）的密码校验子
+// =====================================================================================
+
+/// 校验子摘要的域分隔前缀。
+///
+/// 保证摘要与任何 DSBK 备份文件的加密密钥不可互推：即使摘要存放在
+/// （不受信任的）云端被读走，也无法据此解密任何备份，更无法反推密码。
+const MARKER_VERIFIER_DOMAIN: &[u8] = b"deep-student.encryption-marker.verifier.v1";
+
+/// 当前唯一支持的校验子 KDF 标识；遇到未知值调用方必须 fail-closed。
+pub const PASSWORD_VERIFIER_KDF_ARGON2ID: &str = "argon2id";
+
+/// 云端加密标记里的不可逆密码校验子。
+///
+/// `digest = SHA-256(domain || Argon2id(password, salt))`：
+/// - 持有密码可复算摘要用于一致性比对；
+/// - 由摘要不可行地反推密码（Argon2id 抗暴力破解）或任何备份加密密钥
+///   （域分隔 + 校验子独立随机 salt，与各 DSBK 文件各自 salt 派生的密钥互不相同）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordVerifier {
+    /// KDF 标识（当前固定 [`PASSWORD_VERIFIER_KDF_ARGON2ID`]）
+    pub kdf: String,
+    /// Argon2 内存参数（KiB）
+    pub m_cost: u32,
+    /// Argon2 迭代参数
+    pub t_cost: u32,
+    /// Argon2 并行度参数
+    pub p_cost: u32,
+    /// 随机 salt（hex）
+    pub salt: String,
+    /// 校验子摘要（hex，32 字节）
+    pub digest: String,
+}
+
+fn verifier_digest(
+    password: &str,
+    salt: &[u8],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+) -> Result<[u8; 32]> {
+    use sha2::{Digest, Sha256};
+
+    let mut key = derive_key(password, salt, m_cost, t_cost, p_cost)?;
+    let mut hasher = Sha256::new();
+    hasher.update(MARKER_VERIFIER_DOMAIN);
+    hasher.update(key);
+    key.zeroize();
+    Ok(hasher.finalize().into())
+}
+
+/// 用默认 Argon2id 参数与新随机 salt 为 `password` 生成校验子。
+pub fn create_password_verifier(password: &str) -> Result<PasswordVerifier> {
+    let mut salt = [0u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    let digest = verifier_digest(
+        password,
+        &salt,
+        DEFAULT_M_COST,
+        DEFAULT_T_COST,
+        DEFAULT_P_COST,
+    )?;
+    Ok(PasswordVerifier {
+        kdf: PASSWORD_VERIFIER_KDF_ARGON2ID.to_string(),
+        m_cost: DEFAULT_M_COST,
+        t_cost: DEFAULT_T_COST,
+        p_cost: DEFAULT_P_COST,
+        salt: hex::encode(salt),
+        digest: hex::encode(digest),
+    })
+}
+
+/// 校验 `password` 是否与 `verifier` 登记的密码一致。
+///
+/// 返回值语义：
+/// - `Ok(true)`：一致；
+/// - `Ok(false)`：密码确定不一致；
+/// - `Err`：**无法校验**（未知 KDF、字段损坏等），调用方必须 fail-closed。
+pub fn check_password_verifier(password: &str, verifier: &PasswordVerifier) -> Result<bool> {
+    if verifier.kdf != PASSWORD_VERIFIER_KDF_ARGON2ID {
+        return Err(anyhow!("未知的加密标记校验子 KDF: {}", verifier.kdf));
+    }
+    let salt =
+        hex::decode(&verifier.salt).map_err(|e| anyhow!("校验子 salt 无法解析: {}", e))?;
+    let expected =
+        hex::decode(&verifier.digest).map_err(|e| anyhow!("校验子摘要无法解析: {}", e))?;
+    if expected.len() != 32 {
+        return Err(anyhow!("校验子摘要长度非法: {} 字节", expected.len()));
+    }
+    let actual = verifier_digest(
+        password,
+        &salt,
+        verifier.m_cost,
+        verifier.t_cost,
+        verifier.p_cost,
+    )?;
+    // 常数时间比较（摘要本就可被云端读到，此处仅为防御性习惯）
+    let mut diff = 0u8;
+    for (a, b) in actual.iter().zip(expected.iter()) {
+        diff |= a ^ b;
+    }
+    Ok(diff == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,6 +599,65 @@ mod tests {
         bytes.truncate(bytes.len() - (1024 + 16));
         std::fs::write(&enc, &bytes).unwrap();
         assert!(decrypt_backup_file(&enc, &dec, "pw").is_err());
+    }
+
+    #[test]
+    fn password_verifier_roundtrip_and_wrong_password() {
+        let verifier = create_password_verifier("correct horse battery staple").unwrap();
+        assert_eq!(verifier.kdf, PASSWORD_VERIFIER_KDF_ARGON2ID);
+        assert_eq!(verifier.salt.len(), 32, "16 字节 salt 的 hex 应为 32 字符");
+        assert_eq!(verifier.digest.len(), 64, "SHA-256 摘要 hex 应为 64 字符");
+
+        assert!(check_password_verifier("correct horse battery staple", &verifier).unwrap());
+        assert!(!check_password_verifier("wrong password", &verifier).unwrap());
+    }
+
+    #[test]
+    fn password_verifier_digest_does_not_leak_key() {
+        // 校验子摘要绝不能等于任何由同一密码派生的加密密钥
+        //（域分隔保证：digest = SHA256(domain || key) != key）。
+        let password = "pw-2026";
+        let verifier = create_password_verifier(password).unwrap();
+        let salt = hex::decode(&verifier.salt).unwrap();
+        let key = derive_key(
+            password,
+            &salt,
+            verifier.m_cost,
+            verifier.t_cost,
+            verifier.p_cost,
+        )
+        .unwrap();
+        assert_ne!(hex::encode(key), verifier.digest);
+    }
+
+    #[test]
+    fn password_verifier_unknown_kdf_fails_closed() {
+        let mut verifier = create_password_verifier("pw").unwrap();
+        verifier.kdf = "quantum-kdf-9000".to_string();
+        assert!(
+            check_password_verifier("pw", &verifier).is_err(),
+            "未知 KDF 必须返回 Err（由调用方 fail-closed），不能误判为一致/不一致"
+        );
+    }
+
+    #[test]
+    fn password_verifier_corrupted_fields_fail_closed() {
+        let good = create_password_verifier("pw").unwrap();
+
+        let mut bad_salt = good.clone();
+        bad_salt.salt = "not-hex!!".to_string();
+        assert!(check_password_verifier("pw", &bad_salt).is_err());
+
+        let mut bad_digest_len = good.clone();
+        bad_digest_len.digest = "deadbeef".to_string();
+        assert!(check_password_verifier("pw", &bad_digest_len).is_err());
+
+        // 篡改摘要内容（长度合法）→ 判定为不一致，而不是 Err
+        let mut tampered = good.clone();
+        let mut digest_bytes = hex::decode(&tampered.digest).unwrap();
+        digest_bytes[0] ^= 0xFF;
+        tampered.digest = hex::encode(digest_bytes);
+        assert!(!check_password_verifier("pw", &tampered).unwrap());
     }
 
     #[test]

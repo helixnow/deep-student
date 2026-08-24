@@ -264,13 +264,15 @@ pub async fn cloud_sync_upload(
         .clone()
         .filter(|s| !s.is_empty());
 
-    // [R02-e2ee] 上传前执行端到端加密一致性策略：
-    // - 有密码：先幂等写入云端加密标记（.encryption-marker），保证「出现过加密备份
-    //   的 root」可被后续设备识别；
+    // [R02-e2ee][R06-e2ee-verifier] 上传前执行端到端加密一致性策略：
+    // - 有密码：校验云端加密标记（.encryption-marker）中的不可逆密码校验子——
+    //   配错密码的设备在写入任何 backups/ 对象之前即失败，不会向同一 root 写入
+    //   另一套无法互解的密文；无标记时登记带校验子的标记，旧版无校验子标记
+    //   以本机密码一次性升级（损坏/异常标记 fail-closed）；
     // - 无密码：若该 root 已有加密标记，直接拒绝明文上传，避免同一恢复链上
     //   明文/密文混布（换机无密码时可能误还原明文旧版本、泄露本应加密的数据）。
     manager
-        .enforce_encryption_policy_before_upload(encryption_password.is_some())
+        .enforce_encryption_policy_before_upload_with_password(encryption_password.as_deref())
         .await?;
 
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传

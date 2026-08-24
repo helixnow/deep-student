@@ -26,6 +26,9 @@ const DEFAULT_MAX_VERSIONS: usize = 10;
 /// `encryption_password` 的设备会被拒绝向同一 root 上传明文备份，避免同一
 /// 恢复链上明文/密文混布。
 const ENCRYPTION_MARKER_FILE: &str = ".encryption-marker";
+/// [R06-e2ee-verifier] 携带密码校验子的加密标记版本。
+/// `<= 1` 的旧标记没有校验子，允许一次性升级；`>= 2` 却缺校验子按损坏处理（fail-closed）。
+const ENCRYPTION_MARKER_VERSION_WITH_VERIFIER: u32 = 2;
 
 pub(crate) fn normalize_device_id(device_id: &str) -> String {
     let trimmed = device_id.trim();
@@ -94,8 +97,10 @@ impl Default for CloudManifest {
 
 /// 云端加密标记
 ///
-/// 该对象存在即表示对应云 root 出现过端到端加密备份；内容仅用于诊断，
-/// 判定逻辑只看「对象是否存在」（内容损坏时按存在处理，fail-closed）。
+/// 该对象存在即表示对应云 root 出现过端到端加密备份：
+/// - 明文上传判定只看「对象是否存在」（内容损坏时按存在处理，fail-closed）；
+/// - [R06-e2ee-verifier] 加密上传前还要比对 `key_verifier` 中的不可逆密码
+///   校验子，防止配错密码的设备向同一 root 写入另一套无法互解的密文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptionMarker {
@@ -105,6 +110,22 @@ pub struct EncryptionMarker {
     pub created_by_device: String,
     /// 首次写入时间
     pub created_at: DateTime<Utc>,
+    /// [R06] 密码校验子（不可逆；旧标记无此字段）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_verifier: Option<crate::crypto::backup_crypto::PasswordVerifier>,
+}
+
+/// 云端加密标记的三态读取结果（内部使用）。
+///
+/// 与对外的 `read_encryption_marker` 不同，这里把「内容损坏」与「合法旧标记」
+/// 区分开：密码校验路径对损坏标记必须 fail-closed，而不能把它当成可升级的旧标记。
+enum EncryptionMarkerState {
+    /// 云端不存在标记
+    Absent,
+    /// 标记存在且可解析
+    Present(EncryptionMarker),
+    /// 标记对象存在但内容无法解析
+    Corrupted,
 }
 
 /// 同步状态
@@ -399,32 +420,54 @@ impl CloudSyncManager {
         Ok(manifest.versions)
     }
 
-    /// 读取云端加密标记。
-    ///
-    /// 标记对象存在但内容损坏时按「存在」处理（fail-closed）：宁可多拦一次
-    /// 明文上传，也不能让被破坏的标记悄悄放行明文。
-    pub async fn read_encryption_marker(&self) -> Result<Option<EncryptionMarker>> {
+    /// 读取云端加密标记的三态结果（内部）。
+    async fn read_encryption_marker_state(&self) -> Result<EncryptionMarkerState> {
         match self.storage.get(ENCRYPTION_MARKER_FILE).await? {
             Some(data) => match serde_json::from_slice::<EncryptionMarker>(&data) {
-                Ok(marker) => Ok(Some(marker)),
+                Ok(marker) => Ok(EncryptionMarkerState::Present(marker)),
                 Err(error) => {
                     tracing::warn!(
                         "云端加密标记 {} 内容无法解析，按存在处理: {}",
                         ENCRYPTION_MARKER_FILE,
                         error
                     );
-                    Ok(Some(EncryptionMarker {
-                        version: 0,
-                        created_by_device: "unknown".to_string(),
-                        created_at: Utc::now(),
-                    }))
+                    Ok(EncryptionMarkerState::Corrupted)
                 }
             },
-            None => Ok(None),
+            None => Ok(EncryptionMarkerState::Absent),
         }
     }
 
+    /// 读取云端加密标记。
+    ///
+    /// 标记对象存在但内容损坏时按「存在」处理（fail-closed）：宁可多拦一次
+    /// 明文上传，也不能让被破坏的标记悄悄放行明文。
+    pub async fn read_encryption_marker(&self) -> Result<Option<EncryptionMarker>> {
+        Ok(match self.read_encryption_marker_state().await? {
+            EncryptionMarkerState::Absent => None,
+            EncryptionMarkerState::Present(marker) => Some(marker),
+            EncryptionMarkerState::Corrupted => Some(EncryptionMarker {
+                version: 0,
+                created_by_device: "unknown".to_string(),
+                created_at: Utc::now(),
+                key_verifier: None,
+            }),
+        })
+    }
+
+    /// 序列化并覆盖写入云端加密标记。
+    async fn write_encryption_marker(&self, marker: &EncryptionMarker) -> Result<()> {
+        let data = serde_json::to_vec_pretty(marker)
+            .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))?;
+        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await
+    }
+
     /// 幂等写入云端加密标记：已存在则保持原样（保留首次写入者与时间）。
+    ///
+    /// 仅供**拿不到加密密码原文**的调用方使用（如记录级同步的 bool 策略入口），
+    /// 新建的标记不含密码校验子；ZIP 上传路径改走
+    /// [`Self::verify_encryption_password_before_upload`]，无标记时会直接登记
+    /// 带校验子的标记，旧标记则被一次性升级。
     pub async fn persist_encryption_marker(&self) -> Result<EncryptionMarker> {
         if let Some(existing) = self.read_encryption_marker().await? {
             return Ok(existing);
@@ -433,11 +476,89 @@ impl CloudSyncManager {
             version: 1,
             created_by_device: self.device_id.clone(),
             created_at: Utc::now(),
+            key_verifier: None,
         };
-        let data = serde_json::to_vec_pretty(&marker)
-            .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))?;
-        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await?;
+        self.write_encryption_marker(&marker).await?;
         Ok(marker)
+    }
+
+    /// [R06-e2ee-verifier] 加密上传前校验（或登记）云端加密标记的密码校验子。
+    ///
+    /// 语义（全部发生在写入任何 `backups/` 对象之前）：
+    /// - 无标记：用本机密码生成不可逆校验子，登记 v2 标记后放行；
+    /// - 有校验子：复算比对——不一致立即失败（错密码设备不得向同一 root
+    ///   写入另一套无法互解的密文）；无法校验（未知 KDF / 字段损坏）fail-closed；
+    /// - 旧标记（`version <= 1`，无校验子）：以本机密码做**一次性升级**，
+    ///   保留首次写入者与时间；升级后错密码设备即可被拦截；
+    /// - `version >= 2` 却缺校验子、或标记内容损坏：按损坏处理，fail-closed。
+    pub async fn verify_encryption_password_before_upload(
+        &self,
+        password: &str,
+    ) -> Result<EncryptionMarker> {
+        let marker = match self.read_encryption_marker_state().await? {
+            EncryptionMarkerState::Absent => {
+                let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
+                    .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
+                let marker = EncryptionMarker {
+                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+                    created_by_device: self.device_id.clone(),
+                    created_at: Utc::now(),
+                    key_verifier: Some(verifier),
+                };
+                self.write_encryption_marker(&marker).await?;
+                return Ok(marker);
+            }
+            EncryptionMarkerState::Corrupted => {
+                return Err(AppError::configuration(
+                    "云端加密标记（.encryption-marker）内容已损坏，无法确认加密密码与既有备份\
+                     一致，已在上传前中止（fail-closed）。请人工检查该云端目录后重试。"
+                        .to_string(),
+                ));
+            }
+            EncryptionMarkerState::Present(marker) => marker,
+        };
+
+        match &marker.key_verifier {
+            Some(verifier) => {
+                match crate::crypto::backup_crypto::check_password_verifier(password, verifier) {
+                    Ok(true) => Ok(marker),
+                    Ok(false) => Err(AppError::configuration(
+                        "加密密码与该云端目录既有加密备份使用的密码不一致，已在上传前中止，\
+                         未写入任何备份对象。请核对加密密码后重试，或改用新的云端目录。"
+                            .to_string(),
+                    )),
+                    Err(error) => Err(AppError::configuration(format!(
+                        "无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：{error}。\
+                         该标记可能由更新版本的应用写入，请先升级本机应用。"
+                    ))),
+                }
+            }
+            // 旧版标记（R06 之前）没有校验子：以当前密码一次性升级。
+            // 升级信任「第一个带密码上传的设备」，与旧行为的信任边界一致；
+            // 升级后配错密码的设备即可在上传前被拦截。
+            None if marker.version <= 1 => {
+                let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
+                    .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
+                let upgraded = EncryptionMarker {
+                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+                    created_by_device: marker.created_by_device,
+                    created_at: marker.created_at,
+                    key_verifier: Some(verifier),
+                };
+                tracing::warn!(
+                    "云端加密标记为旧版（无密码校验子），已用本机加密密码一次性升级到 v{}",
+                    ENCRYPTION_MARKER_VERSION_WITH_VERIFIER
+                );
+                self.write_encryption_marker(&upgraded).await?;
+                Ok(upgraded)
+            }
+            // version >= 2 却缺校验子：不是合法旧标记，视为被篡改/损坏，fail-closed。
+            None => Err(AppError::configuration(format!(
+                "云端加密标记版本为 {} 却缺少密码校验子，疑似损坏或被篡改，已在上传前中止\
+                 （fail-closed）。请人工检查该云端目录后重试。",
+                marker.version
+            ))),
+        }
     }
 
     /// 明文上传前置检查：该云 root 出现过加密备份（存在标记）时拒绝。
@@ -452,10 +573,13 @@ impl CloudSyncManager {
         Ok(())
     }
 
-    /// 上传前的端到端加密一致性策略：
+    /// 上传前的端到端加密一致性策略（bool 版，供拿不到密码原文的调用方使用）：
     /// - 本次上传加密：先幂等写入云端加密标记（失败则整个上传失败），
     ///   保证标记先于任何密文对象可见；
     /// - 本次上传明文：若该 root 已有加密标记则直接拒绝。
+    ///
+    /// 注意：本入口**不校验**密码一致性；能拿到密码原文的路径（如 ZIP 上传）
+    /// 应改用 [`Self::enforce_encryption_policy_before_upload_with_password`]。
     pub async fn enforce_encryption_policy_before_upload(
         &self,
         encryption_enabled: bool,
@@ -464,6 +588,23 @@ impl CloudSyncManager {
             self.persist_encryption_marker().await.map(|_| ())
         } else {
             self.ensure_plaintext_upload_allowed().await
+        }
+    }
+
+    /// [R06-e2ee-verifier] 上传前的端到端加密一致性策略（带密码校验）：
+    /// - 有密码：校验 / 登记云端加密标记的不可逆密码校验子——配错密码的设备
+    ///   在写入任何 `backups/` 对象之前即失败；
+    /// - 无密码：若该 root 已有加密标记则直接拒绝明文上传。
+    pub async fn enforce_encryption_policy_before_upload_with_password(
+        &self,
+        encryption_password: Option<&str>,
+    ) -> Result<()> {
+        match encryption_password {
+            Some(password) => self
+                .verify_encryption_password_before_upload(password)
+                .await
+                .map(|_| ()),
+            None => self.ensure_plaintext_upload_allowed().await,
         }
     }
 
@@ -1336,14 +1477,18 @@ mod tests {
         let storage = Arc::new(MemoryStorage::default());
         let manager = manager_on(&storage, "device-a");
 
-        // 配置了密码：策略检查幂等写入标记后放行上传
+        // 配置了密码：首次上传登记带校验子的 v2 标记后放行
         manager
-            .enforce_encryption_policy_before_upload(true)
+            .enforce_encryption_policy_before_upload_with_password(Some("pw-2026"))
             .await
             .expect("有密码时上传前策略应放行");
         let first = manager.read_encryption_marker().await.unwrap().unwrap();
-        assert_eq!(first.version, 1);
+        assert_eq!(first.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
         assert_eq!(first.created_by_device, "device-a");
+        assert!(
+            first.key_verifier.is_some(),
+            "新登记的标记必须携带密码校验子"
+        );
 
         let dir = tempfile::tempdir().unwrap();
         let zip = dir.path().join("backup.dsbk");
@@ -1354,14 +1499,179 @@ mod tests {
             .expect("加密上传应成功");
         assert_eq!(result.version.device_id, "device-a");
 
-        // 再次加密上传：标记保持（不被覆盖，首次写入者信息不变）
+        // 同密码再次加密上传：标记保持（不被覆盖，首次写入者信息与校验子不变）
         manager
-            .enforce_encryption_policy_before_upload(true)
+            .enforce_encryption_policy_before_upload_with_password(Some("pw-2026"))
             .await
             .unwrap();
         let second = manager.read_encryption_marker().await.unwrap().unwrap();
         assert_eq!(second.created_at, first.created_at);
         assert_eq!(second.created_by_device, first.created_by_device);
+        assert_eq!(second.key_verifier, first.key_verifier);
+    }
+
+    /// [R06] 核心场景：配错密码的设备必须在上传前失败，且不向 backups/ 写入任何对象。
+    #[tokio::test]
+    async fn wrong_password_upload_rejected_before_any_backup_write() {
+        let storage = Arc::new(MemoryStorage::default());
+
+        // 设备 A 用正确密码登记了带校验子的标记
+        let device_a = manager_on(&storage, "device-a");
+        device_a
+            .enforce_encryption_policy_before_upload_with_password(Some("correct-pw"))
+            .await
+            .unwrap();
+        let original = device_a.read_encryption_marker().await.unwrap().unwrap();
+
+        // 设备 B 配了错误密码：cloud_sync_upload 会先执行本策略，失败即整个上传失败
+        let device_b = manager_on(&storage, "device-b");
+        let error = device_b
+            .enforce_encryption_policy_before_upload_with_password(Some("wrong-pw"))
+            .await
+            .expect_err("错误密码必须在上传前被拦截");
+        assert!(
+            error.to_string().contains("不一致"),
+            "错误信息应指出密码不一致: {error}"
+        );
+
+        // 不得向 backups/ 写入任何对象，标记也不得被改写
+        assert!(
+            !storage
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "被拦截的错密码上传不应产生任何备份对象"
+        );
+        let after = device_b.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(after.created_by_device, original.created_by_device);
+        assert_eq!(after.key_verifier, original.key_verifier);
+    }
+
+    /// [R06] 兼容性：旧版无校验子标记（version 1）被第一个带密码上传的设备
+    /// 一次性升级；升级保留首次写入者与时间，升级后错密码设备即被拦截。
+    #[tokio::test]
+    async fn legacy_marker_without_verifier_is_upgraded_once() {
+        let storage = Arc::new(MemoryStorage::default());
+
+        // 旧版本应用留下的 v1 标记（无校验子）
+        let legacy_writer = manager_on(&storage, "device-legacy");
+        let legacy = legacy_writer.persist_encryption_marker().await.unwrap();
+        assert_eq!(legacy.version, 1);
+        assert!(legacy.key_verifier.is_none());
+
+        // 升级后的应用带密码上传：一次性升级标记
+        let device_a = manager_on(&storage, "device-a");
+        let upgraded = device_a
+            .verify_encryption_password_before_upload("team-pw")
+            .await
+            .expect("旧标记应被一次性升级而不是拒绝");
+        assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        assert_eq!(
+            upgraded.created_by_device, "device-legacy",
+            "升级不得改写首次写入者"
+        );
+        assert_eq!(upgraded.created_at, legacy.created_at, "升级不得改写首次写入时间");
+        assert!(upgraded.key_verifier.is_some());
+
+        // 升级后：同密码放行、错密码被拦
+        device_a
+            .verify_encryption_password_before_upload("team-pw")
+            .await
+            .expect("同密码应继续放行");
+        let device_b = manager_on(&storage, "device-b");
+        assert!(
+            device_b
+                .verify_encryption_password_before_upload("other-pw")
+                .await
+                .is_err(),
+            "升级后错密码设备必须被拦截"
+        );
+    }
+
+    /// [R06] 标记内容损坏时加密上传也 fail-closed（无法确认密码一致性）。
+    #[tokio::test]
+    async fn corrupted_marker_blocks_encrypted_upload() {
+        let storage = Arc::new(MemoryStorage::default());
+        storage.files.lock().unwrap().insert(
+            ENCRYPTION_MARKER_FILE.to_string(),
+            (b"not-json".to_vec(), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-a");
+        let error = manager
+            .enforce_encryption_policy_before_upload_with_password(Some("pw"))
+            .await
+            .expect_err("损坏标记必须拦截加密上传（fail-closed）");
+        assert!(error.to_string().contains("损坏"), "{error}");
+
+        // fail-closed 路径不得改写（掩盖）损坏的标记内容
+        let raw = storage
+            .files
+            .lock()
+            .unwrap()
+            .get(ENCRYPTION_MARKER_FILE)
+            .unwrap()
+            .0
+            .clone();
+        assert_eq!(raw, b"not-json".to_vec());
+    }
+
+    /// [R06] 未知 KDF（可能来自更新版本应用）不能被当作旧标记升级覆盖，必须 fail-closed。
+    #[tokio::test]
+    async fn unknown_verifier_kdf_fails_closed() {
+        let storage = Arc::new(MemoryStorage::default());
+        let marker_json = serde_json::json!({
+            "version": ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+            "createdByDevice": "device-future",
+            "createdAt": Utc::now(),
+            "keyVerifier": {
+                "kdf": "quantum-kdf-9000",
+                "mCost": 65536,
+                "tCost": 3,
+                "pCost": 4,
+                "salt": "00112233445566778899aabbccddeeff",
+                "digest": "00".repeat(32),
+            }
+        });
+        storage.files.lock().unwrap().insert(
+            ENCRYPTION_MARKER_FILE.to_string(),
+            (serde_json::to_vec(&marker_json).unwrap(), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-a");
+        let error = manager
+            .verify_encryption_password_before_upload("pw")
+            .await
+            .expect_err("未知 KDF 必须 fail-closed");
+        assert!(error.to_string().contains("无法校验"), "{error}");
+
+        // 标记不得被覆盖（否则会破坏未来版本设备的校验依据）
+        let after = manager.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(after.created_by_device, "device-future");
+    }
+
+    /// [R06] version >= 2 却缺校验子：不是合法旧标记，按损坏处理，不得走升级路径。
+    #[tokio::test]
+    async fn v2_marker_missing_verifier_fails_closed() {
+        let storage = Arc::new(MemoryStorage::default());
+        let marker_json = serde_json::json!({
+            "version": ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+            "createdByDevice": "device-x",
+            "createdAt": Utc::now(),
+        });
+        storage.files.lock().unwrap().insert(
+            ENCRYPTION_MARKER_FILE.to_string(),
+            (serde_json::to_vec(&marker_json).unwrap(), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-a");
+        let error = manager
+            .verify_encryption_password_before_upload("pw")
+            .await
+            .expect_err("v2 缺校验子必须 fail-closed 而不是被静默升级");
+        assert!(error.to_string().contains("缺少密码校验子"), "{error}");
     }
 
     #[tokio::test]
