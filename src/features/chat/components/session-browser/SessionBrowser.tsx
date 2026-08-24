@@ -339,10 +339,10 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
               className="flex-1 h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
               <Check size={16} />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
               <X size={16} />
             </DsButton>
           </div>
@@ -713,7 +713,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
-                className={cn('shrink-0', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                className={cn('shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
               >
                 <Tag size={14} />
                 {sessionTags.selectedFilterTags.size > 0 && (
@@ -762,7 +762,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </div>
 
             {/* 新建按钮 */}
-            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
+            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
               <Plus size={16} />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
             </DsButton>
@@ -915,7 +915,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     : t('page.selectOrCreate')}
                 </span>
                 {!hasActiveFilter && (
-                  <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
+                  <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline [@media(pointer:coarse)]:min-h-11">
                     {t('page.createFirst')}
                   </DsButton>
                 )}
