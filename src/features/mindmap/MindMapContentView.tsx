@@ -121,6 +121,7 @@ import {
 } from './utils/mindmapPreferences';
 import { useCoarsePointer, useMobileScreen } from './hooks/useCoarsePointer';
 import { getAncestors } from './utils/node/traverse';
+import { getAliveSheetTabs, resolveActiveSheet } from './utils/sheetTabs';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -498,25 +499,16 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   // 多 sheet 消费：meta.sheets 记录「哪个一级子节点来自哪个源 sheet」。
   // 切换器把 viewRootId 聚焦到对应一级子树（侵入最小的多画布形态）；
   // 仅当仍有 ≥2 个 sheet 的根节点存活时显示（节点被删则对应项自动消失）。
-  const sheetTabs = useMemo(() => {
-    const sheets = mindmapDocument.meta.sheets;
-    if (!sheets || sheets.length < 2) return null;
-    const childIds = new Set(mindmapDocument.root.children.map((child) => child.id));
-    const alive = sheets.filter((sheet) => childIds.has(sheet.rootNodeId));
-    return alive.length >= 2 ? alive : null;
-  }, [mindmapDocument.meta.sheets, mindmapDocument.root.children]);
+  const sheetTabs = useMemo(
+    () => getAliveSheetTabs(mindmapDocument),
+    [mindmapDocument],
+  );
 
-  const activeSheet = useMemo(() => {
-    if (!sheetTabs || !viewRootId) return null;
+  const activeSheet = useMemo(
     // 专注在 sheet 根或继续下钻其子孙时，切换器都指示所属 sheet
-    if (viewRootId === mindmapDocument.root.id) return null;
-    const ancestorIds = new Set(
-      getAncestors(mindmapDocument.root, viewRootId).map((node) => node.id),
-    );
-    return sheetTabs.find(
-      (sheet) => sheet.rootNodeId === viewRootId || ancestorIds.has(sheet.rootNodeId),
-    ) ?? null;
-  }, [sheetTabs, viewRootId, mindmapDocument.root]);
+    () => resolveActiveSheet(mindmapDocument, sheetTabs, viewRootId),
+    [mindmapDocument, sheetTabs, viewRootId],
+  );
 
   const handleSelectSheet = useCallback((rootNodeId: string | null) => {
     setViewRootId(rootNodeId);
