@@ -77,10 +77,19 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存，复制自 ci.yml 已验证模式（R1-apt-cache）：
+      # 同包列表 + 同镜像 ⇒ 与 ci.yml Rust job 在 main 上共享同一缓存条目。
+      # ImageOS/ImageVersion 须经 GITHUB_ENV 中转、execute_install_scripts
+      # 重放 postinst 触发器的动机，见 ci.yml backend job 同名步骤注释。
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - name: Production migration tests (non-zero count enforced)
         id: tests
@@ -170,10 +179,16 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；作用域与动机见 full-fixture-gate 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - name: Fetch scale fixture tier
         id: fixtures
