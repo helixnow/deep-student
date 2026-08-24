@@ -32,4 +32,19 @@
 | 有效级别 | `max(模型, handler)` | ✅ |
 | AI 标记 | `AiContentLabel` | ✅ |
 
-待办：高风险 handler 走后端 tool 审批管道；`BlockingInteractionBar` 新 kind。
+## Workbench（#5 仪表盘）
+
+| 场景 | 落点 | 状态 |
+|------|------|------|
+| AI 学习简报 widget | `DesktopAgendaWidget` 同级 | 📋 Round 3 |
+| Chat generative_ui 块 | blockRegistry + eventRegistry | ✅ |
+| AI 仪表盘应用窗口 | 新 `AppDefinition` + agentManifest | 📋 Round 4 |
+
+## 流式管道（#9）
+
+| 项 | 状态 |
+|----|------|
+| Rust SSE → Tauri 事件 → chunkBuffer | 既有 Chat V2 管道 |
+| `plugins/events/generativeUI.ts` | ✅ |
+| 块级增量 parser（闭合 block 提交 + last-good） | ✅ |
+| 后端 emit `generative_ui` 事件 | 📋 Rust 侧待补 |

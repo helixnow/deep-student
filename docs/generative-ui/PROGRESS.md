@@ -25,15 +25,17 @@
 | 6 | [Mindmap 注册表](bc-b0635482-e1a3-5f0b-bae0-7301e62d59f2) | mindmap-embed | 📋 Round 4 |
 | 7 | [Research/翻译](bc-966855a0-2513-5a99-84b7-54a95cc31d41) | NDJSON + HpiasStore | 📋 路线图 |
 | 8 | [安全/HITL](bc-d50a51fa-aa8a-543f-9079-e3928b3a3729) | 三级确认 | ✅ |
+| 5 | [Workbench 仪表盘](bc-dbb90b0c-f11d-5f10-b871-b9e3199aec40) | 桌面 widget / 应用窗 | 📋 路线图 |
+| 9 | [AI 流式输出](bc-c1a35ee6-d008-57cd-9d2b-a3aafadf4f6b) | eventRegistry + 块级 parser | ✅ |
 | 10 | [测试契约](bc-f87bbba8-a0b2-5979-a04d-a9c202cc7e29) | vitest | ✅ |
 
-待合并：#3 Notes、#5 Workbench、#9 流式管道
+待合并：#3 Notes
 
 ### 子代理（Round 1 调研，10 × xhigh）
 | # | 任务 | 状态 |
 |---|------|------|
-| 1,2,4,6,7,8,10 | 见上表 | ✅ |
-| 3,5,9 | Notes / Workbench / 流式 | 进行中 |
+| 1,2,4,5,6,7,8,9,10 | 见上表 | ✅/📋 |
+| 3 | Notes generative | 进行中 |
 
 ### 下一轮计划（Round 3）
 - 合并 Round 1 子代理调研结论
