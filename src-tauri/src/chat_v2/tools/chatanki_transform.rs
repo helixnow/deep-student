@@ -334,6 +334,12 @@ fn normalize_transform_ops(
                     if tag.is_empty() {
                         return Err(format!("ops[{index}]: tags must not contain empty entries"));
                     }
+                    if tag.chars().count() > CHATANKI_TRANSFORM_TAG_MAX_CHARS {
+                        return Err(format!(
+                            "ops[{index}]: tags must not exceed {} characters",
+                            CHATANKI_TRANSFORM_TAG_MAX_CHARS
+                        ));
+                    }
                     if seen.insert(tag.clone()) {
                         tags.push(tag);
                     }
@@ -436,13 +442,55 @@ impl TransformFields {
     }
 }
 
+/// regex_replace 输出膨胀超限（Round 4 安全复审）：该卡计划非法，逐卡拒绝。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransformFieldGrowthError {
+    /// 触发膨胀的 op 序号（0 基）。
+    pub op_index: usize,
+    /// 被膨胀的字段名。
+    pub field: &'static str,
+    /// 膨胀后的字节数。
+    pub bytes: usize,
+}
+
+impl TransformFieldGrowthError {
+    pub fn detail(&self) -> String {
+        format!(
+            "ops[{}] grew field '{}' to {} bytes, exceeding the {} byte limit",
+            self.op_index, self.field, self.bytes, CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES
+        )
+    }
+}
+
+/// 单次 regex_replace 后的膨胀闸门：结果超限**且比输入更大**才算膨胀
+///（存量超长字段的原样保留/收缩不受影响）。
+fn check_field_growth(
+    op_index: usize,
+    field: &'static str,
+    before_bytes: usize,
+    after: &str,
+) -> Result<(), TransformFieldGrowthError> {
+    if after.len() > CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES && after.len() > before_bytes {
+        return Err(TransformFieldGrowthError {
+            op_index,
+            field,
+            bytes: after.len(),
+        });
+    }
+    Ok(())
+}
+
 /// 按序应用全部 ops，返回变换后的字段快照（纯函数，不修改输入）。
+///
+/// 每次 regex_replace 后立即做膨胀检查（见
+/// [`CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES`]），在级联放大物化为
+/// 不可控内存之前提前终止；触发时该卡整体拒绝（`Err`），不写库。
 pub fn apply_transform_ops(
     ops: &[CompiledTransformOp],
     fields: &TransformFields,
-) -> TransformFields {
+) -> Result<TransformFields, TransformFieldGrowthError> {
     let mut result = fields.clone();
-    for op in ops {
+    for (op_index, op) in ops.iter().enumerate() {
         match op {
             CompiledTransformOp::RegexReplace {
                 field,
@@ -450,20 +498,28 @@ pub fn apply_transform_ops(
                 replacement,
             } => match field {
                 TransformField::Front => {
-                    result.front = regex
+                    let before_bytes = result.front.len();
+                    let after = regex
                         .replace_all(&result.front, replacement.as_str())
                         .into_owned();
+                    check_field_growth(op_index, "front", before_bytes, &after)?;
+                    result.front = after;
                 }
                 TransformField::Back => {
-                    result.back = regex
+                    let before_bytes = result.back.len();
+                    let after = regex
                         .replace_all(&result.back, replacement.as_str())
                         .into_owned();
+                    check_field_growth(op_index, "back", before_bytes, &after)?;
+                    result.back = after;
                 }
                 TransformField::Text => {
                     // text 为 null 的卡（非 Cloze 卡）自动跳过，不视为错误。
                     if let Some(text) = result.text.as_ref() {
-                        result.text =
-                            Some(regex.replace_all(text, replacement.as_str()).into_owned());
+                        let before_bytes = text.len();
+                        let after = regex.replace_all(text, replacement.as_str()).into_owned();
+                        check_field_growth(op_index, "text", before_bytes, &after)?;
+                        result.text = Some(after);
                     }
                 }
             },
@@ -479,7 +535,7 @@ pub fn apply_transform_ops(
             }
         }
     }
-    result
+    Ok(result)
 }
 
 /// 变换前后字段级 diff（稳定顺序：front/back/text/tags）。
@@ -517,6 +573,7 @@ pub enum TransformCardPlan {
 }
 
 /// ops 模式：把编译后的操作序列应用到选择集，产出与 script 模式同构的逐卡计划。
+/// 输出膨胀超限的卡产出 `Invalid`（逐卡拒绝，不整批失败，与 script 模式同构）。
 pub fn plan_transform_ops(
     ops: &[CompiledTransformOp],
     selected: &[crate::models::AnkiCard],
@@ -524,7 +581,13 @@ pub fn plan_transform_ops(
     selected
         .iter()
         .map(|card| {
-            TransformCardPlan::After(apply_transform_ops(ops, &TransformFields::from_card(card)))
+            match apply_transform_ops(ops, &TransformFields::from_card(card)) {
+                Ok(after) => TransformCardPlan::After(after),
+                Err(growth) => TransformCardPlan::Invalid {
+                    code: "field_growth_exceeded",
+                    detail: growth.detail(),
+                },
+            }
         })
         .collect()
 }
@@ -925,7 +988,7 @@ mod tests {
         }];
         let compiled = compile_transform_ops(&ops).unwrap();
         let before = fields("Q", "耗时 30ms 与 45ms", None, &[]);
-        let after = apply_transform_ops(&compiled, &before);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
         assert_eq!(after.back, "耗时 30 毫秒 与 45 毫秒");
         assert_eq!(changed_field_names(&before, &after), vec!["back"]);
     }
@@ -939,7 +1002,7 @@ mod tests {
         }];
         let compiled = compile_transform_ops(&ops).unwrap();
         let before = fields("Q", "A", None, &[]);
-        let after = apply_transform_ops(&compiled, &before);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
         assert_eq!(before, after);
         assert!(changed_field_names(&before, &after).is_empty());
     }
@@ -974,7 +1037,7 @@ mod tests {
         ];
         let compiled = compile_transform_ops(&ops).unwrap();
         let before = fields("Q", "A", None, &["生物", "草稿"]);
-        let after = apply_transform_ops(&compiled, &before);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
         assert_eq!(after.tags, vec!["生物".to_string(), "重点".to_string()]);
         assert_eq!(changed_field_names(&before, &after), vec!["tags"]);
     }
@@ -995,8 +1058,91 @@ mod tests {
         ];
         let compiled = compile_transform_ops(&ops).unwrap();
         let before = fields("cat", "A", None, &[]);
-        let after = apply_transform_ops(&compiled, &before);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
         assert_eq!(after.front, "wolf");
+    }
+
+    // ------------------------------------------------------------------
+    // Round 4 安全复审：regex 输出膨胀炸弹与 tag 资源边界
+    // ------------------------------------------------------------------
+
+    /// 安全回归：`(?s).` + 长替换串的级联放大在第一次超限时逐卡拦截，
+    /// 不物化天文数字大小的字符串（内存 DoS）。
+    #[test]
+    fn security_regex_growth_bomb_is_blocked_per_card() {
+        let ops = vec![
+            NormalizedTransformOp::RegexReplace {
+                field: TransformField::Front,
+                pattern: "(?s).".to_string(),
+                replacement: "y".repeat(CHATANKI_TRANSFORM_REPLACEMENT_MAX_LEN),
+            },
+            // 若第一个 op 未被拦截，此 op 会试图物化 ~4096^2 倍的字符串
+            NormalizedTransformOp::RegexReplace {
+                field: TransformField::Front,
+                pattern: "(?s).".to_string(),
+                replacement: "z".repeat(CHATANKI_TRANSFORM_REPLACEMENT_MAX_LEN),
+            },
+        ];
+        let compiled = compile_transform_ops(&ops).unwrap();
+        let mut bomb_card = make_card("card-bomb", false, false);
+        bomb_card.front = "x".repeat(4096);
+        let mut tiny_card = make_card("card-tiny", false, false);
+        tiny_card.front = "ok".to_string();
+
+        let plans = plan_transform_ops(&compiled, &[bomb_card, tiny_card]);
+        match &plans[0] {
+            TransformCardPlan::Invalid { code, detail } => {
+                assert_eq!(*code, "field_growth_exceeded");
+                assert!(detail.contains("ops[0]"), "{detail}");
+                assert!(detail.contains("front"), "{detail}");
+            }
+            other => panic!("expected Invalid plan, got {other:?}"),
+        }
+        // 小卡第一次放大后未超限，第二次放大（2*4096*4096 字节）超限 → ops[1] 拦截
+        match &plans[1] {
+            TransformCardPlan::Invalid { code, detail } => {
+                assert_eq!(*code, "field_growth_exceeded");
+                assert!(detail.contains("ops[1]"), "{detail}");
+            }
+            other => panic!("expected Invalid plan, got {other:?}"),
+        }
+    }
+
+    /// 安全回归：存量超长字段的收缩/未膨胀改写不受膨胀闸门误伤。
+    #[test]
+    fn security_shrinking_or_keeping_oversized_field_is_allowed() {
+        let ops = vec![NormalizedTransformOp::RegexReplace {
+            field: TransformField::Back,
+            pattern: "x{100}".to_string(),
+            replacement: "x".to_string(),
+        }];
+        let compiled = compile_transform_ops(&ops).unwrap();
+        let oversized = "x".repeat(CHATANKI_TRANSFORM_FIELD_GROWTH_MAX_BYTES + 4096);
+        let before = fields("Q", &oversized, None, &[]);
+        let after = apply_transform_ops(&compiled, &before).unwrap();
+        assert!(after.back.len() < before.back.len(), "shrink must apply");
+
+        // 未命中 pattern（结果与输入等长）也不触发闸门
+        let noop_ops = vec![NormalizedTransformOp::RegexReplace {
+            field: TransformField::Back,
+            pattern: "never-matches-9f8e7d".to_string(),
+            replacement: "y".to_string(),
+        }];
+        let compiled = compile_transform_ops(&noop_ops).unwrap();
+        let after = apply_transform_ops(&compiled, &before).unwrap();
+        assert_eq!(after.back, before.back);
+    }
+
+    /// 安全回归：单个超长 tag 在参数归一化层拒绝。
+    #[test]
+    fn security_normalize_rejects_overlong_tag() {
+        let overlong = "t".repeat(CHATANKI_TRANSFORM_TAG_MAX_CHARS + 1);
+        let error = parse(json!({
+            "documentId": "doc-1",
+            "transform": { "ops": [{ "op": "tag_add", "tags": [overlong] }] },
+        }))
+        .unwrap_err();
+        assert!(error.contains("must not exceed"), "{error}");
     }
 
     #[test]

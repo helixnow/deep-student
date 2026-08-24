@@ -27,7 +27,7 @@ function printMetrics(label, m) {
   );
 }
 
-const { results, failures, metricsBySet } = await runAll(repoRoot);
+const { results, failures, metricsBySet, goldPairs } = await runAll(repoRoot);
 
 if (asJson) {
   console.log(
@@ -42,6 +42,12 @@ if (asJson) {
           outcomes: actual.cards.map((c) => c.outcome),
           lintCodes: actual.cards.map((c) => c.lintCodes),
           droppedProse: actual.droppedProse,
+        })),
+        goldPairs: goldPairs.results.map((r) => ({
+          id: r.id,
+          originalCodes: r.originalCodes,
+          editedCodes: r.editedCodes,
+          problems: r.problems,
         })),
       },
       null,
@@ -59,6 +65,16 @@ if (asJson) {
     console.log(`  ${status}  ${caseDef.id.padEnd(32)} ${outcomes || '(无卡片段)'}`);
     for (const p of problems) console.log(`        ↳ ${p}`);
   }
+  console.log('\n金标修正对回归（改前=劣化应命中 lint、改后=金标应零命中）');
+  console.log('='.repeat(60));
+  for (const r of goldPairs.results) {
+    const status = r.problems.length === 0 ? 'PASS' : 'FAIL';
+    console.log(
+      `  ${status}  ${r.id.padEnd(32)} original[${r.originalCodes.join(',')}] → edited[${r.editedCodes.join(',') || '∅'}]`
+    );
+    for (const p of r.problems) console.log(`        ↳ ${p}`);
+  }
+
   console.log('\n指标草表');
   console.log('='.repeat(60));
   printMetrics('bad（坏样本集）', metricsBySet.bad);

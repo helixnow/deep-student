@@ -3,13 +3,16 @@
  * 被 vitest 测试（tests/vitest/anki/eval/）与 CLI（scripts/anki-eval/run-eval.mjs）共用。
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { replayStream, replayDirect } from './replayParser.mjs';
 import { lintCard } from './cardLint.mjs';
 
 /** 仓库内 fixture 根目录（相对仓库根） */
 export const FIXTURES_DIR = 'tests/fixtures/anki-eval';
+
+/** 金标修正对目录（gold-set-plan §3 export / §5.2 修正对回归） */
+export const GOLD_PAIRS_DIR = 'tests/fixtures/anki-eval/gold/repair-pairs';
 
 export async function loadManifest(repoRoot) {
   const manifestPath = path.join(repoRoot, FIXTURES_DIR, 'manifest.json');
@@ -120,7 +123,70 @@ export function computeMetrics(results) {
   };
 }
 
-/** 一次性跑完整个清单，返回 { results, failures, metricsBySet }。 */
+// ============================================================================
+// 金标修正对回归（gold-set-plan §5.2：original 应命中、edited 应零命中）
+// ============================================================================
+
+/** 加载 gold/repair-pairs/*.json（按文件名排序，保证输出稳定）。 */
+export async function loadGoldPairs(repoRoot) {
+  const dir = path.join(repoRoot, GOLD_PAIRS_DIR);
+  const files = (await readdir(dir)).filter((f) => f.endsWith('.json')).sort();
+  const pairs = [];
+  for (const file of files) {
+    pairs.push({ file, ...JSON.parse(await readFile(path.join(dir, file), 'utf8')) });
+  }
+  return pairs;
+}
+
+/**
+ * 单个修正对的 lint 契约校验（对应 Rust anki_gold_set::lint_repair_pair）：
+ * - original 必须命中 ≥1 个 lint 码（改前 = 劣化）；
+ * - edited 必须零命中（改后 = 金标）；
+ * - 若 fixture 带 expected.originalCodes/editedCodes，还要逐码精确一致。
+ * @returns {{id, originalCodes, editedCodes, problems: string[]}}
+ */
+export function evaluateRepairPair(pair) {
+  const originalCodes = lintCard(pair.original ?? {});
+  const editedCodes = lintCard(pair.edited ?? {});
+  const problems = [];
+
+  if (originalCodes.length === 0) {
+    problems.push('original 未被任何 lint 规则命中（改前应为劣化样本）——lint 盲区，需评估新规则');
+  }
+  if (editedCodes.length > 0) {
+    problems.push(`edited 仍被 lint 命中 [${editedCodes.join(', ')}]（改后应为金标零命中）`);
+  }
+  const expected = pair.expected ?? {};
+  if (expected.originalCodes) {
+    const exp = [...expected.originalCodes].sort();
+    if (JSON.stringify(originalCodes) !== JSON.stringify(exp)) {
+      problems.push(
+        `original lintCodes 不符：期望 [${exp.join(', ')}]，实际 [${originalCodes.join(', ')}]`
+      );
+    }
+  }
+  if (expected.editedCodes) {
+    const exp = [...expected.editedCodes].sort();
+    if (JSON.stringify(editedCodes) !== JSON.stringify(exp)) {
+      problems.push(
+        `edited lintCodes 不符：期望 [${exp.join(', ')}]，实际 [${editedCodes.join(', ')}]`
+      );
+    }
+  }
+  return { id: pair.id ?? pair.file, originalCodes, editedCodes, problems };
+}
+
+/** 跑完全部修正对，返回 { results, failures }。 */
+export async function runGoldPairs(repoRoot) {
+  const pairs = await loadGoldPairs(repoRoot);
+  const results = pairs.map((pair) => evaluateRepairPair(pair));
+  const failures = results
+    .filter((r) => r.problems.length > 0)
+    .map((r) => ({ id: r.id, problems: r.problems }));
+  return { pairs, results, failures };
+}
+
+/** 一次性跑完整个清单 + 金标修正对，返回 { results, failures, metricsBySet, goldPairs }。 */
 export async function runAll(repoRoot) {
   const manifest = await loadManifest(repoRoot);
   const results = [];
@@ -133,11 +199,17 @@ export async function runAll(repoRoot) {
     if (problems.length > 0) failures.push({ id: caseDef.id, problems });
   }
 
+  const goldPairs = await runGoldPairs(repoRoot);
+  for (const failure of goldPairs.failures) {
+    failures.push({ id: `gold:${failure.id}`, problems: failure.problems });
+  }
+
   const bySet = (set) => results.filter((r) => r.caseDef.set === set).map((r) => r.actual);
   return {
     manifest,
     results,
     failures,
+    goldPairs,
     metricsBySet: {
       bad: computeMetrics(bySet('bad')),
       good: computeMetrics(bySet('good')),

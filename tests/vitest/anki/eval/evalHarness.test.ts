@@ -1,11 +1,14 @@
 /**
- * 制卡质量 eval harness：坏输出回放基线（Round 3 #9）。
+ * 制卡质量 eval harness：坏输出回放基线（Round 3 #9，Round 4 #10 升级）。
  *
  * 回放 tests/fixtures/anki-eval/ 下的真实风格失败样本，
  * 断言解析结局（parse_ok / repair_ok / error_card）与 lint 命中码
  * 与 manifest.json 中固化的预期完全一致，构成回归基线：
- * 后续 Structured Output / 生产 lint 模块落地时，这些 fixture 的
+ * 后续 Structured Output 落地时，这些 fixture 的
  * 预期只允许朝更好方向翻转（error_card → parse_ok），不允许劣化。
+ *
+ * Round 4 #10 起：lint 码复用 Rust 生产模块 anki_qa_lint 的 code 字符串契约
+ * （对齐锁定见同目录 lintContract.test.ts），金标修正对回归见 goldPairs.test.ts。
  *
  * 解析逻辑为生产 Rust 私有函数的测试侧复刻（见 replayParser.mjs 头部
  * DRIFT RISK 说明）；生产侧同场景由 streaming_anki_service.rs 内联
@@ -52,13 +55,13 @@ async function loadAll(): Promise<{ cases: CaseDef[]; results: Map<string, CaseR
 }
 
 describe('anki eval harness：坏输出回放基线', () => {
-  it('fixture 规模达标：坏样本 ≥15，好卡对照 ≥5', async () => {
+  it('fixture 规模达标：坏样本 ≥22，好卡对照 ≥6', async () => {
     const { cases } = await loadAll();
     const bad = cases.filter((c) => c.set === 'bad');
     const good = cases.filter((c) => c.set === 'good');
-    expect(bad.length).toBeGreaterThanOrEqual(15);
-    expect(good.length).toBeGreaterThanOrEqual(5);
-    // 覆盖任务要求的失败类别
+    expect(bad.length).toBeGreaterThanOrEqual(22);
+    expect(good.length).toBeGreaterThanOrEqual(6);
+    // 覆盖任务要求的失败类别（Round 4 #10 起含 lint/critic 边界类别）
     const categories = new Set(bad.map((c) => c.category));
     for (const required of [
       'missing_delimiter',
@@ -69,6 +72,12 @@ describe('anki eval harness：坏输出回放基线', () => {
       'mixed_language_noise',
       'empty_cloze',
       'answer_leak',
+      'front_back_identical',
+      'cloze_broken',
+      'multi_concept',
+      'front_too_long',
+      'placeholder_residue',
+      'lint_blind_spot',
     ]) {
       expect(categories, `缺少类别 ${required}`).toContain(required);
     }
@@ -155,21 +164,51 @@ describe('解析器复刻单元行为（与生产 Rust 单测同场景锚定）'
   });
 });
 
-describe('lint 原型规则', () => {
-  it('空 cloze 命中 EMPTY_CLOZE，合法 cloze 不命中', () => {
-    expect(lintCard({ text: '答案是 {{c1::}}。' })).toContain(LINT_CODES.EMPTY_CLOZE);
+describe('lint 规则（Rust anki_qa_lint 契约对齐后）', () => {
+  it('空 cloze 命中 cloze_empty_answer，合法 cloze 不命中', () => {
+    expect(lintCard({ text: '答案是 {{c1::}}。' })).toContain(LINT_CODES.CLOZE_EMPTY_ANSWER);
     expect(lintCard({ text: '答案是 {{c1::线粒体}}。' })).toEqual([]);
   });
 
-  it('答案泄露命中 ANSWER_LEAK，短 token 重叠不误报', () => {
+  it('答案泄露命中 answer_leak，短 token 重叠不误报', () => {
     expect(lintCard({ front: '答案是 O(n log n) 吗？', back: 'O(n log n)' })).toContain(
       LINT_CODES.ANSWER_LEAK
     );
     expect(lintCard({ front: 'HTTP/2 的改进？', back: '多路复用与 HPACK。' })).toEqual([]);
   });
 
-  it('客套话与占位符分别命中 FILLER_PHRASE / PLACEHOLDER_TEXT', () => {
+  it('客套话与占位符分别命中 filler_phrase / placeholder_text（eval-only 码）', () => {
     expect(lintCard({ front: 'Q', back: '好的，以下是答案：X' })).toContain(LINT_CODES.FILLER_PHRASE);
     expect(lintCard({ front: 'Q', back: 'TODO' })).toContain(LINT_CODES.PLACEHOLDER_TEXT);
+  });
+
+  it('front==back 命中 front_back_identical 且 answer_leak 让位（不双报）', () => {
+    const codes = lintCard({ front: '牛顿第一定律', back: '牛顿第一定律' });
+    expect(codes).toContain(LINT_CODES.FRONT_BACK_IDENTICAL);
+    expect(codes).not.toContain(LINT_CODES.ANSWER_LEAK);
+  });
+
+  it('cloze 破损三态：unclosed / bad_index / missing（码与 Rust 一致）', () => {
+    expect(lintCard({ text: '沸点是 {{c1::100 摄氏度' })).toContain(LINT_CODES.CLOZE_UNCLOSED);
+    expect(lintCard({ text: '沸点是 {{c0::100}} 摄氏度' })).toContain(LINT_CODES.CLOZE_BAD_INDEX);
+    expect(lintCard({ front: '沸点', back: '100℃', text: '水的沸点是 100 摄氏度' })).toContain(
+      LINT_CODES.CLOZE_MISSING
+    );
+  });
+
+  it('front 含合法 cloze 字面量不误报 placeholder_residue（元语法边界）', () => {
+    expect(lintCard({ front: 'cloze 语法 {{c1::答案}} 中 c1 表示什么？', back: '第一个挖空的序号' })).toEqual(
+      []
+    );
+    expect(lintCard({ front: '请总结 {{DOCUMENT_CONTENT}}', back: '内容' })).toContain(
+      LINT_CODES.PLACEHOLDER_RESIDUE
+    );
+  });
+
+  it('结构化 issue 形状对齐 Rust LintIssue：{code, field}', async () => {
+    // @ts-expect-error 共享 .mjs 模块无类型声明
+    const { lintCardIssues } = await import('../../../../scripts/anki-eval/lib/cardLint.mjs');
+    const issues = lintCardIssues({ front: '什么是尾递归优化？', back: '   ' });
+    expect(issues).toEqual([{ code: 'empty_back', field: 'back' }]);
   });
 });
