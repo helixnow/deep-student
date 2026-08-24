@@ -43,15 +43,47 @@ fn derive_key(
     Ok(key)
 }
 
+/// 用**已派生**的密钥加密为 DSBK v1 单块容器（[R07-file-e2ee] 密钥复用路径）。
+///
+/// 容器头写入的 salt/params 仍是派生该 key 时用的值，保证任意持有密码的
+/// 对端都能独立重新派生并解密。
+fn encrypt_backup_with_key(
+    plaintext: &[u8],
+    salt: &[u8; 16],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+    key: &[u8; 32],
+) -> Result<Vec<u8>> {
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| anyhow!("备份加密失败: {}", e))?;
+
+    let mut output = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
+    output.extend_from_slice(BACKUP_MAGIC);
+    output.push(BACKUP_CRYPTO_VERSION);
+    output.extend_from_slice(&m_cost.to_le_bytes());
+    output.extend_from_slice(&t_cost.to_le_bytes());
+    output.extend_from_slice(&p_cost.to_le_bytes());
+    output.extend_from_slice(salt);
+    output.extend_from_slice(&nonce_bytes);
+    output.extend_from_slice(&ciphertext);
+    Ok(output)
+}
+
 /// Encrypt backup data with AES-256-GCM using an Argon2id-derived key.
 ///
 /// Output format: `[DSBK][v1][argon2_params:12][salt:16][nonce:12][ciphertext+tag]`
 pub fn encrypt_backup(plaintext: &[u8], password: &str) -> Result<Vec<u8>> {
     let mut salt = [0u8; 16];
     OsRng.fill_bytes(&mut salt);
-
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
 
     let mut key = derive_key(
         password,
@@ -60,31 +92,26 @@ pub fn encrypt_backup(plaintext: &[u8], password: &str) -> Result<Vec<u8>> {
         DEFAULT_T_COST,
         DEFAULT_P_COST,
     )?;
-
-    let cipher =
-        Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext)
-        .map_err(|e| anyhow!("备份加密失败: {}", e))?;
-
+    let result = encrypt_backup_with_key(
+        plaintext,
+        &salt,
+        DEFAULT_M_COST,
+        DEFAULT_T_COST,
+        DEFAULT_P_COST,
+        &key,
+    );
     key.zeroize();
-
-    let mut output = Vec::with_capacity(HEADER_SIZE + ciphertext.len());
-    output.extend_from_slice(BACKUP_MAGIC);
-    output.push(BACKUP_CRYPTO_VERSION);
-    output.extend_from_slice(&DEFAULT_M_COST.to_le_bytes());
-    output.extend_from_slice(&DEFAULT_T_COST.to_le_bytes());
-    output.extend_from_slice(&DEFAULT_P_COST.to_le_bytes());
-    output.extend_from_slice(&salt);
-    output.extend_from_slice(&nonce_bytes);
-    output.extend_from_slice(&ciphertext);
-    Ok(output)
+    result
 }
 
-/// Decrypt an encrypted backup file produced by [`encrypt_backup`].
-pub fn decrypt_backup(data: &[u8], password: &str) -> Result<Vec<u8>> {
+/// 解析 DSBK v1 头并用 `key_for(salt, m, t, p)` 提供的密钥解密。
+///
+/// [R07-file-e2ee] 把密钥获取抽象出来，`decrypt_backup`（每次派生）与
+/// [`FileCipherSession`]（跨对象缓存派生结果）共用同一解析/校验逻辑。
+fn decrypt_backup_with_key_provider<F>(data: &[u8], key_for: F) -> Result<Vec<u8>>
+where
+    F: FnOnce(&[u8; 16], u32, u32, u32) -> Result<[u8; 32]>,
+{
     if data.len() < HEADER_SIZE {
         return Err(anyhow!("加密备份数据太短"));
     }
@@ -100,11 +127,11 @@ pub fn decrypt_backup(data: &[u8], password: &str) -> Result<Vec<u8>> {
     let m_cost = u32::from_le_bytes(data[off..off + 4].try_into()?);
     let t_cost = u32::from_le_bytes(data[off + 4..off + 8].try_into()?);
     let p_cost = u32::from_le_bytes(data[off + 8..off + 12].try_into()?);
-    let salt = &data[off + 12..off + 28];
+    let salt: [u8; 16] = data[off + 12..off + 28].try_into()?;
     let nonce_bytes = &data[off + 28..off + 40];
     let ciphertext = &data[off + 40..];
 
-    let mut key = derive_key(password, salt, m_cost, t_cost, p_cost)?;
+    let mut key = key_for(&salt, m_cost, t_cost, p_cost)?;
 
     let cipher =
         Aes256Gcm::new_from_slice(&key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
@@ -112,10 +139,17 @@ pub fn decrypt_backup(data: &[u8], password: &str) -> Result<Vec<u8>> {
 
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| anyhow!("备份解密失败（密码错误或数据损坏）: {}", e))?;
+        .map_err(|e| anyhow!("备份解密失败（密码错误或数据损坏）: {}", e));
 
     key.zeroize();
-    Ok(plaintext)
+    plaintext
+}
+
+/// Decrypt an encrypted backup file produced by [`encrypt_backup`].
+pub fn decrypt_backup(data: &[u8], password: &str) -> Result<Vec<u8>> {
+    decrypt_backup_with_key_provider(data, |salt, m_cost, t_cost, p_cost| {
+        derive_key(password, salt, m_cost, t_cost, p_cost)
+    })
 }
 
 /// 构造分块 nonce：`nonce_prefix(7) || counter_be(4) || final_flag(1)`。
@@ -158,12 +192,8 @@ pub fn encrypt_backup_file(
     output: &std::path::Path,
     password: &str,
 ) -> Result<()> {
-    use std::io::Write;
-
     let mut salt = [0u8; 16];
     OsRng.fill_bytes(&mut salt);
-    let mut nonce_prefix = [0u8; 7];
-    OsRng.fill_bytes(&mut nonce_prefix);
 
     let mut key = derive_key(
         password,
@@ -172,13 +202,39 @@ pub fn encrypt_backup_file(
         DEFAULT_T_COST,
         DEFAULT_P_COST,
     )?;
-    let cipher = match Aes256Gcm::new_from_slice(&key) {
-        Ok(c) => c,
-        Err(e) => {
-            key.zeroize();
-            return Err(anyhow!("创建 AES cipher 失败: {}", e));
-        }
-    };
+    let result = encrypt_backup_file_with_key(
+        input,
+        output,
+        &salt,
+        DEFAULT_M_COST,
+        DEFAULT_T_COST,
+        DEFAULT_P_COST,
+        &key,
+    );
+    key.zeroize();
+    result
+}
+
+/// 用**已派生**的密钥把 `input` 以 DSBK v2 分块流式格式加密到 `output`。
+///
+/// [R07-file-e2ee] [`encrypt_backup_file`]（每次派生）与 [`FileCipherSession`]
+/// （会话内复用密钥）共用此实现。头部 salt/params 为派生 `key` 时所用的值。
+fn encrypt_backup_file_with_key(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    salt: &[u8; 16],
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+    key: &[u8; 32],
+) -> Result<()> {
+    use std::io::Write;
+
+    let mut nonce_prefix = [0u8; 7];
+    OsRng.fill_bytes(&mut nonce_prefix);
+
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| anyhow!("创建 AES cipher 失败: {}", e))?;
 
     let in_file = std::fs::File::open(input).map_err(|e| anyhow!("打开待加密文件失败: {}", e))?;
     let mut reader = std::io::BufReader::new(in_file);
@@ -189,71 +245,47 @@ pub fn encrypt_backup_file(
     let write_header = |writer: &mut std::io::BufWriter<std::fs::File>| -> Result<()> {
         writer.write_all(BACKUP_MAGIC)?;
         writer.write_all(&[BACKUP_CRYPTO_VERSION_STREAM])?;
-        writer.write_all(&DEFAULT_M_COST.to_le_bytes())?;
-        writer.write_all(&DEFAULT_T_COST.to_le_bytes())?;
-        writer.write_all(&DEFAULT_P_COST.to_le_bytes())?;
-        writer.write_all(&salt)?;
+        writer.write_all(&m_cost.to_le_bytes())?;
+        writer.write_all(&t_cost.to_le_bytes())?;
+        writer.write_all(&p_cost.to_le_bytes())?;
+        writer.write_all(salt)?;
         writer.write_all(&nonce_prefix)?;
         writer.write_all(&(STREAM_PLAINTEXT_CHUNK as u32).to_le_bytes())?;
         Ok(())
     };
-    if let Err(e) = write_header(&mut writer) {
-        key.zeroize();
-        return Err(anyhow!("写入加密头部失败: {}", e));
-    }
+    write_header(&mut writer).map_err(|e| anyhow!("写入加密头部失败: {}", e))?;
 
     let mut counter: u32 = 0;
     let mut current = vec![0u8; STREAM_PLAINTEXT_CHUNK];
-    let cur_len = match fill_chunk(&mut reader, &mut current) {
-        Ok(n) => n,
-        Err(e) => {
-            key.zeroize();
-            return Err(e);
-        }
-    };
+    let cur_len = fill_chunk(&mut reader, &mut current)?;
     current.truncate(cur_len);
 
     loop {
         let mut next = vec![0u8; STREAM_PLAINTEXT_CHUNK];
-        let next_len = match fill_chunk(&mut reader, &mut next) {
-            Ok(n) => n,
-            Err(e) => {
-                key.zeroize();
-                return Err(e);
-            }
-        };
+        let next_len = fill_chunk(&mut reader, &mut next)?;
         next.truncate(next_len);
         let is_final = next.is_empty();
 
         let nonce = stream_chunk_nonce(&nonce_prefix, counter, is_final);
-        let ct = match cipher.encrypt(Nonce::from_slice(&nonce), current.as_slice()) {
-            Ok(ct) => ct,
-            Err(e) => {
-                key.zeroize();
-                return Err(anyhow!("分块加密失败: {}", e));
-            }
-        };
-        if let Err(e) = writer.write_all(&ct) {
-            key.zeroize();
-            return Err(anyhow!("写入密文失败: {}", e));
-        }
+        let ct = cipher
+            .encrypt(Nonce::from_slice(&nonce), current.as_slice())
+            .map_err(|e| anyhow!("分块加密失败: {}", e))?;
+        writer
+            .write_all(&ct)
+            .map_err(|e| anyhow!("写入密文失败: {}", e))?;
 
         if is_final {
             break;
         }
         current = next;
-        counter = match counter.checked_add(1) {
-            Some(c) => c,
-            None => {
-                key.zeroize();
-                return Err(anyhow!("分块计数溢出（文件过大）"));
-            }
-        };
+        counter = counter
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("分块计数溢出（文件过大）"))?;
     }
 
-    let flush_res = writer.flush();
-    key.zeroize();
-    flush_res.map_err(|e| anyhow!("刷新加密输出失败: {}", e))?;
+    writer
+        .flush()
+        .map_err(|e| anyhow!("刷新加密输出失败: {}", e))?;
     Ok(())
 }
 
@@ -265,6 +297,23 @@ pub fn decrypt_backup_file(
     output: &std::path::Path,
     password: &str,
 ) -> Result<()> {
+    decrypt_backup_file_with_key_provider(input, output, |salt, m_cost, t_cost, p_cost| {
+        derive_key(password, salt, m_cost, t_cost, p_cost)
+    })
+}
+
+/// [`decrypt_backup_file`] 的密钥提供器版本（[R07-file-e2ee] 密钥复用路径）。
+///
+/// `key_for(salt, m, t, p)` 负责给出与容器头登记参数对应的密钥；同时兼容
+/// DSBK v1（整文件单块）与 v2（分块流式）。
+fn decrypt_backup_file_with_key_provider<F>(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    key_for: F,
+) -> Result<()>
+where
+    F: FnOnce(&[u8; 16], u32, u32, u32) -> Result<[u8; 32]>,
+{
     use std::io::{Read, Write};
 
     let in_file = std::fs::File::open(input).map_err(|e| anyhow!("打开加密文件失败: {}", e))?;
@@ -282,7 +331,7 @@ pub fn decrypt_backup_file(
     // 旧 DSBK v1（整文件单块）：仅旧备份会命中，整体读入解密即可。
     if version == BACKUP_CRYPTO_VERSION {
         let data = std::fs::read(input).map_err(|e| anyhow!("读取加密备份失败: {}", e))?;
-        let plaintext = decrypt_backup(&data, password)?;
+        let plaintext = decrypt_backup_with_key_provider(&data, key_for)?;
         let mut writer = std::io::BufWriter::new(
             std::fs::File::create(output).map_err(|e| anyhow!("创建解密输出失败: {}", e))?,
         );
@@ -324,7 +373,7 @@ pub fn decrypt_backup_file(
     }
     let cipher_chunk = plaintext_chunk + 16; // + GCM tag
 
-    let mut key = derive_key(password, &salt, m_cost, t_cost, p_cost)?;
+    let mut key = key_for(&salt, m_cost, t_cost, p_cost)?;
     let cipher = match Aes256Gcm::new_from_slice(&key) {
         Ok(c) => c,
         Err(e) => {
@@ -404,6 +453,146 @@ pub fn decrypt_backup_file(
 /// Returns `true` if `data` starts with the encrypted backup magic bytes.
 pub fn is_encrypted_backup(data: &[u8]) -> bool {
     data.len() >= 4 && &data[0..4] == BACKUP_MAGIC
+}
+
+// =====================================================================================
+// [R07-file-e2ee] 会话级文件加密器：一次 Argon2 派生，跨对象复用密钥
+// =====================================================================================
+
+/// 会话级 DSBK 加密器。
+///
+/// 云同步一轮会加解密大量小对象（清单、workspace db、VFS blob、资产），
+/// 若每个对象都独立随机 salt + Argon2id 派生，单对象成本就是数百毫秒级、
+/// 一轮同步随对象数线性放大。本会话改为：
+///
+/// - **加密**：会话创建时随机一个 salt 并派生一次密钥；本会话内所有对象共用
+///   该 (salt, key)，每个对象仍使用独立随机 nonce（v1 单块为 12 字节随机
+///   nonce，v2 流式为 7 字节随机前缀 + 计数器 + final 标记）。容器头照常写入
+///   salt/params，对端无需任何会话状态即可解密。
+/// - **解密**：按容器头登记的 (salt, params) 缓存派生结果——同一台对端设备
+///   一轮同步产生的对象共用同一 salt，整轮只需一次 Argon2。
+///
+/// Nonce 安全性：同一密钥下 v1 对象各自 96-bit 随机 nonce，v2 对象各自
+/// 56-bit 随机前缀（前缀碰撞才可能重复 nonce，n 个对象的碰撞概率约
+/// n²/2⁵⁷）。会话生命周期为一轮同步，对象数远小于 2²⁰，风险可忽略；
+/// 且每轮会话换新 salt → 新密钥，不跨会话累积。
+///
+/// Drop 时对密钥材料与密码做 zeroize。
+pub struct FileCipherSession {
+    password: String,
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+    salt: [u8; 16],
+    key: [u8; 32],
+    /// (salt, m, t, p) → 派生密钥缓存（解密对端对象时命中）
+    derived: std::sync::Mutex<std::collections::HashMap<([u8; 16], u32, u32, u32), [u8; 32]>>,
+}
+
+impl FileCipherSession {
+    /// 用默认 Argon2id 参数创建会话（一次派生）。
+    pub fn new(password: &str) -> Result<Self> {
+        Self::with_params(password, DEFAULT_M_COST, DEFAULT_T_COST, DEFAULT_P_COST)
+    }
+
+    /// 用自定义 Argon2id 参数创建会话。
+    ///
+    /// 生产路径请用 [`FileCipherSession::new`]（默认参数）；本构造器主要供
+    /// 测试用低成本参数换取速度（容器头会如实登记参数，互操作不受影响）。
+    pub fn with_params(password: &str, m_cost: u32, t_cost: u32, p_cost: u32) -> Result<Self> {
+        if password.is_empty() {
+            return Err(anyhow!("加密密码不能为空"));
+        }
+        let mut salt = [0u8; 16];
+        OsRng.fill_bytes(&mut salt);
+        let key = derive_key(password, &salt, m_cost, t_cost, p_cost)?;
+        Ok(Self {
+            password: password.to_string(),
+            m_cost,
+            t_cost,
+            p_cost,
+            salt,
+            key,
+            derived: std::sync::Mutex::new(std::collections::HashMap::new()),
+        })
+    }
+
+    /// 取得与 (salt, params) 对应的密钥：会话自身 → 缓存 → 现场派生并缓存。
+    fn key_for(&self, salt: &[u8; 16], m_cost: u32, t_cost: u32, p_cost: u32) -> Result<[u8; 32]> {
+        if *salt == self.salt
+            && m_cost == self.m_cost
+            && t_cost == self.t_cost
+            && p_cost == self.p_cost
+        {
+            return Ok(self.key);
+        }
+        let cache_key = (*salt, m_cost, t_cost, p_cost);
+        {
+            let cache = self
+                .derived
+                .lock()
+                .map_err(|_| anyhow!("密钥缓存锁被毒化"))?;
+            if let Some(key) = cache.get(&cache_key) {
+                return Ok(*key);
+            }
+        }
+        let key = derive_key(&self.password, salt, m_cost, t_cost, p_cost)?;
+        self.derived
+            .lock()
+            .map_err(|_| anyhow!("密钥缓存锁被毒化"))?
+            .insert(cache_key, key);
+        Ok(key)
+    }
+
+    /// 加密内存 payload 为 DSBK v1 容器（复用会话密钥，无 Argon2 开销）。
+    pub fn encrypt_bytes(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
+        encrypt_backup_with_key(
+            plaintext,
+            &self.salt,
+            self.m_cost,
+            self.t_cost,
+            self.p_cost,
+            &self.key,
+        )
+    }
+
+    /// 解密 DSBK v1 容器（同 salt 的对象整轮只派生一次密钥）。
+    pub fn decrypt_bytes(&self, data: &[u8]) -> Result<Vec<u8>> {
+        decrypt_backup_with_key_provider(data, |salt, m, t, p| self.key_for(salt, m, t, p))
+    }
+
+    /// 把 `input` 文件加密到 `output`（DSBK v2 分块流式，复用会话密钥）。
+    pub fn encrypt_file(&self, input: &std::path::Path, output: &std::path::Path) -> Result<()> {
+        encrypt_backup_file_with_key(
+            input,
+            output,
+            &self.salt,
+            self.m_cost,
+            self.t_cost,
+            self.p_cost,
+            &self.key,
+        )
+    }
+
+    /// 解密 DSBK 文件（v1/v2 均可）到 `output`（按头部 salt 缓存派生密钥）。
+    pub fn decrypt_file(&self, input: &std::path::Path, output: &std::path::Path) -> Result<()> {
+        decrypt_backup_file_with_key_provider(input, output, |salt, m, t, p| {
+            self.key_for(salt, m, t, p)
+        })
+    }
+}
+
+impl Drop for FileCipherSession {
+    fn drop(&mut self) {
+        self.password.zeroize();
+        self.key.zeroize();
+        if let Ok(mut cache) = self.derived.lock() {
+            for (_, key) in cache.iter_mut() {
+                key.zeroize();
+            }
+            cache.clear();
+        }
+    }
 }
 
 // =====================================================================================
@@ -658,6 +847,87 @@ mod tests {
         digest_bytes[0] ^= 0xFF;
         tampered.digest = hex::encode(digest_bytes);
         assert!(!check_password_verifier("pw", &tampered).unwrap());
+    }
+
+    // ---------------- [R07-file-e2ee] FileCipherSession ----------------
+
+    /// 测试用低成本 Argon2 参数（容器头如实登记，互操作不受影响）
+    fn cheap_session(password: &str) -> FileCipherSession {
+        FileCipherSession::with_params(password, 8, 1, 1).unwrap()
+    }
+
+    #[test]
+    fn session_bytes_roundtrip_and_wrong_password() {
+        let session = cheap_session("session-pw");
+        let a = session.encrypt_bytes(b"payload-a").unwrap();
+        let b = session.encrypt_bytes(b"payload-b").unwrap();
+        assert!(is_encrypted_backup(&a));
+        // 同会话共用 salt，但 nonce 必须各自随机 → 密文不同
+        assert_eq!(&a[5..33], &b[5..33], "同会话 params+salt 应一致");
+        assert_ne!(&a[33..45], &b[33..45], "nonce 必须每对象独立随机");
+
+        assert_eq!(session.decrypt_bytes(&a).unwrap(), b"payload-a");
+        assert_eq!(session.decrypt_bytes(&b).unwrap(), b"payload-b");
+
+        let other = cheap_session("wrong-pw");
+        assert!(other.decrypt_bytes(&a).is_err(), "错误密码必须解密失败");
+    }
+
+    #[test]
+    fn session_file_roundtrip_across_sessions() {
+        // 设备 A 的会话加密 → 设备 B 的会话（不同随机 salt）解密：
+        // 走 key_for 的缓存派生路径，等价于跨设备同步下载。
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.bin");
+        let enc = dir.path().join("enc.dsbk");
+        let dec = dir.path().join("dec.bin");
+        let plain: Vec<u8> = (0..70_000usize).map(|i| (i % 253) as u8).collect();
+        std::fs::write(&input, &plain).unwrap();
+
+        let a = cheap_session("shared-pw");
+        a.encrypt_file(&input, &enc).unwrap();
+        let head = std::fs::read(&enc).unwrap();
+        assert!(is_encrypted_backup(&head));
+        assert_eq!(head[4], BACKUP_CRYPTO_VERSION_STREAM);
+
+        let b = cheap_session("shared-pw");
+        b.decrypt_file(&enc, &dec).unwrap();
+        assert_eq!(std::fs::read(&dec).unwrap(), plain);
+
+        // 第二个来自 A 的对象命中 B 的密钥缓存（行为等价，重点是结果正确）
+        let enc2 = dir.path().join("enc2.dsbk");
+        let dec2 = dir.path().join("dec2.bin");
+        a.encrypt_file(&input, &enc2).unwrap();
+        b.decrypt_file(&enc2, &dec2).unwrap();
+        assert_eq!(std::fs::read(&dec2).unwrap(), plain);
+
+        let evil = cheap_session("wrong-pw");
+        let dec3 = dir.path().join("dec3.bin");
+        assert!(evil.decrypt_file(&enc, &dec3).is_err());
+    }
+
+    #[test]
+    fn session_output_interoperates_with_password_api() {
+        // 会话输出必须能被「每次派生」的密码 API 解密，反向亦然。
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.bin");
+        std::fs::write(&input, b"interop payload").unwrap();
+
+        let session = cheap_session("pw-interop");
+        let enc = dir.path().join("enc.dsbk");
+        session.encrypt_file(&input, &enc).unwrap();
+        let dec = dir.path().join("dec.bin");
+        decrypt_backup_file(&enc, &dec, "pw-interop").unwrap();
+        assert_eq!(std::fs::read(&dec).unwrap(), b"interop payload");
+
+        // 反向：密码 API（默认参数）加密的 v1 payload，会话可解密
+        let v1 = encrypt_backup(b"legacy payload", "pw-interop").unwrap();
+        assert_eq!(session.decrypt_bytes(&v1).unwrap(), b"legacy payload");
+    }
+
+    #[test]
+    fn session_rejects_empty_password() {
+        assert!(FileCipherSession::with_params("", 8, 1, 1).is_err());
     }
 
     #[test]
