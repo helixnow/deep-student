@@ -394,3 +394,15 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **测试**：新文件 `tests/vitest/data-governance/r11-unsynced-items-panel.test.tsx`（空态/未配置/多类目/截断/重试动作/失败重试/locale 契约，10 例）与 `r11-unsynced-mount.test.tsx`（SyncTab 挂载行锁定 3 例）。
 
 **文件面认领（独占）**：`UnsyncedItemsPanel.tsx` 新文件、`SyncTab.tsx` 挂载行（import + 挂载）、`sync.json`（zh/en）`unsynced.*`、`commands_sync.rs` 未同步查询段（只加不改，含段尾新测试模块）、`lib.rs` 注册一行、`data_governance/mod.rs` re-export 一行、`permissions/application-commands.toml` 一行、`r11-unsynced-*.test.tsx` 两个新文件、本节。与 R11-check 的 `commands_sync.rs` 巡检段各自只加新段无交叠；未动 RecordConflictsPanel / repo_check / notes / chat / workbench。
+
+### R10-providers（分支 `cursor/cloud-sync-sota-r10-providers-b343`，WebDAV 非续传下载字节数核对）
+
+模型 claude-fable-5-thinking-high。关闭 FINDINGS-R11 §2 P2-2：WebDAV 非续传 `get_file` 是四条 provider 下载路径中唯一无字节数核对的（S3/FTP/默认实现自 R10-download 起均有）。交付：
+
+- **实现**：`cloud_storage/webdav.rs::get_file` 在流 EOF 后（flush/sync 之后、checksum 比对之前）校验 `downloaded == total_size`，不一致即 fail-closed，错误文案与 S3 同形态（「WebDAV 下载不完整或对象已变更：声明 N 字节，实际收到 M 字节，已拒绝保存（请重试）」）。同时覆盖「对象在 stat（PROPFIND）与 GET 之间被并发替换成不同大小错版本」形态——该形态传输层不报错，只有此核对能拦下；temp 文件随错误返回自动清理，不落盘。续传路径 `get_file_resumable` 原有 `written != total_size` 拒绝未动。
+- **测试**：新文件 `src-tauri/tests/sync_r10_provider_contract.rs` 4 例（进程内假 WebDAV 服务器，与 `webdav_download_resume_tests.rs` 同型）：换小包（传输层完整、Content-Length 一致，仅字节核对可拦）/ 换大包 / 截断流（传输层报错或字节核对拦截皆可，唯一不许当成功）三形态均断言 `Err` + 目标路径与 `.download-*` 临时文件零残留；一致对照例断言内容与返回 SHA256 逐字节正确（不误伤正常下载）。全部以 `expected_checksum=None` 调用（真实调用方 `repo_check.rs` 的形态，无第二道防线）。
+- **文档**：用户指南 16 溯源注释补一条——`:80`「所有云端下载都会核对字节数」自此对 WebDAV 非续传路径也成立（此前为超前表述，正文无需改动）；FINDINGS-R11 §2 P2-2 / §3.2 状态回写。
+
+**范围外（明示不做）**：`ftp.rs` 未动——FINDINGS-R11 未对 FTP 提出新增量（上传核对/死代码均无强证据），且 `ftp.rs` 与枝 `cursor/fix-sync-tombstone-db14` 合 main 必冲突，无必要不扩大冲突面；`get_file_decoded` 死代码删除（FINDINGS-R11 P2-1）属 `data_governance/sync/mod.rs`，不在本包文件面，留待认领。
+
+**文件面认领（独占）**：`cloud_storage/webdav.rs`（仅 `get_file` 字节数校验一段）、`src-tauri/tests/sync_r10_provider_contract.rs` 新文件、用户指南 16 溯源注释一条、FINDINGS-R11 P2-2/§3.2 状态回写、本节。不改 `sync_manager.rs` / `repo_check` / `ftp.rs` / RecordConflictsPanel / notes / chat / workbench。

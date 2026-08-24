@@ -120,6 +120,7 @@ KEY-ROTATION-R11.md 四件套（用户流程 / v3 草案 / 命名元数据评估
 - `webdav.rs:905-995`：流读到结束即成功，`downloaded` 只用于进度回调，从不与 `total_size`（PROPFIND 声明）比对；仅当调用方传 `expected_checksum` 才有第二道防线。对照：同文件续传路径 `get_file_resumable` 有超量拒绝（`:1131-1133`）与 `written != total_size` 拒绝（`:1152-1154`）；S3/FTP/默认实现 R10 起均有核对（§1.6）。
 - 实际暴露面收窄但存在：reqwest/hyper 对 Content-Length 不满足的过早断流通常报错（半包多数被传输层拦截），但 R10-download 为 S3 明确覆盖的「对象在 stat 与 GET 之间被并发替换（大小不同的错版本）」形态对 WebDAV 同样成立且不会触发传输层错误。现有 `expected=None` 调用方：`repo_check.rs:484`（巡检自行比对 SHA256，错版本会被归为 `ChecksumMismatch`，不损数据但归因失真——本应是「对象已变更」）。备份下载走 `version.checksum`，文件级对象走 `download_file_object` 双哈希，均有兜底。
 - 建议：`webdav.rs::get_file` 补 `downloaded != total_size` fail-closed（与 S3 同文案形态），并在 `webdav_download_resume_tests.rs` 旁补一例非续传半包/换包测。指南 16 `:80`「所有云端下载都会核对字节数」在此之前对 WebDAV 非续传路径是超前表述。
+- **状态更新（R10-providers 回写）**：已关闭——`webdav.rs::get_file` EOF 后补 `downloaded != total_size` fail-closed（与 S3 同文案形态，temp 文件随错误清理不落盘），新锁定测 `sync_r10_provider_contract.rs` 4 例（换小包/换大包/截断流拒绝 + 一致对照），指南 16 溯源注释对齐。登记见 FIX-QUEUE「R10-providers」节。
 
 ### P2-3（过程项）交付绿灯声明与实际可验证性脱节
 
@@ -149,7 +150,7 @@ KEY-ROTATION-R11.md 四件套（用户流程 / v3 草案 / 命名元数据评估
 |---|---|---|
 | P1-1 repo_check v2 头偏移 | `sync_r11_repo_check.rs`（修复时改）+ `repo_check.rs` 单测段 | ① `real_dsbk_v2_object_passes_header_check`：用 `encrypt_backup_file` 真实产物（而非手搓 fixture）跑 `run_repo_check`，加密好库必须 `Ok` 且零 `UndecodableDsbkHeader`；② 现有 44 字节头单测在修复后转绿（不许改断言迁就实现）；③ 60–63 字节 v2 对象不误报截断 |
 | P2-1 死代码 | 无需新测 | 删除 `get_file_decoded`；若保留，必须补「启用加密时拒收明文对象」断言对齐 `download_file_object`（现语义相悖） |
-| P2-2 WebDAV 字节核对 | `webdav_download_resume_tests.rs` 同型新文件或同文件新段 | 假 WebDAV 服务器 PROPFIND 声明 N 字节、GET 送 M≠N（M<N 与 M>N 各一）→ 非续传 `get_file`（`expected_checksum=None`）必须 `Err` 且不落盘 |
+| P2-2 WebDAV 字节核对 | `webdav_download_resume_tests.rs` 同型新文件或同文件新段 | 假 WebDAV 服务器 PROPFIND 声明 N 字节、GET 送 M≠N（M<N 与 M>N 各一）→ 非续传 `get_file`（`expected_checksum=None`）必须 `Err` 且不落盘。**已交付（R10-providers）**：`sync_r10_provider_contract.rs` 4 例，按左述断言落地 |
 | P2-3 绿灯声明 | CI | 完整跑一次 `cargo test` + vitest 4 shard；P1-1 修复并入同一 run 验证 |
 
 ---
