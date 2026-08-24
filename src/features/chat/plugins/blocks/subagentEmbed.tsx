@@ -686,6 +686,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             className={cn(
               'px-1.5 py-0.5 rounded border border-border/60 text-xs text-muted-foreground',
               'hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0',
+              // 触屏扩大命中区至 ≥44px（视觉不变，同 open-full/height-toggle 伪元素范式）
+              "[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
               isCancelling && 'opacity-50 pointer-events-none'
             )}
             aria-label={t('workspace:subagentEmbed.cancel')}
