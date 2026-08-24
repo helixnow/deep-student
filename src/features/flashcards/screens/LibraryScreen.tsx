@@ -383,7 +383,7 @@ export const LibraryScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={() => void refresh()}
-          className="shrink-0 text-sm"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('library.refresh')}
@@ -408,7 +408,7 @@ export const LibraryScreen: React.FC = () => {
             className="h-9 pl-8 text-sm [@media(pointer:coarse)]:h-11"
           />
         </div>
-        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm">
+        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:min-h-11">
           {t('library.search')}
         </DsButton>
       </div>
@@ -497,7 +497,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkReview}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:min-h-11"
             >
               <Play size={13} weight="fill" />
               {translate('library.bulkReview', { count: reviewTargets.length })}
@@ -510,7 +510,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkEnqueue}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:min-h-11"
             >
               <PlusCircle size={13} />
               {translate('library.bulkEnqueue', { count: enqueueTargets.length })}
@@ -523,7 +523,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkSuspend}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:min-h-11"
             >
               <Pause size={13} />
               {translate('library.bulkSuspend', { count: suspendTargets.length })}
@@ -536,7 +536,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkResume}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:min-h-11"
             >
               <Play size={13} />
               {translate('library.bulkResume', { count: resumeTargets.length })}
@@ -548,7 +548,11 @@ export const LibraryScreen: React.FC = () => {
             size="sm"
             disabled={rowBusy}
             onClick={handleBulkDelete}
-            className={bulkDeleteArmed ? 'fc-lib-armed text-xs' : 'text-xs'}
+            className={
+              bulkDeleteArmed
+                ? 'fc-lib-armed text-xs [@media(pointer:coarse)]:min-h-11'
+                : 'text-xs [@media(pointer:coarse)]:min-h-11'
+            }
           >
             <Trash size={13} />
             {bulkDeleteArmed
@@ -561,7 +565,7 @@ export const LibraryScreen: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={clearSelection}
-            className="text-xs"
+            className="text-xs [@media(pointer:coarse)]:min-h-11"
           >
             <X size={13} />
             {translate('library.clearSelection')}
