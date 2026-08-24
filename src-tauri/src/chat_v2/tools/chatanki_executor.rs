@@ -2446,6 +2446,7 @@ impl ChatAnkiToolExecutor {
                 return Ok(finish_chatanki_failure(call, ctx, start_time, error));
             }
         };
+        let original_card = card.clone();
         // 截断防御：疑似把 get_cards 的截断输出当作完整字段整体回写。
         if !args.allow_truncated_source {
             let suspected_fields = detect_truncated_source_fields(&card, &args.patch);
@@ -2509,6 +2510,17 @@ impl ChatAnkiToolExecutor {
                     std::slice::from_ref(&updated.id),
                     vec![convert_backend_card(&updated)],
                 );
+                let edits = card_edit_observations(&original_card, &updated);
+                if !edits.is_empty() {
+                    persist_preference_observation_best_effort(
+                        db,
+                        &crate::anki_preference_memory::SessionObservation {
+                            edits,
+                            ..Default::default()
+                        },
+                        "update_card",
+                    );
+                }
                 Ok(finish_chatanki_success(
                     call,
                     ctx,
@@ -2570,12 +2582,14 @@ impl ChatAnkiToolExecutor {
                 ));
             }
         };
-        let (_, document_id) = match load_owned_chatanki_card(db, card_id, &ctx.session_id) {
-            Ok(owned) => owned,
-            Err(error) => {
-                return Ok(finish_chatanki_failure(call, ctx, start_time, error));
-            }
-        };
+        let (deleted_card, document_id) =
+            match load_owned_chatanki_card(db, card_id, &ctx.session_id) {
+                Ok(owned) => owned,
+                Err(error) => {
+                    return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+                }
+            };
+        let generated_count = generated_card_count_best_effort(db, &document_id, &ctx.session_id);
         let (mutation_target, delete_result) = match run_preflighted_card_mutation(
             ctx.chat_v2_db.as_deref(),
             &ctx.session_id,
@@ -2653,6 +2667,11 @@ impl ChatAnkiToolExecutor {
             }),
         ));
         emit_fsrs_cards_changed(ctx, "card_deleted", &[card_id.to_string()]);
+        let observation =
+            deletion_preference_observation(std::slice::from_ref(&deleted_card), generated_count);
+        if !observation.deletions.is_empty() {
+            persist_preference_observation_best_effort(db, &observation, "delete_card");
+        }
 
         Ok(finish_chatanki_success(
             call,
@@ -2729,6 +2748,7 @@ impl ChatAnkiToolExecutor {
         let total = args.updates.len();
         let mut results: Vec<Value> = Vec::with_capacity(total);
         let mut updated_cards: Vec<crate::models::AnkiCard> = Vec::new();
+        let mut preference_edits = Vec::new();
         let mut conflict_count = 0usize;
         let mut blocked_count = 0usize;
         let mut failed_count = 0usize;
@@ -2771,6 +2791,7 @@ impl ChatAnkiToolExecutor {
                     continue;
                 }
             }
+            let original_card = card.clone();
             item.patch.apply_to(&mut card);
             if !card_content_is_valid(&card) {
                 failed_count += 1;
@@ -2787,6 +2808,7 @@ impl ChatAnkiToolExecutor {
                 &ctx.session_id,
             ) {
                 Ok(AnkiCardVersionUpdate::Updated(updated)) => {
+                    preference_edits.extend(card_edit_observations(&original_card, &updated));
                     results.push(json!({
                         "cardId": card_id,
                         "status": "ok",
@@ -2862,6 +2884,16 @@ impl ChatAnkiToolExecutor {
         } else {
             "failed"
         };
+        if !preference_edits.is_empty() {
+            persist_preference_observation_best_effort(
+                db,
+                &crate::anki_preference_memory::SessionObservation {
+                    edits: preference_edits,
+                    ..Default::default()
+                },
+                "batch_update_cards",
+            );
+        }
 
         Ok(finish_chatanki_success(
             call,
@@ -2919,14 +2951,15 @@ impl ChatAnkiToolExecutor {
         };
 
         // 预解析每张卡所属文档：批量删除必须来自同一文档（对齐 retemplate 语义）。
-        let mut resolved: Vec<(ChatAnkiDeleteCardsItem, String)> = Vec::new();
+        let mut resolved: Vec<(ChatAnkiDeleteCardsItem, String, crate::models::AnkiCard)> =
+            Vec::new();
         let mut early_results: Vec<Value> = Vec::new();
         let mut document_ids: HashSet<String> = HashSet::new();
         for item in args.cards {
             match load_owned_chatanki_card(db, &item.card_id, &ctx.session_id) {
-                Ok((_, item_document_id)) => {
+                Ok((card, item_document_id)) => {
                     document_ids.insert(item_document_id.clone());
-                    resolved.push((item, item_document_id));
+                    resolved.push((item, item_document_id, card));
                 }
                 Err(error) => {
                     early_results.push(json!({
@@ -2964,6 +2997,7 @@ impl ChatAnkiToolExecutor {
             ));
         }
         let document_id = document_id.expect("checked above");
+        let generated_count = generated_card_count_best_effort(db, &document_id, &ctx.session_id);
         let mutation_target =
             match preflight_card_mutation(ctx.chat_v2_db.as_deref(), &ctx.session_id, &document_id)
             {
@@ -2981,10 +3015,11 @@ impl ChatAnkiToolExecutor {
         let total = resolved.len() + early_results.len();
         let mut results = early_results;
         let mut deleted_ids: Vec<String> = Vec::new();
+        let mut deleted_cards: Vec<crate::models::AnkiCard> = Vec::new();
         let mut conflict_count = 0usize;
         let mut failed_count = results.len();
 
-        for (item, _) in resolved {
+        for (item, _, original_card) in resolved {
             let card_id = item.card_id.clone();
             match db.delete_anki_card_for_session(
                 &card_id,
@@ -2999,6 +3034,7 @@ impl ChatAnkiToolExecutor {
                         "deleted": true,
                     }));
                     deleted_ids.push(card_id);
+                    deleted_cards.push(original_card);
                 }
                 Ok(AnkiCardVersionDelete::Conflict(current)) => {
                     conflict_count += 1;
@@ -3068,6 +3104,10 @@ impl ChatAnkiToolExecutor {
         } else {
             "failed"
         };
+        let observation = deletion_preference_observation(&deleted_cards, generated_count);
+        if !observation.deletions.is_empty() {
+            persist_preference_observation_best_effort(db, &observation, "delete_cards");
+        }
 
         Ok(finish_chatanki_success(
             call,
@@ -7727,15 +7767,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                                 &params.goal,
                                 params.tuning.visual_hint.as_deref(),
                             );
-                            let output = params
-                                .llm_manager
-                                .call_model2_raw_prompt(
-                                    &prompt,
-                                    Some(image_payloads.payloads),
-                                    crate::llm_usage::CallerType::Anki,
-                                )
-                                .await
-                                .map_err(|e| e.to_string())?;
+                            let output = call_vlm_extract(
+                                &params.llm_manager,
+                                "chatanki.vlm_full_image_fallback",
+                                &prompt,
+                                image_payloads.payloads,
+                            )
+                            .await
+                            .map_err(|e| e.to_string())?;
                             let visual_md = strip_vlm_chunk_markers(&output.assistant_message);
                             let visual_md =
                                 append_vlmfull_occlusion_draft(visual_md, &merged_ref_data);
@@ -7796,15 +7835,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     );
                     let prompt =
                         build_vlm_light_prompt(&params.goal, params.tuning.visual_hint.as_deref());
-                    let output = params
-                        .llm_manager
-                        .call_model2_raw_prompt(
-                            &prompt,
-                            Some(image_payloads.payloads),
-                            crate::llm_usage::CallerType::Anki,
-                        )
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let output = call_vlm_extract(
+                        &params.llm_manager,
+                        "chatanki.vlm_light_extract",
+                        &prompt,
+                        image_payloads.payloads,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
 
                     let visual_md = output.assistant_message;
                     let combined = if text.trim().is_empty() {
@@ -7855,15 +7893,14 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     );
                     let prompt =
                         build_import_prompt(&params.goal, params.tuning.visual_hint.as_deref());
-                    let output = params
-                        .llm_manager
-                        .call_model2_raw_prompt(
-                            &prompt,
-                            Some(image_payloads.payloads),
-                            crate::llm_usage::CallerType::Anki,
-                        )
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let output = call_vlm_extract(
+                        &params.llm_manager,
+                        "chatanki.vlm_full_extract",
+                        &prompt,
+                        image_payloads.payloads,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
                     let visual_md = strip_vlm_chunk_markers(&output.assistant_message);
                     let visual_md = append_vlmfull_occlusion_draft(visual_md, &merged_ref_data);
                     let combined = if text.trim().is_empty() {
@@ -7989,9 +8026,9 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         None
     };
 
-    // Round 4 #1：检索历史制卡偏好（可用 enablePreferenceMemory=false 关闭）。
-    // 这里只读 settings；当前生产路径尚无 extract/consolidate 写入者，因此全新
-    // 安装的 store 为空、不会注入。任何读取/解析失败都降级为不注入。
+    // 检索历史制卡偏好（可用 enablePreferenceMemory=false 关闭本次注入）。
+    // extraRequirements 会在 hint 构建后写入，因此本次显式要求不会被重复当作
+    // “历史偏好”注入；任何读取/解析失败都降级为不注入。
     let preference_hint = if params.tuning.preference_memory_enabled() {
         let store_json = params
             .anki_db
@@ -8019,6 +8056,16 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         &params.tuning,
         preference_hint.as_deref(),
     );
+    if let Some(extra_requirements) = params.extra_requirements.as_ref() {
+        persist_preference_observation_best_effort(
+            &params.anki_db,
+            &crate::anki_preference_memory::SessionObservation {
+                extra_requirements: Some(extra_requirements.clone()),
+                ..Default::default()
+            },
+            "extra_requirements",
+        );
+    }
 
     // 多模板模式：使用启动阶段已校验过的 template_ids，避免隐式“全模板”导致体验偏差。
     if template.is_none() {
@@ -9346,10 +9393,38 @@ async fn plan_route(
     text_sample: &str,
 ) -> Option<RoutePlan> {
     let prompt = build_route_plan_prompt(goal, ref_data, text_sample);
-    let output = match llm_manager
-        .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Anki)
-        .await
-    {
+    // plan_route 是低频、高价值的规划职责：优先消费 Planner（主模型）槽。
+    // 槽位探测失败、缺槽位或配置在调用前消失时，路由适配器回退原 model2；
+    // 调用/解析失败仍由本函数返回 None，让调用方走确定性启发式，不阻断制卡。
+    let planner_decision = llm_manager
+        .resolve_anki_role_decision(
+            crate::anki_model_routing::AnkiModelRole::Planner,
+            crate::anki_model_routing::RoutingMode::Auto,
+        )
+        .await;
+    let routed_output = llm_manager
+        .call_anki_routed_raw_prompt(
+            planner_decision.as_ref(),
+            "chatanki.plan_route",
+            &prompt,
+            None,
+        )
+        .await;
+    // 若专门的 Planner 调用本身失败，再试一次接线前的 model2 路径；两者都失败
+    // 仍只会回退启发式。decision=None 时适配器已经走 model2，避免重复请求。
+    let output_result = match (routed_output, planner_decision.is_some()) {
+        (Err(error), true) => {
+            log::warn!(
+                "[chatanki] Planner 槽调用失败，回退原 model2 路径: {}",
+                error
+            );
+            llm_manager
+                .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Anki)
+                .await
+        }
+        (result, _) => result,
+    };
+    let output = match output_result {
         Ok(o) => o,
         Err(e) => {
             log::warn!("[chatanki] plan_route LLM 调用失败，回退启发式路由: {}", e);
@@ -9375,6 +9450,45 @@ async fn plan_route(
             );
             None
         }
+    }
+}
+
+/// 在 VLM 路径消费 Sidekick 的 Vlm 槽。
+///
+/// `resolve_anki_role_decision` 是 best-effort：视觉槽缺失时计划会降级到同一套
+/// 基准模型；探测完全失败时返回 None，`call_anki_routed_raw_prompt` 则复用原
+/// model2 调用。因此新增路由本身不会成为制卡失败点。
+async fn call_vlm_extract(
+    llm_manager: &crate::llm_manager::LLMManager,
+    task: &str,
+    prompt: &str,
+    image_payloads: Vec<ImagePayload>,
+) -> Result<crate::models::StandardModel2Output, AppError> {
+    let vlm_decision = llm_manager
+        .resolve_anki_role_decision(
+            crate::anki_model_routing::AnkiModelRole::Vlm,
+            crate::anki_model_routing::RoutingMode::Auto,
+        )
+        .await;
+    let fallback_payloads = vlm_decision.is_some().then(|| image_payloads.clone());
+    let routed_output = llm_manager
+        .call_anki_routed_raw_prompt(vlm_decision.as_ref(), task, prompt, Some(image_payloads))
+        .await;
+    match (routed_output, fallback_payloads) {
+        (Err(error), Some(image_payloads)) => {
+            log::warn!(
+                "[chatanki] Vlm 槽调用失败，回退原 model2 图片提取路径: {}",
+                error
+            );
+            llm_manager
+                .call_model2_raw_prompt(
+                    prompt,
+                    Some(image_payloads),
+                    crate::llm_usage::CallerType::Anki,
+                )
+                .await
+        }
+        (result, _) => result,
     }
 }
 
@@ -10593,11 +10707,175 @@ fn suggest_max_cards_arg(glossary_mode: bool, entry_like_lines: usize, char_coun
     default_max_cards_for_content(false, char_count).clamp(1, 100)
 }
 
-/// 偏好记忆读取侧预留的 settings key（value 为 `PreferenceStore` JSON）。
-///
-/// 当前没有生产写入者；除非历史版本/外部迁移已写入，否则该 key 缺失且
-/// retrieve 返回空。不要把这个常量误解为写入侧已经接通。
+/// 本地偏好记忆的 settings key（value 为 `PreferenceStore` JSON）。
 pub(crate) const CHATANKI_PREFERENCE_MEMORY_SETTING_KEY: &str = "chatanki_preference_memory_store";
+
+/// settings 的 get/modify/save 不是单个数据库事务；进程内串行化写入，避免并发的
+/// extraRequirements、编辑和删除观察互相覆盖。应用本身有单实例保护，因此不需要跨进程锁。
+static CHATANKI_PREFERENCE_MEMORY_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn preference_memory_write_guard() -> std::sync::MutexGuard<'static, ()> {
+    CHATANKI_PREFERENCE_MEMORY_WRITE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!("[ChatAnkiToolExecutor] preference memory write lock poisoned; recovering");
+            poisoned.into_inner()
+        })
+}
+
+/// 把一次生产观察完整执行 extract → consolidate → settings persist。
+///
+/// 解析损坏的既有值时 fail-closed，不用空 store 覆盖原值。调用方必须通过
+/// [`persist_preference_observation_best_effort`] 使用它，确保偏好副作用永不改变写卡结果。
+fn persist_preference_observation(
+    db: &crate::database::Database,
+    observation: &crate::anki_preference_memory::SessionObservation,
+    now_ms: i64,
+) -> Result<crate::anki_preference_memory::ConsolidateOutcome, String> {
+    let _guard = preference_memory_write_guard();
+    let existing_json = db
+        .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+        .map_err(|error| format!("read local preference store: {error}"))?;
+    let mut store = match existing_json.as_deref() {
+        Some(raw) => serde_json::from_str(raw)
+            .map_err(|error| format!("parse local preference store: {error}"))?,
+        None => crate::anki_preference_memory::PreferenceStore::default(),
+    };
+    let outcome =
+        crate::anki_preference_memory::consolidate_observation(&mut store, observation, now_ms);
+    let serialized = serde_json::to_string(&store)
+        .map_err(|error| format!("serialize local preference store: {error}"))?;
+    db.save_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY, &serialized)
+        .map_err(|error| format!("save local preference store: {error}"))?;
+    Ok(outcome)
+}
+
+fn persist_preference_observation_best_effort(
+    db: &crate::database::Database,
+    observation: &crate::anki_preference_memory::SessionObservation,
+    source: &str,
+) {
+    match persist_preference_observation(db, observation, chrono::Utc::now().timestamp_millis()) {
+        Ok(outcome) => {
+            log::debug!(
+                "[ChatAnkiToolExecutor] preference observation persisted: source={}, added={}, reinforced={}, evicted={}",
+                source,
+                outcome.added.len(),
+                outcome.reinforced.len(),
+                outcome.evicted.len()
+            );
+        }
+        Err(error) => {
+            // 偏好学习是附属副作用：不得让 settings 故障破坏已成功的卡片写入，
+            // 也不得让 extraRequirements 的持久化故障阻止生成启动。
+            log::warn!(
+                "[ChatAnkiToolExecutor] preference observation ignored after persistence failure: source={}, error={}",
+                source,
+                error
+            );
+        }
+    }
+}
+
+fn card_edit_observations(
+    before: &crate::models::AnkiCard,
+    after: &crate::models::AnkiCard,
+) -> Vec<crate::anki_preference_memory::CardEditObservation> {
+    let mut edits = Vec::new();
+    let front_changed = before.front.trim() != after.front.trim();
+    let back_changed = before.back.trim() != after.back.trim();
+    let before_text = before.text.as_deref().unwrap_or_default();
+    let after_text = after.text.as_deref().unwrap_or_default();
+    let text_changed = before_text.trim() != after_text.trim();
+
+    let mut push = |field: String, old: &str, new: &str| {
+        if old.trim() != new.trim() {
+            edits.push(crate::anki_preference_memory::CardEditObservation {
+                field,
+                before: old.to_string(),
+                after: new.to_string(),
+            });
+        }
+    };
+    push("front".to_string(), &before.front, &after.front);
+    push("back".to_string(), &before.back, &after.back);
+    push("text".to_string(), before_text, after_text);
+
+    let mut extra_keys: HashSet<String> = before.extra_fields.keys().cloned().collect();
+    extra_keys.extend(after.extra_fields.keys().cloned());
+    let mut extra_keys: Vec<String> = extra_keys.into_iter().collect();
+    extra_keys.sort();
+    for key in extra_keys {
+        let normalized = normalize_template_card_field_key(&key);
+        let mirrors_changed_canonical = (front_changed
+            && template_aliases(TemplateCardField::Front).contains(&normalized.as_str()))
+            || (back_changed
+                && template_aliases(TemplateCardField::Back).contains(&normalized.as_str()))
+            || (text_changed
+                && template_aliases(TemplateCardField::Text).contains(&normalized.as_str()));
+        if mirrors_changed_canonical {
+            continue;
+        }
+        push(
+            format!("extra_fields.{key}"),
+            before
+                .extra_fields
+                .get(&key)
+                .map(String::as_str)
+                .unwrap_or_default(),
+            after
+                .extra_fields
+                .get(&key)
+                .map(String::as_str)
+                .unwrap_or_default(),
+        );
+    }
+    edits
+}
+
+fn deletion_preference_observation(
+    deleted_cards: &[crate::models::AnkiCard],
+    generated_count: usize,
+) -> crate::anki_preference_memory::SessionObservation {
+    crate::anki_preference_memory::SessionObservation {
+        deletions: deleted_cards
+            .iter()
+            .filter(|card| !card.is_error_card)
+            .map(
+                |card| crate::anki_preference_memory::CardDeleteObservation {
+                    front: card.front.clone(),
+                    back: card.back.clone(),
+                },
+            )
+            .collect(),
+        generated_count,
+        ..Default::default()
+    }
+}
+
+fn generated_card_count_best_effort(
+    db: &crate::database::Database,
+    document_id: &str,
+    session_id: &str,
+) -> usize {
+    match db.get_cards_for_document_for_session(document_id, session_id) {
+        Ok(Some(cards)) => cards.iter().filter(|card| !card.is_error_card).count(),
+        Ok(None) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] preference deletion denominator unavailable: document ownership changed"
+            );
+            0
+        }
+        Err(error) => {
+            log::warn!(
+                "[ChatAnkiToolExecutor] preference deletion denominator unavailable: {}",
+                error
+            );
+            0
+        }
+    }
+}
 
 /// Round 4 #1：从持久化的偏好存储检索可注入的短 prompt。
 ///
@@ -18348,6 +18626,292 @@ mod tests {
         assert!(with_extra.starts_with(&base));
         assert!(with_extra.contains("补充要求（调用方指定，优先遵守）"));
         assert!(with_extra.contains("答案统一使用英文"));
+    }
+
+    #[test]
+    fn test_preference_edit_observations_capture_canonical_content_changes() {
+        let before = make_chatanki_card("card-pref-edit", "task-pref", "Question", "Answer");
+        let mut after = before.clone();
+        after.front = "问题是什么？".to_string();
+        after.back = "这是中文答案。".to_string();
+
+        let edits = card_edit_observations(&before, &after);
+
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].field, "front");
+        assert_eq!(edits[0].before, "Question");
+        assert_eq!(edits[0].after, "问题是什么？");
+        assert_eq!(edits[1].field, "back");
+    }
+
+    #[test]
+    fn test_preference_edit_observations_ignore_whitespace_and_metadata_only_changes() {
+        let before = make_chatanki_card("card-pref-meta", "task-pref", "Question", "Answer");
+        let mut after = before.clone();
+        after.front = "  Question  ".to_string();
+        after.back = "\nAnswer\t".to_string();
+        after.tags = vec!["changed-tag".to_string()];
+        after.updated_at = "2026-08-24T10:00:00Z".to_string();
+
+        assert!(card_edit_observations(&before, &after).is_empty());
+    }
+
+    #[test]
+    fn test_preference_edit_observations_capture_cloze_text_changes() {
+        let mut before = make_chatanki_card("card-pref-text", "task-pref", "", "");
+        before.text = Some("The {{c1::cell}} is basic.".to_string());
+        let mut after = before.clone();
+        after.text = Some("{{c1::细胞}}是生命的基本单位。".to_string());
+
+        let edits = card_edit_observations(&before, &after);
+
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].field, "text");
+        assert!(edits[0].after.contains("细胞"));
+    }
+
+    #[test]
+    fn test_preference_edit_observations_capture_custom_template_fields() {
+        let mut before = make_chatanki_card("card-pref-extra", "task-pref", "Q", "A");
+        before
+            .extra_fields
+            .insert("Explanation".to_string(), "English explanation".to_string());
+        let mut after = before.clone();
+        after.extra_fields.insert(
+            "Explanation".to_string(),
+            "这是用户改写后的中文解释".to_string(),
+        );
+
+        let edits = card_edit_observations(&before, &after);
+
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].field, "extra_fields.Explanation");
+    }
+
+    #[test]
+    fn test_preference_edit_observations_do_not_duplicate_synced_aliases() {
+        let mut before = make_chatanki_card("card-pref-alias", "task-pref", "Question", "Answer");
+        before
+            .extra_fields
+            .insert("question".to_string(), "Question".to_string());
+        let mut after = before.clone();
+        after.front = "问题".to_string();
+        after
+            .extra_fields
+            .insert("question".to_string(), "问题".to_string());
+
+        let edits = card_edit_observations(&before, &after);
+
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].field, "front");
+    }
+
+    #[test]
+    fn test_preference_deletion_observation_excludes_error_cards() {
+        let normal = make_chatanki_card("card-pref-delete", "task-pref", "Q", "A");
+        let mut diagnostic =
+            make_chatanki_card("card-pref-diagnostic", "task-pref", "error", "error");
+        diagnostic.is_error_card = true;
+
+        let observation = deletion_preference_observation(&[normal, diagnostic], 8);
+
+        assert_eq!(observation.generated_count, 8);
+        assert_eq!(observation.deletions.len(), 1);
+        assert_eq!(observation.deletions[0].front, "Q");
+    }
+
+    #[test]
+    fn test_preference_persist_creates_local_store_from_extra_requirements() {
+        let (db, _tmp) = make_test_db();
+        let observation = crate::anki_preference_memory::SessionObservation {
+            extra_requirements: Some("请用中文回答，不要翻译术语".to_string()),
+            ..Default::default()
+        };
+
+        let outcome =
+            persist_preference_observation(&db, &observation, 1_000).expect("persist preference");
+        let raw = db
+            .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+            .expect("read setting")
+            .expect("stored setting");
+        let store: crate::anki_preference_memory::PreferenceStore =
+            serde_json::from_str(&raw).expect("valid preference store");
+
+        assert_eq!(outcome.added.len(), 2);
+        assert_eq!(store.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_preference_persist_reinforces_duplicate_observation() {
+        let (db, _tmp) = make_test_db();
+        let observation = crate::anki_preference_memory::SessionObservation {
+            extra_requirements: Some("请用中文回答".to_string()),
+            ..Default::default()
+        };
+        persist_preference_observation(&db, &observation, 1_000).expect("first persist");
+
+        let outcome =
+            persist_preference_observation(&db, &observation, 2_000).expect("second persist");
+        let raw = db
+            .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+            .expect("read setting")
+            .expect("stored setting");
+        let store: crate::anki_preference_memory::PreferenceStore =
+            serde_json::from_str(&raw).expect("valid preference store");
+
+        assert_eq!(outcome.reinforced.len(), 1);
+        assert_eq!(store.entries.len(), 1);
+        assert_eq!(store.entries[0].evidence_count, 2);
+        assert_eq!(store.entries[0].last_seen_ms, 2_000);
+    }
+
+    #[test]
+    fn test_preference_persist_keeps_conflicts_add_only() {
+        let (db, _tmp) = make_test_db();
+        for (now_ms, requirement) in [
+            (1_000, "请用中文回答"),
+            (2_000, "Please write cards in English"),
+        ] {
+            persist_preference_observation(
+                &db,
+                &crate::anki_preference_memory::SessionObservation {
+                    extra_requirements: Some(requirement.to_string()),
+                    ..Default::default()
+                },
+                now_ms,
+            )
+            .expect("persist conflicting preference");
+        }
+        let raw = db
+            .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+            .expect("read setting")
+            .expect("stored setting");
+        let store: crate::anki_preference_memory::PreferenceStore =
+            serde_json::from_str(&raw).expect("valid preference store");
+
+        assert_eq!(store.entries.len(), 2);
+        assert!(store
+            .entries
+            .iter()
+            .any(|entry| entry.subject.as_deref() == Some("zh")));
+        assert!(store
+            .entries
+            .iter()
+            .any(|entry| entry.subject.as_deref() == Some("en")));
+    }
+
+    #[test]
+    fn test_preference_persist_failure_is_best_effort_and_preserves_corrupt_value() {
+        let (db, _tmp) = make_test_db();
+        db.save_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY, "{not-json")
+            .expect("seed malformed setting");
+        let observation = crate::anki_preference_memory::SessionObservation {
+            extra_requirements: Some("请用中文回答".to_string()),
+            ..Default::default()
+        };
+
+        persist_preference_observation_best_effort(&db, &observation, "test_corrupt_store");
+
+        assert_eq!(
+            db.get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+                .expect("read setting")
+                .as_deref(),
+            Some("{not-json")
+        );
+    }
+
+    #[test]
+    fn test_preference_persist_executes_closure_without_extractable_candidate() {
+        let (db, _tmp) = make_test_db();
+
+        let outcome = persist_preference_observation(
+            &db,
+            &crate::anki_preference_memory::SessionObservation {
+                edits: vec![crate::anki_preference_memory::CardEditObservation {
+                    field: "back".to_string(),
+                    before: "old answer".to_string(),
+                    after: "more precise answer".to_string(),
+                }],
+                ..Default::default()
+            },
+            1_000,
+        )
+        .expect("persist empty extraction result");
+        let raw = db
+            .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+            .expect("read setting")
+            .expect("write closure must persist the store");
+        let store: crate::anki_preference_memory::PreferenceStore =
+            serde_json::from_str(&raw).expect("valid preference store");
+
+        assert_eq!(
+            outcome,
+            crate::anki_preference_memory::ConsolidateOutcome::default()
+        );
+        assert!(store.entries.is_empty());
+    }
+
+    #[test]
+    fn test_preference_persist_extracts_language_from_substantive_card_edit() {
+        let (db, _tmp) = make_test_db();
+        let before = make_chatanki_card(
+            "card-pref-language",
+            "task-pref",
+            "What is a cell?",
+            "A cell is the basic unit of life.",
+        );
+        let mut after = before.clone();
+        after.front = "什么是细胞？".to_string();
+        after.back = "细胞是生命活动的基本单位。".to_string();
+        let edits = card_edit_observations(&before, &after);
+
+        let outcome = persist_preference_observation(
+            &db,
+            &crate::anki_preference_memory::SessionObservation {
+                edits,
+                ..Default::default()
+            },
+            1_000,
+        )
+        .expect("persist edit observation");
+
+        assert_eq!(outcome.added.len(), 1);
+        assert!(outcome.added[0].contains("中文"));
+    }
+
+    #[test]
+    fn test_preference_persist_extracts_density_from_batch_deletion() {
+        let (db, _tmp) = make_test_db();
+        let deleted = vec![
+            make_chatanki_card("card-pref-delete-1", "task-pref", "Q1", "A1"),
+            make_chatanki_card("card-pref-delete-2", "task-pref", "Q2", "A2"),
+        ];
+        let observation = deletion_preference_observation(&deleted, 5);
+
+        let outcome =
+            persist_preference_observation(&db, &observation, 1_000).expect("persist deletions");
+
+        assert_eq!(outcome.added.len(), 1);
+        assert!(outcome.added[0].contains("少而精"));
+    }
+
+    #[test]
+    fn test_preference_store_does_not_persist_unrecognized_extra_requirement_text() {
+        let (db, _tmp) = make_test_db();
+        let sensitive_suffix = "临时上下文编号 secret-12345";
+        let observation = crate::anki_preference_memory::SessionObservation {
+            extra_requirements: Some(format!("请用中文回答；{sensitive_suffix}")),
+            ..Default::default()
+        };
+
+        persist_preference_observation(&db, &observation, 1_000).expect("persist preference");
+        let raw = db
+            .get_setting(CHATANKI_PREFERENCE_MEMORY_SETTING_KEY)
+            .expect("read setting")
+            .expect("stored setting");
+
+        assert!(!raw.contains(sensitive_suffix));
+        assert!(raw.contains("中文"));
     }
 
     #[test]

@@ -7,14 +7,9 @@
 //! # 设计取舍
 //!
 //! - **纯逻辑、零 I/O、零 LLM**：本模块只做「观察 → 候选偏好 → 合并 → 检索」
-//!   四步纯函数变换。持久化（存到用户配置/DB）与接线（`chatanki_run` 在
-//!   `build_chatanki_requirements` 之前调用 [`retrieve_preference_prompt`]）
-//!   由调用方负责。
-//! - **生产接线现状（2026-08）**：ChatAnki retrieve 会读取 settings key
-//!   `chatanki_preference_memory_store`，但目前没有生产路径收集
-//!   [`SessionObservation`]、调用 [`extract_preferences`]/[`consolidate`] 并写回。
-//!   因此全新安装的持久化 store 为空，偏好注入实际为 no-op；本模块的单测
-//!   store 不代表运行时已有记忆。后续接写入侧前不得宣称“会自动学习偏好”。
+//!   的纯函数变换。生产持久化由 ChatAnki executor 负责：从本地主库 settings key
+//!   `chatanki_preference_memory_store` 读取，调用 [`consolidate_observation`] 后写回。
+//!   settings 读取、解析或写入失败时，executor 只记录告警，不回滚或阻断制卡操作。
 //! - **ADD-only**：与 Mem0 的 ADD/UPDATE/DELETE 操作集不同，本版抽取器只产出
 //!   ADD 语义——[`consolidate`] 对已有条目绝不改写语句、绝不删除；重复观察
 //!   只累计证据数并小幅提升置信度。互相矛盾的偏好（如先偏好中文后偏好英文）
@@ -25,12 +20,12 @@
 //!   预算参数，按「每 kind 取最高分一条 → 按分数降序装箱」的方式裁剪，
 //!   估算规则见 [`estimate_tokens`]。
 //!
-//! # 典型调用序列（供后续接线参考）
+//! # 典型调用序列
 //!
 //! ```text
 //! 会话结束时：
-//!   let candidates = extract_preferences(&observation);
-//!   consolidate(&mut store, &candidates, now_ms);   // store 由调用方持久化
+//!   consolidate_observation(&mut store, &observation, now_ms);
+//!   persist(store); // 调用方持久化到本地 settings
 //! 下次 chatanki_run 时：
 //!   let hint = retrieve_preference_prompt(&store, &goal, &template_names, 120);
 //!   if !hint.is_empty() { requirements.push(hint); }
@@ -570,6 +565,19 @@ pub fn extract_preferences(observation: &SessionObservation) -> Vec<PreferenceCa
     out
 }
 
+/// 对一次观察执行完整的「extract → consolidate」写入变换。
+///
+/// 即使观察没有达到保守抽取阈值，也会执行 [`consolidate`] 并返回空摘要；
+/// 调用方仍可把 store 持久化，以保持生产写入闭环单一且可审计。
+pub fn consolidate_observation(
+    store: &mut PreferenceStore,
+    observation: &SessionObservation,
+    now_ms: i64,
+) -> ConsolidateOutcome {
+    let candidates = extract_preferences(observation);
+    consolidate(store, &candidates, now_ms)
+}
+
 /// 把候选偏好合并进存储（ADD-only）。
 ///
 /// - 同 kind + 归一化语句 + 主体完全相同 → 强化：`evidence_count + 1`，
@@ -954,6 +962,60 @@ mod tests {
         assert_eq!(store.entries.len(), 2);
         assert!(store.entries.iter().all(|e| e.evidence_count == 1));
         assert!(store.entries.iter().all(|e| e.first_seen_ms == 1_000));
+    }
+
+    #[test]
+    fn consolidate_observation_runs_extract_and_add() {
+        let mut store = PreferenceStore::default();
+        let observation = SessionObservation {
+            extra_requirements: Some("请用中文回答，不要翻译术语".to_string()),
+            ..Default::default()
+        };
+
+        let outcome = consolidate_observation(&mut store, &observation, 1_234);
+
+        assert_eq!(outcome.added.len(), 2);
+        assert!(outcome.reinforced.is_empty());
+        assert_eq!(store.entries.len(), 2);
+        assert!(store
+            .entries
+            .iter()
+            .all(|entry| entry.first_seen_ms == 1_234));
+    }
+
+    #[test]
+    fn consolidate_observation_without_signal_is_noop() {
+        let mut store = PreferenceStore::default();
+
+        let outcome = consolidate_observation(&mut store, &SessionObservation::default(), 1_234);
+
+        assert_eq!(outcome, ConsolidateOutcome::default());
+        assert!(store.entries.is_empty());
+    }
+
+    #[test]
+    fn consolidate_observation_preserves_add_only_conflicts() {
+        let mut store = PreferenceStore::default();
+        for requirement in ["请用中文回答", "Please write cards in English"] {
+            consolidate_observation(
+                &mut store,
+                &SessionObservation {
+                    extra_requirements: Some(requirement.to_string()),
+                    ..Default::default()
+                },
+                1_234,
+            );
+        }
+
+        assert_eq!(store.entries.len(), 2);
+        assert!(store
+            .entries
+            .iter()
+            .any(|entry| entry.subject.as_deref() == Some("zh")));
+        assert!(store
+            .entries
+            .iter()
+            .any(|entry| entry.subject.as_deref() == Some("en")));
     }
 
     #[test]
