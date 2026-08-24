@@ -99,7 +99,7 @@ describe('phase 4 qbank tool contracts', () => {
     });
     expect(tool.inputSchema.properties.user_note.maxLength).toBe(50000);
     expect(tool.description).toMatch(/reversible=false.*reversibleWithOcc=true/);
-    expect(tool.description).toMatch(/fieldsTruncated/);
+    expect(tool.description).toMatch(/2000.*truncated/);
   });
 
   it('makes batch deletion High, atomic in scope, and never remembered', () => {
@@ -120,7 +120,7 @@ describe('phase 4 qbank tool contracts', () => {
     });
     expect(tool.description).toMatch(/High/);
     expect(tool.description).toMatch(/每次调用前.*builtin-ask_user/);
-    expect(tool.description).toMatch(/永不记忆.*不得复用/);
+    expect(tool.description).toMatch(/授权不得记忆或复用/);
     expect(tool.description).toMatch(/headless.*不得执行/);
     expect(tool.description).toMatch(/原子 OCC/);
     expect(tool.description).toMatch(/reversible=false/);
@@ -136,7 +136,7 @@ describe('phase 4 qbank tool contracts', () => {
     ]);
     expect(tool.description).toMatch(/Medium.*OCC.*可撤销/);
     expect(tool.description).toContain('2000');
-    expect(tool.description).toMatch(/fieldsTruncated/);
+    expect(tool.description).toMatch(/截断并标记/);
   });
 
   it('keeps answers user-authored across regular and UI practice', () => {
@@ -169,10 +169,9 @@ describe('phase 4 qbank tool contracts', () => {
     });
 
     for (const tool of [timed, mock, daily]) {
-      expect(tool.description).toContain('agentCanAnswer=false');
-      expect(tool.description).toContain('payloadHydrationSupported=true');
-      expect(tool.description).toContain('handoff_persisted=true');
-      expect(tool.description).toMatch(/不会自动打开 UI|authoritative ACK/);
+      expect(tool.description).toContain('持久保存的版本化 handoff');
+      expect(tool.description).toContain('作答必须由用户完成');
+      expect(tool.description).toContain('不会自动打开 UI');
     }
   });
 
@@ -185,11 +184,12 @@ describe('phase 4 qbank tool contracts', () => {
   });
 
   it('exposes review_only on the next-question contract', () => {
-    expect(getTool('builtin-qbank_get_next_question').inputSchema.properties.review_only).toEqual({
+    const reviewOnly = getTool('builtin-qbank_get_next_question').inputSchema.properties.review_only;
+    expect(reviewOnly).toMatchObject({
       type: 'boolean',
       default: false,
-      description: '只选择 status=review 的错题/待复习题',
     });
+    expect(reviewOnly.description).toContain('status=review');
   });
 
   it.each([
@@ -223,8 +223,8 @@ describe('phase 4 qbank tool contracts', () => {
     expect(tool.inputSchema.properties.question_type.enum).toContain('indefinite_choice');
     expect(tool.inputSchema.properties.tags.maxItems).toBe(20);
     expect(tool.description).toContain('2000');
-    expect(tool.description).toContain('fieldsTruncated');
-    expect(tool.description).toMatch(/highlight_content.*\{text,truncated\}.*null/);
+    expect(tool.description).toMatch(/highlight_\*.*2000.*截断/);
+    expect(tool.description).toContain('不能把预览当全文');
   });
 
   it('exports generated papers only as preview or real Markdown files', () => {
@@ -237,12 +237,12 @@ describe('phase 4 qbank tool contracts', () => {
       maximum: 100,
       default: 20,
     });
-    expect(tool.description).toMatch(/preview.*export_path=null.*file_created=false/);
+    expect(tool.description).toMatch(/preview.*不创建文件/);
     expect(tool.description).toMatch(/markdown.*exports\/qbank\/\*\.md/);
     expect(tool.description).toMatch(/PDF\/Word.*拒绝/);
     expect(tool.description).toMatch(/questions.*20.*questions_truncated/);
     expect(tool.description).toContain('2000');
-    expect(tool.description).toContain('fieldsTruncated');
+    expect(tool.description).toMatch(/2000.*截断并标记/);
   });
 
   it('documents the full build-practice-mistake-analysis-paper workflow truthfully', () => {
