@@ -827,11 +827,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         <div className="flex items-center gap-2 shrink-0">
           {isGrading ? (
             desktopCancelConfirm.armed ? (
-              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150">
+              <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 [@media(pointer:coarse)]:min-h-11">
                 {t('essay_grading:confirm.cancel')}
               </DsButton>
             ) : (
-              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150">
+              <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 [@media(pointer:coarse)]:min-h-11">
                 <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                 {t('common:cancel')}
               </DsButton>
