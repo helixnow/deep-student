@@ -16,6 +16,30 @@
 - `fa12b5ab`：合并 Anki 主题分支。
 - `6e9a9997`：收敛 Generative UI 闪卡为只读展示，并增加防回归契约。
 
+## 第四轮复查（2026-08-24）
+
+独立复核以上裁决，结论如下：
+
+- 只读收敛属实：`buildFlashcardPreviewIntent` 不再产出 action-bar；桥接层不注册
+  `save-to-library`；外部 intent 传入遗留保存 action 时也不落 handler
+  （`flashcardDisplayOnly.test.ts` 双向覆盖）。保存统一走 `anki_cards` 的
+  `saveCardsToLibrary`，QA/critic 标记（`ankiQaFlags` / `AnkiQaFlagBadge`）随卡入库。
+- 无误删：合并提交未触碰 `src/features/generative-ui/`；修复提交仅移除闪卡保存
+  链路（handler、提取工具、action id、标签接线），`flashcard-preview` 仍在块注册表，
+  其余 21 个块组件完整。
+- `6c401455` 遮挡交互五个文件与 HEAD 逐字节一致，37 项遮挡测试通过。
+- #187 token 语义在 `streaming_anki_service.rs` 保留（含 #268 保守清理细化：
+  仅剥纯 token 残片与 JSON 外包装、保留正文字面 token），`error_content_is_repairable`
+  重试过滤已接线，issue #58 / PR #187 回归单测在位。
+- 复查清理：移除两侧 `generativeUi.json` 遗留的 `flashcard.save_to_library` 死键
+  及 `generativeUIChatBlock.newTypes.test.tsx` 中对应 mock 行，防止沿遗留标签
+  重新接回保存入口；i18n parity 契约保持通过。
+- 门禁复跑全绿：`npm ci`、`npm run typecheck`（清理后复跑）、`npx vite build`、
+  `cargo check --lib`（仍为既有 25 项 warning）。GenUI 契约 6 文件 43 项、
+  遮挡 3 文件 37 项、清理影响面 4 文件 29 项测试均通过。
+
+裁决：正式合并 Anki 主题（D 步）时可直接以本分支为准。
+
 ## 验证
 
 以下完整门禁通过：
