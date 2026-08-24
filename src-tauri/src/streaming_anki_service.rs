@@ -32,6 +32,10 @@ const ERR_KEYWORD_TRUNCATED: &str = "截断";
 /// 解析残片完全不含可读文本时的内部哨兵消息：
 /// 流式循环据此判定"丢弃该残片并记录 warning"，而非降级为错误卡。
 const UNREADABLE_FRAGMENT_MSG: &str = "UNREADABLE_CARD_FRAGMENT";
+/// 字段校验违规标记写入 `extra_fields` 的键名。
+/// 设计取舍：违规不毙卡（LLM 输出轻微越界很常见，毙卡损失内容），
+/// 仅在卡片上留痕供 QA/前端复查，值为 JSON 数组字符串。
+pub const QA_FLAGS_FIELD: &str = "_qa_flags";
 
 /// 单个任务流式生成的统计结果（仅新增上报口径，不影响既有事件契约）。
 #[derive(Debug, Default, Clone, Copy)]
@@ -44,6 +48,8 @@ pub struct StreamStats {
     pub duplicate_cards: u32,
     /// 不含任何可读文本、被直接丢弃的残片数
     pub dropped_fragments: u32,
+    /// 字段校验违规、被标记 `_qa_flags` 但仍入库的卡片数
+    pub flagged_cards: u32,
 }
 
 #[derive(Clone)]
@@ -276,6 +282,86 @@ fn find_rule<'a>(
             .find(|(key, _)| key.eq_ignore_ascii_case(field))
             .map(|(_, rule)| rule)
     })
+}
+
+/// 依据规则元数据（min_length/max_length/allowed_values/validation_pattern）校验字段值。
+///
+/// 返回违规描述列表（每项为 `{field, rule, message}` 的 JSON 对象）；
+/// 空列表表示通过。违规不作为错误返回——调用方将其汇总写入
+/// `extra_fields[QA_FLAGS_FIELD]`，卡片照常入库。
+///
+/// 长度按 Unicode 字符数（`chars().count()`）计，避免中文按字节数误判。
+/// `validation_pattern` 编译失败视为模板配置问题：记录 warning 并跳过该项，
+/// 不惩罚卡片本身。
+fn validate_field_against_rule(
+    field_name: &str,
+    value: &str,
+    rule: &FieldExtractionRule,
+) -> Vec<Value> {
+    let mut violations = Vec::new();
+    let char_count = value.chars().count() as u32;
+
+    if let Some(min) = rule.min_length {
+        if char_count < min {
+            violations.push(json!({
+                "field": field_name,
+                "rule": "min_length",
+                "message": format!("长度 {} 小于最小长度 {}", char_count, min),
+            }));
+        }
+    }
+
+    if let Some(max) = rule.max_length {
+        if char_count > max {
+            violations.push(json!({
+                "field": field_name,
+                "rule": "max_length",
+                "message": format!("长度 {} 超过最大长度 {}", char_count, max),
+            }));
+        }
+    }
+
+    if let Some(allowed) = rule.allowed_values.as_deref().filter(|v| !v.is_empty()) {
+        let matched = allowed.iter().any(|candidate| match candidate {
+            Value::String(s) => s == value,
+            other => other.to_string() == value,
+        });
+        if !matched {
+            let preview: String = value.chars().take(40).collect();
+            violations.push(json!({
+                "field": field_name,
+                "rule": "allowed_values",
+                "message": format!("值 \"{}\" 不在允许值列表中", preview),
+            }));
+        }
+    }
+
+    if let Some(pattern) = rule
+        .validation_pattern
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        match regex::Regex::new(pattern) {
+            Ok(re) => {
+                if !re.is_match(value) {
+                    violations.push(json!({
+                        "field": field_name,
+                        "rule": "validation_pattern",
+                        "message": format!("值不匹配校验模式 {}", pattern),
+                    }));
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[QA_FLAGS] 字段 {} 的 validation_pattern 无法编译（{}），跳过该项校验",
+                    field_name, e
+                );
+            }
+        }
+    }
+
+    violations
 }
 
 impl StreamingAnkiService {
@@ -966,6 +1052,9 @@ impl StreamingAnkiService {
                                         {
                                             Ok(Some(card)) => {
                                                 stats.card_count += 1;
+                                                if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
+                                                    stats.flagged_cards += 1;
+                                                }
                                                 debug!("[ANKI_CARD_DEBUG] 已生成第{}张卡片 (上限: {}张)", stats.card_count, options.max_cards_per_mistake);
                                                 self.emit_new_card(card, document_id, window).await;
                                             }
@@ -1122,6 +1211,9 @@ impl StreamingAnkiService {
                     match self.parse_and_save_card(&residual, task_id, options).await {
                         Ok(Some(card)) => {
                             stats.card_count += 1;
+                            if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
+                                stats.flagged_cards += 1;
+                            }
                             info!(
                                 "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
                                 stats.card_count
@@ -1198,47 +1290,122 @@ impl StreamingAnkiService {
 
     /// 从缓冲区提取卡片
     ///
-    /// 仅在检测到完整分隔符（标准或损坏变体）时切出卡片；
-    /// 分隔符未到达时缓冲继续增长属正常现象（分隔符可能在下一个 chunk 里），
-    /// 只有超过 CARD_BUFFER_HARD_LIMIT 的异常无界增长才判为截断。
+    /// 主信号：brace-depth 状态机 —— 跟踪 in_string / escape / brace_depth，
+    /// 顶层 JSON 对象闭合（depth 归零）的瞬间即切出该卡片，无需等待分隔符，
+    /// 天然支持"一个 chunk 内多张卡"并降低首卡延迟。
+    ///
+    /// 辅助信号（向后兼容）：DELIMITER `<<<ANKI_CARD_JSON_END>>>`。
+    /// 当 JSON 括号不配平（残片/截断/语法损坏）时，字符串外出现的分隔符
+    /// 仍会强制切卡，保证旧协议内容不会滞留缓冲；而位于 JSON 字符串内部的
+    /// 分隔符文本会被状态机正确忽略，不再误切。
+    ///
+    /// 分隔符未到达且 JSON 未闭合时缓冲继续增长属正常现象（内容可能在下一个
+    /// chunk 里），只有超过 CARD_BUFFER_HARD_LIMIT 的异常无界增长才判为截断。
     fn extract_card_from_buffer(&self, buffer: &mut String) -> Option<Result<String, String>> {
+        Self::extract_card_from_buffer_impl(buffer)
+    }
+
+    /// brace-depth 切卡核心（不依赖 &self，便于单元测试直接调用）
+    ///
+    /// 单次线性扫描，事件按缓冲区中出现的先后顺序生效：
+    /// 1. 顶层 `}` 使 depth 归零 → 切出完整 JSON 对象（主信号）；
+    /// 2. 字符串外遇到标准分隔符 → 按旧协议切卡（辅助信号，兜底坏 JSON）；
+    /// 3. 字符串外遇到损坏分隔符尾部（如 `<<< ANKI_CARD_JSON_END>>>`）→ 自动修复切卡。
+    fn extract_card_from_buffer_impl(buffer: &mut String) -> Option<Result<String, String>> {
         const DELIMITER: &str = "<<<ANKI_CARD_JSON_END>>>";
+        const BROKEN_DELIMITER_TAIL: &str = "ANKI_CARD_JSON_END>>>";
 
-        // 先尝试查找标准分隔符
-        if let Some(delimiter_pos) = buffer.find(DELIMITER) {
-            let card_content = buffer[..delimiter_pos].trim().to_string();
-            let remaining = buffer[delimiter_pos + DELIMITER.len()..].to_string();
-            *buffer = remaining;
+        // 按字节扫描是 UTF-8 安全的：所有关注的字符（引号、反斜杠、大括号、
+        // 分隔符）均为 ASCII，多字节字符的后续字节都 >= 0x80，不会误匹配。
+        let bytes = buffer.as_bytes();
 
-            if !card_content.is_empty() {
-                Some(Ok(card_content))
-            } else {
-                None
-            }
-        } else if let Some(pos) = buffer.find("ANKI_CARD_JSON_END>>>") {
-            // 如果找不到标准分隔符，尝试查找可能损坏的分隔符模式
-            // 匹配类似 <<<...ANKI_CARD_JSON_END>>> 的模式
-            let start_pos = buffer[..pos].rfind("<<<");
-            if let Some(start) = start_pos {
-                let card_content = buffer[..start].trim().to_string();
-                // 找到完整的损坏分隔符的结束位置
-                let end_pos = pos + "ANKI_CARD_JSON_END>>>".len();
-                let remaining = buffer[end_pos..].to_string();
-                *buffer = remaining;
+        let mut in_string = false;
+        let mut escape = false;
+        let mut depth: usize = 0;
+        let mut obj_start: Option<usize> = None;
 
-                warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
 
-                if !card_content.is_empty() {
-                    Some(Ok(card_content))
-                } else {
-                    None
+            if in_string {
+                if escape {
+                    escape = false;
+                } else if b == b'\\' {
+                    escape = true;
+                } else if b == b'"' {
+                    in_string = false;
                 }
-            } else {
-                Self::check_buffer_hard_limit(buffer)
+                i += 1;
+                continue;
             }
-        } else {
-            Self::check_buffer_hard_limit(buffer)
+
+            // 辅助信号（向后兼容）：字符串外的完整分隔符强制切卡，
+            // 兜底括号不配平的残片（JSON 语法坏了但分隔符还在）
+            if b == b'<' && bytes[i..].starts_with(DELIMITER.as_bytes()) {
+                let card_content = buffer[..i].trim().to_string();
+                *buffer = buffer[i + DELIMITER.len()..].to_string();
+                return if card_content.is_empty() {
+                    None
+                } else {
+                    Some(Ok(card_content))
+                };
+            }
+
+            // 损坏分隔符（如 "<<< ANKI_CARD_JSON_END>>>"）的自动修复，
+            // 语义与旧实现一致，但升级为字符串感知：JSON 字符串内的同形文本不会误触发
+            if b == b'A' && bytes[i..].starts_with(BROKEN_DELIMITER_TAIL.as_bytes()) {
+                if let Some(start) = buffer[..i].rfind("<<<") {
+                    let card_content = buffer[..start].trim().to_string();
+                    let end_pos = i + BROKEN_DELIMITER_TAIL.len();
+                    *buffer = buffer[end_pos..].to_string();
+
+                    warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
+
+                    return if card_content.is_empty() {
+                        None
+                    } else {
+                        Some(Ok(card_content))
+                    };
+                }
+            }
+
+            match b {
+                // 只在对象内部把引号当作 JSON 字符串边界，
+                // 避免对象之间的自然语言引号污染状态机
+                b'"' if depth > 0 => in_string = true,
+                b'{' => {
+                    if depth == 0 {
+                        obj_start = Some(i);
+                    }
+                    depth += 1;
+                }
+                b'}' if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        if let Some(start) = obj_start {
+                            let card_content = buffer[start..=i].to_string();
+                            // 消费卡片本体及紧随其后的分隔符（若已到达），
+                            // 避免其残留成为下一张卡的前缀噪声；
+                            // 对象前的自然语言前缀（如"以下是卡片："）一并丢弃
+                            let mut rest_start = i + 1;
+                            let rest = &buffer[rest_start..];
+                            let trimmed = rest.trim_start();
+                            if trimmed.starts_with(DELIMITER) {
+                                rest_start += (rest.len() - trimmed.len()) + DELIMITER.len();
+                            }
+                            *buffer = buffer[rest_start..].to_string();
+                            return Some(Ok(card_content));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
         }
+
+        // 既无完整 JSON 也无分隔符：等待后续 chunk，仅做无界增长兜底
+        Self::check_buffer_hard_limit(buffer)
     }
 
     /// 缓冲区硬上限检查：超限时判为截断并清空（仅防无界增长的最后防线）
@@ -1549,6 +1716,8 @@ impl StreamingAnkiService {
         let mut back = String::new();
         let mut tags = Vec::new();
         let mut extra_fields = std::collections::HashMap::new();
+        // 校验违规汇总：不毙卡，最终写入 extra_fields[QA_FLAGS_FIELD]
+        let mut qa_flags: Vec<Value> = Vec::new();
 
         // 遍历所有定义的字段规则（稳定顺序，避免 text 覆盖 front/back）
         let mut ordered_rules: Vec<(&String, &FieldExtractionRule)> = rules.iter().collect();
@@ -1584,20 +1753,43 @@ impl StreamingAnkiService {
                         "front" => {
                             let processed_value =
                                 self.process_field_value(&value, &rule.field_type)?;
+                            qa_flags.extend(validate_field_against_rule(
+                                field_name,
+                                &processed_value,
+                                rule,
+                            ));
                             front = processed_value.clone();
                             // 对于使用模板的卡片，也将Front字段存储到extra_fields中
                             extra_fields.insert("front".to_string(), processed_value);
                         }
                         "back" => {
-                            back = self.process_field_value(&value, &rule.field_type)?;
+                            let processed_value =
+                                self.process_field_value(&value, &rule.field_type)?;
+                            qa_flags.extend(validate_field_against_rule(
+                                field_name,
+                                &processed_value,
+                                rule,
+                            ));
+                            back = processed_value;
                         }
                         "tags" => {
                             tags = self.process_tags_field(&value, &rule.field_type)?;
+                            // 标签逐项校验（allowed_values/长度约束按单个标签生效）
+                            for tag in &tags {
+                                qa_flags.extend(validate_field_against_rule(
+                                    field_name, tag, rule,
+                                ));
+                            }
                         }
                         "explanation" => {
                             // 选择题的答案需要组合多个字段
                             let explanation_text =
                                 self.process_field_value(&value, &rule.field_type)?;
+                            qa_flags.extend(validate_field_against_rule(
+                                field_name,
+                                &explanation_text,
+                                rule,
+                            ));
                             // 先保存explanation，稍后组合完整答案
                             extra_fields.insert("explanation".to_string(), explanation_text);
                         }
@@ -1606,6 +1798,11 @@ impl StreamingAnkiService {
                             // 对于填空题，Text字段应该保存到extra_fields中，用于Cloze模板
                             let processed_value =
                                 self.process_field_value(&value, &rule.field_type)?;
+                            qa_flags.extend(validate_field_against_rule(
+                                field_name,
+                                &processed_value,
+                                rule,
+                            ));
                             extra_fields.insert("text".to_string(), processed_value.clone());
                             // 同时设置front字段以确保基础验证通过
                             if front.is_empty() {
@@ -1619,6 +1816,11 @@ impl StreamingAnkiService {
                             // 扩展字段
                             let processed_value =
                                 self.process_field_value(&value, &rule.field_type)?;
+                            qa_flags.extend(validate_field_against_rule(
+                                field_name,
+                                &processed_value,
+                                rule,
+                            ));
                             extra_fields.insert(field_name_lower.clone(), processed_value);
                         }
                     }
@@ -1820,11 +2022,18 @@ impl StreamingAnkiService {
                 back = choice_back;
             } else {
                 // 兜底：从 extra_fields 中取第一个非 front 的非空值作为 back
-                let skip_keys: std::collections::HashSet<&str> =
-                    ["front", "tags", "template_id", "templateid", "text"]
-                        .iter()
-                        .copied()
-                        .collect();
+                // 注意排除 QA_FLAGS_FIELD：校验标记是元数据，不能被拼进 back 正文
+                let skip_keys: std::collections::HashSet<&str> = [
+                    "front",
+                    "tags",
+                    "template_id",
+                    "templateid",
+                    "text",
+                    QA_FLAGS_FIELD,
+                ]
+                .iter()
+                .copied()
+                .collect();
                 let mut fallback_back = String::new();
                 for (key, value) in &extra_fields {
                     if skip_keys.contains(key.as_str())
@@ -1865,6 +2074,20 @@ impl StreamingAnkiService {
                 }
                 back = fallback_back;
             }
+        }
+
+        // 校验违规不毙卡：汇总为 JSON 数组字符串写入 extra_fields 留痕，
+        // 由流式循环据此累计 StreamStats::flagged_cards
+        if !qa_flags.is_empty() {
+            warn!(
+                "[QA_FLAGS] 卡片字段校验发现 {} 项违规（仅标记，不丢弃）: {}",
+                qa_flags.len(),
+                Value::Array(qa_flags.clone()).to_string()
+            );
+            extra_fields.insert(
+                QA_FLAGS_FIELD.to_string(),
+                Value::Array(qa_flags).to_string(),
+            );
         }
 
         Ok((front, back, tags, extra_fields))
@@ -2333,6 +2556,7 @@ impl StreamingAnkiService {
                 "failed_cards": stats.failed_cards,
                 "duplicate_cards": stats.duplicate_cards,
                 "dropped_fragments": stats.dropped_fragments,
+                "flagged_cards": stats.flagged_cards,
             }
         });
         if let Err(e) = window.emit("anki_generation_event", &payload) {
@@ -2782,5 +3006,284 @@ mod tests {
         assert!(find_rule(Some(&rules), "FRONT").is_some());
         assert!(find_rule(Some(&rules), "back").is_none());
         assert!(find_rule(None, "front").is_none());
+    }
+
+    // ==================== 解析内环测试包（Round 2 #8） ====================
+    //
+    // clean_json_string / clean_template_placeholders / extract_fields_with_rules /
+    // extract_card_from_buffer 都是 &self 方法但不读取任何字段，
+    // 因此用最小依赖构造一个真实服务实例（临时目录 + 空 settings 表），
+    // 与 llm_manager::tests::create_test_llm_manager 的做法一致。
+    fn make_test_service() -> (StreamingAnkiService, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("test.db");
+        {
+            let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )",
+                [],
+            )
+            .expect("create settings table");
+        }
+        let db = Arc::new(Database::new(&db_path).expect("create test database"));
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(dir.path().to_path_buf())
+                .expect("create file manager"),
+        );
+        let llm = Arc::new(LLMManager::new(db.clone(), file_manager).expect("create llm manager"));
+        (StreamingAnkiService::new(db, llm), dir)
+    }
+
+    fn make_rule_with_default(
+        is_required: bool,
+        field_type: FieldType,
+        default_value: Option<&str>,
+    ) -> FieldExtractionRule {
+        let mut rule = make_rule(is_required, field_type, "desc");
+        rule.default_value = default_value.map(|s| s.to_string());
+        rule
+    }
+
+    // -------------------- clean_json_string --------------------
+
+    #[test]
+    fn clean_json_string_strips_json_fence() {
+        let (svc, _dir) = make_test_service();
+        let raw = "```json\n{\"front\":\"问题\",\"back\":\"答案\"}\n```";
+        let cleaned = svc.clean_json_string(raw);
+        assert_eq!(cleaned, "{\"front\":\"问题\",\"back\":\"答案\"}");
+        // 清理结果必须是合法 JSON
+        assert!(serde_json::from_str::<Value>(&cleaned).is_ok());
+    }
+
+    #[test]
+    fn clean_json_string_strips_plain_fence() {
+        let (svc, _dir) = make_test_service();
+        let raw = "```\n{\"a\": 1}\n```";
+        assert_eq!(svc.clean_json_string(raw), "{\"a\": 1}");
+    }
+
+    #[test]
+    fn clean_json_string_strips_bom_prefix() {
+        let (svc, _dir) = make_test_service();
+        let raw = "\u{FEFF}{\"a\":1}";
+        assert_eq!(svc.clean_json_string(raw), "{\"a\":1}");
+    }
+
+    #[test]
+    fn clean_json_string_extracts_object_from_surrounding_noise() {
+        let (svc, _dir) = make_test_service();
+        let raw = "好的，以下是生成的卡片：\n{\"front\":\"Q\",\"back\":\"A\"}\n希望对你有帮助";
+        assert_eq!(svc.clean_json_string(raw), "{\"front\":\"Q\",\"back\":\"A\"}");
+    }
+
+    #[test]
+    fn clean_json_string_preserves_unicode_content() {
+        let (svc, _dir) = make_test_service();
+        // 日语假名/韩文不能被"字符白名单"式清理误删
+        let raw = "```json\n{\"front\":\"ひらがな カタカナ 한국어\"}\n```";
+        let cleaned = svc.clean_json_string(raw);
+        let value: Value = serde_json::from_str(&cleaned).expect("valid json");
+        assert_eq!(
+            value.get("front").and_then(|v| v.as_str()),
+            Some("ひらがな カタカナ 한국어")
+        );
+    }
+
+    #[test]
+    fn clean_json_string_falls_back_when_no_object() {
+        let (svc, _dir) = make_test_service();
+        assert_eq!(svc.clean_json_string("  not json at all  "), "not json at all");
+    }
+
+    // -------------------- extract_fields_with_rules --------------------
+
+    #[test]
+    fn extract_fields_required_missing_without_default_is_validation_error() {
+        let (svc, _dir) = make_test_service();
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+
+        let json_value = json!({ "front": "只有正面" });
+        let err = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect_err("missing required field must fail");
+        // 该 Err 会在流式循环中降级为 error card（error_content 保留原文），
+        // 单元层面只需确认错误信息指明缺失字段。
+        let msg = err.to_string();
+        assert!(msg.contains("缺少必需字段"), "unexpected error: {msg}");
+        assert!(msg.contains("back"), "should name the missing field: {msg}");
+    }
+
+    #[test]
+    fn extract_fields_required_missing_uses_default_value() {
+        let (svc, _dir) = make_test_service();
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "back".to_string(),
+            make_rule_with_default(true, FieldType::Text, Some("默认背面")),
+        );
+
+        let json_value = json!({ "front": "问题" });
+        let (front, back, _tags, _extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("default value must rescue missing required field");
+        assert_eq!(front, "问题");
+        assert_eq!(back, "默认背面");
+    }
+
+    #[test]
+    fn extract_fields_happy_path_with_tags_and_extra_fields() {
+        let (svc, _dir) = make_test_service();
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+        rules.insert("tags".to_string(), make_rule(false, FieldType::Array, "标签"));
+        rules.insert("note".to_string(), make_rule(false, FieldType::Text, "备注"));
+
+        let json_value = json!({
+            "front": "什么是惯性？",
+            "back": "物体保持运动状态的性质",
+            "tags": ["物理", "力学"],
+            "note": "补充说明"
+        });
+        let (front, back, tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("all fields present");
+        assert_eq!(front, "什么是惯性？");
+        assert_eq!(back, "物体保持运动状态的性质");
+        assert_eq!(tags, vec!["物理".to_string(), "力学".to_string()]);
+        assert_eq!(extra.get("note").map(String::as_str), Some("补充说明"));
+        // front 同时写入 extra_fields，供模板渲染使用
+        assert_eq!(extra.get("front").map(String::as_str), Some("什么是惯性？"));
+    }
+
+    #[test]
+    fn extract_fields_reads_nested_fields_object_case_insensitively() {
+        let (svc, _dir) = make_test_service();
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
+
+        // LLM 常见输出：字段嵌套在 fields 对象里且大小写不一致
+        let json_value = json!({
+            "template_id": "design-lab",
+            "fields": { "Front": "嵌套问题", "Back": "嵌套答案" }
+        });
+        let (front, back, _tags, _extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("nested fields must be found");
+        assert_eq!(front, "嵌套问题");
+        assert_eq!(back, "嵌套答案");
+    }
+
+    #[test]
+    fn extract_fields_text_field_maps_to_cloze_front_back() {
+        let (svc, _dir) = make_test_service();
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        rules.insert("text".to_string(), make_rule(true, FieldType::Text, "填空文本"));
+
+        let json_value = json!({ "Text": "水的沸点是{{c1::100}}摄氏度" });
+        let (front, back, _tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &None)
+            .expect("text field maps to front/back");
+        assert_eq!(
+            extra.get("text").map(String::as_str),
+            Some("水的沸点是{{c1::100}}摄氏度")
+        );
+        assert_eq!(front, "水的沸点是{{c1::100}}摄氏度");
+        assert!(back.starts_with("填空题："), "back must be non-empty: {back}");
+    }
+
+    // -------------------- clean_template_placeholders --------------------
+
+    #[test]
+    fn clean_template_placeholders_removes_empty_mustache_tags() {
+        let (svc, _dir) = make_test_service();
+        let raw = "  前缀{{.}}中间{{/}}再{{#}}然后{{}}空格{{ }}双空格{{  }}尾部  ";
+        assert_eq!(
+            svc.clean_template_placeholders(raw),
+            "前缀中间再然后空格双空格尾部"
+        );
+    }
+
+    #[test]
+    fn clean_template_placeholders_preserves_named_tags_and_cloze() {
+        let (svc, _dir) = make_test_service();
+        let raw = "{{Front}} 与 {{c1::答案}} 应原样保留";
+        assert_eq!(
+            svc.clean_template_placeholders(raw),
+            "{{Front}} 与 {{c1::答案}} 应原样保留"
+        );
+    }
+
+    // -------------------- buffer 分隔符切分与硬上限 --------------------
+
+    #[test]
+    fn extract_card_standard_delimiter_splits_buffer() {
+        let (svc, _dir) = make_test_service();
+        let mut buffer = String::from("{\"front\":\"Q\"}<<<ANKI_CARD_JSON_END>>>{\"front\":\"下一张");
+        let result = svc.extract_card_from_buffer(&mut buffer);
+        assert_eq!(result, Some(Ok("{\"front\":\"Q\"}".to_string())));
+        assert_eq!(buffer, "{\"front\":\"下一张");
+        // 剩余部分不含分隔符且远未超限 → 继续等待
+        assert_eq!(svc.extract_card_from_buffer(&mut buffer), None);
+    }
+
+    #[test]
+    fn extract_card_repairs_corrupted_delimiter() {
+        let (svc, _dir) = make_test_service();
+        // 分隔符中间被塞入空格，标准匹配失败，走损坏分隔符修复分支
+        let mut buffer = String::from("{\"a\":1}\n<<< ANKI_CARD_JSON_END>>>tail");
+        let result = svc.extract_card_from_buffer(&mut buffer);
+        assert_eq!(result, Some(Ok("{\"a\":1}".to_string())));
+        assert_eq!(buffer, "tail");
+    }
+
+    #[test]
+    fn extract_card_ignores_empty_segment_before_delimiter() {
+        let (svc, _dir) = make_test_service();
+        let mut buffer = String::from("  \n<<<ANKI_CARD_JSON_END>>>next");
+        assert_eq!(svc.extract_card_from_buffer(&mut buffer), None);
+        // 空段被消费掉，缓冲推进到分隔符之后
+        assert_eq!(buffer, "next");
+    }
+
+    #[test]
+    fn buffer_at_hard_limit_keeps_accumulating() {
+        let (svc, _dir) = make_test_service();
+        // 恰好等于上限（1_000_000 字节）不触发截断：判定条件是严格大于
+        let mut buffer = "x".repeat(StreamingAnkiService::CARD_BUFFER_HARD_LIMIT);
+        assert_eq!(svc.extract_card_from_buffer(&mut buffer), None);
+        assert_eq!(buffer.len(), StreamingAnkiService::CARD_BUFFER_HARD_LIMIT);
+    }
+
+    #[test]
+    fn buffer_over_hard_limit_truncates_and_clears() {
+        let (svc, _dir) = make_test_service();
+        let oversized = "x".repeat(StreamingAnkiService::CARD_BUFFER_HARD_LIMIT + 1);
+        let mut buffer = oversized.clone();
+        let result = svc.extract_card_from_buffer(&mut buffer);
+        // 超限判为截断：原内容以 Err 返回（供降级为 error card），缓冲清空防无界增长
+        assert_eq!(result, Some(Err(oversized)));
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn buffer_hard_limit_is_far_above_legacy_threshold() {
+        // P1-2 回归防护：旧实现 10000 字节阈值会腰斩合法长卡片，
+        // 上限必须保持远大于单卡体积（中文学术卡约 3300 字即超旧阈值）
+        assert!(StreamingAnkiService::CARD_BUFFER_HARD_LIMIT >= 1_000_000);
+        let (svc, _dir) = make_test_service();
+        // 一张 50KB 的"长卡片仍在传输中"不得被误判截断
+        let mut buffer = "内容".repeat(10_000);
+        assert_eq!(svc.extract_card_from_buffer(&mut buffer), None);
+        assert!(!buffer.is_empty());
     }
 }
