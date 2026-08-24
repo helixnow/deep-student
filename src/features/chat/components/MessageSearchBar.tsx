@@ -141,7 +141,8 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={t('messageList.search.placeholder')}
           aria-label={t('messageList.search.open')}
-          className="min-w-0 flex-1 appearance-none bg-transparent px-1.5 py-1.5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/70"
+          // 📱 16px 输入契约：15px 在 iOS WKWebView 聚焦时会触发页面自动放大
+          className="min-w-0 flex-1 appearance-none bg-transparent px-1.5 py-1.5 text-[15px] [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-muted-foreground/70"
         />
         {hasQuery ? (
           <>

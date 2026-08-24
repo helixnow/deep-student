@@ -73,7 +73,7 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, title, onRetry, re
       )}
       {import.meta.env.DEV && errorStack && (
         <details className="mt-4 text-left w-full max-w-lg">
-          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11">
             {t('errorBoundary.viewErrorDetails')}
           </summary>
           <CustomScrollArea orientation="both" fullHeight={false} className="mt-2 max-h-40 rounded-md bg-muted" viewportClassName="max-h-40">
