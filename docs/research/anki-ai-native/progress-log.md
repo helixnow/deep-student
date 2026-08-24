@@ -103,6 +103,21 @@
 
 ---
 
+## Round 4 — 能力扩展（进行中）
+
+- [x] 子代理 #5：AI 图像遮挡制卡首版（详见 `round4/05-image-occlusion.md`）
+  - 新增 `anki_image_occlusion.rs` 纯函数层：`OcclusionSpec{imageRef, boxes}`
+    归一化坐标（0-1）校验（越界/重叠 IoU/空盒/零序号 结构化拒绝）、
+    Cloze 导出字段约定（`Text` + `extra_fields["_occlusion"]` JSON +
+    `image-occlusion` tag，兼容既有 APKG 路径）、`[IMAGE_DESC]` 启发式
+    网格盒建议（零 LLM 成本，输出直接可过校验）、像素换算三重保证
+  - 前端最小渲染：`utils/imageOcclusion.ts`（解析/换算与 Rust 镜像）+
+    `ImageOcclusionOverlay.tsx`（百分比定位、同 clozeIndex 组揭开、受控/非受控）
+  - 不动 chatanki_executor 管线与 builtin-templates.json；VlmFull 接线
+    与 VLM grounding 升级路径见文档 §7；Rust 测试 ×19 + vitest ×11
+
+---
+
 ## 变更记录
 
 | 日期 | 轮次 | 变更 | PR |
