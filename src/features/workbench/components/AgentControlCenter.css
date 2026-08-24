@@ -612,6 +612,11 @@
     height: 44px;
     min-height: 44px;
   }
+
+  .wb-agent-capabilities-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
