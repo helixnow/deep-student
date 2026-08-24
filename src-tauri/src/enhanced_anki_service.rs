@@ -119,7 +119,7 @@ impl EnhancedAnkiService {
             }
         }
 
-        let options = options.unwrap_or_else(|| AnkiGenerationOptions {
+        let mut options = options.unwrap_or_else(|| AnkiGenerationOptions {
             deck_name: "默认牌组".to_string(),
             note_type: "Basic".to_string(),
             enable_images: false,
@@ -141,7 +141,50 @@ impl EnhancedAnkiService {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         });
+
+        // ===== FSRS 复习数据回流（Round 3 #5）=====
+        // 默认开启（fsrs_feedback == None 视为开启），显式 Some(false) 可关。
+        // 全部统计只读本地 SQLite；任何查询失败降级为不注入，绝不阻断制卡。
+        if options.fsrs_feedback.unwrap_or(true) {
+            // 调用方已显式提供画像时不重复构建；否则从本地 FSRS 库聚合。
+            let injected = options
+                .user_review_profile
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .or_else(|| {
+                    let cfg = crate::anki_fsrs_feedback::FsrsFeedbackConfig::default();
+                    crate::anki_fsrs_feedback::build_feedback_injection(
+                        &self.db,
+                        &document_content,
+                        &cfg,
+                    )
+                });
+            if let Some(section) = injected {
+                options.user_review_profile = Some(section.clone());
+                options.custom_requirements = Some(
+                    match options
+                        .custom_requirements
+                        .take()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(existing) => format!("{existing}\n\n{section}"),
+                        None => section,
+                    },
+                );
+            }
+        }
 
         // 确定文档名称
         let document_name = original_document_name
@@ -163,6 +206,12 @@ impl EnhancedAnkiService {
                 .process_document_and_create_tasks(document_content, document_name, options)
                 .await?
         };
+
+        // Round 4 #3：显式初始化文档级指纹 tracker——同一文档的所有 segment task
+        // （含并发 task、统一重试任务、暂停后 resume 的任务）经 registry 共享同一
+        // 实例做重复/近重复检测，绝不每个 task 重置。完成/取消/删除时释放。
+        // （resume 路径无需显式初始化：observe_document_card 会按 document_id 懒创建）
+        let _ = crate::anki_qa_lint::document_tracker(&document_id);
 
         // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload，不包装在 StreamEvent 中
         // 前端 CardAgent.handleBackendEvent 期望直接接收 { DocumentProcessingStarted: {...} } 格式
@@ -396,6 +445,9 @@ impl EnhancedAnkiService {
                 if !entry.paused {
                     drop(entry); // 释放引用后再删除
                     DOCUMENT_STATES.remove(&document_id_for_check);
+                    // 文档处理完成：释放文档级指纹 tracker（防泄漏）。
+                    // 暂停态不释放——resume 后的任务需继续共享指纹状态。
+                    crate::anki_qa_lint::release_document_tracker(&document_id_for_check);
                 }
             }
         }
@@ -527,6 +579,8 @@ impl EnhancedAnkiService {
                         DOCUMENT_STATES.remove(&document_id);
                     }
                 }
+                // resume 已终止且不会再有调度协程负责收尾，释放懒创建的指纹状态。
+                crate::anki_qa_lint::release_document_tracker(&document_id);
             })?
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Paused | TaskStatus::Pending))
@@ -542,6 +596,9 @@ impl EnhancedAnkiService {
                     DOCUMENT_STATES.remove(&document_id);
                 }
             }
+            // 无剩余任务也属于完成终态；此前只发事件未释放，长期 resume 空会话
+            // 会让 document registry 按 document_id 无界增长。
+            crate::anki_qa_lint::release_document_tracker(&document_id);
             // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
             let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
                 document_id: document_id.clone(),
@@ -594,6 +651,8 @@ impl EnhancedAnkiService {
             return Err(AppError::validation("任务正在处理中，请勿重复触发"));
         }
 
+        let document_id_for_cleanup = task.document_id.clone();
+        let db_for_cleanup = self.db.clone();
         let streaming_service = Arc::new(self.streaming_service.clone());
         let window_clone = window.clone();
 
@@ -617,6 +676,26 @@ impl EnhancedAnkiService {
             let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
             if let Some(handle) = owned_handle_opt {
                 let _ = handle.await;
+            }
+            // 手动单任务重试不经过 process_all_tasks_async 的文档收尾。仅当该文档
+            // 没有调度状态且所有任务均已终态时释放；仍有 Pending/Paused/运行任务
+            // 则保留跨任务去重状态。
+            let all_tasks_terminal = db_for_cleanup
+                .get_tasks_for_document(&document_id_for_cleanup)
+                .map(|tasks| {
+                    tasks.iter().all(|task| {
+                        !matches!(
+                            task.status,
+                            TaskStatus::Pending
+                                | TaskStatus::Processing
+                                | TaskStatus::Streaming
+                                | TaskStatus::Paused
+                        )
+                    })
+                })
+                .unwrap_or(false);
+            if all_tasks_terminal && !DOCUMENT_STATES.contains_key(&document_id_for_cleanup) {
+                crate::anki_qa_lint::release_document_tracker(&document_id_for_cleanup);
             }
         });
 
@@ -730,6 +809,7 @@ impl EnhancedAnkiService {
 
         // 清理运行状态并宣告文档已取消（与 Completed 分离，前端保留卡片）
         DOCUMENT_STATES.remove(&document_id);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
         let cancel_payload = StreamedCardPayload::DocumentProcessingCancelled {
             document_id: document_id.clone(),
         };
@@ -772,6 +852,7 @@ impl EnhancedAnkiService {
             .map_err(|e| AppError::database(format!("删除文档会话失败: {}", e)))?;
 
         DOCUMENT_STATES.remove(&document_id);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
         Ok(())
     }
 
@@ -878,6 +959,7 @@ impl EnhancedAnkiService {
 
         if let Some(doc_id) = document_id.as_ref() {
             DOCUMENT_STATES.remove(doc_id);
+            crate::anki_qa_lint::release_document_tracker(doc_id);
         }
 
         Ok(output_path.to_string_lossy().to_string())
@@ -1041,6 +1123,14 @@ mod tests {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(
@@ -1120,6 +1210,14 @@ mod tests {
             template_ids: None,
             template_descriptions: None,
             enable_llm_boundary_detection: None,
+            fsrs_feedback: None,
+            user_review_profile: None,
+            output_protocol: None,
+            enable_qa_pass: None,
+            enable_critic_pass: None,
+            enable_llm_critic: None,
+            critic_token_budget: None,
+            sidekick_model_routing: None,
         };
         let (doc_id, _tasks) = dps
             .process_document_and_create_tasks(

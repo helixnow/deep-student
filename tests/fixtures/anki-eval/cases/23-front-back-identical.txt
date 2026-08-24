@@ -1,0 +1,2 @@
+{"front": "牛顿第一定律", "back": "牛顿第一定律", "tags": ["物理"]}
+<<<ANKI_CARD_JSON_END>>>

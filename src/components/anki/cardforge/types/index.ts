@@ -187,24 +187,24 @@ export interface AnalyzeContentOutput {
 // 分段引擎类型
 // ============================================================================
 
-/** 分段配置 */
+/**
+ * 分段配置
+ *
+ * 注意：前端 SegmentEngine 只做纯数学的 token 估算分段；LLM 语义定界
+ * 由后端生成管线执行，历史上的 boundaryContext/boundaryModel 配置项
+ * 已随前端 LLM 定界死代码一起删除。
+ */
 export interface SegmentConfig {
   /** 每个子任务的目标大小（tokens） */
   chunkSize: number;
-  /** 定界时的上下文窗口（tokens） */
-  boundaryContext: number;
   /** 最小分段大小（tokens） */
   minSegmentSize: number;
-  /** 定界任务使用的模型 */
-  boundaryModel: 'fast' | 'standard';
 }
 
 /** 默认分段配置 */
 export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   chunkSize: 50000,
-  boundaryContext: 1000,
   minSegmentSize: 5000,
-  boundaryModel: 'fast',
 };
 
 /** 硬分割点 */
@@ -213,30 +213,6 @@ export interface HardSplitPoint {
   position: number;
   /** 原始索引 */
   index: number;
-}
-
-/** 边界检测请求 */
-export interface BoundaryDetectionRequest {
-  /** 分割点前的上下文 */
-  beforeContext: string;
-  /** 分割点后的上下文 */
-  afterContext: string;
-  /** 原始位置 */
-  originalPosition: number;
-  /** 请求索引 */
-  index: number;
-}
-
-/** 边界检测结果 */
-export interface BoundaryDetectionResult {
-  /** 请求索引 */
-  index: number;
-  /** 最佳分割位置偏移量 */
-  offset: number;
-  /** 选择原因 */
-  reason: string;
-  /** 置信度 (0-1) */
-  confidence: number;
 }
 
 /** 文档分段 */
@@ -414,9 +390,7 @@ export type CardForgeEventType =
   | 'document:complete'
   | 'document:paused'
   | 'document:cancelled'
-  | 'rate:limit'
-  | 'tool:result'
-  | 'tool:error';
+  | 'rate:limit';
 
 /** API 频率限制警告事件 payload（对齐后端 RateLimitWarning） */
 export interface RateLimitWarningPayload {

@@ -1287,6 +1287,33 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     showGlobalNotification('success', t('essay_grading:toast.suggestion_applied'));
   }, [isGrading, inputText, t]);
 
+  // ★ 生成卡片：把「原文 + 批改结果」交给既有制卡链路（CardForge 批次任务）
+  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
+  const handleGenerateCards = useCallback(async () => {
+    if (isGrading || !gradingResult || isGeneratingCards) return;
+    setIsGeneratingCards(true);
+    try {
+      const { generateCardsFromText } = await import('@/features/anki/generateCardsFromText');
+      const sections = [
+        `## ${t('essay_grading:input_section.title')}\n${inputText ?? ''}`.trim(),
+        `## ${t('essay_grading:result_section.title')}\n${gradingResult}`.trim(),
+      ];
+      await generateCardsFromText({
+        content: sections.join('\n\n'),
+        deckName: t('essay_grading:make_cards.deck_name'),
+        requirements: t('essay_grading:make_cards.requirements'),
+        messages: {
+          tooShort: t('essay_grading:make_cards.too_short'),
+          started: t('essay_grading:make_cards.started'),
+          failed: t('essay_grading:make_cards.failed'),
+          openTaskDashboard: t('essay_grading:make_cards.open_task_dashboard'),
+        },
+      });
+    } finally {
+      setIsGeneratingCards(false);
+    }
+  }, [isGrading, gradingResult, isGeneratingCards, inputText, t]);
+
   // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
   // ★ 性能：统计基于 deferred 值计算——超长文本快速键入时统计滞后渲染，不阻塞输入本身
   const deferredInputText = useDeferredValue(inputText);
@@ -1346,6 +1373,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onRemoveTopicImage={handleRemoveTopicImage}
           onModesChange={loadModes}
           onApplySuggestion={handleApplySuggestion}
+          onGenerateCards={() => { void handleGenerateCards(); }}
+          isGeneratingCards={isGeneratingCards}
           settingsAsPage={externalSettingsNavigation}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
