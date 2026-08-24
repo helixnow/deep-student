@@ -65,6 +65,31 @@ const STREAM_PLAINTEXT_CHUNK: usize = 1024 * 1024;
 /// 解密时允许的最大分块（防御异常 chunk_size 头导致的巨量分配）。
 const STREAM_MAX_PLAINTEXT_CHUNK: usize = 64 * 1024 * 1024;
 
+// =====================================================================================
+// [R12-repocheck-fix] DSBK 容器布局常量的跨模块 SSOT 导出（FINDINGS-R11 P1-1）
+// =====================================================================================
+//
+// 云端仓库巡检（`cloud_storage::repo_check`）需要在**不解密**的前提下判断对象的
+// DSBK 头是否可解。R11-check 曾在 repo_check 里手工复制布局常量，把 v2 头长抄成
+// 48（真实 44）、把 chunk 字段从密文区 `[44..48)` 读取，导致约 98.4% 的健康加密
+// 对象被误报「头不可解」。为杜绝再次复制错偏移，容器布局在此作为单一事实来源
+// （SSOT）导出：写入路径（`encrypt_backup` / `encrypt_backup_file`）与这些常量
+// 共用同一组字段宽度，布局漂移会先在本文件的 `dsbk_layout_constants_*` 单测里
+// 对真实产物失败。只导出布局事实，不导出任何密钥派生/解密逻辑。
+
+/// DSBK 容器魔数（`b"DSBK"`）。
+pub const DSBK_MAGIC: &[u8; 4] = BACKUP_MAGIC;
+/// DSBK v1（整文件单块）头长：magic4 + ver1 + params12 + salt16 + nonce12 = 45。
+pub const DSBK_V1_HEADER_LEN: usize = HEADER_SIZE;
+/// DSBK v2（分块流式）头长：magic4 + ver1 + params12 + salt16 + nonce_prefix7 + chunk4 = 44。
+pub const DSBK_V2_HEADER_LEN: usize = 4 + 1 + 12 + 16 + 7 + 4;
+/// v2 头中分块大小字段（u32 LE）的起始偏移：chunk 位于 `[40..44)`。
+pub const DSBK_V2_CHUNK_OFFSET: usize = DSBK_V2_HEADER_LEN - 4;
+/// AES-256-GCM 认证标签长度（每个密文块/整块尾部）。
+pub const DSBK_GCM_TAG_LEN: usize = 16;
+/// v2 头 chunk 字段的合法上限（与解密路径 [`STREAM_MAX_PLAINTEXT_CHUNK`] 同值）。
+pub const DSBK_MAX_PLAINTEXT_CHUNK: u32 = STREAM_MAX_PLAINTEXT_CHUNK as u32;
+
 fn derive_key(
     password: &str,
     salt: &[u8],
@@ -1196,6 +1221,37 @@ mod tests {
         memory.remember(&fp).unwrap();
         assert!(memory.was_encrypted(&fp));
         assert!(!memory.was_encrypted(&EncryptedRootMemory::fingerprint("other")));
+    }
+
+    // ---------------- [R12-repocheck-fix] DSBK 布局 SSOT 常量 ----------------
+
+    #[test]
+    fn dsbk_layout_constants_match_real_containers() {
+        // 布局常量必须锚定真实加密产物：空明文的 v1 容器 = 头 + 单块 GCM tag，
+        // v2 容器 = 头 + 一个（空 final 块的）GCM tag。任何写入路径的布局漂移
+        // 都会先在这里失败，而不是等 repo_check 在线上误报。
+        let v1 = encrypt_backup(b"", "layout-pin-pw").unwrap();
+        assert_eq!(v1.len(), DSBK_V1_HEADER_LEN + DSBK_GCM_TAG_LEN);
+        assert_eq!(&v1[..4], DSBK_MAGIC);
+        assert_eq!(v1[4], BACKUP_CRYPTO_VERSION);
+
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("empty.bin");
+        let enc = dir.path().join("empty.dsbk");
+        std::fs::write(&input, b"").unwrap();
+        encrypt_backup_file(&input, &enc, "layout-pin-pw").unwrap();
+        let v2 = std::fs::read(&enc).unwrap();
+        assert_eq!(v2.len(), DSBK_V2_HEADER_LEN + DSBK_GCM_TAG_LEN);
+        assert_eq!(&v2[..4], DSBK_MAGIC);
+        assert_eq!(v2[4], BACKUP_CRYPTO_VERSION_STREAM);
+        // chunk 字段在 [40..44)，写入值为流式明文分块大小（1 MiB）。
+        let chunk = u32::from_le_bytes(
+            v2[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN]
+                .try_into()
+                .unwrap(),
+        );
+        assert_eq!(chunk as usize, STREAM_PLAINTEXT_CHUNK);
+        assert!(chunk <= DSBK_MAX_PLAINTEXT_CHUNK);
     }
 
     #[test]

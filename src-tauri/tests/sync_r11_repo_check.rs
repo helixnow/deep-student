@@ -59,8 +59,17 @@ impl MemoryStorage {
     }
 }
 
+/// 本地 newtype：孤儿规则（E0117）不允许测试 crate 为 `Arc<本地类型>` 实现
+/// 外部 trait，与其他 sync 测试文件的 `SharedStorage` 先例一致。
+#[derive(Clone)]
+struct SharedStorage(Arc<MemoryStorage>);
+
+fn shared(storage: &Arc<MemoryStorage>) -> SharedStorage {
+    SharedStorage(Arc::clone(storage))
+}
+
 #[async_trait]
-impl CloudStorage for Arc<MemoryStorage> {
+impl CloudStorage for SharedStorage {
     fn provider_name(&self) -> &'static str {
         "memory"
     }
@@ -70,12 +79,13 @@ impl CloudStorage for Arc<MemoryStorage> {
     }
 
     async fn put(&self, key: &str, data: &[u8]) -> CloudResult<()> {
-        self.insert_raw(key, data);
+        self.0.insert_raw(key, data);
         Ok(())
     }
 
     async fn get(&self, key: &str) -> CloudResult<Option<Vec<u8>>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -85,6 +95,7 @@ impl CloudStorage for Arc<MemoryStorage> {
 
     async fn list(&self, prefix: &str) -> CloudResult<Vec<FileInfo>> {
         let mut files: Vec<FileInfo> = self
+            .0
             .files
             .lock()
             .unwrap()
@@ -102,12 +113,13 @@ impl CloudStorage for Arc<MemoryStorage> {
     }
 
     async fn delete(&self, key: &str) -> CloudResult<()> {
-        self.remove_raw(key);
+        self.0.remove_raw(key);
         Ok(())
     }
 
     async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
         Ok(self
+            .0
             .files
             .lock()
             .unwrap()
@@ -122,7 +134,7 @@ impl CloudStorage for Arc<MemoryStorage> {
 }
 
 /// 包装存储：list 结果永远标记为截断（模拟千级对象分页 / 服务端截断）。
-struct TruncatingStorage(Arc<MemoryStorage>);
+struct TruncatingStorage(SharedStorage);
 
 #[async_trait]
 impl CloudStorage for TruncatingStorage {
@@ -165,7 +177,7 @@ impl CloudStorage for TruncatingStorage {
 // ==================== 辅助 ====================
 
 fn manager_on(storage: &Arc<MemoryStorage>, device_id: &str) -> CloudSyncManager {
-    CloudSyncManager::new(Box::new(Arc::clone(storage)), device_id.to_string())
+    CloudSyncManager::new(Box::new(shared(storage)), device_id.to_string())
 }
 
 /// 上传一份指定内容的备份，返回版本 ID。
@@ -181,19 +193,20 @@ async fn upload_bytes(manager: &CloudSyncManager, contents: &[u8]) -> String {
         .id
 }
 
-/// 构造 DSBK v2 头可解的假密文对象（不要求真的可解密——巡检不持有密码）。
-fn fake_dsbk_v2(payload_len: usize) -> Vec<u8> {
-    let mut data = Vec::new();
-    data.extend_from_slice(b"DSBK");
-    data.push(2);
-    data.extend_from_slice(&65536u32.to_le_bytes()); // m_cost
-    data.extend_from_slice(&3u32.to_le_bytes()); // t_cost
-    data.extend_from_slice(&4u32.to_le_bytes()); // p_cost
-    data.extend_from_slice(&[7u8; 16]); // salt
-    data.extend_from_slice(&[9u8; 7]); // nonce prefix
-    data.extend_from_slice(&(1024u32 * 1024).to_le_bytes()); // chunk size
-    data.extend(std::iter::repeat(0xABu8).take(payload_len.max(16)));
-    data
+/// 构造 DSBK v2 密文对象 fixture：**真实 `encrypt_backup_file` 产物**。
+///
+/// [R12-repocheck-fix / FINDINGS-R11 P1-1] 此前这里手写 48 字节偏移的假头，
+/// 与实现里复制错的偏移互相印证，掩盖了「真实 44 字节头被误报不可解」的
+/// P1 缺陷。fixture 必须以写入路径的真实产物为准，禁止再手搓容器布局。
+fn real_dsbk_v2(payload_len: usize) -> Vec<u8> {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("plain.bin");
+    let output = dir.path().join("cipher.dsbk");
+    let plaintext: Vec<u8> = (0..payload_len).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&input, &plaintext).unwrap();
+    deep_student_lib::crypto::backup_crypto::encrypt_backup_file(&input, &output, "repo-check-pw")
+        .expect("真实加密产物生成应成功");
+    std::fs::read(&output).unwrap()
 }
 
 fn kinds(report: &deep_student_lib::cloud_storage::repo_check::RepoCheckReport)
@@ -211,7 +224,7 @@ async fn healthy_plaintext_repo_reports_all_green() {
     upload_bytes(&manager, b"PK\x03\x04 plain zip payload one").await;
     upload_bytes(&manager, b"PK\x03\x04 plain zip payload two").await;
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::Ok, "{:?}", report.problems);
     assert!(report.problems.is_empty());
@@ -228,11 +241,17 @@ async fn healthy_encrypted_repo_reports_all_green() {
     let storage = Arc::new(MemoryStorage::default());
     let manager = manager_on(&storage, "device-a");
     manager.persist_encryption_marker().await.unwrap();
-    upload_bytes(&manager, &fake_dsbk_v2(1024)).await;
+    upload_bytes(&manager, &real_dsbk_v2(1024)).await;
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::Ok, "{:?}", report.problems);
+    assert!(
+        !kinds(&report).contains(&RepoCheckProblemKind::UndecodableDsbkHeader),
+        "真实 encrypt_backup_file 产物绝不允许被误报「头不可解」（FINDINGS-R11 P1-1）: {:?}",
+        report.problems
+    );
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
     assert!(report.encryption_marker_present);
     assert_eq!(report.versions_referenced, 1);
     assert_eq!(report.objects_checked, 1);
@@ -250,7 +269,7 @@ async fn missing_object_is_reported_with_version_id() {
     // 模拟对象在云端丢失（provider 误删 / 手工误删），manifest 仍引用它。
     storage.remove_raw(&format!("backups/{lost}.zip"));
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
     let missing: Vec<_> = report
@@ -276,13 +295,13 @@ async fn corrupted_ciphertext_reports_checksum_and_header_problems() {
     let storage = Arc::new(MemoryStorage::default());
     let manager = manager_on(&storage, "device-a");
     manager.persist_encryption_marker().await.unwrap();
-    let version = upload_bytes(&manager, &fake_dsbk_v2(1024)).await;
+    let version = upload_bytes(&manager, &real_dsbk_v2(1024)).await;
 
     // 对象被改动：仍带 DSBK 魔数但版本字节未知、且总长被截断 → 头不可解，
     // 同时 SHA256 必然与 manifest 登记值不符。
     storage.insert_raw(&format!("backups/{version}.zip"), b"DSBK\x09 corrupted");
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
     let kinds = kinds(&report);
@@ -303,7 +322,7 @@ async fn plaintext_object_in_encrypted_repo_is_reported() {
     let storage = Arc::new(MemoryStorage::default());
     let manager = manager_on(&storage, "device-a");
     manager.persist_encryption_marker().await.unwrap();
-    let version = upload_bytes(&manager, &fake_dsbk_v2(512)).await;
+    let version = upload_bytes(&manager, &real_dsbk_v2(512)).await;
 
     // 加密仓库中的对象被替换成明文 ZIP（明文混布 / 加密被静默降级的痕迹）。
     storage.insert_raw(
@@ -311,7 +330,7 @@ async fn plaintext_object_in_encrypted_repo_is_reported() {
         b"PK\x03\x04 plaintext leaked into encrypted repo",
     );
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
     assert!(
@@ -340,7 +359,7 @@ async fn orphan_object_is_reported_and_check_stays_read_only() {
     );
 
     let before = storage.snapshot();
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
     let after = storage.snapshot();
 
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
@@ -369,7 +388,7 @@ async fn corrupt_manifest_is_reported_without_aborting_check() {
     upload_bytes(&manager, b"PK\x03\x04 healthy").await;
     storage.insert_raw("manifests/rogue-device.json", b"not-json at all");
 
-    let report = run_repo_check(&Arc::clone(&storage)).await.unwrap();
+    let report = run_repo_check(&shared(&storage)).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::ProblemsFound);
     assert!(
@@ -390,7 +409,7 @@ async fn truncated_listing_never_reports_all_green() {
     upload_bytes(&manager, b"PK\x03\x04 healthy payload").await;
 
     // 仓库本身完全健康，但列表被截断：结论必须是 Incomplete，绝不 Ok。
-    let truncating = TruncatingStorage(Arc::clone(&storage));
+    let truncating = TruncatingStorage(shared(&storage));
     let report = run_repo_check(&truncating).await.unwrap();
 
     assert_ne!(
@@ -418,7 +437,7 @@ async fn truncated_manifests_listing_suppresses_orphan_false_positives() {
     // manifest 没被列出来，必须跳过孤儿判定（宁可少报也不误报）。
     storage.insert_raw("backups/20990101-000000-000-zzzzzz-orphan01.zip", b"bytes");
 
-    let truncating = TruncatingStorage(Arc::clone(&storage));
+    let truncating = TruncatingStorage(shared(&storage));
     let report = run_repo_check(&truncating).await.unwrap();
 
     assert_eq!(report.status, RepoCheckStatus::Incomplete);
