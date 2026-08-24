@@ -218,6 +218,8 @@
     "attachmentsUploading": "Uploading attachments, please wait",
     "attachmentNotReady": "Attachment not ready: {{name}} ({{modes}})",
     "attachmentProcessing": "Attachment processing: {{name}}",
+    "sendBlockedEmpty": "Type a message or add an attachment to send",
+    "sendBlockedBusy": "Replying now — you can send when it finishes",
     "processingIndicator": "Processing attachments...",
     "processingIndicatorPartial": "Some modes not ready",
     "completedMissingModes": "Completed ({{modes}} not ready)",
