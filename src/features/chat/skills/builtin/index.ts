@@ -549,6 +549,8 @@ export const chatAnkiSkill: SkillDefinition = {
         properties: {
           documentId: {
             type: 'string',
+            minLength: 1,
+            pattern: '\\S',
             description: '目标制卡任务 documentId（当前会话拥有；来自 run/start/wait/import_apkg）',
           },
           selection: {
@@ -557,9 +559,10 @@ export const chatAnkiSkill: SkillDefinition = {
             properties: {
               cardIds: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1, pattern: '\\S' },
                 minItems: 1,
                 maxItems: 500,
+                uniqueItems: true,
                 description: '精确选择的真实卡片 ID（来自 get_cards，不得使用序号或临时 ID）',
               },
               filter: {
@@ -568,6 +571,7 @@ export const chatAnkiSkill: SkillDefinition = {
                 description: '按状态筛选（与 get_cards 的 filter 同语义；all 含诊断卡）',
               },
             },
+            oneOf: [{ required: ['cardIds'] }, { required: ['filter'] }],
             additionalProperties: false,
           },
           mode: {
@@ -594,7 +598,9 @@ export const chatAnkiSkill: SkillDefinition = {
                   },
                   code: {
                     type: 'string',
+                    minLength: 1,
                     maxLength: 65536,
+                    pattern: '\\S',
                     description: '脚本正文（python 以 -I 隔离模式运行）。禁止网络与文件系统漫游（沙箱强制，非君子协定）。',
                   },
                   timeoutMs: {
@@ -629,7 +635,9 @@ export const chatAnkiSkill: SkillDefinition = {
                     },
                     pattern: {
                       type: 'string',
+                      minLength: 1,
                       maxLength: 1024,
+                      pattern: '\\S',
                       description: 'Rust regex 语法，regex_replace 必填',
                     },
                     replacement: {
@@ -639,13 +647,51 @@ export const chatAnkiSkill: SkillDefinition = {
                     },
                     tags: {
                       type: 'array',
-                      items: { type: 'string' },
+                      items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
                       minItems: 1,
                       maxItems: 50,
                       description: 'tag_add / tag_remove 的标签列表',
                     },
                   },
                   required: ['op'],
+                  oneOf: [
+                    {
+                      properties: {
+                        op: { const: 'regex_replace' },
+                        field: { type: 'string', enum: ['front', 'back', 'text'] },
+                        pattern: { type: 'string', minLength: 1, maxLength: 1024, pattern: '\\S' },
+                        replacement: { type: 'string', maxLength: 4096 },
+                      },
+                      required: ['op', 'field', 'pattern'],
+                      additionalProperties: false,
+                    },
+                    {
+                      properties: {
+                        op: { const: 'tag_add' },
+                        tags: {
+                          type: 'array',
+                          items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+                          minItems: 1,
+                          maxItems: 50,
+                        },
+                      },
+                      required: ['op', 'tags'],
+                      additionalProperties: false,
+                    },
+                    {
+                      properties: {
+                        op: { const: 'tag_remove' },
+                        tags: {
+                          type: 'array',
+                          items: { type: 'string', minLength: 1, maxLength: 4096, pattern: '\\S' },
+                          minItems: 1,
+                          maxItems: 50,
+                        },
+                      },
+                      required: ['op', 'tags'],
+                      additionalProperties: false,
+                    },
+                  ],
                   additionalProperties: false,
                 },
               },
@@ -654,7 +700,8 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           expectedVersions: {
             type: 'object',
-            additionalProperties: { type: 'string' },
+            minProperties: 1,
+            additionalProperties: { type: 'string', minLength: 1, pattern: '\\S' },
             description:
               'apply 模式必填：cardId -> version 完整映射，必须与本次选择集精确一致（与 retemplate 相同 CAS 语义）。dry_run 可省略。缺卡/多卡返回 expected_versions_mismatch；任一版本过期该卡返回 conflict，其余卡照常生效。',
           },
@@ -664,6 +711,12 @@ export const chatAnkiSkill: SkillDefinition = {
           },
         },
         required: ['documentId', 'transform'],
+        allOf: [
+          {
+            if: { properties: { mode: { const: 'apply' } }, required: ['mode'] },
+            then: { required: ['expectedVersions'] },
+          },
+        ],
         additionalProperties: false,
       },
     },
@@ -1139,7 +1192,12 @@ export const chatAnkiSkill: SkillDefinition = {
       inputSchema: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: '学习材料内容（文本/Markdown）。传 resourceIds 时可省略。' },
+          content: {
+            type: 'string',
+            minLength: 1,
+            pattern: '\\S',
+            description: '学习材料内容（文本/Markdown）。传 resourceIds 时可省略。',
+          },
           goal: { type: 'string', description: '可选：学习目标。会进入路由规划提示词参与决策，不再只是回显。' },
           route: {
             type: 'string',
@@ -1148,16 +1206,20 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           resourceId: {
             type: 'string',
+            minLength: 1,
+            pattern: '\\S',
             description: '可选：要预分析的单个资源 ID（file_/att_/tb_/res_）。',
           },
           resourceIds: {
             type: 'array',
-            items: { type: 'string' },
+            items: { type: 'string', minLength: 1, pattern: '\\S' },
+            minItems: 1,
             description:
               '可选：要预分析的多个资源 ID。传入后按引用元数据（文件/图片计数 + 文本采样）走与 chatanki_run 同一条路由决策链；资源无法解析时降级为纯文本分析并在 warnings 中说明（不会硬失败）。',
           },
         },
         anyOf: [{ required: ['content'] }, { required: ['resourceIds'] }, { required: ['resourceId'] }],
+        additionalProperties: false,
       },
     },
     {

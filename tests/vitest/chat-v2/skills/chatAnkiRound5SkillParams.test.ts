@@ -112,12 +112,23 @@ describe('ChatAnki Round 5 skill params contract', () => {
     }
   });
 
+  it('rejects non-canonical outputProtocol values in both public schemas', () => {
+    const invalidValues = ['json', 'object', 'json-schema', 'yaml', 'DELIMITER'];
+    for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
+      const accepted = schemaOf(name).properties.outputProtocol.enum as string[];
+      for (const invalid of invalidValues) {
+        expect(accepted, `${name} must reject outputProtocol=${invalid}`).not.toContain(invalid);
+      }
+    }
+  });
+
   it('locks contentFormat enum and default to ChatAnkiContentFormat', () => {
     for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
       const prop = schemaOf(name).properties.contentFormat;
       expect(prop.type, name).toBe('string');
       expect(prop.enum, name).toEqual(['auto', 'glossary', 'prose']);
       expect(prop.default, name).toBe('auto');
+      expect(prop.enum, `${name} must reject unknown content formats`).not.toContain('markdown');
     }
   });
 
@@ -179,6 +190,32 @@ describe('ChatAnki Round 5 skill params contract', () => {
         'enablePreferenceMemory',
         'debug',
       ].sort(),
+    );
+  });
+
+  it('mirrors every ChatAnkiAnalyzeArgs wire field and effective source requirement', () => {
+    const schema = schemaOf('builtin-chatanki_analyze');
+    expect(Object.keys(schema.properties).sort()).toEqual(
+      ['content', 'goal', 'route', 'resourceId', 'resourceIds'].sort(),
+    );
+    expect(schema.anyOf).toEqual([
+      { required: ['content'] },
+      { required: ['resourceIds'] },
+      { required: ['resourceId'] },
+    ]);
+    expect(schema.properties.content).toMatchObject({ minLength: 1, pattern: '\\S' });
+    expect(schema.properties.resourceId).toMatchObject({ minLength: 1, pattern: '\\S' });
+    expect(schema.properties.resourceIds).toMatchObject({ minItems: 1 });
+    expect(schema.properties.resourceIds.items).toMatchObject({ minLength: 1, pattern: '\\S' });
+    expect(schema.additionalProperties).toBe(false);
+  });
+
+  it('mirrors every ChatAnkiTransformArgs and ChatAnkiRetemplateArgs wire field', () => {
+    expect(Object.keys(schemaOf('builtin-chatanki_transform').properties).sort()).toEqual(
+      ['documentId', 'selection', 'mode', 'transform', 'expectedVersions', 'purpose'].sort(),
+    );
+    expect(Object.keys(schemaOf('builtin-chatanki_retemplate').properties).sort()).toEqual(
+      ['documentId', 'cardIds', 'targetTemplateId', 'strategy', 'expectedVersions'].sort(),
     );
   });
 

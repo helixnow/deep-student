@@ -25,6 +25,7 @@ describe('ChatAnki transform tool schema', () => {
   it('requires documentId and transform, and forbids unknown top-level params', () => {
     expect(schema.required).toEqual(['documentId', 'transform']);
     expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties.documentId).toMatchObject({ minLength: 1, pattern: '\\S' });
     expect(Object.keys(schema.properties)).toEqual([
       'documentId',
       'selection',
@@ -60,8 +61,32 @@ describe('ChatAnki transform tool schema', () => {
     expect(ops.items.required).toEqual(['op']);
     expect(ops.items.additionalProperties).toBe(false);
     expect(ops.items.properties.field.enum).toEqual(['front', 'back', 'text']);
-    expect(ops.items.properties.pattern).toMatchObject({ type: 'string', maxLength: 1024 });
+    expect(ops.items.properties.pattern).toMatchObject({
+      type: 'string',
+      minLength: 1,
+      maxLength: 1024,
+      pattern: '\\S',
+    });
     expect(ops.items.properties.replacement).toMatchObject({ type: 'string', maxLength: 4096 });
+    expect(ops.items.properties.tags.items).toMatchObject({
+      type: 'string',
+      minLength: 1,
+      maxLength: 4096,
+      pattern: '\\S',
+    });
+    expect(ops.items.oneOf.map((branch: any) => branch.properties.op.const)).toEqual([
+      'regex_replace',
+      'tag_add',
+      'tag_remove',
+    ]);
+    expect(ops.items.oneOf.map((branch: any) => branch.required)).toEqual([
+      ['op', 'field', 'pattern'],
+      ['op', 'tags'],
+      ['op', 'tags'],
+    ]);
+    for (const branch of ops.items.oneOf) {
+      expect(branch.additionalProperties).toBe(false);
+    }
   });
 
   it('exposes the sandboxed script mode with required language/code and bounded timeout', () => {
@@ -72,7 +97,12 @@ describe('ChatAnki transform tool schema', () => {
     expect(script.additionalProperties).toBe(false);
     expect(Object.keys(script.properties)).toEqual(['language', 'code', 'timeoutMs']);
     expect(script.properties.language.enum).toEqual(['python', 'node']);
-    expect(script.properties.code).toMatchObject({ type: 'string', maxLength: 65536 });
+    expect(script.properties.code).toMatchObject({
+      type: 'string',
+      minLength: 1,
+      maxLength: 65536,
+      pattern: '\\S',
+    });
     expect(script.properties.timeoutMs).toMatchObject({
       type: 'integer',
       minimum: 1000,
@@ -114,22 +144,32 @@ describe('ChatAnki transform tool schema', () => {
     const expectedVersions = schema.properties.expectedVersions;
     expect(expectedVersions).toMatchObject({
       type: 'object',
-      additionalProperties: { type: 'string' },
+      minProperties: 1,
+      additionalProperties: { type: 'string', minLength: 1, pattern: '\\S' },
     });
     expect(expectedVersions.description).toContain('apply 模式必填');
     expect(expectedVersions.description).toContain('expected_versions_mismatch');
     expect(tool?.description).toContain('expectedVersions');
     expect(tool?.description).toContain('dry_run');
+    expect(schema.allOf).toEqual([
+      {
+        if: { properties: { mode: { const: 'apply' } }, required: ['mode'] },
+        then: { required: ['expectedVersions'] },
+      },
+    ]);
   });
 
-  it('bounds the selection to 500 explicit card IDs', () => {
+  it('makes cardIds/filter exclusive and bounds explicit card IDs', () => {
     const selection = schema.properties.selection;
     expect(selection.properties.cardIds).toMatchObject({
       type: 'array',
       minItems: 1,
       maxItems: 500,
+      uniqueItems: true,
+      items: { type: 'string', minLength: 1, pattern: '\\S' },
     });
     expect(selection.properties.filter.enum).toEqual(['all', 'edited_only', 'error_only']);
+    expect(selection.oneOf).toEqual([{ required: ['cardIds'] }, { required: ['filter'] }]);
     expect(selection.additionalProperties).toBe(false);
   });
 
