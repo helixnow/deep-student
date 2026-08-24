@@ -32,6 +32,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import {
   MagnifyingGlassPlus,
   MagnifyingGlassMinus,
@@ -748,7 +749,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'ACTION_UNAVAILABLE',
-            hint: '图片尚未加载完成，无法缩放',
+            hint: i18n.t('textbook:image_preview.zoom_not_ready', {
+              defaultValue: '图片尚未加载完成，无法缩放',
+            }),
           };
         }
         const before = { zoomPercent: Math.round(s.effectiveZoom), fitMode: s.fitMode };
@@ -760,7 +763,11 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: `zoom 百分比须在 ${ZOOM_MIN}–${ZOOM_MAX} 之间，或传 'fit'`,
+            hint: i18n.t('textbook:image_preview.zoom_out_of_range', {
+              defaultValue: "zoom 百分比须在 {{min}}–{{max}} 之间，或传 'fit'",
+              min: ZOOM_MIN,
+              max: ZOOM_MAX,
+            }),
           };
         }
         applyZoom(zoom);
@@ -777,14 +784,18 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           return {
             handled: false,
             code: 'ACTION_UNAVAILABLE',
-            hint: '图片尚未加载完成，无法旋转',
+            hint: i18n.t('textbook:image_preview.rotate_not_ready', {
+              defaultValue: '图片尚未加载完成，无法旋转',
+            }),
           };
         }
         if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
           return {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: 'rotate 的 degrees 仅支持 90/180/270（顺时针）',
+            hint: i18n.t('textbook:image_preview.rotate_invalid_degrees', {
+              defaultValue: 'rotate 的 degrees 仅支持 90/180/270（顺时针）',
+            }),
           };
         }
         setRotation((prev) => prev + degrees);
