@@ -718,15 +718,15 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
+                <DsButton size="sm" variant="utility" onClick={cycleSort} className="[@media(pointer:coarse)]:!min-h-11" aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
                   <span className="text-[11px]">{sortLabel}</span>
                 </DsButton>
-                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="[@media(pointer:coarse)]:!min-h-11" aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
