@@ -239,7 +239,7 @@ fn image_needs_compression_with_conn(
 /// 获取资源类型的大文件限制（字节）
 fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
     match resource_type {
-        VfsResourceType::Image => 10 * 1024 * 1024,       // 10MB
+        VfsResourceType::Image => 50 * 1024 * 1024,       // 50MB（#221：与作文批改图片上限对齐）
         VfsResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
         VfsResourceType::Note => 50 * 1024 * 1024,        // 50MB
         VfsResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
@@ -8106,8 +8106,13 @@ mod tests {
         let small_data = "x".repeat(1024);
         assert!(validate_file_size(&VfsResourceType::Image, &small_data).is_ok());
 
-        let large_data = "x".repeat(11 * 1024 * 1024);
-        assert!(validate_file_size(&VfsResourceType::Image, &large_data).is_err());
+        // #221：Image 上限已放宽到 50MB，10MB 级别的数据应当成功
+        let ten_mb_data = "x".repeat(10 * 1024 * 1024);
+        assert!(validate_file_size(&VfsResourceType::Image, &ten_mb_data).is_ok());
+
+        // 超过 Image 上限（随常量走，避免上限调整时测试失真）
+        let over_image_limit = "x".repeat(get_max_size_bytes(&VfsResourceType::Image) + 1);
+        assert!(validate_file_size(&VfsResourceType::Image, &over_image_limit).is_err());
 
         let medium_data = "x".repeat(20 * 1024 * 1024);
         assert!(validate_file_size(&VfsResourceType::File, &medium_data).is_ok());
@@ -8135,7 +8140,7 @@ mod tests {
     fn test_max_size_bytes() {
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::Image),
-            10 * 1024 * 1024
+            50 * 1024 * 1024
         );
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::File),
