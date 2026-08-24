@@ -22,6 +22,12 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 31（2026-08-24）— Frontend licenses:check
+
+- [x] 预检发现 `package-lock.json`（Round 1 添加 zod 生产依赖）未同步 `THIRD_PARTY_NOTICES.txt`
+- [x] `npm run licenses:generate` 重新生成（1872 components，含 zod@4.4.3）
+- [x] `npm run licenses:check` 通过
+
 ## Round 30（2026-08-24）— Backend fmt 修复
 
 - [x] `cargo fmt --check` 预检发现 generative_ui / hpias Rust 格式未对齐

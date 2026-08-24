@@ -53,7 +53,7 @@
 | 门禁 | 命令 / 文件 | 状态 |
 |------|-------------|------|
 | generative-ui vitest | `npm run test -- tests/vitest/generative-ui/` | ✅ 210 |
-| Frontend tsc | `npx tsc --noEmit`（Round 28 22 项修复） | ✅ |
+| Frontend licenses | `npm run licenses:check`（Round 31 zod 同步） | ✅ |
 | SOTA 静态验收 | `generativeUISotaAcceptance.contract.test.ts` | ✅ |
 | 全模块 integration contract | `generativeUIModuleIntegration.contract.test.ts` | ✅ |
 | Rust fmt | `cargo fmt --check`（Round 30 修复） | ✅ |
