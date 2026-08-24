@@ -231,7 +231,7 @@ export const useTauriDragAndDrop = ({
           const isAllowed = allowedRegex.test(path);
           
           if (!isAllowed) {
-            rejectedFiles.push(`${fileName}: 不支持的文件类型`);
+            rejectedFiles.push(`${fileName}: ${i18n.t('drag_drop:errors.unsupported_type')}`);
             emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件类型不支持: ${fileName}`, {
               fileName,
               path,
@@ -246,7 +246,7 @@ export const useTauriDragAndDrop = ({
               if (fileSize > maxFileSize) {
                 oversizeCount++;
                 const sizeMB = (maxFileSize / (1024 * 1024)).toFixed(1);
-                rejectedFiles.push(`${fileName}: 文件过大 (${(fileSize / (1024 * 1024)).toFixed(2)}MB > ${sizeMB}MB)`);
+                rejectedFiles.push(`${fileName}: ${i18n.t('drag_drop:errors.file_too_large', { size: sizeMB })}`);
                 emitDebugEvent(zoneId, 'validation_failed', 'warning', `文件过大: ${fileName}`, {
                   fileName,
                   fileSize: `${(fileSize / (1024 * 1024)).toFixed(2)}MB`,
