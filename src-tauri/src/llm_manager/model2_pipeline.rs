@@ -538,12 +538,13 @@ fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
 #[inline]
 fn server_side_web_search_enabled(
     quirks: &ProviderQuirks,
+    model: &str,
     llm_context: &HashMap<String, Value>,
 ) -> bool {
     if !quirks.server_side_web_search {
         return false;
     }
-    if !deepseek_model_supports_server_side_web_search(&config.model) {
+    if !deepseek_model_supports_server_side_web_search(model) {
         return false;
     }
     if llm_context
@@ -1734,6 +1735,7 @@ mod tests {
 
         assert!(server_side_web_search_enabled(
             &resolve_quirks(&base),
+            &base.model,
             &enabled_context
         ));
 
@@ -1742,6 +1744,7 @@ mod tests {
         disabled_context.insert("web_search_enabled".to_string(), json!(false));
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&base),
+            &base.model,
             &disabled_context
         ));
 
@@ -1750,6 +1753,7 @@ mod tests {
         chat_config.api_protocol = Some("openai_chat_completions".to_string());
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&chat_config),
+            &chat_config.model,
             &enabled_context
         ));
 
@@ -1760,6 +1764,7 @@ mod tests {
         third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&third_party),
+            &third_party.model,
             &enabled_context
         ));
 
@@ -1767,13 +1772,18 @@ mod tests {
         let mut proxy = base.clone();
         proxy.base_url = "https://myproxy.example.com/v1".to_string();
         proxy.api_protocol = Some("openai_responses".to_string());
-        assert!(!server_side_web_search_enabled(&proxy, &enabled_context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&proxy),
+            &proxy.model,
+            &enabled_context
+        ));
 
         // 模型不支持工具 → 不注入
         let mut no_tools = base.clone();
         no_tools.supports_tools = false;
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&no_tools),
+            &no_tools.model,
             &enabled_context
         ));
     }
@@ -1802,19 +1812,27 @@ mod tests {
             should_use_openai_responses_for_config(&pro),
             "v4-pro 应走 Responses 协议（前置条件）"
         );
-        assert!(!server_side_web_search_enabled(&pro, &context));
+        assert!(!server_side_web_search_enabled(
+            &resolve_quirks(&pro),
+            &pro.model,
+            &context
+        ));
 
         // flash 系列（含官方文档列名的 vision-exp）→ 注入
         let mut vision_exp = base.clone();
         vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
-        assert!(server_side_web_search_enabled(&vision_exp, &context));
+        assert!(server_side_web_search_enabled(
+            &resolve_quirks(&vision_exp),
+            &vision_exp.model,
+            &context
+        ));
 
         // legacy 别名（官方映射到 flash）→ 注入
         for alias in ["deepseek-chat", "deepseek-reasoner"] {
             let mut legacy = base.clone();
             legacy.model = alias.to_string();
             assert!(
-                server_side_web_search_enabled(&legacy, &context),
+                server_side_web_search_enabled(&resolve_quirks(&legacy), &legacy.model, &context),
                 "legacy 别名 {alias} 应放行"
             );
         }
@@ -2917,7 +2935,7 @@ fn stable_prompt_cache_key(session_id: Option<&str>) -> String {
 /// 仅 OpenAI Responses 协议与 OpenAI 官方 Chat Completions 需要；
 /// DeepSeek 官方（含其 Responses 公测端点）不支持该字段，不写。
 fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
-    if is_official_deepseek_config(config) {
+    if super::is_official_deepseek_config(config) {
         return false;
     }
     should_use_openai_responses_for_config(config)
@@ -2929,7 +2947,7 @@ fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
 /// 参数**只对 OpenAI 官方端点**合法——DeepSeek 官方明确不支持，第三方
 /// OpenAI 兼容网关/反代行为不可知（轻则静默忽略、重则 400），一律不写。
 fn provider_accepts_prompt_cache_retention(config: &ApiConfig) -> bool {
-    !is_official_deepseek_config(config)
+    !super::is_official_deepseek_config(config)
         && super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
 }
 
@@ -3876,7 +3894,7 @@ impl LLMManager {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
             let mut tools = custom_tools.unwrap_or_default();
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, context) {
+            if server_side_web_search_enabled(&quirks, &config.model, context) {
                 apply_server_side_web_search_tool(&mut tools);
                 debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
             }
@@ -3898,7 +3916,7 @@ impl LLMManager {
             // 构建工具列表，包含本地工具和 MCP 工具
             let mut tools = self.build_tools_with_mcp(&window).await;
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, context) {
+            if server_side_web_search_enabled(&quirks, &config.model, context) {
                 if let Some(tools_array) = tools.as_array_mut() {
                     apply_server_side_web_search_tool(tools_array);
                     debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
