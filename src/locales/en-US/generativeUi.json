@@ -52,7 +52,17 @@
     "review_day": "{{date}}, {{due}} due",
     "step_pending": "Not started",
     "step_active": "In progress",
-    "step_done": "Done"
+    "step_done": "Done",
+    "step_error": "Failed",
+    "step_skipped": "Skipped",
+    "markdown_label": "Markdown content",
+    "chart_label": "{{title}} {{kind}} chart",
+    "chart_empty": "No chart data",
+    "steps_label": "Steps",
+    "table_label": "Table",
+    "table_caption": "Data table",
+    "block_error": "Component failed to render",
+    "retry": "Retry"
   },
   "blocks": {
     "table": {
@@ -70,7 +80,8 @@
       "a11y_label": "{{title}} {{kind}} chart"
     },
     "markdown": {
-      "empty": "No content yet"
+      "empty": "No content yet",
+      "error": "Failed to render content"
     }
   },
   "notes": {
@@ -87,12 +98,14 @@
     "summary_empty_note_title": "Note has no body yet",
     "summary_empty_note_description": "Write some content to generate a section summary",
     "summary_empty_headings": "No section headings",
+    "summary_markdown_title": "Note overview",
     "edit_suggestion_title": "Note edit suggestion",
     "edit_suggestion_description": "Opens the diff panel — accept or reject in the editor",
     "edit_operation_key": "Operation",
     "edit_preview_title": "Change preview",
     "edit_apply": "Apply to note",
-    "edit_dismiss": "Dismiss"
+    "edit_dismiss": "Dismiss",
+    "edit_suggestion_markdown_title": "Suggestion notes"
   },
   "exam": {
     "briefing_label": "AI question bank briefing",
@@ -112,7 +125,13 @@
       "status_list_title": "Question status",
       "in_progress_row": "In progress",
       "new_count_row": "New",
-      "status_empty": "No question status yet"
+      "status_empty": "No question status yet",
+      "table_title": "Mastery and accuracy",
+      "table_metric_column": "Metric",
+      "table_value_column": "Value",
+      "chart_title": "Question distribution",
+      "chart_series": "Questions",
+      "mastered_category": "Mastered"
     }
   },
   "translation": {
@@ -133,7 +152,9 @@
       "empty_source_title": "No source text",
       "empty_source_description": "Add source text to track translation progress",
       "segments_title": "Recent segments",
-      "segments_empty": "No segments yet"
+      "segments_empty": "No segments yet",
+      "count_chart_title": "Source vs translation",
+      "count_chart_series": "Characters"
     }
   },
   "indexStatus": {
@@ -154,7 +175,13 @@
       "empty_index_title": "No resources found",
       "empty_index_description": "There is nothing to index yet",
       "scan_progress_title": "Scan progress",
-      "scan_progress_label": "Indexing {{count}}"
+      "scan_progress_label": "Indexing {{count}}",
+      "failed_markdown_title": "Index failures",
+      "failed_markdown_body": "**{{count}}** resources failed to index. Retry pending items.",
+      "status_table_title": "Index status",
+      "status_col_name": "Status",
+      "status_col_count": "Count",
+      "indexed_label": "Indexed"
     }
   },
   "memory": {
@@ -173,7 +200,15 @@
       "create_memory": "New memory",
       "recent_list_title": "Recent entries",
       "recent_empty": "No memory entries yet",
-      "open_memory": "Open memory"
+      "open_memory": "Open memory",
+      "empty_guide_title": "Start capturing memories",
+      "empty_guide_body": "Create a memory, or open an existing entry and refresh the list.",
+      "steps_title": "Memory actions",
+      "step_create": "Create memory",
+      "step_open": "Open memory",
+      "step_refresh": "Refresh list",
+      "recent_col_title": "Title",
+      "recent_col_detail": "Detail"
     }
   },
   "workbench": {
@@ -198,7 +233,11 @@
       "review_empty_title": "Due reviews",
       "review_empty": "Nothing due today",
       "idle_alert_title": "Learning queue is idle",
-      "idle_alert_description": "No due flashcards, todos, or card-generation tasks"
+      "idle_alert_description": "No due flashcards, todos, or card-generation tasks",
+      "workload_chart_title": "Due and todos",
+      "chart_pending": "Pending todos",
+      "chart_overdue": "Overdue todos",
+      "workload_chart_series": "Count"
     }
   },
   "learningHub": {
@@ -216,7 +255,13 @@
       "recent_list_title": "Recent resources",
       "recent_empty": "No visible resources in this folder",
       "empty_alert_title": "Folder is empty",
-      "empty_alert_description": "Add notes or files to generate a briefing"
+      "empty_alert_description": "Add notes or files to generate a briefing",
+      "path_steps_title": "Learning path",
+      "step_review": "Start review",
+      "step_qbank": "Open question bank",
+      "chart_title": "Review load",
+      "chart_due": "Due",
+      "chart_series": "Items"
     }
   },
   "research": {
@@ -253,7 +298,8 @@
       "step_status_active": "Active",
       "step_status_done": "Done",
       "digest_fallback_title": "Research digest",
-      "empty_steps": "No substeps yet"
+      "empty_steps": "No substeps yet",
+      "steps_block_title": "Research pipeline"
     },
     "actions": {
       "copy_report": "Copy report",

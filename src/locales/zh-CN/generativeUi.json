@@ -52,7 +52,17 @@
     "review_day": "{{date}}，待复习 {{due}} 项",
     "step_pending": "未开始",
     "step_active": "进行中",
-    "step_done": "已完成"
+    "step_done": "已完成",
+    "step_error": "失败",
+    "step_skipped": "已跳过",
+    "markdown_label": "Markdown 正文",
+    "chart_label": "{{title}} {{kind}} 图表",
+    "chart_empty": "暂无图表数据",
+    "steps_label": "步骤",
+    "table_label": "表格",
+    "table_caption": "数据表",
+    "block_error": "组件渲染失败",
+    "retry": "重试"
   },
   "blocks": {
     "table": {
@@ -70,7 +80,8 @@
       "a11y_label": "{{title}} {{kind}} 图表"
     },
     "markdown": {
-      "empty": "暂无正文"
+      "empty": "暂无正文",
+      "error": "正文渲染失败"
     }
   },
   "notes": {
@@ -87,12 +98,14 @@
     "summary_empty_note_title": "笔记尚无正文",
     "summary_empty_note_description": "写一些内容后即可生成章节摘要",
     "summary_empty_headings": "暂无章节标题",
+    "summary_markdown_title": "笔记概览",
     "edit_suggestion_title": "笔记编辑建议",
     "edit_suggestion_description": "确认后将打开 diff 面板，由你在编辑器中接受或拒绝",
     "edit_operation_key": "操作类型",
     "edit_preview_title": "变更预览",
     "edit_apply": "应用到笔记",
-    "edit_dismiss": "忽略建议"
+    "edit_dismiss": "忽略建议",
+    "edit_suggestion_markdown_title": "建议说明"
   },
   "exam": {
     "briefing_label": "AI 题库简报",
@@ -112,7 +125,13 @@
       "status_list_title": "题目状态",
       "in_progress_row": "练习中",
       "new_count_row": "未学习",
-      "status_empty": "暂无题目状态"
+      "status_empty": "暂无题目状态",
+      "table_title": "掌握与正确率",
+      "table_metric_column": "指标",
+      "table_value_column": "数值",
+      "chart_title": "题目分布",
+      "chart_series": "题数",
+      "mastered_category": "掌握"
     }
   },
   "translation": {
@@ -133,7 +152,9 @@
       "empty_source_title": "暂无原文",
       "empty_source_description": "输入原文后即可跟踪翻译进度",
       "segments_title": "最近句段",
-      "segments_empty": "暂无句段"
+      "segments_empty": "暂无句段",
+      "count_chart_title": "原文与译文计数",
+      "count_chart_series": "字数"
     }
   },
   "indexStatus": {
@@ -154,7 +175,13 @@
       "empty_index_title": "尚未发现资源",
       "empty_index_description": "当前没有可索引的资源",
       "scan_progress_title": "扫描进度",
-      "scan_progress_label": "正在索引 {{count}}"
+      "scan_progress_label": "正在索引 {{count}}",
+      "failed_markdown_title": "索引失败",
+      "failed_markdown_body": "有 **{{count}}** 项索引失败，可重试待处理资源。",
+      "status_table_title": "索引状态",
+      "status_col_name": "状态",
+      "status_col_count": "数量",
+      "indexed_label": "已索引"
     }
   },
   "memory": {
@@ -173,7 +200,15 @@
       "create_memory": "新建记忆",
       "recent_list_title": "最近条目",
       "recent_empty": "暂无记忆条目",
-      "open_memory": "打开记忆"
+      "open_memory": "打开记忆",
+      "empty_guide_title": "开始记录记忆",
+      "empty_guide_body": "新建一条记忆，或打开已有条目后刷新列表。",
+      "steps_title": "记忆操作",
+      "step_create": "新建记忆",
+      "step_open": "打开记忆",
+      "step_refresh": "刷新列表",
+      "recent_col_title": "标题",
+      "recent_col_detail": "说明"
     }
   },
   "workbench": {
@@ -198,7 +233,11 @@
       "review_empty_title": "待复习",
       "review_empty": "今日暂无到期复习",
       "idle_alert_title": "学习节奏空闲",
-      "idle_alert_description": "当前没有到期闪卡、待办或制卡任务"
+      "idle_alert_description": "当前没有到期闪卡、待办或制卡任务",
+      "workload_chart_title": "到期与待办",
+      "chart_pending": "待办",
+      "chart_overdue": "逾期",
+      "workload_chart_series": "数量"
     }
   },
   "learningHub": {
@@ -216,7 +255,13 @@
       "recent_list_title": "最近资源",
       "recent_empty": "当前目录没有可见资源",
       "empty_alert_title": "目录为空",
-      "empty_alert_description": "添加笔记或资料后即可生成简报"
+      "empty_alert_description": "添加笔记或资料后即可生成简报",
+      "path_steps_title": "学习路径",
+      "step_review": "开始复习",
+      "step_qbank": "打开题库",
+      "chart_title": "复习负荷",
+      "chart_due": "待复习",
+      "chart_series": "条目"
     }
   },
   "research": {
@@ -253,7 +298,8 @@
       "step_status_active": "进行中",
       "step_status_done": "已完成",
       "digest_fallback_title": "研究摘要",
-      "empty_steps": "暂无子步骤"
+      "empty_steps": "暂无子步骤",
+      "steps_block_title": "研究流程"
     },
     "actions": {
       "copy_report": "复制报告",

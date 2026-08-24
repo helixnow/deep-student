@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { Card, CardContent, CardHeader } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { MarkdownRenderer } from '@/features/chat/components/renderers/MarkdownRenderer';
+import { GenerativeUIErrorBoundary } from './GenerativeUIErrorBoundary';
+import { sanitizeGenerativeMarkdown } from '../utils/sanitizeGenerativeMarkdown';
 
 export const MARKDOWN_TITLE_MAX = 120;
 export const MARKDOWN_BODY_MAX = 20000;
@@ -37,6 +39,7 @@ function resolveTitle(
 
 export function MarkdownBlock(props: MarkdownBlockRenderProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   const parsed = markdownPropsSchema.safeParse(props);
 
   const title = resolveTitle(parsed, props.title);
@@ -46,7 +49,7 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
       : props.variant === 'compact' || props.variant === 'default'
         ? props.variant
         : 'default';
-  const body = parsed.success ? parsed.data.body.trim() : '';
+  const body = parsed.success ? sanitizeGenerativeMarkdown(parsed.data.body.trim()) : '';
   const isEmpty = !body;
   const isCompact = variant === 'compact';
   const isStreaming = props.isStreaming === true;
@@ -55,6 +58,9 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
   return (
     <Card
       className="min-w-0"
+      role="region"
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : t('a11y.markdown_label')}
       data-generative-markdown
       data-variant={variant}
       data-empty={isEmpty || undefined}
@@ -62,7 +68,9 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
     >
       {title ? (
         <CardHeader className={cn('space-y-2', isCompact ? 'p-2 pb-2' : 'p-4 pb-2')}>
-          <div className="text-sm font-medium">{title}</div>
+          <h4 id={titleId} className="text-sm font-medium">
+            {title}
+          </h4>
         </CardHeader>
       ) : null}
       <CardContent className={cn(isCompact ? 'p-2' : 'p-4', title && 'pt-0')}>
@@ -71,7 +79,9 @@ export function MarkdownBlock(props: MarkdownBlockRenderProps) {
             {emptyLabel}
           </p>
         ) : (
-          <MarkdownRenderer content={body} isStreaming={isStreaming} className="text-sm" />
+          <GenerativeUIErrorBoundary>
+            <MarkdownRenderer content={body} isStreaming={isStreaming} className="text-sm" />
+          </GenerativeUIErrorBoundary>
         )}
       </CardContent>
     </Card>
