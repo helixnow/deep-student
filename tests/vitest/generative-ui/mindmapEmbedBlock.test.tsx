@@ -15,6 +15,11 @@ vi.mock('@/features/mindmap/components/mindmap/MindMapEmbed', () => ({
 }));
 
 describe('MindmapEmbedBlock', () => {
+  it('rejects traversal and scheme-like embed ids', () => {
+    expect(mindmapEmbedPropsSchema.safeParse({ mindmapId: '../evil' }).success).toBe(false);
+    expect(mindmapEmbedPropsSchema.safeParse({ versionId: 'javascript:alert(1)' }).success).toBe(false);
+  });
+
   it('accepts versionId-only props in schema', () => {
     const parsed = mindmapEmbedPropsSchema.safeParse({
       versionId: 'mv_test123',

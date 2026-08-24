@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 65（2026-08-24）— reset 保活切片 / 导图 ID
+
+1. [x] `HpiasStore.reset` 只重置目标会话，其它 `sessions[id]` 保留
+2. [x] Style Lab 演示用 `reset(demoSessionId)`，不再 `clear()` 抹掉 Chat 研究
+3. [x] mindmap-embed `mindmapId` / `versionId` 限制为安全 ID 字符集
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 64（2026-08-24）— 共享 HPIAS 订阅
 
 1. [x] `retainSharedHpiasEventBridge` 引用计数，多 Chat 研究块只 listen 一次
