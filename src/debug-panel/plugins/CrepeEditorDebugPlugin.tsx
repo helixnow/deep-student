@@ -581,7 +581,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
               <button
                 key={key}
                 onClick={() => setSelectedCategory(selectedCategory === key ? 'all' : key as EventCategory)}
-                className={`px-3 py-1 text-xs rounded-full transition-all ${
+                className={`px-3 py-1 [@media(pointer:coarse)]:min-h-11 text-xs rounded-full transition-all ${
                   selectedCategory === key 
                     ? 'ring-2 ring-offset-1' 
                     : 'opacity-75 hover:opacity-100'
@@ -607,7 +607,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜索消息、详情..."
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         
@@ -616,7 +616,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部分类</option>
             {Object.entries(CATEGORY_LABELS).map(([key, { label }]) => (
@@ -630,7 +630,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value as any)}
-            className="w-full px-3 py-1.5 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部级别</option>
             <option value="debug">调试</option>
