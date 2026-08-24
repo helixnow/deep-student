@@ -896,7 +896,7 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         key: &str,
         path: &std::path::Path,
-        progress: Option<crate::cloud_storage::UploadProgressCallback>,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
     ) -> Result<(), SyncError> {
         let Some(password) = self
             .encryption_password
@@ -947,7 +947,7 @@ impl SyncManager {
         key: &str,
         dest: &std::path::Path,
         expected_sha256: Option<&str>,
-        progress: Option<crate::cloud_storage::DownloadProgressCallback>,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
     ) -> Result<(), SyncError> {
         let parent = match dest.parent() {
             Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
@@ -968,28 +968,26 @@ impl SyncManager {
             .await
             .map_err(|e| SyncError::Network(format!("下载文件级对象失败 {}: {}", key, e)))?;
 
-        let verify_and_persist =
-            |plain_tmp: tempfile::TempPath, dest: &std::path::Path| -> Result<(), SyncError> {
-                if let Some(expected) = expected_sha256 {
-                    let actual =
-                        crate::backup_common::calculate_file_hash(&plain_tmp).map_err(|e| {
-                            SyncError::Database(format!(
-                                "计算下载对象明文校验和失败 {}: {}",
-                                key, e
-                            ))
-                        })?;
-                    if !actual.eq_ignore_ascii_case(expected) {
-                        return Err(SyncError::Database(format!(
-                            "文件级对象 {} 明文校验失败: 期望 {}, 实际 {}",
-                            key, expected, actual
-                        )));
-                    }
+        let verify_and_persist = |plain_tmp: tempfile::TempPath,
+                                  dest: &std::path::Path|
+         -> Result<(), SyncError> {
+            if let Some(expected) = expected_sha256 {
+                let actual =
+                    crate::backup_common::calculate_file_hash(&plain_tmp).map_err(|e| {
+                        SyncError::Database(format!("计算下载对象明文校验和失败 {}: {}", key, e))
+                    })?;
+                if !actual.eq_ignore_ascii_case(expected) {
+                    return Err(SyncError::Database(format!(
+                        "文件级对象 {} 明文校验失败: 期望 {}, 实际 {}",
+                        key, expected, actual
+                    )));
                 }
-                plain_tmp.persist(dest).map_err(|e| {
-                    SyncError::Database(format!("保存下载文件失败 {:?}: {}", dest, e))
-                })?;
-                Ok(())
-            };
+            }
+            plain_tmp
+                .persist(dest)
+                .map_err(|e| SyncError::Database(format!("保存下载文件失败 {:?}: {}", dest, e)))?;
+            Ok(())
+        };
 
         if Self::file_has_dsbk_magic(&downloaded_tmp)? {
             let Some(password) = self

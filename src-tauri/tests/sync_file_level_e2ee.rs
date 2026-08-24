@@ -228,7 +228,10 @@ async fn r07_blob_download_of_encrypted_object_without_password_fails_closed() {
 
     // 模拟另一台加密客户端把对象换成 DSBK 密文
     let object_key = format!("data_governance/blobs/{hash}");
-    storage.overwrite(&object_key, encrypt_backup(&content, "someone-elses-pw").unwrap());
+    storage.overwrite(
+        &object_key,
+        encrypt_backup(&content, "someone-elses-pw").unwrap(),
+    );
 
     let outcome = manager_plaintext("device-b")
         .sync_vfs_blobs(&storage, dir_b.path(), SyncDirection::Download)
@@ -265,7 +268,10 @@ async fn r07_blob_download_with_undecryptable_object_fails() {
 
     // 攻击者/故障方把对象换成另一把密码加密的 DSBK 密文
     let object_key = format!("data_governance/blobs/{hash}");
-    storage.overwrite(&object_key, encrypt_backup(&content, "attacker-pw").unwrap());
+    storage.overwrite(
+        &object_key,
+        encrypt_backup(&content, "attacker-pw").unwrap(),
+    );
 
     let outcome = manager_with_password("device-b")
         .sync_vfs_blobs(&storage, dir_b.path(), SyncDirection::Download)
@@ -358,7 +364,12 @@ async fn r07_plaintext_file_uploads_rejected_when_marker_exists() {
     assert!(blob_err.contains("加密密码"), "{blob_err}");
 
     let asset_err = manager
-        .sync_asset_directories(&storage, active.path(), active.path(), SyncDirection::Upload)
+        .sync_asset_directories(
+            &storage,
+            active.path(),
+            active.path(),
+            SyncDirection::Upload,
+        )
         .await
         .expect_err("有加密标记且无密码时必须拒绝资产明文上传")
         .to_string();
@@ -416,7 +427,9 @@ async fn r07_asset_directory_roundtrip_is_encrypted() {
 
     // 对象键 = 明文 sha256；云端字节 = DSBK 密文
     let object_key = format!("data_governance/asset_objects/{sha256}");
-    let cloud_bytes = storage.raw(&object_key).expect("资产对象必须按明文哈希寻址");
+    let cloud_bytes = storage
+        .raw(&object_key)
+        .expect("资产对象必须按明文哈希寻址");
     assert!(is_encrypted_backup(&cloud_bytes));
     assert_ne!(cloud_bytes, content);
 
