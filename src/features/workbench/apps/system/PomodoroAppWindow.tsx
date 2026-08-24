@@ -582,7 +582,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       onClick={handleStop}
                       title={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
                       aria-label={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
-                      className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard"
+                      className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
                     </DsButton>
@@ -592,7 +592,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       onClick={cancelStopConfirm}
                       title={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
                       aria-label={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
-                      className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard"
+                      className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
                     </DsButton>
@@ -640,7 +640,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                           ? t('pomodoro.controls.startFocus')
                           : t('pomodoro.controls.resume')
                     }
-                    className="wb-sys-pomo-play h-8 gap-1.5 !px-4 text-xs transition-colors duration-150 ease-standard"
+                    className="wb-sys-pomo-play h-8 gap-1.5 !px-4 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isRunning ? <Pause size={14} /> : <Play size={14} weight="fill" />}
                     <span>
@@ -662,7 +662,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   onClick={() => completeCurrentSession()}
                   title={t('pomodoro.controls.finish')}
                   aria-label={t('pomodoro.controls.finish')}
-                  className="h-8 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard"
+                  className="h-8 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                 >
                   <CheckCircle size={14} />
                   <span>{t('pomodoro.controls.finish')}</span>
@@ -695,7 +695,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     onClick={() => extendPhase(minutes * 60)}
                     title={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
                     aria-label={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
-                    className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard"
+                    className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                   >
                     {t('pomodoro.controls.extendMinutes', { ns: 'todo', count: minutes })}
                   </DsButton>
