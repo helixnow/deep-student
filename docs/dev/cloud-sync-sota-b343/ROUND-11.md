@@ -10,9 +10,7 @@
 
 ## 派出状态
 
-R10 已合入：conflict-ui / sota / ux / protocol / android / download / chaos / **verifier（P2-2 KDF 钳制）**。R11 已合入：rotate / check / review / autosync2 / **history / unsynced-ui**。专属枝 HEAD `50a9ca1c`。
-
-**在飞（重派，独立 worktree，勿再叠派）**：android2 / names2 / providers（WebDAV 非续传字节核对）/ delta / lease；以及 R12：repocheck-fix（P1 DSBK 头偏移）/ decoded-dead / review / tombstone-scen / e2ee-plaintext-dl。调研路现可用 `claude-fable-5-thinking-xhigh`。不合并 `r07-docs`。
+R10 已合入：conflict-ui / sota / ux / protocol / android / download / chaos / verifier / **providers**。R11 已合入：rotate / check / review / autosync2 / history / unsynced-ui。R12 已合入：decoded-dead / **repocheck-fix（P1）**。专属枝 HEAD `d746da20`。收尾见 [WRAP-CLOSE.md](./WRAP-CLOSE.md)。不合并 `r07-docs`。
 
 ## 十路大包
 
