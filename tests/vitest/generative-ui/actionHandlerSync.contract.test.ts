@@ -12,11 +12,9 @@ import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/b
 import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildMemoryBriefingIntent';
 import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
 import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
-import { buildFlashcardPreviewIntent } from '@/features/generative-ui/utils/buildFlashcardPreviewIntent';
 import { buildTranslationBriefingIntent } from '@/features/generative-ui/utils/buildTranslationBriefingIntent';
 import { buildHpiasResearchDashboardIntent } from '@/features/generative-ui/utils/buildHpiasResearchDashboardIntent';
 import { createResearchBriefingActionHandlers } from '@/features/generative-ui/handlers/researchBriefingActionHandlers';
-import { createFlashcardSaveActionHandlers } from '@/features/generative-ui/handlers/flashcardActionHandlers';
 import { createTranslationBriefingActionHandlers } from '@/features/generative-ui/handlers/translationBriefingActionHandlers';
 import {
   COPY_INTENT_ACTION_ID,
@@ -225,20 +223,6 @@ describe('generativeUI actionHandlerSync contract', () => {
       { openSettings: 'Settings', copyTranslation: 'Copy' },
     );
     expectActionIdsRegistered(intent, handlers, 'buildTranslationBriefingIntent');
-  });
-
-  it('flashcard preview intent action ids exist in createFlashcardSaveActionHandlers', () => {
-    const intent = buildFlashcardPreviewIntent({
-      front: 'Front',
-      back: 'Back',
-      labels: { metaTitle: 'Preview', saveToLibrary: 'Save' },
-    });
-    const handlers = createFlashcardSaveActionHandlers(
-      intent,
-      { blockId: 'blk-1' },
-      { saveToLibrary: 'Save' },
-    );
-    expectActionIdsRegistered(intent, handlers, 'buildFlashcardPreviewIntent');
   });
 
   it('hpias research dashboard action ids exist in createResearchBriefingActionHandlers', () => {

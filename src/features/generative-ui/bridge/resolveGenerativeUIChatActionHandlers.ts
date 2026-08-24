@@ -22,11 +22,6 @@ import {
   createNotesEditActionHandlers,
   type NotesEditActionLabels,
 } from '../handlers/notesEditActionHandlers';
-import {
-  createFlashcardSaveActionHandlers,
-  type FlashcardActionLabels,
-  type FlashcardSaveContext,
-} from '../handlers/flashcardActionHandlers';
 import { extractNoteEditPayload } from '../utils/extractNoteEditPayload';
 import {
   COPY_INTENT_ACTION_ID,
@@ -46,7 +41,6 @@ import {
 } from '../handlers/exportIntentActionHandlers';
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
-export const FLASHCARD_ACTION_IDS = ['save-to-library'] as const;
 export const RESEARCH_ACTION_IDS = ['copy-report', 'export-plan', 'export-intent'] as const;
 export const COPY_INTENT_ACTION_IDS = [COPY_INTENT_ACTION_ID] as const;
 export const COPY_BLOCK_ACTION_IDS = [COPY_BLOCK_ACTION_ID] as const;
@@ -66,8 +60,6 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   toolInput?: unknown;
   toolOutput?: unknown;
   noteEditLabels?: NotesEditActionLabels;
-  flashcardLabels?: FlashcardActionLabels;
-  flashcardContext?: FlashcardSaveContext;
   researchLabels?: ResearchBriefingActionLabels;
   copyIntentLabels?: CopyIntentActionLabels;
   copyBlockLabels?: CopyBlockActionLabels;
@@ -107,18 +99,6 @@ export function resolveGenerativeUIChatActionHandlers(
         ),
       );
     }
-  }
-
-  const needsFlashcardHandlers = FLASHCARD_ACTION_IDS.some((id) => actionIds.has(id));
-  if (needsFlashcardHandlers) {
-    Object.assign(
-      handlers,
-      createFlashcardSaveActionHandlers(
-        input.intent,
-        input.flashcardContext ?? {},
-        input.flashcardLabels ?? { saveToLibrary: '保存到闪卡库' },
-      ),
-    );
   }
 
   const hasResearchBlocks = intentHasResearchBlocks(input.intent);

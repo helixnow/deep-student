@@ -14,6 +14,7 @@ CI `32704302688` 仍 queued，**本轮不 push**。早期并行 `cursor/*` 分�
 8. [x] handler 查找 `Object.hasOwn`；无 registry 时仍派发 `onAction`
 9. [x] 宿主 handler 标签可 i18n；Chat 转发 `researchSessionId` / copy 标签
 10. [x] leftover 分支覆盖确认 + 本地门禁
+11. [x] 0824 合并裁决：移除 Generative UI 闪卡独立保存入口，保留只读预览；入库统一走 `anki_cards` QA/critic 管线
 
 - [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
 
