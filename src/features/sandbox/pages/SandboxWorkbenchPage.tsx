@@ -41,6 +41,7 @@ export function SandboxWorkbenchPage() {
           variant="ghost"
           size="sm"
           iconOnly
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           aria-label={t('sandbox.refresh')}
           onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
         >
@@ -50,6 +51,7 @@ export function SandboxWorkbenchPage() {
           variant="ghost"
           size="sm"
           iconOnly
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
           onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
         >
