@@ -80,6 +80,22 @@ describe('GenerativeUIRenderer parse-error codes + intent snapshot', () => {
     expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(0);
   });
 
+  it('does not snapshot an object that only passes schema validation after block capping', () => {
+    const oversizedBlockList: GenerativeUIIntent = {
+      version: '1',
+      blocks: Array.from({ length: 33 }, (_, index) => ({
+        type: 'text',
+        props: { body: `block-${index}` },
+      })),
+    };
+    const { container } = render(
+      <GenerativeUIRenderer intent={oversizedBlockList} showChrome={false} />,
+    );
+
+    expect(container.querySelectorAll('[data-generative-block]')).toHaveLength(32);
+    expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(0);
+  });
+
   it('waits for a valid streaming intent to complete before snapshotting it', () => {
     const { rerender } = render(
       <GenerativeUIRenderer intent={VALID_INTENT} isStreaming showChrome={false} />,

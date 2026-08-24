@@ -22,6 +22,7 @@ import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIn
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import {
   STREAM_BUFFER_CAPPED_WARNING,
+  isSerializedStreamValueOverCap,
   isStreamBufferOverCap,
 } from './utils/streamBufferGuard';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
@@ -102,6 +103,19 @@ function resolveDisplayIntent(
   const explicitCount = positiveCount(truncatedCount);
 
   if (typeof input !== 'string') {
+    if (isStreaming && isSerializedStreamValueOverCap(input)) {
+      return {
+        intent: null,
+        warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
+        parseError: null,
+        truncatedCount: explicitCount,
+        streamFallback: true,
+        snapshotEligible: false,
+      };
+    }
+
+    const snapshotEligible =
+      !isStreaming && generativeUIIntentSchema.safeParse(input).success;
     const capped = capIntentBlocks(input);
     const warnings = mergeWarnings(
       extra,
@@ -113,8 +127,7 @@ function resolveDisplayIntent(
       parseError: null,
       truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
       streamFallback: false,
-      snapshotEligible:
-        !isStreaming && generativeUIIntentSchema.safeParse(capped.intent).success,
+      snapshotEligible,
     };
   }
 

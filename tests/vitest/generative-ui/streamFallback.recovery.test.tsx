@@ -85,6 +85,26 @@ describe('stream fallback recovery — renderer', () => {
     expect(container.querySelector('[data-generative-block]')).toBeNull();
   });
 
+  it('falls back without rendering a streaming object over the buffer cap', () => {
+    const oversized = {
+      version: '1' as const,
+      blocks: [
+        {
+          type: 'text',
+          props: { body: 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS) },
+        },
+      ],
+    };
+    const { container } = render(
+      <GenerativeUIRenderer intent={oversized} isStreaming showChrome={false} />,
+    );
+
+    expect(container.querySelector('[data-generative-ui]')).toHaveAttribute(
+      'data-stream-fallback',
+    );
+    expect(container.querySelector('[data-generative-block]')).toBeNull();
+  });
+
   it('marks invalid block props with a warning alert and data-block-invalid', () => {
     const { container } = render(
       <GenerativeUIRenderer

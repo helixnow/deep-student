@@ -13,6 +13,7 @@ import {
   MAX_GENERATIVE_UI_STREAM_CHARS,
   STREAM_BUFFER_CAPPED_WARNING,
   guardStreamBufferAppend,
+  isSerializedStreamValueOverCap,
   isStreamBufferOverCap,
 } from '@/features/generative-ui/utils/streamBufferGuard';
 
@@ -62,6 +63,28 @@ describe('streamBufferGuard', () => {
   it('isStreamBufferOverCap is exclusive of the limit', () => {
     expect(isStreamBufferOverCap(MAX_GENERATIVE_UI_STREAM_CHARS)).toBe(false);
     expect(isStreamBufferOverCap(MAX_GENERATIVE_UI_STREAM_CHARS + 1)).toBe(true);
+  });
+
+  it('measures serialized object size without allocating a JSON copy', () => {
+    const intent = {
+      version: '1',
+      blocks: [{ type: 'text', props: { body: 'plain text' } }],
+    };
+    const serializedLength = JSON.stringify(intent).length;
+
+    expect(isSerializedStreamValueOverCap(intent, serializedLength)).toBe(false);
+    expect(isSerializedStreamValueOverCap(intent, serializedLength - 1)).toBe(true);
+  });
+
+  it('counts JSON escapes when guarding object payloads', () => {
+    const escapedBody = '\u0000'.repeat(Math.ceil(MAX_GENERATIVE_UI_STREAM_CHARS / 6));
+    const intent = {
+      version: '1',
+      blocks: [{ type: 'text', props: { body: escapedBody } }],
+    };
+
+    expect(escapedBody.length).toBeLessThan(MAX_GENERATIVE_UI_STREAM_CHARS);
+    expect(isSerializedStreamValueOverCap(intent)).toBe(true);
   });
 });
 
