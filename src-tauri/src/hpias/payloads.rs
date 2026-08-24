@@ -388,4 +388,31 @@ mod tests {
             Some("Custom synthesis body")
         );
     }
+
+    #[test]
+    fn build_pipeline_timeline_covers_required_lifecycle() {
+        let timeline = build_pipeline_timeline("s1", Some("Q"), None);
+        let types: Vec<&str> = timeline
+            .iter()
+            .filter_map(|e| e.get("type").and_then(Value::as_str))
+            .collect();
+        for required in [
+            "session_started",
+            "round_started",
+            "plan_generated",
+            "retrieval_completed",
+            "selection_completed",
+            "subagent_started",
+            "subagent_completed",
+            "synthesis_updated",
+            "subagents_done",
+            "session_completed",
+        ] {
+            assert!(
+                types.contains(&required),
+                "missing lifecycle event: {}",
+                required
+            );
+        }
+    }
 }

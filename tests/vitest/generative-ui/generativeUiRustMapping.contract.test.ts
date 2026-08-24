@@ -57,13 +57,23 @@ describe('generativeUI Rust dual-mapping contract', () => {
   });
 
   it('hpias orchestrator spawns pipeline from generative_ui executor', () => {
-    expect(executorSrc).toContain('HpiasPipelineOrchestrator::spawn_from_intent');
+    expect(executorSrc).toContain('create_research_backend');
+    expect(executorSrc).toContain('HpiasResearchSessionRequest');
     const orchestratorSrc = fs.readFileSync(
       path.join(process.cwd(), 'src-tauri/src/hpias/orchestrator.rs'),
       'utf8',
     );
     expect(orchestratorSrc).toContain('build_pipeline_timeline');
     expect(orchestratorSrc).toContain('intent_has_research_blocks');
+  });
+
+  it('hpias research service exposes replaceable backend', () => {
+    const serviceSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/service.rs'),
+      'utf8',
+    );
+    expect(serviceSrc).toContain('trait HpiasResearchBackend');
+    expect(serviceSrc).toContain('StubHpiasResearchService');
   });
 
   it('hpias payloads align with frontend lifecycle events', () => {

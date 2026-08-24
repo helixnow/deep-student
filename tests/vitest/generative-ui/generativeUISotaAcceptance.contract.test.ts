@@ -91,7 +91,7 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       return (
         src.includes('emit_hpias_session_started_if_needed') &&
         src.includes('HpiasEventEmitter') &&
-        src.includes('HpiasPipelineOrchestrator::spawn_from_intent')
+        src.includes('create_research_backend')
       );
     },
   },
@@ -100,6 +100,24 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     check: () =>
       fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/orchestrator.rs')) &&
       fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/payloads.rs')),
+  },
+  {
+    id: 'hpias-research-service',
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/service.rs')),
+  },
+  {
+    id: 'hpias-lifecycle-contract',
+    check: () =>
+      fs.existsSync(
+        path.join(REPO, 'src/features/generative-ui/contracts/hpiasLifecycleContract.ts'),
+      ),
+  },
+  {
+    id: 'hpias-runtime-integration-test',
+    check: () =>
+      fs.existsSync(
+        path.join(REPO, 'tests/vitest/generative-ui/hpiasPipelineRuntime.integration.test.tsx'),
+      ),
   },
   {
     id: 'guarded-listen-hpias-whitelist',

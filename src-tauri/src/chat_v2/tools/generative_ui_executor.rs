@@ -11,7 +11,10 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::types::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::hpias::{extract_question_from_intent, HpiasEventEmitter, HpiasPipelineOrchestrator};
+use crate::hpias::{
+    create_research_backend, extract_question_from_intent, HpiasEventEmitter,
+    HpiasResearchSessionRequest,
+};
 
 const TOOL_NAME: &str = "render_generative_ui";
 
@@ -178,7 +181,12 @@ impl GenerativeUiExecutor {
                 error
             );
         }
-        HpiasPipelineOrchestrator::spawn_from_intent(window, session_id, question, intent);
+        let backend = create_research_backend(window);
+        backend.start_research_session(HpiasResearchSessionRequest {
+            session_id,
+            question,
+            intent,
+        });
     }
 }
 

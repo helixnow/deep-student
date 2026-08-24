@@ -80,7 +80,9 @@ Translation 流式简报（Round 17）：
 
 Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携带 `researchSessionId` 时 emit `session_started`，激活前端 HPIAS 桥。
 
-**`hpias::HpiasPipelineOrchestrator`**（Round 21）在 intent 含 Research 块时于后台按生命周期 emit：`plan_generated` → `retrieval_completed` → `selection_completed` → `subagent_*` → `synthesis_updated` → `session_completed`（payload 构建见 `hpias/payloads.rs`，与 Style Lab 演示时间线对齐）。未来真实 HPIAS 后端可替换 orchestrator stub，保留 emit 协议。
+**`hpias::HpiasPipelineOrchestrator`**（Round 21）在 intent 含 Research 块时于后台按生命周期 emit：`plan_generated` → `retrieval_completed` → `selection_completed` → `subagent_*` → `synthesis_updated` → `session_completed`（payload 构建见 `hpias/payloads.rs`，与 Style Lab 演示时间线对齐）。
+
+**`hpias::HpiasResearchBackend`**（Round 22）通过 `StubHpiasResearchService` 封装 orchestrator，executor 经 `create_research_backend` 启动 pipeline；前端 `contracts/hpiasLifecycleContract.ts` 与 Rust payloads 跨语言对齐。未来真实 HPIAS 后端实现同一 trait 即可替换 stub。
 
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`

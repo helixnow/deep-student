@@ -22,6 +22,15 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 22（2026-08-24）
+
+- [x] **`hpias/service.rs`** — `HpiasResearchBackend` trait + `StubHpiasResearchService`（可替换真实后端）
+- [x] `generative_ui_executor` 经 `create_research_backend` 启动 pipeline（不再直接调用 orchestrator）
+- [x] **`hpiasLifecycleContract.ts`** — Rust/TS 跨语言生命周期事件契约
+- [x] **`hpiasPayloadParity.contract.test.ts`** + **`hpiasPipelineRuntime.integration.test.ts`** — 渐进式运行时验收
+- [x] SOTA acceptance 扩展 service / lifecycle / runtime 要求
+- [x] vitest 全绿
+
 ## Round 21（2026-08-24）
 
 - [x] **`hpias/payloads.rs`** — HpiasEvent 生命周期 payload 构建器（plan/retrieval/subagent/synthesis/completed）

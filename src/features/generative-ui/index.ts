@@ -79,6 +79,13 @@ export {
   startHpiasEventBridge,
 } from './bridge/hpiasEventBridge';
 export { useHpiasEventBridge } from './hooks/useHpiasEventBridge';
+export {
+  HPIAS_PIPELINE_LIFECYCLE,
+  HPIAS_REQUIRED_LIFECYCLE_TYPES,
+  assertHpiasLifecycleCoverage,
+  extractHpiasEventTypes,
+} from './contracts/hpiasLifecycleContract';
+export type { HpiasPipelineLifecycleType } from './contracts/hpiasLifecycleContract';
 export { extractResearchSessionId } from './utils/extractResearchSessionId';
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
 export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
