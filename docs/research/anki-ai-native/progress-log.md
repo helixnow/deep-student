@@ -174,8 +174,8 @@
 - [ ] 偏好记忆写入侧（extract / consolidate 持久化）；当前仅 retrieve 接线，store 恒空
 - [ ] 图像遮挡完整闭环：VlmFull 直接图片的启发式 `_occlusion` 草稿已接；
       PDF 页图、真实 grounding 与卡片预览/编辑仍未接
-- [ ] Sidekick Planner / Critic / Vlm 按角色完整分槽；Generator 已接，
-      Critic 有调用点但当前接线不完整，Planner/Vlm 未消费
+- [ ] Sidekick Planner / Vlm 按角色分槽；Generator 与 Critic 已接并可按路由
+      选择模型，Planner/Vlm 仍未消费
 - [ ] `_original_generation` 稳定生成埋点；缺少快照时 grounded critic 会回退规则 rubric
 
 ---

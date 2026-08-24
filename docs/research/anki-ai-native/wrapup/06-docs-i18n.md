@@ -46,8 +46,8 @@
   - VlmFull 直接图片的启发式图像遮挡草稿最小接线；
   - 文档、用户指南与 i18n 终检。
 - 仍明确保留为未完成：偏好记忆写入侧、图像遮挡完整闭环
-  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Critic/Vlm 完整分槽，
-  以及 `_original_generation` 稳定埋点。
+  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Vlm 分槽，
+  以及 `_original_generation` 稳定埋点。Generator / Critic 路由已接。
 
 ## 修改文件
 

@@ -29,7 +29,7 @@
   已接入 `plan_route` LLM 路由规划、Structured Output（json_schema/json_object/delimiter 自适应）、
   brace-depth 切卡器、确定性 QA lint（25 规则码 + 跨段查重）、FSRS 复习画像回流（默认开）、
   opt-in LLM critic 终审（可引用同文档用户修正对，缺参照时回退规则 rubric）、
-  Sidekick 模型分层路由（Generator 槽已消费）。
+  Sidekick 模型分层路由（Generator / Critic 槽已消费）。
 - **Script-native**：`chatanki_transform` 双模式落地——声明式 ops（纯 Rust，移动端可用）
   与沙箱脚本 script（python/node，网络恒禁、I/O 合同、CAS 写回），
   「Agent 现写脚本处理卡片」已是生产能力。
@@ -73,7 +73,7 @@ Grounded critic 仍有一个数据可用性限制：生成路径尚未稳定写�
 - Round 4 能力扩展已完成状态盘点；Round 5 当前分支已交付 skill 参数补齐、
   grounded critic、eval lint 对齐与文档/i18n 终检。
 - 仍未伪装成已完成的项目：偏好记忆写入侧、图像遮挡完整闭环
-  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Critic/Vlm 完整分槽，
+  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Vlm 分槽，
   以及 `_original_generation` 稳定埋点。
 - 用户可见主路径、工具数量与限制以 ChatAnki skill 和
   [用户指南](../../user-guide/12-Anki制卡与模板.md) 为准；历史调研中的阶段性设计不作为现行入口说明。
