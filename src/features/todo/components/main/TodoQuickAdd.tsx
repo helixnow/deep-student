@@ -344,7 +344,7 @@ export const TodoQuickAdd: React.FC<{
             value={priority}
             onValueChange={setPriority}
             size="compact"
-            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium"
+            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3"
             options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
               const config = PRIORITY_CONFIG[p];
               const isActive = priority === p;
