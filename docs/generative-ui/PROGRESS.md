@@ -14,13 +14,19 @@
 - [x] generativeUiRustMapping contract（context/pipeline 双映射）
 - [x] 78 项 vitest 全绿（含 Hub 组件 + Rust mapping contract）
 
+### Round 7（2026-08-24）
+
+- [x] mindmap-embed E2E — `GenerativeUIRenderer` 全链路（解析 → registry → lazy embed 渲染 + 流式 partial + 校验失败）
+- [x] Notes 写入 HITL 链 — `dispatchCanvasAIEditRequest` + `createNotesEditActionHandlers` + `buildNoteEditSuggestionIntent`
+- [x] actionHandlerSync contract 扩展（note edit suggestion）
+- [x] generativeUi i18n（notes.edit_* 词条）
+- [x] 93 项 generative-ui vitest 全绿
+
 ### Round 6+
 - [x] chunkBuffer 增量流式状态机（`GenerativeUIStreamParser` committedBlocks + `generativeUIStreamRegistry`）
 - [x] eventBridge `generative_ui` chunk 走 chunkBuffer；onEnd/onError flush + finalize
 - [x] `generativeUI.tsx` 传入 blockId 驱动增量解析
 - [x] 测试：parser.stateMachine / streamRegistry / eventBridge generative_ui chunkBuffer（101 项 vitest 全绿）
-- mindmap-embed E2E
-- Notes 写入 HITL 链
 
 ---
 
@@ -40,11 +46,11 @@
 | 主题 | 状态 |
 |------|------|
 | 流式 parser P0 | ✅（tryParsePartialIntent + chunkBuffer + streamRegistry 状态机） |
-| mindmap-embed | 部分（schema/边界已修；E2E 待做） |
+| mindmap-embed | ✅（schema + E2E renderer 全链路） |
 | prompt sync | 部分（目录行契约；props 未进 prompt） |
 | Learning Hub 挂载 | Exam 简报 ✅；Memory/IndexStatus 待做 |
 | i18n | 部分（P0 块组件 ✅；builder 持续跟进） |
-| Security HITL | 部分（ActionBar ✅；Notes 写入链待做） |
+| Security HITL | 部分（ActionBar ✅；Notes 写入链 ✅ dispatch + handlers；Chat 挂载待做） |
 | Rust emit | 部分（skill+toolInput ✅；execute 测试待做） |
 
 ---

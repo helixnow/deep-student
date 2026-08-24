@@ -43,7 +43,13 @@
     "summary_char_count": "Characters",
     "summary_tags": "Tags",
     "summary_tags_empty": "—",
-    "summary_headings_title": "Main sections"
+    "summary_headings_title": "Main sections",
+    "edit_suggestion_title": "Note edit suggestion",
+    "edit_suggestion_description": "Opens the diff panel — accept or reject in the editor",
+    "edit_operation_key": "Operation",
+    "edit_preview_title": "Change preview",
+    "edit_apply": "Apply to note",
+    "edit_dismiss": "Dismiss"
   },
   "exam": {
     "briefing_label": "AI question bank briefing",

@@ -9,6 +9,8 @@ import { createIndexStatusBriefingActionHandlers } from '@/features/generative-u
 import { createMemoryBriefingActionHandlers } from '@/features/generative-ui/handlers/memoryBriefingActionHandlers';
 import { buildIndexStatusBriefingIntent } from '@/features/generative-ui/utils/buildIndexStatusBriefingIntent';
 import { buildMemoryBriefingIntent } from '@/features/generative-ui/utils/buildMemoryBriefingIntent';
+import { buildNoteEditSuggestionIntent } from '@/features/generative-ui/utils/buildNoteEditSuggestionIntent';
+import { createNotesEditActionHandlers } from '@/features/generative-ui/handlers/notesEditActionHandlers';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
@@ -150,5 +152,26 @@ describe('generativeUI actionHandlerSync contract', () => {
 
   it('LEARNING_DASHBOARD_EXAMPLE action ids exist in workbenchLearningHandlers', () => {
     expectActionIdsRegistered(LEARNING_DASHBOARD_EXAMPLE, workbenchLearningHandlers, 'LEARNING_DASHBOARD_EXAMPLE');
+  });
+
+  it('note edit suggestion action ids exist in createNotesEditActionHandlers', () => {
+    const intent = buildNoteEditSuggestionIntent({
+      operation: 'append',
+      operationLabel: 'Append',
+      previewText: 'preview',
+      labels: {
+        metaTitle: 'Suggestion',
+        metaDescription: 'Confirm in editor',
+        operationKey: 'Op',
+        previewTitle: 'Preview',
+        applyEdit: 'Apply',
+        dismissSuggestion: 'Dismiss',
+      },
+    });
+    const handlers = createNotesEditActionHandlers(
+      { noteId: 'note-1', operation: 'append', content: 'text' },
+      { applyEdit: 'Apply', dismissSuggestion: 'Dismiss' },
+    );
+    expectActionIdsRegistered(intent, handlers, 'buildNoteEditSuggestionIntent');
   });
 });

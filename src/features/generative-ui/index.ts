@@ -44,9 +44,24 @@ export { buildLearningHubBriefingIntent } from './utils/buildLearningHubBriefing
 export { buildExamBriefingIntent } from './utils/buildExamBriefingIntent';
 export { buildIndexStatusBriefingIntent } from './utils/buildIndexStatusBriefingIntent';
 export { buildMemoryBriefingIntent } from './utils/buildMemoryBriefingIntent';
+export { buildNoteEditSuggestionIntent } from './utils/buildNoteEditSuggestionIntent';
+export {
+  dispatchCanvasAIEditRequest,
+  createCanvasEditRequestId,
+} from './utils/dispatchCanvasAIEditRequest';
+export type {
+  CanvasAIEditDispatchPayload,
+  CanvasAIEditDispatchResult,
+} from './utils/dispatchCanvasAIEditRequest';
 export { createExamBriefingActionHandlers } from './handlers/examBriefingActionHandlers';
 export { createIndexStatusBriefingActionHandlers } from './handlers/indexStatusBriefingActionHandlers';
 export { createMemoryBriefingActionHandlers } from './handlers/memoryBriefingActionHandlers';
+export { createNotesEditActionHandlers } from './handlers/notesEditActionHandlers';
+export type {
+  NoteEditSuggestionPayload,
+  NotesEditActionLabels,
+  NotesEditActionCallbacks,
+} from './handlers/notesEditActionHandlers';
 export { learningActionHandlers } from './handlers/learningActionHandlers';
 export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
 export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
