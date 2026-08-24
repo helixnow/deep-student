@@ -48,6 +48,7 @@ function FolderNode({
   onToggleExpand,
   parentExcluded = false,
 }: FolderNodeProps) {
+  const { t } = useTranslation('learningHub');
   const isExcluded = parentExcluded || excludeIds.has(node.folder.id);
   const isSelected = selectedId === node.folder.id;
   const isExpanded = expandedIds.has(node.folder.id);
@@ -105,7 +106,16 @@ function FolderNode({
         }}
       >
         {hasChildren ? (
-          <DsButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            tabIndex={-1}
+            className="!h-5 !w-5 !p-0.5"
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }}
+            aria-label={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
+            aria-expanded={isExpanded}
+          >
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',
