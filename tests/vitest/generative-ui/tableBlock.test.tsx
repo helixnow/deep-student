@@ -27,10 +27,6 @@ beforeAll(() => {
   registerTableBlock();
 });
 
-afterAll(() => {
-  generativeUIRegistry.unregister(TABLE_BLOCK_TYPE);
-});
-
 const COLUMNS = [
   { key: 'name', label: '姓名' },
   { key: 'score', label: '分数', align: 'right' as const },

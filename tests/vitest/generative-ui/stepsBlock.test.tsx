@@ -48,10 +48,6 @@ describe('StepsBlock', () => {
     registerStepsBlock();
   });
 
-  afterAll(() => {
-    generativeUIRegistry.unregister(STEPS_BLOCK_TYPE);
-  });
-
   it('registers steps with allowPartialRender', () => {
     const config = generativeUIRegistry.get(STEPS_BLOCK_TYPE);
     expect(config).toBeDefined();

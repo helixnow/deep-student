@@ -78,12 +78,21 @@ export type GenerativeUIAction =
 /** 高风险 action，需二次确认 */
 export type RiskLevel = 'low' | 'medium' | 'high';
 
+export type GenerativeActionUndoFn = () => void | Promise<void>;
+
+/** handler 可返回 `{ undo }` 供 HITL 撤销栈消费 */
+export type GenerativeActionHandlerResult = void | { undo?: GenerativeActionUndoFn };
+
 export interface GenerativeActionDefinition {
   id: string;
   label: string;
   riskLevel: RiskLevel;
-  /** 确定性 handler，不由模型执行 */
-  handler: (payload?: Record<string, unknown>) => void | Promise<void>;
+  /** 确定性 handler，不由模型执行；可选返回 undo */
+  handler: (
+    payload?: Record<string, unknown>,
+  ) => GenerativeActionHandlerResult | Promise<GenerativeActionHandlerResult>;
+  /** 定义级撤销（handler 未返回 undo 时使用） */
+  undo?: GenerativeActionUndoFn;
 }
 
 export interface GenerativeUIRendererProps {

@@ -22,6 +22,10 @@ const SKILL_BLOCK_TYPES = [
   'paper-digest',
   'research-plan',
   'research-report',
+  'markdown',
+  'chart',
+  'steps',
+  'table',
 ];
 
 const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'apply-note-edit', 'save-to-library'];

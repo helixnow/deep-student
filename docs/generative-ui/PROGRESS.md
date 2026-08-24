@@ -22,6 +22,23 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 40（2026-08-24）— 10 子代理足量推进
+
+并行 10 个子代理，每包含实现 + 测试 + i18n/文档接线：
+
+1. **markdown (P1)** — Chat `MarkdownRenderer` + builder + 8 tests
+2. **chart (P2)** — recharts bar/line/pie + 17 tests
+3. **steps (P2)** — 学习计划步骤 5 态 + Learning 接线
+4. **table (P2)** — shad Table 列 schema + builder
+5. **Intent v1.1** — stack/grid + span，v1 兼容；Rust/skill 同步
+6. **telemetry + undo** — HITL 可观测 / 可撤销栈（上限 20）
+7. **a11y** — 14 原有块 landmark / progressbar / live region + 宪法 §8
+8. **prompt few-shot** — 4 正例 + 5 负例 + skill 同步
+9. **简报升级** — Exam/Memory/Index/Hub/Dashboard/Notes/HPIAS/Translation 全量加块
+10. **流式恢复** — `coercePartialIntent` + last-good + 流式 fallback（非整页报错）
+
+父代理接线：18 块写入 `blocks/index.ts` + fixture/contract/skill。
+
 ## Round 39（2026-08-24）— 15min timer 复查（06:00 UTC）
 
 - [x] timer `generative-ui-ci-recheck` 触发复查

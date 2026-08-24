@@ -22,7 +22,10 @@ export type MarkdownBlockRenderProps = Partial<MarkdownBlockProps> & {
   isStreaming?: boolean;
 };
 
-function resolveTitle(parsed: z.SafeParseReturnType<unknown, MarkdownBlockProps>, rawTitle: unknown): string | undefined {
+function resolveTitle(
+  parsed: ReturnType<typeof markdownPropsSchema.safeParse>,
+  rawTitle: unknown,
+): string | undefined {
   if (parsed.success && parsed.data.title?.trim()) {
     return parsed.data.title.trim();
   }

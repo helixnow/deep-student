@@ -37,7 +37,7 @@ function isUndoResult(value: unknown): value is { undo?: GenerativeActionUndoFn 
 
 /** 优先取 handler 返回值上的 undo，其次 definition.undo */
 export function resolveGenerativeActionUndo(
-  def: { undo?: GenerativeActionUndoFn },
+  def: Pick<GenerativeActionDefinition, 'undo'>,
   result?: unknown,
 ): GenerativeActionUndoFn | undefined {
   if (isUndoResult(result) && typeof result.undo === 'function') {

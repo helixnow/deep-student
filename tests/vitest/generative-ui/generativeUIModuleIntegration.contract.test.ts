@@ -35,6 +35,10 @@ const EXPECTED_BLOCK_TYPES = [
   'paper-digest',
   'research-plan',
   'research-report',
+  'markdown',
+  'chart',
+  'steps',
+  'table',
 ] as const;
 
 const BRIDGE_FILES = [
@@ -67,6 +71,12 @@ const BUILDER_UTILS = [
   'utils/buildResearchExportMarkdown.ts',
   'utils/extractResearchContentFromIntent.ts',
   'utils/extractResearchSessionId.ts',
+  'utils/buildMarkdownIntent.ts',
+  'utils/buildChartIntent.ts',
+  'utils/buildStepsIntent.ts',
+  'utils/buildTableIntent.ts',
+  'utils/buildLearningPlanStepsIntent.ts',
+  'utils/coercePartialIntent.ts',
 ] as const;
 
 const MOUNT_POINTS: Array<{ file: string; mustContain: string[] }> = [

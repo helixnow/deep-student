@@ -46,9 +46,9 @@ export const generativeUiSkill: SkillDefinition = {
 
 ## 可用 block type
 
-stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-preview, review-calendar, mistake-analysis, mindmap-embed, paper-digest, research-plan, research-report
+stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-preview, review-calendar, mistake-analysis, mindmap-embed, paper-digest, research-plan, research-report, markdown, chart, steps, table
 
-只能使用上述 registry type。禁止发明 markdown / chart / steps / table 等未注册 type。禁止 className、style、hex 色值。
+只能使用上述 registry type。禁止发明未注册 type。禁止 className、style、hex 色值。
 
 ## 规则
 

@@ -28,7 +28,7 @@ src/features/generative-ui/
 │   └── resolveGenerativeUIChatActionHandlers.ts
 ├── handlers/              # workbench / notes / flashcard action handlers
 ├── utils/                 # build*Intent + dispatchCanvasAIEditRequest
-├── blocks/index.ts        # 14 种内置块（import 即注册）
+├── blocks/index.ts        # 18 种内置块（import 即注册）
 └── components/
 ```
 
@@ -40,9 +40,9 @@ src/features/generative-ui/
 - Renderer：`stack` 保持 `grid gap-3` 单列；`grid` 按 columns 加 `sm:grid-cols-2` / `sm:grid-cols-3`，并写 `data-layout-mode` / `data-layout-columns`
 - 未知 version（如 `'2'`）：`parseGenerativeUIIntent` 失败；流式 parser 降级为 v1 last-good blocks（layout 未闭合时同样保留已提交块）
 
-## 3. 内置块（14 种）
+## 3. 内置块（18 种）
 
-`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`, `paper-digest`, `research-plan`, `research-report`
+`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`, `paper-digest`, `research-plan`, `research-report`, `markdown`, `chart`, `steps`, `table`
 
 ## 4. Human-in-the-loop
 

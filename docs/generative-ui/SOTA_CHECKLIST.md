@@ -8,10 +8,14 @@
 |------|------|------|
 | Zod schema 校验层 | `src/features/generative-ui/schema.ts` | ✅ |
 | 组件注册表 | `registry.ts` + `blocks/index.ts` | ✅ |
-| 14 种内置块 | `generativeUIModuleIntegration.contract.test.ts` | ✅ |
-| 14 块运行时渲染 | `generativeUIAllBlocksRuntime.test.tsx` | ✅ Round 23 |
+| 18 种内置块 | `generativeUIModuleIntegration.contract.test.ts` | ✅ Round 40 |
+| 18 块运行时渲染 | `generativeUIAllBlocksRuntime.test.tsx` | ✅ Round 40 |
 | 流式 parser + chunkBuffer | `parser.ts` + `generativeUIStreamRegistry` | ✅ |
 | actionHandlers 确定性副作用 | `handlers/` + HITL riskLevel | ✅ |
+| Intent v1.1 layout | `schema.ts` layout.mode stack/grid | ✅ Round 40 |
+| 流式 last-good 恢复 | `coercePartialIntent` + Renderer fallback | ✅ Round 40 |
+| Action telemetry + undo | `actionTelemetry.ts` / `actionUndoStack.ts` | ✅ Round 40 |
+| A11y landmarks | `generativeUIA11y.contract.test.tsx` | ✅ Round 40 |
 
 ## Chat 桥接
 

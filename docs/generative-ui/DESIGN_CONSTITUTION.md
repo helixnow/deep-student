@@ -45,18 +45,17 @@ props 中颜色/状态仅允许：
 - `riskLevel: high` → `DsDialog` 二次确认（非模型执行）
 - `riskLevel: medium` → 内联确认或轻量 dialog
 
-## 6. 待注册 primitive（Roadmap）
+## 6. 已注册 primitive（Round 40 补齐 Roadmap）
 
 | type | 优先级 | 说明 |
 |------|--------|------|
-| `markdown` | P1 | 复用 chat markdown 链，schema 失败 fallback |
-| `chart` | P2 | recharts 包装，限定 bar/line/pie |
-| `steps` | P2 | 学习计划步骤 |
-| `table` | P2 | shad Table + 列 schema |
+| `markdown` | P1 ✅ | 复用 chat markdown 链，schema 失败 fallback |
+| `chart` | P2 ✅ | recharts 包装，限定 bar/line/pie |
+| `steps` | P2 ✅ | 学习计划步骤 |
+| `table` | P2 ✅ | shad Table + 列 schema |
+| `mindmap-embed` | P3 ✅ | `MindMapEmbed` 引用式嵌入 |
 
-已落地：`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`
-
-| `mindmap-embed` | P3 | `MindMapEmbed` 引用式嵌入（`mindmapId` props，`React.lazy`） |
+已落地 18 种：`stat-card`, `alert`, `list`, `progress`, `action-bar`, `text`, `key-value-grid`, `flashcard-preview`, `review-calendar`, `mistake-analysis`, `mindmap-embed`, `paper-digest`, `research-plan`, `research-report`, `markdown`, `chart`, `steps`, `table`
 
 ## 7. Token 单一来源
 

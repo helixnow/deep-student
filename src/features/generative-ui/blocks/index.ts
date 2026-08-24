@@ -29,6 +29,10 @@ import { MindmapEmbedBlock, mindmapEmbedPropsSchema } from '../components/Mindma
 import { PaperDigestBlock, paperDigestPropsSchema } from '../components/PaperDigestBlock';
 import { ResearchPlanBlock, researchPlanPropsSchema } from '../components/ResearchPlanBlock';
 import { ResearchReportBlock, researchReportPropsSchema } from '../components/ResearchReportBlock';
+import { MarkdownBlock, markdownPropsSchema } from '../components/MarkdownBlock';
+import { ChartBlock, chartBlockPropsSchema } from '../components/ChartBlock';
+import { StepsBlock, stepsBlockPropsSchema } from '../components/StepsBlock';
+import { TableBlock, tableBlockPropsSchema } from '../components/TableBlock';
 
 generativeUIRegistry.register({
   type: 'stat-card',
@@ -135,6 +139,38 @@ generativeUIRegistry.register({
   allowPartialRender: true,
 });
 
+generativeUIRegistry.register({
+  type: 'markdown',
+  component: MarkdownBlock,
+  propsSchema: markdownPropsSchema,
+  description: 'Markdown 正文：title + body，复用 Chat MarkdownRenderer',
+  allowPartialRender: true,
+});
+
+generativeUIRegistry.register({
+  type: 'chart',
+  component: ChartBlock,
+  propsSchema: chartBlockPropsSchema,
+  description: '图表：限定 bar/line/pie，categories + series',
+  allowPartialRender: true,
+});
+
+generativeUIRegistry.register({
+  type: 'steps',
+  component: StepsBlock,
+  propsSchema: stepsBlockPropsSchema,
+  description: '学习计划步骤：通用步骤列表（pending/active/done/error/skipped，可选时长）',
+  allowPartialRender: true,
+});
+
+generativeUIRegistry.register({
+  type: 'table',
+  component: TableBlock,
+  propsSchema: tableBlockPropsSchema,
+  description: '表格：列 schema + 行数据（允许流式 rows）',
+  allowPartialRender: true,
+});
+
 export {
   StatCardBlock,
   AlertBlock,
@@ -150,4 +186,8 @@ export {
   PaperDigestBlock,
   ResearchPlanBlock,
   ResearchReportBlock,
+  MarkdownBlock,
+  ChartBlock,
+  StepsBlock,
+  TableBlock,
 };

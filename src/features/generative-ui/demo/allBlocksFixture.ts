@@ -1,5 +1,5 @@
 /**
- * 14 种内置块最小合法 props — 用于 SOTA 运行时渲染验收
+ * 18 种内置块最小合法 props — 用于 SOTA 运行时渲染验收
  */
 import type { GenerativeUIIntent } from '../types';
 
@@ -23,6 +23,22 @@ export const ALL_BLOCKS_MINIMAL_PROPS: Record<string, Record<string, unknown>> =
     steps: [{ label: '检索', status: 'pending' }],
   },
   'research-report': { body: '报告正文 [paper-1]' },
+  markdown: { title: '说明', body: '**Markdown** 正文' },
+  chart: {
+    title: '复习量',
+    kind: 'bar',
+    categories: ['周一', '周二'],
+    series: [{ name: '张数', values: [3, 5] }],
+  },
+  steps: {
+    title: '今日计划',
+    steps: [{ label: '复习到期卡', status: 'active' }],
+  },
+  table: {
+    title: '错题',
+    columns: [{ key: 'topic', label: '主题' }, { key: 'rate', label: '错误率' }],
+    rows: [{ topic: '代数', rate: '35%' }],
+  },
 };
 
 export const ALL_BLOCK_TYPES = Object.keys(ALL_BLOCKS_MINIMAL_PROPS);
@@ -40,11 +56,11 @@ export function buildSingleBlockIntent(blockType: string): GenerativeUIIntent {
   };
 }
 
-/** 14 块合一意图（用于全量 smoke） */
+/** 18 块合一意图（用于全量 smoke） */
 export function buildAllBlocksIntent(): GenerativeUIIntent {
   return {
     version: '1',
-    meta: { title: 'All 14 blocks' },
+    meta: { title: 'All 18 blocks' },
     blocks: ALL_BLOCK_TYPES.map((type) => ({
       type,
       props: ALL_BLOCKS_MINIMAL_PROPS[type]!,

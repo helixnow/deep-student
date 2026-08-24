@@ -52,10 +52,6 @@ describe('MarkdownBlock', () => {
     registerMarkdownBlock();
   });
 
-  afterEach(() => {
-    generativeUIRegistry.unregister('markdown');
-  });
-
   it('registers allowPartialRender and renders title + body through the renderer', () => {
     expect(generativeUIRegistry.get('markdown')?.allowPartialRender).toBe(true);
 

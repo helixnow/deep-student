@@ -18,10 +18,6 @@ describe('buildStepsIntent', () => {
     registerStepsBlock();
   });
 
-  afterAll(() => {
-    generativeUIRegistry.unregister(STEPS_BLOCK_TYPE);
-  });
-
   it('defaults missing or invalid status to pending', () => {
     expect(normalizeStepsStatus(undefined)).toBe('pending');
     expect(normalizeStepsStatus('running')).toBe('pending');

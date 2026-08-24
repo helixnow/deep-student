@@ -30,10 +30,6 @@ beforeAll(() => {
   registerChartBlock();
 });
 
-afterAll(() => {
-  generativeUIRegistry.unregister(CHART_BLOCK_TYPE);
-});
-
 const BASE_PROPS = {
   title: '季度销量',
   categories: ['Q1', 'Q2', 'Q3'],

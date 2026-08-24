@@ -13,6 +13,8 @@ export type {
   GenerativeUIAction,
   RiskLevel,
   GenerativeActionDefinition,
+  GenerativeActionUndoFn,
+  GenerativeActionHandlerResult,
   GenerativeUIRendererProps,
 } from './types';
 
@@ -52,8 +54,6 @@ export type {
   GenerativeActionTelemetryEvent,
   GenerativeActionTelemetrySink,
   GenerativeActionTelemetryPhase,
-  GenerativeActionUndoFn,
-  GenerativeActionHandlerResult,
   GenerativeActionUndoEntry,
   GenerativeActionUndoStackOptions,
   ReversibleGenerativeActionDefinition,
@@ -155,6 +155,25 @@ export { buildResearchExportMarkdownFromSnapshot } from './utils/buildResearchEx
 export { extractNoteEditPayload, noteEditPayloadSchema } from './utils/extractNoteEditPayload';
 export type { NoteEditPayload } from './utils/extractNoteEditPayload';
 export { schemaToPromptHint } from './utils/schemaToPromptHint';
+export { MarkdownBlock, markdownPropsSchema } from './components/MarkdownBlock';
+export { buildMarkdownIntent } from './utils/buildMarkdownIntent';
+export { ChartBlock, chartBlockPropsSchema, CHART_BLOCK_TYPE, registerChartBlock } from './components/ChartBlock';
+export { buildChartIntent } from './utils/buildChartIntent';
+export { StepsBlock, stepsBlockPropsSchema, STEPS_BLOCK_TYPE, registerStepsBlock } from './components/StepsBlock';
+export { buildStepsIntent } from './utils/buildStepsIntent';
+export { buildLearningPlanStepsIntent } from './utils/buildLearningPlanStepsIntent';
+export {
+  TableBlock,
+  tableBlockPropsSchema,
+  tableColumnSchema,
+  TABLE_BLOCK_TYPE,
+  registerTableBlock,
+} from './components/TableBlock';
+export type { TableBlockProps, TableColumn } from './components/TableBlock';
+export { buildTableIntent } from './utils/buildTableIntent';
+export type { TableIntentInput, TableIntentLabels } from './utils/buildTableIntent';
+export { coercePartialIntent } from './utils/coercePartialIntent';
+export type { CoercePartialIntentResult } from './utils/coercePartialIntent';
 
 // 注册内置块
 import './blocks';
