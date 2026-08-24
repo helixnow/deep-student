@@ -189,9 +189,7 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
       />,
     );
 
-    const unregistered = screen.getAllByRole('button', { name: '未注册操作' });
-    expect(unregistered.length).toBeGreaterThan(0);
-    expect(unregistered.every((button) => button.hasAttribute('disabled'))).toBe(true);
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '应用到笔记' })).not.toBeInTheDocument();
   });
 

@@ -443,7 +443,7 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     id: 'round63-unregistered-trusted-label',
     check: () =>
       fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
-        "t('action.unregistered_label')",
+        'if (enforceHandlerRegistry && handlerDef == null) return null;',
       ]),
   },
   {
