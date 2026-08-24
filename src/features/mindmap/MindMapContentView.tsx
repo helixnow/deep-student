@@ -1595,7 +1595,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
               <DsButton variant="ghost"
-                className="ds-btn mt-4 mx-auto"
+                className="ds-btn mt-4 mx-auto [@media(pointer:coarse)]:min-h-11"
                 onClick={() => void tryLoadMindMap()}
               >
                 <ArrowClockwise size={16} />
