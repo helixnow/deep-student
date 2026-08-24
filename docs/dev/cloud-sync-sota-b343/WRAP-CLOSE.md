@@ -27,7 +27,8 @@
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
 - **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。
-- **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。未放松 fail-closed。
+- **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
+- **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
 - **CI / Rust 门禁**：前端相关 Vitest 5 文件 38 例通过。本机（Rust 1.95）`sync_android_device_switch` 9、`sync_android_restart` 10、`sync_r11_history` 9、`sync_r11_lease` 7 全过；并发租约测试栅栏已从 pending PUT 改到空 LIST。完整 `cargo test` / CI 未宣称全绿。
 

@@ -89,7 +89,7 @@ R03 已判「R01 P1 已关」，本轮抽核关键三项仍成立：
 | 加密标记无密钥校验子 | **已关** | v2 校验子标记 + 错密码写前拦截，见 R07 节 P1-2 |
 | 无自动同步；Android 换机/重启未实测 | **已关** | 最小自动同步默认关：`src/stores/syncStatusStore.ts:223-258`（`useAutoSyncStore` 默认 `enabled:false`，调度器读该开关，r07-autosync）；Android：`src-tauri/tests/sync_android_device_switch.rs` / `sync_android_restart.rs`（R09-android） |
 | 资产文件名跨平台 | **部分** | 主体已关（R09-names），长度残余仍开——同 R01-P2 末项，锁定测 6 号 |
-| `fix-sync-tombstone-db14` 合 main 时 `ftp.rs` 必冲突 | **仍开（留档）** | 非本枝可修项，持续留档待合 main 时人工消解 |
+| `fix-sync-tombstone-db14` 合 main 时 `ftp.rs` 必冲突 | **产品语义已关；ftp.rs 整枝仍勿直接合** | 资产 tombstone 的未过滤清单解析 + 内容寻址对象显式 skip 已由 `cursor/cloud-sync-sota-tombstone-port-b343` 合入本枝（`06e82848`）。**未**带原枝 `ftp.rs`（专属枝 550 白名单更严）。原枝整包合 main 仍会撞 `ftp.rs`，继续留档人工消解 |
 
 ---
 
