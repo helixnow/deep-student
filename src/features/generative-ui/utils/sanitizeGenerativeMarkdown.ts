@@ -41,14 +41,35 @@ const LOOSE_STRIP_RE = new RegExp(
 const EVENT_HANDLER_ATTR_RE = /\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi
 
 const URL_ATTR_RE =
-  /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  /(\s+(?:href|src|xlink:href|action|formaction|cite|longdesc|poster)\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+const SRCSET_ATTR_RE =
+  /(\s+srcset\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 /** Markdown 链接 / 图片：`[text](url)` 与 `![alt](url)`，不含围栏代码。 */
 const MD_LINK_RE = /(!?\[[^\]]*]\()([^)]*)(\))/g;
 
+/** 参考定义：`[ref]: javascript:…` */
+const MD_REF_DEF_RE = /^(\s*\[[^\]]+]:\s*)(\S+)/gm;
+
+/** GFM 自动链接：`<javascript:…>` / `<//evil>` */
+const MD_AUTOLINK_RE = /<([^>\s]+)>/g;
+
 export const GENERATIVE_MARKDOWN_SANITIZE_SCHEMA = defaultSchema;
 
+function isMarkdownAutolinkTag(tag: string): boolean {
+  if (!tag.startsWith('<') || !tag.endsWith('>')) return false;
+  const inner = tag.slice(1, -1).trim();
+  if (!inner || /\s/.test(inner)) return false;
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(inner) || inner.startsWith('//');
+}
+
 function sanitizeOpenTag(tag: string): string {
+  if (isMarkdownAutolinkTag(tag)) {
+    const inner = tag.slice(1, -1).trim();
+    return isDangerousGenerativeUrl(inner) ? '' : tag;
+  }
+
   const nameMatch = tag.match(/^<\s*([a-zA-Z][\w:-]*)/);
   const name = nameMatch?.[1]?.toLowerCase() ?? '';
   if (!name || !ALLOWED_TAGS.has(name)) return '';
@@ -58,6 +79,18 @@ function sanitizeOpenTag(tag: string): string {
     const value = d ?? s ?? u ?? '';
     if (isDangerousGenerativeUrl(value)) return `${prefix}""`;
     return full;
+  });
+  cleaned = cleaned.replace(SRCSET_ATTR_RE, (_full, prefix: string, d?: string, s?: string, u?: string) => {
+    const value = d ?? s ?? u ?? '';
+    const safe = value
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => {
+        const url = part.split(/\s+/)[0] ?? '';
+        return url.length > 0 && !isDangerousGenerativeUrl(url);
+      })
+      .join(', ');
+    return `${prefix}"${safe}"`;
   });
   return cleaned;
 }
@@ -69,6 +102,23 @@ function sanitizeMarkdownLinks(prose: string): string {
       return `${prefix}#${suffix}`;
     }
     return full;
+  });
+}
+
+function sanitizeMarkdownRefDefs(prose: string): string {
+  return prose.replace(MD_REF_DEF_RE, (full, prefix: string, url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed || isDangerousGenerativeUrl(trimmed)) {
+      return `${prefix}#`;
+    }
+    return full;
+  });
+}
+
+function sanitizeMarkdownAutolinks(prose: string): string {
+  return prose.replace(MD_AUTOLINK_RE, (full, inner: string) => {
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:|^\/\//.test(inner)) return full;
+    return isDangerousGenerativeUrl(inner) ? '<>' : full;
   });
 }
 
@@ -84,7 +134,7 @@ function sanitizeProseHtml(prose: string): string {
     if (/^<\s*!(?:--|$)/.test(tag) || /^<\s*\?/.test(tag)) return '';
     return sanitizeOpenTag(tag);
   });
-  return sanitizeMarkdownLinks(out);
+  return sanitizeMarkdownAutolinks(sanitizeMarkdownRefDefs(sanitizeMarkdownLinks(out)));
 }
 
 function splitFencedSegments(source: string): Array<{ code: boolean; text: string }> {

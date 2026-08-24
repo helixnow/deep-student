@@ -227,7 +227,7 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
       ) : null}
       <CardContent className={title ? 'pt-0 space-y-2' : 'pt-4 space-y-2'}>
         {unit && !isEmpty ? (
-          <p className="text-xs text-muted-foreground">{unit}</p>
+          <p className="text-xs text-muted-foreground" dir="auto">{unit}</p>
         ) : null}
         {isEmpty ? (
           <div role="img" aria-label={emptyA11yLabel}>

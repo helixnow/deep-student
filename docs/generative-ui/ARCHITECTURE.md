@@ -1,6 +1,6 @@
 # Generative UI 架构方案（DeepStudent）
 
-> 分支：`Generative-UI-0824` · Round 41–59（18 块已接宿主；CI 修复待绿；合入 main 仍 ⏳）
+> 分支：`Generative-UI-0824` · Round 41–60（18 块已接宿主；CI 修复待绿；合入 main 仍 ⏳）
 
 ## 1. 核心结论
 

@@ -214,6 +214,30 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     });
   });
 
+  it('does not subscribe to hpias_event when research blocks lack a session id', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research' },
+    });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
+      enabled: false,
+      sessionId: undefined,
+    });
+    expect(screen.queryByTestId('hpias-generative-research-panel')).not.toBeInTheDocument();
+  });
+
   it('shows live hpias panel after session events and keeps non-research blocks', () => {
     const intent = buildResearchPlanIntent({
       title: 'Deep research',

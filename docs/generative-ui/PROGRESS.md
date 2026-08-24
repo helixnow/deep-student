@@ -1,5 +1,14 @@
 # Generative UI 进度日志
 
+## Round 60（2026-08-24）— HPIAS 隔离与宿主守卫
+
+1. [x] Chat 块仅在合法 `researchSessionId` 时订阅 `hpias_event` / 打开实时面板
+2. [x] `GenerativeUIPanel` 统一套 timeout / rate-limit / telemetry
+3. [x] Markdown 参考定义、autolink、`srcset`/`poster` 走 URL 消毒
+4. [x] Skill 规定研究块必须带 session id
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 59（2026-08-24）— 合同与防御纵深
 
 1. [x] `intent.meta.researchSessionId` 进入 Zod，Rust 顶层优先、meta 回退

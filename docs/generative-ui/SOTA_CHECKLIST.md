@@ -162,7 +162,8 @@
 11. ~~**Round 51 测试卫生 / 架构文档**~~ — ✅ 去掉 `restoreAllMocks` + ARCHITECTURE 对齐
 12. ~~**Round 58 CI 修复**~~ — ✅ Rust E0716/E0515、`no-control-regex`、Vitest 256k OOM
 13. ~~**Round 59 合同 / 防御纵深**~~ — ✅ meta sessionId、孤儿 copy-block、markdown 链接、Object.hasOwn
-14. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+14. ~~**Round 60 HPIAS 隔离 / 宿主守卫**~~ — ✅ 无 session 不订阅；Panel 统一 action 守卫；markdown ref/srcset
+15. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
