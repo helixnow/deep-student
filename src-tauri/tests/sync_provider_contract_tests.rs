@@ -1605,9 +1605,9 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         !target_active_asset.exists(),
         "target active asset should be deleted after tombstone propagation"
     );
-    // Content-addressed objects are immutable retention units. Tombstones remove
-    // logical visibility; object garbage collection is deliberately separate.
-    assert_remote_file_present(storage.as_ref(), &active_remote_key).await;
+    // The deleted asset had no remaining manifest reference, so its immutable
+    // object must be reclaimed instead of leaking indefinitely.
+    assert_remote_file_missing(storage.as_ref(), &active_remote_key).await;
     assert_file_bytes(&target_app_asset, app_payload);
 }
 

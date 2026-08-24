@@ -2809,6 +2809,71 @@ async fn download_only_asset_tombstone_does_not_rehydrate_in_same_round() {
     );
 }
 
+#[tokio::test]
+async fn asset_tombstone_deletes_unreferenced_content_object() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    let payload = b"unreferenced-asset-content";
+    std::fs::write(active_a.path().join("images/only.png"), payload).unwrap();
+
+    let manager_a = SyncManager::new(format!("unreferenced-a-{}", uuid::Uuid::new_v4()));
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .unwrap();
+    let object_key = format!(
+        "data_governance/asset_objects/{:x}",
+        Sha256::digest(payload)
+    );
+    assert!(storage.keys().contains(&object_key));
+
+    std::fs::remove_file(active_a.path().join("images/only.png")).unwrap();
+    manager_a
+        .mark_asset_deleted(
+            &storage,
+            "active/images/only.png",
+            Some(payload.len() as u64),
+        )
+        .await
+        .unwrap();
+
+    let manager_b = SyncManager::new(format!("unreferenced-b-{}", uuid::Uuid::new_v4()));
+    let active_b = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    manager_b
+        .sync_asset_directories_with_tombstones(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+
+    let delete_requests = storage.delete_requests();
+    assert!(
+        delete_requests.contains(&object_key),
+        "最后一个活跃引用被过滤后必须删除内容对象: {delete_requests:?}"
+    );
+    assert!(
+        !storage.keys().contains(&object_key),
+        "无引用内容对象不得泄漏"
+    );
+    assert!(
+        !delete_requests
+            .iter()
+            .any(|key| key.starts_with("data_governance/assets/")),
+        "删除必须使用未过滤清单解析出的 object_key: {delete_requests:?}"
+    );
+}
+
 /// 同内容双 key 的删除传播：
 ///
 /// 1. tombstone 应用必须在「未按 tombstone 过滤」的清单上解析 object_key，否则
