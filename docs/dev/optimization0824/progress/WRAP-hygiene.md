@@ -1,7 +1,7 @@
 # optimization0824 合并卫生收尾
 
-> 代理：SA-WRAP-HYGIENE  
-> 分支：`cursor/optimization0824-5575`  
+> 代理：SA-WRAP-HYGIENE
+> 分支：`cursor/optimization0824-5575`
 > 日期：2026-08-24
 
 ## 清扫结果
