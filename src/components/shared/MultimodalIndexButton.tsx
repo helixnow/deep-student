@@ -220,7 +220,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
           className={cn(
             status === 'success' && 'border-green-500/50',
             status === 'error' && 'border-red-500/50',
-            '[@media(pointer:coarse)]:min-h-11'
+            '[@media(pointer:coarse)]:!min-h-11'
           )}
         >
           {getIcon()}

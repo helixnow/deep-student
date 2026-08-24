@@ -124,7 +124,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   variant="ghost"
                   size="sm"
                   onClick={this.handleCopyError}
-                  className={`[@media(pointer:coarse)]:min-h-11 ${this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}`}
+                  className={`[@media(pointer:coarse)]:!min-h-11 ${this.state.copied ? 'text-[color:var(--success)] hover:text-[color:var(--success)]' : 'text-xs'}`}
                 >
                   {this.state.copied
                     ? i18n.t('common:error_boundary.copied', 'Copied')
@@ -138,7 +138,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               )}
             </div>
           )}
-          <DsButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 [@media(pointer:coarse)]:min-h-11 bg-primary text-primary-foreground hover:opacity-90">
+          <DsButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 [@media(pointer:coarse)]:!min-h-11 bg-primary text-primary-foreground hover:opacity-90">
             {i18n.t('common:error_boundary.refresh', 'Refresh Page')}
           </DsButton>
         </div>

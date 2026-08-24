@@ -97,7 +97,7 @@ export function CollapsibleModelSelector({
       <DsButton
         type="button"
         variant="ghost"
-        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11', buttonClassName)}
+        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11', buttonClassName)}
         disabled={disabled}
         onClick={toggleExpanded}
       >

@@ -338,7 +338,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         <div className="sota-error">
           <WarningCircle size={48} color={DESIGN.colors.danger} />
           <p>{t('load_failed')}: {error.message}</p>
-          <DsButton onClick={refresh} className="mt-2 [@media(pointer:coarse)]:min-h-11">{tCommon('actions.retry')}</DsButton>
+          <DsButton onClick={refresh} className="mt-2 [@media(pointer:coarse)]:!min-h-11">{tCommon('actions.retry')}</DsButton>
         </div>
       );
     }
@@ -349,7 +349,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
         {!isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
-            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
               <ArrowLeft size={16} /> {tCommon('actions.back')}
             </DsButton>
           )}
@@ -374,7 +374,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             >
               {t('auto_refresh_label')} {isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}
             </Badge>
-            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1 [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1 [@media(pointer:coarse)]:!min-h-11">
               <DownloadSimple size={16} /> {t('export_stats_button')}
             </DsButton>
           </div>

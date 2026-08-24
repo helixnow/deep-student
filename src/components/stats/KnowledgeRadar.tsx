@@ -419,7 +419,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
         <DsButton
           variant="ghost"
           size="sm"
-          className="mt-3 [@media(pointer:coarse)]:min-h-11"
+          className="mt-3 [@media(pointer:coarse)]:!min-h-11"
           onClick={onRefresh}
         >
           <ArrowsClockwise size={14} />

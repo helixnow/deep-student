@@ -65,7 +65,7 @@ const SIDEBAR_STYLES = {
     actions: {
       gap: 'gap-0.5 [@media(pointer:coarse)]:gap-1',
       opacity: 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100',
-      btnPadding: 'p-1 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
+      btnPadding: 'p-1 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-w-[var(--touch-target-size)]',
       iconSize: 'w-3 h-3 [@media(pointer:coarse)]:w-4 [@media(pointer:coarse)]:h-4',
     },
   },
@@ -472,7 +472,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
       )}>
         <p>{error}</p>
         {onRetry && (
-          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2 [@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2 [@media(pointer:coarse)]:!min-h-11">
             {t('retry')}
           </DsButton>
         )}
@@ -503,7 +503,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline [@media(pointer:coarse)]:min-h-11', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
+          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline [@media(pointer:coarse)]:!min-h-11', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
           </DsButton>
         )}

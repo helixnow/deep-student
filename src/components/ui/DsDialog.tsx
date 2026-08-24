@@ -254,7 +254,7 @@ export function DsDialog({
                 // 锚定 top-0/right-0 使图标视觉中心与 fine 指针位置一致（22px）
                 isMobileSheet
                   ? 'right-2 top-2 h-11 w-11'
-                  : 'w-6 h-6 top-2.5 right-2.5 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:top-0 [@media(pointer:coarse)]:right-0',
+                  : 'w-6 h-6 top-2.5 right-2.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!top-0 [@media(pointer:coarse)]:!right-0',
               )}
               onClick={() => onOpenChange(false)}
             >
@@ -480,7 +480,7 @@ export function DsAlertDialog({
             <DsButton
               variant="ghost"
               size={confirmSize}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={handleCancel}
               disabled={loading}
             >
@@ -489,7 +489,7 @@ export function DsAlertDialog({
             <DsButton
               variant={confirmVariant}
               size={confirmSize}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={onConfirm}
               disabled={disabled || loading}
             >

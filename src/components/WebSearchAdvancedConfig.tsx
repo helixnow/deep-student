@@ -409,7 +409,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           ]}
           size="sm"
           variant="ghost"
-          className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
+          className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!min-h-11"
           width={100}
 />
       </SettingRow>

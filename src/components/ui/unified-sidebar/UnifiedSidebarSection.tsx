@@ -133,7 +133,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
       <div
         className={cn(
           'flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
-          collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
+          collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)] [@media(pointer:coarse)]:min-h-11'
         )}
         onClick={() => collapsible && setIsOpen(!isOpen)}
       >

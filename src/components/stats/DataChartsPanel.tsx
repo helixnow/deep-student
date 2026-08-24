@@ -484,7 +484,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         <div className={cn(GROUP_BOX_CLASS, 'flex flex-col items-center gap-2 py-12')}>
           <p className="text-sm text-muted-foreground">{t('llm_usage:no_data_or_load_failed')}</p>
           <p className="max-w-full truncate px-6 font-mono text-xs text-muted-foreground/50">{error}</p>
-          <DsButton variant="ghost" size="sm" onClick={loadLlmData} className="mt-1 [@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={loadLlmData} className="mt-1 [@media(pointer:coarse)]:!min-h-11">
             <ArrowsClockwise size={13} className="mr-1.5" />
             {t('llm_usage:actions.retry')}
           </DsButton>

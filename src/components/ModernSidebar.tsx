@@ -1188,7 +1188,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={resetDeleteConfirmation}
               >
                 {t('common:cancel')}
@@ -1196,7 +1196,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 onClick={() => void handleRecentSessionDelete(session.id)}
               >
                 {t('common:delete')}
@@ -1544,7 +1544,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           size="icon"
           iconOnly
           aria-label={newConversationLabel}
-          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           onClick={(event) => {
             event.stopPropagation();
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
@@ -1578,7 +1578,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               size="icon"
               iconOnly
               aria-label={t('command_palette:session_search_placeholder', '搜索会话...')}
-              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               onClick={openSessionSearch}
             >
               <MagnifyingGlass size={16} weight="bold" />
@@ -1638,7 +1638,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={toggleAllTopicsLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={handleToggleAllTopicGroups}
                       >
                         {areAllTopicGroupsExpanded ? (
@@ -1654,7 +1654,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         size="icon"
                         iconOnly
                         aria-label={createTopicLabel}
-                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                        className="!h-6 !w-6 !rounded-none text-[color:var(--shell-navigation-muted)] hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={handleCreateRecentGroup}
                       >
                         <FolderPlus className="size-3.5" strokeWidth={2} />
