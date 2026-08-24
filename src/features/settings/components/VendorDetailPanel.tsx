@@ -526,7 +526,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className={cn('max-sm:!h-11 max-sm:!w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
+                  className={cn('max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', profile.isFavorite && "text-yellow-500 opacity-100")}
                   onClick={() => handleToggleFavorite(profile)}
                   disabled={vendorBusy}
                   title={t('settings:api_config.toggle_favorite')}
@@ -537,7 +537,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   size="sm"
                   variant="ghost"
                   iconOnly
-                  className="max-md:hidden"
+                  className="max-md:hidden [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   onClick={() => void testApiConnection(api)}
                   disabled={testingApi === api.id || vendorBusy}
                   title={t('settings:api_config.test_button')}
@@ -552,7 +552,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       size="sm"
                       variant="danger"
                       disabled={vendorBusy}
-                      className="min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
+                      className="min-h-11 shrink-0 whitespace-nowrap sm:min-h-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       onClick={() => {
                         resetConfirmingDelete();
                         handleDeleteModelProfile(profile, { skipConfirm: true });
@@ -569,7 +569,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       disabled={vendorBusy}
                       title={t('common:actions.delete')}
                       aria-label={t('common:actions.delete')}
-                      className="text-muted-foreground hover:text-destructive max-sm:!h-11 max-sm:!w-11"
+                      className="text-muted-foreground hover:text-destructive max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       onClick={() => {
                         if (isSmallScreen) {
                           armConfirmingDelete({ type: 'model', profileId: profile.id });
@@ -596,7 +596,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 onClick={handleEditClick}
                 disabled={vendorBusy}
                 title={isEditing ? t('common:actions.close') : t('common:actions.edit')}
-                className="max-sm:!h-11 max-sm:!w-11"
+                className="max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 {isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
               </DsButton>
@@ -776,7 +776,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     size="sm"
                     variant="ghost"
                     iconOnly
-                    className="opacity-60 hover:opacity-100 max-sm:!h-11 max-sm:!w-11"
+                    className="opacity-60 hover:opacity-100 max-sm:!h-11 max-sm:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => void openUrl(websiteUrl)}
                     title={t('settings:vendor_panel.open_website')}
                   >
@@ -799,7 +799,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     <DsButton
                       size="sm"
                       variant="danger"
-                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
+                      className={cn('min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
                       onClick={() => {
                         if (!isSmallScreen) {
                           handleDeleteVendor(selectedVendor);
@@ -993,7 +993,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   <DsButton
                     size="sm"
                     variant="ghost"
-                    className="min-h-11 flex-1 sm:min-h-0 sm:flex-none"
+                    className="min-h-11 flex-1 sm:min-h-0 sm:flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => {
                       if (isSmallScreen) {
                         setIsMobileFetcherOpen(v => !v);
