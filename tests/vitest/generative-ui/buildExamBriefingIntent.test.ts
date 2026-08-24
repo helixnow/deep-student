@@ -12,6 +12,12 @@ const LABELS = {
   correctRateRow: 'Correct',
   startReview: 'Start review',
   openPractice: 'Practice',
+  tableTitle: 'Mastery table',
+  tableMetricColumn: 'Metric',
+  tableValueColumn: 'Value',
+  chartTitle: 'Distribution',
+  chartSeries: 'Questions',
+  masteredCategory: 'Mastered',
   emptyBankTitle: 'Bank empty',
   emptyBankDescription: 'Add questions first',
   mistakeSuggestion: 'Review weak topics',
@@ -33,7 +39,7 @@ const BASE_STATS = {
 function expectValidIntent(intent: ReturnType<typeof buildExamBriefingIntent>) {
   const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
   expect(parsed.ok).toBe(true);
-  expect(intent.version).toBe('1');
+  expect(intent.version).toBe('1.1');
 }
 
 describe('buildExamBriefingIntent', () => {
@@ -44,14 +50,29 @@ describe('buildExamBriefingIntent', () => {
       labels: LABELS,
     });
     const types = intent.blocks.map((b) => b.type);
+    expect(types).toContain('table');
+    expect(types).toContain('chart');
     expect(types).toEqual([
       'stat-card',
+      'chart',
       'progress',
+      'table',
       'key-value-grid',
       'mistake-analysis',
       'list',
       'action-bar',
     ]);
+    expect(intent.layout).toEqual({ mode: 'grid', columns: 2 });
+    const chart = intent.blocks.find((b) => b.type === 'chart');
+    expect(chart?.props).toMatchObject({
+      kind: 'bar',
+      categories: ['Mastered', 'Review', 'In progress'],
+      series: [{ name: 'Questions', values: [10, 3, 5] }],
+    });
+    const table = intent.blocks.find((b) => b.type === 'table');
+    const rows = (table?.props as { rows: Array<{ metric: string; value: string | number }> }).rows;
+    expect(rows.map((r) => r.metric)).toEqual(['10 mastered', 'Review', 'Correct']);
+    expect(rows.map((r) => r.value)).toEqual([10, 3, '75%']);
     expect(intent.meta?.description).toBe('Linear Algebra');
     expectValidIntent(intent);
   });
@@ -95,6 +116,8 @@ describe('buildExamBriefingIntent', () => {
     expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
     expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No status');
     expect(intent.blocks.some((b) => b.type === 'mistake-analysis')).toBe(false);
+    expect(intent.blocks.some((b) => b.type === 'table')).toBe(false);
+    expect(intent.blocks.some((b) => b.type === 'chart')).toBe(false);
     expectValidIntent(intent);
   });
 });

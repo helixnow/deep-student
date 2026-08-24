@@ -1,5 +1,5 @@
 /**
- * Generative UI a11y contract — 14 内置块 landmark / progressbar / alert / live region
+ * Generative UI a11y contract — 18 内置块 landmark / progressbar / alert / live region
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -43,6 +43,22 @@ vi.mock('react-i18next', () => ({
         'a11y.step_pending': '未开始',
         'a11y.step_active': '进行中',
         'a11y.step_done': '已完成',
+        'a11y.step_error': '失败',
+        'a11y.step_skipped': '已跳过',
+        'a11y.markdown_label': 'Markdown 正文',
+        'a11y.chart_label': `${params?.title ?? ''} ${params?.kind ?? ''} 图表`.trim(),
+        'a11y.chart_empty': '暂无图表数据',
+        'a11y.steps_label': '步骤',
+        'a11y.table_label': '表格',
+        'a11y.table_caption': '数据表',
+        'blocks.chart.a11y_label': `${params?.title ?? ''} ${params?.kind ?? ''} 图表`.trim(),
+        'blocks.steps.status_pending': '待开始',
+        'blocks.steps.status_active': '进行中',
+        'blocks.steps.status_done': '已完成',
+        'blocks.steps.status_error': '失败',
+        'blocks.steps.status_skipped': '已跳过',
+        'blocks.table.empty': '暂无数据',
+        'blocks.markdown.empty': '暂无正文',
         'flashcard.preview_title': '闪卡预览',
         'flashcard.front': '正面',
         'flashcard.back': '背面',
@@ -83,9 +99,24 @@ const REQUIRED_FOURTEEN = [
   'research-report',
 ] as const;
 
+const REQUIRED_EIGHTEEN = [
+  ...REQUIRED_FOURTEEN,
+  'markdown',
+  'chart',
+  'steps',
+  'table',
+] as const;
+
 describe('generativeUIA11y.contract', () => {
   it('covers the 14 built-in block types from the fixture', () => {
     for (const type of REQUIRED_FOURTEEN) {
+      expect(ALL_BLOCK_TYPES).toContain(type);
+    }
+  });
+
+  it('covers the 18 built-in block types from the fixture', () => {
+    expect(ALL_BLOCK_TYPES).toHaveLength(18);
+    for (const type of REQUIRED_EIGHTEEN) {
       expect(ALL_BLOCK_TYPES).toContain(type);
     }
   });
@@ -129,9 +160,13 @@ describe('generativeUIA11y.contract', () => {
     expect(screen.getByRole('article')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '闪卡预览' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '引用 [paper-1]' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-steps] [aria-current="step"]')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '说明' })).toBeInTheDocument();
   });
 
-  it.each(REQUIRED_FOURTEEN)('block "%s" renders required aria', (blockType) => {
+  it.each(REQUIRED_EIGHTEEN)('block "%s" renders required aria', (blockType) => {
     const { container } = render(
       <GenerativeUIRenderer intent={buildSingleBlockIntent(blockType)} showChrome={false} />,
     );
@@ -181,6 +216,44 @@ describe('generativeUIA11y.contract', () => {
 
     if (blockType === 'mindmap-embed') {
       expect(screen.getByRole('heading', { name: '导图' })).toBeInTheDocument();
+    }
+
+    if (blockType === 'text') {
+      expect(screen.getByRole('region', { name: '文本' })).toBeInTheDocument();
+    }
+
+    if (blockType === 'key-value-grid') {
+      expect(screen.getByRole('region', { name: '键值信息' })).toBeInTheDocument();
+    }
+
+    if (blockType === 'paper-digest') {
+      expect(screen.getByRole('region', { name: '论文标题' })).toBeInTheDocument();
+      expect(screen.getByRole('list')).toBeInTheDocument();
+    }
+
+    if (blockType === 'markdown') {
+      expect(screen.getByRole('region', { name: '说明' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '说明' })).toBeInTheDocument();
+    }
+
+    if (blockType === 'chart') {
+      expect(screen.getByRole('img')).toHaveAttribute('aria-label', expect.stringContaining('复习量'));
+    }
+
+    if (blockType === 'steps') {
+      expect(screen.getByRole('list')).toBeInTheDocument();
+      const current = container.querySelector('[aria-current="step"]');
+      expect(current).toBeTruthy();
+      expect(current?.tagName).toBe('LI');
+      expect(container.querySelector('[data-generative-steps] .sr-only')).toHaveTextContent('进行中');
+    }
+
+    if (blockType === 'table') {
+      expect(screen.getByRole('table')).toBeInTheDocument();
+      expect(container.querySelector('caption')).toBeTruthy();
+      for (const header of screen.getAllByRole('columnheader')) {
+        expect(header).toHaveAttribute('scope', 'col');
+      }
     }
   });
 });

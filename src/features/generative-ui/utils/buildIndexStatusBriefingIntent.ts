@@ -18,6 +18,12 @@ export interface IndexStatusBriefingLabels {
   emptyIndexDescription?: string;
   scanProgressTitle?: string;
   scanProgressLabel?: string;
+  failedMarkdownTitle?: string;
+  failedMarkdownBody?: string;
+  statusTableTitle?: string;
+  statusColName?: string;
+  statusColCount?: string;
+  indexedLabel?: string;
 }
 
 export interface IndexStatusBriefingInput {
@@ -47,13 +53,23 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
         ]
       : [];
 
+  const indexedLabel =
+    (labels.indexedLabel ?? labels.indexedRow.replace('{{count}}', '').trim()) || labels.progressTitle;
+  const failedBody = (
+    labels.failedMarkdownBody ??
+    labels.failedAlertDescription ??
+    `${labels.failedRow}: ${failedCount}`
+  ).replace('{{count}}', String(failedCount));
+
   return {
-    version: '1',
+    version: '1.1',
+    layout: { mode: 'grid', columns: 2 },
     blocks: [
       ...(isEmpty
         ? [
             {
               type: 'alert' as const,
+              span: 2 as const,
               props: {
                 variant: 'info' as const,
                 title: labels.emptyIndexTitle ?? labels.totalTitle,
@@ -66,16 +82,27 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
         ? [
             {
               type: 'alert' as const,
+              span: 2 as const,
               props: {
                 variant: 'destructive' as const,
                 title: labels.failedAlertTitle ?? labels.needsAttentionTrend,
                 description: labels.failedAlertDescription ?? `${labels.failedRow}: ${failedCount}`,
               },
             },
+            {
+              type: 'markdown' as const,
+              span: 2 as const,
+              props: {
+                title: labels.failedMarkdownTitle ?? labels.failedAlertTitle ?? labels.needsAttentionTrend,
+                body: failedBody,
+                variant: 'compact' as const,
+              },
+            },
           ]
         : []),
       {
         type: 'stat-card',
+        span: 1,
         props: {
           title: labels.totalTitle,
           value: totalResources,
@@ -85,6 +112,7 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
       },
       {
         type: 'progress',
+        span: 1,
         props: {
           title: labels.progressTitle,
           current: indexedCount,
@@ -96,6 +124,7 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
         ? [
             {
               type: 'progress' as const,
+              span: 2 as const,
               props: {
                 title: labels.scanProgressTitle ?? labels.indexingRow,
                 current: indexingCount,
@@ -109,7 +138,29 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
           ]
         : []),
       {
+        type: 'table',
+        span: 2,
+        props: {
+          title: labels.statusTableTitle ?? labels.progressTitle,
+          columns: [
+            { key: 'status', label: labels.statusColName ?? labels.progressTitle },
+            {
+              key: 'count',
+              label: labels.statusColCount ?? labels.totalTitle,
+              align: 'right' as const,
+            },
+          ],
+          rows: [
+            { status: indexedLabel, count: indexedCount },
+            { status: labels.pendingRow, count: pendingCount },
+            { status: labels.failedRow, count: failedCount },
+            { status: labels.indexingRow, count: indexingCount },
+          ],
+        },
+      },
+      {
         type: 'key-value-grid',
+        span: 2,
         props: {
           rows: [
             { key: labels.pendingRow, value: String(pendingCount) },
@@ -120,6 +171,7 @@ export function buildIndexStatusBriefingIntent(input: IndexStatusBriefingInput):
       },
       {
         type: 'action-bar',
+        span: 2,
         props: {
           actions: [
             ...batchActions,

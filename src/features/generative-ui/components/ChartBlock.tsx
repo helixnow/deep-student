@@ -175,10 +175,11 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
   const { t } = useTranslation('generativeUi');
   const resolvedSeries = series ?? [];
   const isEmpty = resolvedSeries.length === 0;
-  const a11yLabel = t('blocks.chart.a11y_label', {
+  const a11yLabel = t('a11y.chart_label', {
     title: title?.trim() || kind,
     kind,
   });
+  const emptyA11yLabel = t('a11y.chart_empty');
 
   return (
     <Card
@@ -198,7 +199,9 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
           <p className="text-xs text-muted-foreground">{unit}</p>
         ) : null}
         {isEmpty ? (
-          <p className="text-sm text-muted-foreground">{t('blocks.chart.empty')}</p>
+          <div role="img" aria-label={emptyA11yLabel}>
+            <p className="text-sm text-muted-foreground">{t('blocks.chart.empty')}</p>
+          </div>
         ) : (
           <div role="img" aria-label={a11yLabel} className="h-64 w-full">
             <ChartGraphic kind={kind} categories={categories} series={resolvedSeries} unit={unit} />

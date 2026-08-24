@@ -20,7 +20,7 @@ const LABELS = {
 function expectValidIntent(intent: ReturnType<typeof buildLearningHubBriefingIntent>) {
   const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
   expect(parsed.ok).toBe(true);
-  expect(intent.version).toBe('1');
+  expect(intent.version).toBe('1.1');
 }
 
 describe('buildLearningHubBriefingIntent', () => {
@@ -33,6 +33,7 @@ describe('buildLearningHubBriefingIntent', () => {
     });
     const types = intent.blocks.map((b) => b.type);
     expect(types).toContain('stat-card');
+    expect(types).toContain('steps');
     expect(types).toContain('list');
     expect(types).toContain('action-bar');
     expect(intent.meta?.description).toBe('Notes');
@@ -53,6 +54,7 @@ describe('buildLearningHubBriefingIntent', () => {
     const list = intent.blocks.find((b) => b.type === 'list');
     expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
     expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No resources');
+    expect(intent.blocks.some((b) => b.type === 'steps')).toBe(true);
     expectValidIntent(intent);
   });
 
@@ -69,6 +71,14 @@ describe('buildLearningHubBriefingIntent', () => {
       ),
     ).toBe(true);
     expect(intent.blocks.some((b) => b.type === 'review-calendar')).toBe(true);
+    expect(intent.blocks.some((b) => b.type === 'steps')).toBe(true);
+    expect(intent.blocks.some((b) => b.type === 'chart')).toBe(true);
+    const chart = intent.blocks.find((b) => b.type === 'chart');
+    expect(chart?.props).toMatchObject({
+      kind: 'bar',
+      categories: ['2026-08-24'],
+      series: [{ values: [2] }],
+    });
     expectValidIntent(intent);
   });
 });

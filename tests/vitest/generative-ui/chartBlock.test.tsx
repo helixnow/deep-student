@@ -6,8 +6,8 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
-      if (key === 'blocks.chart.empty') return '暂无图表数据';
-      if (key === 'blocks.chart.a11y_label') {
+      if (key === 'blocks.chart.empty' || key === 'a11y.chart_empty') return '暂无图表数据';
+      if (key === 'blocks.chart.a11y_label' || key === 'a11y.chart_label') {
         return `${params?.title ?? ''} ${params?.kind ?? ''} 图表`.trim();
       }
       return key;
@@ -90,7 +90,7 @@ describe('ChartBlock render', () => {
   it('shows empty state when series is missing', () => {
     render(<ChartBlock kind="bar" categories={['Q1', 'Q2']} />);
     expect(screen.getByText('暂无图表数据')).toBeInTheDocument();
-    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', '暂无图表数据');
     expect(document.querySelector('[data-generative-chart]')?.getAttribute('data-empty')).toBe(
       'true',
     );

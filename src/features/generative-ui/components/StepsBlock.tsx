@@ -61,6 +61,14 @@ export type StepsBlockProps = z.infer<typeof stepsBlockPropsSchema>;
 
 export const STEPS_BLOCK_TYPE = 'steps';
 
+const STEP_STATUS_A11Y_KEY = {
+  pending: 'a11y.step_pending',
+  active: 'a11y.step_active',
+  done: 'a11y.step_done',
+  error: 'a11y.step_error',
+  skipped: 'a11y.step_skipped',
+} as const satisfies Record<StepsStatus, string>;
+
 function StepStatusIcon({ status }: { status: StepsStatus }) {
   const className = cn('h-4 w-4 shrink-0', STATUS_ICON_CLASS[status]);
   if (status === 'done') {
@@ -80,12 +88,20 @@ function StepStatusIcon({ status }: { status: StepsStatus }) {
 
 export function StepsBlock({ id, title, steps }: StepsBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
 
   return (
-    <Card className="min-w-0" data-generative-steps data-steps-id={id}>
+    <Card
+      className="min-w-0"
+      data-generative-steps
+      data-steps-id={id}
+      role="region"
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : t('a11y.steps_label')}
+    >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
@@ -102,6 +118,7 @@ export function StepsBlock({ id, title, steps }: StepsBlockProps) {
                 className="flex items-start gap-3"
               >
                 <StepStatusIcon status={status} />
+                <span className="sr-only">{t(STEP_STATUS_A11Y_KEY[status])}</span>
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-start justify-between gap-2">
                     <span

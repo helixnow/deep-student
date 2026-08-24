@@ -54,25 +54,36 @@ function isNumericCell(value: unknown): boolean {
 
 export function TableBlock({ id, title, columns, rows, emptyLabel, caption }: TableBlockProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   const resolvedEmpty = emptyLabel ?? t('blocks.table.empty');
+  const resolvedCaption = caption?.trim() || t('a11y.table_caption');
   const isEmpty = rows.length === 0;
 
   return (
-    <Card className="min-w-0" data-generative-table data-table-id={id} data-empty={isEmpty || undefined}>
+    <Card
+      className="min-w-0"
+      data-generative-table
+      data-table-id={id}
+      data-empty={isEmpty || undefined}
+      role="region"
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : t('a11y.table_label')}
+    >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
         <div className="overflow-x-auto">
           <Table>
-            {caption ? <TableCaption>{caption}</TableCaption> : null}
+            <TableCaption>{resolvedCaption}</TableCaption>
             <TableHeader>
               <TableRow>
                 {columns.map((column) => (
                   <TableHead
                     key={column.key}
+                    scope="col"
                     className={ALIGN_CLASS[column.align ?? 'left']}
                   >
                     {column.label}

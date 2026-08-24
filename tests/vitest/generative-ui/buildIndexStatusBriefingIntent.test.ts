@@ -24,7 +24,7 @@ const LABELS = {
 function expectValidIntent(intent: ReturnType<typeof buildIndexStatusBriefingIntent>) {
   const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
   expect(parsed.ok).toBe(true);
-  expect(intent.version).toBe('1');
+  expect(intent.version).toBe('1.1');
 }
 
 describe('buildIndexStatusBriefingIntent', () => {
@@ -40,9 +40,22 @@ describe('buildIndexStatusBriefingIntent', () => {
       labels: LABELS,
     });
     const types = intent.blocks.map((b) => b.type);
-    expect(types).toEqual(['alert', 'stat-card', 'progress', 'key-value-grid', 'action-bar']);
+    expect(types).toContain('markdown');
+    expect(types).toContain('table');
+    expect(types).toEqual([
+      'alert',
+      'markdown',
+      'stat-card',
+      'progress',
+      'table',
+      'key-value-grid',
+      'action-bar',
+    ]);
     const alert = intent.blocks.find((b) => b.type === 'alert');
     expect(alert?.props).toMatchObject({ title: 'Index errors', variant: 'destructive' });
+    const table = intent.blocks.find((b) => b.type === 'table');
+    const rows = (table?.props as { rows: Array<{ status: string; count: number }> }).rows;
+    expect(rows.map((r) => r.count)).toEqual([7, 2, 1, 0]);
     expectValidIntent(intent);
   });
 
@@ -78,6 +91,8 @@ describe('buildIndexStatusBriefingIntent', () => {
     expect(ids).not.toContain('batch-index-pending');
     expect(ids).toContain('refresh-index-status');
     expect(intent.blocks.some((b) => b.type === 'alert')).toBe(false);
+    expect(intent.blocks.some((b) => b.type === 'markdown')).toBe(false);
+    expect(intent.blocks.some((b) => b.type === 'table')).toBe(true);
     expectValidIntent(intent);
   });
 

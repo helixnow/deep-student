@@ -22,6 +22,14 @@ export interface MemoryBriefingLabels {
   recentListTitle?: string;
   recentEmpty?: string;
   openMemory?: string;
+  emptyGuideTitle?: string;
+  emptyGuideBody?: string;
+  stepsTitle?: string;
+  stepCreate?: string;
+  stepOpen?: string;
+  stepRefresh?: string;
+  recentColTitle?: string;
+  recentColDetail?: string;
 }
 
 export interface MemoryBriefingInput {
@@ -58,11 +66,15 @@ export function buildMemoryBriefingIntent(input: MemoryBriefingInput): Generativ
       ...(item.badge ? { badge: item.badge.slice(0, 40) } : {}),
     }));
 
+  const isEmpty = memoryCount === 0;
+
   return {
-    version: '1',
+    version: '1.1',
+    layout: { mode: 'grid', columns: 2 },
     blocks: [
       {
         type: 'stat-card',
+        span: 1,
         props: {
           title: labels.countTitle,
           value: memoryCount,
@@ -71,7 +83,42 @@ export function buildMemoryBriefingIntent(input: MemoryBriefingInput): Generativ
         },
       },
       {
+        type: 'steps',
+        span: 1,
+        props: {
+          title: labels.stepsTitle ?? labels.overviewTitle,
+          steps: [
+            {
+              label: labels.stepCreate ?? labels.createMemory,
+              status: isEmpty ? 'active' : 'done',
+            },
+            {
+              label: labels.stepOpen ?? labels.openMemory ?? labels.countTitle,
+              status: memoryCount > 0 ? 'active' : 'pending',
+            },
+            {
+              label: labels.stepRefresh ?? labels.refresh,
+              status: 'pending',
+            },
+          ],
+        },
+      },
+      ...(isEmpty
+        ? [
+            {
+              type: 'markdown' as const,
+              span: 2 as const,
+              props: {
+                title: labels.emptyGuideTitle ?? labels.emptyTrend,
+                body: labels.emptyGuideBody ?? labels.emptyTrend,
+                variant: 'compact' as const,
+              },
+            },
+          ]
+        : []),
+      {
         type: 'key-value-grid',
+        span: 2,
         props: {
           title: labels.overviewTitle,
           rows: [
@@ -86,15 +133,24 @@ export function buildMemoryBriefingIntent(input: MemoryBriefingInput): Generativ
         },
       },
       {
-        type: 'list',
+        type: 'table',
+        span: 2,
         props: {
           title: labels.recentListTitle ?? labels.overviewTitle,
-          items: listItems,
+          columns: [
+            { key: 'title', label: labels.recentColTitle ?? labels.countTitle },
+            { key: 'detail', label: labels.recentColDetail ?? labels.overviewTitle },
+          ],
+          rows: listItems.map((item) => ({
+            title: item.label,
+            detail: item.description ?? item.badge ?? '',
+          })),
           emptyLabel: labels.recentEmpty ?? labels.emptyTrend,
         },
       },
       {
         type: 'action-bar',
+        span: 2,
         props: {
           actions: [
             { id: 'create-memory', label: labels.createMemory, variant: 'primary', riskLevel: 'low' },

@@ -72,3 +72,4 @@ props 中颜色/状态仅允许：
 - 块标题用 heading 或 `aria-labelledby`；装饰图标 `aria-hidden`；列表用 `ul` / `ol` / `li` 或 grid
 - 操作栏为 `toolbar` 或 `group`，执行中按钮 `disabled`；确认对话框须可键盘到达并接收焦点
 - 闪卡：`region` + 正反面 aria；复习日历：table 或 list，日期可读；研究报告：`article`，引用可键盘到达
+- Markdown：`article`/`region` + heading；图表：`role="img"` + `aria-label`（含空态）；步骤：`ol`/`li` + `aria-current` 与 sr-only 状态；表格：`caption` + `th scope="col"`

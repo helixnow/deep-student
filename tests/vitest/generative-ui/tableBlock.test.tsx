@@ -7,6 +7,8 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
       if (key === 'blocks.table.empty') return '暂无数据';
+      if (key === 'a11y.table_caption') return '数据表';
+      if (key === 'a11y.table_label') return '表格';
       return key;
     },
     i18n: { language: 'zh-CN' },
@@ -84,6 +86,9 @@ describe('TableBlock render', () => {
     expect(screen.getByText('成绩')).toBeInTheDocument();
     expect(screen.getByText('本周测验').tagName).toBe('CAPTION');
     expect(document.querySelector('[data-generative-table]')).toBeTruthy();
+    for (const header of screen.getAllByRole('columnheader')) {
+      expect(header).toHaveAttribute('scope', 'col');
+    }
   });
 
   it('shows empty string for missing column keys', () => {
@@ -115,6 +120,7 @@ describe('TableBlock render', () => {
     );
 
     expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('数据表').tagName).toBe('CAPTION');
     expect(screen.getByText('没有记录')).toBeInTheDocument();
     expect(document.querySelector('[data-generative-table]')?.getAttribute('data-empty')).toBe('true');
   });

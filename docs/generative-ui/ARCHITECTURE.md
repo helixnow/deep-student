@@ -108,6 +108,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 | Workbench DesktopAiBriefingWidget | ✅ |
 | Workbench AiDashboardAppWindow + agentManifest | ✅ Round 13 |
 | mindmap-embed E2E | ✅ |
+| 18 块 + v1.1 layout E2E | Playwright CT + [TAURI_E2E.md](./TAURI_E2E.md) ✅ Round 41 |
 | prompt props 同步 | ✅ |
 | 闪卡 save-to-library | ✅ Round 10 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
@@ -119,9 +120,10 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 
 ## 7. 测试
 
-- vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime**）
+- vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime**，含 18 块 smoke）
+- Playwright CT：`tests/ct/generative-ui/` — 18 块 smoke（含 markdown/chart/steps/table）+ v1.1 layout 可选检查
 - Rust：`generative_ui_executor` 单元 + hpias 模块（需 Cargo stable + Linux GTK CI）
 - SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)
-- Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)
+- Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)（18 块 + v1.1 layout 手动/CT 步骤）
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

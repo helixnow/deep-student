@@ -38,6 +38,12 @@ export const IndexStatusGenerativeBriefing: React.FC<IndexStatusGenerativeBriefi
         emptyIndexDescription: t('generativeUi:indexStatus.briefing.empty_index_description'),
         scanProgressTitle: t('generativeUi:indexStatus.briefing.scan_progress_title'),
         scanProgressLabel: t('generativeUi:indexStatus.briefing.scan_progress_label'),
+        failedMarkdownTitle: t('generativeUi:indexStatus.briefing.failed_markdown_title'),
+        failedMarkdownBody: t('generativeUi:indexStatus.briefing.failed_markdown_body'),
+        statusTableTitle: t('generativeUi:indexStatus.briefing.status_table_title'),
+        statusColName: t('generativeUi:indexStatus.briefing.status_col_name'),
+        statusColCount: t('generativeUi:indexStatus.briefing.status_col_count'),
+        indexedLabel: t('generativeUi:indexStatus.briefing.indexed_label'),
       }),
       [t],
     );

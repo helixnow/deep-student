@@ -22,7 +22,7 @@ const LABELS = {
 function expectValidIntent(intent: ReturnType<typeof buildMemoryBriefingIntent>) {
   const parsed = parseGenerativeUIIntent(JSON.stringify(intent));
   expect(parsed.ok).toBe(true);
-  expect(intent.version).toBe('1');
+  expect(intent.version).toBe('1.1');
 }
 
 describe('buildMemoryBriefingIntent', () => {
@@ -35,16 +35,18 @@ describe('buildMemoryBriefingIntent', () => {
       labels: LABELS,
     });
     const types = intent.blocks.map((b) => b.type);
-    expect(types).toEqual(['stat-card', 'key-value-grid', 'list', 'action-bar']);
+    expect(types).toContain('steps');
+    expect(types).toContain('table');
+    expect(types).toEqual(['stat-card', 'steps', 'key-value-grid', 'table', 'action-bar']);
 
     const grid = intent.blocks.find((b) => b.type === 'key-value-grid');
     const rows = (grid?.props as { rows: Array<{ key: string; value: string }> }).rows;
     expect(rows.find((r) => r.key === 'Root')?.value).toBe('Study Notes');
     expect(rows.find((r) => r.key === 'Auto extract')?.value).toBe('Balanced');
 
-    const list = intent.blocks.find((b) => b.type === 'list');
-    const items = (list?.props as { items: Array<{ label: string }> }).items;
-    expect(items.map((item) => item.label)).toEqual(['Eigenvalues']);
+    const table = intent.blocks.find((b) => b.type === 'table');
+    const tableRows = (table?.props as { rows: Array<{ title: string }> }).rows;
+    expect(tableRows.map((row) => row.title)).toEqual(['Eigenvalues']);
 
     const bar = intent.blocks.find((b) => b.type === 'action-bar');
     const ids = (bar?.props as { actions: Array<{ id: string }> }).actions.map((a) => a.id);
@@ -56,9 +58,12 @@ describe('buildMemoryBriefingIntent', () => {
     const intent = buildMemoryBriefingIntent({ memoryCount: 0, labels: LABELS });
     const stat = intent.blocks.find((b) => b.type === 'stat-card');
     expect(stat?.props).toMatchObject({ trend: 'down', trendLabel: 'Empty' });
-    const list = intent.blocks.find((b) => b.type === 'list');
-    expect((list?.props as { items: unknown[]; emptyLabel?: string }).items).toEqual([]);
-    expect((list?.props as { emptyLabel?: string }).emptyLabel).toBe('No entries');
+    const types = intent.blocks.map((b) => b.type);
+    expect(types).toContain('markdown');
+    expect(types).toContain('steps');
+    const table = intent.blocks.find((b) => b.type === 'table');
+    expect((table?.props as { rows: unknown[]; emptyLabel?: string }).rows).toEqual([]);
+    expect((table?.props as { emptyLabel?: string }).emptyLabel).toBe('No entries');
     expectValidIntent(intent);
   });
 });

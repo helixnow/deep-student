@@ -36,6 +36,12 @@ export const ExamGenerativeBriefing: React.FC<ExamGenerativeBriefingProps> = Rea
         inProgressRow: t('generativeUi:exam.briefing.in_progress_row'),
         newCountRow: t('generativeUi:exam.briefing.new_count_row'),
         statusEmpty: t('generativeUi:exam.briefing.status_empty'),
+        tableTitle: t('generativeUi:exam.briefing.table_title'),
+        tableMetricColumn: t('generativeUi:exam.briefing.table_metric_column'),
+        tableValueColumn: t('generativeUi:exam.briefing.table_value_column'),
+        chartTitle: t('generativeUi:exam.briefing.chart_title'),
+        chartSeries: t('generativeUi:exam.briefing.chart_series'),
+        masteredCategory: t('generativeUi:exam.briefing.mastered_category'),
       }),
       [t],
     );

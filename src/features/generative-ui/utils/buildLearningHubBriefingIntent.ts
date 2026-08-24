@@ -32,6 +32,12 @@ export interface LearningHubBriefingInput {
     recentEmpty?: string;
     emptyAlertTitle?: string;
     emptyAlertDescription?: string;
+    pathStepsTitle?: string;
+    stepReview?: string;
+    stepQbank?: string;
+    chartTitle?: string;
+    chartDue?: string;
+    chartSeries?: string;
   };
 }
 
@@ -49,14 +55,20 @@ export function buildLearningHubBriefingIntent(input: LearningHubBriefingInput):
   const calendarDays = (reviewDays ?? [])
     .filter((day) => day.date.trim().length > 0 && day.dueCount >= 0)
     .slice(0, 14);
+  const reviewStatus =
+    dueReviewCount != null && dueReviewCount > 0 ? 'active' : isEmpty ? 'pending' : 'done';
+  const dueCategory = labels.chartDue ?? labels.dueReviewTitle ?? labels.startReview;
+  const chartSeriesName = (labels.chartSeries ?? labels.dueReviewTrend ?? labels.startReview).slice(0, 40);
 
   return {
-    version: '1',
+    version: '1.1',
+    layout: { mode: 'grid', columns: 2 },
     blocks: [
       ...(isEmpty
         ? [
             {
               type: 'alert' as const,
+              span: 2 as const,
               props: {
                 variant: 'info' as const,
                 title: labels.emptyAlertTitle ?? labels.emptyTrend,
@@ -67,6 +79,7 @@ export function buildLearningHubBriefingIntent(input: LearningHubBriefingInput):
         : []),
       {
         type: 'stat-card',
+        span: 1,
         props: {
           title: labels.statTitle,
           value: resourceCount,
@@ -74,10 +87,29 @@ export function buildLearningHubBriefingIntent(input: LearningHubBriefingInput):
           trendLabel: resourceCount > 0 ? labels.activeTrend : labels.emptyTrend,
         },
       },
+      {
+        type: 'steps',
+        span: 1,
+        props: {
+          title: labels.pathStepsTitle ?? labels.startReview,
+          steps: [
+            {
+              label: labels.stepReview ?? labels.startReview,
+              status: reviewStatus,
+              ...(dueReviewCount != null ? { description: String(dueReviewCount) } : {}),
+            },
+            {
+              label: labels.stepQbank ?? labels.openQbank,
+              status: 'pending',
+            },
+          ],
+        },
+      },
       ...(dueReviewCount != null
         ? [
             {
               type: 'stat-card' as const,
+              span: 1 as const,
               props: {
                 title: labels.dueReviewTitle ?? labels.startReview,
                 value: dueReviewCount,
@@ -90,16 +122,51 @@ export function buildLearningHubBriefingIntent(input: LearningHubBriefingInput):
       ...(calendarDays.length > 0
         ? [
             {
+              type: 'chart' as const,
+              span: 2 as const,
+              props: {
+                title: labels.chartTitle ?? labels.reviewCalendarTitle ?? labels.dueReviewTitle ?? labels.startReview,
+                kind: 'bar' as const,
+                categories: calendarDays.map((day) => day.label ?? day.date).slice(0, 24),
+                series: [
+                  {
+                    name: chartSeriesName,
+                    values: calendarDays.map((day) => day.dueCount),
+                  },
+                ],
+              },
+            },
+            {
               type: 'review-calendar' as const,
+              span: 2 as const,
               props: {
                 title: labels.reviewCalendarTitle,
                 days: calendarDays,
               },
             },
           ]
-        : []),
+        : dueReviewCount != null
+          ? [
+              {
+                type: 'chart' as const,
+                span: 2 as const,
+                props: {
+                  title: labels.chartTitle ?? labels.dueReviewTitle ?? labels.startReview,
+                  kind: 'bar' as const,
+                  categories: [dueCategory],
+                  series: [
+                    {
+                      name: chartSeriesName,
+                      values: [dueReviewCount],
+                    },
+                  ],
+                },
+              },
+            ]
+          : []),
       {
         type: 'list',
+        span: 2,
         props: {
           title: labels.recentListTitle ?? labels.statTitle,
           items: listItems,
@@ -108,6 +175,7 @@ export function buildLearningHubBriefingIntent(input: LearningHubBriefingInput):
       },
       {
         type: 'action-bar',
+        span: 2,
         props: {
           actions: [
             { id: 'open-qbank', label: labels.openQbank, variant: 'default', riskLevel: 'low' },

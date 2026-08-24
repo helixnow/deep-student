@@ -18,6 +18,12 @@ export interface ExamBriefingLabels {
   inProgressRow?: string;
   newCountRow?: string;
   statusEmpty?: string;
+  tableTitle?: string;
+  tableMetricColumn?: string;
+  tableValueColumn?: string;
+  chartTitle?: string;
+  chartSeries?: string;
+  masteredCategory?: string;
 }
 
 export interface ExamBriefingInput {
@@ -49,13 +55,20 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
       : []),
   ];
 
+  const masteredCategory =
+    (labels.masteredCategory ?? labels.masteredRow.replace('{{count}}', '').trim()) ||
+    labels.progressTitle;
+  const inProgressLabel = labels.inProgressRow ?? labels.progressTitle;
+
   return {
-    version: '1',
+    version: '1.1',
+    layout: { mode: 'grid', columns: 2 },
     blocks: [
       ...(isEmpty
         ? [
             {
               type: 'alert' as const,
+              span: 2 as const,
               props: {
                 variant: 'info' as const,
                 title: labels.emptyBankTitle ?? labels.emptyTrend,
@@ -66,6 +79,7 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
         : []),
       {
         type: 'stat-card',
+        span: 1,
         props: {
           title: labels.totalTitle,
           value: stats.total,
@@ -76,8 +90,28 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
               : labels.emptyTrend,
         },
       },
+      ...(!isEmpty
+        ? [
+            {
+              type: 'chart' as const,
+              span: 1 as const,
+              props: {
+                title: labels.chartTitle ?? labels.progressTitle,
+                kind: 'bar' as const,
+                categories: [masteredCategory, labels.reviewRow, inProgressLabel],
+                series: [
+                  {
+                    name: (labels.chartSeries ?? labels.totalTitle).slice(0, 40),
+                    values: [stats.mastered, stats.review, stats.inProgress],
+                  },
+                ],
+              },
+            },
+          ]
+        : []),
       {
         type: 'progress',
+        span: 2,
         props: {
           title: labels.progressTitle,
           current: stats.mastered,
@@ -85,8 +119,36 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
           label: labels.masteredRow.replace('{{count}}', String(stats.mastered)),
         },
       },
+      ...(!isEmpty
+        ? [
+            {
+              type: 'table' as const,
+              span: 2 as const,
+              props: {
+                title: labels.tableTitle ?? labels.statusListTitle ?? labels.progressTitle,
+                columns: [
+                  { key: 'metric', label: labels.tableMetricColumn ?? labels.progressTitle },
+                  {
+                    key: 'value',
+                    label: labels.tableValueColumn ?? labels.totalTitle,
+                    align: 'right' as const,
+                  },
+                ],
+                rows: [
+                  {
+                    metric: labels.masteredRow.replace('{{count}}', String(stats.mastered)),
+                    value: stats.mastered,
+                  },
+                  { metric: labels.reviewRow, value: stats.review },
+                  { metric: labels.correctRateRow, value: `${correctPercent}%` },
+                ],
+              },
+            },
+          ]
+        : []),
       {
         type: 'key-value-grid',
+        span: 2,
         props: {
           rows: [
             { key: labels.reviewRow, value: String(stats.review) },
@@ -98,6 +160,7 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
         ? [
             {
               type: 'mistake-analysis' as const,
+              span: 2 as const,
               props: {
                 topic: examName?.trim() || labels.totalTitle,
                 errorRate,
@@ -110,6 +173,7 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
         : []),
       {
         type: 'list',
+        span: 2,
         props: {
           title: labels.statusListTitle ?? labels.reviewRow,
           items: isEmpty ? [] : statusItems,
@@ -118,6 +182,7 @@ export function buildExamBriefingIntent(input: ExamBriefingInput): GenerativeUII
       },
       {
         type: 'action-bar',
+        span: 2,
         props: {
           actions: [
             ...reviewActions,

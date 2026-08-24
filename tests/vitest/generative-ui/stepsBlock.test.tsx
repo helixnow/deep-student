@@ -24,6 +24,12 @@ vi.mock('react-i18next', () => ({
         'blocks.steps.status_done': '已完成',
         'blocks.steps.status_error': '失败',
         'blocks.steps.status_skipped': '已跳过',
+        'a11y.steps_label': '步骤',
+        'a11y.step_pending': '未开始',
+        'a11y.step_active': '进行中',
+        'a11y.step_done': '已完成',
+        'a11y.step_error': '失败',
+        'a11y.step_skipped': '已跳过',
         parse_error_title: '解析失败',
         unknown_block_title: '未知',
         unknown_block_desc: '跳过',
@@ -63,10 +69,11 @@ describe('StepsBlock', () => {
     expect(screen.getByText('10 分钟')).toBeInTheDocument();
     expect(screen.getByText('FSRS 今日到期')).toBeInTheDocument();
     expect(screen.getByText('待开始')).toBeInTheDocument();
-    expect(screen.getByText('进行中')).toBeInTheDocument();
-    expect(screen.getByText('已完成')).toBeInTheDocument();
-    expect(screen.getByText('失败')).toBeInTheDocument();
-    expect(screen.getByText('已跳过')).toBeInTheDocument();
+    expect(screen.getByText('未开始')).toBeInTheDocument();
+    expect(screen.getAllByText('进行中').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('已完成').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('失败').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('已跳过').length).toBeGreaterThanOrEqual(1);
 
     for (const status of STEPS_STATUSES) {
       const item = document.querySelector(`[data-step-status="${status}"]`);
@@ -87,6 +94,7 @@ describe('StepsBlock', () => {
     const { container } = render(<StepsBlock steps={ALL_STATUS_STEPS} />);
     expect(container.querySelector('[data-generative-steps] ol')).toBeTruthy();
     expect(container.querySelectorAll('[data-generative-steps] li')).toHaveLength(5);
+    expect(container.querySelectorAll('[data-generative-steps] .sr-only')).toHaveLength(5);
   });
 
   it('enforces schema limits', () => {
