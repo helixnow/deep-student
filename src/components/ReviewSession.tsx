@@ -739,7 +739,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             size="sm"
             onClick={handleClose}
             aria-label={t('review:session.exitTitle')}
-            className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto"
+            className="h-11 w-11 shrink-0 sm:h-auto sm:w-auto [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
             <X size={20} />
           </DsButton>
