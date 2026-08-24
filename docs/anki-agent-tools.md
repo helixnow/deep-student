@@ -154,11 +154,39 @@ ChatV2 的工具结果外层带有 `success`。本文各工具的“返回值”
   "documentId": "apkg-...",
   "importedCards": 146,
   "importedTemplates": 0,
-  "mediaSkipped": 2
+  "mediaImported": 12,
+  "mediaSkipped": 2,
+  "mediaReport": {
+    "declared": 14,
+    "imported": 12,
+    "skipped": 2,
+    "skips": [
+      { "reason": "entry_missing", "count": 2, "filenames": ["a.png", "b.mp3"] }
+    ],
+    "mediaDir": "/app-data/anki_media"
+  },
+  "warnings": ["媒体清单声明的条目在包内缺失，已跳过: 3 (a.png)"]
 }
 ```
 
-当前实现不导入 APKG 模板，故 `importedTemplates` 为 `0`。本应用导出的 APKG 会在 model 中携带模板 ID 元数据，重新导入时该 ID 会写回卡片，因此只要本地仍有对应模板即可直接再次导出，无需先 `retemplate`；无此元数据的外部 APKG 保持 `templateId=null`。导出 Cloze 时，每个唯一且有效的 `{{cN::答案}}` 会写入一条 `ord=N-1` 的 Anki card row；Basic 始终只有一条 `ord=0`。自有包还携带 Cloze 折叠元数据，导回时同一 note 的多个 ord 只恢复成一张内部内容卡，反复导入/导出不会倍增；无该元数据的外部包仍按每条 Anki card row 导入。媒体文件会统计但不落库，`mediaSkipped` 是媒体 manifest 声明项和数字媒体项的去重计数。导入成功后应立即用返回的 `documentId` 分页 `get_cards`。
+当前实现不导入 APKG 模板，故 `importedTemplates` 为 `0`。本应用导出的 APKG 会在 model 中携带模板 ID 元数据，重新导入时该 ID 会写回卡片，因此只要本地仍有对应模板即可直接再次导出，无需先 `retemplate`；无此元数据的外部 APKG 保持 `templateId=null`。导出 Cloze 时，每个唯一且有效的 `{{cN::答案}}` 会写入一条 `ord=N-1` 的 Anki card row；Basic 始终只有一条 `ord=0`。自有包还携带 Cloze 折叠元数据，导回时同一 note 的多个 ord 只恢复成一张内部内容卡，反复导入/导出不会倍增；无该元数据的外部包仍按每条 Anki card row 导入。导入成功后应立即用返回的 `documentId` 分页 `get_cards`。
+
+**媒体导入**：包内媒体（图片与音频，legacy JSON 清单和现代 anki21b zstd+protobuf 清单均支持）会按清单文件名解出到应用数据目录下的 `anki_media/`（`mediaReport.mediaDir`）。字段 HTML 保留 Anki 原生引用（`src="name.png"`、`[sound:name.mp3]`，不改写，保证再导出后桌面 Anki 可直接解析）；被引用且成功落盘的媒体以绝对路径写入卡片 `images`，`images` 中的路径与字段引用按 basename 一一对应，这也是 `chatanki_export(apkg)` 把媒体打回 zip 的依据——导入→导出构成完整媒体往返。
+
+`mediaImported` 是成功落盘（或按文件名复用已有文件）的数量；`mediaSkipped` 是声明但未落盘的数量。任何跳过都必须出现在结构化的 `mediaReport.skips` 中（按 `reason` 分组，`count` 为全量计数，`filenames` 最多采样 20 个），不存在静默丢弃。稳定 `reason` 码：
+
+| reason | 含义 |
+|---|---|
+| `entry_missing` | 清单声明的条目在包内缺失 |
+| `unsafe_filename` | 文件名含路径穿越/反斜杠/盘符/控制字符，被安全策略拒绝 |
+| `entry_oversized` | 解压后超过单条目 256 MiB 上限（解压炸弹防护），半成品已删除 |
+| `io_error` | 落盘或解压失败 |
+| `orphan_entry` | 包内数字条目未出现在 media 清单（无文件名可用，按 zip 键列出） |
+| `manifest_unparsed` | 现代包媒体清单无法解析，全部媒体跳过（卡片导入不受影响） |
+| `media_dir_unavailable` | 媒体目录创建失败 |
+| `media_import_disabled` | 调用方未启用媒体目录（旧行为兼容路径） |
+
+包内无媒体且无任何跳过时不返回 `mediaReport` 与 `warnings` 字段。zip 条目名的路径穿越（zip slip）在解析阶段即整包拒绝（`apkg_invalid_archive`）；清单文件名只取 basename 落盘，任何情况下不会写出媒体目录之外。向用户汇报导入结果时应包含媒体统计与跳过原因。
 
 失败时 `output.error` 是结构化 `AppError`，稳定错误码位于 `output.error.details.errorCode`：
 
@@ -1050,11 +1078,14 @@ dry_run 返回逐卡 `diff`（before/after 仅展示用途截断；`Invalid` 计
   "deckName": "Default",
   "noteType": "Basic",
   "cardsCount": 20,
-  "hiddenOverLimitCount": 3
+  "hiddenOverLimitCount": 3,
+  "exportedMedia": 2
 }
 ```
 
 导出包含库中该文档的全部非错误卡，含因 `maxCards` 超限保留、未展示在预览块的卡；`hiddenOverLimitCount` 表示其中的隐藏卡数量，因此 `cardsCount` 可能大于块内可见数，应向用户说明。
+
+APKG 导出会把卡片 `images` 引用的本地媒体（图片与音频，含 `import_apkg` 落盘的媒体）按 Anki 规范打回包内（清单键 `"0","1",...` 指向文件名），`exportedMedia` 是实际打包数。磁盘缺失或超过 256 MiB 单文件上限的媒体不会中断导出：路径列入 `missingMedia` 数组、细节写入 `mediaWarnings`；两个字段仅在非空时返回，出现时必须向用户如实汇报，不得静默忽略。`format=json` 不打包媒体，也没有这三个字段。
 
 APKG 支持同一包内按卡片 `templateId` 建立多个 Anki model。若某些卡无模板，优先使用显式 `templateId`，其次使用整批唯一模板；仍无法解析时返回 `blocks.ankiCards.errors.templateNotFound`。
 

@@ -39,6 +39,18 @@ pub const ANKI_SCHED_METADATA_KEYS: [&str; 7] = [
     "AnkiLapses",
 ];
 
+/// 媒体跳过原因码（稳定契约，供前端/Agent 消费）。
+pub const MEDIA_SKIP_REASON_IMPORT_DISABLED: &str = "media_import_disabled";
+pub const MEDIA_SKIP_REASON_MANIFEST_UNPARSED: &str = "manifest_unparsed";
+pub const MEDIA_SKIP_REASON_MEDIA_DIR_UNAVAILABLE: &str = "media_dir_unavailable";
+pub const MEDIA_SKIP_REASON_UNSAFE_FILENAME: &str = "unsafe_filename";
+pub const MEDIA_SKIP_REASON_ENTRY_MISSING: &str = "entry_missing";
+pub const MEDIA_SKIP_REASON_ENTRY_OVERSIZED: &str = "entry_oversized";
+pub const MEDIA_SKIP_REASON_IO_ERROR: &str = "io_error";
+pub const MEDIA_SKIP_REASON_ORPHAN_ENTRY: &str = "orphan_entry";
+/// 每个跳过原因在报告中最多列出的文件名数（count 始终是全量计数）。
+pub const MAX_REPORTED_MEDIA_FILENAMES: usize = 20;
+
 pub const MAX_APKG_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_ZIP_ENTRIES: usize = 10_000;
 const MAX_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
@@ -74,12 +86,88 @@ pub struct ApkgImportResult {
     /// 未配置媒体目录时恒为 0（此时所有声明媒体计入 media_skipped）。
     #[serde(default)]
     pub media_imported: usize,
+    /// 结构化媒体导入报告：declared/imported/skipped 总量 + 按原因分组的跳过明细。
+    /// 包内无媒体（且没有任何跳过）时不序列化，保持旧前端契约整洁。
+    #[serde(default, skip_serializing_if = "ApkgMediaReport::is_empty")]
+    pub media_report: ApkgMediaReport,
     /// 结构化导入告警（媒体/模板导入的非致命问题）。
     /// 空列表不序列化，保持旧前端契约整洁。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip)]
     pub card_ids: Vec<String>,
+}
+
+/// 一组同原因的媒体跳过统计。`count` 是全量计数；
+/// `filenames` 最多列出 [`MAX_REPORTED_MEDIA_FILENAMES`] 个样本文件名。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApkgMediaSkip {
+    /// 稳定原因码（`MEDIA_SKIP_REASON_*` 常量之一）。
+    pub reason: String,
+    pub count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub filenames: Vec<String>,
+}
+
+/// 结构化媒体导入报告：任何声明了却没有落盘的媒体都必须出现在 `skips` 里，
+/// 禁止静默丢弃。`media_skipped == skips 各组 count 之和`。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApkgMediaReport {
+    /// 包内声明的媒体条目总数（media 清单键 ∪ zip 数字媒体条目，去重）。
+    pub declared: usize,
+    /// 成功落盘（或按文件名复用已有文件）的媒体数。
+    pub imported: usize,
+    /// declared - imported。
+    pub skipped: usize,
+    /// 按原因分组的跳过明细。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skips: Vec<ApkgMediaSkip>,
+    /// 媒体落盘目录（绝对路径）。字段里的 `src="name.png"` /
+    /// `[sound:name.mp3]` 引用可用 `media_dir/name` 解析到本地文件。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_dir: Option<String>,
+}
+
+impl ApkgMediaReport {
+    pub fn is_empty(&self) -> bool {
+        self.declared == 0 && self.imported == 0 && self.skipped == 0 && self.skips.is_empty()
+    }
+}
+
+/// 内部：按原因累计跳过的媒体（count 全量、文件名截断采样）。
+#[derive(Default)]
+struct MediaSkipTracker {
+    /// 保持原因首次出现顺序
+    order: Vec<&'static str>,
+    counts: HashMap<&'static str, usize>,
+    filenames: HashMap<&'static str, Vec<String>>,
+}
+
+impl MediaSkipTracker {
+    fn record(&mut self, reason: &'static str, filename: impl Into<String>) {
+        let count = self.counts.entry(reason).or_insert_with(|| {
+            self.order.push(reason);
+            0
+        });
+        *count += 1;
+        let samples = self.filenames.entry(reason).or_default();
+        if samples.len() < MAX_REPORTED_MEDIA_FILENAMES {
+            samples.push(filename.into());
+        }
+    }
+
+    fn into_skips(mut self) -> Vec<ApkgMediaSkip> {
+        self.order
+            .iter()
+            .map(|reason| ApkgMediaSkip {
+                reason: (*reason).to_string(),
+                count: self.counts.get(reason).copied().unwrap_or_default(),
+                filenames: self.filenames.remove(reason).unwrap_or_default(),
+            })
+            .collect()
+    }
 }
 
 pub struct ApkgImporterService {
@@ -233,6 +321,7 @@ struct ParsedPackage {
     deck_names: Vec<String>,
     media_skipped: usize,
     media_imported: usize,
+    media_report: ApkgMediaReport,
     /// deepStudentTemplateId → 可重建的模板定义（供本地缺失时导入）
     template_candidates: Vec<TemplateImportCandidate>,
     warnings: Vec<String>,
@@ -407,6 +496,7 @@ fn parse_archive<R: Read + Seek>(
     let mut declared_media = HashSet::new();
     let mut manifest_entries: HashMap<String, String> = HashMap::new();
     let mut media_warnings: Vec<String> = Vec::new();
+    let mut manifest_unparsed = false;
     if let Some(index) = media_manifest {
         let manifest = read_zip_entry_bounded(
             &mut archive,
@@ -420,6 +510,7 @@ fn parse_archive<R: Read + Seek>(
             match parse_modern_media_manifest(&manifest) {
                 Ok(values) => manifest_entries = values,
                 Err(reason) => {
+                    manifest_unparsed = true;
                     media_warnings.push(format!(
                         "现代 APKG 媒体清单解析失败，本次导入跳过全部媒体: {reason}"
                     ));
@@ -445,24 +536,70 @@ fn parse_archive<R: Read + Seek>(
             declared_media.insert(key.clone());
         }
     }
-    declared_media.extend(numeric_media);
+    declared_media.extend(numeric_media.iter().cloned());
 
     // 媒体导入：仅当调用方提供媒体目录时进行；
-    // 未提供时保持旧行为（全部计入 media_skipped）。
-    let media_paths = if let Some(dir) = media_dir {
-        extract_declared_media(
-            &mut archive,
-            &manifest_entries,
-            dir,
-            &limits,
-            &mut media_warnings,
-            modern_package,
-        )
+    // 未提供时保持旧行为（全部计入 media_skipped），但仍产出结构化报告。
+    let mut skip_tracker = MediaSkipTracker::default();
+    let (media_paths, media_imported) = if let Some(dir) = media_dir {
+        if manifest_unparsed {
+            // 清单不可解析时无法知道数字条目对应的真实文件名，按 zip 键统计。
+            let mut keys = declared_media.iter().cloned().collect::<Vec<_>>();
+            keys.sort();
+            for key in keys {
+                skip_tracker.record(MEDIA_SKIP_REASON_MANIFEST_UNPARSED, key);
+            }
+            (HashMap::new(), 0)
+        } else {
+            let extracted = extract_declared_media(
+                &mut archive,
+                &manifest_entries,
+                dir,
+                &limits,
+                &mut media_warnings,
+                &mut skip_tracker,
+                modern_package,
+            );
+            // 包内存在但清单未声明的数字条目：无文件名可用，结构化记为孤儿条目。
+            let mut orphans = numeric_media
+                .iter()
+                .filter(|key| !manifest_entries.contains_key(*key))
+                .cloned()
+                .collect::<Vec<_>>();
+            orphans.sort();
+            for key in orphans {
+                media_warnings.push(format!("包内数字媒体条目未出现在 media 清单中，已跳过: {key}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_ORPHAN_ENTRY, key);
+            }
+            extracted
+        }
     } else {
-        HashMap::new()
+        // 保持旧行为：未启用媒体导入时全部计入 media_skipped，并结构化说明原因。
+        let mut names = declared_media
+            .iter()
+            .map(|key| {
+                manifest_entries
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_else(|| key.clone())
+            })
+            .collect::<Vec<_>>();
+        names.sort();
+        for name in names {
+            skip_tracker.record(MEDIA_SKIP_REASON_IMPORT_DISABLED, name);
+        }
+        (HashMap::new(), 0)
     };
-    let media_imported = media_paths.len();
     let media_skipped = declared_media.len().saturating_sub(media_imported);
+    let media_report = ApkgMediaReport {
+        declared: declared_media.len(),
+        imported: media_imported,
+        skipped: media_skipped,
+        skips: skip_tracker.into_skips(),
+        media_dir: media_dir
+            .filter(|_| !declared_media.is_empty())
+            .map(|dir| dir.to_string_lossy().to_string()),
+    };
 
     let mut collection_file = NamedTempFile::new().map_err(|error| {
         file_error(format!(
@@ -490,11 +627,13 @@ fn parse_archive<R: Read + Seek>(
     )?;
     package.media_skipped = media_skipped;
     package.media_imported = media_imported;
+    package.media_report = media_report;
     package.warnings.extend(media_warnings);
     Ok(package)
 }
 
-/// 媒体文件名安全化：仅保留最后一个 path segment，拒绝空名/点名/超长名。
+/// 媒体文件名安全化：仅保留最后一个 path segment，拒绝空名/点名/超长名/控制字符，
+/// 以及残留的路径分隔符（`/`、`\`，防御 Windows 风格穿越）与盘符冒号。
 fn sanitize_media_filename(raw: &str) -> Option<String> {
     let name = Path::new(raw.trim()).file_name()?.to_str()?;
     if name.is_empty() || name == "." || name == ".." || name.len() > 255 {
@@ -503,23 +642,32 @@ fn sanitize_media_filename(raw: &str) -> Option<String> {
     if name.chars().any(|ch| ch.is_control()) {
         return None;
     }
+    // Unix 上 `Path::file_name` 不切分 `\`，"..\evil" 会整体留下来；显式拒绝。
+    if name.contains('/') || name.contains('\\') || name.contains(':') {
+        return None;
+    }
     Some(name.to_string())
 }
 
 /// 把媒体清单声明且包内存在的媒体流式解出到 `media_dir`。
-/// 返回「清单文件名 → 落盘绝对路径」映射；所有非致命问题写入 `warnings`。
+/// 返回（「清单文件名 → 落盘绝对路径」映射, 成功导入的清单键数）；
+/// 同名文件复用只落盘一次但每个清单键都计入成功。
+/// 所有非致命问题写入 `warnings`，并同步记入结构化 `skip_tracker`（禁止静默丢弃）。
 /// `modern_package` 为 true（anki21b 包）时媒体条目本身通常是 zstd 帧，需先解压。
+#[allow(clippy::too_many_arguments)]
 fn extract_declared_media<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     manifest_entries: &HashMap<String, String>,
     media_dir: &Path,
     limits: &ImportLimits,
     warnings: &mut Vec<String>,
+    skip_tracker: &mut MediaSkipTracker,
     modern_package: bool,
-) -> HashMap<String, String> {
+) -> (HashMap<String, String>, usize) {
     let mut media_paths: HashMap<String, String> = HashMap::new();
+    let mut imported_keys = 0usize;
     if manifest_entries.is_empty() {
-        return media_paths;
+        return (media_paths, imported_keys);
     }
     if let Err(error) = std::fs::create_dir_all(media_dir) {
         warnings.push(format!(
@@ -527,18 +675,36 @@ fn extract_declared_media<R: Read + Seek>(
             media_dir.display(),
             error
         ));
-        return media_paths;
+        let mut names = manifest_entries.values().cloned().collect::<Vec<_>>();
+        names.sort();
+        for name in names {
+            skip_tracker.record(MEDIA_SKIP_REASON_MEDIA_DIR_UNAVAILABLE, name);
+        }
+        return (media_paths, imported_keys);
     }
 
-    for (key, raw_name) in manifest_entries {
+    // 按清单键排序，保证告警/报告顺序稳定可测。
+    let mut sorted_entries = manifest_entries.iter().collect::<Vec<_>>();
+    sorted_entries.sort_by(|(a, _), (b, _)| {
+        (a.len(), a.as_str()).cmp(&(b.len(), b.as_str())) // 数字键按数值序
+    });
+    for (key, raw_name) in sorted_entries {
         let Some(file_name) = sanitize_media_filename(raw_name) else {
             warnings.push(format!("媒体清单文件名不安全，已跳过: {raw_name}"));
+            skip_tracker.record(MEDIA_SKIP_REASON_UNSAFE_FILENAME, raw_name.clone());
             continue;
         };
         let target = media_dir.join(&file_name);
+        // 纵深防御：安全化后的目标必须仍在媒体目录内（zip slip / 路径穿越兜底）。
+        if target.parent() != Some(media_dir) {
+            warnings.push(format!("媒体目标路径越出媒体目录，已跳过: {raw_name}"));
+            skip_tracker.record(MEDIA_SKIP_REASON_UNSAFE_FILENAME, raw_name.clone());
+            continue;
+        }
         if target.exists() {
             // Anki 媒体按文件名寻址：同名文件视为同一媒体，直接复用
             media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+            imported_keys += 1;
             continue;
         }
         let mut entry = match archive.by_name(key) {
@@ -547,6 +713,7 @@ fn extract_declared_media<R: Read + Seek>(
                 warnings.push(format!(
                     "媒体清单声明的条目在包内缺失，已跳过: {key} ({file_name})"
                 ));
+                skip_tracker.record(MEDIA_SKIP_REASON_ENTRY_MISSING, file_name.clone());
                 continue;
             }
         };
@@ -554,6 +721,7 @@ fn extract_declared_media<R: Read + Seek>(
             Ok(file) => file,
             Err(error) => {
                 warnings.push(format!("创建媒体文件失败，已跳过 {file_name}: {error}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
                 continue;
             }
         };
@@ -572,18 +740,21 @@ fn extract_declared_media<R: Read + Seek>(
                     "媒体文件解压后超过 {} 字节上限，已跳过: {file_name}",
                     limits.max_entry_bytes
                 ));
+                skip_tracker.record(MEDIA_SKIP_REASON_ENTRY_OVERSIZED, file_name.clone());
             }
             Ok(_) => {
                 media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+                imported_keys += 1;
             }
             Err(error) => {
                 drop(output);
                 let _ = std::fs::remove_file(&target);
                 warnings.push(format!("解压媒体文件失败，已跳过 {file_name}: {error}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
             }
         }
     }
-    media_paths
+    (media_paths, imported_keys)
 }
 
 /// 现代 APKG 的媒体条目通常是 zstd 帧：探测 magic 后解压写入；
@@ -1120,6 +1291,7 @@ fn parse_collection_database(
         deck_names,
         media_skipped: 0,
         media_imported: 0,
+        media_report: ApkgMediaReport::default(),
         template_candidates,
         warnings,
     })
@@ -1877,6 +2049,7 @@ fn persist_package(
     let imported_cards = package.cards.len();
     let media_skipped = package.media_skipped;
     let media_imported = package.media_imported;
+    let media_report = package.media_report.clone();
     let template_candidates = package.template_candidates;
     let mut warnings = package.warnings;
     let mut card_ids = Vec::with_capacity(imported_cards);
@@ -1954,6 +2127,9 @@ fn persist_package(
     tx.commit().map_err(|error| {
         database_error(format!("Failed to commit APKG import transaction: {error}"))
     })?;
+    // 必须先释放连接守卫：import_template_candidates 会重新 get_conn_safe，
+    // Database 连接锁不可重入，守卫仍在作用域内会造成同线程自死锁。
+    drop(conn);
 
     // 模板映射导入（卡片事务成功后执行，失败不回滚卡片、只产生结构化告警）：
     // 仅补建本地缺失、且包内携带 deepStudentTemplateId 的模板。
@@ -1965,6 +2141,7 @@ fn persist_package(
         imported_templates,
         media_skipped,
         media_imported,
+        media_report,
         warnings,
         card_ids,
     })
@@ -3026,6 +3203,17 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("媒体清单解析失败")));
+        // 结构化报告：清单不可解析时按 zip 数字键统计，禁止静默丢
+        assert_eq!(result.media_report.declared, 1);
+        assert_eq!(result.media_report.imported, 0);
+        assert_eq!(result.media_report.skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_MANIFEST_UNPARSED
+        );
+        assert_eq!(result.media_report.skips[0].count, 1);
+        assert_eq!(result.media_report.skips[0].filenames, vec!["0"]);
     }
 
     #[test]
@@ -3331,6 +3519,7 @@ mod tests {
             imported_templates: 0,
             media_skipped: 0,
             media_imported: 0,
+            media_report: ApkgMediaReport::default(),
             warnings: vec![],
             card_ids: vec!["card".to_string()],
         };
@@ -3340,6 +3529,8 @@ mod tests {
         assert!(value.get("cardIds").is_none());
         // 空 warnings 不序列化，保持旧前端契约整洁
         assert!(value.get("warnings").is_none());
+        // 无媒体包不序列化 mediaReport，保持旧前端契约整洁
+        assert!(value.get("mediaReport").is_none());
     }
 
     #[test]
@@ -3365,6 +3556,16 @@ mod tests {
         assert_eq!(sanitize_media_filename(".."), None);
         assert_eq!(sanitize_media_filename("bad\u{0}name.png"), None);
         assert_eq!(sanitize_media_filename(&"x".repeat(256)), None);
+        // Windows 风格穿越与盘符：Unix 上 file_name 不切分 `\`，必须显式拒绝
+        assert_eq!(sanitize_media_filename("..\\evil.png"), None);
+        assert_eq!(sanitize_media_filename("C:\\evil.exe"), None);
+        assert_eq!(sanitize_media_filename("a\\b.png"), None);
+        assert_eq!(sanitize_media_filename("drive:name.png"), None);
+        // 绝对路径压平为 basename
+        assert_eq!(
+            sanitize_media_filename("/etc/passwd").as_deref(),
+            Some("passwd")
+        );
     }
 
     #[test]
@@ -3409,6 +3610,23 @@ mod tests {
             .warnings
             .iter()
             .any(|warning| warning.contains("missing-entry.mp3")));
+        // 结构化报告：缺失条目按 reason/count/filenames 统计并暴露媒体目录
+        assert_eq!(result.media_report.declared, 2);
+        assert_eq!(result.media_report.imported, 1);
+        assert_eq!(result.media_report.skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_ENTRY_MISSING
+        );
+        assert_eq!(
+            result.media_report.skips[0].filenames,
+            vec!["missing-entry.mp3"]
+        );
+        assert_eq!(
+            result.media_report.media_dir.as_deref(),
+            Some(media_dir.path().to_string_lossy().as_ref())
+        );
         let extracted = media_dir.path().join("picture.png");
         assert!(extracted.exists());
         assert_eq!(
@@ -3440,6 +3658,361 @@ mod tests {
             .expect("import without media dir");
         assert_eq!(result.media_imported, 0);
         assert_eq!(result.media_skipped, 1);
+        // 未启用媒体导入也必须结构化说明原因，不允许只有一个裸计数
+        assert_eq!(result.media_report.declared, 1);
+        assert_eq!(result.media_report.skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_IMPORT_DISABLED
+        );
+        assert_eq!(result.media_report.skips[0].filenames, vec!["picture.png"]);
+        assert_eq!(result.media_report.media_dir, None);
+    }
+
+    /// 混合场景：成功落盘、包内缺失、不安全文件名、清单外孤儿条目
+    /// 全部结构化统计，且 skips 各组 count 之和 == mediaSkipped。
+    #[test]
+    fn media_report_structures_every_skip_reason_without_silent_loss() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(1, 100, "", "front <img src=\"ok.png\">\u{1f}back")],
+            &[(10, 1, 0)],
+        );
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            (
+                "media",
+                br#"{"0":"ok.png","1":"missing.mp3","2":"..\\evil.png"}"#.to_vec(),
+            ),
+            ("0", b"ok-bytes".to_vec()),
+            ("2", b"evil-bytes".to_vec()),
+            // 孤儿：包内数字条目未出现在 media 清单
+            ("9", b"orphan-bytes".to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("mixed-media.apkg"), None)
+            .expect("import mixed media package");
+
+        assert_eq!(result.media_imported, 1);
+        // 声明 4 个（清单 3 + 孤儿 1），1 个成功
+        assert_eq!(result.media_report.declared, 4);
+        assert_eq!(result.media_report.imported, 1);
+        assert_eq!(result.media_report.skipped, 3);
+        assert_eq!(result.media_skipped, 3);
+        let total_from_skips: usize = result.media_report.skips.iter().map(|s| s.count).sum();
+        assert_eq!(total_from_skips, result.media_skipped, "禁止静默丢");
+        let reason_of = |reason: &str| {
+            result
+                .media_report
+                .skips
+                .iter()
+                .find(|skip| skip.reason == reason)
+                .unwrap_or_else(|| panic!("missing skip reason {reason}"))
+        };
+        assert_eq!(
+            reason_of(MEDIA_SKIP_REASON_ENTRY_MISSING).filenames,
+            vec!["missing.mp3"]
+        );
+        assert_eq!(
+            reason_of(MEDIA_SKIP_REASON_UNSAFE_FILENAME).filenames,
+            vec!["..\\evil.png"]
+        );
+        assert_eq!(
+            reason_of(MEDIA_SKIP_REASON_ORPHAN_ENTRY).filenames,
+            vec!["9"]
+        );
+        // 不安全文件名不得以任何形式落盘
+        assert!(media_dir.path().join("ok.png").exists());
+        assert!(!media_dir.path().join("evil.png").exists());
+        assert!(!media_dir.path().join("..\\evil.png").exists());
+    }
+
+    /// zip slip / 路径穿越：清单文件名带路径的被压平为 basename 且只写入媒体目录内；
+    /// 带反斜杠 / 盘符的直接拒绝。任何情况下不得写出媒体目录之外。
+    #[test]
+    fn media_manifest_path_traversal_never_escapes_media_dir() {
+        let (db, _dir) = setup_migrated_db();
+        let parent = tempdir().expect("parent dir");
+        let media_dir = parent.path().join("media");
+        let collection = make_basic_collection("front");
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            (
+                "media",
+                br#"{"0":"../escape.png","1":"C:\\evil.exe","2":"nested/dir/deep.png"}"#.to_vec(),
+            ),
+            ("0", b"escape-bytes".to_vec()),
+            ("1", b"exe-bytes".to_vec()),
+            ("2", b"deep-bytes".to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.clone())
+            .import_bytes(&apkg, Some("traversal-media.apkg"), None)
+            .expect("traversal filenames must degrade, not escape");
+
+        // "../escape.png" 与 "nested/dir/deep.png" 压平为 basename 后安全落盘
+        assert!(media_dir.join("escape.png").exists());
+        assert!(media_dir.join("deep.png").exists());
+        // 媒体目录之外禁止出现任何文件
+        assert!(!parent.path().join("escape.png").exists());
+        assert!(!parent.path().join("evil.exe").exists());
+        assert!(!media_dir.join("nested").exists());
+        // 盘符文件名被结构化拒绝
+        assert_eq!(result.media_imported, 2);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_UNSAFE_FILENAME
+        );
+        assert_eq!(
+            result.media_report.skips[0].filenames,
+            vec!["C:\\evil.exe"]
+        );
+    }
+
+    /// 解压炸弹：现代包媒体条目 zstd 解压后超过单条目上限 → 拒绝、删除半成品、
+    /// 结构化记为 entry_oversized，卡片导入不受影响。
+    #[test]
+    fn media_decompression_bomb_is_rejected_and_reported() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_modern_collection(
+            &[(100, "Basic", 0, &["Front", "Back"][..])],
+            &[(1, 100, "", "front <img src=\"bomb.bin\">\u{1f}back")],
+            &[(10, 1, 0, [0, 0, 0, 0, 0, 0, 0])],
+        );
+        let compressed =
+            zstd::stream::encode_all(Cursor::new(collection), 1).expect("zstd collection");
+        let manifest =
+            zstd::stream::encode_all(Cursor::new(encode_media_entries(&["bomb.bin"])), 1)
+                .expect("zstd manifest");
+        // 512 KiB 零字节 → zstd 后极小，解压后远超 128 KiB 单条目上限
+        let bomb = zstd::stream::encode_all(Cursor::new(vec![0u8; 512 * 1024]), 3)
+            .expect("zstd bomb");
+        assert!(bomb.len() < 16 * 1024, "炸弹本体必须显著小于解压上限");
+        let apkg = make_apkg(vec![
+            ("collection.anki21b", compressed),
+            ("media", manifest),
+            ("0", bomb),
+        ]);
+
+        let limits = ImportLimits {
+            max_entry_bytes: 128 * 1024,
+            ..ImportLimits::default()
+        };
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_reader(Cursor::new(apkg), "bomb.apkg", None, limits)
+            .expect("media bomb must not block card import");
+
+        assert_eq!(result.imported_cards, 1);
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_ENTRY_OVERSIZED
+        );
+        assert_eq!(result.media_report.skips[0].filenames, vec!["bomb.bin"]);
+        // 半成品必须删除
+        assert!(!media_dir.path().join("bomb.bin").exists());
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("bomb.bin")));
+    }
+
+    /// 音频引用（[sound:...]）与图片同样落盘并回链到卡片 images。
+    #[test]
+    fn media_import_links_audio_sound_references() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(1, 100, "", "front\u{1f}back [sound:clip.mp3]")],
+            &[(10, 1, 0)],
+        );
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            ("media", br#"{"0":"clip.mp3"}"#.to_vec()),
+            ("0", b"mp3-bytes".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db.clone())
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("audio.apkg"), None)
+            .expect("import APKG with audio media");
+        assert_eq!(result.media_imported, 1);
+        assert_eq!(result.media_skipped, 0);
+        let extracted = media_dir.path().join("clip.mp3");
+        assert_eq!(std::fs::read(&extracted).expect("audio bytes"), b"mp3-bytes");
+        let imported = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert_eq!(
+            imported[0].images,
+            vec![extracted.to_string_lossy().to_string()]
+        );
+    }
+
+    /// mediaReport 的 JSON 契约（camelCase 字段名 + reason/count/filenames）。
+    #[test]
+    fn media_report_serializes_camel_case_contract() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"a.png","1":"gone.png"}"#.to_vec()),
+            ("0", b"a-bytes".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("contract.apkg"), None)
+            .expect("import for JSON contract");
+        let value = serde_json::to_value(&result).expect("serialize result");
+        assert_eq!(value["mediaImported"], 1);
+        assert_eq!(value["mediaSkipped"], 1);
+        assert_eq!(value["mediaReport"]["declared"], 2);
+        assert_eq!(value["mediaReport"]["imported"], 1);
+        assert_eq!(value["mediaReport"]["skipped"], 1);
+        assert_eq!(value["mediaReport"]["skips"][0]["reason"], "entry_missing");
+        assert_eq!(value["mediaReport"]["skips"][0]["count"], 1);
+        assert_eq!(
+            value["mediaReport"]["skips"][0]["filenames"][0],
+            "gone.png"
+        );
+        assert!(value["mediaReport"]["mediaDir"]
+            .as_str()
+            .is_some_and(|dir| !dir.is_empty()));
+        // 兼容性：旧字段仍在
+        assert!(value.get("documentId").is_some());
+    }
+
+    /// 同名文件复用：同一文件名声明两次只落盘一次，两个清单键都算导入成功。
+    #[test]
+    fn media_import_reuses_existing_file_for_duplicate_names() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"dup.png","1":"dup.png"}"#.to_vec()),
+            ("0", b"dup-bytes".to_vec()),
+            ("1", b"other-bytes".to_vec()),
+        ]);
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("dup.apkg"), None)
+            .expect("import duplicate-named media");
+        assert_eq!(result.media_imported, 2);
+        assert_eq!(result.media_skipped, 0);
+        assert!(result.media_report.skips.is_empty());
+        // 首个来源生效（Anki 按文件名寻址）
+        assert_eq!(
+            std::fs::read(media_dir.path().join("dup.png")).expect("dup bytes"),
+            b"dup-bytes"
+        );
+    }
+
+    /// 导入 → 导出闭环：APKG 媒体落盘后再导出，媒体必须打回 zip 且清单一致。
+    #[tokio::test]
+    async fn media_round_trip_import_then_export_repacks_media() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(
+                1,
+                100,
+                "",
+                "capital? <img src=\"map.png\">\u{1f}Paris [sound:say.mp3]",
+            )],
+            &[(10, 1, 0)],
+        );
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            ("media", br#"{"0":"map.png","1":"say.mp3"}"#.to_vec()),
+            ("0", b"map-bytes".to_vec()),
+            ("1", b"mp3-bytes".to_vec()),
+        ]);
+        let imported = ApkgImporterService::new(db.clone())
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("roundtrip-media.apkg"), Some("rt-session"))
+            .expect("import APKG with media");
+        assert_eq!(imported.media_imported, 2);
+        assert_eq!(imported.media_skipped, 0);
+
+        let cards = db
+            .get_cards_for_document(&imported.document_id)
+            .expect("imported cards");
+        assert_eq!(cards.len(), 1);
+        // 字段保留 Anki 原生引用（src="map.png"），images 持有可解析的落盘绝对路径；
+        // 两者以 basename 关联，这是导出打包的依据。
+        assert!(cards[0].front.contains("src=\"map.png\""));
+        assert_eq!(cards[0].images.len(), 2);
+        for image in &cards[0].images {
+            assert!(std::path::Path::new(image).exists(), "image path {image}");
+        }
+
+        let out_dir = tempdir().expect("out dir");
+        let output = out_dir.path().join("repacked.apkg");
+        let report = crate::apkg_exporter_service::export_multi_template_apkg_report(
+            cards,
+            "Roundtrip Media".to_string(),
+            output.clone(),
+            HashMap::new(),
+        )
+        .await
+        .expect("re-export imported cards");
+        assert_eq!(report.exported_media, 2);
+        assert!(report.missing_media.is_empty());
+
+        // 打开导出的 zip：媒体清单 + 数字条目 + 字节内容全部可验证
+        let file = File::open(&output).expect("open exported apkg");
+        let mut archive = ZipArchive::new(file).expect("read exported zip");
+        let mut manifest_raw = String::new();
+        archive
+            .by_name("media")
+            .expect("media manifest present")
+            .read_to_string(&mut manifest_raw)
+            .expect("read media manifest");
+        let manifest: HashMap<String, String> =
+            serde_json::from_str(&manifest_raw).expect("manifest json");
+        let mut names = manifest.values().cloned().collect::<Vec<_>>();
+        names.sort();
+        assert_eq!(names, vec!["map.png", "say.mp3"]);
+        for (key, name) in &manifest {
+            let mut bytes = Vec::new();
+            archive
+                .by_name(key)
+                .expect("media entry present")
+                .read_to_end(&mut bytes)
+                .expect("read media entry");
+            let expected: &[u8] = if name == "map.png" {
+                b"map-bytes"
+            } else {
+                b"mp3-bytes"
+            };
+            assert_eq!(bytes, expected, "media entry {name} content");
+        }
+
+        // 二次导入（新的媒体目录）：闭环成立
+        let second_media_dir = tempdir().expect("second media dir");
+        let reimported = ApkgImporterService::new(db)
+            .with_media_dir(second_media_dir.path().to_path_buf())
+            .import_path(&output, Some("rt-session-2"))
+            .expect("re-import exported package");
+        assert_eq!(reimported.media_imported, 2);
+        assert_eq!(reimported.media_skipped, 0);
+        assert_eq!(
+            std::fs::read(second_media_dir.path().join("map.png")).expect("map bytes"),
+            b"map-bytes"
+        );
     }
 
     #[test]

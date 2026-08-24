@@ -32,6 +32,10 @@ const DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY: &str = "deepStudentCollapseClozeOrds
 /// 单文件内 decks / cards.did / model.did 均引用该 id；dconf 仍为 id 1，deck.conf 指向它。
 const APKG_EXPORT_DECK_ID: i64 = 1746000000000;
 
+/// 导出侧单媒体文件上限：与导入侧 `MAX_ENTRY_BYTES` 对齐（256 MiB）。
+/// 超限文件不阻断导出，进入 missing_media 清单并写入告警。
+pub const MAX_EXPORT_MEDIA_FILE_BYTES: u64 = 256 * 1024 * 1024;
+
 /// 导入时由 apkg_importer_service 注入的元数据保留字段。
 /// 再导出时必须过滤，避免这些键污染 Anki model 字段表。
 /// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致。
@@ -1136,7 +1140,23 @@ fn collect_media_entries(
             }
             seen_media_sources.insert(fname.to_string(), image_path.clone());
             match fs::File::open(image_path) {
-                Ok(file) => entries.push((fname.to_string(), file)),
+                Ok(file) => {
+                    // 超大文件保护：与导入侧单条目上限对齐，超限跳过并告警。
+                    match file.metadata() {
+                        Ok(metadata) if metadata.len() > MAX_EXPORT_MEDIA_FILE_BYTES => {
+                            let message = format!(
+                                "媒体文件超过 {} 字节导出上限，已跳过: {} ({} 字节)",
+                                MAX_EXPORT_MEDIA_FILE_BYTES,
+                                image_path,
+                                metadata.len()
+                            );
+                            warn!("{}", message);
+                            warnings.push(message);
+                            missing.push(image_path.clone());
+                        }
+                        _ => entries.push((fname.to_string(), file)),
+                    }
+                }
                 Err(e) => {
                     warn!("读取媒体文件失败，跳过并继续导出 {}: {}", image_path, e);
                     missing.push(image_path.clone());

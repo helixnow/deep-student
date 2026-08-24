@@ -1712,7 +1712,16 @@ impl ChatAnkiToolExecutor {
         let session_id = ctx.session_id.clone();
 
         let import_result = tokio::task::spawn_blocking(move || {
-            let service = ApkgImporterService::new(anki_db);
+            // 媒体导入闭环：媒体解出到 Anki 库同级的 anki_media/ 目录
+            //（与 import_apkg_to_library 命令的落盘位置一致），卡片 images
+            // 指向落盘绝对路径，后续 chatanki_export 会把它们打回 APKG。
+            let media_dir = anki_db
+                .db_path()
+                .and_then(|path| path.parent().map(|dir| dir.join("anki_media")));
+            let service = match media_dir {
+                Some(dir) => ApkgImporterService::new(anki_db).with_media_dir(dir),
+                None => ApkgImporterService::new(anki_db),
+            };
             match source {
                 ChatAnkiImportApkgSource::ResourceId(resource_id) => {
                     let vfs_db = vfs_db.ok_or_else(|| {
@@ -5430,7 +5439,7 @@ impl ChatAnkiToolExecutor {
             resolve_deck_and_note_type(ctx, args.deck_name, args.note_type);
         let format = args.format.trim().to_lowercase();
 
-        let (export_format, export_path, final_note_type) = if format == "json" {
+        let (export_format, export_path, final_note_type, media_report) = if format == "json" {
             let suggested = args
                 .suggested_name
                 .filter(|s| !s.trim().is_empty())
@@ -5447,7 +5456,7 @@ impl ChatAnkiToolExecutor {
             let path = crate::cmd::anki_connect::save_json_file(json_content, suggested)
                 .await
                 .map_err(|e| e.to_string())?;
-            ("json".to_string(), path, note_type)
+            ("json".to_string(), path, note_type, None)
         } else if format == "apkg" {
             let cloze_count = cards
                 .iter()
@@ -5560,7 +5569,8 @@ impl ChatAnkiToolExecutor {
             // 多模板 APKG 导出：每种 template_id 创建独立的 Anki model，
             // 每张卡片的 notes.mid 指向自己模板对应的 model。
             // Anki 格式支持一个 APKG 内多个 note type（model），字段和 card template 各自独立。
-            crate::apkg_exporter_service::export_multi_template_apkg(
+            // 使用 report 变体：媒体完整性（打包数/缺失清单/告警）透出到工具输出。
+            let media_report = crate::apkg_exporter_service::export_multi_template_apkg_report(
                 cards,
                 deck_name.clone(),
                 output_path.clone(),
@@ -5573,6 +5583,7 @@ impl ChatAnkiToolExecutor {
                 "apkg".to_string(),
                 output_path.to_string_lossy().to_string(),
                 note,
+                Some(media_report),
             )
         } else {
             let error_msg = format!("Unsupported export format: {}", args.format);
@@ -5589,7 +5600,7 @@ impl ChatAnkiToolExecutor {
             return Ok(result);
         };
 
-        let output = json!({
+        let mut output = json!({
             "status": "ok",
             "documentId": args.document_id,
             "format": export_format,
@@ -5605,6 +5616,19 @@ impl ChatAnkiToolExecutor {
                 &args.document_id,
             ),
         });
+        // APKG 媒体完整性透出：打包数始终返回；缺失清单/告警仅在非空时返回，
+        // 让 AI 能明确向用户汇报媒体缺失而不是静默丢弃。
+        if let Some(report) = media_report {
+            if let Some(object) = output.as_object_mut() {
+                object.insert("exportedMedia".to_string(), json!(report.exported_media));
+                if !report.missing_media.is_empty() {
+                    object.insert("missingMedia".to_string(), json!(report.missing_media));
+                }
+                if !report.warnings.is_empty() {
+                    object.insert("mediaWarnings".to_string(), json!(report.warnings));
+                }
+            }
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         ctx.emit_tool_call_end(Some(json!({ "result": output, "durationMs": duration_ms })));
@@ -17752,6 +17776,17 @@ mod tests {
             imported_templates: 0,
             media_skipped: 1,
             media_imported: 0,
+            media_report: crate::apkg_importer_service::ApkgMediaReport {
+                declared: 1,
+                imported: 0,
+                skipped: 1,
+                skips: vec![crate::apkg_importer_service::ApkgMediaSkip {
+                    reason: "entry_missing".to_string(),
+                    count: 1,
+                    filenames: vec!["a.png".to_string()],
+                }],
+                media_dir: None,
+            },
             warnings: vec![],
             card_ids: vec!["card-a".to_string(), "card-b".to_string()],
         };
@@ -17764,6 +17799,14 @@ mod tests {
                 "importedTemplates": 0,
                 "mediaSkipped": 1,
                 "mediaImported": 0,
+                "mediaReport": {
+                    "declared": 1,
+                    "imported": 0,
+                    "skipped": 1,
+                    "skips": [
+                        { "reason": "entry_missing", "count": 1, "filenames": ["a.png"] }
+                    ],
+                },
             })
         );
 
