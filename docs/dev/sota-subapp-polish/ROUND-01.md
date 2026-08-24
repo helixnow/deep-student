@@ -119,7 +119,7 @@
 - chat：`e40e3a98` 拆分 InputBar；`bf8fc6dc`、`8967fd99` 补会话轻窗、命令监听与安全权限默认值。
 - settings / templates / tasks / a11y：`450fa4cc`、`6d76b876`、`978310ed`、`cb0aa10e` 等补搜索定位、键盘链路、任务空态与焦点管理。
 - 用户指南：`ceaa6af2`、`54dba801`、`71f88269` 等已同步上述实际能力；W10 另补移动端 PDF 划词动作清单。
-- W10 最终 rebase 纳入 `813d0a8c`、`24a0f6c4`、`f318ae83`、`00b6760b`：Finder 结果处理 / imports、翻译会话持久化、作文恢复基线与锚点的收口修复。
+- W10 最终 rebase 纳入 `813d0a8c`、`24a0f6c4`、`f318ae83`、`00b6760b`、`14eee4af`、`80db7611`、`24d884e5`、`6421a4ec`、`ac2e8477`：Finder、翻译、作文、闪卡窗口门控，以及 PDF / EPUB 阅读状态与选区菜单的收口修复。
 
 ## 本轮未落地（结转 Round 02）
 
@@ -132,7 +132,7 @@
 ## W10 最终验证记录（2026-08-24）
 
 - `npx tsc --noEmit`：初次仅因被忽略的生成文件 `src/version.ts` 缺失而报 3 个模块解析错误；执行 `npm run version:generate` 后 **0 错误**，无业务类型错误。
-- 变更相关 vitest 子集：103 文件 / 1143 用例，**1142 通过 / 1 失败**；唯一失败为已知基线项 `StatusBar` Windows inset。
+- 变更相关 vitest 子集：104 文件 / 1155 用例，**1154 通过 / 1 失败**；唯一失败为已知基线项 `StatusBar` Windows inset。
 - 基线红灯定向复核：3 文件 / 43 用例，39 通过 / 4 失败；失败精确为 `workbenchWindowsChromeLayoutContract` ×2、`DockContextMenu`、`StatusBar`。
 - 用户指南抽查：PDF、Finder、notes、mindmap、exam、flashcards 与实现对照；修正移动端 PDF 划词工具条漏列复制 / 引用 / 笔记。
 - 剩余验证风险：未运行仓库全量 vitest、Tauri / Rust 全量测试及桌面端手工性能压测；Exposé OOM 需专项量化。
