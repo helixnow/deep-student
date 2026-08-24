@@ -348,7 +348,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <DsButton
             variant="primary"
             size="lg"
-            className="w-full justify-center text-[13px] font-medium"
+            className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:min-h-11"
             onClick={onConfigure}
           >
             {t('welcome_onboarding.cta_configure')}
@@ -356,7 +356,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <DsButton
             variant="ghost"
             size="lg"
-            className="w-full justify-center text-[13px] text-foreground/55"
+            className="w-full justify-center text-[13px] text-foreground/55 [@media(pointer:coarse)]:min-h-11"
             onClick={onSkip}
           >
             {t('welcome_onboarding.cta_skip')}
