@@ -262,6 +262,10 @@ export class GenerativeUIStreamParser {
 
   /** 追加 chunk 并返回 snapshot（增量状态机入口） */
   appendChunk(chunk: string): GenerativeUIStreamSnapshot {
+    if (this.bufferCapped) {
+      return this.getSnapshot();
+    }
+
     const { accepted, capped } = guardStreamBufferAppend(this.buffer.length, chunk);
     if (capped) {
       this.markBufferCapped();
