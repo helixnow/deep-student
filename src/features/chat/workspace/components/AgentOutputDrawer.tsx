@@ -415,6 +415,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => {
                 if (dispatching) return;
                 setIsDispatchOpen(false);
@@ -427,6 +428,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <DsButton
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={handleDispatch}
               disabled={dispatching || !isOnline}
             >
