@@ -1227,7 +1227,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className={cn(
-                'pl-9 h-8 sm:h-9 [@media(pointer:coarse)]:h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm [@media(pointer:coarse)]:text-base',
+                'pl-9 h-8 sm:h-9 [@media(pointer:coarse)]:!h-11 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm [@media(pointer:coarse)]:text-base',
                 '[&::-webkit-search-cancel-button]:hidden',
                 (searchQuery || isLoading) && 'pr-8'
               )}
@@ -1258,7 +1258,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('grid')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewType === 'grid' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'grid' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.gridView')}
               title={t('learningHub:exam.library.gridView')}
             >
@@ -1268,7 +1268,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleViewTypeChange('list')}
-              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11', viewType === 'list' && 'bg-background shadow-sm')}
+              className={cn('ui-state-colors h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', viewType === 'list' && 'bg-background shadow-sm')}
               aria-label={t('learningHub:exam.library.listView')}
               title={t('learningHub:exam.library.listView')}
             >

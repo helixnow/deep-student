@@ -486,7 +486,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               className={cn(
-                'pl-9 h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
+                'pl-9 h-8 [@media(pointer:coarse)]:!h-11 text-sm [@media(pointer:coarse)]:text-base bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors',
                 '[&::-webkit-search-cancel-button]:hidden',
                 filters.search && 'pr-8'
               )}
@@ -610,7 +610,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="mt-3 [@media(pointer:coarse)]:min-h-11"
+                  className="mt-3 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     if (searchTimerRef.current != null) {
                       window.clearTimeout(searchTimerRef.current);
@@ -629,7 +629,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <>
                 <p>{t('exam_sheet:questionBank.empty')}</p>
                 {showCsvActions && onCsvImport && (
-                  <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:min-h-11" onClick={onCsvImport}>
+                  <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={onCsvImport}>
                     <Upload size={14} />
                     {t('exam_sheet:questionBank.import')}
                   </DsButton>
@@ -1056,7 +1056,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   }
                 }}
                 placeholder={t('learningHub:exam.library.batchAddTagPlaceholder')}
-                className="h-8 [@media(pointer:coarse)]:h-11 w-40 flex-1 min-w-[8rem] bg-background text-sm [@media(pointer:coarse)]:text-base"
+                className="h-8 [@media(pointer:coarse)]:!h-11 w-40 flex-1 min-w-[8rem] bg-background text-sm [@media(pointer:coarse)]:text-base"
               />
               <DsButton
                 variant="ghost"

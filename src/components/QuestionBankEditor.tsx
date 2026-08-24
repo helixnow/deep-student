@@ -1446,7 +1446,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
           <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:min-h-11">{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1465,7 +1465,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <p className="text-sm text-muted-foreground">{t('editor.noQuestionsDesc')}</p>
           </div>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:min-h-11">{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1905,7 +1905,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <div className="flex gap-2">
           <DsButton
             variant="outline"
-            className="flex-1 [@media(pointer:coarse)]:min-h-11"
+            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             onClick={() => {
               setShowCompletionCelebration(false);
               requestNavigate(0);
@@ -1915,7 +1915,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {t('editor.restart')}
           </DsButton>
           <DsButton
-            className="flex-1 [@media(pointer:coarse)]:min-h-11"
+            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             onClick={() => setShowCompletionCelebration(false)}
           >
             {t('editor.viewQuestions')}
@@ -2454,7 +2454,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             size="lg"
                             onClick={handleSubmit}
                             disabled={!canSubmit || isSubmitting}
-                            className="w-full [@media(pointer:coarse)]:min-h-11"
+                            className="w-full [@media(pointer:coarse)]:!min-h-11"
                           >
                             {isSubmitting ? (
                               <><CircleNotch size={16} className="animate-spin" />{t('editor.submitting')}</>
@@ -2826,7 +2826,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="lg"
                       onClick={handleSubmit}
                       disabled={!canSubmit || isSubmitting}
-                      className="w-full [@media(pointer:coarse)]:min-h-11"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {isSubmitting ? (
                         <>

@@ -252,13 +252,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 <DsButton
                   variant="outline"
                   size="sm"
-                  className="[@media(pointer:coarse)]:min-h-11"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setShowPreview(false)}
                 >
                   {t('paper.back')}
                 </DsButton>
                 {exportFormat !== 'preview' && (
-                  <DsButton size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleExport}>
+                  <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleExport}>
                     <Download size={16} className="mr-1" />
                     {t('paper.export')}
                   </DsButton>
@@ -480,7 +480,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         <DsButton
           onClick={handleGenerate}
           disabled={isLoadingPractice || totalQuestions === 0}
-          className="h-9 w-full text-sm [@media(pointer:coarse)]:min-h-11"
+          className="h-9 w-full text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           {isLoadingPractice ? (
             <>

@@ -382,7 +382,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 setMockExamSession(null);
                 setTargetEndTime(null);
               }}
-              className="flex-1 [@media(pointer:coarse)]:min-h-11"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('mockExam.back')}
             </DsButton>
@@ -394,7 +394,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 autoSubmitTriggeredRef.current = false;
                 handleStart();
               }}
-              className="flex-1 [@media(pointer:coarse)]:min-h-11"
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
               {t('mockExam.newExam')}
             </DsButton>
@@ -516,7 +516,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full [@media(pointer:coarse)]:min-h-11"
+            className="w-full [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingPractice ? (
               <>
@@ -574,7 +574,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <DsButton
             variant="default"
             size="sm"
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setShowSubmitConfirm(true)}
             disabled={showSubmitConfirm}
           >
@@ -594,7 +594,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   useQuestionBankStore.getState().setCurrentQuestion(firstUnansweredId);
                   window.dispatchEvent(
@@ -638,7 +638,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="flex-1 [@media(pointer:coarse)]:min-h-11"
+                className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowSubmitConfirm(false)}
               >
                 {t('mockExam.cancel')}
@@ -646,7 +646,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <DsButton
                 variant="default"
                 size="sm"
-                className="flex-1 [@media(pointer:coarse)]:min-h-11"
+                className="flex-1 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void handleSubmit()}
               >
                 <CheckCircle size={14} className="mr-1" />

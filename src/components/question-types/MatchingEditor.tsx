@@ -102,7 +102,7 @@ export const MatchingEditor: React.FC<MatchingEditorProps> = ({ value, onChange,
               value={item.content}
               onChange={(e) => handleItemChange(side, index, e.target.value)}
               placeholder={`${item.key} ...`}
-              className="min-w-0 flex-1 bg-transparent text-xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
+              className="min-w-0 flex-1 bg-transparent text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
             />
             <DsButton
               variant="ghost"

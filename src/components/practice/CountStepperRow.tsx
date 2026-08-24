@@ -63,7 +63,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           aria-label={t('stepper.decrease', { label })}
           disabled={value <= min}
           onClick={() => onChange(clamp(value - 1))}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Minus size={14} />
         </DsButton>
@@ -82,7 +82,7 @@ export const CountStepperRow: React.FC<CountStepperRowProps> = ({
           aria-label={t('stepper.increase', { label })}
           disabled={value >= max}
           onClick={() => onChange(clamp(value + 1))}
-          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Plus size={14} />
         </DsButton>

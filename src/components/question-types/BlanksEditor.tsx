@@ -169,7 +169,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                   }
                 }}
                 placeholder={t('editor.structEdit.answerDraftPlaceholder')}
-                className="h-7 flex-1 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
+                className="h-7 flex-1 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
               />
               <DsButton
                 variant="ghost"

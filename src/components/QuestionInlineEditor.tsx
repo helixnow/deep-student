@@ -1015,7 +1015,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
-              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
+              className="flex-1 text-sm h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
 />
             <DsButton
               variant="ghost"
@@ -1280,7 +1280,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             size="sm"
             onClick={handleCancelRequest}
             disabled={isSaving}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('common:actions.cancel')}
           </DsButton>
@@ -1288,7 +1288,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             size="sm"
             onClick={handleSave}
             disabled={isSaving}
-            className="ui-press [@media(pointer:coarse)]:min-h-11"
+            className="ui-press [@media(pointer:coarse)]:!min-h-11"
           >
             {isSaving ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />

@@ -749,7 +749,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           variant="outline"
           size="sm"
           onClick={() => void handleRevealInFolder()}
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
         >
           <FolderOpen size={16} className="mr-1.5" />
           {t('exam_sheet:questionBank.export.openFolder')}
@@ -763,7 +763,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     <DsButton
       onClick={() => void handleExport()}
       disabled={isExporting || questions.length === 0}
-      className="[@media(pointer:coarse)]:min-h-11"
+      className="[@media(pointer:coarse)]:!min-h-11"
     >
       {isExporting ? (
         <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -900,7 +900,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           }}
         >
           {exportOutcome ? (
-            <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:min-h-11">
+            <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
               {t('exam_sheet:questionBank.export.done')}
             </DsButton>
           ) : (
@@ -909,12 +909,12 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                 variant="ghost"
                 onClick={handleInlineBack}
                 disabled={isExporting}
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {inlineStep === 0 ? t('common:cancel') : t('common:actions.previous')}
               </DsButton>
               {inlineStep < 2 ? (
-                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))} className="[@media(pointer:coarse)]:min-h-11">
+                <DsButton onClick={() => setInlineStep((s) => Math.min(2, s + 1))} className="[@media(pointer:coarse)]:!min-h-11">
                   {t('common:actions.next')}
                 </DsButton>
               ) : (
@@ -947,7 +947,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           onClick={() => onOpenChange(false)}
           disabled={isExporting}
           aria-label={t('common:close')}
-          className="text-muted-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <X size={16} />
         </DsButton>
@@ -974,7 +974,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">
         {exportOutcome ? (
-          <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:min-h-11">
+          <DsButton onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
             {t('exam_sheet:questionBank.export.done')}
           </DsButton>
         ) : (
@@ -983,7 +983,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               variant="ghost"
               onClick={() => onOpenChange(false)}
               disabled={isExporting}
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('common:cancel')}
             </DsButton>

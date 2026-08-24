@@ -599,7 +599,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <div className="flex items-center justify-between gap-3">
           {/* 左侧：开始复习按钮 */}
           {onStartReview && (
-            <DsButton variant="warning" size="sm" onClick={onStartReview} className="[@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="warning" size="sm" onClick={onStartReview} className="[@media(pointer:coarse)]:!min-h-11">
               <Lightning size={14} />
               {t('review:questions.startReview', { count: reviewQuestions.length })}
             </DsButton>

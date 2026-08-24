@@ -267,7 +267,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 onBlur={(e) => {
                   setDailyTarget(normalizeDailyTarget(Number(e.target.value)));
                 }}
-                className="w-24 text-center text-sm font-medium [@media(pointer:coarse)]:min-h-11"
+                className="w-24 text-center text-sm font-medium [@media(pointer:coarse)]:!min-h-11"
 />
               <div className="flex gap-2">
                 {[5, 10, 15, 20].map((n) => (
@@ -275,7 +275,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     key={n}
                     variant={dailyTarget === n ? 'default' : 'outline'}
                     size="sm"
-                    className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => setDailyTarget(n)}
                   >
                     {n}
@@ -294,7 +294,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   void loadCalendar();
                 }}
@@ -377,7 +377,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full h-9 text-sm [@media(pointer:coarse)]:min-h-11"
+            className="w-full h-9 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingPractice ? (
               <>

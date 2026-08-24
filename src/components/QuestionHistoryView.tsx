@@ -563,7 +563,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <XCircle size={32} className="text-destructive mb-2" />
           <p className="text-sm text-muted-foreground">{error}</p>
-          <DsButton variant="ghost" size="sm" className="mt-4 [@media(pointer:coarse)]:min-h-11" onClick={handleRetry}>
+          <DsButton variant="ghost" size="sm" className="mt-4 [@media(pointer:coarse)]:!min-h-11" onClick={handleRetry}>
             {t('common:retry')}
           </DsButton>
         </div>
@@ -621,7 +621,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                 size="sm"
                 onClick={handleLoadMore}
                 disabled={isLoadingMore}
-                className="text-muted-foreground [@media(pointer:coarse)]:min-h-11"
+                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
               >
                 {isLoadingMore ? (
                   <CircleNotch size={14} className="animate-spin" />
