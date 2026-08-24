@@ -120,4 +120,15 @@ describe('移动端指南对 Android 云存储诚实', () => {
     expect(zh.legal.privacyPolicy.sections.cloudSync.content).toContain('Android 仅支持 WebDAV');
     expect(en.legal.privacyPolicy.sections.cloudSync.content).toMatch(/Android supports WebDAV only/i);
   });
+
+  it('根 README 不再把云同步写成笼统的 S3 & WebDAV，并写明默认云端包不能整槽恢复', () => {
+    const enReadme = readFileSync(resolve(process.cwd(), 'README.md'), 'utf-8');
+    const zhReadme = readFileSync(resolve(process.cwd(), 'README_CN.md'), 'utf-8');
+    expect(enReadme).toContain('Android is WebDAV only');
+    expect(enReadme).toContain('portable archive and cannot slot-restore');
+    expect(enReadme).not.toMatch(/backup-style sync via S3-compatible storage & WebDAV/);
+    expect(zhReadme).toContain('Android 仅 WebDAV');
+    expect(zhReadme).toContain('不能整槽恢复');
+    expect(zhReadme).toContain('没有增量传输');
+  });
 });

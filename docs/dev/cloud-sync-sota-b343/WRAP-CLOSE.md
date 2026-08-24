@@ -26,11 +26,12 @@
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
-- **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向与隐私政策已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。
+- **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向、隐私政策与根 README 已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
-- **CI / Rust 门禁**：`8de4b63d` 的 Frontend `licenses:check` 已过；同 run 的 `tsc` 红在 `syncStatusStore` persist `migrate` 把 `Partial` 当成完整切片（已修，未改调度语义）。`963e4cc3` 的 Frontend（含 tsc）与 Backend 已过；Vitest 4/4 红在 `cloudSyncPhase0` 源码锁仍按单行 `showGlobalNotification('error'` 切片（R10-ux 改成多行后误报，fail-closed 仍在）。完整 CI 未宣称全绿。
+- **CI / Rust 门禁**：`c06a7959` 的 Frontend（licenses + tsc）、Backend、Migration Gate、Cloud Provider Contract Gate 已过；`cloudSyncPhase0` 多行 error 通知锁已过。Vitest 2/4 为 Node 堆 OOM（无断言失败）；Vitest 4/4 为已知不稳定项（autosync spy 3 vs 2、StatusBar Windows chrome）+ 随后 OOM。不为绿灯放宽这些用例，不碰 workbench。CLAAssistant 忽略。完整 CI 未宣称全绿。
+- **未合枝**：`fix-sync-tombstone-db14` 仅剩更松的 `ftp.rs` 550 白名单与 Docker 契约测，不合；`r07-docs` 不合；`redlights` 相对专属枝无增量。
 
 ## go/no-go
 
