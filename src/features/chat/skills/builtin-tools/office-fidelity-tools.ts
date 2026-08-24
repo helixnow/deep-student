@@ -26,7 +26,7 @@ export const officeFidelityToolsSkill: SkillDefinition = {
     {
       name: 'builtin-office_fidelity_inspect',
       description:
-        'Low/ReadOnly：检查授权 TaskObjectHandle 指向的 DOCX/XLSX/PPTX/PDF，返回 office-fidelity-inspection/v1 清单、supported/preserved/unsupported、risk、requiresHumanReview、每项证据 hash 和默认拒绝的完成门。不会执行宏、写文件或处理口令。',
+        'Low/ReadOnly：检查 TaskObjectHandle 指向的 DOCX/XLSX/PPTX/PDF，返回 office-fidelity-inspection/v1 清单（supported/preserved/unsupported、risk、requiresHumanReview、完成门）。不执行宏/写文件/处理口令。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -35,7 +35,7 @@ export const officeFidelityToolsSkill: SkillDefinition = {
           source: {
             type: 'object',
             description:
-              '完整 TaskObjectHandle，或 attachment_stage 结果中的 objectHandle/object_handle；必须含可读 managed locator 或 Deep Student VFS provider ref。',
+              '完整 TaskObjectHandle 或 attachment_stage 的 objectHandle；须含可读 managed locator 或 VFS provider ref。',
           },
         },
       },

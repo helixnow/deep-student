@@ -71,7 +71,6 @@ const CITATION_GUIDE: &str = r#"<citation_rules>
 正确：根据教材中的图示 [知识库-2:图片]，力的方向如下。
 错误：[知识库-1] 根据牛顿第二定律...（标记不应在句首）
 错误：根据资料显示...（缺少引用标记）
-错误：在回复末尾添加"参考文献"表格（系统已自动展示，禁止重复）
 </examples>
 </citation_rules>"#;
 
@@ -93,13 +92,11 @@ const LATEX_RULES: &str = r#"<latex_rules version="1" priority="highest">
 $$
 \int_0^1 x^2\,\mathrm{d}x = \tfrac{1}{3}
 $$
-- 带框答案：$\boxed{C}$ 或 $$\boxed{C}$$
 </examples>
 <examples type="incorrect">
 - \lim_{x\to 0} \frac{\sin x}{x} （未包裹）
 - \( \int_a^b f(x)\,\mathrm{d}x \) （错误分隔符）
 - ```math ... ``` （代码块包裹，禁止！）
-- [\boxed{C}] （\boxed 未用 $ 包裹，禁止！）
 </examples>
 <self_check>
 发送前自检：若检测到数学符号未在 $ 或 $$ 内，请重写并补齐分隔符后再发送。
@@ -989,6 +986,46 @@ mod tests {
         assert!(instructions_pos < prefs_pos);
         assert!(prefs_pos < citation_pos);
         assert!(citation_pos < context_pos);
+    }
+
+    /// WI-10 R4：静态提示块 token 预算护栏 + 重复句防回归。
+    ///
+    /// 2026-08 精简：删除了与规则句逐字重复的示例行——
+    /// - CITATION_GUIDE 规则 6（禁止"参考文献"表格）在 examples 中的重复行；
+    /// - LATEX_RULES 规则 7（\boxed 必须用 $ 包裹）在正/误 examples 中的两行重复。
+    /// 字符预算取精简后实测（905 / 727）加少量余量，且低于精简前体积
+    /// （984 / 760），保证重复句不会悄悄回归；如需合理扩充请有意识上调
+    /// 并更新 docs/dev/optimization0824/progress/R4-WI-10-full.md。
+    #[test]
+    fn test_static_prompt_blocks_stay_within_budget() {
+        let latex_chars = LATEX_RULES.chars().count();
+        let citation_chars = CITATION_GUIDE.chars().count();
+        assert!(
+            latex_chars <= 950,
+            "LATEX_RULES 超出静态预算：{} > 950 chars",
+            latex_chars
+        );
+        assert!(
+            citation_chars <= 750,
+            "CITATION_GUIDE 超出静态预算：{} > 750 chars",
+            citation_chars
+        );
+
+        // \boxed{C} 只应出现在规则 7（正确/禁止两种写法各一次），示例区不再重复
+        assert_eq!(
+            LATEX_RULES.matches("boxed{C}").count(),
+            2,
+            "\\boxed 示例应只保留规则 7 中的两处，不要在 examples 里重复"
+        );
+        // "参考文献" 只应出现在规则 6，examples 中的重复句已删除
+        assert_eq!(
+            CITATION_GUIDE.matches("参考文献").count(),
+            1,
+            "citation 规则 6 与 examples 重复的\"参考文献\"句不应回归"
+        );
+        // 规则句本身必须保留（删的是重复示例，不是约束）
+        assert!(LATEX_RULES.contains("\\boxed{} 命令必须用 $...$ 包裹"));
+        assert!(CITATION_GUIDE.contains("禁止在回复末尾生成"));
     }
 
     #[test]

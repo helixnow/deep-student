@@ -81,7 +81,7 @@ index_rebuild 成功结果包含 blockId 与 progressEvent（vfs-index-progress�
     {
       name: 'builtin-index_status',
       description:
-        '读取真实 VFS 索引状态（Low）。无 resource_id 时返回全局 Unit/维度摘要；指定资源时额外返回资源级状态、分页 Unit、最多 2000 字符的 OCR/提取文本预览和明确截断标记。',
+        '读取 VFS 索引状态（Low）。无 resource_id 返回全局摘要；指定资源时附资源级状态、分页 Unit、OCR/提取文本预览（≤2000 字符，含截断标记）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -94,7 +94,7 @@ index_rebuild 成功结果包含 blockId 与 progressEvent（vfs-index-progress�
     {
       name: 'builtin-index_rebuild',
       description:
-        '通过 VfsFullIndexingService 重建一个资源的完整索引（High）。先删除旧文本/多模态向量和 SQLite 索引元数据，再重新抽取、分块、嵌入；发出 vfs-index-progress，终态 status=indexed 才算完成。',
+        '重建资源完整索引（High）：删除旧向量与索引元数据后重新抽取/分块/嵌入；终态 status=indexed 才算完成。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -108,7 +108,7 @@ index_rebuild 成功结果包含 blockId 与 progressEvent（vfs-index-progress�
     {
       name: 'builtin-webpage_save',
       description:
-        '把 web_fetch 已完整抓取并拼接的 Markdown 正文保存到真实 VFS（Medium）：blob + source metadata + file/resource + Unit 同步 + DSTU 事件。返回 indexState=units_synced（向量索引异步，用 index_status 确认）和 disposition（created/restored/deduplicated）。不得传仍有 hasMore=true 的部分内容。',
+        '把 web_fetch 完整抓取拼接的 Markdown 正文存入 VFS（Medium）。返回 indexState=units_synced（向量索引异步，用 index_status 确认）与 disposition；不得传仍有 hasMore=true 的部分内容。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -119,25 +119,25 @@ index_rebuild 成功结果包含 blockId 与 progressEvent（vfs-index-progress�
             minLength: 1,
             maxLength: 4096,
             pattern: '^https?://',
-            description: 'web_fetch 返回的原始绝对 HTTP/HTTPS URL；不得包含用户名或密码',
+            description: '原始绝对 HTTP/HTTPS URL；不得内嵌凭据',
           },
           title: {
             type: 'string',
             minLength: 1,
             maxLength: 300,
-            description: '可选网页标题；省略时从 URL 路径或 host 推导',
+            description: '网页标题；省略时从 URL 推导',
           },
           content: {
             type: 'string',
             minLength: 1,
             maxLength: 1000000,
-            description: '完整拼接的网页 Markdown 正文；web_fetch 必须已读到 hasMore=false',
+            description: '完整拼接的 Markdown 正文；须已读到 hasMore=false',
           },
           content_type: {
             type: 'string',
             minLength: 1,
             maxLength: 200,
-            description: '可选 web_fetch contentType，仅作为来源 metadata 保存',
+            description: 'web_fetch contentType，仅作来源 metadata',
           },
           folder_id: folderId,
         },

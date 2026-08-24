@@ -21,9 +21,9 @@ describe('task governance tool contracts', () => {
       'taskId', 'objectHandles', 'toolCalls', 'approvals', 'outputs',
       'connectorTargets', 'changeCoverage',
     ]);
-    expect(tool?.description).toContain('TaskObjectHandle');
-    expect(tool?.description).toContain('收件人/ACL');
-    expect(tool?.description).toContain('Role Pack');
+    expect(taskGovernanceToolsSkill.content).toContain('TaskObjectHandle');
+    expect(taskGovernanceToolsSkill.content).toContain('收件人/ACL');
+    expect(taskGovernanceToolsSkill.content).toContain('Role Pack');
     expect(tool?.description).toContain('authoritative=false');
     expect(tool?.description).toContain('backend_session_ledger');
     expect(tool?.description).toContain('coverageComplete=false');
@@ -41,8 +41,8 @@ describe('task governance tool contracts', () => {
     expect(tool?.description).toContain('High');
     expect(tool?.description).toContain('rootId+relativePath');
     expect(tool?.description).toContain('sha256');
-    expect(tool?.description).toContain('incompleteLayers');
+    expect(taskGovernanceToolsSkill.content).toContain('incompleteLayers');
     expect(tool?.description).toContain('symlink');
-    expect(tool?.description).toContain('不留 backup');
+    expect(tool?.description).toContain('无 backup');
   });
 });

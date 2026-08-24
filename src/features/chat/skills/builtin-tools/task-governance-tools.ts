@@ -2,7 +2,7 @@ import type { SkillDefinition } from '../types';
 
 const TASK_OBJECT_HANDLE = {
   type: 'object' as const,
-  description: '完整 TaskObjectHandle，包含稳定 handleId、来源、能力、hash 及可选 managed locator。',
+  description: 'TaskObjectHandle：handleId、来源、能力、hash、可选 managed locator',
 };
 
 export const taskGovernanceToolsSkill: SkillDefinition = {
@@ -27,7 +27,7 @@ export const taskGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-task_audit_export',
       description:
-        'COL-08 Medium：聚合输入 TaskObjectHandle、工具及结果 hash、审批、输出、connector 收件人/ACL、Role Pack 版本与 change/rollback coverage，递归脱敏后导出 TaskAuditManifest。当前 evidenceOrigin=caller_supplied、authoritative=false，缺少 backend_session_ledger，coverageComplete=false。',
+        'COL-08 Medium：聚合调用方证据，递归脱敏后导出 TaskAuditManifest（evidenceOrigin=caller_supplied、authoritative=false、coverageComplete=false，缺 backend_session_ledger）。输入见技能说明。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -71,7 +71,7 @@ export const taskGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-lineage_forget',
       description:
-        'COL-06 High：dry_run/commit 删除契约。只允许当前会话 temp/artifacts root 的 rootId+relativePath，要求 TaskObjectHandle.sha256，重验 root identity、canonical containment 与 symlink；执行 no-follow/hash-bound irreversible delete，不留 backup。返回 complete、coverageComplete、incompleteLayers、items，绝不把 dry-run 或未覆盖层报告为删除完成。',
+        'COL-06 High：dry_run/commit 删除契约。仅限当前会话 temp/artifacts root（rootId+relativePath），需 TaskObjectHandle.sha256；重验 root/containment/symlink 后执行 no-follow、hash-bound 不可逆删除，无 backup。dry-run/未覆盖层绝不报告为删除完成。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

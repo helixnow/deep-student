@@ -34,6 +34,6 @@ describe('role packs contract', () => {
     const validate = rolePacksSkill.embeddedTools?.[2];
     expect(validate?.inputSchema.required).toEqual(['pack_id', 'version', 'inputs']);
     expect(validate?.inputSchema.properties.version.pattern).toBe('^[0-9]+\\.[0-9]+\\.[0-9]+$');
-    expect(validate?.description).toContain('task provenance/audit manifest');
+    expect(validate?.description).toContain('audit manifest');
   });
 });

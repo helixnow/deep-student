@@ -128,15 +128,17 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // ============================================================================
 // 回归护栏基线（2026-08-24，chars/4 口径）
 //
-// 当前实测：最大单组 schema = 7389 tokens（qbank-tools），全部 43 组 schema
-// 合计 = 54050 tokens，schema+content 合计 = 75689 tokens。护栏取 ≈25% 余量的
-// 整数值。若新增技能或 schema 合理增长导致越线，请有意识地上调并在
-// docs/dev/optimization0824/progress/R1-WI-10.md 记录原因。
+// R1 基线：最大单组 7389 / schema 合计 54050 / 总计 75689，护栏 9500/68000/95000
+// （≈25% 余量）。R2-R4 三轮精简（全部 43 组 description slim）后实测：
+// 最大单组 schema = 6172 tokens（qbank-tools），43 组 schema 合计 = 46671，
+// schema+content 合计 = 68310。R4 起护栏按新总量收紧为 ≈10% 余量，
+// 防止精简成果被增量回吃。若新增技能或 schema 合理增长导致越线，
+// 请有意识地上调并在 docs/dev/optimization0824/progress/R4-WI-10-full.md 记录原因。
 // ============================================================================
 
-const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 9_500;
-const MAX_TOTAL_SCHEMA_TOKENS = 68_000;
-const MAX_TOTAL_TOKENS = 95_000;
+const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 6_800;
+const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
+const MAX_TOTAL_TOKENS = 75_500;
 
 // ============================================================================
 // 测试
