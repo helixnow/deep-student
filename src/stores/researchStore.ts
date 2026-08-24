@@ -209,6 +209,19 @@ export const useHpiasStore = create<HpiasStore>()(
         }),
         handleEvent: (e: HpiasEvent) => {
           const s = get();
+          const eventSessionId =
+            'session_id' in e && typeof e.session_id === 'string' && e.session_id
+              ? e.session_id
+              : undefined;
+          // 已有活跃会话时，忽略其他 session 的非 session_started 事件，避免并发研究串台。
+          if (
+            s.sessionId &&
+            eventSessionId &&
+            eventSessionId !== s.sessionId &&
+            e.type !== 'session_started'
+          ) {
+            return;
+          }
           // 🚀 P0-3: 事件记录到模块级数组，不触发 store 更新
           try {
             if (e.type !== 'ingestion_progress') {

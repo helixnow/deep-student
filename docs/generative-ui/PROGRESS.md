@@ -1,5 +1,12 @@
 # Generative UI 进度日志
 
+## Round 61（2026-08-24）— store 层会话守卫
+
+1. [x] `HpiasStore.handleEvent` 在已有 session 时忽略其他 `session_id` 的非 `session_started` 事件
+2. [x] 单测锁定 plan/synthesis 不会被外会话覆盖
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 60（2026-08-24）— HPIAS 隔离与宿主守卫
 
 1. [x] Chat 块仅在合法 `researchSessionId` 时订阅 `hpias_event` / 打开实时面板
