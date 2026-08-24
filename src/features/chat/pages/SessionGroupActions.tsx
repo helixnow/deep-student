@@ -79,7 +79,7 @@ export function SessionGroupActions({
               aria-label={labels.groupActions}
               title={labels.groupActions}
               // coarse 指针下 min-h/min-w 保证 ≥44px 触控目标，桌面保持 24px 紧凑视觉（与 ModernSidebar 区头同范式）
-              className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+              className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <DotsThree size={14} />
             </DsButton>
@@ -130,7 +130,7 @@ export function SessionGroupActions({
           }}
           aria-label={newSessionInGroupLabel}
           // coarse 指针下 min-h/min-w 保证 ≥44px 触控目标，桌面保持 24px 紧凑视觉
-          className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          className="!h-9 !w-9 lg:!h-6 lg:!w-6 !rounded-none hover:bg-transparent hover:text-[color:var(--shell-navigation-foreground)] active:bg-transparent active:text-[color:var(--shell-navigation-foreground)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <StudyComposeIcon className="w-3.5 h-3.5" />
         </DsButton>

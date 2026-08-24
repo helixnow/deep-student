@@ -1038,10 +1038,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <X size={16} className="text-muted-foreground" />
             </DsButton>
           </div>
@@ -1113,12 +1113,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             hint={t('page.emptyPage.hint')}
             actions={
               <>
-                <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void createSession()}>
+                <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void createSession()}>
                   <Plus size={14} />
                   {t('page.newChat')}
                 </DsButton>
                 {!isSmallScreen && sessions.length > 0 && (
-                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => setViewMode('browser')}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setViewMode('browser')}>
                     <SquaresFour size={14} />
                     {t('browser.title')}
                   </DsButton>
@@ -1153,12 +1153,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           variant="ghost"
           size="sm"
           autoFocus
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={() => setPendingArchiveGroup(null)}
         >
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="warning" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void confirmArchiveGroup()}>
+        <DsButton variant="warning" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void confirmArchiveGroup()}>
           {t('page.archiveGroupConfirm')}
         </DsButton>
       </div>

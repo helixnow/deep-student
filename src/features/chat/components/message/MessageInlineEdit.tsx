@@ -66,7 +66,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onCancel}
           disabled={isSubmitting}
         >
@@ -75,7 +75,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         <DsButton
           variant="primary"
           size="sm"
-          className="[@media(pointer:coarse)]:min-h-11"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onConfirm}
           disabled={isSubmitting}
         >

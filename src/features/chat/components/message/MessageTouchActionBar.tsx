@@ -163,7 +163,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
   }, [canDelete, isDeleting, deleteArmed, disarmDelete, onDelete, onClose]);
 
   const barButtonClassName =
-    'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui [@media(pointer:coarse)]:min-h-11';
+    'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui [@media(pointer:coarse)]:!min-h-11';
 
   return (
     <div
@@ -253,7 +253,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             onClick={deleteArmed ? disarmDelete : onClose}
             tabIndex={open ? 0 : -1}
             aria-label={t('common.cancel')}
