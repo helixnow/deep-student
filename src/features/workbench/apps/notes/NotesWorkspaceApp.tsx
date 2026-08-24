@@ -264,7 +264,8 @@ function parseInitialResource(instanceKey: string | null, payload: unknown): Not
     if (type && id) return { type, id };
   }
   if (!instanceKey) return null;
-  return { type: instanceKey.startsWith('mindmap_') ? 'mindmap' : 'note', id: instanceKey };
+  // 思维导图资源 ID 的真实前缀是 mm_（见 dstu/types/path.ts 的 ID_PREFIX 映射）
+  return { type: instanceKey.startsWith('mm_') ? 'mindmap' : 'note', id: instanceKey };
 }
 
 function getFolderMembership(treeNodes: readonly FolderTreeNode[]): ReadonlyMap<string, string> {
@@ -905,6 +906,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
+  const explorerOpenRef = useRef(explorerOpen);
+  explorerOpenRef.current = explorerOpen;
+  // compact 档把 explorerOpen 复用为「文件」全屏子屏的开关；进窄窗前的
+  // 宽/中窗侧栏折叠偏好暂存在这里，回宽窗时还原（持久化也写这份偏好）
+  const explorerBeforeCompactRef = useRef(persistedState.explorerOpen);
   const [focusMode, setFocusMode] = useState(false);
   const focusModeOwnersRef = useRef<Set<string>>(new Set());
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(
@@ -1003,7 +1009,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     [collapsedFolderPaths, folderEntries],
   );
   const hasTreeItems = treeItems.length > 0;
-  const sidebarLayoutWidth = sizeClass === 'wide' ? 272 : sizeClass === 'medium' ? 240 : 0;
+  // 宽/中窗侧栏可被 explorerOpen 真正折叠（mod+\ / 命令面板 toggle-sidebar）：
+  // 折叠后布局宽度归零，titlebar 标签偏移与背链 overlay 判定随之变化
+  const explorerVisible = sizeClass !== 'compact' && explorerOpen;
+  const sidebarLayoutWidth = explorerVisible ? (sizeClass === 'wide' ? 272 : 240) : 0;
   const availableMainWidth = workspaceWidth - sidebarLayoutWidth;
   const backlinksOverlay = sizeClass === 'compact'
     || Boolean(splitTab)
@@ -1667,7 +1676,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         focusedPane: resolvedFocusedPane,
         splitLayout,
         backlinksOpen,
-        explorerOpen,
+        // compact 档 explorerOpen 是「文件」子屏开关，持久化写宽/中窗折叠偏好
+        explorerOpen: sizeClassRef.current === 'compact' ? explorerBeforeCompactRef.current : explorerOpen,
         collapsedFolderPaths: [...collapsedFolderPaths].sort(),
       } satisfies PersistedWorkspaceState));
     } catch {
@@ -1702,8 +1712,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const width = entry.contentRect.width;
       setWorkspaceWidth(width);
       const nextSizeClass = classifyWbSysWidth(width);
+      const prevSizeClass = sizeClassRef.current;
       setSizeClass(nextSizeClass);
-      if (nextSizeClass === 'compact') setExplorerOpen(false);
+      if (nextSizeClass === 'compact' && prevSizeClass !== 'compact') {
+        // 进窄窗：暂存宽/中窗折叠偏好；「文件」子屏一律从关闭开始
+        explorerBeforeCompactRef.current = explorerOpenRef.current;
+        setExplorerOpen(false);
+      } else if (nextSizeClass !== 'compact' && prevSizeClass === 'compact') {
+        // 回宽/中窗：还原进窄窗前的侧栏折叠偏好
+        setExplorerOpen(explorerBeforeCompactRef.current);
+      }
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -1978,6 +1996,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   // 窄窗（compact）下「文件」以全屏内联子屏呈现：选中打开资源后自动收起，回到编辑器
   const closeExplorerIfCompact = useCallback(() => {
     if (sizeClassRef.current === 'compact') setExplorerOpen(false);
+  }, []);
+
+  // 布局抽屉回调仅在 compact 档代理「文件」子屏开关；离开 compact 时布局会
+  // 强制回传 false（收抽屉残留），不能让它冲掉宽/中窗的侧栏折叠偏好
+  const handleDrawerOpenChange = useCallback((open: boolean) => {
+    if (sizeClassRef.current === 'compact') setExplorerOpen(open);
   }, []);
 
   const openTreeItem = useCallback((id: string) => {
@@ -2553,7 +2577,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         data-wb-notes-workspace
         data-focus-mode={focusMode ? 'true' : 'false'}
         data-compact={sizeClass === 'compact' ? 'true' : 'false'}
-        data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
+        data-explorer-open={explorerOpen ? 'true' : 'false'}
         onKeyDown={handleWorkspaceKeyDown}
         onDragOver={(event) => {
           if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
@@ -2570,8 +2594,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       <WorkbenchSidebarLayout
         sizeClass={sizeClass}
         navLabel={t('notesWorkspace.explorer.title', 'Files')}
-        drawerOpen={sizeClass === 'compact' ? false : explorerOpen}
-        onDrawerOpenChange={setExplorerOpen}
+        drawerOpen={false}
+        onDrawerOpenChange={handleDrawerOpenChange}
+        sidebarCollapsed={!explorerVisible}
         sidebar={sizeClass === 'compact' ? null : explorerSurface}
       >
 

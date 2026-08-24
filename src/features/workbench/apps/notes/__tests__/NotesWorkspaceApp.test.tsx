@@ -178,6 +178,7 @@ describe('NotesWorkspaceApp', () => {
     watchState.callback = null;
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     const titlebarSlot = document.createElement('div');
@@ -214,8 +215,9 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all open files/ }));
     const menu = screen.getByRole('menu');
 
-    expect(menu.parentElement).toBe(document.body);
+    // 菜单本体是 CustomScrollArea 的 viewport；portal 落点断言看滚动壳的挂载父级
     expect(menu.closest('[data-wb-titlebar-slot]')).toBeNull();
+    expect(menu.closest('.notes-tabs-overflow-menu')?.parentElement).toBe(document.body);
   });
 
   it('keeps note and mindmap types separate in one content area', async () => {
@@ -266,6 +268,56 @@ describe('NotesWorkspaceApp', () => {
     const workspace = document.querySelector('[data-wb-notes-workspace]');
     expect(workspace).toHaveAttribute('data-explorer-open', 'true');
     expect(document.querySelector('[data-notes-explorer]')).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('really collapses the wide-window explorer via toggle-sidebar and moves the titlebar tabs', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    const workspace = document.querySelector('[data-wb-notes-workspace]')!;
+    const split = document.querySelector('.wb-sys-split')!;
+    const titlebarTabs = document.querySelector<HTMLElement>('.notes-titlebar-tabs')!;
+    expect(workspace).toHaveAttribute('data-explorer-open', 'true');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
+    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+
+    dispatchWorkspaceCommand('toggle-sidebar');
+
+    expect(workspace).toHaveAttribute('data-explorer-open', 'false');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'true');
+    expect(document.querySelector('.wb-sys-aside')).toHaveAttribute('aria-hidden', 'true');
+    // 折叠后 titlebar 标签回落到窗控件最小间距（sidebarLayoutWidth 归零）
+    expect(titlebarTabs.style.paddingLeft).toBe('76px');
+
+    dispatchWorkspaceCommand('toggle-sidebar');
+
+    expect(workspace).toHaveAttribute('data-explorer-open', 'true');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
+    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+  });
+
+  it('opens a mindmap for cold-launch instance keys with the real mm_ prefix', async () => {
+    // 资源须存在于库中，否则 loadResources 会把冷启动 tab 当失效资源清掉
+    const mmNode = {
+      id: 'mm_42', sourceId: 'mm_42', path: '/course/mm_42', name: '前缀导图', type: 'mindmap',
+      createdAt: 3, updatedAt: 3,
+    };
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return Promise.resolve({ ok: true, value: [...nodes, mmNode] }) as never;
+    });
+
+    render(<NotesWorkspaceApp {...props({ instanceKey: 'mm_42' })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mm_42')).toBeInTheDocument();
+  });
+
+  it('opens a note for cold-launch instance keys without the mindmap prefix', async () => {
+    render(<NotesWorkspaceApp {...props({ instanceKey: 'note_1' })} />);
+
+    expect(await screen.findByTestId('note-editor-note_1')).toBeInTheDocument();
   });
 
   it('selects the closing tab neighbor and supports automatic keyboard tab navigation', async () => {
@@ -363,7 +415,8 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.keyDown(firstTab, { key: 'F10', shiftKey: true });
     const menu = await screen.findByRole('menu');
     expect(firstTab).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(within(menu).getByRole('menuitemcheckbox')).toHaveFocus());
+    // 菜单含多个 checkbox 项（钉住 / 右侧拆分）；实现聚焦第一个
+    await waitFor(() => expect(within(menu).getAllByRole('menuitemcheckbox')[0]).toHaveFocus());
 
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => {
@@ -669,6 +722,7 @@ describe('NotesWorkspaceApp', () => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) { resizeCallbacks.push(callback); }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -721,7 +775,12 @@ describe('NotesWorkspaceApp', () => {
     vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [folder] });
     vi.mocked(folderApi.getFolderTree).mockResolvedValue({
       ok: true,
-      value: [{ folder, items: [nodes[0]], children: [] }],
+      // 文件夹树 items 是 VfsFolderItem（itemType/itemId），不是 DstuNode
+      value: [{
+        folder,
+        items: [{ id: 'fi_1', folderId: 'fld_course', itemType: 'note', itemId: 'note_1', sortOrder: 0, createdAt: 1 }],
+        children: [],
+      }],
     });
     const { createEmpty } = await import('@/dstu');
     vi.mocked(createEmpty).mockResolvedValueOnce({ ok: true, value: nodes[0] } as never);
@@ -948,13 +1007,14 @@ describe('NotesWorkspaceApp', () => {
     });
   });
 
-  it('keeps the compact explorer inside the shared aria-hidden drawer until reopened', async () => {
+  it('routes the compact drawer handle to the fullscreen files subscreen (P0-5 去抽屉化)', async () => {
     const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) {
         resizeCallbacks.push(callback);
       }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -965,9 +1025,20 @@ describe('NotesWorkspaceApp', () => {
       }
     });
 
+    // 窄窗契约：共享抽屉常隐藏（sidebar 槽位为 null），把手改道全屏「文件」子屏
     const drawer = document.querySelector<HTMLElement>('[data-wb-sys-drawer]')!;
     await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'true'));
+    expect(document.querySelector('[data-notes-files-subscreen]')).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: /显示导航|Show navigation/ }));
-    await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'false'));
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-files-subscreen]')).not.toBeNull();
+    });
+    expect(drawer).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /关闭文件|Close files/ }));
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-files-subscreen]')).toBeNull();
+    });
   });
 });
