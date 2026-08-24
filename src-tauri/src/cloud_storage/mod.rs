@@ -29,7 +29,10 @@ mod sync_manager;
 mod traits;
 mod webdav;
 
-pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
+pub use config::{
+    CloudStorageConfig, FtpConfig, PlatformStorageCapabilities, S3Config, StorageProvider,
+    WebDavConfig,
+};
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
     generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
@@ -82,8 +85,23 @@ fn emit_sync_progress(app: &AppHandle, event: CloudSyncProgressEvent) {
 /// # Returns
 /// 实现了 CloudStorage trait 的存储实例
 pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn CloudStorage>> {
-    // 验证配置
-    config.validate().map_err(AppError::validation)?;
+    create_storage_with_capabilities(config, PlatformStorageCapabilities::current()).await
+}
+
+/// 同 [`create_storage`]，显式注入后端能力（测试钩子，行为等价）。
+///
+/// 校验先行：能力不支持的 provider 在 `validate_with_capabilities` 即被拒绝，
+/// 文案与 SSOT 保存/加载路径字节一致；下方按编译期能力保留的兜底分支使用
+/// 同一常量，保证任何路径都不会把面向编译者的提示暴露给终端用户
+/// （RESTORE-MATRIX P3-2）。
+pub async fn create_storage_with_capabilities(
+    config: &CloudStorageConfig,
+    capabilities: PlatformStorageCapabilities,
+) -> Result<Box<dyn CloudStorage>> {
+    // 验证配置（含不可用 provider 的显式拒绝）
+    config
+        .validate_with_capabilities(capabilities)
+        .map_err(AppError::validation)?;
 
     let root = config.root();
 
@@ -107,7 +125,7 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
         }
         #[cfg(not(feature = "cloud_storage_s3"))]
         StorageProvider::S3 => Err(AppError::configuration(
-            "S3 存储支持未启用，请在编译时启用 cloud_storage_s3 feature".to_string(),
+            crate::cloud_config_commands::S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string(),
         )),
         #[cfg(not(target_os = "android"))]
         StorageProvider::Ftp => {
@@ -120,7 +138,7 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
         }
         #[cfg(target_os = "android")]
         StorageProvider::Ftp => Err(AppError::configuration(
-            "FTP/FTPS storage is not available on Android.".to_string(),
+            crate::cloud_config_commands::FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string(),
         )),
     }
 }
