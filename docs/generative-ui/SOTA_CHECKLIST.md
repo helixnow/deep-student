@@ -47,20 +47,20 @@
 | Research | plan/report/digest + HPIAS 面板 + 新块 | ✅ Round 41 |
 | Mindmap | mindmap-embed E2E | ✅ |
 
-## Round 42 补洞（进行中）
+## Round 42 补洞
 
 | 项 | 证据 / 落点 | 状态 |
 |----|-------------|------|
-| 移动端 compact | density / variant compact + 窄屏 | ⏳ |
-| migrateToV11 | v1 文档升级为 v1.1 layout | ⏳ |
-| i18n 完整合同 | zh-CN / en-US + builder labels | ⏳ |
-| 宿主新块测试 | 各 `*GenerativeBriefing` / builder 单测 | ⏳ |
-| ActionBar 键盘 | toolbar 焦点与快捷键 | ⏳ |
-| 18 块 testid 合同 | `data-generative-block` / `data-testid` | ⏳ |
-| Chat 块新 type 路径 | Chat `generative_ui` 渲染 markdown/chart/steps/table | ⏳ |
-| Widget 回归 | DesktopAiBriefing / Hub 挂载点 | ⏳ |
-| last-good 持久化 | 流式坏 JSON 恢复跨 chunk | ⏳ |
-| SOTA 文档补洞 | 本清单 + ARCHITECTURE / ROADMAP / PROGRESS | ⏳ 本轮文档已对齐真实态 |
+| 移动端 compact | `useGenerativeUICompact` 窄屏强制 stack | ✅ |
+| migrateToV11 | `migrateIntentToV11` | ✅ |
+| i18n 完整合同 | zh-CN / en-US 243 key 对齐 | ✅ |
+| 宿主新块测试 | `hostBriefingNewBlocks.runtime.test.tsx` | ✅ |
+| ActionBar 键盘 | `actionBarKeyboard.test.tsx` | ✅ |
+| 18 块 testid 合同 | `data-generative-block` | ✅ |
+| Chat 块新 type 路径 | `generativeUIChatBlock.newTypes.test.tsx` | ✅ |
+| Widget 回归 | DesktopAiBriefing / AiDashboard chart\|table | ✅ |
+| last-good 持久化 | `generativeUIStreamPersistence` | ✅ |
+| SOTA 文档补洞 | 本清单 + ARCHITECTURE / ROADMAP / PROGRESS | ✅ |
 
 ## HPIAS 后端
 
@@ -90,7 +90,7 @@
 
 1. ~~**PR Ready for Review**~~ — ✅ Round 27 已转 Ready（[#214](https://github.com/helixnow/deep-student/pull/214)）
 2. **合并 main** — 待 CI 绿 + 人工 approve（Goal 未标 complete）
-3. **Round 42 补洞** — compact / i18n / testid / migrateToV11 / ActionBar 键盘 / Chat 新 type 路径 / Widget 回归 / last-good 持久化（进行中）
+3. ~~**Round 42 补洞**~~ — ✅ 本地完成（未 push，保护 CI）
 4. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
