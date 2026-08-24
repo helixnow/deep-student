@@ -196,6 +196,19 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
         });
       }
+      // 开关打开却读不到已存密码：后端 fail-closed 中文长文案。
+      if (/无法整槽恢复的便携归档当成加密全保真/.test(raw)) {
+        return t('cloudStorage:encryption.storedPasswordRequired');
+      }
+      if (/Missing WebDAV configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingWebdavConfig');
+      }
+      if (/Missing S3 configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingS3Config');
+      }
+      if (/Missing FTP configuration/.test(raw)) {
+        return t('cloudStorage:errors.missingFtpConfig');
+      }
       const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
       if (platformErrorKey) return t(platformErrorKey);
       return raw;

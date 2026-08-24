@@ -220,8 +220,19 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(zhLocale.encryption.tooShort).toContain('不会保存');
     expect(enLocale.encryption.tooShort).toMatch(/at least \{\{min\}\} characters/i);
     expect(enLocale.encryption.tooShort).toMatch(/will not be saved/i);
+    expect(componentSource).toContain('无法整槽恢复的便携归档当成加密全保真');
+    expect(componentSource).toContain('cloudStorage:encryption.storedPasswordRequired');
+    expect(zhLocale.encryption.storedPasswordRequired).toContain('便携归档');
+    expect(enLocale.encryption.storedPasswordRequired).toMatch(/portable archive/i);
+    expect(componentSource).toContain('Missing WebDAV configuration');
+    expect(componentSource).toContain('cloudStorage:errors.missingWebdavConfig');
+    expect(componentSource).toContain('cloudStorage:errors.missingS3Config');
+    expect(componentSource).toContain('cloudStorage:errors.missingFtpConfig');
     expect(Object.keys(zhLocale.encryption).sort()).toEqual(
       Object.keys(enLocale.encryption).sort(),
+    );
+    expect(Object.keys(zhLocale.errors).sort()).toEqual(
+      Object.keys(enLocale.errors).sort(),
     );
   });
 });
