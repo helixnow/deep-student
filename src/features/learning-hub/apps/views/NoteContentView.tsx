@@ -15,6 +15,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
+import i18n from '@/i18n';
 import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -241,7 +242,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       // dstu API 均为 Result 语义、正常不抛异常；此处兜底防止
       // 意外 throw 让 isLoading 永远卡住（无重试入口的死加载态）
       if (loadingNoteIdRef.current !== currentNoteId) return;
-      setError(toVfsError(unexpected, '加载笔记内容失败'));
+      setError(toVfsError(unexpected, i18n.t('backend_errors:note_content.load_note_failed', { defaultValue: '加载笔记内容失败' })));
       setIsLoading(false);
       return;
     }
@@ -254,7 +255,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     if (!result.ok) {
       console.error('[NoteContentView] ❌ 加载笔记内容失败:', result.error);
       if (result.error.code !== VfsErrorCode.NOT_FOUND) {
-        reportError(result.error, '加载笔记内容');
+        reportError(result.error, i18n.t('backend_errors:note_content.load_note_action', { defaultValue: '加载笔记内容' }));
       }
       setError(result.error);
       setIsLoading(false);
@@ -378,9 +379,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         if (isContentDirty('note', currentNoteId)) {
           showGlobalNotification(
             'warning',
-            t(
-              'notes:editor.deleted_with_unsaved_changes',
-              '资源已被删除；窗口保留未保存内容，请复制内容后再关闭。',
+            i18n.t(
+              'backend_errors:note_content.deleted_with_unsaved_changes',
+              { defaultValue: '资源已被删除；窗口保留未保存内容，请复制内容后再关闭。' },
             ),
           );
           return;
@@ -647,7 +648,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       }
 
       console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
-      reportError(result.error, '保存笔记');
+      reportError(result.error, i18n.t('backend_errors:note_content.save_note_action', { defaultValue: '保存笔记' }));
       throw new Error(result.error.toUserMessage());
     } finally {
       // 并发保存（强制保存 + 自动保存）时避免误清对方的标志
@@ -672,7 +673,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const result = await dstu.setMetadata(node.path, { title: newTitle });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update title:', result.error);
-      reportError(result.error, '更新标题');
+      reportError(result.error, i18n.t('backend_errors:note_content.update_title_action', { defaultValue: '更新标题' }));
       throw new Error(result.error.toUserMessage());
     }
     // ★ R4：await 期间可能已切换笔记，禁止把旧笔记标题回写进当前视图
@@ -689,7 +690,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const result = await dstu.setMetadata(node.path, { tags: newTags });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update tags:', result.error);
-      reportError(result.error, '更新标签');
+      reportError(result.error, i18n.t('backend_errors:note_content.update_tags_action', { defaultValue: '更新标签' }));
       throw new Error(result.error.toUserMessage());
     }
     if (loadingNoteIdRef.current !== savedNoteId) return;
@@ -734,16 +735,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         isDocumentWindowed: () => markdownWindowRef.current?.hasMore === true,
         replaceFullMarkdown: async (markdown, options) => {
           if (loadingNoteIdRef.current !== node.id) {
-            throw new Error('笔记实例已切换，拒绝写入过期编辑器');
+            throw new Error(i18n.t('backend_errors:note_content.stale_editor_write_rejected', { defaultValue: '笔记实例已切换，拒绝写入过期编辑器' }));
           }
           if (api.isReadonly()) {
-            throw new Error('笔记编辑器为只读状态');
+            throw new Error(i18n.t('backend_errors:note_content.editor_readonly', { defaultValue: '笔记编辑器为只读状态' }));
           }
 
           const previousFull = getLiveFullMarkdown();
           const previousBackingFull = fullContentRef.current;
           if (previousFull !== options.expectedMarkdown) {
-            throw new Error('笔记正文已变化，全文写入 OCC 校验失败');
+            throw new Error(i18n.t('backend_errors:note_content.full_write_occ_failed', { defaultValue: '笔记正文已变化，全文写入 OCC 校验失败' }));
           }
 
           const previousWindow = markdownWindowRef.current;
@@ -768,15 +769,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             setContent(previousBackingFull);
             setMarkdownWindow(previousWindow);
             if (previousWindow) api.setMarkdown(previousWindow.loadedMarkdown);
-            throw new Error('编辑器未确认全文替换');
+            throw new Error(i18n.t('backend_errors:note_content.full_replace_not_confirmed', { defaultValue: '编辑器未确认全文替换' }));
           }
           if (!api.flushPendingSave) {
-            throw new Error('编辑器未提供持久化确认能力');
+            throw new Error(i18n.t('backend_errors:note_content.flush_capability_missing', { defaultValue: '编辑器未提供持久化确认能力' }));
           }
 
           await api.flushPendingSave();
           if (persistedContentRef.current !== markdown) {
-            throw new Error('笔记全文替换未通过持久化验证');
+            throw new Error(i18n.t('backend_errors:note_content.full_replace_persist_failed', { defaultValue: '笔记全文替换未通过持久化验证' }));
           }
           return true;
         },
