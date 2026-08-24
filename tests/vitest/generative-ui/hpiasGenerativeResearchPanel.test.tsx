@@ -48,4 +48,22 @@ describe('HpiasGenerativeResearchPanel', () => {
     expect(document.querySelector('[data-generative-block="steps"]')).toBeTruthy();
     expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
   });
+
+  it('wires copy-intent on the action-bar alongside research actions', () => {
+    vi.useFakeTimers();
+    render(<HpiasGenerativeResearchPanel question="Demo?" />);
+
+    act(() => {
+      playStyleLabHpiasDemo(useHpiasStore.getState().actions.handleEvent, 10);
+    });
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'action.copy_intent' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'research.actions.copy_report' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'research.actions.export_plan' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'research.actions.export_intent' })).toBeInTheDocument();
+  });
 });

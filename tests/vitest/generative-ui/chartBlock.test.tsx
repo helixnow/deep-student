@@ -143,6 +143,17 @@ describe('ChartBlock render', () => {
       'true',
     );
   });
+
+  it('puts dir="auto" on the chart title', () => {
+    render(<ChartBlock {...BASE_PROPS} title="趋势" kind="bar" />);
+    const title = screen.getByRole('heading', { name: '趋势' });
+    expect(title).toHaveAttribute('dir', 'auto');
+  });
+
+  it('puts dir="auto" on the empty-state label', () => {
+    render(<ChartBlock kind="bar" categories={['Q1']} />);
+    expect(screen.getByText('暂无图表数据')).toHaveAttribute('dir', 'auto');
+  });
 });
 
 describe('chart registry + renderer', () => {

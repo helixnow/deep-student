@@ -354,6 +354,9 @@
     },
     "lint_title": "意图诊断",
     "lint_ok": "未发现问题",
-    "lint_count": "{{count}} 个问题"
+    "lint_count": "{{count}} 个问题",
+    "diff_title": "与上一快照差异",
+    "diff_none": "无变更",
+    "diff_summary": "新增 {{added}} · 删除 {{removed}} · 变更 {{changed}}"
   }
 }

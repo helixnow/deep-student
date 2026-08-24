@@ -9,7 +9,7 @@ import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fi
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
-    t: (key: string, options?: { count?: number }) => {
+    t: (key: string, options?: { count?: number; added?: number; removed?: number; changed?: number }) => {
       const map: Record<string, string> = {
         'notes.edit_suggestion_title': '笔记编辑建议',
         'notes.edit_suggestion_description': '确认后打开 diff',
@@ -45,11 +45,26 @@ vi.mock('react-i18next', () => ({
         'demo.lint_title': 'Intent diagnostics',
         'demo.lint_ok': 'No issues',
         'demo.lint_count': '{{count}} issues',
+        'demo.diff_title': 'Diff vs last snapshot',
+        'demo.diff_none': 'No changes',
+        'demo.diff_summary': '+{{added}} / −{{removed}} / ~{{changed}}',
       };
-      if (options && typeof options.count === 'number' && typeof (map[key] ?? key) === 'string') {
-        return (map[key] ?? key).replace('{{count}}', String(options.count));
+      let result = map[key] ?? key;
+      if (options) {
+        if (typeof options.count === 'number') {
+          result = result.replace('{{count}}', String(options.count));
+        }
+        if (typeof options.added === 'number') {
+          result = result.replace('{{added}}', String(options.added));
+        }
+        if (typeof options.removed === 'number') {
+          result = result.replace('{{removed}}', String(options.removed));
+        }
+        if (typeof options.changed === 'number') {
+          result = result.replace('{{changed}}', String(options.changed));
+        }
       }
-      return map[key] ?? key;
+      return result;
     },
     i18n: { language: 'zh-CN' },
   }),
@@ -158,5 +173,22 @@ describe('GenerativeUIDemoTab', () => {
     expect(line).toBeInTheDocument();
     expect(line).toHaveAttribute('data-intent-fingerprint', expected);
     expect(line).toHaveTextContent(expected);
+  });
+
+  it('shows a snapshot diff panel for the default static intent', () => {
+    render(<GenerativeUIDemoTab />);
+    const panel = screen.getByTestId('generative-ui-demo-diff');
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute('data-diff-added');
+    expect(panel).toHaveAttribute('data-diff-removed');
+    expect(panel).toHaveAttribute('data-diff-changed');
+    expect(panel).toHaveTextContent('Diff vs last snapshot');
+
+    const added = Number(panel.getAttribute('data-diff-added'));
+    const removed = Number(panel.getAttribute('data-diff-removed'));
+    const changed = Number(panel.getAttribute('data-diff-changed'));
+    if (added === 0 && removed === 0 && changed === 0) {
+      expect(panel).toHaveTextContent('No changes');
+    }
   });
 });

@@ -38,7 +38,7 @@ export function MindmapEmbedBlock({ mindmapId, versionId, title, height }: Mindm
       aria-labelledby={title ? titleId : undefined}
       aria-label={title ? undefined : t('a11y.mindmap_label')}
     >
-      {title ? <h4 id={titleId} className="text-sm font-medium">{title}</h4> : null}
+      {title ? <h4 id={titleId} dir="auto" className="text-sm font-medium">{title}</h4> : null}
       <MindMapErrorBoundary>
         <Suspense fallback={<Skeleton className="w-full rounded-lg" style={{ height }} />}>
           <LazyMindMapEmbed

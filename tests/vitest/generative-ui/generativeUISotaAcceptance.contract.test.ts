@@ -365,6 +365,7 @@ describe('generativeUISotaAcceptance contract', () => {
       'createCopyBlockActionHandlers',
       'collectUnregisteredActionIds',
       'formatGenerativeDate',
+      'readPersistedLastGoodFingerprint',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }

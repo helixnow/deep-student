@@ -7,6 +7,7 @@
 
 import { generativeUIIntentSchema } from '../schema';
 import type { GenerativeUIIntent } from '../types';
+import { fingerprintGenerativeUIIntent } from '../utils/fingerprintGenerativeUIIntent';
 
 export const GENERATIVE_UI_STREAM_PERSIST_PREFIX = 'dstu.generative-ui.stream.lastGood.';
 export const GENERATIVE_UI_STREAM_PERSIST_RECORD_VERSION = 1 as const;
@@ -22,6 +23,7 @@ export interface GenerativeUIStreamPersistRecord {
   v: typeof GENERATIVE_UI_STREAM_PERSIST_RECORD_VERSION;
   persistKey: string;
   intent: GenerativeUIIntent;
+  fingerprint?: string;
 }
 
 export function createMemoryStreamPersistStorage(
@@ -130,6 +132,36 @@ export function readPersistedLastGoodIntent(
   return intent;
 }
 
+export function readPersistedLastGoodFingerprint(
+  persistKey: string | null | undefined,
+  storage?: GenerativeUIStreamPersistStorage | null,
+): string | null {
+  if (!storage) return null;
+  const key = resolveStreamPersistStorageKey(persistKey);
+  if (!key) return null;
+  let raw: string | null;
+  try {
+    raw = storage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (parsed && typeof parsed === 'object') {
+    const stored = (parsed as Record<string, unknown>).fingerprint;
+    if (typeof stored === 'string' && stored) return stored;
+  }
+
+  const intent = parsePersistedIntent(raw);
+  return intent ? fingerprintGenerativeUIIntent(intent) : null;
+}
+
 export function writePersistedLastGoodIntent(
   persistKey: string | null | undefined,
   intent: GenerativeUIIntent | null,
@@ -148,6 +180,7 @@ export function writePersistedLastGoodIntent(
     v: GENERATIVE_UI_STREAM_PERSIST_RECORD_VERSION,
     persistKey: String(persistKey).trim(),
     intent: validated.data as GenerativeUIIntent,
+    fingerprint: fingerprintGenerativeUIIntent(validated.data),
   };
   try {
     storage.setItem(key, JSON.stringify(record));

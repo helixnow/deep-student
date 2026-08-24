@@ -142,6 +142,7 @@ export const RESEARCH_BRIEFING_EXAMPLE: GenerativeUIIntent = {
           { id: 'copy-report', label: '复制报告', variant: 'default', riskLevel: 'low' },
           { id: 'export-plan', label: '导出计划', variant: 'default', riskLevel: 'medium' },
           { id: 'export-intent', label: '导出全部意图', variant: 'default', riskLevel: 'low' },
+          { id: 'copy-block', label: '复制该组件', variant: 'default', riskLevel: 'low' },
         ],
       },
     },

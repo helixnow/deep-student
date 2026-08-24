@@ -5,10 +5,12 @@ import {
   clearPersistedLastGoodIntent,
   createMemoryStreamPersistStorage,
   createSessionStorageStreamPersistAdapter,
+  readPersistedLastGoodFingerprint,
   readPersistedLastGoodIntent,
   resolveStreamPersistStorageKey,
   writePersistedLastGoodIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamPersistence';
+import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
 import {
   appendGenerativeUIStreamContent,
   clearGenerativeUIStreamRegistry,
@@ -93,6 +95,29 @@ describe('generativeUIStreamPersistence', () => {
     expect(readPersistedLastGoodIntent('adapter', adapter)?.blocks[0]?.type).toBe('text');
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('writes then reads fingerprint matching fingerprintGenerativeUIIntent', () => {
+    const storage = createMemoryStreamPersistStorage();
+    writePersistedLastGoodIntent('fp-new', INTENT, storage);
+    expect(readPersistedLastGoodFingerprint('fp-new', storage)).toBe(
+      fingerprintGenerativeUIIntent(INTENT),
+    );
+  });
+
+  it('accepts old records without fingerprint and computes fallback', () => {
+    const key = resolveStreamPersistStorageKey('fp-old')!;
+    const storage = createMemoryStreamPersistStorage({
+      [key]: JSON.stringify({
+        v: GENERATIVE_UI_STREAM_PERSIST_RECORD_VERSION,
+        persistKey: 'fp-old',
+        intent: INTENT,
+      }),
+    });
+    expect(readPersistedLastGoodIntent('fp-old', storage)?.blocks[0]?.props?.body).toBe('held');
+    expect(readPersistedLastGoodFingerprint('fp-old', storage)).toBe(
+      fingerprintGenerativeUIIntent(INTENT),
+    );
   });
 
   it('swallows storage exceptions', () => {

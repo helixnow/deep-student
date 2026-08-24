@@ -354,6 +354,9 @@
     },
     "lint_title": "Intent diagnostics",
     "lint_ok": "No issues",
-    "lint_count": "{{count}} issues"
+    "lint_count": "{{count}} issues",
+    "diff_title": "Diff vs last snapshot",
+    "diff_none": "No changes",
+    "diff_summary": "+{{added}} / −{{removed}} / ~{{changed}}"
   }
 }

@@ -22,6 +22,7 @@ export interface HpiasResearchDashboardLabels extends HpiasResearchPlanLabels {
   copyReport: string;
   exportPlan: string;
   exportIntent?: string;
+  copyIntent?: string;
   stepsListTitle?: string;
   stepStatusPending?: string;
   stepStatusActive?: string;
@@ -175,6 +176,15 @@ export function buildHpiasResearchDashboardIntent(
     actions.push({
       id: 'export-intent',
       label: labels.exportIntent,
+      variant: 'default',
+      riskLevel: 'low',
+    });
+  }
+
+  if (labels.copyIntent && actions.length < 6) {
+    actions.push({
+      id: 'copy-intent',
+      label: labels.copyIntent,
       variant: 'default',
       riskLevel: 'low',
     });

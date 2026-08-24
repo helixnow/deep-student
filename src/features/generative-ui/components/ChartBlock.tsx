@@ -233,7 +233,7 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
     >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle dir="auto" className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0 space-y-2' : 'pt-4 space-y-2'}>
@@ -242,7 +242,7 @@ export function ChartBlock({ id, title, kind, categories, series, unit }: ChartB
         ) : null}
         {isEmpty ? (
           <div role="img" aria-label={emptyA11yLabel}>
-            <p className="text-sm text-muted-foreground">{t('blocks.chart.empty')}</p>
+            <p className="text-sm text-muted-foreground" dir="auto">{t('blocks.chart.empty')}</p>
           </div>
         ) : (
           <div role="img" aria-label={a11yLabel} className="h-64 w-full">

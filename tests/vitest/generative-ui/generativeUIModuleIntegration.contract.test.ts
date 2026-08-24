@@ -182,6 +182,7 @@ describe('generativeUIModuleIntegration contract', () => {
       'utf8',
     );
     expect(src).toContain('createResearchBriefingActionHandlers');
+    expect(src).toContain('createCopyIntentActionHandlers');
     expect(src).toContain('actionHandlers={actionHandlers}');
   });
 });

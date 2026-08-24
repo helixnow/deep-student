@@ -35,6 +35,21 @@ import './blocks';
 import './generative-ui.css';
 
 const BLOCKS_TRUNCATED_WARNING = 'blocks-truncated';
+const BLOCK_VALIDATION_ERROR_CODES = new Set(['invalid-block', 'unknown']);
+
+function uniqueClassifiedErrorCodes(
+  errors: readonly string[] | null | undefined,
+): string[] {
+  return [...new Set(classifyGenerativeUIParseErrors(errors).map((item) => item.code))];
+}
+
+/** Classify block props Zod errors; prefer invalid-block / unknown codes. */
+function blockValidationErrorCodesAttr(errors: readonly string[]): string | undefined {
+  const classified = uniqueClassifiedErrorCodes(errors);
+  const mapped = classified.filter((code) => BLOCK_VALIDATION_ERROR_CODES.has(code));
+  const codes = mapped.length > 0 ? mapped : classified;
+  return codes.length > 0 ? codes.join(',') : undefined;
+}
 
 function mergeWarnings(...lists: Array<readonly string[] | undefined>): string[] {
   const out: string[] = [];
@@ -229,9 +244,7 @@ export function GenerativeUIRenderer({
         </div>
       );
     }
-    const parseErrorCodes = [
-      ...new Set(classifyGenerativeUIParseErrors(parseError).map((item) => item.code)),
-    ];
+    const parseErrorCodes = uniqueClassifiedErrorCodes(parseError);
     return (
       <Alert
         variant="destructive"
@@ -302,7 +315,12 @@ export function GenerativeUIRenderer({
           const config = generativeUIRegistry.get(block.type);
           if (!config) {
             return slot(
-              <Alert variant="warning" role="alert" data-block-invalid>
+              <Alert
+                variant="warning"
+                role="alert"
+                data-block-invalid
+                data-block-error-codes="unknown-type"
+              >
                 <AlertTitle>{t('unknown_block_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{t('unknown_block_desc')}</AlertDescription>
               </Alert>,
@@ -312,7 +330,12 @@ export function GenerativeUIRenderer({
           const validation = validateBlockProps(config.propsSchema, block.props ?? {});
           if (isBlockPropsValidationFailure(validation)) {
             return slot(
-              <Alert variant="warning" role="alert" data-block-invalid>
+              <Alert
+                variant="warning"
+                role="alert"
+                data-block-invalid
+                data-block-error-codes={blockValidationErrorCodesAttr(validation.errors)}
+              >
                 <AlertTitle>{t('validation_failed_title', { type: block.type })}</AlertTitle>
                 <AlertDescription>{validation.errors.join('; ')}</AlertDescription>
               </Alert>,

@@ -20,6 +20,8 @@ import {
 import { buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
 import { lintGenerativeUIIntent } from '@/features/generative-ui/utils/lintGenerativeUIIntent';
 import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
+import { diffGenerativeUIIntent } from '@/features/generative-ui/utils/diffGenerativeUIIntent';
+import { getDefaultGenerativeUIIntentSnapshotRing } from '@/features/generative-ui/utils/intentSnapshotRing';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
@@ -167,6 +169,21 @@ export function GenerativeUIDemoTab() {
     () => (displayedIntent ? fingerprintGenerativeUIIntent(displayedIntent) : null),
     [displayedIntent],
   );
+
+  const intentDiff = useMemo(() => {
+    if (!displayedIntent || !intentFingerprint) return null;
+    const latest = getDefaultGenerativeUIIntentSnapshotRing().latest();
+    if (!latest || latest.fingerprint === intentFingerprint) {
+      return { added: 0, removed: 0, changed: 0, none: true as const };
+    }
+    const diff = diffGenerativeUIIntent(latest.intent, displayedIntent);
+    return {
+      added: diff.added.length,
+      removed: diff.removed.length,
+      changed: diff.changed.length,
+      none: false as const,
+    };
+  }, [displayedIntent, intentFingerprint]);
 
   const simulateStream = () => {
     stream.reset();
@@ -375,6 +392,27 @@ export function GenerativeUIDemoTab() {
         >
           {intentFingerprint}
         </p>
+      ) : null}
+
+      {intentDiff ? (
+        <div
+          className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs space-y-1"
+          data-testid="generative-ui-demo-diff"
+          data-diff-added={intentDiff.added}
+          data-diff-removed={intentDiff.removed}
+          data-diff-changed={intentDiff.changed}
+        >
+          <p className="font-medium text-foreground">{t('demo.diff_title')}</p>
+          <p className="text-muted-foreground">
+            {intentDiff.none
+              ? t('demo.diff_none')
+              : t('demo.diff_summary', {
+                  added: intentDiff.added,
+                  removed: intentDiff.removed,
+                  changed: intentDiff.changed,
+                })}
+          </p>
+        </div>
       ) : null}
 
       {renderDemo()}

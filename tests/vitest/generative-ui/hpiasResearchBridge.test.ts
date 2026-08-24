@@ -111,9 +111,36 @@ describe('buildHpiasResearchDashboardIntent', () => {
       (a) => a.id,
     );
     expect(actionIds).toContain('export-intent');
+    expect(actionIds).not.toContain('copy-intent');
     const stepsBlock = intent!.blocks.find((b) => b.type === 'steps');
     expect(stepsBlock).toBeDefined();
     expect(stepsBlockPropsSchema.safeParse(stepsBlock?.props).success).toBe(true);
+    expect(parseGenerativeUIIntent(JSON.stringify(intent)).ok).toBe(true);
+  });
+
+  it('includes copy-intent on the action-bar when copyIntent label is present', () => {
+    const intent = buildHpiasResearchDashboardIntent({
+      snapshot: {
+        sessionId: 's1',
+        round: 1,
+        plan: { core: { queries: ['Q1'] } },
+        synthesis: 'Finding [paper-1] summary.',
+        retrievalCount: 20,
+        selectedCount: 5,
+        subAgents: {},
+      },
+      question: 'Test question?',
+      labels: { ...dashboardLabels, copyIntent: 'Copy intent' },
+    });
+    expect(intent).not.toBeNull();
+    const actionBar = intent!.blocks.find((b) => b.type === 'action-bar');
+    const actions = (actionBar?.props as { actions?: Array<{ id: string }> })?.actions ?? [];
+    const actionIds = actions.map((a) => a.id);
+    expect(actionIds).toContain('copy-intent');
+    expect(actionIds).toContain('copy-report');
+    expect(actionIds).toContain('export-plan');
+    expect(actionIds).toContain('export-intent');
+    expect(actions.length).toBeLessThanOrEqual(6);
     expect(parseGenerativeUIIntent(JSON.stringify(intent)).ok).toBe(true);
   });
 });

@@ -101,7 +101,7 @@ export function StepsBlock({ id, title, steps }: StepsBlockProps) {
     >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} dir="auto" className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
@@ -122,6 +122,7 @@ export function StepsBlock({ id, title, steps }: StepsBlockProps) {
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-start justify-between gap-2">
                     <span
+                      dir="auto"
                       className={cn(
                         'text-sm font-medium',
                         STATUS_LABEL_CLASS[status],
@@ -131,11 +132,11 @@ export function StepsBlock({ id, title, steps }: StepsBlockProps) {
                       {step.label}
                     </span>
                     {step.durationLabel ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{step.durationLabel}</span>
+                      <span dir="auto" className="shrink-0 text-xs text-muted-foreground">{step.durationLabel}</span>
                     ) : null}
                   </div>
                   {step.description ? (
-                    <p className="text-xs text-muted-foreground">{step.description}</p>
+                    <p dir="auto" className="text-xs text-muted-foreground">{step.description}</p>
                   ) : null}
                   <span
                     className={cn(

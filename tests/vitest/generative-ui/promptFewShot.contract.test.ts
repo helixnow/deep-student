@@ -74,6 +74,8 @@ describe('generativeUI promptFewShot contract', () => {
     const comparisonTypes = RESEARCH_COMPARISON_EXAMPLE.blocks.map((b) => b.type);
     expect(comparisonTypes).toEqual(expect.arrayContaining(['paper-digest', 'table']));
     expect(comparisonTypes.some((type) => type === 'table' || type === 'chart')).toBe(true);
+
+    expect(JSON.stringify(GENERATIVE_UI_FEW_SHOT_EXAMPLES)).toContain('copy-block');
   });
 
   it('every few-shot passes parseGenerativeUIIntent + registry validateBlockProps', () => {

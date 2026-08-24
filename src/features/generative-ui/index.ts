@@ -37,6 +37,8 @@ export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
 export { GenerativeUIPanel } from './components/GenerativeUIPanel';
 export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
+export type { UseGenerativeUIStreamResult } from './hooks/useGenerativeUIStream';
+export { readPersistedLastGoodFingerprint } from './bridge/generativeUIStreamPersistence';
 export {
   useGenerativeUICompact,
   isGenerativeUICompactViewport,

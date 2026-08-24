@@ -9,6 +9,7 @@ import { buildHpiasResearchDashboardIntent } from '../utils/buildHpiasResearchDa
 import { buildResearchExportMarkdownFromSnapshot } from '../utils/buildResearchExportMarkdown';
 import { pickHpiasResearchSnapshot } from '../utils/mapHpiasStoreToResearchPlan';
 import { createResearchBriefingActionHandlers } from '../handlers/researchBriefingActionHandlers';
+import { createCopyIntentActionHandlers } from '../handlers/copyIntentActionHandlers';
 
 export interface HpiasGenerativeResearchPanelProps {
   showChrome?: boolean;
@@ -85,6 +86,7 @@ export function HpiasGenerativeResearchPanel({
       copyReport: t('research.actions.copy_report'),
       exportPlan: t('research.actions.export_plan'),
       exportIntent: t('research.actions.export_intent'),
+      copyIntent: t('action.copy_intent'),
       stepsListTitle: t('research.hpias.steps_list_title'),
       stepStatusPending: t('research.hpias.step_status_pending'),
       stepStatusActive: t('research.hpias.step_status_active'),
@@ -125,25 +127,32 @@ export function HpiasGenerativeResearchPanel({
 
   const getIntent = useCallback(() => intent, [intent]);
 
-  const actionHandlers = useMemo(
-    () =>
-      createResearchBriefingActionHandlers(
-        { getReportBody, getExportMarkdown, getIntent },
-        {
-          copyReport: dashboardLabels.copyReport,
-          exportPlan: dashboardLabels.exportPlan,
-          exportIntent: dashboardLabels.exportIntent,
-        },
-      ),
-    [
-      dashboardLabels.copyReport,
-      dashboardLabels.exportIntent,
-      dashboardLabels.exportPlan,
-      getExportMarkdown,
-      getIntent,
-      getReportBody,
-    ],
-  );
+  const actionHandlers = useMemo(() => {
+    const researchHandlers = createResearchBriefingActionHandlers(
+      { getReportBody, getExportMarkdown, getIntent },
+      {
+        copyReport: dashboardLabels.copyReport,
+        exportPlan: dashboardLabels.exportPlan,
+        exportIntent: dashboardLabels.exportIntent,
+      },
+    );
+    if (!intent || !dashboardLabels.copyIntent) {
+      return researchHandlers;
+    }
+    return {
+      ...researchHandlers,
+      ...createCopyIntentActionHandlers(intent, { copyIntent: dashboardLabels.copyIntent }),
+    };
+  }, [
+    dashboardLabels.copyIntent,
+    dashboardLabels.copyReport,
+    dashboardLabels.exportIntent,
+    dashboardLabels.exportPlan,
+    getExportMarkdown,
+    getIntent,
+    getReportBody,
+    intent,
+  ]);
 
   if (!sessionId || !intent) {
     return emptyFallback ? <>{emptyFallback}</> : null;

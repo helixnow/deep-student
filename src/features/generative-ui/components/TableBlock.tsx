@@ -73,19 +73,20 @@ export function TableBlock({ id, title, columns, rows, emptyLabel, caption }: Ta
     >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} dir="auto" className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
         <div className="overflow-x-auto">
           <Table>
-            <TableCaption>{resolvedCaption}</TableCaption>
+            <TableCaption dir="auto">{resolvedCaption}</TableCaption>
             <TableHeader>
               <TableRow>
                 {columns.map((column) => (
                   <TableHead
                     key={column.key}
                     scope="col"
+                    dir="auto"
                     className={ALIGN_CLASS[column.align ?? 'left']}
                   >
                     {column.label}
@@ -114,6 +115,7 @@ export function TableBlock({ id, title, columns, rows, emptyLabel, caption }: Ta
                           key={column.key}
                           data-table-cell
                           data-numeric={numeric ? 'true' : undefined}
+                          dir="auto"
                           className={cn(
                             ALIGN_CLASS[column.align ?? 'left'],
                             numeric && 'tabular-nums',

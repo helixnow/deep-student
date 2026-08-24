@@ -280,6 +280,50 @@ describe('generativeUI actionHandlerSync contract', () => {
     expectActionIdsRegistered(intent!, handlers, 'buildHpiasResearchDashboardIntent');
   });
 
+  it('hpias research dashboard copy-intent is registered when copyIntent label is present', () => {
+    const intent = buildHpiasResearchDashboardIntent({
+      snapshot: {
+        sessionId: 's1',
+        round: 1,
+        plan: { core: { queries: ['Q1'] } },
+        synthesis: 'Finding [paper-1]',
+        retrievalCount: 5,
+        selectedCount: 2,
+        subAgents: {},
+      },
+      question: 'Test?',
+      labels: {
+        metaTitle: 'Research',
+        roundLabel: 'Round',
+        planTitle: 'Task',
+        stepPlan: 'Plan',
+        stepRetrieval: 'Retrieval',
+        stepSelection: 'Selection',
+        stepSubagents: 'Subagents',
+        stepSynthesis: 'Synthesis',
+        subagentFallback: 'Sub {{id}}',
+        retrievalStatTitle: 'Retrieved',
+        selectedStatTitle: 'Selected',
+        reportMetaTitle: 'Report',
+        citationStatTitle: 'Citations',
+        copyReport: 'Copy',
+        exportPlan: 'Export',
+        exportIntent: 'Export intent',
+        copyIntent: 'Copy intent',
+      },
+    });
+    expect(intent).not.toBeNull();
+    const handlers = {
+      ...createResearchBriefingActionHandlers(
+        { getReportBody: () => 'Finding', getExportMarkdown: () => '# export', getIntent: () => intent },
+        { copyReport: 'Copy', exportPlan: 'Export', exportIntent: 'Export intent' },
+      ),
+      ...createCopyIntentActionHandlers(intent!, { copyIntent: 'Copy intent' }),
+    };
+    expectActionIdsRegistered(intent!, handlers, 'buildHpiasResearchDashboardIntent+copy-intent');
+    expect(handlers[COPY_INTENT_ACTION_ID]).toBeDefined();
+  });
+
   it('copy-intent action id exists in createCopyIntentActionHandlers as low risk', () => {
     const intent: GenerativeUIIntent = {
       version: '1',

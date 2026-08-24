@@ -1,9 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useGenerativeUIStream } from '@/features/generative-ui/hooks/useGenerativeUIStream';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
+import {
+  getDefaultGenerativeUIIntentSnapshotRing,
+  resetDefaultGenerativeUIIntentSnapshotRing,
+} from '@/features/generative-ui/utils/intentSnapshotRing';
 
 describe('useGenerativeUIStream', () => {
+  afterEach(() => {
+    resetDefaultGenerativeUIIntentSnapshotRing();
+  });
+
   it('sets intent directly', () => {
     const { result } = renderHook(() => useGenerativeUIStream());
     act(() => {
@@ -44,5 +52,30 @@ describe('useGenerativeUIStream', () => {
       result.current.finalize();
     });
     expect(result.current.partialIntent?.blocks[0]?.props?.body).toBe('held');
+  });
+
+  it('classifies invalid JSON finalize as invalid-json', () => {
+    const { result } = renderHook(() => useGenerativeUIStream());
+    act(() => {
+      result.current.append('{ not valid json');
+    });
+    act(() => {
+      result.current.finalize();
+    });
+    expect(result.current.errorCodes[0]?.code).toBe('invalid-json');
+  });
+
+  it('pushes default snapshot on successful finalize', () => {
+    const json = JSON.stringify(LEARNING_DASHBOARD_EXAMPLE);
+    const { result } = renderHook(() => useGenerativeUIStream());
+    act(() => {
+      result.current.append(json);
+    });
+    act(() => {
+      result.current.finalize();
+    });
+    const latest = getDefaultGenerativeUIIntentSnapshotRing().latest();
+    expect(latest?.intent).toEqual(result.current.intent);
+    expect(latest?.intent.meta?.title).toBe(LEARNING_DASHBOARD_EXAMPLE.meta?.title);
   });
 });

@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 49（2026-08-24）— 10 子代理：快照 diff / 流式 / HPIAS
+
+CI `32704302688` 仍 queued，**本轮不 push**。
+
+1. [x] Style Lab 与上一快照 diff
+2. [x] `useGenerativeUIStream` errorCodes + 成功快照
+3. [x] last-good persist 写入 fingerprint
+4. [x] Steps / List / Table `dir=auto`
+5. [x] HPIAS copy-intent 接线
+6. [x] Renderer 块级 `data-block-error-codes`
+7. [x] Few-shot 研究例加入 copy-block
+8. [x] Rust e2e 拒绝 33 块
+9. [x] Mindmap / Chart `dir=auto`
+10. [x] 文档与测试收口
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 48（2026-08-24）— 10 子代理：Chat 接线 / Rust 32 / 宿主 i18n
 
 CI `32704302688` 仍 queued，**本轮不 push**。

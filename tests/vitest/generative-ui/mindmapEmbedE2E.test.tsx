@@ -78,6 +78,27 @@ describe('mindmap-embed E2E via GenerativeUIRenderer', () => {
     expect(embed).toHaveAttribute('data-title', '本周复习导图');
   });
 
+  it('puts dir="auto" on the mindmap title heading', async () => {
+    render(
+      <GenerativeUIRenderer
+        intent={{
+          version: '1',
+          blocks: [
+            {
+              type: 'mindmap-embed',
+              props: { versionId: 'mv_dir_auto', title: '复习导图' },
+            },
+          ],
+        }}
+        showChrome={false}
+      />,
+    );
+
+    const title = await screen.findByRole('heading', { name: '复习导图' });
+    expect(title.tagName).toBe('H4');
+    expect(title).toHaveAttribute('dir', 'auto');
+  });
+
   it('shows validation error when mindmap ref is missing', () => {
     render(
       <GenerativeUIRenderer
