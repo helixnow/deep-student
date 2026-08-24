@@ -7460,44 +7460,81 @@ impl LLMManager {
         }
     }
 
-    fn append_injection_to_system_message(messages: &mut Vec<Value>, inject_content: &str) {
+    /// 把本轮检索/预取注入文本追加到**当前 user 消息**（prompt-cache 安全）。
+    ///
+    /// ## 为什么禁止追加到 system（P1-10 同源约束）
+    /// system 是消息序列第 0 位、位于全部历史之前；注入内容按当前 query
+    /// 生成、逐轮变化，追加到 system 尾部会让每轮请求的 system 字节都不同，
+    /// 从第 0 位起打碎整段 prompt cache。与 chat_v2 prompt_builder 的
+    /// P1-10 设计对齐：turn-volatile 内容一律落在当前 user 消息的
+    /// `<injected_context>` 内，system 保持跨轮字节恒定。
+    ///
+    /// ## 定位规则
+    /// 从尾部向前找第一条**非瞬态**的 user 消息（瞬态技能/锚点消息是
+    /// 字节稳定的合并屏障，改写会破坏其跨轮精确匹配，故跳过）；找不到
+    /// 任何可承载的 user 消息时，在尾部追加独立 user 消息承载注入——
+    /// 任何分支都不触碰 system。
+    ///
+    /// ## XML 转义安全
+    /// 注入载荷（web 检索摘要/图谱片段）为外部内容，整体经
+    /// `escape_xml_content` 转义后再包进 `<injected_context>`，防止载荷
+    /// 伪造 `<injected_context>`/`<skill_instructions>` 等标签（间接
+    /// prompt 注入面）。
+    fn append_injection_to_current_user_message(
+        messages: &mut Vec<Value>,
+        inject_content: &str,
+        transient_user_contents: &std::collections::HashSet<&str>,
+    ) {
         if inject_content.trim().is_empty() {
             warn!("[Inject] 注入内容为空，跳过");
             return;
         }
-        if let Some(first_msg) = messages.get_mut(0) {
-            if first_msg["role"] == "system" {
-                match &first_msg["content"] {
-                    // 字符串格式：直接拼接
-                    Value::String(s) => {
-                        let new_content = format!("{}\n\n{}", s, inject_content.trim());
-                        first_msg["content"] = json!(new_content);
-                    }
-                    // 数组格式（如 OpenAI content array）：追加一个 text block
-                    Value::Array(arr) => {
-                        let mut new_arr = arr.clone();
-                        new_arr.push(json!({
-                            "type": "text",
-                            "text": inject_content.trim()
-                        }));
-                        first_msg["content"] = json!(new_arr);
-                    }
-                    _ => {
-                        first_msg["content"] = json!(inject_content.trim());
-                    }
-                }
-                debug!("[Inject] 已将注入文本追加到现有系统消息");
-                return;
-            }
-        }
-        messages.insert(
-            0,
-            json!({
-                "role": "system",
-                "content": inject_content.trim()
-            }),
+        let block = format!(
+            "<injected_context>\n{}\n</injected_context>",
+            crate::chat_v2::vfs_resolver::escape_xml_content(inject_content.trim())
         );
-        debug!("[Inject] 未找到系统消息，已创建新的系统消息承载注入内容");
+
+        let target = messages.iter_mut().rev().find(|msg| {
+            if msg.get("role").and_then(Value::as_str) != Some("user") {
+                return false;
+            }
+            let is_transient = msg
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| transient_user_contents.contains(text));
+            !is_transient
+        });
+
+        if let Some(user_msg) = target {
+            match &user_msg["content"] {
+                // 字符串格式：user_query 在前、injected_context 尾随
+                Value::String(s) => {
+                    let new_content = format!("{}\n\n{}", s, block);
+                    user_msg["content"] = json!(new_content);
+                }
+                // 数组格式（多模态 content array）：追加一个 text block，
+                // 原有 text/image 块字节不动
+                Value::Array(arr) => {
+                    let mut new_arr = arr.clone();
+                    new_arr.push(json!({
+                        "type": "text",
+                        "text": block
+                    }));
+                    user_msg["content"] = json!(new_arr);
+                }
+                _ => {
+                    user_msg["content"] = json!(block);
+                }
+            }
+            debug!("[Inject] 已将注入文本追加到当前 user 消息（<injected_context>）");
+            return;
+        }
+
+        messages.push(json!({
+            "role": "user",
+            "content": block
+        }));
+        debug!("[Inject] 未找到可承载的 user 消息，已在尾部追加独立 user 消息承载注入内容");
     }
 
     /// 构建图谱检索结果的注入文本
