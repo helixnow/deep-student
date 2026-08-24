@@ -96,7 +96,9 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         kind: 'textbook',
         nodeId: node.id,
         nodePath: node.path,
-        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+        // ★ 创建时快照：控制器内部只提取 readingProgress/bookmarks 白名单字段，
+        // dispose flush 不回读活 ref（避免 node 切换后串写新节点数据）
+        metadata: node.metadata as Record<string, unknown> | undefined,
       },
       {
         onBookmarksError: (err) => {
@@ -499,7 +501,9 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     persistControllerRef.current.scheduleBookmarks(newBookmarks);
   }, []);
 
-  // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）
+  // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）。
+  // 旧控制器 dispose 用的是它创建时的快照；新控制器在 refs 同步 effect
+  // 之后创建，此时 ref 已指向新 node 的 metadata。
   useEffect(() => {
     persistControllerRef.current.dispose();
     persistControllerRef.current = createPreviewPersistController(
@@ -507,7 +511,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         kind: 'textbook',
         nodeId: nodeIdRef.current,
         nodePath: nodePathRef.current,
-        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+        metadata: nodeMetadataRef.current as Record<string, unknown> | undefined,
       },
       {
         onBookmarksError: (err) => {

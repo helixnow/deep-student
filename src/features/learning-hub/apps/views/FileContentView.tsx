@@ -187,7 +187,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       kind: 'file',
       nodeId: node.id,
       nodePath: node.path,
-      getMetadata: () => nodeMetadataRef.current,
+      // ★ 创建时快照（白名单提取），dispose flush 不回读活 ref
+      metadata: node.metadata as Record<string, unknown> | undefined,
     }),
   );
 
@@ -228,14 +229,15 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     }
   }, [node.metadata]);
 
-  // node 切换时 flush 旧控制器再换新；unmount 时 dispose
+  // node 切换时 flush 旧控制器再换新；unmount 时 dispose。
+  // 旧控制器 dispose 用创建时快照，不读已指向新 node 的活 ref。
   useEffect(() => {
     persistControllerRef.current.dispose();
     persistControllerRef.current = createPreviewPersistController({
       kind: 'file',
       nodeId: nodeIdRef.current,
       nodePath: nodePathRef.current,
-      getMetadata: () => nodeMetadataRef.current,
+      metadata: nodeMetadataRef.current,
     });
     return () => {
       persistControllerRef.current.dispose();
