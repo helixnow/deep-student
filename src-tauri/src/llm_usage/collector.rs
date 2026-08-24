@@ -261,15 +261,15 @@ impl UsageCollector {
                 INSERT INTO llm_usage_logs (
                     id, timestamp, provider, model, adapter, api_config_id,
                     prompt_tokens, completion_tokens, total_tokens,
-                    reasoning_tokens, cached_tokens, token_source,
+                    reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
                     duration_ms, caller_type, session_id,
                     status, error_message, cost_estimate
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6,
                     ?7, ?8, ?9,
-                    ?10, ?11, ?12,
-                    ?13, ?14, ?15,
-                    ?16, ?17, ?18
+                    ?10, ?11, ?12, ?13,
+                    ?14, ?15, ?16,
+                    ?17, ?18, ?19
                 )
                 "#,
                 rusqlite::params![
@@ -290,6 +290,8 @@ impl UsageCollector {
                     record.total_tokens,
                     record.reasoning_tokens,
                     record.cached_tokens,
+                    // 缓存写入量：未测量保持 NULL（≠0），报表算 write/read 比
+                    record.cache_write_tokens,
                     // 真实写入 token 来源；仅在调用方未标注时回退 schema 默认 "api"
                     record.token_source.as_deref().unwrap_or("api"),
                     record.duration_ms.map(|d| d as i64),
@@ -741,6 +743,43 @@ mod tests {
             .expect("Failed to query plain record");
         assert_eq!(plain_adapter, None);
         assert_eq!(plain_source, "api");
+    }
+
+    #[tokio::test]
+    async fn test_record_writes_cache_write_tokens_null_means_unmeasured() {
+        let (_temp_dir, db, collector) = setup_test_env().await;
+
+        // 带缓存读/写测量的记录（Anthropic / Responses 路径）
+        let measured = UsageRecord::new(CallerType::ChatV2, "claude-3-opus".to_string(), 1000, 50)
+            .with_cached_tokens(800)
+            .with_cache_write_tokens(200);
+        // 未测量的记录：cached / cache_write 都必须落 NULL，不能落 0
+        let unmeasured = UsageRecord::new(CallerType::ChatV2, "gpt-4o".to_string(), 10, 5);
+
+        collector.record_batch(vec![measured.clone(), unmeasured.clone()]);
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let conn = db.get_conn().expect("Failed to get connection");
+
+        let (cached, cache_write): (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT cached_tokens, cache_write_tokens FROM llm_usage_logs WHERE id = ?1",
+                [&measured.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Failed to query measured record");
+        assert_eq!(cached, Some(800));
+        assert_eq!(cache_write, Some(200));
+
+        let (plain_cached, plain_write): (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT cached_tokens, cache_write_tokens FROM llm_usage_logs WHERE id = ?1",
+                [&unmeasured.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Failed to query unmeasured record");
+        assert_eq!(plain_cached, None, "无测量必须是 NULL，不得伪装成 0");
+        assert_eq!(plain_write, None, "无测量必须是 NULL，不得伪装成 0");
     }
 
     #[tokio::test]

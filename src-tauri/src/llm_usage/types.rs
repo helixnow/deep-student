@@ -172,6 +172,12 @@ pub struct UsageRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,
 
+    /// 缓存写入的 Token 数量（可选；Anthropic `cache_creation_input_tokens`、
+    /// OpenAI/DeepSeek Responses `input_tokens_details.cache_write_tokens`）。
+    /// NULL = 无测量，不等于 0（真实测得未写入）；报表据此算 write/read 比
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u32>,
+
     /// 估算成本（美元，可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_cost_usd: Option<f64>,
@@ -224,6 +230,7 @@ impl UsageRecord {
             total_tokens: prompt_tokens + completion_tokens,
             reasoning_tokens: None,
             cached_tokens: None,
+            cache_write_tokens: None,
             estimated_cost_usd: None,
             duration_ms: None,
             success: true,
@@ -271,6 +278,12 @@ impl UsageRecord {
     /// Builder 方法：设置缓存 Token
     pub fn with_cached_tokens(mut self, tokens: u32) -> Self {
         self.cached_tokens = Some(tokens);
+        self
+    }
+
+    /// Builder 方法：设置缓存写入 Token（未调用 = NULL = 无测量）
+    pub fn with_cache_write_tokens(mut self, tokens: u32) -> Self {
+        self.cache_write_tokens = Some(tokens);
         self
     }
 

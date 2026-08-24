@@ -45,12 +45,12 @@ impl LlmUsageRepo {
             INSERT INTO llm_usage_logs (
                 id, timestamp, provider, model, adapter, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
-                reasoning_tokens, cached_tokens, token_source,
+                reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
-                ?7, ?8, ?9, ?10, ?11, ?12,
-                ?13, ?14, ?15, ?16, ?17, ?18
+                ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                ?14, ?15, ?16, ?17, ?18, ?19
             )
             "#,
             params![
@@ -65,6 +65,7 @@ impl LlmUsageRepo {
                 record.total_tokens,
                 record.reasoning_tokens,
                 record.cached_tokens,
+                record.cache_write_tokens,
                 record.token_source.as_deref().unwrap_or("api"),
                 record.duration_ms,
                 record.caller_type.to_string(),
@@ -147,12 +148,12 @@ impl LlmUsageRepo {
             INSERT INTO llm_usage_logs (
                 id, timestamp, provider, model, adapter, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
-                reasoning_tokens, cached_tokens, token_source,
+                reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
-                ?7, ?8, ?9, ?10, ?11, ?12,
-                ?13, ?14, ?15, ?16, ?17, ?18
+                ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                ?14, ?15, ?16, ?17, ?18, ?19
             )
             "#,
             params![
@@ -167,6 +168,7 @@ impl LlmUsageRepo {
                 record.total_tokens,
                 record.reasoning_tokens,
                 record.cached_tokens,
+                record.cache_write_tokens,
                 record.token_source.as_deref().unwrap_or("api"),
                 record.duration_ms,
                 record.caller_type.to_string(),
@@ -450,7 +452,7 @@ impl LlmUsageRepo {
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens,
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate,
-                adapter, token_source
+                adapter, token_source, cache_write_tokens
             FROM llm_usage_logs
             ORDER BY timestamp DESC
             LIMIT ?1 OFFSET ?2
@@ -486,6 +488,7 @@ impl LlmUsageRepo {
                 total_tokens: row.get(7)?,
                 reasoning_tokens: row.get(8)?,
                 cached_tokens: row.get(9)?,
+                cache_write_tokens: row.get(18)?,
                 estimated_cost_usd: row.get(15)?,
                 duration_ms: row.get(10)?,
                 success: status == "success",
@@ -669,6 +672,11 @@ mod tests {
             "../../migrations/llm_usage/V20260130__init.sql"
         ))
         .unwrap();
+        // V20260824：cache_write_tokens 列（insert/read 路径已引用）
+        conn.execute_batch(include_str!(
+            "../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .unwrap();
         conn
     }
 
@@ -722,6 +730,52 @@ mod tests {
         let recent = LlmUsageRepo::get_recent_usage(&conn, 10).unwrap();
         assert_eq!(recent[0].adapter, Some("anthropic_messages".to_string()));
         assert_eq!(recent[0].token_source, Some("heuristic".to_string()));
+    }
+
+    #[test]
+    fn test_insert_usage_persists_cache_write_tokens_and_null_unmeasured() {
+        let conn = setup_test_db();
+
+        let measured = UsageRecord::new(CallerType::ChatV2, "claude-3-opus".to_string(), 1000, 50)
+            .with_cached_tokens(750)
+            .with_cache_write_tokens(250);
+        let unmeasured = UsageRecord::new(CallerType::ChatV2, "gpt-4o".to_string(), 100, 10);
+
+        LlmUsageRepo::insert_usage(&conn, &measured).unwrap();
+        LlmUsageRepo::insert_usage(&conn, &unmeasured).unwrap();
+
+        let (cached, write): (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT cached_tokens, cache_write_tokens FROM llm_usage_logs WHERE id = ?1",
+                [&measured.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(cached, Some(750));
+        assert_eq!(write, Some(250));
+
+        let (plain_cached, plain_write): (Option<i64>, Option<i64>) = conn
+            .query_row(
+                "SELECT cached_tokens, cache_write_tokens FROM llm_usage_logs WHERE id = ?1",
+                [&unmeasured.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(plain_cached, None, "无测量必须落 NULL 而不是 0");
+        assert_eq!(plain_write, None, "无测量必须落 NULL 而不是 0");
+
+        // 回读路径带出 cache_write_tokens
+        let recent = LlmUsageRepo::get_recent_usage(&conn, 10).unwrap();
+        let read_back = recent
+            .iter()
+            .find(|r| r.id == measured.id)
+            .expect("measured record read back");
+        assert_eq!(read_back.cache_write_tokens, Some(250));
+        let plain_back = recent
+            .iter()
+            .find(|r| r.id == unmeasured.id)
+            .expect("unmeasured record read back");
+        assert_eq!(plain_back.cache_write_tokens, None);
     }
 
     #[test]

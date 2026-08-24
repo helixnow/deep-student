@@ -140,6 +140,9 @@ pub fn record_llm_usage(
 ///   anthropic_messages / google_generate_content），缺省落库 NULL；
 /// - `token_source`: token 数据来源（对齐 `chat_v2::types::TokenSource` 的字符串：
 ///   api / tiktoken / heuristic / mixed），缺省落库 schema 默认 "api"。
+///
+/// 不携带缓存写入量（落库 NULL = 无测量）；能拿到 `cache_write_tokens` 的
+/// 调用方请使用 [`record_llm_usage_cache_ext`]。
 #[allow(clippy::too_many_arguments)]
 pub fn record_llm_usage_ext(
     caller_type: CallerType,
@@ -155,12 +158,52 @@ pub fn record_llm_usage_ext(
     adapter: Option<String>,
     token_source: Option<String>,
 ) {
-    log::debug!(
-        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, success={}, adapter={:?}, token_source={:?}",
+    record_llm_usage_cache_ext(
+        caller_type,
         model_id,
         prompt_tokens,
         completion_tokens,
         reasoning_tokens,
+        cached_tokens,
+        None,
+        session_id,
+        duration_ms,
+        success,
+        error_message,
+        adapter,
+        token_source,
+    );
+}
+
+/// 记录 LLM 使用量（缓存遥测全量版）：在扩展版之上再携带缓存写入量
+///
+/// - `cache_write_tokens`: 缓存写入 Token（Anthropic `cache_creation_input_tokens`、
+///   OpenAI/DeepSeek Responses `input_tokens_details.cache_write_tokens`）。
+///   None 落库 NULL = 无测量，不等于 0；报表据此计算缓存 write/read 比。
+#[allow(clippy::too_many_arguments)]
+pub fn record_llm_usage_cache_ext(
+    caller_type: CallerType,
+    model_id: &str,
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    reasoning_tokens: Option<u32>,
+    cached_tokens: Option<u32>,
+    cache_write_tokens: Option<u32>,
+    session_id: Option<String>,
+    duration_ms: Option<u64>,
+    success: bool,
+    error_message: Option<String>,
+    adapter: Option<String>,
+    token_source: Option<String>,
+) {
+    log::debug!(
+        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={:?}, success={}, adapter={:?}, token_source={:?}",
+        model_id,
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        cached_tokens,
+        cache_write_tokens,
         success,
         adapter,
         token_source
@@ -178,6 +221,9 @@ pub fn record_llm_usage_ext(
     }
     if let Some(tokens) = cached_tokens {
         record = record.with_cached_tokens(tokens);
+    }
+    if let Some(tokens) = cache_write_tokens {
+        record = record.with_cache_write_tokens(tokens);
     }
     if let Some(sid) = session_id {
         record = record.with_caller_id(sid);
@@ -228,6 +274,7 @@ mod tests {
                 total_tokens: 2,
                 reasoning_tokens: None,
                 cached_tokens: None,
+                cache_write_tokens: None,
                 estimated_cost_usd: None,
                 duration_ms: None,
                 success: true,

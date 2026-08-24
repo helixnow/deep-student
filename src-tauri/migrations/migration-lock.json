@@ -266,6 +266,14 @@
       "dangers": []
     },
     {
+      "database": "llm_usage",
+      "version": 20260824,
+      "name": "add_cache_write_tokens",
+      "path": "llm_usage/V20260824__add_cache_write_tokens.sql",
+      "sha256": "dc7fc74c894296bb9d95d65975608104e7ca2c238e5c141b9bd757367cee6bc2",
+      "dangers": []
+    },
+    {
       "database": "mistakes",
       "version": 20260130,
       "name": "init",
