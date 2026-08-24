@@ -84,6 +84,36 @@ const strategyConfirmVariants: Record<MergeStrategy, DsButtonVariant> = {
   manual: "default",
 };
 
+/** [R09-ux] 已知引擎错误类别 → 人话 i18n key（静态映射以兼容类型化 i18n） */
+const syncErrorHumanKeys = {
+  legacy_plaintext: "sync:errors.legacyPlaintextRejected",
+  missing_password: "sync:errors.encryptionPasswordMissing",
+  wrong_password: "sync:errors.wrongEncryptionPassword",
+} as const;
+
+export type SyncErrorKind = keyof typeof syncErrorHumanKeys;
+
+/**
+ * [R09-ux] 展示层错误分类（补 R08-legacy-ux 缺口，不改引擎）。
+ *
+ * 同步引擎的错误文案是中文技术描述（含 DSBK 等术语），直接透出对 en-US 用户
+ * 不可读、对普通用户不可操作。这里按引擎侧的稳定关键词把三类 E2EE 相关错误
+ * 映射为可操作的人话（见 `sync:errors.*`），其余错误原样透出。
+ *
+ * 匹配顺序有意义：
+ * 1. 明文遗留拒收（decode_payload 拒绝无 DSBK 头的明文，提示词唯一）；
+ * 2. 加密密码缺失（「未配置加密密码」，其文案同时含「无法解密」，须先于 3 判断）；
+ * 3. 密码错误/数据损坏（「密码错误或数据损坏」「请检查加密密码」及兜底「无法解密」）。
+ */
+export function classifySyncError(raw: string): SyncErrorKind | null {
+  if (/缺少\s*DSBK\s*加密头/.test(raw)) return "legacy_plaintext";
+  if (/未配置加密密码/.test(raw)) return "missing_password";
+  if (/密码错误或数据损坏|请检查加密密码|无法解密/.test(raw)) {
+    return "wrong_password";
+  }
+  return null;
+}
+
 export interface SyncTabProps {
   syncStatus: SyncStatusResponse | null;
   conflicts: ConflictDetectionResponse | null;
@@ -146,6 +176,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   // [R09-e2ee] 端到端加密类失败先归类为“人话”，原文保留在下方供排查/搜索
   const syncErrorE2eeKind = syncProgress?.error
     ? classifySyncE2eeError(syncProgress.error)
+    : null;
+  // [R09-ux] 已知 E2EE 错误显示人话，原始错误降级为技术详情
+  // （补「未配置加密密码」等 e2ee 分类器未覆盖的入口）
+  const syncErrorKind = syncProgress?.error
+    ? classifySyncError(syncProgress.error)
     : null;
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
   const syncProgressCounter =
@@ -530,17 +565,24 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   {syncProgress.error && (
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2">
                       <div className="flex items-start gap-1.5 text-xs text-destructive">
-                        <XCircle size={12} className="shrink-0 mt-0.5" />
+                        <XCircle size={12} className="mt-0.5 shrink-0" />
                         <span>
-                          {syncErrorE2eeKind
-                            ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
-                            : syncProgress.error}
+                          {syncErrorKind
+                            ? t(syncErrorHumanKeys[syncErrorKind])
+                            : syncErrorE2eeKind
+                              ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
+                              : syncProgress.error}
                         </span>
                       </div>
                       {syncErrorE2eeKind && (
-                        <div className="pl-[18px] text-2xs text-muted-foreground/80 break-all">
-                          {syncProgress.error}
-                        </div>
+                        <p className="pl-[18px] text-2xs text-muted-foreground break-all">
+                          {t("sync:errors.technicalDetail")} {syncProgress.error}
+                        </p>
+                      )}
+                      {syncErrorKind && !syncErrorE2eeKind && (
+                        <p className="pl-[18px] text-2xs text-muted-foreground break-all">
+                          {t("sync:errors.technicalDetail")} {syncProgress.error}
+                        </p>
                       )}
                       <div className="flex items-center gap-2 pl-[18px]">
                         {onRetrySync && (

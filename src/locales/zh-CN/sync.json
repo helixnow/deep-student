@@ -137,6 +137,12 @@
     "update_time": "更新时间:",
     "checksum": "Checksum:"
   },
+  "errors": {
+    "legacyPlaintextRejected": "云端目录里还留有启用加密之前上传的未加密旧数据。为防止端到端加密被绕过，本次同步已停止，不会读取这部分数据。处理办法：先在云同步设置中暂时清除加密密码，执行一次下载同步把云端数据合并到本地；然后清空该云端目录（或改用新目录），重新设置密码后再做一次完整上传。",
+    "encryptionPasswordMissing": "云端数据是端到端加密的，但本机还没有填写加密密码。请到云同步设置中填入首次启用加密时设置的密码，然后重试。",
+    "wrongEncryptionPassword": "无法解密云端数据：加密密码不正确（或云端数据已损坏）。请到云同步设置中改成与其他设备一致的密码后重试；连接同一云端目录的所有设备必须使用同一个加密密码。",
+    "technicalDetail": "技术详情："
+  },
   "notifications": {
     "conflictResolveFailed": "解决冲突失败: {{error}}",
     "conflictBatchResolvePartial": "部分冲突解决失败：成功 {{resolved}} 个，失败 {{failed}} 个",

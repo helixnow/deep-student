@@ -86,6 +86,9 @@
 |---|---|---|---|
 | R09-e2ee | claude-fable-5-thinking | 文件级 E2EE 闭环可运维：集成测试、前端错误人话、上传入口审计、P2-1 运维文档 | `src-tauri/tests/sync_r09_file_e2ee.rs` 新文件、`data-governance/syncE2eeErrorMapping.ts` 新文件、`SyncTab.tsx` 错误展示、`CloudStorageSection.tsx` 的 `localizeCloudError`、`cloudStorage.json`（zh/en）新增 `errors.e2ee*` 三键、`tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 新文件、`docs/user-guide/16-数据管理与云同步.md`、`RESTORE-MATRIX-R07.md` P2-1 回写 |
 | R09-android | claude-fable-5-thinking | Android 换机/重启闭环 + 平台能力测试钩子 + S3 用户级拒绝 | `src-tauri/tests/sync_android_device_switch.rs` 新文件、`cloud_storage/config.rs` / `mod.rs` / `cloud_config_commands.rs` 的 `PlatformStorageCapabilities` 测试钩子 |
+| R09-names | claude-fable-5-thinking | 资产文件名跨平台净化 | `asset_filenames.rs` + `sync_asset_directories*` key 接线（不改 vfs_blobs） |
+| R09-restore-ops | claude-fable-5-thinking | 云 ZIP 下载续传 / 无密码导入早失败 | 恢复引擎 + WebDAV resume + 指南解锁 |
+| R09-ux | claude-fable-5-thinking | SyncTab 人话错误 + UX 契约测 | `SyncTab.tsx` `classifySyncError`、`sync.json` errors.*、`r09-ux-*.test.tsx` |
 
 ### R09-e2ee 审计结论：记录级四个上传入口
 
@@ -133,6 +136,22 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
   建议后续代理：为 S3 拒绝补 `cloudStorage.json`（zh/en）键与前端映射，并统一两条常量的
   映射机制（错误码优于字符串正则）。本轮（R09-android）只保证后端文案面向用户且四路径
   字节一致，不动前端与 locale。
+
+### R09-ux（分支 `cursor/cloud-sync-sota-r09-ux-b343`，设置/数据治理同步面 only）
+
+排查结论（SyncTab / CloudStorageSection / BackupTab / RecordConflictsPanel）：
+
+- 自动同步默认关 ✓（`syncStatusStore` 仅持久化 `enabled`，默认 `false`）；冲突计数走 `total_groups` ✓；危险操作确认（库级冲突解决 / 清除配置 / 停用 E2EE / 恢复 / 删除版本 / 批量解决）均仍接线 ✓；E2EE 文案覆盖 ZIP + 记录级 + 文件级 ✓。
+- **缺口**：R08-legacy-ux（明文遗留拒收人话）未交付——`SyncTab` 直接透出引擎中文技术错误（含 DSBK 术语），en 用户不可读、普通用户不可操作。
+- `sync.json` / `cloudStorage.json` zh↔en 键已核对完全对齐，无互缺键；缺的是引擎错误的人话键（本轮新增）。
+
+文件面认领（独占）：
+
+| 文件 | 改动 |
+|---|---|
+| `src/features/settings/components/data-governance/SyncTab.tsx` | 展示层新增 `classifySyncError`：明文遗留拒收 / 加密密码缺失 / 密码错误三类引擎错误映射为人话 i18n，原始错误保留为技术详情；不改引擎 |
+| `src/locales/{zh-CN,en-US}/sync.json` | 新增 `errors.legacyPlaintextRejected` / `errors.encryptionPasswordMissing` / `errors.wrongEncryptionPassword` / `errors.technicalDetail` |
+| `tests/vitest/data-governance/r09-ux-*.test.tsx` | 四个新测试文件（sync-tab / cloud-storage / backup-tab / record-conflicts），只增不改既有测试 |
 
 ## Round 07 原认领表（后派出）
 
