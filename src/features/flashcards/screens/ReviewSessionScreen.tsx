@@ -640,7 +640,7 @@ export const ReviewSessionScreen: React.FC = () => {
               value={draftFront}
               onChange={(event) => setDraftFront(event.target.value)}
               autoFocus
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
             />
           </label>
           {draftClozeInvalid ? (
@@ -654,7 +654,7 @@ export const ReviewSessionScreen: React.FC = () => {
             <textarea
               value={draftBack}
               onChange={(event) => setDraftBack(event.target.value)}
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
             />
           </label>
           <div className="flex items-center justify-between gap-2">

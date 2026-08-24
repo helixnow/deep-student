@@ -1587,15 +1587,28 @@
     font-size: 16px;
   }
 
+  /* 菜单/目录行挂在 DsButton 上：lg 断点后 DsButton 压回 30px 固定高度
+     （border-box 下 padding 无法撑高），宽屏触屏平板需 min-height 兜底 ≥44px
+     （对照 library.css .fc-lib-row-actions 同范式） */
   .ds-zoom-option,
   .ds-more-item {
+    min-height: 44px;
     padding-top: 11px;
     padding-bottom: 11px;
   }
 
+  /* 基础层 display:block 在 min-height 撑高后文字会贴顶，coarse 下改 flex 垂直居中 */
+  .ds-zoom-option {
+    display: flex;
+    align-items: center;
+  }
+
+  /* 目录行保留 block（flex 容器上 text-overflow 失效）：
+     15px 内边距 + 14px 行高 = 44px，文字自然垂直居中 */
   .ds-outline-item {
-    padding-top: 11px;
-    padding-bottom: 11px;
+    min-height: 44px;
+    padding-top: 15px;
+    padding-bottom: 15px;
   }
 
   /* 高亮颜色选择器放大（视觉 32px），浮动菜单内用伪元素扩命中到 44px
