@@ -411,22 +411,22 @@ export const SessionRow: React.FC<{
               </DsButton>
             )}
             {isSmallScreen && group === 'active' && session.activeTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
                 <Pause size={14} />{t('pause')}
               </DsButton>
             )}
             {isSmallScreen && session.pausedTasks > 0 && (
-              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
                 <Play size={14} />{t('resume')}
               </DsButton>
             )}
             {isSmallScreen && group === 'active' && (
-              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy}>
+              <DsButton size="sm" variant="default" onClick={() => act('cancel')} disabled={!!busy} className="[@media(pointer:coarse)]:!min-h-11">
                 <XCircle size={14} />{t('tasks.cancelTask')}
               </DsButton>
             )}
             {isSmallScreen && session.sourceSessionId && (
-              <DsButton size="sm" variant="default" onClick={onJump}>
+              <DsButton size="sm" variant="default" onClick={onJump} className="[@media(pointer:coarse)]:!min-h-11">
                 <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
               </DsButton>
             )}
