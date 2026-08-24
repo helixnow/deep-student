@@ -24,6 +24,13 @@ export {
   validateBlockProps,
 } from './schema';
 export { GenerativeUIStreamParser, tryParsePartialIntent } from './parser';
+export type { GenerativeUIStreamPhase, GenerativeUIStreamSnapshot } from './parser';
+export {
+  appendGenerativeUIStreamContent,
+  finalizeGenerativeUIStream,
+  resetGenerativeUIStream,
+  clearGenerativeUIStreamRegistry,
+} from './bridge/generativeUIStreamRegistry';
 export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
 export { GenerativeUIPanel } from './components/GenerativeUIPanel';

@@ -13,7 +13,12 @@ import {
 } from '@/features/generative-ui/bridge/chatBlockBridge';
 
 function GenerativeUIBlockComponent({ block, isStreaming }: BlockComponentProps) {
-  const extracted = extractGenerativeUIIntent(block.toolOutput, block.content, block.toolInput);
+  const extracted = extractGenerativeUIIntent(
+    block.toolOutput,
+    block.content,
+    block.toolInput,
+    block.id,
+  );
   if (!extracted) {
     return (
       <div className="text-sm text-muted-foreground px-1" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>

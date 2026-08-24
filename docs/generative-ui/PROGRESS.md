@@ -15,7 +15,10 @@
 - [x] 78 项 vitest 全绿（含 Hub 组件 + Rust mapping contract）
 
 ### Round 6+
-- chunkBuffer 增量流式状态机
+- [x] chunkBuffer 增量流式状态机（`GenerativeUIStreamParser` committedBlocks + `generativeUIStreamRegistry`）
+- [x] eventBridge `generative_ui` chunk 走 chunkBuffer；onEnd/onError flush + finalize
+- [x] `generativeUI.tsx` 传入 blockId 驱动增量解析
+- [x] 测试：parser.stateMachine / streamRegistry / eventBridge generative_ui chunkBuffer（101 项 vitest 全绿）
 - mindmap-embed E2E
 - Notes 写入 HITL 链
 
@@ -36,7 +39,7 @@
 ### Round 5 子代理结论摘要
 | 主题 | 状态 |
 |------|------|
-| 流式 parser P0 | 部分（tryParsePartialIntent 已修；chunkBuffer 待做） |
+| 流式 parser P0 | ✅（tryParsePartialIntent + chunkBuffer + streamRegistry 状态机） |
 | mindmap-embed | 部分（schema/边界已修；E2E 待做） |
 | prompt sync | 部分（目录行契约；props 未进 prompt） |
 | Learning Hub 挂载 | Exam 简报 ✅；Memory/IndexStatus 待做 |

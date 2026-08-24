@@ -10,6 +10,8 @@ import {
   GENERATIVE_UI_BLOCK_TYPE,
   normalizeGenerativeUIEndIntent,
 } from '@/features/generative-ui/bridge/chatBlockBridge';
+import { finalizeGenerativeUIStream } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
+import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 
 const generativeUIEventHandler: EventHandler = {
   onStart: (store: ChatStore, messageId: string, _payload?: unknown, backendBlockId?: string) => {
@@ -24,6 +26,9 @@ const generativeUIEventHandler: EventHandler = {
   },
 
   onEnd: (store: ChatStore, blockId: string, result?: unknown) => {
+    chunkBuffer.flushBlock(store.sessionId, blockId);
+    finalizeGenerativeUIStream(blockId);
+
     const authoritativeContent =
       result && typeof result === 'object' && 'content' in result
         ? (result as { content?: unknown }).content
@@ -53,6 +58,8 @@ const generativeUIEventHandler: EventHandler = {
   },
 
   onError: (store: ChatStore, blockId: string, error: string) => {
+    chunkBuffer.flushBlock(store.sessionId, blockId);
+    finalizeGenerativeUIStream(blockId);
     store.setBlockError(blockId, error);
   },
 };

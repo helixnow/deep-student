@@ -42,10 +42,13 @@ describe('chatBlockBridge', () => {
     expect(extractGenerativeUIIntent({})).toBeNull();
   });
 
-  it('extracts streaming intent from block content when toolOutput missing', () => {
+  it('extracts complete intent from block content when toolOutput missing', () => {
     const result = extractGenerativeUIIntent(null, JSON.stringify(LEARNING_DASHBOARD_EXAMPLE));
     expect(result).not.toBeNull();
-    expect(result!.isStreaming).toBe(true);
+    expect(result!.isStreaming).toBe(false);
+    if (typeof result!.intent !== 'string') {
+      expect(result!.intent.blocks.length).toBeGreaterThan(0);
+    }
   });
 
   it('uses block-level partial parse for incomplete streaming content', () => {

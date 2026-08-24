@@ -7,6 +7,11 @@
 import type { GenerativeUIIntent } from '../types';
 import { tryParsePartialIntent } from '../parser';
 import { generativeUIIntentSchema, parseGenerativeUIIntent } from '../schema';
+import {
+  appendGenerativeUIStreamContent,
+  finalizeGenerativeUIStream,
+  resetGenerativeUIStream,
+} from './generativeUIStreamRegistry';
 
 export const GENERATIVE_UI_BLOCK_TYPE = 'generative_ui';
 
@@ -37,6 +42,7 @@ export function extractGenerativeUIIntent(
   toolOutput: unknown,
   content?: string | null,
   toolInput?: unknown,
+  blockId?: string,
 ): { intent: GenerativeUIIntent | string; isStreaming: boolean } | null {
   if (toolOutput && typeof toolOutput === 'object') {
     const data = toolOutput as GenerativeUIBlockOutput;
@@ -44,16 +50,20 @@ export function extractGenerativeUIIntent(
       if (typeof data.intent === 'string') {
         const parsed = parseGenerativeUIIntent(data.intent);
         if (parsed.ok) {
+          if (blockId) resetGenerativeUIStream(blockId);
           return { intent: parsed.intent, isStreaming: !!data.isStreaming };
         }
         if (data.isStreaming) {
-          const partial = tryParsePartialIntent(data.intent);
+          const partial = blockId
+            ? appendGenerativeUIStreamContent(blockId, data.intent).intent
+            : tryParsePartialIntent(data.intent);
           return { intent: partial ?? EMPTY_STREAMING_INTENT, isStreaming: true };
         }
         return { intent: data.intent, isStreaming: false };
       }
       const validated = validateIntentObject(data.intent);
       if (validated) {
+        if (blockId && !data.isStreaming) resetGenerativeUIStream(blockId);
         return { intent: validated, isStreaming: !!data.isStreaming };
       }
       return null;
@@ -63,8 +73,13 @@ export function extractGenerativeUIIntent(
   const trimmed = content?.trim();
   if (trimmed) {
     const parsed = parseGenerativeUIIntent(trimmed);
-    if (parsed.ok) return { intent: parsed.intent, isStreaming: true };
-    const partial = tryParsePartialIntent(trimmed);
+    if (parsed.ok) {
+      if (blockId) resetGenerativeUIStream(blockId);
+      return { intent: parsed.intent, isStreaming: false };
+    }
+    const partial = blockId
+      ? appendGenerativeUIStreamContent(blockId, trimmed).intent
+      : tryParsePartialIntent(trimmed);
     return { intent: partial ?? EMPTY_STREAMING_INTENT, isStreaming: true };
   }
 
@@ -72,6 +87,7 @@ export function extractGenerativeUIIntent(
     const raw = (toolInput as { intent?: unknown }).intent;
     const normalized = normalizeGenerativeUIEndIntent(raw);
     if (normalized !== null) {
+      if (blockId) resetGenerativeUIStream(blockId);
       return { intent: normalized, isStreaming: false };
     }
   }
