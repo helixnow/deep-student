@@ -227,7 +227,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             description={error}
           >
             {canRetry && onRetry && (
-              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
+              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11">
                 <ArrowClockwise size={12} />
                 {t('essay_grading:actions.retry')}
               </DsButton>
