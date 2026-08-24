@@ -1,9 +1,8 @@
 /**
  * [R09-e2ee] 云同步端到端加密错误的“人话”分类器。
  *
- * 后端（Rust）的 E2EE fail-closed 错误目前是中文长文案且无稳定错误码
- * （与 `localizeCloudError` 处理 Android FTP 文案的处境相同）。这里按
- * 已知文案片段把三类最需要用户理解的失败归类，展示层再映射为 i18n 人话：
+ * 后端（Rust）的 E2EE fail-closed 错误已带稳定 `[E_SYNC_E2EE_*]` 前缀；
+ * 分类器先认 code，旧中文长文案仍作兜底（接线前 / 旧客户端）。
  *
  * - `plaintextLegacyRejected`：启用加密后遇到明文遗留对象/清单被拒收
  *   （`decode_payload` 的“缺少 DSBK 加密头”、文件级对象的“缺少 cipher_sha256”）；
@@ -12,8 +11,7 @@
  * - `markerCorrupted`：云端 `.encryption-marker` 损坏/异常导致 fail-closed。
  *
  * 匹配片段与 src-tauri 侧错误文案的对应关系由
- * `tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 用后端原文钉死；
- * 后端引入稳定错误码后应改为按 code 匹配。
+ * `tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 用后端原文钉死。
  */
 
 export type SyncE2eeErrorKind =
@@ -21,12 +19,28 @@ export type SyncE2eeErrorKind =
   | 'wrongPassword'
   | 'markerCorrupted';
 
+/** 与 `src-tauri/src/cloud_storage/mod.rs` 同名常量对齐。 */
+export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE =
+  'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
+export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
+export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
+
 /** 三类错误对应的 i18n key（zh/en 均在 cloudStorage.json 的 errors 下）。 */
 export const SYNC_E2EE_ERROR_I18N_KEYS = {
   plaintextLegacyRejected: 'cloudStorage:errors.e2eePlaintextLegacyRejected',
   wrongPassword: 'cloudStorage:errors.e2eeWrongPassword',
   markerCorrupted: 'cloudStorage:errors.e2eeMarkerCorrupted',
 } as const;
+
+const CODE_KINDS: readonly { code: string; kind: SyncE2eeErrorKind }[] = [
+  // 标记损坏文案里也含“密码”“损坏”，code 与正则都先判这一类。
+  { code: SYNC_E2EE_MARKER_CORRUPTED_CODE, kind: 'markerCorrupted' },
+  { code: SYNC_E2EE_WRONG_PASSWORD_CODE, kind: 'wrongPassword' },
+  {
+    code: SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+    kind: 'plaintextLegacyRejected',
+  },
+];
 
 interface SyncE2eeErrorMatcher {
   kind: SyncE2eeErrorKind;
@@ -56,7 +70,8 @@ const MATCHERS: readonly SyncE2eeErrorMatcher[] = [
       // sync/mod.rs：“解密 … 失败（密码不一致或数据损坏）”
       /密码不一致/,
       // backup_crypto.rs / sync/mod.rs：“…失败（密码错误或数据损坏）”
-      /密码错误或数据损坏/,
+      // cloud_sync_download：“解密备份失败（密码错或数据损坏）”
+      /密码错(误)?或数据损坏/,
     ],
   },
   {
@@ -70,14 +85,29 @@ const MATCHERS: readonly SyncE2eeErrorMatcher[] = [
       /明文遗留对象/,
       // sync_manager.rs：“…为避免明文/密文混布，已拒绝未加密上传…”
       /已拒绝未加密上传/,
+      // sync_manager.rs 本机「曾加密」记忆：标记已缺失仍拒明文上传
+      /本机记录显示该云端目录曾启用/,
     ],
   },
 ];
 
+export function classifySyncE2eeErrorCode(
+  code: string | undefined | null,
+): SyncE2eeErrorKind | null {
+  if (!code) return null;
+  for (const { code: expected, kind } of CODE_KINDS) {
+    if (code === expected || code.includes(expected)) return kind;
+  }
+  return null;
+}
+
 /**
  * 把后端错误原文归类为三类 E2EE 失败之一；无法归类返回 null（调用方回退原文）。
+ * 稳定 code 优先；旧中文诊断走正则兜底。
  */
 export function classifySyncE2eeError(raw: string): SyncE2eeErrorKind | null {
+  const fromCode = classifySyncE2eeErrorCode(raw);
+  if (fromCode) return fromCode;
   for (const { kind, patterns } of MATCHERS) {
     if (patterns.some((pattern) => pattern.test(raw))) {
       return kind;

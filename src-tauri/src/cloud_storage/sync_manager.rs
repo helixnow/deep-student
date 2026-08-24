@@ -557,11 +557,11 @@ impl CloudSyncManager {
                 return Ok(marker);
             }
             EncryptionMarkerState::Corrupted => {
-                return Err(AppError::configuration(
+                return Err(AppError::configuration(super::sync_e2ee_error(
+                    super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
                     "云端加密标记（.encryption-marker）内容已损坏，无法确认加密密码与既有备份\
-                     一致，已在上传前中止（fail-closed）。请人工检查该云端目录后重试。"
-                        .to_string(),
-                ));
+                     一致，已在上传前中止（fail-closed）。请人工检查该云端目录后重试。",
+                )));
             }
             EncryptionMarkerState::Present(marker) => marker,
         };
@@ -570,14 +570,17 @@ impl CloudSyncManager {
             Some(verifier) => {
                 match crate::crypto::backup_crypto::check_password_verifier(password, verifier) {
                     Ok(true) => Ok(marker),
-                    Ok(false) => Err(AppError::configuration(
+                    Ok(false) => Err(AppError::configuration(super::sync_e2ee_error(
+                        super::SYNC_E2EE_WRONG_PASSWORD_CODE,
                         "加密密码与该云端目录既有加密备份使用的密码不一致，已在上传前中止，\
-                         未写入任何备份对象。请核对加密密码后重试，或改用新的云端目录。"
-                            .to_string(),
-                    )),
-                    Err(error) => Err(AppError::configuration(format!(
-                        "无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：{error}。\
-                         该标记可能由更新版本的应用写入，请先升级本机应用。"
+                         未写入任何备份对象。请核对加密密码后重试，或改用新的云端目录。",
+                    ))),
+                    Err(error) => Err(AppError::configuration(super::sync_e2ee_error(
+                        super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
+                        format!(
+                            "无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：{error}。\
+                             该标记可能由更新版本的应用写入，请先升级本机应用。"
+                        ),
                     ))),
                 }
             }
@@ -606,10 +609,13 @@ impl CloudSyncManager {
                 Ok(upgraded)
             }
             // version >= 2 却缺校验子：不是合法旧标记，视为被篡改/损坏，fail-closed。
-            None => Err(AppError::configuration(format!(
-                "云端加密标记版本为 {} 却缺少密码校验子，疑似损坏或被篡改，已在上传前中止\
-                 （fail-closed）。请人工检查该云端目录后重试。",
-                marker.version
+            None => Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
+                format!(
+                    "云端加密标记版本为 {} 却缺少密码校验子，疑似损坏或被篡改，已在上传前中止\
+                     （fail-closed）。请人工检查该云端目录后重试。",
+                    marker.version
+                ),
             ))),
         }
     }
@@ -672,11 +678,14 @@ impl CloudSyncManager {
         .map_err(|e| AppError::internal(format!("试解密任务执行失败: {e}")))?;
 
         trial.map_err(|error| {
-            AppError::configuration(format!(
-                "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
-                 {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
-                 若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
-                version.id
+            AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                format!(
+                    "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
+                     {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
+                     若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
+                    version.id
+                ),
             ))
         })?;
 
@@ -691,19 +700,19 @@ impl CloudSyncManager {
     pub async fn ensure_plaintext_upload_allowed(&self) -> Result<()> {
         if self.read_encryption_marker().await?.is_some() {
             self.remember_encrypted_root();
-            return Err(AppError::configuration(
+            return Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "该云端目录已存在端到端加密备份，为避免明文/密文混布，已拒绝未加密上传。\
-                 请在云存储配置里填写相同的加密密码后重试。"
-                    .to_string(),
-            ));
+                 请在云存储配置里填写相同的加密密码后重试。",
+            )));
         }
         if self.encrypted_root_remembered_locally() {
-            return Err(AppError::configuration(
+            return Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "本机记录显示该云端目录曾启用端到端加密，但云端的加密标记现已缺失（可能被删除）。\
                  为避免向同一目录混入未加密备份，已拒绝本次上传。请在云存储配置里填写原加密密码\
-                 后重试；若确认要改用未加密备份，请换一个新的云端目录。"
-                    .to_string(),
-            ));
+                 后重试；若确认要改用未加密备份，请换一个新的云端目录。",
+            )));
         }
         Ok(())
     }
@@ -1681,6 +1690,12 @@ mod tests {
             .await
             .expect_err("有加密标记且无密码时必须拒绝明文上传");
         assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文上传拒绝必须带稳定 code: {error}"
+        );
+        assert!(
             error.to_string().contains("加密"),
             "错误应提示需要加密密码: {error}"
         );
@@ -1900,6 +1915,12 @@ mod tests {
             .verify_encryption_password_before_upload("pw")
             .await
             .expect_err("v2 缺校验子必须 fail-closed 而不是被静默升级");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::SYNC_E2EE_MARKER_CORRUPTED_CODE),
+            "v2 缺校验子必须带稳定 code: {error}"
+        );
         assert!(error.to_string().contains("缺少密码校验子"), "{error}");
     }
 
