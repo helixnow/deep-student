@@ -1074,16 +1074,15 @@ impl LLMManager {
 
         // 记录 Embedding API 使用量
         // Embedding API 的 usage 格式：{ "prompt_tokens": N, "total_tokens": N }
-        let usage = response_json.get("usage");
-        let prompt_tokens = usage
+        let measured_prompt_tokens = response_json
+            .get("usage")
             .and_then(|u| u.get("prompt_tokens").or_else(|| u.get("total_tokens")))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(|v| v.as_u64());
 
-        crate::llm_usage::record_llm_usage(
+        crate::llm_usage::record_llm_usage_ext(
             crate::llm_usage::CallerType::Embedding,
             &config.model,
-            prompt_tokens,
+            measured_prompt_tokens.unwrap_or(0) as u32,
             0, // Embedding 不产生 completion tokens
             None,
             None,
@@ -1091,6 +1090,17 @@ impl LLMManager {
             None,
             true,
             None,
+            // OpenAI 兼容 /embeddings 端点（报表按协议拆分）
+            Some("openai_embeddings".to_string()),
+            // 真实 token 来源：API 实测才标 api，未上报的 0 不得伪装成 api
+            Some(
+                if measured_prompt_tokens.is_some() {
+                    crate::chat_v2::types::TokenSource::Api
+                } else {
+                    crate::chat_v2::types::TokenSource::Heuristic
+                }
+                .to_string(),
+            ),
         );
 
         info!("嵌入API调用成功，返回 {} 个向量", embeddings.len());
@@ -1222,16 +1232,15 @@ impl LLMManager {
         let usage = response_json
             .get("usage")
             .or_else(|| response_json.get("meta"));
-        let prompt_tokens = usage
+        let measured_prompt_tokens = usage
             .and_then(|u| u.get("billed_units").and_then(|b| b.get("search_units")))
             .or_else(|| usage.and_then(|u| u.get("tokens")))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(|v| v.as_u64());
 
-        crate::llm_usage::record_llm_usage(
+        crate::llm_usage::record_llm_usage_ext(
             crate::llm_usage::CallerType::Reranker,
             &config.model,
-            prompt_tokens,
+            measured_prompt_tokens.unwrap_or(0) as u32,
             0, // Reranker 不产生 completion tokens
             None,
             None,
@@ -1239,6 +1248,17 @@ impl LLMManager {
             None,
             true,
             None,
+            // Cohere/Jina 风格 /rerank 端点（报表按协议拆分）
+            Some("rerank".to_string()),
+            // 真实 token 来源：API 实测才标 api，未上报的 0 不得伪装成 api
+            Some(
+                if measured_prompt_tokens.is_some() {
+                    crate::chat_v2::types::TokenSource::Api
+                } else {
+                    crate::chat_v2::types::TokenSource::Heuristic
+                }
+                .to_string(),
+            ),
         );
 
         info!(
