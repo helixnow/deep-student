@@ -155,7 +155,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             onClick={onRequestPurge}
             title={purgeLabel}
             aria-label={purgeLabel}
-            className="!p-1.5 [@media(pointer:coarse)]:!p-3 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+            className="!p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
           >
             <Trash size={13} />
           </DsButton>
