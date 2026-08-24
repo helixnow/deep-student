@@ -551,7 +551,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
         </div>
         <DsButton
           variant="ghost"
-          className="ds-btn text-xs text-muted-foreground hover:text-foreground"
+          className="ds-btn text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11"
           onClick={() => setReloadNonce((nonce) => nonce + 1)}
         >
           <ArrowClockwise size={13} />
