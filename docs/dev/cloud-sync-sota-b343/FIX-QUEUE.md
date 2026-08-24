@@ -317,3 +317,23 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **文档**：用户指南 16 新增「云端仓库巡检（只读体检）」小节。
 
 **文件面认领（独占）**：`cloud_storage/repo_check.rs` 新文件、`cloud_storage/mod.rs`（仅 `pub mod repo_check;` 一行）、`commands_sync.rs` 巡检命令段（只加不改）、`lib.rs` 注册一行、`data_governance/mod.rs` re-export 一行、`permissions/application-commands.toml` 一行、`CloudStorageSection.tsx` 巡检区、`cloudStorage.json`（zh/en）`repoCheck.*`、`sync_r11_repo_check.rs` 新文件、用户指南 16 巡检小节、本节。与 R11-lease 的 `sync_manager.rs`、R11-unsynced-ui 的 `commands_sync.rs` 查询段无交叠（各自只加新段，推前 rebase 消解）。
+
+**状态更新（R11-review 复审）**：接线与只读/诚实性契约核实到位，但 DSBK v2 头核查存在 **P1 缺陷**（头长 48 应为 44、chunk 读 `[44..48)` 应为 `[40..44)`，加密仓库约 98.4% 误报「头不可解」），且 `dsbk_v2_header_roundtrip_is_decodable` 与 `healthy_encrypted_repo_reports_all_green` 两例按现实现必红——上表「测试」行的绿灯声明不成立。详见 [FINDINGS-R11](./FINDINGS-R11.md) §2 P1-1，修复归 R12-repocheck-fix。
+
+### R11-review（分支 `cursor/cloud-sync-sota-r11-review-b343`，只读复审，只改本目录文档）
+
+模型 `claude-fable-5-thinking-high`（ROUND-11 要求 xhigh，slug 不可用，明示降级）。交付：
+
+- [FINDINGS-R11.md](./FINDINGS-R11.md)：R10 七路（conflict-ui / sota / ux / protocol / android / download / chaos）+ R11 两路（rotate / check）逐条核销（九路合入项实质到位）；新发现 1 P1 + 3 P2（均带文件:行证据，P1 附独立最小复现输出）；仍开项锁定测清单（已有测写文件名、缺的列应补断言）；SOTA-R10 §3 矩阵改判建议（多设备冲突行可翻「已达」、仓库巡检行建议「部分达」）。
+- 环境不可编译（缺 webkit2gtk），Rust/vitest 均未运行——核销为逐行源码核对 + 关键项独立复现，诚实声明见 FINDINGS-R11 §0。
+
+**新发现修复认领建议（文件面待认领时登记）**：
+
+| 项 | 级别 | 修复文件面 |
+|---|---|---|
+| repo_check DSBK v2 头偏移（FINDINGS-R11 P1-1） | P1 | `cloud_storage/repo_check.rs`、`sync_r11_repo_check.rs`（改真实密文 fixture）→ R12-repocheck-fix |
+| `get_file_decoded` 死代码且语义与 `download_file_object` 相悖（P2-1） | P2 | `data_governance/sync/mod.rs`（删除）；本文件 R10-download 节论据引用同步更正 |
+| WebDAV 非续传 `get_file` 无字节数核对（P2-2） | P2 | `cloud_storage/webdav.rs` + 新测；指南 16 `:80` 表述在此之前对 WebDAV 超前 |
+| 绿灯声明未经运行（P2-3，过程项） | P2 | 下一次完整 CI run（含 P1-1 修复）前，「测试 N 例」类声明一律视为「已交付未验证」 |
+
+**文件面认领（独占，均在 `docs/dev/cloud-sync-sota-b343/`）**：`FINDINGS-R11.md` 新文件、`README.md` 索引一行、本节与 R11-check 节状态更新一段。不改任何代码。
