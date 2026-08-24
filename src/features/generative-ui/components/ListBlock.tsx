@@ -1,14 +1,22 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { ListBlockProps } from '../schema';
 
 export function ListBlock({ title, items, emptyLabel }: ListBlockProps) {
+  const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
   return (
-    <Card className="min-w-0">
+    <Card
+      className="min-w-0"
+      role="region"
+      aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : t('a11y.list_label')}
+    >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>

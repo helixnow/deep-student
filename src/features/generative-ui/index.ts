@@ -35,7 +35,29 @@ export { GenerativeUIRenderer } from './GenerativeUIRenderer';
 export { GenerativeUIChrome } from './GenerativeUIChrome';
 export { GenerativeUIPanel } from './components/GenerativeUIPanel';
 export { useGenerativeUIStream } from './hooks/useGenerativeUIStream';
-export { resolveEffectiveRiskLevel } from './actions';
+export { resolveEffectiveRiskLevel, withGenerativeActionInstrumentation } from './actions';
+export type { GenerativeActionInstrumentationOptions } from './actions';
+export {
+  wrapActionWithTelemetry,
+  emitGenerativeActionTelemetry,
+  defaultGenerativeActionTelemetrySink,
+  GenerativeActionUndoStack,
+  wrapReversibleAction,
+  resolveGenerativeActionUndo,
+  getDefaultGenerativeActionUndoStack,
+  resetDefaultGenerativeActionUndoStack,
+  GENERATIVE_ACTION_UNDO_STACK_LIMIT,
+} from './handlers';
+export type {
+  GenerativeActionTelemetryEvent,
+  GenerativeActionTelemetrySink,
+  GenerativeActionTelemetryPhase,
+  GenerativeActionUndoFn,
+  GenerativeActionHandlerResult,
+  GenerativeActionUndoEntry,
+  GenerativeActionUndoStackOptions,
+  ReversibleGenerativeActionDefinition,
+} from './handlers';
 export { buildGenerativeUISystemPrompt, LEARNING_DASHBOARD_EXAMPLE } from './prompts';
 export { buildNoteSummaryIntent } from './utils/buildNoteSummaryIntent';
 export { buildLearningBriefingIntent } from './utils/buildLearningBriefingIntent';

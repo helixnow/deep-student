@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
       if (key === 'action.confirm_desc') return '确认描述';
       if (key === 'action.confirm_execute') return '确认执行';
       if (key === 'action.unregistered_hint') return '未注册';
+      if (key === 'a11y.action_bar_label') return '操作栏';
       return key;
     },
   }),
@@ -58,6 +59,23 @@ describe('ActionBarBlock security', () => {
     );
     await user.click(screen.getByRole('button', { name: '查看详情' }));
     expect(screen.getByText('确认：删除全部')).toBeInTheDocument();
+  });
+
+  it('moves focus into the confirm dialog when opened', async () => {
+    const user = userEvent.setup();
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'delete-all', label: '删除全部', riskLevel: 'low' }]}
+        actionHandlers={{
+          'delete-all': { id: 'delete-all', label: '删除全部', riskLevel: 'high', handler: vi.fn() },
+        }}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '删除全部' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    });
   });
 
   it('disables unregistered action ids when handlers registry is provided', () => {

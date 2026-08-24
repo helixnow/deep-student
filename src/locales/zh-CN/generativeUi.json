@@ -15,7 +15,9 @@
     "confirm_inline": "确认：{{label}}",
     "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
     "confirm_execute": "确认执行",
-    "unregistered_hint": "该操作未注册，无法执行"
+    "unregistered_hint": "该操作未注册，无法执行",
+    "undo": "撤销",
+    "undo_empty": "没有可撤销的操作"
   },
   "flashcard": {
     "preview_title": "闪卡预览",
@@ -36,6 +38,41 @@
   "panel": {
     "empty": "暂无 AI 界面内容"
   },
+  "a11y": {
+    "region_label": "AI 生成界面",
+    "action_bar_label": "操作栏",
+    "list_label": "列表",
+    "text_label": "文本",
+    "progress_label": "进度",
+    "key_value_label": "键值信息",
+    "flashcard_front": "闪卡正面",
+    "flashcard_back": "闪卡背面",
+    "mindmap_label": "思维导图",
+    "research_report_label": "研究报告",
+    "review_day": "{{date}}，待复习 {{due}} 项",
+    "step_pending": "未开始",
+    "step_active": "进行中",
+    "step_done": "已完成"
+  },
+  "blocks": {
+    "table": {
+      "empty": "暂无数据"
+    },
+    "steps": {
+      "status_pending": "待开始",
+      "status_active": "进行中",
+      "status_done": "已完成",
+      "status_error": "失败",
+      "status_skipped": "已跳过"
+    },
+    "chart": {
+      "empty": "暂无图表数据",
+      "a11y_label": "{{title}} {{kind}} 图表"
+    },
+    "markdown": {
+      "empty": "暂无正文"
+    }
+  },
   "notes": {
     "summary_title": "AI 笔记摘要",
     "summary_default_title": "笔记摘要",
@@ -46,6 +83,10 @@
     "summary_tags": "标签",
     "summary_tags_empty": "—",
     "summary_headings_title": "主要章节",
+    "summary_updated_at": "更新时间",
+    "summary_empty_note_title": "笔记尚无正文",
+    "summary_empty_note_description": "写一些内容后即可生成章节摘要",
+    "summary_empty_headings": "暂无章节标题",
     "edit_suggestion_title": "笔记编辑建议",
     "edit_suggestion_description": "确认后将打开 diff 面板，由你在编辑器中接受或拒绝",
     "edit_operation_key": "操作类型",
@@ -64,7 +105,14 @@
       "review_row": "待复习",
       "correct_rate_row": "正确率",
       "start_review": "复习错题",
-      "open_practice": "开始练习"
+      "open_practice": "开始练习",
+      "empty_bank_title": "题库为空",
+      "empty_bank_description": "先导入或创建题目，再开始练习",
+      "mistake_suggestion": "优先复习错题，巩固薄弱知识点",
+      "status_list_title": "题目状态",
+      "in_progress_row": "练习中",
+      "new_count_row": "未学习",
+      "status_empty": "暂无题目状态"
     }
   },
   "translation": {
@@ -81,7 +129,11 @@
       "domain_row": "领域",
       "glossary_row": "术语表",
       "open_settings": "翻译设置",
-      "copy_translation": "复制译文"
+      "copy_translation": "复制译文",
+      "empty_source_title": "暂无原文",
+      "empty_source_description": "输入原文后即可跟踪翻译进度",
+      "segments_title": "最近句段",
+      "segments_empty": "暂无句段"
     }
   },
   "indexStatus": {
@@ -96,7 +148,13 @@
       "trend_all_indexed": "全部就绪",
       "trend_needs_attention": "有待处理项",
       "batch_index": "一键索引",
-      "refresh": "刷新状态"
+      "refresh": "刷新状态",
+      "failed_alert_title": "索引异常",
+      "failed_alert_description": "部分资源索引失败，可重试待处理项",
+      "empty_index_title": "尚未发现资源",
+      "empty_index_description": "当前没有可索引的资源",
+      "scan_progress_title": "扫描进度",
+      "scan_progress_label": "正在索引 {{count}}"
     }
   },
   "memory": {
@@ -112,7 +170,10 @@
       "freq_balanced": "均衡",
       "freq_aggressive": "积极",
       "refresh": "刷新",
-      "create_memory": "新建记忆"
+      "create_memory": "新建记忆",
+      "recent_list_title": "最近条目",
+      "recent_empty": "暂无记忆条目",
+      "open_memory": "打开记忆"
     }
   },
   "workbench": {
@@ -131,7 +192,13 @@
       "title": "AI 学习仪表盘",
       "anki_tasks_title": "进行中制卡",
       "anki_tasks_trend_active": "后台运行",
-      "open_task_dashboard": "打开制卡任务"
+      "anki_tasks_trend_idle": "暂无任务",
+      "open_task_dashboard": "打开制卡任务",
+      "review_calendar_title": "复习日历",
+      "review_empty_title": "待复习",
+      "review_empty": "今日暂无到期复习",
+      "idle_alert_title": "学习节奏空闲",
+      "idle_alert_description": "当前没有到期闪卡、待办或制卡任务"
     }
   },
   "learningHub": {
@@ -142,7 +209,14 @@
       "trend_active": "可继续探索",
       "trend_empty": "目录为空",
       "start_review": "开始复习",
-      "open_qbank": "打开题库"
+      "open_qbank": "打开题库",
+      "due_review_title": "待复习",
+      "due_review_trend": "有到期项",
+      "review_calendar_title": "复习日历",
+      "recent_list_title": "最近资源",
+      "recent_empty": "当前目录没有可见资源",
+      "empty_alert_title": "目录为空",
+      "empty_alert_description": "添加笔记或资料后即可生成简报"
     }
   },
   "research": {
@@ -173,7 +247,13 @@
       "step_synthesis": "综合报告",
       "subagent_fallback": "子任务 {{id}}",
       "retrieval_stat": "检索文献",
-      "selected_stat": "入选引用"
+      "selected_stat": "入选引用",
+      "steps_list_title": "研究子步骤",
+      "step_status_pending": "待开始",
+      "step_status_active": "进行中",
+      "step_status_done": "已完成",
+      "digest_fallback_title": "研究摘要",
+      "empty_steps": "暂无子步骤"
     },
     "actions": {
       "copy_report": "复制报告",

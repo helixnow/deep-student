@@ -16,11 +16,14 @@ export type FlashcardPreviewProps = z.infer<typeof flashcardPreviewPropsSchema>;
 
 export function FlashcardPreviewBlock({ front, back, tags, deckName }: FlashcardPreviewProps) {
   const { t } = useTranslation('generativeUi');
+  const titleId = React.useId();
+  const frontId = React.useId();
+  const backId = React.useId();
   return (
-    <Card className="min-w-0 border-primary/20">
+    <Card className="min-w-0 border-primary/20" role="region" aria-labelledby={titleId}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-sm font-medium">{t('flashcard.preview_title')}</CardTitle>
+          <CardTitle id={titleId} className="text-sm font-medium">{t('flashcard.preview_title')}</CardTitle>
           {deckName ? (
             <Badge variant="secondary" className="text-xs">
               {deckName}
@@ -29,12 +32,12 @@ export function FlashcardPreviewBlock({ front, back, tags, deckName }: Flashcard
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">{t('flashcard.front')}</div>
+        <div aria-labelledby={frontId} aria-label={t('a11y.flashcard_front')}>
+          <div id={frontId} className="text-xs text-muted-foreground mb-1">{t('flashcard.front')}</div>
           <div className="text-sm font-medium">{front}</div>
         </div>
-        <div className="border-t border-border/40 pt-2">
-          <div className="text-xs text-muted-foreground mb-1">{t('flashcard.back')}</div>
+        <div className="border-t border-border/40 pt-2" aria-labelledby={backId} aria-label={t('a11y.flashcard_back')}>
+          <div id={backId} className="text-xs text-muted-foreground mb-1">{t('flashcard.back')}</div>
           <div className="text-sm text-muted-foreground">{back}</div>
         </div>
         {tags?.length ? (

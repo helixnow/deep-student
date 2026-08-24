@@ -3,6 +3,7 @@
  */
 
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
+import { withGenerativeActionInstrumentation } from '../actions';
 import { intentHasResearchBlocks } from '../bridge/hpiasEventBridge';
 import { workbenchLearningHandlers } from '../handlers/workbenchLearningHandlers';
 import {
@@ -116,5 +117,5 @@ export function resolveGenerativeUIChatActionHandlers(
     );
   }
 
-  return handlers;
+  return withGenerativeActionInstrumentation(handlers);
 }

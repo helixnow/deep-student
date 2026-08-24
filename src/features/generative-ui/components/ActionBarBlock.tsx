@@ -1,14 +1,21 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import type { ActionBarProps } from '../schema';
 import type { GenerativeActionDefinition, GenerativeUIAction, RiskLevel } from '../types';
 import { resolveEffectiveRiskLevel } from '../actions';
+import {
+  getDefaultGenerativeActionUndoStack,
+  resolveGenerativeActionUndo,
+  type GenerativeActionUndoStack,
+} from '../handlers/actionUndoStack';
 
 export interface ActionBarBlockProps extends ActionBarProps {
   actionHandlers?: Record<string, GenerativeActionDefinition>;
   onAction?: (action: GenerativeUIAction) => void;
+  /** 可注入撤销栈；默认模块单例。不改变 HITL risk 确认行为。 */
+  undoStack?: GenerativeActionUndoStack;
 }
 
 function trustedLabel(
@@ -19,11 +26,18 @@ function trustedLabel(
   return actionHandlers?.[actionId]?.label ?? modelLabel;
 }
 
-export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarBlockProps) {
+export function ActionBarBlock({
+  actions,
+  actionHandlers,
+  onAction,
+  undoStack = getDefaultGenerativeActionUndoStack(),
+}: ActionBarBlockProps) {
   const { t } = useTranslation('generativeUi');
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
   const [dialogActionId, setDialogActionId] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
+  const [showUndoControl, setShowUndoControl] = useState(() => undoStack.canUndo());
+  const [undoAvailable, setUndoAvailable] = useState(() => undoStack.canUndo());
   const executingRef = useRef(false);
   const enforceHandlerRegistry = actionHandlers != null;
 
@@ -36,7 +50,17 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
       try {
         const handler = actionHandlers?.[actionId];
         if (handler) {
-          await handler.handler();
+          const result = await handler.handler();
+          const undoFn = resolveGenerativeActionUndo(handler, result);
+          if (undoFn) {
+            undoStack.push({
+              actionId,
+              riskLevel: handler.riskLevel,
+              undo: undoFn,
+            });
+            setShowUndoControl(true);
+            setUndoAvailable(undoStack.canUndo());
+          }
           onAction?.({ type: 'execute', actionId });
         }
       } finally {
@@ -46,8 +70,21 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
         setDialogActionId(null);
       }
     },
-    [actionHandlers, enforceHandlerRegistry, onAction],
+    [actionHandlers, enforceHandlerRegistry, onAction, undoStack],
   );
+
+  const runUndo = useCallback(async () => {
+    if (executingRef.current || !undoStack.canUndo()) return;
+    executingRef.current = true;
+    setExecuting(true);
+    try {
+      await undoStack.undo();
+    } finally {
+      executingRef.current = false;
+      setExecuting(false);
+      setUndoAvailable(undoStack.canUndo());
+    }
+  }, [undoStack]);
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {
@@ -75,10 +112,38 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
   const dialogTrustedLabel = dialogActionId
     ? trustedLabel(dialogActionId, dialogAction?.label ?? '', actionHandlers)
     : '';
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (dialogActionId == null) return;
+    lastTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const dialog = document.querySelector('[role="alertdialog"]');
+      if (!(dialog instanceof HTMLElement)) return;
+      const buttons = dialog.querySelectorAll('button');
+      const confirm = buttons[buttons.length - 1];
+      if (confirm instanceof HTMLElement) {
+        confirm.focus();
+        return;
+      }
+      dialog.setAttribute('tabindex', '-1');
+      dialog.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      lastTriggerRef.current?.focus?.();
+    };
+  }, [dialogActionId]);
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        role="toolbar"
+        aria-label={t('a11y.action_bar_label')}
+        aria-busy={executing || undefined}
+      >
         {actions.map((action) => {
           const handlerDef = actionHandlers?.[action.id];
           const isRegistered = !enforceHandlerRegistry || handlerDef != null;
@@ -107,6 +172,19 @@ export function ActionBarBlock({ actions, actionHandlers, onAction }: ActionBarB
             </DsButton>
           );
         })}
+        {showUndoControl ? (
+          <DsButton
+            variant="outline"
+            size="sm"
+            disabled={executing || !undoAvailable}
+            title={undoAvailable ? t('action.undo') : t('action.undo_empty')}
+            onClick={() => {
+              void runUndo();
+            }}
+          >
+            {t('action.undo')}
+          </DsButton>
+        ) : null}
       </div>
 
       <DsAlertDialog

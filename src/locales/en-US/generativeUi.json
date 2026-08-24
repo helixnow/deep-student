@@ -15,7 +15,9 @@
     "confirm_inline": "Confirm: {{label}}",
     "confirm_desc": "This action may have irreversible effects.",
     "confirm_execute": "Confirm",
-    "unregistered_hint": "This action is not registered and cannot run"
+    "unregistered_hint": "This action is not registered and cannot run",
+    "undo": "Undo",
+    "undo_empty": "Nothing to undo"
   },
   "flashcard": {
     "preview_title": "Flashcard preview",
@@ -36,6 +38,41 @@
   "panel": {
     "empty": "No AI UI content"
   },
+  "a11y": {
+    "region_label": "AI generated interface",
+    "action_bar_label": "Actions",
+    "list_label": "List",
+    "text_label": "Text",
+    "progress_label": "Progress",
+    "key_value_label": "Key-value details",
+    "flashcard_front": "Flashcard front",
+    "flashcard_back": "Flashcard back",
+    "mindmap_label": "Mind map",
+    "research_report_label": "Research report",
+    "review_day": "{{date}}, {{due}} due",
+    "step_pending": "Not started",
+    "step_active": "In progress",
+    "step_done": "Done"
+  },
+  "blocks": {
+    "table": {
+      "empty": "No data"
+    },
+    "steps": {
+      "status_pending": "Pending",
+      "status_active": "In progress",
+      "status_done": "Done",
+      "status_error": "Failed",
+      "status_skipped": "Skipped"
+    },
+    "chart": {
+      "empty": "No chart data",
+      "a11y_label": "{{title}} {{kind}} chart"
+    },
+    "markdown": {
+      "empty": "No content yet"
+    }
+  },
   "notes": {
     "summary_title": "AI note summary",
     "summary_default_title": "Note summary",
@@ -46,6 +83,10 @@
     "summary_tags": "Tags",
     "summary_tags_empty": "—",
     "summary_headings_title": "Main sections",
+    "summary_updated_at": "Updated at",
+    "summary_empty_note_title": "Note has no body yet",
+    "summary_empty_note_description": "Write some content to generate a section summary",
+    "summary_empty_headings": "No section headings",
     "edit_suggestion_title": "Note edit suggestion",
     "edit_suggestion_description": "Opens the diff panel — accept or reject in the editor",
     "edit_operation_key": "Operation",
@@ -64,7 +105,14 @@
       "review_row": "To review",
       "correct_rate_row": "Correct rate",
       "start_review": "Review mistakes",
-      "open_practice": "Start practice"
+      "open_practice": "Start practice",
+      "empty_bank_title": "Question bank is empty",
+      "empty_bank_description": "Import or create questions before practicing",
+      "mistake_suggestion": "Review missed items first to reinforce weak topics",
+      "status_list_title": "Question status",
+      "in_progress_row": "In progress",
+      "new_count_row": "New",
+      "status_empty": "No question status yet"
     }
   },
   "translation": {
@@ -81,7 +129,11 @@
       "domain_row": "Domain",
       "glossary_row": "Glossary terms",
       "open_settings": "Translation settings",
-      "copy_translation": "Copy translation"
+      "copy_translation": "Copy translation",
+      "empty_source_title": "No source text",
+      "empty_source_description": "Add source text to track translation progress",
+      "segments_title": "Recent segments",
+      "segments_empty": "No segments yet"
     }
   },
   "indexStatus": {
@@ -96,7 +148,13 @@
       "trend_all_indexed": "All ready",
       "trend_needs_attention": "Needs attention",
       "batch_index": "Index all",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "failed_alert_title": "Index errors",
+      "failed_alert_description": "Some resources failed to index. Retry pending items.",
+      "empty_index_title": "No resources found",
+      "empty_index_description": "There is nothing to index yet",
+      "scan_progress_title": "Scan progress",
+      "scan_progress_label": "Indexing {{count}}"
     }
   },
   "memory": {
@@ -112,7 +170,10 @@
       "freq_balanced": "Balanced",
       "freq_aggressive": "Aggressive",
       "refresh": "Refresh",
-      "create_memory": "New memory"
+      "create_memory": "New memory",
+      "recent_list_title": "Recent entries",
+      "recent_empty": "No memory entries yet",
+      "open_memory": "Open memory"
     }
   },
   "workbench": {
@@ -131,7 +192,13 @@
       "title": "AI learning dashboard",
       "anki_tasks_title": "Active card generation",
       "anki_tasks_trend_active": "Running in background",
-      "open_task_dashboard": "Open task dashboard"
+      "anki_tasks_trend_idle": "No active tasks",
+      "open_task_dashboard": "Open task dashboard",
+      "review_calendar_title": "Review calendar",
+      "review_empty_title": "Due reviews",
+      "review_empty": "Nothing due today",
+      "idle_alert_title": "Learning queue is idle",
+      "idle_alert_description": "No due flashcards, todos, or card-generation tasks"
     }
   },
   "learningHub": {
@@ -142,7 +209,14 @@
       "trend_active": "Keep exploring",
       "trend_empty": "Folder is empty",
       "start_review": "Start review",
-      "open_qbank": "Open question bank"
+      "open_qbank": "Open question bank",
+      "due_review_title": "Due reviews",
+      "due_review_trend": "Items due",
+      "review_calendar_title": "Review calendar",
+      "recent_list_title": "Recent resources",
+      "recent_empty": "No visible resources in this folder",
+      "empty_alert_title": "Folder is empty",
+      "empty_alert_description": "Add notes or files to generate a briefing"
     }
   },
   "research": {
@@ -173,7 +247,13 @@
       "step_synthesis": "Synthesis report",
       "subagent_fallback": "Subtask {{id}}",
       "retrieval_stat": "Retrieved papers",
-      "selected_stat": "Selected citations"
+      "selected_stat": "Selected citations",
+      "steps_list_title": "Research steps",
+      "step_status_pending": "Pending",
+      "step_status_active": "Active",
+      "step_status_done": "Done",
+      "digest_fallback_title": "Research digest",
+      "empty_steps": "No substeps yet"
     },
     "actions": {
       "copy_report": "Copy report",
