@@ -624,6 +624,46 @@ export function generateAvailableSkillsPrompt(): string {
 }
 
 // ============================================================================
+// available_skills 会话快照（P0 prompt cache）
+// ============================================================================
+
+/**
+ * session_id → 首次生成的 available_skills 目录快照。
+ *
+ * 缓存前缀约束（P0，与 excludeLoaded 修复同一哲学）：目录直接拼进 system，
+ * 而 system 是整段请求的第 0 字节前缀。会话中途 skill_install 改写 live
+ * registry 后若继续读 live 目录，下一轮 system 就从目录处变字节，整段
+ * 历史 prompt cache 失效。因此每个 session 首次生成后冻结快照，中途安装
+ * 的技能不进入已发出的 system 目录 —— 新技能由 load_skills 的 tool result
+ * 与瞬态技能消息表达。空目录同样冻结（安装前发过消息的会话保持无目录）。
+ *
+ * 模块级 Map：TauriAdapter 重建（切换会话再回来）不丢快照；应用重启后
+ * 按当时 registry 重新基线（冷缓存场景）。
+ */
+const sessionAvailableSkillsSnapshots = new Map<string, string>();
+
+/**
+ * 按 sessionId 返回冻结的 available_skills 目录。
+ * 首次调用生成并快照；后续调用（包括 skill_install 之后）逐字节复用。
+ */
+export function getSessionAvailableSkillsPrompt(sessionId: string): string {
+  const cached = sessionAvailableSkillsSnapshots.get(sessionId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const catalog = generateAvailableSkillsPrompt();
+  sessionAvailableSkillsSnapshots.set(sessionId, catalog);
+  return catalog;
+}
+
+/**
+ * 清除会话目录快照（测试与会话删除用）。
+ */
+export function clearSessionAvailableSkillsSnapshot(sessionId: string): void {
+  sessionAvailableSkillsSnapshots.delete(sessionId);
+}
+
+// ============================================================================
 // 渐进披露模式配置
 // ============================================================================
 

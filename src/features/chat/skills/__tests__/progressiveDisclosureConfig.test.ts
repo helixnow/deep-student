@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { skillRegistry } from '../registry';
 import {
+  clearSessionAvailableSkillsSnapshot,
   clearSessionSkills,
   DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG,
   generateAvailableSkillsPrompt,
   getLoadedSkills,
   getProgressiveDisclosureConfig,
+  getSessionAvailableSkillsPrompt,
   handleLoadSkillsToolCall,
 } from '../progressiveDisclosure';
 import { setSkillDisabled } from '../skillEnableStorage';
@@ -20,12 +22,17 @@ describe('progressive disclosure defaults', () => {
       'untrusted-runtime-skill',
       'disabled-runtime-skill',
       'gated-runtime-skill',
+      'snapshot-base-skill',
+      'snapshot-installed-mid-session-skill',
     ]) {
       skillRegistry.unregister(id);
       setSkillDisabled(id, false);
       __setRequiresGateForTest(id, null);
     }
     clearSessionSkills('legacy-load-test-session');
+    clearSessionAvailableSkillsSnapshot('snapshot-session-a');
+    clearSessionAvailableSkillsSnapshot('snapshot-session-b');
+    clearSessionAvailableSkillsSnapshot('snapshot-empty-session');
   });
 
   it('does not auto-load skills by default', () => {
@@ -107,6 +114,69 @@ describe('progressive disclosure defaults', () => {
     const promptAfter = generateAvailableSkillsPrompt();
     expect(promptAfter).toBe(promptBefore);
     expect(promptAfter).toContain('id="legacy-load-test-skill"');
+  });
+
+  it('freezes the available_skills catalog per session across mid-session skill_install', () => {
+    // P0 回归（会话目录快照）：目录直接拼进 system（第 0 字节前缀）。
+    // 会话中途 skill_install 改写 live registry 后，同一 session 已发出的
+    // available_skills 必须逐字节不变（新技能由 tool result / 瞬态消息表达）；
+    // 新 session 首次生成时才看到新技能。
+    skillRegistry.register({
+      id: 'snapshot-base-skill',
+      name: 'Snapshot Base Skill',
+      description: 'Catalog snapshot regression: pre-existing skill',
+      location: 'builtin',
+      sourcePath: 'builtin://snapshot-base-skill',
+      content: '# base',
+    });
+
+    const firstCatalog = getSessionAvailableSkillsPrompt('snapshot-session-a');
+    expect(firstCatalog).toContain('id="snapshot-base-skill"');
+    expect(firstCatalog).not.toContain('snapshot-installed-mid-session-skill');
+
+    // 模拟会话中途 skill_install：live registry 变化
+    skillRegistry.register({
+      id: 'snapshot-installed-mid-session-skill',
+      name: 'Snapshot Mid-Session Skill',
+      description: 'Catalog snapshot regression: installed mid-session',
+      location: 'global',
+      sourcePath: '/tmp/snapshot/SKILL.md',
+      trustStatus: 'trusted',
+      content: '# installed',
+    });
+
+    // live 目录已经能看到新技能（证明变化确实发生了）
+    expect(generateAvailableSkillsPrompt()).toContain(
+      'id="snapshot-installed-mid-session-skill"'
+    );
+
+    // 同一 session：install 前后逐字节一致，新技能不进已发出的 system 目录
+    const sameSessionCatalog = getSessionAvailableSkillsPrompt('snapshot-session-a');
+    expect(sameSessionCatalog).toBe(firstCatalog);
+    expect(sameSessionCatalog).not.toContain('snapshot-installed-mid-session-skill');
+
+    // 新 session：首次生成时按当前 live registry 建立快照，能看到新技能
+    const newSessionCatalog = getSessionAvailableSkillsPrompt('snapshot-session-b');
+    expect(newSessionCatalog).toContain('id="snapshot-installed-mid-session-skill"');
+    expect(newSessionCatalog).toContain('id="snapshot-base-skill"');
+  });
+
+  it('freezes an empty available_skills catalog for sessions that started before any install', () => {
+    // 空目录同样冻结：目录为空时 system 没有 available_skills 段，
+    // 中途安装若追加目录会改写 system 尾部、打碎该会话已积累的缓存前缀。
+    const emptyCatalog = getSessionAvailableSkillsPrompt('snapshot-empty-session');
+
+    skillRegistry.register({
+      id: 'snapshot-installed-mid-session-skill',
+      name: 'Snapshot Mid-Session Skill',
+      description: 'Catalog snapshot regression: installed mid-session',
+      location: 'global',
+      sourcePath: '/tmp/snapshot/SKILL.md',
+      trustStatus: 'trusted',
+      content: '# installed',
+    });
+
+    expect(getSessionAvailableSkillsPrompt('snapshot-empty-session')).toBe(emptyCatalog);
   });
 
   it('keeps untrusted descriptions and embedded schemas out of every runtime path', () => {

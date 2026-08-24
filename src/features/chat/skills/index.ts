@@ -144,6 +144,8 @@ export {
   unloadSkill,
   handleLoadSkillsToolCall,
   generateAvailableSkillsPrompt,
+  getSessionAvailableSkillsPrompt,
+  clearSessionAvailableSkillsSnapshot,
   getProgressiveDisclosureConfig,
   DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG,
   subscribeToLoadedSkills,

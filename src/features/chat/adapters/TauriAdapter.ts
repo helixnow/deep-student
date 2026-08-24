@@ -86,7 +86,7 @@ import { getAvailableSearchEngines } from '@/mcp/searchEngineAvailability';
 import {
   LOAD_SKILLS_TOOL_SCHEMA,
   getLoadedSkills,
-  generateAvailableSkillsPrompt,
+  getSessionAvailableSkillsPrompt,
 } from '../skills/progressiveDisclosure';
 import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
@@ -5265,14 +5265,20 @@ export class ChatV2TauriAdapter {
    * 目录不按已加载状态收缩，会话内保持恒定，避免 system 前缀在
    * load_skills 之后从第 0 字节变化、打碎整段 prompt cache。
    * 已加载状态由 load_skills 的 tool result 与瞬态技能消息表达。
+   *
+   * P0 会话快照：目录按 sessionId 冻结首次生成结果，会话中途
+   * skill_install 改写 live registry 不会改已发出的 system 目录
+   * （与 excludeLoaded 修复同一哲学，新技能由 tool result 表达）。
    */
   private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): string | undefined {
     // The shared generator applies trust/enable visibility before reading any
-    // model-facing description or embedded-tool metadata.
-    const skillMetadataPrompt = generateAvailableSkillsPrompt();
-    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-constant catalog)');
+    // model-facing description or embedded-tool metadata. The per-session
+    // snapshot freezes the first generated catalog so mid-session installs
+    // never rewrite the already-sent system prefix.
+    const skillMetadataPrompt = getSessionAvailableSkillsPrompt(this.sessionId);
+    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-frozen catalog snapshot)');
 
     // 如果没有 skills 元数据，返回原始提示
     if (!skillMetadataPrompt) {
