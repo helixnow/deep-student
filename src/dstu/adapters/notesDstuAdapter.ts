@@ -227,8 +227,9 @@ export const notesDstuAdapter = {
       });
       return ok(node);
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '导入 Markdown 笔记');
-      reportError(vfsError, '导入 Markdown 笔记');
+      const context = i18next.t('sidebar:notes_import.markdown', { defaultValue: '导入 Markdown 笔记' });
+      const vfsError = toVfsError(error, context);
+      reportError(vfsError, context);
       return err(vfsError);
     }
   },
@@ -251,8 +252,9 @@ export const notesDstuAdapter = {
       });
       return ok(response);
     } catch (error: unknown) {
-      const vfsError = toVfsError(error, '批量导入 Markdown 笔记');
-      reportError(vfsError, '批量导入 Markdown 笔记');
+      const context = i18next.t('sidebar:notes_import.markdown_batch', { defaultValue: '批量导入 Markdown 笔记' });
+      const vfsError = toVfsError(error, context);
+      reportError(vfsError, context);
       return err(vfsError);
     }
   },
