@@ -5,8 +5,11 @@
 
 ## 结论
 
-- 安全行为回归：**0 个**。未发现漏注册或默认顺序错误。
-- 复查发现：**3 个**（1 个可扩展性安全缺口、2 个测试缺口），均已修复。
+- 安全绕过：**0 个**。未发现漏注册或默认顺序错误。
+- 明显行为回归：**1 个**。已批准的 Plan binding 会在执行前二次审批复核中
+  被误判为未满足审批，现已修复。
+- 复查发现：**5 个**（1 个可扩展性安全缺口、1 个 Plan 行为回归、
+  3 个测试缺口），均已修复。
 - `ApprovalGateHook` 仍由 `ChatV2Pipeline::new` 默认注册在第一位；
   `TaskAuditHook` 第二，自定义 hook 只能追加。
 - 生产初始化在 `src-tauri/src/lib.rs` 中继续注入共享
@@ -31,7 +34,8 @@
 - 拒绝、超时、通道关闭、取消均不进入 executor。
 - 本地 shell 的 runtime-root 绑定在审批后再次解析并比对；Plan binding
   在执行前原子消费。
-- 既有 `missing_approval_manager_*`、AuthorityGate 与 C4 集成测试仍覆盖主路径。
+- 新增真实 `execute_single_tool` 回归测试，确认审批服务缺失时 executor 调用数
+  保持为 0；既有 AuthorityGate 与 C4 集成测试继续覆盖其余主路径。
 
 ### Kill Switch
 
@@ -59,5 +63,12 @@
 3. **灾难守卫接线测试缺口**：提取纯分类函数并新增
    `catastrophe_guard_is_wired_only_to_backend_local_shell`，锁定本地灾难命令
    为 `Deny`，同时锁定外部 MCP 不被错误标记为本地守卫覆盖。
+4. **Plan 二次复核回归**：有效 Plan binding 已替代本次二级工具审批，但执行前
+   复核只调用 `requires_tool_approval`，会在 binding 原子消费前误拦截所有正常
+   Plan 写工具。现于当前 authority 状态上重新验证同一 binding，再决定是否需要
+   二级审批；新增真实 executor 路径测试并确认 binding 在执行前被消费。
+5. **fail-closed 行为测试缺口**：原测试只验证敏感度分类 helper，没有通过
+   `ApprovalGateHook` 证明缺失 `ApprovalManager` 时 executor 不运行。新增
+   Cautious/Medium 真实调用测试，锁定拦截原因和零执行次数。
 
 本轮未做第二轮模块拆分。
