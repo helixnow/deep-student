@@ -28,5 +28,23 @@ describe('MemoryGenerativeBriefing', () => {
     );
     expect(screen.getByTestId('memory-generative-briefing')).toBeInTheDocument();
     expect(screen.getByText('6')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="steps"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-block="table"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-table]')).toBeTruthy();
+  });
+
+  it('renders markdown guide when memory list is empty', () => {
+    render(
+      <MemoryGenerativeBriefing
+        memoryCount={0}
+        onRefresh={vi.fn()}
+        onCreateMemory={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('memory-generative-briefing')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="markdown"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-markdown]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-block="steps"]')).toBeTruthy();
   });
 });

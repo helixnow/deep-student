@@ -35,5 +35,7 @@ describe('LearningHubGenerativeBriefing', () => {
     render(<LearningHubGenerativeBriefing />);
     expect(screen.getByTestId('lh-generative-briefing')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="steps"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
   });
 });

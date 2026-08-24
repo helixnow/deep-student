@@ -45,5 +45,7 @@ describe('HpiasGenerativeResearchPanel', () => {
     });
 
     expect(document.querySelector('[data-generative-research-plan]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-block="steps"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
   });
 });

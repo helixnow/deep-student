@@ -60,6 +60,8 @@ describe('TranslationGenerativeBriefing', () => {
     expect(screen.getByText('AI 翻译简报')).toBeInTheDocument();
     expect(screen.getByText('原文字数')).toBeInTheDocument();
     expect(screen.getByText('11')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="chart"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-chart]')).toBeTruthy();
   });
 
   it('returns null for empty session', () => {

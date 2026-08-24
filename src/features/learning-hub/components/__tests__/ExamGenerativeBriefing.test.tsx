@@ -39,5 +39,9 @@ describe('ExamGenerativeBriefing', () => {
     );
     expect(screen.getByTestId('exam-generative-briefing')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="chart"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-chart]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-block="table"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-table]')).toBeTruthy();
   });
 });

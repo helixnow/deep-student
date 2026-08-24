@@ -32,5 +32,9 @@ describe('IndexStatusGenerativeBriefing', () => {
     );
     expect(screen.getByTestId('index-status-generative-briefing')).toBeInTheDocument();
     expect(screen.getByText('15')).toBeInTheDocument();
+    expect(document.querySelector('[data-generative-block="table"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-table]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-block="markdown"]')).toBeTruthy();
+    expect(document.querySelector('[data-generative-markdown]')).toBeTruthy();
   });
 });
