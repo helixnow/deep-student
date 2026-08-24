@@ -433,3 +433,30 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 - **台账回写**：FINDINGS-R11 §2 P2-1 状态更新（已关）、§3.2 表 P2-1 行、§5 去向 5 号划线；本文件 Round 11 待修表 P2-1 行标已关。
 
 **文件面认领（独占）**：`data_governance/sync/mod.rs`（仅删两函数 + 墓碑注释）、`sync_r10_download.rs`（仅两处注释）、`sync_r12_decoded_dead.rs` 新文件、FINDINGS-R11 三处回写、PROTOCOL-R10 一句、本文件 R10-download 节一句 + 待修表一行 + 本节。不改 vfs_blobs / repo_check / webdav / notes / chat / workbench。
+
+### R11-lease（分支 `cursor/cloud-sync-sota-wrap-lease-b343`，sync target 租约收尾）
+
+模型 `gpt-5.6-sol-xhigh-fast`。完成常规记录级同步的云端目标互斥：
+
+- **实现**：新文件 `cloud_storage/sync_lease.rs`。因 `CloudStorage` 无 CAS，采用
+  每操作独立 contender + 完整 LIST 确定性选主，不覆盖单一锁文件；pending →
+  committed 两阶段回验，复用换机租约的 target / operation / created_at /
+  `activation_committed` 形态。默认 TTL 10 分钟，持有期间后台续租；正常退出按
+  operation ID 核对删除，崩溃留下的 pending/committed 均由下一轮陈旧回收。
+  LIST 截断、读取失败、新鲜损坏锁全部 fail-closed。
+- **接线**：`commands_sync.rs` 两个常规同步入口均先校验 `remote format`、再获取
+  target 租约；上传/下载/双向全覆盖（下载成功后也会写 cursor/manifest）。
+  租约窗口覆盖 E2EE marker、文件/行变更、manifest 与 prune；未改
+  `sync_manager.rs`。占用错误稳定包含 `E_SYNC_LEASE_HELD`，满足
+  R11-autosync2 的静默跳过契约。
+- **UX/文档**：`sync.json`（zh/en）新增 `errors.leaseHeld`；ARCHITECTURE
+  新增状态机、TTL 回收、损坏/截断 fail-close 与 format 门槛顺序。
+- **测试**：新文件 `src-tauri/tests/sync_r11_lease.rs` 覆盖双设备并发唯一赢家、
+  活锁错误码、陈旧锁回收、崩溃 pending 残锁、截断拒绝，以及未来
+  `remote_format_version` 在零租约写入状态下拒绝。
+
+**文件面认领（独占）**：`cloud_storage/sync_lease.rs` 新文件、
+`cloud_storage/mod.rs` 仅导出一行、`data_governance/commands_sync.rs` 两个入口的
+租约窗口接线、`sync.json`（zh/en）`errors.leaseHeld`、`sync_r11_lease.rs`
+新文件、ARCHITECTURE 本节、本文件本节。不改 `sync_manager.rs` / notes / chat /
+`ftp.rs`。

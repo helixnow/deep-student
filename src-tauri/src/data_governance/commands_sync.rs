@@ -17,6 +17,7 @@ use super::sync::{
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::cloud_config_commands::{load_hydrated_cloud_config_ssot, CloudConfigSsotError};
+use crate::cloud_storage::sync_lease::acquire_sync_target_lease;
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
@@ -1627,9 +1628,10 @@ pub async fn data_governance_run_sync(
         .map_err(|_| "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string())?;
 
     // 创建云存储实例
-    let storage = create_storage(&config)
+    let storage: std::sync::Arc<dyn CloudStorage> = create_storage(&config)
         .await
-        .map_err(|e| format!("创建云存储失败: {}", e))?;
+        .map_err(|e| format!("创建云存储失败: {}", e))?
+        .into();
 
     let active_dir = get_active_data_dir(&app)?;
     let app_data_dir = get_app_data_dir(&app)?;
@@ -1641,17 +1643,25 @@ pub async fn data_governance_run_sync(
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
-    // [R07-record-verifier] 涉及上传的方向在写入任何对象（含格式描述符）前先过
-    // 加密一致性策略：有密码校验/登记云端 .encryption-marker 的密码校验子，
-    // 错密码直接失败；无密码但 root 已有标记则拒绝明文上传。
-    if sync_direction != SyncDirection::Download {
-        enforce_record_upload_encryption_policy_for_config(&config, &device_id).await?;
-    }
-
+    // [R11-lease] 格式门槛必须先于租约写入：未来版本客户端留下的 format.json
+    // 会在云端零写入（包括零租约 contender）的状态下 fail-closed。
     manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
         .map_err(|e| format!("同步格式协商失败: {}", e))?;
+
+    // 所有常规同步方向都获取 target 租约：纯 Download 在成功应用后也会上传
+    // cursor/manifest，因此同样存在远端写窗口。守卫覆盖文件、行变更、manifest
+    // 与 prune 全窗口；提前返回由 Drop 尽力释放，进程崩溃则由 TTL 回收。
+    let sync_target_lease = acquire_sync_target_lease(std::sync::Arc::clone(&storage), &device_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // [R07-record-verifier] 涉及上传的方向在写入任何业务对象前先过加密一致性
+    // 策略；该策略可能登记 .encryption-marker，因此也必须位于 target 租约内。
+    if sync_direction != SyncDirection::Download {
+        enforce_record_upload_encryption_policy_for_config(&config, &device_id).await?;
+    }
 
     validate_sync_registry_drift(&active_dir)?;
 
@@ -2086,7 +2096,7 @@ pub async fn data_governance_run_sync(
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    match result {
+    let response = match result {
         Ok((mut exec_result, skipped)) => {
             // Upload 的文件级阶段已在行级包发布前完成；Download 和
             // Bidirectional 在行级下载应用后补齐云端文件。
@@ -2230,7 +2240,16 @@ pub async fn data_governance_run_sync(
                 skipped_changes: 0,
             })
         }
+    };
+
+    if let Err(error) = sync_target_lease.release().await {
+        // 同步结果已确定，释放失败不能把成功改写成失败；TTL/下轮陈旧回收兜底。
+        warn!(
+            "[data_governance] 释放同步目标租约失败，将等待 TTL 回收: {}",
+            error
+        );
     }
+    response
 }
 
 /// 同步执行响应
@@ -2791,8 +2810,8 @@ pub async fn data_governance_run_sync_with_progress(
     emitter.emit_detecting_changes().await;
 
     // 创建云存储实例
-    let storage = match create_storage(&config).await {
-        Ok(s) => s,
+    let storage: std::sync::Arc<dyn CloudStorage> = match create_storage(&config).await {
+        Ok(storage) => storage.into(),
         Err(e) => {
             let error_msg = format!("创建云存储失败: {}", e);
             emitter.emit_failed(&error_msg).await;
@@ -2814,18 +2833,7 @@ pub async fn data_governance_run_sync_with_progress(
     let manager =
         SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
 
-    // [R07-record-verifier] 涉及上传的方向在写入任何对象（含格式描述符）前先过
-    // 加密一致性策略：有密码校验/登记云端 .encryption-marker 的密码校验子，
-    // 错密码直接失败；无密码但 root 已有标记则拒绝明文上传。
-    if sync_direction != SyncDirection::Download {
-        if let Err(e) =
-            enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
-        {
-            emitter.emit_failed(&e).await;
-            return Err(e);
-        }
-    }
-
+    // [R11-lease] remote format 门槛先于任何租约 contender 写入。
     if let Err(e) = manager
         .validate_remote_format(storage.as_ref(), sync_direction != SyncDirection::Download)
         .await
@@ -2833,6 +2841,26 @@ pub async fn data_governance_run_sync_with_progress(
         let error_msg = format!("同步格式协商失败: {}", e);
         emitter.emit_failed(&error_msg).await;
         return Err(error_msg);
+    }
+
+    let sync_target_lease =
+        match acquire_sync_target_lease(std::sync::Arc::clone(&storage), &device_id).await {
+            Ok(lease) => lease,
+            Err(error) => {
+                let error_msg = error.to_string();
+                emitter.emit_failed(&error_msg).await;
+                return Err(error_msg);
+            }
+        };
+
+    // 加密策略可能登记 .encryption-marker，也必须在 target 租约保护窗口内。
+    if sync_direction != SyncDirection::Download {
+        if let Err(e) =
+            enforce_record_upload_encryption_policy_for_config(&config, &device_id).await
+        {
+            emitter.emit_failed(&e).await;
+            return Err(e);
+        }
     }
 
     if let Err(e) = validate_sync_registry_drift(&active_dir) {
@@ -3010,7 +3038,7 @@ pub async fn data_governance_run_sync_with_progress(
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
-    match result {
+    let response = match result {
         Ok((exec_result, skipped)) => {
             // [P0-3/O1] 同步结果诚实化：仅当 success 且无 error_message（无文件级失败、
             // 无被跳过的不完整变更）时才发射"完成"。否则发射带具体原因的终态，避免
@@ -3128,7 +3156,15 @@ pub async fn data_governance_run_sync_with_progress(
                 skipped_changes: 0,
             })
         }
+    };
+
+    if let Err(error) = sync_target_lease.release().await {
+        warn!(
+            "[data_governance] 释放带进度同步目标租约失败，将等待 TTL 回收: {}",
+            error
+        );
     }
+    response
 }
 
 // ============================================================================
@@ -5026,7 +5062,9 @@ const UNSYNCED_ASSETS_MANIFESTS_PREFIX: &str = "data_governance/file_manifests/a
 const UNSYNCED_MAX_ITEMS: usize = 500;
 
 /// 未同步条目的原因类别（camelCase 经 IPC 给前端映射人话与建议）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum UnsyncedItemKind {
     /// 云端对象尚未成功落地本设备（下载失败或尚未执行下载同步）→ 建议重试下载
@@ -5271,7 +5309,10 @@ fn unsynced_classify_blobs(
                 key: hash.clone(),
                 counterpart: None,
                 size: Some(entry.size),
-                detail: format!("blob 清单登记了非法相对路径 {:?}，已拒绝落地", entry.relative_path),
+                detail: format!(
+                    "blob 清单登记了非法相对路径 {:?}，已拒绝落地",
+                    entry.relative_path
+                ),
             });
             continue;
         }
@@ -5491,8 +5532,7 @@ pub async fn data_governance_list_unsynced_items(
     let app_data_dir = get_app_data_dir(&app).unwrap_or_else(|_| active_dir.clone());
     let device_id = get_device_id(&app);
     // 只用于清单解码（PayloadCodec）与 E2EE 状态判断，不执行任何同步动作
-    let manager =
-        SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
+    let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
     let encryption_enabled = manager.encryption_enabled();
 
     let storage = create_storage(&cloud_config)
@@ -6066,7 +6106,10 @@ mod unsynced_items_tests {
         // 未启用加密时，明文遗留对象只是普通的待下载对象
         let items_plain = unsynced_classify_blobs(&manifest, &blobs_dir, false);
         let kinds_plain = kinds_by_key(&items_plain);
-        assert_eq!(kinds_plain["hash-legacy"], UnsyncedItemKind::DownloadPending);
+        assert_eq!(
+            kinds_plain["hash-legacy"],
+            UnsyncedItemKind::DownloadPending
+        );
     }
 
     #[test]
@@ -6097,9 +6140,10 @@ mod unsynced_items_tests {
             asset_entry("sha-b", Some("c4")),
         );
         // 结构非法：只有两段
-        manifest
-            .entries
-            .insert("active/only-two".to_string(), asset_entry("sha-c", Some("c5")));
+        manifest.entries.insert(
+            "active/only-two".to_string(),
+            asset_entry("sha-c", Some("c5")),
+        );
         // 普通缺席条目 + 明文遗留条目
         manifest.entries.insert(
             "active/audio/lecture.mp3".to_string(),
@@ -6167,7 +6211,8 @@ mod unsynced_items_tests {
         let mut low = AssetDirsManifest::default();
         let mut entry_low = asset_entry("sha-old", None);
         entry_low.revision = 1;
-        low.entries.insert("active/images/a.png".to_string(), entry_low);
+        low.entries
+            .insert("active/images/a.png".to_string(), entry_low);
 
         let mut high = AssetDirsManifest::default();
         let mut entry_high = asset_entry("sha-new", None);
