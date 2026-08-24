@@ -7,7 +7,7 @@ import { getSessionTitleText } from '../utils/sessionTitle';
 import { buildPinnedSessionMetadata } from '../utils/sessionPin';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
-import type { DropResult } from '@hello-pangea/dnd';
+import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
 import i18n, { type TFunction } from 'i18next';
@@ -327,19 +327,24 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, [applySessionGroupUpdate, loadUngroupedCount]);
 
-  const handleDragEnd = useCallback((result: DropResult) => {
-    const { destination, source, draggableId } = result;
-    if (!destination) return;
+  // dnd-kit DragEndEvent：over.id 为目标 droppable（session-group:<id> / session-ungrouped），
+  // 源容器 id 由 DraggableSessionRow 经 active.data.sourceDroppableId 传入
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
 
     // SESSION-level drag only（分组排序走桌面 ModernSidebar 的 HTML5 拖拽）
-    if (destination.droppableId === source.droppableId) return;
-    const sessionId = draggableId.replace(/^session:/, '');
-    if (destination.droppableId === 'session-ungrouped') {
+    const destDroppableId = String(over.id);
+    const sourceDroppableId = (active.data.current as { sourceDroppableId?: string } | undefined)
+      ?.sourceDroppableId;
+    if (destDroppableId === sourceDroppableId) return;
+    const sessionId = String(active.id).replace(/^session:/, '');
+    if (destDroppableId === 'session-ungrouped') {
       moveSessionToGroup(sessionId, undefined);
       return;
     }
-    if (destination.droppableId.startsWith('session-group:')) {
-      const destGroupId = destination.droppableId.replace('session-group:', '');
+    if (destDroppableId.startsWith('session-group:')) {
+      const destGroupId = destDroppableId.replace('session-group:', '');
       moveSessionToGroup(sessionId, destGroupId);
     }
   }, [moveSessionToGroup]);
