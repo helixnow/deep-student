@@ -99,7 +99,10 @@ export const LLMOutputPlayground: React.FC = () => {
         size="icon"
         aria-label={showPanel ? '收起控制面板' : '打开控制面板'}
         onClick={() => setShowPanel((v) => !v)}
-        className={showPanel ? '!text-primary' : undefined}
+        className={cn(
+          '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+          showPanel && '!text-primary',
+        )}
       >
         <SidebarSimple size={18} />
       </DsButton>
