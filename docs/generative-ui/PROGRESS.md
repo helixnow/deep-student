@@ -1,5 +1,11 @@
 # Generative UI 进度日志
 
+## Round 41（2026-08-24）— SOTA 验收合同升级（占位）
+
+- [x] SOTA 验收合同对齐 Round 40/41 真实态（18 块 + v1.1 + telemetry + fallback）
+- [x] `SOTA_CHECKLIST` Goal 完成度 14→18 blocks；合入 main 仍标 ⏳
+- [ ] 父代理合并本小节与其它子代理进度
+
 ## Round 6（2026-08-24）
 
 ### 父代理

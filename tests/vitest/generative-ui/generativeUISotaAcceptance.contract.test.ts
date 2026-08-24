@@ -1,14 +1,29 @@
 /**
- * SOTA 验收 contract — Generative-UI-0824 目标态静态验证（Round 20）
+ * SOTA 验收 contract — Generative-UI-0824 目标态静态验证（Round 40/41）
  *
  * 对照 ARCHITECTURE.md / INTEGRATION_ROADMAP.md 核心要求，
  * 确保「结构化意图 + 组件注册表」全链路接线未被回归破坏。
+ *
+ * Round 40/41 真实态：18 块 + Intent v1.1 layout + telemetry/undo + 流式 fallback。
+ * 本文件只做文件/符号存在性检查，不把 Goal「合入 main」标成已完成。
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const REPO = process.cwd();
+const GENERATIVE_UI = path.join(REPO, 'src/features/generative-ui');
+
+function readRepo(rel: string): string {
+  return fs.readFileSync(path.join(REPO, rel), 'utf8');
+}
+
+function fileContains(rel: string, needles: string[]): boolean {
+  const abs = path.join(REPO, rel);
+  if (!fs.existsSync(abs)) return false;
+  const src = fs.readFileSync(abs, 'utf8');
+  return needles.every((n) => src.includes(n));
+}
 
 const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   {
@@ -177,6 +192,97 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     check: () =>
       fs.readFileSync(path.join(REPO, 'src/utils/guardedListen.ts'), 'utf8').includes('hpias_event'),
   },
+  {
+    id: 'round40-chart-block',
+    check: () =>
+      fileContains('src/features/generative-ui/components/ChartBlock.tsx', [
+        'export function ChartBlock',
+        'CHART_BLOCK_TYPE',
+      ]),
+  },
+  {
+    id: 'round40-markdown-block',
+    check: () =>
+      fileContains('src/features/generative-ui/components/MarkdownBlock.tsx', [
+        'export function MarkdownBlock',
+        'markdownPropsSchema',
+      ]),
+  },
+  {
+    id: 'round40-steps-block',
+    check: () =>
+      fileContains('src/features/generative-ui/components/StepsBlock.tsx', [
+        'export function StepsBlock',
+        'STEPS_BLOCK_TYPE',
+      ]),
+  },
+  {
+    id: 'round40-table-block',
+    check: () =>
+      fileContains('src/features/generative-ui/components/TableBlock.tsx', [
+        'export function TableBlock',
+        'TABLE_BLOCK_TYPE',
+      ]),
+  },
+  {
+    id: 'round40-coerce-partial-intent',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/coercePartialIntent.ts', [
+        'export function coercePartialIntent',
+      ]),
+  },
+  {
+    id: 'round40-action-undo-stack',
+    check: () =>
+      fileContains('src/features/generative-ui/handlers/actionUndoStack.ts', [
+        'export class GenerativeActionUndoStack',
+        'GENERATIVE_ACTION_UNDO_STACK_LIMIT',
+      ]),
+  },
+  {
+    id: 'round40-action-telemetry',
+    check: () =>
+      fileContains('src/features/generative-ui/handlers/actionTelemetry.ts', [
+        'export function wrapActionWithTelemetry',
+        'export function emitGenerativeActionTelemetry',
+      ]),
+  },
+  {
+    id: 'round40-few-shot-examples',
+    check: () =>
+      fileContains('src/features/generative-ui/prompts/fewShotExamples.ts', [
+        'GENERATIVE_UI_FEW_SHOT_EXAMPLES',
+        'GENERATIVE_UI_NEGATIVE_EXAMPLES',
+      ]),
+  },
+  {
+    id: 'round40-v11-layout-helpers',
+    check: () =>
+      fileContains('src/features/generative-ui/schema.ts', [
+        "GENERATIVE_UI_INTENT_VERSIONS = ['1', '1.1']",
+        'export function resolveGenerativeLayout',
+        'export function layoutGridClassName',
+        'export function layoutSpanClassName',
+        'export function clampGenerativeLayoutUnit',
+      ]),
+  },
+  {
+    id: 'round40-eighteen-blocks-registered',
+    check: () =>
+      fileContains('src/features/generative-ui/blocks/index.ts', [
+        "type: 'markdown'",
+        "type: 'chart'",
+        "type: 'steps'",
+        "type: 'table'",
+      ]),
+  },
+  {
+    id: 'round40-stream-fallback-wiring',
+    check: () =>
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'coercePartialIntent',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
@@ -194,5 +300,29 @@ describe('generativeUISotaAcceptance contract', () => {
   it('Rust hpias channel constant matches frontend', () => {
     const rust = fs.readFileSync(path.join(REPO, 'src-tauri/src/hpias/events.rs'), 'utf8');
     expect(rust).toContain('"hpias_event"');
+  });
+
+  it('Round 40/41 symbols exist: 18-block set + v1.1 + telemetry + fallback', () => {
+    const indexSrc = fs.readFileSync(path.join(GENERATIVE_UI, 'index.ts'), 'utf8');
+    for (const symbol of [
+      'ChartBlock',
+      'MarkdownBlock',
+      'StepsBlock',
+      'TableBlock',
+      'coercePartialIntent',
+    ]) {
+      expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
+    }
+
+    const schemaSrc = readRepo('src/features/generative-ui/schema.ts');
+    expect(schemaSrc).toContain('resolveGenerativeLayout');
+    expect(schemaSrc).toContain('layoutGridClassName');
+    expect(schemaSrc).toContain('layoutSpanClassName');
+
+    const undoSrc = readRepo('src/features/generative-ui/handlers/actionUndoStack.ts');
+    expect(undoSrc).toContain('export class GenerativeActionUndoStack');
+
+    const fewShotSrc = readRepo('src/features/generative-ui/prompts/fewShotExamples.ts');
+    expect(fewShotSrc).toContain('GENERATIVE_UI_FEW_SHOT_EXAMPLES');
   });
 });

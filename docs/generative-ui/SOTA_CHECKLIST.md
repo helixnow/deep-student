@@ -56,7 +56,7 @@
 
 | 门禁 | 命令 / 文件 | 状态 |
 |------|-------------|------|
-| generative-ui vitest | `npm run test -- tests/vitest/generative-ui/` | ✅ 210 |
+| generative-ui vitest | `npx vitest run tests/vitest/generative-ui` | ✅ 以 vitest generative-ui 套件为准 |
 | Frontend licenses | `npm run licenses:check`（Round 31 zod 同步） | ✅ |
 | SOTA 静态验收 | `generativeUISotaAcceptance.contract.test.ts` | ✅ |
 | 全模块 integration contract | `generativeUIModuleIntegration.contract.test.ts` | ✅ |
@@ -73,9 +73,9 @@
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
-| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 14 blocks | ✅ |
-| 多轮迭代至 SOTA | Round 6–26 + 本清单全绿 | ✅ |
+| 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks | ✅ 分支真实态（Round 40/41） |
+| 多轮迭代至 SOTA | Round 6–41 + 本清单全绿 | ✅ 分支真实态 |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E | ✅ |
-| 合入 main | PR #214 | ⏳ 待 merge |
+| 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

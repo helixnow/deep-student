@@ -36,6 +36,7 @@
 | VFS retrieval HPIAS backend | `RetrievalHpiasResearchService` + env `retrieval` | ✅ Round 24 |
 | HPIAS LLM synthesis | `hpias/synthesis.rs` + Model2 Markdown 综合 | ✅ Round 25 |
 | SOTA acceptance contract | 15 项集成要求静态验收 | ✅ Round 20 |
+| 18 块 + Intent v1.1 + telemetry + fallback | markdown/chart/steps/table + coercePartialIntent + undo | ✅ Round 40/41 |
 
 ## 安全 / HITL（#8）
 
