@@ -283,12 +283,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
       if (!resource) {
         console.warn('[ChatV2Page] Resource not found:', resourceId);
+        showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
         return;
       }
 
       const sourceId = resource.sourceId;
       if (!sourceId) {
         console.warn('[ChatV2Page] Resource has no sourceId:', resourceId);
+        showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
         return;
       }
 
@@ -306,8 +308,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       console.log('[ChatV2Page] context-ref:preview -> opened in right panel:', { typeId, sourceId });
     } catch (error) {
       console.error('[ChatV2Page] Failed to handle context-ref:preview:', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error), t('contextRef.previewFailedTitle'));
     }
-  }, []);
+  }, [t]);
 
   useEventRegistry([
     {
@@ -509,6 +512,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         dispatchFocus(800);
       } catch (error) {
         console.error('[ChatV2Page] Failed to handle pdf-ref:open:', getErrorMessage(error));
+        showGlobalNotification('error', getErrorMessage(error), t('pdfRef.openFailedTitle'));
       }
     };
 

@@ -1237,6 +1237,10 @@
     "openFailedTitle": "无法打开 PDF 引用",
     "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整"
   },
+  "contextRef": {
+    "previewFailedTitle": "无法打开引用预览",
+    "previewFailedDesc": "引用的资源不存在或已被移除"
+  },
   "modelMention": {
     "suggestions": "模型建议",
     "selectModel": "选择模型",

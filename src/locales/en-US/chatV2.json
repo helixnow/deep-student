@@ -1237,6 +1237,10 @@
     "openFailedTitle": "Cannot Open PDF Reference",
     "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete."
   },
+  "contextRef": {
+    "previewFailedTitle": "Cannot Open Reference Preview",
+    "previewFailedDesc": "The referenced resource does not exist or has been removed."
+  },
   "modelMention": {
     "suggestions": "Model Suggestions",
     "selectModel": "Select a model",
