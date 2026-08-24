@@ -112,3 +112,35 @@
 - `cargo check --manifest-path src-tauri/Cargo.toml --lib`：通过；`deep-student` lib 仅报告既存 warning。
 
 本机 Rust 初始为 Cargo 1.83，无法解析锁定依赖使用的 edition 2024；切换到 stable Cargo 1.98 后继续。Linux Tauri 检查还需要 GTK/WebKit 系统开发库与 `resources/pdfium/libpdfium.so`，后者通过仓库的 `scripts/download-pdfium.sh linux-x64` 临时准备。门禁结束后移除下载的未跟踪二进制并还原脚本更新的 license 文本，仓库未引入生成物。
+
+## 第五轮：F 快进合并（575fee7f）
+
+首轮合并基于 F 的 `115b202a`；此后 F 补进 #160/#161 修复推进到 `575fee7f`
+（workbench 壳层交互、practice 进度契约、flashcards 卡库入口、pomodoro 悬浮胶囊、
+空桌面 tour 契约、locale 与 license 刷新）。G（`4ab24435`）未再前进，因此直接在原预演分支上
+merge 最新 F（合并提交 `f1927e4b`），不重开分支。
+
+冲突取舍（均延续「以 F 结构为主、G 触控意图不丢」原则）：
+
+1. `src/features/workbench/components/DesktopContextMenu.css`
+   - F 新增的 coarse pointer 规则（44px 命中 + 10px/12px padding + 14px 字号 + 分隔线间距）
+     是此前重放的 G 44px 规则的超集，直接采用 F 版。
+2. `src/features/workbench/components/EmptyDesktop.css`
+   - 采用 F 版：新增的 `width <= 720px` 窄工作区单列布局，以及 CTA / tour 按钮的
+     44px + padding/字号规则；G 原有的 44px 意图被完整覆盖。
+3. `src/components/practice/PracticeModeSelector.tsx`
+   - modify/delete：F 已确认该组件未被渲染并整体删除（含导出与引用）；
+     G 侧仅有一处 coarse pointer 类名增量，无渲染面，跟随 F 删除。
+
+第四轮复查修正（`FinderToolbar.tsx` compact 热区、`EnhancedPdfViewer.tsx` 移动 tab 44px）
+所在文件未被本次合并触及，修复原样保留。
+
+合并后门禁在合并提交 `f1927e4b` 上复跑，全部通过：
+
+- `npm ci`：通过。
+- `npm run version:generate` + `npm run typecheck`：通过。
+- `npx vite build`：通过；仅有既存的大 chunk 警告。
+- `rustup run stable cargo check --manifest-path src-tauri/Cargo.toml --lib`：通过；
+  `deep-student` lib 仅报告既存 warning。本轮 VM 额外需要 `protobuf-compiler`
+  （`lance-encoding` 构建脚本依赖 `protoc`），其余环境准备与首轮一致，
+  门禁结束后同样清理了 pdfium 二进制并还原 license 文本。
