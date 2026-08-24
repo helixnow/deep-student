@@ -41,6 +41,10 @@ import {
 } from "@/components/ui/shad/Table";
 import { AppSelect } from "@/components/ui/app-menu";
 import { CloudStorageSection } from "../CloudStorageSection";
+import {
+  classifySyncE2eeError,
+  SYNC_E2EE_ERROR_I18N_KEYS,
+} from "./syncE2eeErrorMapping";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
 import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
 import { SyncIndicator } from "./SyncIndicator";
@@ -126,7 +130,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onRetrySync,
   onViewAuditLog,
 }) => {
-  const { t } = useTranslation(["data", "common", "sync"]);
+  const { t } = useTranslation(["data", "common", "sync", "cloudStorage"]);
   // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
   const [pendingResolveStrategy, setPendingResolveStrategy] =
     React.useState<MergeStrategy | null>(null);
@@ -139,6 +143,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   }, []);
   const syncDatabases = syncStatus?.databases ?? [];
   const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
+  // [R09-e2ee] 端到端加密类失败先归类为“人话”，原文保留在下方供排查/搜索
+  const syncErrorE2eeKind = syncProgress?.error
+    ? classifySyncE2eeError(syncProgress.error)
+    : null;
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
   const syncProgressCounter =
     syncProgress &&
@@ -521,10 +529,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   </div>
                   {syncProgress.error && (
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs text-destructive">
-                        <XCircle size={12} className="shrink-0" />
-                        <span>{syncProgress.error}</span>
+                      <div className="flex items-start gap-1.5 text-xs text-destructive">
+                        <XCircle size={12} className="shrink-0 mt-0.5" />
+                        <span>
+                          {syncErrorE2eeKind
+                            ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
+                            : syncProgress.error}
+                        </span>
                       </div>
+                      {syncErrorE2eeKind && (
+                        <div className="pl-[18px] text-2xs text-muted-foreground/80 break-all">
+                          {syncProgress.error}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 pl-[18px]">
                         {onRetrySync && (
                           <DsButton
