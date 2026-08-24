@@ -4836,6 +4836,29 @@ pub async fn data_governance_detect_prune_gap(
     })
 }
 
+// ==================== [R11-check] 云端仓库巡检（restic `check` 档，只读） ====================
+
+/// 云端仓库巡检：遍历 manifest 引用对象，核对存在性 / SHA256 / DSBK 头可解，
+/// 报告孤儿与缺失对象。**只读**——不写入、不删除任何云端对象；列表被截断时
+/// 结论降级为「巡检不完整」，绝不给出全绿（详见 `cloud_storage::repo_check`）。
+#[tauri::command]
+pub async fn data_governance_repo_check(
+    app: tauri::AppHandle,
+    mut cloud_config: CloudStorageConfig,
+) -> Result<crate::cloud_storage::repo_check::RepoCheckReport, String> {
+    check_maintenance_mode(&app)?;
+
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    let storage = create_storage(&cloud_config)
+        .await
+        .map_err(|e| format!("创建云存储失败: {}", e))?;
+    crate::cloud_storage::repo_check::run_repo_check(storage.as_ref())
+        .await
+        .map_err(|e| format!("云端仓库巡检失败: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

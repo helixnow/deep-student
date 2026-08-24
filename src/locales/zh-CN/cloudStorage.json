@@ -207,6 +207,45 @@
     "unknown": "未知错误"
   },
   
+  "repoCheck": {
+    "title": "云端仓库巡检",
+    "description": "只读检查：逐个下载云端清单引用的备份对象，核对存在性、SHA256 校验和与端到端加密头，并报告孤儿与缺失对象。巡检不会修改或删除任何云端数据；会消耗与仓库总大小相当的下载流量。",
+    "run": "开始巡检",
+    "running": "巡检中...",
+    "failed": "巡检失败",
+    "checkedAt": "巡检时间",
+    "summary": "已核对 {{versions}} 个引用版本 / 完整校验 {{objects}} 个对象（{{bytes}}）",
+    "statusOk": "全部通过：引用对象齐全、校验和一致、无孤儿",
+    "statusProblems": "发现 {{count}} 个问题",
+    "statusIncomplete": "巡检不完整：不能视为全绿",
+    "truncatedNotice": "云端文件列表被截断，本次巡检不完整——即使未发现问题，也不能据此认为仓库健康。请稍后重试，或清理云端对象数量后再巡检。",
+    "encryptedRepo": "该云端目录已启用端到端加密（存在加密标记），巡检已核对每个对象的 DSBK 加密头。",
+    "orphanCount": "孤儿对象：{{count}} 个",
+    "problemsTitle": "问题清单",
+    "problemsTruncated": "问题过多，仅显示前 {{count}} 条",
+    "problemKind": {
+      "missingObject": "对象缺失",
+      "checksumMismatch": "SHA256 不匹配",
+      "undecodableDsbkHeader": "加密头（DSBK）不可解",
+      "plaintextInEncryptedRepo": "加密仓库中的明文对象",
+      "encryptedWithoutMarker": "密文对象缺少加密标记",
+      "orphanObject": "孤儿对象",
+      "tempLeftover": "临时文件残留",
+      "corruptManifest": "清单损坏",
+      "conflictingManifestEntry": "清单条目冲突",
+      "corruptEncryptionMarker": "加密标记损坏",
+      "objectReadFailed": "对象读取失败"
+    },
+    "guidance": {
+      "title": "发现坏对象后该做什么",
+      "readOnly": "巡检是只读的，没有修改云端任何内容；以下处理均由你自行执行。",
+      "badObject": "「对象缺失 / SHA256 不匹配 / 加密头不可解 / 明文对象」意味着对应版本已无法完整恢复：不要删除其他仍健康的版本；先在数据完好的设备上点「立即备份到云端」产生一个新的完整版本，确认新版本可用后，再在「历史版本」里删除坏版本。",
+      "orphan": "孤儿对象不影响任何恢复，只占用空间。确认无误后可用网盘自带工具（网页版 / 控制台）手动删除对应文件；巡检不会代你删除。",
+      "manifest": "「清单损坏 / 条目冲突 / 加密标记损坏」时，先在最近上传过的设备上重新执行一次云端备份（会重写该设备的清单），再巡检一次；若持续存在，按用户指南「数据管理与云同步」的巡检小节排查。",
+      "incomplete": "「巡检不完整」（列表截断或对象读取失败）通常是网络或服务端分页限制所致：请重试；在结果变为全绿之前，不要把该云端目录当作可靠的灾备。"
+    }
+  },
+
   "messages": {
     "connectionSuccess": "连接成功！",
     "configSaved": "配置已保存",

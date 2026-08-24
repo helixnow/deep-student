@@ -23,6 +23,8 @@
 mod config;
 #[cfg(not(target_os = "android"))]
 mod ftp;
+/// [R11-check] 云端仓库巡检（restic `check` 档，只读不修）
+pub mod repo_check;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
 mod sync_manager;

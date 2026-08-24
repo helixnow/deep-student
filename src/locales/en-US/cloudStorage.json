@@ -207,6 +207,45 @@
     "unknown": "Unknown error"
   },
   
+  "repoCheck": {
+    "title": "Cloud Repository Check",
+    "description": "Read-only inspection: downloads every backup object referenced by the cloud manifests and verifies existence, SHA256 checksum and the end-to-end encryption header, then reports orphaned and missing objects. The check never modifies or deletes any cloud data; it downloads roughly the total repository size.",
+    "run": "Run check",
+    "running": "Checking...",
+    "failed": "Repository check failed",
+    "checkedAt": "Checked at",
+    "summary": "Verified {{versions}} referenced version(s) / fully checked {{objects}} object(s) ({{bytes}})",
+    "statusOk": "All good: every referenced object exists, checksums match, no orphans",
+    "statusProblems": "{{count}} problem(s) found",
+    "statusIncomplete": "Check incomplete: must not be treated as all-green",
+    "truncatedNotice": "The cloud file listing was truncated, so this check is incomplete — even with no problems found, the repository cannot be assumed healthy. Retry later, or reduce the number of cloud objects and check again.",
+    "encryptedRepo": "This cloud folder has end-to-end encryption enabled (marker present); the check verified the DSBK encryption header of every object.",
+    "orphanCount": "Orphaned objects: {{count}}",
+    "problemsTitle": "Problem list",
+    "problemsTruncated": "Too many problems; showing the first {{count}} only",
+    "problemKind": {
+      "missingObject": "Missing object",
+      "checksumMismatch": "SHA256 mismatch",
+      "undecodableDsbkHeader": "Undecodable encryption header (DSBK)",
+      "plaintextInEncryptedRepo": "Plaintext object in encrypted repository",
+      "encryptedWithoutMarker": "Encrypted object without encryption marker",
+      "orphanObject": "Orphaned object",
+      "tempLeftover": "Leftover temporary file",
+      "corruptManifest": "Corrupt manifest",
+      "conflictingManifestEntry": "Conflicting manifest entries",
+      "corruptEncryptionMarker": "Corrupt encryption marker",
+      "objectReadFailed": "Object read failed"
+    },
+    "guidance": {
+      "title": "What to do about bad objects",
+      "readOnly": "The check is read-only and changed nothing in the cloud; every action below is up to you.",
+      "badObject": "\"Missing object / SHA256 mismatch / undecodable encryption header / plaintext object\" means that version can no longer be fully restored: do not delete the versions that are still healthy. First run \"Back up to cloud now\" on a device whose data is intact to create a fresh complete version, confirm it works, and only then delete the bad version from \"Version history\".",
+      "orphan": "Orphaned objects never affect any restore; they only waste space. Once confirmed, delete the files manually with your storage provider's own tools (web UI / console) — the check will never delete them for you.",
+      "manifest": "For \"corrupt manifest / conflicting entries / corrupt encryption marker\", first run a cloud backup again from the device that uploaded most recently (this rewrites that device's manifest), then re-run the check. If the problem persists, follow the repository-check section of the \"Data Management & Cloud Sync\" user guide.",
+      "incomplete": "\"Check incomplete\" (truncated listing or failed object reads) is usually caused by the network or server-side paging limits: retry. Until the result turns all-green, do not rely on this cloud folder as your disaster-recovery copy."
+    }
+  },
+
   "messages": {
     "connectionSuccess": "Connection successful!",
     "configSaved": "Configuration saved",

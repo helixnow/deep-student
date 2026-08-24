@@ -7,7 +7,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle } from '@phosphor-icons/react';
+import { invoke } from '@tauri-apps/api/core';
+import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle, ShieldCheck } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -32,6 +33,66 @@ import {
 } from './data-governance/syncE2eeErrorMapping';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+// ==================== [R11-check] 云端仓库巡检（只读） ====================
+
+/** 巡检问题类别（与后端 `cloud_storage::repo_check::RepoCheckProblemKind` 对齐） */
+type RepoCheckProblemKind =
+  | 'missingObject'
+  | 'checksumMismatch'
+  | 'undecodableDsbkHeader'
+  | 'plaintextInEncryptedRepo'
+  | 'encryptedWithoutMarker'
+  | 'orphanObject'
+  | 'tempLeftover'
+  | 'corruptManifest'
+  | 'conflictingManifestEntry'
+  | 'corruptEncryptionMarker'
+  | 'objectReadFailed';
+
+interface RepoCheckProblem {
+  kind: RepoCheckProblemKind;
+  objectKey?: string;
+  versionId?: string;
+  detail: string;
+}
+
+/** 巡检报告（与后端 `RepoCheckReport` 对齐） */
+interface RepoCheckReport {
+  status: 'ok' | 'problemsFound' | 'incomplete';
+  listingTruncated: boolean;
+  encryptionMarkerPresent: boolean;
+  versionsReferenced: number;
+  objectsChecked: number;
+  bytesVerified: number;
+  orphanObjects: number;
+  problems: RepoCheckProblem[];
+  problemsTruncated: boolean;
+  checkedAt: string;
+}
+
+/** 表示某个版本已坏（无法完整恢复）的问题类别 */
+const BAD_OBJECT_KINDS: ReadonlySet<RepoCheckProblemKind> = new Set([
+  'missingObject',
+  'checksumMismatch',
+  'undecodableDsbkHeader',
+  'plaintextInEncryptedRepo',
+]);
+
+/** manifest / 加密标记层面的问题类别 */
+const MANIFEST_KINDS: ReadonlySet<RepoCheckProblemKind> = new Set([
+  'corruptManifest',
+  'conflictingManifestEntry',
+  'corruptEncryptionMarker',
+  'encryptedWithoutMarker',
+]);
+
+/** 云端仓库巡检操作（restic `check` 档，只读不修） */
+async function runCloudRepoCheck(config: cloudApi.CloudStorageConfig): Promise<RepoCheckReport> {
+  return invoke<RepoCheckReport>('data_governance_repo_check', {
+    cloudConfig: cloudApi.toRuntimeCloudStorageConfig(config),
+  });
+}
 
 /** 云端同步操作的细粒度进度状态 */
 interface SyncOpProgress {
@@ -164,6 +225,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 细粒度进度状态
   const [opProgress, setOpProgress] = useState<SyncOpProgress | null>(null);
+
+  // [R11-check] 云端仓库巡检状态（只读操作，独立于上传/下载进度）
+  const [repoChecking, setRepoChecking] = useState(false);
+  const [repoCheckReport, setRepoCheckReport] = useState<RepoCheckReport | null>(null);
+  const [repoCheckError, setRepoCheckError] = useState<string | null>(null);
 
   // S3 feature 状态
   const [s3Enabled, setS3Enabled] = useState<boolean | null>(null);
@@ -980,6 +1046,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     void performRestore(versionId);
   }, [opProgress, handleBackupAndUpload, performRestore]);
 
+  // [R11-check] 执行云端仓库巡检（只读，不写入/删除任何云端对象）
+  const handleRepoCheck = useCallback(async () => {
+    if (connectionStatus !== 'connected') {
+      showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
+      return;
+    }
+    setRepoChecking(true);
+    setRepoCheckError(null);
+    try {
+      const report = await runCloudRepoCheck(buildConfig());
+      setRepoCheckReport(report);
+    } catch (e: unknown) {
+      setRepoCheckReport(null);
+      setRepoCheckError(localizeCloudError(e));
+    } finally {
+      setRepoChecking(false);
+    }
+  }, [buildConfig, connectionStatus, localizeCloudError, t]);
+
   // 打开删除确认对话框
   const openDeleteConfirm = useCallback((versionId: string) => {
     setPendingDeleteVersionId(versionId);
@@ -1597,6 +1682,168 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   ))}
                 </div>
               </CustomScrollArea>
+            )}
+          </div>
+        )}
+
+        {/* [R11-check] 云端仓库巡检：独立入口区（restic `check` 档，只读不修） */}
+        {syncStatus && (
+          <div className="border rounded-lg p-4 space-y-3">
+            <h4 className="font-medium flex items-center gap-2">
+              <ShieldCheck size={16} />
+              {t('cloudStorage:repoCheck.title')}
+            </h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t('cloudStorage:repoCheck.description')}
+            </p>
+            <DsButton
+              size="sm"
+              variant="outline"
+              disabled={repoChecking || uploading || downloading || connectionStatus !== 'connected'}
+              onClick={() => void handleRepoCheck()}
+            >
+              {repoChecking ? (
+                <>
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
+                  {t('cloudStorage:repoCheck.running')}
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={16} className="mr-2" />
+                  {t('cloudStorage:repoCheck.run')}
+                </>
+              )}
+            </DsButton>
+
+            {repoCheckError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                <p className="min-w-0 leading-relaxed break-words">
+                  {t('cloudStorage:repoCheck.failed')}: {repoCheckError}
+                </p>
+              </div>
+            )}
+
+            {repoCheckReport && (
+              <div className="space-y-3 text-sm">
+                {/* 结论徽标：全绿 / 有问题 / 不完整（截断时绝不显示全绿） */}
+                {repoCheckReport.status === 'ok' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-green-500/40 bg-green-500/10 p-3 text-green-700 dark:text-green-400">
+                    <CheckCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">{t('cloudStorage:repoCheck.statusOk')}</p>
+                  </div>
+                )}
+                {repoCheckReport.status === 'problemsFound' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-destructive">
+                    <XCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">
+                      {t('cloudStorage:repoCheck.statusProblems', { count: repoCheckReport.problems.length })}
+                    </p>
+                  </div>
+                )}
+                {repoCheckReport.status === 'incomplete' && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300">
+                    <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
+                    <p className="font-medium">{t('cloudStorage:repoCheck.statusIncomplete')}</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  {t('cloudStorage:repoCheck.summary', {
+                    versions: repoCheckReport.versionsReferenced,
+                    objects: repoCheckReport.objectsChecked,
+                    bytes: cloudApi.formatFileSize(repoCheckReport.bytesVerified),
+                  })}
+                  {' • '}
+                  {t('cloudStorage:repoCheck.checkedAt')}: {cloudApi.formatTimestamp(repoCheckReport.checkedAt)}
+                </p>
+                {repoCheckReport.encryptionMarkerPresent && (
+                  <p className="text-xs text-muted-foreground">{t('cloudStorage:repoCheck.encryptedRepo')}</p>
+                )}
+                {repoCheckReport.listingTruncated && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                    {t('cloudStorage:repoCheck.truncatedNotice')}
+                  </div>
+                )}
+                {repoCheckReport.orphanObjects > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('cloudStorage:repoCheck.orphanCount', { count: repoCheckReport.orphanObjects })}
+                  </p>
+                )}
+
+                {/* 问题清单 */}
+                {repoCheckReport.problems.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-sm font-medium">{t('cloudStorage:repoCheck.problemsTitle')}</h5>
+                    {repoCheckReport.problemsTruncated && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('cloudStorage:repoCheck.problemsTruncated', { count: repoCheckReport.problems.length })}
+                      </p>
+                    )}
+                    <CustomScrollArea className="max-h-64" viewportClassName="pr-1">
+                      <div className="space-y-2">
+                        {repoCheckReport.problems.map((problem, index) => (
+                          <div
+                            key={`${problem.kind}-${problem.objectKey ?? ''}-${index}`}
+                            className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs"
+                          >
+                            <div className="font-medium text-destructive">
+                              {t(`cloudStorage:repoCheck.problemKind.${problem.kind}`, {
+                                defaultValue: problem.kind,
+                              })}
+                              {problem.versionId && (
+                                <span className="ml-1 font-normal text-muted-foreground">
+                                  ({problem.versionId})
+                                </span>
+                              )}
+                            </div>
+                            {problem.objectKey && (
+                              <div className="mt-0.5 break-all font-mono text-muted-foreground">
+                                {problem.objectKey}
+                              </div>
+                            )}
+                            <div className="mt-0.5 leading-relaxed text-muted-foreground">{problem.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </CustomScrollArea>
+                  </div>
+                )}
+
+                {/* 人话处置指引：发现坏对象后该做什么 */}
+                {repoCheckReport.status !== 'ok' && (
+                  <div className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3">
+                    <h5 className="text-sm font-medium">{t('cloudStorage:repoCheck.guidance.title')}</h5>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {t('cloudStorage:repoCheck.guidance.readOnly')}
+                    </p>
+                    {repoCheckReport.problems.some((p) => BAD_OBJECT_KINDS.has(p.kind)) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.badObject')}
+                      </p>
+                    )}
+                    {repoCheckReport.orphanObjects > 0 && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.orphan')}
+                      </p>
+                    )}
+                    {repoCheckReport.problems.some((p) => MANIFEST_KINDS.has(p.kind)) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.manifest')}
+                      </p>
+                    )}
+                    {(repoCheckReport.listingTruncated
+                      || repoCheckReport.problems.some((p) => p.kind === 'objectReadFailed')) && (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {t('cloudStorage:repoCheck.guidance.incomplete')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
