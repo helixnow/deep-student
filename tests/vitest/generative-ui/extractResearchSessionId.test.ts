@@ -25,4 +25,19 @@ describe('extractResearchSessionId', () => {
   it('returns null for blank values', () => {
     expect(extractResearchSessionId({ researchSessionId: '  ' }, undefined, undefined)).toBeNull();
   });
+
+  it('rejects oversized or unsafe session ids', () => {
+    expect(
+      extractResearchSessionId({ researchSessionId: 'x'.repeat(129) }, undefined, undefined),
+    ).toBeNull();
+    expect(
+      extractResearchSessionId({ researchSessionId: '../evil' }, undefined, undefined),
+    ).toBeNull();
+    expect(
+      extractResearchSessionId({ researchSessionId: 'javascript:alert(1)' }, undefined, undefined),
+    ).toBeNull();
+    expect(
+      extractResearchSessionId({ researchSessionId: 'sess_2026-08-24.1' }, undefined, undefined),
+    ).toBe('sess_2026-08-24.1');
+  });
 });
