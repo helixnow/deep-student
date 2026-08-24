@@ -172,8 +172,10 @@
 **尚未完成，继续按真实代码状态记录：**
 
 - [ ] 偏好记忆写入侧（extract / consolidate 持久化）；当前仅 retrieve 接线，store 恒空
-- [ ] 图像遮挡接入 VLM 生成路径与卡片预览块；当前仅纯函数与独立 overlay
-- [ ] Sidekick Planner / Critic / Vlm 按角色真正分槽；当前生产路径只消费 Generator 槽
+- [ ] 图像遮挡完整闭环：VlmFull 直接图片的启发式 `_occlusion` 草稿已接；
+      PDF 页图、真实 grounding 与卡片预览/编辑仍未接
+- [ ] Sidekick Planner / Critic / Vlm 按角色完整分槽；Generator 已接，
+      Critic 有调用点但当前接线不完整，Planner/Vlm 未消费
 - [ ] `_original_generation` 稳定生成埋点；缺少快照时 grounded critic 会回退规则 rubric
 
 ---

@@ -403,9 +403,9 @@ where
     match raw {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => {
-            let v = n
-                .as_u64()
-                .ok_or_else(|| serde::de::Error::custom("maxImages must be a non-negative integer"))?;
+            let v = n.as_u64().ok_or_else(|| {
+                serde::de::Error::custom("maxImages must be a non-negative integer")
+            })?;
             u32::try_from(v)
                 .map(Some)
                 .map_err(|_| serde::de::Error::custom("maxImages out of u32 range"))
@@ -4799,9 +4799,7 @@ impl ChatAnkiToolExecutor {
                     .contains(&"front")
                     .then(|| after.front.clone()),
                 back: changed_fields.contains(&"back").then(|| after.back.clone()),
-                text: changed_fields
-                    .contains(&"text")
-                    .then(|| after.text.clone()),
+                text: changed_fields.contains(&"text").then(|| after.text.clone()),
                 tags: changed_fields.contains(&"tags").then(|| after.tags.clone()),
                 extra_fields: None,
             };
@@ -5463,7 +5461,12 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        let forced_route = match args.route.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let forced_route = match args
+            .route
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(raw) => match ChatAnkiRoute::from_str(raw) {
                 Some(route) => Some(route),
                 None => {
@@ -5511,13 +5514,13 @@ impl ChatAnkiToolExecutor {
                         let trimmed = content.trim();
                         (!trimmed.is_empty()).then_some(trimmed)
                     };
-                    let text_sample = match ctx.vfs_db.as_ref().and_then(|db| db.get_conn_safe().ok())
-                    {
-                        Some(conn) => sample_ref_text_for_routing(&conn, rd, extra),
-                        None => extra
-                            .map(|t| safe_truncate_chars(t, ROUTE_PLAN_SAMPLE_TOTAL_CHARS))
-                            .unwrap_or_default(),
-                    };
+                    let text_sample =
+                        match ctx.vfs_db.as_ref().and_then(|db| db.get_conn_safe().ok()) {
+                            Some(conn) => sample_ref_text_for_routing(&conn, rd, extra),
+                            None => extra
+                                .map(|t| safe_truncate_chars(t, ROUTE_PLAN_SAMPLE_TOTAL_CHARS))
+                                .unwrap_or_default(),
+                        };
                     plan_route(llm, args.goal.as_deref().unwrap_or(""), rd, &text_sample).await
                 }
                 None => None,
@@ -7733,9 +7736,10 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                                 )
                                 .await
                                 .map_err(|e| e.to_string())?;
-                            let combined = merge_with_extra(strip_vlm_chunk_markers(
-                                &output.assistant_message,
-                            ));
+                            let visual_md = strip_vlm_chunk_markers(&output.assistant_message);
+                            let visual_md =
+                                append_vlmfull_occlusion_draft(visual_md, &merged_ref_data);
+                            let combined = merge_with_extra(visual_md);
                             break 'vfs_block (
                                 route,
                                 combined,
@@ -7861,6 +7865,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         .await
                         .map_err(|e| e.to_string())?;
                     let visual_md = strip_vlm_chunk_markers(&output.assistant_message);
+                    let visual_md = append_vlmfull_occlusion_draft(visual_md, &merged_ref_data);
                     let combined = if text.trim().is_empty() {
                         visual_md
                     } else if visual_md.trim().is_empty() {
@@ -7985,8 +7990,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     };
 
     // Round 4 #1：检索历史制卡偏好（可用 enablePreferenceMemory=false 关闭）。
-    // 读 settings 中的偏好存储 + 现有模板名列表，装配为极短 prompt 片段；
-    // 任何读取/解析失败都降级为不注入，绝不阻断制卡。
+    // 这里只读 settings；当前生产路径尚无 extract/consolidate 写入者，因此全新
+    // 安装的 store 为空、不会注入。任何读取/解析失败都降级为不注入。
     let preference_hint = if params.tuning.preference_memory_enabled() {
         let store_json = params
             .anki_db
@@ -9562,6 +9567,27 @@ struct ImagePayloadBatch {
     truncated: bool,
 }
 
+/// VlmFull 的最小遮挡接线：仅在存在直接图片 ref 时，把已有 IMAGE_DESC 转为
+/// 可编辑网格草稿 marker。PDF 页面预览目前没有稳定的逐页 image_ref，诚实跳过。
+fn append_vlmfull_occlusion_draft(visual_md: String, ref_data: &VfsContextRefData) -> String {
+    let image_ref = ref_data
+        .refs
+        .iter()
+        .find(|r| r.resource_type == VfsResourceType::Image)
+        .map(|r| r.source_id.as_str());
+    let Some(image_ref) = image_ref else {
+        return visual_md;
+    };
+    let Some(marker) = crate::anki_image_occlusion::build_occlusion_draft_marker(
+        image_ref,
+        &visual_md,
+        &crate::anki_image_occlusion::OcclusionConfig::default(),
+    ) else {
+        return visual_md;
+    };
+    format!("{visual_md}\n\n{marker}")
+}
+
 fn collect_image_payloads(
     conn: &Connection,
     blobs_dir: &std::path::Path,
@@ -10567,8 +10593,10 @@ fn suggest_max_cards_arg(glossary_mode: bool, entry_like_lines: usize, char_coun
     default_max_cards_for_content(false, char_count).clamp(1, 100)
 }
 
-/// 偏好记忆存储在 settings 表中的 key（value 为 `PreferenceStore` 的 JSON）。
-/// 写入侧（会话收尾 extract + consolidate）与读取侧（本处 retrieve）共用。
+/// 偏好记忆读取侧预留的 settings key（value 为 `PreferenceStore` JSON）。
+///
+/// 当前没有生产写入者；除非历史版本/外部迁移已写入，否则该 key 缺失且
+/// retrieve 返回空。不要把这个常量误解为写入侧已经接通。
 pub(crate) const CHATANKI_PREFERENCE_MEMORY_SETTING_KEY: &str = "chatanki_preference_memory_store";
 
 /// Round 4 #1：从持久化的偏好存储检索可注入的短 prompt。
@@ -11907,7 +11935,10 @@ fn transform_fields_display(fields: &TransformFields, changed: &[&'static str]) 
             "front" => {
                 object.insert(
                     "front".to_string(),
-                    json!(safe_truncate_chars(&fields.front, CHATANKI_CARD_FIELD_LIMIT)),
+                    json!(safe_truncate_chars(
+                        &fields.front,
+                        CHATANKI_CARD_FIELD_LIMIT
+                    )),
                 );
             }
             "back" => {
@@ -12154,9 +12185,7 @@ fn build_retemplate_fill_prompt(
     batch: &[&AnkiRetemplateCardUpdate],
 ) -> String {
     let mut prompt = String::new();
-    prompt.push_str(
-        "你是 Anki 卡片字段补全助手。以下卡片刚更换为目标模板，部分模板字段缺失。\n",
-    );
+    prompt.push_str("你是 Anki 卡片字段补全助手。以下卡片刚更换为目标模板，部分模板字段缺失。\n");
     prompt.push_str(&format!("目标 noteType：{}\n\n", target_note_type));
     prompt.push_str("规则：\n");
     prompt.push_str("1. 只输出一个 JSON 对象，不要解释、不要 Markdown 代码块。\n");
@@ -12215,8 +12244,12 @@ fn build_retemplate_fill_prompt(
 fn parse_retemplate_fill_response(
     raw: &str,
 ) -> Result<HashMap<String, HashMap<String, String>>, String> {
-    let start = raw.find('{').ok_or("fill response contains no JSON object")?;
-    let end = raw.rfind('}').ok_or("fill response contains no JSON object")?;
+    let start = raw
+        .find('{')
+        .ok_or("fill response contains no JSON object")?;
+    let end = raw
+        .rfind('}')
+        .ok_or("fill response contains no JSON object")?;
     if end < start {
         return Err("fill response contains no JSON object".to_string());
     }
@@ -15236,7 +15269,9 @@ mod tests {
         let (db, _tmp) = make_test_db();
         seed_chatanki_document(&db, "doc-scope-guard", "session-guard-coordinator");
 
-        assert!(install_workspace_card_read_scope("", "ws-g", "session-guard-coordinator").is_err());
+        assert!(
+            install_workspace_card_read_scope("", "ws-g", "session-guard-coordinator").is_err()
+        );
         assert!(install_workspace_card_read_scope("session-guard-worker", "", "coord").is_err());
         assert!(install_workspace_card_read_scope("session-guard-worker", "ws-g", "").is_err());
         assert!(install_workspace_card_read_scope(
@@ -15253,12 +15288,10 @@ mod tests {
                 "session-guard-coordinator",
             )
             .expect("install scope");
-            assert!(resolve_chatanki_read_session(
-                &db,
-                "doc-scope-guard",
-                "session-guard-worker"
-            )
-            .is_ok());
+            assert!(
+                resolve_chatanki_read_session(&db, "doc-scope-guard", "session-guard-worker")
+                    .is_ok()
+            );
         }
         // guard 已 drop：作用域撤销，回到默认拒绝
         assert_eq!(
@@ -16924,7 +16957,10 @@ mod tests {
         for (raw, expected) in [
             ("map_only", ChatAnkiRetemplateStrategy::MapOnly),
             ("fill_missing", ChatAnkiRetemplateStrategy::FillMissing),
-            ("fill_missing_llm", ChatAnkiRetemplateStrategy::FillMissingLlm),
+            (
+                "fill_missing_llm",
+                ChatAnkiRetemplateStrategy::FillMissingLlm,
+            ),
         ] {
             let parsed: ChatAnkiRetemplateStrategy =
                 serde_json::from_value(json!(raw)).expect("parse strategy");
@@ -16942,7 +16978,8 @@ mod tests {
     ) -> AnkiRetemplateCardUpdate {
         let mut card = make_chatanki_card(card_id, "task-fill", "front text", "back text");
         for (field, _) in missing {
-            card.extra_fields.insert((*field).to_string(), String::new());
+            card.extra_fields
+                .insert((*field).to_string(), String::new());
         }
         AnkiRetemplateCardUpdate {
             document_id: "doc-fill".to_string(),
@@ -16950,10 +16987,12 @@ mod tests {
             source: card,
             missing_fields: missing
                 .iter()
-                .map(|(field, required)| crate::database::AnkiRetemplateMissingField {
-                    field: (*field).to_string(),
-                    required: *required,
-                })
+                .map(
+                    |(field, required)| crate::database::AnkiRetemplateMissingField {
+                        field: (*field).to_string(),
+                        required: *required,
+                    },
+                )
                 .collect(),
         }
     }
@@ -16983,7 +17022,10 @@ mod tests {
         let generated = parse_retemplate_fill_response(fenced).expect("parse fenced response");
         assert_eq!(generated.len(), 1);
         let fields = generated.get("card-1").expect("card-1 fields");
-        assert_eq!(fields.get("Example").map(String::as_str), Some("an example"));
+        assert_eq!(
+            fields.get("Example").map(String::as_str),
+            Some("an example")
+        );
         assert!(fields.get("Empty").is_none());
         assert!(fields.get("Number").is_none());
 
@@ -17094,16 +17136,10 @@ mod tests {
         assert_eq!(payload["filledFields"], json!(["Example"]));
         assert_eq!(payload["missingFields"], json!([] as [String; 0]));
         assert!(payload.get("source").is_none());
-        assert_eq!(
-            payload["version"],
-            json!(update.card.updated_at.as_str())
-        );
+        assert_eq!(payload["version"], json!(update.card.updated_at.as_str()));
 
-        let untouched = retemplate_update_for_tool(
-            &update,
-            ChatAnkiRetemplateStrategy::FillMissingLlm,
-            None,
-        );
+        let untouched =
+            retemplate_update_for_tool(&update, ChatAnkiRetemplateStrategy::FillMissingLlm, None);
         assert_eq!(untouched["fillStatus"], json!("not_needed"));
         assert_eq!(untouched["filledFields"], json!([] as [String; 0]));
 
@@ -17649,8 +17685,7 @@ mod tests {
         };
 
         // forced_route 永远最高优先级，source=forced，不携带 LLM 字段
-        let forced =
-            resolve_route_decision(Some(ChatAnkiRoute::VlmLight), Some(&high), &ref_data);
+        let forced = resolve_route_decision(Some(ChatAnkiRoute::VlmLight), Some(&high), &ref_data);
         assert_eq!(forced.route, ChatAnkiRoute::VlmLight);
         assert_eq!(forced.source, RouteSource::Forced);
         assert_eq!(forced.confidence, None);
@@ -17820,7 +17855,9 @@ mod tests {
         let mut ratio_at_threshold: Vec<&str> = Vec::new();
         ratio_at_threshold.extend(std::iter::repeat(entry_line).take(18));
         ratio_at_threshold.extend(std::iter::repeat(plain_line).take(22));
-        assert!(looks_like_glossary_content(&content_of(&ratio_at_threshold)));
+        assert!(looks_like_glossary_content(&content_of(
+            &ratio_at_threshold
+        )));
 
         // 比例临界：40 行中 17 条 entry-like = 0.425 → false（< 0.45）
         let mut ratio_below_threshold: Vec<&str> = Vec::new();
@@ -17838,15 +17875,18 @@ mod tests {
         assert!(looks_like_glossary_content(&content_of(&interleaved)));
 
         // entry 判定的多种形态：列表项与数字开头（字节长度 >= 3）
-        let mixed_entries: Vec<&str> = std::iter::repeat(["- 条目", "* 条目", "1、条目", "2) 条目"])
-            .take(10)
-            .flatten()
-            .collect();
+        let mixed_entries: Vec<&str> =
+            std::iter::repeat(["- 条目", "* 条目", "1、条目", "2) 条目"])
+                .take(10)
+                .flatten()
+                .collect();
         assert!(looks_like_glossary_content(&content_of(&mixed_entries)));
 
         // 数字开头但字节长度 < 3（如 "12"）不算 entry-like
         let short_digit_lines = vec!["12"; 40];
-        assert!(!looks_like_glossary_content(&content_of(&short_digit_lines)));
+        assert!(!looks_like_glossary_content(&content_of(
+            &short_digit_lines
+        )));
     }
 
     fn make_windowless_ctx(session_id: &str) -> ExecutionContext {
@@ -17930,12 +17970,11 @@ mod tests {
             None,
             None,
         );
+        assert_eq!(glossary.output["recommended"]["glossaryMode"], json!(true));
         assert_eq!(
-            glossary.output["recommended"]["glossaryMode"],
-            json!(true)
-        );
-        assert_eq!(
-            glossary.output["recommended"]["temperature"].as_f64().unwrap() as f32,
+            glossary.output["recommended"]["temperature"]
+                .as_f64()
+                .unwrap() as f32,
             opts.temperature.unwrap()
         );
         assert_eq!(
@@ -17995,7 +18034,10 @@ mod tests {
         assert!(glossary.success);
         assert_eq!(glossary.output["routing"]["glossaryMode"], json!(true));
         assert_eq!(glossary.output["routing"]["route"], json!("simple_text"));
-        assert_eq!(glossary.output["routing"]["routeSource"], json!("heuristic"));
+        assert_eq!(
+            glossary.output["routing"]["routeSource"],
+            json!("heuristic")
+        );
         assert_eq!(glossary.output["metrics"]["nonEmptyLines"], json!(40));
         assert_eq!(
             glossary.output["metrics"]["entryLikeLines"],
@@ -18069,10 +18111,7 @@ mod tests {
         assert_eq!(result.output["routing"]["routeSource"], json!("heuristic"));
         let warnings = result.output["warnings"].as_array().expect("warnings");
         assert_eq!(warnings[0]["code"], json!("analyze_refs_unresolved"));
-        assert_eq!(
-            warnings[0]["unresolvedIds"],
-            json!(["file_missing_123"])
-        );
+        assert_eq!(warnings[0]["unresolvedIds"], json!(["file_missing_123"]));
     }
 
     /// 契约 8：建议 maxCards 与管线默认档位/词汇表口径一致。
@@ -18136,13 +18175,10 @@ mod tests {
             reason: Some("图表少量".to_string()),
         };
         let llm_decision = resolve_route_decision(None, Some(&plan), &ref_data);
-        let llm_output =
-            build_analyze_output(None, "正文", Some(&ref_data), &llm_decision, &[]);
+        let llm_output = build_analyze_output(None, "正文", Some(&ref_data), &llm_decision, &[]);
         assert_eq!(llm_output["routing"]["route"], json!("vlm_light"));
         assert_eq!(llm_output["routing"]["routeSource"], json!("llm"));
-        assert!(
-            (llm_output["routing"]["confidence"].as_f64().unwrap() - 0.85).abs() < 1e-6
-        );
+        assert!((llm_output["routing"]["confidence"].as_f64().unwrap() - 0.85).abs() < 1e-6);
         assert_eq!(llm_output["routing"]["reason"], json!("图表少量"));
         // LLM glossary 提示与内容启发式取并集（内容不足 40 行也翻转为 true）
         assert_eq!(llm_output["routing"]["glossaryMode"], json!(true));

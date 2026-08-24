@@ -9,7 +9,12 @@
 //! - **纯逻辑、零 I/O、零 LLM**：本模块只做「观察 → 候选偏好 → 合并 → 检索」
 //!   四步纯函数变换。持久化（存到用户配置/DB）与接线（`chatanki_run` 在
 //!   `build_chatanki_requirements` 之前调用 [`retrieve_preference_prompt`]）
-//!   由调用方负责，后续版本可在此 API 之上叠加 LLM 抽取增强。
+//!   由调用方负责。
+//! - **生产接线现状（2026-08）**：ChatAnki retrieve 会读取 settings key
+//!   `chatanki_preference_memory_store`，但目前没有生产路径收集
+//!   [`SessionObservation`]、调用 [`extract_preferences`]/[`consolidate`] 并写回。
+//!   因此全新安装的持久化 store 为空，偏好注入实际为 no-op；本模块的单测
+//!   store 不代表运行时已有记忆。后续接写入侧前不得宣称“会自动学习偏好”。
 //! - **ADD-only**：与 Mem0 的 ADD/UPDATE/DELETE 操作集不同，本版抽取器只产出
 //!   ADD 语义——[`consolidate`] 对已有条目绝不改写语句、绝不删除；重复观察
 //!   只累计证据数并小幅提升置信度。互相矛盾的偏好（如先偏好中文后偏好英文）
@@ -263,7 +268,14 @@ fn extract_from_extra_requirements(raw: &str, out: &mut Vec<PreferenceCandidate>
     // 语言偏好：中英信号同时出现视为歧义，保守放弃。
     let wants_zh = contains_any(
         &lower,
-        &["用中文", "中文回答", "中文作答", "答案用中文", "中文解释", "in chinese"],
+        &[
+            "用中文",
+            "中文回答",
+            "中文作答",
+            "答案用中文",
+            "中文解释",
+            "in chinese",
+        ],
     );
     let wants_en = contains_any(
         &lower,
@@ -313,7 +325,10 @@ fn extract_from_extra_requirements(raw: &str, out: &mut Vec<PreferenceCandidate>
     // 卡密度：数字上限优先，其次定性「少而精」。
     let numeric_limit = regex::Regex::new(r"(?:最多|不超过)\s*(\d{1,3})\s*张")
         .ok()
-        .and_then(|re| re.captures(&lower).and_then(|c| c.get(1).map(|m| m.as_str().to_string())))
+        .and_then(|re| {
+            re.captures(&lower)
+                .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        })
         .or_else(|| {
             regex::Regex::new(r"(?:at most|no more than|max(?:imum)?(?: of)?)\s*(\d{1,3})\s*cards?")
                 .ok()
@@ -332,7 +347,13 @@ fn extract_from_extra_requirements(raw: &str, out: &mut Vec<PreferenceCandidate>
         });
     } else if contains_any(
         &lower,
-        &["少而精", "宁缺毋滥", "不要太多卡", "卡片少一点", "fewer cards"],
+        &[
+            "少而精",
+            "宁缺毋滥",
+            "不要太多卡",
+            "卡片少一点",
+            "fewer cards",
+        ],
     ) {
         out.push(PreferenceCandidate {
             kind: PreferenceKind::CardDensity,
@@ -344,13 +365,15 @@ fn extract_from_extra_requirements(raw: &str, out: &mut Vec<PreferenceCandidate>
     }
 
     // 模板偏好：匹配「用/使用 X 模板」，带否定前缀（不/别/勿/免）时跳过。
-    if let Ok(re) =
-        regex::Regex::new(r#"(?:请用|使用|用)\s*[「“"']?([^「」“”"'\s，。,；;.!？?]{1,24}?)[」”"']?\s*模板"#)
-    {
+    if let Ok(re) = regex::Regex::new(
+        r#"(?:请用|使用|用)\s*[「“"']?([^「」“”"'\s，。,；;.!？?]{1,24}?)[」”"']?\s*模板"#,
+    ) {
         if let Some(caps) = re.captures(text) {
             let matched = caps.get(0).unwrap();
             let prefix: String = text[..matched.start()].chars().rev().take(2).collect();
-            let negated = prefix.chars().any(|c| matches!(c, '不' | '别' | '勿' | '免'));
+            let negated = prefix
+                .chars()
+                .any(|c| matches!(c, '不' | '别' | '勿' | '免'));
             if !negated {
                 if let Some(name) = caps.get(1).map(|m| m.as_str().trim()) {
                     if !name.is_empty() {
@@ -366,11 +389,14 @@ fn extract_from_extra_requirements(raw: &str, out: &mut Vec<PreferenceCandidate>
             }
         }
     }
-    if let Ok(re) = regex::Regex::new(r#"(?i)use\s+(?:the\s+)?"?([a-z0-9 _-]{1,32}?)"?\s+template"#) {
+    if let Ok(re) = regex::Regex::new(r#"(?i)use\s+(?:the\s+)?"?([a-z0-9 _-]{1,32}?)"?\s+template"#)
+    {
         if let Some(caps) = re.captures(text) {
             if let Some(name) = caps.get(1).map(|m| m.as_str().trim()) {
                 if !name.is_empty()
-                    && !out.iter().any(|c| c.kind == PreferenceKind::TemplatePreference)
+                    && !out
+                        .iter()
+                        .any(|c| c.kind == PreferenceKind::TemplatePreference)
                 {
                     out.push(PreferenceCandidate {
                         kind: PreferenceKind::TemplatePreference,
@@ -448,7 +474,11 @@ fn extract_from_edits(edits: &[CardEditObservation], out: &mut Vec<PreferenceCan
 
     // 禁止翻译：跨编辑累计回写 ≥ 2 个不同术语。
     if reinstated_terms.len() >= 2 {
-        let examples: Vec<&str> = reinstated_terms.iter().take(3).map(String::as_str).collect();
+        let examples: Vec<&str> = reinstated_terms
+            .iter()
+            .take(3)
+            .map(String::as_str)
+            .collect();
         out.push(PreferenceCandidate {
             kind: PreferenceKind::NoTranslation,
             statement: format!("专业术语保留原文，不要翻译（如 {}）", examples.join("、")),
@@ -494,11 +524,18 @@ fn extract_from_deletions(
 }
 
 fn extract_template_choice(template_used: &Option<String>, out: &mut Vec<PreferenceCandidate>) {
-    let Some(name) = template_used.as_deref().map(str::trim).filter(|n| !n.is_empty()) else {
+    let Some(name) = template_used
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    else {
         return;
     };
     // 显式 extraRequirements 模板信号优先；行为信号仅在没有显式信号时补充。
-    if out.iter().any(|c| c.kind == PreferenceKind::TemplatePreference) {
+    if out
+        .iter()
+        .any(|c| c.kind == PreferenceKind::TemplatePreference)
+    {
         return;
     }
     out.push(PreferenceCandidate {
@@ -524,7 +561,11 @@ pub fn extract_preferences(observation: &SessionObservation) -> Vec<PreferenceCa
         extract_from_extra_requirements(raw, &mut out);
     }
     extract_from_edits(&observation.edits, &mut out);
-    extract_from_deletions(&observation.deletions, observation.generated_count, &mut out);
+    extract_from_deletions(
+        &observation.deletions,
+        observation.generated_count,
+        &mut out,
+    );
     extract_template_choice(&observation.template_used, &mut out);
     out
 }
@@ -544,12 +585,19 @@ pub fn consolidate(
     let mut outcome = ConsolidateOutcome::default();
 
     for candidate in candidates {
-        let key = normalized_key(candidate.kind, &candidate.statement, candidate.subject.as_deref());
-        if let Some(entry) = store.entries.iter_mut().find(|e| {
-            normalized_key(e.kind, &e.statement, e.subject.as_deref()) == key
-        }) {
+        let key = normalized_key(
+            candidate.kind,
+            &candidate.statement,
+            candidate.subject.as_deref(),
+        );
+        if let Some(entry) = store
+            .entries
+            .iter_mut()
+            .find(|e| normalized_key(e.kind, &e.statement, e.subject.as_deref()) == key)
+        {
             entry.evidence_count = entry.evidence_count.saturating_add(1);
-            entry.confidence = (entry.confidence.max(candidate.confidence) + 0.05).min(CONFIDENCE_CAP);
+            entry.confidence =
+                (entry.confidence.max(candidate.confidence) + 0.05).min(CONFIDENCE_CAP);
             entry.last_evidence = candidate.evidence.clone();
             entry.last_seen_ms = now_ms;
             outcome.reinforced.push(entry.statement.clone());
@@ -779,7 +827,11 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            find(&extract_preferences(&negated), PreferenceKind::TemplatePreference).is_none(),
+            find(
+                &extract_preferences(&negated),
+                PreferenceKind::TemplatePreference
+            )
+            .is_none(),
             "否定语境不应抽出模板偏好"
         );
     }
@@ -931,8 +983,14 @@ mod tests {
         let outcome = consolidate(&mut store, &en, 3_000);
         assert_eq!(outcome.added.len(), 1);
         assert_eq!(store.entries.len(), 2);
-        assert!(store.entries.iter().any(|e| e.subject.as_deref() == Some("zh")));
-        assert!(store.entries.iter().any(|e| e.subject.as_deref() == Some("en")));
+        assert!(store
+            .entries
+            .iter()
+            .any(|e| e.subject.as_deref() == Some("zh")));
+        assert!(store
+            .entries
+            .iter()
+            .any(|e| e.subject.as_deref() == Some("en")));
     }
 
     #[test]
@@ -1014,9 +1072,17 @@ mod tests {
 
         let available = vec!["学术选择题".to_string(), "学术填空题".to_string()];
         let prompt = retrieve_preference_prompt(&store, "整理讲义", &available, 200);
-        assert!(prompt.contains("中文"), "应选中证据更多的中文偏好: {}", prompt);
+        assert!(
+            prompt.contains("中文"),
+            "应选中证据更多的中文偏好: {}",
+            prompt
+        );
         assert!(!prompt.contains("英文"), "每 kind 只取一条: {}", prompt);
-        assert!(!prompt.contains("手稿风格"), "不可用模板应被过滤: {}", prompt);
+        assert!(
+            !prompt.contains("手稿风格"),
+            "不可用模板应被过滤: {}",
+            prompt
+        );
 
         // 模板在可用列表中时应注入（双向包含匹配）。
         let available2 = vec!["手稿风格".to_string()];
@@ -1049,8 +1115,14 @@ mod tests {
         assert!(estimate_tokens(&tight) <= 60);
 
         // 预算过小：一行都放不下 → 空串。
-        assert_eq!(retrieve_preference_prompt(&store, "goal", &available, 10), "");
-        assert_eq!(retrieve_preference_prompt(&store, "goal", &available, 0), "");
+        assert_eq!(
+            retrieve_preference_prompt(&store, "goal", &available, 10),
+            ""
+        );
+        assert_eq!(
+            retrieve_preference_prompt(&store, "goal", &available, 0),
+            ""
+        );
     }
 
     #[test]
@@ -1070,7 +1142,11 @@ mod tests {
         // goal 提到填空 → 填空模板条目应因关键词加权胜出。
         let prompt =
             retrieve_preference_prompt(&store, "把讲义做成学术填空题练习", &available, 200);
-        assert!(prompt.contains("学术填空题"), "goal 关键词应加权: {}", prompt);
+        assert!(
+            prompt.contains("学术填空题"),
+            "goal 关键词应加权: {}",
+            prompt
+        );
         assert!(!prompt.contains("学术选择题"));
     }
 

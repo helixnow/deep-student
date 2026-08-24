@@ -13,9 +13,9 @@ Round 4 部分子代理曾因环境中断未回传，但代码已大部分入库
 | 偏好 retrieve 注入 | `build_chatanki_requirements` | ⚠️ 读取侧已接（默认开、`enablePreferenceMemory=false` 可关，读 settings key `chatanki_preference_memory_store`）；**写入侧未接**——`extract_preferences`/`consolidate` 仅在模块单测中调用，生产路径无人写 store，注入实际恒为空 |
 | LLM critic | `anki_critic.rs` + streaming 收尾 | ✅ opt-in 已接（options JSON `enable_critic_pass`/`enable_llm_critic`，默认关；失败一律降级全 keep；成功派发 `CriticSummary` 事件）；未暴露为 chatanki 工具参数 |
 | FingerprintTracker 跨段 | `anki_qa_lint.rs` + streaming | ✅ document 级 registry 已接流式路径（`duplicate_in_document`/`near_duplicate`）|
-| Sidekick 路由 | `anki_model_routing.rs` + streaming | ⚠️ `plan_routing` 产出 Planner/Generator/Critic/Vlm 四角色计划并 debug 输出，但流式生成路径只消费 Generator 槽；Planner/Critic/Vlm 未按计划分槽调用 |
+| Sidekick 路由 | `anki_model_routing.rs` + streaming | ⚠️ Generator 已消费；Critic 已出现角色调用点但当前接线不完整；Planner/Vlm 仍未按计划分槽调用（详见 round5/05-wiring.md） |
 | Phase 2 只读四工具 | `custom_agents.rs` + `workspace_handlers.rs` | ✅ 白名单已扩（get_cards/status/analyze/list_templates），fail-closed 测试双向钉死；所有权豁免文档见 agents/ |
-| 图像遮挡纯函数 + overlay 组件 | `anki_image_occlusion.rs` + `ImageOcclusionOverlay.tsx` | ❌ **均未接线**：Rust 侧仅 `lib.rs` 模块注册，未接 VlmFull 管线；前端 overlay 未被预览块/预览面板引用 |
+| 图像遮挡纯函数 + overlay 组件 | `anki_image_occlusion.rs` + `ImageOcclusionOverlay.tsx` | ⚠️ VlmFull 直接图片 ref 已接 IMAGE_DESC → 启发式草稿 → `_occlusion`；PDF 页图与前端预览/编辑仍未接，网格不是 grounding |
 | Structured Output | `anki_protocol.rs` | ✅ 已接 streaming（delimiter/json_object/json_schema + auto 按供应商能力解析，非法参数启动前拒绝）|
 | transform script | `chatanki_transform_script.rs` | ✅ 已生产化并暴露 schema（python/node 沙箱、`CHATANKI_INPUT/OUTPUT` I/O 合同、结构化错误码、CAS 写回、High 审批卡展示脚本正文）|
 | FSRS 回流 | `enhanced_anki_service.rs` + `anki_fsrs_feedback.rs` | ✅ 默认开（`fsrs_feedback: None` 视为开启）；画像 + 语义干扰 + 拆卡建议合计 ≤1200 token，任何失败降级为不注入 |

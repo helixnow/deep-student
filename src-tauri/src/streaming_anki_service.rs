@@ -534,6 +534,7 @@ impl StreamingAnkiService {
             .stream_cards_from_ai(
                 &api_config,
                 &prompt_payload,
+                &task.content_segment,
                 max_tokens,
                 temperature,
                 &task_id,
@@ -565,6 +566,7 @@ impl StreamingAnkiService {
                             .stream_cards_from_ai(
                                 &api_config,
                                 &fallback_prompt,
+                                &task.content_segment,
                                 max_tokens,
                                 temperature,
                                 &task_id,
@@ -616,12 +618,7 @@ impl StreamingAnkiService {
                         &critic_cfg,
                     )
                     .await;
-                    self.emit_critic_summary(
-                        &task_id,
-                        &task.document_id,
-                        &critic_summary,
-                        &window,
-                    );
+                    self.emit_critic_summary(&task_id, &task.document_id, &critic_summary, &window);
                 }
                 self.complete_task_successfully(
                     &task_id,
@@ -945,9 +942,13 @@ impl StreamingAnkiService {
             &example_json,
         );
 
+        // VlmFull 遮挡草稿 marker 只供后端字段接线使用，不能暴露给生成模型，
+        // 否则模型可能把机器协议误制成卡片正文。
+        let model_visible_content =
+            crate::anki_image_occlusion::strip_occlusion_draft_markers(content);
         let user_message = format!(
             "{}\n\n请根据以下内容生成Anki卡片：\n\n{}",
-            generation_instructions, content
+            generation_instructions, model_visible_content
         );
 
         let debug_preview = format!("[SYSTEM]\n{}\n\n[USER]\n{}", system_message, user_message);
@@ -970,6 +971,7 @@ impl StreamingAnkiService {
         &self,
         api_config: &ApiConfig,
         prompt_payload: &PromptPayload,
+        source_content: &str,
         max_tokens: u32,
         temperature: f32,
         task_id: &str,
@@ -1135,6 +1137,10 @@ impl StreamingAnkiService {
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut chunk_counter: u32 = 0;
         let mut reached_card_limit = false;
+        // VlmFull 只为包含 marker 的分段生成一个遮挡草稿。仅首张成功入库卡
+        // 消费它，避免把同一 spec 假装附着到该分段的每一张普通卡。
+        let mut pending_occlusion_fields =
+            crate::anki_image_occlusion::extract_occlusion_draft_fields(source_content);
 
         loop {
             // 同时监听取消信号与流事件
@@ -1211,10 +1217,18 @@ impl StreamingAnkiService {
                                                 document_id,
                                                 options,
                                                 qa_pass_enabled,
+                                                pending_occlusion_fields.as_ref(),
                                             )
                                             .await
                                         {
                                             Ok(Some(card)) => {
+                                                if pending_occlusion_fields.is_some()
+                                                    && card.extra_fields.contains_key(
+                                                        crate::anki_image_occlusion::OCCLUSION_FIELD,
+                                                    )
+                                                {
+                                                    pending_occlusion_fields = None;
+                                                }
                                                 stats.card_count += 1;
                                                 if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
                                                     stats.flagged_cards += 1;
@@ -1384,10 +1398,18 @@ impl StreamingAnkiService {
                                 document_id,
                                 options,
                                 qa_pass_enabled,
+                                pending_occlusion_fields.as_ref(),
                             )
                             .await
                         {
                             Ok(Some(card)) => {
+                                if pending_occlusion_fields.is_some()
+                                    && card
+                                        .extra_fields
+                                        .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD)
+                                {
+                                    pending_occlusion_fields = None;
+                                }
                                 stats.card_count += 1;
                                 if card.extra_fields.contains_key(QA_FLAGS_FIELD) {
                                     stats.flagged_cards += 1;
@@ -1650,6 +1672,7 @@ impl StreamingAnkiService {
         document_id: &str,
         options: &AnkiGenerationOptions,
         qa_pass_enabled: bool,
+        occlusion_fields: Option<&crate::anki_image_occlusion::OcclusionCardFields>,
     ) -> Result<Option<AnkiCard>, AppError> {
         // 清理JSON字符串
         let cleaned_json = self.clean_json_string(card_json);
@@ -1786,7 +1809,7 @@ impl StreamingAnkiService {
         // 清理所有字段中的模板占位符
         let cleaned_front = self.clean_template_placeholders(&front);
         let cleaned_back = self.clean_template_placeholders(&back);
-        let cleaned_tags: Vec<String> = tags
+        let mut cleaned_tags: Vec<String> = tags
             .iter()
             .map(|tag| self.clean_template_placeholders(tag))
             .filter(|tag| !tag.is_empty())
@@ -1821,6 +1844,21 @@ impl StreamingAnkiService {
             }
         }
 
+        // VlmFull 的 IMAGE_DESC 草稿只补机器字段和识别 tag，不改写模型生成的
+        // front/back/text，也不覆盖未来 grounding 路径可能直接产出的字段。
+        if let Some(fields) = occlusion_fields {
+            for (key, value) in &fields.extra_fields {
+                cleaned_extra_fields
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
+            for tag in &fields.tags {
+                if !cleaned_tags.iter().any(|existing| existing == tag) {
+                    cleaned_tags.push(tag.clone());
+                }
+            }
+        }
+
         // Round 3 #3：确定性质检 lint（零 LLM 成本，规则见 anki_qa_lint 模块文档）。
         // 默认 Flag 级别只标记不丢卡；merge_flags 保留 extract_fields_with_rules
         // 已写入 _qa_flags 的字段规则违规条目并按 (code, field) 去重。
@@ -1832,8 +1870,10 @@ impl StreamingAnkiService {
             tags: &cleaned_tags,
             extra_fields: &cleaned_extra_fields,
         };
-        let mut lint_issues =
-            crate::anki_qa_lint::lint_card(&lint_input, &crate::anki_qa_lint::LintConfig::default());
+        let mut lint_issues = crate::anki_qa_lint::lint_card(
+            &lint_input,
+            &crate::anki_qa_lint::LintConfig::default(),
+        );
         // Round 4 #3：文档级重复/近重复指纹检测。key 与 lint_card_with_tracker
         // 同语义（cloze 卡优先 Text 字段）；observe_document_card 内部吞掉所有
         // 锁异常且永不返回错误——检测失败最坏结果是少打一个 flag，
@@ -2022,9 +2062,7 @@ impl StreamingAnkiService {
                             tags = self.process_tags_field(&value, &rule.field_type)?;
                             // 标签逐项校验（allowed_values/长度约束按单个标签生效）
                             for tag in &tags {
-                                qa_flags.extend(validate_field_against_rule(
-                                    field_name, tag, rule,
-                                ));
+                                qa_flags.extend(validate_field_against_rule(field_name, tag, rule));
                             }
                         }
                         "explanation" => {
@@ -3355,7 +3393,10 @@ mod tests {
     fn clean_json_string_extracts_object_from_surrounding_noise() {
         let (svc, _dir) = make_test_service();
         let raw = "好的，以下是生成的卡片：\n{\"front\":\"Q\",\"back\":\"A\"}\n希望对你有帮助";
-        assert_eq!(svc.clean_json_string(raw), "{\"front\":\"Q\",\"back\":\"A\"}");
+        assert_eq!(
+            svc.clean_json_string(raw),
+            "{\"front\":\"Q\",\"back\":\"A\"}"
+        );
     }
 
     #[test]
@@ -3374,7 +3415,10 @@ mod tests {
     #[test]
     fn clean_json_string_falls_back_when_no_object() {
         let (svc, _dir) = make_test_service();
-        assert_eq!(svc.clean_json_string("  not json at all  "), "not json at all");
+        assert_eq!(
+            svc.clean_json_string("  not json at all  "),
+            "not json at all"
+        );
     }
 
     // -------------------- extract_fields_with_rules --------------------
@@ -3383,7 +3427,10 @@ mod tests {
     fn extract_fields_required_missing_without_default_is_validation_error() {
         let (svc, _dir) = make_test_service();
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
 
         let json_value = json!({ "front": "只有正面" });
@@ -3401,7 +3448,10 @@ mod tests {
     fn extract_fields_required_missing_uses_default_value() {
         let (svc, _dir) = make_test_service();
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert(
             "back".to_string(),
             make_rule_with_default(true, FieldType::Text, Some("默认背面")),
@@ -3419,10 +3469,19 @@ mod tests {
     fn extract_fields_happy_path_with_tags_and_extra_fields() {
         let (svc, _dir) = make_test_service();
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
-        rules.insert("tags".to_string(), make_rule(false, FieldType::Array, "标签"));
-        rules.insert("note".to_string(), make_rule(false, FieldType::Text, "备注"));
+        rules.insert(
+            "tags".to_string(),
+            make_rule(false, FieldType::Array, "标签"),
+        );
+        rules.insert(
+            "note".to_string(),
+            make_rule(false, FieldType::Text, "备注"),
+        );
 
         let json_value = json!({
             "front": "什么是惯性？",
@@ -3445,7 +3504,10 @@ mod tests {
     fn extract_fields_reads_nested_fields_object_case_insensitively() {
         let (svc, _dir) = make_test_service();
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
 
         // LLM 常见输出：字段嵌套在 fields 对象里且大小写不一致
@@ -3464,7 +3526,10 @@ mod tests {
     fn extract_fields_text_field_maps_to_cloze_front_back() {
         let (svc, _dir) = make_test_service();
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("text".to_string(), make_rule(true, FieldType::Text, "填空文本"));
+        rules.insert(
+            "text".to_string(),
+            make_rule(true, FieldType::Text, "填空文本"),
+        );
 
         let json_value = json!({ "Text": "水的沸点是{{c1::100}}摄氏度" });
         let (front, back, _tags, extra) = svc
@@ -3475,7 +3540,10 @@ mod tests {
             Some("水的沸点是{{c1::100}}摄氏度")
         );
         assert_eq!(front, "水的沸点是{{c1::100}}摄氏度");
-        assert!(back.starts_with("填空题："), "back must be non-empty: {back}");
+        assert!(
+            back.starts_with("填空题："),
+            "back must be non-empty: {back}"
+        );
     }
 
     // -------------------- clean_template_placeholders --------------------
@@ -3505,7 +3573,8 @@ mod tests {
     #[test]
     fn extract_card_standard_delimiter_splits_buffer() {
         let (svc, _dir) = make_test_service();
-        let mut buffer = String::from("{\"front\":\"Q\"}<<<ANKI_CARD_JSON_END>>>{\"front\":\"下一张");
+        let mut buffer =
+            String::from("{\"front\":\"Q\"}<<<ANKI_CARD_JSON_END>>>{\"front\":\"下一张");
         let result = svc.extract_card_from_buffer(&mut buffer);
         assert_eq!(result, Some(Ok("{\"front\":\"Q\"}".to_string())));
         assert_eq!(buffer, "{\"front\":\"下一张");
@@ -3745,7 +3814,10 @@ mod tests {
         let mut tags_rule = make_rule(false, FieldType::Array, "标签");
         tags_rule.max_length = Some(4);
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert("back".to_string(), make_rule(true, FieldType::Text, "背面"));
         rules.insert("tags".to_string(), tags_rule);
 
@@ -3775,7 +3847,10 @@ mod tests {
         let mut note_rule = make_rule(false, FieldType::Text, "备注");
         note_rule.min_length = Some(50); // 触发违规
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "正面"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "正面"),
+        );
         rules.insert("note".to_string(), note_rule);
 
         let json_value = json!({ "front": "问题", "note": "短备注" });
@@ -3809,8 +3884,7 @@ mod tests {
         let mut buffer = String::from(r#"{"front": "什么是牛顿第一"#);
         assert!(extract(&mut buffer).is_none());
         assert_eq!(
-            buffer,
-            r#"{"front": "什么是牛顿第一"#,
+            buffer, r#"{"front": "什么是牛顿第一"#,
             "半包时缓冲必须原样保留"
         );
 
@@ -4121,8 +4195,7 @@ mod tests {
         assert!(payloads[1].contains("Q2"));
 
         // 截断 wrapper（缺 ]}）→ 轻量修复后仍能展开
-        let payloads =
-            svc.expand_wrapper_payloads(r#"{"cards": [{"front": "Q1", "back": "A1"}"#);
+        let payloads = svc.expand_wrapper_payloads(r#"{"cards": [{"front": "Q1", "back": "A1"}"#);
         assert_eq!(payloads.len(), 1);
         assert!(payloads[0].contains("Q1"));
 
@@ -4189,7 +4262,10 @@ mod tests {
     fn fingerprint_options() -> AnkiGenerationOptions {
         let mut options = minimal_options();
         let mut rules = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "front"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "front"),
+        );
         rules.insert("back".to_string(), make_rule(true, FieldType::Text, "back"));
         options.field_extraction_rules = Some(rules);
         options
@@ -4225,12 +4301,15 @@ mod tests {
                 &document_id,
                 &options,
                 true,
+                None,
             )
             .await
             .expect("first card parses")
             .expect("first card saved");
         assert!(
-            !qa_flag_codes(&first).iter().any(|c| c == "duplicate_in_document"),
+            !qa_flag_codes(&first)
+                .iter()
+                .any(|c| c == "duplicate_in_document"),
             "首见 front 不得判重复"
         );
 
@@ -4243,12 +4322,15 @@ mod tests {
                 &document_id,
                 &options,
                 true,
+                None,
             )
             .await
             .expect("second card parses")
             .expect("重复只打 flag，卡片必须照常入库");
         assert!(
-            qa_flag_codes(&second).iter().any(|c| c == "duplicate_in_document"),
+            qa_flag_codes(&second)
+                .iter()
+                .any(|c| c == "duplicate_in_document"),
             "跨 segment 重复 front 必须打 duplicate_in_document: {:?}",
             second.extra_fields.get(QA_FLAGS_FIELD)
         );
@@ -4274,6 +4356,7 @@ mod tests {
             &document_id,
             &options,
             true,
+            None,
         )
         .await
         .expect("first parses")
@@ -4287,6 +4370,7 @@ mod tests {
                 &document_id,
                 &options,
                 true,
+                None,
             )
             .await
             .expect("near-duplicate parses")
@@ -4322,6 +4406,7 @@ mod tests {
             &doc_a,
             &options,
             true,
+            None,
         )
         .await
         .expect("doc a parses")
@@ -4335,6 +4420,7 @@ mod tests {
                 &doc_b,
                 &options,
                 true,
+                None,
             )
             .await
             .expect("doc b parses")
@@ -4349,5 +4435,46 @@ mod tests {
 
         crate::anki_qa_lint::release_document_tracker(&doc_a);
         crate::anki_qa_lint::release_document_tracker(&doc_b);
+    }
+
+    #[tokio::test]
+    async fn vlm_occlusion_draft_is_merged_into_extra_fields_without_rewriting_card() {
+        let (svc, _dir) = make_test_service();
+        let document_id = format!("doc-occlusion-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "occlusion-task", &document_id, 0);
+        let options = fingerprint_options();
+        let marker = crate::anki_image_occlusion::build_occlusion_draft_marker(
+            "image-source-1",
+            "[IMAGE_DESC: 输入层；隐藏层；输出层]",
+            &crate::anki_image_occlusion::OcclusionConfig::default(),
+        )
+        .expect("marker");
+        let fields = crate::anki_image_occlusion::extract_occlusion_draft_fields(&marker)
+            .expect("occlusion fields");
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"神经网络包含哪些层？","back":"输入层、隐藏层和输出层"}"#,
+                "occlusion-task",
+                &document_id,
+                &options,
+                true,
+                Some(&fields),
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        assert_eq!(card.front, "神经网络包含哪些层？");
+        assert_eq!(card.back, "输入层、隐藏层和输出层");
+        assert!(card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert!(card
+            .tags
+            .iter()
+            .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG));
+        crate::anki_qa_lint::release_document_tracker(&document_id);
     }
 }

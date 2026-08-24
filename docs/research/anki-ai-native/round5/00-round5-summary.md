@@ -54,8 +54,10 @@
   `_qa_flags` 已在预览块结构化展示（徽标 + 摘要条）。
 - FSRS 回流默认开；critic opt-in 已接流式收尾。
 - 偏好记忆：retrieve 已接（默认开），**写侧未接**（store 恒空）。
-- 图像遮挡：Rust 纯函数 + 前端 overlay 均未接线。
-- Sidekick：四角色计划已算，生成路径仅消费 Generator 槽。
+- 图像遮挡：VlmFull 直接图片已接启发式 `_occlusion` 草稿；PDF 页图、真实
+  grounding 与前端预览/编辑仍未接。
+- Sidekick：Generator 已消费；Critic 有角色调用点但当前接线不完整；
+  Planner/Vlm 仍未消费。
 
 ## 评分
 

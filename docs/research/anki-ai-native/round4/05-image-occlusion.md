@@ -2,7 +2,7 @@
 
 > 模块：`src-tauri/src/anki_image_occlusion.rs`（纯函数层，已注册 `lib.rs`）
 > 前端：`src/components/anki/utils/imageOcclusion.ts` + `ImageOcclusionOverlay.tsx`
-> 状态：已实现 + 19 个 Rust 单元测试 + 11 个 vitest 测试（闭环最小路径，未接管线）
+> 状态：纯函数/前端层已实现；Round 5 已接 VlmFull 最小草稿元数据链路
 
 ## 1. 动机与定位
 
@@ -119,37 +119,44 @@ IO note type 时无损迁移。
   （`revealedIndices`）/非受控/`revealAll` 三态。刻意不做：图片加载、
   拖拽编辑、复习调度。
 
-## 7. 与 VlmFull 衔接的下一刀
+## 7. 与 VlmFull 的当前接线
 
-当前 VlmFull 数据流：`图片 refs → VLM(prompt 要求 [IMAGE_DESC]) → 文本 →
-制卡 LLM → 普通卡`。接入遮挡的最小改造（全部在管线外围，不动路由）：
+当前最小数据流：
+`直接图片 ref → VlmFull [IMAGE_DESC] → propose_boxes_from_image_desc →
+内部草稿 marker → StreamingAnkiService → 首张成功卡 extra_fields["_occlusion"]`。
+marker 在制卡 prompt 前剥离，生成模型不可见；任一解析/校验失败都回退普通卡。
 
-1. **run 侧接线**（`chatanki_executor` 的 VlmFull 分支尾部，一个纯调用点）：
-   对每个图片 ref，把 VLM 返回文本喂 `propose_boxes_from_image_desc`，
-   非空则 `validate_spec` → `build_card_fields` → 组装一张
-   `template_id=None`、`note_type=Cloze` 的 `AnkiCard`（`images` 填图片
-   本地路径），随普通卡一起入库；校验拒绝则静默回退普通卡，违规写
-   `_qa_flags` 留痕（复用 `anki_qa_lint::merge_flags` 的协议字段风格）。
-2. **VLM grounding 升级**：给 VlmFull prompt 增加可选输出段
+当前边界必须明确：
+- 仅 VlmFull 且存在直接 `VfsResourceType::Image` 引用时启用；PDF 页面预览
+  没有稳定逐页 image_ref，暂不生成遮挡草稿。
+- 网格盒不是 grounding 坐标；只写 `_occlusion` + `image-occlusion` tag，
+  不改模型生成的 front/back/text，也不伪装成原生 Anki IO note type。
+- 每个含 marker 的分段仅首张成功入库卡消费草稿，避免复制到所有普通卡。
+- 前端 overlay 仍未接预览/编辑器，所以当前价值是持久化可回读草稿元数据，
+  不是完整可视化交互。
+
+后续可选升级（本轮未做）：
+1. **VLM grounding 升级**：给 VlmFull prompt 增加可选输出段
    `[OCCLUSION_BOXES: {imageRef, boxes:[...]}]`（JSON，归一化坐标），
    模型有坐标能力（Qwen-VL grounding / Gemini bbox）时直接产出真实盒；
    解析失败或校验不过 → 自动降级到启发式网格。`validate_spec` 已是两条
    来源的共同守门员，无需新代码。
-3. **前端接线**：`AnkiCardPreviewPanel` / 复习面板对 `isOcclusionCard`
+2. **前端接线**：`AnkiCardPreviewPanel` / 复习面板对 `isOcclusionCard`
    命中的卡，用 `ImageOcclusionOverlay` 替换纯文本 cloze 展示；
    编辑器加矩形拖拽（写回 `_occlusion` 后重过 `parseOcclusionSpec`）。
-4. **原生 IO note type 导出**（可选远期）：导出侧检测 `_occlusion` →
+3. **原生 IO note type 导出**（可选远期）：导出侧检测 `_occlusion` →
    生成 Anki 23.10 原生 Image Occlusion notetype 的 `Occlusion` 字段
    （`{{c1::image-occlusion:rect:left=…:top=…:width=…:height=…}}`），
    像素换算直接用 `to_pixel_boxes`。
 
-## 8. 测试清单（30 个）
+## 8. 测试清单（32 个）
 
-Rust（19，`cargo test --lib anki_image_occlusion`）：空盒/空引用/越界×3/
+Rust（21，`cargo test --lib anki_image_occlusion`）：空盒/空引用/越界×3/
 过小/NaN/重叠拒绝与贴边放行/超量/零序号/多违规聚合/补号补标签/同序号共存+
 截断/IoU 数值×3/像素精确换算/贴边收敛+最小 1px+零尺寸图/导出字段+JSON
 round-trip/无图+转义/破损 JSON 回读/serde camelCase 契约/启发式基础+可过
-校验+两两不相交/退化全文+去重+截断+空输入/多标记合并。
+校验+两两不相交/退化全文+去重+截断+空输入/多标记合并/草稿 marker
+到 `_occlusion` round-trip + prompt 剥离/非法草稿降级。
 
 vitest（11，`npx vitest run src/components/anki`）：解析契约/非法输入×5/
 几何过滤/补号补标签/像素换算同数据镜像/贴边+零尺寸/百分比样式/遮挡卡判定/

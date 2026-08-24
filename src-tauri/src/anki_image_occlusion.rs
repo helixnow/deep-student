@@ -1,7 +1,8 @@
 //! # AI 图像遮挡制卡（Image Occlusion，Round 4 #5）
 //!
-//! 纯函数模块：不触碰 `chatanki_executor` 管线、不调用任何 LLM、无 I/O。
-//! 提供三段式 API 供后续 run 调用方接线：
+//! 纯函数模块：不调用任何 LLM、无 I/O。VlmFull 调用点会把已有
+//! `[IMAGE_DESC: ...]` 转成草稿 marker；流式生成层消费 marker 后把
+//! `_occlusion` 写入该分段首张成功卡。这里只负责确定性变换：
 //!
 //! 1. **校验**：`validate_spec` 把外部（LLM / 前端编辑器）产出的
 //!    [`OcclusionSpec`] 收敛为 [`ValidatedOcclusionSpec`]（越界 / 过度重叠 /
@@ -41,6 +42,11 @@ pub const OCCLUSION_FIELD: &str = "_occlusion";
 
 /// 自动生成卡片附带的 tag，前端/导出侧可按此识别遮挡卡。
 pub const OCCLUSION_TAG: &str = "image-occlusion";
+
+/// VlmFull → 流式生成之间传递遮挡草稿的内部行协议。
+///
+/// marker 会在制卡 prompt 构建前被剥离，模型看不到这段机器元数据。
+pub const OCCLUSION_DRAFT_PREFIX: &str = "[ANKI_OCCLUSION_DRAFT:";
 
 /// 浮点比较容差（归一化坐标场景下 1e-6 远小于 1px）。
 const EPS: f32 = 1e-6;
@@ -504,6 +510,61 @@ pub fn propose_boxes_from_image_desc(desc: &str, max_boxes: usize) -> Vec<Occlus
     layout_grid_boxes(&labels)
 }
 
+/// 把 VLM 的 IMAGE_DESC 与图片引用封装成内部草稿 marker。
+///
+/// 这是当前最小生产接线的唯一入口：无图片引用、无有效标签或校验失败时返回
+/// `None`，调用方继续走普通卡路径。marker 只携带可编辑的启发式网格草稿，
+/// 不宣称是真实图像坐标。
+pub fn build_occlusion_draft_marker(
+    image_ref: &str,
+    image_desc: &str,
+    cfg: &OcclusionConfig,
+) -> Option<String> {
+    let boxes = propose_boxes_from_image_desc(image_desc, cfg.max_boxes);
+    if boxes.is_empty() {
+        return None;
+    }
+    let validated = validate_spec(
+        &OcclusionSpec {
+            image_ref: image_ref.to_string(),
+            boxes,
+        },
+        cfg,
+    )
+    .ok()?;
+    let json = serde_json::to_string(&validated).ok()?;
+    Some(format!("{OCCLUSION_DRAFT_PREFIX}{json}]"))
+}
+
+/// 从包含内部草稿 marker 的分段内容构建待合并的卡片字段。
+///
+/// 解析/校验失败返回 `None`，绝不阻断普通卡生成。调用方只应把返回值合并到
+/// 一张成功卡，避免同一图片草稿被复制到分段内所有卡片。
+pub fn extract_occlusion_draft_fields(content: &str) -> Option<OcclusionCardFields> {
+    let raw = content.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix(OCCLUSION_DRAFT_PREFIX)?
+            .strip_suffix(']')
+    })?;
+    let spec: OcclusionSpec = serde_json::from_str(raw).ok()?;
+    let validated = validate_spec(&spec, &OcclusionConfig::default()).ok()?;
+    Some(build_card_fields(&validated, None, None))
+}
+
+/// 从送给制卡模型的学习材料中剥离内部草稿 marker。
+///
+/// marker 只供后端字段接线使用，不应成为模型可见内容或被制成“协议卡”。
+pub fn strip_occlusion_draft_markers(content: &str) -> String {
+    content
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed.starts_with(OCCLUSION_DRAFT_PREFIX) && trimmed.ends_with(']'))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// 从文本中提取候选标签（拆条目 + 清洗 + 去重 + 截断数量）。
 fn extract_desc_labels(desc: &str, max_labels: usize) -> Vec<String> {
     let mut source_segments: Vec<String> = Vec::new();
@@ -677,8 +738,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let err = validate_spec(&make_spec(vec![b]), &OcclusionConfig::default())
-                .unwrap_err();
+            let err = validate_spec(&make_spec(vec![b]), &OcclusionConfig::default()).unwrap_err();
             assert_eq!(codes(&err), vec!["box_out_of_bounds"], "case {i}");
             assert_eq!(err[0].box_index, Some(0), "case {i}");
         }
@@ -827,8 +887,8 @@ mod tests {
         // 贴右下边 + 极小盒：四舍五入后不得越界、不得为 0
         let v = validate_spec(
             &make_spec(vec![
-                make_box(0.9, 0.9, 0.1, 0.1),      // 贴边
-                make_box(0.5, 0.5, 0.011, 0.011),  // 刚过 min_box_size，3px 图上会取整为 0
+                make_box(0.9, 0.9, 0.1, 0.1),     // 贴边
+                make_box(0.5, 0.5, 0.011, 0.011), // 刚过 min_box_size，3px 图上会取整为 0
             ]),
             &OcclusionConfig::default(),
         )
@@ -857,7 +917,10 @@ mod tests {
             fields.text,
             "<img src=\"diagram.png\"><br>{{c1::左心房}} {{c2::右心室}}"
         );
-        assert_eq!(fields.extra_fields.get("Extra").map(String::as_str), Some("心脏解剖图"));
+        assert_eq!(
+            fields.extra_fields.get("Extra").map(String::as_str),
+            Some("心脏解剖图")
+        );
         assert_eq!(fields.tags, vec![OCCLUSION_TAG.to_string()]);
 
         // _occlusion JSON 可解析回 spec（round-trip），供前端原生渲染
@@ -915,7 +978,10 @@ mod tests {
         let desc = "## 图 1\n[IMAGE_DESC: 心脏血流：右心房 → 右心室；肺动脉；左心房、左心室]";
         let boxes = propose_boxes_from_image_desc(desc, 12);
         let labels: Vec<&str> = boxes.iter().map(|b| b.label.as_str()).collect();
-        assert_eq!(labels, vec!["心脏血流", "右心房", "右心室", "肺动脉", "左心房", "左心室"]);
+        assert_eq!(
+            labels,
+            vec!["心脏血流", "右心房", "右心室", "肺动脉", "左心房", "左心室"]
+        );
         // 直接可过校验（盒互不相交、全部在界内、序号顺延）
         let spec = OcclusionSpec {
             image_ref: "img.png".to_string(),
@@ -957,5 +1023,45 @@ mod tests {
             assert!(b.x >= 0.0 && b.x + b.w <= 1.0 + 1e-6);
             assert!(b.y >= 0.0 && b.y + b.h <= 1.0 + 1e-6);
         }
+    }
+
+    #[test]
+    fn test_vlm_draft_marker_round_trip_to_extra_fields_and_strip() {
+        let desc = "## 图 1\n[IMAGE_DESC: 输入层；隐藏层；输出层]";
+        let marker =
+            build_occlusion_draft_marker("image-source-1", desc, &OcclusionConfig::default())
+                .expect("有效 IMAGE_DESC 应生成草稿 marker");
+        let content = format!("视觉正文\n{marker}\n后续正文");
+
+        let fields =
+            extract_occlusion_draft_fields(&content).expect("marker 应转成卡片 extra_fields");
+        assert!(fields.extra_fields.contains_key(OCCLUSION_FIELD));
+        assert_eq!(fields.tags, vec![OCCLUSION_TAG.to_string()]);
+        let parsed =
+            parse_occlusion_field(&fields.extra_fields).expect("_occlusion 应可回读为 spec");
+        assert_eq!(parsed.image_ref, "image-source-1");
+        assert_eq!(parsed.boxes.len(), 3);
+
+        let stripped = strip_occlusion_draft_markers(&content);
+        assert_eq!(stripped, "视觉正文\n后续正文");
+        assert!(!stripped.contains(OCCLUSION_DRAFT_PREFIX));
+    }
+
+    #[test]
+    fn test_vlm_draft_marker_invalid_inputs_degrade_to_none() {
+        assert!(build_occlusion_draft_marker(
+            "",
+            "[IMAGE_DESC: 输入层；输出层]",
+            &OcclusionConfig::default()
+        )
+        .is_none());
+        assert!(
+            build_occlusion_draft_marker("image-source-1", "", &OcclusionConfig::default())
+                .is_none()
+        );
+        assert!(extract_occlusion_draft_fields(
+            "[ANKI_OCCLUSION_DRAFT:{\"imageRef\":\"x\",\"boxes\":[]}]"
+        )
+        .is_none());
     }
 }

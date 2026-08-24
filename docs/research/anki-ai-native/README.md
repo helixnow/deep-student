@@ -56,7 +56,7 @@
 | 启发式路由/分段 | `decide_route` 硬编码 | ✅ 启发式降级为回退路径；brace-depth 切卡器替换分隔符依赖 |
 | 复习数据回流 | 无 | ✅ FSRS 画像 + 语义干扰预警 + 拆卡建议默认注入（可关） |
 | 用户偏好记忆 | 无 | ⚠️ retrieve 已接 run/start（默认开）；**写入侧（extract/consolidate 持久化）未接**，store 恒空 |
-| 图像遮挡制卡 | 无 | ⚠️ 纯函数层 + 前端 overlay 已备好，**未接 VLM 管线与预览块** |
+| 图像遮挡制卡 | 无 | ⚠️ VlmFull 直接图片已接启发式 `_occlusion` 草稿；PDF 页图与预览/编辑仍未接，非真实 grounding |
 
 Grounded critic 仍有一个数据可用性限制：生成路径尚未稳定写入
 `_original_generation` 原始快照，因此很多现有文档没有可挖掘的修正对，会按设计回退到规则 rubric。

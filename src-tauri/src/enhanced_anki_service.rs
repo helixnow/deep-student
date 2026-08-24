@@ -579,6 +579,8 @@ impl EnhancedAnkiService {
                         DOCUMENT_STATES.remove(&document_id);
                     }
                 }
+                // resume 已终止且不会再有调度协程负责收尾，释放懒创建的指纹状态。
+                crate::anki_qa_lint::release_document_tracker(&document_id);
             })?
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Paused | TaskStatus::Pending))
@@ -594,6 +596,9 @@ impl EnhancedAnkiService {
                     DOCUMENT_STATES.remove(&document_id);
                 }
             }
+            // 无剩余任务也属于完成终态；此前只发事件未释放，长期 resume 空会话
+            // 会让 document registry 按 document_id 无界增长。
+            crate::anki_qa_lint::release_document_tracker(&document_id);
             // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
             let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
                 document_id: document_id.clone(),
@@ -646,6 +651,8 @@ impl EnhancedAnkiService {
             return Err(AppError::validation("任务正在处理中，请勿重复触发"));
         }
 
+        let document_id_for_cleanup = task.document_id.clone();
+        let db_for_cleanup = self.db.clone();
         let streaming_service = Arc::new(self.streaming_service.clone());
         let window_clone = window.clone();
 
@@ -669,6 +676,26 @@ impl EnhancedAnkiService {
             let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
             if let Some(handle) = owned_handle_opt {
                 let _ = handle.await;
+            }
+            // 手动单任务重试不经过 process_all_tasks_async 的文档收尾。仅当该文档
+            // 没有调度状态且所有任务均已终态时释放；仍有 Pending/Paused/运行任务
+            // 则保留跨任务去重状态。
+            let all_tasks_terminal = db_for_cleanup
+                .get_tasks_for_document(&document_id_for_cleanup)
+                .map(|tasks| {
+                    tasks.iter().all(|task| {
+                        !matches!(
+                            task.status,
+                            TaskStatus::Pending
+                                | TaskStatus::Processing
+                                | TaskStatus::Streaming
+                                | TaskStatus::Paused
+                        )
+                    })
+                })
+                .unwrap_or(false);
+            if all_tasks_terminal && !DOCUMENT_STATES.contains_key(&document_id_for_cleanup) {
+                crate::anki_qa_lint::release_document_tracker(&document_id_for_cleanup);
             }
         });
 

@@ -23,8 +23,8 @@
 | 复习数据回流 | ✅ `anki_fsrs_feedback.rs` | ✅ 默认注入（画像/干扰/拆卡） | 无 |
 | 用户偏好记忆 | ✅ `anki_preference_memory.rs` 纯逻辑 | ⚠️ retrieve 已接；**写入侧未接，store 恒空** | **中** |
 | Multi-agent 专业化 | ✅ 档案 + Phase 2 只读白名单 | ✅ card-coordinator 五阶段编排 | **低**（豁免测试补全中） |
-| 成本/模型分层 | ✅ `anki_model_routing.rs` 四角色计划 | ⚠️ 仅 Generator 槽消费 | **中** |
-| 图像遮挡制卡 | ✅ 纯函数 + overlay 组件 | ❌ 未接 VLM 管线与预览块 | **中** |
+| 成本/模型分层 | ✅ `anki_model_routing.rs` 四角色计划 | ⚠️ Generator 已接；Critic 调用点不完整；Planner/Vlm 未接 | **中** |
+| 图像遮挡制卡 | ✅ 纯函数 + overlay 组件 | ⚠️ VlmFull 直接图片仅接启发式草稿；grounding/预览未接 | **中** |
 | LLM 分段定界 | ⚠️ brace-depth 切卡器（确定性） | ✅ 不再依赖模型配合分隔符 | 低 |
 
 ## 架构分层评分（Round 5 复核）
@@ -43,8 +43,8 @@ Script-native    █████████░  9/10  — ops + 沙箱 script �
 
 评分说明：script-native、Structured Output、LLM 路由、质检、FSRS 回流、参数面
 六大主线已从"无/硬编码"推进为生产能力，是上调主因。未到 9 的原因：
-偏好记忆写入侧未接（个性化闭环断在写侧）、遮挡卡未接线（多模态制卡缺口）、
-critic 未 grounded（质检上限）、Sidekick 未真正分槽（成本分层名不副实）。
+偏好记忆写入侧未接（个性化闭环断在写侧）、遮挡卡只有启发式元数据草稿
+（grounding/预览缺口）、critic grounded 数据仍有限、Sidekick 未完整分槽。
 
 ## 与 SOTA 对标（更新）
 
@@ -57,8 +57,8 @@ critic 未 grounded（质检上限）、Sidekick 未真正分槽（成本分层�
 | 生成内质检 | ◐ 确定性 lint + opt-in critic | Grounded judge (Memory Machines) | **低→中**（金标对未接 critic） |
 | 复习数据回流 | ● FSRS-aware 生成默认开 | FSRS-aware 生成 | — |
 | 用户偏好记忆 | ◐ retrieve 接线、extract 未持久化 | Mem0 extract→retrieve 闭环 | **中** |
-| 成本/模型分层 | ◐ 四角色计划仅 Generator 消费 | Frontier 决策 + sidekick 执行 | **中** |
-| 图像遮挡制卡 | ◐ 数据模型/校验/渲染就绪未接线 | VLM grounding 自动画框 | **中** |
+| 成本/模型分层 | ◐ Generator 已接，Critic 调用点不完整，Planner/Vlm 未消费 | Frontier 决策 + sidekick 执行 | **中** |
+| 图像遮挡制卡 | ◐ VlmFull 直接图片有启发式草稿，grounding/预览未接 | VLM grounding 自动画框 | **中** |
 | CardForge vs 生产 | ● 已统一（死链路清理完成） | 统一路径 | — |
 
 ## 剩余 P0/P1 缺口清单（Round 5 收口目标）
