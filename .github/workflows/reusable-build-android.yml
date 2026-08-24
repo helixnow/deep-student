@@ -11,6 +11,10 @@
 # 要等 2 小时编译完成才在 Sign APK 步骤炸出来）。本 job 失败不阻塞桌面
 # 发布（release.yml 的既有产品策略），但发布清单会诚实标记 Android 状态,
 # 不会产出错误的更新元数据。
+#
+# WI-6 (R3)：Android 构建 mobile-slim feature 集（非桌面 default 集），
+# release profile 收紧为 opt-level=z / codegen-units=16。详见 Build Android
+# APK 步骤与 job env 的注释。
 
 name: Build Android (reusable)
 
@@ -26,7 +30,7 @@ on:
         required: true
         type: string
       lean_recovery:
-        description: '仅限明确授权的恢复构建：禁用可选 S3 并使用快速 release profile'
+        description: '仅限明确授权的恢复构建：使用快速 release profile（opt-level=0 / cgu=256）；feature 集与正常构建一致（mobile-slim）'
         required: false
         default: false
         type: boolean
@@ -48,10 +52,14 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
       CARGO_PROFILE_RELEASE_LTO: 'false'
-      # v0.9.43 recovery uses a faster profile after repeated hosted-runner
-      # reclamations. Normal callers retain the previous release settings.
-      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || '1' }}
-      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '128' }}
+      # WI-6 (R3): 正常发布收紧为 opt-level=z + codegen-units=16 —— .so 体积
+      # 直接决定低内存设备启动时 dlopen/重定位压力（见 Sign APK 的 250MB 守卫）。
+      # 编译时间可控的依据：同轮切换的 mobile-slim 裁掉了 lance/arrow、aws-sdk、
+      # tiktoken 等最重的依赖树，省下的编译时间远大于更紧 profile 的开销。
+      # lean_recovery（v0.9.43 托管 runner 反复被回收后的应急路径）保留
+      # opt-level=0 / cgu=256 快速 profile。
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.lean_recovery && '0' || 'z' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.lean_recovery && '256' || '16' }}
       CARGO_PROFILE_RELEASE_DEBUG: '0'
     steps:
       # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
@@ -161,7 +169,9 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
-          shared-key: release-android-aarch64
+          # key 随 mobile-slim 切换更名：旧缓存里数百 MB 的 lance/arrow/aws
+          # 编译产物在新 feature 集下永远不会命中，只会拖慢恢复与保存。
+          shared-key: release-android-aarch64-mobile-slim
           cache-on-failure: true
 
       - name: Install dependencies
@@ -324,13 +334,15 @@ jobs:
           # only signs and publishes the APK, while the redundant AAB task
           # invokes the Rust Android build again and keeps hosted runners alive
           # long enough to be reclaimed during the final link.
-          if [[ "${{ inputs.lean_recovery }}" == "true" ]]; then
-            timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features android-release
-          else
-            timeout --signal=TERM --kill-after=60s 120m \
-              npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked
-          fi
+          #
+          # WI-6 (R3): Android 统一构建 mobile-slim feature 集（R2 已修复其编译
+          # 门控，见 progress/R2-WI-6-mobile-slim.md）——相对 default 裁掉
+          # lance / mcp / tokenizer_tiktoken / cloud_storage_s3 这些桌面向、
+          # 编译负担最重的依赖树。lean_recovery 不再切换 feature 集
+          # （此前为 android-release）：应急重建只该改 cargo profile（见 job env），
+          # 不该静默产出功能集不同的 APK。
+          timeout --signal=TERM --kill-after=60s 120m \
+            npx tauri android build --target aarch64 --apk --ci "${CONFIG_ARGS[@]}" -- --locked --no-default-features --features mobile-slim
           status=$?
           set -e
 
