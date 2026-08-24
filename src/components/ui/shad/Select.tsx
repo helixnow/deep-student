@@ -35,7 +35,8 @@ const SelectTrigger = React.forwardRef<
     className={cn(
       inputShellClass,
       // Select 触发器独有：inline-flex + 触达高度 + chevron 间距
-      'inline-flex w-full min-h-[var(--touch-target-size)] lg:min-h-[var(--button-height)]',
+      // 触屏（pointer:coarse，如 iPad 横屏命中 lg）始终保持 44px 触达高度
+      'inline-flex w-full min-h-[var(--touch-target-size)] lg:min-h-[var(--button-height)] [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]',
       'items-center justify-between gap-2',
       '[&>span]:line-clamp-1 [&>span]:text-left',
       // Radix 开启时提示（可选视觉）
