@@ -315,7 +315,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                     {/* 区域详情（可折叠） */}
                     {result.regions.length > 0 && result.regions.some(r => r.bbox) && (
                       <details className="mt-2">
-                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:inline-flex [@media(pointer:coarse)]:items-center">
                           {t('settings:ocr.view_regions')} {result.regions.filter(r => r.bbox).length} {t('settings:ocr.regions_count')}
                         </summary>
                         <CustomScrollArea className="mt-2 h-40" viewportClassName="pr-1">
