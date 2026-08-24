@@ -62,6 +62,31 @@ describe('apiCapabilityEngine vision inference', () => {
     expect(caps.functionCalling).toBe(true);
     expect(caps.reasoning).toBe(true);
     expect(caps.contextWindow).toBe(32768);
+    expect(caps.contextWindowSource).toBe('registry');
+  });
+
+  it('reports context window source for registry hits, rule hits and defaults', () => {
+    const qwen = inferApiCapabilities({ id: 'qwen3.5-32b', providerScope: 'siliconflow' });
+    expect(qwen.contextWindow).toBe(32_768);
+    expect(qwen.contextWindowSource).toBe('registry');
+
+    const glm = inferApiCapabilities({ id: 'glm-4.5v' });
+    expect(glm.contextWindow).toBe(64_000);
+    expect(glm.contextWindowSource).toBe('registry');
+
+    // claude-fable-5 在注册表中有确认记录（max_context_tokens=1M），注册表优先于规则
+    const registryHit = inferApiCapabilities({ id: 'claude-fable-5' });
+    expect(registryHit.contextWindow).toBe(1_000_000);
+    expect(registryHit.contextWindowSource).toBe('registry');
+
+    // codestral 不在注册表中，仅由 CONTEXT_WINDOW_RULES 命中
+    const ruleHit = inferApiCapabilities({ id: 'codestral-2508' });
+    expect(ruleHit.contextWindow).toBe(256_000);
+    expect(ruleHit.contextWindowSource).toBe('rule');
+
+    const miss = inferApiCapabilities({ id: 'mystery-model-x' });
+    expect(miss.contextWindow).toBe(100_000);
+    expect(miss.contextWindowSource).toBe('default');
   });
 
   it('keeps generic open-source Qwen3.5 records when provider scope is absent', () => {
