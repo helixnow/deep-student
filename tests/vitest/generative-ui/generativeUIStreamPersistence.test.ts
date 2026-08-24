@@ -195,6 +195,38 @@ describe('generativeUIStreamRegistry persistKey restore', () => {
     expect(afterReload.intent?.blocks[0]?.props?.body).toBe('stable');
   });
 
+  it('hydrates persisted last-good when persistence is bound to an existing entry', () => {
+    const storage = createMemoryStreamPersistStorage();
+    const blockId = 'blk-late-persist';
+    const persistKey = persistKeyFor(blockId);
+    writePersistedLastGoodIntent(persistKey, INTENT, storage);
+
+    appendGenerativeUIStreamContent(blockId, '{ bad');
+    const restored = appendGenerativeUIStreamContent(blockId, '{ bad', {
+      persistKey,
+      storage,
+    });
+
+    expect(restored.intent?.blocks[0]?.props?.body).toBe('held');
+    expect(finalizeGenerativeUIStream(blockId, { persistKey, storage })?.blocks[0]?.props?.body).toBe(
+      'held',
+    );
+    expect(readPersistedLastGoodIntent(persistKey, storage)?.blocks[0]?.props?.body).toBe('held');
+  });
+
+  it('hydrates persisted last-good when finalize supplies persistence late', () => {
+    const storage = createMemoryStreamPersistStorage();
+    const blockId = 'blk-late-finalize';
+    const persistKey = persistKeyFor(blockId);
+    writePersistedLastGoodIntent(persistKey, INTENT, storage);
+
+    appendGenerativeUIStreamContent(blockId, '{ bad');
+    const finalized = finalizeGenerativeUIStream(blockId, { persistKey, storage });
+
+    expect(finalized?.blocks[0]?.props?.body).toBe('held');
+    expect(readPersistedLastGoodIntent(persistKey, storage)?.blocks[0]?.props?.body).toBe('held');
+  });
+
   it('keeps finalized lastGood on persist so refresh can recover', () => {
     const storage = createMemoryStreamPersistStorage();
     const blockId = 'blk-finalize-persist';

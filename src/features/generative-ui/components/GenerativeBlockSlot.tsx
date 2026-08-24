@@ -1,6 +1,6 @@
 /**
  * 单块槽位：grid span + 错误边界 + data-block-type / data-generative-block。
- * React.memo 只比较 type / props / span / blockId（及决定 span class 的 layoutMode）。
+ * React.memo 比较块内容与影响 children 的外部 renderContext。
  * `data-generative-block="<type>"` 是 18 种块的稳定选择器（未知/校验失败块同样挂上）。
  */
 import React from 'react';
@@ -14,6 +14,8 @@ export interface GenerativeBlockSlotProps {
   span?: GenerativeLayoutUnit;
   layoutMode: GenerativeLayoutMode;
   blockId?: string;
+  /** 非块 props 的外部渲染依赖（例如 ActionBar handler 注册表）。 */
+  renderContext?: unknown;
   children: React.ReactNode;
 }
 
@@ -33,7 +35,7 @@ function shallowEqualProps(
   return true;
 }
 
-/** 供测试与 memo 共用：type + props + span + blockId（layoutMode 影响 span class） */
+/** 供测试与 memo 共用；children 本身由块内容与 renderContext 决定。 */
 export function areGenerativeBlockSlotPropsEqual(
   prev: GenerativeBlockSlotProps,
   next: GenerativeBlockSlotProps,
@@ -43,6 +45,7 @@ export function areGenerativeBlockSlotPropsEqual(
     prev.span === next.span &&
     prev.layoutMode === next.layoutMode &&
     prev.blockId === next.blockId &&
+    Object.is(prev.renderContext, next.renderContext) &&
     shallowEqualProps(prev.props, next.props)
   );
 }

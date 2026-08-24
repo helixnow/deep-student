@@ -73,6 +73,15 @@ function applyActionGuards(
   return next;
 }
 
+/** Own-property lookup so prototype keys cannot impersonate a registered action. */
+export function lookupGenerativeActionHandler(
+  actionHandlers: Record<string, GenerativeActionDefinition> | undefined,
+  actionId: string,
+): GenerativeActionDefinition | undefined {
+  if (!actionHandlers || !Object.hasOwn(actionHandlers, actionId)) return undefined;
+  return actionHandlers[actionId];
+}
+
 /** 最小侵入：为 handler 表统一套上 rate-limit / timeout / telemetry，不改各 createXxxHandlers 签名 */
 export function withGenerativeActionInstrumentation(
   handlers: Record<string, GenerativeActionDefinition>,
@@ -81,8 +90,9 @@ export function withGenerativeActionInstrumentation(
   const fingerprint = resolveInstrumentationFingerprint(options);
   const extras = fingerprint ? { fingerprint } : undefined;
   const sink = composeInstrumentationSink(options?.sink);
-  const instrumented: Record<string, GenerativeActionDefinition> = {};
+  const instrumented: Record<string, GenerativeActionDefinition> = Object.create(null);
   for (const [id, def] of Object.entries(handlers)) {
+    if (!Object.hasOwn(handlers, id)) continue;
     instrumented[id] = wrapActionWithTelemetry(applyActionGuards(def, options), sink, extras);
   }
   return instrumented;

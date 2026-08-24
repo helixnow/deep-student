@@ -43,6 +43,7 @@ import {
   getLastGoodGenerativeUIIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
 import { useGenerativeUIStream } from '@/features/generative-ui/hooks/useGenerativeUIStream';
+import { MAX_GENERATIVE_UI_STREAM_CHARS } from '@/features/generative-ui/utils/streamBufferGuard';
 import '@/features/generative-ui/blocks';
 
 const TRUNCATED =
@@ -64,6 +65,24 @@ describe('stream fallback recovery — renderer', () => {
   it('still shows a parse error when not streaming', () => {
     render(<GenerativeUIRenderer intent="{ bad json" showChrome={false} />);
     expect(screen.getByText('无法解析 AI 界面意图')).toBeInTheDocument();
+  });
+
+  it('does not parse or render a valid streaming string over the buffer cap', () => {
+    const oversized = JSON.stringify({
+      version: '1',
+      blocks: [
+        {
+          type: 'text',
+          props: { body: 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS) },
+        },
+      ],
+    });
+    const { container } = render(
+      <GenerativeUIRenderer intent={oversized} isStreaming showChrome={false} />,
+    );
+
+    expect(container.querySelector('[data-generative-ui]')).toHaveAttribute('data-streaming');
+    expect(container.querySelector('[data-generative-block]')).toBeNull();
   });
 
   it('marks invalid block props with a warning alert and data-block-invalid', () => {

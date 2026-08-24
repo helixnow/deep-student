@@ -38,4 +38,25 @@ describe('generative-ui parser block-level', () => {
     const snap = parser.appendChunk(',{"type":""},{"type":"stat-card","props":{"title":"T","value":1}}]');
     expect(snap.intent?.blocks.map((b) => b.type)).toEqual(['text', 'stat-card']);
   });
+
+  it('does not treat a meta title of "blocks" as the blocks array', () => {
+    const partial =
+      '{"version":"1","meta":{"title":"blocks","description":"[preview]"},"blocks":[{"type":"text","props":{"body":"keep"}}';
+    expect(extractClosedBlockObjectSlices(partial)).toHaveLength(1);
+    expect(tryParsePartialIntent(partial)?.blocks.map((block) => block.props?.body)).toEqual([
+      'keep',
+    ]);
+  });
+
+  it('does not replay recovered no-id blocks after a malformed tail arrives', () => {
+    const parser = new GenerativeUIStreamParser();
+    const recovered = parser.appendChunk(
+      '{"version":"1","blocks":[{"type":"text","props":{"body":"first"}},{"type":""},{"type":"text","props":{"body":"third"}}]}',
+    );
+    expect(recovered.intent?.blocks.map((block) => block.props?.body)).toEqual(['first', 'third']);
+
+    const afterTail = parser.appendChunk(' trailing-garbage');
+    expect(afterTail.intent?.blocks.map((block) => block.props?.body)).toEqual(['first', 'third']);
+    expect(afterTail.committedBlockCount).toBe(2);
+  });
 });

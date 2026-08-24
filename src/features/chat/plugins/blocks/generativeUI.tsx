@@ -107,13 +107,25 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
         exportPlan: t('research.actions.export_plan'),
         exportIntent: t('research.actions.export_intent'),
       },
+      copyIntentLabels: {
+        copyIntent: t('action.copy_intent'),
+      },
+      copyBlockLabels: {
+        copyBlock: t('action.copy_block'),
+      },
+      workbenchLabels: {
+        startReview: t('workbench.briefing.start_review'),
+        openQbank: t('workbench.briefing.open_qbank'),
+        exportPlan: t('research.actions.export_plan'),
+        openTaskDashboard: t('workbench.dashboard.open_task_dashboard'),
+      },
     });
   }, [block.id, block.toolInput, block.toolOutput, canvasNoteId, extracted, store, t]);
 
   if (!extracted) {
     return (
       <div className="text-sm text-muted-foreground px-1" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
-        无 UI 意图数据
+        {t('panel.no_intent')}
       </div>
     );
   }
@@ -122,6 +134,7 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     <div className="space-y-3" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
       {shouldBridgeHpias && (
         <HpiasGenerativeResearchPanel
+          sessionId={researchSessionId}
           showChrome={!isStreaming}
           question={researchQuestion}
         />

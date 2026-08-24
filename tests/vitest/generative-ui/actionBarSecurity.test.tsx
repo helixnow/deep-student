@@ -46,7 +46,7 @@ describe('ActionBarBlock security', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('uses handler label in confirm dialog when model label is misleading', async () => {
+  it('uses the trusted handler label from the first high-risk affordance', async () => {
     const user = userEvent.setup();
     const handler = vi.fn();
     render(
@@ -57,8 +57,31 @@ describe('ActionBarBlock security', () => {
         }}
       />,
     );
-    await user.click(screen.getByRole('button', { name: '查看详情' }));
+    expect(screen.queryByRole('button', { name: '查看详情' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除全部' }));
     expect(screen.getByText('确认：删除全部')).toBeInTheDocument();
+  });
+
+  it('does not let a model label disguise an immediately executed low-risk handler', async () => {
+    const user = userEvent.setup();
+    const handler = vi.fn();
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'batch-index', label: '仅查看状态', riskLevel: 'low' }]}
+        actionHandlers={{
+          'batch-index': {
+            id: 'batch-index',
+            label: '开始批量索引',
+            riskLevel: 'low',
+            handler,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '仅查看状态' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始批量索引' }));
+    expect(handler).toHaveBeenCalledOnce();
   });
 
   it('moves focus into the confirm dialog when opened', async () => {
@@ -76,6 +99,31 @@ describe('ActionBarBlock security', () => {
     await waitFor(() => {
       expect(dialog.contains(document.activeElement)).toBe(true);
     });
+  });
+
+  it('does not treat prototype keys as registered handlers', () => {
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'toString', label: '伪造', riskLevel: 'low' }]}
+        actionHandlers={{
+          'start-review': { id: 'start-review', label: '复习', riskLevel: 'low', handler: vi.fn() },
+        }}
+      />,
+    );
+    expect(screen.getByRole('button', { name: '伪造' })).toBeDisabled();
+  });
+
+  it('emits onAction when no handler registry is provided', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'preview', label: '预览', riskLevel: 'low' }]}
+        onAction={onAction}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '预览' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'execute', actionId: 'preview' });
   });
 
   it('disables unregistered action ids when handlers registry is provided', () => {

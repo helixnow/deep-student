@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Wrap-up（2026-08-24）— 收尾审查与修复
+
+CI `32704302688` 仍 queued，**本轮不 push**。早期并行 `cursor/*` 分支的独立功能已由主线 refined 实现覆盖，**不再 merge 旧 tip**（避免回退）。
+
+1. [x] ActionBar 展示 trusted handler label，阻断模型伪装
+2. [x] Prompt / skill / Rust `maxBlocks` 对齐 32
+3. [x] 流式 256k cap、同长内容替换、无 id 恢复切片、last-good persist
+4. [x] skip-link `useId`、Chrome 流式回落不卸载、ActionBar live 重复播报
+5. [x] Style Lab 取消过期 timer；showcase `demo-action` 注册
+6. [x] URL 消毒改为 scheme allowlist，拦截空白/控制字符混淆与 SVG data
+7. [x] parser 不再把 meta 字符串 `"blocks"` 当成 blocks 数组
+8. [x] handler 查找 `Object.hasOwn`；无 registry 时仍派发 `onAction`
+9. [x] 宿主 handler 标签可 i18n；Chat 转发 `researchSessionId` / copy 标签
+10. [x] leftover 分支覆盖确认 + 本地门禁
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 49（2026-08-24）— 10 子代理：快照 diff / 流式 / HPIAS
 
 CI `32704302688` 仍 queued，**本轮不 push**。

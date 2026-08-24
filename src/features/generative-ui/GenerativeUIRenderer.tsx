@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
 import {
+  generativeUIIntentSchema,
   MAX_GENERATIVE_UI_BLOCKS,
   parseGenerativeUIIntent,
   parseGenerativeUIIntentRecovered,
@@ -19,6 +20,10 @@ import { coercePartialIntent } from './utils/coercePartialIntent';
 import { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
+import {
+  STREAM_BUFFER_CAPPED_WARNING,
+  isStreamBufferOverCap,
+} from './utils/streamBufferGuard';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
 import {
   GENERATIVE_UI_COMPACT_CLASS,
@@ -91,6 +96,7 @@ function resolveDisplayIntent(
   parseError: string[] | null;
   truncatedCount?: number;
   streamFallback: boolean;
+  snapshotEligible: boolean;
 } {
   const extra = incomingWarnings;
   const explicitCount = positiveCount(truncatedCount);
@@ -107,6 +113,19 @@ function resolveDisplayIntent(
       parseError: null,
       truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
       streamFallback: false,
+      snapshotEligible:
+        !isStreaming && generativeUIIntentSchema.safeParse(capped.intent).success,
+    };
+  }
+
+  if (isStreaming && isStreamBufferOverCap(input.length)) {
+    return {
+      intent: null,
+      warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
+      parseError: null,
+      truncatedCount: explicitCount,
+      streamFallback: true,
+      snapshotEligible: false,
     };
   }
 
@@ -123,6 +142,7 @@ function resolveDisplayIntent(
       parseError: null,
       truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
       streamFallback: false,
+      snapshotEligible: !isStreaming,
     };
   }
 
@@ -147,6 +167,7 @@ function resolveDisplayIntent(
       parseError: null,
       truncatedCount: explicitCount ?? recoveredOverflow,
       streamFallback: false,
+      snapshotEligible: false,
     };
   }
 
@@ -165,6 +186,7 @@ function resolveDisplayIntent(
         parseError: null,
         truncatedCount: explicitCount ?? (capped.overflowCount > 0 ? capped.overflowCount : undefined),
         streamFallback: true,
+        snapshotEligible: false,
       };
     }
   }
@@ -175,6 +197,7 @@ function resolveDisplayIntent(
     parseError: isGenerativeUIParseFailure(parsed) ? parsed.errors : [],
     truncatedCount: explicitCount,
     streamFallback: false,
+    snapshotEligible: false,
   };
 }
 
@@ -200,9 +223,15 @@ export function GenerativeUIRenderer({
   const compact = useGenerativeUICompact();
   const reducedMotion = usePrefersReducedMotion();
   const contrast = usePrefersContrast();
+  const rendererId = useId();
+  const actionsTargetId = `generative-ui-actions-${rendererId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const resolved = useMemo(
     () => resolveDisplayIntent(intentInput, incomingWarnings, incomingTruncatedCount, isStreaming),
     [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming],
+  );
+  const actionBarRenderContext = useMemo(
+    () => ({ actionHandlers, onAction }),
+    [actionHandlers, onAction],
   );
 
   const displayIntent = resolved.intent;
@@ -221,9 +250,9 @@ export function GenerativeUIRenderer({
   );
 
   useEffect(() => {
-    if (!displayIntent) return;
+    if (!displayIntent || !resolved.snapshotEligible) return;
     pushDefaultGenerativeUIIntentSnapshot(displayIntent);
-  }, [displayIntent]);
+  }, [displayIntent, resolved.snapshotEligible]);
 
   if (!displayIntent) {
     if (isStreaming) {
@@ -240,7 +269,9 @@ export function GenerativeUIRenderer({
           aria-label={t('a11y.region_label')}
           aria-busy
         >
-          {showChrome ? <GenerativeUIChrome isStreaming onAction={onAction} /> : null}
+          {showChrome ? (
+            <GenerativeUIChrome key="generative-ui-chrome" isStreaming onAction={onAction} />
+          ) : null}
         </div>
       );
     }
@@ -276,11 +307,19 @@ export function GenerativeUIRenderer({
       aria-label={t('a11y.region_label')}
       aria-busy={isStreaming || undefined}
     >
-      <a href="#generative-ui-actions" className="sr-only focus:not-sr-only" data-skip-to-actions>
+      <a
+        href={`#${actionsTargetId}`}
+        className="sr-only focus:not-sr-only"
+        data-skip-to-actions
+      >
         {t('a11y.skip_to_actions')}
       </a>
       {showChrome ? (
-        <GenerativeUIChrome isStreaming={isStreaming} onAction={onAction} />
+        <GenerativeUIChrome
+          key="generative-ui-chrome"
+          isStreaming={isStreaming}
+          onAction={onAction}
+        />
       ) : null}
 
       {displayIntent.meta?.title ? (
@@ -293,7 +332,8 @@ export function GenerativeUIRenderer({
       ) : null}
 
       <div
-        id="generative-ui-actions"
+        id={actionsTargetId}
+        tabIndex={-1}
         className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
         data-layout-columns={columns}
@@ -307,6 +347,7 @@ export function GenerativeUIRenderer({
               span={block.span}
               layoutMode={mode}
               blockId={block.id}
+              renderContext={block.type === 'action-bar' ? actionBarRenderContext : undefined}
             >
               {node}
             </GenerativeBlockSlot>

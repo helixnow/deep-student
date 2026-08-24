@@ -3,4 +3,7 @@
  * 后续可在此扩展 enterFolder / openResource 等 Hub 专属 action。
  */
 
-export { workbenchLearningHandlers as learningHubActionHandlers } from './workbenchLearningHandlers';
+export {
+  createWorkbenchLearningHandlers as createLearningHubActionHandlers,
+  workbenchLearningHandlers as learningHubActionHandlers,
+} from './workbenchLearningHandlers';

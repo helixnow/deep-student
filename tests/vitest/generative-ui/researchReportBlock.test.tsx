@@ -45,8 +45,11 @@ describe('research-report block E2E', () => {
 
     render(<GenerativeUIRenderer intent={intent} showChrome={false} />);
 
-    expect(document.querySelector('[data-generative-research-report]')).toBeTruthy();
-    expect(document.querySelector('[data-generative-research-report]')?.getAttribute('data-citation-count')).toBe('2');
+    const report = document.querySelector('[data-generative-research-report]');
+    expect(report).toBeTruthy();
+    expect(report?.getAttribute('data-citation-count')).toBe('2');
+    expect(report?.querySelector('h4')).toHaveAttribute('dir', 'auto');
+    expect(report?.children.item(1)).toHaveAttribute('dir', 'auto');
     expect(screen.getByText('[paper-1]')).toBeInTheDocument();
     expect(screen.getByText('[web-3]')).toBeInTheDocument();
     expect(screen.getByText('引用数')).toBeInTheDocument();

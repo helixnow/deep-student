@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/features/generative-ui/handlers/workbenchLearningHandlers', () => ({
   workbenchLearningHandlers: {},
+  createWorkbenchLearningHandlers: () => ({}),
 }));
 
 vi.mock('@/features/workbench/apps/system/flashcardsDueSource', () => ({

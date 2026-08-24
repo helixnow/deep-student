@@ -54,7 +54,11 @@ export {
   usePrefersContrast,
   PREFERS_CONTRAST_QUERY,
 } from './hooks/usePrefersContrast';
-export { resolveEffectiveRiskLevel, withGenerativeActionInstrumentation } from './actions';
+export {
+  lookupGenerativeActionHandler,
+  resolveEffectiveRiskLevel,
+  withGenerativeActionInstrumentation,
+} from './actions';
 export type { GenerativeActionInstrumentationOptions } from './actions';
 export {
   wrapActionWithTelemetry,
@@ -121,8 +125,15 @@ export type {
   NotesEditActionCallbacks,
 } from './handlers/notesEditActionHandlers';
 export { learningActionHandlers } from './handlers/learningActionHandlers';
-export { workbenchLearningHandlers } from './handlers/workbenchLearningHandlers';
-export { learningHubActionHandlers } from './handlers/learningHubActionHandlers';
+export {
+  createWorkbenchLearningHandlers,
+  workbenchLearningHandlers,
+} from './handlers/workbenchLearningHandlers';
+export type { WorkbenchLearningHandlerLabels } from './handlers/workbenchLearningHandlers';
+export {
+  createLearningHubActionHandlers,
+  learningHubActionHandlers,
+} from './handlers/learningHubActionHandlers';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 export {
   HPIAS_EVENT_CHANNEL,
@@ -275,6 +286,7 @@ export {
 } from './utils/formatGenerativeNumber';
 export { formatGenerativeDate } from './utils/formatGenerativeDate';
 export {
+  GENERATIVE_URL_SAFE_SCHEMES,
   isDangerousGenerativeUrl,
   isAllowedGenerativeUrl,
   sanitizeGenerativeUrl,

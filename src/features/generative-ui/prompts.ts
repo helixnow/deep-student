@@ -11,6 +11,7 @@ import {
   GENERATIVE_UI_FEW_SHOT_LABELS,
   GENERATIVE_UI_NEGATIVE_EXAMPLES,
 } from './prompts/fewShotExamples';
+import { MAX_GENERATIVE_UI_BLOCKS } from './schema';
 import { exportGenerativeUIJsonSchema } from './utils/exportGenerativeUIJsonSchema';
 
 export {
@@ -79,7 +80,10 @@ export function buildGenerativeUISystemPrompt(options?: {
   maxBlocks?: number;
 }): string {
   const domain = options?.domain ?? 'learning';
-  const maxBlocks = options?.maxBlocks ?? 12;
+  const maxBlocks = Math.min(
+    options?.maxBlocks ?? MAX_GENERATIVE_UI_BLOCKS,
+    MAX_GENERATIVE_UI_BLOCKS,
+  );
   const catalog = generativeUIRegistry.getCatalogForPrompt();
   const catalogTypes = catalog.map((c) => c.type).join(', ');
   const schema = exportGenerativeUIJsonSchema();

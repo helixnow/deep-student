@@ -65,4 +65,28 @@ describe('GenerativeUIRenderer parse-error codes + intent snapshot', () => {
       fingerprintGenerativeUIIntent(VALID_INTENT),
     );
   });
+
+  it('does not snapshot an intent recovered from a strict parse failure', () => {
+    render(
+      <GenerativeUIRenderer
+        intent={JSON.stringify({
+          version: '2',
+          blocks: [{ type: 'text', props: { body: 'recovered-only' } }],
+        })}
+        showChrome={false}
+      />,
+    );
+
+    expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(0);
+  });
+
+  it('waits for a valid streaming intent to complete before snapshotting it', () => {
+    const { rerender } = render(
+      <GenerativeUIRenderer intent={VALID_INTENT} isStreaming showChrome={false} />,
+    );
+    expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(0);
+
+    rerender(<GenerativeUIRenderer intent={VALID_INTENT} showChrome={false} />);
+    expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(1);
+  });
 });

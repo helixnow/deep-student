@@ -13,6 +13,19 @@ describe('isDangerousGenerativeUrl', () => {
     expect(isDangerousGenerativeUrl('vbscript:msgbox(1)')).toBe(true);
     expect(isDangerousGenerativeUrl('file:///etc/passwd')).toBe(true);
     expect(isDangerousGenerativeUrl('data:text/html,<h1>x</h1>')).toBe(true);
+    expect(isDangerousGenerativeUrl('blob:https://example.com/1')).toBe(true);
+  });
+
+  it('blocks whitespace / control-character scheme obfuscation', () => {
+    expect(isDangerousGenerativeUrl('java\tscript:alert(1)')).toBe(true);
+    expect(isDangerousGenerativeUrl('java\nscript:alert(1)')).toBe(true);
+    expect(isDangerousGenerativeUrl('\u0000javascript:alert(1)')).toBe(true);
+    expect(isDangerousGenerativeUrl('java script:alert(1)')).toBe(true);
+    expect(isDangerousGenerativeUrl('  //evil.example')).toBe(true);
+  });
+
+  it('blocks executable svg data URIs', () => {
+    expect(isDangerousGenerativeUrl('data:image/svg+xml,<svg></svg>')).toBe(true);
   });
 
   it('allows data:image/png', () => {

@@ -16,15 +16,15 @@ export function KeyValueGridBlock({ title, rows }: KeyValueGridProps) {
     >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} dir="auto" className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
         <dl className="grid gap-2 sm:grid-cols-2">
           {rows.map((row, idx) => (
             <div key={`${row.key}-${idx}`} className="min-w-0">
-              <dt className="text-xs text-muted-foreground">{row.key}</dt>
-              <dd className="text-sm font-medium break-words" data-kv-value>
+              <dt dir="auto" className="text-xs text-muted-foreground">{row.key}</dt>
+              <dd dir="auto" className="text-sm font-medium break-words" data-kv-value>
                 {formatGenerativeStatValue(row.value)}
               </dd>
             </div>

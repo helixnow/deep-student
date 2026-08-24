@@ -49,6 +49,27 @@ describe('HpiasGenerativeResearchPanel', () => {
     expect(document.querySelector('[data-generative-steps]')).toBeTruthy();
   });
 
+  it('ignores a store session that does not match the expected sessionId', () => {
+    vi.useFakeTimers();
+    render(
+      <HpiasGenerativeResearchPanel
+        sessionId="other-session"
+        question="Demo?"
+        emptyFallback={<span data-testid="empty">empty</span>}
+      />,
+    );
+
+    act(() => {
+      playStyleLabHpiasDemo(useHpiasStore.getState().actions.handleEvent, 10);
+    });
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+
+    expect(screen.getByTestId('empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('hpias-generative-research-panel')).not.toBeInTheDocument();
+  });
+
   it('wires copy-intent on the action-bar alongside research actions', () => {
     vi.useFakeTimers();
     render(<HpiasGenerativeResearchPanel question="Demo?" />);

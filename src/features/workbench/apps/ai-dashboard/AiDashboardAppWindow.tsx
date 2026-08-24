@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkle } from '@phosphor-icons/react';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { buildAiDashboardIntent } from '@/features/generative-ui/utils/buildAiDashboardIntent';
-import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
+import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import {
   getFlashcardsDueCount,
   subscribeFlashcardsDueCount,
@@ -84,6 +84,17 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
     [activeTasks, dueCount, overdueTodos, pendingTodos, t],
   );
 
+  const actionHandlers = useMemo(
+    () =>
+      createWorkbenchLearningHandlers({
+        startReview: t('generativeUi:workbench.briefing.start_review'),
+        openQbank: t('generativeUi:workbench.briefing.open_qbank'),
+        exportPlan: t('generativeUi:research.actions.export_plan'),
+        openTaskDashboard: t('generativeUi:workbench.dashboard.open_task_dashboard'),
+      }),
+    [t],
+  );
+
   useEffect(() => {
     onTitleChange(t('workbench:apps.aiDashboard'));
   }, [onTitleChange, t]);
@@ -109,7 +120,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
             <GenerativeUIPanel
               intent={intent}
               showChrome
-              actionHandlers={workbenchLearningHandlers}
+              actionHandlers={actionHandlers}
             />
           </WbSysFade>
         ) : (

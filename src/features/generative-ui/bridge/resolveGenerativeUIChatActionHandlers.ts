@@ -5,7 +5,11 @@
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 import { withGenerativeActionInstrumentation } from '../actions';
 import { intentHasResearchBlocks } from '../bridge/hpiasEventBridge';
-import { workbenchLearningHandlers } from '../handlers/workbenchLearningHandlers';
+import { lookupGenerativeActionHandler } from '../actions';
+import {
+  createWorkbenchLearningHandlers,
+  type WorkbenchLearningHandlerLabels,
+} from '../handlers/workbenchLearningHandlers';
 import {
   createResearchBriefingActionHandlers,
   type ResearchBriefingActionLabels,
@@ -65,6 +69,7 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   researchLabels?: ResearchBriefingActionLabels;
   copyIntentLabels?: CopyIntentActionLabels;
   copyBlockLabels?: CopyBlockActionLabels;
+  workbenchLabels?: WorkbenchLearningHandlerLabels;
 }
 
 /**
@@ -75,12 +80,12 @@ export function resolveGenerativeUIChatActionHandlers(
   input: ResolveGenerativeUIChatActionHandlersInput,
 ): Record<string, GenerativeActionDefinition> {
   const actionIds = new Set(collectGenerativeUIActionIds(input.intent));
-  const handlers: Record<string, GenerativeActionDefinition> = {};
+  const handlers: Record<string, GenerativeActionDefinition> = Object.create(null);
+  const workbench = createWorkbenchLearningHandlers(input.workbenchLabels);
 
   for (const id of actionIds) {
-    if (workbenchLearningHandlers[id]) {
-      handlers[id] = workbenchLearningHandlers[id];
-    }
+    const handler = lookupGenerativeActionHandler(workbench, id);
+    if (handler) handlers[id] = handler;
   }
 
   const needsNoteHandlers = NOTE_EDIT_ACTION_IDS.some((id) => actionIds.has(id));
@@ -159,7 +164,10 @@ export function resolveGenerativeUIChatActionHandlers(
     );
   }
 
-  if (actionIds.has(EXPORT_INTENT_ACTION_ID) && !handlers[EXPORT_INTENT_ACTION_ID]) {
+  if (
+    actionIds.has(EXPORT_INTENT_ACTION_ID) &&
+    !lookupGenerativeActionHandler(handlers, EXPORT_INTENT_ACTION_ID)
+  ) {
     Object.assign(
       handlers,
       createExportIntentActionHandlers(input.intent, {

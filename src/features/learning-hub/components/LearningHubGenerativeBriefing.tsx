@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkle } from '@phosphor-icons/react';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { buildLearningHubBriefingIntent } from '@/features/generative-ui/utils/buildLearningHubBriefingIntent';
-import { learningHubActionHandlers } from '@/features/generative-ui/handlers/learningHubActionHandlers';
+import { createLearningHubActionHandlers } from '@/features/generative-ui/handlers/learningHubActionHandlers';
 import { useFinderStore } from '../stores/finderStore';
 import './LearningHubGenerativeBriefing.css';
 
@@ -46,6 +46,15 @@ export const LearningHubGenerativeBriefing: React.FC = React.memo(() => {
     [folderLabel, items, t],
   );
 
+  const actionHandlers = useMemo(
+    () =>
+      createLearningHubActionHandlers({
+        startReview: t('generativeUi:learningHub.briefing.start_review'),
+        openQbank: t('generativeUi:learningHub.briefing.open_qbank'),
+      }),
+    [t],
+  );
+
   return (
     <section
       className="lh-generative-briefing"
@@ -56,7 +65,7 @@ export const LearningHubGenerativeBriefing: React.FC = React.memo(() => {
         <Sparkle className="h-3.5 w-3.5 text-primary" weight="fill" aria-hidden />
         {t('generativeUi:learningHub.briefing_label', { defaultValue: 'AI 资源简报' })}
       </header>
-      <GenerativeUIPanel intent={intent} showChrome={false} actionHandlers={learningHubActionHandlers} />
+      <GenerativeUIPanel intent={intent} showChrome={false} actionHandlers={actionHandlers} />
     </section>
   );
 });

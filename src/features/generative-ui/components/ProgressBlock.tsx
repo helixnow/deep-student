@@ -23,7 +23,7 @@ export function ProgressBlock({ title, current, total, label }: ProgressBlockPro
     >
       {title ? (
         <CardHeader className="pb-2">
-          <CardTitle id={titleId} className="text-sm font-medium">{title}</CardTitle>
+          <CardTitle id={titleId} dir="auto" className="text-sm font-medium">{title}</CardTitle>
         </CardHeader>
       ) : null}
       <CardContent className={title ? 'pt-0 space-y-2' : 'pt-4 space-y-2'}>
@@ -34,7 +34,7 @@ export function ProgressBlock({ title, current, total, label }: ProgressBlockPro
           aria-label={title ? undefined : (label ?? t('a11y.progress_label'))}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span data-progress-label>{label ?? defaultLabel}</span>
+          <span dir="auto" data-progress-label>{label ?? defaultLabel}</span>
           <span data-progress-percent>{`${formatGenerativeNumber(pct)}%`}</span>
         </div>
       </CardContent>

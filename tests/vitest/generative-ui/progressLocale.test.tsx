@@ -25,4 +25,11 @@ describe('ProgressBlock locale format', () => {
     );
     expect(percentEl).toHaveTextContent(`${formatGenerativeNumber(30)}%`);
   });
+
+  it('uses automatic direction for generated title and label text', () => {
+    render(<ProgressBlock title="Completion" current={3} total={10} label="Three done" />);
+
+    expect(document.querySelector('[role="region"] [id]')).toHaveAttribute('dir', 'auto');
+    expect(document.querySelector('[data-progress-label]')).toHaveAttribute('dir', 'auto');
+  });
 });

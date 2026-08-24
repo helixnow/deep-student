@@ -81,6 +81,7 @@ function getOrCreateEntry(blockId: string, options?: GenerativeUIStreamPersistOp
     return entry;
   }
   bindPersist(entry, options);
+  hydrateLastGood(entry);
   return entry;
 }
 
@@ -127,8 +128,13 @@ export function appendGenerativeUIStreamContent(
   options?: GenerativeUIStreamPersistOptions,
 ): GenerativeUIStreamSnapshot {
   const entry = getOrCreateEntry(blockId, options);
+  const parserBuffer = entry.parser.getBuffer();
+  const contentWasReplaced =
+    entry.lastLength > 0 &&
+    parserBuffer.length === entry.lastLength &&
+    !fullContent.startsWith(parserBuffer);
 
-  if (fullContent.length < entry.lastLength) {
+  if (fullContent.length < entry.lastLength || contentWasReplaced) {
     entry.parser.reset();
     entry.lastLength = 0;
     entry.lastGoodIntent = null;
@@ -164,6 +170,8 @@ export function finalizeGenerativeUIStream(
   if (!entry) {
     return readPersistedLastGoodIntent(options?.persistKey, options?.storage);
   }
+  bindPersist(entry, options);
+  hydrateLastGood(entry);
   const { persistKey, storage } = persistBinding(entry, options);
   const lastGood = entry.lastGoodIntent;
   entries.delete(blockId);
@@ -192,6 +200,7 @@ export function getGenerativeUIStreamSnapshot(
   const entry = entries.get(blockId);
   if (entry) {
     bindPersist(entry, options);
+    hydrateLastGood(entry);
     return rememberLastGood(entry, entry.parser.getSnapshot());
   }
   const restored = readPersistedLastGoodIntent(options?.persistKey, options?.storage);

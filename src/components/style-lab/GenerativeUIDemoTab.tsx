@@ -24,25 +24,33 @@ import { diffGenerativeUIIntent } from '@/features/generative-ui/utils/diffGener
 import { getDefaultGenerativeUIIntentSnapshotRing } from '@/features/generative-ui/utils/intentSnapshotRing';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
-import type { GenerativeUIIntent } from '@/features/generative-ui/types';
+import type {
+  GenerativeActionDefinition,
+  GenerativeUIIntent,
+} from '@/features/generative-ui/types';
 
 type DemoMode = 'static' | 'stream' | 'note-edit' | 'mindmap' | 'research-hpias' | 'recipe' | 'showcase';
 
 const DEMO_NOTE_ID = 'style-lab-note-demo';
+const HPIAS_DEMO_INTERVAL_MS = 350;
+const HPIAS_DEMO_DURATION_MS = HPIAS_DEMO_INTERVAL_MS * 14;
 
-/** Style Lab lint gate: registered workbench + notes + research + copy/export ids. */
-const STYLE_LAB_REGISTERED_ACTION_IDS = [
-  'start-review',
-  'open-qbank',
-  'copy-intent',
-  'export-intent',
-  'apply-note-edit',
-  'dismiss-note-suggestion',
-  'save-to-library',
-  'copy-report',
-  'export-plan',
-  'copy-block',
-] as const;
+const EMPTY_ACTION_HANDLERS: Record<string, GenerativeActionDefinition> = {};
+
+const SHOWCASE_ACTION_HANDLERS: Record<string, GenerativeActionDefinition> = {
+  'demo-action': {
+    id: 'demo-action',
+    label: '操作',
+    riskLevel: 'low',
+    handler: async () => {
+      window.dispatchEvent(
+        new CustomEvent('deepstudent:generative-ui-demo-action', {
+          detail: { action: 'demo-action' },
+        }),
+      );
+    },
+  },
+};
 
 const MINDMAP_DEMO_INTENT: GenerativeUIIntent = {
   version: '1',
@@ -74,23 +82,55 @@ export function GenerativeUIDemoTab() {
   const [noteEditStatus, setNoteEditStatus] = useState<string | null>(null);
   const [hpiasPlaying, setHpiasPlaying] = useState(false);
   const hpiasCancelRef = React.useRef<(() => void) | null>(null);
+  const hpiasStatusTimerRef = React.useRef<number | null>(null);
+  const streamTimerRef = React.useRef<number | null>(null);
+  const streamRef = React.useRef(stream);
+  streamRef.current = stream;
+
+  const cancelHpiasDemo = React.useCallback(() => {
+    hpiasCancelRef.current?.();
+    hpiasCancelRef.current = null;
+    if (hpiasStatusTimerRef.current !== null) {
+      window.clearTimeout(hpiasStatusTimerRef.current);
+      hpiasStatusTimerRef.current = null;
+    }
+  }, []);
+
+  const cancelStreamDemo = React.useCallback(() => {
+    if (streamTimerRef.current !== null) {
+      window.clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+  }, []);
 
   React.useEffect(() => {
     return () => {
-      hpiasCancelRef.current?.();
-      hpiasCancelRef.current = null;
+      cancelHpiasDemo();
+      cancelStreamDemo();
     };
-  }, []);
+  }, [cancelHpiasDemo, cancelStreamDemo]);
+
+  React.useEffect(() => {
+    if (mode !== 'research-hpias') cancelHpiasDemo();
+    if (mode !== 'stream') cancelStreamDemo();
+  }, [cancelHpiasDemo, cancelStreamDemo, mode]);
 
   const startHpiasDemo = React.useCallback(() => {
-    hpiasCancelRef.current?.();
+    cancelHpiasDemo();
     const store = useHpiasStore.getState();
     store.actions.clear();
     setHpiasPlaying(true);
     setMode('research-hpias');
-    hpiasCancelRef.current = playStyleLabHpiasDemo(store.actions.handleEvent, 350);
-    window.setTimeout(() => setHpiasPlaying(false), 350 * 14);
-  }, []);
+    hpiasCancelRef.current = playStyleLabHpiasDemo(
+      store.actions.handleEvent,
+      HPIAS_DEMO_INTERVAL_MS,
+    );
+    hpiasStatusTimerRef.current = window.setTimeout(() => {
+      hpiasStatusTimerRef.current = null;
+      hpiasCancelRef.current = null;
+      setHpiasPlaying(false);
+    }, HPIAS_DEMO_DURATION_MS);
+  }, [cancelHpiasDemo]);
 
   const noteEditIntent = useMemo(
     () =>
@@ -157,12 +197,31 @@ export function GenerativeUIDemoTab() {
     }
   }, [mode, recipeId, noteEditIntent, stream.intent]);
 
+  const displayedActionHandlers = useMemo(() => {
+    switch (mode) {
+      case 'static':
+      case 'stream':
+        return learningActionHandlers;
+      case 'note-edit':
+        return noteEditHandlers;
+      case 'showcase':
+        return SHOWCASE_ACTION_HANDLERS;
+      case 'mindmap':
+      case 'recipe':
+      case 'research-hpias':
+      default:
+        return EMPTY_ACTION_HANDLERS;
+    }
+  }, [mode, noteEditHandlers]);
+
   const lintResult = useMemo(
     () =>
       displayedIntent
-        ? lintGenerativeUIIntent(displayedIntent, { actionIds: [...STYLE_LAB_REGISTERED_ACTION_IDS] })
+        ? lintGenerativeUIIntent(displayedIntent, {
+            actionIds: Object.keys(displayedActionHandlers),
+          })
         : null,
-    [displayedIntent],
+    [displayedActionHandlers, displayedIntent],
   );
 
   const intentFingerprint = useMemo(
@@ -185,23 +244,25 @@ export function GenerativeUIDemoTab() {
     };
   }, [displayedIntent, intentFingerprint]);
 
-  const simulateStream = () => {
-    stream.reset();
+  const simulateStream = React.useCallback(() => {
+    cancelStreamDemo();
+    streamRef.current.reset();
     setMode('stream');
     const json = JSON.stringify(LEARNING_DASHBOARD_EXAMPLE);
     const chunkSize = Math.max(24, Math.floor(json.length / 8));
     let i = 0;
     const tick = () => {
       if (i >= json.length) {
-        stream.finalize();
+        streamTimerRef.current = null;
+        streamRef.current.finalize();
         return;
       }
-      stream.append(json.slice(i, i + chunkSize));
+      streamRef.current.append(json.slice(i, i + chunkSize));
       i += chunkSize;
-      window.setTimeout(tick, 80);
+      streamTimerRef.current = window.setTimeout(tick, 80);
     };
     tick();
-  };
+  }, [cancelStreamDemo]);
 
   const renderDemo = () => {
     switch (mode) {
@@ -233,7 +294,13 @@ export function GenerativeUIDemoTab() {
           </div>
         );
       case 'mindmap':
-        return <GenerativeUIRenderer intent={MINDMAP_DEMO_INTENT} showChrome={false} />;
+        return (
+          <GenerativeUIRenderer
+            intent={MINDMAP_DEMO_INTENT}
+            showChrome={false}
+            actionHandlers={displayedActionHandlers}
+          />
+        );
       case 'research-hpias':
         return (
           <div className="space-y-2">
@@ -259,7 +326,11 @@ export function GenerativeUIDemoTab() {
             <p className="text-xs text-muted-foreground" data-testid="generative-ui-demo-recipe-desc">
               {t(`${recipe.i18nKey}.title`)} — {t(`${recipe.i18nKey}.description`)}
             </p>
-            <GenerativeUIRenderer intent={recipe.intent} showChrome={false} />
+            <GenerativeUIRenderer
+              intent={recipe.intent}
+              showChrome={false}
+              actionHandlers={displayedActionHandlers}
+            />
           </div>
         );
       }
@@ -267,7 +338,11 @@ export function GenerativeUIDemoTab() {
         return (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">18 块最小合法 props · v1.1 两列 grid</p>
-            <GenerativeUIRenderer intent={buildAllBlocksGridIntent()} showChrome={false} />
+            <GenerativeUIRenderer
+              intent={buildAllBlocksGridIntent()}
+              showChrome={false}
+              actionHandlers={displayedActionHandlers}
+            />
           </div>
         );
       case 'static':

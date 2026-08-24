@@ -24,6 +24,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/features/generative-ui/handlers/workbenchLearningHandlers', () => ({
   workbenchLearningHandlers: {},
+  createWorkbenchLearningHandlers: () => ({}),
 }));
 
 const flashcardsDueState = { count: 3 };

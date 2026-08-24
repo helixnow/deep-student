@@ -25,6 +25,7 @@ vi.mock('react-i18next', () => ({
         'chrome.regenerate': '重新生成',
         'chrome.dismiss': '忽略',
         'chrome.streaming': '生成中…',
+        'chrome.stream_done': '生成完成',
         'a11y.region_label': 'AI 界面',
         'a11y.skip_to_actions': '跳到操作栏',
         'a11y.text_label': '文本',
@@ -58,13 +59,15 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
 
     const skip = container.querySelector('a[data-skip-to-actions]');
     expect(skip).toBeTruthy();
-    expect(skip).toHaveAttribute('href', '#generative-ui-actions');
     expect(skip).toHaveClass('sr-only', 'focus:not-sr-only');
     expect(skip?.textContent).toBe('跳到操作栏');
     expect(root?.firstElementChild).toBe(skip);
 
     const grid = container.querySelector('[data-layout-mode]');
-    expect(grid).toHaveAttribute('id', 'generative-ui-actions');
+    expect(grid?.id).toMatch(/^generative-ui-actions-/);
+    expect(grid).toHaveAttribute('tabindex', '-1');
+    expect(skip).toHaveAttribute('href', `#${grid?.id}`);
+    expect(document.getElementById(grid?.id ?? '')).toBe(grid);
 
     const statSlot = container.querySelector('[data-generative-block="stat-card"]');
     const textSlot = container.querySelector('[data-generative-block="text"]');
@@ -82,6 +85,42 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
     expect(root).toHaveAttribute('data-streaming');
     expect(root).not.toHaveAttribute('data-intent-fingerprint');
     expect(container.querySelector('[data-skip-to-actions]')).toBeNull();
+  });
+
+  it('uses a distinct in-renderer target for every skip link', () => {
+    const { container } = render(
+      <>
+        <GenerativeUIRenderer intent={SIMPLE_INTENT} showChrome={false} />
+        <GenerativeUIRenderer intent={SIMPLE_INTENT} showChrome={false} />
+      </>,
+    );
+
+    const roots = [...container.querySelectorAll<HTMLElement>('[data-generative-ui]')];
+    expect(roots).toHaveLength(2);
+    const targetIds = roots.map((root) => {
+      const skip = root.querySelector<HTMLAnchorElement>('[data-skip-to-actions]');
+      const target = root.querySelector<HTMLElement>('[data-layout-mode]');
+      expect(skip).toHaveAttribute('href', `#${target?.id}`);
+      expect(document.getElementById(target?.id ?? '')).toBe(target);
+      return target?.id;
+    });
+    expect(new Set(targetIds).size).toBe(2);
+  });
+
+  it('preserves the Chrome live region from empty streaming fallback through completion', () => {
+    const { container, rerender } = render(
+      <GenerativeUIRenderer intent="not-json" isStreaming showChrome />,
+    );
+    const streamingLiveRegion = container.querySelector('[aria-live="polite"]');
+    expect(streamingLiveRegion).toHaveTextContent('生成中…');
+
+    rerender(
+      <GenerativeUIRenderer intent={SIMPLE_INTENT} isStreaming={false} showChrome />,
+    );
+
+    const completedLiveRegion = container.querySelector('[aria-live="polite"]');
+    expect(completedLiveRegion).toBe(streamingLiveRegion);
+    expect(completedLiveRegion).toHaveTextContent('生成完成');
   });
 });
 

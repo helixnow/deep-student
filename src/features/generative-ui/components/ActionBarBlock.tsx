@@ -4,7 +4,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import type { ActionBarProps } from '../schema';
 import type { GenerativeActionDefinition, GenerativeUIAction, RiskLevel } from '../types';
-import { resolveEffectiveRiskLevel } from '../actions';
+import { lookupGenerativeActionHandler, resolveEffectiveRiskLevel } from '../actions';
 import {
   getDefaultGenerativeActionUndoStack,
   resolveGenerativeActionUndo,
@@ -22,12 +22,17 @@ export interface ActionBarBlockProps extends ActionBarProps {
 
 const UNDO_TOOLBAR_ID = '__generative-undo__';
 
+interface LiveAnnouncement {
+  message: string;
+  sequence: number;
+}
+
 function trustedLabel(
   actionId: string,
   modelLabel: string,
   actionHandlers?: Record<string, GenerativeActionDefinition>,
 ): string {
-  return actionHandlers?.[actionId]?.label ?? modelLabel;
+  return lookupGenerativeActionHandler(actionHandlers, actionId)?.label ?? modelLabel;
 }
 
 export function ActionBarBlock({
@@ -40,7 +45,10 @@ export function ActionBarBlock({
   const [pendingMediumId, setPendingMediumId] = useState<string | null>(null);
   const [dialogActionId, setDialogActionId] = useState<string | null>(null);
   const [executing, setExecuting] = useState(false);
-  const [liveMessage, setLiveMessage] = useState('');
+  const [liveAnnouncement, setLiveAnnouncement] = useState<LiveAnnouncement>({
+    message: '',
+    sequence: 0,
+  });
   const [showUndoControl, setShowUndoControl] = useState(() => undoStack.canUndo());
   const [undoAvailable, setUndoAvailable] = useState(() => undoStack.canUndo());
   const executingRef = useRef(false);
@@ -48,11 +56,19 @@ export function ActionBarBlock({
   const [tabStopId, setTabStopId] = useState<string | null>(null);
   const enforceHandlerRegistry = actionHandlers != null;
 
+  const announce = useCallback((message: string) => {
+    setLiveAnnouncement((current) => ({
+      message,
+      sequence: current.sequence + 1,
+    }));
+  }, []);
+
   const focusableItemIds = useMemo(() => {
     if (executing) return [];
     const ids: string[] = [];
     for (const action of actions) {
-      const registered = !enforceHandlerRegistry || actionHandlers?.[action.id] != null;
+      const registered =
+        !enforceHandlerRegistry || lookupGenerativeActionHandler(actionHandlers, action.id) != null;
       if (registered) ids.push(action.id);
     }
     if (showUndoControl && undoAvailable) ids.push(UNDO_TOOLBAR_ID);
@@ -120,7 +136,8 @@ export function ActionBarBlock({
   const runAction = useCallback(
     async (actionId: string) => {
       if (executingRef.current) return;
-      if (enforceHandlerRegistry && !actionHandlers?.[actionId]) return;
+      const handler = lookupGenerativeActionHandler(actionHandlers, actionId);
+      if (enforceHandlerRegistry && !handler) return;
       const label = trustedLabel(
         actionId,
         actions.find((action) => action.id === actionId)?.label ?? '',
@@ -129,7 +146,6 @@ export function ActionBarBlock({
       executingRef.current = true;
       setExecuting(true);
       try {
-        const handler = actionHandlers?.[actionId];
         if (handler) {
           const result = await handler.handler();
           const undoFn = resolveGenerativeActionUndo(handler, result);
@@ -142,16 +158,16 @@ export function ActionBarBlock({
             setShowUndoControl(true);
             setUndoAvailable(undoStack.canUndo());
           }
-          onAction?.({ type: 'execute', actionId });
-          setLiveMessage(t('action.live_ok', { label }));
         }
+        onAction?.({ type: 'execute', actionId });
+        announce(t('action.live_ok', { label }));
       } catch (error) {
         if (error instanceof GenerativeActionTimeoutError) {
-          setLiveMessage(t('action.live_timeout', { label }));
+          announce(t('action.live_timeout', { label }));
         } else if (error instanceof GenerativeActionRateLimitError) {
-          setLiveMessage(t('action.live_rate_limit', { label }));
+          announce(t('action.live_rate_limit', { label }));
         } else {
-          setLiveMessage(t('action.live_error', { label }));
+          announce(t('action.live_error', { label }));
         }
       } finally {
         executingRef.current = false;
@@ -160,7 +176,7 @@ export function ActionBarBlock({
         setDialogActionId(null);
       }
     },
-    [actionHandlers, actions, enforceHandlerRegistry, onAction, t, undoStack],
+    [actionHandlers, actions, announce, enforceHandlerRegistry, onAction, t, undoStack],
   );
 
   const runUndo = useCallback(async () => {
@@ -169,19 +185,21 @@ export function ActionBarBlock({
     setExecuting(true);
     try {
       await undoStack.undo();
-      setLiveMessage(t('action.live_undo'));
+      announce(t('action.live_undo'));
     } catch {
-      setLiveMessage(t('action.live_undo_error'));
+      announce(t('action.live_undo_error'));
     } finally {
       executingRef.current = false;
       setExecuting(false);
       setUndoAvailable(undoStack.canUndo());
     }
-  }, [t, undoStack]);
+  }, [announce, t, undoStack]);
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {
-      if (enforceHandlerRegistry && !actionHandlers?.[actionId]) return;
+      if (enforceHandlerRegistry && !lookupGenerativeActionHandler(actionHandlers, actionId)) {
+        return;
+      }
       if (effectiveRisk === 'high') {
         setDialogActionId(actionId);
         return;
@@ -250,7 +268,7 @@ export function ActionBarBlock({
         onKeyDown={handleToolbarKeyDown}
       >
         {actions.map((action) => {
-          const handlerDef = actionHandlers?.[action.id];
+          const handlerDef = lookupGenerativeActionHandler(actionHandlers, action.id);
           const isRegistered = !enforceHandlerRegistry || handlerDef != null;
           const displayLabel = trustedLabel(action.id, action.label, actionHandlers);
           const handlerRisk = handlerDef?.riskLevel;
@@ -280,7 +298,7 @@ export function ActionBarBlock({
             >
               {isConfirmingMedium
                 ? t('action.confirm_inline', { label: displayLabel })
-                : action.label}
+                : displayLabel}
             </DsButton>
           );
         })}
@@ -306,8 +324,16 @@ export function ActionBarBlock({
           </DsButton>
         ) : null}
       </div>
-      <p data-action-live role="status" aria-live="polite" className="sr-only">
-        {liveMessage}
+      <p
+        data-action-live
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveAnnouncement.message ? (
+          <span key={liveAnnouncement.sequence}>{liveAnnouncement.message}</span>
+        ) : null}
       </p>
 
       <DsAlertDialog

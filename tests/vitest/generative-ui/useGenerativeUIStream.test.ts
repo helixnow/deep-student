@@ -65,6 +65,35 @@ describe('useGenerativeUIStream', () => {
     expect(result.current.errorCodes[0]?.code).toBe('invalid-json');
   });
 
+  it('clears stale parse errors when a failed stream resumes', () => {
+    const { result } = renderHook(() => useGenerativeUIStream());
+    act(() => {
+      result.current.append(
+        '{"version":"1","blocks":[{"type":"text","props":{"body":"held',
+      );
+      result.current.finalize();
+    });
+    expect(result.current.errorCodes[0]?.code).toBe('invalid-json');
+
+    act(() => {
+      result.current.append('"}}]}');
+    });
+    expect(result.current.errorCodes).toEqual([]);
+    expect(result.current.errors).toEqual([]);
+    expect(result.current.partialIntent?.blocks[0]?.props?.body).toBe('held');
+  });
+
+  it('rejects invalid object intents without recording a snapshot', () => {
+    const { result } = renderHook(() => useGenerativeUIStream());
+    act(() => {
+      result.current.setIntent({ version: '2', blocks: [] } as never);
+    });
+
+    expect(result.current.intent).toBeNull();
+    expect(result.current.errorCodes[0]?.code).toBe('unknown-version');
+    expect(getDefaultGenerativeUIIntentSnapshotRing().size).toBe(0);
+  });
+
   it('pushes default snapshot on successful finalize', () => {
     const json = JSON.stringify(LEARNING_DASHBOARD_EXAMPLE);
     const { result } = renderHook(() => useGenerativeUIStream());

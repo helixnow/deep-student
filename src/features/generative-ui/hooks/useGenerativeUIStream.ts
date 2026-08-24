@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { GenerativeUIStreamParser } from '../parser';
-import { parseGenerativeUIIntent, isGenerativeUIParseFailure } from '../schema';
+import {
+  generativeUIIntentSchema,
+  parseGenerativeUIIntent,
+  isGenerativeUIParseFailure,
+} from '../schema';
 import { coercePartialIntent } from '../utils/coercePartialIntent';
 import {
   classifyGenerativeUIParseErrors,
@@ -38,6 +42,7 @@ export function useGenerativeUIStream(
   const append = useCallback(
     (chunk: string) => {
       setIsStreaming(true);
+      if (chunk) setErrors([]);
       const partial = parser.append(chunk);
       if (partial) setPartialIntent(partial);
     },
@@ -89,10 +94,16 @@ export function useGenerativeUIStream(
       pushDefaultGenerativeUIIntentSnapshot(parsed.intent);
       return;
     }
-    setIntentState(raw);
-    setPartialIntent(raw);
+    const validated = generativeUIIntentSchema.safeParse(raw);
+    if (!validated.success) {
+      setErrors(validated.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`));
+      return;
+    }
+    const validatedIntent = validated.data as GenerativeUIIntent;
+    setIntentState(validatedIntent);
+    setPartialIntent(validatedIntent);
     setErrors([]);
-    pushDefaultGenerativeUIIntentSnapshot(raw);
+    pushDefaultGenerativeUIIntentSnapshot(validatedIntent);
   }, []);
 
   const displayIntent = useMemo(

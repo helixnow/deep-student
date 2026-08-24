@@ -48,10 +48,25 @@ export function sanitizeGenerativeJsonBuffer(raw: string): string {
   return start >= 0 ? s.slice(start) : s;
 }
 
+/** Locate `"key":` even when an earlier string value equals the key name. */
+function indexOfJsonPropertyKey(json: string, key: string): number {
+  const token = `"${key}"`;
+  let from = 0;
+  while (from < json.length) {
+    const idx = json.indexOf(token, from);
+    if (idx < 0) return -1;
+    let i = idx + token.length;
+    while (i < json.length && /\s/.test(json[i]!)) i += 1;
+    if (json[i] === ':') return idx;
+    from = idx + token.length;
+  }
+  return -1;
+}
+
 /** 从 buffer 中提取 blocks 数组内已闭合的对象 JSON 切片 */
 export function extractClosedBlockObjectSlices(buffer: string): string[] {
   const json = sanitizeGenerativeJsonBuffer(buffer);
-  const blocksKey = json.indexOf('"blocks"');
+  const blocksKey = indexOfJsonPropertyKey(json, 'blocks');
   if (blocksKey < 0) return [];
   const arrayStart = json.indexOf('[', blocksKey);
   if (arrayStart < 0) return [];
@@ -101,10 +116,9 @@ export function extractClosedBlockObjectSlices(buffer: string): string[] {
 
 /** 提取 key 后已闭合的 JSON 对象；未闭合返回 null（流式 layout 未写完） */
 function extractClosedJsonObjectAfterKey(json: string, key: string): string | null {
-  const keyToken = `"${key}"`;
-  const keyIdx = json.indexOf(keyToken);
+  const keyIdx = indexOfJsonPropertyKey(json, key);
   if (keyIdx < 0) return null;
-  const colon = json.indexOf(':', keyIdx + keyToken.length);
+  const colon = json.indexOf(':', keyIdx + key.length + 2);
   if (colon < 0) return null;
   let i = colon + 1;
   while (i < json.length && /\s/.test(json[i]!)) i += 1;
@@ -356,7 +370,13 @@ export class GenerativeUIStreamParser {
       const recovered = recoverGenerativeUIIntent(parsed);
       if (recovered && recovered.intent.blocks.length > 0) {
         this.committedBlocks = [...recovered.intent.blocks];
-        this.parsedSliceCount = Math.max(this.parsedSliceCount, recovered.intent.blocks.length);
+        // 按原始切片数推进，而不是按恢复后的块数；否则非法/重复块会令
+        // 下一次 reconcile 从错误下标重放后续无 id 块。
+        const rawBlockCount =
+          parsed && typeof parsed === 'object' && Array.isArray(parsed.blocks)
+            ? parsed.blocks.length
+            : recovered.intent.blocks.length;
+        this.parsedSliceCount = Math.max(this.parsedSliceCount, rawBlockCount);
         this.warnings.push(...recovered.warnings);
         return recovered.intent as GenerativeUIIntent;
       }

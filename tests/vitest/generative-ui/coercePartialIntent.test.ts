@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { coercePartialIntent } from '@/features/generative-ui/utils/coercePartialIntent';
 import { parseGenerativeUIIntentRecovered, MAX_GENERATIVE_UI_BLOCKS } from '@/features/generative-ui/schema';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+} from '@/features/generative-ui/utils/streamBufferGuard';
 
 describe('coercePartialIntent', () => {
   it('returns empty result for blank input', () => {
@@ -8,6 +12,16 @@ describe('coercePartialIntent', () => {
       intent: null,
       dropped: 0,
       truncated: false,
+    });
+  });
+
+  it('fails closed before parsing a stream over the character cap', () => {
+    const result = coercePartialIntent('x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS + 1));
+    expect(result).toEqual({
+      intent: null,
+      dropped: 0,
+      truncated: true,
+      warnings: [STREAM_BUFFER_CAPPED_WARNING],
     });
   });
 

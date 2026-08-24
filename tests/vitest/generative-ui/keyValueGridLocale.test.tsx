@@ -17,6 +17,7 @@ describe('KeyValueGridBlock locale format', () => {
   it('formats numeric-looking values and leaves non-numeric strings as-is', () => {
     render(
       <KeyValueGridBlock
+        title="Details"
         rows={[
           { key: 'Due', value: '1200' },
           { key: 'Note', value: 'hello' },
@@ -25,7 +26,10 @@ describe('KeyValueGridBlock locale format', () => {
     );
 
     const values = document.querySelectorAll('[data-kv-value]');
+    expect(document.querySelector('[role="region"] [id]')).toHaveAttribute('dir', 'auto');
+    expect(document.querySelector('dt')).toHaveAttribute('dir', 'auto');
     expect(values).toHaveLength(2);
+    expect(values[0]).toHaveAttribute('dir', 'auto');
     expect(values[0]?.textContent).toBe(formatGenerativeStatValue('1200'));
     expect(values[1]?.textContent).toBe('hello');
   });

@@ -1,6 +1,6 @@
 # Generative UI SOTA 验收清单
 
-> 分支 `Generative-UI-0824` · Round 41–45 · 对照目标态「结构化意图 + 组件注册表」
+> 分支 `Generative-UI-0824` · Round 41–49 + Wrap-up · 对照目标态「结构化意图 + 组件注册表」
 
 ## 架构核心
 
@@ -157,14 +157,15 @@
 6. ~~**Round 47 locale / skill / 引用键盘**~~ — ✅ 本地完成
 7. ~~**Round 48 Chat 接线 / Rust 32 / 宿主 i18n**~~ — ✅ 本地完成
 8. ~~**Round 49 快照 diff / 流式 / HPIAS**~~ — ✅ 本地完成
-9. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+9. ~~**Wrap-up 收尾审查**~~ — ✅ 本地完成（leftover `cursor/*` 已覆盖，不 merge 旧 tip）
+10. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–49 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–49 + Wrap-up 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

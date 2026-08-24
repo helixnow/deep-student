@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { GenerativeUIDemoTab } from '@/components/style-lab/GenerativeUIDemoTab';
 import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
 import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
+import { resetDefaultGenerativeUIIntentSnapshotRing } from '@/features/generative-ui/utils/intentSnapshotRing';
+import { useHpiasStore } from '@/stores/researchStore';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
@@ -77,6 +79,17 @@ vi.mock('@/features/mindmap/components/mindmap/MindMapEmbed', () => ({
 import '@/features/generative-ui/blocks';
 
 describe('GenerativeUIDemoTab', () => {
+  beforeEach(() => {
+    resetDefaultGenerativeUIIntentSnapshotRing();
+    useHpiasStore.getState().actions.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetDefaultGenerativeUIIntentSnapshotRing();
+    useHpiasStore.getState().actions.clear();
+  });
+
   it('renders static learning dashboard by default', () => {
     render(<GenerativeUIDemoTab />);
     expect(screen.getByText('本周学习概览')).toBeInTheDocument();
@@ -138,6 +151,27 @@ describe('GenerativeUIDemoTab', () => {
     expect(screen.getByText('每日复习量')).toBeInTheDocument();
   });
 
+  it('keeps every recipe inside the active action lint gate', async () => {
+    const user = userEvent.setup();
+    render(<GenerativeUIDemoTab />);
+
+    const recipeIds = [
+      'learning-dashboard',
+      'research-briefing',
+      'translation-chart',
+      'mistake-table',
+      'empty-markdown',
+      'v11-grid-two-col',
+    ];
+    for (const recipeId of recipeIds) {
+      await user.click(screen.getByTestId(`generative-ui-demo-recipe-${recipeId}`));
+      const panel = screen.getByTestId('generative-ui-demo-lint');
+      expect(panel).toHaveAttribute('data-lint-action-gated', 'true');
+      expect(panel).toHaveAttribute('data-lint-ok', 'true');
+      expect(panel).toHaveAttribute('data-lint-count', '0');
+    }
+  });
+
   it('switches to 18-block v1.1 grid showcase', async () => {
     const user = userEvent.setup();
     render(<GenerativeUIDemoTab />);
@@ -157,13 +191,16 @@ describe('GenerativeUIDemoTab', () => {
     expect(panel).toHaveTextContent('No issues');
   });
 
-  it('flags unknown-action when showcase invents an unregistered action id', async () => {
+  it('registers the showcase demo action with the lint gate and renderer', async () => {
     const user = userEvent.setup();
     render(<GenerativeUIDemoTab />);
     await user.click(screen.getByTestId('generative-ui-demo-showcase'));
     const panel = screen.getByTestId('generative-ui-demo-lint');
     expect(panel).toHaveAttribute('data-lint-action-gated', 'true');
-    expect(panel.querySelector('[data-lint-code="unknown-action"]')).toBeTruthy();
+    expect(panel).toHaveAttribute('data-lint-ok', 'true');
+    expect(panel).toHaveAttribute('data-lint-count', '0');
+    expect(panel.querySelector('[data-lint-code="unknown-action"]')).toBeNull();
+    expect(screen.getByRole('button', { name: '操作' })).toBeEnabled();
   });
 
   it('shows intent fingerprint for the default static intent', () => {
@@ -175,7 +212,8 @@ describe('GenerativeUIDemoTab', () => {
     expect(line).toHaveTextContent(expected);
   });
 
-  it('shows a snapshot diff panel for the default static intent', () => {
+  it('shows a no-change diff when the snapshot ring is empty', () => {
+    resetDefaultGenerativeUIIntentSnapshotRing();
     render(<GenerativeUIDemoTab />);
     const panel = screen.getByTestId('generative-ui-demo-diff');
     expect(panel).toBeInTheDocument();
@@ -190,5 +228,53 @@ describe('GenerativeUIDemoTab', () => {
     if (added === 0 && removed === 0 && changed === 0) {
       expect(panel).toHaveTextContent('No changes');
     }
+  });
+
+  it('does not crash without a stream intent and cancels a stale stream run', () => {
+    vi.useFakeTimers();
+    render(<GenerativeUIDemoTab />);
+    const streamButton = screen.getByRole('button', { name: '模拟流式' });
+
+    fireEvent.click(streamButton);
+    expect(screen.getByTestId('generative-ui-demo-tab')).toBeInTheDocument();
+    expect(screen.getByText('本周学习概览')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(80);
+    });
+    fireEvent.click(streamButton);
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(screen.getByTestId('generative-ui-demo-lint')).toHaveAttribute('data-lint-ok', 'true');
+    expect(screen.getByTestId('generative-ui-demo-fingerprint')).toHaveAttribute(
+      'data-intent-fingerprint',
+      fingerprintGenerativeUIIntent(LEARNING_DASHBOARD_EXAMPLE),
+    );
+  });
+
+  it('cancels stale HPIAS completion timers when replayed', () => {
+    vi.useFakeTimers();
+    render(<GenerativeUIDemoTab />);
+    const hpiasButton = screen.getByTestId('generative-ui-demo-hpias');
+
+    fireEvent.click(hpiasButton);
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getByText(/模拟进行中/)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    fireEvent.click(hpiasButton);
+    act(() => {
+      vi.advanceTimersByTime(3_901);
+    });
+
+    expect(screen.getByText(/模拟进行中/)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(999);
+    });
+    expect(screen.getByText(/演示完成/)).toBeInTheDocument();
   });
 });

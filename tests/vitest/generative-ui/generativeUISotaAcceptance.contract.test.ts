@@ -322,10 +322,34 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       ]),
   },
   {
+    id: 'round46-intent-snapshot-ring',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/intentSnapshotRing.ts', [
+        'export class GenerativeUIIntentSnapshotRing',
+        'GENERATIVE_UI_INTENT_SNAPSHOT_LIMIT',
+      ]),
+  },
+  {
     id: 'round46-parse-error-codes',
     check: () =>
       fileContains('src/features/generative-ui/utils/classifyGenerativeUIParseErrors.ts', [
         'export function classifyGenerativeUIParseErrors',
+      ]),
+  },
+  {
+    id: 'wrapup-url-scheme-allowlist',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/sanitizeGenerativeUrl.ts', [
+        'GENERATIVE_URL_SAFE_SCHEMES',
+        'SCHEME_OBFUSCATION_RE',
+      ]),
+  },
+  {
+    id: 'wrapup-action-handler-own-keys',
+    check: () =>
+      fileContains('src/features/generative-ui/actions.ts', [
+        'export function lookupGenerativeActionHandler',
+        'Object.hasOwn',
       ]),
   },
 ];
@@ -356,9 +380,13 @@ describe('generativeUISotaAcceptance contract', () => {
       'TableBlock',
       'coercePartialIntent',
       'lintGenerativeUIIntent',
+      'fingerprintGenerativeUIIntent',
+      'diffGenerativeUIIntent',
+      'normalizeGenerativeUIIntent',
       'exportGenerativeUIJsonSchema',
       'wrapActionWithTimeout',
       'wrapActionWithRateLimit',
+      'createCopyIntentActionHandlers',
       'createExportIntentActionHandlers',
       'classifyGenerativeUIParseErrors',
       'usePrefersContrast',

@@ -113,7 +113,7 @@ const MOUNT_POINTS: Array<{ file: string; mustContain: string[] }> = [
 ];
 
 describe('generativeUIModuleIntegration contract', () => {
-  it('registers all 14 built-in block types', () => {
+  it('registers all 18 built-in block types', () => {
     const keys = generativeUIRegistry.keys().sort();
     expect(keys).toEqual([...EXPECTED_BLOCK_TYPES].sort());
   });

@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/features/generative-ui/handlers/learningHubActionHandlers', () => ({
   learningHubActionHandlers: {},
+  createLearningHubActionHandlers: () => ({}),
 }));
 
 const mockItems = [{ id: '1', name: 'note.md' }];

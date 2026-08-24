@@ -72,6 +72,34 @@ describe('ActionBarBlock live region', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it('mutates the live region when the same outcome is announced twice', async () => {
+    const user = userEvent.setup();
+    const handler = vi.fn();
+    render(
+      <ActionBarBlock
+        actions={[{ id: 'save', label: '保存', riskLevel: 'low' }]}
+        actionHandlers={{ save: def('save', '保存', 'low', handler) }}
+        undoStack={new GenerativeActionUndoStack({ sink: () => undefined })}
+      />,
+    );
+
+    const button = screen.getByRole('button', { name: '保存' });
+    await user.click(button);
+    await waitFor(() => {
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(liveRegion()).toHaveTextContent('保存 completed');
+    });
+    const firstAnnouncementNode = liveRegion().firstElementChild;
+    expect(firstAnnouncementNode).not.toBeNull();
+
+    await user.click(button);
+    await waitFor(() => {
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(liveRegion().firstElementChild).not.toBe(firstAnnouncementNode);
+    });
+    expect(liveRegion()).toHaveTextContent('保存 completed');
+  });
+
   it('announces failure when the handler throws', async () => {
     const user = userEvent.setup();
     const handler = vi.fn(async () => {

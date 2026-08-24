@@ -149,4 +149,14 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('MAX_GENERATIVE_UI_BLOCKS');
     expect(executorSrc).toContain('32');
   });
+
+  it('documents that TS allows empty blocks while Rust ingress rejects them', () => {
+    const schemaSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src/features/generative-ui/schema.ts'),
+      'utf8',
+    );
+    expect(schemaSrc).toContain('.min(0).max(MAX_GENERATIVE_UI_BLOCKS)');
+    expect(executorSrc).toContain('if blocks.is_empty()');
+    expect(executorSrc).toContain('parse_intent_rejects_empty_blocks');
+  });
 });

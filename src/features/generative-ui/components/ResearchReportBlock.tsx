@@ -78,9 +78,10 @@ export function ResearchReportBlock({ title, body, density }: ResearchReportBloc
       aria-label={title ? undefined : t('a11y.research_report_label')}
     >
       {title ? (
-        <h4 id={titleId} className={cn('font-semibold', density === 'compact' ? 'text-sm' : 'text-base')}>{title}</h4>
+        <h4 id={titleId} dir="auto" className={cn('font-semibold', density === 'compact' ? 'text-sm' : 'text-base')}>{title}</h4>
       ) : null}
       <div
+        dir="auto"
         className={cn(
           'text-muted-foreground leading-relaxed',
           density === 'compact' ? 'text-xs' : 'text-sm',

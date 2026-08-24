@@ -46,7 +46,8 @@
     "count": "({{count}} items)"
   },
   "panel": {
-    "empty": "No AI UI content"
+    "empty": "No AI UI content",
+    "no_intent": "No UI intent data"
   },
   "overflow": {
     "truncated": "Block limit reached; only the first {{max}} are shown",

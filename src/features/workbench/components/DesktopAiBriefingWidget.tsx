@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkle } from '@phosphor-icons/react';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { buildLearningBriefingIntent } from '@/features/generative-ui/utils/buildLearningBriefingIntent';
-import { workbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
+import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import {
   getFlashcardsDueCount,
   subscribeFlashcardsDueCount,
@@ -59,6 +59,15 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
     [dueCount, overdueTodos, pendingTodos, t],
   );
 
+  const actionHandlers = useMemo(
+    () =>
+      createWorkbenchLearningHandlers({
+        startReview: t('generativeUi:workbench.briefing.start_review'),
+        openQbank: t('generativeUi:workbench.briefing.open_qbank'),
+      }),
+    [t],
+  );
+
   return (
     <section
       className="wb-ai-briefing-widget wb-glass wb-glass-highlight"
@@ -74,7 +83,7 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
         <GenerativeUIPanel
           intent={intent}
           showChrome={false}
-          actionHandlers={workbenchLearningHandlers}
+          actionHandlers={actionHandlers}
         />
       </div>
     </section>

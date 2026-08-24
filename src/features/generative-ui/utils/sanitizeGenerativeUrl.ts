@@ -1,11 +1,21 @@
 /**
  * Shared URL sanitizer for generative-ui href/src (and similar) values.
- * Trim first; never throw. Dangerous schemes are denylisted; empty is allowed.
+ * Trim first; never throw. Schemes are allowlisted; empty is allowed.
  */
 
-const DANGEROUS_SCHEME_RE = /^(?:javascript|vbscript|file)\s*:/i;
-const DATA_SCHEME_RE = /^data\s*:/i;
-const SAFE_DATA_IMAGE_RE = /^data\s*:image\//i;
+export const GENERATIVE_URL_SAFE_SCHEMES = ['http', 'https', 'mailto', 'tel'] as const;
+
+const SAFE_SCHEME_SET: ReadonlySet<string> = new Set(GENERATIVE_URL_SAFE_SCHEMES);
+
+/** 空白与 C0/C1，用于还原 `java\\tscript:` 一类混淆。 */
+const SCHEME_OBFUSCATION_RE = /[\s\u0000-\u001F\u007F-\u009F]+/g;
+
+/** 仅允许静态位图 data URI；`svg+xml` 可执行故排除。 */
+const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|gif|webp|avif)(?:[;,/]|$)/i;
+
+function normalizeForSchemeCheck(value: string): string {
+  return value.replace(SCHEME_OBFUSCATION_RE, '').toLowerCase();
+}
 
 /** True for javascript/vbscript/file/non-image data URLs and leading //. */
 export function isDangerousGenerativeUrl(value: string): boolean {
@@ -13,8 +23,22 @@ export function isDangerousGenerativeUrl(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
   if (trimmed.startsWith('//')) return true;
-  if (DANGEROUS_SCHEME_RE.test(trimmed)) return true;
-  if (DATA_SCHEME_RE.test(trimmed) && !SAFE_DATA_IMAGE_RE.test(trimmed)) return true;
+  if (trimmed.startsWith('#')) return false;
+
+  const normalized = normalizeForSchemeCheck(trimmed);
+  if (normalized.startsWith('//')) return true;
+
+  if (normalized.startsWith('data:')) {
+    return !SAFE_DATA_IMAGE_RE.test(normalized);
+  }
+
+  const colonIdx = trimmed.indexOf(':');
+  const slashIdx = trimmed.indexOf('/');
+  if (colonIdx !== -1 && (slashIdx === -1 || colonIdx < slashIdx)) {
+    const scheme = normalizeForSchemeCheck(trimmed.slice(0, colonIdx));
+    return !SAFE_SCHEME_SET.has(scheme);
+  }
+
   return false;
 }
 

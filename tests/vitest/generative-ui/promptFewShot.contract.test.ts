@@ -13,7 +13,11 @@ import {
   RESEARCH_COMPARISON_EXAMPLE,
   STUDY_PLAN_EXAMPLE,
 } from '@/features/generative-ui/prompts';
-import { parseGenerativeUIIntent, validateBlockProps } from '@/features/generative-ui/schema';
+import {
+  MAX_GENERATIVE_UI_BLOCKS,
+  parseGenerativeUIIntent,
+  validateBlockProps,
+} from '@/features/generative-ui/schema';
 import { generativeUiSkill } from '@/features/chat/skills/builtin-tools/generative-ui';
 
 import '@/features/generative-ui/blocks';
@@ -119,6 +123,17 @@ describe('generativeUI promptFewShot contract', () => {
     for (const keyword of GENERATIVE_UI_NEGATIVE_EXAMPLE_KEYWORDS) {
       expect(prompt, `missing negative keyword: ${keyword}`).toContain(keyword);
     }
+  });
+
+  it('system prompt default block limit matches the schema contract', () => {
+    const prompt = buildGenerativeUISystemPrompt();
+    expect(MAX_GENERATIVE_UI_BLOCKS).toBe(32);
+    expect(prompt).toContain(`最多 ${MAX_GENERATIVE_UI_BLOCKS} 个 blocks`);
+    expect(prompt).not.toContain('最多 12 个 blocks');
+    expect(buildGenerativeUISystemPrompt({ maxBlocks: 8 })).toContain('最多 8 个 blocks');
+    expect(buildGenerativeUISystemPrompt({ maxBlocks: 64 })).toContain(
+      `最多 ${MAX_GENERATIVE_UI_BLOCKS} 个 blocks`,
+    );
   });
 
   it('system prompt embeds all few-shot JSON documents', () => {

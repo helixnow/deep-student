@@ -3,7 +3,7 @@
  *（data-unregistered-actions）；省略 handlers 则不强制注册表。
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { collectUnregisteredActionIds } from '@/features/generative-ui/utils/collectUnregisteredActionIds';
@@ -62,6 +62,28 @@ describe('GenerativeUIRenderer unregistered action-bar ids', () => {
   it('does not show the hint when actionHandlers is omitted', () => {
     render(<GenerativeUIRenderer intent={UNREGISTERED_INTENT} showChrome={false} />);
     expect(unregisteredHint()).toBeNull();
+  });
+
+  it('updates a memoized action bar when handler enforcement changes', () => {
+    const { rerender } = render(
+      <GenerativeUIRenderer intent={UNREGISTERED_INTENT} showChrome={false} />,
+    );
+    const button = screen.getByRole('button', { name: 'Ghost' });
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute('data-action-unregistered');
+    expect(unregisteredHint()).toBeNull();
+
+    rerender(
+      <GenerativeUIRenderer
+        intent={UNREGISTERED_INTENT}
+        showChrome={false}
+        actionHandlers={{}}
+      />,
+    );
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('data-action-unregistered', '');
+    expect(button).toHaveAttribute('title', '未注册');
+    expect(unregisteredHint()).not.toBeNull();
   });
 });
 

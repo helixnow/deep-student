@@ -46,7 +46,8 @@
     "count": "（{{count}} 道）"
   },
   "panel": {
-    "empty": "暂无 AI 界面内容"
+    "empty": "暂无 AI 界面内容",
+    "no_intent": "无 UI 意图数据"
   },
   "overflow": {
     "truncated": "组件数量超过上限，仅显示前 {{max}} 个",

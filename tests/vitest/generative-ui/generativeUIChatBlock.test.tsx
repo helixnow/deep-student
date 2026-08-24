@@ -28,6 +28,15 @@ vi.mock('react-i18next', () => ({
         'chrome.dismiss': '忽略',
         'chrome.streaming': '生成中',
         'action.unregistered_hint': '未注册',
+        'action.copy_intent': '复制意图',
+        'action.copy_block': '复制该组件',
+        'panel.no_intent': '无 UI 意图数据',
+        'workbench.briefing.start_review': '开始复习',
+        'workbench.briefing.open_qbank': '打开题库',
+        'workbench.dashboard.open_task_dashboard': '打开制卡任务',
+        'research.actions.copy_report': '复制报告',
+        'research.actions.export_plan': '导出计划',
+        'research.actions.export_intent': '导出全部意图',
       };
       return map[key] ?? key;
     },

@@ -8,6 +8,11 @@ import {
 } from '../parser';
 import { recoverGenerativeBlocks, recoverGenerativeUIIntent } from '../schema';
 import type { GenerativeUIIntent } from '../types';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+  isStreamBufferOverCap,
+} from './streamBufferGuard';
 
 export interface CoercePartialIntentResult {
   intent: GenerativeUIIntent | null;
@@ -40,7 +45,16 @@ export function coercePartialIntent(raw: string): CoercePartialIntentResult {
     truncated: false,
     warnings: [],
   };
-  if (!raw?.trim()) return empty;
+  if (!raw) return empty;
+  if (isStreamBufferOverCap(raw.length, MAX_GENERATIVE_UI_STREAM_CHARS)) {
+    return {
+      intent: null,
+      dropped: 0,
+      truncated: true,
+      warnings: [STREAM_BUFFER_CAPPED_WARNING],
+    };
+  }
+  if (!raw.trim()) return empty;
 
   const sanitized = sanitizeGenerativeJsonBuffer(raw);
   if (!sanitized) return empty;

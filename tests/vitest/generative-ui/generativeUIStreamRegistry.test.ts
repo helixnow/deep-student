@@ -50,6 +50,19 @@ describe('generativeUIStreamRegistry', () => {
     expect(snap.committedBlockCount).toBe(0);
   });
 
+  it('resets incremental state when cumulative content is replaced at the same length', () => {
+    const blockId = 'blk-stream-replaced';
+    const first = '{"version":"1","blocks":[{"type":"text","props":{"body":"A"}}';
+    const replacement = '{"version":"1","blocks":[{"type":"text","props":{"body":"B"}}';
+    expect(replacement).toHaveLength(first.length);
+
+    appendGenerativeUIStreamContent(blockId, first);
+    const snap = appendGenerativeUIStreamContent(blockId, replacement);
+
+    expect(snap.committedBlockCount).toBe(1);
+    expect(snap.intent?.blocks[0]?.props?.body).toBe('B');
+  });
+
   it('falls back to lastGoodIntent when end-event JSON cannot be finalized', () => {
     const blockId = 'blk-stream-last-good';
     const open = '{"version":"1","blocks":[{"type":"text","props":{"body":"alpha"}}';

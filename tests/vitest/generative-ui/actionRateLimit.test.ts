@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { GenerativeActionDefinition } from '@/features/generative-ui/types';
+import { createActionRateLimiter } from '@/features/generative-ui';
 import {
   GENERATIVE_ACTION_COOLDOWN_MS,
   GenerativeActionRateLimitError,
@@ -63,6 +64,26 @@ describe('wrapActionWithRateLimit', () => {
     vi.setSystemTime(1_000 + GENERATIVE_ACTION_COOLDOWN_MS);
     await expect(wrapped.handler()).resolves.toBeUndefined();
     expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares cooldown state across definitions wrapped by one limiter', async () => {
+    let now = 0;
+    const limiter = createActionRateLimiter({ cooldownMs: 100, clock: () => now });
+    const firstHandler = vi.fn();
+    const secondHandler = vi.fn();
+    const first = limiter.wrap(makeDef({ id: 'first', handler: firstHandler }));
+    const second = limiter.wrap(makeDef({ id: 'second', handler: secondHandler }));
+
+    await first.handler();
+    await expect(second.handler()).rejects.toMatchObject({
+      actionId: 'second',
+      cooldownMs: 100,
+    });
+
+    now = 100;
+    await second.handler();
+    expect(firstHandler).toHaveBeenCalledOnce();
+    expect(secondHandler).toHaveBeenCalledOnce();
   });
 
   it('rejects an overlapping in-flight second call', async () => {

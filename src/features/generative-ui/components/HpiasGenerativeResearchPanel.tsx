@@ -12,12 +12,15 @@ import { createResearchBriefingActionHandlers } from '../handlers/researchBriefi
 import { createCopyIntentActionHandlers } from '../handlers/copyIntentActionHandlers';
 
 export interface HpiasGenerativeResearchPanelProps {
+  /** 传入时只渲染匹配该 session 的 store 快照，避免并发研究串台。 */
+  sessionId?: string;
   showChrome?: boolean;
   question?: string;
   emptyFallback?: React.ReactNode;
 }
 
 export function HpiasGenerativeResearchPanel({
+  sessionId: expectedSessionId,
   showChrome = false,
   question,
   emptyFallback = null,
@@ -154,7 +157,7 @@ export function HpiasGenerativeResearchPanel({
     intent,
   ]);
 
-  if (!sessionId || !intent) {
+  if (!sessionId || !intent || (expectedSessionId && sessionId !== expectedSessionId)) {
     return emptyFallback ? <>{emptyFallback}</> : null;
   }
 
