@@ -99,9 +99,11 @@
 
 ## 编译门禁
 
-合并提交推送后执行：
+合并提交 `cf394904` 推送后执行：
 
-- `npm ci`
-- `npm run typecheck`
-- `npx vite build`
-- `cargo check --manifest-path src-tauri/Cargo.toml --lib`
+- `npm ci`：通过（1200 packages）。
+- `npm run typecheck`：通过。首次运行前需由仓库脚本 `npm run version:generate` 生成 gitignored 的 `src/version.ts`。
+- `npx vite build`：通过（19678 modules transformed）；仅有既存的 Rollup 循环 chunk / 大 chunk 警告。
+- `cargo check --manifest-path src-tauri/Cargo.toml --lib`：通过；`deep-student` lib 仅报告既存 warning。
+
+本机 Rust 初始为 Cargo 1.83，无法解析锁定依赖使用的 edition 2024；切换到 stable Cargo 1.98 后继续。Linux Tauri 检查还需要 GTK/WebKit 系统开发库与 `resources/pdfium/libpdfium.so`，后者通过仓库的 `scripts/download-pdfium.sh linux-x64` 临时准备。门禁结束后移除下载的未跟踪二进制并还原脚本更新的 license 文本，仓库未引入生成物。
