@@ -76,7 +76,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
 
   if (compact) {
     return (
-      <DsButton variant="ghost" size="sm" onClick={load} title={t('mcpStatus.refreshStatus')} className={`!h-auto text-xs [@media(pointer:coarse)]:min-h-9 ${textClass} hover:text-foreground`}>
+      <DsButton variant="ghost" size="sm" onClick={load} title={t('mcpStatus.refreshStatus')} className={`!h-auto text-xs [@media(pointer:coarse)]:min-h-11 ${textClass} hover:text-foreground`}>
         <Plug size={14} className="shrink-0" />
         <Icon size={14} className="shrink-0" />
         <span className="text-left">

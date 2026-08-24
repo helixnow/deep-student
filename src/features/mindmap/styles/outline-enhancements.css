@@ -234,6 +234,26 @@ button.collapse-toggle:focus-visible {
     inset: -8px;
   }
 
+  /* 任务 checkbox：视觉保持 14px，::before 撑出 44px 命中区（::after 已被对勾占用）。
+     z-index 必须盖过 mindmap.css 里 .node-bullet-container::after 的拖拽命中扩展
+     （伪元素按"最后一个子元素"绘制在 checkbox 之上），否则点按会落到行选中/拖拽；
+     容器自身 z-index:2 已建堆叠上下文，这里的 z-index 不会外泄 */
+  .outline-task-checkbox {
+    position: relative;
+    z-index: 1;
+  }
+
+  .outline-task-checkbox::before {
+    content: '';
+    position: absolute;
+    /* 不用 inset 负值：border-box 下 padding box 仅 11px，负 inset 算不出整 44px */
+    width: 44px;
+    height: 44px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
   .outline-ghost-row {
     min-height: var(--size-shell-touch-target, 36px);
     opacity: 0.7;

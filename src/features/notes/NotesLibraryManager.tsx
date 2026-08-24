@@ -292,7 +292,7 @@ export function NotesLibraryPanel({
                     <label
                       key={option.value}
                       className={cn(
-                        'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors',
+                        'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors [@media(pointer:coarse)]:min-h-11',
                         selected
                           ? 'border-primary/50 bg-primary/5 text-foreground'
                           : 'border-border/60 text-muted-foreground hover:bg-muted/30',
