@@ -279,7 +279,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
           {t('data:recovery.scan_failed')}
         </div>
         <p className="mt-2 break-words text-sm text-muted-foreground">{loadError}</p>
-        <DsButton className="mt-4" variant="secondary" size="sm" onClick={() => void refresh()}>
+        <DsButton className="mt-4 [@media(pointer:coarse)]:min-h-11" variant="secondary" size="sm" onClick={() => void refresh()}>
           <ArrowClockwise size={15} className="mr-1.5" />
           {t('common:actions.retry')}
         </DsButton>
@@ -388,6 +388,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     <DsButton
                       size="sm"
                       variant="ghost"
+                      className="[@media(pointer:coarse)]:min-h-11"
                       disabled={Boolean(recoveryAction)}
                       onClick={() => void runRecoveryAction(
                         `open-${item.id}`,
@@ -400,6 +401,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     <DsButton
                       size="sm"
                       variant="secondary"
+                      className="[@media(pointer:coarse)]:min-h-11"
                       disabled={Boolean(recoveryAction)}
                       onClick={() => void runRecoveryAction(
                         `export-${item.id}`,
@@ -641,6 +643,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="ghost"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction(
                 `open-${incident.id}`,
@@ -653,6 +656,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="secondary"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction(
                 `export-${incident.id}`,
@@ -665,6 +669,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="secondary"
+              className="[@media(pointer:coarse)]:min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction('report', exportStartupRecoveryReport)}
             >
