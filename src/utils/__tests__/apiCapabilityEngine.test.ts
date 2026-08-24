@@ -254,9 +254,17 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
     expect(caps.vision).toBe(false);
   });
 
-  it('no longer resolves retired hunyuan-2.0 entries from the registry', () => {
-    expect(findModelRecordById('hunyuan-2.0-think')).toBeUndefined();
-    expect(findModelRecordById('hunyuan-2.0-instruct')).toBeUndefined();
+  it('keeps hunyuan-2.0 entries resolvable from the registry', () => {
+    const think = findModelRecordById('hunyuan-2.0-think');
+    expect(think?.model_id).toBe('hunyuan-2.0-think');
+    expect(think?.capabilities.vision).toBe(true);
+    expect(think?.capabilities.reasoning).toBe(true);
+    expect(think?.capabilities.max_context_tokens).toBe(256_000);
+
+    const instruct = findModelRecordById('hunyuan-2.0-instruct');
+    expect(instruct?.model_id).toBe('hunyuan-2.0-instruct');
+    expect(instruct?.capabilities.vision).toBe(false);
+    expect(instruct?.capabilities.function_calling).toBe(true);
   });
 });
 
