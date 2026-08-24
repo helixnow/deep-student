@@ -6,10 +6,8 @@
 - [x] `buildExamBriefingIntent` + `ExamGenerativeBriefing` — ExamContentView 题库简报 POC（stats + handleStartReview）
 - [x] `createExamBriefingActionHandlers` — 上下文回调注入（start-review / open-practice）
 - [x] `buildNoteSummaryIntent` labels/i18n 注入（对齐其他 builder 模式）
-- [x] actionHandlerSync contract 扩展 exam briefing
-- [x] 60 项 vitest 全绿（generative-ui + ExamGenerativeBriefing）
-- [ ] Memory/IndexStatus Hub 挂载点
-- [ ] generative-ui skill ↔ Rust parse_intent contract 测试
+- [x] generative-ui skill ↔ Rust parse_intent contract 测试
+- [x] 75 项 vitest 全绿（+15：Index/Memory 简报 + skill contract）
 - [ ] Rust execute 级测试
 
 ### Round 6+
