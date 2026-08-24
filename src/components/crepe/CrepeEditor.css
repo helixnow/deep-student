@@ -1043,6 +1043,17 @@
   transition: background var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)), color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
+/* 触屏：block handle 加号/拖拽钮放大到 ≥44px 触控目标。
+   需 !important 同权重覆盖上方基础规则；必须位于其后（同特异性按源序取胜）。 */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+  }
+}
+
 /* 强制覆盖 Crepe 内部的图标颜色变量 */
 .crepe-editor-wrapper .milkdown .milkdown-block-handle {
   --crepe-color-solid: hsl(var(--foreground)) !important;
