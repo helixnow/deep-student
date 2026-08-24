@@ -4,7 +4,7 @@
 
 This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `legal/THIRD_PARTY_NOTICES.txt` (single authoritative path, bundled into `resources/licenses/` via Tauri `bundle.resources`).
 
-> 生成时间 / Generated: 2026-07-14
+> 更新时间 / Updated: 2026-08-24
 
 ---
 
@@ -53,7 +53,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
 | 许可证 | 代表性依赖 | 选择/说明 |
 |--------|-----------|-----------|
 | MIT | react, zustand, framer-motion, mermaid, ExcelJS | 保留各包的版权与 MIT 文本 |
-| Apache-2.0 | pdfjs-dist, docx-preview, @hello-pangea/dnd | 保留 Apache-2.0 文本和 NOTICE（如有） |
+| Apache-2.0 | pdfjs-dist, docx-preview | 保留 Apache-2.0 文本和 NOTICE（如有） |
 | MIT OR GPL-3.0-or-later | jszip | 采用 MIT 选项 |
 | MPL-2.0 OR Apache-2.0 | dompurify | 采用 Apache-2.0 选项 |
 | MIT AND Zlib | pako | 同时保留 MIT 与 Zlib 声明 |
