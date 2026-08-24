@@ -16,6 +16,7 @@ export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
 export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
 export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
+export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
 
 type ErrorWithCode = Error & { code?: string };
 
@@ -74,6 +75,9 @@ function codeFromDiagnosticText(text: string): string | undefined {
   }
   if (text.includes(SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE)) {
     return SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PASSWORD_REQUIRED_CODE)) {
+    return SYNC_E2EE_PASSWORD_REQUIRED_CODE;
   }
   return undefined;
 }

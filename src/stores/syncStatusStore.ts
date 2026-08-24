@@ -119,7 +119,10 @@ export const AUTO_SYNC_BUSY_MARKERS: readonly string[] = [
  * 半配置（云端要求加密但本机无密码）的引擎稳定文案片段，
  * 与 SyncTab 的 classifySyncError missing_password 分支一致。
  */
-export const AUTO_SYNC_UNCONFIGURED_MARKERS: readonly string[] = ['未配置加密密码'];
+export const AUTO_SYNC_UNCONFIGURED_MARKERS: readonly string[] = [
+  'E_SYNC_E2EE_PASSWORD_REQUIRED',
+  '未配置加密密码',
+];
 
 export type AutoSyncSkipOutcome = Extract<
   AutoSyncOutcome,
