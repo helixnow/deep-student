@@ -177,7 +177,7 @@
       "downloadPending": {
         "label": "Not downloaded yet",
         "reason": "These files exist in the cloud but have not been downloaded to this device — either the last download failed or a download sync has not run yet.",
-        "suggestion": "What to do: click \"Retry download sync\" to fetch them again; if it keeps failing, check your network and cloud credentials, then retry."
+        "suggestion": "What to do: use \"Download\" in the Cloud Sync section above to retry fetching them; if it keeps failing, check your network and cloud credentials, then retry."
       },
       "legacyPlaintext": {
         "label": "Legacy unencrypted (rejected)",

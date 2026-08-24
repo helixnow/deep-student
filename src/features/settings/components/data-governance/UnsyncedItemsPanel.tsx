@@ -108,9 +108,7 @@ async function fetchUnsyncedItems(): Promise<UnsyncedItemsReport | null> {
 
 export const UnsyncedItemsPanel: React.FC<{
   refreshSignal?: string | number;
-  /** 重试下载同步（由父级接到 onRunSync("download", ...) 或 onRetrySync） */
-  onRetrySync?: () => void;
-}> = ({ refreshSignal, onRetrySync }) => {
+}> = ({ refreshSignal }) => {
   const { t } = useTranslation(["sync", "common"]);
   const [report, setReport] = useState<UnsyncedItemsReport | null>(null);
   const [configMissing, setConfigMissing] = useState(false);
@@ -232,25 +230,11 @@ export const UnsyncedItemsPanel: React.FC<{
 
         {groups.map((group) => (
           <div key={group.kind} className="space-y-2">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm font-medium text-foreground">
-                {t(KIND_LABEL_KEYS[group.kind])}
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  ({group.items.length})
-                </span>
-              </div>
-              {group.kind === "downloadPending" && onRetrySync && (
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={onRetrySync}
-                  disabled={loading}
-                  className="h-7 text-xs"
-                >
-                  <ArrowClockwise size={13} className="mr-1" />
-                  {t("sync:unsynced.retrySync")}
-                </DsButton>
-              )}
+            <div className="text-sm font-medium text-foreground">
+              {t(KIND_LABEL_KEYS[group.kind])}
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                ({group.items.length})
+              </span>
             </div>
             <p className="text-xs text-muted-foreground">
               {t(KIND_REASON_KEYS[group.kind])}

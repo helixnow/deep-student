@@ -5,9 +5,9 @@
  * 1. 空态：云端清单全部已落地 → 绿勾空态；未配置云端 → 不发查询、给人话提示；
  * 2. 多类目：五类未同步条目分组展示，每组带人话原因 + 可执行建议，
  *    冲突类条目展示冲突对方 key，截断时给出诚实提示；
- * 3. 重试动作：downloadPending 组的「重试下载同步」回调接线；查询失败的
- *    行内重试重新发起查询；「重新检查」按钮重新查询；
- * 4. SyncTab 挂载行锁定：面板常驻挂载且拿到 refreshSignal / onRetrySync；
+ * 3. 只读动作：downloadPending 不提供同步写入口；查询失败的行内重试与
+ *    「重新检查」都只重新执行清单查询；
+ * 4. SyncTab 挂载行锁定：面板常驻挂载且只拿到 refreshSignal；
  * 5. locale 契约：zh/en `unsynced.*` 键齐全对齐，建议文案写明可执行动作。
  */
 import React from 'react';
@@ -224,32 +224,22 @@ describe('UnsyncedItemsPanel 多类目', () => {
 });
 
 // ============================================================================
-// 重试动作
+// 只读刷新动作
 // ============================================================================
 
-describe('UnsyncedItemsPanel 重试动作', () => {
-  it('downloadPending 组的重试按钮回调 onRetrySync', async () => {
+describe('UnsyncedItemsPanel 只读刷新动作', () => {
+  it('downloadPending 只展示建议，不提供下载同步写入口', async () => {
     mockInvoke.mockResolvedValue(makeReport([MULTI_CATEGORY_ITEMS[0]]));
-    const onRetrySync = vi.fn();
-    render(<UnsyncedItemsPanel onRetrySync={onRetrySync} />);
+    render(<UnsyncedItemsPanel />);
 
-    const retryButton = await screen.findByRole('button', {
-      name: /sync:unsynced\.retrySync/,
-    });
-    fireEvent.click(retryButton);
-    expect(onRetrySync).toHaveBeenCalledTimes(1);
-  });
-
-  it('没有 downloadPending 条目时不渲染重试按钮', async () => {
-    mockInvoke.mockResolvedValue(makeReport([MULTI_CATEGORY_ITEMS[2]]));
-    render(<UnsyncedItemsPanel onRetrySync={vi.fn()} />);
-
-    expect(
-      await screen.findByText('sync:unsynced.kind.caseConflict.label'),
-    ).toBeInTheDocument();
+    await screen.findByText('sync:unsynced.kind.downloadPending.label');
     expect(
       screen.queryByRole('button', { name: /sync:unsynced\.retrySync/ }),
     ).not.toBeInTheDocument();
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls.map(([command]) => command)).toEqual([
+      'data_governance_list_unsynced_items',
+    ]);
   });
 
   it('查询失败显示错误与行内重试，重试后恢复', async () => {
@@ -265,6 +255,10 @@ describe('UnsyncedItemsPanel 重试动作', () => {
     );
     expect(await screen.findByText('sync:unsynced.empty')).toBeInTheDocument();
     expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke.mock.calls.map(([command]) => command)).toEqual([
+      'data_governance_list_unsynced_items',
+      'data_governance_list_unsynced_items',
+    ]);
   });
 
   it('「重新检查」按钮重新发起查询', async () => {
@@ -277,6 +271,10 @@ describe('UnsyncedItemsPanel 重试动作', () => {
     );
     expect(await screen.findByText('sync:unsynced.empty')).toBeInTheDocument();
     expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockInvoke.mock.calls.map(([command]) => command)).toEqual([
+      'data_governance_list_unsynced_items',
+      'data_governance_list_unsynced_items',
+    ]);
   });
 });
 
