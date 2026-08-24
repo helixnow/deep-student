@@ -238,13 +238,13 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
           {filteredLogs.length}/{logs.length}
         </span>
 
-        <Button variant="ghost" size="sm" onClick={copyAllLogs} title="复制全部">
+        <Button variant="ghost" size="sm" onClick={copyAllLogs} title="复制全部" className="[@media(pointer:coarse)]:min-h-11">
           <Copy size={14} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={exportLogs} title="导出">
+        <Button variant="ghost" size="sm" onClick={exportLogs} title="导出" className="[@media(pointer:coarse)]:min-h-11">
           <Download size={14} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={clearLogs} title="清空">
+        <Button variant="ghost" size="sm" onClick={clearLogs} title="清空" className="[@media(pointer:coarse)]:min-h-11">
           <Trash size={14} />
         </Button>
       </div>
@@ -286,7 +286,7 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
                 
                 <button
                   onClick={() => copyLog(log)}
-                  className="p-0.5 hover:bg-muted rounded"
+                  className="p-0.5 hover:bg-muted rounded [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                   title="复制"
                 >
                   {copiedId === log.id ? (
