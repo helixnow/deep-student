@@ -55,7 +55,9 @@ const OFFICIAL_NATIVE_PROTOCOL_HOSTS: Readonly<Record<string, ApiProtocol>> = {
   'generativelanguage.googleapis.com': 'google_generate_content',
 };
 
-const resolveOfficialNativeProtocol = (baseUrl?: string | null): ApiProtocol | undefined => {
+// 导出给 settings 层（modelConverters）复用：官方 host 的原生协议不受
+// providerType allowed 列表约束，判定逻辑必须与 resolvePreferredProtocol 同源。
+export const resolveOfficialNativeProtocol = (baseUrl?: string | null): ApiProtocol | undefined => {
   const hostname = resolveHostnameFromBaseUrl(baseUrl);
   return hostname ? OFFICIAL_NATIVE_PROTOCOL_HOSTS[hostname] : undefined;
 };
