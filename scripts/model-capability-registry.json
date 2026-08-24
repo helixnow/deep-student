@@ -2813,62 +2813,6 @@
       ]
     },
     {
-      "vendor": "腾讯混元",
-      "series": "Hunyuan 2.0",
-      "models": [
-        {
-          "model_id": "hunyuan-2.0-think",
-          "release_date": "2025-11-09",
-          "status": "confirmed",
-          "capabilities": {
-            "text": true,
-            "vision": true,
-            "audio": false,
-            "video": false,
-            "function_calling": true,
-            "reasoning": true,
-            "coding_agent": true,
-            "max_context_tokens": 256000,
-            "max_output_tokens": null
-          },
-          "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "最新明确版本主要在 2025 末，2026 未见新独立代号。"
-          },
-          "quirks": [
-            "产品动态页更新到 2025-12，后续若有 2026 patch 先在此列表添加新条目。"
-          ]
-        },
-        {
-          "model_id": "hunyuan-2.0-instruct",
-          "release_date": "2025-11-11",
-          "status": "confirmed",
-          "capabilities": {
-            "text": true,
-            "vision": false,
-            "audio": false,
-            "video": false,
-            "function_calling": true,
-            "reasoning": true,
-            "coding_agent": false,
-            "max_context_tokens": 256000,
-            "max_output_tokens": null
-          },
-          "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "偏指令跟随，作为 Instruct 侧替代。"
-          },
-          "quirks": [
-            "2026 若仅是版本微调，不要重命名为新型号。"
-          ]
-        }
-      ]
-    },
-    {
       "vendor": "智谱",
       "series": "GLM-5",
       "models": [

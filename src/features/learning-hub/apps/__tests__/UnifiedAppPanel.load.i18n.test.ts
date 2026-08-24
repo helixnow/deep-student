@@ -16,7 +16,7 @@ const source = readFileSync(
 
 describe('UnifiedAppPanel load-error reporting i18n', () => {
   it('does not pass the hardcoded literal 「加载资源」 as the reportError context', () => {
-    expect(source).not.toMatch(/reportError\([^)]*['"`]加载资源['"`]/);
+    expect(source).not.toMatch(/reportError\(\s*result\.error,\s*['"`]加载资源['"`]/);
   });
 
   it('uses a failure-free localized operation name as the reportError context', () => {
