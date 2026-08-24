@@ -167,7 +167,7 @@
 - [x] 子代理 #6：最终文档/i18n 收口检查——复核 ChatAnki skill 为 **29 个**
   专用工具；`anki.json` 中英各 1019 个叶子 key 且集合完全对称；预览块混用的
   `anki` / `chatV2` key 均存在且两语言对称；用户指南只描述现行 ChatAnki 主路径；
-  README 与本日志补记 grounded critic 真实接线状态
+  README 与本日志补记 grounded critic 及遮挡草稿最小接线的真实状态
 
 **尚未完成，继续按真实代码状态记录：**
 
@@ -190,4 +190,4 @@
 | 2026-08-24 | 3 | qa lint / eval harness / CardForge 清理 / 偏好记忆 + 文档 i18n 收口 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
-| 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 与遮挡草稿最小接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |

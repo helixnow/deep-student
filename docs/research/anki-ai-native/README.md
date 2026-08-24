@@ -72,7 +72,8 @@ Grounded critic 仍有一个数据可用性限制：生成路径尚未稳定写�
 
 - Round 4 能力扩展已完成状态盘点；Round 5 当前分支已交付 skill 参数补齐、
   grounded critic、eval lint 对齐与文档/i18n 终检。
-- 仍未伪装成已完成的项目：偏好记忆写入侧、图像遮挡管线/预览接线、
-  Sidekick Planner/Critic/Vlm 真正分槽，以及 `_original_generation` 稳定埋点。
+- 仍未伪装成已完成的项目：偏好记忆写入侧、图像遮挡完整闭环
+  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Critic/Vlm 完整分槽，
+  以及 `_original_generation` 稳定埋点。
 - 用户可见主路径、工具数量与限制以 ChatAnki skill 和
   [用户指南](../../user-guide/12-Anki制卡与模板.md) 为准；历史调研中的阶段性设计不作为现行入口说明。

@@ -32,8 +32,9 @@
 - 现行入口只描述 ChatAnki 对话制卡、任务看板和模板管理。
 - 工具数量、transform ops/script 双模式、生成调优参数、QA 徽标、媒体报告、
   FSRS 回流与偏好记忆限制均与当前代码一致。
-- critic 仍未暴露为用户可触达的 ChatAnki 参数，图像遮挡也尚未接入生成/预览主路径，
-  因而不把两者写成用户可用功能。
+- critic 仍未暴露为用户可触达的 ChatAnki 参数。图像遮挡在终检期间新增了
+  “VlmFull 直接图片 → 启发式 `_occlusion` 草稿”的最小后端路径，但没有真实
+  grounding、PDF 页图支持或预览/编辑入口，因而不把两者写成完整用户功能。
 
 ### Round 4/5 状态
 
@@ -42,9 +43,11 @@
   - run/start 生成调优参数的 skill schema 对齐；
   - 同文档用户修正对接入 opt-in LLM critic，缺参照时回退规则 rubric；
   - eval lint 与生产 `anki_qa_lint` 对齐；
+  - VlmFull 直接图片的启发式图像遮挡草稿最小接线；
   - 文档、用户指南与 i18n 终检。
-- 仍明确保留为未完成：偏好记忆写入侧、图像遮挡管线/预览接线、
-  Sidekick Planner/Critic/Vlm 真正分槽，以及 `_original_generation` 稳定埋点。
+- 仍明确保留为未完成：偏好记忆写入侧、图像遮挡完整闭环
+  （PDF 页图、真实 grounding、预览/编辑）、Sidekick Planner/Critic/Vlm 完整分槽，
+  以及 `_original_generation` 稳定埋点。
 
 ## 修改文件
 
