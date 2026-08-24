@@ -21,6 +21,20 @@ pub const CLOUD_CONFIG_SSOT_SETTING_KEY: &str = "cloud_storage.config.safe_v1";
 pub const FTP_UNSUPPORTED_ON_ANDROID_MESSAGE: &str =
     "FTP/FTPS storage is not available on Android.";
 
+/// Stable, user-actionable message for every backend path that rejects S3 on
+/// builds compiled without the `cloud_storage_s3` feature (Android
+/// `android-release` / `mobile-slim` profiles).
+///
+/// [R09-android / RESTORE-MATRIX P3-2] The old message told end users to
+/// "enable the cloud_storage_s3 feature at compile time" — actionable only
+/// for compiler operators. Must stay byte-identical across
+/// `cloud_storage::create_storage`, `CloudStorageConfig::validate` and the
+/// SSOT save/load paths so the frontend can map them to one notice.
+/// (Locale inconsistency with the English FTP constant is tracked in
+/// FIX-QUEUE, not silently "fixed" here.)
+pub const S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE: &str =
+    "当前安装包不支持 S3 兼容存储，请改用 WebDAV。";
+
 const MAX_ENDPOINT_CHARS: usize = 2_048;
 const MAX_IDENTITY_CHARS: usize = 512;
 const MAX_ROOT_CHARS: usize = 256;
@@ -126,6 +140,14 @@ impl CloudConfigSsotError {
     fn ftp_unsupported_on_platform() -> Self {
         Self::Invalid(FTP_UNSUPPORTED_ON_ANDROID_MESSAGE.to_string())
     }
+
+    /// S3 can never work on a build compiled without `cloud_storage_s3`, so
+    /// neither saving nor loading such a record is allowed (same zombie-config
+    /// reasoning as FTP-on-Android). Message identical to the
+    /// `create_storage` / `validate` rejection for frontend mapping.
+    fn s3_unsupported_in_build() -> Self {
+        Self::Invalid(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE.to_string())
+    }
 }
 
 fn bounded_text(
@@ -220,6 +242,18 @@ impl SafeCloudStorageConfig {
     }
 
     fn validate_and_normalize(self) -> Result<Self, CloudConfigSsotError> {
+        self.validate_and_normalize_with_capabilities(
+            crate::cloud_storage::PlatformStorageCapabilities::current(),
+        )
+    }
+
+    /// 同 `validate_and_normalize`，但显式注入后端能力（测试钩子）：
+    /// 宿主机测试可按 Android / mobile-slim 能力矩阵验证保存与加载路径
+    /// 对不可用 provider 的 fail-closed 行为。
+    fn validate_and_normalize_with_capabilities(
+        self,
+        capabilities: crate::cloud_storage::PlatformStorageCapabilities,
+    ) -> Result<Self, CloudConfigSsotError> {
         match self {
             Self::Webdav {
                 webdav,
@@ -253,6 +287,12 @@ impl SafeCloudStorageConfig {
                 root,
                 allow_insecure: _,
             } => {
+                // Mirror FTP-on-Android: a build without the S3 backend must
+                // fail at save AND at load instead of persisting a
+                // configuration that can never create storage.
+                if !capabilities.s3_supported {
+                    return Err(CloudConfigSsotError::s3_unsupported_in_build());
+                }
                 let (endpoint, parsed) = validated_http_endpoint(&s3.endpoint, "s3.endpoint")?;
                 if parsed.scheme() == "http" && !parsed.host_str().is_some_and(is_loopback_host) {
                     return Err(CloudConfigSsotError::Invalid(
@@ -286,7 +326,7 @@ impl SafeCloudStorageConfig {
                 // Mirror `create_storage`: Android has no FTP backend, so an
                 // FTP record must fail at save AND at load instead of
                 // persisting a configuration that can never validate.
-                if cfg!(target_os = "android") {
+                if !capabilities.ftp_supported {
                     return Err(CloudConfigSsotError::ftp_unsupported_on_platform());
                 }
                 if ftp.port == 0 {
@@ -387,7 +427,20 @@ pub fn save_cloud_config_ssot(
     database: &crate::database::Database,
     config: SafeCloudStorageConfig,
 ) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
-    let config = config.validate_and_normalize()?;
+    save_cloud_config_ssot_with_capabilities(
+        database,
+        config,
+        crate::cloud_storage::PlatformStorageCapabilities::current(),
+    )
+}
+
+/// 同 [`save_cloud_config_ssot`]，显式注入后端能力（测试钩子，行为等价）。
+pub fn save_cloud_config_ssot_with_capabilities(
+    database: &crate::database::Database,
+    config: SafeCloudStorageConfig,
+    capabilities: crate::cloud_storage::PlatformStorageCapabilities,
+) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
+    let config = config.validate_and_normalize_with_capabilities(capabilities)?;
     let encoded = serde_json::to_string(&config)
         .map_err(|_| CloudConfigSsotError::Invalid("configuration is not serializable".into()))?;
     if encoded.len() > MAX_STORED_CONFIG_BYTES {
@@ -404,6 +457,17 @@ pub fn save_cloud_config_ssot(
 pub fn load_cloud_config_ssot(
     database: &crate::database::Database,
 ) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
+    load_cloud_config_ssot_with_capabilities(
+        database,
+        crate::cloud_storage::PlatformStorageCapabilities::current(),
+    )
+}
+
+/// 同 [`load_cloud_config_ssot`]，显式注入后端能力（测试钩子，行为等价）。
+pub fn load_cloud_config_ssot_with_capabilities(
+    database: &crate::database::Database,
+    capabilities: crate::cloud_storage::PlatformStorageCapabilities,
+) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
     let encoded = database
         .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
         .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?
@@ -415,7 +479,7 @@ pub fn load_cloud_config_ssot(
     }
     let config = serde_json::from_str::<SafeCloudStorageConfig>(&encoded)
         .map_err(|_| CloudConfigSsotError::Invalid("stored configuration is malformed".into()))?
-        .validate_and_normalize()?;
+        .validate_and_normalize_with_capabilities(capabilities)?;
     Ok(config)
 }
 
