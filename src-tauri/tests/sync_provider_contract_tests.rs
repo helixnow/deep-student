@@ -1633,7 +1633,6 @@ async fn run_asset_shared_object_tombstone_contract(storage: Box<dyn CloudStorag
         sha256_hex(&shared_payload)
     );
     let deleted_key = "active/images/shared/deleted.bin";
-    let kept_key = "active/images/shared/kept.bin";
     let deleted_rel = Path::new("images").join("shared").join("deleted.bin");
     let kept_rel = Path::new("images").join("shared").join("kept.bin");
 
