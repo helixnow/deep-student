@@ -580,7 +580,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onClick={() => setShowTopicSection(!showTopicSection)}
             aria-expanded={showTopicSection}
             className={cn(
-              'flex items-center gap-2 w-full px-4 py-2 text-xs transition-colors duration-150',
+              'flex items-center gap-2 w-full px-4 py-2 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors duration-150',
               showTopicSection
                 ? 'text-foreground bg-muted/25'
                 : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
