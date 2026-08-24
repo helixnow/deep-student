@@ -372,7 +372,7 @@ jobs:
           find artifacts -name "*.rpm" -exec cp {} release-files/ \;
           find artifacts -name "*.apk" -exec cp {} release-files/ \;
 
-          ls release-files/ | sort > expected-assets.txt
+          find release-files -maxdepth 1 -type f -printf '%f\n' | sort > expected-assets.txt
           echo "📦 Release files (expected upload manifest):"
           ls -lh release-files/
 
@@ -494,7 +494,7 @@ jobs:
           ANDROID_STATUS="${{ steps.manifest.outputs.android_status }}"
           APK_URL=""
           if [ "$ANDROID_STATUS" = "available" ]; then
-            APK_NAME=$(ls release-files/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+            APK_NAME=$(find release-files -maxdepth 1 -name '*.apk' -printf '%f\n' | sort | head -1)
             if [ -z "$APK_NAME" ]; then
               echo "::error::android status is 'available' but no APK in release-files — inconsistent state"
               exit 1

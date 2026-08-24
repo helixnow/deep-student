@@ -268,8 +268,8 @@ jobs:
             case "$STATE" in
               published)
                 # 状态机终态: 不重建、不重跑构建
-                echo "release_created=false" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=false" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "ℹ️ Release ${TAG} already published; nothing to do"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -278,8 +278,8 @@ jobs:
                 # 幂等恢复: 上一次 run 失败或被 rerun, 复用同一个 draft,
                 # 继续走构建 + publish (publish 用 --clobber 覆盖旧资产)
                 ensure_tag "${TAG}" "${TARGET_SHA}"
-                echo "release_created=true" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=true" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "🔁 Resuming existing draft Release ${TAG} (idempotent recovery)"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -290,8 +290,8 @@ jobs:
                   --draft \
                   --title "${TAG}" \
                   --generate-notes
-                echo "release_created=true" >> $GITHUB_OUTPUT
-                echo "tag_name=${TAG}" >> $GITHUB_OUTPUT
+                echo "release_created=true" >> "$GITHUB_OUTPUT"
+                echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
                 echo "✅ Created draft GitHub Release ${TAG} (detected via ${SOURCE}; stays hidden until publish gate passes)"
                 mark_pr_as_tagged "${VERSION}"
                 return 0
@@ -345,7 +345,7 @@ jobs:
             fi
           done < <(git log --format='%H%x09%s' -n 10)
 
-          echo "release_created=false" >> $GITHUB_OUTPUT
+          echo "release_created=false" >> "$GITHUB_OUTPUT"
           echo "⏭️ No release created this run"
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

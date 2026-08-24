@@ -319,8 +319,21 @@ jobs:
           fi
           npx tauri build --target ${{ matrix.target }} "${CONFIG_ARGS[@]}" -- --locked
 
+      # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
+      # 失败时也能拿到命中率，结果同时写入日志与 job summary。
+      # Linux/Windows 的 reusable-build-* 同结构。
       - name: Show sccache stats
-        run: sccache --show-stats
+        if: always()
+        run: |
+          STATS="$(sccache --show-stats 2>&1 || echo 'sccache unavailable')"
+          echo "$STATS"
+          {
+            echo "## sccache stats (release ${{ matrix.target }})"
+            echo ""
+            echo '```'
+            echo "$STATS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # ── 签名/公证结果强制验证（fail-closed）──
       # codesign --verify --strict + stapler validate + spctl --assess:

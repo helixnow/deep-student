@@ -65,6 +65,13 @@ jobs:
       tag_name: ${{ needs.resolve.outputs.tag_name }}
 
   # Linux 构建（与 release / rebuild 共用）
+  #
+  # WI-4 兼容性说明：这里有意不传 frontend_dist_artifact。GitHub Actions
+  # 的 artifact 只在同一 workflow run 内可见 —— 本 workflow 没有
+  # build-frontend job，无法引用 release.yml 那次 run 上传的 frontend-dist。
+  # 留空让 reusable-build-linux.yml 走回退路径：beforeBuildCommand 在构建
+  # job 内完成前端构建（含 Sentry 前端 sourcemap 上传），产物与主发布路径
+  # 等价（门禁一致，只是慢一些）。
   build-linux:
     needs: [verify]
     uses: ./.github/workflows/reusable-build-linux.yml
@@ -121,13 +128,13 @@ jobs:
         run: |
           TAG="${{ needs.resolve.outputs.tag_name }}"
           gh release view "$TAG" --repo "$GITHUB_REPO" --json assets -q '.assets[].name' > old-assets.txt
-          cat old-assets.txt | while IFS= read -r name; do
+          while IFS= read -r name; do
             [[ -z "$name" ]] && continue
             if [[ "$name" == *.AppImage || "$name" == *.AppImage.sig || "$name" == *.AppImage.tar.gz || "$name" == *.AppImage.tar.gz.sig || "$name" == *.deb || "$name" == *.rpm ]]; then
               echo "Deleting old Linux asset: $name"
               gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPO" -y || true
             fi
-          done
+          done < old-assets.txt
 
       - name: Upload new Linux assets to release
         env:

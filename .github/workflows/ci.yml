@@ -133,8 +133,9 @@ jobs:
         if: matrix.task == 'build'
         run: npx vite build
 
-      # WI-8：bundle 体积门禁。阈值 = 2026-08-24 基线 gzip +5%
-      # （见 scripts/check-bundle-size.mjs 的 BUDGETS 表）。
+      # WI-8：bundle 体积门禁。阈值 = R3 刷新后的 2026-08-24 基线（commit
+      # 1bf03a24）gzip +3%（R1 引入期为 +5%，SA-R3-06 收紧；阈值唯一事实源是
+      # scripts/check-bundle-size.mjs 的 BUDGETS 表 + HEADROOM）。
       # 引入期先跑 warn 模式：超限打 ::warning:: 注解 + job summary，
       # exit 0 不阻塞；观察两周（至 ~2026-09-07）后去掉 --warn-only 转阻塞。
       - name: Bundle size check (warn mode)
@@ -279,7 +280,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -403,7 +404,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -616,7 +617,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi
@@ -764,7 +765,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi

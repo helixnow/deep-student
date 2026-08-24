@@ -203,8 +203,23 @@ jobs:
           fi
           npx tauri build --target x86_64-pc-windows-msvc --bundles nsis "${CONFIG_ARGS[@]}" -- --locked
 
+      # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
+      # 失败时也能拿到命中率，结果同时写入日志与 job summary。shell: bash
+      # 与 ci.yml windows-shell-sandbox 的同名摘要步骤一致。
+      # Linux/macOS 的 reusable-build-* 同结构。
       - name: Show sccache stats
-        run: sccache --show-stats
+        if: always()
+        shell: bash
+        run: |
+          STATS="$(sccache --show-stats 2>&1 || echo 'sccache unavailable')"
+          echo "$STATS"
+          {
+            echo "## sccache stats (release windows-x86_64)"
+            echo ""
+            echo '```'
+            echo "$STATS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload native symbols to Sentry
         if: ${{ env.SENTRY_UPLOAD_ENABLED == 'true' }}

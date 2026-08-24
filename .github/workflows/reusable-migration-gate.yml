@@ -107,7 +107,7 @@ jobs:
       - name: Prepare target-specific pdfium
         run: |
           if [ -f "src-tauri/resources/pdfium/libpdfium.so" ]; then
-            echo "Using existing pdfium: $(ls -lh src-tauri/resources/pdfium/libpdfium.so | awk '{print $5}')"
+            echo "Using existing pdfium: $(du -h --apparent-size src-tauri/resources/pdfium/libpdfium.so | cut -f1)"
           else
             bash scripts/download-pdfium.sh linux-x64
           fi

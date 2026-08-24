@@ -150,9 +150,9 @@ jobs:
 
       - name: Setup Android SDK & NDK
         run: |
-          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
             "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
-          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
@@ -287,7 +287,7 @@ jobs:
           mkdir -p "$JNILIBS_DIR"
           if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
             cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
-            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+            echo "✅ Bundled pdfium for arm64: $(du -h --apparent-size "$JNILIBS_DIR/libpdfium.so" | cut -f1)"
           else
             echo "⚠️ Android pdfium .so not found, downloading..."
             bash scripts/download-pdfium.sh android-arm64
@@ -302,10 +302,12 @@ jobs:
             test -x "${NDK_PREBUILT}/bin/${TOOL}" || { echo "::error::missing NDK tool ${TOOL}"; exit 1; }
           done
 
-          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
-          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          {
+            echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
+            echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++"
+            echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang"
+          } >> "$GITHUB_ENV"
 
           echo "✅ NDK toolchain configured: ${NDK_PREBUILT}"
 
@@ -375,7 +377,7 @@ jobs:
           fi
           echo "找到 APK: $UNSIGNED_APK"
 
-          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+          BUILD_TOOLS=$(find "${ANDROID_HOME}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
 
           # extractNativeLibs=false 时未压缩 .so 需 16KB 页对齐（AGP 8.x 打包已满足，
           # Android 15+ 16KB 页设备强制要求）。用 -P 16 显式对齐而非旧的 -v 4，
