@@ -78,10 +78,12 @@ describe('4 步 tour', () => {
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
-  it('不再显示 → 隐藏并写入 localStorage', () => {
+  it('不再显示 → 只隐藏 tour，主 CTA 常驻并写入 localStorage', () => {
     render(<EmptyDesktop />);
     fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
-    expect(screen.queryByText('你的学习桌面')).toBeNull();
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(screen.getByText('你的学习桌面')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
@@ -96,11 +98,12 @@ describe('4 步 tour', () => {
     expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
   });
 
-  it('已关闭过 → 重新挂载不再展示', () => {
+  it('已关闭过 → 重新挂载不展示 tour，但主 CTA 常驻', () => {
     localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
     render(<EmptyDesktop />);
-    expect(screen.queryByText('你的学习桌面')).toBeNull();
-    expect(screen.queryByRole('button', { name: /打开资源库/ })).toBeNull();
+    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(screen.getByText('你的学习桌面')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
   });
 });
 

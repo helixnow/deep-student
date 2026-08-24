@@ -41,6 +41,8 @@ export const EMPTY_DESKTOP_ONBOARDING_KEY = 'workbench.emptyDesktop.onboardingDi
 
 /** tour 再入口广播事件（速查表「重新播放快速上手」触发） */
 export const EMPTY_DESKTOP_TOUR_REPLAY_EVENT = 'workbench:empty-tour-replay';
+/** leftovers 桌面菜单使用过的事件名；保留兼容已发出的自定义事件。 */
+export const EMPTY_DESKTOP_REPLAY_TOUR_EVENT = 'workbench:empty-desktop-replay-tour';
 
 /**
  * 重新播放空桌面 tour：清持久化消隐位并通知已挂载的 EmptyDesktop 复位。
@@ -128,12 +130,17 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   // 再入口：速查表「重新播放快速上手」→ 复位 tour（含仅会话跳过的场景）
   useEffect(() => {
     const onReplay = () => {
+      persistOnboardingDismissed(false);
       setTourDismissed(false);
       setSessionSkipped(false);
       setStepIndex(0);
     };
     window.addEventListener(EMPTY_DESKTOP_TOUR_REPLAY_EVENT, onReplay);
-    return () => window.removeEventListener(EMPTY_DESKTOP_TOUR_REPLAY_EVENT, onReplay);
+    window.addEventListener(EMPTY_DESKTOP_REPLAY_TOUR_EVENT, onReplay);
+    return () => {
+      window.removeEventListener(EMPTY_DESKTOP_TOUR_REPLAY_EVENT, onReplay);
+      window.removeEventListener(EMPTY_DESKTOP_REPLAY_TOUR_EVENT, onReplay);
+    };
   }, []);
 
   const launch = useCallback((typeId: string) => {
