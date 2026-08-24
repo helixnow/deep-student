@@ -3,31 +3,80 @@
  *
  * React 渲染侧只有累积后的 full content，因此以「长度 delta」驱动
  * GenerativeUIStreamParser，避免每次 render 全量重扫。
+ *
+ * 可选 persistKey + 注入 storage：把 lastGoodIntent 落到会话级存储，
+ * 刷新后内存 Map 清空仍可恢复。默认不写 sessionStorage。
  */
 
 import { GenerativeUIStreamParser, type GenerativeUIStreamSnapshot } from '../parser';
 import type { GenerativeUIIntent } from '../types';
+import {
+  clearPersistedLastGoodIntent,
+  readPersistedLastGoodIntent,
+  writePersistedLastGoodIntent,
+  type GenerativeUIStreamPersistStorage,
+} from './generativeUIStreamPersistence';
+
+export interface GenerativeUIStreamPersistOptions {
+  /** 非空时启用 lastGoodIntent 读写；缺省关闭 */
+  persistKey?: string;
+  /** 测试 / 调用方注入；缺省不持久化 */
+  storage?: GenerativeUIStreamPersistStorage | null;
+}
 
 interface StreamEntry {
   parser: GenerativeUIStreamParser;
   lastLength: number;
   lastGoodIntent: GenerativeUIIntent | null;
+  persistKey?: string;
+  storage?: GenerativeUIStreamPersistStorage | null;
 }
 
 const entries = new Map<string, StreamEntry>();
 
-function getOrCreateEntry(blockId: string): StreamEntry {
+function bindPersist(entry: StreamEntry, options?: GenerativeUIStreamPersistOptions): void {
+  if (options?.persistKey) entry.persistKey = options.persistKey;
+  if (options?.storage) entry.storage = options.storage;
+}
+
+function persistBinding(
+  entry: StreamEntry | undefined,
+  options?: GenerativeUIStreamPersistOptions,
+): { persistKey?: string; storage?: GenerativeUIStreamPersistStorage | null } {
+  return {
+    persistKey: options?.persistKey ?? entry?.persistKey,
+    storage: options?.storage ?? entry?.storage,
+  };
+}
+
+function hydrateLastGood(entry: StreamEntry): void {
+  if (entry.lastGoodIntent || !entry.persistKey || !entry.storage) return;
+  const restored = readPersistedLastGoodIntent(entry.persistKey, entry.storage);
+  if (restored) entry.lastGoodIntent = restored;
+}
+
+function persistLastGood(entry: StreamEntry): void {
+  if (!entry.persistKey || !entry.storage) return;
+  writePersistedLastGoodIntent(entry.persistKey, entry.lastGoodIntent, entry.storage);
+}
+
+function getOrCreateEntry(blockId: string, options?: GenerativeUIStreamPersistOptions): StreamEntry {
   let entry = entries.get(blockId);
   if (!entry) {
     entry = { parser: new GenerativeUIStreamParser(), lastLength: 0, lastGoodIntent: null };
+    bindPersist(entry, options);
+    hydrateLastGood(entry);
     entries.set(blockId, entry);
+    return entry;
   }
+  bindPersist(entry, options);
   return entry;
 }
 
 function rememberLastGood(entry: StreamEntry, snap: GenerativeUIStreamSnapshot): GenerativeUIStreamSnapshot {
   if (snap.intent) {
     entry.lastGoodIntent = snap.intent;
+    persistLastGood(entry);
   }
   return {
     ...snap,
@@ -35,17 +84,29 @@ function rememberLastGood(entry: StreamEntry, snap: GenerativeUIStreamSnapshot):
   };
 }
 
+function restoredSnapshot(intent: GenerativeUIIntent): GenerativeUIStreamSnapshot {
+  return {
+    phase: 'streaming',
+    intent,
+    committedBlockCount: intent.blocks.length,
+    bufferLength: 0,
+    warnings: ['restored-last-good'],
+  };
+}
+
 /** 将 block.content 增量喂入解析器，返回当前 snapshot */
 export function appendGenerativeUIStreamContent(
   blockId: string,
   fullContent: string,
+  options?: GenerativeUIStreamPersistOptions,
 ): GenerativeUIStreamSnapshot {
-  const entry = getOrCreateEntry(blockId);
+  const entry = getOrCreateEntry(blockId, options);
 
   if (fullContent.length < entry.lastLength) {
     entry.parser.reset();
     entry.lastLength = 0;
     entry.lastGoodIntent = null;
+    clearPersistedLastGoodIntent(entry.persistKey, entry.storage);
   }
 
   const delta = fullContent.slice(entry.lastLength);
@@ -59,30 +120,63 @@ export function appendGenerativeUIStreamContent(
 }
 
 /** 终态：finalize；最终 JSON 失败时回退 lastGoodIntent */
-export function finalizeGenerativeUIStream(blockId: string): GenerativeUIIntent | null {
+export function finalizeGenerativeUIStream(
+  blockId: string,
+  options?: GenerativeUIStreamPersistOptions,
+): GenerativeUIIntent | null {
   const entry = entries.get(blockId);
-  if (!entry) return null;
+  if (!entry) {
+    return readPersistedLastGoodIntent(options?.persistKey, options?.storage);
+  }
+  const { persistKey, storage } = persistBinding(entry, options);
   const lastGood = entry.lastGoodIntent;
   entries.delete(blockId);
   const final = entry.parser.finalize();
-  return final ?? lastGood;
+  const result = final ?? lastGood;
+  if (persistKey && storage) {
+    writePersistedLastGoodIntent(persistKey, result, storage);
+  }
+  return result;
 }
 
-export function resetGenerativeUIStream(blockId: string): void {
-  entries.delete(blockId);
-}
-
-export function getGenerativeUIStreamSnapshot(blockId: string): GenerativeUIStreamSnapshot | null {
+export function resetGenerativeUIStream(
+  blockId: string,
+  options?: GenerativeUIStreamPersistOptions,
+): void {
   const entry = entries.get(blockId);
-  if (!entry) return null;
-  return rememberLastGood(entry, entry.parser.getSnapshot());
+  const { persistKey, storage } = persistBinding(entry, options);
+  entries.delete(blockId);
+  clearPersistedLastGoodIntent(persistKey, storage);
 }
 
-export function getLastGoodGenerativeUIIntent(blockId: string): GenerativeUIIntent | null {
-  return entries.get(blockId)?.lastGoodIntent ?? null;
+export function getGenerativeUIStreamSnapshot(
+  blockId: string,
+  options?: GenerativeUIStreamPersistOptions,
+): GenerativeUIStreamSnapshot | null {
+  const entry = entries.get(blockId);
+  if (entry) {
+    bindPersist(entry, options);
+    return rememberLastGood(entry, entry.parser.getSnapshot());
+  }
+  const restored = readPersistedLastGoodIntent(options?.persistKey, options?.storage);
+  return restored ? restoredSnapshot(restored) : null;
 }
 
-/** 测试专用 */
+export function getLastGoodGenerativeUIIntent(
+  blockId: string,
+  options?: GenerativeUIStreamPersistOptions,
+): GenerativeUIIntent | null {
+  const entry = entries.get(blockId);
+  if (entry) {
+    bindPersist(entry, options);
+    if (entry.lastGoodIntent) return entry.lastGoodIntent;
+    hydrateLastGood(entry);
+    return entry.lastGoodIntent;
+  }
+  return readPersistedLastGoodIntent(options?.persistKey, options?.storage);
+}
+
+/** 测试专用：只清内存，不碰注入 storage（便于模拟刷新） */
 export function clearGenerativeUIStreamRegistry(): void {
   entries.clear();
 }

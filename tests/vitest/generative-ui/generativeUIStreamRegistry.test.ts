@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { createMemoryStreamPersistStorage } from '@/features/generative-ui/bridge/generativeUIStreamPersistence';
 import {
   appendGenerativeUIStreamContent,
   clearGenerativeUIStreamRegistry,
   finalizeGenerativeUIStream,
+  getLastGoodGenerativeUIIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
 
 describe('generativeUIStreamRegistry', () => {
@@ -51,5 +53,20 @@ describe('generativeUIStreamRegistry', () => {
     appendGenerativeUIStreamContent(blockId, `${open},{"type":"stat-card","props":{`);
     const final = finalizeGenerativeUIStream(blockId);
     expect(final?.blocks[0]?.props?.body).toBe('alpha');
+  });
+
+  it('optionally persists lastGoodIntent when persistKey + storage are injected', () => {
+    const storage = createMemoryStreamPersistStorage();
+    const blockId = 'blk-stream-persist';
+    const persistKey = 'opt:blk-stream-persist';
+    appendGenerativeUIStreamContent(
+      blockId,
+      '{"version":"1","blocks":[{"type":"text","props":{"body":"keep"}}',
+      { persistKey, storage },
+    );
+    clearGenerativeUIStreamRegistry();
+    expect(getLastGoodGenerativeUIIntent(blockId, { persistKey, storage })?.blocks[0]?.props?.body).toBe(
+      'keep',
+    );
   });
 });
