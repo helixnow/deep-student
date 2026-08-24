@@ -176,6 +176,11 @@ export { buildTableIntent } from './utils/buildTableIntent';
 export type { TableIntentInput, TableIntentLabels } from './utils/buildTableIntent';
 export { coercePartialIntent } from './utils/coercePartialIntent';
 export type { CoercePartialIntentResult } from './utils/coercePartialIntent';
+export { migrateIntentToV11 } from './utils/migrateIntentToV11';
+export type {
+  MigrateIntentToV11Options,
+  MigrateIntentToV11Layout,
+} from './utils/migrateIntentToV11';
 
 // 注册内置块
 import './blocks';
