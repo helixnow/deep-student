@@ -319,7 +319,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void loadMore()}
             disabled={loading}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:min-h-11"
           >
             {loading && <CircleNotch size={14} className="mr-1.5 animate-spin" />}
             {t('data:governance.conflict_load_more', {
