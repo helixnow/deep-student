@@ -560,3 +560,15 @@ workbench。
 `data_governance/sync/mod.rs` 仅改资产扫描 key 生成、云 key fail-close 和旧 key
 双查找/迁移段；未改 `cloud_storage/sync_manager.rs`，未触碰 notes / chat /
 workbench / `ftp.rs` / 增量备份 / 租约。
+
+## Round 13（收口 P2 + 增量 codec，2026-08-24）
+
+父代理不改业务逻辑。三路文件面独占，禁止互相改对方文件。
+
+| 代理 | 分支 | 范围 | 文件面（独占） |
+|---|---|---|---|
+| wrap-conflict | `cursor/cloud-sync-sota-wrap-conflict-b343` | FINDINGS-WRAP P2-2：`already_in_desired_state` 快速路径在 `BEGIN IMMEDIATE` 内重读业务行；不再匹配则 fail-closed 拒绝标 resolved | `commands_sync.rs` 仅 resolve 快速路径段；`sync_r10_protocol_locks.rs` 的 P2-3 源码锁改写为「已关」断言；新 `src-tauri/tests/sync_r12_conflict_fast_path.rs` |
+| wrap-v1trust | `cursor/cloud-sync-sota-wrap-v1trust-b343` | FINDINGS-WRAP P2-1：v1 无校验子标记升级前试解一份既有备份；列表截断/下载失败 fail-closed；空仓仍允许第一台带密码设备认领 | `sync_manager.rs` 仅 `verify_encryption_password_before_upload` 的 v1 升级臂；新 `src-tauri/tests/sync_r12_v1_marker_trust.rs`；`sync_r10_protocol_locks.rs` / `sync_r09_file_e2ee.rs` 仅在必须时改断言（空仓升级行为保持） |
+| delta-format | `cursor/cloud-sync-sota-delta-format-b343` | DELTA-R11 R12-delta-format：`SnapshotDescriptorV2` / object ref / repo config codec + 上限 + 未来版本 fail-closed；**不接上传/恢复/UI** | 新 `cloud_storage/delta_format.rs`；`cloud_storage/mod.rs` 仅 `pub mod delta_format;` 一行；新 `src-tauri/tests/sync_r12_delta_format.rs` |
+
+不碰 `ftp.rs` / notes / chat / workbench / `version.ts` / pdfium。不放松 fail-closed。

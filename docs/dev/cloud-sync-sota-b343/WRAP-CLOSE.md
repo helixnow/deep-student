@@ -22,8 +22,10 @@
 
 ## 诚实未关（不阻塞「备份/换机可用」，但是差距）
 
-- **增量备份**：`DELTA-R11.md` 已合（整 ZIP 零变化仍约 145 MiB，不能宣称增量去重）。
+- **增量备份**：`DELTA-R11.md` 已合（整 ZIP 零变化仍约 145 MiB，不能宣称增量去重）。生产仍整对象 PUT；下一刀是 codec-only 的 `SnapshotDescriptorV2`（不接上传/恢复）。
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
+- **FINDINGS-WRAP P2-1**：v1 标记升级仍信任第一台带密码设备，升级前未试解既有备份。
+- **FINDINGS-WRAP P2-2**：冲突 `already_in_desired_state` 快速路径仍在事务外判断业务行。
 - **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。未放松 fail-closed。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。

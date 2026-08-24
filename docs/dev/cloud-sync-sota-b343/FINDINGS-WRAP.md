@@ -81,10 +81,12 @@ R09/R10 已有宿主机契约与 Android 壳层测试，但当前文档目录没
 | §2 P2-4 / §3.3 常规 sync-target 租约未合 | **已合** | `cloud_storage/sync_lease.rs` + 两入口接线；占用码 `E_SYNC_LEASE_HELD`；`sync_r11_lease.rs` 7 例通过 |
 | §2 P2-5 / §3.4 Android2 手册未合 | **手册已合，真机未签** | [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md)；8 项 SAF/重启缺口仍开 |
 | §2 P2-6 平台错误靠正则 | **机制半边已关** | `E_FTP_UNSUPPORTED_ON_ANDROID` / `E_S3_UNSUPPORTED_IN_BUILD`；前端只按 code 映射 |
-| §2 P2-3 文件名有损 | **仍开** | `asset_filenames.rs` 仍是 `_` 替换；R11-names2 未合 |
-| §3.1 增量去重 | **仍开** | 无 `DELTA-R11.md`；整 ZIP 仍整对象上传 |
+| §2 P2-3 文件名有损 | **已合（names2）** | rclone 风格可逆映射 + 旧 `_` key 双查找；段 255 / 整 key 240 fail-closed |
+| §3.1 增量去重 | **调研已合，生产未实现** | [DELTA-R11.md](./DELTA-R11.md)；整 ZIP 零变化仍约 145 MiB；不能宣称增量/去重/CDC |
+| §2 P2-1 v1 升级信任 | **仍开** | 升级前未试解既有备份；见 FIX-QUEUE wrap-v1trust |
+| §2 P2-2 冲突快速路径 | **仍开** | `already_in_desired_state` 仍在事务外判断业务行；见 FIX-QUEUE wrap-conflict |
 | §4 条件 1 完整 CI 绿灯 | **仍开** | 后继 HEAD CI 多为 pending/queued |
 | §4 条件 2 租约 | **已合** | 见上 |
 | §4 条件 3 Android 真机核对 | **仍开** | 手册有、真机签字无 |
 
-**生产放量仍 NO-GO。** 当前最短剩余：可逆文件名、增量调研、完整 CI 绿灯、Android 真机签字。
+**生产放量仍 NO-GO。** 当前最短剩余：完整 CI 绿灯、Android 真机签字、整包增量传输（生产）、P2-1/P2-2 代码收口。
