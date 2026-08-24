@@ -858,6 +858,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, []);
 
   // 云端整包 ZIP 密码：输入框显式密码优先；否则仅在「已配置」时让后端读安全存储。
+  // 导出：后端开关打开却读不到密码时 fail-closed，不会默默打成便携包。
+  // 导入：后端只对密封 ZIP 套用 stored；便携包忽略 stored。
   // 不要把 secure store 密码读进 React state。
   const resolveCloudZipEncryptionArgs = useCallback((): {
     encryptionPassword?: string;

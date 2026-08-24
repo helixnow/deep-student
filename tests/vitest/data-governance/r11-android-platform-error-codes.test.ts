@@ -129,10 +129,12 @@ describe('移动端指南对 Android 云存储诚实', () => {
     const zhReadme = readFileSync(resolve(process.cwd(), 'README_CN.md'), 'utf-8');
     expect(enReadme).toContain('Android is WebDAV only');
     expect(enReadme).toContain('portable archive and cannot slot-restore');
+    expect(enReadme).toMatch(/export is refused/i);
     expect(enReadme).not.toMatch(/backup-style sync via S3-compatible storage & WebDAV/);
     expect(zhReadme).toContain('Android 仅 WebDAV');
     expect(zhReadme).toContain('不能整槽恢复');
     expect(zhReadme).toContain('没有增量传输');
+    expect(zhReadme).toContain('拒绝导出');
   });
 });
 

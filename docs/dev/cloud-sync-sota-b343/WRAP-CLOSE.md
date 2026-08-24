@@ -22,7 +22,7 @@
 
 ## 诚实未关（不阻塞「备份/换机可用」，但是差距）
 
-- **增量备份**：`DELTA-R11.md` 已合；codec + inventory + backup-v2 租约 + upload + restore + 两遍 GC 积木已落。**未接线**：生产仍整 ZIP 单对象 PUT。用户指南 16 与设置页 `actions.fullZipHint` 已写明没有增量传输/去重/CDC。云端整包在**已配置** E2EE 密码时走加密全保真导出（外层 DSBK 与内层备份密码用同一已存密码）；**未配置**仍是便携归档，整槽校验会拒绝。积木仍未接线。
+- **增量备份**：`DELTA-R11.md` 已合；codec + inventory + backup-v2 租约 + upload + restore + 两遍 GC 积木已落。**未接线**：生产仍整 ZIP 单对象 PUT。用户指南 16 与设置页 `actions.fullZipHint` 已写明没有增量传输/去重/CDC。云端整包在**已配置** E2EE 密码时走加密全保真导出（外层 DSBK 与内层备份密码用同一已存密码）；开关打开却读不到密码时 **fail-closed 拒绝导出**，不会默默打成便携包。导入只对带 `portable_secrets.dsbk` 的密封 ZIP 套用已存密码；便携包忽略 stored。**未配置**仍是便携归档，整槽校验会拒绝。积木仍未接线。
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
@@ -31,7 +31,8 @@
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
 - **CI / Rust 门禁**：`c06a7959` 的 Frontend（licenses + tsc）、Backend、Migration Gate、Cloud Provider Contract Gate 已过。Vitest 分片曾把单个 worker 顶死在 `max-old-space-size=4096`（日志约 4001MB，无断言失败）。CI 现为 6144MB + `maxForks: 2`，不放宽 autosync/StatusBar 用例。CLAAssistant 忽略。完整 CI 未宣称全绿。
-- **未合枝**：`fix-sync-tombstone-db14` 仅剩更松的 `ftp.rs` 550 白名单与 Docker 契约测，不合；`r07-docs` 不合；`redlights` 相对专属枝无增量。
+- **供应商兼容**：已移植 #174——WebDAV href/base 统一解码（坚果云中文/空格路径不再静默列空）；S3 `normalize_endpoint` 剥离控制台 bucket 前缀域名/路径后缀。未带更松的 `ftp.rs` 550 白名单。
+- **未合枝**：`fix-sync-tombstone-db14` 仅剩更松的 `ftp.rs` 550 白名单与 Docker 契约测，不合；`r07-docs` 不合；`redlights` / `delta-b343` 相对专属枝无增量。不合并 0824 主题排练整枝。
 
 ## go/no-go
 
