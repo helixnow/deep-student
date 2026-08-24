@@ -547,10 +547,10 @@ fn extract_desc_labels(desc: &str, max_labels: usize) -> Vec<String> {
     labels
 }
 
-/// 条目切分：换行、分号、箭头、顿号均视为条目边界。
+/// 条目切分：换行、分号、冒号、箭头、顿号均视为条目边界。
 fn split_desc_items(segment: &str) -> Vec<String> {
     segment
-        .split(['\n', ';', '；', '、'])
+        .split(['\n', ';', '；', '、', '：'])
         .flat_map(|part| part.split("→"))
         .flat_map(|part| part.split("->"))
         .map(|s| s.to_string())

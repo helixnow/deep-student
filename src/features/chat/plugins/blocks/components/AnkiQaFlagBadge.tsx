@@ -12,6 +12,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, Info, Warning, WarningOctagon } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import {
   maxFlagSeverity,
@@ -78,8 +79,10 @@ export const AnkiQaFlagBadge: React.FC<{
 
   return (
     <div className={cn('min-w-0', className)}>
-      <button
+      <DsButton
         type="button"
+        variant="ghost"
+        size="sm"
         data-testid="chatanki-qa-flag-badge"
         data-severity={severity ?? 'info'}
         onClick={(event) => {
@@ -97,8 +100,8 @@ export const AnkiQaFlagBadge: React.FC<{
         })}
         title={t(expanded ? 'qaFlags.hideDetails' : 'qaFlags.showDetails')}
         className={cn(
-          'inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-xs leading-none',
-          'transition-colors hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring',
+          '!h-auto min-h-0 max-w-full gap-1 rounded-full border !px-2 !py-0.5 text-xs font-normal leading-none',
+          'transition-colors hover:opacity-80',
           severityToneClass(severity),
         )}
       >
@@ -112,7 +115,7 @@ export const AnkiQaFlagBadge: React.FC<{
           className={cn('flex-shrink-0 transition-transform duration-150', expanded && 'rotate-180')}
           aria-hidden="true"
         />
-      </button>
+      </DsButton>
       {expanded && (
         <ul
           id={detailsId}
