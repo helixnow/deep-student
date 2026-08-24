@@ -74,7 +74,7 @@ function describeType(schema: z.ZodType, depth: number): string {
   return 'object';
 }
 
-function objectHint(schema: z.ZodObject<z.ZodRawShape>, depth: number): string {
+function objectHint(schema: z.ZodObject, depth: number): string {
   const entries = Object.entries(schema.shape).map(([key, fieldSchema]) => {
     const field = fieldSchema as z.ZodType;
     const optionalMark = isOptionalLike(field) ? '?' : '';
