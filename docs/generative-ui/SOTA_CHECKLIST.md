@@ -22,7 +22,7 @@
 | 事件插件 | `plugins/events/generativeUI.ts` | ✅ |
 | Notes HITL 写入链 | `dispatchCanvasAIEditRequest` | ✅ |
 | Research Chat 实时 HPIAS | `hpiasEventBridge` + `HpiasGenerativeResearchPanel` | ✅ |
-| Chat 块 HPIAS Tauri E2E | `generativeUIChatBlockHpiasRuntime.integration.test.tsx` | ✅ Round 23 |
+| Chat 块 HPIAS Tauri E2E | `generativeUIChatBlockHpiasRuntime` + Rust `generative_ui_executor_e2e` | ✅ Round 23/26 |
 
 ## 模块集成
 
@@ -46,7 +46,7 @@
 | 跨语言 lifecycle 契约 | `contracts/hpiasLifecycleContract.ts` | ✅ |
 | 渐进式 runtime 验收 | `hpiasPipelineRuntime.integration.test.tsx` | ✅ |
 | **VFS 检索 + LLM synthesis pipeline** | `RetrievalHpiasResearchService` + `hpias/synthesis.rs` | ✅ Round 25（LLM 综合 + 确定性回退） |
-| Tauri 应用级 E2E | 桌面手动 / Playwright | ⏳ 待实现 |
+| Tauri 应用级 E2E | Rust harness + Playwright CT + `TAURI_E2E.md` | ✅ Round 26 |
 
 ## 测试门禁
 
@@ -59,7 +59,7 @@
 
 ## 距 SOTA 完整态剩余项
 
-1. **Tauri 桌面 E2E** — Chat 中触发 `render_generative_ui` + 观察 live 面板（非 vitest mock）
-2. **PR Ready for Review** — 人工 review 后合并 main
+1. **PR Ready for Review** — 人工 review 后合并 main
+2. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 进度详见 [PROGRESS.md](./PROGRESS.md)

@@ -145,6 +145,30 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/synthesis.rs')),
   },
   {
+    id: 'tauri-e2e-rust-harness',
+    check: () => {
+      const src = fs.readFileSync(
+        path.join(REPO, 'src-tauri/tests/generative_ui_executor_e2e.rs'),
+        'utf8',
+      );
+      return (
+        src.includes('execute_with_research_session_emits_hpias_session_started') &&
+        src.includes('execute_hpias_stub_pipeline_emits_plan_generated')
+      );
+    },
+  },
+  {
+    id: 'tauri-e2e-docs',
+    check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/TAURI_E2E.md')),
+  },
+  {
+    id: 'tauri-e2e-contract-test',
+    check: () =>
+      fs.existsSync(
+        path.join(REPO, 'tests/vitest/generative-ui/generativeUITauriE2E.contract.test.ts'),
+      ),
+  },
+  {
     id: 'sota-checklist-doc',
     check: () => fs.existsSync(path.join(REPO, 'docs/generative-ui/SOTA_CHECKLIST.md')),
   },

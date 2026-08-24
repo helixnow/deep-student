@@ -5,6 +5,7 @@ use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::event_types;
 use deep_student_lib::chat_v2::tools::{ExecutionContext, GenerativeUiExecutor, ToolExecutor};
 use deep_student_lib::chat_v2::types::{block_types, ToolCall};
+use deep_student_lib::hpias::HPIAS_EVENT_CHANNEL;
 use deep_student_lib::tools::ToolRegistry;
 use serde_json::{json, Value};
 use tauri::Listener;
@@ -78,6 +79,149 @@ fn block_type_mapping_for_render_generative_ui_is_generative_ui() {
             "unexpected block type for {tool_name}"
         );
     }
+}
+
+fn capture_hpias_events(window: &tauri::Window) -> Arc<Mutex<Vec<Value>>> {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let captured = events.clone();
+    window.listen(HPIAS_EVENT_CHANNEL, move |event| {
+        if let Ok(payload) = serde_json::from_str::<Value>(event.payload()) {
+            captured
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(payload);
+        }
+    });
+    events
+}
+
+fn hpias_event_types(events: &[Value]) -> Vec<&str> {
+    events
+        .iter()
+        .filter_map(|payload| payload.get("type").and_then(Value::as_str))
+        .collect()
+}
+
+#[test]
+fn hpias_event_channel_matches_frontend_contract() {
+    assert_eq!(HPIAS_EVENT_CHANNEL, "hpias_event");
+}
+
+#[tokio::test]
+async fn execute_with_research_session_emits_hpias_session_started() {
+    std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
+    let harness = create_harness();
+    let hpias_events = capture_hpias_events(&harness.window);
+    let executor = GenerativeUiExecutor::new();
+    let intent = json!({
+        "version": "1",
+        "meta": { "title": "Deep research question?" },
+        "blocks": [{
+            "type": "research-plan",
+            "props": {
+                "title": "Research plan",
+                "steps": [{ "label": "Literature review", "status": "pending" }]
+            }
+        }]
+    });
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-hpias-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({
+                    "researchSessionId": "e2e-hpias-session-1",
+                    "intent": intent
+                }),
+            ),
+            &execution_context(&harness, "block-generative-ui-hpias-e2e"),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(result.success);
+    assert_eq!(
+        result
+            .output
+            .get("researchSessionId")
+            .and_then(Value::as_str),
+        Some("e2e-hpias-session-1")
+    );
+
+    for _ in 0..50 {
+        let captured = hpias_events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if captured.iter().any(|e| e.get("type") == Some(&json!("session_started"))) {
+            let started = captured
+                .iter()
+                .find(|e| e.get("type") == Some(&json!("session_started")))
+                .expect("session_started payload");
+            assert_eq!(
+                started.get("session_id").and_then(Value::as_str),
+                Some("e2e-hpias-session-1")
+            );
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("timed out waiting for hpias_event session_started");
+}
+
+#[tokio::test]
+async fn execute_hpias_stub_pipeline_emits_plan_generated() {
+    std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
+    let harness = create_harness();
+    let hpias_events = capture_hpias_events(&harness.window);
+    let executor = GenerativeUiExecutor::new();
+    let intent = json!({
+        "version": "1",
+        "blocks": [{
+            "type": "research-plan",
+            "props": {
+                "title": "Plan",
+                "steps": [
+                    { "label": "Query A", "status": "pending" },
+                    { "label": "Query B", "status": "pending" }
+                ]
+            }
+        }]
+    });
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-hpias-pipeline-e2e".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({
+                    "researchSessionId": "e2e-hpias-pipeline",
+                    "intent": intent
+                }),
+            ),
+            &execution_context(&harness, "block-generative-ui-hpias-pipeline-e2e"),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(result.success);
+
+    for _ in 0..200 {
+        let captured = hpias_events
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let types = hpias_event_types(&captured);
+        if types.contains(&"plan_generated") {
+            assert!(types.contains(&"session_started"));
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+
+    panic!("timed out waiting for hpias_event plan_generated from stub pipeline");
 }
 
 #[tokio::test]

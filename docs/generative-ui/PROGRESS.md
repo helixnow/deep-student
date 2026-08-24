@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 26（2026-08-24）
+
+- [x] **Rust Tauri E2E** — `generative_ui_executor_e2e.rs` hpias_event `session_started` + stub `plan_generated`
+- [x] **`TAURI_E2E.md`** — 自动化 / vitest / 手动 / Playwright CT 验收指南
+- [x] **Playwright CT** — `tests/ct/generative-ui/hpiasResearchPanel.spec.tsx`
+- [x] **`generativeUITauriE2E.contract.test.ts`** — Tauri E2E 静态验收
+- [x] SOTA_CHECKLIST 标记 Tauri E2E 完成
+
 ## Round 25（2026-08-24）
 
 - [x] **`hpias/synthesis.rs`** — `generate_synthesis_with_llm`（Model2 Markdown + 90s 超时）

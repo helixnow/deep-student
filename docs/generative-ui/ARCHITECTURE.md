@@ -114,5 +114,6 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 - vitest：`tests/vitest/generative-ui/`（registry / parser / handlers / contract / **runtime**）
 - Rust：`generative_ui_executor` 单元 + hpias 模块（需 Cargo stable + Linux GTK CI）
 - SOTA 清单：[SOTA_CHECKLIST.md](./SOTA_CHECKLIST.md)
+- Tauri E2E：[TAURI_E2E.md](./TAURI_E2E.md)
 
 进度详见 [PROGRESS.md](./PROGRESS.md)
