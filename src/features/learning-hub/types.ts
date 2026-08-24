@@ -458,6 +458,17 @@ export function nodeTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType
   return mapping[nodeType] ?? null;
 }
 
+/**
+ * DSTU node.type → FolderItemType（带 'note' 兜底）
+ *
+ * LearningHubSidebar 打开 / 右键菜单 / 拖拽移动 / 批量移动等处共用，
+ * 避免各处手写 switch 漂移（历史上右键菜单分支曾漏掉 image/file）。
+ * 不支持的类型（folder / retrieval）回退为 'note'。
+ */
+export function mapDstuTypeToFolderItemType(nodeType: DstuNodeType): FolderItemType {
+  return nodeTypeToFolderItemType(nodeType) ?? 'note';
+}
+
 const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([
   'markdown',
   'pdf',
