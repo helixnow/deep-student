@@ -430,6 +430,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
                   type="button"
                   size="sm"
                   variant="danger"
+                  className="[@media(pointer:coarse)]:min-h-11"
                   onClick={() => {
                     setForceClearApiKey(true);
                     setFormData(prev => ({ ...prev, apiKey: '' }));
@@ -517,10 +518,10 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           {formContent}
         </DsDialogBody>
         <DsDialogFooter className="!border-t-0">
-          <DsButton variant="ghost" size="sm" onClick={onClose}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleSave}>{t('common:actions.save')}</DsButton>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={handleSave}>{t('common:actions.save')}</DsButton>
         </DsDialogFooter>
     </DsDialog>
   );
