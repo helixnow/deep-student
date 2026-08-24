@@ -46,9 +46,9 @@
 //! 会进 candidate，grace 期满后回收。
 //!
 //! 互斥：collect 与 sweep 各自**全程**持有 backup-v2 仓库租约
-//! （R12-delta-lease 积木，占用冒出稳定错误码 `E_BACKUP_LEASE_HELD`；
-//! 字面值见 `delta_gc_upstream.rs.in` 与租约模块文档），与发布 / 恢复
-//! 积木互斥，绝不与并发发布竞争同一批对象。
+//! （R12-delta-lease 积木，占用冒出与发布 / 恢复路一致的稳定备份租约
+//! 错误码，独立于 `E_SYNC_LEASE_HELD`；字面值见 `delta_gc_upstream.rs.in`
+//! 与租约模块文档），绝不与并发发布竞争同一批对象。
 //!
 //! 跨积木复用的上游 API 统一经由 `delta_gc_upstream.rs.in`（`include!`
 //! 片段）汇入：既有源码锁按字面子串锁定各积木在 `src/**/*.rs` 的引用面
@@ -445,7 +445,8 @@ fn normalized_holder(holder_device_id: &str) -> Result<String> {
 /// 本函数存在不代表增量备份 / 增量 GC 已实现。
 ///
 /// 语义要点：
-/// - 全程持有 backup-v2 仓库租约；占用冒出 `E_BACKUP_LEASE_HELD`；
+/// - 全程持有 backup-v2 仓库租约；占用冒出稳定的备份仓库租约错误码
+///   （见模块文档与租约模块）；
 /// - live set 来自一次成功全扫描（全部 index + 全部保留 descriptor 逐个
 ///   GET+校验+解码）；任何失败 → 本轮零删除、零写 candidate；
 /// - objects / snapshots / candidates 任一 LIST 截断 → 同上 fail-closed；
@@ -555,7 +556,8 @@ async fn collect_locked(
 /// 本函数存在不代表增量备份 / 增量 GC 已实现。
 ///
 /// 语义要点：
-/// - 全程持有 backup-v2 仓库租约；占用冒出 `E_BACKUP_LEASE_HELD`；
+/// - 全程持有 backup-v2 仓库租约；占用冒出稳定的备份仓库租约错误码
+///   （见模块文档与租约模块）；
 /// - live set 再次来自本遍自己的成功全扫描；任何失败 → 本轮零删除；
 /// - candidate 的 key 又被引用（collect 后新版本复用了它）→ **绝不删对象**，
 ///   只移除该过时 candidate；
