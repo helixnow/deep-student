@@ -49,7 +49,8 @@ CI 全绿且没有新增 review blocker 后，可转 Ready for review。
 - Sidekick 已消费 Generator / Critic；Planner / Vlm 角色仍没有生产消费者。
 - grounded critic 依赖可用的 `_original_generation` 修正历史；数据不足时按设计回退规则 rubric，且 critic 默认关闭。
 - transform script 缺少跨平台统一的进程树内存配额；现有 CPU/进程/文件/输出/超时限制和高风险审批仍保留。
-- `chat_v2_anki_cards_result` 保留为无内部消费者的兼容命令；确认旧客户端边界后再成组删除。
+- 旧 CardAgent 结果回调命令已在收尾续作 #6 成组删除（handler、导出、注册、权限），
+  并由源码守卫防止重新注册；headless 仍显式隔离历史工具名，避免旧会话挂起。
 
 这些项目限制完整 SOTA 闭环，但不破坏当前默认制卡、验收、导出或复习路径。
 

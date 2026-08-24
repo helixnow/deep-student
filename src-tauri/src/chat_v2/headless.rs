@@ -2125,6 +2125,21 @@ mod tests {
     }
 
     #[test]
+    fn retired_frontend_anki_tool_stays_fail_closed() {
+        let legacy_tool = "anki_generate_cards";
+        assert!(
+            HEADLESS_BLOCKED_TOOLS
+                .iter()
+                .any(|(tool, reason)| *tool == legacy_tool && *reason == "frontend-bridge"),
+            "legacy frontend bridge name must remain explicitly quarantined"
+        );
+        assert!(!is_headless_allowed_tool(legacy_tool));
+        assert!(headless_tool_schemas().iter().all(|schema| {
+            schema.name.strip_prefix("builtin-").unwrap_or(&schema.name) != legacy_tool
+        }));
+    }
+
+    #[test]
     fn filter_strips_frontend_bridge_and_interactive_tools() {
         let schemas = vec![
             McpToolSchema {

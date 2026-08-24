@@ -10,7 +10,7 @@
 | Preference memory | retrieve 从持久化 settings key `chatanki_preference_memory_store` 读取 `PreferenceStore`；全仓库没有生产写入该 key 的路径，`extract_preferences` / `consolidate` 仅由测试调用 | **读取侧已接，写入侧未接**。全新安装 key 不存在，实际注入为 no-op；不得宣称会自动学习偏好 |
 | Anki model routing | streaming 生成消费 `Generator`；critic 通过 `resolve_anki_role_decision` 与 `call_anki_routed_raw_prompt` 消费 `Critic`，路由或配置失效时回退 model2 | **不只用于 Generator**。Generator / Critic 已接；Planner / Vlm 角色目前没有生产消费者 |
 | FingerprintTracker registry | 主调度完成、取消、删除、按文档导出释放 tracker；resume 查询失败、无剩余任务，以及手动单任务重试达到文档终态也释放；暂停时刻意保留供 resume | **已覆盖已知终态**。未发现仍可复现的按 `document_id` 无界残留路径 |
-| CardForge 残留 | 旧 `AnkiToolExecutor`、`anki_tool_call` 前端桥和 adapter 已删除；`chat_v2_anki_cards_result` 仍定义、重导出、注册并列入权限，但当前 `src` 没有调用方 | **核心死链已删除，保留一个兼容命令**。它不是当前生产管线消费者；确认不兼容旧客户端后才应成组删除 handler、导出、注册、权限与相关类型/测试 |
+| CardForge 残留 | 旧 `AnkiToolExecutor`、`anki_tool_call` 前端桥和 adapter 已删除；旧 CardAgent 结果回调又于收尾续作 #6 从 handler、导出、注册和权限中成组删除 | **死回调已清除**。`CardAgent.startGeneration` 仍由划词制卡消费，导出校验仍由聊天导出 UI 消费，不能把整个 `cardforge` 模块视为死代码；headless 历史工具名仅作 fail-closed 隔离 |
 
 ## Image Occlusion 数据边界
 
@@ -35,5 +35,7 @@ settings 本身是持久化存储，并非每次构造一个临时空 store；�
 
 ## CardForge 删除边界
 
-`chat_v2_anki_cards_result` 可能仍被旧客户端从 Tauri command 边界调用，单凭仓库内无调用方
-不足以证明可安全删除。因此本轮只记录其兼容状态，不把“仍注册”描述为“当前管线仍使用”。
+收尾续作 #6 复核了生产源码和测试引用后，已删除无内部消费者、无测试依赖的旧结果
+回调命令，并添加注册面源码守卫。保留项及证据见 `wrapup/16-dead-compat.md`：
+划词制卡仍消费 `CardAgent.startGeneration`，聊天导出仍消费 `validateCardsForExport`；
+`anki_generate_cards` 只留在 headless 禁止清单中，并有测试保证不会进入 schema 或白名单。

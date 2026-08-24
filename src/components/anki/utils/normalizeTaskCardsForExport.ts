@@ -38,8 +38,8 @@ const resolveFields = (card: AnkiCard): Record<string, string> => {
  * 注意：历史块快照可能只保留 id/front/back/text/tags 等核心键，
  * fields/extra_fields/template_id 为空。因此当某一侧的字段/模板为空时
  * 视为“未知”而非“不同”，只比较双方都有值的维度，避免信息缺失的快照
- * 误判为编辑版。当前 ChatAnki 生产路径不调用旧的
- * `chat_v2_anki_cards_result` 命令。
+ * 误判为编辑版。当前 ChatAnki 生产路径直接维护卡片块；旧 CardAgent
+ * 结果回调命令已经注销。
  */
 const cardContentEquals = (a: AnkiCard, b: AnkiCard): boolean => {
   const core = (card: AnkiCard) =>

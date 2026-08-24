@@ -2017,7 +2017,6 @@ pub fn run() {
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_tool_output
             ,crate::chat_v2::handlers::block_actions::chat_v2_get_anki_cards_from_block_by_document_id
             ,crate::chat_v2::handlers::block_actions::chat_v2_upsert_streaming_block
-            ,crate::chat_v2::handlers::block_actions::chat_v2_anki_cards_result
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions
