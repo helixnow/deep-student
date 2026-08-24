@@ -2461,7 +2461,7 @@ export const IndexStatusView: React.FC = () => {
                 onChange={(e) => setTestQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
                 placeholder={t('indexStatus.test.placeholder')}
-                className="w-full h-9 [@media(pointer:coarse)]:h-11 pl-9 pr-4 text-ui bg-muted/50 border border-black/[0.04] dark:border-white/[0.06] rounded-lg focus:bg-background focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/60"
+                className="w-full h-9 [@media(pointer:coarse)]:!h-11 pl-9 pr-4 text-ui bg-muted/50 border border-black/[0.04] dark:border-white/[0.06] rounded-lg focus:bg-background focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/60"
                 autoFocus
               />
             </div>

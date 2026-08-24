@@ -356,7 +356,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     disabled={searchDisabled}
-                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:h-11"
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20 [@media(pointer:coarse)]:!h-11"
                   />
                 )}
                 {searchQuery && (

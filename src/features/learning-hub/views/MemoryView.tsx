@@ -1135,7 +1135,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     }
                   }}
                   autoFocus
-                  className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
+                  className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
                 />
                 <div className="flex gap-2">
                   <DsButton variant="ghost" size="sm" className="flex-1 [@media(pointer:coarse)]:!min-h-11" onClick={() => { setShowCreateRootForm(false); setNewRootFolderTitle(''); }}>
@@ -1178,7 +1178,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               if (e.key === 'Enter') handleSearch();
               else if (e.key === 'Escape' && searchQuery) handleClearSearch();
             }}
-            className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
+            className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
           />
           {isSearching ? (
             <CircleNotch size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/60" />
@@ -1348,7 +1348,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       onKeyDown={(e) => { if (e.key === 'Escape') setIsPickerOpen(false); }}
                       placeholder={t('memory.filter_folders')}
                       autoFocus
-                      className="w-full h-6 px-2 text-[11px] bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
+                      className="w-full h-6 px-2 text-[11px] bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
                     />
                   </div>
                   <DsButton variant="ghost" size="icon" iconOnly onClick={() => setIsPickerOpen(false)} className="relative !h-5 !w-5 !p-0 [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3 [@media(pointer:coarse)]:before:content-['']" aria-label={t('common:cancel')}>
@@ -1458,7 +1458,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="ml-auto flex items-center gap-1.5">
                       {/* 来源筛选 */}
                       <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:min-h-11">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1472,7 +1472,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </Select>
                       {/* 成功/失败筛选 */}
                       <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:min-h-11">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1642,7 +1642,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     value={newMemoryTitle}
                     onChange={(e) => setNewMemoryTitle(e.target.value)}
                     autoFocus
-                    className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:h-11"
+                    className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
                   />
                   <Textarea
                     placeholder={

@@ -21,7 +21,7 @@ import type { BreadcrumbItem } from '../stores/finderStore';
  * 横向热区。仅 pointer:coarse 生效，桌面排版不变。
  */
 const CRUMB_TOUCH_HIT_CLASS =
-  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]';
 
 export interface MobileBreadcrumbProps {
   /** 根目录标题 */

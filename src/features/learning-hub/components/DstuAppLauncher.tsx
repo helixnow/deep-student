@@ -298,7 +298,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           disabled={searchDisabled}
           className={cn(
             // 触屏 44px 触控目标（旁边的清除钮已有伪元素热区，输入框此前漏改）
-            'w-full pl-9 pr-9 [@media(pointer:coarse)]:h-11',
+            'w-full pl-9 pr-9 [@media(pointer:coarse)]:!h-11',
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
             embedded ? 'h-9 text-[16px] sidebar-shell-search' : 'h-[41px] text-[16px]',
           )}
