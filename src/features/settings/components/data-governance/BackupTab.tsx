@@ -661,6 +661,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => void loadBackupConfig(true)}
             >
               <ArrowClockwise size={14} className="mr-1.5" />
