@@ -4,6 +4,7 @@
  * 覆盖：桌面挂载（壁纸 / Dock / 空桌面引导）、应用注册装配、
  * Dock pinned 默认值、bus.launch 开窗（WindowShell 带 data-wb-window-id）、
  * 快照保存（flushSnapshot → localStorage + workbench:snapshot-saved 事件）、
+ * 快照恢复（需 desktop.workbenchRestoreSession=true）、
  * legacy 降级映射（translateLegacyNavigation）。
  */
 import React from 'react';
@@ -45,6 +46,7 @@ import { flushSnapshot, WORKBENCH_SNAPSHOT_KEY } from '@/features/workbench/core
 import { translateLegacyNavigation } from '@/features/workbench/core/legacyNavigationMap';
 
 const TEST_TYPE_ID = 'p11-smoke';
+const RESTORE_SESSION_KEY = 'desktop.workbenchRestoreSession';
 
 function ensureTestApp(): void {
   if (appRegistry.get(TEST_TYPE_ID)) return;
@@ -180,7 +182,38 @@ describe('P11 WorkbenchDesktop 总装', () => {
     expect(savedEvents).toHaveLength(1);
   });
 
-  it('快照恢复：挂载前写入快照 → hydrate 后窗口恢复', async () => {
+  it('默认不恢复上次窗口：未开启 restoreSession 时快照不 hydrate', async () => {
+    localStorage.setItem(
+      WORKBENCH_SNAPSHOT_KEY,
+      JSON.stringify({
+        version: 1,
+        windows: [
+          {
+            id: 'w-dormant',
+            typeId: TEST_TYPE_ID,
+            instanceKey: 'smoke-dormant',
+            title: '休眠窗',
+            frame: { x: 60, y: 40, w: 400, h: 300 },
+            restoreFrame: null,
+            displayMode: 'floating',
+            minimized: false,
+            zIndex: 10,
+            createdAt: 1,
+            lastFocusedAt: 1,
+          },
+        ],
+        dockPinned: ['files'],
+        tilingRatios: {},
+      }),
+    );
+
+    render(<WorkbenchDesktop />);
+    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+    expect(document.querySelector('[data-wb-window-id="w-dormant"]')).toBeNull();
+    expect(useWindowStore.getState().windows['w-dormant']).toBeUndefined();
+  });
+
+  it('快照恢复：开启 restoreSession 后挂载前写入快照 → hydrate 后窗口恢复', async () => {
     const snapshot = {
       version: 1,
       windows: [
@@ -201,6 +234,7 @@ describe('P11 WorkbenchDesktop 总装', () => {
       dockPinned: ['files'],
       tilingRatios: {},
     };
+    localStorage.setItem(RESTORE_SESSION_KEY, 'true');
     localStorage.setItem(WORKBENCH_SNAPSHOT_KEY, JSON.stringify(snapshot));
 
     render(<WorkbenchDesktop />);

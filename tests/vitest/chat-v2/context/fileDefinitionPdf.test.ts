@@ -50,7 +50,7 @@ describe('fileDefinition (PDF multimodal)', () => {
     expect((imageBlocks[0] as any).base64).toBe('base64_png');
   });
 
-  it('keeps explicitly selected native text and page images while leaving OCR opt-in', () => {
+  it('defaults to native text only when injectModes are omitted, leaving images and OCR opt-in', () => {
     const resource: Resource = {
       id: 'res_test_pdf_tm',
       hash: 'hash_pdf_tm',
@@ -74,13 +74,45 @@ describe('fileDefinition (PDF multimodal)', () => {
       }],
     };
 
-    const blocks = fileDefinition.formatToBlocks(resource, {
-      isMultimodal: false,
-      injectModes: { pdf: ['text', 'image'] },
-    });
-    expect(blocks.filter(isImageContentBlock)).toHaveLength(1);
+    const blocks = fileDefinition.formatToBlocks(resource, { isMultimodal: false } as any);
+    expect(blocks.filter(isImageContentBlock)).toHaveLength(0);
     const text = blocks.filter(isTextContentBlock).map((block: any) => block.text).join('\n');
     expect(text).toContain('native extracted text');
     expect(text).not.toContain('<pdf_ocr');
+    expect(text).not.toContain('OCR duplicate');
+  });
+
+  it('honors explicit pdf image inject mode even when the current model is not multimodal', () => {
+    const resource: Resource = {
+      id: 'res_test_pdf_explicit_image',
+      hash: 'hash_pdf_explicit',
+      type: 'file',
+      data: '',
+      refCount: 1,
+      createdAt: Date.now(),
+      _resolvedResources: [{
+        sourceId: 'att_pdf_explicit',
+        resourceHash: 'hash_pdf_explicit',
+        type: 'file',
+        name: 'explicit.pdf',
+        path: '/tmp/explicit.pdf',
+        content: 'native extracted text',
+        found: true,
+        metadata: { name: 'explicit.pdf', mimeType: 'application/pdf', size: 1234 },
+        multimodalBlocks: [
+          { type: 'image', mediaType: 'image/png', base64: 'page_image' },
+          { type: 'text', text: '<ocr_page page="1">OCR duplicate</ocr_page>' },
+        ],
+      }],
+    };
+
+    const blocks = fileDefinition.formatToBlocks(resource, {
+      isMultimodal: false,
+      injectModes: { pdf: ['text', 'image'] },
+    } as any);
+    expect(blocks.filter(isImageContentBlock)).toHaveLength(1);
+    const text = blocks.filter(isTextContentBlock).map((block: any) => block.text).join('\n');
+    expect(text).toContain('native extracted text');
+    expect(text).not.toContain('OCR duplicate');
   });
 });
