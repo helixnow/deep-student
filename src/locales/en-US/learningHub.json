@@ -1397,5 +1397,16 @@
     "lanceHasPageIndex": "has pageIndex",
     "lanceSampleMetadata": "Sample metadata",
     "lanceRows": "rows"
+  },
+  "agent": {
+    "unsupported_hint": "Use the resource/DSTU domain tools to modify file data; this driver only supports navigation ops (openFolder)",
+    "pause_check_failed": "Pause check failed: {{error}}",
+    "pacing_failed": "Pacing control failed: {{error}}",
+    "op_missing_folder_id": "{{label}} (missing folderId)",
+    "op_failed": "{{label}} (failed: {{error}})",
+    "open_folder_label": "Open folder {{folderId}}",
+    "nav_aborted": "Files navigation aborted",
+    "run_not_found": "Files run does not exist or has already finished",
+    "run_ended": "Run already finished"
   }
 }
