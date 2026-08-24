@@ -31,6 +31,7 @@ import {
   type VfsRetrievalHitProvenance,
   type VfsMultimodalIndexResourceOutput,
 } from '@/api/vfsRagApi';
+import i18n from '@/i18n';
 
 // 供调用方直接复用后端 DTO 类型，避免在服务层重复声明形状。
 export type { VfsMultimodalIndexResourceOutput, VfsCapabilityState } from '@/api/vfsRagApi';
@@ -143,7 +144,9 @@ function buildLegacySearchInput(
   const hasText = Boolean(queryText?.trim());
   const hasImage = Boolean(queryImageBase64?.trim());
   if (!hasText && !hasImage) {
-    throw new Error('检索请求必须包含文本、图片或两者');
+    throw new Error(
+      i18n.t('enhanced_rag:retrieve.empty_query', { defaultValue: '检索请求必须包含文本、图片或两者' })
+    );
   }
 
   const queryMode: VfsMultimodalQueryMode = hasText && hasImage
