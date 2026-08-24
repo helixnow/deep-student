@@ -394,6 +394,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
                 className="w-full md:w-auto"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
                   value: mode,
                   title,
