@@ -515,7 +515,8 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         "execArgv: ['--max-old-space-size=6144']",
       ]) &&
       fileContains('.github/workflows/ci.yml', [
-        'npx vitest run --shard=${{ matrix.shard }}/4 --maxWorkers=2',
+        'npx vitest run --shard=${{ matrix.shard }}/8 --maxWorkers=1',
+        'shard: [1, 2, 3, 4, 5, 6, 7, 8]',
       ]),
   },
   {

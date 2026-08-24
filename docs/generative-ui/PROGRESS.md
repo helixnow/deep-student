@@ -1,5 +1,13 @@
 # Generative UI 进度日志
 
+## Round 76（2026-08-24）— CI Vitest 8 路单 worker
+
+1. [x] 19091465 分片 4/4 在 ~6GiB 仍 OOM（StatusBar / scrollbar 已绿）
+2. [x] 改为 `--shard=N/8 --maxWorkers=1`，每进程文件减半、不再双堆互挤
+3. [x] Migration / Rust archive 的 143 是 runner shutdown，非本轮源码错误
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 75（2026-08-24）— Rust 18 块类型白名单
 
 1. [x] `parse_intent` 拒绝未知 / 缺 type / 非对象块

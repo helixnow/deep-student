@@ -19,7 +19,7 @@ export default defineConfig({
     // ⚠️ 不要再开 singleFork：单进程串行会让 jsdom 内存跨文件累积，
     // 大批量文件跑到中途触发 V8 GC 抖动近似死锁（本地与 CI 分片 4 均复现过）。
     // worker 堆必须跟 CI NODE_OPTIONS 对齐：4096 时分片 2 会在 ~4GiB 处 OOM。
-    // CI 另加 --maxWorkers=2，避免多 worker × 6GiB 挤爆 ubuntu-latest。
+    // CI：8 路分片 + --maxWorkers=1，避免双 worker 各顶 6GiB。
     pool: 'forks',
     poolOptions: {
       forks: {
