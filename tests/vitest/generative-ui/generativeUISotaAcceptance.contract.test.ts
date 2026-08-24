@@ -362,6 +362,7 @@ describe('generativeUISotaAcceptance contract', () => {
       'createExportIntentActionHandlers',
       'classifyGenerativeUIParseErrors',
       'usePrefersContrast',
+      'createCopyBlockActionHandlers',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }

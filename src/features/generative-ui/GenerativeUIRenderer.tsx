@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from './registry';
@@ -14,8 +14,10 @@ import {
   type ActionBarProps,
 } from './schema';
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
+import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
 import { coercePartialIntent } from './utils/coercePartialIntent';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
+import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import { GenerativeUIChrome } from './GenerativeUIChrome';
 import {
   GENERATIVE_UI_COMPACT_CLASS,
@@ -198,6 +200,11 @@ export function GenerativeUIRenderer({
     resolved.warnings.includes(BLOCKS_TRUNCATED_WARNING) ||
     positiveCount(resolved.truncatedCount) !== undefined;
 
+  useEffect(() => {
+    if (!displayIntent) return;
+    pushDefaultGenerativeUIIntentSnapshot(displayIntent);
+  }, [displayIntent]);
+
   if (!displayIntent) {
     if (isStreaming) {
       return (
@@ -217,8 +224,16 @@ export function GenerativeUIRenderer({
         </div>
       );
     }
+    const parseErrorCodes = [
+      ...new Set(classifyGenerativeUIParseErrors(parseError).map((item) => item.code)),
+    ];
     return (
-      <Alert variant="destructive" className={className} role="alert">
+      <Alert
+        variant="destructive"
+        className={className}
+        role="alert"
+        data-parse-error-codes={parseErrorCodes.length > 0 ? parseErrorCodes.join(',') : undefined}
+      >
         <AlertTitle>{t('parse_error_title')}</AlertTitle>
         <AlertDescription>
           {parseError?.join('; ') ?? t('parse_error_invalid')}

@@ -154,14 +154,15 @@
 3. ~~**Round 42–44 补洞**~~ — ✅ 本地完成
 4. ~~**Round 45 守卫 / 导出 / a11y**~~ — ✅ 本地完成
 5. ~~**Round 46 可观测 / 对比度 / 导出**~~ — ✅ 本地完成
-6. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
+6. ~~**Round 47 locale / skill / 引用键盘**~~ — ✅ 本地完成
+7. **桌面手动 smoke**（可选）— 见 [TAURI_E2E.md](./TAURI_E2E.md)
 
 ## Goal 完成度（2026-08-24）
 
 | 目标项 | 证据 | 状态 |
 |--------|------|------|
 | 结构化意图 + 组件注册表落地 | `schema.ts` / `registry.ts` / 18 blocks + 宿主/隔离/消毒/v1.1 Rust | ✅ 分支真实态（Round 41–45） |
-| 多轮迭代至 SOTA | Round 6–46 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
+| 多轮迭代至 SOTA | Round 6–47 本地完成；合入 main 仍待 CI | ⏳ 进行中（不标 complete） |
 | 方案与进度持续记录 | ARCHITECTURE / PROGRESS / ROADMAP / TAURI_E2E / SOTA | ✅ |
 | 合入 main | PR #214 | ⏳ 待 merge（未合入 main） |
 

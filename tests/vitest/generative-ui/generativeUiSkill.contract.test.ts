@@ -28,7 +28,7 @@ const SKILL_BLOCK_TYPES = [
   'table',
 ];
 
-const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'export-intent', 'apply-note-edit', 'save-to-library'];
+const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit', 'save-to-library'];
 
 describe('generativeUiSkill contract', () => {
   it('skill content lists every registered block type', () => {
@@ -52,7 +52,7 @@ describe('generativeUiSkill contract', () => {
             columns?: { enum?: number[] };
           };
         };
-        blocks?: { items?: { properties?: { span?: { enum?: number[] } } } };
+        blocks?: { maxItems?: number; items?: { properties?: { span?: { enum?: number[] } } } };
       };
     };
     expect(intentSchema?.required).toContain('blocks');
@@ -60,6 +60,7 @@ describe('generativeUiSkill contract', () => {
     expect(intentSchema?.properties?.layout?.properties?.mode?.enum).toEqual(['stack', 'grid']);
     expect(intentSchema?.properties?.layout?.properties?.columns?.enum).toEqual([1, 2, 3]);
     expect(intentSchema?.properties?.blocks?.items?.properties?.span?.enum).toEqual([1, 2, 3]);
+    expect(intentSchema?.properties?.blocks?.maxItems).toBe(32);
     const noteEditSchema = tool?.inputSchema?.properties?.noteEdit as { properties?: Record<string, unknown> };
     expect(noteEditSchema?.properties?.operation).toBeDefined();
     const researchSessionSchema = tool?.inputSchema?.properties?.researchSessionId as { type?: string };
@@ -82,6 +83,19 @@ describe('generativeUiSkill contract', () => {
     for (const id of SKILL_ACTION_IDS) {
       expect(generativeUiSkill.content).toContain(id);
     }
+    expect(generativeUiSkill.content).toContain('copy-block');
+  });
+
+  it('skill content documents max 32 blocks and JSON Schema type constraint', () => {
+    expect(generativeUiSkill.content).toMatch(/32/);
+    expect(generativeUiSkill.content).toContain('MAX_GENERATIVE_UI_BLOCKS');
+    expect(generativeUiSkill.content).toContain('copy-block');
+    expect(generativeUiSkill.content).toMatch(/type 必须属于 registry/);
+    expect(generativeUiSkill.content).toContain('markdown');
+    expect(generativeUiSkill.content).toContain('chart');
+    expect(generativeUiSkill.content).toContain('steps');
+    expect(generativeUiSkill.content).toContain('table');
+    expect(generativeUiSkill.content).toMatch(/JSON Schema enum/);
   });
 
   it('Rust executor tool name matches skill allowedTools mapping', () => {

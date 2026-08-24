@@ -1,5 +1,22 @@
 # Generative UI 进度日志
 
+## Round 47（2026-08-24）— 10 子代理：locale / skill / 引用键盘
+
+CI `32704302688` 仍 queued，**本轮不 push**。
+
+1. [x] Renderer parse-error codes + intent snapshot
+2. [x] Chart tooltip locale
+3. [x] List 空态 i18n
+4. [x] KeyValueGrid 数字 locale
+5. [x] Progress 数字 locale
+6. [x] Research citation 键盘激活
+7. [x] `copy-block` handler
+8. [x] Skill maxBlocks 12→32 + JSON Schema 约束
+9. [x] Style Lab fingerprint
+10. [x] Chrome `stream_done` 播报
+
+- [ ] 合入 main — 待 CI + 批准（仍 ⏳，Goal 未 complete）
+
 ## Round 46（2026-08-24）— 10 子代理：可观测 / 对比度 / 导出
 
 CI `32704302688`（head `af00a73c`）仍 queued，**本轮不 push**。

@@ -24,10 +24,12 @@ import {
   CHART_REDUCED_MOTION_QUERY,
   ChartBlock,
   chartBlockPropsSchema,
+  formatChartTooltipValue,
   readPrefersReducedMotion,
   registerChartBlock,
   resolveChartAnimationActive,
 } from '@/features/generative-ui/components/ChartBlock';
+import { formatGenerativeNumber } from '@/features/generative-ui/utils/formatGenerativeNumber';
 import { GENERATIVE_UI_COMPACT_MEDIA_QUERY } from '@/features/generative-ui/hooks/useGenerativeUICompact';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
 import { validateBlockProps } from '@/features/generative-ui/schema';
@@ -226,5 +228,11 @@ describe('ChartBlock animation gating', () => {
     expect(source).toContain('isAnimationActive={isAnimationActive}');
     expect(source).toContain(CHART_REDUCED_MOTION_QUERY);
     expect(source).toContain('useGenerativeUICompact');
+  });
+});
+
+describe('formatChartTooltipValue', () => {
+  it('formats numeric tooltip values with formatGenerativeNumber', () => {
+    expect(formatChartTooltipValue(1200)).toBe(formatGenerativeNumber(1200));
   });
 });

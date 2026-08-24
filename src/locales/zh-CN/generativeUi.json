@@ -6,6 +6,7 @@
   "validation_failed_title": "{{type}} 参数校验失败",
   "chrome": {
     "streaming": "生成中…",
+    "stream_done": "界面已生成完毕",
     "accept": "接受",
     "regenerate": "重新生成",
     "dismiss": "忽略"
@@ -25,7 +26,8 @@
     "undo": "撤销",
     "undo_empty": "没有可撤销的操作",
     "copy_intent": "复制意图",
-    "export_markdown": "导出 Markdown"
+    "export_markdown": "导出 Markdown",
+    "copy_block": "复制该组件"
   },
   "flashcard": {
     "preview_title": "闪卡预览",
@@ -77,6 +79,9 @@
     "skip_to_actions": "跳到操作栏"
   },
   "blocks": {
+    "list": {
+      "empty": "暂无条目"
+    },
     "table": {
       "empty": "暂无数据"
     },

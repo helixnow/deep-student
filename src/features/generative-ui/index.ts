@@ -193,7 +193,7 @@ export {
   sanitizeGenerativeTextLeaves,
 } from './utils/sanitizeGenerativeText';
 export { buildMarkdownIntent } from './utils/buildMarkdownIntent';
-export { ChartBlock, chartBlockPropsSchema, CHART_BLOCK_TYPE, registerChartBlock } from './components/ChartBlock';
+export { ChartBlock, chartBlockPropsSchema, CHART_BLOCK_TYPE, registerChartBlock, formatChartTooltipValue } from './components/ChartBlock';
 export { buildChartIntent } from './utils/buildChartIntent';
 export { StepsBlock, stepsBlockPropsSchema, STEPS_BLOCK_TYPE, registerStepsBlock } from './components/StepsBlock';
 export { buildStepsIntent } from './utils/buildStepsIntent';
@@ -245,6 +245,15 @@ export {
   EXPORT_INTENT_ACTION_ID,
 } from './handlers/exportIntentActionHandlers';
 export type { ExportIntentActionLabels } from './handlers/exportIntentActionHandlers';
+export {
+  createCopyBlockActionHandlers,
+  COPY_BLOCK_ACTION_ID,
+  serializeGenerativeUIBlock,
+} from './handlers/copyBlockActionHandlers';
+export type {
+  CopyBlockActionLabels,
+  CopyBlockActionOptions,
+} from './handlers/copyBlockActionHandlers';
 export { lintGenerativeUIIntent } from './utils/lintGenerativeUIIntent';
 export type {
   GenerativeUILintIssue,

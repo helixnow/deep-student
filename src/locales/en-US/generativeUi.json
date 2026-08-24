@@ -6,6 +6,7 @@
   "validation_failed_title": "{{type}} props validation failed",
   "chrome": {
     "streaming": "Generating…",
+    "stream_done": "Interface ready",
     "accept": "Accept",
     "regenerate": "Regenerate",
     "dismiss": "Dismiss"
@@ -25,7 +26,8 @@
     "undo": "Undo",
     "undo_empty": "Nothing to undo",
     "copy_intent": "Copy intent",
-    "export_markdown": "Export Markdown"
+    "export_markdown": "Export Markdown",
+    "copy_block": "Copy this block"
   },
   "flashcard": {
     "preview_title": "Flashcard preview",
@@ -77,6 +79,9 @@
     "skip_to_actions": "Skip to actions"
   },
   "blocks": {
+    "list": {
+      "empty": "No items"
+    },
     "table": {
       "empty": "No data"
     },

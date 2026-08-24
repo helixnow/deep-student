@@ -21,7 +21,9 @@ export function ListBlock({ title, items, emptyLabel }: ListBlockProps) {
       ) : null}
       <CardContent className={title ? 'pt-0' : 'pt-4'}>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyLabel ?? '—'}</p>
+          <p className="text-sm text-muted-foreground" data-list-empty>
+            {emptyLabel ?? t('blocks.list.empty')}
+          </p>
         ) : (
           <ul className="space-y-2">
             {items.map((item, idx) => (

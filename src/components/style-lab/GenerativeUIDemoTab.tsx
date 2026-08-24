@@ -19,6 +19,7 @@ import {
 } from '@/features/generative-ui/demo/intentRecipes';
 import { buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
 import { lintGenerativeUIIntent } from '@/features/generative-ui/utils/lintGenerativeUIIntent';
+import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
@@ -142,6 +143,11 @@ export function GenerativeUIDemoTab() {
 
   const lintResult = useMemo(
     () => (displayedIntent ? lintGenerativeUIIntent(displayedIntent) : null),
+    [displayedIntent],
+  );
+
+  const intentFingerprint = useMemo(
+    () => (displayedIntent ? fingerprintGenerativeUIIntent(displayedIntent) : null),
     [displayedIntent],
   );
 
@@ -341,6 +347,16 @@ export function GenerativeUIDemoTab() {
             </>
           )}
         </div>
+      ) : null}
+
+      {intentFingerprint ? (
+        <p
+          className="text-xs text-muted-foreground font-mono"
+          data-testid="generative-ui-demo-fingerprint"
+          data-intent-fingerprint={intentFingerprint}
+        >
+          {intentFingerprint}
+        </p>
       ) : null}
 
       {renderDemo()}

@@ -4,12 +4,14 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import type { ProgressBlockProps } from '../schema';
+import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
 
 export function ProgressBlock({ title, current, total, label }: ProgressBlockProps) {
   const { t } = useTranslation('generativeUi');
   const titleId = React.useId();
   const reducedMotion = usePrefersReducedMotion();
   const pct = Math.min(100, Math.round((current / total) * 100));
+  const defaultLabel = `${formatGenerativeNumber(current)} / ${formatGenerativeNumber(total)}`;
   return (
     <Card
       className="min-w-0"
@@ -32,8 +34,8 @@ export function ProgressBlock({ title, current, total, label }: ProgressBlockPro
           aria-label={title ? undefined : (label ?? t('a11y.progress_label'))}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{label ?? `${current} / ${total}`}</span>
-          <span>{pct}%</span>
+          <span data-progress-label>{label ?? defaultLabel}</span>
+          <span data-progress-percent>{`${formatGenerativeNumber(pct)}%`}</span>
         </div>
       </CardContent>
     </Card>

@@ -46,7 +46,7 @@ export function GenerativeUIChrome({ isStreaming, onAction, className }: Generat
           aria-atomic="true"
           className={cn(isStreaming ? 'text-xs text-muted-foreground' : 'sr-only')}
         >
-          {isStreaming ? t('chrome.streaming') : ''}
+          {isStreaming ? t('chrome.streaming') : t('chrome.stream_done')}
         </span>
       </div>
       {!isStreaming && onAction ? (

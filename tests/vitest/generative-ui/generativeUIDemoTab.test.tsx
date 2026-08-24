@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { GenerativeUIDemoTab } from '@/components/style-lab/GenerativeUIDemoTab';
+import { LEARNING_DASHBOARD_EXAMPLE } from '@/features/generative-ui/prompts';
+import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
@@ -137,5 +139,14 @@ describe('GenerativeUIDemoTab', () => {
     expect(panel).toHaveAttribute('data-lint-count', '0');
     expect(panel).toHaveTextContent('Intent diagnostics');
     expect(panel).toHaveTextContent('No issues');
+  });
+
+  it('shows intent fingerprint for the default static intent', () => {
+    render(<GenerativeUIDemoTab />);
+    const expected = fingerprintGenerativeUIIntent(LEARNING_DASHBOARD_EXAMPLE);
+    const line = screen.getByTestId('generative-ui-demo-fingerprint');
+    expect(line).toBeInTheDocument();
+    expect(line).toHaveAttribute('data-intent-fingerprint', expected);
+    expect(line).toHaveTextContent(expected);
   });
 });

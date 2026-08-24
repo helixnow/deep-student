@@ -50,6 +50,8 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 
 只能使用上述 registry type。禁止发明未注册 type。禁止 className、style、hex 色值。
 
+type 必须属于 registry（含 markdown、chart、steps、table）；JSON Schema enum 为 type 白名单的 source of truth。
+
 - markdown：长文说明、带标题的摘要（Markdown 语法，不要 HTML）
 - chart：趋势/对比（bar/line/pie）；categories 与每条 series.values 长度必须一致
 - steps：今日学习计划或通用流程（pending/active/done/error/skipped）
@@ -60,8 +62,8 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
 1. 只能使用上述 type；props 必须符合各组件 schema，禁止发明字段。
 2. 禁止输出 HTML、JSX、inline style 或可执行代码。
 3. 删除/提交/导出/笔记写入等副作用只能通过 action-bar 的 action id 声明，且高风险必须带 riskLevel（high/medium）；不得假设已执行，不得用文案宣告「已删除」。
-4. 最多 12 个 blocks；超过 max blocks 会被拒绝。优先信息密度与可扫描性。
-5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、copy-report、export-intent、apply-note-edit、save-to-library），label 仅作展示。
+4. 最多 32 个 blocks（MAX_GENERATIVE_UI_BLOCKS）；超过 max blocks 会被拒绝。优先信息密度与可扫描性。
+5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、copy-report、copy-block、export-intent、apply-note-edit、save-to-library），label 仅作展示。
 6. **Notes HITL**：若 intent 含 apply-note-edit（edit-apply）或 dismiss-note-suggestion（edit-reject），必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，用户确认前禁止假设已写入。
 7. **深度研究**：若 intent 含 research-plan / research-report / paper-digest，可传 researchSessionId 绑定 HPIAS 会话；前端经 hpias_event 实时更新研究面板，静态 Research 块在会话激活后由实时面板取代。
 
@@ -109,7 +111,7 @@ stat-card, alert, list, progress, action-bar, text, key-value-grid, flashcard-pr
               blocks: {
                 type: 'array',
                 minItems: 1,
-                maxItems: 12,
+                maxItems: 32,
                 items: {
                   type: 'object',
                   properties: {

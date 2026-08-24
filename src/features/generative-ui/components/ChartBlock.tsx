@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { useGenerativeUICompact } from '../hooks/useGenerativeUICompact';
 import { generativeUIRegistry } from '../registry';
+import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
 
 /** 本地读 matchMedia；不引入独立 hook，避免与共享 reduced-motion hook 抢定义 */
 export const CHART_REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
@@ -87,6 +88,15 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 
 const AXIS_TICK = { fill: 'hsl(var(--muted-foreground))' } as const;
 
+export function formatChartTooltipValue(value: unknown, unit?: string): string {
+  const suffix = unit ? ` ${unit}` : '';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return `${String(value)}${suffix}`;
+  }
+  return `${formatGenerativeNumber(numeric)}${suffix}`;
+}
+
 function seriesKey(item: ChartSeries, index: number): string {
   return item.name.trim() || `series-${index}`;
 }
@@ -125,7 +135,6 @@ function ChartGraphic({
 }) {
   const cartesian = useMemo(() => toCartesianRows(categories, series), [categories, series]);
   const pieRows = useMemo(() => toPieRows(categories, series), [categories, series]);
-  const valueSuffix = unit ? ` ${unit}` : '';
 
   if (kind === 'pie') {
     return (
@@ -133,7 +142,7 @@ function ChartGraphic({
         <PieChart>
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
-            formatter={(value) => [`${value}${valueSuffix}`, undefined]}
+            formatter={(value) => [formatChartTooltipValue(value, unit), undefined]}
           />
           <Legend />
           <Pie data={pieRows} dataKey="value" nameKey="name" isAnimationActive={isAnimationActive}>
@@ -153,7 +162,10 @@ function ChartGraphic({
           <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
           <XAxis dataKey="category" tick={AXIS_TICK} stroke="hsl(var(--border))" />
           <YAxis tick={AXIS_TICK} stroke="hsl(var(--border))" />
-          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            formatter={(value) => [formatChartTooltipValue(value, unit), undefined]}
+          />
           <Legend />
           {series.map((item, index) => (
             <Line
@@ -177,7 +189,10 @@ function ChartGraphic({
         <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
         <XAxis dataKey="category" tick={AXIS_TICK} stroke="hsl(var(--border))" />
         <YAxis tick={AXIS_TICK} stroke="hsl(var(--border))" />
-        <Tooltip contentStyle={TOOLTIP_STYLE} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          formatter={(value) => [formatChartTooltipValue(value, unit), undefined]}
+        />
         <Legend />
         {series.map((item, index) => (
           <Bar

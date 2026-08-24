@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import type { KeyValueGridProps } from '../schema';
+import { formatGenerativeStatValue } from '../utils/formatGenerativeNumber';
 
 export function KeyValueGridBlock({ title, rows }: KeyValueGridProps) {
   const { t } = useTranslation('generativeUi');
@@ -23,7 +24,9 @@ export function KeyValueGridBlock({ title, rows }: KeyValueGridProps) {
           {rows.map((row, idx) => (
             <div key={`${row.key}-${idx}`} className="min-w-0">
               <dt className="text-xs text-muted-foreground">{row.key}</dt>
-              <dd className="text-sm font-medium break-words">{row.value}</dd>
+              <dd className="text-sm font-medium break-words" data-kv-value>
+                {formatGenerativeStatValue(row.value)}
+              </dd>
             </div>
           ))}
         </dl>
