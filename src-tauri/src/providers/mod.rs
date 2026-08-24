@@ -607,6 +607,10 @@ pub struct OpenAIResponsesAdapter {
     /// carry `item_id`, so name/call_id/output_index and the accumulated
     /// argument buffer must be tracked here (对齐 Codex SSE 桥，P2-14)。
     pending_function_calls: Mutex<HashMap<String, PendingResponseFunctionCall>>,
+    /// Ids of reasoning items already emitted (streaming `output_item.done` or
+    /// terminal fallback). Per-id dedup lets a response carry multiple
+    /// reasoning items (one per function_call round) without double emission.
+    emitted_reasoning_item_ids: Mutex<HashSet<String>>,
 }
 
 /// Streaming state for one Responses `function_call` output item.
@@ -678,6 +682,7 @@ impl OpenAIResponsesAdapter {
             emitted_web_search_ids: Mutex::new(HashSet::new()),
             emitted_web_search_with_sources_ids: Mutex::new(HashSet::new()),
             pending_function_calls: Mutex::new(HashMap::new()),
+            emitted_reasoning_item_ids: Mutex::new(HashSet::new()),
         }
     }
 
@@ -685,21 +690,69 @@ impl OpenAIResponsesAdapter {
         item.get("type").and_then(|v| v.as_str()) == Some("reasoning")
     }
 
-    fn emit_reasoning_items_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
-        if self
-            .saw_reasoning_item
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            return;
+    /// Emit one reasoning item at most once. Items carrying an `id` are deduped
+    /// per id（一次响应可含多个 reasoning item，各自只发一次）；id 缺失的 item
+    /// 由 `allow_unidentified` 控制（终态兜底仅在整个流未发过任何 reasoning
+    /// item 时才允许，避免与流式 `output_item.done` 重复）。
+    fn try_emit_reasoning_item(
+        &self,
+        item: &Value,
+        allow_unidentified: bool,
+        events: &mut Vec<StreamEvent>,
+    ) -> bool {
+        if !Self::is_reasoning_item(item) {
+            return false;
         }
+        match item.get("id").and_then(Value::as_str) {
+            Some(id) => {
+                let is_new = self
+                    .emitted_reasoning_item_ids
+                    .lock()
+                    .map(|mut emitted| emitted.insert(id.to_string()))
+                    .unwrap_or(true);
+                if !is_new {
+                    return false;
+                }
+            }
+            None => {
+                if !allow_unidentified {
+                    return false;
+                }
+            }
+        }
+        self.saw_reasoning_item
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        events.push(StreamEvent::ResponseReasoningItem(item.clone()));
+        true
+    }
 
+    fn emit_reasoning_items_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
+        let allow_unidentified = !self
+            .saw_reasoning_item
+            .load(std::sync::atomic::Ordering::Relaxed);
         if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
             for item in output {
-                if Self::is_reasoning_item(item) {
-                    events.push(StreamEvent::ResponseReasoningItem(item.clone()));
-                    self.saw_reasoning_item
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                }
+                self.try_emit_reasoning_item(item, allow_unidentified, events);
+            }
+        }
+    }
+
+    /// 终态兜底：按 `response.output` 的原始顺序**交错**发射 reasoning item 与
+    /// function_call，保持「reasoning 紧邻其后继 function_call」的相邻语义。
+    /// 禁止两遍扫描（先全量 reasoning 再全量 tool_call）——那会让下游无法按
+    /// 相邻关系把每个 reasoning item 配对到正确的 function_call。
+    fn emit_reasoning_and_tool_calls_from_response(
+        &self,
+        response: &Value,
+        events: &mut Vec<StreamEvent>,
+    ) {
+        let allow_unidentified = !self
+            .saw_reasoning_item
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(output) = response.get("output").and_then(Value::as_array) {
+            for (index, item) in output.iter().enumerate() {
+                self.try_emit_reasoning_item(item, allow_unidentified, events);
+                self.emit_response_tool_call(item, index as i64, events);
             }
         }
     }
@@ -970,14 +1023,6 @@ impl OpenAIResponsesAdapter {
             .unwrap_or(true);
         if is_new {
             events.push(StreamEvent::ToolCall(tool_call));
-        }
-    }
-
-    fn emit_tool_calls_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
-        if let Some(output) = response.get("output").and_then(Value::as_array) {
-            for (index, item) in output.iter().enumerate() {
-                self.emit_response_tool_call(item, index as i64, events);
-            }
         }
     }
 
@@ -1826,11 +1871,9 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
             }
             "response.output_item.done" => {
                 if let Some(item) = parsed.get("item") {
-                    if Self::is_reasoning_item(item) {
-                        self.saw_reasoning_item
-                            .store(true, std::sync::atomic::Ordering::Relaxed);
-                        events.push(StreamEvent::ResponseReasoningItem(item.clone()));
-                    }
+                    // 流式路径按响应顺序逐个发射；id 去重防止服务端重发或
+                    // 终态兜底再次发射同一 item
+                    self.try_emit_reasoning_item(item, true, &mut events);
                     let output_index = parsed
                         .get("output_index")
                         .and_then(Value::as_i64)
@@ -1982,11 +2025,11 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 if let Some(usage) = response.get("usage") {
                     events.push(StreamEvent::Usage(usage.clone()));
                 }
-                // Keep the complete encrypted reasoning item available for stateless tool
-                // continuation, but emit it after user-visible reasoning/usage so existing
-                // stream consumers retain their established event ordering.
-                self.emit_reasoning_items_from_response(response, &mut events);
-                self.emit_tool_calls_from_response(response, &mut events);
+                // Keep the complete encrypted reasoning items available for stateless tool
+                // continuation, emitted after user-visible reasoning/usage. Reasoning items
+                // and function_calls interleave in output order so downstream consumers can
+                // pair each reasoning item with its adjacent function_call.
+                self.emit_reasoning_and_tool_calls_from_response(response, &mut events);
                 self.emit_web_search_from_response(response, &mut events);
                 events.push(StreamEvent::Done);
             }
@@ -5376,6 +5419,139 @@ mod tests {
         assert!(input
             .iter()
             .any(|item| item["type"] == json!("function_call_output")));
+    }
+
+    /// 回归：终态兜底（流式期间未逐条发射 item 时）必须按 response.output
+    /// 原始顺序交错发射 reasoning item 与 function_call，保持相邻配对语义——
+    /// 禁止先全量 reasoning 再全量 tool_call 的两遍扫描。
+    #[test]
+    fn openai_responses_completed_fallback_interleaves_reasoning_and_tool_calls() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let payload = json!({
+            "type": "response.completed",
+            "response": {
+                "output": [
+                    { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" },
+                    { "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "tool_a", "arguments": "{}" },
+                    { "type": "reasoning", "id": "rs_2", "encrypted_content": "enc-2" },
+                    { "type": "function_call", "id": "fc_2", "call_id": "call_2", "name": "tool_b", "arguments": "{}" }
+                ]
+            }
+        });
+
+        let events = adapter.parse_stream(&format!("data: {payload}"));
+        let sequence: Vec<String> = events
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ResponseReasoningItem(item) => {
+                    Some(format!("reasoning:{}", item["id"].as_str().unwrap_or("")))
+                }
+                StreamEvent::ToolCall(tool) => {
+                    Some(format!("tool:{}", tool["id"].as_str().unwrap_or("")))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sequence,
+            vec![
+                "reasoning:rs_1",
+                "tool:call_1",
+                "reasoning:rs_2",
+                "tool:call_2"
+            ],
+            "reasoning item 必须紧邻其 function_call 交错发射"
+        );
+    }
+
+    /// 回归：流式 output_item.done 已发射的 reasoning item 在终态兜底中按 id
+    /// 去重不重发；未流出过的新 item（rs_2）仍要补发（旧实现的单布尔守卫会
+    /// 把整个兜底跳过，丢失第二个 item）。
+    #[test]
+    fn openai_responses_completed_dedupes_streamed_reasoning_items_by_id() {
+        let adapter = OpenAIResponsesAdapter::new();
+
+        let streamed = adapter.parse_stream(&format!(
+            "data: {}",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "item": { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" }
+            })
+        ));
+        assert_eq!(
+            streamed
+                .iter()
+                .filter(|e| matches!(e, StreamEvent::ResponseReasoningItem(_)))
+                .count(),
+            1
+        );
+
+        let completed = adapter.parse_stream(&format!(
+            "data: {}",
+            json!({
+                "type": "response.completed",
+                "response": {
+                    "output": [
+                        { "type": "reasoning", "id": "rs_1", "encrypted_content": "enc-1" },
+                        { "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "tool_a", "arguments": "{}" },
+                        { "type": "reasoning", "id": "rs_2", "encrypted_content": "enc-2" }
+                    ]
+                }
+            })
+        ));
+        let reasoning_ids: Vec<&str> = completed
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ResponseReasoningItem(item) => item["id"].as_str(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reasoning_ids,
+            vec!["rs_2"],
+            "已流出的 rs_1 不重发，未流出的 rs_2 仍需补发"
+        );
+    }
+
+    /// 回归：无工具纯文本轮 —— 上一 assistant 消息携带的 reasoning item
+    /// 在下一轮 Responses input 中回传，且位于该 assistant 正文之前。
+    #[test]
+    fn openai_responses_adapter_replays_reasoning_item_before_plain_assistant_message() {
+        let body = json!({
+            "messages": [
+                { "role": "user", "content": "hi" },
+                {
+                    "role": "assistant",
+                    "content": "Hello there!",
+                    "response_reasoning_item": {
+                        "type": "reasoning",
+                        "id": "rs_final",
+                        "encrypted_content": "enc-final"
+                    }
+                },
+                { "role": "user", "content": "and again" }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+        let reasoning_index = input
+            .iter()
+            .position(|item| item["type"] == json!("reasoning"))
+            .expect("plain assistant turn should replay its reasoning item");
+        assert_eq!(input[reasoning_index]["encrypted_content"], "enc-final");
+        let assistant_index = input
+            .iter()
+            .position(|item| {
+                item["role"] == json!("assistant")
+                    && item["content"][0]["text"] == json!("Hello there!")
+            })
+            .expect("assistant message should be preserved");
+        assert!(
+            reasoning_index < assistant_index,
+            "reasoning item 必须回放在 assistant 正文之前（对齐响应 output 顺序）"
+        );
     }
 
     #[test]

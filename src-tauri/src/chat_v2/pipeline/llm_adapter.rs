@@ -197,8 +197,13 @@ pub struct ChatV2LLMAdapter {
     think_tag_buffer: std::sync::Mutex<String>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
-    /// Complete OpenAI Responses reasoning item for the current tool round.
-    cached_response_reasoning_item: std::sync::Mutex<Option<Value>>,
+    /// OpenAI Responses reasoning items，按响应顺序收集（一次响应可含多个）。
+    /// 每个条目为 `(配对的 tool_call_id, 完整 item)`：reasoning item 在流中
+    /// 紧邻其后继 function_call，`on_tool_call_start` 到达时把最近一个未配对
+    /// 条目配到该 tool_call_id（禁止把所有 item 绑到本批第一个 tool id）。
+    /// 纯文本轮（无 function_call）条目保持未配对，由调用方按最终 assistant
+    /// 语义持久化回放。
+    response_reasoning_items: std::sync::Mutex<Vec<(Option<String>, Value)>>,
     /// tool_call_id → preparing block_id 映射（用于 args delta chunk 寻址）
     preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
@@ -242,7 +247,7 @@ impl ChatV2LLMAdapter {
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
             cached_thought_signature: std::sync::Mutex::new(None),
-            cached_response_reasoning_item: std::sync::Mutex::new(None),
+            response_reasoning_items: std::sync::Mutex::new(Vec::new()),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
             last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
@@ -546,10 +551,10 @@ impl ChatV2LLMAdapter {
             .cached_thought_signature
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
-        *self
-            .cached_response_reasoning_item
+        self.response_reasoning_items
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.preparing_block_ids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -618,8 +623,10 @@ impl ChatV2LLMAdapter {
             .clone()
     }
 
-    pub fn get_response_reasoning_item(&self) -> Option<Value> {
-        self.cached_response_reasoning_item
+    /// 按响应顺序返回本轮收集的 Responses reasoning items。
+    /// 条目为 `(配对的 tool_call_id, 完整 item)`；纯文本轮条目未配对（None）。
+    pub fn get_response_reasoning_items(&self) -> Vec<(Option<String>, Value)> {
+        self.response_reasoning_items
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -1152,6 +1159,25 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             tool_name
         );
 
+        // Responses reasoning item 相邻配对：reasoning item 在流中先于其
+        // function_call 到达，把最近一个未配对条目配到本 tool_call_id。
+        // 同一 tool_call_id 可能触发多次 start（added 分块 + done 终态），
+        // 已配对过的 id 不再重复认领，防止吞掉下一轮的 reasoning item。
+        {
+            let mut items = self
+                .response_reasoning_items
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let already_claimed = items
+                .iter()
+                .any(|(id, _)| id.as_deref() == Some(tool_call_id));
+            if !already_claimed {
+                if let Some(entry) = items.iter_mut().rev().find(|(id, _)| id.is_none()) {
+                    entry.0 = Some(tool_call_id.to_string());
+                }
+            }
+        }
+
         // 🔧 2026-01-16: 检索工具（builtin-*）有自己的事件类型和块渲染器
         // 如果发射 tool_call_preparing，会创建一个 mcp_tool 类型的 preparing 块
         // 但检索工具的 execute_* 方法会创建另一个检索类型块（如 web_search）
@@ -1258,11 +1284,11 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
 
     fn on_response_reasoning_item(&self, item: &Value) {
         self.touch_activity();
-        let mut guard = self
-            .cached_response_reasoning_item
+        // 按响应顺序追加（禁止单值覆盖）；配对留给随后到达的 on_tool_call_start
+        self.response_reasoning_items
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        *guard = Some(item.clone());
+            .unwrap_or_else(|e| e.into_inner())
+            .push((None, item.clone()));
     }
 
     fn on_tool_call(&self, msg: &LegacyChatMessage) {
@@ -1405,5 +1431,96 @@ mod web_search_item_tests {
 
         // take 后清空
         assert!(adapter.take_web_search_items().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod response_reasoning_pairing_tests {
+    use super::*;
+
+    fn test_adapter() -> ChatV2LLMAdapter {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_rr_pairing".to_string(),
+        ));
+        ChatV2LLMAdapter::new(emitter, "msg_rr_pairing".to_string(), false, None, None)
+    }
+
+    fn reasoning_item(id: &str) -> Value {
+        json!({
+            "type": "reasoning",
+            "id": id,
+            "encrypted_content": format!("enc-{}", id)
+        })
+    }
+
+    /// 回归：两个 function_call 各自带不同 reasoning item —— 按响应顺序收集
+    /// 且各自与相邻 function_call 配对，禁止全部绑到第一个 tool id。
+    #[test]
+    fn pairs_each_reasoning_item_with_adjacent_function_call() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        let r2 = reasoning_item("rs_2");
+
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_1", "tool_a");
+        adapter.on_response_reasoning_item(&r2);
+        adapter.on_tool_call_start("call_2", "tool_b");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items.len(), 2, "两个 reasoning item 都应保留（禁止单值覆盖）");
+        assert_eq!(items[0], (Some("call_1".to_string()), r1));
+        assert_eq!(items[1], (Some("call_2".to_string()), r2));
+    }
+
+    /// Responses 流式路径同一 tool_call_id 会触发两次 start
+    /// （output_item.added 分块 + 终态），重复 start 不得认领下一轮的 item。
+    #[test]
+    fn repeated_tool_call_start_does_not_steal_next_reasoning_item() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        let r2 = reasoning_item("rs_2");
+
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_1", "tool_a");
+        adapter.on_response_reasoning_item(&r2);
+        adapter.on_tool_call_start("call_1", "tool_a"); // 终态重复 start
+        adapter.on_tool_call_start("call_2", "tool_b");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items[0].0.as_deref(), Some("call_1"));
+        assert_eq!(items[1].0.as_deref(), Some("call_2"));
+    }
+
+    /// 检索工具（builtin-*）跳过 preparing 事件但仍参与配对。
+    #[test]
+    fn builtin_retrieval_tool_still_claims_reasoning_item() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_1");
+        adapter.on_response_reasoning_item(&r1);
+        adapter.on_tool_call_start("call_rag", "builtin-rag_search");
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items[0].0.as_deref(), Some("call_rag"));
+    }
+
+    /// 纯文本轮（无 function_call）：reasoning item 保持未配对，
+    /// 由 tool_loop 挂到哨兵键持久化回放。
+    #[test]
+    fn text_only_round_keeps_reasoning_item_unpaired() {
+        let adapter = test_adapter();
+        let r1 = reasoning_item("rs_final");
+        adapter.on_response_reasoning_item(&r1);
+
+        let items = adapter.get_response_reasoning_items();
+        assert_eq!(items, vec![(None, r1)]);
+    }
+
+    /// 外层重试复用同一 adapter：重置后不得残留上次的 reasoning items。
+    #[test]
+    fn reset_stream_state_clears_reasoning_items() {
+        let adapter = test_adapter();
+        adapter.on_response_reasoning_item(&reasoning_item("rs_1"));
+        adapter.reset_stream_state();
+        assert!(adapter.get_response_reasoning_items().is_empty());
     }
 }

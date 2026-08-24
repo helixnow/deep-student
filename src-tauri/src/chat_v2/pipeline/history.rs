@@ -6,7 +6,18 @@ impl ChatV2Pipeline {
     ///
     /// 从数据库加载会话的历史消息，应用 context_limit 限制，
     /// 并提取 content 类型块的内容构建 LLM 对话历史。
+    ///
+    /// 🆕 DESIGN：单趟加载发现超预算且需要 FIFO 头删时，会先强制跑一次
+    /// compaction；压缩落盘后重新加载（应用新的压缩视图）。
+    /// `ctx.forced_compaction_before_trim` 保证每轮 send 至多重载一次。
     pub(crate) async fn load_chat_history(&self, ctx: &mut PipelineContext) -> ChatV2Result<()> {
+        while self.load_chat_history_pass(ctx).await? {}
+        Ok(())
+    }
+
+    /// 单趟历史加载。返回 `true` 表示本趟触发了「FIFO 前强制 compaction」
+    /// 且压缩成功落盘，调用方（外层 while）需要整体重载以应用新压缩视图。
+    async fn load_chat_history_pass(&self, ctx: &mut PipelineContext) -> ChatV2Result<bool> {
         log::debug!(
             "[ChatV2::pipeline] Loading chat history for session={}",
             ctx.session_id
@@ -39,7 +50,7 @@ impl ChatV2Pipeline {
                 ctx.session_id
             );
             ctx.chat_history = Vec::new();
-            return Ok(());
+            return Ok(false);
         }
 
         // 🔧 排除当前用户消息和助手消息：save_user_message_immediately 会在
@@ -57,6 +68,14 @@ impl ChatV2Pipeline {
             .filter(|m| !exclude_ids.contains(m.id.as_str()))
             .collect();
 
+        // 🆕 活跃 compaction 记录 id：作为 microcompact 锚点的世代（lineage）
+        // 标识 —— 锚点只在它变化（= compaction 事件）时批量推进。
+        let active_compaction_id =
+            ChatV2Repo::get_active_compaction_with_conn(&conn, &ctx.session_id)
+                .ok()
+                .flatten()
+                .map(|record| record.id);
+
         // 🆕 P1: 应用 compaction 视图 — 隐藏 tail_start 之前的原始消息，
         // 返回一条 system 摘要伪消息。原消息仍在 DB 中（供"展开原文"）。
         let (compaction_summary_msg, messages) =
@@ -68,7 +87,7 @@ impl ChatV2Pipeline {
                 ctx.session_id
             );
             ctx.chat_history = Vec::new();
-            return Ok(());
+            return Ok(false);
         }
 
         // 🔧 P1修复：条数限制与 context_limit（token 语义）分离
@@ -478,6 +497,23 @@ impl ChatV2Pipeline {
                         serde_json::json!(items),
                     );
                 }
+                // 无工具纯文本轮的 Responses reasoning item（哨兵键）挂回最终
+                // assistant 文本消息 metadata，出站时由
+                // attach_response_reasoning_replay_item 附着为消息级
+                // response_reasoning_item，Responses 转换层在正文前原样回传
+                if let Some(item) = message
+                    .meta
+                    .as_ref()
+                    .and_then(|m| m.response_reasoning_items.as_ref())
+                    .and_then(|items| {
+                        items.get(crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY)
+                    })
+                {
+                    history_metadata.insert(
+                        "openai_responses_reasoning_item".to_string(),
+                        item.clone(),
+                    );
+                }
             }
 
             let legacy_message = LegacyChatMessage {
@@ -515,16 +551,23 @@ impl ChatV2Pipeline {
             ctx.session_id
         );
 
-        // 🆕 零成本前置层（microcompact）：把最近 K 个 user 轮之外的旧工具输出
-        // 替换为占位符。只影响本次发给模型的视图，不动数据库；在插入 compaction
-        // summary 伪消息之前执行（伪消息与瞬态注入均带 pinned 标记，天然豁免）。
-        let microcompacted =
-            microcompact_old_tool_outputs(&mut chat_history, MICROCOMPACT_KEEP_RECENT_USER_TURNS);
+        // 🆕 零成本前置层（microcompact）：把锚点之前的旧工具输出替换为占位符。
+        // 只影响本次发给模型的视图，不动数据库；在插入 compaction summary
+        // 伪消息之前执行（伪消息与瞬态注入均带 pinned 标记，天然豁免）。
+        // 锚点为会话级状态，只随 compaction 事件批量推进 —— 连续多轮不
+        // compaction 时历史头部字节逐字稳定，不打破 provider prompt cache。
+        let eligible_turns = self.resolve_microcompact_eligible_turns(
+            &ctx.session_id,
+            active_compaction_id.as_deref(),
+            &chat_history,
+        );
+        let microcompacted = microcompact_old_tool_outputs(&mut chat_history, eligible_turns);
         if microcompacted > 0 {
             log::info!(
-                "[ChatV2::pipeline] Microcompact: replaced {} old tool output(s) with placeholders for session={}",
+                "[ChatV2::pipeline] Microcompact: replaced {} old tool output(s) with placeholders for session={} (anchored at {} eligible turn(s))",
                 microcompacted,
-                ctx.session_id
+                ctx.session_id,
+                eligible_turns
             );
         }
 
@@ -543,6 +586,69 @@ impl ChatV2Pipeline {
         // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
         // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
         let max_tokens = effective_history_token_budget(ctx.options.context_limit);
+
+        // 🆕 DESIGN：FIFO 头删触发前强制 compaction。头删会改写历史前缀
+        // （打破 prompt cache，且抢在正确的 tail 锚定压缩之前把任务锚点清零），
+        // 因此超预算时先走 compaction；只有 compaction 无法执行 / 无法回收
+        // 足够预算时才允许 FIFO 头删兜底。
+        if plan_history_overflow_action(
+            &chat_history,
+            max_tokens,
+            ctx.forced_compaction_before_trim,
+        ) == HistoryOverflowAction::CompactionFirst
+        {
+            ctx.forced_compaction_before_trim = true;
+            // 在 await 前归还数据库连接（compaction 与重载会各自取连接）。
+            drop(vfs_conn_opt);
+            drop(conn);
+            let session_id = ctx.session_id.clone();
+            let model_id = ctx
+                .options
+                .model2_override_id
+                .clone()
+                .or_else(|| ctx.options.model_id.clone());
+            let exclude_ids = vec![
+                ctx.user_message_id.clone(),
+                ctx.assistant_message_id.clone(),
+            ];
+            let cancellation_token = ctx.cancellation_token.clone();
+            match self
+                .run_compaction_for_session(
+                    &session_id,
+                    model_id.as_deref(),
+                    "overflow",
+                    &exclude_ids,
+                    ctx.options.context_limit,
+                    ctx.options.memory_enabled,
+                    cancellation_token.as_ref(),
+                )
+                .await
+            {
+                Ok(outcome) if outcome.did_compact() => {
+                    log::info!(
+                        "[ChatV2::pipeline] Forced compaction before FIFO trim committed for session={}; reloading history with new compaction view",
+                        session_id
+                    );
+                    return Ok(true);
+                }
+                Ok(outcome) => {
+                    log::info!(
+                        "[ChatV2::pipeline] Forced compaction before FIFO trim did not compact for session={} (status={}, reason={:?}); falling back to FIFO trim",
+                        session_id,
+                        outcome.status_code(),
+                        outcome.reason_code()
+                    );
+                }
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Forced compaction before FIFO trim failed for session={}: {}; falling back to FIFO trim",
+                        session_id,
+                        err
+                    );
+                }
+            }
+        }
+
         let trim_outcome = trim_history_by_token_budget(&mut chat_history, max_tokens);
         // 🆕 实际丢弃了消息时挂起报告，由调用方（execute_internal / tool_loop）
         // 在拿到 emitter 的位置发射 `context_trimmed` 事件
@@ -551,7 +657,7 @@ impl ChatV2Pipeline {
         }
 
         ctx.chat_history = chat_history;
-        Ok(())
+        Ok(false)
     }
 
     /// 解析历史消息中的 context_snapshot（V2 版本）
@@ -1285,6 +1391,79 @@ mod replay_consistency_tests {
         // 3) 末尾正文
         assert_eq!(ctx.chat_history[3].role, "assistant");
         assert_eq!(ctx.chat_history[3].content, "笔记里说……");
+    }
+
+    /// 回归：无工具纯文本轮 —— 上一 assistant 消息 meta 中哨兵键下的
+    /// Responses reasoning item 在下一轮重放时挂回该 assistant 消息的
+    /// metadata（openai_responses_reasoning_item），保证下一轮 input 仍含
+    /// 上一 assistant 的 encrypted reasoning。
+    #[tokio::test]
+    async fn replay_attaches_final_reasoning_item_to_plain_assistant_message() {
+        use crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY;
+
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_replay_final_reasoning";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_fr_u1",
+            "blk_fr_u1",
+            "随便聊聊",
+            1_000,
+        );
+
+        // 上一轮 assistant：纯文本（无工具块），meta 哨兵键存 reasoning item
+        let reasoning_item = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_final_1",
+            "encrypted_content": "enc-final-state"
+        });
+        let mut assistant_msg = ChatMessage::new_assistant(session_id.to_string());
+        assistant_msg.id = "msg_fr_a1".to_string();
+        assistant_msg.timestamp = 2_000;
+        assistant_msg.block_ids = vec!["blk_fr_c1".to_string()];
+        assistant_msg.meta = Some(MessageMeta {
+            response_reasoning_items: Some(HashMap::from([(
+                RESPONSES_FINAL_REASONING_KEY.to_string(),
+                reasoning_item.clone(),
+            )])),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
+        ChatV2Repo::create_block_with_conn(
+            &conn,
+            &content_block("msg_fr_a1", "blk_fr_c1", "这是纯文本回答。", 0),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 2, "user + 纯文本 assistant");
+
+        let replayed_assistant = &ctx.chat_history[1];
+        assert_eq!(replayed_assistant.role, "assistant");
+        assert_eq!(replayed_assistant.content, "这是纯文本回答。");
+        assert!(
+            replayed_assistant.tool_call.is_none(),
+            "纯文本轮不应重建 tool_call"
+        );
+        let metadata = replayed_assistant
+            .metadata
+            .as_ref()
+            .expect("纯文本 assistant 应携带 metadata");
+        assert_eq!(
+            metadata.get("openai_responses_reasoning_item"),
+            Some(&reasoning_item),
+            "哨兵键下的 reasoning item 应挂回 assistant metadata 供下一轮回传"
+        );
     }
 
     /// 要求 9 回退测试：三列为 NULL（老数据）时保持旧重建

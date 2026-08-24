@@ -436,8 +436,11 @@ pub(crate) struct PipelineContext {
     /// 中回填 assistant(tool_call) 消息的 content，让 LLM 能看到上一轮说过的话
     pub(crate) round_text_by_tool_call_id: HashMap<String, String>,
 
-    /// OpenAI Responses reasoning item associated with the first tool call of
-    /// each round. Kept in memory and replayed on the next stateless request.
+    /// OpenAI Responses reasoning items keyed by the adjacent tool_call_id
+    /// (each function_call carries its own reasoning item; never all bound to
+    /// the first call of a batch). A tool-less final turn is stored under the
+    /// sentinel key [`crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY`].
+    /// Kept in memory and replayed on the next stateless request.
     pub(crate) response_reasoning_by_tool_call_id: HashMap<String, Value>,
 
     /// P2-13 收尾：本次运行收集到的服务端 `web_search_call` 完整 item
@@ -497,6 +500,12 @@ pub(crate) struct PipelineContext {
 
     /// 🆕 本轮流式内是否已发射过 `context_trimmed`（去重防刷屏）
     pub(crate) context_trim_notified: bool,
+
+    /// 🆕 DESIGN：FIFO 头删触发前强制 compaction 的每轮一次性闸门。
+    /// load_chat_history 发现超预算时先跑 compaction；本标志保证同一轮
+    /// send 至多强制一次，compaction 后仍超预算时直接 FIFO 兜底，不会
+    /// 陷入「compaction → 重载 → 再 compaction」的循环。
+    pub(crate) forced_compaction_before_trim: bool,
 }
 
 impl PipelineContext {
@@ -570,6 +579,7 @@ impl PipelineContext {
             doom_loop_guard: DoomLoopGuard::default(),
             pending_context_trim: None,
             context_trim_notified: false,
+            forced_compaction_before_trim: false,
         }
     }
 

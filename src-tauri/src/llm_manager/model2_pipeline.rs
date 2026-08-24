@@ -515,6 +515,19 @@ fn attach_web_search_replay_items(metadata: Option<&Value>, assistant_msg: &mut 
     }
 }
 
+/// 无工具纯文本轮的 Responses reasoning item 回放：history 重放把持久化的
+/// item 挂在 assistant 消息 metadata（键 `openai_responses_reasoning_item`），
+/// 这里附着为消息级 `response_reasoning_item`，Responses 转换层在 assistant
+/// 正文之前原样回传 input（encrypted reasoning 跨轮不丢）。
+fn attach_response_reasoning_replay_item(metadata: Option<&Value>, assistant_msg: &mut Value) {
+    let Some(item) = metadata.and_then(|meta| meta.get("openai_responses_reasoning_item")) else {
+        return;
+    };
+    if item.get("type").and_then(Value::as_str) == Some("reasoning") {
+        assistant_msg["response_reasoning_item"] = item.clone();
+    }
+}
+
 /// 把服务端 web_search 载荷转换为前端检索块格式的编号来源列表
 /// （与 builtin_retrieval_executor::execute_web 的 emit_end 载荷对齐）。
 #[inline]
@@ -1682,6 +1695,39 @@ mod tests {
         assert!(untouched.get("response_web_search_items").is_none());
         attach_web_search_replay_items(Some(&json!({})), &mut untouched);
         assert!(untouched.get("response_web_search_items").is_none());
+    }
+
+    /// 无工具纯文本轮：metadata 携带的 Responses reasoning item 附着为消息级
+    /// response_reasoning_item（仅 type == reasoning 的 item），供转换层回传。
+    #[test]
+    fn attach_response_reasoning_replay_item_attaches_reasoning_only() {
+        let metadata = json!({
+            "openai_responses_reasoning_item": {
+                "type": "reasoning",
+                "id": "rs_final",
+                "encrypted_content": "enc-final"
+            }
+        });
+        let mut assistant_msg = json!({ "role": "assistant", "content": "answer" });
+        attach_response_reasoning_replay_item(Some(&metadata), &mut assistant_msg);
+        assert_eq!(
+            assistant_msg["response_reasoning_item"]["id"],
+            json!("rs_final")
+        );
+
+        // 非 reasoning 类型不附着
+        let bogus = json!({
+            "openai_responses_reasoning_item": { "type": "message", "id": "not_reasoning" }
+        });
+        let mut untouched = json!({ "role": "assistant", "content": "answer" });
+        attach_response_reasoning_replay_item(Some(&bogus), &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
+
+        // 无 metadata / 无键：消息保持原样
+        attach_response_reasoning_replay_item(None, &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
+        attach_response_reasoning_replay_item(Some(&json!({})), &mut untouched);
+        assert!(untouched.get("response_reasoning_item").is_none());
     }
 
     #[test]
@@ -3313,8 +3359,10 @@ impl LLMManager {
                             }));
                         }
                         // P2-13：服务端 web_search_call 完整 item 随 assistant 历史回传
+                        // 无工具纯文本轮的 Responses reasoning item 同样随历史回传
                         if let Some(last) = messages.last_mut() {
                             attach_web_search_replay_items(msg.metadata.as_ref(), last);
+                            attach_response_reasoning_replay_item(msg.metadata.as_ref(), last);
                         }
                     } else if msg.role == "tool" {
                         // 标准化：工具结果消息必须包含 tool_call_id 以关联到上一条assistant的tool_calls

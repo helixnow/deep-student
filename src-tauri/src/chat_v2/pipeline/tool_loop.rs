@@ -1799,15 +1799,30 @@ impl ChatV2Pipeline {
                         result
                     })
                     .collect();
-                if let (Some(item), Some(first_tool_call_id)) = (
-                    adapter.get_response_reasoning_item(),
-                    tool_results_with_reasoning
+                // Responses reasoning items 按相邻配对写入：一次响应可含多个
+                // reasoning item（每个 function_call 各带一个），按 adapter 已
+                // 配好的 tool_call_id 键控（禁止全部绑到本批第一个 tool id）。
+                // 未配对的残留条目兜底挂到第一个尚无 reasoning item 的 tool_call。
+                {
+                    let fallback_tool_call_id = tool_results_with_reasoning
                         .first()
                         .and_then(|r| r.tool_call_id.clone())
-                        .filter(|id| !id.is_empty()),
-                ) {
-                    ctx.response_reasoning_by_tool_call_id
-                        .insert(first_tool_call_id, item);
+                        .filter(|id| !id.is_empty());
+                    for (paired_tool_call_id, item) in adapter.get_response_reasoning_items() {
+                        match paired_tool_call_id {
+                            Some(tool_call_id) => {
+                                ctx.response_reasoning_by_tool_call_id
+                                    .insert(tool_call_id, item);
+                            }
+                            None => {
+                                if let Some(fallback_id) = fallback_tool_call_id.clone() {
+                                    ctx.response_reasoning_by_tool_call_id
+                                        .entry(fallback_id)
+                                        .or_insert(item);
+                                }
+                            }
+                        }
+                    }
                 }
                 // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
                 // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
@@ -1940,6 +1955,17 @@ impl ChatV2Pipeline {
             // 无工具调用，这是最后一轮 LLM 调用
             // 收集最终的 thinking 和 content 块
             // ============================================================
+            // Responses reasoning item：纯文本轮无 tool_call_id 可键控，挂到
+            // 哨兵键持久化；history 重放附到最终 assistant 文本消息 metadata，
+            // 下一轮 Responses input 原样回传 encrypted reasoning。
+            // 多条时后到覆盖（最贴近最终正文的 item 生效）。
+            for (paired_tool_call_id, item) in adapter.get_response_reasoning_items() {
+                let key = paired_tool_call_id.unwrap_or_else(|| {
+                    crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY.to_string()
+                });
+                ctx.response_reasoning_by_tool_call_id.insert(key, item);
+            }
+
             ctx.collect_round_blocks(
                 adapter.get_thinking_block_id(),
                 adapter.get_accumulated_reasoning(),

@@ -1651,6 +1651,13 @@ impl ChatMessage {
     }
 }
 
+/// `MessageMeta.response_reasoning_items` 中无工具纯文本轮的哨兵键：
+/// 该轮没有 tool_call_id 可键控，reasoning item 挂在此键下持久化，
+/// history 重放时附到最终 assistant 文本消息的 metadata
+/// （`openai_responses_reasoning_item`），下一轮 Responses input 原样回传。
+/// 双下划线前后缀避免与 provider 生成的真实 tool_call_id 撞名。
+pub const RESPONSES_FINAL_REASONING_KEY: &str = "__final_assistant__";
+
 /// 消息元数据（与前端 MessageMeta 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1714,12 +1721,14 @@ pub struct MessageMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_source: Option<String>,
 
-    /// OpenAI Responses reasoning item（按 tool_call_id 键控）
+    /// OpenAI Responses reasoning item（按 tool_call_id 键控；无工具的
+    /// 纯文本轮用哨兵键 [`RESPONSES_FINAL_REASONING_KEY`]）
     ///
     /// V20260806 B 层：无状态 Responses 请求要求跨轮原样回传 encrypted
     /// reasoning item，否则跨轮重放丢失推理链且打断前缀缓存。live 时该数据
     /// 活在 `PipelineContext.response_reasoning_by_tool_call_id`，这里随
-    /// 助手消息 meta 持久化，history 重放时按 tool_call_id 回填。
+    /// 助手消息 meta 持久化，history 重放时按 tool_call_id 回填；哨兵键
+    /// 条目挂到最终纯文本 assistant 消息的 metadata 回放。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_reasoning_items: Option<std::collections::HashMap<String, Value>>,
 
