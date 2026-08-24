@@ -1,12 +1,23 @@
 /**
  * localizeCloudStorageError 行为契约：云设置页与本地 ZIP 共用同一套映射。
- * 后端多数 E2EE / 短密码拒绝仍是中文诊断，尚无稳定 code。
+ * 短密码 / stored-password 优先稳定 code；旧中文诊断仍兜底。
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/utils/cloudStorageApi', () => ({
-  getCloudPlatformErrorI18nKey: () => undefined,
-}));
+vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/cloudStorageApi')>();
+  return {
+    ...actual,
+    getCloudPlatformErrorI18nKey: () => undefined,
+  };
+});
+
+import {
+  CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+  STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
+} from '@/utils/cloudStorageApi';
 
 import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
@@ -15,6 +26,21 @@ import {
 
 const t = (key: string, options?: Record<string, unknown>) =>
   options?.min != null ? `${key}:${options.min}` : key;
+
+describe('短密码 / stored-password 稳定 code 跨层契约', () => {
+  it('Rust 与 TypeScript 使用同一对 code', () => {
+    const secureStore = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/secure_store.rs'),
+      'utf-8',
+    );
+    const zipCommands = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/data_governance/commands_zip.rs'),
+      'utf-8',
+    );
+    expect(secureStore).toContain(`"${CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE}"`);
+    expect(zipCommands).toContain(`"${STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE}"`);
+  });
+});
 
 describe('localizeCloudStorageError', () => {
   it('maps short-password Chinese diagnostics from cloud and ZIP parsers', () => {
@@ -45,6 +71,24 @@ describe('localizeCloudStorageError', () => {
     expect(localizeCloudStorageError(new Error('Missing FTP configuration'), t)).toBe(
       'cloudStorage:errors.missingFtpConfig',
     );
+  });
+
+  it('maps short-password and stored-password by stable code even if message changes', () => {
+    expect(
+      localizeCloudStorageError(
+        { code: CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE, message: 'rewritten short-password' },
+        t,
+      ),
+    ).toBe(`cloudStorage:encryption.tooShort:${CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS}`);
+    expect(
+      localizeCloudStorageError(
+        {
+          code: STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
+          message: 'rewritten stored-password',
+        },
+        t,
+      ),
+    ).toBe('cloudStorage:encryption.storedPasswordRequired');
   });
 
   it('keeps unmapped diagnostics as the original message', () => {

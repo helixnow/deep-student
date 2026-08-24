@@ -227,6 +227,8 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     );
 
     expect(componentSource).toContain('localizeCloudStorageError');
+    expect(localizeSource).toContain('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT');
+    expect(localizeSource).toContain('E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED');
     expect(localizeSource).toContain('云端端到端加密密码至少需要');
     expect(localizeSource).toContain('备份密码至少需要');
     expect(componentSource).toContain("packageZipFailed', { error: localizeCloudError(e) }");

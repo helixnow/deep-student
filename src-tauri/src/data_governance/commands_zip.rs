@@ -72,11 +72,15 @@ fn copy_temp_zip_to_virtual_uri(
     Ok(())
 }
 
+/// 开关打开却读不到已存密码时的稳定 IPC code。
+pub const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE: &str =
+    "E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED";
+
 /// 开关打开却读不到已存密码时的拒绝文案。
 ///
 /// 导出路径必须 fail-closed：宁可拒绝，也不能默默打成便携包再冒充全保真。
 pub const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED: &str =
-    "已开启云端端到端加密，但安全存储里没有可用的备份密码。已拒绝继续，以免把无法整槽恢复的便携归档当成加密全保真。请重新配置云端加密密码后再试。";
+    "[E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED] 已开启云端端到端加密，但安全存储里没有可用的备份密码。已拒绝继续，以免把无法整槽恢复的便携归档当成加密全保真。请重新配置云端加密密码后再试。";
 
 /// 解析 ZIP 导出所用的备份密码。
 ///
@@ -2367,14 +2371,16 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
 mod resolve_zip_encryption_password_tests {
     use super::{
         resolve_import_zip_password, resolve_zip_encryption_password,
-        STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED,
+        STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED, STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
     };
 
     #[test]
     fn flag_without_stored_password_is_fail_closed() {
-        assert_eq!(
-            resolve_zip_encryption_password(None, Some(true), None).unwrap_err(),
-            STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED
+        let missing = resolve_zip_encryption_password(None, Some(true), None).unwrap_err();
+        assert_eq!(missing, STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED);
+        assert!(
+            missing.contains(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE),
+            "stored-password refusal must carry a stable code: {missing}"
         );
         assert_eq!(
             resolve_zip_encryption_password(Some(String::new()), Some(true), Some(String::new()))
@@ -2484,6 +2490,10 @@ mod resolve_zip_encryption_password_tests {
     fn short_stored_password_is_fail_closed() {
         let error =
             resolve_zip_encryption_password(None, Some(true), Some("short".into())).unwrap_err();
+        assert!(
+            error.contains(crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE),
+            "unexpected error: {error}"
+        );
         assert!(
             error.contains(&crate::secure_store::MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
             "unexpected error: {error}"
