@@ -99,7 +99,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
             <FilterIcon size={20} />
             {t('filter_builder_title')}
           </h3>
-          <DsButton variant="ghost" size="icon" iconOnly className="close-btn [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" onClick={onClose} aria-label="close">
+          <DsButton variant="ghost" size="icon" iconOnly className="close-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={onClose} aria-label="close">
             <X size={20} />
           </DsButton>
         </div>
@@ -179,7 +179,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       </>
                     )}
                     
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11" title={t('remove_filter')} aria-label="remove">
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => removeFilter(filter.id)} className="filter-remove-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={t('remove_filter')} aria-label="remove">
                       <X size={16} />
                     </DsButton>
                   </div>
@@ -188,17 +188,17 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
             </div>
           )}
           
-          <DsButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn [@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="ghost" size="sm" onClick={addFilter} className="add-filter-btn [@media(pointer:coarse)]:!min-h-11">
             <Plus size={16} />
             {t('add_filter')}
           </DsButton>
         </div>
         
         <div className="filter-builder-footer">
-          <DsButton variant="default" size="sm" onClick={onClose} className="[@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="default" size="sm" onClick={onClose} className="[@media(pointer:coarse)]:!min-h-11">
             {t('cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleApply} className="[@media(pointer:coarse)]:min-h-11">
+          <DsButton variant="primary" size="sm" onClick={handleApply} className="[@media(pointer:coarse)]:!min-h-11">
             {t('apply_filters')}
           </DsButton>
         </div>

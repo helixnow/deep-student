@@ -169,7 +169,7 @@ export const PomodoroMiniWindow: React.FC = () => {
               {showFinish && (
                 <button
                   onClick={() => sendCommand('finish')}
-                  className="rounded-full p-1.5 text-success transition-colors hover:bg-success/10 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="rounded-full p-1.5 text-success transition-colors hover:bg-success/10 motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   title={t('pomodoro.controls.finish')}
                   aria-label={t('pomodoro.controls.finish')}
                 >
@@ -179,7 +179,7 @@ export const PomodoroMiniWindow: React.FC = () => {
               {!hidePause && (
                 <button
                   onClick={() => sendCommand(state.status === 'running' ? 'pause' : 'resume')}
-                  className="rounded-full p-1.5 text-foreground/80 transition-colors hover:bg-muted motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                  className="rounded-full p-1.5 text-foreground/80 transition-colors hover:bg-muted motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                   title={state.status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
                   aria-label={state.status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
                 >
@@ -188,7 +188,7 @@ export const PomodoroMiniWindow: React.FC = () => {
               )}
               <button
                 onClick={() => sendCommand('stop')}
-                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 title={t('pomodoro.controls.stop')}
                 aria-label={t('pomodoro.controls.stop')}
               >
@@ -197,7 +197,7 @@ export const PomodoroMiniWindow: React.FC = () => {
               <button
                 onClick={handleTogglePin}
                 className={cn(
-                  'rounded-full p-1.5 transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
+                  'rounded-full p-1.5 transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                   pinned
                     ? 'text-foreground/80 hover:bg-muted'
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -214,7 +214,7 @@ export const PomodoroMiniWindow: React.FC = () => {
               </button>
               <button
                 onClick={handleClose}
-                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 title={t('pomodoro.miniWindow.close')}
                 aria-label={t('pomodoro.miniWindow.close')}
               >

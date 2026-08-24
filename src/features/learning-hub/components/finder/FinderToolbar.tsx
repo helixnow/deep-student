@@ -350,9 +350,9 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         placeholder={resolvedSearchPlaceholder}
         aria-label={resolvedSearchPlaceholder}
         className={cn(
-          'h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden',
+          'h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui [@media(pointer:coarse)]:!text-[16px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden',
           // 标题栏模式受 38px 窗口 chrome 约束，触屏保持 40px；内嵌顶栏无高度约束，触屏升至 44px 命中区
-          titlebarMode ? '[@media(pointer:coarse)]:h-10' : '[@media(pointer:coarse)]:min-h-11'
+          titlebarMode ? '[@media(pointer:coarse)]:!h-10' : '[@media(pointer:coarse)]:!min-h-11'
         )}
       />
     </div>

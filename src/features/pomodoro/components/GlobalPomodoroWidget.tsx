@@ -445,7 +445,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
             {/* 药丸主体：环形微进度 + 倒计时（+ 展开时任务名）；点击进入沉浸模式 */}
             <button
               onClick={handleEnterImmersive}
-              className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pr-1 text-left [@media(pointer:coarse)]:min-h-11"
+              className="flex min-w-0 items-center gap-2.5 rounded-full py-1 pr-1 text-left [@media(pointer:coarse)]:!min-h-11"
               title={t('pomodoro.controls.enterImmersive')}
               aria-label={t('pomodoro.controls.enterImmersive')}
             >

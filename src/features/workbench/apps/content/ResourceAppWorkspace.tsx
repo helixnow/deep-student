@@ -458,7 +458,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="[@media(pointer:coarse)]:min-h-11"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => void loadItems()}
               >
                 {t('resourceHome.retry')}
@@ -549,7 +549,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <span>{t('workbench:resourceWorkspace.selectHint')}</span>
             <DsButton
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={createResource}
               disabled={creating}
             >

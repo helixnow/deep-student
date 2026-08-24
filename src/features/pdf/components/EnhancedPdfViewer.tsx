@@ -222,10 +222,10 @@ const PdfPasswordPrompt: React.FC<{
         </div>
       )}
       <div className="ds-pdf__password-actions">
-        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>
           {t('pdf:password.cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={submit} disabled={!password.trim()}>
+        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={submit} disabled={!password.trim()}>
           {t('pdf:password.submit')}
         </DsButton>
       </div>
@@ -2639,7 +2639,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <div className="ds-pdf__page-overlay">
             <button
               type="button"
-              className={`ds-pdf__select-btn [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:justify-center ${isSelected ? 'selected' : ''}`}
+              className={`ds-pdf__select-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 [@media(pointer:coarse)]:justify-center ${isSelected ? 'selected' : ''}`}
               onClick={() => handleTogglePageSelect(pageNum)}
               aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
@@ -2934,7 +2934,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   {loadErrorHint}
                 </p>
               )}
-              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2 [@media(pointer:coarse)]:min-h-11">
+              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2 [@media(pointer:coarse)]:!min-h-11">
                 <ArrowClockwise size={14} />
                 {t('common:retry')}
               </DsButton>
@@ -3503,7 +3503,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     {editingBookmarkId === bm.id ? (
                       <input
                         type="text"
-                        className="ds-bookmark-title-input [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-[16px]"
+                        className="ds-bookmark-title-input [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!text-[16px]"
                         value={editingBookmarkTitle}
                         onChange={(e) => setEditingBookmarkTitle(e.target.value)}
                         onKeyDown={(e) => {

@@ -610,7 +610,7 @@ export function AgentControlDockEntry({
                             type="button"
                             size="sm"
                             variant="shell"
-                            className="[@media(pointer:coarse)]:min-h-11"
+                            className="[@media(pointer:coarse)]:!min-h-11"
                             disabled={killSwitchBusy}
                             data-testid="wb-agent-resume-agents"
                             onClick={() => void runResumeAgents()}
@@ -623,7 +623,7 @@ export function AgentControlDockEntry({
                               type="button"
                               size="sm"
                               variant="shell"
-                              className="[@media(pointer:coarse)]:min-h-11"
+                              className="[@media(pointer:coarse)]:!min-h-11"
                               disabled={killSwitchBusy}
                               data-testid="wb-agent-resume-automations-confirm"
                               onClick={() => void runResumeAutomations()}
@@ -636,7 +636,7 @@ export function AgentControlDockEntry({
                               type="button"
                               size="sm"
                               variant="ghost"
-                              className="[@media(pointer:coarse)]:min-h-11"
+                              className="[@media(pointer:coarse)]:!min-h-11"
                               disabled={killSwitchBusy}
                               onClick={() => setConfirmResumeAutomations(false)}
                             >
@@ -648,7 +648,7 @@ export function AgentControlDockEntry({
                             type="button"
                             size="sm"
                             variant="ghost"
-                            className="[@media(pointer:coarse)]:min-h-11"
+                            className="[@media(pointer:coarse)]:!min-h-11"
                             disabled={killSwitchBusy}
                             data-testid="wb-agent-resume-automations"
                             onClick={() => setConfirmResumeAutomations(true)}
@@ -695,7 +695,7 @@ export function AgentControlDockEntry({
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="[@media(pointer:coarse)]:min-h-11"
+                          className="[@media(pointer:coarse)]:!min-h-11"
                           disabled={killSwitchBusy}
                           onClick={() => setConfirmStop(false)}
                         >

@@ -223,7 +223,7 @@ export function SandboxWorkbenchSurface({
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-full border border-border px-3 py-1.5 [@media(pointer:coarse)]:min-h-11 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
+              className="rounded-full border border-border px-3 py-1.5 [@media(pointer:coarse)]:!min-h-11 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
             >
               {t('sandbox.clearSession')}
             </button>
@@ -251,7 +251,7 @@ export function SandboxWorkbenchSurface({
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
                 // 触屏（coarse 指针）下药丸放大到 ≥44px 触控目标
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-4',
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
