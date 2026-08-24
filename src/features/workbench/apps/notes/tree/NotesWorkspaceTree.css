@@ -482,4 +482,22 @@
     height: 44px;
     min-height: 44px;
   }
+
+  /* 右键菜单项：触屏放大到 44px 触控目标（桌面保持 28px 密度档） */
+  .nwt-context-menu-item {
+    min-height: 44px;
+    height: auto;
+  }
+
+  /* 展开/折叠箭头单独可点（stopPropagation）：用伪元素扩大命中区到 44px，
+     视觉仍 14px，不撑大行布局 */
+  .nwt-caret {
+    position: relative;
+  }
+
+  .nwt-caret::after {
+    content: '';
+    position: absolute;
+    inset: -15px;
+  }
 }
