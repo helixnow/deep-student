@@ -12,17 +12,19 @@ function read(relativePath) {
 }
 
 function yamlTopLevelSection(source, key, indent = 2) {
-  const prefix = `${' '.repeat(indent)}${key}:\n`;
-  const start = source.indexOf(prefix);
-  assert.notEqual(start, -1, `missing YAML section: ${key}`);
-  const remainder = source.slice(start + prefix.length);
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const heading = new RegExp(`^ {${indent}}${escapedKey}:[ \\t]*$`, 'm');
+  const match = heading.exec(source);
+  assert.ok(match, `missing YAML section: ${key}`);
+  const remainder = source.slice(match.index + match[0].length);
   const next = remainder.search(new RegExp(`^ {${indent}}[A-Za-z0-9_-]+:\\s*$`, 'm'));
   return next === -1 ? remainder : remainder.slice(0, next);
 }
 
 test('provider contract is a fixed fail-closed CI job', () => {
   const workflow = read('.github/workflows/ci.yml');
-  const job = yamlTopLevelSection(workflow, 'provider-contract');
+  const jobs = yamlTopLevelSection(workflow, 'jobs', 0);
+  const job = yamlTopLevelSection(jobs, 'provider-contract');
 
   assert.match(job, /^\s{4}name: Cloud Provider Contract Gate$/m);
   assert.doesNotMatch(job, /continue-on-error:/);
