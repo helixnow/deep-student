@@ -16,5 +16,18 @@
     "resolveFailed": "Failed to resolve resource references",
     "pathFailed": "Failed to get resource path",
     "cacheFailed": "Failed to update path cache"
+  },
+  "canvas_edit": {
+    "apply_rejected": "Editor refused to apply the suggestion",
+    "restore_rejected": "Editor refused to restore the pre-suggestion content",
+    "apply_failed": "Failed to apply the edit suggestion",
+    "rollback_rejected": "Editor refused to roll back to the checkpoint",
+    "editor_readonly": "Editor is not writable; changes were not applied",
+    "doc_changed_while_pending": "The document was modified while awaiting confirmation, so the suggestion cannot be applied: {{error}}",
+    "suggestion_pending": "A note edit suggestion is already awaiting confirmation",
+    "suggestion_pending_detail": "A note edit suggestion is already awaiting confirmation; accept or reject the current one first",
+    "editor_not_ready": "Editor is not ready",
+    "invalid_suggestion": "Invalid suggestion content",
+    "editor_closed": "Editor was closed; changes were not applied"
   }
 }
