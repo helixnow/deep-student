@@ -18,6 +18,7 @@
 | sync target 租约 | 已合 | `sync_lease.rs` + 两入口接线；占用码 `E_SYNC_LEASE_HELD` |
 | locale / 用户指南 16 | 已合 | [WRAP-DOCS.md](./WRAP-DOCS.md) |
 | 收尾复审 | 已合 | [FINDINGS-WRAP.md](./FINDINGS-WRAP.md)：P0=0、P1=0；生产放量仍 NO-GO |
+| E2EE 收尾核对 | 已合 | [WRAP-E2EE.md](./WRAP-E2EE.md)：KDF 上限 / 删标记拒明文 / FileCipherSession 无旁路 |
 
 ## 诚实未关（不阻塞「备份/换机可用」，但是差距）
 

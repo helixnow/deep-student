@@ -103,6 +103,7 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [WRAP-CLOSE.md](./WRAP-CLOSE.md) — 收尾 go/no-go 与已合/未关清单
 - [FINDINGS-R11.md](./FINDINGS-R11.md) — R10 七路 + R11 两路合入项核销、新发现（含 repo_check DSBK v2 头偏移 P1）、锁定测清单与 SOTA-R10 §3 改判建议
 - [FINDINGS-WRAP.md](./FINDINGS-WRAP.md) — 收尾只读复审：四类 P0 核销、仍开 P1/P2、诚实未达与生产 Go/No-Go
+- [WRAP-E2EE.md](./WRAP-E2EE.md) — E2EE 收尾核对：KDF 上限 / 删标记拒明文 / FileCipherSession 无旁路
 - [ANDROID-HANDBOOK-R11.md](./ANDROID-HANDBOOK-R11.md) — Android WebDAV/SAF/恢复重启真机核对单、已知缺口、mobile-slim + S3 量化评估
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图
