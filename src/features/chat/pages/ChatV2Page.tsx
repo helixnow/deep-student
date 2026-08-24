@@ -1113,12 +1113,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             hint={t('page.emptyPage.hint')}
             actions={
               <>
-                <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
+                <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void createSession()}>
                   <Plus size={14} />
                   {t('page.newChat')}
                 </DsButton>
                 {!isSmallScreen && sessions.length > 0 && (
-                  <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => setViewMode('browser')}>
                     <SquaresFour size={14} />
                     {t('browser.title')}
                   </DsButton>
@@ -1153,11 +1153,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           variant="ghost"
           size="sm"
           autoFocus
+          className="[@media(pointer:coarse)]:min-h-11"
           onClick={() => setPendingArchiveGroup(null)}
         >
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+        <DsButton variant="warning" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void confirmArchiveGroup()}>
           {t('page.archiveGroupConfirm')}
         </DsButton>
       </div>

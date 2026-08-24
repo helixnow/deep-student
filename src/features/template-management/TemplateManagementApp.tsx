@@ -704,6 +704,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             title={t('template_code')}
             aria-pressed={screenPosition === 'right'}
             onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           >
             <Code size={18} />
           </DsButton>
@@ -715,6 +716,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           aria-label={t('manager_title')}
           title={t('manager_title')}
           onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
+          className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
         >
           <Gear size={18} />
         </DsButton>
@@ -1209,7 +1211,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           iconOnly
           onClick={loadTemplates}
           disabled={isLoading}
-          className="shrink-0"
+          className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
           title={t('refresh')}
           aria-label={t('refresh')}
         >
@@ -1234,7 +1236,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               startCreateTemplate();
               closeMobileDrawer();
             }}
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             title={t('tab_create')}
             aria-label={t('tab_create')}
           >
