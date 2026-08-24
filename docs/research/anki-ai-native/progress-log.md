@@ -141,9 +141,9 @@
 
 ---
 
-## Round 5 — 接线收口与对齐（进行中，2026-08-24）
+## Round 5 — 接线收口与对齐（当前分支已核验，2026-08-24，PR [#215](https://github.com/helixnow/deep-student/pull/215)）
 
-已知交付（其余子代理并行进行中，以最终 commit 为准，详见 `round5/00-round5-summary.md`）：
+当前分支已交付（详见 `round5/00-round5-summary.md` 与各专题报告）：
 
 - [x] 子代理 #1：run/start skill schema 补齐生成调优参数（`d1b827d9`，
   详见 `round5/01-skill-params.md`）——outputProtocol / visualHint / contentFormat /
@@ -152,7 +152,10 @@
 - [x] 子代理 #10：eval lint 与 anki_qa_lint 完全对齐（`9da66ebd`，
   详见 `round5/10-eval-align.md`）——`anki_qa_lint::codes` 稳定常量导出 +
   JS 三分区表名值双对齐 + 6 边界 fixture，good 集 0 误伤
-- [x] 子代理 #8：文档/进度/i18n/用户指南对齐当前代码（本提交）
+- [x] 子代理 #4：金标集接通 LLM critic（`c48140a4`，
+  详见 `round5/04-grounded-critic.md`）——同文档用户修正对作为 grounded judge
+  参照；独立金标预算；不可用时回退规则 rubric；critic 仍默认关闭
+- [x] 子代理 #8：文档/进度/i18n/用户指南对齐当时代码基线（`5a58a2c8`）
   - `round4/00-round4-status.md` 逐项复核修订；`round5/00-round5-summary.md` 创建
   - `02-ai-native-gap-analysis.md` 评分重算 6.5 → **8.0/10**；
     `03-optimization-roadmap.md` 勾选完成项（P0 7/7、P1 6/6、P2 5/7）
@@ -161,6 +164,17 @@
   - i18n：修复 `AnkiQaFlagBadge` 文案 key 引用不一致（`qaFlags` 提升为
     anki.json 顶层块）；script 模式文案替换过时的 `scriptModeUnimplemented`；
     新增 generation/critic/fsrsFeedback/occlusion 文案；中英 key 对称
+- [x] 子代理 #6：最终文档/i18n 收口检查——复核 ChatAnki skill 为 **29 个**
+  专用工具；`anki.json` 中英各 1019 个叶子 key 且集合完全对称；预览块混用的
+  `anki` / `chatV2` key 均存在且两语言对称；用户指南只描述现行 ChatAnki 主路径；
+  README 与本日志补记 grounded critic 真实接线状态
+
+**尚未完成，继续按真实代码状态记录：**
+
+- [ ] 偏好记忆写入侧（extract / consolidate 持久化）；当前仅 retrieve 接线，store 恒空
+- [ ] 图像遮挡接入 VLM 生成路径与卡片预览块；当前仅纯函数与独立 overlay
+- [ ] Sidekick Planner / Critic / Vlm 按角色真正分槽；当前生产路径只消费 Generator 槽
+- [ ] `_original_generation` 稳定生成埋点；缺少快照时 grounded critic 会回退规则 rubric
 
 ---
 
@@ -174,4 +188,4 @@
 | 2026-08-24 | 3 | qa lint / eval harness / CardForge 清理 / 偏好记忆 + 文档 i18n 收口 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 3 后半 | transform script 生产化 / Structured Output / FSRS 回流 / 分段加固 / APKG 媒体闭环 / analyze 同源 + Multi-agent Phase 1 | [#215](https://github.com/helixnow/deep-student/pull/215) |
 | 2026-08-24 | 4 | LLM critic / 图像遮挡首版 / Sidekick 路由 / transform 加固 / 预览块 QA+媒体 UI / 金标纯函数 | [#215](https://github.com/helixnow/deep-student/pull/215) |
-| 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；文档/i18n/用户指南对齐 + 评分复核 8.0/10（其余接线收口进行中） | [#215](https://github.com/helixnow/deep-student/pull/215) |
+| 2026-08-24 | 5 | run/start 调优参数 schema 全暴露；grounded critic 接线；eval lint 对齐；文档/i18n/用户指南最终复核（未完成项继续显式列出） | [#215](https://github.com/helixnow/deep-student/pull/215) |
