@@ -50,5 +50,10 @@
 1. 六个 JSON 文件可解析。
 2. 三组指定 locale 的中英文叶键集合相同。
 3. 同键的 `{{variable}}` 集合相同。
-4. `npm run check:i18n` 与 `npm run check:i18n:missing` 通过。
-5. 指南不再出现“精简备份模式”“三套独立机制”“移动端流程与桌面端一致”等过时句子。
+4. 指南不再出现“精简备份模式”“三套独立机制”“移动端流程与桌面端一致”等过时句子。
+
+实际结果：
+
+- 指定三组 locale 的范围检查通过：缺键 0、插值差异 0。
+- `npm run check:i18n` 退出 0，指定的 `sync.json`、`cloudStorage.json`、`data.json` 均显示键完全一致。
+- `npm run check:i18n:missing` 退出 1，唯一键不对称文件是本任务范围外、基线已有的 `mindmap.json`（英文缺 3 个旧式复数键，中文缺 6 个 `_one` / `_other` 键）；本分支没有扩张到 mindmap locale。
