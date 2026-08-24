@@ -952,7 +952,7 @@ interface QuestionBankState {
   /** 切换题集时重置本轮进度；examId 未变则原样保留。 */
   ensurePracticeSession: (examId: string | null) => void;
   /** 记录一次作答，返回更新后的快照（调用方需要同帧读到新连对数）。 */
-  recordPracticeAnswer: (
+  recordPracticeSessionAnswer: (
     questionId: string,
     isCorrect: boolean | null,
   ) => PracticeSessionProgress;
@@ -1055,7 +1055,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId } });
       },
 
-      recordPracticeAnswer: (questionId, isCorrect) => {
+      recordPracticeSessionAnswer: (questionId, isCorrect) => {
         const previous = get().practiceSession;
         const next: PracticeSessionProgress = {
           examId: previous.examId,

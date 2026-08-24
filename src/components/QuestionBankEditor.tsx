@@ -603,7 +603,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const streakCount = useQuestionBankStore((state) => state.practiceSession.streakCount);
   const totalCorrectCount = useQuestionBankStore((state) => state.practiceSession.totalCorrectCount);
   const ensurePracticeSession = useQuestionBankStore((state) => state.ensurePracticeSession);
-  const recordPracticeAnswer = useQuestionBankStore((state) => state.recordPracticeAnswer);
+  const recordPracticeSessionAnswer = useQuestionBankStore(
+    (state) => state.recordPracticeSessionAnswer,
+  );
 
   useEffect(() => {
     ensurePracticeSession(sessionId);
@@ -1124,7 +1126,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       
       // 连对与已作答集合由 store 统一推进（null = 主观题待判定，不中断连对）；
       // 返回值是同帧快照，里程碑与完成判定都读它，避免 setState 异步导致的错位。
-      const progress = recordPracticeAnswer(currentQuestion.id, result.isCorrect ?? null);
+      const progress = recordPracticeSessionAnswer(currentQuestion.id, result.isCorrect ?? null);
 
       if (result.isCorrect) {
         // 检查里程碑 (3, 5, 10, 15, 20...)：走统一通知（替代原 z-50 本地 toast）
@@ -1155,7 +1157,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeAnswer, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
+  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeSessionAnswer, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
