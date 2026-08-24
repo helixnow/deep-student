@@ -225,6 +225,16 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 
 **遗留（未在本包处理）**：P2-LOCALE-PLATFORM-MSG 的机制统一半边——FTP（英文常量）与 S3（中文常量）仍靠字符串正则映射，后端引入稳定错误码后应改为按 code 匹配（两处映射与 `syncE2eeErrorMapping.ts` 一并迁移）。
 
+## Round 11 回传（增量登记）
+
+### R11-rotate（分支 `cursor/cloud-sync-sota-r11-rotate-b343`，只改本目录文档）
+
+模型：`claude-fable-5-thinking-high`（ROUND-11 要求 xhigh，slug 当前不可用，明示降级）。重派（首派因提示词触发安全策略失败）；本路为产品/运维文档，不含攻击步骤/利用/PoC。交付：
+
+- [KEY-ROTATION-R11.md](./KEY-ROTATION-R11.md)：①「换备份密码 = 换云端目录 + 全量重传」现状的用户可照做流程（含双设备过渡共存矩阵、中断恢复），与 Standard Notes 产品行为对照；② 原地轮换协议草案（标记 v3 / 双校验子过渡窗 / 幂等中断恢复），仅供评审不实现；③ 备份对象名（时间戳毫秒+设备短 ID）与 `manifests/<device_id>.json` 等明文元数据的隐私评估（定级 P2），向后兼容的中性命名收敛方案（下载/裁剪全经 manifest 按 id 查找、不解析文件名，已核实兼容根据）；④ **R10-verifier「Argon2 参数钳制」独立复审结论：未交付，缺口仍开**——`derive_key` 对校验子与 DSBK 头携带的参数无应用级上限，产品要求（合法参数必须通过、异常过大参数派生前拒绝）与验收标准（测试名/断言意图七条）已写死；⑤ 下一轮四个可认领任务（R12-kdf-clamp / neutral-names / rotate-wizard / rotate-proto-review），每条含可验证交付物与文件面。
+
+**文件面认领（独占，均在 `docs/dev/cloud-sync-sota-b343/`）**：`KEY-ROTATION-R11.md` 新文件、`README.md` 索引一行、本节。不改任何代码。T1–T3 实现任务的代码文件面（`backup_crypto.rs` / `sync_manager.rs` 命名段等）本轮**未认领**，留待 R12 认领时登记。
+
 ### R10-conflict-ui（FINDINGS-R07 P1-1 关闭：cloud-only 冲突「保留本地」前端可达）
 
 分支 `cursor/cloud-sync-sota-r10-conflict-ui-b343`，模型 claude-fable-5-thinking-high。纯前端 + vitest，不动 Rust 后端 / SyncTab 错误映射。交付：

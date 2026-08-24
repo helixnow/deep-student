@@ -96,5 +96,6 @@ Deep Student 是本地优先学习工作台。云同步在 README 中标记为 *
 - [ROUND-10.md](./ROUND-10.md) — 第十轮大包收口（冲突 UI / 文件名 / 校验子硬化）
 - [SOTA-R10.md](./SOTA-R10.md) — R09 合入后的 SOTA 对照（我们已有 / 诚实差距 / 不该学）
 - [ROUND-11.md](./ROUND-11.md) — 第十一轮大包任务表（巡检 / 时点恢复 / 增量调研 / 可逆文件名 / 租约）
+- [KEY-ROTATION-R11.md](./KEY-ROTATION-R11.md) — 备份密码更换现状与用户流程、文件名元数据收敛、KDF 参数钳制复审与 R12 任务拆分
 - [FIX-QUEUE.md](./FIX-QUEUE.md) — 修复认领队列（文件面独占）
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 当前架构与数据面地图
