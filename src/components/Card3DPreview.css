@@ -275,7 +275,7 @@
   overflow-x: auto;
 }
 
-/* 圆点视觉由 ::after 绘制，按钮本体承担命中区（触屏下扩到 40px，视觉不变） */
+/* 圆点视觉由 ::after 绘制，按钮本体承担命中区（触屏下扩到 44px，视觉不变） */
 .nav-dot {
   position: relative;
   width: 8px;
@@ -319,12 +319,12 @@
 
 @media (pointer: coarse) {
   .nav-dot {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .nav-dot.active {
-    width: 40px;
+    width: 44px;
   }
 }
 

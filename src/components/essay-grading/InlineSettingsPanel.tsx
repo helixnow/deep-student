@@ -870,7 +870,8 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               onPointerCancel={() => setDragArmedIndex(null)}
                               aria-label={t('essay_grading:settings_panel.drag_reorder')}
                               title={t('essay_grading:settings_panel.drag_reorder')}
-                              className="flex-shrink-0 cursor-grab text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-70"
+                              /* coarse：同行删除钮已放大到 44，把手同款（14px 图标指尖抓不住） */
+                              className="inline-flex flex-shrink-0 cursor-grab items-center justify-center text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:opacity-70"
                             >
                               <DotsSixVertical size={14} />
                             </button>
