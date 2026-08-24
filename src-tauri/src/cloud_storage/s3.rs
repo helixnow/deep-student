@@ -28,6 +28,79 @@ pub struct S3Storage {
 }
 
 impl S3Storage {
+    /// [#57] 归一化用户填写的 S3 endpoint。
+    ///
+    /// 腾讯云 COS / 阿里云 OSS / 缤纷云 S4 等控制台展示给用户的是
+    /// **带 bucket 前缀的访问域名**（如 `https://mybucket.cos.ap-beijing.myqcloud.com`、
+    /// `https://mybucket.oss-cn-hangzhou.aliyuncs.com`、`https://mybucket.s3.bitiful.net`）。
+    /// 用户把它原样粘贴进 endpoint 并单独填写 bucket 后，SDK 的
+    /// virtual-hosted-style 寻址会再拼一次 bucket，产生
+    /// `mybucket.mybucket.cos…` 这样的域名，DNS 解析/TLS 证书直接失败，
+    /// 表现为"S3 存储无法被识别"。
+    ///
+    /// 归一化规则（全部是纯字符串变换，不发网络请求）：
+    /// 1. 去除首尾空白与尾部 `/`；
+    /// 2. 缺少 scheme 时补 `https://`（控制台复制的域名通常不带 scheme）；
+    /// 3. host 以 `{bucket}.` 开头、且剥离后剩余部分仍是至少三段的服务域名
+    ///    （如 `cos.ap-beijing.myqcloud.com`）时剥离该前缀，交由 SDK 重新拼接
+    ///    （IP/localhost 不做剥离，两段域名保守跳过以免误伤真实端点）；
+    /// 4. path 以 `/{bucket}` 结尾时剥离（path-style 形式的控制台地址）。
+    ///
+    /// 未触发第 3/4 条时原样返回（仅做 trim/补 scheme），确保已能工作的配置
+    /// 的 endpoint 字符串与 instance_binding_hint 完全不变。
+    fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
+        let trimmed = endpoint.trim().trim_end_matches('/');
+        let with_scheme = if trimmed.contains("://") {
+            trimmed.to_string()
+        } else {
+            format!("https://{trimmed}")
+        };
+
+        let bucket = bucket.trim();
+        if bucket.is_empty() {
+            return with_scheme;
+        }
+        let Ok(mut url) = url::Url::parse(&with_scheme) else {
+            return with_scheme;
+        };
+
+        let mut changed = false;
+
+        // 剥离 host 前缀 "{bucket}."（仅域名；IP/localhost 不适用 virtual-host 寻址）
+        if let Some(url::Host::Domain(host)) = url.host() {
+            let host = host.to_string();
+            if let Some(rest) = host.strip_prefix(&format!("{bucket}.")) {
+                let rest = rest.to_string();
+                if rest.matches('.').count() >= 2 && url.set_host(Some(&rest)).is_ok() {
+                    tracing::info!(
+                        "[CloudStorage::S3] endpoint 中检测到 bucket 前缀域名，已归一化为服务端点: {} -> {}",
+                        host,
+                        rest
+                    );
+                    changed = true;
+                }
+            }
+        }
+
+        // 剥离 path 尾部 "/{bucket}"
+        let path = url.path().trim_end_matches('/').to_string();
+        if let Some(rest) = path.strip_suffix(&format!("/{bucket}")) {
+            url.set_path(if rest.is_empty() { "/" } else { rest });
+            tracing::info!(
+                "[CloudStorage::S3] endpoint 路径中检测到 bucket 后缀，已归一化: {} -> {}",
+                path,
+                url.path()
+            );
+            changed = true;
+        }
+
+        if changed {
+            url.to_string().trim_end_matches('/').to_string()
+        } else {
+            with_scheme
+        }
+    }
+
     /// 创建 S3 存储实例
     pub async fn new(config: S3Config, root: String) -> Result<Self> {
         if config.endpoint.trim().is_empty() {
@@ -36,6 +109,8 @@ impl S3Storage {
         if config.bucket.trim().is_empty() {
             return Err(AppError::validation("S3 bucket 不能为空"));
         }
+
+        let endpoint = Self::normalize_endpoint(&config.endpoint, &config.bucket);
 
         // 构建凭证提供者
         let credentials = aws_sdk_s3::config::Credentials::new(
@@ -48,7 +123,7 @@ impl S3Storage {
 
         let mut s3_config_builder = aws_sdk_s3::Config::builder()
             .credentials_provider(credentials)
-            .endpoint_url(&config.endpoint)
+            .endpoint_url(&endpoint)
             .timeout_config(
                 // [P0-6/F10] 显式超时：避免 TCP 半开/对端无响应时整个同步流程无限挂起。
                 // connect 30s 建连上限；operation_attempt 120s 单次尝试上限（大对象走
@@ -88,7 +163,7 @@ impl S3Storage {
 
         Ok(Self {
             client,
-            endpoint: config.endpoint.trim().trim_end_matches('/').to_string(),
+            endpoint,
             bucket: config.bucket,
             root: root.trim_matches('/').to_string(),
         })
@@ -565,5 +640,124 @@ impl CloudStorage for S3Storage {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [#57 回归] 腾讯云 COS / 阿里云 OSS / 缤纷云 S4 控制台展示的是带
+    /// bucket 前缀的访问域名；原样粘贴 + 单独填写 bucket 会让 SDK 的
+    /// virtual-hosted-style 寻址拼出 `bucket.bucket.…` 域名，DNS/TLS 直接失败。
+    #[test]
+    fn normalize_endpoint_strips_bucket_prefixed_host() {
+        // 腾讯云 COS：bucket 命名带 APPID 后缀
+        assert_eq!(
+            S3Storage::normalize_endpoint(
+                "https://mybucket-1250000000.cos.ap-beijing.myqcloud.com",
+                "mybucket-1250000000"
+            ),
+            "https://cos.ap-beijing.myqcloud.com"
+        );
+        // 阿里云 OSS
+        assert_eq!(
+            S3Storage::normalize_endpoint(
+                "https://mybucket.oss-cn-hangzhou.aliyuncs.com/",
+                "mybucket"
+            ),
+            "https://oss-cn-hangzhou.aliyuncs.com"
+        );
+        // 缤纷云 S4
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://mybucket.s3.bitiful.net", "mybucket"),
+            "https://s3.bitiful.net"
+        );
+        // AWS 官方 virtual-host 域名同样归一化回服务端点
+        assert_eq!(
+            S3Storage::normalize_endpoint(
+                "https://mybucket.s3.us-east-1.amazonaws.com",
+                "mybucket"
+            ),
+            "https://s3.us-east-1.amazonaws.com"
+        );
+    }
+
+    #[test]
+    fn normalize_endpoint_adds_https_scheme_and_trims() {
+        // 控制台复制的域名通常不带 scheme
+        assert_eq!(
+            S3Storage::normalize_endpoint("  cos.ap-beijing.myqcloud.com  ", "mybucket"),
+            "https://cos.ap-beijing.myqcloud.com"
+        );
+        // 带 scheme + 尾部斜杠 + 空白：只做清理，不改动其余部分
+        assert_eq!(
+            S3Storage::normalize_endpoint(" https://s3.example.com/ ", "b"),
+            "https://s3.example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_endpoint_strips_bucket_path_suffix() {
+        // path-style 形式的控制台地址
+        assert_eq!(
+            S3Storage::normalize_endpoint(
+                "https://cos.ap-beijing.myqcloud.com/mybucket",
+                "mybucket"
+            ),
+            "https://cos.ap-beijing.myqcloud.com"
+        );
+        // 保留 bucket 之外的基础路径
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://gw.example.com/s3/mybucket", "mybucket"),
+            "https://gw.example.com/s3"
+        );
+    }
+
+    #[test]
+    fn normalize_endpoint_keeps_canonical_endpoints_untouched() {
+        // 正常服务端点：host 不以 bucket 开头，原样保留
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://cos.ap-beijing.myqcloud.com", "mybucket"),
+            "https://cos.ap-beijing.myqcloud.com"
+        );
+        // Cloudflare R2 账户端点不受影响
+        assert_eq!(
+            S3Storage::normalize_endpoint(
+                "https://0123456789abcdef.r2.cloudflarestorage.com",
+                "mybucket"
+            ),
+            "https://0123456789abcdef.r2.cloudflarestorage.com"
+        );
+        // 未触发归一化时字符串完全不变（大小写等原样），
+        // 保证 instance_binding_hint 对既有可用配置保持稳定
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://MinIO.Example.com:9000", "mybucket"),
+            "https://MinIO.Example.com:9000"
+        );
+    }
+
+    #[test]
+    fn normalize_endpoint_conservative_cases() {
+        // IP / localhost 不适用 virtual-host 寻址，不剥离
+        assert_eq!(
+            S3Storage::normalize_endpoint("http://127.0.0.1:9000", "127"),
+            "http://127.0.0.1:9000"
+        );
+        assert_eq!(
+            S3Storage::normalize_endpoint("http://localhost:9000", "localhost"),
+            "http://localhost:9000"
+        );
+        // 剥离后只剩两段域名：保守跳过，避免误伤真实端点
+        // （如 bucket 恰好叫 "s3"、端点是 s3.bitiful.net 的情况）
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://s3.bitiful.net", "s3"),
+            "https://s3.bitiful.net"
+        );
+        // bucket 为空时只做 trim/补 scheme
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://s3.example.com", ""),
+            "https://s3.example.com"
+        );
     }
 }
