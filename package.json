@@ -73,7 +73,6 @@
     "registry:sync": "node scripts/sync-model-registry.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^2.1.220",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/lang-markdown": "^6.5.0",

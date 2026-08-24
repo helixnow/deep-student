@@ -157,6 +157,10 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      # sccache（GHA 后端）与 rust-cache 叠加：rust-cache 命中 registry/target，
+      # sccache 命中单个编译单元（依赖图局部变更时仍省编译时间）。
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -169,6 +173,8 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
@@ -202,15 +208,80 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D clippy::correctness
 
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (backend)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================
+  # PR 路径过滤（provider-contract 降频）
+  #
+  # provider-contract 是本 workflow 最重的 job（~2h 预算：Docker 三 provider
+  # + 全量 ignored 契约测试串行跑）。它验证的唯一信号是 cloud_storage /
+  # data_governance 对真实 provider 的行为契约 —— 与前端或无关后端改动
+  # 的 PR 不需要这个信号（编译回归已由 backend / rust-tests 覆盖）。
+  #
+  # 分层（参照 migration-nightly 的 paths 模式）：
+  #   PR           : 仅下列路径变更时运行（本过滤 job 探测）
+  #   push（main/develop/nightly）: 恒跑全量，不过滤
+  #
+  # 过滤 job 失败时 provider-contract 因隐式 success() 依赖被跳过、
+  # workflow 整体标红 —— fail-closed，不是假绿。
+  # ============================================
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      provider-contract: ${{ steps.filter.outputs.provider-contract }}
+    steps:
+      # pull_request 事件走 GitHub API 比对变更文件，无需 checkout；
+      # push 事件跳过本步骤（output 为空，下游 job 的 if 恒为 true）。
+      - name: Filter provider-contract paths
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            provider-contract:
+              # provider 实现（webdav/s3/ftp/sync_manager/traits/config）
+              - 'src-tauri/src/cloud_storage/**'
+              # 契约测试依赖的同步/迁移框架（data_governance::sync / ::migration）
+              - 'src-tauri/src/data_governance/**'
+              # 备份加密（测试直接调用 crypto::backup_crypto）
+              - 'src-tauri/src/crypto/**'
+              # 契约测试本体
+              - 'src-tauri/tests/sync_provider_contract_tests.rs'
+              # 依赖升级可能改变 provider 客户端行为
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              # provider 环境唯一事实源 + FTP 镜像 build context
+              - 'scripts/dev/docker-compose.sync-test.yml'
+              - 'dstu-test/docker/**'
+              # workflow 自身变更需自证
+              - '.github/workflows/ci.yml'
+
   # Real provider behavior is a required contract, not an optional local check.
   # This job deliberately runs every ignored test in sync_provider_contract_tests.
+  # On PRs it only runs when cloud-storage-related paths change (see `changes`
+  # job above); pushes to main/develop/nightly always run it in full.
   provider-contract:
     name: Cloud Provider Contract Gate
+    needs: [changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: 0
       DS_SYNC_TEST_DOCKER: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -222,6 +293,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
@@ -325,18 +398,33 @@ jobs:
         if: always()
         run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
 
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (provider-contract)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   windows-shell-sandbox:
     name: Windows Shell Sandbox
     runs-on: windows-latest
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Setup protoc
         uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
@@ -354,6 +442,18 @@ jobs:
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
         run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+
+      - name: sccache stats to summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## sccache stats (windows-shell-sandbox)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================
   # Rust 测试：一次编译 + 分片执行（cargo-nextest archive）
@@ -381,6 +481,8 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -392,6 +494,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       # shared-key（而非 key）才是跨 job 共享缓存的正确参数（审查 F8）；
       # 与 migration-gate / migration-nightly 共用同一份编译缓存。
@@ -427,6 +531,17 @@ jobs:
           name: nextest-archive
           path: ${{ runner.temp }}/nextest-archive.tar.zst
           retention-days: 1
+
+      - name: sccache stats to summary
+        if: always()
+        run: |
+          {
+            echo "## sccache stats (rust-test-build)"
+            echo ""
+            echo '```'
+            sccache --show-stats 2>&1 || echo "sccache unavailable"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   rust-tests:
     name: Rust Tests (${{ matrix.partition }}/8)
@@ -487,6 +602,8 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - name: Free disk space
         run: |
@@ -516,6 +633,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: stable
+
+      - uses: Mozilla-Actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
