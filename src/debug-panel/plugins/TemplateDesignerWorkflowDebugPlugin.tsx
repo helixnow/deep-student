@@ -548,7 +548,7 @@ const TemplateDesignerWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({ 
             <div key={log.id} className="rounded border border-slate-800 bg-slate-900/70">
               <button
                 type="button"
-                className="w-full flex items-center gap-1 px-2 py-1 text-left hover:bg-slate-800/80"
+                className="w-full flex items-center gap-1 px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-left hover:bg-slate-800/80"
                 onClick={() => hasDetail && toggleExpand(log.id)}
               >
                 {hasDetail ? (expanded ? <CaretDown size={12} className="text-slate-500" /> : <CaretRight size={12} className="text-slate-500" />) : <span className="w-3" />}
