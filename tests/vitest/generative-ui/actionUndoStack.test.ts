@@ -22,7 +22,7 @@ function makeDef(
 
 describe('GenerativeActionUndoStack', () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('undoes in LIFO order', async () => {

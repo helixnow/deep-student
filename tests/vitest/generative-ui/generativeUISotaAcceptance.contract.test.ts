@@ -352,6 +352,29 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'Object.hasOwn',
       ]),
   },
+  {
+    id: 'round50-object-stream-cap',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/streamBufferGuard.ts', [
+        'export function isSerializedStreamValueOverCap',
+      ]),
+  },
+  {
+    id: 'round50-omit-orphaned-research-actions',
+    check: () =>
+      fileContains('src/features/generative-ui/bridge/hpiasEventBridge.ts', [
+        'RESEARCH_SURFACE_ACTION_IDS',
+        'isResearchOnlyActionBar',
+      ]),
+  },
+  {
+    id: 'round50-note-edit-bounds',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/extractNoteEditPayload.ts', [
+        'MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES',
+        'isRegex: z.literal(false)',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
