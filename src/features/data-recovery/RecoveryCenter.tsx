@@ -279,7 +279,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
           {t('data:recovery.scan_failed')}
         </div>
         <p className="mt-2 break-words text-sm text-muted-foreground">{loadError}</p>
-        <DsButton className="mt-4 [@media(pointer:coarse)]:min-h-11" variant="secondary" size="sm" onClick={() => void refresh()}>
+        <DsButton className="mt-4 [@media(pointer:coarse)]:!min-h-11" variant="secondary" size="sm" onClick={() => void refresh()}>
           <ArrowClockwise size={15} className="mr-1.5" />
           {t('common:actions.retry')}
         </DsButton>
@@ -322,7 +322,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
               </div>
             ))}
           </div>
-          <DsButton className="[@media(pointer:coarse)]:min-h-11" variant="secondary" onClick={() => void refresh()}>
+          <DsButton className="[@media(pointer:coarse)]:!min-h-11" variant="secondary" onClick={() => void refresh()}>
             <ArrowClockwise size={15} className="mr-1.5" />
             {t('common:actions.refresh')}
           </DsButton>
@@ -388,7 +388,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     <DsButton
                       size="sm"
                       variant="ghost"
-                      className="[@media(pointer:coarse)]:min-h-11"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       disabled={Boolean(recoveryAction)}
                       onClick={() => void runRecoveryAction(
                         `open-${item.id}`,
@@ -401,7 +401,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     <DsButton
                       size="sm"
                       variant="secondary"
-                      className="[@media(pointer:coarse)]:min-h-11"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       disabled={Boolean(recoveryAction)}
                       onClick={() => void runRecoveryAction(
                         `export-${item.id}`,
@@ -443,7 +443,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                   {incident.recovery_error}
                 </p>
                 <DsButton
-                  className="mt-4 [@media(pointer:coarse)]:min-h-11"
+                  className="mt-4 [@media(pointer:coarse)]:!min-h-11"
                   variant="secondary"
                   disabled={retryingPreflight}
                   onClick={() => void handleRetryPreflight()}
@@ -458,7 +458,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                 </DsButton>
                 {!debugPreview && (
                   <DsButton
-                    className="mt-4 ml-2 [@media(pointer:coarse)]:min-h-11"
+                    className="mt-4 ml-2 [@media(pointer:coarse)]:!min-h-11"
                     variant="ghost"
                     disabled={Boolean(recoveryAction)}
                     onClick={() => void runRecoveryAction('report', exportStartupRecoveryReport)}
@@ -540,7 +540,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                   </p>
                 </div>
                 {!confirming && (
-                  <DsButton className="[@media(pointer:coarse)]:min-h-11" onClick={() => setConfirming(true)}>
+                  <DsButton className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setConfirming(true)}>
                     {t('data:recovery.continue')}
                   </DsButton>
                 )}
@@ -557,13 +557,13 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     </span>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <DsButton className="[@media(pointer:coarse)]:min-h-11" disabled={resolving} onClick={() => void handleResolve()}>
+                    <DsButton className="[@media(pointer:coarse)]:!min-h-11" disabled={resolving} onClick={() => void handleResolve()}>
                       {resolving && <CircleNotch size={16} className="mr-1.5 animate-spin" />}
                       {t('data:recovery.confirm_activate')}
                     </DsButton>
                     <DsButton
                       variant="ghost"
-                      className="[@media(pointer:coarse)]:min-h-11"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       disabled={resolving}
                       onClick={() => setConfirming(false)}
                     >
@@ -591,7 +591,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     {t('data:recovery.resolved_description')}
                   </p>
                   <DsButton
-                    className="mt-4 [@media(pointer:coarse)]:min-h-11"
+                    className="mt-4 [@media(pointer:coarse)]:!min-h-11"
                     onClick={() => {
                       if (debugPreview) {
                         onDebugExit?.();
@@ -644,7 +644,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="ghost"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction(
                 `open-${incident.id}`,
@@ -657,7 +657,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="secondary"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction(
                 `export-${incident.id}`,
@@ -670,7 +670,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             <DsButton
               size="sm"
               variant="secondary"
-              className="[@media(pointer:coarse)]:min-h-11"
+              className="[@media(pointer:coarse)]:!min-h-11"
               disabled={Boolean(recoveryAction)}
               onClick={() => void runRecoveryAction('report', exportStartupRecoveryReport)}
             >

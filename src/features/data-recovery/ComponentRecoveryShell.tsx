@@ -63,7 +63,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
           )}
         </div>
         {debugPreview && (
-          <DsButton className="mr-2 [@media(pointer:coarse)]:min-h-11" size="sm" variant="ghost" onClick={onDebugExit}>
+          <DsButton className="mr-2 [@media(pointer:coarse)]:!min-h-11" size="sm" variant="ghost" onClick={onDebugExit}>
             {t('data:recovery.debug_exit_preview')}
           </DsButton>
         )}
@@ -142,7 +142,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <DsButton
-                        className="[@media(pointer:coarse)]:min-h-11"
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         onClick={() => {
                           if (debugPreview) {
                             onDebugExit?.();
@@ -155,7 +155,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                         {t('data:recovery.retry_startup')}
                       </DsButton>
                       {!debugPreview && <DsButton
-                        className="[@media(pointer:coarse)]:min-h-11"
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         variant="secondary"
                         onClick={() => {
                           setExportError(null);
