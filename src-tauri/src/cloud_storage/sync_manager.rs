@@ -822,22 +822,112 @@ impl CloudSyncManager {
         let local_path = local_dir.join(format!("{}.zip", version.id));
         let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version.id);
 
-        // 使用流式下载（自动校验 SHA256）
-        let actual_checksum = self
-            .storage
-            .get_file(&remote_key, &local_path, Some(&version.checksum), progress)
-            .await?;
+        if self.storage.supports_resumable_download() {
+            // [R09-restore-ops][P2-2] 断点续传下载：中断后保留 `.part` 断点文件，
+            // 重试同一版本时从断点继续，多 GB 备份不再整包重下。
+            // 完整性由完成后的整文件 SHA256 兜底（version.checksum 在上传时
+            // 由流式哈希产生），断点错位/对象被改动都会在此被拒绝。
+            let partial_path = Self::partial_download_path(local_dir, &version.id);
+            let resume_from = match std::fs::symlink_metadata(&partial_path) {
+                Ok(metadata)
+                    if !metadata.file_type().is_symlink()
+                        && metadata.is_file()
+                        && metadata.len() > 0
+                        && metadata.len() <= version.size =>
+                {
+                    tracing::info!(
+                        "发现可续传断点: {:?}（{}/{} 字节）",
+                        partial_path,
+                        metadata.len(),
+                        version.size
+                    );
+                    metadata.len()
+                }
+                Ok(_) => {
+                    // 断点比云端对象还大 / 不是普通文件：断点无效，丢弃重下。
+                    let _ = std::fs::remove_file(&partial_path);
+                    0
+                }
+                Err(_) => 0,
+            };
 
-        tracing::info!(
-            "下载完成: version={}, checksum={}",
-            version.id,
-            &actual_checksum[..16]
-        );
+            // 失败时不清理断点文件：它正是下次续传的起点（与 ZIP 导入续传
+            // 「失败不清理目标目录」同一模式）。
+            self.storage
+                .get_file_resumable(&remote_key, &partial_path, resume_from, progress)
+                .await?;
+
+            let actual_checksum = Self::hash_file_sha256(&partial_path).await?;
+            if actual_checksum != version.checksum {
+                // 断点文件与云端对象校验不符（断点损坏或对象被改动）：
+                // 丢弃断点并明确失败，绝不把损坏文件交给恢复链。
+                let _ = std::fs::remove_file(&partial_path);
+                return Err(AppError::validation(format!(
+                    "下载完成但 SHA256 校验失败（期望 {}，实际 {}）。断点文件已丢弃，请重试整包下载",
+                    &version.checksum[..16.min(version.checksum.len())],
+                    &actual_checksum[..16]
+                )));
+            }
+            std::fs::rename(&partial_path, &local_path)
+                .map_err(|e| AppError::file_system(format!("保存下载文件失败: {e}")))?;
+
+            tracing::info!(
+                "下载完成（断点续传路径, resume_from={}）: version={}, checksum={}",
+                resume_from,
+                version.id,
+                &actual_checksum[..16]
+            );
+        } else {
+            // 后端不支持断点续传：整文件下载（中断后只能整包重下，诚实且
+            // 由 get_file 内部的 SHA256 校验兜底，绝不静默截断当成功）。
+            let actual_checksum = self
+                .storage
+                .get_file(&remote_key, &local_path, Some(&version.checksum), progress)
+                .await?;
+
+            tracing::info!(
+                "下载完成: version={}, checksum={}",
+                version.id,
+                &actual_checksum[..16]
+            );
+        }
 
         Ok(DownloadResult {
             version,
             local_path: local_path.to_string_lossy().to_string(),
         })
+    }
+
+    /// [R09-restore-ops][P2-2] 某个版本的断点下载文件路径。
+    ///
+    /// 以 `.` 开头、`.part` 结尾，与最终产物 `<id>.zip` 明确区分；版本 ID
+    /// 已通过 `validate_version_id` 白名单校验，可安全拼入文件名。
+    fn partial_download_path(local_dir: &Path, version_id: &str) -> std::path::PathBuf {
+        local_dir.join(format!(".{version_id}.zip.part"))
+    }
+
+    /// 分块计算文件 SHA256（spawn_blocking，避免多 GB 文件哈希阻塞异步执行器）。
+    async fn hash_file_sha256(path: &Path) -> Result<String> {
+        let path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || -> Result<String> {
+            use std::io::Read;
+            let mut file = std::fs::File::open(&path)
+                .map_err(|e| AppError::file_system(format!("打开下载文件做校验失败: {e}")))?;
+            let mut hasher = Sha256::new();
+            let mut buffer = vec![0u8; 1024 * 1024];
+            loop {
+                let read = file
+                    .read(&mut buffer)
+                    .map_err(|e| AppError::file_system(format!("读取下载文件做校验失败: {e}")))?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            Ok(format!("{:x}", hasher.finalize()))
+        })
+        .await
+        .map_err(|e| AppError::internal(format!("SHA256 校验任务失败: {e}")))?
     }
 
     /// 删除指定版本

@@ -126,6 +126,15 @@ impl WebDavStorage {
         matches!(response_count, 750 | 751 | 1000 | 1001)
     }
 
+    /// 解析 `Content-Range: bytes <start>-<end>/<total>` 的起点字节。
+    ///
+    /// 无法解析（含 `bytes */<total>` 等形态）返回 `None`，由调用方 fail-closed。
+    fn parse_content_range_start(raw: &str) -> Option<u64> {
+        let rest = raw.trim().strip_prefix("bytes")?.trim_start();
+        let (start, _) = rest.split_once('-')?;
+        start.trim().parse::<u64>().ok()
+    }
+
     /// 构建 Basic 认证头
     fn auth_header(&self) -> String {
         let raw = format!("{}:{}", self.username, self.password);
@@ -982,6 +991,170 @@ impl CloudStorage for WebDavStorage {
             .persist(local_path)
             .map_err(|e| AppError::file_system(format!("保存下载文件失败: {}", e.error)))?;
         Ok(checksum)
+    }
+
+    fn supports_resumable_download(&self) -> bool {
+        true
+    }
+
+    /// [R09-restore-ops][P2-2] 基于 HTTP Range 的断点续传下载。
+    ///
+    /// 复用上传/导入续传的诚实语义：
+    /// - 服务端按 206 + Content-Range 精确续传 → 追加写入；
+    /// - 服务端忽略 Range 返回 200 → 截断 `dest` 从零重写（诚实重下，返回 0）；
+    /// - 206 的 Content-Range 起点与请求不一致 → fail-closed，绝不错位追加；
+    /// - 流中断 → 返回错误，`dest` 保持为前缀完整的断点文件。
+    async fn get_file_resumable(
+        &self,
+        key: &str,
+        dest: &Path,
+        resume_from: u64,
+        progress: Option<DownloadProgressCallback>,
+    ) -> Result<u64> {
+        let info = self
+            .stat(key)
+            .await?
+            .ok_or_else(|| AppError::not_found("云端文件不存在"))?;
+        let total_size = info.size;
+        if resume_from > total_size {
+            return Err(AppError::validation(format!(
+                "本地断点（{resume_from} 字节）大于云端对象（{total_size} 字节），断点无效，请删除断点文件后整包重新下载"
+            )));
+        }
+        let progress: Option<Arc<DownloadProgressCallback>> = progress.map(Arc::from);
+        if let Some(cb) = progress.as_ref() {
+            cb(resume_from, total_size);
+        }
+        if resume_from == total_size {
+            // 断点已是完整对象：无字节可取（Range 请求会得到 416），
+            // 完整性由调用方的整文件 SHA256 校验兜底。
+            return Ok(resume_from);
+        }
+
+        let url = self.build_url(key)?;
+        let mut builder = self
+            .http
+            .request(Method::GET, url)
+            .header("Authorization", self.auth_header());
+        if resume_from > 0 {
+            builder = builder.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+        }
+        let res = tokio::time::timeout(std::time::Duration::from_secs(120), builder.send())
+            .await
+            .map_err(|_| AppError::network("WebDAV 续传下载等待响应头超时（120 秒）".to_string()))?
+            .map_err(|e| AppError::network(format!("WebDAV 续传下载请求失败: {e}")))?;
+
+        if res.status() == StatusCode::NOT_FOUND {
+            return Err(AppError::not_found("云端文件不存在"));
+        }
+        let actual_start = match res.status() {
+            StatusCode::PARTIAL_CONTENT => {
+                // 校验服务端实际起点：错位续传比失败更危险（静默数据损坏）。
+                let content_range = res
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(ToOwned::to_owned);
+                let served_start = content_range
+                    .as_deref()
+                    .and_then(Self::parse_content_range_start);
+                match served_start {
+                    Some(start) if start == resume_from => resume_from,
+                    _ => {
+                        return Err(AppError::network(format!(
+                            "WebDAV 服务端返回的续传起点与请求不一致（fail-closed，拒绝错位追加）：请求 bytes={resume_from}-，Content-Range={content_range:?}"
+                        )));
+                    }
+                }
+            }
+            // 服务端不支持/忽略 Range：诚实从零重下，不冒充续传。
+            StatusCode::OK => 0,
+            status => {
+                return Err(AppError::network(format!(
+                    "WebDAV 续传下载失败: {} {}",
+                    status,
+                    status.canonical_reason().unwrap_or(""),
+                )));
+            }
+        };
+
+        if actual_start == 0 && resume_from > 0 {
+            tracing::warn!(
+                "WebDAV 服务端未按 Range 续传（HTTP 200），已丢弃本地断点从零重下: {}",
+                key
+            );
+        }
+
+        let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
+        let mut file = if actual_start > 0 {
+            let file = tokio::fs::OpenOptions::new()
+                .append(true)
+                .open(dest)
+                .await
+                .map_err(|e| AppError::file_system(format!("打开断点文件失败: {e}")))?;
+            let existing = file
+                .metadata()
+                .await
+                .map_err(|e| AppError::file_system(format!("读取断点文件元信息失败: {e}")))?
+                .len();
+            if existing != actual_start {
+                return Err(AppError::file_system(format!(
+                    "断点文件大小（{existing} 字节）与续传起点（{actual_start} 字节）不一致，拒绝错位追加"
+                )));
+            }
+            file
+        } else {
+            tokio::fs::File::create(dest)
+                .await
+                .map_err(|e| AppError::file_system(format!("创建下载文件失败: {e}")))?
+        };
+
+        let mut written = actual_start;
+        let mut stream = res.bytes_stream();
+        loop {
+            // 与 get_file 相同的逐块停滞保护：90 秒收不到任何数据视为死连接。
+            // 中断时已写入的字节保持为前缀完整的断点，供下次续传。
+            let next = tokio::time::timeout(std::time::Duration::from_secs(90), stream.next())
+                .await
+                .map_err(|_| {
+                    AppError::network(
+                        "WebDAV 续传下载停滞超过 90 秒，连接可能已断开（已写入的断点保留，可重试续传）"
+                            .to_string(),
+                    )
+                })?;
+            let Some(chunk) = next else {
+                break;
+            };
+            let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
+            if written + bytes.len() as u64 > total_size {
+                return Err(AppError::validation(format!(
+                    "云端对象返回超过声明大小（{total_size} 字节）的数据，拒绝写入（对象可能已被并发修改）"
+                )));
+            }
+            file.write_all(&bytes)
+                .await
+                .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
+            written += bytes.len() as u64;
+            if let Some(cb) = progress.as_ref() {
+                cb(written, total_size);
+            }
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+        file.sync_all()
+            .await
+            .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
+
+        // 禁止静默截断当成功：字节数不足即失败，断点保留。
+        if written != total_size {
+            return Err(AppError::network(format!(
+                "WebDAV 下载在 {written}/{total_size} 字节处中断（已写入的断点保留，可重试续传）"
+            )));
+        }
+        Ok(actual_start)
     }
 
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
