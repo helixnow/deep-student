@@ -162,7 +162,7 @@ export const useHpiasStore = create<HpiasStore>()(
         reset: (sessionId, round) => {
           clearEventLog();
           const slice = { ...createEmptyHpiasSessionSlice(sessionId), round };
-          set({
+          set((state) => ({
             sessionId,
             round,
             executionMode: null,
@@ -176,8 +176,10 @@ export const useHpiasStore = create<HpiasStore>()(
             eventsLog: [],
             roundsView: {},
             subAgents: {},
-            sessions: { [sessionId]: slice },
-          });
+            artifactsByRound: {},
+            ingestion: null,
+            sessions: { ...state.sessions, [sessionId]: slice },
+          }));
         },
         // 完全重置所有状态，eventsLog 清空释放全部内存
         clear: () => { clearEventLog(); set({ sessionId: null, round: 0, plan: null, synthesis: null, critic: null, retrievalCount: null, selectedCount: null, metrics: null, retrievedItems: null, eventsLog: [], roundsView: {}, subAgents: {}, artifactsByRound: {}, ingestion: null, sessions: {} }); },

@@ -86,5 +86,6 @@ Round 42–44 补洞与体验加固已收口。Round 45 增加 action timeout / 
 
 Round 63：HPIAS `sessions[sessionId]` 切片保活并发研究；未注册 ActionBar 不再渲染模型文案。
 Round 64：Chat 共享一条 `hpias_event` 订阅；Markdown 剥 `style`/`srcdoc`。
+Round 65：`reset` 保活其它会话切片；Style Lab 不再全量 `clear`；mindmap embed ID 白名单。
 
 不改 Goal 为 complete；合入 main 仍 ⏳。
