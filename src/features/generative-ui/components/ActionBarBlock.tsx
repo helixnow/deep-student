@@ -269,10 +269,8 @@ export function ActionBarBlock({
       >
         {actions.map((action) => {
           const handlerDef = lookupGenerativeActionHandler(actionHandlers, action.id);
-          const isRegistered = !enforceHandlerRegistry || handlerDef != null;
-          const displayLabel = isRegistered
-            ? trustedLabel(action.id, action.label, actionHandlers)
-            : t('action.unregistered_label');
+          if (enforceHandlerRegistry && handlerDef == null) return null;
+          const displayLabel = trustedLabel(action.id, action.label, actionHandlers);
           const handlerRisk = handlerDef?.riskLevel;
           const effectiveRisk = resolveEffectiveRiskLevel(action.riskLevel, handlerRisk);
           const isConfirmingMedium = pendingMediumId === action.id;
@@ -282,7 +280,7 @@ export function ActionBarBlock({
               : action.variant === 'primary'
                 ? 'default'
                 : 'outline';
-          const itemEnabled = !executing && isRegistered;
+          const itemEnabled = !executing;
           return (
             <DsButton
               key={action.id}
@@ -291,8 +289,6 @@ export function ActionBarBlock({
               size="sm"
               disabled={!itemEnabled}
               tabIndex={itemEnabled && resolvedTabStop === action.id ? 0 : -1}
-              title={!isRegistered ? t('action.unregistered_hint') : undefined}
-              {...(!isRegistered ? { 'data-action-unregistered': '' } : {})}
               onFocus={() => {
                 if (itemEnabled) setTabStopId(action.id);
               }}

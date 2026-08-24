@@ -81,9 +81,7 @@ describe('GenerativeUIRenderer unregistered action-bar ids', () => {
         actionHandlers={{}}
       />,
     );
-    expect(screen.getByRole('button', { name: '未注册操作' })).toBeDisabled();
-    expect(button).toHaveAttribute('data-action-unregistered', '');
-    expect(button).toHaveAttribute('title', '未注册');
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ghost' })).not.toBeInTheDocument();
     expect(unregisteredHint()).not.toBeNull();
   });

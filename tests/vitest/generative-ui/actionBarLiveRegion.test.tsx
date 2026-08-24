@@ -134,12 +134,9 @@ describe('ActionBarBlock live region', () => {
       />,
     );
 
-    const button = screen.getByRole('button', { name: '未注册操作' });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('data-action-unregistered', '');
-    expect(button).toHaveAttribute('title', '未注册');
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '伪造操作' })).not.toBeInTheDocument();
 
-    await user.click(button);
     expect(handler).not.toHaveBeenCalled();
     expect(liveRegion()).toHaveTextContent('');
   });
