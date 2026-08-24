@@ -1575,6 +1575,7 @@ export function ActionMenu({
     </>
   );
 
+  if (isSmallScreen) {
   return (
     <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
       <DsButton
@@ -1910,6 +1911,7 @@ export function PresetServerSelector({
     </>
   );
 
+  if (isSmallScreen) {
   return (
     <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
       <DsButton
