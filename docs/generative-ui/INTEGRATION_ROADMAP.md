@@ -92,5 +92,6 @@ Round 67：无可见操作时不输出空 toolbar。
 Round 68：全未登记 ActionBar 不渲染 skip-to-actions。
 Round 69：每个 Renderer 独立 HITL 撤销栈。
 Round 70：skip-to-actions 落到第一个可达 ActionBar 槽位。
+Round 71：Rust e2e 不再引用私有 `context`；Vitest 分片堆 6GiB。
 
 不改 Goal 为 complete；合入 main 仍 ⏳。
