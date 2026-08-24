@@ -103,6 +103,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             <FileArrowUp size={14} />
             {selectedFile ? t('templateMgmt.import_change_file') : t('templateMgmt.import_choose_file')}
@@ -150,7 +151,13 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
       )}
 
       <footer className="wb-tm-panel-footer">
-        <DsButton variant="ghost" size="sm" onClick={onClose} disabled={isImporting}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          disabled={isImporting}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           {t('cancel_button')}
         </DsButton>
         <DsButton
@@ -158,6 +165,7 @@ export const TemplateImportPanel: React.FC<TemplateImportPanelProps> = ({
           size="sm"
           onClick={onConfirm}
           disabled={!selectedFile || isImporting}
+          className="[@media(pointer:coarse)]:min-h-11"
         >
           {isImporting ? t('importing') : t('start_import_button')}
         </DsButton>
@@ -201,10 +209,22 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
           {t('templateMgmt.export_panel_title')}
         </h3>
         <div className="wb-tm-panel-header-actions">
-          <DsButton variant="ghost" size="sm" onClick={onSelectAll} disabled={isExporting || templates.length === 0}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onSelectAll}
+            disabled={isExporting || templates.length === 0}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('select_all_button')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={onClearSelection} disabled={isExporting || selection.size === 0}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onClearSelection}
+            disabled={isExporting || selection.size === 0}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('clear_selection_button')}
           </DsButton>
           <DsButton
@@ -266,7 +286,13 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
           {t('templateMgmt.export_selected_count', { count: selection.size })}
         </span>
         <div className="wb-tm-panel-footer-actions">
-          <DsButton variant="ghost" size="sm" onClick={onClose} disabled={isExporting}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={isExporting}
+            className="[@media(pointer:coarse)]:min-h-11"
+          >
             {t('cancel_button')}
           </DsButton>
           <DsButton
@@ -274,6 +300,7 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
             size="sm"
             onClick={onConfirm}
             disabled={isExporting || selection.size === 0}
+            className="[@media(pointer:coarse)]:min-h-11"
           >
             {isExporting ? t('exporting') : t('export_count_button', { count: selection.size })}
           </DsButton>
