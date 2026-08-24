@@ -6,6 +6,7 @@
 import React, {
   useState,
   useEffect,
+  useId,
   useRef,
   useCallback,
   useMemo,
@@ -56,6 +57,21 @@ import './styles/command-palette.css';
 
 /** 资源命令 id 前缀（不进入命令注册表，仅在面板内即时构造） */
 const RESOURCE_COMMAND_PREFIX = '__resource.';
+
+/**
+ * 面板内可聚焦控件选择器。
+ *
+ * 面板是 aria-modal 对话框：焦点不能逃到背景页，
+ * 但必须能在搜索框 / 模式按钮 / 收藏按钮 / 关闭按钮之间流转。
+ */
+const PALETTE_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
 
 /** DSTU 资源类型 → 图标 */
 const RESOURCE_TYPE_ICONS: Partial<Record<DstuNodeType, Icon>> = {
@@ -125,6 +141,12 @@ export function CommandPalette() {
     sessionSearchOnly,
   } = useCommandPalette();
   
+  // combobox / listbox / option 之间用稳定 id 关联（aria-controls、aria-activedescendant）
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = useCallback((index: number) => `${baseId}-option-${index}`, [baseId]);
+  const groupLabelId = useCallback((category: string) => `${baseId}-group-${category}`, [baseId]);
+
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('search');
@@ -254,6 +276,18 @@ export function CommandPalette() {
     }
   }, [isOpen, sessionSearchOnly]);
 
+  // 关闭后把焦点还给打开面板的那个元素，避免焦点掉回 body（读屏丢失上下文）
+  useEffect(() => {
+    if (!isOpen) return;
+    const previouslyFocused = document.activeElement;
+    const restoreTarget = previouslyFocused instanceof HTMLElement ? previouslyFocused : null;
+    return () => {
+      if (restoreTarget && document.contains(restoreTarget)) {
+        restoreTarget.focus();
+      }
+    };
+  }, [isOpen]);
+
   // Android 系统返回键 = 关闭面板（自绘 dialog 无 data-state，协调器 Radix 兜底覆盖不到）
   const closeRef = useRef(close);
   closeRef.current = close;
@@ -333,8 +367,64 @@ export function CommandPalette() {
     isKeyboardNavRef.current = false;
   }, [selectedIndex]);
   
+  /**
+   * Tab：只把焦点圈在面板内，不再一刀切吞掉。
+   *
+   * 旧实现对 Tab 无条件 preventDefault，面板内的收藏 / 模式切换 / 关闭按钮
+   * 对键盘和读屏用户完全不可达。现在只在到达焦点环两端时接管并回绕，
+   * 中间的 Tab 交给浏览器默认行为，正常走到下一个控件。
+   */
+  const handleTabKey = useCallback((e: React.KeyboardEvent) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const focusables = Array.from(
+      container.querySelectorAll<HTMLElement>(PALETTE_FOCUSABLE_SELECTOR),
+    ).filter((el) => el.getAttribute('aria-hidden') !== 'true');
+
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const isInside = active instanceof HTMLElement && container.contains(active);
+
+    if (e.shiftKey) {
+      if (!isInside || active === first) {
+        e.preventDefault();
+        last.focus();
+      }
+      return;
+    }
+
+    if (!isInside || active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
+
   // 键盘事件处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Escape / Tab 与焦点所在控件无关，始终由面板处理
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === 'Tab') {
+      handleTabKey(e);
+      return;
+    }
+
+    // 焦点已经进入面板内的按钮时，Enter 属于该按钮，
+    // 不能再被「执行当前高亮命令」抢走
+    const target = e.target as HTMLElement | null;
+    const isOnInnerControl = target !== inputRef.current && !!target?.closest('button');
+    if (isOnInnerControl && e.key === 'Enter') return;
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -367,18 +457,8 @@ export function CommandPalette() {
           }
         }
         break;
-        
-      case 'Escape':
-        e.preventDefault();
-        close();
-        break;
-        
-      case 'Tab':
-        // 阻止 Tab 离开面板
-        e.preventDefault();
-        break;
     }
-  }, [flatCommands, selectedIndex, handleExecuteCommand, close, deps, t]);
+  }, [flatCommands, selectedIndex, handleExecuteCommand, close, deps, t, handleTabKey]);
   
   // 点击遮罩关闭
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
@@ -396,6 +476,11 @@ export function CommandPalette() {
   
   // 计算当前命令在扁平列表中的索引
   let currentFlatIndex = 0;
+
+  const hasResults = flatCommands.length > 0;
+  const activeOptionId = hasResults && flatCommands[selectedIndex]
+    ? optionId(selectedIndex)
+    : undefined;
   
   return (
     <div 
@@ -414,6 +499,7 @@ export function CommandPalette() {
         <div className="command-palette-search">
           {isSmallScreen && (
             <button
+              type="button"
               className="command-palette-back-btn"
               onClick={close}
               aria-label={t('common:back')}
@@ -441,11 +527,19 @@ export function CommandPalette() {
               aria-label={sessionSearchOnly
                 ? t('command_palette:session_search_placeholder', 'Search sessions...')
                 : t('command_palette:search_placeholder')}
+              // 读屏契约：搜索框是 combobox，结果列表是它控制的 listbox，
+              // 高亮项通过 aria-activedescendant 播报（焦点始终留在输入框）
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls={listboxId}
+              aria-expanded={hasResults}
+              aria-activedescendant={activeOptionId}
             />
           </div>
           {/* 模式切换按钮 */}
           {!sessionSearchOnly ? <div className="command-palette-mode-buttons">
             <button
+              type="button"
               className={cn(
                 'command-palette-mode-btn',
                 viewMode === 'recent' && 'command-palette-mode-btn-active'
@@ -455,10 +549,13 @@ export function CommandPalette() {
                 setSelectedIndex(0);
               }}
               title={t('command_palette:mode_recent')}
+              aria-label={t('command_palette:mode_recent')}
+              aria-pressed={viewMode === 'recent'}
             >
               <Clock size={16} />
             </button>
             <button
+              type="button"
               className={cn(
                 'command-palette-mode-btn',
                 viewMode === 'favorites' && 'command-palette-mode-btn-active'
@@ -468,12 +565,15 @@ export function CommandPalette() {
                 setSelectedIndex(0);
               }}
               title={t('command_palette:mode_favorites')}
+              aria-label={t('command_palette:mode_favorites')}
+              aria-pressed={viewMode === 'favorites'}
             >
               <Star size={16} />
             </button>
           </div> : null}
           {!isSmallScreen && (
             <button
+              type="button"
               className="command-palette-close-btn"
               onClick={close}
               aria-label={t('common:close')}
@@ -488,7 +588,11 @@ export function CommandPalette() {
           className="command-palette-scroll-area"
           viewportRef={listRef}
           viewportClassName="command-palette-list"
-          viewportProps={{ role: 'listbox' }}
+          viewportProps={{
+            role: 'listbox',
+            id: listboxId,
+            'aria-label': t('command_palette:results_label', 'Command results'),
+          } as React.HTMLAttributes<HTMLDivElement>}
           hideTrackWhenIdle={true}
           trackOffsetTop={4}
           trackOffsetBottom={4}
@@ -523,8 +627,13 @@ export function CommandPalette() {
               }
 
               return (
-                <div key={category} className="command-palette-group">
-                  <div className="command-palette-group-label">
+                <div
+                  key={category}
+                  className="command-palette-group"
+                  role="group"
+                  aria-labelledby={groupLabelId(category)}
+                >
+                  <div className="command-palette-group-label" id={groupLabelId(category)}>
                     {categoryLabel}
                   </div>
                   {commands.map((command) => {
@@ -537,6 +646,7 @@ export function CommandPalette() {
                     return (
                       <div
                         key={command.id}
+                        id={optionId(flatIndex)}
                         data-index={flatIndex}
                         className={cn(
                           'command-palette-item',
@@ -563,6 +673,7 @@ export function CommandPalette() {
                         {/* 收藏按钮（资源直达项为动态结果，不支持收藏） */}
                         {!isResource && (
                           <button
+                            type="button"
                             className={cn(
                               'command-palette-item-favorite',
                               commandFavorites.isFavorite(command.id) && 'command-palette-item-favorite-active'
@@ -572,6 +683,11 @@ export function CommandPalette() {
                               ? t('command_palette:unfavorite')
                               : t('command_palette:favorite')
                             }
+                            // 图标按钮：读屏可访问名 = 收藏/取消收藏 + 命令名
+                            aria-label={`${commandFavorites.isFavorite(command.id)
+                              ? t('command_palette:unfavorite')
+                              : t('command_palette:favorite')} — ${command.name}`}
+                            aria-pressed={commandFavorites.isFavorite(command.id)}
                           >
                             {commandFavorites.isFavorite(command.id) ? (
                               <Star size={14} className="fill-current" />
