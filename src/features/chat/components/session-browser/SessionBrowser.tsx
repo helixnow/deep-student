@@ -787,8 +787,8 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大
-                className="w-full h-10 pl-9 pr-3 [@media(pointer:coarse)]:text-[16px]"
+                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大；44px 触控高度
+                className="w-full h-10 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               />
             </div>
             {/* 标题/内容搜索模式切换（补齐移动端与桌面的功能对等） */}
