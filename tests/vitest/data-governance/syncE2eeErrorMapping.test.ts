@@ -13,6 +13,10 @@ import { describe, expect, it } from 'vitest';
 import {
   classifySyncE2eeError,
   SYNC_E2EE_ERROR_I18N_KEYS,
+  SYNC_E2EE_MARKER_CORRUPTED_CODE,
+  SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+  SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+  SYNC_E2EE_WRONG_PASSWORD_CODE,
 } from '@/features/settings/components/data-governance/syncE2eeErrorMapping';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +114,73 @@ describe('classifySyncE2eeError', () => {
     expect(classifySyncE2eeError('磁盘空间不足')).toBeNull();
     expect(classifySyncE2eeError('')).toBeNull();
   });
+
+  it('classifies missing-password refusals (payload / file object / zip download)', () => {
+    expect(
+      classifySyncE2eeError(
+        '检测到加密的 sync payload 但本端未配置加密密码。请在云同步设置里填入正确的密码后重试。',
+      ),
+    ).toBe('passwordRequired');
+    expect(
+      classifySyncE2eeError(
+        '工作区数据库 ws_x 的云端对象已端到端加密（存在 cipher_sha256），但本端未配置加密密码，无法解密。',
+      ),
+    ).toBe('passwordRequired');
+    expect(
+      classifySyncE2eeError(
+        '云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。',
+      ),
+    ).toBe('passwordRequired');
+  });
+
+  it('classifies rewritten messages by stable code', () => {
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE}] rewritten plaintext`,
+      ),
+    ).toBe('plaintextLegacyRejected');
+    expect(
+      classifySyncE2eeError(`[${SYNC_E2EE_WRONG_PASSWORD_CODE}] rewritten password`),
+    ).toBe('wrongPassword');
+    expect(
+      classifySyncE2eeError(`[${SYNC_E2EE_MARKER_CORRUPTED_CODE}] rewritten marker`),
+    ).toBe('markerCorrupted');
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_PASSWORD_REQUIRED_CODE}] rewritten missing password`,
+      ),
+    ).toBe('passwordRequired');
+  });
+
+  it('prefers marker-corrupted code when a rewritten message also looks like a password error', () => {
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_MARKER_CORRUPTED_CODE}] 密码不一致且密码错误或数据损坏`,
+      ),
+    ).toBe('markerCorrupted');
+  });
+});
+
+describe('E2EE 三类稳定 code 跨层契约', () => {
+  it('Rust 与 TypeScript 使用同一组 code', () => {
+    const rust = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/cloud_storage/mod.rs'),
+      'utf8',
+    );
+    const api = readFileSync(
+      resolve(process.cwd(), 'src/utils/cloudStorageApi.ts'),
+      'utf8',
+    );
+    for (const code of [
+      SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
+      SYNC_E2EE_WRONG_PASSWORD_CODE,
+      SYNC_E2EE_MARKER_CORRUPTED_CODE,
+      SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+    ]) {
+      expect(rust).toContain(`"${code}"`);
+      expect(api).toContain(`'${code}'`);
+    }
+  });
 });
 
 describe('sync E2EE error i18n keys', () => {
@@ -162,7 +233,15 @@ describe('display-layer wiring (source contract)', () => {
   });
 
   it('CloudStorageSection routes cloud errors through the classifier', () => {
-    expect(cloudSection).toContain('classifySyncE2eeError');
-    expect(cloudSection).toContain('SYNC_E2EE_ERROR_I18N_KEYS');
+    expect(cloudSection).toContain('localizeCloudStorageError');
+    const shared = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/features/settings/components/data-governance/localizeCloudError.ts',
+      ),
+      'utf8',
+    );
+    expect(shared).toContain('classifySyncE2eeError');
+    expect(shared).toContain('SYNC_E2EE_ERROR_I18N_KEYS');
   });
 });

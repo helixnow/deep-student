@@ -450,11 +450,18 @@ async fn execute_restore_with_progress(
         return;
     }
     if let Err(e) = manifest.validate_for_slot_restore() {
-        job_ctx.fail(format!("备份不能用于完整恢复: {}", e));
+        job_ctx.fail(format!(
+            "[{}] 备份不能用于完整恢复: {}",
+            super::backup::PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+            e
+        ));
         return;
     }
     if restore_assets == Some(false) {
-        job_ctx.fail("完整快照恢复不能跳过资产；partial archive 不能替换数据槽".to_string());
+        job_ctx.fail(format!(
+            "[{}] 完整快照恢复不能跳过资产；partial archive 不能替换数据槽",
+            super::backup::PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE
+        ));
         return;
     }
     match manager.verify_with_assets(&manifest) {

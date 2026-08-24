@@ -56,6 +56,7 @@ vi.mock('@/api/dataGovernance', () => ({
     exportZip: vi.fn(),
     importZip: vi.fn(),
     restoreBackup: vi.fn(),
+    checkDiskSpaceForRestore: vi.fn(),
     getBackupJob: vi.fn(),
     cancelBackup: vi.fn(),
   },
@@ -119,6 +120,13 @@ const componentSource = readFileSync(
   resolve(process.cwd(), 'src/features/settings/components/CloudStorageSection.tsx'),
   'utf-8',
 );
+const localizeSource = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/features/settings/components/data-governance/localizeCloudError.ts',
+  ),
+  'utf-8',
+);
 const zhLocale = JSON.parse(
   readFileSync(resolve(process.cwd(), 'src/locales/zh-CN/cloudStorage.json'), 'utf-8'),
 );
@@ -171,9 +179,12 @@ describe('平台拒绝 code 跨层契约（P2-LOCALE）', () => {
   });
 
   it('组件委托 code 映射，源码不再匹配 FTP/S3 平台文案', () => {
-    expect(componentSource).toContain('getCloudPlatformErrorI18nKey(error)');
+    expect(componentSource).toContain('localizeCloudStorageError');
+    expect(localizeSource).toContain('getCloudPlatformErrorI18nKey(error)');
     expect(componentSource).not.toContain('FTP\\/FTPS storage is not available on Android');
     expect(componentSource).not.toContain('当前安装包不支持\\s*S3\\s*兼容存储');
+    expect(localizeSource).not.toContain('FTP\\/FTPS storage is not available on Android');
+    expect(localizeSource).not.toContain('当前安装包不支持\\s*S3\\s*兼容存储');
   });
 
   it('zh/en locale 均有 s3DisabledInBuild 键且给出可操作替代（WebDAV / ZIP 导入）', () => {

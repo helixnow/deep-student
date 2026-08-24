@@ -155,6 +155,10 @@ fn r11_autosync_failclose_markers_stay_in_sync_across_layers() {
          分类依赖它，请同步更新 src/stores/syncStatusStore.ts 与本测试"
     );
     assert!(
+        store.contains("'E_SYNC_E2EE_PASSWORD_REQUIRED'"),
+        "前端 AUTO_SYNC_UNCONFIGURED_MARKERS 必须包含稳定 code E_SYNC_E2EE_PASSWORD_REQUIRED"
+    );
+    assert!(
         store.contains("'未配置加密密码'"),
         "前端 AUTO_SYNC_UNCONFIGURED_MARKERS 必须包含引擎无密码文案片段"
     );
