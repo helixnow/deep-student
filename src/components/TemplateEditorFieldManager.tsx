@@ -198,7 +198,10 @@ export const TemplateEditorFieldManager: React.FC<TemplateEditorFieldManagerProp
         ))}
       </div>
       <div className="flex items-center justify-between mt-3">
-        <DsButton type="button" variant="ghost" size="sm" onClick={onAddField}>
+        <DsButton
+          type="button" variant="ghost" size="sm" onClick={onAddField}
+          className="[@media(pointer:coarse)]:min-h-11"
+        >
           <Plus size={14} className="mr-1.5" />
           {tTemplate('add_field')}
         </DsButton>
