@@ -713,7 +713,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         data-checked={isChecked || undefined}
         data-agent-entity={`todo:${item.id}`}
         className={cn(
-          'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 sm:px-6',
+          'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 sm:px-6 [@media(pointer:coarse)]:min-h-11',
           dragging
             ? 'transition-none'
             : 'transition-[background-color,opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
