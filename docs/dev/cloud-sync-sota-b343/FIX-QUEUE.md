@@ -351,6 +351,7 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 **跨代理契约（→ R11-lease）**：自动同步以稳定错误码 **`E_SYNC_LEASE_HELD`** 识别「租约被占」——R11-lease 落地 sync target 租约时，其「租约被占」错误文案**必须包含该 token**（建议格式 `[E_SYNC_LEASE_HELD] 同步租约被其他设备持有…`），否则自动同步会把租约冲突误计为失败进入退避。`sync_r11_autosync.rs` 与 vitest 均已钉死前端半边；R11-lease 合入后请在其集成测试中补后端半边（错误文案含 token）断言。
 
 **文件面认领（独占）**：`src/stores/syncStatusStore.ts`、`src/stores/__tests__/autoSyncStore.test.ts`（仅持久化断言一处）、`SyncSettingsSection.tsx` 自动同步区、`sync.json`（zh/en）`autoSync.*`、`src-tauri/tests/sync_r11_autosync.rs` 新文件、`tests/vitest/data-governance/r11-autosync-intervals-failclose.test.tsx` 新文件、本节。不改 RecordConflictsPanel / repo_check / notes / chat / workbench，不动任何 Rust 生产代码。
+
 ### R10-verifier（第三次派出，分支 `cursor/cloud-sync-sota-r10-verifier-b343`）
 
 模型 claude-fable-5-thinking-high。关闭 FINDINGS-R07 P2-2 / R01-P2 同根项（KDF 参数无上限，FINDINGS-R07 · PROTOCOL-R10 · KEY-ROTATION-R11 §6 三方共同确认），并补「云端标记被删后不得默许明文上传」的本机第二道门禁。交付：
@@ -363,3 +364,21 @@ R09 另在 `sync_r09_file_e2ee.rs` 从公开 API 钉死标记升级/损坏 fail-
 **文件面认领（独占）**：`crypto/backup_crypto.rs`（上限 + 记忆存储 + 单测）、`cloud_storage/sync_manager.rs` 最小接线（结构体字段/默认构造/两处策略入口/明文门禁；不动 R11-lease 关注的上传/下载/manifest 段）、`src-tauri/tests/sync_r10_verifier.rs` 新文件、`sync_r10_protocol_locks.rs` 2/3 号用例、FINDINGS-R07 / PROTOCOL-R10 回写、用户指南 16 一句、本节。不改 RecordConflictsPanel / ftp.rs / notes / chat / workbench。KEY-ROTATION-R11 §7 的 T1（R12-kdf-clamp）中「前端错误映射 + locale 新键」半边未做（后端错误文案已直接面向用户），错误码机制统一仍归 R11-android2 交付物 ④。
 
 **顺带发现的基线遗留红灯（非本包引入，已在基线 `d46eff78` 上复现确认）**：① `sync_file_level_e2ee.rs::r07_legacy_plaintext_blob_downloads_but_substitution_is_rejected` 失败（`downloaded=0`，历史明文 blob 未被下载——疑与近期合入改动了明文遗留下载语义有关，待认领排查）；② `sync_r11_repo_check.rs` 编译失败（E0117 孤儿规则：`impl CloudStorage for Arc<MemoryStorage>`，需按其他测试文件的 newtype 模式修复，归 R11-check 文件面）。
+### R11-history（分支 `cursor/cloud-sync-sota-r11-history-b343`，记录级时点恢复最小版）
+
+模型 claude-fable-5-thinking-high。GAP-8 最小闭环：快照只在本地表 `__sync_record_history`（`__` 前缀不进变更采集、不上云），批量覆盖类危险操作执行前自动快照、事后单批回退。交付：
+
+- **实现**：新文件 `data_governance/sync/history.rs`——快照表（批次 id + reason + existed + data_json + rolled_back_at，批内 (table, record) 去重保首次）、`snapshot_record[_with_data]`、`list_batches`、`rollback_batch`（恢复/复活/删除三形态；`suppress_change_log=false` + 刷新 `updated_at`，回退结果进 change_log 待上传且旧云端值输掉 LWW 门；回退前自动建 `rollback_undo` 撤销点批次；同批只回退一次）、保留策略 `prune_batches_to_cap`（每库 50 批上限，新批落地自动清最旧）。
+- **命令**（`commands_sync.rs` 末尾只加新命令，未改任何既有签名）：`data_governance_list_sync_snapshot_batches`（只读）、`data_governance_rollback_sync_snapshot_batch`（维护模式检查 + 全局锁）。注册于 `lib.rs` / `data_governance/mod.rs` / `permissions/application-commands.toml`。
+- **UI**：`RecordConflictsPanel.tsx` 只加撤销入口——头部「可撤销」人话提示 + 底部「自动快照」区（批次列表 / 两击确认单批回退），未改已合入的 cloud-only keep_local 行为与任何既有回调。
+- **locale**：`data.json`（zh/en）`governance.snapshot_*` 13 键、`sync.json`（zh/en）`record_conflict_panel.undoable_hint`。
+- **测试**：新文件 `src-tauri/tests/sync_r11_history.rs` 8 例——策略覆盖前快照 / Local 胜不产噪音批次 / 批内去重保首态 / 回退恢复 + 留待上传 + 拒重复回退 / **回退不被普通 LWW 重放与 KeepLatest 重放再覆盖、回声抑制不吞回退的待上传条目** / DELETE 覆盖→复活→回退撤销点再删除全链 / 保留策略钳制 + 显式收紧 / 命令端到端（resolve 快照 → 列表可见 → 回退命令恢复）。
+
+#### Round 11 实现改动登记（R11-history）
+
+- **R11-history → `conflict_resolver.rs` 快照挂钩段**：`ConflictResolver` 新增 `history_batch_id` 字段（`new()` 生成，一次 conflict guard 调用 = 一个批次），`resolve_one` 在裁决 **Cloud 胜**（本地行将被覆盖/删除）的两个分支（DELETE / UPSERT）返回 outcome 之前调用 `snapshot_local_before_overwrite` 落快照；快照失败即该条变更失败（fail-closed：没有可回退的快照就不允许覆盖）。Local 胜不快照（本地行未被改动，避免噪音批次）。未改 `resolve_one` / `save_conflict_record` 的既有签名与裁决语义。
+- **R11-history → `commands_sync.rs` 的 `data_governance_resolve_record_conflict`**（签名未动，preflight 闭包内加一段）：写回业务表的事务内、generation 校验通过后，把被覆盖记录当前状态快照为 `conflict_resolve` 批次。`already_in_desired_state` 早退路径（业务行不变、只标记冲突已解决）不快照——没有可回退的改动。前端批量解决是 N 次顺序调用，即 N 个可独立回退的批次。
+
+**文件面认领（独占）**：`data_governance/sync/history.rs` 新文件、`sync/mod.rs`（仅 `pub mod history;` 一行）、`conflict_resolver.rs` 快照挂钩段（上文已登记）、`commands_sync.rs` 时点恢复命令段 + resolve preflight 快照段（上文已登记）、`lib.rs` 注册两行、`data_governance/mod.rs` re-export 两行、`permissions/application-commands.toml` 两行、`RecordConflictsPanel.tsx` 撤销入口、`data.json` / `sync.json`（zh/en）上述新键、`api/dataGovernance.ts` 两个包装、`sync_r11_history.rs` 新文件、本节。与 R11-unsynced-ui / R11-check 的 `commands_sync.rs` 各自新段无交叠（推前 rebase 消解）。
+
+**已知基线红灯（非本包引入）**：`sync_scenarios_tests.rs` 5 个 blob tombstone 场景（scenario_35/37/57/58/59）因基线 `c006f457` 收紧 tombstone hash 校验（拒绝非 64 位 hex 的 `"ab123"`）而失败，`a5333474` 只修了单测未跟进场景测；本分支文件面不含 `tombstone.rs`，留待专路修复。本分支已验证通过：`--lib data_governance::sync::` 191 例、`sync_r05_regression` / `sync_r06_delete_resolve` / `sync_r07_delete_resolve_lock` / `sync_r10_protocol_locks` / `sync_integration_deep` / `sync_r11_history` 全绿。

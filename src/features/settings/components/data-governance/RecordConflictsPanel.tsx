@@ -15,7 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
-import type { RecordConflictRow } from '@/api/dataGovernance';
+import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
 import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -95,6 +95,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const [mergeEditing, setMergeEditing] = useState<string | null>(null);
   const [mergeText, setMergeText] = useState('');
   const [purging, setPurging] = useState(false);
+  // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
+  const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
+  const [rollingBackBatch, setRollingBackBatch] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const pairs = useMemo(() => groupConflicts(rows), [rows]);
@@ -270,6 +273,59 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     }
   }, [pairs, refresh, t]);
 
+  // [R11-history] 撤销入口：加载最近的自动快照批次（只读）
+  const refreshSnapshots = useCallback(async () => {
+    try {
+      const batches = await DataGovernanceApi.listSyncSnapshotBatches(20);
+      setSnapshotBatches(batches);
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('data:governance.snapshot_load_failed', { error: getErrorMessage(e) }));
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void refreshSnapshots();
+  }, [refreshSnapshots, refreshSignal]);
+
+  // [R11-history] 单批回退：两击确认后按批次恢复记录到快照时的状态
+  const handleRollbackBatch = useCallback(async (batch: SyncSnapshotBatchRow) => {
+    const confirmed = unifiedConfirm(
+      t('data:governance.snapshot_rollback_confirm', { count: batch.record_count }),
+      { key: `snapshot-rollback-${batch.database_name}-${batch.batch_id}` },
+    );
+    if (!confirmed) return;
+    setRollingBackBatch(batch.batch_id);
+    try {
+      const outcome = await DataGovernanceApi.rollbackSyncSnapshotBatch(
+        batch.database_name,
+        batch.batch_id,
+      );
+      showGlobalNotification('success', t('data:governance.snapshot_rollback_success', {
+        restored: outcome.restored,
+        deleted: outcome.deleted,
+        skipped: outcome.skipped,
+      }));
+      await Promise.all([refresh(), refreshSnapshots()]);
+    } catch (e: unknown) {
+      showGlobalNotification('error', t('data:governance.snapshot_rollback_failed', { error: getErrorMessage(e) }));
+    } finally {
+      setRollingBackBatch(null);
+    }
+  }, [refresh, refreshSnapshots, t]);
+
+  const snapshotReasonLabel = useCallback((reason: string): string => {
+    switch (reason) {
+      case 'conflict_resolve':
+        return t('data:governance.snapshot_reason_conflict_resolve');
+      case 'policy_override':
+        return t('data:governance.snapshot_reason_policy_override');
+      case 'rollback_undo':
+        return t('data:governance.snapshot_reason_rollback_undo');
+      default:
+        return reason;
+    }
+  }, [t]);
+
   const handlePurgeResolved = useCallback(async () => {
     setPurging(true);
     try {
@@ -297,6 +353,10 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           </CardTitle>
           <CardDescription>
             {t('data:governance.conflict_panel_desc')}
+          </CardDescription>
+          {/* [R11-history] 「可撤销」人话：批量/库级覆盖前自动快照，误操作可回退 */}
+          <CardDescription>
+            {t('sync:record_conflict_panel.undoable_hint')}
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -512,6 +572,68 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             </div>
           );
         })}
+
+        {/* [R11-history] 撤销入口：自动快照批次列表 + 单批回退 */}
+        <div className="pt-3 border-t border-border/30 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-medium">
+              {t('data:governance.snapshot_section_title')}
+            </div>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void refreshSnapshots()}
+              disabled={rollingBackBatch !== null}
+              className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+            >
+              <ArrowClockwise size={12} className="mr-1" />
+              {t('common:actions.refresh')}
+            </DsButton>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t('data:governance.snapshot_section_desc')}
+          </div>
+          {snapshotBatches.length === 0 && (
+            <div className="text-xs text-muted-foreground py-1">
+              {t('data:governance.snapshot_empty')}
+            </div>
+          )}
+          {snapshotBatches.map((batch) => {
+            const isRollingBack = rollingBackBatch === batch.batch_id;
+            const rolledBack = Boolean(batch.rolled_back_at);
+            return (
+              <div
+                key={`${batch.database_name}|${batch.batch_id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/30 bg-muted/20 p-2 text-xs"
+              >
+                <div className="space-x-2 break-all">
+                  <span className="font-medium">{snapshotReasonLabel(batch.reason)}</span>
+                  <span className="text-muted-foreground">{getDatabaseDisplayName(batch.database_name, t)}</span>
+                  <span className="text-muted-foreground">{formatDetectedAt(batch.created_at)}</span>
+                  <span className="text-muted-foreground">
+                    {t('data:governance.snapshot_records_count', { count: batch.record_count })}
+                  </span>
+                  {rolledBack && (
+                    <span className="text-muted-foreground">
+                      {t('data:governance.snapshot_rolled_back_label')}
+                    </span>
+                  )}
+                </div>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleRollbackBatch(batch)}
+                  disabled={rolledBack || rollingBackBatch !== null || loading}
+                  className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                  title={t('data:governance.snapshot_rollback_confirm', { count: batch.record_count })}
+                >
+                  {isRollingBack && <CircleNotch size={12} className="mr-1 animate-spin" />}
+                  {t('data:governance.snapshot_rollback_button')}
+                </DsButton>
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

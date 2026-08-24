@@ -4625,6 +4625,10 @@ pub async fn data_governance_resolve_record_conflict(
     let preflight_record = record_id.clone();
     let preflight_id_column = id_column.to_string();
     let preflight_snapshot = current_local_snapshot;
+    // [R11-history] 冲突解决（含前端批量循环的每一次调用）写回业务表之前，
+    // 在同一事务内把被覆盖记录的当前状态快照进 __sync_record_history，
+    // 事后可在冲突面板按批次一键回退（快照只在本地，不上云）。
+    let history_batch_id = crate::data_governance::sync::history::new_batch_id();
     let final_expected_ids = expected_ids.clone();
     let final_table = table_name.clone();
     let final_record = record_id.clone();
@@ -4646,6 +4650,14 @@ pub async fn data_governance_resolve_record_conflict(
                     "本地记录在提交冲突决策前发生变化".to_string(),
                 ));
             }
+            crate::data_governance::sync::history::snapshot_record_with_data(
+                transaction_conn,
+                &history_batch_id,
+                crate::data_governance::sync::history::REASON_CONFLICT_RESOLVE,
+                &preflight_table,
+                &preflight_record,
+                latest.as_ref(),
+            )?;
             Ok(())
         },
         move |transaction_conn, apply_result| {
@@ -4857,6 +4869,132 @@ pub async fn data_governance_repo_check(
     crate::cloud_storage::repo_check::run_repo_check(storage.as_ref())
         .await
         .map_err(|e| format!("云端仓库巡检失败: {}", e))
+}
+
+// ==================== [R11-history] 记录级时点恢复 ====================
+
+/// 快照批次行（跨库列表，供冲突面板「自动快照」区展示）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SyncSnapshotBatchRow {
+    pub database_name: String,
+    pub batch_id: String,
+    /// policy_override | conflict_resolve | rollback_undo
+    pub reason: String,
+    pub created_at: String,
+    pub record_count: u64,
+    pub rolled_back_at: Option<String>,
+}
+
+/// 列出所有数据库最近的记录快照批次（新的在前）。
+///
+/// 快照由冲突批量解决 / 库级策略覆盖在执行前自动创建（`history.rs`），
+/// 只保存在本地数据库、不上云。本命令只读，不需要数据治理全局锁。
+#[tauri::command]
+pub async fn data_governance_list_sync_snapshot_batches(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<SyncSnapshotBatchRow>, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let per_db_limit = limit.unwrap_or(50).min(500) as usize;
+
+    let mut out: Vec<SyncSnapshotBatchRow> = Vec::new();
+    for db_id in _DatabaseId::all_ordered() {
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        if !db_path.exists() {
+            continue;
+        }
+        let conn = match open_sync_connection(&db_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let batches = crate::data_governance::sync::history::list_batches(&conn, per_db_limit)
+            .map_err(|e| format!("读取 {} 的快照批次失败: {}", db_id.as_str(), e))?;
+        for batch in batches {
+            out.push(SyncSnapshotBatchRow {
+                database_name: db_id.as_str().to_string(),
+                batch_id: batch.batch_id,
+                reason: batch.reason,
+                created_at: batch.created_at,
+                record_count: batch.record_count,
+                rolled_back_at: batch.rolled_back_at,
+            });
+        }
+    }
+    // 跨库统一按创建时间倒序（batch_id 前缀是 UTC 时间戳，同秒内可稳定比较）
+    out.sort_by(|a, b| b.batch_id.cmp(&a.batch_id));
+    out.truncate(per_db_limit);
+    Ok(out)
+}
+
+/// 单批回退的结果
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RollbackSnapshotResponse {
+    pub batch_id: String,
+    /// 恢复（写回快照值）的记录数
+    pub restored: usize,
+    /// 因快照时不存在而被删除的记录数
+    pub deleted: usize,
+    /// 已处于快照状态、无需改动的记录数
+    pub skipped: usize,
+    /// 回退前自动创建的撤销点批次 id（回退本身可再撤销）
+    pub undo_batch_id: String,
+}
+
+/// 按批次回退一组记录快照：把批内每条记录恢复到快照时的状态。
+///
+/// 回退通过同步链路写回（`suppress_change_log=false` + 刷新 `updated_at`），
+/// 因此：① 回退结果进入 change_log 待上传，下次同步广播给其他设备；
+/// ② 旧的云端胜方值在后续下载重放中输掉 LWW 门，不会把回退结果再覆盖回去。
+/// 回退前自动创建 `rollback_undo` 撤销点批次；同一批次只能回退一次。
+#[tauri::command]
+pub async fn data_governance_rollback_sync_snapshot_batch(
+    app: tauri::AppHandle,
+    database_name: String,
+    batch_id: String,
+) -> Result<RollbackSnapshotResponse, String> {
+    check_maintenance_mode(&app)?;
+    let _permit = BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "其他备份、恢复或同步操作正在进行，请稍后重试".to_string())?;
+
+    let active_dir = get_active_data_dir(&app)?;
+    let db_id = _DatabaseId::all_ordered()
+        .into_iter()
+        .find(|id| id.as_str() == database_name)
+        .ok_or_else(|| format!("未知数据库: {}", database_name))?;
+    let db_path =
+        crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+    let conn = open_sync_connection(&db_path)
+        .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+
+    let id_columns = build_id_column_map();
+    let outcome = crate::data_governance::sync::history::rollback_batch(
+        &conn,
+        &batch_id,
+        Some(&id_columns),
+        Some(&database_name),
+    )
+    .map_err(|e| format!("回退快照批次失败: {}", e))?;
+
+    info!(
+        "[data_governance] 快照批次回退完成: db={}, batch={}, restored={}, deleted={}, skipped={}, undo_batch={}",
+        database_name,
+        outcome.batch_id,
+        outcome.restored,
+        outcome.deleted,
+        outcome.skipped,
+        outcome.undo_batch_id
+    );
+
+    Ok(RollbackSnapshotResponse {
+        batch_id: outcome.batch_id,
+        restored: outcome.restored,
+        deleted: outcome.deleted,
+        skipped: outcome.skipped,
+        undo_batch_id: outcome.undo_batch_id,
+    })
 }
 
 #[cfg(test)]

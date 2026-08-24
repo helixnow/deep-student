@@ -1167,6 +1167,19 @@
     "latest": "最新",
     "merge_hint": "编辑 JSON 后点击“写回”：最终值将作为一次正常的 UPDATE 提交到数据库，并在下次同步时推送到云端。",
     "write_back": "写回",
-    "json_invalid": "JSON 格式无效: {{error}}"
+    "json_invalid": "JSON 格式无效: {{error}}",
+    "snapshot_section_title": "自动快照（可撤销）",
+    "snapshot_section_desc": "批量解决冲突或执行库级策略覆盖之前，系统会自动把受影响的记录快照保存在本机（不上云）。选错了不用慌：找到对应批次点「回退此批」，记录会恢复到操作前的样子，并在下次同步时告知其他设备。",
+    "snapshot_reason_conflict_resolve": "冲突解决",
+    "snapshot_reason_policy_override": "库级策略覆盖",
+    "snapshot_reason_rollback_undo": "回退撤销点",
+    "snapshot_records_count": "{{count}} 条记录",
+    "snapshot_rolled_back_label": "已回退",
+    "snapshot_rollback_button": "回退此批",
+    "snapshot_rollback_confirm": "确定把这 {{count}} 条记录恢复到快照时的状态吗？回退会覆盖这些记录的当前值（回退前会再留一个撤销点，回退本身也可撤销）。",
+    "snapshot_rollback_success": "已回退批次：恢复 {{restored}} 条、删除 {{deleted}} 条、无需改动 {{skipped}} 条",
+    "snapshot_rollback_failed": "回退失败: {{error}}",
+    "snapshot_load_failed": "加载自动快照列表失败: {{error}}",
+    "snapshot_empty": "暂无自动快照。批量解决冲突或库级策略覆盖时会自动创建。"
   }
 }

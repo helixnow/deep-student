@@ -1440,6 +1440,59 @@ export async function purgeResolvedConflicts(
   });
 }
 
+// ==================== [R11-history] 记录级时点恢复 ====================
+
+/**
+ * 自动快照批次（冲突批量解决 / 库级策略覆盖执行前系统自动创建，仅存本地）
+ */
+export interface SyncSnapshotBatchRow {
+  database_name: string;
+  batch_id: string;
+  /** policy_override | conflict_resolve | rollback_undo */
+  reason: string;
+  created_at: string;
+  record_count: number;
+  rolled_back_at?: string | null;
+}
+
+/**
+ * 列出所有数据库最近的记录快照批次（新的在前，只读）
+ */
+export async function listSyncSnapshotBatches(
+  limit?: number,
+): Promise<SyncSnapshotBatchRow[]> {
+  return invoke<SyncSnapshotBatchRow[]>(
+    "data_governance_list_sync_snapshot_batches",
+    { limit },
+  );
+}
+
+/**
+ * 单批回退的结果
+ */
+export interface RollbackSnapshotResponse {
+  batch_id: string;
+  restored: number;
+  deleted: number;
+  skipped: number;
+  /** 回退前自动创建的撤销点批次 id（回退本身可再撤销） */
+  undo_batch_id: string;
+}
+
+/**
+ * 按批次回退一组记录快照。回退结果会进入待上传变更并刷新时间戳，
+ * 后续同步不会把旧值再覆盖回来；回退前自动创建撤销点批次。
+ */
+export async function rollbackSyncSnapshotBatch(
+  databaseName: string,
+  batchId: string,
+): Promise<RollbackSnapshotResponse> {
+  return invoke<RollbackSnapshotResponse>(
+    "data_governance_rollback_sync_snapshot_batch",
+    { databaseName, batchId },
+  );
+}
+
 // ==================== 同步检疫 API ====================
 
 export interface SyncQuarantineRow {
@@ -1659,6 +1712,10 @@ export const DataGovernanceApi = {
   countRecordConflicts,
   resolveRecordConflict,
   purgeResolvedConflicts,
+
+  // [R11-history] 记录级时点恢复（自动快照 / 单批回退）
+  listSyncSnapshotBatches,
+  rollbackSyncSnapshotBatch,
   listQuarantine,
   retryQuarantine,
   discardQuarantine,
