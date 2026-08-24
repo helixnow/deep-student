@@ -247,6 +247,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   void i18n.changeLanguage(nextValue);
                 }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 stretch
                 options={languageOptions.map((option) => ({
                   value: option.value,
@@ -265,6 +266,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 value={mode}
                 onValueChange={(nextMode) => { void setMode(nextMode); }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 className={queueModeLoading ? 'invisible' : undefined}
                 options={[
                   { value: 'queue', label: t('chatV2:queue.settings.modeQueue') },
@@ -302,6 +304,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   }
                 }}
                 size="compact"
+                itemClassName="[@media(pointer:coarse)]:!min-h-11"
                 options={[
                   { value: 'background', label: t('settings:system_notification.background') },
                   { value: 'always', label: t('settings:system_notification.always') },
