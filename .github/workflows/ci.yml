@@ -188,10 +188,24 @@ jobs:
           workspaces: src-tauri
           shared-key: clippy
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # ImageOS/ImageVersion 由 runner 镜像注入、不在 ${{ env }} 表达式上下文里
+      # （直接写 ${{ env.ImageOS }} 会静默展开为空），必须经 GITHUB_ENV 中转。
+      # 写进缓存 version 是因为 cache-apt-pkgs 的 key 只含包名列表：快照只含
+      # 新装包的文件，必须与生成它的 base 镜像配套，镜像升级后复用旧快照有
+      # ABI 漂移风险。ImageVersion 每周随镜像滚动，缓存随之自然刷新。
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      # 文件快照级 apt 缓存（含传递依赖）：命中时跳过 apt-get update/install，
+      # 每 job 省 1-2 分钟。execute_install_scripts 让 postinst/触发器
+      # （ldconfig、gdk-pixbuf loaders、glib schemas）在恢复路径同样执行，
+      # 与真实安装行为一致。同包列表 + 同镜像的 5 个 Rust job 共享一份缓存。
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       # build.rs 的 Tauri ACL 校验要求 Linux 侧存在 libpdfium.so（2026-08-06
       # 起 Linux 版 PDF/OCR 补齐），CI 工作区未随仓库提交该二进制，必须预先下载。
@@ -308,10 +322,16 @@ jobs:
           workspaces: src-tauri
           shared-key: provider-contract
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - name: Prepare target-specific pdfium
         run: |
@@ -511,10 +531,16 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b # v2.83.4
         with:
@@ -569,11 +595,17 @@ jobs:
         with:
           toolchain: stable
 
-      # 运行期共享库（webkit2gtk 等），无需编译缓存
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # 运行期共享库（webkit2gtk 等），无需编译缓存；
+      # apt 文件快照缓存的镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       - uses: taiki-e/install-action@07b4745e0c39a41822af610387492e3e53aa222b # v2.83.4
         with:
@@ -648,10 +680,16 @@ jobs:
           workspaces: src-tauri
           shared-key: tests
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+      # apt 文件快照缓存；镜像作用域与动机见 backend job 同名步骤注释
+      - name: Resolve runner image scope for apt cache
+        run: echo "APT_CACHE_SCOPE=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_ENV"
+
+      - name: Install system dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          version: ${{ env.APT_CACHE_SCOPE }}
+          execute_install_scripts: true
 
       # 生产统一迁移框架测试（src/data_governance/migration*），
       # run-migration-tests.sh 解析 cargo 汇总并强制通过数 >= --min-tests，
