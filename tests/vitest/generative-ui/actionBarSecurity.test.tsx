@@ -139,5 +139,6 @@ describe('ActionBarBlock security', () => {
     );
     expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '伪造操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
   });
 });

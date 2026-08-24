@@ -443,7 +443,8 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
     id: 'round63-unregistered-trusted-label',
     check: () =>
       fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
-        'if (enforceHandlerRegistry && handlerDef == null) return null;',
+        'visibleActions',
+        'const showToolbar = visibleActions.length > 0 || showUndoControl;',
       ]),
   },
   {
