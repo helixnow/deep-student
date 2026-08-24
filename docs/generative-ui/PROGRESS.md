@@ -22,6 +22,14 @@
 - [x] generativeUi i18n（notes.edit_* 词条）
 - [x] 93 项 generative-ui vitest 全绿
 
+## Round 20（2026-08-24）
+
+- [x] **Rust HPIAS emit POC** — `src-tauri/src/hpias/events.rs` + `HpiasEventEmitter`（`hpias_event` 通道）
+- [x] `GenerativeUiExecutor` — `researchSessionId` 时 emit `session_started` 激活前端桥
+- [x] **`generativeUISotaAcceptance.contract.test.ts`** — 15 项 SOTA 集成要求静态验收
+- [x] Rust 1.98 stable  toolchain 验证 `generative_ui_executor` + `hpias` 单元测试通过
+- [x] ARCHITECTURE / INTEGRATION_ROADMAP / PROGRESS 更新
+
 ## Round 19（2026-08-24）
 
 - [x] **全模块 integration contract** — `generativeUIModuleIntegration.contract.test.ts`（14 块 / bridge / handler / mount 点）

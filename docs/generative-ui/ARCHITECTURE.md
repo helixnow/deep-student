@@ -78,7 +78,7 @@ Translation 流式简报（Round 17）：
 
 关键生命周期：`session_started` → `plan_generated` → `retrieval_completed` → `selection_completed` → `subagent_*` → `synthesis_updated` → `session_completed`。
 
-Rust 侧尚未落地 emit 实现；`render_generative_ui` 已支持 `researchSessionId` 透传，供 Chat 块绑定会话。
+Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携带 `researchSessionId` 时 emit `session_started`，激活前端 HPIAS 桥；完整研究 pipeline 事件由未来 HPIAS orchestrator 继续 emit。
 
 关键文件：
 - `src/features/chat/plugins/blocks/generativeUI.tsx`

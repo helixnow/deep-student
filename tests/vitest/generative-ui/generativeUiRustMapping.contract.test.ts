@@ -43,5 +43,16 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('fn parse_research_session_id');
     expect(executorSrc).toContain('researchSessionId');
     expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
+    expect(executorSrc).toContain('emit_hpias_session_started_if_needed');
+  });
+
+  it('hpias Rust module emits on hpias_event channel', () => {
+    const hpiasSrc = fs.readFileSync(
+      path.join(process.cwd(), 'src-tauri/src/hpias/events.rs'),
+      'utf8',
+    );
+    expect(hpiasSrc).toContain('HPIAS_EVENT_CHANNEL');
+    expect(hpiasSrc).toContain('"hpias_event"');
+    expect(hpiasSrc).toContain('emit_session_started');
   });
 });

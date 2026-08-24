@@ -11,6 +11,7 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::types::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::hpias::HpiasEventEmitter;
 
 const TOOL_NAME: &str = "render_generative_ui";
 
@@ -155,6 +156,28 @@ impl GenerativeUiExecutor {
             ctx.round_id.as_deref(),
         );
     }
+
+    /// researchSessionId 存在时 emit `hpias_event` session_started，激活前端 HPIAS 桥
+    fn emit_hpias_session_started_if_needed(
+        ctx: &ExecutionContext,
+        session_id: &str,
+        question: Option<&str>,
+    ) {
+        let window = ctx
+            .tauri_window
+            .clone()
+            .or_else(|| ctx.emitter.try_window());
+        let Some(window) = window else {
+            return;
+        };
+        let emitter = HpiasEventEmitter::new(window);
+        if let Err(error) = emitter.emit_session_started(session_id, question) {
+            log::warn!(
+                "[GenerativeUiExecutor] hpias_event session_started emit failed: {}",
+                error
+            );
+        }
+    }
 }
 
 impl Default for GenerativeUiExecutor {
@@ -241,6 +264,9 @@ impl ToolExecutor for GenerativeUiExecutor {
         Self::emit_start(ctx, title);
         Self::emit_chunk(ctx, &content_str);
         Self::emit_end(ctx, &intent, research_session_id.as_deref());
+        if let Some(ref session_id) = research_session_id {
+            Self::emit_hpias_session_started_if_needed(ctx, session_id, title);
+        }
 
         let duration_ms = start.elapsed().as_millis() as u64;
         let mut output = json!({

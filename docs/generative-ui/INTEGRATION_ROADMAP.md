@@ -29,6 +29,8 @@
 | HPIAS Chat 实时研究 | `generative_ui` 块 + `hpias_event` | ✅ Round 16 |
 | Research action handlers | `copy-report` / `export-plan` Chat+HPIAS | ✅ Round 18 |
 | 全模块 integration contract | mount/bridge/handler 静态验证 | ✅ Round 19 |
+| Rust HPIAS emit POC | `hpias::HpiasEventEmitter` + executor 接线 | ✅ Round 20 |
+| SOTA acceptance contract | 15 项集成要求静态验收 | ✅ Round 20 |
 
 ## 安全 / HITL（#8）
 

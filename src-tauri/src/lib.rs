@@ -111,6 +111,7 @@ pub mod textbooks_db;
 #[allow(dead_code)]
 pub mod tools;
 pub mod translation;
+pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]
 pub mod unified_file_manager;
