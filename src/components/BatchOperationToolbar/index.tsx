@@ -514,7 +514,7 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
         variant="ghost"
         size="icon"
         iconOnly
-        className="card-checkbox"
+        className="card-checkbox [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         role="checkbox"
         aria-checked={isSelected}
         aria-label={t('select_all')}
