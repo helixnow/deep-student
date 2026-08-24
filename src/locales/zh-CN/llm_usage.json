@@ -93,5 +93,10 @@
   "error": {
     "loadFailed": "加载统计数据失败",
     "cleanupFailed": "清理数据失败"
+  },
+  "dstu_path": {
+    "emptyId": "资源ID不能为空",
+    "idLengthExceeded": "资源ID长度超限: {{length}} 字符（最大 {{max}}）",
+    "invalidPrefix": "资源ID格式无效：缺少有效前缀"
   }
 }
