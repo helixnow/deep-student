@@ -294,8 +294,10 @@ impl FtpStorage {
             return true;
         }
         let err = error.to_string().to_lowercase();
-        err.contains("550")
-            && !err.contains("permission denied")
+        if Self::extract_status_code(&err) != Some(550) {
+            return false;
+        }
+        !err.contains("permission denied")
             && !err.contains("access denied")
             && !err.contains("access is denied")
     }
@@ -1345,11 +1347,17 @@ mod tests {
     }
 
     #[test]
-    fn permission_denied_cwd_is_still_an_error() {
-        let error =
-            AppError::file_system("FTP CWD 失败：Invalid response: [550] 550 Permission denied.");
-
-        assert!(!FtpStorage::is_missing_directory_error(&error));
+    fn permission_denied_or_non_550_cwd_is_still_an_error() {
+        for message in [
+            "FTP CWD 失败：Invalid response: [550] 550 Permission denied.",
+            "FTP CWD 失败：Invalid response: [450] 450 /root/550: No such directory.",
+        ] {
+            let error = AppError::file_system(message);
+            assert!(
+                !FtpStorage::is_missing_directory_error(&error),
+                "expected permission-denied or non-550 CWD failure to remain an error: {message}"
+            );
+        }
     }
 
     #[test]
