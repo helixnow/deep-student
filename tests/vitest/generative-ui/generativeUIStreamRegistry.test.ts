@@ -6,10 +6,7 @@ import {
   finalizeGenerativeUIStream,
   getLastGoodGenerativeUIIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
-import {
-  MAX_GENERATIVE_UI_STREAM_CHARS,
-  STREAM_BUFFER_CAPPED_WARNING,
-} from '@/features/generative-ui/utils/streamBufferGuard';
+import { STREAM_BUFFER_CAPPED_WARNING } from '@/features/generative-ui/utils/streamBufferGuard';
 
 describe('generativeUIStreamRegistry', () => {
   beforeEach(() => {
@@ -78,7 +75,8 @@ describe('generativeUIStreamRegistry', () => {
     appendGenerativeUIStreamContent(blockId, open);
     const snap = appendGenerativeUIStreamContent(
       blockId,
-      open + 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS),
+      open + 'x'.repeat(128),
+      { maxChars: 128 },
     );
     expect(snap.warnings).toContain(STREAM_BUFFER_CAPPED_WARNING);
     expect(snap.intent?.blocks[0]?.props?.body).toBe('alpha');
