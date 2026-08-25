@@ -205,6 +205,28 @@ pub trait CloudStorage: Send + Sync {
         Ok(checksum)
     }
 
+    /// `put` / `put_file` 的 SHA256 来自本地字节。远端若静默短写，仍会带回本地哈希。
+    /// 各生产后端在发布成功前调用本方法 `stat` 核对大小；全量回读太贵，短包这一档必须拦下。
+    /// 默认 `put_file` **不**自动调用：测试假存储靠覆盖 `put` 模拟短写，编排层另有闸。
+    async fn verify_remote_object_size(&self, key: &str, expected_size: u64) -> Result<()> {
+        match self.stat(key).await? {
+            Some(info) if info.size == expected_size => Ok(()),
+            Some(info) => {
+                let _ = self.delete(key).await;
+                Err(AppError::internal(format!(
+                    "云端对象上传后大小不一致：本地 {expected_size} 字节，远端 {} 字节，已停止并不得报成功",
+                    info.size
+                )))
+            }
+            None => {
+                let _ = self.delete(key).await;
+                Err(AppError::internal(
+                    "云端对象上传后不存在，已停止并不得报成功".to_string(),
+                ))
+            }
+        }
+    }
+
     /// [R09-restore-ops][P2-2] 本后端是否支持断点续传下载。
     ///
     /// 返回 `true` 的后端必须实现 [`Self::get_file_resumable`]；编排层

@@ -896,6 +896,8 @@ impl CloudStorage for WebDavStorage {
                     if let Some(cb) = progress.as_ref() {
                         cb(file_size, file_size);
                     }
+                    // HTTP 2xx 不等于对象完整落地。put_file 哈希来自本地文件。
+                    self.verify_remote_object_size(key, file_size).await?;
                     return Ok(checksum);
                 }
                 Ok(res) => {
@@ -1518,6 +1520,17 @@ mod tests {
             .count()
     }
 
+    fn file_propfind_xml(href: &str, size: u64) -> String {
+        format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">\
+<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
+<d:resourcetype/><d:getcontentlength>{size}</d:getcontentlength>\
+<d:getlastmodified>Fri, 01 Jan 2021 00:00:00 GMT</d:getlastmodified>\
+</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>\
+</d:multistatus>"#
+        )
+    }
+
     // ---------- 重试与 Retry-After ----------
 
     #[test]
@@ -1610,7 +1623,7 @@ mod tests {
 
         let put_hits = Arc::new(AtomicUsize::new(0));
         let put_hits_in_responder = put_hits.clone();
-        let responder: Responder = Arc::new(move |method, _path, _idx| match method {
+        let responder: Responder = Arc::new(move |method, path, _idx| match method {
             "MKCOL" => (405, vec![], String::new()),
             "PUT" => {
                 if put_hits_in_responder.fetch_add(1, Ordering::SeqCst) == 0 {
@@ -1619,6 +1632,7 @@ mod tests {
                     (201, vec![], String::new())
                 }
             }
+            "PROPFIND" => (207, vec![], file_propfind_xml(path, 17)),
             _ => (500, vec![], String::new()),
         });
         let (endpoint, _log) = spawn_fake_dav(responder).await;
@@ -1633,6 +1647,43 @@ mod tests {
             .await
             .expect("流式 PUT 应在 503 后重试成功");
         assert_eq!(put_hits.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn put_file_fails_when_propfind_size_mismatches() {
+        use std::sync::atomic::AtomicUsize;
+
+        let delete_hits = Arc::new(AtomicUsize::new(0));
+        let delete_hits_in_responder = delete_hits.clone();
+        let responder: Responder = Arc::new(move |method, path, _idx| match method {
+            "MKCOL" => (405, vec![], String::new()),
+            "PUT" => (201, vec![], String::new()),
+            "PROPFIND" => (207, vec![], file_propfind_xml(path, 1)),
+            "DELETE" => {
+                delete_hits_in_responder.fetch_add(1, Ordering::SeqCst);
+                (204, vec![], String::new())
+            }
+            _ => (500, vec![], String::new()),
+        });
+        let (endpoint, _log) = spawn_fake_dav(responder).await;
+        let storage = storage_for(&endpoint, "sync");
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("upload.bin");
+        std::fs::write(&local, b"streaming payload").expect("write local file");
+
+        let error = storage
+            .put_file("objects/upload.bin", &local, None)
+            .await
+            .expect_err("远端短写必须 fail-closed");
+        assert!(
+            error.to_string().contains("云端对象上传后大小不一致"),
+            "拒绝原因必须指向远端大小，实际: {error}"
+        );
+        assert!(
+            delete_hits.load(Ordering::SeqCst) >= 1,
+            "短包必须删除，不得留给后续调用方当成功对象"
+        );
     }
 
     // ---------- check_connection：PROPFIND Depth:0 ----------
@@ -2083,6 +2134,10 @@ mod tests {
         assert!(
             source.contains("map(Self::decode_path)"),
             "WebDAV URL builder must decode base segments before a single encode"
+        );
+        assert!(
+            source.contains("self.verify_remote_object_size(key, file_size)"),
+            "WebDAV put_file must stat remote size after PUT; HTTP 2xx is not enough"
         );
     }
 }

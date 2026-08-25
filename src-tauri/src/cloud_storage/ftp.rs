@@ -1096,61 +1096,69 @@ impl CloudStorage for FtpStorage {
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
         let progress_ref = &progress;
-        self.with_retry(|| async {
-            let metadata = tokio::fs::metadata(local_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("读取文件元信息失败：{}", e)))?;
-            let file_size = metadata.len();
+        let checksum = self
+            .with_retry(|| async {
+                let metadata = tokio::fs::metadata(local_path)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("读取文件元信息失败：{}", e)))?;
+                let file_size = metadata.len();
 
-            // 计算 SHA256
-            let checksum = tokio::task::spawn_blocking({
-                let path = local_path.to_path_buf();
-                move || {
-                    use crate::backup_common::calculate_file_hash;
-                    calculate_file_hash(&path)
+                // 计算 SHA256
+                let checksum = tokio::task::spawn_blocking({
+                    let path = local_path.to_path_buf();
+                    move || {
+                        use crate::backup_common::calculate_file_hash;
+                        calculate_file_hash(&path)
+                    }
+                })
+                .await
+                .map_err(|e| AppError::internal(format!("计算校验和任务失败：{}", e)))??;
+
+                if let Some(cb) = progress_ref.as_ref() {
+                    cb(0, file_size);
                 }
+
+                let mut client = self.create_client().await?;
+
+                // 确保根目录存在
+                client.cwd("/").await?;
+                self.ensure_directory(&mut client, &self.root).await?;
+
+                // 切换到根目录
+                client.cwd(&Self::absolute_path(&self.root)).await?;
+
+                // 确保父目录存在
+                let (parent_path, filename) = Self::split_parent_filename(key);
+                if !parent_path.is_empty() {
+                    let full_parent = self.remote_path(parent_path);
+                    self.ensure_directory(&mut client, &full_parent).await?;
+                    client.cwd(&Self::absolute_path(&full_parent)).await?;
+                }
+
+                let mut file = tokio::fs::File::open(local_path)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
+                self.upload_reader_atomic(
+                    &mut client,
+                    filename,
+                    &mut file,
+                    file_size,
+                    progress_ref.as_ref(),
+                )
+                .await?;
+
+                client.quit().await?;
+
+                Ok(checksum)
             })
-            .await
-            .map_err(|e| AppError::internal(format!("计算校验和任务失败：{}", e)))??;
-
-            if let Some(cb) = progress_ref.as_ref() {
-                cb(0, file_size);
-            }
-
-            let mut client = self.create_client().await?;
-
-            // 确保根目录存在
-            client.cwd("/").await?;
-            self.ensure_directory(&mut client, &self.root).await?;
-
-            // 切换到根目录
-            client.cwd(&Self::absolute_path(&self.root)).await?;
-
-            // 确保父目录存在
-            let (parent_path, filename) = Self::split_parent_filename(key);
-            if !parent_path.is_empty() {
-                let full_parent = self.remote_path(parent_path);
-                self.ensure_directory(&mut client, &full_parent).await?;
-                client.cwd(&Self::absolute_path(&full_parent)).await?;
-            }
-
-            let mut file = tokio::fs::File::open(local_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
-            self.upload_reader_atomic(
-                &mut client,
-                filename,
-                &mut file,
-                file_size,
-                progress_ref.as_ref(),
-            )
             .await?;
-
-            client.quit().await?;
-
-            Ok(checksum)
-        })
-        .await
+        // STOR 成功不等于对象完整落地。核对放在重试环外，避免确定性短写连传三遍。
+        let file_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(|e| AppError::file_system(format!("读取文件元信息失败：{}", e)))?
+            .len();
+        self.verify_remote_object_size(key, file_size).await?;
+        Ok(checksum)
     }
 
     async fn get_file(
@@ -1452,6 +1460,10 @@ mod tests {
         assert!(
             production_source.contains("read_with_timeout"),
             "FTP RETR reads must use idle timeouts to avoid passive-mode hangs"
+        );
+        assert!(
+            production_source.contains("self.verify_remote_object_size(key, file_size)"),
+            "FTP put_file must SIZE the remote object after STOR; transfer EOF is not enough"
         );
 
         let get_body = source
