@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
+use deep_student_lib::cloud_storage::{device_id_short_hash, CloudStorage, FileInfo};
 use deep_student_lib::data_governance::sync::{
     ChangeOperation, SyncChangeWithData, SyncChangesPayload, SyncManager,
 };
@@ -177,7 +177,7 @@ fn plaintext_shard(
 ) -> (String, Vec<u8>) {
     let key = format!(
         "data_governance/changes/{}/{:012}-{}-{}.json.zst",
-        device_id,
+        device_id_short_hash(device_id),
         seq,
         Utc::now().timestamp(),
         uuid::Uuid::new_v4()
@@ -216,7 +216,10 @@ async fn seed_midstream_downgrade() -> (MemStorage, String, String, String) {
         .await
         .expect("加密上传 seq1 应成功");
 
-    let prefix = format!("data_governance/changes/{uploader_id}/");
+    let prefix = format!(
+        "data_governance/changes/{}/",
+        device_id_short_hash(&uploader_id)
+    );
     let seq1_keys = storage.keys_with_prefix(&prefix);
     assert_eq!(seq1_keys.len(), 1, "应恰好有一个密文分片: {seq1_keys:?}");
     let seq1_key = seq1_keys[0].clone();

@@ -500,6 +500,15 @@ impl CloudSyncManager {
         }
 
         self.storage.put(key, &data).await?;
+        match self.storage.get(key).await? {
+            Some(ref read_back) if read_back == &data => {}
+            _ => {
+                return Err(AppError::internal(
+                    "manifest 发布后回读校验失败，已停止并不得报成功（已保留已校验临时对象）"
+                        .to_string(),
+                ));
+            }
+        }
         let _ = self.storage.delete(&temp_key).await;
 
         Ok(())
@@ -914,6 +923,24 @@ impl CloudSyncManager {
             return Err(AppError::internal(
                 "云存储 provider 返回了非法 SHA256，已拒绝发布版本".to_string(),
             ));
+        }
+        // put_file 的 SHA256 来自本地文件。远端若静默短写，仍会带回本地哈希。
+        // 发布清单前先 stat 核对大小；全量回读太贵，短包这一档必须在此拦下。
+        match self.storage.stat(&remote_key).await? {
+            Some(info) if info.size == file_size => {}
+            Some(info) => {
+                let _ = self.storage.delete(&remote_key).await;
+                return Err(AppError::internal(format!(
+                    "云端备份对象上传后大小不一致：本地 {file_size} 字节，远端 {} 字节，已停止并不得报成功",
+                    info.size
+                )));
+            }
+            None => {
+                let _ = self.storage.delete(&remote_key).await;
+                return Err(AppError::internal(
+                    "云端备份对象上传后不存在，已停止并不得报成功".to_string(),
+                ));
+            }
         }
 
         tracing::info!(
@@ -2127,6 +2154,225 @@ mod tests {
         assert_ne!(
             manager.device_manifest_key(),
             manager.device_manifest_legacy_key()
+        );
+    }
+
+    struct CorruptFinalPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for CorruptFinalPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupt-final"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            // 只污染最终清单。ZIP 必须原样写入，否则上传后 size 闸会先拦下，
+            // 测不到「发布后回读」这条路径。
+            if key.ends_with(".json") {
+                CloudStorage::put(&self.inner, key, b"corrupted-manifest").await
+            } else {
+                CloudStorage::put(&self.inner, key, data).await
+            }
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    struct TruncateZipPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for TruncateZipPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-truncate-zip"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(".zip") && !data.is_empty() {
+                CloudStorage::put(&self.inner, key, &data[..data.len() - 1]).await
+            } else {
+                CloudStorage::put(&self.inner, key, data).await
+            }
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_remote_zip_size_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(TruncateZipPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-short-zip".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-should-not-shorten").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("远端短写必须 fail-closed");
+        assert!(
+            error.to_string().contains("云端备份对象上传后大小不一致"),
+            "拒绝原因必须指向远端大小，实际: {error}"
+        );
+        assert!(
+            !inner
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "短包必须删除，不得进入版本清单"
+        );
+    }
+
+    struct VanishZipPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for VanishZipPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-vanish-zip"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(".zip") {
+                return Ok(());
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_remote_zip_missing_after_put() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(VanishZipPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-missing-zip".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-should-exist-remotely").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("上传后对象不存在必须 fail-closed");
+        assert!(
+            error.to_string().contains("云端备份对象上传后不存在"),
+            "拒绝原因必须指向远端缺失，实际: {error}"
+        );
+        assert!(
+            !inner
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "假成功不得进入版本清单"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_published_manifest_reread_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(CorruptFinalPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-corrupt".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-manifest-reread").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("最终清单回读不一致必须 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains("manifest 发布后回读校验失败，已停止并不得报成功"),
+            "拒绝原因必须指向发布后回读，实际: {error}"
+        );
+
+        let files = inner.files.lock().unwrap();
+        assert!(
+            !files
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR) && key.ends_with(".zip")),
+            "清单发布失败必须回滚未引用 ZIP，不得留下可见半包"
+        );
+        assert!(
+            files.keys().any(|key| key.ends_with(".tmp")),
+            "已校验的临时清单必须保留，供对照损坏的最终对象"
         );
     }
 

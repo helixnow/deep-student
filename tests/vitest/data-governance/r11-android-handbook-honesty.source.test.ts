@@ -32,4 +32,19 @@ describe('ANDROID-HANDBOOK-R11 cloud-backup honesty', () => {
     expect(handbook).toContain('不得写“Android WebDAV 可全保真一键换机”');
     expect(handbook).toContain('SAF 加密 ZIP');
   });
+
+  it('splits persistable export CREATE_DOCUMENT from import GET_CONTENT', () => {
+    expect(handbook).toContain('ACTION_CREATE_DOCUMENT');
+    expect(handbook).toContain('ACTION_GET_CONTENT');
+    expect(handbook).toContain('tauri-plugin-dialog');
+    expect(handbook).toContain('当次物化仍靠当前进程 grant');
+    expect(handbook).toContain('pending_saf_persist/<hash>.uri');
+    expect(handbook).toContain('并发导入/导出不得互相覆盖');
+    const dashboard = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/DataGovernanceDashboard.tsx'),
+      'utf8',
+    );
+    expect(dashboard).toContain('await save({');
+    expect(dashboard).toContain('await open({');
+  });
 });

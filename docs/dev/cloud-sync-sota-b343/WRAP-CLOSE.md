@@ -26,7 +26,7 @@
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
-- **Android 真机签字**：手册已列 8 项 SAF/重启缺口；宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向、隐私政策与根 README 已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。手册结论已与「已配置 E2EE → 云端整包加密全保真、未配置仍是便携」对齐；发布说明在 3.3 真机转绿前仍不得写一键换机。
+- **Android 真机签字**：手册 5.2 仍列真机缺口；导出复制的目标回读（长度/SHA-256）已合，不得只凭 copy+flush 报成功。虚拟 URI 物化前按源大小 2 倍预检临时卷，不足 fail-closed（不冒充 SAF 目标卷已预检）。双重编码 `content%3A%2F%2F` 可读拒绝，不拆 document ID。persistable URI：ZIP/同步入口把 `content://` 原子写入 `filesDir/pending_saf_persist/<hash>.uri`（并发不得互盖），MainActivity 双读旧单文件并前台轮询 `takePersistableUriPermission`；导出走 `save()` / `ACTION_CREATE_DOCUMENT` 才有机会 persist，导入走 `open()` / `ACTION_GET_CONTENT` 通常被拒并删队列 warn，不得假装已授权。未 vendor 对话框插件。宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向、隐私政策与根 README 已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。手册结论已与「已配置 E2EE → 云端整包加密全保真、未配置仍是便携」对齐；发布说明在 3.3 真机转绿前仍不得写一键换机。
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。
@@ -51,4 +51,8 @@
 - 云端版本清单写入可选 `recoveryKind`；历史列表、状态卡「恢复最新」、确认框与 `performRestore` 对已知便携包直接拒绝，不开始下载
 - 恢复确认框写出目标版本号，并按已知便携 / 全保真 / 未标记分述
 - 旧清单缺 `recoveryKind` 仍可点恢复，导入后再门禁
+- 设备清单先写已校验临时对象，再发布最终 key 并回读；回读不一致 fail-closed，保留临时对象、回滚未引用 ZIP，不得报成功
+- 整包 ZIP 上传后 `stat` 核对远端大小：`put_file` 只哈希本地文件，短写不得用本地 SHA 报成功；不一致删除对象，不进清单
+- WebDAV / S3 / FTP 的 `put_file` 在 HTTP/STOR 成功后同样 `stat` 核对远端大小（记录级/文件级上传同一条闸）；默认 `put_file` 不自动核对，以免打乱测试假存储的短写模拟。不宣称全量回读 / 远端 SHA
 - 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值
+- 记录级变更/清单路径同样收敛：新写入 `data_governance/changes/<短哈希>/`、`v4/shards/<短哈希>/`、`data_governance/manifests/<短哈希>.json`；旧明文目录继续可读并与短哈希并成同一设备 seq 流；写入后迁移旧清单名。tombstone 每设备清单与不可变事件前缀同样改短哈希，旧明文名双读；水位按清单/事件内容里的完整 `device_id` 记账，不把短哈希文件名当游标；路径与内容不一致 fail-closed。文件级 `file_manifests/<kind>/<uuid>.json` 与快照 `snapshots/<库>/<uuid>.json.zst` 新写入不再编码时间或设备；旧明文/短哈希目录仍按整前缀合并。用户指南 16 已写明新备份编号不透明、记录级/文件级路径不再含完整设备名

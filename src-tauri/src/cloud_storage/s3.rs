@@ -289,6 +289,7 @@ impl CloudStorage for S3Storage {
             if let Some(cb) = progress.as_ref() {
                 cb(file_size, file_size);
             }
+            self.verify_remote_object_size(key, file_size).await?;
             return Ok(checksum);
         }
 
@@ -414,7 +415,9 @@ impl CloudStorage for S3Storage {
         if let Some(cb) = progress.as_ref() {
             cb(file_size, file_size);
         }
-        upload_result
+        let checksum = upload_result?;
+        self.verify_remote_object_size(key, file_size).await?;
+        Ok(checksum)
     }
 
     async fn get_file(
@@ -701,6 +704,15 @@ mod tests {
 
     const MIB: u64 = 1024 * 1024;
     const GIB: u64 = 1024 * MIB;
+
+    #[test]
+    fn put_file_source_guards_remote_size_check() {
+        let source = include_str!("s3.rs");
+        assert!(
+            source.contains("self.verify_remote_object_size(key, file_size)"),
+            "S3 put_file must HEAD remote size after PUT/multipart; SDK success is not enough"
+        );
+    }
 
     #[test]
     fn multipart_threshold_fits_single_put_attempt_timeout() {
