@@ -13,6 +13,7 @@ import {
   NOTE_EDIT_ACTION_IDS,
 } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { HPIAS_EVENT_CHANNEL } from '@/features/generative-ui/bridge/hpiasEventBridge';
+import { isWhitelistedNonChat } from '@/utils/guardedListen';
 
 import '@/features/generative-ui/blocks';
 
@@ -105,10 +106,6 @@ const MOUNT_POINTS: Array<{ file: string; mustContain: string[] }> = [
     file: 'src/components/TranslateWorkbench.tsx',
     mustContain: ['useTranslationStream({ publishKey'],
   },
-  {
-    file: 'src/utils/guardedListen.ts',
-    mustContain: ["n === 'hpias_event'"],
-  },
 ];
 
 describe('generativeUIModuleIntegration contract', () => {
@@ -161,8 +158,7 @@ describe('generativeUIModuleIntegration contract', () => {
 
   it('Hpias event channel constant matches guardedListen whitelist', () => {
     expect(HPIAS_EVENT_CHANNEL).toBe('hpias_event');
-    const guardedSrc = fs.readFileSync(path.join(REPO, 'src/utils/guardedListen.ts'), 'utf8');
-    expect(guardedSrc).toContain(`'${HPIAS_EVENT_CHANNEL}'`);
+    expect(isWhitelistedNonChat(HPIAS_EVENT_CHANNEL)).toBe(true);
   });
 
   it('action id registries cover note and research handler sets', () => {
