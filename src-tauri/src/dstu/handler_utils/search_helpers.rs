@@ -122,20 +122,19 @@ fn note_matches_prop_filters(note: &VfsNote, required_props: &[(String, String)]
     props_match_filters(note.props.as_ref(), required_props)
 }
 
-fn node_matches_prop_filters(node: &DstuNode, required_props: &[(String, String)]) -> bool {
-    let props = node
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("props"));
-    props_match_filters(props, required_props)
-}
-
 /// 搜索笔记
 pub fn search_notes(
     vfs_db: &Arc<VfsDatabase>,
     query: &str,
     options: &DstuListOptions,
 ) -> Result<Vec<DstuNode>, String> {
+    if options
+        .types
+        .as_ref()
+        .is_some_and(|types| !types.contains(&DstuNodeType::Note))
+    {
+        return Ok(Vec::new());
+    }
     let required_tags: Vec<String> = options
         .tags
         .as_ref()
@@ -149,13 +148,21 @@ pub fn search_notes(
     let has_tag_filter = !required_tags.is_empty();
     let required_props = normalize_prop_filters(options);
     let has_prop_filter = !required_props.is_empty();
+    let folder_item_ids: Option<HashSet<String>> = if let Some(ref folder_id) = options.folder_id {
+        let items = VfsFolderRepo::list_items_by_folder(vfs_db, Some(folder_id))
+            .map_err(|error| format!("list folder items: {error}"))?;
+        Some(items.into_iter().map(|item| item.item_id).collect())
+    } else {
+        None
+    };
+    let has_folder_filter = folder_item_ids.is_some();
 
     let limit = options.get_limit();
     let offset = options.get_offset();
     let mut results = Vec::new();
 
     // 无后置过滤时保持原有分页逻辑
-    if !has_tag_filter && !has_prop_filter {
+    if !has_tag_filter && !has_prop_filter && !has_folder_filter {
         let notes = VfsNoteRepo::list_notes(vfs_db, Some(query), limit, offset)
             .map_err(|e| e.to_string())?;
         for note in notes {
@@ -167,11 +174,6 @@ pub fn search_notes(
                         map.insert("snippet".to_string(), Value::String(snippet));
                     }
                     node.metadata = Some(metadata);
-                }
-            }
-            if let Some(ref types) = options.types {
-                if !types.contains(&node.node_type) {
-                    continue;
                 }
             }
             results.push(node);
@@ -192,6 +194,12 @@ pub fn search_notes(
         }
 
         for note in notes {
+            if folder_item_ids
+                .as_ref()
+                .is_some_and(|ids| !ids.contains(&note.id))
+            {
+                continue;
+            }
             let note_tags: std::collections::HashSet<String> =
                 note.tags.iter().map(|t| t.trim().to_lowercase()).collect();
             if !required_tags.iter().all(|t| note_tags.contains(t)) {
@@ -213,11 +221,6 @@ pub fn search_notes(
                         map.insert("snippet".to_string(), Value::String(snippet));
                     }
                     node.metadata = Some(metadata);
-                }
-            }
-            if let Some(ref types) = options.types {
-                if !types.contains(&node.node_type) {
-                    continue;
                 }
             }
             results.push(node);
@@ -841,6 +844,25 @@ pub fn search_all(
         None
     };
 
+    // Custom props exist only on notes. Route this query directly through the
+    // note search path so type/folder/property filtering all happen before its
+    // offset and limit; filtering a mixed, already-limited result set can miss
+    // a matching note that appears on a later page.
+    let required_props = normalize_prop_filters(options);
+    if !required_props.is_empty() {
+        if options
+            .get_type_filter()
+            .is_some_and(|node_type| node_type != DstuNodeType::Note)
+            || options
+                .types
+                .as_ref()
+                .is_some_and(|types| !types.contains(&DstuNodeType::Note))
+        {
+            return Ok(Vec::new());
+        }
+        return search_notes(vfs_db, query, options);
+    }
+
     if let Some(type_filter) = options.get_type_filter() {
         let mut typed_results = match type_filter {
             DstuNodeType::Note => search_notes(vfs_db, query, options),
@@ -921,13 +943,6 @@ pub fn search_all(
         results.extend(index_results);
     }
 
-    // 内容索引召回绕过了 search_notes 的分页过滤，统一在合并结果上再守一次，
-    // 确保 prop_filters 对所有返回路径生效。
-    let required_props = normalize_prop_filters(options);
-    if !required_props.is_empty() {
-        results.retain(|node| node_matches_prop_filters(node, &required_props));
-    }
-
     // 按更新时间排序（标题命中和内容命中统一排序）
     results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
@@ -975,5 +990,75 @@ mod tests {
             &note_with_props(None),
             &[("status".to_string(), "done".to_string())]
         ));
+    }
+
+    #[test]
+    fn note_prop_and_folder_filters_are_applied_before_limit() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = Arc::new(db);
+        let folder = crate::vfs::VfsFolder::new("Target folder".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).unwrap();
+
+        let target = VfsNoteRepo::create_note(
+            &db,
+            crate::vfs::VfsCreateNoteParams {
+                title: "Old target".to_string(),
+                content: "body".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+        VfsNoteRepo::set_note_props(&db, &target.id, serde_json::json!({ "status": "done" }))
+            .unwrap();
+        VfsFolderRepo::add_item_to_folder(
+            &db,
+            &crate::vfs::VfsFolderItem::new(
+                Some(folder.id.clone()),
+                "note".to_string(),
+                target.id.clone(),
+            ),
+        )
+        .unwrap();
+
+        // More than one internal page of newer matching notes outside the
+        // folder makes a filter-after-limit implementation return no result.
+        for index in 0..55 {
+            let note = VfsNoteRepo::create_note(
+                &db,
+                crate::vfs::VfsCreateNoteParams {
+                    title: format!("New outside {index:02}"),
+                    content: "body".to_string(),
+                    tags: vec![],
+                },
+            )
+            .unwrap();
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "status": "done" }))
+                .unwrap();
+        }
+        db.get_conn_safe()
+            .unwrap()
+            .execute(
+                "UPDATE notes SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = ?1",
+                [&target.id],
+            )
+            .unwrap();
+
+        let results = search_all(
+            &db,
+            "",
+            &DstuListOptions {
+                folder_id: Some(folder.id),
+                types: Some(vec![DstuNodeType::Note, DstuNodeType::MindMap]),
+                prop_filters: Some(vec![crate::dstu::types::DstuPropFilter {
+                    key: "status".to_string(),
+                    value: "done".to_string(),
+                }]),
+                limit: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, target.id);
     }
 }
