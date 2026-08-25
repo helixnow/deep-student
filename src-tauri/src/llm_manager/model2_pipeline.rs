@@ -1355,7 +1355,9 @@ mod tests {
     fn openai_responses_api_key_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, false)
             .expect_err("Responses EOF without a terminal event must fail");
-        assert!(error.to_string().contains("OpenAI Responses"));
+        // 非 Codex 的显式结束协议统一用中性 "LLM provider" 文案（兼容网关也走此路径）。
+        assert!(error.to_string().contains("LLM provider"));
+        assert!(error.to_string().contains("未收到完整结束标记"));
         assert!(!error.to_string().contains("OpenAI Codex"));
     }
 
@@ -1544,7 +1546,9 @@ mod tests {
         let sanitized = sanitize_request_body_for_audit(&body).to_string();
         assert!(!sanitized.contains("c2VjcmV0"));
         assert!(!sanitized.contains("provider-secret-state"));
-        assert!(sanitized.contains("base64 data"));
+        // image_url 键先被 debug_log_service 的 embedded_binary 整体脱敏吃掉，
+        // 不再落入 "[base64 data: ...]" 占位符分支。
+        assert!(sanitized.contains("embedded_binary"));
         assert!(sanitized.contains("[REDACTED]"));
     }
 
