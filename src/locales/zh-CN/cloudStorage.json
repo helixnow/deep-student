@@ -81,6 +81,8 @@
     "statusNotConfigured": "未加密",
     "placeholderConfigured": "已配置加密密码：留空保持现有密码不变，输入新密码则替换",
     "placeholderUnset": "当前未加密：输入密码以启用端到端加密",
+    "tooShort": "云端端到端加密密码至少需要 {{min}} 个字符（按 Unicode 码点计数，不能为空白）。短于此长度无法导出加密全保真 ZIP，不会保存。",
+    "storedPasswordRequired": "已开启云端端到端加密，但本机没有可用的备份密码。已拒绝继续，以免把无法整槽恢复的便携归档当成加密全保真。请重新填写云端加密密码后再试。",
     "description": "开启后，整包 ZIP 备份，以及记录级同步的变更记录、同步清单、删除标记，还有文件级对象（workspace 数据库、VFS blob、资产文件）都会使用 AES-256-GCM 端到端加密，云服务商无法读取内容。对象地址仍用明文内容哈希做去重；启用加密前已上传的明文遗留对象会被拒绝下载，需用同一密码重新同步以完成迁移。",
     "warning": "密码仅以加密形式（AES-256-GCM）保存在本机，不会上传。若遗忘则无法恢复任何已加密的云端备份。所有连接此云端的设备必须使用同一密码。",
     "disableAction": "停用端到端加密",
@@ -102,7 +104,9 @@
     "refreshStatus": "正在刷新状态...",
     "downloadCloud": "正在从云端下载...",
     "importZip": "正在导入 ZIP...",
-    "restoreDatabase": "正在恢复数据库..."
+    "restoreDatabase": "正在恢复数据库...",
+    "maintenanceBackup": "正在备份并上传到云端，请勿编辑学习数据或关闭应用",
+    "maintenanceRestore": "正在从云端恢复，请勿编辑学习数据或关闭应用"
   },
   
   "actions": {
@@ -149,6 +153,9 @@
     "checksum": "校验和",
     "note": "备注",
     "restore": "恢复此版本",
+    "portableArchive": "便携归档，不能整槽恢复",
+    "fullFidelity": "加密全保真，可整槽恢复",
+    "portableArchiveNotRestorable": "这份云端包是便携归档，不能替换当前数据槽。当前数据没有被改动。",
     "delete": "删除",
     "deleteConfirm": "确定要删除此版本吗？此操作不可撤销。",
     "current": "当前设备"
@@ -162,6 +169,7 @@
     "confirm": "开始备份",
     "success": "备份成功",
     "successDetail": "版本 {{version}} 已上传到云端",
+    "portableArchiveUploaded": "这次上传的是便携归档，换机整槽恢复会被拒绝。要得到可整槽恢复的云端包，请在两端配置同一云端端到端加密密码后重新「立即备份到云端」。",
     "pruned": "已自动清理 {{count}} 个旧版本"
   },
   
@@ -175,6 +183,10 @@
     "latest": "最新版本",
     "confirm": "开始恢复",
     "confirmTitle": "确认恢复",
+    "confirmVersion": "将恢复云端版本 {{version}}。",
+    "confirmKnownPortable": "这份云端包已标记为便携归档，整槽恢复会被拒绝，当前数据不会被改动。",
+    "confirmKnownFull": "这份云端包已标记为加密全保真，只有通过整槽校验后才会覆盖当前数据。",
+    "confirmUnknownKind": "这份云端包没有恢复种类标记（多半是接线前上传的）。导入后仍会先检查能否整槽；便携/部分归档会被拒绝，当前数据不会被改动。",
     "cancel": "取消",
     "success": "恢复成功",
     "successDetail": "版本 {{version}} 已下载到本地",
@@ -200,12 +212,18 @@
     "e2eePlaintextLegacyRejected": "云端存在启用加密前遗留的未加密数据，为防止端到端加密被静默降级已拒收，本地数据未被改动。处理办法：在仍持有这些数据的设备上填入相同的加密密码并执行一次上传同步（旧数据会被自动重新加密）；或暂时清除本机加密密码取回旧数据后，重新设置密码并执行一次完整上传。",
     "e2eeWrongPassword": "加密密码与该云端目录既有的加密数据不一致，操作已在写入前安全中止，本地与云端数据均未被改动。请核对并填入与其他设备一致的端到端加密密码后重试；如确要更换密码，请改用新的云端目录。",
     "e2eeMarkerCorrupted": "云端加密标记（.encryption-marker）已损坏或异常，无法确认加密密码与既有备份一致，已安全中止（fail-closed）。请按用户指南「数据管理与云同步」的排障说明人工检查该云端目录（必要时删除或重写该标记文件）后重试。",
+    "e2eePasswordRequired": "云端数据是端到端加密的，但本机还没有填写加密密码。操作已安全中止，本地与云端数据均未被改动。请到云同步设置中填入首次启用加密时设置的密码，然后重试。",
+    "partialArchiveNotSlotable": "这份备份是便携/部分归档，不能替换当前数据槽。当前数据没有被改动。若这是未配置云端端到端加密时上传的云端包，请在两端配置同一加密密码后重新「立即备份到云端」；或用「导出备份」并设置备份密码，得到可整槽恢复的加密全保真 ZIP。",
     "backupDatabaseFailed": "备份数据库失败: {{error}}",
     "packageZipFailed": "打包 ZIP 失败: {{error}}",
     "uploadFileFailed": "上传文件失败: {{error}}",
     "downloadBackupFailed": "下载备份失败: {{error}}",
     "importZipFailed": "导入 ZIP 失败: {{error}}",
     "restoreDatabaseFailed": "恢复数据库失败: {{error}}",
+    "restoreInsufficientSpace": "磁盘空间不足：需要 {{required}} GB，可用 {{available}} GB。当前数据没有被改动。请释放空间后重试。",
+    "missingWebdavConfig": "缺少 WebDAV 配置",
+    "missingS3Config": "缺少 S3 配置",
+    "missingFtpConfig": "缺少 FTP 配置",
     "unknown": "未知错误"
   },
   

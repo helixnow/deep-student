@@ -58,6 +58,9 @@ pub const INCREMENTAL_BACKUP_REMOVED_MESSAGE: &str =
 pub const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE: &str =
     "Legacy incremental backup cannot be restored; use a full backup or cloud sync";
 
+/// 便携/部分归档拒绝整槽恢复的稳定 code（文案仍可改语言）。
+pub const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE: &str = "E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE";
+
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
 

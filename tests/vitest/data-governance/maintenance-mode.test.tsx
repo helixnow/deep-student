@@ -75,6 +75,7 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/utils/cloudStorageApi')>()),
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
+  getCloudPlatformErrorI18nKey: () => undefined,
 }));
 
 vi.mock('@/hooks/useBackupJobListener', () => ({

@@ -25,7 +25,9 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{CloudStorage, CloudSyncManager, FileInfo};
+use deep_student_lib::cloud_storage::{
+    device_id_short_hash, CloudStorage, CloudSyncManager, FileInfo,
+};
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::sync::{
     BlobEntry, BlobsManifest, SyncDirection, SyncManager, WorkspaceEntry, WorkspacesManifest,
@@ -845,7 +847,8 @@ async fn r09_legacy_v1_marker_readable_upgraded_once_and_locks_wrong_password() 
     let upgraded = upgrader.read_encryption_marker().await.unwrap().unwrap();
     assert_eq!(upgraded.version, 2);
     assert_eq!(
-        upgraded.created_by_device, "device-legacy-writer",
+        upgraded.created_by_device,
+        device_id_short_hash("device-legacy-writer"),
         "升级不得改写首次写入者"
     );
     assert_eq!(

@@ -11,6 +11,29 @@ import { getErrorMessage } from './errorUtils';
 
 export const FTP_UNSUPPORTED_ON_ANDROID_CODE = 'E_FTP_UNSUPPORTED_ON_ANDROID';
 export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
+export const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT';
+export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
+  'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
+export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
+export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
+export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
+export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
+export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
+
+/**
+ * Whether an imported ZIP's job stats say the archive can replace the data slot.
+ *
+ * Missing stats (older backends) return true so `restoreBackup` still decides.
+ * `partial_archive` or explicit `restorable: false` must not start slot restore.
+ */
+export function isImportedArchiveSlotRestorable(
+  stats: { recovery_kind?: unknown; restorable?: unknown } | null | undefined,
+): boolean {
+  if (!stats || typeof stats !== 'object') return true;
+  if (stats.recovery_kind === 'partial_archive') return false;
+  if (stats.restorable === false) return false;
+  return true;
+}
 
 type ErrorWithCode = Error & { code?: string };
 
@@ -41,15 +64,41 @@ export function getCloudStorageErrorCode(error: unknown): string | undefined {
   if (envelope) return envelope.code;
 
   const record = asErrorRecord(error);
-  if (!record) return undefined;
-  if (typeof record.code === 'string') return record.code;
-  if (typeof record.errorCode === 'string') return record.errorCode;
+  if (record) {
+    if (typeof record.code === 'string') return record.code;
+    if (typeof record.errorCode === 'string') return record.errorCode;
 
-  const details = typeof record.details === 'object' && record.details !== null
-    ? record.details as Record<string, unknown>
-    : null;
-  if (typeof details?.code === 'string') return details.code;
-  if (typeof details?.errorCode === 'string') return details.errorCode;
+    const details = typeof record.details === 'object' && record.details !== null
+      ? record.details as Record<string, unknown>
+      : null;
+    if (typeof details?.code === 'string') return details.code;
+    if (typeof details?.errorCode === 'string') return details.errorCode;
+  }
+  return codeFromDiagnosticText(getErrorMessage(error));
+}
+
+function codeFromDiagnosticText(text: string): string | undefined {
+  if (text.includes(CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE)) {
+    return CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE;
+  }
+  if (text.includes(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE)) {
+    return STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_MARKER_CORRUPTED_CODE)) {
+    return SYNC_E2EE_MARKER_CORRUPTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_WRONG_PASSWORD_CODE)) {
+    return SYNC_E2EE_WRONG_PASSWORD_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE)) {
+    return SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE;
+  }
+  if (text.includes(SYNC_E2EE_PASSWORD_REQUIRED_CODE)) {
+    return SYNC_E2EE_PASSWORD_REQUIRED_CODE;
+  }
+  if (text.includes(PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE)) {
+    return PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE;
+  }
   return undefined;
 }
 
@@ -67,6 +116,10 @@ export type CloudPlatformErrorI18nKey =
   | 'cloudStorage:errors.ftpDisabledAndroid'
   | 'cloudStorage:errors.s3DisabledInBuild';
 
+export type CloudEncryptionErrorI18nKey =
+  | 'cloudStorage:encryption.tooShort'
+  | 'cloudStorage:encryption.storedPasswordRequired';
+
 /** Platform capability errors are localized exclusively by stable backend code. */
 export function getCloudPlatformErrorI18nKey(
   error: unknown,
@@ -76,6 +129,20 @@ export function getCloudPlatformErrorI18nKey(
       return 'cloudStorage:errors.ftpDisabledAndroid';
     case S3_UNSUPPORTED_IN_BUILD_CODE:
       return 'cloudStorage:errors.s3DisabledInBuild';
+    default:
+      return undefined;
+  }
+}
+
+/** Short-password / stored-password refusals prefer stable code, then message token. */
+export function getCloudEncryptionErrorI18nKey(
+  error: unknown,
+): CloudEncryptionErrorI18nKey | undefined {
+  switch (getCloudStorageErrorCode(error)) {
+    case CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE:
+      return 'cloudStorage:encryption.tooShort';
+    case STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE:
+      return 'cloudStorage:encryption.storedPasswordRequired';
     default:
       return undefined;
   }
@@ -469,6 +536,27 @@ export interface BackupVersion {
   appVersion?: string;
   /** 备注 */
   note?: string;
+  /**
+   * 导入后能否整槽恢复。旧云端清单没有该字段，按未知处理。
+   * `partial_archive` 表示便携/部分归档，不能替换数据槽。
+   */
+  recoveryKind?: 'disaster_recovery' | 'partial_archive' | string;
+}
+
+export function findCloudBackupVersion(
+  versionId: string | null | undefined,
+  versions: readonly BackupVersion[],
+  latest?: BackupVersion | null,
+): BackupVersion | undefined {
+  if (!versionId) return undefined;
+  return versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined);
+}
+
+export function isKnownPortableCloudBackup(
+  version: Pick<BackupVersion, 'recoveryKind'> | null | undefined,
+): boolean {
+  return version?.recoveryKind === 'partial_archive';
 }
 
 /** 同步状态 */
@@ -656,7 +744,8 @@ export async function uploadBackup(
   config: CloudStorageConfig,
   zipPath: string,
   appVersion?: string,
-  note?: string
+  note?: string,
+  recoveryKind?: string,
 ): Promise<UploadResult> {
   try {
     return await invoke<UploadResult>('cloud_sync_upload', {
@@ -664,6 +753,7 @@ export async function uploadBackup(
       zipPath,
       appVersion,
       note,
+      recoveryKind,
     });
   } catch (error: unknown) {
     throw normalizeCloudStorageError(error);

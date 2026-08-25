@@ -81,6 +81,8 @@
     "statusNotConfigured": "Not encrypted",
     "placeholderConfigured": "Password configured: leave blank to keep it, enter a new password to replace it",
     "placeholderUnset": "Not encrypted: enter a password to enable end-to-end encryption",
+    "tooShort": "The cloud end-to-end encryption password must be at least {{min}} Unicode characters (code points, not blank). Shorter passwords cannot export an encrypted full-fidelity ZIP and will not be saved.",
+    "storedPasswordRequired": "Cloud end-to-end encryption is on, but this device has no usable backup password. The export was refused so a portable archive is not treated as a full-fidelity backup. Re-enter the cloud encryption password and try again.",
     "description": "When enabled, full ZIP backups, record-level sync payloads (change records, sync manifests, deletion markers), and file-level objects (workspace databases, VFS blobs, and asset files) are end-to-end encrypted with AES-256-GCM and cannot be read by the cloud provider. Object keys still use the plaintext content hash for deduplication. Legacy plaintext objects uploaded before encryption was enabled are rejected on download; re-sync with the same password to migrate them.",
     "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password.",
     "disableAction": "Disable end-to-end encryption",
@@ -102,7 +104,9 @@
     "refreshStatus": "Refreshing status...",
     "downloadCloud": "Downloading from cloud...",
     "importZip": "Importing ZIP...",
-    "restoreDatabase": "Restoring database..."
+    "restoreDatabase": "Restoring database...",
+    "maintenanceBackup": "Backing up and uploading to the cloud. Do not edit study data or close the app.",
+    "maintenanceRestore": "Restoring from the cloud. Do not edit study data or close the app."
   },
   
   "actions": {
@@ -149,6 +153,9 @@
     "checksum": "Checksum",
     "note": "Note",
     "restore": "Restore this version",
+    "portableArchive": "Portable archive, cannot replace the data slot",
+    "fullFidelity": "Encrypted full-fidelity, can replace the data slot",
+    "portableArchiveNotRestorable": "This cloud package is a portable archive and cannot replace the current data slot. Your current data was not changed.",
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this version? This action cannot be undone.",
     "current": "Current device"
@@ -162,6 +169,7 @@
     "confirm": "Start Backup",
     "success": "Backup Successful",
     "successDetail": "Version {{version}} has been uploaded to cloud",
+    "portableArchiveUploaded": "This upload is a portable archive. A slot restore on another device will be refused. To get a cloud package that can replace the data slot, configure the same cloud end-to-end encryption password on both devices and run Backup to Cloud Now again.",
     "pruned": "Automatically cleaned up {{count}} old version(s)"
   },
   
@@ -175,6 +183,10 @@
     "latest": "Latest version",
     "confirm": "Start Restore",
     "confirmTitle": "Confirm Restore",
+    "confirmVersion": "This will restore cloud version {{version}}.",
+    "confirmKnownPortable": "This cloud package is marked as a portable archive. Slot restore will be refused and your current data will not be changed.",
+    "confirmKnownFull": "This cloud package is marked as encrypted full-fidelity. Local data is overwritten only after slot-restore validation succeeds.",
+    "confirmUnknownKind": "This cloud package has no restore-kind marker (usually uploaded before this wiring). Import still checks whether it can replace the slot; a portable or partial archive is refused and current data is left unchanged.",
     "cancel": "Cancel",
     "success": "Restore Successful",
     "successDetail": "Version {{version}} has been downloaded",
@@ -200,12 +212,18 @@
     "e2eePlaintextLegacyRejected": "The cloud folder contains unencrypted data left over from before encryption was enabled. It was rejected to prevent a silent end-to-end encryption downgrade; your local data was not touched. To fix this: on a device that still holds this data, enter the same encryption password and run an upload sync (the legacy data is re-encrypted automatically), or temporarily clear the local encryption password to fetch the legacy data, then set the password again and run a full upload.",
     "e2eeWrongPassword": "The encryption password does not match the encrypted data already in this cloud folder. The operation stopped safely before writing anything; neither local nor cloud data was changed. Enter the same end-to-end encryption password used by your other devices and retry, or switch to a new cloud folder if you really intend to change the password.",
     "e2eeMarkerCorrupted": "The cloud encryption marker (.encryption-marker) is corrupted or invalid, so password consistency could not be verified and the operation stopped safely (fail-closed). Inspect the cloud folder manually as described in the \"Data Management & Cloud Sync\" user guide (delete or rewrite the marker file if necessary), then retry.",
+    "e2eePasswordRequired": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. The operation stopped safely; neither local nor cloud data was changed. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
+    "partialArchiveNotSlotable": "This backup is a portable or partial archive and cannot replace the current data slot. Your current data was not changed. If this is a cloud package uploaded without a cloud end-to-end encryption password, configure the same password on both devices and run Backup to Cloud Now again; or use Export Backup with a backup password to get an encrypted full-fidelity ZIP that can restore the slot.",
     "backupDatabaseFailed": "Database backup failed: {{error}}",
     "packageZipFailed": "ZIP packaging failed: {{error}}",
     "uploadFileFailed": "File upload failed: {{error}}",
     "downloadBackupFailed": "Backup download failed: {{error}}",
     "importZipFailed": "ZIP import failed: {{error}}",
     "restoreDatabaseFailed": "Database restore failed: {{error}}",
+    "restoreInsufficientSpace": "Not enough disk space: {{required}} GB needed, {{available}} GB available. Your current data was not changed. Free up space and try again.",
+    "missingWebdavConfig": "WebDAV configuration is missing",
+    "missingS3Config": "S3 configuration is missing",
+    "missingFtpConfig": "FTP configuration is missing",
     "unknown": "Unknown error"
   },
   
