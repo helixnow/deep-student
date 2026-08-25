@@ -591,6 +591,31 @@ async fn get_device_tombstone_bytes(
     Ok(None)
 }
 
+/// 每设备 tombstone 清单 PUT 后 GET 回读。`put` 成功不等于对象完整落地；
+/// 短写会把错误删除集当已发布。不复用 `SyncManager::put_bytes_and_reread`，
+/// 以免把该 helper 抬成 pub 并拉宽模块边界。
+async fn put_tombstone_manifest_and_reread(
+    storage: &dyn CloudStorage,
+    key: &str,
+    payload: &[u8],
+    context: &str,
+) -> Result<(), SyncError> {
+    storage
+        .put(key, payload)
+        .await
+        .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
+    match storage.get(key).await {
+        Ok(Some(read_back)) if read_back == payload => Ok(()),
+        Ok(Some(_)) => Err(SyncError::Network(format!(
+            "{context} 上传后回读不一致，已停止并不得报成功"
+        ))),
+        Ok(None) => Err(SyncError::Network(format!(
+            "{context} 上传后对象不存在，已停止并不得报成功"
+        ))),
+        Err(e) => Err(SyncError::Network(format!("{context} 上传后回读失败: {e}"))),
+    }
+}
+
 async fn delete_legacy_device_tombstone(
     storage: &dyn CloudStorage,
     hashed_key: &str,
@@ -1404,10 +1429,7 @@ pub async fn upload_blob_tombstones(
         .map_err(|e| SyncError::Database(format!("序列化 blob tombstone 失败: {}", e)))?;
     let payload = codec.encode(&bytes)?;
     let key = blob_device_tombstone_key(device_id);
-    storage
-        .put(&key, &payload)
-        .await
-        .map_err(|e| SyncError::Network(format!("上传 blob tombstone 失败: {}", e)))?;
+    put_tombstone_manifest_and_reread(storage, &key, &payload, "blob tombstone 清单").await?;
     delete_legacy_device_tombstone(storage, &key, &blob_device_tombstone_legacy_key(device_id))
         .await;
     Ok(())
@@ -1443,10 +1465,7 @@ pub async fn upload_asset_tombstones(
         .map_err(|e| SyncError::Database(format!("序列化 asset tombstone 失败: {}", e)))?;
     let payload = codec.encode(&bytes)?;
     let key = asset_device_tombstone_key(device_id);
-    storage
-        .put(&key, &payload)
-        .await
-        .map_err(|e| SyncError::Network(format!("上传 asset tombstone 失败: {}", e)))?;
+    put_tombstone_manifest_and_reread(storage, &key, &payload, "asset tombstone 清单").await?;
     delete_legacy_device_tombstone(storage, &key, &asset_device_tombstone_legacy_key(device_id))
         .await;
     Ok(())
@@ -1475,10 +1494,7 @@ pub async fn upload_workspace_tombstones(
         .map_err(|e| SyncError::Database(format!("序列化 workspace tombstone 失败: {}", e)))?;
     let payload = codec.encode(&bytes)?;
     let key = workspace_device_tombstone_key(device_id);
-    storage
-        .put(&key, &payload)
-        .await
-        .map_err(|e| SyncError::Network(format!("上传 workspace tombstone 失败: {}", e)))?;
+    put_tombstone_manifest_and_reread(storage, &key, &payload, "workspace tombstone 清单").await?;
     delete_legacy_device_tombstone(
         storage,
         &key,
@@ -1952,6 +1968,153 @@ mod tests {
                 etag: None,
             }))
         }
+    }
+
+    /// 只污染每设备 tombstone 清单 PUT；不可变事件路径保持完整，避免事件回验先拦住。
+    struct CorruptTombstoneManifestPut {
+        inner: MemoryStorage,
+        persist: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for CorruptTombstoneManifestPut {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupt-tombstone-manifest"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            if key.starts_with("data_governance/tombstones/") {
+                if !self.persist {
+                    return Ok(());
+                }
+                return CloudStorage::put(&self.inner, key, b"corrupted-tombstone-manifest").await;
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    fn sample_blob_tombstones(device_id: &str) -> BlobTombstones {
+        let mut manifest = BlobTombstones::default();
+        manifest.entries.insert(
+            "aa".repeat(32),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-01T00:00:00Z".to_string(),
+                device_id: device_id.to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        manifest
+    }
+
+    #[test]
+    fn per_device_tombstone_manifests_reread_after_put() {
+        let source = include_str!("tombstone.rs");
+        assert!(
+            source.contains("put_tombstone_manifest_and_reread"),
+            "每设备 tombstone 清单必须 GET 回读，不得只认 put 成功"
+        );
+        assert!(
+            source.contains("blob tombstone 清单"),
+            "upload_blob_tombstones 必须走回读闸"
+        );
+        assert!(
+            source.contains("asset tombstone 清单"),
+            "upload_asset_tombstones 必须走回读闸"
+        );
+        assert!(
+            source.contains("workspace tombstone 清单"),
+            "upload_workspace_tombstones 必须走回读闸"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_blob_tombstones_fails_when_reread_mismatches() {
+        let storage = CorruptTombstoneManifestPut {
+            inner: MemoryStorage::default(),
+            persist: true,
+        };
+        let device = "r12-tomb-reread-mismatch-device";
+        let legacy = blob_device_tombstone_legacy_key(device);
+        storage
+            .inner
+            .put(&legacy, b"{\"entries\":{},\"updated_at\":\"legacy\"}")
+            .await
+            .unwrap();
+
+        let error = upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device,
+            sample_blob_tombstones(device),
+        )
+        .await
+        .expect_err("每设备 tombstone 清单回读不一致必须 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains("blob tombstone 清单 上传后回读不一致"),
+            "拒绝原因必须指向清单回读，实际: {error}"
+        );
+        assert!(
+            storage
+                .inner
+                .get(&blob_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .is_some(),
+            "损坏的最终对象可保留供对照，但不得报成功"
+        );
+        assert!(
+            storage.inner.get(&legacy).await.unwrap().is_some(),
+            "回读失败不得删除旧明文清单"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_blob_tombstones_fails_when_missing_after_put() {
+        let storage = CorruptTombstoneManifestPut {
+            inner: MemoryStorage::default(),
+            persist: false,
+        };
+        let device = "r12-tomb-reread-missing-device";
+        let error = upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device,
+            sample_blob_tombstones(device),
+        )
+        .await
+        .expect_err("每设备 tombstone 清单上传后缺失必须 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains("blob tombstone 清单 上传后对象不存在"),
+            "拒绝原因必须指向清单缺失，实际: {error}"
+        );
+        assert!(
+            storage
+                .inner
+                .get(&blob_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .is_none(),
+            "假装成功却未落地的对象不得被当成已发布"
+        );
     }
 
     #[test]
