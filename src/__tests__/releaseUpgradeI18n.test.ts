@@ -11,7 +11,10 @@ type ReuseCase = {
 const REUSE_CASES: readonly ReuseCase[] = [
   {
     source: 'src/components/ModernSidebar.tsx',
-    keys: ['sidebar:hide_workbench_mode', 'sidebar:show_workbench_mode'],
+    keys: [
+      'sidebar:navigation.hide_workbench_mode',
+      'sidebar:navigation.show_workbench_mode',
+    ],
     removedKeys: ['sidebar:actions.hide_workbench_mode', 'sidebar:actions.show_workbench_mode'],
   },
   {
