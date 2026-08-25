@@ -146,7 +146,7 @@ describe('session sidebar typography alignment', () => {
     expect(regularItemRow).toHaveClass('hover:bg-[var(--sidebar-study-hover)]');
     expect(regularItem).toHaveClass('font-normal');
     expect(regularItem).toHaveClass('hover:font-normal');
-    expect(regularItem).toHaveClass('text-[13px]');
+    expect(regularItem).toHaveClass('text-ui');
     expect(regularItem).not.toHaveClass('font-semibold');
 
     const selectedItem = screen.getByText('Selected item');
@@ -157,7 +157,7 @@ describe('session sidebar typography alignment', () => {
     expect(selectedItemRow).not.toHaveClass('ring-1');
     expect(selectedItem).toHaveClass('font-normal');
     expect(selectedItem).toHaveClass('hover:font-normal');
-    expect(selectedItem).toHaveClass('text-[13px]');
+    expect(selectedItem).toHaveClass('text-ui');
     expect(selectedItem).not.toHaveClass('font-medium');
   });
 
