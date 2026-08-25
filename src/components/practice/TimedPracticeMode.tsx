@@ -167,9 +167,9 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   }, [markedQuestionIds, activeSession, questions]);
   
   // 开始练习
-  const handleStart = useCallback(async () => {
+  const startWithConfig = useCallback(async (duration: number, count: number) => {
     try {
-      const session = await startTimedPractice(examId, durationMinutes, questionCount);
+      const session = await startTimedPractice(examId, duration, count);
       // 优先以后端 started_at 为基准，避免请求耗时挤占答题时间
       const startedMs = Date.parse(session.started_at);
       const baseMs = Number.isFinite(startedMs) ? startedMs : Date.now();
@@ -182,7 +182,25 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('timed.startError'));
     }
-  }, [examId, durationMinutes, questionCount, startTimedPractice, onStart, t]);
+  }, [examId, startTimedPractice, onStart, t]);
+
+  const handleStart = useCallback(async () => {
+    await startWithConfig(durationMinutes, questionCount);
+  }, [startWithConfig, durationMinutes, questionCount]);
+
+  // 交卷后的会话仍在 store 里（exam 维度门禁过），用于配置页展示上轮总结
+  const lastFinishedSession = activeSession?.is_submitted ? activeSession : null;
+
+  // 再来一轮：沿用上轮的时长与题量重新抽题开始
+  const handleRestartLastConfig = useCallback(async () => {
+    if (!lastFinishedSession) return;
+    setDurationMinutes(lastFinishedSession.duration_minutes);
+    setQuestionCount(lastFinishedSession.question_count);
+    await startWithConfig(
+      lastFinishedSession.duration_minutes,
+      lastFinishedSession.question_count,
+    );
+  }, [lastFinishedSession, startWithConfig]);
 
   useEffect(() => {
     if (!activeSession || activeSession.is_submitted || activeSession.is_timeout) {
@@ -255,6 +273,46 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 px-0 sm:px-6">
+          {/* 上轮总结 + 再来一轮（Quizlet 式练习闭环：结束不落回冷启动配置页） */}
+          {lastFinishedSession && (
+            <div
+              data-testid="timed-last-result"
+              className="ui-rise-in space-y-2.5 rounded-md border border-primary/20 bg-primary/5 p-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <CheckCircle size={16} className="text-primary" />
+                <span className="text-sm font-medium">{t('timed.lastResultTitle')}</span>
+                {lastFinishedSession.is_timeout && (
+                  <Badge variant="secondary" className="gap-1 text-warning">
+                    <WarningCircle size={12} />
+                    {t('timed.lastResultTimeout')}
+                  </Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground tabular-nums">
+                {t('timed.lastResultSummary', {
+                  answered: lastFinishedSession.answered_count,
+                  total: lastFinishedSession.question_count,
+                  correct: lastFinishedSession.correct_count,
+                  rate: lastFinishedSession.answered_count > 0
+                    ? Math.round(
+                        (lastFinishedSession.correct_count / lastFinishedSession.answered_count) * 100,
+                      )
+                    : 0,
+                })}
+              </p>
+              <DsButton
+                variant="outline"
+                size="sm"
+                disabled={isLoadingPractice}
+                onClick={() => void handleRestartLastConfig()}
+                className="w-full"
+              >
+                <Play size={14} className="mr-1.5" />
+                {t('timed.anotherRound')}
+              </DsButton>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="duration">{t('timed.duration')}</Label>

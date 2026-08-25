@@ -159,6 +159,19 @@
   flex-shrink: 0;
 }
 
+/* 窄屏：进度环与操作区改为纵向堆叠，避免环压住主 CTA 的触控区 */
+@media (max-width: 420px) {
+  .wb-fcx-hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wb-fcx-hero-ring {
+    display: flex;
+    justify-content: center;
+  }
+}
+
 .wb-fcx-hero-main {
   flex: 1;
   min-width: 200px;
@@ -221,6 +234,21 @@
   padding: 9px 18px;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* 触屏主 CTA 满足 44px 触控目标；窄屏占满一行不与进度环挤在同一带 */
+@media (pointer: coarse) {
+  .wb-fcx-cta {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 420px) {
+  .wb-fcx-cta {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
 }
 
 .wb-fcx-chip {
@@ -303,6 +331,40 @@
   border-radius: 999px;
   background: hsl(var(--wb-fcx-green) / 0.12);
   color: hsl(var(--wb-fcx-green));
+}
+
+/* 未完成态不用「完成绿」，避免空库/无到期被读成已完成 */
+.wb-fcx-empty-icon[data-tone='idle'] {
+  background: hsl(var(--wb-fcx-blue) / 0.12);
+  color: hsl(var(--wb-fcx-blue));
+}
+
+.wb-fcx-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+@media (pointer: coarse) {
+  .wb-fcx-empty-cta {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 420px) {
+  .wb-fcx-empty-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wb-fcx-empty-cta {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
 }
 
 /* ==== 统计屏布局 ======================================================= */

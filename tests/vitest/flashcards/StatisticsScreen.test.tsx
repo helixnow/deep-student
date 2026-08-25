@@ -92,6 +92,17 @@ describe('StatisticsScreen', () => {
     expect(mocks.getStats).toHaveBeenCalledTimes(2);
   });
 
+  // 2026-08 修复回归：调度设置读写独立的 scheduler_config 命令，
+  // 统计加载失败时必须保持可用（此前整块 UI 被 stats 分支一起拖垮）。
+  it('keeps scheduler settings reachable when statistics loading fails', async () => {
+    mocks.getStats.mockRejectedValueOnce(new Error('stats backend is offline'));
+
+    render(<StatisticsScreen />);
+    await screen.findByRole('alert');
+
+    expect(screen.getByTestId('fsrs-scheduler-settings')).toBeInTheDocument();
+  });
+
   it('refreshes when the FSRS statistics domain event is dispatched', async () => {
     mocks.getStats
       .mockResolvedValueOnce(firstStats)

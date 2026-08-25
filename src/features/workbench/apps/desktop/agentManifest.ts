@@ -74,15 +74,15 @@ import {
   isNotesWorkspaceResourceType,
   resourceTypeToAppTypeId,
 } from '../content/typeMap';
+import { TITLEBAR_HEIGHT } from '../../core/metrics';
 
 export const DESKTOP_TYPE_ID = 'desktop';
 
 /** 观察投影上限（对齐 files 的 80 窗/60 应用截断纪律） */
 const MAX_OBSERVED_WINDOWS = 80;
 const MAX_OBSERVED_APPS = 60;
-/** moveWindow 钳制：窗口至少露出的边缘宽度 / 标题栏高度（对齐 windowStore） */
+/** moveWindow 钳制：窗口至少露出的边缘宽度（对齐 windowStore） */
 const MIN_VISIBLE_EDGE = 48;
-const TITLEBAR_HEIGHT = 38;
 const FALLBACK_MIN_SIZE = { w: 200, h: 150 } as const;
 /** tileAll 语义上限：一次平铺最多 4 扇窗 */
 const MAX_TILED_WINDOWS = 4;
@@ -97,11 +97,14 @@ const RESOURCE_KEY_REQUIRED_TYPE_IDS = new Set([
 ]);
 
 type DesktopSnapZone =
-  | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br' | 'maximized' | 'floating';
+  | 'left' | 'right' | 'top' | 'bottom'
+  | 'tl' | 'tr' | 'bl' | 'br' | 'maximized' | 'floating';
 
 const ZONE_TO_MODE: Record<DesktopSnapZone, DisplayMode> = {
   left: 'tiled-left',
   right: 'tiled-right',
+  top: 'tiled-top',
+  bottom: 'tiled-bottom',
   tl: 'tiled-tl',
   tr: 'tiled-tr',
   bl: 'tiled-bl',
@@ -113,6 +116,8 @@ const ZONE_TO_MODE: Record<DesktopSnapZone, DisplayMode> = {
 const MODE_TO_ZONE: Record<DisplayMode, DesktopSnapZone> = {
   'tiled-left': 'left',
   'tiled-right': 'right',
+  'tiled-top': 'top',
+  'tiled-bottom': 'bottom',
   'tiled-tl': 'tl',
   'tiled-tr': 'tr',
   'tiled-bl': 'bl',
@@ -122,7 +127,7 @@ const MODE_TO_ZONE: Record<DisplayMode, DesktopSnapZone> = {
 };
 
 const SNAP_ZONES: DesktopSnapZone[] = [
-  'left', 'right', 'tl', 'tr', 'bl', 'br', 'maximized', 'floating',
+  'left', 'right', 'top', 'bottom', 'tl', 'tr', 'bl', 'br', 'maximized', 'floating',
 ];
 
 export function desktopWindowRef(windowId: string): string {

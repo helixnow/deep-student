@@ -325,6 +325,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   // 虚拟化滚动容器（CustomScrollArea 的 viewport）
   const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null);
 
+  // 面板根节点：快捷键门禁用它判定承载环境（legacy 页面 vs workbench 窗口）
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
+
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 
@@ -541,7 +544,11 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       ?.scrollIntoView({ block: 'nearest' });
   }, [focusedItemId]);
 
-  // 键盘快捷键（仅 Todo 页面、非输入态生效）
+  // 键盘快捷键（非输入态生效）。作用域门禁分两种承载环境：
+  // - legacy 页面：currentView === 'todo'；
+  // - workbench 窗口（祖先带 data-wb-sys-app="todo"，见 TodoAppWindow）：
+  //   legacy currentView 恒不为 'todo'，改为要求事件发生在本面板所在的
+  //   聚焦窗口内（窗壳 data-focused 仅聚焦时存在，见 WindowShell）。
   useEffect(() => {
     const moveFocus = (delta: number) => {
       const ids = visibleRowIdsRef.current;
@@ -559,8 +566,16 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (useViewStore.getState().currentView !== 'todo') return;
       const target = e.target as HTMLElement | null;
+      const wbHost = panelRootRef.current?.closest<HTMLElement>('[data-wb-sys-app="todo"]');
+      if (wbHost) {
+        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+        const scope = windowShell ?? wbHost;
+        if (!target || !scope.contains(target)) return;
+      } else if (useViewStore.getState().currentView !== 'todo') {
+        return;
+      }
       if (
         target &&
         (target.tagName === 'INPUT' ||
@@ -825,7 +840,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   return (
     // h-full：MobileSlidingLayout 的内容窗格是普通块级容器（非 flex），flex-1 在其中不生效，
     // 高度会塌缩成内容高度，导致移动端详情覆盖层（absolute inset-0）跟着变矮
-    <div className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
+    <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部工具栏 */}

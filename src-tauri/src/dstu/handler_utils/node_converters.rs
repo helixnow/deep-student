@@ -180,6 +180,8 @@ pub fn note_to_dstu_node(note: &VfsNote) -> DstuNode {
     .with_metadata(serde_json::json!({
         "isFavorite": note.is_favorite,
         "tags": note.tags,
+        // 自定义键值属性（V20260824）：无属性时为 null，前端按缺省处理
+        "props": note.props,
     }))
 }
 

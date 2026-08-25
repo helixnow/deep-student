@@ -57,6 +57,9 @@ function projectInstance(typeId: string, inst: ProjectionInstance): void {
     instanceKey: inst.instanceKey,
     title: inst.title,
     initialFrame: inst.initialFrame,
+    // 投射是业务副作用而非用户显式开窗：后台出现，不打断焦点窗里的操作
+    // （用户从 Dock 主动打开仍走 launch → 正常聚焦）
+    background: true,
   });
 }
 

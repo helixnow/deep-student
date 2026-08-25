@@ -328,9 +328,11 @@ export const SessionRow: React.FC<{
               </DsButton>
             </CommonTooltip>
           )}
-          {group === 'attention' && session.pausedTasks === 0 && (
+          {/* 只要存在失败分段就常显重试入口（此前附带 pausedTasks === 0 的隐藏
+              条件：失败 + 暂停并存的会话在行内找不到重试，只能展开后再找） */}
+          {session.failedTasks > 0 && (
             <CommonTooltip content={t('taskDashboard.retryFailed')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0">
+              <DsButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="w-6 h-6 p-0" aria-label={t('taskDashboard.retryFailed')}>
                 <ArrowCounterClockwise size={12} />
               </DsButton>
             </CommonTooltip>
@@ -402,7 +404,7 @@ export const SessionRow: React.FC<{
                 <DownloadSimple size={14} />{t('taskDashboard.exportApkg')}
               </DsButton>
             )}
-            {group === 'attention' && (
+            {session.failedTasks > 0 && (
               <DsButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
                 <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
               </DsButton>

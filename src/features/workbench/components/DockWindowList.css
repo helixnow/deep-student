@@ -68,6 +68,21 @@
   pointer-events: none;
 }
 
+/* 应用名头部：触屏长按开列表时的应用名可见途径（tooltip 触屏等价） */
+.wb-docklist-header {
+  padding: 2px 8px 5px;
+  border-bottom: 1px solid var(--wb-glass-border);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--wb-titlebar-fg, inherit);
+  opacity: 0.78;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .wb-docklist-items-scroll {
   max-height: calc(100vh - 48px);
   min-height: 0;

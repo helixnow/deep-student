@@ -20,6 +20,9 @@ export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const VOLUME_STORAGE_KEY = 'dstu-media-player-volume';
 const RATE_STORAGE_KEY = 'dstu-media-player-rate';
 
+/** 播放进度写入 React state 的最小间隔（约 10Hz，避免 60fps 全量重渲染） */
+export const PROGRESS_COMMIT_INTERVAL_MS = 100;
+
 interface StoredVolume {
   volume: number;
   muted: boolean;
@@ -195,14 +198,20 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     };
   }, [src]);
 
-  // 播放中以 rAF 平滑刷新进度（timeupdate 仅约 4Hz，细进度条上会明显跳动）
+  // 播放中刷新进度：timeupdate 仅约 4Hz（细进度条明显跳动），rAF 又是 60Hz
+  // 的 React 重渲染（进度条/时间标签整棵子树每帧 render）。折中为 ~10Hz：
+  // 视觉上足够平滑，渲染成本降为 rAF 直驱的 1/6。
   useEffect(() => {
     if (!isPlaying) return;
     let frame = 0;
-    const tick = () => {
-      const el = mediaRef.current;
-      if (el) {
-        setCurrentTime(el.currentTime);
+    let lastCommit = 0;
+    const tick = (now: number) => {
+      if (now - lastCommit >= PROGRESS_COMMIT_INTERVAL_MS) {
+        lastCommit = now;
+        const el = mediaRef.current;
+        if (el) {
+          setCurrentTime(el.currentTime);
+        }
       }
       frame = requestAnimationFrame(tick);
     };

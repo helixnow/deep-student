@@ -20,6 +20,7 @@ export type {
   
   // 文档类型
   MindMapMeta,
+  MindMapSheetMeta,
   DocumentMeta,
   MindMapDocument,
   DocumentSettings,

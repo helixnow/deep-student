@@ -16,6 +16,7 @@ import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import { isStoreSubagentSession } from '../subagentSession';
+import { rememberPermissionPreset } from '../session/permissionPresetDefaults';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -380,6 +381,8 @@ export function createSessionActions(
           const sessionId = getState().sessionId;
           if (!sessionId) return;
           await invoke('chat_v2_set_permission_preset', { sessionId, preset });
+          // 记住上次选择的安全档作为新会话默认（高权限档不记忆，见模块注释）
+          rememberPermissionPreset(preset);
           const prevMeta = getState().sessionMetadata ?? {};
           set({
             permissionPreset: preset,

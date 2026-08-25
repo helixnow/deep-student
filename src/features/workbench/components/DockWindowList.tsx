@@ -395,6 +395,12 @@ export function DockWindowList({
         onAnimationEnd={handleSurfaceAnimationEnd}
       >
         <div className="wb-docklist-arrow" aria-hidden />
+        {/* 应用名头部：触屏无 hover tooltip，长按开列表时由此提供应用名
+            （a11y 清单 §4 tooltip 触屏等价）；可访问名已由 role=menu 的
+            aria-label 提供，视觉头部对 AT 隐藏避免重复播报 */}
+        <div className="wb-docklist-header" aria-hidden data-testid="wb-docklist-header">
+          {appLabel}
+        </div>
         <CustomScrollArea
           className="wb-docklist-items-scroll"
           fullHeight={false}

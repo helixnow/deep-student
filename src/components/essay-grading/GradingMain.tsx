@@ -9,6 +9,7 @@ import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import type { EssayTextStats } from '@/essay-grading/textStats';
+import type { SuggestionChange } from '@/essay-grading/suggestionAnchors';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 
@@ -68,8 +69,14 @@ interface GradingMainProps {
   /** 重试回调 */
   onRetry?: () => void;
   isPartialResult?: boolean;
-  /** 采纳批改建议：应用一处修改到原文 */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 采纳批改建议：应用一处修改到原文（前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议（反向锚定替换） */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合（详情卡据此渲染已采纳态） */
+  appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 把当前轮批改结果存为笔记 */
+  onSaveAsNote?: () => void;
   /** 把批改结果送进制卡链路 */
   onGenerateCards?: () => void;
   isGeneratingCards?: boolean;
@@ -148,6 +155,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onRetry,
   isPartialResult,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
+  onSaveAsNote,
   onGenerateCards,
   isGeneratingCards,
   currentRound,
@@ -263,6 +273,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onRetry={onRetry}
       isPartialResult={isPartialResult}
       onApplySuggestion={onApplySuggestion}
+      onUndoSuggestion={onUndoSuggestion}
+      appliedSuggestionKeys={appliedSuggestionKeys}
+      onSaveAsNote={onSaveAsNote}
       onGenerateCards={onGenerateCards}
       isGeneratingCards={isGeneratingCards}
       currentRound={currentRound}

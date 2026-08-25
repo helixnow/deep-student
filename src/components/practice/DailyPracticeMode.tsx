@@ -61,6 +61,34 @@ const getFirstDayOfMonth = (year: number, month: number): number => {
   return new Date(year, month - 1, 1).getDay();
 };
 
+// ========== 每日目标持久化（按题目集，关闭重开恢复） ==========
+const DAILY_TARGET_STORAGE_PREFIX = 'qbank:dailyTarget:';
+const DEFAULT_DAILY_TARGET = 10;
+
+export const normalizeDailyTarget = (value: number): number => {
+  if (!Number.isFinite(value)) return DEFAULT_DAILY_TARGET;
+  return Math.max(5, Math.min(50, Math.round(value)));
+};
+
+export function readStoredDailyTarget(examId: string): number {
+  try {
+    const raw = localStorage.getItem(`${DAILY_TARGET_STORAGE_PREFIX}${examId}`);
+    if (raw == null) return DEFAULT_DAILY_TARGET;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? normalizeDailyTarget(parsed) : DEFAULT_DAILY_TARGET;
+  } catch {
+    return DEFAULT_DAILY_TARGET;
+  }
+}
+
+export function writeStoredDailyTarget(examId: string, target: number): void {
+  try {
+    localStorage.setItem(`${DAILY_TARGET_STORAGE_PREFIX}${examId}`, String(target));
+  } catch {
+    // localStorage 不可用时静默忽略（隐私模式等）
+  }
+}
+
 export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   examId,
   onStart,
@@ -83,10 +111,18 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     ? checkInCalendar
     : null;
   
-  // 配置状态
-  const [dailyTarget, setDailyTarget] = useState(10);
+  // 配置状态（目标按题目集持久化，重开恢复上次设置）
+  const [dailyTarget, setDailyTarget] = useState(() => readStoredDailyTarget(examId));
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const calendarRequestSeqRef = useRef(0);
+
+  // 题目集切换时恢复该题目集的目标；目标变化时落盘
+  useEffect(() => {
+    setDailyTarget(readStoredDailyTarget(examId));
+  }, [examId]);
+  useEffect(() => {
+    writeStoredDailyTarget(examId, dailyTarget);
+  }, [examId, dailyTarget]);
   
   // 日历状态
   const today = new Date();
@@ -94,17 +130,18 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   const [calendarMonth, setCalendarMonth] = useState(today.getMonth() + 1);
   
   // 组件层按请求代际抑制过期错误，避免旧重试覆盖新题目集/月度状态。
+  // 达标判定跟随用户目标（此前后端硬编码 10 题，目标 5 做满 5 题也不亮格）。
   const loadCalendar = useCallback(async () => {
     const requestId = ++calendarRequestSeqRef.current;
     setCalendarError(null);
     try {
-      await getCheckInCalendar(examId, calendarYear, calendarMonth);
+      await getCheckInCalendar(examId, calendarYear, calendarMonth, dailyTarget);
     } catch (error: unknown) {
       if (requestId !== calendarRequestSeqRef.current) return;
       console.error('[DailyPracticeMode] Failed to load check-in calendar:', error);
       setCalendarError(t('daily.calendarLoadFailed'));
     }
-  }, [calendarMonth, calendarYear, examId, getCheckInCalendar, t]);
+  }, [calendarMonth, calendarYear, dailyTarget, examId, getCheckInCalendar, t]);
 
   // 加载日历数据
   useEffect(() => {
@@ -144,11 +181,6 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     }
   }, [calendarMonth]);
 
-  const normalizeDailyTarget = useCallback((value: number): number => {
-    if (!Number.isFinite(value)) return 10;
-    return Math.max(5, Math.min(50, Math.round(value)));
-  }, []);
-  
   // 生成日历格子
   const calendarDays = useMemo(() => {
     const daysInMonth = getDaysInMonth(calendarYear, calendarMonth);
@@ -182,6 +214,17 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       && calendarMonth === today.getMonth() + 1 
       && calendarYear === today.getFullYear();
   };
+
+  // 逐格淡入只在首次展示的月份播放一次；此前按月份 key 重挂载全部格子，
+  // 快速翻月时整片日历反复闪烁。离开首月后永久停用（返回首月也不重播）。
+  const monthKey = `${calendarYear}-${calendarMonth}`;
+  const initialMonthKeyRef = useRef<string | null>(monthKey);
+  useEffect(() => {
+    if (initialMonthKeyRef.current !== null && initialMonthKeyRef.current !== monthKey) {
+      initialMonthKeyRef.current = null;
+    }
+  }, [monthKey]);
+  const animateCalendarCells = initialMonthKeyRef.current === monthKey;
   
   return (
     <div className={cn('space-y-4', className)}>
@@ -385,7 +428,11 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             ) : (
               <>
                 <Play size={20} className="mr-2" />
-                {activeDailyPractice ? t('daily.continue') : t('daily.start')}
+                {activeDailyPractice
+                  ? activeDailyPractice.is_completed
+                    ? t('daily.anotherRound')
+                    : t('daily.continue')
+                  : t('daily.start')}
               </>
             )}
           </DsButton>
@@ -428,20 +475,21 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             ))}
           </div>
           
-          {/* 日期格子：按月份重挂载，逐格错峰淡入的微动效 */}
-          <div key={`${calendarYear}-${calendarMonth}`} className="grid grid-cols-7 gap-1">
+          {/* 日期格子：仅首次展示逐格错峰淡入，翻月不再重挂载重播 */}
+          <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((item, idx) => (
               <div
                 key={idx}
                 className={cn(
                   'relative flex min-w-0 aspect-square flex-col items-center justify-center overflow-hidden rounded-md text-sm',
-                  'ui-rise-in transition-colors hover:bg-[var(--interactive-hover)]',
+                  'transition-colors hover:bg-[var(--interactive-hover)]',
+                  animateCalendarCells && 'ui-rise-in',
                   item.day === null && 'invisible',
                   item.day !== null && isToday(item.day) && 'ring-2 ring-primary',
                   item.checkIn?.target_achieved && 'bg-success/20',
                   item.checkIn && !item.checkIn.target_achieved && 'bg-warning/10',
                 )}
-                style={{ animationDelay: `${Math.min(idx * 8, 320)}ms` }}
+                style={animateCalendarCells ? { animationDelay: `${Math.min(idx * 8, 320)}ms` } : undefined}
               >
                 {item.day !== null && (
                   <>

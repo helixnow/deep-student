@@ -137,9 +137,14 @@ export const TodayScreen: React.FC = () => {
 
   const doneToday = stats?.reviewsToday ?? 0;
   const todayTarget = doneToday + displayDueCount;
-  const progress = todayTarget > 0 ? doneToday / todayTarget : stats ? 1 : 0;
+  // 无到期且今日未复习时没有可完成的目标，进度按 0 呈现——
+  // 旧实现在 stats 存在时回落到 1，空卡库会显示「100%」这种伪完成态。
+  const progress = todayTarget > 0 ? doneToday / todayTarget : 0;
   const progressPercent = Math.round(progress * 100);
   const learningCount = stats == null ? null : stats.learning + stats.relearning;
+  // 卡库为空：走建库引导，而不是「今日全部完成」
+  const libraryEmpty = stats != null && stats.total === 0;
+  const showDoneState = doneToday > 0 && !libraryEmpty;
 
   return (
     <div className="wb-fc-screen">
@@ -276,26 +281,28 @@ export const TodayScreen: React.FC = () => {
             </div>
           ) : dueCards.length === 0 ? (
             <div className="wb-fc-list">
-              <div className="wb-fc-empty gap-3">
-                <div className="wb-fcx-empty-icon">
-                  {doneToday > 0
+              <div className="wb-fc-empty gap-3" data-state={libraryEmpty ? 'library-empty' : showDoneState ? 'done' : 'idle'}>
+                <div className="wb-fcx-empty-icon" data-tone={showDoneState ? 'done' : 'idle'}>
+                  {showDoneState
                     ? <CheckCircle size={28} weight="duotone" />
                     : <Lightning size={28} weight="duotone" />}
                 </div>
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">
-                    {doneToday > 0 ? t('today.allDone') : t('today.empty')}
+                    {libraryEmpty
+                      ? t('today.libraryEmpty')
+                      : showDoneState ? t('today.allDone') : t('today.empty')}
                   </p>
                   <p className="mx-auto max-w-md text-xs text-muted-foreground">
-                    {t('today.emptyHint')}
+                    {libraryEmpty ? t('today.libraryEmptyHint') : t('today.emptyHint')}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
+                <div className="wb-fcx-empty-actions">
                   <DsButton
                     type="button"
-                    variant="default"
+                    variant={libraryEmpty ? 'primary' : 'default'}
                     onClick={() => setScreen('library')}
-                    className="text-sm"
+                    className="wb-fcx-empty-cta text-sm"
                   >
                     <Books size={15} weight="duotone" />
                     {t('today.goLibrary')}
@@ -304,7 +311,7 @@ export const TodayScreen: React.FC = () => {
                     type="button"
                     variant="ghost"
                     onClick={() => setScreen('settings')}
-                    className="text-sm"
+                    className="wb-fcx-empty-cta text-sm"
                   >
                     <ChartBar size={15} weight="duotone" />
                     {t('today.goStats')}

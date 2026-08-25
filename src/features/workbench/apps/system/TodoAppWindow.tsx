@@ -6,7 +6,8 @@
  * 通过局部清零 --shell-titlebar-height/--shell-layout-gap 去掉壳位顶部留白）。
  *
  * 本轮打磨：
- * - 侧栏分隔线可拖拽调宽（200–400px，双击复位，宽度持久化到 localStorage）；
+ * - 侧栏分隔线可拖拽调宽（200–400px，双击复位；仅 wide 档提交才持久化到
+ *   localStorage——medium 档 300px 上限属窗口态临时约束，不覆盖用户偏好）；
  * - 窄窗（<640px）不再收纳为玻璃抽屉，降级为 48px 常驻图标栏
  *   （TodoIconRail：智能视图 / 定时任务 / 清单 popover / 回收站）；
  * - 为避免 compact ↔ medium 切换时 TodoContentView 重挂载（会重置
@@ -149,6 +150,8 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const sizeClassRef = useRef(sizeClass);
+  sizeClassRef.current = sizeClass;
 
   // 拖拽中直写 CSS 变量（不进 React state，缩放过程零重渲染）
   const applyLiveSidebarWidth = useCallback((width: number) => {
@@ -160,7 +163,11 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
   const commitSidebarWidth = useCallback((width: number) => {
     applyLiveSidebarWidth(width);
     setSidebarWidth(width);
-    persistSidebarWidth(width);
+    // 只在 wide 档写入持久化：medium 档的 300px 上限是窗口态的临时约束，
+    // 在中窗里拖一把（或被 cap 钳过的提交）不应覆盖用户在宽窗下的偏好宽度
+    if (sizeClassRef.current === 'wide') {
+      persistSidebarWidth(width);
+    }
   }, [applyLiveSidebarWidth]);
 
   useEffect(() => {

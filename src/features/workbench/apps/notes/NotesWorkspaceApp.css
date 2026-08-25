@@ -144,6 +144,73 @@
   height: 25px;
 }
 
+/* ============================================================
+ * 探索器工具栏「更多」折叠菜单（中窗 240px 侧栏放不下整排图标）
+ * ============================================================ */
+
+.notes-explorer-overflow {
+  position: relative;
+  display: inline-flex;
+}
+
+.notes-explorer-overflow-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 12%);
+}
+
+.notes-explorer-overflow-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--notes-radius-control) - 2px);
+  font-size: 12px;
+  text-align: left;
+  color: hsl(var(--foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.notes-explorer-overflow-menu > button:hover,
+.notes-explorer-overflow-menu > button:focus-visible {
+  background: hsl(var(--accent));
+  outline: none;
+}
+
+.notes-explorer-overflow-menu > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notes-explorer-overflow-menu > button[aria-checked='true'] {
+  color: hsl(var(--primary));
+}
+
+.notes-explorer-overflow-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-explorer-overflow-menu > button[aria-checked='true'] .notes-explorer-overflow-icon {
+  color: hsl(var(--primary));
+}
+
 .notes-search {
   height: 30px;
   margin: 0 8px 6px;

@@ -3146,6 +3146,7 @@ impl MemoryService {
                         created_at: row.get(5)?,
                         updated_at: row.get(6)?,
                         deleted_at: row.get(7)?,
+                        props: None,
                     })
                 },
             )
@@ -3178,6 +3179,7 @@ impl MemoryService {
                             created_at: row.get(5)?,
                             updated_at: row.get(6)?,
                             deleted_at: row.get(7)?,
+                            props: None,
                         })
                     },
                 )
@@ -3210,6 +3212,7 @@ impl MemoryService {
                         created_at: row.get(5)?,
                         updated_at: row.get(6)?,
                         deleted_at: row.get(7)?,
+                        props: None,
                     })
                 },
             )

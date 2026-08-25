@@ -41,6 +41,38 @@ function isTauri(): boolean {
   return typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
 }
 
+// ---------------------------------------------------------------------------
+// 小窗开启状态（主窗口侧镜像）：GlobalPomodoroWidget 用它隐藏悬浮药丸，
+// 避免「置顶小窗 + 药丸」双重投影。useSyncExternalStore 友好的极简外部 store。
+// ---------------------------------------------------------------------------
+
+let miniWindowOpen = false;
+const miniWindowListeners = new Set<() => void>();
+
+/** 当前是否有置顶小窗（主窗口侧镜像；小窗被系统/用户直接关闭时经 destroyed 事件回落） */
+export function isPomodoroMiniWindowOpen(): boolean {
+  return miniWindowOpen;
+}
+
+export function subscribePomodoroMiniWindowOpen(listener: () => void): () => void {
+  miniWindowListeners.add(listener);
+  return () => {
+    miniWindowListeners.delete(listener);
+  };
+}
+
+/** 内部/测试用：写小窗开启镜像并通知订阅者 */
+export function setPomodoroMiniWindowOpen(open: boolean): void {
+  if (miniWindowOpen === open) return;
+  miniWindowOpen = open;
+  for (const listener of miniWindowListeners) listener();
+}
+
+/** 小窗被用户按钮/系统直接关闭（不经 closePomodoroMiniWindow）时同步镜像 */
+function watchMiniWindowDestroyed(win: { once: (event: string, handler: () => void) => Promise<unknown> }): void {
+  void win.once('tauri://destroyed', () => setPomodoroMiniWindowOpen(false));
+}
+
 /** 打开（或聚焦）置顶小窗；返回 false 表示失败（调用方负责 UI 反馈） */
 export async function openPomodoroMiniWindow(): Promise<boolean> {
   if (!isTauri()) return false;
@@ -49,6 +81,8 @@ export async function openPomodoroMiniWindow(): Promise<boolean> {
     const existing = await WebviewWindow.getByLabel(POMODORO_MINI_LABEL);
     if (existing) {
       await existing.setFocus();
+      setPomodoroMiniWindowOpen(true);
+      watchMiniWindowDestroyed(existing);
       return true;
     }
     const win = new WebviewWindow(POMODORO_MINI_LABEL, {
@@ -65,7 +99,11 @@ export async function openPomodoroMiniWindow(): Promise<boolean> {
       title: 'Pomodoro',
     });
     return await new Promise<boolean>((resolve) => {
-      void win.once('tauri://created', () => resolve(true));
+      void win.once('tauri://created', () => {
+        setPomodoroMiniWindowOpen(true);
+        watchMiniWindowDestroyed(win);
+        resolve(true);
+      });
       void win.once('tauri://error', (e) => {
         console.warn('[PomodoroMini] window create failed:', e);
         resolve(false);
@@ -79,6 +117,7 @@ export async function openPomodoroMiniWindow(): Promise<boolean> {
 
 /** 关闭置顶小窗（若存在） */
 export async function closePomodoroMiniWindow(): Promise<void> {
+  setPomodoroMiniWindowOpen(false);
   if (!isTauri()) return;
   try {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
