@@ -81,6 +81,11 @@ import {
 import { installImeScrollContainment } from '../core/imeScrollContainment';
 import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
 import { QuickLookHost } from '../apps/preview/quickLook';
+import {
+  parsePersistedTileMargins,
+  parsePersistedWallpaper,
+  type PersistedTileMargins,
+} from '../core/persistedSettings';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -103,12 +108,7 @@ const SETTING_KEYS = {
   devPanel: 'desktop.workbenchDevPanel',
 } as const;
 
-interface TileMarginsSetting {
-  enabled: boolean;
-  px: number;
-}
-
-const DEFAULT_TILE_MARGINS: TileMarginsSetting = { enabled: true, px: 8 };
+const DEFAULT_TILE_MARGINS: PersistedTileMargins = { enabled: true, px: 8 };
 const DOCK_SIZE_MIN = 75;
 const DOCK_SIZE_MAX = 125;
 const DOCK_SIZE_DEFAULT = 100;
@@ -136,17 +136,6 @@ async function readSetting(key: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function parseJson<T>(raw: string | null, fallback: T): T {
-  if (typeof raw !== 'string' || !raw.trim()) return fallback;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return { ...fallback, ...(parsed as Partial<T>) };
-  } catch {
-    /* 坏数据回退默认值 */
-  }
-  return fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +263,7 @@ export const WorkbenchDesktop: React.FC = () => {
 
   // ---- 设置状态（启动回放 + workbench:settings-changed 热更新）----
   const [wallpaper, setWallpaper] = useState<WallpaperConfig>(DEFAULT_WALLPAPER);
-  const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
+  const [tileMargins, setTileMargins] = useState<PersistedTileMargins>(DEFAULT_TILE_MARGINS);
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [desktopWidgets, setDesktopWidgets] = useState(true);
@@ -330,8 +319,8 @@ export const WorkbenchDesktop: React.FC = () => {
           ? (tier as MaterialTierSetting)
           : 'auto',
       );
-      setWallpaper(parseJson<WallpaperConfig>(wallpaperVal, DEFAULT_WALLPAPER));
-      setTileMargins(parseJson<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
+      setWallpaper(parsePersistedWallpaper(wallpaperVal, DEFAULT_WALLPAPER));
+      setTileMargins(parsePersistedTileMargins(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       // 桌面组件缺省显示（保持现状），只有显式 'false' 才隐藏
@@ -348,12 +337,10 @@ export const WorkbenchDesktop: React.FC = () => {
       const { key, value } = (e as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
       switch (key) {
         case SETTING_KEYS.wallpaper:
-          if (value && typeof value === 'object') setWallpaper(value as WallpaperConfig);
+          setWallpaper(parsePersistedWallpaper(value, DEFAULT_WALLPAPER));
           break;
         case SETTING_KEYS.tileMargins:
-          if (value && typeof value === 'object') {
-            setTileMargins({ ...DEFAULT_TILE_MARGINS, ...(value as Partial<TileMarginsSetting>) });
-          }
+          setTileMargins(parsePersistedTileMargins(value, DEFAULT_TILE_MARGINS));
           break;
         case SETTING_KEYS.dockAutohide:
           setDockAutohide(value === true);
