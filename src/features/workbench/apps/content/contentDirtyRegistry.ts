@@ -12,6 +12,11 @@ import { normalizeResourceInstanceKey } from './resourceIdentity';
 
 const checkers = new Map<string, Set<() => boolean>>();
 
+type ContentSaveHandler = () => Promise<void>;
+
+/** 「保存并关闭」的保存挂点：视图注册后，关窗确认对话框才提供保存选项 */
+const saveHandlers = new Map<string, Set<ContentSaveHandler>>();
+
 function keyOf(typeId: string, instanceKey: string | null): string {
   return `${typeId}::${normalizeResourceInstanceKey(instanceKey) ?? ''}`;
 }
@@ -54,7 +59,51 @@ export function isContentDirty(typeId: string, instanceKey: string | null): bool
   return false;
 }
 
+/**
+ * 注册某个资源实例的「立即保存」处理函数（供关窗确认的「保存并关闭」调用）。
+ * 返回注销函数（视图卸载时调用）。
+ */
+export function registerContentSaveHandler(
+  typeId: string,
+  instanceKey: string | null,
+  save: ContentSaveHandler,
+): () => void {
+  const key = keyOf(typeId, instanceKey);
+  const existing = saveHandlers.get(key) ?? new Set<ContentSaveHandler>();
+  existing.add(save);
+  saveHandlers.set(key, existing);
+  return () => {
+    const registered = saveHandlers.get(key);
+    registered?.delete(save);
+    if (registered?.size === 0) {
+      saveHandlers.delete(key);
+    }
+  };
+}
+
+/** 某个资源实例是否有保存处理函数（决定关窗确认是否提供「保存并关闭」） */
+export function hasContentSaveHandler(typeId: string, instanceKey: string | null): boolean {
+  return (saveHandlers.get(keyOf(typeId, instanceKey))?.size ?? 0) > 0;
+}
+
+/**
+ * 立即执行某个资源实例的所有保存处理函数。
+ * 全部成功返回 true；任一失败/无注册返回 false（关窗流程据此保持窗口打开）。
+ */
+export async function saveContentNow(typeId: string, instanceKey: string | null): Promise<boolean> {
+  const registered = saveHandlers.get(keyOf(typeId, instanceKey));
+  if (!registered || registered.size === 0) return false;
+  try {
+    await Promise.all([...registered].map((save) => save()));
+    return true;
+  } catch {
+    // 保存失败不放行关闭：视图侧的保存错误 UI（重试条/toast）负责展示细节
+    return false;
+  }
+}
+
 /** 仅供测试：清空注册表 */
 export function __resetContentDirtyRegistry(): void {
   checkers.clear();
+  saveHandlers.clear();
 }

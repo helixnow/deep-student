@@ -92,7 +92,14 @@ function errorTitle(
   }
 }
 
-export const ReviewSessionScreen: React.FC = () => {
+export interface ReviewSessionScreenProps {
+  /** 工作台窗口/标签页是否处于前台；后台实例不得接管全局评分快捷键。 */
+  isActive?: boolean;
+}
+
+export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
+  isActive = true,
+}) => {
   const { t } = useTranslation('flashcards');
   const queue = useFsrsReviewStore((state) => state.queue);
   const queueIndex = useFsrsReviewStore((state) => state.queueIndex);
@@ -353,8 +360,8 @@ export const ReviewSessionScreen: React.FC = () => {
     undoLastReview,
   ]);
   useEventRegistry(
-    [{ target: 'window', type: 'keydown', listener: onKeyDown }],
-    [onKeyDown],
+    isActive ? [{ target: 'window', type: 'keydown', listener: onKeyDown }] : [],
+    [isActive, onKeyDown],
   );
 
   const onEditKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {

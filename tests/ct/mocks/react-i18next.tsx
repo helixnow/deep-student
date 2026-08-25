@@ -75,20 +75,22 @@ export const i18n = {
   t,
 };
 
-// 真实 react-i18next 在语言不变时返回身份稳定的 `t`。这里按 namespace 缓存
-// 返回值，避免每次渲染生成新的 `t` 闭包：否则依赖 `t` 的 useEffect 会在
-// 每次渲染后重跑并 setState，形成微任务自激死循环（测试挂起 + 堆增长）。
-const useTranslationCache = new Map<string, { t: typeof t; i18n: typeof i18n }>();
+// ⚠️ 返回值必须按 ns 缓存：真实 react-i18next 的 t 引用是稳定的（memoized）。
+// 若每次渲染都返回新 t，所有把 t 放进 useEffect/useCallback 依赖并在其中
+// setState 的组件（如 NotesWorkspaceApp.loadResources）会陷入
+// 「渲染 → 新 t → effect 重跑 → setState → 渲染」的无限异步循环，
+// 表现为 vitest worker 挂死直至 4GB 堆 OOM（CI 分片超时的元凶之一）。
+const useTranslationCache = new Map<string, { t: (key: string, options?: any) => any; i18n: typeof i18n }>();
 
 export const useTranslation = (ns?: string | string[]) => {
-  const cacheKey = Array.isArray(ns) ? ns.join('\u0000') : ns ?? '';
+  const cacheKey = Array.isArray(ns) ? ns.join('|') : (ns ?? '');
   let cached = useTranslationCache.get(cacheKey);
   if (!cached) {
-    const defaultNs = Array.isArray(ns) ? ns[0] : ns;
     cached = {
       t: (key: string, options?: any) => {
         // Preserve i18next string-default signature: t(key, 'fallback')
         if (typeof options === 'string') return t(key, options);
+        const defaultNs = Array.isArray(ns) ? ns[0] : ns;
         return t(key, defaultNs ? { ...options, ns: options?.ns ?? defaultNs } : options);
       },
       i18n,

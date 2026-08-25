@@ -17,12 +17,13 @@ import { resetWorkbenchState } from './p6-testUtils';
 beforeEach(() => resetWorkbenchState());
 
 describe('listWorkbenchShortcuts', () => {
-  it('返回 §6.4 全部 9 条快捷键', () => {
+  it('返回全部快捷键（§6.4 基础 9 条 + O12/P2 追加 + 上/下半屏）', () => {
     const list = listWorkbenchShortcuts();
     expect(list.map((s) => s.id)).toEqual([
       'tile-left', 'tile-right', 'maximize', 'restore-or-minimize',
       'center', 'cycle-next', 'cycle-prev', 'expose', 'close-window',
       'tile-tl', 'tile-tr', 'tile-bl', 'tile-br',
+      'tile-top', 'tile-bottom',
       'move-left', 'move-right', 'move-up', 'move-down',
       'cycle-app-next', 'cycle-app-prev',
       'minimize', 'show-desktop', 'close-all', 'cheatsheet',

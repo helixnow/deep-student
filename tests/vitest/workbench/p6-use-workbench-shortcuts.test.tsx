@@ -36,6 +36,21 @@ appRegistry.register({
   handlesCloseShortcut: true,
 });
 
+/** 声明内部标签循环（Ctrl+Tab 让位协议）的测试应用 */
+const TAB_CYCLE_APP_TYPE_ID = 'tab-cycle-claim-test';
+
+appRegistry.register({
+  typeId: TAB_CYCLE_APP_TYPE_ID,
+  nameKey: 'workbench:test.tabCycleClaim',
+  icon: null,
+  instanceMode: 'single',
+  memoryWeight: 1,
+  defaultFrame: { w: 400, h: 300 },
+  minSize: { w: 200, h: 150 },
+  render: null as unknown as AppDefinition['render'],
+  handlesTabCycleShortcut: true,
+});
+
 function seedThree() {
   // a 最近聚焦，其次 b，再次 c
   seedWindows([win('a', 300), win('b', 200), win('c', 100)]);
@@ -272,6 +287,90 @@ describe('Ctrl+Tab 切换器会话', () => {
     }).not.toThrow();
     expect(useWorkbenchOverlay.getState().switcherOpen).toBe(false);
     expect(focusedWindowId()).toBe('a');
+    hook.unmount();
+  });
+});
+
+describe('Ctrl+Tab 让位协议（handlesTabCycleShortcut）', () => {
+  it('焦点应用声明内部标签循环：壳层让位（不开切换器、不 preventDefault）', () => {
+    seedWindows([
+      win('claim', 300, { typeId: TAB_CYCLE_APP_TYPE_ID }),
+      win('plain', 200),
+    ]);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    const event = keydown({ key: 'Tab', ctrlKey: true });
+
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(false);
+    // 未 preventDefault：应用自持监听器可凭 !defaultPrevented 消费
+    expect(event.defaultPrevented).toBe(false);
+    hook.unmount();
+  });
+
+  it('Ctrl+Shift+Tab 同样让位', () => {
+    seedWindows([
+      win('claim', 300, { typeId: TAB_CYCLE_APP_TYPE_ID }),
+      win('plain', 200),
+    ]);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    const event = keydown({ key: 'Tab', ctrlKey: true, shiftKey: true });
+
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+    hook.unmount();
+  });
+
+  it('让位后应用侧监听器可消费该事件（!defaultPrevented 判定）', () => {
+    seedWindows([win('claim', 300, { typeId: TAB_CYCLE_APP_TYPE_ID })]);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    const appHandler = vi.fn((event: KeyboardEvent) => {
+      // 应用协议：壳层让位（未 preventDefault）时才接管
+      if (event.ctrlKey && event.key === 'Tab' && !event.defaultPrevented) {
+        event.preventDefault();
+      }
+    });
+    window.addEventListener('keydown', appHandler);
+
+    const event = keydown({ key: 'Tab', ctrlKey: true });
+    expect(appHandler).toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true); // 由应用（而非壳层）prevent
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(false);
+
+    window.removeEventListener('keydown', appHandler);
+    hook.unmount();
+  });
+
+  it('切换器会话已开启：壳层保持所有权（继续步进 + preventDefault）', () => {
+    seedWindows([
+      win('claim', 300, { typeId: TAB_CYCLE_APP_TYPE_ID }),
+      win('plain', 200),
+    ]);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    // 会话由其他入口开启（如让位前无声明应用聚焦时开的会话未松开 Ctrl）
+    act(() => {
+      useWorkbenchOverlay.getState().openSwitcher(['claim', 'plain'], 0);
+    });
+
+    const event = keydown({ key: 'Tab', ctrlKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(useWorkbenchOverlay.getState().switcherIndex).toBe(1);
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(true);
+    hook.unmount();
+  });
+
+  it('焦点在未声明的应用上：正常开切换器（后台的声明应用不影响）', () => {
+    seedWindows([
+      win('plain', 300),
+      win('claim', 200, { typeId: TAB_CYCLE_APP_TYPE_ID }),
+    ]);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    const event = keydown({ key: 'Tab', ctrlKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(true);
     hook.unmount();
   });
 });

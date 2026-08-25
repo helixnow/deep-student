@@ -119,6 +119,9 @@
     "multiSheetNote": "Merged from {{count}} .xmind sheets: {{titles}}",
     "labelsNote": "Labels: {{labels}}",
     "markersNote": ".xmind markers: {{markers}}",
+    "imagePlaceholderNote_one": "[Image placeholder] The original topic contained {{count}} image that could not be embedded (missing resource or above the inline size limit)",
+    "imagePlaceholderNote_other": "[Image placeholder] The original topic contained {{count}} images that could not be embedded (missing resource or above the inline size limit)",
+    "importing": "Importing mind map…",
     "saveAndImport": "Save & Import"
   },
   "presentation": {
@@ -172,6 +175,7 @@
     "panCanvasKeysPanMode": "Drag blank area",
     "associationEntryKeys": "Right-click node",
     "associationAdd": "Add association (then click target)",
+    "associationStart": "Add association (click target to finish, Esc to cancel)",
     "groupRecite": "Recite Mode",
     "reciteNavigate": "Navigate between nodes",
     "reciteReveal": "Reveal next blank",
@@ -418,7 +422,13 @@
     "openLink": "Open link",
     "priorityBadge": "Priority {{level}}",
     "progressLabel": "Progress {{percent}}%",
-    "toggleComplete": "Toggle completed"
+    "toggleComplete": "Toggle completed",
+    "imageAlt": "Node image"
+  },
+  "sheets": {
+    "switcherLabel": "Switch sheet",
+    "switcherHint": "Multi-sheet import: focus the branch of a sheet",
+    "all": "All sheets"
   },
   "errorDetails": "Error details",
   "canvas": {
@@ -452,7 +462,21 @@
     "clearBlanks": "Clear All Blanks",
     "emptyHint": "Select text and click 'Blank' to create cloze items",
     "createBlankCta": "Exit recite and create a blank",
-    "progress": "{{revealed}}/{{total}} revealed"
+    "progress": "{{revealed}}/{{total}} revealed",
+    "remaining_one": "{{count}} left",
+    "remaining_other": "{{count}} left",
+    "blankBranch": "Blank entire branch",
+    "blankBranchDone_one": "Blanked {{count}} node",
+    "blankBranchDone_other": "Blanked {{count}} nodes",
+    "clearBranchBlanks": "Clear branch blanks",
+    "clearBranchBlanksDone_one": "Cleared blanks on {{count}} node",
+    "clearBranchBlanksDone_other": "Cleared blanks on {{count}} nodes",
+    "reviewStart": "Hardest first",
+    "reviewStartHint": "Review node by node from highest historical miss rate (revealing = missed)",
+    "reviewNavLabel": "Hardest-first review navigation",
+    "reviewPrev": "Previous difficult item",
+    "reviewNext": "Next difficult item",
+    "reviewStop": "End review"
   },
   "clipboard": {
     "pasteParseFailed": "Pasted content is too large or too deep to parse"

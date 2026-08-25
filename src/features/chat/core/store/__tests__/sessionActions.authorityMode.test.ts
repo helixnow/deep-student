@@ -145,4 +145,28 @@ describe('sessionActions authority mode', () => {
     });
     expect(state.permissionPreset).toBe('danger_full_access');
   });
+
+  it('remembers safe presets as the new-session default but never privileged ones', async () => {
+    const { DEFAULT_PERMISSION_PRESET_STORAGE_KEY, getDefaultPermissionPreset } =
+      await import('../../session/permissionPresetDefaults');
+    localStorage.removeItem(DEFAULT_PERMISSION_PRESET_STORAGE_KEY);
+
+    let state = createInitialState('sess_1') as ChatStoreState;
+    const set = (partial: Partial<ChatStoreState> | ((s: ChatStoreState) => Partial<ChatStoreState>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    const actions = createSessionActions(set as never, () => state as never, () => {});
+
+    await actions.setPermissionPreset('cautious');
+    expect(getDefaultPermissionPreset()).toBe('cautious');
+
+    // 高权限档只影响当前会话，不改写新会话默认
+    await actions.setPermissionPreset('full_access');
+    expect(getDefaultPermissionPreset()).toBe('cautious');
+
+    await actions.setPermissionPreset('relaxed');
+    expect(getDefaultPermissionPreset()).toBe('relaxed');
+
+    localStorage.removeItem(DEFAULT_PERMISSION_PRESET_STORAGE_KEY);
+  });
 });

@@ -2,6 +2,28 @@ import React, { useRef, useState, useEffect } from 'react';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
+/** 从 localStorage 读取持久化的分栏比例（0..1 之外/非法值一律忽略） */
+function loadStoredRatio(storageKey: string | undefined): number | null {
+  if (!storageKey) return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw === null) return null;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeRatio(storageKey: string | undefined, ratio: number): void {
+  if (!storageKey) return;
+  try {
+    window.localStorage.setItem(storageKey, String(ratio));
+  } catch {
+    // localStorage 不可用时静默降级（仅失去比例记忆）
+  }
+}
+
 interface HorizontalResizableProps {
   left: React.ReactNode;
   right: React.ReactNode;
@@ -9,6 +31,8 @@ interface HorizontalResizableProps {
   minLeft?: number; // 0..1
   minRight?: number; // 0..1
   className?: string;
+  /** 提供后拖拽比例持久化到 localStorage（拖拽结束时写入一次） */
+  storageKey?: string;
 }
 
 export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
@@ -18,11 +42,22 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
   minLeft = 0.25,
   minRight = 0.25,
   className,
+  storageKey,
 }) => {
   const { t } = useTranslation('common');
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [ratio, setRatio] = useState(() => Math.min(1 - minRight, Math.max(minLeft, initial)));
+  const [ratio, setRatio] = useState(() =>
+    Math.min(1 - minRight, Math.max(minLeft, loadStoredRatio(storageKey) ?? initial))
+  );
   const [dragging, setDragging] = useState(false);
+
+  // 拖拽结束时持久化一次（拖拽期间不逐帧写 localStorage）
+  const ratioRef = useRef(ratio);
+  ratioRef.current = ratio;
+  useEffect(() => {
+    if (!dragging) return;
+    return () => storeRatio(storageKey, ratioRef.current);
+  }, [dragging, storageKey]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -91,6 +126,8 @@ interface VerticalResizableProps {
   minTop?: number; // 0..1
   minBottom?: number; // 0..1
   className?: string;
+  /** 提供后拖拽比例持久化到 localStorage（拖拽结束时写入一次） */
+  storageKey?: string;
 }
 
 export const VerticalResizable: React.FC<VerticalResizableProps> = ({
@@ -100,11 +137,22 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
   minTop = 0.2,
   minBottom = 0.2,
   className,
+  storageKey,
 }) => {
   const { t } = useTranslation('common');
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [ratio, setRatio] = useState(() => Math.min(1 - minBottom, Math.max(minTop, initial)));
+  const [ratio, setRatio] = useState(() =>
+    Math.min(1 - minBottom, Math.max(minTop, loadStoredRatio(storageKey) ?? initial))
+  );
   const [dragging, setDragging] = useState(false);
+
+  // 拖拽结束时持久化一次（同 HorizontalResizable）
+  const ratioRef = useRef(ratio);
+  ratioRef.current = ratio;
+  useEffect(() => {
+    if (!dragging) return;
+    return () => storeRatio(storageKey, ratioRef.current);
+  }, [dragging, storageKey]);
 
   useEffect(() => {
     if (!dragging) return;

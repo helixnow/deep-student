@@ -955,6 +955,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (!sessionId) throw new Error('No session');
     const result = await submitAnswer(questionId, answer);
 
+    // 限时/每日练习进度回写（2026-08 修复）：这两个全局会话对象此前没有
+    // 任何真实路径的写入方，面板进度与正确率恒为 0。action 内部按会话题目
+    // 成员资格 + 首答幂等自行门禁，非会话题目是空操作。
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, result.isCorrect);
+
     // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写。
     // ★ 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
     //   避免连续快速提交时后写覆盖先写、丢失已答记录

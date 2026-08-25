@@ -135,6 +135,8 @@
   --wb-focus-ring-color: hsl(var(--primary) / 0.65);
   --wb-focus-ring: 0 0 0 2px var(--wb-focus-ring-color);
 
+  /* 与 core/metrics.ts TITLEBAR_HEIGHT 同源（单一真相对，改动必须两处同步）。
+   * 子应用安全区（顶部 padding / sticky 偏移）一律引用本 token，禁止散写 38px。 */
   --wb-titlebar-height: 38px;
   /* 标题栏 = 窗口顶部的一层薄玻璃 tint（叠在不透明内容之上） */
   --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);

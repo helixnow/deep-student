@@ -264,7 +264,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[VariantCard] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
     }
   }, [getBlocks, copied, t]);
 

@@ -18,6 +18,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { useTranslation } from 'react-i18next';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
+import { FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 import { workbenchBus } from '../../core/workbenchBus';
 import { shouldPauseHeavyContent } from '../../core/shellGestureFlags';
 import type { AppWindowProps } from '../../core/types';
@@ -161,7 +162,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
       <div ref={viewportRef} className="wb-files-viewport" data-wb-files-viewport>
         <LearningHubSidebar
           mode="fullscreen"
-          hostId="files"
+          hostId={FINDER_HOST_IDS.files}
           sessionActive={isActive}
           onOpenApp={handleOpenApp}
           onOpenPreview={handleOpenApp}
