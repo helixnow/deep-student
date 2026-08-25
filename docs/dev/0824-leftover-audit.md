@@ -97,8 +97,12 @@ safe 分支另有下列非 clean 候选的必要集成修复：
 
 | 门禁 | 结果 |
 |---|---|
-| `npm ci` | 待跑 |
-| `npm run typecheck` | 待跑 |
-| `npx vite build` | 待跑 |
-| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | 待跑 |
-| 定向 vitest（Generative UI + 触及契约） | 待跑 |
+| `npm ci` | ✅ 1192 packages |
+| `npm run version:generate && npm run typecheck` | ✅ 0 错误 |
+| `npx vite build` | ✅ 1m06s；仅既有循环 chunk / chunk 体积警告 |
+| `cargo +stable check --manifest-path src-tauri/Cargo.toml --lib --locked` | ✅ Rust 1.98；0 error，28 个既有 warning |
+| 定向 vitest（Generative UI 全目录 + 4 个触及的 skill contract） | ✅ 128 files / 873 tests |
+
+Rust 门禁使用与 CI 一致的 stable 1.98，并安装 Tauri Linux 系统依赖、
+`protobuf-compiler` 与 gitignored 的 `libpdfium.so`。下载脚本改写的已跟踪
+PDFium license 已恢复，环境产物未进入提交。
