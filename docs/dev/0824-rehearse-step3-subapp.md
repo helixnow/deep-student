@@ -126,3 +126,62 @@ gitignored 的 PDFium 动态库；下载脚本改写的已跟踪 license 文本�
    `useChatPageEvents` 三处，别只跟随删除 `useMessageActions.ts`。
 5. 定向回归必须包含 `learning-hub-sidebar.integration.test.tsx`（defaultValue mock
    碰撞）与 `phase4QbankToolsContract.test.ts`（Step2 契约补回是否仍在）。
+
+## 第八轮复查（B+D 合入后，2026-08-25）
+
+复查基线：`origin/cursor/0824-cde6` @ `4f05d227`（较本预演基线 `af3e39d8`
+多了 Step4 B cloud `0e32e0fe` 与 Step5 D anki `a8185664` 及各自后续修复）。
+
+**结论：上述 21 处裁决全部仍成立，逐字节可原样套用。** 依据：
+
+- 21 个冲突文件 + `finderStoreHostBuckets.test.ts` + 全部补丁搬家目标文件
+  （MessageItem / ParallelVariantView / useChatPageEvents /
+  attachmentModeHelpers / sidebar 集成测试 / finder-host-buckets 测试）在
+  `af3e39d8..4f05d227` 间 0824 侧零改动；在 `4f05d227` 上重放 F（`575fee7f`
+  仍是 theme-subapp 远端 tip）合并，原 21 处冲突块与本预演逐字节相同。
+- 重放树套用本预演全部裁决 + 下述 7 处新冲突解法后：typecheck 0 错误；
+  原冲突面定向 vitest 13 文件 195/195；新冲突面 8 文件 80/80。
+- lockfile 冲突取 0824 侧（ours）仍逐字节等于新 tip；`package.json` 与
+  `legal/THIRD_PARTY_NOTICES.txt`（含 B 的 unicode-normalization 重生成）自动
+  合并即达 tip 内容，仍无需重生成——但校验基准应换成 `4f05d227`。
+
+### B+D 带来的新增冲突（7 处，全部 D×F；B 与 F 零重叠）
+
+在 `4f05d227` 上重放共 28 个冲突文件 = 原 21 + 以下 7 个（源头是 theme-anki
+的 `9fda519a` / `07146ea9` / `3434fed6` / `984ea373` 与 F 的重叠；F 与 B/D 的
+Rust 改动文件交集为空）：
+
+1. `src/features/anki/generateCardsFromText.ts`（AA 双加）：D、F 独立实现了
+   同一共享制卡入口，唯一语义差异是 D 用 `cardAgent.startGeneration`（非阻塞
+   直启后端管线，任务台跟踪进度），F 用 `cardAgent.generateCards`（阻塞）。
+   合并后 CardAgent 两个方法都在，但 D 已把生产路径迁到 `startGeneration`
+   并退役 ChatV2AnkiAdapter，**取 D（ours）侧**。
+2. `src/features/anki/__tests__/generateCardsFromText.test.ts`（AA）：9 个冲突
+   块全是上述 API 改名的镜像，**取 D 侧**。
+3. `src/features/chat/services/selectionCardGeneration.ts`：两个冲突块（头注释
+   + `startGeneration` 调用），两侧全量差异恰好只有这两块，**可整文件取 ours**。
+4. `src/components/EssayGradingWorkbench.tsx`、
+   `src/components/essay-grading/GradingMain.tsx`、
+   `src/components/essay-grading/ResultPanel.tsx`：正交功能并集。非冲突区已
+   自动并入 D 的复习/作文制卡入口，冲突块全部**取 F 侧**（`handleUndoSuggestion`
+   反向锚定撤销、`handleSaveAsNote` 存为笔记、`onApplySuggestion` 签名放宽为
+   `SuggestionChange`；依赖的 `src/essay-grading/suggestionAnchors.ts` 由 F
+   自动并入）。**严禁整文件 checkout 任何一侧**，否则丢 D 的入口或 F 的功能。
+5. `docs/user-guide/12-Anki制卡与模板.md`：单块修订注释冲突，取并集。
+
+交叉验证：`cursor/0824-rehearse-step3-fg-cde6` 的 `2016f748`（F+G 刷新到
+`4f05d227`）对第 1-3 项的解法与上述逐字节一致，第 4 项仅差 G 的移动端增量
+（`sm:`→`md:` 断点、44px 触控热区），可作第二参照。
+
+### 官方合并时新增注意
+
+6. `pdfSelectionToolbar.source.test.ts` 含 `not.toContain('ChatV2AnkiAdapter')`
+   防复活断言；F 侧 `src/components/anki/cardforge/adapters/**` 相对 merge-base
+   未改动，合并会静默保持 D 的删除——不要手工恢复该目录。
+7. 新冲突面定向回归 8 文件：`generateCardsFromText.test.ts`、
+   `selectionCardGeneration.test.ts`、`pdfSelectionToolbar.source.test.ts`、
+   `tests/vitest/anki/cardforge/CardAgent.test.ts`、
+   `tests/vitest/generative-ui/flashcardDisplayOnly.test.ts`、
+   `suggestionAnchors.test.ts`、`essayContentState.test.ts`、`radarLabel.test.ts`。
+8. F 自身带 Rust 改动（qbank_executor / dstu handlers / vfs migration 等），
+   虽与 B/D 零文件交集，cargo 门禁仍要跑。
