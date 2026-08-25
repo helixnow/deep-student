@@ -714,12 +714,14 @@ writing manifests），干净落地零冲突。fetch 时 #177 tip 即为 `bb81e9
 - SKIP：已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/
   `0fcbc59b`，以及全部隔离 PR。
 
-### Step 13 收口：#177 桌面 S3 Range 断点续传
+### Step 13 收口：#177 Range 断点续传
 
-日期：2026-08-25。基座 `8badceda`（Step 12 tip）；fetch 后 #177 tip 恰为
-`86a1e7c4`，其后无更新提交。仅 cherry-pick `86a1e7c4` → `6887bf84`
-（S3 整包恢复精确 Range 续传；服务端忽略 Range 时从零重下，错位
-`Content-Range` fail-closed），干净落地零冲突；FTP 与 Android 行为不变。
+日期：2026-08-25。基座 `8badceda`（Step 12 tip）。首次 fetch 仅见
+`86a1e7c4` → `6887bf84`（桌面 S3 整包恢复精确 Range 续传；忽略 Range
+从零重下、错位 `Content-Range` fail-closed）；编译期间 #177 新增
+`6d6769bc` → `bf8ab827`（WebDAV / 桌面 S3 仓库巡检同一对象最多 3 次按
+已写入前缀续传）。两提交均干净 cherry-pick 并逐提交推送；最终复 fetch
+#177 tip 为 `6d6769bc`，其后无更多提交。FTP 与 Android 行为不变。
 
 - 编译门禁：`npm run typecheck`、`npx vite build`、
   `cargo check --manifest-path src-tauri/Cargo.toml --lib` 最终均 exit 0
