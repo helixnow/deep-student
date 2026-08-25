@@ -86,7 +86,7 @@ const REUSE_CASES: readonly ReuseCase[] = [
     keys: [
       'translation:stats.characters',
       'translation:stats.words',
-      'notes:graph_notes.tagStateSaveFailed',
+      'notes:notifications.tagStateSaveFailed',
     ],
     removedKeys: [
       'notes:editor.stats.chars_label',
