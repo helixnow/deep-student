@@ -2379,6 +2379,8 @@ pub async fn data_governance_export_sync_data(
     if let Some(p) = output_path.as_deref() {
         crate::unified_file_manager::reject_double_encoded_virtual_uri(p)
             .map_err(|e| e.to_string())?;
+        crate::unified_file_manager::queue_persistable_saf_uri(&app_data_dir, p)
+            .map_err(|e| e.to_string())?;
     }
     let output = match output_path {
         Some(p) if crate::unified_file_manager::is_virtual_uri(&p) => {
@@ -2494,6 +2496,8 @@ pub async fn data_governance_import_sync_data(
     let active_dir = get_active_data_dir(&app)?;
 
     crate::unified_file_manager::reject_double_encoded_virtual_uri(&input_path)
+        .map_err(|e| e.to_string())?;
+    crate::unified_file_manager::queue_persistable_saf_uri(&app_data_dir, &input_path)
         .map_err(|e| e.to_string())?;
     let (input_file_path, cleanup_path) =
         if crate::unified_file_manager::is_virtual_uri(&input_path) {

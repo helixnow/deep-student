@@ -422,6 +422,44 @@ pub fn reject_double_encoded_virtual_uri(path: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// MainActivity 轮询此文件并对其中的 `content://` 调用
+/// `takePersistableUriPermission`。路径必须与 Tauri `app_data_dir`
+/// （Android 上即 `filesDir`）一致。
+pub const PENDING_SAF_PERSIST_FILE: &str = "pending_saf_persist.uri";
+
+/// 异步 ZIP/同步在虚拟 `content://` 上依赖当前进程 URI grant。
+/// 把 URI 写入应用私有目录，交给 MainActivity 尽早 persist。
+/// 选择器若是 `ACTION_GET_CONTENT`，系统可能拒绝 persist——不得假装已授权。
+pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), AppError> {
+    reject_double_encoded_virtual_uri(uri)?;
+    let trimmed = uri.trim();
+    if !trimmed.to_ascii_lowercase().starts_with("content://") {
+        return Ok(());
+    }
+    if trimmed.len() > 8 * 1024 || trimmed.bytes().any(|b| b == b'\n' || b == b'\r') {
+        return Err(AppError::validation(
+            "SAF persist 队列拒绝过长或含换行的 URI",
+        ));
+    }
+    if !app_data_dir.exists() {
+        std::fs::create_dir_all(app_data_dir).map_err(|e| {
+            AppError::file_system(format!(
+                "创建 SAF persist 队列目录失败: {} ({})",
+                app_data_dir.display(),
+                e
+            ))
+        })?;
+    }
+    let pending = app_data_dir.join(PENDING_SAF_PERSIST_FILE);
+    std::fs::write(&pending, trimmed).map_err(|e| {
+        AppError::file_system(format!(
+            "写入 SAF persist 队列失败: {} ({})",
+            pending.display(),
+            e
+        ))
+    })
+}
+
 /// 从任意路径（本地路径、Windows 反斜杠路径或 content:// URI）中安全提取文件名。
 ///
 /// 对于 `content://...document/primary%3ADownload%2FQuarkDownloads%2Ffile.pdf`，
@@ -880,8 +918,8 @@ pub fn ensure_local_path(
 mod tests {
     use super::{
         digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
-        reject_double_encoded_virtual_uri, required_temp_copy_bytes,
-        DOUBLE_ENCODED_VIRTUAL_URI_REJECTED,
+        queue_persistable_saf_uri, reject_double_encoded_virtual_uri, required_temp_copy_bytes,
+        DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_FILE,
     };
     use std::io::Cursor;
 
@@ -934,5 +972,47 @@ mod tests {
         )
         .expect_err("双重编码必须 fail-closed");
         assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
+    }
+
+    #[test]
+    fn queue_persistable_saf_uri_writes_content_only() {
+        let dir = tempfile::tempdir().expect("persist queue dir");
+        let content =
+            "content://com.android.externalstorage.documents/document/primary%3Abackup.zip";
+        queue_persistable_saf_uri(dir.path(), &format!("  {content}  "))
+            .expect("原始 content:// 必须入队");
+        let pending = dir.path().join(PENDING_SAF_PERSIST_FILE);
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("read queue"),
+            content,
+            "入队必须写入 trim 后的原始 content://，不得改编码"
+        );
+
+        queue_persistable_saf_uri(dir.path(), "/tmp/backup.zip").expect("本地路径必须静默跳过");
+        queue_persistable_saf_uri(dir.path(), "primary:Download/backup.zip")
+            .expect("SAF 树路径不是 content://，不得入队");
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("queue unchanged"),
+            content,
+            "非 content:// 不得改写或清空已有队列"
+        );
+
+        let err = queue_persistable_saf_uri(
+            dir.path(),
+            "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip",
+        )
+        .expect_err("双重编码必须在入队前可读拒绝");
+        assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("queue survives reject"),
+            content,
+            "入队失败不得改写已有队列"
+        );
+
+        let err = queue_persistable_saf_uri(dir.path(), "content://authority/document/1\nextra")
+            .expect_err("含换行必须拒绝");
+        assert!(err
+            .to_string()
+            .contains("SAF persist 队列拒绝过长或含换行的 URI"));
     }
 }
