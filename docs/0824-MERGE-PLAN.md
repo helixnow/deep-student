@@ -713,3 +713,19 @@ writing manifests），干净落地零冲突。fetch 时 #177 tip 即为 `bb81e9
   allowlist 全部在位）；
 - SKIP：已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/
   `0fcbc59b`，以及全部隔离 PR。
+
+### Step 13 收口：#177 桌面 S3 Range 断点续传
+
+日期：2026-08-25。基座 `8badceda`（Step 12 tip）；fetch 后 #177 tip 恰为
+`86a1e7c4`，其后无更新提交。仅 cherry-pick `86a1e7c4` → `6887bf84`
+（S3 整包恢复精确 Range 续传；服务端忽略 Range 时从零重下，错位
+`Content-Range` fail-closed），干净落地零冲突；FTP 与 Android 行为不变。
+
+- 编译门禁：`npm run typecheck`、`npx vite build`、
+  `cargo check --manifest-path src-tauri/Cargo.toml --lib` 最终均 exit 0
+  （Rust 1.98；28 条既有 warning；Vite 仅既有 chunk/circular warning）；
+- Step 9 §9.4 的 18 项不变量逐项复查仍为 **18/18 PASS**：tombstone 发布后
+  复读、WebDAV decode、S3 normalize、FTP 550/501、Composer* 拆分、
+  附件 200/50、G 44px、HPIAS 会话隔离与 18-block allowlist 全部在位；
+- SKIP：已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/
+  `0fcbc59b`/`bb81e9d6`，以及全部隔离 PR。
