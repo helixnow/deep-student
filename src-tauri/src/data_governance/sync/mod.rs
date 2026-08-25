@@ -976,10 +976,11 @@ impl SyncManager {
             .as_deref()
             .filter(|pw| !pw.is_empty())
         else {
-            storage
-                .put_file(key, path, progress)
-                .await
-                .map_err(|e| SyncError::Network(format!("上传文件级对象失败 {}: {}", key, e)))?;
+            let expected = std::fs::metadata(path)
+                .map(|m| m.len())
+                .map_err(|e| SyncError::Database(format!("读取文件级对象大小失败: {e}")))?;
+            Self::put_file_and_verify_size(storage, key, path, expected, progress, "文件级对象")
+                .await?;
             return Ok(());
         };
 
@@ -991,10 +992,18 @@ impl SyncManager {
             .into_temp_path();
         crate::crypto::backup_crypto::encrypt_backup_file(path, &encrypted_tmp, password)
             .map_err(|e| SyncError::Database(format!("文件级对象加密失败 {}: {}", key, e)))?;
-        storage
-            .put_file(key, &encrypted_tmp, progress)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传加密文件级对象失败 {}: {}", key, e)))?;
+        let expected = std::fs::metadata(&encrypted_tmp)
+            .map(|m| m.len())
+            .map_err(|e| SyncError::Database(format!("读取加密文件级对象大小失败: {e}")))?;
+        Self::put_file_and_verify_size(
+            storage,
+            key,
+            &encrypted_tmp,
+            expected,
+            progress,
+            "加密文件级对象",
+        )
+        .await?;
         Ok(())
     }
 
@@ -2264,6 +2273,30 @@ impl SyncManager {
                 tracing::warn!("[sync] 上传 size 回验 stat 失败: key={}, err={}", key, e);
                 false
             }
+        }
+    }
+
+    /// 文件级对象 `put_file` 后 `stat` 核对远端大小。
+    /// 生产 provider 的 `put_file` 已自核，这里再拦一层：默认 `put_file`
+    /// 不自动核对，短写不得写入文件级清单。不宣称全量回读 / 远端 SHA。
+    async fn put_file_and_verify_size(
+        storage: &dyn CloudStorage,
+        key: &str,
+        path: &std::path::Path,
+        expected_size: u64,
+        progress: Option<Box<dyn Fn(u64, u64) + Send + Sync>>,
+        context: &str,
+    ) -> Result<(), SyncError> {
+        storage
+            .put_file(key, path, progress)
+            .await
+            .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
+        if Self::verify_uploaded_size(storage, key, expected_size).await {
+            Ok(())
+        } else {
+            Err(SyncError::Network(format!(
+                "{context} 上传后大小不一致或对象不存在，已停止并不得写入清单"
+            )))
         }
     }
 
@@ -10090,8 +10123,18 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
                     );
-                    match storage.put_file(&key, upload_path, transfer_progress).await {
-                        Ok(_) => {
+                    let expected_remote = cipher_size.unwrap_or(snapshot_size);
+                    match Self::put_file_and_verify_size(
+                        storage,
+                        &key,
+                        upload_path,
+                        expected_remote,
+                        transfer_progress,
+                        "工作区数据库",
+                    )
+                    .await
+                    {
+                        Ok(()) => {
                             new_manifest.entries.insert(
                                 ws_id.clone(),
                                 WorkspaceEntry {
@@ -10496,8 +10539,18 @@ impl SyncManager {
                         progress.as_ref(),
                         format!("VFS blob {}", hash),
                     );
-                    match storage.put_file(&key, upload_path, transfer_progress).await {
-                        Ok(_) => {
+                    let expected_remote = cipher_size.unwrap_or(size);
+                    match Self::put_file_and_verify_size(
+                        storage,
+                        &key,
+                        upload_path,
+                        expected_remote,
+                        transfer_progress,
+                        "VFS blob",
+                    )
+                    .await
+                    {
+                        Ok(()) => {
                             new_manifest.entries.insert(
                                 hash.clone(),
                                 BlobEntry {
@@ -11051,11 +11104,18 @@ impl SyncManager {
                     Self::upload_object_source(&encrypted, path);
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
-                match storage
-                    .put_file(&remote_key, upload_path, transfer_progress)
-                    .await
+                let expected_remote = cipher_size.unwrap_or(*size);
+                match Self::put_file_and_verify_size(
+                    storage,
+                    &remote_key,
+                    upload_path,
+                    expected_remote,
+                    transfer_progress,
+                    "资产文件",
+                )
+                .await
                 {
-                    Ok(_) => {
+                    Ok(()) => {
                         new_manifest.entries.insert(
                             key.clone(),
                             AssetFileEntry {
@@ -12477,6 +12537,14 @@ mod tests {
         assert!(
             source.contains("文件级{label}清单"),
             "publish_file_manifest 必须走同一条 GET 回读闸"
+        );
+        assert!(
+            source.contains("put_file_and_verify_size"),
+            "文件级对象 put_file 后必须 stat 回验大小，不得只认 put 成功"
+        );
+        assert!(
+            source.contains("不得写入清单"),
+            "文件级对象短写不得写入工作区/blob/资产清单"
         );
     }
 
@@ -16715,6 +16783,67 @@ mod tests {
             row.get(0)
         })
         .unwrap()
+    }
+
+    /// 只截断文件级对象 PUT；清单 JSON 保持完整，避免发布回读先拦住。
+    struct TruncateFileObjectPut {
+        inner: FileE2eeMemoryStorage,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for TruncateFileObjectPut {
+        fn provider_name(&self) -> &'static str {
+            "memory-truncate-file-object"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            if key.ends_with(".json") {
+                return CloudStorage::put(&self.inner, key, data).await;
+            }
+            let keep = data.len() / 2;
+            CloudStorage::put(&self.inner, key, &data[..keep]).await
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn workspace_upload_fails_when_remote_object_size_mismatches() {
+        let storage = TruncateFileObjectPut {
+            inner: FileE2eeMemoryStorage::default(),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        create_workspace_db(dir.path(), "ws_size_mismatch", "must-not-publish");
+        let manager = encrypted_manager("device-file-size", "shared-pw");
+        let error = manager
+            .sync_workspace_databases(&storage, dir.path(), SyncDirection::Upload)
+            .await
+            .expect_err("文件级对象短写必须 fail-closed");
+        assert!(
+            error.to_string().contains("上传后大小不一致或对象不存在"),
+            "拒绝原因必须指向对象 size 回验，实际: {error}"
+        );
+        let manifest = manager
+            .download_workspaces_manifest(&storage)
+            .await
+            .expect("未发布条目时清单仍可合并为空");
+        assert!(
+            !manifest.entries.contains_key("ws_size_mismatch"),
+            "短写对象不得写入工作区清单"
+        );
     }
 
     #[cfg(feature = "data_governance")]
