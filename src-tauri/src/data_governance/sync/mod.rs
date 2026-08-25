@@ -2916,13 +2916,12 @@ impl SyncManager {
         }
     }
 
-    fn snapshot_key(database_name: &str, device_id: &str) -> String {
+    /// 新快照对象名不编码时间或设备。到期/裁剪看 `last_modified`，语义看清单内容。
+    fn snapshot_key(database_name: &str, _device_id: &str) -> String {
         format!(
-            "{}/{}/{}-{}-{}.json.zst",
+            "{}/{}/{}.json.zst",
             Self::SNAPSHOTS_PREFIX,
             database_name,
-            chrono::Utc::now().timestamp_millis(),
-            Self::device_path_id(device_id),
             uuid::Uuid::new_v4()
         )
     }
@@ -9528,16 +9527,10 @@ impl SyncManager {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
     }
 
-    /// 新文件级清单：`file_manifests/<kind>/<短哈希>/<ts>-<uuid>.json`。
-    /// 列举按整前缀合并内容，旧明文设备目录仍可读。
-    fn append_only_file_manifest_key(prefix: &str, device_id: &str) -> String {
-        format!(
-            "{}/{}/{}-{}.json",
-            prefix,
-            Self::device_path_id(device_id),
-            chrono::Utc::now().timestamp_millis(),
-            uuid::Uuid::new_v4()
-        )
+    /// 新文件级清单：`file_manifests/<kind>/<uuid>.json`。
+    /// 不编码时间或设备；列举按整前缀合并，旧明文/短哈希设备目录仍可读。
+    fn append_only_file_manifest_key(prefix: &str, _device_id: &str) -> String {
+        format!("{}/{}.json", prefix, uuid::Uuid::new_v4())
     }
 
     async fn publish_file_manifest<T: Serialize>(
@@ -12530,29 +12523,38 @@ mod tests {
     }
 
     #[test]
-    fn file_and_snapshot_keys_use_short_hash_not_raw_id() {
+    fn file_and_snapshot_keys_are_neutral_ids() {
         let raw = "device-file-path";
         let hashed = SyncManager::device_path_id(raw);
         let file_key =
             SyncManager::append_only_file_manifest_key(SyncManager::BLOBS_MANIFESTS_PREFIX, raw);
         assert!(
-            file_key.starts_with(&format!("data_governance/file_manifests/blobs/{hashed}/")),
+            file_key.starts_with("data_governance/file_manifests/blobs/"),
             "{file_key}"
         );
+        assert!(file_key.ends_with(".json"), "{file_key}");
+        let file_name = file_key.rsplit('/').next().unwrap();
+        assert_eq!(file_name.len(), 36 + ".json".len(), "{file_key}");
         assert!(
-            !file_key.contains(raw),
-            "文件级清单路径不得暴露明文 device_id: {file_key}"
+            !file_key.contains(raw) && !file_key.contains(&hashed),
+            "文件级清单路径不得含 device_id 或其短哈希: {file_key}"
+        );
+        assert!(
+            !file_name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "文件级清单名不得再以毫秒时间戳开头: {file_key}"
         );
 
         let snap = SyncManager::snapshot_key("vfs", raw);
         assert!(snap.starts_with("data_governance/snapshots/vfs/"), "{snap}");
+        assert!(snap.ends_with(".json.zst"), "{snap}");
+        let snap_name = snap.rsplit('/').next().unwrap();
         assert!(
-            snap.contains(&format!("-{hashed}-")),
-            "快照文件名应含短哈希: {snap}"
+            !snap.contains(raw) && !snap.contains(&hashed),
+            "快照路径不得含 device_id 或其短哈希: {snap}"
         );
         assert!(
-            !snap.contains(raw),
-            "快照路径不得暴露明文 device_id: {snap}"
+            !snap_name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "快照文件名不得再以毫秒时间戳开头: {snap}"
         );
     }
 
@@ -16770,7 +16772,7 @@ mod tests {
 
     #[cfg(feature = "data_governance")]
     #[tokio::test]
-    async fn file_manifest_publish_uses_hashed_device_dir() {
+    async fn file_manifest_publish_uses_neutral_object_name() {
         let storage = FileE2eeMemoryStorage::default();
         let dir = tempfile::tempdir().unwrap();
         create_workspace_db(dir.path(), "ws_r12_names", "hashed path note");
@@ -16783,13 +16785,22 @@ mod tests {
 
         let keys = storage.keys_with_prefix(SyncManager::WORKSPACES_MANIFESTS_PREFIX);
         let hashed = SyncManager::device_path_id(device);
+        let published = keys
+            .iter()
+            .find(|key| {
+                key.starts_with("data_governance/file_manifests/workspaces/")
+                    && key.ends_with(".json")
+            })
+            .cloned()
+            .unwrap_or_else(|| panic!("应写出文件级清单: {keys:?}"));
         assert!(
-            keys.iter().any(|key| key.contains(&format!("/{hashed}/"))),
-            "新文件级清单应写短哈希目录: {keys:?}"
+            !published.contains(device) && !published.contains(&hashed),
+            "新文件级清单不得含 device_id 或其短哈希: {published}"
         );
+        let name = published.rsplit('/').next().unwrap();
         assert!(
-            keys.iter().all(|key| !key.contains(device)),
-            "新文件级清单不得含明文 device_id: {keys:?}"
+            !name.chars().take(13).all(|c| c.is_ascii_digit()),
+            "新文件级清单名不得再以毫秒时间戳开头: {published}"
         );
     }
 
