@@ -569,3 +569,62 @@ mock 工厂缺 `initReactI18next` 导出，组件传递依赖图加载 i18n 引�
 - `npm run typecheck` 0 错误（先 `version:generate`）；
 - 红线复查：F 拆分未回退（mobileSplitContract 新契约锁定）、只读闪卡/
   `cardAgent`/pipeline hooks/host buckets/src-tauri 零触碰。
+
+### Step 9 收口：FF 云同步 #177 增量 + 剩余 leftover INCLUDE + 编译门禁
+
+日期：2026-08-25。官方 0824 唯一写入者执行。基座 `e88340c6`。
+
+#### 9.1 Fast-forward #177（云同步最新增量）
+
+`origin/cursor/0824-rehearse-cloud-latest-cde6` @ `2630dc95`（预演枝，
+0824 为其祖先，`merge-base --is-ancestor` 复核为真）→
+`git merge --ff-only` 纯快进，无合并提交。快进后 `100c118d`（#177 tip）
+已是 HEAD 祖先。带入 46 提交：39 个 #177 独有（R10-R12：中立文件名、
+record-path 命名、v1 marker 信任、Android SAF 原子队列、备份 manifest
+复读、ZIP 尺寸校验、云错误本地化 `localizeCloudError` 等）+ merge 提交 +
+#174 移植 + notices + 预演文档。
+
+#### 9.2 Leftover INCLUDE（同枝直落，不整枝 merge）
+
+| 源 | 处置 | 落地提交 |
+|---|---|---|
+| #160 `AnkiTasksApp.loadError.test.tsx` | PORT：产品行为（load-error 面板 + stale banner）0824 已有，仅补测试；mock 面与既有 emptyState/polling 测试一致 | `f38d0041` |
+| #160 `todayScreenEmptyLibrary.test.tsx` | PORT + 适配：空卡库 CTA 复用 `today.goLibrary`（0824 无 `goLibraryToAdd` 键）；真实 zh-CN 文案断言 3 用例（空库 0%、满库复习完 100%、有卡无到期 idle） | `f38d0041` |
+| #160 其余 12 提交 | SKIP：产品已被 F 吸收（建卡/.apkg、pomodoro pill、streak、删 PracticeModeSelector、workbench 壳、i18n 键）；不复活 `PracticeModeSelector` | — |
+| #213 `a40c16a00`（provider-contract 解析器 + vitest 堆） | 部分 PORT：仅取解析器修复——旧 `indexOf` 前缀匹配在当前 ci.yml 上误中缩进块内的 `provider-contract` 出现处，5 用例实测 1 红，改正则标题匹配后 5/5 绿；ci.yml 堆改动不取（0824 vitest shard 步已带 A 的 `NODE_OPTIONS 6144` + 4 分片） | `e83d4081` |
+| #213 `c986c8d11`（rustfmt） | 按意图 PORT：ci.yml 第 304 行有 `cargo fmt --check` 门禁，快进后树上 15 个文件违规（anki_critic/anki 协议族/apkg importer/chat_v2 tools/lib.rs/question_bank_service/note_repo + 3 测试文件），全量 `cargo fmt`，纯格式化；rustfmt 1.83 与 1.98 双版本 `--check` 均干净 | `6a903224` |
+| #213 `746445fc6`（wrap-up vitest 回归修复） | SKIP：其触及的 5 个测试文件在 0824 上实测全绿（InputBarV2.staleContextRef 24/24、StatusBar 33/33、activeSkillToolAccess、blankedTextInteraction、scrollbarVisualContract）；照抄会删除仍在守护的 staleContextRef 测试 | — |
+| #213 `e311daa40`（skill 契约对齐） | SKIP：0824 的 qbank 描述已是压缩版且含 headless 禁令语义（F `f32d820a` 谱系），phase3/4/6/9 契约实测全绿；重放会与压缩版描述冲突 | — |
+| #214 全部 30 提交 | SKIP：8 分片拆分（`01db704a`）及其配套 CI/契约修复（`19091465`/`26bfcb33`/`54c1eb38`/`c2786d4b`/`0033879c`）明令 DROP，与 A 的 4 分片相悖；GenUI/HPIAS 产品提交已经 leftovers-safe 吸收（18 块白名单、sanitizers、会话隔离在树上核实）；`2dcc68f3` vite build 堆 4GiB 已被现行 6144 超越；两个 docs 提交（Round 50/62 banner）描述 #214 自身树状态，留给隔离代理 | — |
+
+#### 9.3 编译门禁（HEAD `6a903224`）
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ exit 0 |
+| `npm run typecheck` | ✅ exit 0（先 `version:generate`） |
+| `npx vite build` | ✅ exit 0，1m02s（6GiB 堆），仅既有 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（rustc 1.98，28 条既有警告；环境需补 GTK/webkit dev 库、protoc、pdfium 资源，均为环境预备非代码问题） |
+| `cargo fmt --check` | ✅ exit 0（1.83 与 1.98 双验） |
+| 新增/触及 vitest | ✅ loadError 2/2、todayScreenEmptyLibrary 3/3、兄弟套件 anki-tasks+TodayScreen 10/10、provider-contract-config 5/5 |
+
+#### 9.4 不变量复查（18/18 PASS）
+
+1. pipeline hooks：`chat_v2/pipeline/hooks.rs`（PipelineHook + ApprovalGate/TaskAudit）✅
+2. `GenerativeUiExecutor` 注册：`pipeline.rs:347` executors.push ✅
+3. H cache：#175/#183 cache telemetry/prefix-freeze（`model2_pipeline`/providers）在树 ✅
+4. `utf8_stream` 有调用者：`llm_manager/mod.rs` ✅
+5. `model_special_tokens`：`utils/mod.rs`，multi_variant/llm_adapter 消费 ✅
+6. 只读闪卡 + 无生产 `ChatV2AnkiAdapter`（仅历史注释）+ `cardAgent.startGeneration`（CardAgent.ts:411）✅
+7. 附件上限 file 200MB / image 50MB（core/constants.ts + resources/types.ts）✅
+8. finder host buckets（finderStore.ts）✅
+9. qbank-tools 压缩版 + `daily_target`（qbank-tools.ts:746）✅
+10. tombstone（sync/tombstone.rs，#177 快进后 515 行扩展）✅
+11. WebDAV decode（webdav.rs `decode_path`）✅
+12. S3 normalize（s3.rs `normalize_endpoint`）✅
+13. FTP 550（550/501 白名单 + 不存在语义）✅
+14. HPIAS 会话隔离（hpiasEventBridge `session_id` 过滤）+ 18 块白名单（`ALLOWED_GENERATIVE_UI_BLOCK_TYPES`）✅
+15. 无 mythos-5 / haiku-5（仅防伪造守护测试，目录零真实条目）✅
+16. NOTICES 在 `legal/`（THIRD_PARTY_NOTICES.txt），`public/legal` 不存在 ✅
+17. InputBar 保持 F 拆分 Composer*（5 个 Composer 文件；staleContextRef 测试保留且 24/24 绿）✅
+18. G 44px / safe-area / Android 返回键（min-h-11、ios-safe-area.css、MainActivity OnBackPressedCallback）✅
