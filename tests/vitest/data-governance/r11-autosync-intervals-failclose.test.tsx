@@ -261,6 +261,9 @@ describe('classifyAutoSyncSkip (fail-close classification)', () => {
         '云端根目录已存在端到端加密标记（.encryption-marker），但本机未配置加密密码。',
       ),
     ).toBe('skipped_unconfigured');
+    expect(
+      classifyAutoSyncSkip('[E_SYNC_E2EE_PASSWORD_REQUIRED] rewritten missing password'),
+    ).toBe('skipped_unconfigured');
   });
 
   it('returns null for unknown errors (they stay failures and back off)', () => {
@@ -463,8 +466,15 @@ describe('mutual exclusion with manual sync', () => {
       resolve(process.cwd(), 'src-tauri/src/data_governance/sync/mod.rs'),
       'utf-8',
     );
+    const rustCloudSource = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/cloud_storage/mod.rs'),
+      'utf-8',
+    );
     for (const marker of AUTO_SYNC_UNCONFIGURED_MARKERS) {
-      expect(rustSyncModSource).toContain(marker);
+      expect(
+        rustSyncModSource.includes(marker) || rustCloudSource.includes(marker),
+        `引擎必须保留自动同步半配置标记 ${marker}`,
+      ).toBe(true);
     }
   });
 });

@@ -20,6 +20,10 @@ const MANIFESTS_DIR: &str = "manifests";
 const BACKUPS_DIR: &str = "backups";
 /// 默认保留版本数
 const DEFAULT_MAX_VERSIONS: usize = 10;
+/// [R12-neutral-names] 新备份对象名：22 位随机字母数字，不含时间、不含设备短 ID。
+const NEUTRAL_VERSION_ID_LEN: usize = 22;
+/// [R12-neutral-names] per-device manifest 文件名与新写入 `createdByDevice` 的短哈希长度。
+const DEVICE_ID_SHORT_HASH_LEN: usize = 16;
 /// 云端加密标记对象（相对云 root 的路径）。
 ///
 /// 一旦某个云 root 出现过端到端加密（DSBK）备份，就写入此标记；此后未配置
@@ -47,11 +51,36 @@ pub(crate) fn normalize_device_id(device_id: &str) -> String {
     format!("device-{}", hex::encode(hasher.finalize()))
 }
 
+/// [R12-neutral-names] 设备 ID 短哈希（SHA256 hex 前缀）。
+///
+/// 用于 `manifests/<hash>.json` 与新写入的 `.encryption-marker.createdByDevice`。
+/// 完整 device_id 仍写在 manifest 内容的 `deviceId` 字段；旧 `manifests/<device_id>.json`
+/// 读取侧继续兼容。调用方应传入已经 [`normalize_device_id`] 过的值。
+pub fn device_id_short_hash(device_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(device_id.as_bytes());
+    hex::encode(hasher.finalize())
+        .chars()
+        .take(DEVICE_ID_SHORT_HASH_LEN)
+        .collect()
+}
+
+/// [R12-neutral-names] 新备份版本 ID：纯随机，不编码时间或设备。
+fn generate_neutral_version_id() -> String {
+    let mut id = String::with_capacity(NEUTRAL_VERSION_ID_LEN);
+    while id.len() < NEUTRAL_VERSION_ID_LEN {
+        id.push_str(&Uuid::new_v4().simple().to_string());
+    }
+    id.truncate(NEUTRAL_VERSION_ID_LEN);
+    id
+}
+
 /// 备份版本信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupVersion {
-    /// 版本 ID（时间戳格式：YYYYMMDD-HHMMSS）
+    /// 版本 ID。新上传为 22 位随机字母数字；历史版本可能仍是
+    /// `YYYYMMDD-HHMMSS-毫秒-设备短ID-nonce`。下载/裁剪按 manifest `id` 查找，不解析文件名。
     pub id: String,
     /// 创建时间
     pub timestamp: DateTime<Utc>,
@@ -67,6 +96,9 @@ pub struct BackupVersion {
     /// 备注
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// 导入后能否整槽恢复。旧清单没有该字段，按未知处理。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_kind: Option<String>,
 }
 
 /// 云端 Manifest
@@ -242,8 +274,33 @@ impl CloudSyncManager {
         &self.device_id
     }
 
+    /// [R12-neutral-names] 新写入的 per-device manifest 文件名用短哈希，不再暴露完整 device_id。
     fn device_manifest_key(&self) -> String {
+        format!(
+            "{}/{}.json",
+            MANIFESTS_DIR,
+            device_id_short_hash(&self.device_id)
+        )
+    }
+
+    /// 旧客户端写下的 `manifests/<device_id>.json`。读取时与新名合并，写入成功后删除。
+    fn device_manifest_legacy_key(&self) -> String {
         format!("{}/{}.json", MANIFESTS_DIR, self.device_id)
+    }
+
+    /// 读取本设备清单：新短哈希名优先，并入旧 device_id 文件名，避免升级后从空清单再写造成双源分叉。
+    async fn load_own_device_manifests(
+        &self,
+    ) -> Result<(Option<CloudManifest>, Option<CloudManifest>)> {
+        let new_key = self.device_manifest_key();
+        let legacy_key = self.device_manifest_legacy_key();
+        let current = self.read_manifest_key(&new_key).await?;
+        let legacy = if new_key == legacy_key {
+            None
+        } else {
+            self.read_manifest_key(&legacy_key).await?
+        };
+        Ok((current, legacy))
     }
 
     fn merge_manifest(target: &mut CloudManifest, incoming: CloudManifest) {
@@ -381,17 +438,45 @@ impl CloudSyncManager {
     }
 
     async fn get_device_manifest(&self) -> Result<CloudManifest> {
-        if let Some(manifest) = self.read_manifest_key(&self.device_manifest_key()).await? {
-            Ok(manifest)
-        } else {
-            Ok(CloudManifest::default())
+        match self.load_own_device_manifests().await? {
+            (Some(mut current), Some(legacy)) => {
+                Self::merge_manifest(&mut current, legacy);
+                Ok(current)
+            }
+            (Some(current), None) => Ok(current),
+            (None, Some(legacy)) => Ok(legacy),
+            (None, None) => Ok(CloudManifest::default()),
         }
     }
 
-    /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）
+    /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）。
+    /// 写入短哈希文件名后删除旧 `manifests/<device_id>.json`，完成一次性迁移。
     async fn save_manifest(&self, manifest: &CloudManifest) -> Result<()> {
-        self.save_manifest_at_key(&self.device_manifest_key(), manifest)
-            .await
+        let new_key = self.device_manifest_key();
+        self.save_manifest_at_key(&new_key, manifest).await?;
+        let legacy_key = self.device_manifest_legacy_key();
+        if legacy_key != new_key {
+            match self.storage.stat(&legacy_key).await {
+                Ok(Some(_)) => {
+                    if let Err(error) = self.storage.delete(&legacy_key).await {
+                        tracing::warn!(
+                            "迁移设备 manifest 后删除旧对象 {} 失败（新清单已发布）: {}",
+                            legacy_key,
+                            error
+                        );
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        "迁移设备 manifest 时探测旧对象 {} 失败: {}",
+                        legacy_key,
+                        error
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn save_manifest_at_key(&self, key: &str, manifest: &CloudManifest) -> Result<()> {
@@ -415,6 +500,15 @@ impl CloudSyncManager {
         }
 
         self.storage.put(key, &data).await?;
+        match self.storage.get(key).await? {
+            Some(ref read_back) if read_back == &data => {}
+            _ => {
+                return Err(AppError::internal(
+                    "manifest 发布后回读校验失败，已停止并不得报成功（已保留已校验临时对象）"
+                        .to_string(),
+                ));
+            }
+        }
         let _ = self.storage.delete(&temp_key).await;
 
         Ok(())
@@ -425,12 +519,14 @@ impl CloudSyncManager {
         match self.storage.check_connection().await {
             Ok(_) => match self.get_manifest().await {
                 Ok(manifest) => {
-                    let device_last_sync = self
-                        .read_manifest_key(&self.device_manifest_key())
-                        .await
-                        .ok()
-                        .flatten()
-                        .map(|m| m.updated_at);
+                    let device_last_sync = match self.load_own_device_manifests().await {
+                        Ok((Some(current), Some(legacy))) => {
+                            Some(current.updated_at.max(legacy.updated_at))
+                        }
+                        Ok((Some(current), None)) => Some(current.updated_at),
+                        Ok((None, Some(legacy))) => Some(legacy.updated_at),
+                        Ok((None, None)) | Err(_) => None,
+                    };
                     let latest = manifest
                         .latest
                         .as_ref()
@@ -521,7 +617,7 @@ impl CloudSyncManager {
         }
         let marker = EncryptionMarker {
             version: 1,
-            created_by_device: self.device_id.clone(),
+            created_by_device: device_id_short_hash(&self.device_id),
             created_at: Utc::now(),
             key_verifier: None,
         };
@@ -549,7 +645,7 @@ impl CloudSyncManager {
                     .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
                 let marker = EncryptionMarker {
                     version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
-                    created_by_device: self.device_id.clone(),
+                    created_by_device: device_id_short_hash(&self.device_id),
                     created_at: Utc::now(),
                     key_verifier: Some(verifier),
                 };
@@ -557,11 +653,11 @@ impl CloudSyncManager {
                 return Ok(marker);
             }
             EncryptionMarkerState::Corrupted => {
-                return Err(AppError::configuration(
+                return Err(AppError::configuration(super::sync_e2ee_error(
+                    super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
                     "云端加密标记（.encryption-marker）内容已损坏，无法确认加密密码与既有备份\
-                     一致，已在上传前中止（fail-closed）。请人工检查该云端目录后重试。"
-                        .to_string(),
-                ));
+                     一致，已在上传前中止（fail-closed）。请人工检查该云端目录后重试。",
+                )));
             }
             EncryptionMarkerState::Present(marker) => marker,
         };
@@ -570,14 +666,17 @@ impl CloudSyncManager {
             Some(verifier) => {
                 match crate::crypto::backup_crypto::check_password_verifier(password, verifier) {
                     Ok(true) => Ok(marker),
-                    Ok(false) => Err(AppError::configuration(
+                    Ok(false) => Err(AppError::configuration(super::sync_e2ee_error(
+                        super::SYNC_E2EE_WRONG_PASSWORD_CODE,
                         "加密密码与该云端目录既有加密备份使用的密码不一致，已在上传前中止，\
-                         未写入任何备份对象。请核对加密密码后重试，或改用新的云端目录。"
-                            .to_string(),
-                    )),
-                    Err(error) => Err(AppError::configuration(format!(
-                        "无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：{error}。\
-                         该标记可能由更新版本的应用写入，请先升级本机应用。"
+                         未写入任何备份对象。请核对加密密码后重试，或改用新的云端目录。",
+                    ))),
+                    Err(error) => Err(AppError::configuration(super::sync_e2ee_error(
+                        super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
+                        format!(
+                            "无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：{error}。\
+                             该标记可能由更新版本的应用写入，请先升级本机应用。"
+                        ),
                     ))),
                 }
             }
@@ -606,10 +705,13 @@ impl CloudSyncManager {
                 Ok(upgraded)
             }
             // version >= 2 却缺校验子：不是合法旧标记，视为被篡改/损坏，fail-closed。
-            None => Err(AppError::configuration(format!(
-                "云端加密标记版本为 {} 却缺少密码校验子，疑似损坏或被篡改，已在上传前中止\
-                 （fail-closed）。请人工检查该云端目录后重试。",
-                marker.version
+            None => Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_MARKER_CORRUPTED_CODE,
+                format!(
+                    "云端加密标记版本为 {} 却缺少密码校验子，疑似损坏或被篡改，已在上传前中止\
+                     （fail-closed）。请人工检查该云端目录后重试。",
+                    marker.version
+                ),
             ))),
         }
     }
@@ -672,11 +774,14 @@ impl CloudSyncManager {
         .map_err(|e| AppError::internal(format!("试解密任务执行失败: {e}")))?;
 
         trial.map_err(|error| {
-            AppError::configuration(format!(
-                "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
-                 {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
-                 若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
-                version.id
+            AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                format!(
+                    "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
+                     {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
+                     若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
+                    version.id
+                ),
             ))
         })?;
 
@@ -691,19 +796,19 @@ impl CloudSyncManager {
     pub async fn ensure_plaintext_upload_allowed(&self) -> Result<()> {
         if self.read_encryption_marker().await?.is_some() {
             self.remember_encrypted_root();
-            return Err(AppError::configuration(
+            return Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "该云端目录已存在端到端加密备份，为避免明文/密文混布，已拒绝未加密上传。\
-                 请在云存储配置里填写相同的加密密码后重试。"
-                    .to_string(),
-            ));
+                 请在云存储配置里填写相同的加密密码后重试。",
+            )));
         }
         if self.encrypted_root_remembered_locally() {
-            return Err(AppError::configuration(
+            return Err(AppError::configuration(super::sync_e2ee_error(
+                super::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE,
                 "本机记录显示该云端目录曾启用端到端加密，但云端的加密标记现已缺失（可能被删除）。\
                  为避免向同一目录混入未加密备份，已拒绝本次上传。请在云存储配置里填写原加密密码\
-                 后重试；若确认要改用未加密备份，请换一个新的云端目录。"
-                    .to_string(),
-            ));
+                 后重试；若确认要改用未加密备份，请换一个新的云端目录。",
+            )));
         }
         Ok(())
     }
@@ -764,7 +869,7 @@ impl CloudSyncManager {
         app_version: Option<String>,
         note: Option<String>,
     ) -> Result<UploadResult> {
-        self.upload_with_progress(zip_path, app_version, note, None)
+        self.upload_with_progress(zip_path, app_version, note, None, None)
             .await
     }
 
@@ -774,12 +879,14 @@ impl CloudSyncManager {
     /// * `zip_path` - 本地 ZIP 文件路径
     /// * `app_version` - 应用版本
     /// * `note` - 备注
+    /// * `recovery_kind` - 导入后能否整槽恢复（`disaster_recovery` / `partial_archive`）
     /// * `progress` - 进度回调 (uploaded_bytes, total_bytes)
     pub async fn upload_with_progress(
         &self,
         zip_path: &Path,
         app_version: Option<String>,
         note: Option<String>,
+        recovery_kind: Option<String>,
         progress: Option<super::traits::UploadProgressCallback>,
     ) -> Result<UploadResult> {
         const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024; // 提升到 10GB
@@ -800,26 +907,9 @@ impl CloudSyncManager {
             file_size as f64 / 1024.0 / 1024.0
         );
 
-        // 生成版本 ID（毫秒 + 设备短 ID + 随机 nonce，避免同秒并发冲突）
+        // [R12-neutral-names] 版本 ID 纯随机，时间与设备只写在 manifest 字段。
         let now = Utc::now();
-        let device_short = self
-            .device_id
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .take(6)
-            .collect::<String>();
-        let nonce = Uuid::new_v4()
-            .to_string()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .take(8)
-            .collect::<String>();
-        let version_id = format!(
-            "{}-{}-{}",
-            now.format("%Y%m%d-%H%M%S-%3f"),
-            device_short,
-            nonce
-        );
+        let version_id = generate_neutral_version_id();
         Self::validate_version_id(&version_id)?;
         let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version_id);
 
@@ -833,6 +923,24 @@ impl CloudSyncManager {
             return Err(AppError::internal(
                 "云存储 provider 返回了非法 SHA256，已拒绝发布版本".to_string(),
             ));
+        }
+        // put_file 的 SHA256 来自本地文件。远端若静默短写，仍会带回本地哈希。
+        // 发布清单前先 stat 核对大小；全量回读太贵，短包这一档必须在此拦下。
+        match self.storage.stat(&remote_key).await? {
+            Some(info) if info.size == file_size => {}
+            Some(info) => {
+                let _ = self.storage.delete(&remote_key).await;
+                return Err(AppError::internal(format!(
+                    "云端备份对象上传后大小不一致：本地 {file_size} 字节，远端 {} 字节，已停止并不得报成功",
+                    info.size
+                )));
+            }
+            None => {
+                let _ = self.storage.delete(&remote_key).await;
+                return Err(AppError::internal(
+                    "云端备份对象上传后不存在，已停止并不得报成功".to_string(),
+                ));
+            }
         }
 
         tracing::info!(
@@ -850,6 +958,7 @@ impl CloudSyncManager {
             device_id: self.device_id.clone(),
             app_version,
             note,
+            recovery_kind,
         };
 
         // 更新 Manifest
@@ -1681,6 +1790,12 @@ mod tests {
             .await
             .expect_err("有加密标记且无密码时必须拒绝明文上传");
         assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE),
+            "明文上传拒绝必须带稳定 code: {error}"
+        );
+        assert!(
             error.to_string().contains("加密"),
             "错误应提示需要加密密码: {error}"
         );
@@ -1695,7 +1810,7 @@ mod tests {
         );
         // 标记本身保持不变
         let marker = manager.read_encryption_marker().await.unwrap().unwrap();
-        assert_eq!(marker.created_by_device, "device-a");
+        assert_eq!(marker.created_by_device, device_id_short_hash("device-a"));
     }
 
     #[tokio::test]
@@ -1710,7 +1825,7 @@ mod tests {
             .expect("有密码时上传前策略应放行");
         let first = manager.read_encryption_marker().await.unwrap().unwrap();
         assert_eq!(first.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
-        assert_eq!(first.created_by_device, "device-a");
+        assert_eq!(first.created_by_device, device_id_short_hash("device-a"));
         assert!(
             first.key_verifier.is_some(),
             "新登记的标记必须携带密码校验子"
@@ -1795,7 +1910,8 @@ mod tests {
             .expect("旧标记应被一次性升级而不是拒绝");
         assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
         assert_eq!(
-            upgraded.created_by_device, "device-legacy",
+            upgraded.created_by_device,
+            device_id_short_hash("device-legacy"),
             "升级不得改写首次写入者"
         );
         assert_eq!(
@@ -1900,6 +2016,12 @@ mod tests {
             .verify_encryption_password_before_upload("pw")
             .await
             .expect_err("v2 缺校验子必须 fail-closed 而不是被静默升级");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::SYNC_E2EE_MARKER_CORRUPTED_CODE),
+            "v2 缺校验子必须带稳定 code: {error}"
+        );
         assert!(error.to_string().contains("缺少密码校验子"), "{error}");
     }
 
@@ -1916,5 +2038,359 @@ mod tests {
             manager.ensure_plaintext_upload_allowed().await.is_err(),
             "标记损坏时必须 fail-closed，拒绝明文上传"
         );
+    }
+
+    #[test]
+    fn old_backup_version_json_without_recovery_kind_still_deserializes() {
+        let json = r#"{
+            "id": "20260101-000000-000-abcd-1234abcd",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "size": 12,
+            "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "deviceId": "device-a"
+        }"#;
+        let version: BackupVersion =
+            serde_json::from_str(json).expect("旧版本清单缺少 recoveryKind 必须仍能反序列化");
+        assert!(version.recovery_kind.is_none());
+        assert_eq!(version.device_id, "device-a");
+    }
+
+    #[test]
+    fn mixed_manifest_keeps_old_unknown_and_new_recovery_kind() {
+        let json = r#"{
+            "version": 1,
+            "latest": "new-id",
+            "updatedAt": "2026-01-02T00:00:00Z",
+            "versions": [
+                {
+                    "id": "new-id",
+                    "timestamp": "2026-01-02T00:00:00Z",
+                    "size": 2,
+                    "checksum": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "deviceId": "device-b",
+                    "recoveryKind": "partial_archive"
+                },
+                {
+                    "id": "old-id",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "size": 1,
+                    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "deviceId": "device-a"
+                }
+            ]
+        }"#;
+        let manifest: CloudManifest =
+            serde_json::from_str(json).expect("新旧版本混排的清单必须仍能反序列化");
+        assert_eq!(
+            manifest.versions[0].recovery_kind.as_deref(),
+            Some("partial_archive")
+        );
+        assert!(manifest.versions[1].recovery_kind.is_none());
+        let encoded = serde_json::to_string(&manifest).unwrap();
+        assert!(encoded.contains("recoveryKind"));
+        assert!(encoded.contains("partial_archive"));
+    }
+
+    #[tokio::test]
+    async fn upload_persists_recovery_kind_for_list_and_status() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-kind");
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-for-recovery-kind").unwrap();
+
+        let uploaded = manager
+            .upload_with_progress(
+                &zip,
+                Some("1.2.3".into()),
+                None,
+                Some("partial_archive".into()),
+                None,
+            )
+            .await
+            .expect("带 recovery_kind 的上传应成功")
+            .version;
+        assert_eq!(uploaded.recovery_kind.as_deref(), Some("partial_archive"));
+
+        let listed = manager.list_versions().await.expect("列出版本应成功");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].recovery_kind.as_deref(), Some("partial_archive"));
+
+        let status = manager.get_status().await;
+        assert_eq!(
+            status
+                .latest_version
+                .as_ref()
+                .and_then(|version| version.recovery_kind.as_deref()),
+            Some("partial_archive")
+        );
+    }
+
+    #[test]
+    fn new_version_id_is_22_hex_and_not_a_timestamp() {
+        let id = generate_neutral_version_id();
+        assert_eq!(id.len(), NEUTRAL_VERSION_ID_LEN);
+        assert!(
+            id.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "中性版本 ID 必须是字母数字: {id}"
+        );
+        assert!(!id.contains('-'), "中性版本 ID 不得再带时间戳分段: {id}");
+        let another = generate_neutral_version_id();
+        assert_ne!(id, another, "连续生成的中性 ID 不得碰撞");
+    }
+
+    #[test]
+    fn device_manifest_key_uses_short_hash_not_raw_device_id() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-a");
+        assert_eq!(
+            manager.device_manifest_key(),
+            format!("manifests/{}.json", device_id_short_hash("device-a"))
+        );
+        assert_eq!(
+            manager.device_manifest_legacy_key(),
+            "manifests/device-a.json"
+        );
+        assert_ne!(
+            manager.device_manifest_key(),
+            manager.device_manifest_legacy_key()
+        );
+    }
+
+    struct CorruptFinalPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for CorruptFinalPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupt-final"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            // 只污染最终清单。ZIP 必须原样写入，否则上传后 size 闸会先拦下，
+            // 测不到「发布后回读」这条路径。
+            if key.ends_with(".json") {
+                CloudStorage::put(&self.inner, key, b"corrupted-manifest").await
+            } else {
+                CloudStorage::put(&self.inner, key, data).await
+            }
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    struct TruncateZipPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for TruncateZipPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-truncate-zip"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(".zip") && !data.is_empty() {
+                CloudStorage::put(&self.inner, key, &data[..data.len() - 1]).await
+            } else {
+                CloudStorage::put(&self.inner, key, data).await
+            }
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_remote_zip_size_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(TruncateZipPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-short-zip".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-should-not-shorten").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("远端短写必须 fail-closed");
+        assert!(
+            error.to_string().contains("云端备份对象上传后大小不一致"),
+            "拒绝原因必须指向远端大小，实际: {error}"
+        );
+        assert!(
+            !inner
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "短包必须删除，不得进入版本清单"
+        );
+    }
+
+    struct VanishZipPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for VanishZipPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-vanish-zip"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(".zip") {
+                return Ok(());
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_remote_zip_missing_after_put() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(VanishZipPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-missing-zip".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-should-exist-remotely").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("上传后对象不存在必须 fail-closed");
+        assert!(
+            error.to_string().contains("云端备份对象上传后不存在"),
+            "拒绝原因必须指向远端缺失，实际: {error}"
+        );
+        assert!(
+            !inner
+                .files
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR)),
+            "假成功不得进入版本清单"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_published_manifest_reread_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(CorruptFinalPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-corrupt".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-manifest-reread").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("最终清单回读不一致必须 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains("manifest 发布后回读校验失败，已停止并不得报成功"),
+            "拒绝原因必须指向发布后回读，实际: {error}"
+        );
+
+        let files = inner.files.lock().unwrap();
+        assert!(
+            !files
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR) && key.ends_with(".zip")),
+            "清单发布失败必须回滚未引用 ZIP，不得留下可见半包"
+        );
+        assert!(
+            files.keys().any(|key| key.ends_with(".tmp")),
+            "已校验的临时清单必须保留，供对照损坏的最终对象"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_without_recovery_kind_stays_unknown() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-unknown");
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-unknown-kind").unwrap();
+
+        let uploaded = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect("不带 recovery_kind 的上传应成功")
+            .version;
+        assert!(uploaded.recovery_kind.is_none());
+        let listed = manager.list_versions().await.unwrap();
+        assert!(listed[0].recovery_kind.is_none());
     }
 }

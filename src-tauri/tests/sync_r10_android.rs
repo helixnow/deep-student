@@ -26,20 +26,25 @@
 //!    `AppHandle::restart()` 直接结束进程。重启后的切槽语义已由 R07/R09 用
 //!    "同一 base_dir 上的新 `DataSpaceManager::initialize_on_start`"等价覆盖，
 //!    本文件对壳本身只做注册与调用顺序的源码锚定。
-//! 3. **双重编码的 content URI 不被 `is_virtual_uri` 识别**（见
-//!    `double_encoded_content_uri_is_not_classified_virtual`）：命令层会把
-//!    `content%3A%2F%2F…` 当本地路径走存在性/白名单校验而失败——fail-closed
-//!    不误路由，但也意味着双重编码输入无法物化。生产前端始终传原始
-//!    content:// URI，该缺口仅在真机上有对抗性输入时可见。
+//! 3. **双重编码的 content URI**：`is_virtual_uri` 仍为 false；命令入口与
+//!    `classify_path` 走 `reject_double_encoded_virtual_uri` 可读拒绝，
+//!    不解码后当虚拟路径（避免拆掉 document ID）。生产前端始终传原始
+//!    content:// URI；对抗性输入的真机表现仍见手册 4.1–4.3。
+//! 4. **persistable URI grant**：ZIP/同步入口把 `content://` 原子写入
+//!    `filesDir/pending_saf_persist/<hash>.uri`（旧单文件双读）；MainActivity
+//!    前台轮询 `takePersistableUriPermission`。`ACTION_GET_CONTENT` 拒绝 persist
+//!    时必须删队列并 warn，不得假装已授权。真机强杀/重开仍见手册 4.1–4.3。
 //!
-//! 仅新增测试，不修改生产代码。
+//! 本文件锁定宿主可测半边与源码编排；ContentResolver 真机授权不能冒充绿灯。
 
 use std::path::Path;
 
 use deep_student_lib::data_space::{DataSpaceManager, Slot};
 use deep_student_lib::unified_file_manager::{
     extract_extension, extract_file_name, is_opaque_document_id, is_virtual_uri,
-    sanitize_file_name_for_fs, sanitize_for_legacy,
+    persistable_saf_queue_file, queue_persistable_saf_uri, reject_double_encoded_virtual_uri,
+    sanitize_file_name_for_fs, sanitize_for_legacy, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED,
+    PENDING_SAF_PERSIST_DIR, PENDING_SAF_PERSIST_FILE,
 };
 
 // ============================================================================
@@ -91,19 +96,36 @@ fn content_uri_and_saf_paths_classify_as_virtual() {
     }
 }
 
-/// 缺口声明测试（见模块文档缺口 3）：双重编码的 content URI 在
-/// `is_virtual_uri` 层不被识别为虚拟。命令层会将其当作本地路径，
-/// 后续的存在性/白名单校验会失败——fail-closed，不会静默读写错误对象。
-/// 若未来在分类层补齐双重解码，本断言应当反转并同步命令层语义。
+/// 双重编码的 content URI：`is_virtual_uri` 仍为 false（不把拆坏的
+/// URI 交给 ContentResolver）；命令入口与 classify 走可读拒绝，
+/// 不得当本地路径半处理，也不得解码后当虚拟路径读写。
 #[test]
 fn double_encoded_content_uri_is_not_classified_virtual() {
     let double_encoded =
         "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip";
     assert!(
         !is_virtual_uri(double_encoded),
-        "当前契约：双重编码输入按本地路径处理（fail-closed），\
-         行为变化必须显式改动本测试并复核 commands_zip 的物化分叉"
+        "当前契约：双重编码输入不得被 is_virtual_uri 认成虚拟 URI"
     );
+    let err = reject_double_encoded_virtual_uri(double_encoded).expect_err("双重编码必须可读拒绝");
+    assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
+}
+
+/// Rust 侧只负责把合法 `content://` 写入应用私有队列；本地/`primary:`
+/// 不写，双重编码在入队前拒绝。真正的 persist 由 MainActivity 做。
+#[test]
+fn rust_side_must_queue_content_uri_for_main_activity_persist() {
+    let dir = tempfile::tempdir().expect("persist queue dir");
+    let content =
+        "content://com.android.externalstorage.documents/document/primary%3ADownload%2Fbackup.zip";
+    queue_persistable_saf_uri(dir.path(), content).expect("content:// 必须入队");
+    assert_eq!(
+        std::fs::read_to_string(persistable_saf_queue_file(dir.path(), content))
+            .expect("read queue"),
+        content
+    );
+    assert_eq!(PENDING_SAF_PERSIST_FILE, "pending_saf_persist.uri");
+    assert_eq!(PENDING_SAF_PERSIST_DIR, "pending_saf_persist");
 }
 
 // ============================================================================
@@ -220,6 +242,7 @@ fn zip_command_materialization_orchestration_is_anchored() {
     // 导入侧：虚拟 URI 分叉 → temp_zip_import 物化 → 事后清理。
     for marker in [
         "is_virtual_uri(&zip_path)",
+        "reject_double_encoded_virtual_uri(&zip_path)",
         "temp_zip_import",
         "ensure_local_path(&window, &zip_path, &temp_dir)",
     ] {
@@ -234,16 +257,78 @@ fn zip_command_materialization_orchestration_is_anchored() {
         "导入完成后必须清理从 content:// 物化的临时 ZIP"
     );
 
+    let copy_source = read_source("src/unified_file_manager.rs");
+    for marker in [
+        "digest_copy",
+        "目标回读失败，已停止并不得报成功",
+        "目标回读校验失败",
+        "ensure_enough_temp_space",
+        "临时物化空间不足，已停止以免半包",
+    ] {
+        assert!(
+            copy_source.contains(marker),
+            "SAF 物化必须回读校验并预检临时卷空间，缺少锚点 {marker:?}"
+        );
+    }
+
     // 导出侧：temp_zip_export 临时导出 → 复制回虚拟 URI → 失败也清理。
     for marker in [
         "is_virtual_uri(&output_path)",
+        "reject_double_encoded_virtual_uri(&output_path)",
         "temp_zip_export",
         "fn copy_temp_zip_to_virtual_uri",
         "复制 ZIP 到目标 URI 失败，临时导出已清理",
+        "queue_persistable_saf_uri(&app_data_dir, &output_path)",
+        "queue_persistable_saf_uri(&app_data_dir, path)",
+        "queue_persistable_saf_uri(&app_data_dir, &zip_path)",
     ] {
         assert!(
             source.contains(marker),
             "导出物化编排缺少锚点 {marker:?}——清理承诺（含失败路径）是用户可见契约"
+        );
+    }
+
+    let sync_source = read_source("src/data_governance/commands_sync.rs");
+    for marker in [
+        "queue_persistable_saf_uri(&app_data_dir, p)",
+        "queue_persistable_saf_uri(&app_data_dir, &input_path)",
+    ] {
+        assert!(
+            sync_source.contains(marker),
+            "同步导入/导出必须把 content:// 入队给 MainActivity persist，缺少锚点 {marker:?}"
+        );
+    }
+
+    let persist_source = read_source("src/unified_file_manager.rs");
+    for marker in [
+        "pub const PENDING_SAF_PERSIST_FILE: &str = \"pending_saf_persist.uri\"",
+        "pub const PENDING_SAF_PERSIST_DIR: &str = \"pending_saf_persist\"",
+        "pub fn persistable_saf_queue_file",
+        "pub fn queue_persistable_saf_uri",
+        "with_extension(\"uri.tmp\")",
+        "takePersistableUriPermission",
+        "ACTION_GET_CONTENT",
+    ] {
+        assert!(
+            persist_source.contains(marker),
+            "persistable 队列契约缺少锚点 {marker:?}"
+        );
+    }
+
+    let activity = read_source("mobile/android/MainActivity.kt");
+    for marker in [
+        "pending_saf_persist.uri",
+        "PENDING_SAF_PERSIST_DIR = \"pending_saf_persist\"",
+        "it.name.endsWith(\".uri\")",
+        "takePersistableUriPermission",
+        "PERSIST_POLL_MS = 400L",
+        "SecurityException",
+        "likely ACTION_GET_CONTENT",
+        "pending.delete()",
+    ] {
+        assert!(
+            activity.contains(marker),
+            "MainActivity persist 轮询缺少锚点 {marker:?}——SecurityException 必须删队列，不得假装已授权"
         );
     }
 }

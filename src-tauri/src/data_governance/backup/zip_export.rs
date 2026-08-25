@@ -157,7 +157,8 @@ fn portable_manifest_bytes_with(
 fn validate_encryption_password(password: &str) -> Result<(), ZipExportError> {
     if password.trim().is_empty() || password.chars().count() < MIN_ENCRYPTION_PASSWORD_CHARS {
         return Err(ZipExportError::ExportFailed(format!(
-            "备份密码至少需要 {} 个字符（不能为空白）",
+            "[{}] 备份密码至少需要 {} 个字符（不能为空白）",
+            crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
             MIN_ENCRYPTION_PASSWORD_CHARS
         )));
     }

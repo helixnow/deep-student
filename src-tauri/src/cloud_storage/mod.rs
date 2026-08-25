@@ -45,14 +45,28 @@ pub use config::{
 };
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
-    generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
-    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
-    EncryptionMarker, SyncStatus, UploadResult,
+    device_id_short_hash, generate_device_id_after_restore, get_device_id,
+    persist_device_id_after_restore, rotate_device_id_after_restore, BackupVersion, CloudManifest,
+    CloudSyncManager, DownloadResult, EncryptionMarker, SyncStatus, UploadResult,
 };
 pub use traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
     RESUMABLE_DOWNLOAD_UNSUPPORTED,
 };
+
+/// 本端启用加密后拒收明文遗留对象 / 拒明文上传。
+pub const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE: &str = "E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED";
+/// 密码与云端既有备份不一致，或 DSBK 解密失败。
+pub const SYNC_E2EE_WRONG_PASSWORD_CODE: &str = "E_SYNC_E2EE_WRONG_PASSWORD";
+/// `.encryption-marker` 损坏、缺校验子或无法校验。
+pub const SYNC_E2EE_MARKER_CORRUPTED_CODE: &str = "E_SYNC_E2EE_MARKER_CORRUPTED";
+/// 云端已加密，但本机未提供 / 未配置解密密码。
+pub const SYNC_E2EE_PASSWORD_REQUIRED_CODE: &str = "E_SYNC_E2EE_PASSWORD_REQUIRED";
+
+/// 给 E2EE fail-closed 诊断加上稳定 code，文案仍可改语言。
+pub fn sync_e2ee_error(code: &'static str, message: impl std::fmt::Display) -> String {
+    format!("[{code}] {message}")
+}
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -296,6 +310,7 @@ pub async fn cloud_sync_upload(
     zip_path: String,
     app_version: Option<String>,
     note: Option<String>,
+    recovery_kind: Option<String>,
 ) -> Result<UploadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
     let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
@@ -391,7 +406,13 @@ pub async fn cloud_sync_upload(
     });
 
     let upload_result = manager
-        .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
+        .upload_with_progress(
+            &actual_upload_path,
+            app_version,
+            note,
+            recovery_kind,
+            Some(progress_cb),
+        )
         .await;
 
     // TempPath 在成功和错误路径都会自动清理，且每次操作使用独立随机文件名。
@@ -504,10 +525,10 @@ pub async fn cloud_sync_download(
             .as_deref()
             .filter(|s| !s.is_empty());
         let pwd = pwd.ok_or_else(|| {
-            AppError::configuration(
-                "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。"
-                    .to_string(),
-            )
+            AppError::configuration(sync_e2ee_error(
+                SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+                "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。",
+            ))
         })?;
         tracing::info!("[CloudSync] 检测到加密备份，开始流式解密...");
         // [F14] 流式分块解密到同目录临时文件再原子改名，内存占用恒定，避免多 GB
@@ -523,7 +544,10 @@ pub async fn cloud_sync_download(
             .into_temp_path();
         crate::crypto::backup_crypto::decrypt_backup_file(downloaded_path, &temp_path, pwd)
             .map_err(|e| {
-                AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
+                AppError::validation(sync_e2ee_error(
+                    SYNC_E2EE_WRONG_PASSWORD_CODE,
+                    format!("解密备份失败（密码错或数据损坏）: {}", e),
+                ))
             })?;
         temp_path
             .persist(downloaded_path)
@@ -597,5 +621,21 @@ mod tests {
     fn test_provider_display() {
         assert_eq!(format!("{}", StorageProvider::WebDav), "WebDAV");
         assert_eq!(format!("{}", StorageProvider::S3), "S3");
+    }
+
+    #[test]
+    fn sync_e2ee_error_prefixes_stable_codes() {
+        assert_eq!(
+            sync_e2ee_error(SYNC_E2EE_WRONG_PASSWORD_CODE, "密码不一致"),
+            format!("[{SYNC_E2EE_WRONG_PASSWORD_CODE}] 密码不一致")
+        );
+        assert!(
+            sync_e2ee_error(SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE, "已拒绝未加密上传")
+                .starts_with(&format!("[{SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE}]"))
+        );
+        assert!(
+            sync_e2ee_error(SYNC_E2EE_MARKER_CORRUPTED_CODE, "缺少密码校验子")
+                .contains(SYNC_E2EE_MARKER_CORRUPTED_CODE)
+        );
     }
 }

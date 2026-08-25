@@ -27,12 +27,19 @@ import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
+import { useShallow } from 'zustand/react/shallow';
+import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
-  classifySyncE2eeError,
-  SYNC_E2EE_ERROR_I18N_KEYS,
-} from './data-governance/syncE2eeErrorMapping';
+  CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+  localizeCloudStorageError,
+} from './data-governance/localizeCloudError';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+function isExplicitCloudEncryptionPasswordTooShort(password: string): boolean {
+  const trimmed = password.trim();
+  return trimmed.length > 0 && [...trimmed].length < CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS;
+}
 
 // ==================== [R11-check] 云端仓库巡检（只读） ====================
 
@@ -126,7 +133,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   onConfigChanged,
 }) => {
   const { t } = useTranslation(['cloudStorage', 'common']);
-  
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
+    useShallow((state) => ({
+      enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
+      exitMaintenanceMode: state.exitMaintenanceMode,
+    })),
+  );
+
   // 配置状态
   const [provider, setProvider] = useState<cloudApi.StorageProvider>('webdav');
   const [webdavConfig, setWebdavConfig] = useState<cloudApi.WebDavConfig>({
@@ -174,18 +188,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // [R11-android2 / P2-LOCALE] 平台能力错误只按后端稳定 code 映射。
   // message 是诊断文本，允许改语言/措辞，禁止再以正则参与程序分派。
   const localizeCloudError = useCallback(
-    (error: unknown): string => {
-      const raw = getErrorMessage(error);
-      // [R09-e2ee] 端到端加密三类失败（明文遗留拒收 / 错密码 / 标记损坏）
-      // 映射为可操作人话；原文附在后面供排查与关键字搜索。
-      const e2eeKind = classifySyncE2eeError(raw);
-      if (e2eeKind) {
-        return `${t(SYNC_E2EE_ERROR_I18N_KEYS[e2eeKind])}\n(${raw})`;
-      }
-      const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
-      if (platformErrorKey) return t(platformErrorKey);
-      return raw;
-    },
+    (error: unknown): string => localizeCloudStorageError(error, t),
     [t],
   );
 
@@ -327,7 +330,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }
       } catch (e: unknown) {
         console.error('Failed to resolve backend cloud storage config:', e);
-        const secureMessage = markSecureStoreIssue(e, 'write');
+        const secureMessage = markSecureStoreIssue(e, 'read');
         showGlobalNotification(
           'error',
           secureMessage ?? `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
@@ -407,6 +410,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行保存逻辑
   const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+
     const config = buildConfig(allowInsecureOverride);
 
     // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
@@ -506,50 +517,82 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 实际执行测试连接逻辑
   const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+
     setTesting(true);
     setConnectionStatus('unknown');
     try {
       const config = buildConfig(allowInsecureOverride);
       // Testing newly-entered credentials commits them once to secure storage;
       // routine connection/status IPC below carries only empty placeholders.
-      const status = await cloudApi.saveCredentials({
-        webdavPassword:
-          provider === 'webdav' && webdavConfig.password.trim()
-            ? webdavConfig.password
-            : undefined,
-        s3SecretAccessKey:
-          provider === 's3' && s3Config.secretAccessKey.trim()
-            ? s3Config.secretAccessKey
-            : undefined,
-        ftpPassword:
-          provider === 'ftp' && ftpConfig.password.trim()
-            ? ftpConfig.password
-            : undefined,
-        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-      });
-      setCredentialStatus(status);
+      try {
+        const status = await cloudApi.saveCredentials({
+          webdavPassword:
+            provider === 'webdav' && webdavConfig.password.trim()
+              ? webdavConfig.password
+              : undefined,
+          s3SecretAccessKey:
+            provider === 's3' && s3Config.secretAccessKey.trim()
+              ? s3Config.secretAccessKey
+              : undefined,
+          ftpPassword:
+            provider === 'ftp' && ftpConfig.password.trim()
+              ? ftpConfig.password
+              : undefined,
+          encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
+        });
+        setCredentialStatus(status);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        const secureMessage = markSecureStoreIssue(e, 'write');
+        showGlobalNotification(
+          'error',
+          `${secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed')}: ${getErrorMessage(e)}`,
+        );
+        return;
+      }
+
       // Persist every tested non-secret config first. Backend operations ignore
       // IPC metadata and rebuild exclusively from this SSOT record.
-      const saved = await cloudApi.saveCloudConfigSsot(config);
-      if (saved.config) {
-        setAllowInsecure(saved.config.allowInsecure ?? false);
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
-        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+      try {
+        const saved = await cloudApi.saveCloudConfigSsot(config);
+        if (saved.config) {
+          setAllowInsecure(saved.config.allowInsecure ?? false);
+          localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
+          localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+        }
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
+        );
+        return;
       }
-      await cloudApi.checkConnection(config);
-      setConnectionStatus('connected');
-      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-      
-      // 获取同步状态
-      const latestSyncStatus = await cloudApi.getSyncStatus(config);
-      setSyncStatus(latestSyncStatus);
-      
-      // 获取版本列表
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`);
+
+      try {
+        await cloudApi.checkConnection(config);
+        setConnectionStatus('connected');
+        showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+
+        const latestSyncStatus = await cloudApi.getSyncStatus(config);
+        setSyncStatus(latestSyncStatus);
+
+        const versionList = await cloudApi.listVersions(config);
+        setVersions(versionList);
+      } catch (e: unknown) {
+        setConnectionStatus('failed');
+        showGlobalNotification(
+          'error',
+          `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`,
+        );
+      }
     } finally {
       setTesting(false);
     }
@@ -559,6 +602,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     encryptionPassword,
     ftpConfig.password,
     localizeCloudError,
+    markSecureStoreIssue,
     provider,
     s3Config.secretAccessKey,
     t,
@@ -881,8 +925,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
     setUploading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceBackup'));
     setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+    let uploadedArchiveSlotRestorable = true;
     try {
       // 阶段 1/4：创建备份
       let backupId: string;
@@ -917,8 +970,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const zipExportSummary = await waitForGovernanceJob(zipExportJob.job_id, 'export');
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
+        uploadedArchiveSlotRestorable = cloudApi.isImportedArchiveSlotRestorable(
+          zipExportSummary.result?.stats,
+        );
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: localizeCloudError(e) }));
       }
 
       // 阶段 3/4：上传至云端（字节进度由 Tauri 事件驱动）
@@ -926,7 +982,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       let result: cloudApi.UploadResult;
       try {
         const appVersion = await TauriAPI.getAppVersion();
-        result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
+        result = await cloudApi.uploadBackup(
+          buildConfig(),
+          zipPath,
+          appVersion,
+          undefined,
+          uploadedArchiveSlotRestorable ? 'disaster_recovery' : 'partial_archive',
+        );
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: localizeCloudError(e) }));
       }
@@ -937,6 +999,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
       setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:upload.successDetail', { version: result.version.id }));
+      if (!uploadedArchiveSlotRestorable) {
+        showGlobalNotification('warning', t('cloudStorage:upload.portableArchiveUploaded'));
+      }
       if (result.prunedVersions.length > 0) {
         showGlobalNotification('info', t('cloudStorage:upload.pruned', { count: result.prunedVersions.length }));
       }
@@ -945,11 +1010,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      exitMaintenanceMode();
       setUploading(false);
     }
   }, [
     buildConfig,
     connectionStatus,
+    encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -966,17 +1035,43 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      return;
+    }
     setPendingRestoreVersionId(versionId);
     setRestoreConfirmOpen(true);
-  }, [connectionStatus, t]);
+  }, [connectionStatus, syncStatus?.latestVersion, t, versions]);
 
   // 失败重试上下文：记录最近一次恢复的版本号，供进度面板「重试」使用
   const lastRestoreVersionIdRef = useRef<string | null>(null);
 
   // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
   const performRestore = useCallback(async (versionId: string) => {
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+    const knownVersion = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(knownVersion)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      return;
+    }
     lastRestoreVersionIdRef.current = versionId;
     setDownloading(true);
+    enterMaintenanceMode(t('cloudStorage:progress.maintenanceRestore'));
     setRestoreVersionId(versionId);
     setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
 
@@ -994,6 +1089,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // 阶段 2/3：导入 ZIP
       setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
+      let importSummary: BackupJobSummary;
       try {
         const zipArgs = resolveCloudZipEncryptionArgs();
         const importJob = await DataGovernanceApi.importZip(
@@ -1002,11 +1098,42 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           zipArgs.encryptionPassword,
           zipArgs.useStoredCloudEncryptionPassword,
         );
-        const importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
+        importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.importZipFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.importZipFailed', { error: localizeCloudError(e) }));
+      }
+
+      // 导入已写 recovery_kind / restorable：便携/部分归档不要再启动整槽恢复。
+      // stats 缺失（旧后端）仍走 restore 门，由 E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE 兜底。
+      if (!cloudApi.isImportedArchiveSlotRestorable(importSummary.result?.stats)) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', {
+            error: localizeCloudError({
+              code: cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+              message: `[${cloudApi.PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] portable or partial archive`,
+            }),
+          }),
+        );
+      }
+
+      // 整槽恢复前先看磁盘：与 Dashboard / 本地 ZIP 同一条预检，失败 fail-closed。
+      let spaceCheck: Awaited<ReturnType<typeof DataGovernanceApi.checkDiskSpaceForRestore>>;
+      try {
+        spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);
+      } catch (e: unknown) {
+        throw new Error(
+          t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }),
+        );
+      }
+      if (!spaceCheck.has_enough_space) {
+        throw new Error(
+          t('cloudStorage:errors.restoreInsufficientSpace', {
+            required: (spaceCheck.required_bytes / 1024 / 1024 / 1024).toFixed(2),
+            available: (spaceCheck.available_bytes / 1024 / 1024 / 1024).toFixed(2),
+          }),
+        );
       }
 
       // 阶段 3/3：恢复数据库
@@ -1015,7 +1142,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
         await waitForGovernanceJob(restoreJob.job_id, 'import');
       } catch (e: unknown) {
-        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: getErrorMessage(e) }));
+        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: localizeCloudError(e) }));
       }
 
       setOpProgress(null);
@@ -1023,6 +1150,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // The restored slot is pending activation. Continuing to edit the old
       // slot can create writes that disappear at the next launch, so cut over
       // immediately after a verified restore.
+      requireMaintenanceRestart(t('cloudStorage:progress.maintenanceRestore'));
       await TauriAPI.restartApp();
       if (import.meta.env.DEV) {
         window.location.reload();
@@ -1032,17 +1160,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
       showGlobalNotification('error', msg);
     } finally {
+      // 切槽成功后 store 会因 requireMaintenanceRestart 拒绝撤掉写屏障。
+      exitMaintenanceMode();
       setDownloading(false);
       setRestoreVersionId(null);
       setPendingRestoreVersionId(null);
     }
   }, [
     buildConfig,
+    encryptionPassword,
+    enterMaintenanceMode,
+    exitMaintenanceMode,
     localizeCloudError,
+    requireMaintenanceRestart,
     resolveBackupId,
     resolveCloudZipEncryptionArgs,
     setStage,
+    syncStatus?.latestVersion,
     t,
+    versions,
     waitForGovernanceJob,
   ]);
 
@@ -1050,9 +1186,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleRestore = useCallback(async () => {
     const versionId = pendingRestoreVersionId;
     if (!versionId) return;
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      setRestoreConfirmOpen(false);
+      setPendingRestoreVersionId(null);
+      return;
+    }
     setRestoreConfirmOpen(false);
     await performRestore(versionId);
-  }, [pendingRestoreVersionId, performRestore]);
+  }, [pendingRestoreVersionId, performRestore, syncStatus?.latestVersion, t, versions]);
 
   // 上传/下载失败后的重试：按失败操作类型重新触发完整流程
   const retryFailedOperation = useCallback(() => {
@@ -1525,11 +1672,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 </span>
               </div>
               {syncStatus.latestVersion && (
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
-                  <span className="ml-2 font-medium">
-                    {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
-                  </span>
+                <div className="col-span-2 space-y-2">
+                  <div>
+                    <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
+                    <span className="ml-2 font-medium">
+                      {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
+                      {syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? ` · ${t('cloudStorage:history.portableArchive')}`
+                        : syncStatus.latestVersion.recoveryKind === 'disaster_recovery'
+                          ? ` · ${t('cloudStorage:history.fullFidelity')}`
+                          : null}
+                    </span>
+                  </div>
+                  <DsButton
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      downloading
+                      || syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                    }
+                    title={
+                      syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? t('cloudStorage:history.portableArchiveNotRestorable')
+                        : t('cloudStorage:actions.downloadLatest')
+                    }
+                    onClick={() => openRestoreConfirm(syncStatus.latestVersion!.id)}
+                  >
+                    {t('cloudStorage:actions.downloadLatest')}
+                  </DsButton>
                 </div>
               )}
             </div>
@@ -1667,6 +1837,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <div className="text-xs text-muted-foreground">
                         {cloudApi.formatFileSize(version.size)} • {cloudApi.formatTimestamp(version.timestamp)}
                         {version.note && ` • ${version.note}`}
+                        {version.recoveryKind === 'partial_archive'
+                          ? ` • ${t('cloudStorage:history.portableArchive')}`
+                          : version.recoveryKind === 'disaster_recovery'
+                            ? ` • ${t('cloudStorage:history.fullFidelity')}`
+                            : null}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -1674,8 +1849,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         size="sm"
                         variant="ghost"
                         className="[@media(pointer:coarse)]:!min-h-11"
-                        title={t('cloudStorage:history.restore')}
-                        disabled={downloading}
+                        title={
+                          version.recoveryKind === 'partial_archive'
+                            ? t('cloudStorage:history.portableArchiveNotRestorable')
+                            : t('cloudStorage:history.restore')
+                        }
+                        disabled={downloading || version.recoveryKind === 'partial_archive'}
                         onClick={() => openRestoreConfirm(version.id)}
                       >
                         {downloading && restoreVersionId === version.id ? (
@@ -1892,6 +2071,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </div>
   );
 
+  const pendingRestoreVersion = cloudApi.findCloudBackupVersion(
+    pendingRestoreVersionId,
+    versions,
+    syncStatus?.latestVersion,
+  );
+
   // 恢复确认对话框
   const restoreConfirmDialog = (
     <DsAlertDialog
@@ -1902,9 +2087,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       confirmText={t('cloudStorage:download.confirm')}
       cancelText={t('cloudStorage:download.cancel')}
       confirmVariant="warning"
+      disabled={cloudApi.isKnownPortableCloudBackup(pendingRestoreVersion)}
       onConfirm={handleRestore}
     >
-      <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      {pendingRestoreVersionId && (
+        <p className="text-sm font-medium">
+          {t('cloudStorage:download.confirmVersion', { version: pendingRestoreVersionId })}
+        </p>
+      )}
+      {pendingRestoreVersion?.recoveryKind === 'partial_archive' ? (
+        <p className="mt-1 text-sm text-destructive">
+          {t('cloudStorage:download.confirmKnownPortable')}
+        </p>
+      ) : pendingRestoreVersion?.recoveryKind === 'disaster_recovery' ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmKnownFull')}
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmUnknownKind')}
+        </p>
+      )}
+      <p className="mt-1 text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.partialArchiveNotice')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
     </DsAlertDialog>

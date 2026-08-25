@@ -46,6 +46,7 @@ vi.mock('@/api/dataGovernance', () => ({
     exportZip: vi.fn(),
     importZip: vi.fn(),
     restoreBackup: vi.fn(),
+    checkDiskSpaceForRestore: vi.fn(),
     getBackupJob: vi.fn(),
     cancelBackup: vi.fn(),
   },
@@ -93,6 +94,9 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   isPublicHttpEndpoint: vi.fn(() => false),
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
+  getCloudPlatformErrorI18nKey: () => undefined,
+  findCloudBackupVersion: () => undefined,
+  isKnownPortableCloudBackup: () => false,
 }));
 
 // 轻量 DsAlertDialog 桩：只验证「打开才渲染 + 确认才回调」的行为契约

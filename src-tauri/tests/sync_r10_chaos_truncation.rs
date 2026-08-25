@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{CloudStorage, FileInfo, ListOutcome};
+use deep_student_lib::cloud_storage::{device_id_short_hash, CloudStorage, FileInfo, ListOutcome};
 use deep_student_lib::data_governance::sync::{ChangeOperation, SyncChangeWithData, SyncManager};
 use deep_student_lib::models::AppError;
 use rusqlite::Connection;
@@ -204,7 +204,10 @@ async fn seed_two_shards(storage: &TruncatingStorage, uploader_id: &str) -> Vec<
         .await
         .expect("上传 seq2 应成功");
 
-    let mut keys = storage.keys_with_prefix(&format!("data_governance/changes/{uploader_id}/"));
+    let mut keys = storage.keys_with_prefix(&format!(
+        "data_governance/changes/{}/",
+        device_id_short_hash(uploader_id)
+    ));
     keys.sort();
     assert_eq!(keys.len(), 2, "应恰好有两个分片: {keys:?}");
     keys

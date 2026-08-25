@@ -26,7 +26,7 @@
 | KDF 参数来源 | `backup_crypto.rs:26-44`（`derive_key`）、`678-701` | 校验时 `m_cost/t_cost/p_cost` **原样取自云端校验子字段**；解密时原样取自 DSBK 文件头（`decrypt_backup_with_key_provider`，`:127-134`）。两处均无上限钳制 |
 | 整包备份对象名 | `sync_manager.rs:664-685` | `backups/<YYYYMMDD-HHMMSS-毫秒>-<设备短ID 6 位>-<随机 8 位>.zip` |
 | 设备 manifest | `sync_manager.rs:198-200` | `manifests/<完整 device_id>.json`，内含每版本的完整 `device_id`、`app_version`、时间戳（`BackupVersion`，`:51-70`，明文 JSON） |
-| 记录级同步对象 | `data_governance/sync/mod.rs:1401`、`9425-9430` | `data_governance/changes/<device_id>/…`、`blobs/`、`assets/`——启用 E2EE 时内容为 DSBK 密文，但**路径里的 device_id 和对象数量/时间仍是明文元数据**；换密码时这些对象同样全部要按新密码重传 |
+| 记录级同步对象 | `data_governance/sync/mod.rs` 路径/身份段、`tombstone.rs` | 新写入 `data_governance/changes/<短哈希>/…`、`v4/shards/<短哈希>/…`、`data_governance/manifests/<短哈希>.json`、`tombstones/*/<短哈希>.json`、`tombstone-events/<kind>/<短哈希>/`；旧明文 `device_id` 目录仍可读；tombstone 水位按内容完整 `device_id`。文件级 `file_manifests/<kind>/<uuid>.json` 与快照 `snapshots/<库>/<uuid>.json.zst` 新写入不再编码时间或设备，旧路径仍可读。启用 E2EE 时内容为 DSBK 密文；换密码时这些对象同样全部要按新密码重传 |
 | 下载/裁剪是否解析文件名 | `sync_manager.rs:798-823`、`748-754`、`934-958` | 均先经 manifest 按 `id` 查找，再拼 `backups/<id>.zip`；`validate_version_id`（`:217-229`）只要求 ASCII 字母数字与 `-`/`_`、≤128 字符。**没有任何路径从文件名反解时间或设备**——这是 §5 收敛方案可以向后兼容的根据 |
 
 **「换密码 = 换目录 + 全量重传」的完整推导**：用户在云存储配置里改掉 `encryption_password` 后，下一次上传走到校验子比对即失败（新密码 ≠ 标记登记的旧密码）；应用没有「用旧密码自证后改写标记」的入口，也没有重加密既有对象的机制。因此唯一可用路径是换一个云端根目录（新目录无标记，首次上传即以新密码登记 v2 标记），旧目录的历史版本仍只能用旧密码解密。记录级同步同理：新目录从零开始，旧目录的变更流不迁移。
@@ -215,7 +215,7 @@
 | 任务 | 模型建议 | 内容 | 可验证交付物 | 文件面（认领时进 FIX-QUEUE） |
 |---|---|---|---|---|
 | T1 `R12-kdf-clamp` | high | §6 缺口实现：两条路径共用的 KDF 参数上限 + fail-closed + 人话错误 | §6.4 全部测试绿；上限常量带取值依据注释 | `crypto/backup_crypto.rs`、`sync_manager.rs` 错误文案段、`cloudStorage.json`（zh/en）新错误键、前端映射段、上述新测试文件 |
-| T2 `R12-neutral-names` | high | §5.3 阶段一：中性对象名 + manifest 短哈希文件名 + 标记 `createdByDevice` 短哈希 | 新上传对象名不含时间/设备（单测断言正则）；新旧混布目录的上传/下载/裁剪/删除集成测试绿；兼容性矩阵四象限各一测试 | `sync_manager.rs` 命名段、`src-tauri/tests/sync_r12_neutral_names.rs` 新文件 |
+| T2 `R12-neutral-names` | high | §5.3 阶段一：中性对象名 + manifest 短哈希文件名 + 标记 `createdByDevice` 短哈希；阶段二：记录级 `changes/` / `v4/shards/` / `data_governance/manifests/` 短哈希路径；tombstone 清单/事件前缀同改；文件级/快照对象名去时间与设备 | **已合**：整包阶段一见 `sync_r12_neutral_names.rs`；记录级阶段二见 `sync_r12_record_path_names.rs`；tombstone 见 `tombstone.rs` 单测；文件级/快照见 `file_and_snapshot_keys_are_neutral_ids`（新写 UUID、旧目录仍合并）。水位按内容 `device_id` | `sync_manager.rs` 命名段、`data_governance/sync/mod.rs` 路径/身份段、`tombstone.rs`、上述验收 |
 | T3 `R12-rotate-wizard` | high | §2 流程产品化：设置页「更换备份密码」引导向导（本地备份检查 → 新目录 → 新密码 → 首传 → 验证清单），**不做原地轮换** | 向导 vitest（步骤门禁：未确认本地备份不得进入下一步）；用户指南 16 新「更换备份密码」小节与本文 §2 一致 | `CloudStorageSection.tsx` 向导组件（或新文件）、`cloudStorage.json`（zh/en）`rotateWizard.*` 键、`tests/vitest/data-governance/r12-rotate-wizard.test.tsx` 新文件、`docs/user-guide/16-数据管理与云同步.md` |
 | T4 `R12-rotate-proto-review` | xhigh（不可用则明示 high） | §4 草案评审：对照 v2 标记全部 fail-closed 分支逐条推演 v3 兼容性；记录级对象重加密时长基准（复用 R11-delta 脚本）；出 go/no-go 结论 | 评审文档 `KEY-ROTATION-R12.md`（含基准数据表与风险裁决）；若 go，附实现轮任务表 | 只读；文档归本目录 |
 

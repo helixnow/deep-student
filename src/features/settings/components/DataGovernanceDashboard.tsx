@@ -39,6 +39,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
+import { localizeCloudStorageError } from './data-governance/localizeCloudError';
 
 import {
   DataGovernanceApi,
@@ -578,6 +579,14 @@ function localizeBackupJobError(
   if (message === INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE) {
     return t('data:governance.restore_incremental_not_supported');
   }
+  if (
+    message.includes('E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE') ||
+    /备份不能用于完整恢复|不是可替换数据槽的完整快照|partial archive 不能替换数据槽/.test(
+      message,
+    )
+  ) {
+    return t('data:governance.restore_partial_archive_refused');
+  }
   return message;
 }
 
@@ -1116,7 +1125,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('备份并导出 ZIP 失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1185,7 +1194,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导出失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1246,7 +1255,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导入失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);

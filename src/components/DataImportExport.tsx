@@ -3,6 +3,7 @@ import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
 import { TauriAPI, BackupTier } from '../utils/tauriApi';
 import { DataGovernanceApi } from '../api/dataGovernance';
+import { isImportedArchiveSlotRestorable } from '../utils/cloudStorageApi';
 import { fileManager, extractFileName } from '../utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -944,6 +945,10 @@ ${resolvedPath}`);
       const importedBackupId = resolveBackupIdFromEvent(importResult);
       if (!importedBackupId) {
         throw new Error(t('data:errors.zip_import_backup_id_not_resolved'));
+      }
+
+      if (!isImportedArchiveSlotRestorable(importResult.result?.stats)) {
+        throw new Error(t('data:governance.restore_partial_archive_refused'));
       }
 
       const spaceCheck = await DataGovernanceApi.checkDiskSpaceForRestore(importedBackupId);

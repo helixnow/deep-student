@@ -12,12 +12,14 @@
 - `content://` 不是“完全未实现”：ZIP 导入会先物化到应用私有临时目录，ZIP 导出会先
   在私有目录生成，再复制到 SAF 目标。宿主测试已锁定分类和编排；真正的
   ContentResolver 授权、不同 DocumentsProvider 行为和进程死亡恢复仍缺真机证据。
-- 标准“立即备份到云端”链路上传的是便携归档；即使外层使用云端 E2EE 密码加密，
-  也不会把被便携导出策略剥离的本机密钥材料补回来。当前 UI 必须诚实拒绝把
-  “部分归档”当 A/B 槽完整恢复。**不要把 WebDAV 云端整包当成唯一的全保真换机手段。**
-- 当前可验证的全保真 Android 换机主路径是：旧设备创建本地完整备份 →
-  用备份密码导出加密全保真 ZIP → SAF 传到新设备 → 输入同一密码导入 →
-  恢复到非活动槽 → 重启切槽。WebDAV 仍用于记录级同步、版本化云备份和灾备下载。
+- 「立即备份到云端」按是否配置了云端端到端加密密码分两种，**不要再写成永远是便携包**：
+  - **未配置**密码：产物仍是便携归档，整槽校验必须拒绝，当前数据不被覆盖；
+  - **已配置**密码：标准 UI 会导出加密全保真 ZIP（外层 DSBK 与内层备份密码用同一已存密码），
+    解包后应能通过 `validate_for_slot_restore`。已配置却读不到已存密码时 **fail-closed 拒绝导出**，
+    不会偷偷打成便携包。此接线前上传的云端包仍可能是便携归档，恢复时不会套用已存密码。
+- 真机尚未签字。发布说明仍不得写“Android WebDAV 可全保真一键换机”，直到本节 3.3
+  在真机转绿。在那之前，**最稳妥、可独立核验的全保真换机主路径仍是 SAF 加密 ZIP**
+  （第 4 节）。WebDAV 同时承担记录级同步、版本化云备份，以及已配置 E2EE 后的整槽恢复验证。
 
 ## 1. 测试准备
 
@@ -87,14 +89,18 @@ npx tauri android build --target aarch64 --apk --ci -- \
    `R11-B-*` 后上传，设备 A 再下载，确认双向各一份。
 5. 密码错一位重试上传：应在云端写入前失败；改回正确密码后恢复。
 
-### 3.3 云端整包“恢复”诚实性
+### 3.3 云端整包恢复（分配置核对）
 
-1. 在设备 B 选择设备 A 的云端版本并执行恢复。
-2. 若清单标记为部分归档，预期是**在切槽前明确拒绝完整恢复**：活动槽不变、无半切换、
-   重启后仍是原数据。把此结果记录为当前产品限制，不能手工改清单绕过。
-3. 只有当待恢复包的清单通过 `validate_for_slot_restore` 时，才继续下一节的重启验收。
-4. 发布说明不得写“Android WebDAV 可全保真一键换机”，除非标准 UI 已能生成并恢复
-   加密全保真包，且本节真机用例转绿。
+1. 在设备 B 选择设备 A 的云端版本并执行恢复。两端必须使用同一 WebDAV root 与同一
+   端到端加密密码（第 3.1 / 3.2 已配）。
+2. **已配置 E2EE、且该版本是接线后由「立即备份到云端」写出的**：预期解包后清单可通过
+   `validate_for_slot_restore`，然后进入第 4.2 同款的非活动槽 + 重启切槽核对。
+   若仍被标成部分归档并拒绝整槽恢复，记为**回归**（不要改清单绕过），并核对该版本
+   是否其实是接线前上传的便携包。
+3. **未配置 E2EE，或明确是接线前便携包**：预期**在切槽前明确拒绝完整恢复**——活动槽不变、
+   无半切换、重启后仍是原数据。这是诚实限制，不是失败。
+4. 只有当待恢复包通过 `validate_for_slot_restore` 时，才把该次云端恢复记进重启验收。
+5. 发布说明不得写“Android WebDAV 可全保真一键换机”，直到本小节在真机转绿。
 
 ## 4. SAF 加密全保真 ZIP 换机（当前主路径）
 
@@ -127,6 +133,7 @@ npx tauri android build --target aarch64 --apk --ci -- \
 |---|---|---|
 | SAF 导入复制 30% | 断网/撤销 provider | 失败可见；临时文件最终清理；活动槽不变 |
 | SAF 导出最终复制 | 撤销授权/空间耗尽 | 任务失败，不报 Completed；本地临时导出清理 |
+| persistable 授权后强杀/重开 | 导出完成后 `force-stop` 再打开，尝试续写同一 URI | 已 persist 则可续写；`ACTION_GET_CONTENT` 拒绝 persist 时失败必须可见，不得报成功 |
 | ZIP 导入解封 | 错密码 | 触碰目标槽前失败 |
 | 写非活动槽后、重启前 | 强杀进程 | 下一次启动按 pending cutover 幂等完成或安全拒启 |
 | 首次切槽启动中 | 再次强杀 | 不重复轮换、不提前解除恢复租约 |
@@ -144,17 +151,27 @@ npx tauri android build --target aarch64 --apk --ci -- \
   `temp_zip_export`，任务提交阶段再复制到目标 URI。
 - 正常与已覆盖的失败路径会清理临时文件；宿主测试锁定 URI 分类、文件名/扩展名、
   编码保留和命令编排。
+- ZIP 三入口与同步导入/导出把合法 `content://` 原子写入应用私有
+  `pending_saf_persist/<hash>.uri`（路径对齐 Tauri `app_data_dir` / Android `filesDir`）。
+  并发导入/导出不得互相覆盖；MainActivity 同时双读旧单文件
+  `pending_saf_persist.uri`。受控 `MainActivity` 在 `onResume` 立刻 persist，
+  前台每 400ms 轮询 `takePersistableUriPermission`。`ACTION_GET_CONTENT` 常常不可 persist：
+  `SecurityException` 必须删队列并 log warn，不得假装已授权。宿主测不能冒充真机绿灯。
+- 数据治理 ZIP **导出**走 Tauri `save()` → `tauri-plugin-dialog` 2.6.0
+  `ACTION_CREATE_DOCUMENT`，persistable grant 有机会成功。**导入**走 `open()` →
+  同一插件的 `ACTION_GET_CONTENT`（源码 TODO `ACTION_OPEN_DOCUMENT`），persist
+  通常被拒；当次物化仍靠当前进程 grant。本枝未 vendor 对话框插件、未改 lockfile。
 
 ### 5.2 仍开缺口
 
 | 级别 | 缺口 | 发布前证据 |
 |---|---|---|
 | P1 | 没有真机 ContentResolver 读写自动化；`Window<Wry>` 不能由当前 mock runtime 驱动 | 本手册 4.1–4.3 全矩阵，至少 Android 13/14 各一台 |
-| P1 | 未显式调用 `takePersistableUriPermission`；异步导出依赖当前进程的 URI grant，进程死亡后不可承诺续写原 URI | provider 授权后强杀/重开测试；失败必须可见，不得报成功 |
-| P1 | 导出复制只以 `std::io::copy + flush` 成功为准，未重新打开目标核对长度/SHA256；部分 provider 的延迟提交未被覆盖 | 导出后独立读取并比对 SHA256；后续实现目标回读校验 |
-| P2 | 临时物化前没有按源大小做可用空间预检；大 ZIP 可能复制到一半才 ENOSPC | 剩余空间 < ZIP 2 倍的真机故障注入，错误与清理可见 |
+| P1 | persistable URI grant 真机闭环 | **代码已合**：Rust 原子多文件队列 + MainActivity 双读旧单文件。导出 `save()` / `ACTION_CREATE_DOCUMENT` 才有机会 persist；导入 `open()` / `ACTION_GET_CONTENT` 通常被拒，当次物化靠进程 grant。强杀/重开仍要按 4.1–4.3 签字 |
+| P1 | 导出复制目标回读 | **代码已合**：`copy_file` 写完后重新打开目标核对长度与 SHA-256，失败不得报成功。真机 DocumentsProvider 延迟提交 / 进程死亡仍要按 4.1–4.3 签字 |
+| P2 | 临时物化前空间预检 | **代码已合**：虚拟 URI 物化前按源大小 2 倍核对临时卷可用空间，不足 fail-closed。真机 ENOSPC / 配额虚报 / SAF 目标卷仍要按 4.1–4.3 签字 |
 | P2 | 不透明 document id 未查询 `OpenableColumns.DISPLAY_NAME/SIZE`；通用导入靠 magic bytes，日志/文件名可读性退化 | Downloads/Drive/厂商 provider 各取一例 |
-| P2 | `content%3A%2F%2F...` 双重编码输入在公开 `is_virtual_uri` 层按本地路径 fail-closed | 保持拒绝并给可读错误，或补分类后更新锁定测 |
+| P2 | `content%3A%2F%2F...` 双重编码输入 | **代码已合**：`is_virtual_uri` 仍为 false；ZIP/同步入口与 `classify_path` 可读拒绝，不解码后当虚拟路径。真机对抗性输入仍要按 4.1–4.3 签字 |
 | P2 | Android `app.restart()` 壳只能由真机验证；宿主仅等价测试下一次初始化切槽 | 4.2 的冷启动两次 + 强杀矩阵 |
 | P2 | 受控 `mobile/android/MainActivity.kt` 与 Tauri 生成工程的同步没有仓库门禁 | 每次 `tauri android init` 后人工 diff，后续加 CI 同步检查 |
 
@@ -233,13 +250,15 @@ APK SHA256:
 WebDAV provider/root:
 平台错误码: FTP [ ]  S3 [ ]
 记录级 A→B→A: [ ]
-云端部分归档诚实拒绝: [ ]
+云端未配置 E2EE / 接线前便携包：整槽恢复诚实拒绝: [ ]
+云端已配置 E2EE（接线后版本）：整槽恢复 + 重启切槽: [ ]
 SAF Downloads 导出/导入 SHA256: [ ]
 SAF 第三方 provider 导出/导入 SHA256: [ ]
 错密码早失败: [ ]
 恢复后自动重启/手动 force-stop: [ ] / [ ]
 冷启动两次、无重复切槽: [ ]
 中断矩阵: [ ]
+SAF persistable 强杀/重开: [ ]
 未关闭缺口与日志链接:
 ```
 
