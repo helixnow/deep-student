@@ -274,3 +274,78 @@ token 过滤，语义不变）。修复后该 6 个测试全过。
 （回归清单见 `docs/dev/0824-step1-review.md` 第 3 节；B 合入时注意与本步
 wrapup 在 `ftp.rs`/`s3.rs`/`webdav.rs` 的语义合并，D 注意
 `streaming_anki_service.rs` 冲突）。
+
+### Step 4：已合入 B cloud-sync（#177 + #174 移植；补记）
+
+日期：2026-08-24。本步执行时未更新本文档，此处由第七轮代理按提交历史补记：
+
+- merge commit `0e32e0fe`：`origin/cursor/0824-theme-cloud-cde6` @ `a1ee2420`
+  （theme 分支已先合入最新 cloud sync #177）合入 0824。
+- 后续修复：`84f7ca5d`（rust-test-build env 残留冲突标记清理 +
+  unicode-normalization 的 NOTICES 重生成）、`8b70b2d7`
+  （autosync 间隔切换与本地化缺配置错误的测试契约，采纳预演分支断言）。
+- 附带 `af3e39d8`（恢复被本地 pdfium 下载覆盖的已跟踪 license 文本）。
+
+### Step 5：已合入 D anki（#215 底座，经 step3-anki 预演）
+
+日期：2026-08-24。本步由第七轮官方合并代理完成。输入：
+
+- 0824 tip `8b70b2d7`（E+C+H+A+T+B）；
+- D 主题仓 `origin/cursor/0824-theme-anki-cde6` @ `07146ea9`；
+- 预演分支 `origin/cursor/0824-rehearse-step3-anki-cde6` @ `76be463d`
+  （第六轮在 `af3e39d8`——含 A 不含 B——上完成的同 tip 合并预演，过程与
+  冲突裁决见 `docs/dev/0824-rehearse-step3-anki.md`，随本步一并入库）。
+
+**合并执行**：merge commit `a8185664`。冲突 4 处
+（`streaming_anki_service.rs` + `CardAgent.test.ts` + `AnkiCardsBlock.test.tsx`
++ `chatAnkiAgentLoop.test.ts`）。关键事实：`af3e39d8..8b70b2d7`（B+T 两步）
+对这 4 个文件零改动，且预演所合 theme-anki tip 与本步完全相同，故 4 处冲突
+直接复用预演 `428b0625` 的已验证裁决。合并后与预演树对比：
+Anki/GenUI/streaming 相关路径零 diff，其余差异均为 B/T 增量，无内容回退。
+
+**`streaming_anki_service.rs` 双侧语义均保留**：
+
+- D 侧：结构化协议解析、字段 QA（`_qa_flags`）、critic pass
+  （`run_critic_pass`/`anki_critic`）、指纹去重、图片遮挡
+  （`anki_image_occlusion` 字段合并）。
+- wrapup 侧：`MODEL_SPECIAL_TOKENS`/`strip_model_special_tokens`
+  （#268 对 #187 的最终语义：保留卡片正文字面 token，只丢纯 token 残片或
+  剥离完整卡片 JSON 外侧包装；纯 token 错误卡不进重试）。
+
+**吸收预演的只读闪卡裁决**（Generative UI 闪卡 display-only 边界）：
+
+- cherry-pick `cdfc9d63`（源 `5ddafc1a`）：删除 GenUI 自有 `save-to-library`
+  handler、卡片提取/保存接线；`resolveGenerativeUIChatActionHandlers.ts`
+  保留基线 `fallbackLabel` 与全部 Notes/Research/Copy fallback；保存与
+  QA/critic 统一归 `anki_cards` 管线。
+- cherry-pick `65274b98`（源 `f874e2ed`）：清理两侧 `save_to_library`
+  locale 死键与测试 mock。
+- wrapup-anki 预演的 `683d7733`（executor 测试 `.as_ref()` 借用修复）无需
+  移植——0824 基线已含等价修复（Step 2 记录的 E0515 修复）。
+
+**合并后存量修复**（`f727043e`，非本步引入——已在合并前 tip `8b70b2d7`
+复跑实证同样 3 失败）：`model2_pipeline` 三个断言未跟上产品演进：
+终结成功缺失文案已被 main 的 `c006f457` 改为中性 `LLM provider`；同提交的
+`embedded_binary` 强脱敏先于 `[base64 data:]` 占位符吃掉 `image_url`；
+H 的 prompt cache 使 openai_responses 请求快照新增 `prompt_cache_key`
+（`provider_accepts_prompt_cache_key` 门控回归本就在过）。三处按现行为对齐，
+修复后 59/59。
+
+编译门禁结果（Rust stable 1.98.0 + CI 同款系统依赖与 PDFium；下载脚本对
+`licenses/pdfium.txt` 的重写已恢复，未带入提交）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages（依赖零变化，无需重生成 NOTICES） |
+| `npm run typecheck` | ✅ 0 错误（先 `npm run version:generate`） |
+| `npx vite build` | ✅ 1m20s，仅既有 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（28 条，新增 4 条为 D 自带） |
+| `cargo test --lib --no-run`（测试目标编译） | ✅ 无错误 |
+| 定向 vitest（3 个冲突测试文件 + `flashcardDisplayOnly`） | ✅ 4 文件 49/49 |
+| 定向 `cargo test --lib streaming_anki_service` | ✅ 74/74（遮挡草稿合并、QA 校验、token 收尾语义均过） |
+| 回归：prefix_snapshot / llm_adapter / anki_critic / anki_model_routing / anki_image_occlusion | ✅ 4/4、6/6、45/45、25/25、35/35 |
+| `cargo test --lib model2_pipeline` | ✅ 59/59（存量修复 `f727043e` 后） |
+
+待办：F subapp / G mobile 按第 5 节顺序继续合入（G 参考
+`cursor/0824-rehearse-step3-mobile-cde6` / `cursor/0824-rehearse-step3-fg-cde6`
+等预演分支；回归清单见 `docs/dev/0824-step1-review.md` 第 3 节）。
