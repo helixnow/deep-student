@@ -24,6 +24,10 @@ const MAX_MULTIPART_PARTS: u64 = 10_000;
 /// 单次 `put_file` 内每个 multipart 分块的瞬时失败重试次数（含首次）。
 /// 不跨进程、不跨对象，不是增量传输。
 const MULTIPART_PART_ATTEMPTS: u32 = 3;
+/// 未完成 multipart 的陈旧宽限期。短于此时长的 in-progress 上传可能属于
+/// 另一台设备正在传同一内容寻址对象，不得 abort。进程崩溃留下的孤儿
+/// 下次对同一 key 再传时才会清。不是跨会话续传，也不是增量传输。
+const MULTIPART_STALE_SECS: i64 = 6 * 3600;
 
 /// S3 单个分块大小硬限制：5 GiB
 const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
@@ -250,6 +254,82 @@ impl S3Storage {
         }
     }
 
+    /// 缺 `Initiated` 不当陈旧（兼容服务可能省略），避免误杀进行中的上传。
+    fn multipart_upload_is_stale(initiated_epoch_secs: Option<i64>, now_epoch_secs: i64) -> bool {
+        initiated_epoch_secs
+            .is_some_and(|ts| now_epoch_secs.saturating_sub(ts) >= MULTIPART_STALE_SECS)
+    }
+
+    /// 中止同一 key 上已超过宽限期的未完成 multipart。
+    /// 列举/中止失败只记日志，不得阻断本次上传。不宣称跨会话续传。
+    async fn abort_stale_multipart_uploads(&self, full_key: &str) {
+        let now_epoch_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut key_marker: Option<String> = None;
+        let mut upload_id_marker: Option<String> = None;
+        loop {
+            let mut request = self
+                .client
+                .list_multipart_uploads()
+                .bucket(&self.bucket)
+                .prefix(full_key);
+            if let Some(marker) = key_marker.take() {
+                request = request.key_marker(marker);
+            }
+            if let Some(marker) = upload_id_marker.take() {
+                request = request.upload_id_marker(marker);
+            }
+            let output = match request.send().await {
+                Ok(output) => output,
+                Err(e) => {
+                    tracing::warn!(
+                        "[CloudStorage::S3] 列举未完成 multipart 失败（不阻断本次上传）: {e}"
+                    );
+                    return;
+                }
+            };
+            for upload in output.uploads() {
+                if upload.key() != Some(full_key) {
+                    continue;
+                }
+                let Some(upload_id) = upload.upload_id() else {
+                    continue;
+                };
+                let initiated = upload.initiated().map(|ts| ts.secs());
+                if !Self::multipart_upload_is_stale(initiated, now_epoch_secs) {
+                    continue;
+                }
+                if let Err(e) = self
+                    .client
+                    .abort_multipart_upload()
+                    .bucket(&self.bucket)
+                    .key(full_key)
+                    .upload_id(upload_id)
+                    .send()
+                    .await
+                {
+                    tracing::warn!(
+                        "[CloudStorage::S3] 中止陈旧 multipart 失败 key={full_key}: {e}"
+                    );
+                } else {
+                    tracing::info!(
+                        "[CloudStorage::S3] 已中止陈旧 multipart key={full_key} upload_id={upload_id}"
+                    );
+                }
+            }
+            if output.is_truncated() != Some(true) {
+                break;
+            }
+            key_marker = output.next_key_marker().map(str::to_string);
+            upload_id_marker = output.next_upload_id_marker().map(str::to_string);
+            if key_marker.is_none() {
+                break;
+            }
+        }
+    }
+
     /// 同一 `put_file` 内重试失败分块。不保存 upload_id，中断后仍整对象重传。
     async fn upload_part_with_retry(
         &self,
@@ -371,6 +451,7 @@ impl CloudStorage for S3Storage {
         log::debug!(
             "[CloudStorage::S3] multipart 上传 {full_key}: {file_size} 字节，计划 {planned_parts} 块 × {part_size} 字节"
         );
+        self.abort_stale_multipart_uploads(&full_key).await;
 
         let create_resp = self
             .client
@@ -910,6 +991,35 @@ mod tests {
             source.contains("ensure_memory_get_matches_declared_len(\"S3\""),
             "S3 get() 必须按 content_length 拒绝半包，记录级/清单不得收下截断体"
         );
+        assert!(
+            source.contains("abort_stale_multipart_uploads"),
+            "S3 multipart 必须在创建新 upload 前清理同一 key 的陈旧未完成上传"
+        );
+        assert!(
+            source.contains("MULTIPART_STALE_SECS"),
+            "陈旧宽限期必须存在，不得误杀进行中的同 key 上传"
+        );
+    }
+
+    #[test]
+    fn stale_multipart_keeps_recent_and_unknown_initiated() {
+        let now = 1_800_000_000;
+        assert!(
+            !S3Storage::multipart_upload_is_stale(Some(now - 60), now),
+            "一分钟前发起的上传不得当陈旧"
+        );
+        assert!(
+            !S3Storage::multipart_upload_is_stale(None, now),
+            "缺 Initiated 不得 abort，避免兼容服务误杀"
+        );
+        assert!(S3Storage::multipart_upload_is_stale(
+            Some(now - MULTIPART_STALE_SECS),
+            now
+        ));
+        assert!(S3Storage::multipart_upload_is_stale(
+            Some(now - MULTIPART_STALE_SECS - 1),
+            now
+        ));
     }
 
     #[test]

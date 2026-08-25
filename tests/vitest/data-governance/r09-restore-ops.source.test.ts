@@ -78,6 +78,8 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(s3).toContain('written != total_size');
     expect(s3).toContain('upload_part_with_retry');
     expect(s3).toContain('ensure_memory_get_matches_declared_len("S3"');
+    expect(s3).toContain('abort_stale_multipart_uploads');
+    expect(s3).toContain('MULTIPART_STALE_SECS');
   });
 
   it('orchestration keeps the .part checkpoint and verifies the whole-file SHA256', () => {
