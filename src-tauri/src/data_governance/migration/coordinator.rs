@@ -2272,6 +2272,14 @@ impl MigrationCoordinator {
         conn: &rusqlite::Connection,
         runner: &refinery::Runner,
     ) -> Result<(), MigrationError> {
+        // 旧库兼容：只要存在核心表，就先补齐 V20260130 契约中缺失的表。
+        // ⚠️ 必须先于 ensure_change_log_table：V20260131 SQL 会给
+        //    questions/notes/review_plans/folders 建触发器，旧库可能只有
+        //    resources/notes，直接回放 change_log 会报 no such table: main.questions。
+        if self.table_exists(conn, "resources")? {
+            self.apply_vfs_init_missing_tables(conn)?;
+        }
+
         // --- V20260131: __change_log 表修复（通用防御） ---
         self.ensure_change_log_table(
             conn,
@@ -2319,6 +2327,143 @@ impl MigrationCoordinator {
         self.pre_repair_vfs_v20260210(conn, runner)?;
 
         Ok(())
+    }
+
+    /// 补齐旧 VFS 中缺失的 V20260130 业务表（只建缺失表，不重放已有表上的索引）。
+    ///
+    /// 不能整份回放 init.sql：已有 `resources` 若缺列，`CREATE INDEX` 会失败；
+    /// 也不能无条件重建 `notes_versions`（V20260214 已删除该表）。
+    #[cfg(feature = "data_governance")]
+    fn apply_vfs_init_missing_tables(
+        &self,
+        conn: &rusqlite::Connection,
+    ) -> Result<(), MigrationError> {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const NOTES_VERSIONS_DROPPED: i32 = 20260214;
+
+        let skip_notes_versions = self.is_migration_recorded(conn, NOTES_VERSIONS_DROPPED)?;
+        let statements = Self::extract_create_table_if_not_exists(INIT_SQL);
+
+        let foreign_keys_on: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap_or(0);
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .map_err(|e| MigrationError::Database(e.to_string()))?;
+
+        let apply_result = (|| -> Result<(), MigrationError> {
+            for (table_name, statement) in &statements {
+                if table_name == "notes_versions" && skip_notes_versions {
+                    continue;
+                }
+                if self.table_exists(conn, table_name)? {
+                    continue;
+                }
+                tracing::info!("🔧 [PreRepair] VFS: 补齐缺失表 {}", table_name);
+                conn.execute_batch(statement).map_err(|e| {
+                    MigrationError::Database(format!(
+                        "回放 vfs init 补齐 {} 失败: {}",
+                        table_name, e
+                    ))
+                })?;
+            }
+            Ok(())
+        })();
+
+        if foreign_keys_on != 0 {
+            conn.execute("PRAGMA foreign_keys = ON", [])
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+        }
+        apply_result
+    }
+
+    /// 从迁移 SQL 中提取 `CREATE TABLE IF NOT EXISTS` 语句（不含 VIRTUAL TABLE）。
+    #[cfg(feature = "data_governance")]
+    fn extract_create_table_if_not_exists(sql: &str) -> Vec<(String, String)> {
+        const MARKER: &str = "CREATE TABLE IF NOT EXISTS";
+        let mut results = Vec::new();
+        let sql_upper = sql.to_ascii_uppercase();
+        let mut pos = 0;
+
+        while let Some(rel) = sql_upper[pos..].find(MARKER) {
+            let start = pos + rel;
+            let lookback_start = start.saturating_sub(16);
+            if sql_upper[lookback_start..start].contains("VIRTUAL") {
+                pos = start + MARKER.len();
+                continue;
+            }
+
+            let after_marker = start + MARKER.len();
+            let name_slice = sql[after_marker..].trim_start();
+            let name_len = name_slice
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(name_slice.len());
+            let name = name_slice[..name_len].to_string();
+            if name.is_empty() {
+                pos = after_marker;
+                continue;
+            }
+
+            let Some(open_rel) = sql[after_marker..].find('(') else {
+                break;
+            };
+            let open = after_marker + open_rel;
+            let Some(end) = Self::find_sql_statement_end(sql, open) else {
+                break;
+            };
+            results.push((name, sql[start..end].trim().to_string()));
+            pos = end;
+        }
+
+        results
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn find_sql_statement_end(sql: &str, open_paren: usize) -> Option<usize> {
+        let bytes = sql.as_bytes();
+        let mut depth = 0_i32;
+        let mut i = open_paren;
+        let mut in_single_quote = false;
+
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_single_quote {
+                if c == b'\'' {
+                    if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                        i += 2;
+                        continue;
+                    }
+                    in_single_quote = false;
+                }
+                i += 1;
+                continue;
+            }
+            if c == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            match c {
+                b'\'' => in_single_quote = true,
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                            i += 1;
+                        }
+                        if i < bytes.len() && bytes[i] == b';' {
+                            return Some(i + 1);
+                        }
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
     }
 
     /// 确保 __change_log 表存在（通用防御）
@@ -5422,6 +5567,87 @@ mod tests {
         assert!(
             has_review_sessions,
             "missing review_sessions table should be created"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_extract_vfs_init_create_tables_includes_change_log_parents() {
+        let statements = MigrationCoordinator::extract_create_table_if_not_exists(include_str!(
+            "../../../migrations/vfs/V20260130__init.sql"
+        ));
+        let names: Vec<&str> = statements.iter().map(|(name, _)| name.as_str()).collect();
+        for required in ["resources", "notes", "questions", "review_plans", "folders"] {
+            assert!(
+                names.contains(&required),
+                "VFS init must declare CREATE TABLE for {required}, got {names:?}"
+            );
+        }
+        assert!(
+            !names.contains(&"questions_fts"),
+            "virtual FTS table must not be treated as CREATE TABLE"
+        );
+    }
+
+    /// 复现诊断：旧 VFS 只有 resources/notes，补齐 __change_log 时因缺 questions 失败。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_pre_repair_vfs_backfills_questions_before_change_log() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("databases").join("vfs.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE resources (
+                id TEXT PRIMARY KEY,
+                hash TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL,
+                storage_mode TEXT NOT NULL DEFAULT 'inline',
+                ref_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                resource_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]',
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            ",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator
+            .pre_repair_vfs_schema(&conn, &runner)
+            .expect("sparse VFS pre-repair must not fail on missing questions");
+
+        let has_questions: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='questions')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let has_change_log: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            has_questions,
+            "questions should be backfilled before change_log"
+        );
+        assert!(
+            has_change_log,
+            "__change_log should be created after parent tables exist"
         );
     }
 
