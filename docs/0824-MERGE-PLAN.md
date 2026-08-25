@@ -411,3 +411,138 @@ H 的 prompt cache 使 openai_responses 请求快照新增 `prompt_cache_key`
 待办：G mobile 按第 5 节顺序继续合入（参考
 `cursor/0824-rehearse-step3-mobile-cde6` / `cursor/0824-rehearse-step3-fg-cde6`
 等预演分支；回归清单见 `docs/dev/0824-step1-review.md` 第 3 节）。
+
+### Step 7：已合入 leftovers-safe（24 项 INCLUDE 加固；补记）
+
+日期：2026-08-25。本步执行时未更新本文档，此处由 Step 8 代理按提交历史补记：
+
+- merge commit `362dd2df`：`origin/cursor/0824-leftovers-safe-cde6` 合入 0824，
+  内容为 `docs/dev/0824-leftover-audit.md`（`f103d9ef` 收录）判定的 24 项
+  INCLUDE 加固——GenUI 入口/清洗（sanitizer、256k/256KiB 上限、
+  researchSessionId 校验、Rust 18 块型白名单、noteEdit 字段白名单）与
+  HPIAS 会话隔离（store slice 隔离、外来 session 事件忽略、undo 栈隔离）。
+- 附带 `bfb52a9e`（executor 集成测试目标编译修复）与 CI 前端构建 4GiB 堆。
+- 改动面全部在 generative-ui/HPIAS/locales/tests 路径；与 G 的 689 文件
+  改动面**零交叉**（Step 8 实测 `git diff 0a0a1197..362dd2df` ∩ G = ∅）。
+
+### Step 8：已合入 G mobile（#172 底座，多预演逐文件定源）
+
+日期：2026-08-25。本步由总攻 Step 8 官方合并代理完成。输入：
+
+- 0824 tip `362dd2df`（E+C+H+A+T+B+D+F+leftovers-safe）；
+- G 主题仓 `origin/cursor/0824-theme-mobile-cde6` @ `4ab24435`
+  （约 545 提交 / 688 文件，与全部预演同 tip）；
+- 预演源（全部读文档后按逐文件输入一致性定源，未 fast-forward 任何预演）：
+  - `origin/cursor/0824-rehearse-step5-fg-cde6` @ `0c07e5e2`（0824+D 上 F+G）；
+  - `origin/cursor/0824-rehearse-step3-fg-cde6` @ `60d1cbbf`（复查推荐 F×G tip，含 D）；
+  - `origin/cursor/0824-rehearse-step5-mobile-cde6` @ `bf8f1b72`（含 D 不含 F 的 G 预演）；
+  - `origin/cursor/0824-rehearse-subapp-mobile-cde6`（历史 F×G，仅热区参考）。
+
+**合并执行**：merge commit `79362482`（690 文件）。冲突 52 处 =
+45 内容冲突 + 6 处 G 侧删除（legacy notes）+ 1 处我侧删除
+（`PracticeModeSelector`，F 已删、G 改，跟删除）。
+
+**定源方法（本步关键决策）**：三组预演各有一处系统性缺陷，不能整树沿用任何
+一个，必须按「冲突文件是否被 F/Step 6 触碰」+「输入逐字节一致性」逐文件定源：
+
+- **step5-fg 的 InputBarUI 复活了 3921 行单体**（其 F 合并点 `8f995c0e` 即已
+  丢失 F 的 ComposerToolbar 拆分），且部分热区沿用了历史 subapp-mobile 预演的
+  过时值（`!h-9` 而非 G 终版的 `!h-11`），另漏放 EpubPreview `isActive`
+  返回键守卫、legacyNavigationMap「仅桌面端可用」通知等 G 增量；
+- **step3-fg 的 G 重放完整忠实**（44px 终值、isActive 贯穿、视频全屏返回键），
+  但其 G 合并发生在 B/D 反向刷新之前，个别文件丢 0824 主体内容
+  （`SkillsManagementPage` 的行内确认滚顶逻辑被旧版覆盖前身、
+  `NotesWorkspaceApp.css` 的 F 侧内容差异），且多处把 A 的 i18n
+  aria-label 退化为硬编码（`aria-label="refresh"/"remove"/"edit"`）；
+- **step5-mobile 质量最高**（A i18n aria + B E2EE + G 44px 三方同存，
+  81 项热区测试验证过），但基线不含 F，只适用于 F 不触碰的文件。
+
+**逐文件定源结果**：
+
+1. **22 个 F/Step6 零触碰的冲突** → 取 step5-mobile blob（输入逐字节一致）：
+   BatchEditDialog / FilterBuilder / BatchOperationToolbar / CrepeDemoPage /
+   ErrorBoundary / ExamSheetUploader / QuestionBankListView /
+   QuestionInlineEditor / ReviewQuestionsView / SecurityStatusIndicator /
+   UnifiedSidebar / FolderPickerDialog / IndexStatusView / CloudStorageSection /
+   DataGovernanceDashboard / McpEditorSection / McpToolsSection / OcrEngineCard /
+   OcrEngineTestPanel / VendorSidebar / responsive-utilities.css /
+   secondarySurfaceShellContract.test.ts。
+   - `DataGovernanceDashboard`：按裁决**不照抄 F×G 树**，取 step5-mobile 的
+     `e7193f93` 终态（A `tabs_nav_label` + 8 个 TabsTrigger 逐个 aria-label +
+     B `adc3c8f6` E2EE zip（encryptionPassword/exportZip/importZip 贯穿）+
+     G coarse 44px 页签，且比 F×G 版多每 trigger 的 `!min-h-11 !min-w-11`）。
+   - `ReviewQuestionsView`：D 操作栏（含 44px）整体保留，G 其余自动合并热区
+     （复选框 coarse 44px 扩区、重做按钮、SegmentedControl itemClassName）在位。
+2. **3 个两预演一致的 F 交叠冲突** → 直接取（Resizable / FinderToolbar /
+   EnhancedPdfViewer）。
+3. **13 个 step3-fg 为纯 G 增量的 F 交叠冲突** → 取 step3-fg blob：
+   StreamingAnnotatedText（!h-9→!h-11 终值）/ DsDialog（关闭钮 coarse 44px 锚定
+   + AlertDialog 按钮）/ StatisticsScreen / TodayScreen / EpubPreview
+   （isActive 返回键守卫）/ FileContentView / TextbookContentView（isActive
+   贯穿）/ VideoPlayer（全屏 Android 返回键 + overlay 按钮 !h-11）/
+   SessionRow / TodoMainPanel（返回键保活可见性守卫 ×2 + coarse 热区）/
+   DesktopContextMenu.css / EmptyDesktop.css / ExposeOverlay.css
+   （coarse 关闭钮常显 44px）/ legacyNavigationMap（browser/flashcards no-op
+   附「仅桌面端可用」通知，`workbench:legacyFallback.desktopOnly` 键已随 G
+   自动并入）/ NotesWorkspaceApp.css（G 终版触控方案：拖拽条命中区改走 TSX
+   `hitAreaMargins={{ coarse: 19 }}`、compact 固定 50/50 无手柄、
+   删除死选择器 `.rct-tree-item-button`——TSX 配套已自动并入）/
+   SkillsManagementPage（G 的 anyInlinePanelOpen 滚顶扩展 + useMobileHeader
+   第 4 参 `!workbenchWindowId` 嵌入豁免 + 全部 coarse 热区）。
+4. **2 个混合文件手工合成**：SkillsList / AnkiTasksApp——取对应更优底稿后，
+   补齐 step3-fg 的 coarse 热区、保留/恢复 A 的 i18n aria-label
+   （拒绝 step3-fg 的 `aria-label="favorite"/"edit"/"more"/"clear"` 硬编码）。
+5. **InputBarUI（裁决 6）**：取 step3-fg blob = 0824 拆分主体 +
+   G 残留区 5 个提示按钮热区（longPaste convert/dismiss、flashcard/media/
+   mindmap hint）；再把 G 单体上的其余 8 处热区**手工重放进拆分文件**——
+   `ComposerToolbar.tsx`（发送钮 coarse !h-11 !w-11、停止钮 coarse、
+   水位环 after:-inset-2 命中扩区、模型搜索框 coarse !h-11 !text-base 防
+   iOS 聚焦缩放）、`AttachmentPanelBody.tsx`（移动加号钮 min-w→!min-w、
+   桌面区 5 按钮 + 重试/移除 coarse !min-h-11）。不复活整文件单体。
+6. **删除类**：`NoteTagsEditor(.test)` / `NotesTabsBar` / `PreviewPanel` /
+   `ReferenceSelector(.test)` 跟 G 删除；`PracticeModeSelector` 跟 F 删除。
+   `DndFileTree/**`、`workspaceShared.tsx` 等 legacy notes 集合继续不存在。
+
+**自动合并复核**：`ChatV2Page` / `LearningHubPage` / `LearningHubSidebar`
+自动合并结果与 step3-fg 逐字节一致；`MessageItem` / `ParallelVariantView`
+保留 Step 6 的 `t('common:copy_failed')` 复制失败 i18n（预演缺该内容）；
+`useChatPageEvents` 无 `loadUngroupedCount` 残留；`LearningHubNavigationContext`
+与 step3-fg 一致。`qbank-tools.ts` / `finderStore.ts` / `generateCardsFromText.ts`
+G 零触碰，Step 6 裁决原样保留（每宿主分桶、110 行描述压缩、
+`cardAgent.startGeneration` 非阻塞契约）。
+
+**红线复核**（对照总攻硬性裁决）：
+
+- src-tauri 全程零改动（G 不触碰 Rust；D 的 QA/critic/遮挡、H cache、
+  pipeline hooks、GenUI 注册面不受影响）。
+- 附件上限 `ATTACHMENT_MAX_SIZE=200MB` / `ATTACHMENT_IMAGE_MAX_SIZE=50MB` 不变。
+- ChatV2AnkiAdapter / mythos 的出现次数与合并前基线一致（均为「已退役/虚构」
+  注释性提及，未复活）；GenUI save-to-library 死键未回流
+  （common.json 的 `save_to_library` 为错题本既有键）。
+- Finder compact：40px 视觉 + `after:-inset-1` 伪元素扩展命中区（8 处）在位；
+  EnhancedPdfViewer 移动侧栏 tab `!min-h-11`（9 处）在位。
+- G 重放度：safe-area 68≥67、registerBackHandler 172≥166、
+  pointer:coarse 3056≥3032（HEAD 均为 G 超集）。
+
+**合并后存量修复**（`8a350d14`，非本步引入——在合并前 tip `362dd2df` 复现
+同样失败）：`ReviewQuestionsView.confirmation.test.tsx` 的 react-i18next
+mock 工厂缺 `initReactI18next` 导出，组件传递依赖图加载 i18n 引导模块时
+收集失败；补齐 mock，3/3 过。
+
+编译门禁结果（Rust stable 1.98.0 + CI 同款 libwebkit2gtk-4.1-dev 等系统依赖
++ protobuf-compiler + PDFium；下载脚本对 `licenses/pdfium.txt` 的重写已恢复，
+未带入提交）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages（依赖零变化，无需重生成 NOTICES） |
+| `npm run typecheck` | ✅ 0 错误（先 `npm run version:generate`） |
+| `npx vite build` | ✅ 1m09s（4GiB 堆），仅既有 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（28 条，与 Step 6 持平） |
+| input-bar 全目录 vitest | ✅ 19 文件 171/171（拆分契约 + 热区重放后仍全绿） |
+| finder / workbench-shell / mobile-uiux 契约 | ✅ 7 文件 42/42 |
+| DGD debug-tab / backup-config / backup-operations / zip-password + RecordConflictsPanel + r07-cloud-only-delete | ✅ 6 文件 65/65 |
+| flashcardDisplayOnly / secondarySurfaceShell / scrollbarVisual / errorBoundaryCopy / image-viewer aria / McpToolsSection 两契约 / pdf 套件 | ✅ 12 文件 68/68 |
+| a11y（QuestionBankListView/SecurityStatusIndicator）+ qbank 契约 + notes 工作区 + anki-tasks + todo + CloudStorage/sync 面 | ✅ 34 文件 321/321 + ReviewQuestionsView.confirmation 3/3（存量修复后） |
+
+至此第 5 节推荐顺序的 8 个主题仓全部合入完毕。
