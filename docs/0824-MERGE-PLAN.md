@@ -833,3 +833,19 @@ Step 10-16 的端口 patch 等价（`ef3c104d`/`8eb675ce`/`75f12160`/
   GenerativeUiExecutor 注册等全部在位；
 - SKIP：#177 全部已等价落地的 12 个 SHA（不回退不重置），以及全部
   隔离 PR；regress 枝其余内容未取。
+
+### Step 18 收口：Finder/Workbench 升级防护与 Composer 旧状态归一化
+
+日期：2026-08-25。基座 `64b0e76d`（Step 17 tip）；仅从
+`origin/cursor/0824-rel-finder-cde6` 按序干净 cherry-pick 两个 INCLUDE
+提交，未合并隔离枝，也未取其他 rel 枝的推测性重构：
+
+- `9176740b` → `e24b828d`：Finder 持久化偏好改为字段白名单恢复，
+  Workbench 壁纸/平铺边距旧值改为容错解析与限幅；
+- `0a6344e1` → `67a7fdf8`：Composer 恢复时丢弃退役 panel key、补齐当前
+  默认值，并让 Rust `PanelStates` 兼容缺失/新增 `skill` 字段。
+
+Composer*、附件 200/50、G 44px、HPIAS、#177 端口与 `note_props` 均未
+触及。`npm run typecheck`（先 `version:generate`）、`npx vite build`、
+`cargo check --manifest-path src-tauri/Cargo.toml --lib` 均 exit 0；Cargo
+使用 Rust 1.98，输出 28 条既有 warning。
