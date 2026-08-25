@@ -6,8 +6,7 @@ import type {
   SessionRestoreBaseline,
 } from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
-import { createDefaultChatParams, createDefaultPanelStates } from './types';
-import { COMPOSER_PANEL_KEYS } from '../types/common';
+import { createDefaultChatParams } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
@@ -24,6 +23,7 @@ import {
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import { parsePendingContextRefsJson } from './pendingContextRefsParser';
+import { normalizeRestoredComposerState } from './composerStateMigration';
 import {
   browserToolsSkill,
   builtinToolSkills,
@@ -699,17 +699,11 @@ export function createRestoreActions(
             ...(state?.chatParams ?? {}),
           };
           const features = new Map(Object.entries(state?.features ?? {}));
-          // 只接收当前已知的面板 key，过滤旧持久化数据中已下线的幽灵面板
-          // （'rag'/'search'/'learn' 等），避免恢复出无渲染路径的 true 状态
-          const persistedPanelStates = (state?.panelStates ?? {}) as Record<string, unknown>;
-          const panelStates = createDefaultPanelStates();
-          COMPOSER_PANEL_KEYS.forEach((panel) => {
-            if (typeof persistedPanelStates[panel] === 'boolean') {
-              panelStates[panel] = persistedPanelStates[panel] as boolean;
-            }
-          });
+          // InputBar/Composer state is an external persistence boundary:
+          // preserve valid v0.9.44 fields, fill missing current keys, and drop
+          // retired or malformed values before render paths call string APIs.
+          const { inputValue, panelStates } = normalizeRestoredComposerState(state);
           const modeState = state?.modeState ?? null;
-          const inputValue = state?.inputValue ?? '';
 
           // 🆕 Prompt 7: 恢复待发送的上下文引用
           //

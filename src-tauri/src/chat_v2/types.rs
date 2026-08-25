@@ -3017,6 +3017,10 @@ pub struct PanelStates {
     /// 附件面板
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachment: Option<bool>,
+
+    /// 技能选择面板
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill: Option<bool>,
 }
 
 impl Default for PanelStates {
@@ -3029,6 +3033,7 @@ impl Default for PanelStates {
             model: Some(false),
             advanced: Some(false),
             attachment: Some(false),
+            skill: Some(false),
         }
     }
 }
@@ -3098,6 +3103,39 @@ impl CompactionRecord {
 mod tests {
     use super::*;
     use serde_json::{self, json};
+
+    #[test]
+    fn test_panel_states_accepts_v0944_shape_missing_skill() {
+        let panels: PanelStates = serde_json::from_value(json!({
+            "rag": true,
+            "mcp": false,
+            "search": true,
+            "learn": false,
+            "model": true,
+            "advanced": false,
+            "attachment": true
+        }))
+        .unwrap();
+
+        assert_eq!(panels.model, Some(true));
+        assert_eq!(panels.attachment, Some(true));
+        assert_eq!(panels.skill, None);
+    }
+
+    #[test]
+    fn test_panel_states_round_trips_current_skill_panel() {
+        let panels: PanelStates = serde_json::from_value(json!({
+            "mcp": false,
+            "model": false,
+            "advanced": false,
+            "attachment": false,
+            "skill": true
+        }))
+        .unwrap();
+
+        assert_eq!(panels.skill, Some(true));
+        assert_eq!(serde_json::to_value(panels).unwrap()["skill"], json!(true));
+    }
 
     #[test]
     fn test_send_options_preserves_runtime_reasoning_overrides() {
