@@ -40,6 +40,13 @@ export interface BrowserSessionStore extends BrowserSessionState {
   back: () => Promise<void>;
   forward: () => Promise<void>;
   reload: () => Promise<void>;
+  /**
+   * 停止（放弃）进行中的导航命令：作废在途回执并立即解除 chrome 忙碌态
+   * （地址栏 ✕ 停止钮 / loading 期再导航的前置动作）。
+   * 原生页面可能仍在加载，后续 browser:navigated 事件会继续收敛镜像；
+   * 这里只保证 chrome 立即恢复可交互（对齐常规浏览器的停止语义）。
+   */
+  stopLoading: () => void;
   takeOver: () => Promise<void>;
   setControlMode: (mode: BrowserControlMode) => void;
   setAddressDraft: (draft: string) => void;
@@ -177,7 +184,11 @@ async function runNav(
     const userEditedInFlight = draftNow !== draftAtStart;
     set(
       applySnapshot(snapshot, {
-        loading: false,
+        // Rust owns the page lifecycle: command completion only means the
+        // native WebView accepted the navigation. Keep snapshot.loading=true
+        // until browser:navigated reports PageLoadEvent::Finished (or the
+        // user explicitly stops/redirects), otherwise the stop control
+        // disappears as soon as invoke returns.
         ...(userEditedInFlight ? { addressDraft: draftNow } : {}),
         ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
       }),
@@ -371,6 +382,15 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
     const sessionId = get().sessionId;
     if (!sessionId) return;
     await runNav(set, get, () => browserApi.reload(sessionId), { forceUserControl: true });
+  },
+
+  stopLoading: () => {
+    if (!get().loading) return;
+    // 作废在途 runNav 回执（generation 不匹配即丢弃），并释放导航去重锁，
+    // 让停止后的下一次 back/forward/navigate 立即可用
+    snapshotGeneration += 1;
+    pendingNavigation = null;
+    set({ loading: false });
   },
 
   takeOver: async () => {

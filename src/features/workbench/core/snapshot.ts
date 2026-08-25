@@ -55,6 +55,8 @@ const DISPLAY_MODES: ReadonlySet<DisplayMode> = new Set<DisplayMode>([
   'tiled-tr',
   'tiled-bl',
   'tiled-br',
+  'tiled-top',
+  'tiled-bottom',
 ]);
 
 const MATERIAL_TIERS: ReadonlySet<MaterialTier> = new Set<MaterialTier>([

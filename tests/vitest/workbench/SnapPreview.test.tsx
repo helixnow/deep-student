@@ -128,3 +128,65 @@ describe('SnapPreview', () => {
     expect(el.style.height).toBe('1000px');
   });
 });
+
+describe('⌥ 扩热区角标', () => {
+  const badge = () => document.querySelector('[data-wb-snap-alt-badge]');
+
+  it('Alt 按下显示角标（⌥ + 提示文案），松开消失', () => {
+    render(<SnapPreview zone="left" margin={8} />);
+    expect(badge()).toBeNull();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt' }));
+    });
+    const el = badge();
+    expect(el).not.toBeNull();
+    expect(el!.textContent).toContain('⌥');
+    expect(el!.textContent).toContain('热区已扩大');
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Alt' }));
+    });
+    expect(badge()).toBeNull();
+  });
+
+  it('拖拽指针流 e.altKey 兜底同步（Alt 先于预览按下 / keyup 丢失）', () => {
+    render(<SnapPreview zone="right" margin={8} />);
+    // Alt 在预览挂载前已按下 → 首个 pointermove 补齐状态
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { altKey: true }));
+    });
+    expect(badge()).not.toBeNull();
+
+    // keyup 丢失（如焦点被吃）：无 Alt 的指针流也能复位
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { altKey: false }));
+    });
+    expect(badge()).toBeNull();
+  });
+
+  it('窗口失焦复位角标', () => {
+    render(<SnapPreview zone="left" margin={8} />);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt' }));
+    });
+    expect(badge()).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    expect(badge()).toBeNull();
+  });
+
+  it('离开热区（zone→null）后角标不随 fade-out 残留', () => {
+    const { rerender } = render(<SnapPreview zone="left" margin={8} />);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Alt' }));
+    });
+    expect(badge()).not.toBeNull();
+
+    rerender(<SnapPreview zone={null} margin={8} />);
+    // fade-out 期间轮廓仍在，但角标立即隐藏
+    expect(screen.getByTestId('wb-snap-preview')).toBeInTheDocument();
+    expect(badge()).toBeNull();
+  });
+});

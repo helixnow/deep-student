@@ -68,7 +68,11 @@
     "confirmMessage": "确定要结束本次限时练习吗？",
     "confirmWarning": "还有 {{count}} 道题未作答，确定要交卷吗？",
     "cancel": "取消",
-    "confirmSubmit": "确认交卷"
+    "confirmSubmit": "确认交卷",
+    "lastResultTitle": "上次练习结果",
+    "lastResultTimeout": "超时自动交卷",
+    "lastResultSummary": "已答 {{answered}} / {{total}} 题 · 答对 {{correct}} 题 · 正确率 {{rate}}%",
+    "anotherRound": "再来一轮"
   },
   "questionType": {
     "single_choice": "单选题",
@@ -164,7 +168,8 @@
     "streak": "连续打卡",
     "calendarLoadFailed": "打卡日历加载失败，请重试",
     "startError": "获取每日练习失败",
-    "completedDetail": "答对 {{correct}} / {{total}} 题"
+    "completedDetail": "答对 {{correct}} / {{total}} 题",
+    "anotherRound": "再练一组"
   },
   "paper": {
     "title": "组卷生成器",
@@ -197,7 +202,8 @@
     "exportComingSoon": "PDF / Word 导出即将推出，可先用 Markdown 导出或预览",
     "exportTitle": "导出试卷",
     "exportSuccess": "试卷已导出",
-    "exportFailed": "导出失败，请重试"
+    "exportFailed": "导出失败，请重试",
+    "comingSoonBadge": "即将推出"
   },
   "tagNav": {
     "knowledgePoints": "知识点",

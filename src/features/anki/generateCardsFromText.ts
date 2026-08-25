@@ -2,7 +2,7 @@
  * 从任意学习材料启动制卡任务的共享入口。
  *
  * 复用聊天划词制卡的同一条链路（CardForge → cardAgent.startGeneration），
- * 只是把文案交给调用方，让错题本 / 作文批改这类非聊天表面也能复用，
+ * 只是把文案交给调用方，让错题本 / 作文批改 / 笔记这类非聊天表面也能复用，
  * 而不必依赖 chatV2 命名空间的 selectionToolbar.* 文案。
  */
 import { cardAgent } from '@/components/anki/cardforge';

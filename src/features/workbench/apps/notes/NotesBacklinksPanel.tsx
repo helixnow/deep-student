@@ -24,11 +24,14 @@ import {
   UNLINKED_MENTION_MIN_TITLE_LENGTH,
   type UnlinkedMention,
 } from '@/features/notes/unlinkedMentions';
+import { publishNotesFindQuery } from '@/features/notes/findQueryBridge';
+import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge';
 import {
   backlinkRowToRelationship,
   fetchBacklinksFromBackend,
   type NoteBacklinkDto,
 } from './backlinksBackend';
+import { isContentDirty } from '../content/contentDirtyRegistry';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './NotesBacklinksPanel.css';
@@ -130,11 +133,13 @@ export interface NotesBacklinksPanelProps {
    * 与笔记内嵌属性浮层互斥（宿主应同时隐藏内嵌浮层）。
    */
   propertiesContent?: React.ReactNode;
+  /** 统一右侧栏第三页签「图谱」：当前笔记的局部链接图（提供时显示页签）。 */
+  graphContent?: React.ReactNode;
   requestedTab?: NotesBacklinksTabRequest | null;
   className?: string;
 }
 
-type PanelTab = 'properties' | 'links';
+type PanelTab = 'properties' | 'links' | 'graph';
 
 export interface NotesBacklinksTabRequest {
   tab: PanelTab;
@@ -146,7 +151,7 @@ const PANEL_TAB_STORAGE_KEY = 'notes-backlinks-panel:active-tab';
 function readInitialPanelTab(): PanelTab {
   try {
     const raw = window.localStorage.getItem(PANEL_TAB_STORAGE_KEY);
-    return raw === 'properties' || raw === 'links' ? raw : 'links';
+    return raw === 'properties' || raw === 'links' || raw === 'graph' ? raw : 'links';
   } catch {
     return 'links';
   }
@@ -155,13 +160,17 @@ function readInitialPanelTab(): PanelTab {
 export function useRequestedPanelTab(
   hasPropertiesTab: boolean,
   requestedTab: NotesBacklinksTabRequest | null | undefined,
+  hasGraphTab = false,
 ): readonly [PanelTab, (tab: PanelTab) => void] {
   const [activeTab, setActiveTab] = useState<PanelTab>(readInitialPanelTab);
   useEffect(() => {
-    if (requestedTab && (requestedTab.tab === 'links' || hasPropertiesTab)) {
+    const tabAvailable = requestedTab?.tab === 'links'
+      || (requestedTab?.tab === 'properties' && hasPropertiesTab)
+      || (requestedTab?.tab === 'graph' && hasGraphTab);
+    if (requestedTab && tabAvailable) {
       setActiveTab(requestedTab.tab);
     }
-  }, [hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
+  }, [hasGraphTab, hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
   const switchTab = useCallback((tab: PanelTab) => {
     setActiveTab(tab);
     try {
@@ -400,6 +409,27 @@ export function wikiLinkDisplayText(link: WikiLink): string {
   return link.label?.trim() || link.target;
 }
 
+/**
+ * 未链接提及 → 双链的替换文本。提及是对标题的大小写不敏感命中：
+ * 原文与标题（忽略大小写）一致时直接包成 `[[原文]]`（解析同样大小写不敏感，
+ * 保持正文显示不变）；极端不一致时退化为 `[[标题|原文]]` 保证可解析。
+ */
+export function buildMentionWikiLink(mentionText: string, noteTitle: string): string {
+  const title = noteTitle.trim();
+  if (mentionText.trim().toLocaleLowerCase() === title.toLocaleLowerCase()) {
+    return `[[${mentionText}]]`;
+  }
+  return `[[${title}|${mentionText}]]`;
+}
+
+/** 打开链接后在目标笔记内定位的方式。 */
+interface OpenLocateTarget {
+  /** 打开来源笔记后用查找条定位到引用文本（反向链接 / 提及行） */
+  findQuery?: string;
+  /** 打开目标笔记后滚动到 `[[Note#Heading]]` 指定的标题（出链行） */
+  heading?: string;
+}
+
 const ContextSnippetView: React.FC<{ snippet: ContextSnippet; matchDisplay?: string }> = ({
   snippet,
   matchDisplay,
@@ -464,11 +494,13 @@ const LinkedNoteRow: React.FC<{
 const UnlinkedMentionRowView: React.FC<{
   row: UnlinkedMentionRow;
   disabled: boolean;
+  converting: boolean;
   contextRadius: number;
-  onOpen: (resource: DstuNode) => void;
+  onOpen: (row: UnlinkedMentionRow) => void;
+  onConvert: (row: UnlinkedMentionRow) => void;
   openLabel: (title: string) => string;
   convertLabel: (title: string) => string;
-}> = ({ row, disabled, contextRadius, onOpen, openLabel, convertLabel }) => {
+}> = ({ row, disabled, converting, contextRadius, onOpen, onConvert, openLabel, convertLabel }) => {
   const snippet = extractContextSnippet(
     row.content,
     row.mention.start,
@@ -484,7 +516,7 @@ const UnlinkedMentionRowView: React.FC<{
           className="notes-backlinks-panel-link"
           data-direction="mention"
           disabled={disabled}
-          onClick={() => onOpen(row.node)}
+          onClick={() => onOpen(row)}
           aria-label={openLabel(row.node.name)}
         >
           <FileText size={15} aria-hidden="true" />
@@ -495,12 +527,14 @@ const UnlinkedMentionRowView: React.FC<{
         <button
           type="button"
           className="notes-backlinks-panel-create-button"
-          disabled={disabled}
-          onClick={() => onOpen(row.node)}
+          disabled={disabled || converting}
+          onClick={() => onConvert(row)}
           aria-label={convertLabel(row.node.name)}
           title={convertLabel(row.node.name)}
         >
-          <LinkSimple size={14} aria-hidden="true" />
+          {converting
+            ? <CircleNotch className="notes-backlinks-panel-spinner" size={14} aria-hidden="true" />
+            : <LinkSimple size={14} aria-hidden="true" />}
         </button>
       </div>
       {snippet && <ContextSnippetView snippet={snippet} />}
@@ -558,13 +592,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   onCreateFromUnresolved,
   onRefresh,
   propertiesContent,
+  graphContent,
   requestedTab,
   className,
 }) => {
   const { t } = useTranslation('workbench');
   const hasPropertiesTab = propertiesContent !== undefined;
-  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab);
-  const resolvedTab: PanelTab = hasPropertiesTab ? activeTab : 'links';
+  const hasGraphTab = graphContent !== undefined;
+  const hasExtraTabs = hasPropertiesTab || hasGraphTab;
+  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab, hasGraphTab);
+  const resolvedTab: PanelTab = (activeTab === 'properties' && hasPropertiesTab)
+    || (activeTab === 'graph' && hasGraphTab)
+    ? activeTab
+    : 'links';
   const [loadState, setLoadState] = useState<RelationshipsLoadState>({ status: 'idle' });
   const [mentionsState, setMentionsState] = useState<MentionsLoadState>({ status: 'idle' });
   const [candidateLimit, setCandidateLimit] = useState(BACKLINK_CANDIDATE_LIMIT);
@@ -903,12 +943,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     setRefreshVersion((value) => value + 1);
   }, []);
 
-  const openLinkedResource = useCallback(async (resource: DstuNode) => {
+  const openLinkedResource = useCallback(async (resource: DstuNode, locate?: OpenLocateTarget) => {
     if (openingResourceId) return;
     setOpeningResourceId(resource.id);
     setOpenError(null);
     try {
       await onOpenResource(resource);
+      // 定位在打开之后发布：桥接层「发布并保留」，编辑器已挂载走事件、
+      // 冷挂载走 pending 消费（与全文搜索定位同一条通道）
+      if (locate?.heading) {
+        publishNotesHeadingTarget({ noteId: resource.id, heading: locate.heading });
+      } else if (locate?.findQuery) {
+        publishNotesFindQuery({ noteId: resource.id, query: locate.findQuery });
+      }
     } catch (error) {
       setOpenError(getErrorMessage(
         error,
@@ -918,6 +965,90 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
       setOpeningResourceId(null);
     }
   }, [onOpenResource, openingResourceId, t]);
+
+  // ── 未链接提及 → 双链（真实写回，OCC 保护） ─────────────────────────
+  const convertingKeysRef = useRef(new Set<string>());
+  const [convertingKeys, setConvertingKeys] = useState<ReadonlySet<string>>(() => new Set());
+
+  const convertMentionToLink = useCallback(async (row: UnlinkedMentionRow) => {
+    const activeNote = activeResource?.type === 'note' ? activeResource : null;
+    if (!activeNote) return;
+    const rowKey = `${row.node.id}:${row.mention.start}`;
+    if (convertingKeysRef.current.has(rowKey)) return;
+    convertingKeysRef.current.add(rowKey);
+    setConvertingKeys(new Set(convertingKeysRef.current));
+    setOpenError(null);
+    try {
+      // 来源笔记正被编辑（脏）时拒绝改盘：磁盘改动会被编辑器自动保存覆盖
+      if (isContentDirty('note', row.node.id)) {
+        setOpenError(t('notesWorkspace.backlinks.convertDirty', {
+          defaultValue: '「{{title}}」有未保存的修改，请先保存再转为链接。',
+          title: row.node.name,
+        }));
+        return;
+      }
+      // 写回基线取最新节点（OCC）；路径可能已因移动失效，回退按 ID 寻址
+      const nodeResult = await dstu.get(row.node.path);
+      const fallbackResult = nodeResult.ok ? null : await dstu.get(`/${row.node.id}`);
+      const freshNode = nodeResult.ok
+        ? nodeResult.value
+        : fallbackResult?.ok
+          ? fallbackResult.value
+          : null;
+      if (!freshNode) {
+        setOpenError(t('notesWorkspace.backlinks.convertFailed', { defaultValue: '无法转为链接。' }));
+        return;
+      }
+      const contentResult = await dstu.getContent(freshNode.path);
+      if (!contentResult.ok || typeof contentResult.value !== 'string') {
+        setOpenError(t('notesWorkspace.backlinks.convertFailed', { defaultValue: '无法转为链接。' }));
+        return;
+      }
+      const content = contentResult.value;
+      // 面板快照可能落后于磁盘：在最新正文里重新定位提及
+      //（优先同位置同文本，退而求其次取最近的同文本命中）
+      const title = activeNote.name.trim();
+      const mentions = findUnlinkedMentions(content, title);
+      const target = mentions.find((m) => m.start === row.mention.start && m.text === row.mention.text)
+        ?? mentions
+          .filter((m) => m.text === row.mention.text)
+          .sort((a, b) => Math.abs(a.start - row.mention.start) - Math.abs(b.start - row.mention.start))[0]
+        ?? mentions[0]
+        ?? null;
+      if (!target) {
+        setOpenError(t('notesWorkspace.backlinks.convertMissing', {
+          defaultValue: '「{{title}}」内容已变化，未找到该提及。',
+          title: row.node.name,
+        }));
+        refresh();
+        return;
+      }
+      const next = content.slice(0, target.start)
+        + buildMentionWikiLink(target.text, title)
+        + content.slice(target.end);
+      const updateResult = await dstu.update(freshNode.path, next, 'note', {
+        expectedUpdatedAtMs: freshNode.updatedAt,
+      });
+      if (!updateResult.ok) {
+        setOpenError(getErrorMessage(
+          updateResult.error,
+          t('notesWorkspace.backlinks.convertFailed', { defaultValue: '无法转为链接。' }),
+        ));
+        refresh();
+        return;
+      }
+      contentCacheRef.current.delete(row.node.id);
+      refresh();
+    } catch (error) {
+      setOpenError(getErrorMessage(
+        error,
+        t('notesWorkspace.backlinks.convertFailed', { defaultValue: '无法转为链接。' }),
+      ));
+    } finally {
+      convertingKeysRef.current.delete(rowKey);
+      setConvertingKeys(new Set(convertingKeysRef.current));
+    }
+  }, [activeResource, refresh, t]);
 
   const createFromUnresolved = useCallback(async (title: string) => {
     if (!onCreateFromUnresolved || creatingTitlesRef.current.has(title)) return;
@@ -1035,28 +1166,30 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
       className={cn('notes-backlinks-panel', className)}
       data-notes-backlinks-panel
       role="complementary"
-      {...(hasPropertiesTab
+      {...(hasExtraTabs
         ? { 'aria-label': t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' }) }
         : { 'aria-labelledby': titleId })}
       onKeyDown={onPanelKeyDown}
     >
       <header className="notes-backlinks-panel-header">
-        {hasPropertiesTab ? (
+        {hasExtraTabs ? (
           <div
             className="notes-backlinks-panel-tabs"
             role="tablist"
             aria-label={t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' })}
           >
-            <button
-              type="button"
-              role="tab"
-              id={`${titleId}-tab-properties`}
-              className="notes-backlinks-panel-tab"
-              aria-selected={resolvedTab === 'properties'}
-              onClick={() => switchTab('properties')}
-            >
-              {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
-            </button>
+            {hasPropertiesTab && (
+              <button
+                type="button"
+                role="tab"
+                id={`${titleId}-tab-properties`}
+                className="notes-backlinks-panel-tab"
+                aria-selected={resolvedTab === 'properties'}
+                onClick={() => switchTab('properties')}
+              >
+                {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
+              </button>
+            )}
             <button
               type="button"
               role="tab"
@@ -1067,6 +1200,18 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             >
               {t('notesWorkspace.backlinks.tabLinks', { defaultValue: '链接' })}
             </button>
+            {hasGraphTab && (
+              <button
+                type="button"
+                role="tab"
+                id={`${titleId}-tab-graph`}
+                className="notes-backlinks-panel-tab"
+                aria-selected={resolvedTab === 'graph'}
+                onClick={() => switchTab('graph')}
+              >
+                {t('notesWorkspace.backlinks.tabGraph', { defaultValue: '图谱' })}
+              </button>
+            )}
           </div>
         ) : (
           <div className="notes-backlinks-panel-heading">
@@ -1099,7 +1244,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         </div>
       </header>
 
-      {hasPropertiesTab && activeResource?.type === 'note' && (
+      {hasExtraTabs && activeResource?.type === 'note' && (
         <div className="notes-backlinks-panel-note" title={activeResource.name}>
           <FileText size={13} aria-hidden="true" />
           <span>{activeResource.name}</span>
@@ -1114,12 +1259,20 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         >
           {propertiesContent}
         </div>
+      ) : hasGraphTab && resolvedTab === 'graph' ? (
+        <div
+          className="notes-backlinks-panel-graph"
+          role="tabpanel"
+          aria-labelledby={`${titleId}-tab-graph`}
+        >
+          {graphContent}
+        </div>
       ) : (
       <CustomScrollArea
         className="notes-backlinks-panel-body"
         viewportProps={{
           'aria-live': 'polite',
-          ...(hasPropertiesTab
+          ...(hasExtraTabs
             ? { role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links` }
             : {}),
         }}
@@ -1175,7 +1328,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                             resource={resource}
                             direction="outbound"
                             disabled={openingResourceId !== null}
-                            onOpen={(node) => void openLinkedResource(node)}
+                            onOpen={(node) => void openLinkedResource(
+                              node,
+                              // [[Note#Heading]]：打开目标后滚动到对应标题
+                              relationship.link.heading
+                                ? { heading: relationship.link.heading }
+                                : undefined,
+                            )}
                             openLabel={openLinkedNoteLabel}
                           />
                         ) : null;
@@ -1239,7 +1398,11 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                               resource={resource}
                               direction="inbound"
                               disabled={openingResourceId !== null}
-                              onOpen={(node) => void openLinkedResource(node)}
+                              // 打开来源后用查找条定位到该处引用（编辑器里渲染的
+                              // 是别名或目标标题，与 display text 一致）
+                              onOpen={(node) => void openLinkedResource(node, {
+                                findQuery: wikiLinkDisplayText(relationship.link),
+                              })}
                               openLabel={openLinkedNoteLabel}
                               contextSnippet={contextSnippet}
                             />
@@ -1304,8 +1467,12 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                           key={`${row.node.id}:${row.mention.start}:${index}`}
                           row={row}
                           disabled={openingResourceId !== null}
+                          converting={convertingKeys.has(`${row.node.id}:${row.mention.start}`)}
                           contextRadius={contextRadius}
-                          onOpen={(node) => void openLinkedResource(node)}
+                          onOpen={(mentionRow) => void openLinkedResource(mentionRow.node, {
+                            findQuery: mentionRow.mention.text,
+                          })}
+                          onConvert={(mentionRow) => void convertMentionToLink(mentionRow)}
                           openLabel={openLinkedNoteLabel}
                           convertLabel={convertMentionLabel}
                         />

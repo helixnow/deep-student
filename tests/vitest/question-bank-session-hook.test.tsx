@@ -210,4 +210,72 @@ describe('useQuestionBankSession', () => {
       expect(result.current.stats?.correctRate).toBe(0.75);
     });
   });
+
+  // 2026-08 修复回归：自评（我答对了/我答错了）必须对最近一次提交改判，
+  // 而不是新插作答记录把 attempt_count 双计。
+  it('markCorrect regrades the latest submission instead of resubmitting', async () => {
+    const submitPayloads: any[] = [];
+
+    mockInvoke.mockImplementation(async (command: string, payload?: any) => {
+      if (command === 'qbank_get_stats') return makeStats();
+      if (command === 'qbank_list_questions') {
+        return {
+          questions: [{ ...makeStoreQuestion('q1', 'subjective question'), question_type: 'short_answer' }],
+          total: 1,
+          page: 1,
+          page_size: 50,
+          has_more: false,
+        };
+      }
+      if (command === 'qbank_submit_answer') {
+        submitPayloads.push(payload?.request);
+        const graded = submitPayloads.length > 1;
+        return {
+          is_correct: graded ? true : null,
+          correct_answer: 'reference',
+          needs_manual_grading: !graded,
+          message: graded ? '回答正确！' : '需要手动批改',
+          updated_question: {
+            ...makeStoreQuestion('q1', 'subjective question'),
+            user_answer: 'my essay',
+            attempt_count: 1,
+          },
+          updated_stats: makeStats(),
+          submission_id: 'sub-1',
+        };
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useQuestionBankSession({ examId: 'exam_1' }));
+    await waitFor(() => {
+      expect(result.current.questions).toHaveLength(1);
+    });
+
+    // 首次提交：非改判路径，不带 regrade_submission_id
+    await act(async () => {
+      await result.current.submitAnswer('q1', 'my essay');
+    });
+    expect(submitPayloads[0].is_correct_override).toBeUndefined();
+    expect(submitPayloads[0].regrade_submission_id).toBeNull();
+
+    // 自评：携带最近一次提交 id，后端据此改判该提交
+    await act(async () => {
+      await result.current.markCorrect('q1', true);
+    });
+    expect(submitPayloads[1]).toMatchObject({
+      question_id: 'q1',
+      is_correct_override: true,
+      regrade_submission_id: 'sub-1',
+    });
+
+    // 反悔换判：改判返回同一 submission_id，再次自评仍指向同一条提交
+    await act(async () => {
+      await result.current.markCorrect('q1', false);
+    });
+    expect(submitPayloads[2]).toMatchObject({
+      is_correct_override: false,
+      regrade_submission_id: 'sub-1',
+    });
+  });
 });

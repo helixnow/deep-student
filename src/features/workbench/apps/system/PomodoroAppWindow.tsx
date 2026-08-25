@@ -22,11 +22,12 @@
  * 窗口标题带模式语义（「专注中 · 写论文」），Dock 弹层/切换器一眼可读；
  * 仅在模式/任务变化时更新，不做每秒标题刷新（避免 store 高频写）。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowsOut,
   Brain,
+  Cards,
   CaretLeft,
   ChartLineUp,
   CheckCircle,
@@ -49,6 +50,11 @@ import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '@/features/pomodoro/api';
 import { PomodoroStatsContent } from '@/features/pomodoro/components/PomodoroStatsPopover';
 import type { AppWindowProps } from '../../core/types';
+import { workbenchBus } from '../../core/workbenchBus';
+import {
+  getFlashcardsDueCount,
+  subscribeFlashcardsDueCount,
+} from './flashcardsDueSource';
 import { useWbSysSize } from './useWbSysSize';
 import { PomodoroWindowSettings } from './PomodoroWindowSettings';
 import './PomodoroAppWindow.css';
@@ -68,6 +74,23 @@ function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+/** 休息期跳转闪卡复习（与菜单栏 StatusBarItems 的到期入口同一 activate 契约） */
+const FLASHCARDS_DUE_PAYLOAD = { screen: 'session', mode: 'due' } as const;
+
+function launchFlashcardsDueReview(): void {
+  void workbenchBus.activate({
+    typeId: 'flashcards',
+    instanceKey: '',
+    action: 'startReview',
+    payload: FLASHCARDS_DUE_PAYLOAD,
+    fallbackLaunch: {
+      typeId: 'flashcards',
+      reason: 'api',
+      payload: FLASHCARDS_DUE_PAYLOAD,
+    },
+  });
 }
 
 // ============================================================================
@@ -178,6 +201,12 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const [view, setView] = useState<PomoView>('main');
   const [renderedSub, setRenderedSub] = useState<SubViewKind | null>(null);
   const [todayStats, setTodayStats] = useState<PomodoroTodayStats | null>(null);
+  // 休息期联动：有到期闪卡时给「去复习 N 张」入口（与菜单栏共用同一 watcher）
+  const dueCount = useSyncExternalStore(
+    subscribeFlashcardsDueCount,
+    getFlashcardsDueCount,
+    () => 0,
+  );
   const [flash, setFlash] = useState(false);
   // 放弃确认（内联二次确认，非弹窗）：专注中断会记 interrupted，误触成本高
   const [confirmingStop, setConfirmingStop] = useState(false);
@@ -457,6 +486,21 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
               {currentTaskTitle}
             </span>
           )}
+
+            {/* 休息期联动：有到期闪卡时提供「去复习 N 张」（利用休息碎片完成到期复习） */}
+            {(mode === 'short_break' || mode === 'long_break') && dueCount > 0 && (
+              <button
+                type="button"
+                className="wb-sys-pomo-break-review"
+                data-testid="wb-sys-pomo-break-review"
+                onClick={launchFlashcardsDueReview}
+                title={t('pomodoro.breakReview', { count: dueCount })}
+                aria-label={t('pomodoro.breakReview', { count: dueCount })}
+              >
+                <Cards size={13} weight="duotone" aria-hidden />
+                <span>{t('pomodoro.breakReview', { count: dueCount })}</span>
+              </button>
+            )}
 
             {/* 长休息周期圆点（间隔 >1 才有周期可言） */}
             {cycleLength > 1 && (
