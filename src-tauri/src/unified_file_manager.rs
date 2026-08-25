@@ -344,6 +344,24 @@ fn ensure_identical_copy(
     Ok(())
 }
 
+fn required_temp_copy_bytes(source_bytes: u64) -> u64 {
+    source_bytes.saturating_mul(2)
+}
+
+fn ensure_enough_temp_space(
+    available: u64,
+    source_bytes: u64,
+    label: &str,
+) -> Result<(), AppError> {
+    let required = required_temp_copy_bytes(source_bytes);
+    if available < required {
+        return Err(AppError::file_system(format!(
+            "临时物化空间不足，已停止以免半包: {label}（源 {source_bytes} 字节，需要约 {required} 字节，可用 {available} 字节）"
+        )));
+    }
+    Ok(())
+}
+
 pub fn write_text_file(window: &Window, raw_path: &str, content: &str) -> Result<(), AppError> {
     let path = classify_path(raw_path)?;
     let mut writer = open_writer(window, &path, true)?;
@@ -824,6 +842,11 @@ pub fn ensure_local_path(
             };
             let dest_path = temp_dir.join(file_name);
             let dest_str = dest_path.to_string_lossy().to_string();
+            // [R12-saf-space] 物化前按源大小 2 倍预检临时卷；不足不得开拷，以免半包。
+            // SAF 目标卷空间仍不可见，这里只守应用私有临时目录。
+            let source_bytes = get_file_size(window, raw_path)?;
+            let available = crate::backup_common::get_available_disk_space(temp_dir)?;
+            ensure_enough_temp_space(available, source_bytes, raw_path)?;
             copy_file(window, raw_path, &dest_str)?;
             Ok(MaterializedPath {
                 path: dest_path.clone(),
@@ -835,7 +858,10 @@ pub fn ensure_local_path(
 
 #[cfg(test)]
 mod tests {
-    use super::{digest_copy, digest_read, ensure_identical_copy};
+    use super::{
+        digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
+        required_temp_copy_bytes,
+    };
     use std::io::Cursor;
 
     #[test]
@@ -864,5 +890,14 @@ mod tests {
         let err = ensure_identical_copy(copied, source_digest, copied, other, "tampered")
             .expect_err("哈希不一致必须 fail-closed");
         assert!(err.to_string().contains("目标回读校验失败"));
+    }
+
+    #[test]
+    fn ensure_enough_temp_space_requires_double_source_size() {
+        assert_eq!(required_temp_copy_bytes(80), 160);
+        ensure_enough_temp_space(160, 80, "enough").expect("恰好 2 倍必须通过");
+        let err =
+            ensure_enough_temp_space(159, 80, "short").expect_err("不足 2 倍必须 fail-closed");
+        assert!(err.to_string().contains("临时物化空间不足，已停止以免半包"));
     }
 }

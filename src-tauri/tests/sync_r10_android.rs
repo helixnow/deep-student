@@ -239,10 +239,12 @@ fn zip_command_materialization_orchestration_is_anchored() {
         "digest_copy",
         "目标回读失败，已停止并不得报成功",
         "目标回读校验失败",
+        "ensure_enough_temp_space",
+        "临时物化空间不足，已停止以免半包",
     ] {
         assert!(
             copy_source.contains(marker),
-            "SAF 导出复制必须回读校验长度/SHA-256，缺少锚点 {marker:?}"
+            "SAF 物化必须回读校验并预检临时卷空间，缺少锚点 {marker:?}"
         );
     }
 

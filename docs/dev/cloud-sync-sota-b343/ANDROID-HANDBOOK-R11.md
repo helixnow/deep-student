@@ -158,7 +158,7 @@ npx tauri android build --target aarch64 --apk --ci -- \
 | P1 | 没有真机 ContentResolver 读写自动化；`Window<Wry>` 不能由当前 mock runtime 驱动 | 本手册 4.1–4.3 全矩阵，至少 Android 13/14 各一台 |
 | P1 | 未显式调用 `takePersistableUriPermission`；异步导出依赖当前进程的 URI grant，进程死亡后不可承诺续写原 URI | provider 授权后强杀/重开测试；失败必须可见，不得报成功 |
 | P1 | 导出复制目标回读 | **代码已合**：`copy_file` 写完后重新打开目标核对长度与 SHA-256，失败不得报成功。真机 DocumentsProvider 延迟提交 / 进程死亡仍要按 4.1–4.3 签字 |
-| P2 | 临时物化前没有按源大小做可用空间预检；大 ZIP 可能复制到一半才 ENOSPC | 剩余空间 < ZIP 2 倍的真机故障注入，错误与清理可见 |
+| P2 | 临时物化前空间预检 | **代码已合**：虚拟 URI 物化前按源大小 2 倍核对临时卷可用空间，不足 fail-closed。真机 ENOSPC / 配额虚报 / SAF 目标卷仍要按 4.1–4.3 签字 |
 | P2 | 不透明 document id 未查询 `OpenableColumns.DISPLAY_NAME/SIZE`；通用导入靠 magic bytes，日志/文件名可读性退化 | Downloads/Drive/厂商 provider 各取一例 |
 | P2 | `content%3A%2F%2F...` 双重编码输入在公开 `is_virtual_uri` 层按本地路径 fail-closed | 保持拒绝并给可读错误，或补分类后更新锁定测 |
 | P2 | Android `app.restart()` 壳只能由真机验证；宿主仅等价测试下一次初始化切槽 | 4.2 的冷启动两次 + 强杀矩阵 |
