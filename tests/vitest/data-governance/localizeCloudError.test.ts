@@ -15,11 +15,15 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
 });
 
 import {
+  ATOMIC_RESTORE_UNAVAILABLE_CODE,
   CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
   findCloudBackupVersion,
+  getCloudStorageErrorCode,
   isImportedArchiveSlotRestorable,
   isKnownPortableCloudBackup,
   PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
+  SEALED_BACKUP_DECRYPT_FAILED_CODE,
+  SEALED_BACKUP_PASSWORD_REQUIRED_CODE,
   STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
   SYNC_E2EE_WRONG_PASSWORD_CODE,
 } from '@/utils/cloudStorageApi';
@@ -122,6 +126,52 @@ describe('localizeCloudStorageError', () => {
       'utf-8',
     );
     expect(restore).toContain('PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE');
+  });
+
+  it('maps sealed-ZIP and atomic-restore refusals by stable code', () => {
+    expect(
+      localizeCloudStorageError(
+        { code: SEALED_BACKUP_PASSWORD_REQUIRED_CODE, message: 'rewritten password prompt' },
+        t,
+      ),
+    ).toBe('cloudStorage:errors.sealedBackupPasswordRequired');
+    expect(
+      localizeCloudStorageError(
+        { code: SEALED_BACKUP_DECRYPT_FAILED_CODE, message: 'rewritten decrypt failure' },
+        t,
+      ),
+    ).toBe('cloudStorage:errors.sealedBackupDecryptFailed');
+    expect(
+      localizeCloudStorageError(
+        { code: ATOMIC_RESTORE_UNAVAILABLE_CODE, message: 'rewritten manager failure' },
+        t,
+      ),
+    ).toBe('cloudStorage:errors.atomicRestoreUnavailable');
+  });
+
+  it('extracts new stable codes from background-job diagnostic strings', () => {
+    for (const code of [
+      SEALED_BACKUP_PASSWORD_REQUIRED_CODE,
+      SEALED_BACKUP_DECRYPT_FAILED_CODE,
+      ATOMIC_RESTORE_UNAVAILABLE_CODE,
+    ]) {
+      expect(getCloudStorageErrorCode(new Error(`[${code}] rewritten diagnostic`))).toBe(code);
+    }
+  });
+
+  it('Rust and TypeScript share sealed-ZIP and atomic-restore codes', () => {
+    const zip = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/zip_export.rs'),
+      'utf-8',
+    );
+    expect(zip).toContain(`"${SEALED_BACKUP_PASSWORD_REQUIRED_CODE}"`);
+    expect(zip).toContain(`"${SEALED_BACKUP_DECRYPT_FAILED_CODE}"`);
+
+    const backup = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/mod.rs'),
+      'utf-8',
+    );
+    expect(backup).toContain(`"${ATOMIC_RESTORE_UNAVAILABLE_CODE}"`);
   });
 
   it('cloud and local ZIP restore paths refuse before restoreBackup', () => {

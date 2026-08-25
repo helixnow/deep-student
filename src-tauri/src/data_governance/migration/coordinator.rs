@@ -2272,6 +2272,14 @@ impl MigrationCoordinator {
         conn: &rusqlite::Connection,
         runner: &refinery::Runner,
     ) -> Result<(), MigrationError> {
+        // 旧库兼容：只要存在核心表，就先补齐 V20260130 契约中缺失的表。
+        // ⚠️ 必须先于 ensure_change_log_table：V20260131 SQL 会给
+        //    questions/notes/review_plans/folders 建触发器，旧库可能只有
+        //    resources/notes，直接回放 change_log 会报 no such table: main.questions。
+        if self.table_exists(conn, "resources")? {
+            self.apply_vfs_init_missing_tables(conn)?;
+        }
+
         // --- V20260131: __change_log 表修复（通用防御） ---
         self.ensure_change_log_table(
             conn,
@@ -2365,6 +2373,151 @@ impl MigrationCoordinator {
             _ => {}
         }
         Ok(())
+    }
+
+    /// 补齐旧 VFS 中缺失的 V20260130 业务表（只建缺失表，不重放已有表上的索引）。
+    ///
+    /// 不能整份回放 init.sql：已有 `resources` 若缺列，`CREATE INDEX` 会失败；
+    /// 也不能无条件重建 `notes_versions`（V20260214 已删除该表）。
+    #[cfg(feature = "data_governance")]
+    fn apply_vfs_init_missing_tables(
+        &self,
+        conn: &rusqlite::Connection,
+    ) -> Result<(), MigrationError> {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const NOTES_VERSIONS_DROPPED: i32 = 20260214;
+        const NOTE_PROPS_ADDED: i32 = 20260824;
+
+        let skip_notes_versions = self.is_migration_recorded(conn, NOTES_VERSIONS_DROPPED)?;
+        let restore_note_props = self.is_migration_recorded(conn, NOTE_PROPS_ADDED)?;
+        let statements = Self::extract_create_table_if_not_exists(INIT_SQL);
+
+        let foreign_keys_on: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap_or(0);
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .map_err(|e| MigrationError::Database(e.to_string()))?;
+
+        let apply_result = (|| -> Result<(), MigrationError> {
+            for (table_name, statement) in &statements {
+                if table_name == "notes_versions" && skip_notes_versions {
+                    continue;
+                }
+                if self.table_exists(conn, table_name)? {
+                    continue;
+                }
+                tracing::info!("🔧 [PreRepair] VFS: 补齐缺失表 {}", table_name);
+                conn.execute_batch(statement).map_err(|e| {
+                    MigrationError::Database(format!(
+                        "回放 vfs init 补齐 {} 失败: {}",
+                        table_name, e
+                    ))
+                })?;
+            }
+
+            // 0824 adds notes.props after V20260130. If that migration is already
+            // recorded, a reconstructed notes table must retain its recorded contract.
+            if restore_note_props {
+                self.add_column_if_missing(conn, "notes", "props", "TEXT")?;
+            }
+            Ok(())
+        })();
+
+        if foreign_keys_on != 0 {
+            conn.execute("PRAGMA foreign_keys = ON", [])
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+        }
+        apply_result
+    }
+
+    /// 从迁移 SQL 中提取 `CREATE TABLE IF NOT EXISTS` 语句（不含 VIRTUAL TABLE）。
+    #[cfg(feature = "data_governance")]
+    fn extract_create_table_if_not_exists(sql: &str) -> Vec<(String, String)> {
+        const MARKER: &str = "CREATE TABLE IF NOT EXISTS";
+        let mut results = Vec::new();
+        let sql_upper = sql.to_ascii_uppercase();
+        let mut pos = 0;
+
+        while let Some(rel) = sql_upper[pos..].find(MARKER) {
+            let start = pos + rel;
+            let lookback_start = start.saturating_sub(16);
+            if sql_upper[lookback_start..start].contains("VIRTUAL") {
+                pos = start + MARKER.len();
+                continue;
+            }
+
+            let after_marker = start + MARKER.len();
+            let name_slice = sql[after_marker..].trim_start();
+            let name_len = name_slice
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(name_slice.len());
+            let name = name_slice[..name_len].to_string();
+            if name.is_empty() {
+                pos = after_marker;
+                continue;
+            }
+
+            let Some(open_rel) = sql[after_marker..].find('(') else {
+                break;
+            };
+            let open = after_marker + open_rel;
+            let Some(end) = Self::find_sql_statement_end(sql, open) else {
+                break;
+            };
+            results.push((name, sql[start..end].trim().to_string()));
+            pos = end;
+        }
+
+        results
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn find_sql_statement_end(sql: &str, open_paren: usize) -> Option<usize> {
+        let bytes = sql.as_bytes();
+        let mut depth = 0_i32;
+        let mut i = open_paren;
+        let mut in_single_quote = false;
+
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_single_quote {
+                if c == b'\'' {
+                    if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                        i += 2;
+                        continue;
+                    }
+                    in_single_quote = false;
+                }
+                i += 1;
+                continue;
+            }
+            if c == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            match c {
+                b'\'' => in_single_quote = true,
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        i += 1;
+                        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                            i += 1;
+                        }
+                        if i < bytes.len() && bytes[i] == b';' {
+                            return Some(i + 1);
+                        }
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
     }
 
     /// 确保 __change_log 表存在（通用防御）
@@ -3661,10 +3814,11 @@ END;",
 
     /// 预修复 LLM Usage 数据库的 schema
     ///
-    /// 处理两类问题：
+    /// 处理三类问题：
     /// 1. V20260131: `__change_log` 表被记录为已完成但实际不存在
     ///    （旧版 set_grouped(true) 时代 SQLite DDL 回滚残留）
     /// 2. V20260201: 同步字段迁移失败后的残留状态
+    /// 3. V20260824: `cache_write_tokens` 已添加但 history 未落盘的中断状态
     #[cfg(feature = "data_governance")]
     fn pre_repair_llm_usage_schema(
         &self,
@@ -3679,12 +3833,28 @@ END;",
             "llm_usage_logs",
         )?;
 
-        const SYNC_VERSION: i32 = 20260201;
-
         // 新数据库（尚未创建表）无需预修复
         if !self.table_exists(conn, "llm_usage_logs")? {
             return Ok(());
         }
+
+        // V20260824 位于通用历史兼容重放边界之后，必须显式收敛：
+        // 该迁移只有一条 ADD COLUMN；列存在即证明 DDL 已落盘，可以安全补 history。
+        const CACHE_WRITE_VERSION: i32 = 20260824;
+        const CACHE_WRITE_PREDECESSOR: i32 = 20260525;
+        if !self.is_migration_recorded(conn, CACHE_WRITE_VERSION)?
+            && self.is_migration_recorded(conn, CACHE_WRITE_PREDECESSOR)?
+            && self.column_exists(conn, "llm_usage_logs", "cache_write_tokens")?
+        {
+            tracing::info!(
+                "🔧 [PreRepair] llm_usage: 检测到 cache_write_tokens 已存在但 V{} 未记账，补齐迁移历史",
+                CACHE_WRITE_VERSION
+            );
+            self.ensure_refinery_history_table(conn)?;
+            self.mark_migration_complete(conn, runner, CACHE_WRITE_VERSION)?;
+        }
+
+        const SYNC_VERSION: i32 = 20260201;
 
         // 如果迁移已记录，无需处理
         if self.is_migration_recorded(conn, SYNC_VERSION)? {
@@ -5599,6 +5769,114 @@ mod tests {
         assert!(
             has_review_sessions,
             "missing review_sessions table should be created"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_extract_vfs_init_create_tables_includes_change_log_parents() {
+        let statements = MigrationCoordinator::extract_create_table_if_not_exists(include_str!(
+            "../../../migrations/vfs/V20260130__init.sql"
+        ));
+        let names: Vec<&str> = statements.iter().map(|(name, _)| name.as_str()).collect();
+        for required in ["resources", "notes", "questions", "review_plans", "folders"] {
+            assert!(
+                names.contains(&required),
+                "VFS init must declare CREATE TABLE for {required}, got {names:?}"
+            );
+        }
+        assert!(
+            !names.contains(&"questions_fts"),
+            "virtual FTS table must not be treated as CREATE TABLE"
+        );
+    }
+
+    /// 复现诊断：旧 VFS 只有 resources/notes，补齐 __change_log 时因缺 questions 失败。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_pre_repair_vfs_backfills_questions_before_change_log() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("databases").join("vfs.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE resources (
+                id TEXT PRIMARY KEY,
+                hash TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL,
+                storage_mode TEXT NOT NULL DEFAULT 'inline',
+                ref_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                resource_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]',
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            ",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator
+            .pre_repair_vfs_schema(&conn, &runner)
+            .expect("sparse VFS pre-repair must not fail on missing questions");
+
+        let has_questions: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='questions')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let has_change_log: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            has_questions,
+            "questions should be backfilled before change_log"
+        );
+        assert!(
+            has_change_log,
+            "__change_log should be created after parent tables exist"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_vfs_init_backfill_restores_recorded_note_props_contract() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("vfs.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE resources (id TEXT PRIMARY KEY)", [])
+            .unwrap();
+        coordinator.ensure_refinery_history_table(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO refinery_schema_history (version, name, applied_on, checksum)
+             VALUES (20260824, 'note_props', '2026-08-24T00:00:00Z', 'recorded')",
+            [],
+        )
+        .unwrap();
+
+        coordinator
+            .apply_vfs_init_missing_tables(&conn)
+            .expect("recorded note_props contract must survive notes table reconstruction");
+
+        assert!(coordinator.table_exists(&conn, "notes").unwrap());
+        assert!(
+            coordinator.column_exists(&conn, "notes", "props").unwrap(),
+            "a reconstructed notes table must include props when V20260824 is recorded"
         );
     }
 
@@ -7957,6 +8235,92 @@ mod tests {
         let second = coordinator.migrate_single(DatabaseId::Mistakes).unwrap();
         assert!(second.success);
         assert_eq!(second.applied_count, 0);
+    }
+
+    /// V20260824 is newer than the generic compatibility replay boundary.
+    /// Reproduce an interrupted single-ALTER migration (column persisted,
+    /// refinery history missing) and require the dedicated LLM Usage repair to
+    /// converge without a duplicate-column failure.
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_llm_usage_v20260824_recovers_column_without_history_and_reruns() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        build_db_at_version(&coordinator, &DatabaseId::LlmUsage, 20260525);
+
+        let db_path = coordinator.get_database_path(&DatabaseId::LlmUsage);
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT INTO llm_usage_logs (
+                id, timestamp, provider, model, caller_type,
+                prompt_tokens, completion_tokens, total_tokens
+             ) VALUES (
+                'usage-v0944', '2026-08-09T00:00:00Z', 'openai', 'gpt-4o',
+                'chat_v2', 10, 5, 15
+             )",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(include_str!(
+            "../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .unwrap();
+        assert!(
+            !coordinator.is_migration_recorded(&conn, 20260824).unwrap(),
+            "fixture must model DDL persisted before refinery history"
+        );
+        drop(conn);
+
+        let report = coordinator
+            .migrate_single(DatabaseId::LlmUsage)
+            .expect("dedicated V20260824 repair must avoid duplicate column");
+        assert!(report.success);
+        assert_eq!(report.to_version, 20260824);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let history_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM refinery_schema_history WHERE version = 20260824",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history_count, 1);
+        let old_value: Option<i64> = conn
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'usage-v0944'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_value, None, "pre-migration rows must remain unmeasured");
+
+        conn.execute(
+            "INSERT INTO llm_usage_logs (
+                id, timestamp, provider, model, caller_type,
+                prompt_tokens, completion_tokens, total_tokens, cache_write_tokens
+             ) VALUES (
+                'usage-zero', '2026-08-25T00:00:00Z', 'anthropic', 'claude',
+                'chat_v2', 10, 5, 15, 0
+             )",
+            [],
+        )
+        .unwrap();
+        let measured_zero: Option<i64> = conn
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'usage-zero'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(measured_zero, Some(0));
+        drop(conn);
+
+        let rerun = coordinator
+            .migrate_single(DatabaseId::LlmUsage)
+            .expect("repaired migration must be idempotent");
+        assert!(rerun.success);
+        assert_eq!(rerun.applied_count, 0);
     }
 
     // ========================================================================
