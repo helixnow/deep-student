@@ -638,7 +638,8 @@ impl CloudSyncManager {
     /// [R06-e2ee-verifier] 加密上传前校验（或登记）云端加密标记的密码校验子。
     ///
     /// 语义（全部发生在写入任何 `backups/` 对象之前）：
-    /// - 无标记：用本机密码生成不可逆校验子，登记 v2 标记后放行；
+    /// - 无标记：若已有旧版 DSBK 备份则先试解（历史明文 ZIP 可直接开始
+    ///   E2EE），通过后才用本机密码登记 v2 校验子；
     /// - 有校验子：复算比对——不一致立即失败（错密码设备不得向同一 root
     ///   写入另一套无法互解的密文）；无法校验（未知 KDF / 字段损坏）fail-closed；
     /// - 旧标记（`version <= 1`，无校验子）：[R12-v1-trust] 先用本机密码
@@ -651,6 +652,14 @@ impl CloudSyncManager {
     ) -> Result<EncryptionMarker> {
         let marker = match self.read_encryption_marker_state().await? {
             EncryptionMarkerState::Absent => {
+                // v0.9.44 already supported DSBK cloud backups but did not write
+                // `.encryption-marker`. Do not let the first upgraded client pin an
+                // unverified (possibly mistyped) password into a v2 marker: if the
+                // latest legacy backup is encrypted, prove the password first.
+                // Plain ZIP backups are a legitimate pre-E2EE state and may start a
+                // new encrypted chain with the user-selected password.
+                self.prove_password_against_existing_backups(password, true)
+                    .await?;
                 let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
                     .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
                 let marker = EncryptionMarker {
@@ -697,7 +706,7 @@ impl CloudSyncManager {
             // 没有任何备份）保持旧行为——第一台带密码上传的设备认领该 root。
             // 升级后配错密码的设备即可在上传前被拦截。
             None if marker.version <= 1 => {
-                self.prove_password_against_existing_backups(password)
+                self.prove_password_against_existing_backups(password, false)
                     .await?;
                 let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
                     .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
@@ -738,7 +747,15 @@ impl CloudSyncManager {
     ///
     /// 空仓（只有 v1 标记、没有任何备份）没有可试解的对象：保持旧行为，
     /// 允许第一台带密码上传的设备认领该 root。
-    async fn prove_password_against_existing_backups(&self, password: &str) -> Result<()> {
+    ///
+    /// `allow_plaintext_zip` 只用于 marker 缺失的 v0.9.44 升级路径：历史明文
+    /// ZIP 没有既有密码可证明，允许用户从此启用 E2EE；其他非 DSBK/非 ZIP
+    /// 内容仍按损坏 fail-closed。v1 marker 声称仓库已经加密，因此不允许明文。
+    async fn prove_password_against_existing_backups(
+        &self,
+        password: &str,
+        allow_plaintext_zip: bool,
+    ) -> Result<()> {
         let manifest = self.get_manifest().await.map_err(|error| {
             AppError::configuration(format!(
                 "升级云端加密标记前需确认本机密码能解开既有备份，但读取云端备份列表失败：\
@@ -771,6 +788,32 @@ impl CloudSyncManager {
         // 完整试解到临时文件（spawn_blocking：Argon2 派生 + 全量解密是 CPU/IO
         // 密集操作）；输出只用于验证，随 TempDir 一并清理。
         let encrypted_path = std::path::PathBuf::from(&downloaded.local_path);
+        if allow_plaintext_zip {
+            use std::io::Read;
+            let mut prefix = [0u8; 4];
+            let mut file = std::fs::File::open(&encrypted_path).map_err(|error| {
+                AppError::configuration(format!(
+                    "登记云端加密标记前无法识别最新备份 {} 的格式：{error}。\
+                     本次未改动加密标记，请稍后重试。",
+                    version.id
+                ))
+            })?;
+            let read = file.read(&mut prefix).map_err(|error| {
+                AppError::configuration(format!(
+                    "登记云端加密标记前无法读取最新备份 {} 的格式：{error}。\
+                     本次未改动加密标记，请稍后重试。",
+                    version.id
+                ))
+            })?;
+            let prefix = &prefix[..read];
+            let is_plain_zip = matches!(
+                prefix,
+                [b'P', b'K', 3, 4] | [b'P', b'K', 5, 6] | [b'P', b'K', 7, 8]
+            );
+            if !crate::crypto::backup_crypto::is_encrypted_backup(prefix) && is_plain_zip {
+                return Ok(());
+            }
+        }
         let plaintext_path = temp.path().join(".trial-decrypt.tmp");
         let password_owned = password.to_string();
         let trial = tokio::task::spawn_blocking(move || {
@@ -787,9 +830,14 @@ impl CloudSyncManager {
             AppError::configuration(super::sync_e2ee_error(
                 super::SYNC_E2EE_WRONG_PASSWORD_CODE,
                 format!(
-                    "云端加密标记为旧版（无密码校验子），升级前用本机密码试解最新备份 {} 未通过：\
+                    "{}，用本机密码试解最新备份 {} 未通过：\
                      {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
                      若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
+                    if allow_plaintext_zip {
+                        "云端尚无加密标记但已有旧版加密备份，登记校验子前"
+                    } else {
+                        "云端加密标记为旧版（无密码校验子），升级前"
+                    },
                     version.id
                 ),
             ))

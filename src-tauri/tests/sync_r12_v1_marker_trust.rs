@@ -463,3 +463,65 @@ async fn r12_plaintext_legacy_backup_blocks_upgrade() {
     );
     assert_marker_still_v1_without_verifier(&storage);
 }
+
+// ============================================================================
+// 7. v0.9.44 无 marker 仓：旧加密备份必须先试解，明文 ZIP 仍可开始 E2EE
+// ============================================================================
+
+#[tokio::test]
+async fn r12_wrong_password_cannot_claim_markerless_v0944_encrypted_root() {
+    let storage = MemStorage::new();
+    let version_id = seed_encrypted_backup(
+        &storage,
+        "v0944-team-password",
+        b"encrypted before marker support existed",
+    )
+    .await;
+    assert!(
+        storage.object(ENCRYPTION_MARKER_KEY).is_none(),
+        "前置条件：v0.9.44 风格仓库有 DSBK 备份但没有 marker"
+    );
+
+    let mistaken = manager_on(&storage, "device-mistaken");
+    let error = mistaken
+        .verify_encryption_password_before_upload("mistyped-password")
+        .await
+        .expect_err("错密码不得抢占无 marker 的旧加密仓库")
+        .to_string();
+    assert!(
+        error.contains("尚无加密标记") && error.contains("试解") && error.contains(&version_id),
+        "错误必须说明 marker 缺失旧仓的试解失败: {error}"
+    );
+    assert!(
+        storage.object(ENCRYPTION_MARKER_KEY).is_none(),
+        "试解失败不得留下按错密码生成的 v2 marker"
+    );
+
+    let rightful = manager_on(&storage, "device-rightful");
+    let marker = rightful
+        .verify_encryption_password_before_upload("v0944-team-password")
+        .await
+        .expect("正确密码之后仍应能认领旧加密仓库");
+    assert_eq!(marker.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+    assert!(marker.key_verifier.is_some());
+}
+
+#[tokio::test]
+async fn r12_markerless_plain_zip_can_start_new_encrypted_chain() {
+    let storage = MemStorage::new();
+    let dir = TempDir::new().unwrap();
+    let plain_zip = dir.path().join("legacy-plain.zip");
+    std::fs::write(&plain_zip, b"PK\x03\x04legacy plaintext zip payload").unwrap();
+    manager_on(&storage, "device-legacy")
+        .upload(&plain_zip, Some("0.9.44".into()), None)
+        .await
+        .expect("播种 v0.9.44 明文 ZIP");
+    assert!(storage.object(ENCRYPTION_MARKER_KEY).is_none());
+
+    let marker = manager_on(&storage, "device-upgraded")
+        .verify_encryption_password_before_upload("new-e2ee-password")
+        .await
+        .expect("没有既有密码的明文 ZIP 不应阻断首次启用 E2EE");
+    assert_eq!(marker.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+    assert!(marker.key_verifier.is_some());
+}
