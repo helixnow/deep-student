@@ -60,9 +60,6 @@ const HEAD_PROBE_LEN: usize = 64;
 /// 报告里最多保留的问题条目数；超出部分只计数不列明细
 /// （`problems_truncated = true`，此时 status 必然已非全绿）。
 const MAX_REPORTED_PROBLEMS: usize = 500;
-/// 支持 Range 的后端：同一次巡检内对瞬时断线最多再试几次，从已写入前缀继续。
-/// 不支持续传的后端（FTP、测试内存盘）不走这条路径。
-const REPO_CHECK_DOWNLOAD_ATTEMPTS: u32 = 3;
 
 /// 巡检发现的问题类别。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,63 +261,19 @@ fn hash_file_sha256(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// 断点文件可续传的字节数。符号链接、空文件、或比云端对象还大的残留一律丢弃。
-fn dest_resume_len(dest: &Path, remote_size: u64) -> u64 {
-    match std::fs::symlink_metadata(dest) {
-        Ok(metadata)
-            if !metadata.file_type().is_symlink()
-                && metadata.is_file()
-                && metadata.len() > 0
-                && metadata.len() <= remote_size =>
-        {
-            metadata.len()
-        }
-        Ok(_) => {
-            let _ = std::fs::remove_file(dest);
-            0
-        }
-        Err(_) => 0,
-    }
-}
-
 /// 巡检下载单个备份对象。
 ///
-/// WebDAV / 桌面 S3 走 [`CloudStorage::get_file_resumable`]：同一次巡检内
-/// 瞬时断线从已写入前缀继续，避免多 GB 对象整包重下把体检卡死。
-/// FTP 与未声明续传的假存储仍走整包 [`CloudStorage::get_file`]。
-/// **不带**期望 SHA256：差异由巡检自己分类，避免后端直接抛错掩盖
-/// [`RepoCheckProblemKind::ChecksumMismatch`]。
+/// WebDAV / 桌面 S3 走共享续传编排 [`super::resume::get_file_with_optional_resume`]：
+/// 同一次巡检内瞬时断线从已写入前缀继续。FTP 与未声明续传的假存储仍整包
+/// `get_file`。**不带**期望 SHA256：差异由巡检自己分类，避免后端直接抛错
+/// 掩盖 [`RepoCheckProblemKind::ChecksumMismatch`]。
 async fn download_object_for_check(
     storage: &dyn CloudStorage,
     key: &str,
     dest: &Path,
-    remote_size: u64,
 ) -> Result<()> {
-    if !storage.supports_resumable_download() {
-        storage.get_file(key, dest, None, None).await?;
-        return Ok(());
-    }
-
-    let mut last_err = None;
-    for attempt in 1..=REPO_CHECK_DOWNLOAD_ATTEMPTS {
-        let resume_from = dest_resume_len(dest, remote_size);
-        match storage
-            .get_file_resumable(key, dest, resume_from, None)
-            .await
-        {
-            Ok(_) => return Ok(()),
-            Err(error) => {
-                tracing::warn!(
-                    attempt,
-                    resume_from,
-                    key,
-                    "巡检对象下载失败，将按断点重试: {error}"
-                );
-                last_err = Some(error);
-            }
-        }
-    }
-    Err(last_err.unwrap_or_else(|| AppError::internal("巡检对象下载失败且未留下错误".to_string())))
+    super::resume::get_file_with_optional_resume(storage, key, dest, None, None).await?;
+    Ok(())
 }
 
 /// 巡检过程的可变累加器。
@@ -525,8 +478,8 @@ pub async fn run_repo_check(storage: &dyn CloudStorage) -> Result<RepoCheckRepor
     for (id, version) in &expected {
         let key = format!("{BACKUPS_PREFIX}{id}.zip");
 
-        let remote_size = match storage.stat(&key).await {
-            Ok(Some(info)) => info.size,
+        match storage.stat(&key).await {
+            Ok(Some(_)) => {}
             Ok(None) => {
                 ctx.push(
                     RepoCheckProblemKind::MissingObject,
@@ -552,7 +505,7 @@ pub async fn run_repo_check(storage: &dyn CloudStorage) -> Result<RepoCheckRepor
         // 巡检自己分类，而不是让后端 get_file 直接抛错。
         let local_path = temp_dir.path().join("repo-check-object.partial");
         let _ = std::fs::remove_file(&local_path);
-        let download = download_object_for_check(storage, &key, &local_path, remote_size).await;
+        let download = download_object_for_check(storage, &key, &local_path).await;
         let object_len = match download {
             Ok(_) => match std::fs::metadata(&local_path) {
                 Ok(meta) => meta.len(),
@@ -699,26 +652,6 @@ pub async fn run_repo_check(storage: &dyn CloudStorage) -> Result<RepoCheckRepor
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn dest_resume_len_keeps_valid_prefix_and_drops_oversize() {
-        let dir = tempfile::tempdir().unwrap();
-        let missing = dir.path().join("none");
-        assert_eq!(dest_resume_len(&missing, 100), 0);
-
-        let ok = dir.path().join("ok");
-        std::fs::write(&ok, vec![1u8; 40]).unwrap();
-        assert_eq!(dest_resume_len(&ok, 100), 40);
-        assert!(ok.exists());
-
-        let oversize = dir.path().join("over");
-        std::fs::write(&oversize, vec![1u8; 200]).unwrap();
-        assert_eq!(dest_resume_len(&oversize, 100), 0);
-        assert!(
-            !oversize.exists(),
-            "比云端对象还大的断点必须丢弃，禁止错位追加"
-        );
-    }
 
     #[test]
     fn version_id_whitelist_matches_sync_manager_rules() {
