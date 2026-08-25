@@ -447,13 +447,13 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
             <div className="flex items-center gap-2">
-              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handlePrevMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handlePrevMonth} aria-label={t('daily.previousMonth')}>
                 <CaretLeft size={16} />
               </DsButton>
               <span className="text-sm font-medium w-24 text-center">
                 {t('daily.yearMonth', { year: calendarYear, month: calendarMonth })}
               </span>
-              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handleNextMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handleNextMonth} aria-label={t('daily.nextMonth')}>
                 <CaretRight size={16} />
               </DsButton>
             </div>

@@ -34,7 +34,7 @@
     "statNew": "新卡",
     "statLearning": "学习中",
     "streak": "连续学习 {{count}} 天",
-    "streakHint": "由每张卡最近一次复习估算的连续天数",
+    "streakHint": "按本地日历日的复习活动计算；后端日志不可用时回退到最近复习记录估算",
     "libSummary": "卡片库共 {{count}} 张",
     "allDone": "今日复习全部完成",
     "emptyHint": "去卡片库入队新卡，或在聊天里生成一批闪卡，保持每天的复习节奏。",

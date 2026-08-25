@@ -153,7 +153,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
       {/* Toolbar - 简洁风格 */}
-      <div className="flex h-[41px] items-center justify-between border-b border-border/30 px-3 sm:px-4">
+      <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/30 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
         <div className="flex items-center gap-3 min-w-0">
           {/* 标题 - 简洁风格简洁 */}
           <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
@@ -223,7 +223,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                     size="icon"
                     iconOnly
                     onClick={onSaveAsNote}
-                    className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                    className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                     aria-label={t('essay_grading:result_section.save_as_note')}
                   >
                     <Notebook size={14} />

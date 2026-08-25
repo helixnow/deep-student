@@ -153,6 +153,8 @@
     "start": "Start Today's Practice",
     "calendar": "Check-in Calendar",
     "yearMonth": "{{month}}/{{year}}",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",

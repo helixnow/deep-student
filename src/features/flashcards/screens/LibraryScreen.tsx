@@ -482,14 +482,14 @@ export const LibraryScreen: React.FC = () => {
             value={draftFront}
             onChange={(event) => setDraftFront(event.target.value)}
             placeholder={translate('library.create.frontPlaceholder')}
-            className="h-10 text-sm"
+            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
           />
           <Input
             aria-label={translate('library.create.backLabel')}
             value={draftBack}
             onChange={(event) => setDraftBack(event.target.value)}
             placeholder={translate('library.create.backPlaceholder')}
-            className="h-10 text-sm"
+            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
           />
           <div className="fc-lib-composer-actions">
             <DsButton

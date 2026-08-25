@@ -34,7 +34,7 @@
     "statNew": "New",
     "statLearning": "Learning",
     "streak": "{{count}}-day streak",
-    "streakHint": "Streak estimated from each card's latest review",
+    "streakHint": "Calculated by local calendar day; falls back to latest-review estimates when review logs are unavailable",
     "libSummary": "{{count}} cards in library",
     "allDone": "All reviews done for today",
     "emptyHint": "Enqueue new cards from the library, or generate a batch in chat, to keep your daily rhythm.",

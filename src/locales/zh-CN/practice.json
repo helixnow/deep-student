@@ -153,6 +153,8 @@
     "start": "开始今日练习",
     "calendar": "打卡日历",
     "yearMonth": "{{year}}年{{month}}月",
+    "previousMonth": "上个月",
+    "nextMonth": "下个月",
     "weekdays": {
       "sun": "日",
       "mon": "一",
