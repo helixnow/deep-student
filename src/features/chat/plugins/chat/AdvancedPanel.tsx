@@ -105,7 +105,7 @@ interface AdvancedPanelProps {
 // ============================================================================
 
 export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, sidebarMode = false }) => {
-  const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
+  const { t } = useTranslation(['chat_host', 'common', 'chatV2', 'enhanced_rag']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
 
@@ -565,7 +565,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   <div className="mt-2 border-t border-border/50 pt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-foreground">
-                        {t('chatV2:ragPanel.multimodalRerankLabel')}
+                        {t('enhanced_rag:enable_reranking')}
                       </span>
                       <Switch
                         size="sm"
@@ -576,7 +576,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                       />
                     </div>
                     <p className="mt-1 text-2xs leading-3 text-muted-foreground">
-                      {t('chatV2:ragPanel.multimodalRerankHelper')}
+                      {t('chat_host:rag.panel.rerank_helper')}
                     </p>
                   </div>
                 </div>

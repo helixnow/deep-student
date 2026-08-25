@@ -168,7 +168,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   externalSettingsNavigation = false,
   externalSettingsOpen,
 }) => {
-  const { t } = useTranslation(['learningHub', 'common']);
+  const { t } = useTranslation(['learningHub', 'common', 'dstu']);
 
   // 状态
   const [isLoading, setIsLoading] = useState(true);
@@ -218,7 +218,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       if (cancelled) return;
 
       if (!result.ok) {
-        reportError(result.error, t('common:loadResource', { defaultValue: '加载资源' }));
+        reportError(result.error, t('dstu:resource.getResource', { defaultValue: 'Load resource' }));
         setError(result.error.toUserMessage());
         setIsLoading(false);
         return;

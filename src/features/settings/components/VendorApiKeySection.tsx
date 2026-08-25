@@ -253,7 +253,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           : saveStatus === 'dirty'
             ? t('settings:vendor_panel.api_key_unsaved')
             : showApiKey && viewingStoredKey
-              ? t('settings:vendor_panel.api_key_revealed_temporarily')
+              ? t('settings:vendor_panel.hide_api_key')
               : hasConfiguredApiKey && !apiKey.trim()
               ? t('settings:vendor_panel.api_key_securely_stored')
               : t('settings:vendor_panel.api_key_manual_save_hint');

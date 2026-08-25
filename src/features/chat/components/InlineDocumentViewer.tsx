@@ -605,15 +605,15 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
                 )}
               >
                 {matches.length === 0
-                  ? t('chatV2:documentViewer.noMatches')
+                  ? t('chatV2:messageList.search.noResults')
                   : `${clampedActiveMatch + 1}/${matches.length}${matches.length >= SEARCH_MAX_MATCHES ? '+' : ''}`}
               </span>
             )}
           </div>
-          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:documentViewer.prevMatch')} title={t('chatV2:documentViewer.prevMatch')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:messageList.search.previous')} title={t('chatV2:messageList.search.previous')}>
             <CaretUp size={14} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:documentViewer.nextMatch')} title={t('chatV2:documentViewer.nextMatch')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('chatV2:messageList.search.next')} title={t('chatV2:messageList.search.next')}>
             <CaretDown size={14} />
           </DsButton>
         </div>

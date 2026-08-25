@@ -155,7 +155,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                   size="icon"
                   iconOnly
                   className="!h-11 !w-11"
-                  aria-label={t('common:actions.more', '更多')}
+                  aria-label={t('common:more', { defaultValue: 'More' })}
                   data-testid="attachment-panel-more"
                 >
                   <DotsThree size={20} weight="bold" />

@@ -126,7 +126,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       window.clearTimeout(feedbackTimerRef.current);
     }
     setReplaceFeedback(
-      t('notes:findReplace.replacedCount', { count, defaultValue: '已替换 {{count}} 处' }),
+      t('notes:findReplace.replaceMany', { count, defaultValue: 'Replaced {{count}} occurrences' }),
     );
     feedbackTimerRef.current = window.setTimeout(() => {
       feedbackTimerRef.current = null;

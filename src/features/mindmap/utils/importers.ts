@@ -167,7 +167,10 @@ function allocateXmindNodeId(
  */
 function imagePlaceholderLines(droppedImageCount: number): string[] {
   if (droppedImageCount <= 0) return [];
-  return [i18n.t('mindmap:import.imagePlaceholderNote', { count: droppedImageCount })];
+  return [i18n.t('mindmap:import.imagePlaceholderNote', {
+    count: droppedImageCount,
+    defaultValue: '[Image placeholder] The original topic contained {{count}} image(s) that could not be embedded',
+  })];
 }
 
 // ============================================================================
