@@ -731,3 +731,15 @@ writing manifests），干净落地零冲突。fetch 时 #177 tip 即为 `bb81e9
   附件 200/50、G 44px、HPIAS 会话隔离与 18-block allowlist 全部在位；
 - SKIP：已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/
   `0fcbc59b`/`bb81e9d6`，以及全部隔离 PR。
+
+### Step 14 巡检：#177 无新增内容
+
+日期：2026-08-25。基座 `188500e0`（Step 13 tip）。复 fetch
+`origin/cursor/cloud-sync-sota-b343`，tip 为
+`6d6769bc94868e8d5f68da63100678c9e87798d3`，与 Step 13 收口时一致。
+fetch 时 #177 无新增 unique 内容（`origin/cursor/0824-cde6..#177` 的
+8 个提交均已按 Step 10-13 映射等价落地：`ef3c104d`→`4bebbf81`、
+`8eb675ce`→`394851a7`、`75f12160`→`587cfccd`、`f39f0d3a`→`af414ed6`、
+`0fcbc59b`→`947910db`、`bb81e9d6`→`06f32d0e`、`86a1e7c4`→`6887bf84`、
+`6d6769bc`→`bf8ab827`）。本步仅此文档说明，无产品代码变更，按约定
+跳过全量编译门禁；Step 13 已记录 compile exit 0 与 18/18 PASS。
