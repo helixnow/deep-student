@@ -55,7 +55,7 @@ const SIDEBAR_STYLES = {
    */
   desktop: {
     header: { height: '40px', padding: 'px-2', gap: 'gap-0.5' },
-    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[16px]' },
+    search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm [@media(pointer:coarse)]:text-[max(16px,var(--font-size-lg))]' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
     item: { padding: 'gap-2.5 px-2 py-2 mx-1 [@media(pointer:coarse)]:min-h-11', iconSize: 'w-4 h-4', textSize: 'text-ui', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
