@@ -675,3 +675,18 @@ S3 normalize / FTP 550 / Composer* / 附件 200/50 均未被触及（见 10.4）
 - 18 项不变量逐项复查全 PASS（清单同 Step 9 §9.4，其中 #10-13 在
   #177 三提交触及文件内逐符号核实：`tombstone.rs`、`decode_path`、
   `normalize_endpoint`、550/501 白名单全部在位）。
+
+### Step 11 收口：#177 tombstone / encryption marker 发布后复读
+
+日期：2026-08-25。基座 `6c9cc932`；仅 cherry-pick #177 新增的
+`f39f0d3a` → `af414ed6`（每设备 tombstone 清单 PUT 后 GET 复读）与
+`0fcbc59b` → `947910db`（加密标记持久化后复读），均干净落地并逐提交推送。
+
+- 编译门禁：`npm run typecheck`、`npx vite build`（CI 同款 6GiB heap）、
+  `cargo check --manifest-path src-tauri/Cargo.toml --lib` 均 exit 0；
+- 定向 Rust `reread` 回归：6/6 通过；
+- Step 9 §9.4 的 18 项不变量逐项复查仍为 **18/18 PASS**，其中 tombstone
+  新 helper 对 blob/asset/workspace 三类清单 fail-closed；WebDAV decode、
+  S3 normalize、FTP 550/501、Composer*、附件 200/50、G 44px 与 HPIAS
+  18-block allowlist 均保持；
+- SKIP：内容已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`，以及全部隔离 PR。
