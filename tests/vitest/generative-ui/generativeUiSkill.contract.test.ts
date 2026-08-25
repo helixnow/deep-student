@@ -70,6 +70,7 @@ describe('generativeUiSkill contract', () => {
   it('skill content documents researchSessionId HPIAS bridge', () => {
     expect(generativeUiSkill.content).toContain('researchSessionId');
     expect(generativeUiSkill.content).toContain('hpias_event');
+    expect(generativeUiSkill.content).toMatch(/必须.*researchSessionId|researchSessionId.*必须/);
   });
 
   it('skill content lists markdown/chart/steps/table usage in one line each', () => {

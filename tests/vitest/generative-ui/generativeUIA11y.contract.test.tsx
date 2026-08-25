@@ -190,7 +190,7 @@ describe('generativeUIA11y.contract', () => {
     expect(screen.getByRole('toolbar', { name: '操作栏' })).toBeInTheDocument();
     expect(screen.getByRole('article')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '闪卡预览' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '引用 [paper-1]' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('note', { name: '引用 [paper-1]' })).not.toHaveAttribute('tabindex');
     expect(screen.getByRole('img')).toHaveAttribute('aria-label');
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(document.querySelector('[data-generative-steps] [aria-current="step"]')).toBeTruthy();
@@ -238,7 +238,7 @@ describe('generativeUIA11y.contract', () => {
 
     if (blockType === 'research-report') {
       expect(screen.getByRole('article')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: '引用 [paper-1]' })).toHaveAttribute('tabindex', '0');
+      expect(screen.getByRole('note', { name: '引用 [paper-1]' })).not.toHaveAttribute('tabindex');
     }
 
     if (blockType === 'stat-card') {

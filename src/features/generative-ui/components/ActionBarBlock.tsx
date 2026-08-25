@@ -63,24 +63,21 @@ export function ActionBarBlock({
     }));
   }, []);
 
+  const visibleActions = useMemo(() => {
+    if (!enforceHandlerRegistry) return actions;
+    return actions.filter(
+      (action) => lookupGenerativeActionHandler(actionHandlers, action.id) != null,
+    );
+  }, [actionHandlers, actions, enforceHandlerRegistry]);
+
+  const showToolbar = visibleActions.length > 0 || showUndoControl;
+
   const focusableItemIds = useMemo(() => {
     if (executing) return [];
-    const ids: string[] = [];
-    for (const action of actions) {
-      const registered =
-        !enforceHandlerRegistry || lookupGenerativeActionHandler(actionHandlers, action.id) != null;
-      if (registered) ids.push(action.id);
-    }
+    const ids = visibleActions.map((action) => action.id);
     if (showUndoControl && undoAvailable) ids.push(UNDO_TOOLBAR_ID);
     return ids;
-  }, [
-    actionHandlers,
-    actions,
-    enforceHandlerRegistry,
-    executing,
-    showUndoControl,
-    undoAvailable,
-  ]);
+  }, [executing, showUndoControl, undoAvailable, visibleActions]);
 
   const resolvedTabStop =
     tabStopId && focusableItemIds.includes(tabStopId)
@@ -260,6 +257,7 @@ export function ActionBarBlock({
 
   return (
     <>
+      {showToolbar ? (
       <div
         className="flex flex-wrap gap-2"
         role="toolbar"
@@ -267,9 +265,8 @@ export function ActionBarBlock({
         aria-busy={executing || undefined}
         onKeyDown={handleToolbarKeyDown}
       >
-        {actions.map((action) => {
+        {visibleActions.map((action) => {
           const handlerDef = lookupGenerativeActionHandler(actionHandlers, action.id);
-          const isRegistered = !enforceHandlerRegistry || handlerDef != null;
           const displayLabel = trustedLabel(action.id, action.label, actionHandlers);
           const handlerRisk = handlerDef?.riskLevel;
           const effectiveRisk = resolveEffectiveRiskLevel(action.riskLevel, handlerRisk);
@@ -280,7 +277,7 @@ export function ActionBarBlock({
               : action.variant === 'primary'
                 ? 'default'
                 : 'outline';
-          const itemEnabled = !executing && isRegistered;
+          const itemEnabled = !executing;
           return (
             <DsButton
               key={action.id}
@@ -289,8 +286,6 @@ export function ActionBarBlock({
               size="sm"
               disabled={!itemEnabled}
               tabIndex={itemEnabled && resolvedTabStop === action.id ? 0 : -1}
-              title={!isRegistered ? t('action.unregistered_hint') : undefined}
-              {...(!isRegistered ? { 'data-action-unregistered': '' } : {})}
               onFocus={() => {
                 if (itemEnabled) setTabStopId(action.id);
               }}
@@ -326,6 +321,7 @@ export function ActionBarBlock({
           </DsButton>
         ) : null}
       </div>
+      ) : null}
       <p
         data-action-live
         role="status"

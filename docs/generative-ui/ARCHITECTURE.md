@@ -54,6 +54,7 @@ src/features/generative-ui/
 
 - `version` 缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值
 - `layout.mode` 识别 `stack` | `grid`；未知 mode 不拒绝整份 intent（前端钳制）
+- `blocks[].type` 必须落在 18 种内置白名单（`ALLOWED_GENERATIVE_UI_BLOCK_TYPES`）；未知 / 缺 type / 非对象块在入口拒绝
 - e2e：`execute_v1_1_grid_layout_emits_generative_ui` + `execute_rejects_version_2`
 
 ## 3. 内置块（18 种）

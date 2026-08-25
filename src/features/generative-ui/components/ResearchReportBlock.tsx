@@ -37,15 +37,9 @@ function renderBodyWithCitations(body: string, citationAriaLabel: (label: string
         key={`cite-${start}`}
         variant="secondary"
         className="mx-0.5 align-baseline text-xs font-normal"
-        role="link"
-        tabIndex={0}
+        role="note"
         data-citation={fullMatch}
         aria-label={citationAriaLabel(fullMatch)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-          }
-        }}
       >
         {fullMatch}
       </Badge>,

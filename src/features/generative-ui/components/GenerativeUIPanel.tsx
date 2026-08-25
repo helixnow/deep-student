@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { withGenerativeActionInstrumentation } from '../actions';
 import { GenerativeUIRenderer } from '../GenerativeUIRenderer';
 import type { GenerativeUIAction, GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 
@@ -35,6 +36,15 @@ export function GenerativeUIPanel({
 }: GenerativeUIPanelProps) {
   const { t } = useTranslation('generativeUi');
   const resolvedEmpty = emptyLabel ?? t('panel.empty');
+  const instrumentedHandlers = useMemo(
+    () =>
+      actionHandlers
+        ? withGenerativeActionInstrumentation(actionHandlers, {
+            intent: typeof intent === 'object' && intent ? intent : undefined,
+          })
+        : undefined,
+    [actionHandlers, intent],
+  );
   if (!intent) {
     return (
       <div
@@ -51,13 +61,13 @@ export function GenerativeUIPanel({
 
   return (
     <div className={cn('generative-ui-panel space-y-2', className)} data-generative-ui-panel>
-      {title ? <h4 className="text-sm font-medium px-0.5">{title}</h4> : null}
+      {title ? <h4 dir="auto" className="text-sm font-medium px-0.5">{title}</h4> : null}
       <GenerativeUIRenderer
         intent={intent}
         isStreaming={isStreaming}
         showChrome={showChrome}
         onAction={onAction}
-        actionHandlers={actionHandlers}
+        actionHandlers={instrumentedHandlers}
         warnings={warnings}
         truncatedCount={truncatedCount}
       />

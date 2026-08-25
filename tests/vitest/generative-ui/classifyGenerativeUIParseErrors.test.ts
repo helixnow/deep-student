@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_GENERATIVE_UI_BLOCKS, parseGenerativeUIIntent } from '@/features/generative-ui/schema';
 import { classifyGenerativeUIParseErrors } from '@/features/generative-ui/utils/classifyGenerativeUIParseErrors';
+import { STREAM_BUFFER_CAPPED_WARNING } from '@/features/generative-ui/utils/streamBufferGuard';
 
 describe('classifyGenerativeUIParseErrors', () => {
   it('maps Invalid JSON / JSON.parse strings to invalid-json', () => {
@@ -131,6 +132,21 @@ describe('classifyGenerativeUIParseErrors', () => {
       const classified = classifyGenerativeUIParseErrors(tooMany.errors);
       expect(classified.some((item) => item.code === 'too-many-blocks')).toBe(true);
       expect(classified.every((item, i) => item.message === tooMany.errors[i])).toBe(true);
+    }
+  });
+
+  it('maps stream-buffer-capped parse errors', () => {
+    expect(classifyGenerativeUIParseErrors([STREAM_BUFFER_CAPPED_WARNING])).toEqual([
+      { code: 'buffer-capped', message: STREAM_BUFFER_CAPPED_WARNING },
+    ]);
+
+    const oversized = parseGenerativeUIIntent(
+      `{"version":"1","blocks":[{"type":"text","props":{"body":"${'x'.repeat(128)}"}}]}`,
+      128,
+    );
+    expect(oversized.ok).toBe(false);
+    if (!oversized.ok) {
+      expect(classifyGenerativeUIParseErrors(oversized.errors)[0]?.code).toBe('buffer-capped');
     }
   });
 });

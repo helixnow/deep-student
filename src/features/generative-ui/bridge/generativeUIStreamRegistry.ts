@@ -27,6 +27,8 @@ export interface GenerativeUIStreamPersistOptions {
   persistKey?: string;
   /** 测试 / 调用方注入；缺省不持久化 */
   storage?: GenerativeUIStreamPersistStorage | null;
+  /** 流式字符上限；测试可注入 */
+  maxChars?: number;
 }
 
 interface StreamEntry {
@@ -36,6 +38,7 @@ interface StreamEntry {
   persistKey?: string;
   storage?: GenerativeUIStreamPersistStorage | null;
   bufferCapped: boolean;
+  maxChars?: number;
 }
 
 const entries = new Map<string, StreamEntry>();
@@ -43,6 +46,7 @@ const entries = new Map<string, StreamEntry>();
 function bindPersist(entry: StreamEntry, options?: GenerativeUIStreamPersistOptions): void {
   if (options?.persistKey) entry.persistKey = options.persistKey;
   if (options?.storage) entry.storage = options.storage;
+  if (typeof options?.maxChars === 'number') entry.maxChars = options.maxChars;
 }
 
 function persistBinding(
@@ -70,10 +74,11 @@ function getOrCreateEntry(blockId: string, options?: GenerativeUIStreamPersistOp
   let entry = entries.get(blockId);
   if (!entry) {
     entry = {
-      parser: new GenerativeUIStreamParser(),
+      parser: new GenerativeUIStreamParser(options?.maxChars),
       lastLength: 0,
       lastGoodIntent: null,
       bufferCapped: false,
+      maxChars: options?.maxChars,
     };
     bindPersist(entry, options);
     hydrateLastGood(entry);
@@ -142,7 +147,10 @@ export function appendGenerativeUIStreamContent(
     clearPersistedLastGoodIntent(entry.persistKey, entry.storage);
   }
 
-  if (entry.bufferCapped || isStreamBufferOverCap(fullContent.length)) {
+  if (
+    entry.bufferCapped ||
+    isStreamBufferOverCap(fullContent.length, options?.maxChars ?? entry.maxChars)
+  ) {
     entry.bufferCapped = true;
     entry.lastLength = fullContent.length;
     return rememberLastGood(entry, entry.parser.getSnapshot());

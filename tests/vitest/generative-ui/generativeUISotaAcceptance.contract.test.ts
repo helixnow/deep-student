@@ -352,6 +352,194 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'Object.hasOwn',
       ]),
   },
+  {
+    id: 'round50-object-stream-cap',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/streamBufferGuard.ts', [
+        'export function isSerializedStreamValueOverCap',
+      ]),
+  },
+  {
+    id: 'round50-omit-orphaned-research-actions',
+    check: () =>
+      fileContains('src/features/generative-ui/bridge/hpiasEventBridge.ts', [
+        'RESEARCH_SURFACE_ACTION_IDS',
+        'isResearchOnlyActionBar',
+      ]),
+  },
+  {
+    id: 'round50-note-edit-bounds',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/extractNoteEditPayload.ts', [
+        'MAX_GENERATIVE_NOTE_EDIT_INPUT_BYTES',
+        'isRegex: z.literal(false)',
+      ]),
+  },
+  {
+    id: 'round59-meta-research-session-id',
+    check: () =>
+      fileContains('src/features/generative-ui/schema.ts', ['researchSessionId']) &&
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        '/meta/researchSessionId',
+      ]),
+  },
+  {
+    id: 'round59-markdown-link-sanitize',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/sanitizeGenerativeMarkdown.ts', [
+        'sanitizeMarkdownLinks',
+        'MD_LINK_RE',
+      ]),
+  },
+  {
+    id: 'round60-hpias-requires-session-id',
+    check: () =>
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'const shouldBridgeHpias = Boolean(researchSessionId);',
+      ]),
+  },
+  {
+    id: 'round60-panel-action-guards',
+    check: () =>
+      fileContains('src/features/generative-ui/components/GenerativeUIPanel.tsx', [
+        'withGenerativeActionInstrumentation',
+      ]),
+  },
+  {
+    id: 'round60-markdown-ref-autolink-srcset',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/sanitizeGenerativeMarkdown.ts', [
+        'MD_REF_DEF_RE',
+        'MD_AUTOLINK_RE',
+        'SRCSET_ATTR_RE',
+        'isMarkdownAutolinkTag',
+        'PRESENTATION_ATTR_RE',
+        'ping|background',
+      ]),
+  },
+  {
+    id: 'round61-hpias-store-session-guard',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        'eventSessionId !== s.sessionId',
+        '外会话（含 session_started）',
+      ]),
+  },
+  {
+    id: 'round63-hpias-multi-session-slices',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        'applyHpiasEventToSessionSlice',
+        'sessions:',
+      ]) &&
+      fileContains('src/stores/hpiasSessionSlice.ts', [
+        'MAX_HPIAS_SESSION_SLICES',
+        'applyHpiasEventToSessionSlice',
+      ]) &&
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'liveSessionSlice',
+      ]),
+  },
+  {
+    id: 'round63-unregistered-trusted-label',
+    check: () =>
+      fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
+        'visibleActions',
+        'const showToolbar = visibleActions.length > 0 || showUndoControl;',
+      ]),
+  },
+  {
+    id: 'round64-shared-hpias-bridge',
+    check: () =>
+      fileContains('src/features/generative-ui/bridge/hpiasEventBridge.ts', [
+        'retainSharedHpiasEventBridge',
+        'sharedRefs',
+      ]) &&
+      fileContains('src/features/generative-ui/hooks/useHpiasEventBridge.ts', [
+        'retainSharedHpiasEventBridge',
+      ]),
+  },
+  {
+    id: 'round65-reset-preserves-slices',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        'sessions: { ...state.sessions, [sessionId]: slice }',
+      ]) &&
+      fileContains('src/components/style-lab/GenerativeUIDemoTab.tsx', [
+        'STYLE_LAB_HPIAS_SESSION_ID',
+        'store.actions.reset(',
+      ]) &&
+      fileContains('src/features/generative-ui/components/MindmapEmbedBlock.tsx', [
+        'GENERATIVE_EMBED_ID_RE',
+      ]),
+  },
+  {
+    id: 'round67-empty-action-bar-toolbar',
+    check: () =>
+      fileContains('src/features/generative-ui/components/ActionBarBlock.tsx', [
+        'const showToolbar = visibleActions.length > 0 || showUndoControl;',
+      ]),
+  },
+  {
+    id: 'round68-reachable-skip-link',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/collectUnregisteredActionIds.ts', [
+        'export function intentHasReachableActionBar',
+      ]) &&
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'firstReachableActionBarIndex(displayIntent, actionHandlers)',
+      ]),
+  },
+  {
+    id: 'round69-renderer-undo-isolation',
+    check: () =>
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'new GenerativeActionUndoStack()',
+        'undoStack={undoStack}',
+      ]),
+  },
+  {
+    id: 'round75-rust-block-type-allowlist',
+    check: () =>
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        'ALLOWED_GENERATIVE_UI_BLOCK_TYPES',
+        'fn validate_block_types',
+        'parse_intent_rejects_unknown_block_type',
+        'parse_intent_accepts_all_registered_block_types',
+      ]) &&
+      fileContains('src-tauri/tests/generative_ui_executor_e2e.rs', [
+        'execute_rejects_unknown_block_type',
+      ]),
+  },
+  {
+    id: 'round73-foreign-session-started-isolated',
+    check: () =>
+      fileContains('src/stores/researchStore.ts', [
+        '外会话（含 session_started）',
+      ]) &&
+      fileContains('src/features/chat/plugins/blocks/generativeUI.tsx', [
+        'enabled: shouldBridgeHpias,',
+      ]) &&
+      fileContains('src/features/generative-ui/components/ResearchReportBlock.tsx', [
+        'role="note"',
+      ]) &&
+      fileContains('src-tauri/src/chat_v2/tools/generative_ui_executor.rs', [
+        'intent_has_research_blocks(&intent)',
+      ]),
+  },
+  {
+    id: 'round70-skip-link-lands-on-action-bar',
+    check: () =>
+      fileContains('src/features/generative-ui/utils/collectUnregisteredActionIds.ts', [
+        'export function firstReachableActionBarIndex',
+      ]) &&
+      fileContains('src/features/generative-ui/GenerativeUIRenderer.tsx', [
+        'focusTargetId={index === reachableActionBarIndex ? actionsTargetId : undefined}',
+      ]) &&
+      fileContains('src/features/generative-ui/components/GenerativeBlockSlot.tsx', [
+        'focusTargetId?: string',
+      ]),
+  },
 ];
 
 describe('generativeUISotaAcceptance contract', () => {
@@ -392,6 +580,8 @@ describe('generativeUISotaAcceptance contract', () => {
       'usePrefersContrast',
       'createCopyBlockActionHandlers',
       'collectUnregisteredActionIds',
+      'intentHasReachableActionBar',
+      'firstReachableActionBarIndex',
       'formatGenerativeDate',
       'readPersistedLastGoodFingerprint',
     ]) {

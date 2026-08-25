@@ -44,8 +44,19 @@ const SIMPLE_INTENT: GenerativeUIIntent = {
   ],
 };
 
+const ACTION_INTENT: GenerativeUIIntent = {
+  version: '1',
+  blocks: [
+    { type: 'text', props: { body: 'hello-body' } },
+    {
+      type: 'action-bar',
+      props: { actions: [{ id: 'copy-intent', label: 'Copy' }] },
+    },
+  ],
+};
+
 describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', () => {
-  it('fingerprints displayIntent, exposes skip link, and stamps generated data-block-id', () => {
+  it('fingerprints displayIntent, exposes skip link only with an action-bar, and stamps generated data-block-id', () => {
     const { container } = render(
       <GenerativeUIRenderer intent={SIMPLE_INTENT} showChrome={false} />,
     );
@@ -56,18 +67,26 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
       'data-intent-fingerprint',
       fingerprintGenerativeUIIntent(SIMPLE_INTENT),
     );
+    expect(container.querySelector('a[data-skip-to-actions]')).toBeNull();
 
-    const skip = container.querySelector('a[data-skip-to-actions]');
+    const { container: actionContainer } = render(
+      <GenerativeUIRenderer intent={ACTION_INTENT} showChrome={false} />,
+    );
+    const actionRoot = actionContainer.querySelector('[data-generative-ui]');
+    const skip = actionContainer.querySelector('a[data-skip-to-actions]');
     expect(skip).toBeTruthy();
     expect(skip).toHaveClass('sr-only', 'focus:not-sr-only');
     expect(skip?.textContent).toBe('跳到操作栏');
-    expect(root?.firstElementChild).toBe(skip);
+    expect(actionRoot?.firstElementChild).toBe(skip);
 
-    const grid = container.querySelector('[data-layout-mode]');
-    expect(grid?.id).toMatch(/^generative-ui-actions-/);
-    expect(grid).toHaveAttribute('tabindex', '-1');
-    expect(skip).toHaveAttribute('href', `#${grid?.id}`);
-    expect(document.getElementById(grid?.id ?? '')).toBe(grid);
+    const grid = actionContainer.querySelector('[data-layout-mode]');
+    const actionSlot = actionContainer.querySelector('[data-generative-block="action-bar"]');
+    expect(grid).not.toHaveAttribute('id');
+    expect(actionSlot).toHaveAttribute('id');
+    expect(actionSlot?.id).toMatch(/^generative-ui-actions-/);
+    expect(actionSlot).toHaveAttribute('tabindex', '-1');
+    expect(skip).toHaveAttribute('href', `#${actionSlot?.id}`);
+    expect(document.getElementById(actionSlot?.id ?? '')).toBe(actionSlot);
 
     const statSlot = container.querySelector('[data-generative-block="stat-card"]');
     const textSlot = container.querySelector('[data-generative-block="text"]');
@@ -90,8 +109,8 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
   it('uses a distinct in-renderer target for every skip link', () => {
     const { container } = render(
       <>
-        <GenerativeUIRenderer intent={SIMPLE_INTENT} showChrome={false} />
-        <GenerativeUIRenderer intent={SIMPLE_INTENT} showChrome={false} />
+        <GenerativeUIRenderer intent={ACTION_INTENT} showChrome={false} />
+        <GenerativeUIRenderer intent={ACTION_INTENT} showChrome={false} />
       </>,
     );
 
@@ -99,7 +118,7 @@ describe('GenerativeUIRenderer fingerprint + skip-to-actions + slot blockId', ()
     expect(roots).toHaveLength(2);
     const targetIds = roots.map((root) => {
       const skip = root.querySelector<HTMLAnchorElement>('[data-skip-to-actions]');
-      const target = root.querySelector<HTMLElement>('[data-layout-mode]');
+      const target = root.querySelector<HTMLElement>('[data-generative-block="action-bar"]');
       expect(skip).toHaveAttribute('href', `#${target?.id}`);
       expect(document.getElementById(target?.id ?? '')).toBe(target);
       return target?.id;

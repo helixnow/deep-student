@@ -3,7 +3,7 @@
  *
  * toolOutput.intent 携带结构化 UI 意图，由 GenerativeUIRenderer 渲染。
  * actionHandlers 从 modeState.canvasNoteId + toolInput.noteEdit 注入 Notes HITL 链。
- * researchSessionId / Research 块触发 HPIAS 事件桥 + 实时研究面板。
+ * 合法 researchSessionId 才触发 HPIAS 事件桥 + 实时研究面板。
  */
 
 import React, { useMemo } from 'react';
@@ -14,10 +14,7 @@ import {
   extractGenerativeUIIntent,
   GENERATIVE_UI_BLOCK_TYPE,
 } from '@/features/generative-ui/bridge/chatBlockBridge';
-import {
-  intentHasResearchBlocks,
-  omitResearchBlocksFromIntent,
-} from '@/features/generative-ui/bridge/hpiasEventBridge';
+import { omitResearchBlocksFromIntent } from '@/features/generative-ui/bridge/hpiasEventBridge';
 import { resolveGenerativeUIChatActionHandlers } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { HpiasGenerativeResearchPanel } from '@/features/generative-ui/components/HpiasGenerativeResearchPanel';
 import { useHpiasEventBridge } from '@/features/generative-ui/hooks/useHpiasEventBridge';
@@ -54,22 +51,19 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     [block.toolInput, block.toolOutput, extracted],
   );
 
-  const shouldBridgeHpias = useMemo(() => {
-    if (researchSessionId) return true;
-    if (!extracted || typeof extracted.intent === 'string') return false;
-    return intentHasResearchBlocks(extracted.intent);
-  }, [extracted, researchSessionId]);
+  const shouldBridgeHpias = Boolean(researchSessionId);
 
   useHpiasEventBridge({
-    enabled: shouldBridgeHpias && !isStreaming,
-    sessionId: researchSessionId,
+    enabled: shouldBridgeHpias,
+    sessionId: researchSessionId ?? undefined,
   });
 
-  const hpiasSessionId = useHpiasStore((s) => s.sessionId);
-  const showLiveResearch =
-    shouldBridgeHpias &&
-    !!hpiasSessionId &&
-    (!researchSessionId || hpiasSessionId === researchSessionId);
+  const liveSessionSlice = useHpiasStore((s) =>
+    researchSessionId ? s.sessions[researchSessionId] : undefined,
+  );
+  const showLiveResearch = Boolean(
+    researchSessionId && liveSessionSlice?.sessionId === researchSessionId,
+  );
 
   const displayIntent = useMemo(() => {
     if (!extracted) return null;
@@ -141,7 +135,7 @@ function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponen
     <div className="space-y-3" data-block-type={GENERATIVE_UI_BLOCK_TYPE}>
       {shouldBridgeHpias && (
         <HpiasGenerativeResearchPanel
-          sessionId={researchSessionId}
+          sessionId={researchSessionId ?? undefined}
           showChrome={!isStreaming}
           question={researchQuestion}
         />

@@ -6,11 +6,13 @@ import {
   intentHasResearchBlocks,
   normalizeHpiasEventPayload,
   omitResearchBlocksFromIntent,
+  resetSharedHpiasEventBridgeForTests,
 } from '@/features/generative-ui/bridge/hpiasEventBridge';
 
 describe('hpiasEventBridge', () => {
   beforeEach(() => {
     useHpiasStore.getState().actions.clear();
+    resetSharedHpiasEventBridgeForTests();
   });
 
   it('exports canonical event channel name', () => {
@@ -89,6 +91,23 @@ describe('hpiasEventBridge', () => {
               { id: 'export-intent', label: 'Export intent' },
               { id: 'copy-intent', label: 'Copy intent' },
             ],
+          },
+        },
+      ],
+    };
+
+    expect(omitResearchBlocksFromIntent(intent).blocks).toEqual([]);
+  });
+
+  it('drops orphaned copy-block action bars when live panel takes over', () => {
+    const intent = {
+      version: '1' as const,
+      blocks: [
+        { type: 'research-report', props: { body: 'Done' } },
+        {
+          type: 'action-bar',
+          props: {
+            actions: [{ id: 'copy-block', label: 'Copy block' }],
           },
         },
       ],

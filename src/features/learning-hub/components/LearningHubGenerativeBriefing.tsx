@@ -59,11 +59,11 @@ export const LearningHubGenerativeBriefing: React.FC = React.memo(() => {
     <section
       className="lh-generative-briefing"
       data-testid="lh-generative-briefing"
-      aria-label={t('generativeUi:learningHub.briefing_label', { defaultValue: 'AI 资源简报' })}
+      aria-label={t('generativeUi:learningHub.briefing_label')}
     >
       <header className="lh-generative-briefing-header">
         <Sparkle className="h-3.5 w-3.5 text-primary" weight="fill" aria-hidden />
-        {t('generativeUi:learningHub.briefing_label', { defaultValue: 'AI 资源简报' })}
+        {t('generativeUi:learningHub.briefing_label')}
       </header>
       <GenerativeUIPanel intent={intent} showChrome={false} actionHandlers={actionHandlers} />
     </section>

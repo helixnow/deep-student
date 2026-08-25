@@ -43,8 +43,9 @@ import {
   getLastGoodGenerativeUIIntent,
 } from '@/features/generative-ui/bridge/generativeUIStreamRegistry';
 import { useGenerativeUIStream } from '@/features/generative-ui/hooks/useGenerativeUIStream';
-import { MAX_GENERATIVE_UI_STREAM_CHARS } from '@/features/generative-ui/utils/streamBufferGuard';
 import '@/features/generative-ui/blocks';
+
+const TEST_STREAM_CAP = 128;
 
 const TRUNCATED =
   '{"version":"1","meta":{"title":"半截"},"blocks":[{"type":"text","props":{"body":"keep-me"}},{"type":"stat-card","props":{"title":"T","value":';
@@ -73,12 +74,17 @@ describe('stream fallback recovery — renderer', () => {
       blocks: [
         {
           type: 'text',
-          props: { body: 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS) },
+          props: { body: 'x'.repeat(TEST_STREAM_CAP) },
         },
       ],
     });
     const { container } = render(
-      <GenerativeUIRenderer intent={oversized} isStreaming showChrome={false} />,
+      <GenerativeUIRenderer
+        intent={oversized}
+        isStreaming
+        showChrome={false}
+        maxStreamChars={TEST_STREAM_CAP}
+      />,
     );
 
     expect(container.querySelector('[data-generative-ui]')).toHaveAttribute('data-streaming');
@@ -91,12 +97,17 @@ describe('stream fallback recovery — renderer', () => {
       blocks: [
         {
           type: 'text',
-          props: { body: 'x'.repeat(MAX_GENERATIVE_UI_STREAM_CHARS) },
+          props: { body: 'x'.repeat(TEST_STREAM_CAP) },
         },
       ],
     };
     const { container } = render(
-      <GenerativeUIRenderer intent={oversized} isStreaming showChrome={false} />,
+      <GenerativeUIRenderer
+        intent={oversized}
+        isStreaming
+        showChrome={false}
+        maxStreamChars={TEST_STREAM_CAP}
+      />,
     );
 
     expect(container.querySelector('[data-generative-ui]')).toHaveAttribute(

@@ -64,8 +64,8 @@ type 必须属于 registry（含 markdown、chart、steps、table）；JSON Sche
 3. 删除/提交/导出/笔记写入等副作用只能通过 action-bar 的 action id 声明，且高风险必须带 riskLevel（high/medium）；不得假设已执行，不得用文案宣告「已删除」。
 4. 最多 32 个 blocks（MAX_GENERATIVE_UI_BLOCKS）；超过 max blocks 会被拒绝。优先信息密度与可扫描性。
 5. action-bar 的 action id 应使用已注册 id（如 start-review、open-qbank、export-plan、copy-report、copy-block、export-intent、apply-note-edit），label 仅作展示。
-6. **Notes HITL**：若 intent 含 apply-note-edit（edit-apply）或 dismiss-note-suggestion（edit-reject），必须同时提供 noteEdit 参数（operation/content/search/replace）；前端经 canvas:ai-edit-request HITL 链落盘，用户确认前禁止假设已写入。
-7. **深度研究**：若 intent 含 research-plan / research-report / paper-digest，可传 researchSessionId 绑定 HPIAS 会话；前端经 hpias_event 实时更新研究面板，静态 Research 块在会话激活后由实时面板取代。
+6. **Notes HITL**：若 intent 含 apply-note-edit（edit-apply）或 dismiss-note-suggestion（edit-reject），必须同时提供 noteEdit 参数（operation/content/search/replace）；禁止 isRegex。前端经 canvas:ai-edit-request HITL 链落盘，用户确认前禁止假设已写入。
+7. **深度研究**：若 intent 含 research-plan / research-report / paper-digest，**必须**传 researchSessionId（顶层优先，也可写 intent.meta.researchSessionId）。无合法 session id 时不订阅 hpias_event，避免串台。前端经 hpias_event 实时更新研究面板，静态 Research 块在会话激活后由实时面板取代。
 8. **闪卡**：flashcard-preview 仅用于展示；禁止添加保存 action。制卡、QA/critic 与入库统一交给 anki_cards 管线。
 
 ## Few-shot 场景（模仿组合，不要发明 type）
@@ -146,7 +146,7 @@ type 必须属于 registry（含 markdown、chart、steps、table）；JSON Sche
           researchSessionId: {
             type: 'string',
             description:
-              '【可选】HPIAS 研究会话 ID；与 research-plan/research-report 块联用时，前端订阅 hpias_event 实时渲染研究进度。',
+              '【可选】HPIAS 研究会话 ID；与 research-plan/research-report 块联用时，前端订阅 hpias_event 实时渲染研究进度。也可写在 intent.meta.researchSessionId（顶层优先）。',
           },
         },
         required: ['intent'],
