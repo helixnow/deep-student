@@ -147,6 +147,6 @@ R09 合入后，本仓库在**E2EE 覆盖面**上完成了从"文本面加密、
 | §3 时点恢复 | **记录级 history 已合** | ZIP 仍是整机粒度 |
 | 云整包便携/全保真混淆 | **UI/协议已关一截** | 导入后看 `recovery_kind`；云端 `recoveryKind`；已知便携包下载前拒绝 |
 | §2.5 ZIP 备份名暴露时间/设备 | **阶段一已合（R12-neutral-names）** | 新对象 22 位随机 ID；`manifests/<短哈希>.json`；新标记 `createdByDevice` 短哈希；旧时间戳名与旧清单文件名仍按 id 读写 |
-| §2.5 记录级路径明文 device_id | **阶段二已合（R12-record-path-names）** | 新写入短哈希目录；旧 `changes/<device_id>/` 与旧清单名双读；新旧前缀并成同一 seq 流；本机短哈希对象不当成外设备。tombstone 清单/事件前缀同改；水位按内容完整 `device_id`；`file_manifests/` / 快照未动 |
+| §2.5 记录级路径明文 device_id | **阶段二已合（R12-record-path-names）** | 新写入短哈希目录；旧 `changes/<device_id>/` 与旧清单名双读；新旧前缀并成同一 seq 流；本机短哈希对象不当成外设备。tombstone 清单/事件前缀同改；水位按内容完整 `device_id`；文件级 `file_manifests/` 与快照文件名设备段同改短哈希，旧明文目录仍可读 |
 
 **生产放量仍 NO-GO。** 最短剩余：完整 CI 绿灯、Android 真机签字、整包增量传输接线或对外文案继续诚实到底。

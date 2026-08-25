@@ -2922,7 +2922,7 @@ impl SyncManager {
             Self::SNAPSHOTS_PREFIX,
             database_name,
             chrono::Utc::now().timestamp_millis(),
-            device_id,
+            Self::device_path_id(device_id),
             uuid::Uuid::new_v4()
         )
     }
@@ -9528,11 +9528,13 @@ impl SyncManager {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
     }
 
+    /// 新文件级清单：`file_manifests/<kind>/<短哈希>/<ts>-<uuid>.json`。
+    /// 列举按整前缀合并内容，旧明文设备目录仍可读。
     fn append_only_file_manifest_key(prefix: &str, device_id: &str) -> String {
         format!(
             "{}/{}/{}-{}.json",
             prefix,
-            device_id,
+            Self::device_path_id(device_id),
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
         )
@@ -12524,6 +12526,33 @@ mod tests {
         assert_eq!(
             SyncManager::device_manifest_legacy_key(raw),
             "data_governance/manifests/device-1.json"
+        );
+    }
+
+    #[test]
+    fn file_and_snapshot_keys_use_short_hash_not_raw_id() {
+        let raw = "device-file-path";
+        let hashed = SyncManager::device_path_id(raw);
+        let file_key =
+            SyncManager::append_only_file_manifest_key(SyncManager::BLOBS_MANIFESTS_PREFIX, raw);
+        assert!(
+            file_key.starts_with(&format!("data_governance/file_manifests/blobs/{hashed}/")),
+            "{file_key}"
+        );
+        assert!(
+            !file_key.contains(raw),
+            "文件级清单路径不得暴露明文 device_id: {file_key}"
+        );
+
+        let snap = SyncManager::snapshot_key("vfs", raw);
+        assert!(snap.starts_with("data_governance/snapshots/vfs/"), "{snap}");
+        assert!(
+            snap.contains(&format!("-{hashed}-")),
+            "快照文件名应含短哈希: {snap}"
+        );
+        assert!(
+            !snap.contains(raw),
+            "快照路径不得暴露明文 device_id: {snap}"
         );
     }
 
@@ -16737,6 +16766,64 @@ mod tests {
             read_workspace_note(dir_b.path(), "ws_plain_rt"),
             "plain note"
         );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_manifest_publish_uses_hashed_device_dir() {
+        let storage = FileE2eeMemoryStorage::default();
+        let dir = tempfile::tempdir().unwrap();
+        create_workspace_db(dir.path(), "ws_r12_names", "hashed path note");
+        let device = "r12-file-manifest-device";
+        let manager = SyncManager::new(device.to_string());
+        manager
+            .sync_workspace_databases(&storage, dir.path(), SyncDirection::Upload)
+            .await
+            .unwrap();
+
+        let keys = storage.keys_with_prefix(SyncManager::WORKSPACES_MANIFESTS_PREFIX);
+        let hashed = SyncManager::device_path_id(device);
+        assert!(
+            keys.iter().any(|key| key.contains(&format!("/{hashed}/"))),
+            "新文件级清单应写短哈希目录: {keys:?}"
+        );
+        assert!(
+            keys.iter().all(|key| !key.contains(device)),
+            "新文件级清单不得含明文 device_id: {keys:?}"
+        );
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[tokio::test]
+    async fn file_manifest_download_reads_legacy_raw_device_dir() {
+        let storage = FileE2eeMemoryStorage::default();
+        let mut manifest = WorkspacesManifest::default();
+        manifest.updated_at = "2026-08-01T00:00:00Z".to_string();
+        manifest.entries.insert(
+            "ws_legacy_name".to_string(),
+            WorkspaceEntry {
+                sha256: "aa".repeat(32),
+                size: 1,
+                updated_at: "2026-08-01T00:00:00Z".to_string(),
+                source_sha256: None,
+                device_id: Some("device-legacy-raw".to_string()),
+                object_key: None,
+                base_sha256: None,
+                revision: 1,
+                cipher_sha256: None,
+                cipher_size: None,
+            },
+        );
+        storage.put_raw(
+            "data_governance/file_manifests/workspaces/device-legacy-raw/1-seed.json",
+            serde_json::to_vec(&manifest).unwrap(),
+        );
+
+        let loaded = SyncManager::new("reader".to_string())
+            .download_workspaces_manifest(&storage)
+            .await
+            .expect("旧明文设备目录必须仍可合并");
+        assert!(loaded.entries.contains_key("ws_legacy_name"));
     }
 
     /// 在（已加密的）清单里手工登记一个明文遗留 workspace 条目 + 明文对象，

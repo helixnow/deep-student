@@ -8,7 +8,8 @@
 //! - 把本机新清单并进「其他设备」；
 //! - 把同一设备的新旧分片当成两台设备，seq 缺口 fail-closed。
 //!
-//! 文件级 `file_manifests/` 与快照路径本轮不动。
+//! 文件级 `file_manifests/` 与快照路径见同目录 `sync/mod.rs` 单测
+//! `file_and_snapshot_keys_use_short_hash_not_raw_id`。
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
