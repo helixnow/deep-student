@@ -83,12 +83,12 @@ fn classify_path(raw: &str) -> Result<PathKind, AppError> {
         return Ok(PathKind::Virtual(trimmed.to_string()));
     }
 
-    let decoded_for_check = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
+    // 整段再编码的 content:// 不能当虚拟路径：一次解码会拆掉 document ID
+    // 的 %3A/%2F，ContentResolver 可能 SecurityException。公开 is_virtual_uri
+    // 也不认这类输入。拒绝并给可读错误，命令层不得误路由到本地半包。
+    reject_double_encoded_virtual_uri(trimmed)?;
 
-    // 双重编码兜底：原始路径不匹配但解码后匹配 special scheme（如 content%3A%2F%2F...）
-    if is_special_scheme(&decoded_for_check) {
-        return Ok(PathKind::Virtual(decoded_for_check));
-    }
+    let decoded_for_check = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
 
     if is_android_saf_path(&decoded_for_check) {
         return Ok(PathKind::Virtual(decoded_for_check));
@@ -397,9 +397,29 @@ pub fn sanitize_for_legacy(input: &str) -> String {
 }
 
 /// 判断路径是否为移动端虚拟 URI（content://, ph://, asset:// 等）或 Android SAF 路径。
+///
+/// 不解码：`content%3A%2F%2F...` 这类双重编码保持 false，避免命令层
+/// 把拆坏的 URI 交给 ContentResolver。配合 [`reject_double_encoded_virtual_uri`]。
 pub fn is_virtual_uri(path: &str) -> bool {
     let trimmed = path.trim();
     is_special_scheme(trimmed) || is_android_saf_path(trimmed)
+}
+
+/// 双重编码安全 URI 的稳定拒绝文案（命令层与锁定测共用）。
+pub const DOUBLE_ENCODED_VIRTUAL_URI_REJECTED: &str =
+    "路径像是双重编码的安全 URI，已拒绝以免破坏授权。请传入原始 content:// 地址";
+
+/// 原始路径不是 special scheme，但整段 URL 解码后是，则 fail-closed。
+pub fn reject_double_encoded_virtual_uri(path: &str) -> Result<(), AppError> {
+    let trimmed = path.trim();
+    if is_special_scheme(trimmed) {
+        return Ok(());
+    }
+    let decoded = decode_path(trimmed).unwrap_or_else(|_| trimmed.to_string());
+    if is_special_scheme(&decoded) {
+        return Err(AppError::validation(DOUBLE_ENCODED_VIRTUAL_URI_REJECTED));
+    }
+    Ok(())
 }
 
 /// 从任意路径（本地路径、Windows 反斜杠路径或 content:// URI）中安全提取文件名。
@@ -860,7 +880,8 @@ pub fn ensure_local_path(
 mod tests {
     use super::{
         digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
-        required_temp_copy_bytes,
+        reject_double_encoded_virtual_uri, required_temp_copy_bytes,
+        DOUBLE_ENCODED_VIRTUAL_URI_REJECTED,
     };
     use std::io::Cursor;
 
@@ -899,5 +920,19 @@ mod tests {
         let err =
             ensure_enough_temp_space(159, 80, "short").expect_err("不足 2 倍必须 fail-closed");
         assert!(err.to_string().contains("临时物化空间不足，已停止以免半包"));
+    }
+
+    #[test]
+    fn reject_double_encoded_virtual_uri_keeps_raw_content_ok() {
+        reject_double_encoded_virtual_uri(
+            "content://com.android.externalstorage.documents/document/primary%3Abackup.zip",
+        )
+        .expect("原始 content:// 必须放行");
+        reject_double_encoded_virtual_uri("/tmp/backup.zip").expect("本地路径必须放行");
+        let err = reject_double_encoded_virtual_uri(
+            "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip",
+        )
+        .expect_err("双重编码必须 fail-closed");
+        assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
     }
 }

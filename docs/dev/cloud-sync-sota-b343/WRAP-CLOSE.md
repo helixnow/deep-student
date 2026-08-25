@@ -26,7 +26,7 @@
 - **可逆文件名**：R11-names2 已合（rclone 风格可逆映射 + 旧 `_` key 双查找；超长/损坏 fail-closed）。
 - **FINDINGS-WRAP P2-1**：已关——v1 升级前试解既有备份；空仓仍可认领；失败不写标记。
 - **FINDINGS-WRAP P2-2**：已关——冲突快速路径在 `BEGIN IMMEDIATE` 内重读业务行，不匹配即拒绝。
-- **Android 真机签字**：手册 5.2 仍列真机缺口；导出复制的目标回读（长度/SHA-256）已合，不得只凭 copy+flush 报成功。虚拟 URI 物化前按源大小 2 倍预检临时卷，不足 fail-closed（不冒充 SAF 目标卷已预检）。宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向、隐私政策与根 README 已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。手册结论已与「已配置 E2EE → 云端整包加密全保真、未配置仍是便携」对齐；发布说明在 3.3 真机转绿前仍不得写一键换机。
+- **Android 真机签字**：手册 5.2 仍列真机缺口；导出复制的目标回读（长度/SHA-256）已合，不得只凭 copy+flush 报成功。虚拟 URI 物化前按源大小 2 倍预检临时卷，不足 fail-closed（不冒充 SAF 目标卷已预检）。双重编码 `content%3A%2F%2F` 可读拒绝，不拆 document ID。宿主测不能冒充真机绿灯。用户指南 17、隐私数据流向、隐私政策与根 README 已改成 Android 仅 WebDAV（不再写「手机也可用 S3」）。手册结论已与「已配置 E2EE → 云端整包加密全保真、未配置仍是便携」对齐；发布说明在 3.3 真机转绿前仍不得写一键换机。
 - **基线遗留红灯**：已合入测试对齐——tombstone 场景改用 64-hex；明文遗留在加密设备上锁定为 `downloaded=0` 拒收。资产 tombstone 现从**未过滤**清单解析 `object_key`，对 `data_governance/asset_objects/` 显式 skip delete（共享对象交给 GC），不再靠 miss 碰巧不删。未带原 `fix-sync-tombstone-db14` 的 `ftp.rs`。未放松 fail-closed。
 - **licenses:check**：`THIRD_PARTY_NOTICES.txt` 已按现有 `Cargo.lock`（R09-names 的 `unicode-normalization@0.1.25`）重生成 SHA；**未改 lockfile**。
 - **SOTA 不做**：实时协作、原地密钥轮换（换密码=换目录重传）。

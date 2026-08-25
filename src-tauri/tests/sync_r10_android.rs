@@ -26,11 +26,10 @@
 //!    `AppHandle::restart()` 直接结束进程。重启后的切槽语义已由 R07/R09 用
 //!    "同一 base_dir 上的新 `DataSpaceManager::initialize_on_start`"等价覆盖，
 //!    本文件对壳本身只做注册与调用顺序的源码锚定。
-//! 3. **双重编码的 content URI 不被 `is_virtual_uri` 识别**（见
-//!    `double_encoded_content_uri_is_not_classified_virtual`）：命令层会把
-//!    `content%3A%2F%2F…` 当本地路径走存在性/白名单校验而失败——fail-closed
-//!    不误路由，但也意味着双重编码输入无法物化。生产前端始终传原始
-//!    content:// URI，该缺口仅在真机上有对抗性输入时可见。
+//! 3. **双重编码的 content URI**：`is_virtual_uri` 仍为 false；命令入口与
+//!    `classify_path` 走 `reject_double_encoded_virtual_uri` 可读拒绝，
+//!    不解码后当虚拟路径（避免拆掉 document ID）。生产前端始终传原始
+//!    content:// URI；对抗性输入的真机表现仍见手册 4.1–4.3。
 //!
 //! 仅新增测试，不修改生产代码。
 
@@ -39,7 +38,8 @@ use std::path::Path;
 use deep_student_lib::data_space::{DataSpaceManager, Slot};
 use deep_student_lib::unified_file_manager::{
     extract_extension, extract_file_name, is_opaque_document_id, is_virtual_uri,
-    sanitize_file_name_for_fs, sanitize_for_legacy,
+    reject_double_encoded_virtual_uri, sanitize_file_name_for_fs, sanitize_for_legacy,
+    DOUBLE_ENCODED_VIRTUAL_URI_REJECTED,
 };
 
 // ============================================================================
@@ -91,19 +91,19 @@ fn content_uri_and_saf_paths_classify_as_virtual() {
     }
 }
 
-/// 缺口声明测试（见模块文档缺口 3）：双重编码的 content URI 在
-/// `is_virtual_uri` 层不被识别为虚拟。命令层会将其当作本地路径，
-/// 后续的存在性/白名单校验会失败——fail-closed，不会静默读写错误对象。
-/// 若未来在分类层补齐双重解码，本断言应当反转并同步命令层语义。
+/// 双重编码的 content URI：`is_virtual_uri` 仍为 false（不把拆坏的
+/// URI 交给 ContentResolver）；命令入口与 classify 走可读拒绝，
+/// 不得当本地路径半处理，也不得解码后当虚拟路径读写。
 #[test]
 fn double_encoded_content_uri_is_not_classified_virtual() {
     let double_encoded =
         "content%3A%2F%2Fcom.android.externalstorage.documents%2Fdocument%2Fprimary%3Abackup.zip";
     assert!(
         !is_virtual_uri(double_encoded),
-        "当前契约：双重编码输入按本地路径处理（fail-closed），\
-         行为变化必须显式改动本测试并复核 commands_zip 的物化分叉"
+        "当前契约：双重编码输入不得被 is_virtual_uri 认成虚拟 URI"
     );
+    let err = reject_double_encoded_virtual_uri(double_encoded).expect_err("双重编码必须可读拒绝");
+    assert_eq!(err.to_string(), DOUBLE_ENCODED_VIRTUAL_URI_REJECTED);
 }
 
 // ============================================================================
@@ -220,6 +220,7 @@ fn zip_command_materialization_orchestration_is_anchored() {
     // 导入侧：虚拟 URI 分叉 → temp_zip_import 物化 → 事后清理。
     for marker in [
         "is_virtual_uri(&zip_path)",
+        "reject_double_encoded_virtual_uri(&zip_path)",
         "temp_zip_import",
         "ensure_local_path(&window, &zip_path, &temp_dir)",
     ] {
@@ -251,6 +252,7 @@ fn zip_command_materialization_orchestration_is_anchored() {
     // 导出侧：temp_zip_export 临时导出 → 复制回虚拟 URI → 失败也清理。
     for marker in [
         "is_virtual_uri(&output_path)",
+        "reject_double_encoded_virtual_uri(&output_path)",
         "temp_zip_export",
         "fn copy_temp_zip_to_virtual_uri",
         "复制 ZIP 到目标 URI 失败，临时导出已清理",

@@ -160,7 +160,7 @@ npx tauri android build --target aarch64 --apk --ci -- \
 | P1 | 导出复制目标回读 | **代码已合**：`copy_file` 写完后重新打开目标核对长度与 SHA-256，失败不得报成功。真机 DocumentsProvider 延迟提交 / 进程死亡仍要按 4.1–4.3 签字 |
 | P2 | 临时物化前空间预检 | **代码已合**：虚拟 URI 物化前按源大小 2 倍核对临时卷可用空间，不足 fail-closed。真机 ENOSPC / 配额虚报 / SAF 目标卷仍要按 4.1–4.3 签字 |
 | P2 | 不透明 document id 未查询 `OpenableColumns.DISPLAY_NAME/SIZE`；通用导入靠 magic bytes，日志/文件名可读性退化 | Downloads/Drive/厂商 provider 各取一例 |
-| P2 | `content%3A%2F%2F...` 双重编码输入在公开 `is_virtual_uri` 层按本地路径 fail-closed | 保持拒绝并给可读错误，或补分类后更新锁定测 |
+| P2 | `content%3A%2F%2F...` 双重编码输入 | **代码已合**：`is_virtual_uri` 仍为 false；ZIP/同步入口与 `classify_path` 可读拒绝，不解码后当虚拟路径。真机对抗性输入仍要按 4.1–4.3 签字 |
 | P2 | Android `app.restart()` 壳只能由真机验证；宿主仅等价测试下一次初始化切槽 | 4.2 的冷启动两次 + 强杀矩阵 |
 | P2 | 受控 `mobile/android/MainActivity.kt` 与 Tauri 生成工程的同步没有仓库门禁 | 每次 `tauri android init` 后人工 diff，后续加 CI 同步检查 |
 

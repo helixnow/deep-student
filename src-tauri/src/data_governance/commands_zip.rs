@@ -206,6 +206,8 @@ pub async fn data_governance_backup_and_export_zip(
     encryption_password: Option<String>,
 ) -> Result<BackupJobStartResponse, String> {
     let app_data_dir = get_app_data_dir(&app)?;
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&output_path)
+        .map_err(|e| e.to_string())?;
 
     // Android content:// 等虚拟 URI：先导出到本地临时文件，完成后再复制到目标 URI
     let (local_output_path, target_virtual_uri) =
@@ -656,6 +658,10 @@ pub async fn data_governance_export_zip(
     use_stored_cloud_encryption_password: Option<bool>,
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = validate_backup_id(&backup_id)?;
+    if let Some(path) = &output_path {
+        crate::unified_file_manager::reject_double_encoded_virtual_uri(path)
+            .map_err(|e| e.to_string())?;
+    }
 
     // Android content:// 等虚拟 URI：先导出到本地临时文件，完成后再复制到目标 URI
     let (local_output_path, target_virtual_uri) = match &output_path {
@@ -1720,6 +1726,8 @@ pub async fn data_governance_import_zip(
     };
 
     let app_data_dir = get_app_data_dir(&app)?;
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&zip_path)
+        .map_err(|e| e.to_string())?;
 
     // Android content:// 等虚拟 URI 需要先物化到本地临时文件（ZIP 需要随机访问）
     let (zip_file_path, temp_cleanup_path) =

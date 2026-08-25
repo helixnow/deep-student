@@ -2376,6 +2376,10 @@ pub async fn data_governance_export_sync_data(
 
     // 确定输出路径（虚拟 URI 先导出到本地临时文件，再复制到目标 URI）
     let mut target_virtual_uri: Option<String> = None;
+    if let Some(p) = output_path.as_deref() {
+        crate::unified_file_manager::reject_double_encoded_virtual_uri(p)
+            .map_err(|e| e.to_string())?;
+    }
     let output = match output_path {
         Some(p) if crate::unified_file_manager::is_virtual_uri(&p) => {
             let temp_dir = app_data_dir.join("temp_sync_export");
@@ -2489,6 +2493,8 @@ pub async fn data_governance_import_sync_data(
     let app_data_dir = get_app_data_dir(&app)?;
     let active_dir = get_active_data_dir(&app)?;
 
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&input_path)
+        .map_err(|e| e.to_string())?;
     let (input_file_path, cleanup_path) =
         if crate::unified_file_manager::is_virtual_uri(&input_path) {
             let temp_dir = app_data_dir.join("temp_sync_import");
