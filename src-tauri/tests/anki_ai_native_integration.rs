@@ -27,27 +27,27 @@ use deep_student_lib::anki_fsrs_feedback::{
     suggest_splits, FsrsFeedbackConfig,
 };
 use deep_student_lib::anki_preference_memory::{
-    consolidate, estimate_tokens, extract_preferences, retrieve_preference_prompt,
-    PreferenceStore, SessionObservation,
+    consolidate, estimate_tokens, extract_preferences, retrieve_preference_prompt, PreferenceStore,
+    SessionObservation,
 };
 use deep_student_lib::anki_protocol::{
     build_cards_response_schema, detect_schema_capability, repair_json, resolve_output_protocol,
-    strip_wrapper_prefix, unwrap_cards_array, OutputProtocol, SchemaCapability, CARD_DELIMITER,
-    CARDS_WRAPPER_KEY, TEMPLATE_ID_KEY,
+    strip_wrapper_prefix, unwrap_cards_array, OutputProtocol, SchemaCapability, CARDS_WRAPPER_KEY,
+    CARD_DELIMITER, TEMPLATE_ID_KEY,
 };
 use deep_student_lib::anki_qa_lint::{
     lint_card, lint_card_with_tracker, merge_flags, should_reject, CardLintInput,
     FingerprintTracker, LintConfig, LintLevel, LintSeverity, QA_FLAGS_FIELD,
 };
 use deep_student_lib::chat_v2::tools::chatanki_executor::{
-    build_analyze_output, parse_route_plan_response, resolve_route_decision, ChatAnkiRoute,
-    ChatAnkiRetemplateStrategy, RouteDecision, RoutePlan, RouteSource,
+    build_analyze_output, parse_route_plan_response, resolve_route_decision,
+    ChatAnkiRetemplateStrategy, ChatAnkiRoute, RouteDecision, RoutePlan, RouteSource,
 };
 use deep_student_lib::chat_v2::tools::chatanki_transform::{
     apply_transform_ops, changed_field_names, check_expected_versions, compile_transform_ops,
     plan_transform_ops, select_transform_cards, transform_fields_are_valid, ChatAnkiTransformArgs,
-    NormalizedTransformKind, NormalizedTransformOp, NormalizedTransformSelection, TransformCardPlan,
-    TransformFields, TransformMode, TransformSelectionError,
+    NormalizedTransformKind, NormalizedTransformOp, NormalizedTransformSelection,
+    TransformCardPlan, TransformFields, TransformMode, TransformSelectionError,
 };
 use deep_student_lib::chat_v2::tools::chatanki_transform_script::{
     build_script_input, evaluate_script_output, resolve_interpreter_in_dirs,
@@ -106,13 +106,22 @@ fn ref_data(files: usize, images: usize) -> VfsContextRefData {
     }
 }
 
-fn parse_transform(args: Value) -> Result<deep_student_lib::chat_v2::tools::chatanki_transform::NormalizedTransformRequest, String> {
+fn parse_transform(
+    args: Value,
+) -> Result<deep_student_lib::chat_v2::tools::chatanki_transform::NormalizedTransformRequest, String>
+{
     serde_json::from_value::<ChatAnkiTransformArgs>(args)
         .map_err(|e| e.to_string())
         .and_then(ChatAnkiTransformArgs::normalize)
 }
 
-fn make_row(id: &str, front: &str, lapses: i32, tags: &[&str], template: Option<&str>) -> FsrsFeedbackRow {
+fn make_row(
+    id: &str,
+    front: &str,
+    lapses: i32,
+    tags: &[&str],
+    template: Option<&str>,
+) -> FsrsFeedbackRow {
     FsrsFeedbackRow {
         anki_card_id: id.to_string(),
         front: front.to_string(),
@@ -143,13 +152,17 @@ fn transform_ops_dry_run_end_to_end_produces_per_card_plans() {
     }))
     .expect("dry_run request should normalize");
     assert_eq!(request.mode, TransformMode::DryRun);
-    assert!(request.expected_versions.is_empty(), "dry_run 忽略 expectedVersions");
+    assert!(
+        request.expected_versions.is_empty(),
+        "dry_run 忽略 expectedVersions"
+    );
 
     let cards = vec![
         make_card("card-1", "RTT 是什么？", "往返约 30ms", None, &[]),
         make_card("card-2", "无数字卡", "纯文本答案", None, &["性能"]),
     ];
-    let selected = select_transform_cards(cards, &request.selection).expect("default live selection");
+    let selected =
+        select_transform_cards(cards, &request.selection).expect("default live selection");
     assert_eq!(selected.len(), 2);
 
     let NormalizedTransformKind::Ops(ops) = &request.kind else {
@@ -209,7 +222,10 @@ fn transform_ops_apply_enforces_expected_versions_cas_contract() {
     skewed.insert("card-ghost".to_string(), "v9".to_string());
     let mismatch = check_expected_versions(&selected_ids, &skewed).unwrap_err();
     assert_eq!(mismatch.missing_version_ids, vec!["card-2".to_string()]);
-    assert_eq!(mismatch.unexpected_version_ids, vec!["card-ghost".to_string()]);
+    assert_eq!(
+        mismatch.unexpected_version_ids,
+        vec!["card-ghost".to_string()]
+    );
 }
 
 /// 选择集语义：cardIds 命中缺失 ID 与 filter=error_only 的行为与 get_cards 对齐。
@@ -244,7 +260,9 @@ fn transform_selection_reports_missing_ids_and_honours_filters() {
 #[test]
 fn transform_ops_invalid_pattern_rejects_whole_batch_with_index() {
     let ops = vec![
-        NormalizedTransformOp::TagAdd { tags: vec!["ok".to_string()] },
+        NormalizedTransformOp::TagAdd {
+            tags: vec!["ok".to_string()],
+        },
         NormalizedTransformOp::RegexReplace {
             field: deep_student_lib::chat_v2::tools::chatanki_transform::TransformField::Front,
             pattern: "(unclosed".to_string(),
@@ -267,10 +285,14 @@ fn transform_validity_guard_matches_card_content_semantics() {
     }];
     let compiled = compile_transform_ops(&ops).unwrap();
     let before = TransformFields::from_card(&make_card("card-1", "Q", "A", None, &[]));
-    let after = apply_transform_ops(&compiled, &before).expect("shrinking back must stay in bounds");
+    let after =
+        apply_transform_ops(&compiled, &before).expect("shrinking back must stay in bounds");
     assert_eq!(after.back, "");
     assert!(transform_fields_are_valid(&before));
-    assert!(!transform_fields_are_valid(&after), "清空 back 的普通卡必须被拒绝");
+    assert!(
+        !transform_fields_are_valid(&after),
+        "清空 back 的普通卡必须被拒绝"
+    );
 
     // Cloze 卡（text 非空）允许 front/back 为空
     let cloze = TransformFields {
@@ -295,7 +317,11 @@ fn script_io_contract_roundtrip_ignores_script_version() {
     let input = build_script_input("doc-r4", &cards);
     assert_eq!(input["documentId"], "doc-r4");
     let entry = &input["cards"][0];
-    assert_eq!(entry["front"].as_str().unwrap().chars().count(), 4096, "无 2000 字符截断视图");
+    assert_eq!(
+        entry["front"].as_str().unwrap().chars().count(),
+        4096,
+        "无 2000 字符截断视图"
+    );
     assert_eq!(entry["version"], "2026-08-24T01:00:00Z");
 
     // 模拟脚本把输入原样回写，但篡改 version
@@ -304,8 +330,14 @@ fn script_io_contract_roundtrip_ignores_script_version() {
     let raw = serde_json::to_vec(&json!({ "cards": [echoed] })).unwrap();
     let evaluation = evaluate_script_output(&raw, &cards).expect("echo output is valid");
     assert!(evaluation.unknown_card_ids.is_empty());
-    let plan = evaluation.card_plans[0].as_ref().expect("echo must be accepted");
-    assert_eq!(plan, &TransformFields::from_card(&cards[0]), "回显 = 无变更");
+    let plan = evaluation.card_plans[0]
+        .as_ref()
+        .expect("echo must be accepted");
+    assert_eq!(
+        plan,
+        &TransformFields::from_card(&cards[0]),
+        "回显 = 无变更"
+    );
 }
 
 /// 输出合同 fail-closed：顶层 schema 违约整批拒绝；单卡违约逐卡拒绝不连坐；
@@ -333,7 +365,11 @@ fn script_output_contract_fails_closed_per_card_and_reports_unknown_ids() {
     .unwrap();
     let evaluation = evaluate_script_output(&raw, &cards).unwrap();
     assert_eq!(evaluation.unknown_card_ids, vec!["card-ghost".to_string()]);
-    assert_eq!(evaluation.card_plans.len(), 2, "计划与快照等长，幽灵卡不进计划");
+    assert_eq!(
+        evaluation.card_plans.len(),
+        2,
+        "计划与快照等长，幽灵卡不进计划"
+    );
     assert_eq!(
         evaluation.card_plans[0].as_ref().unwrap_err().code,
         "invalid_cloze_text"
@@ -404,7 +440,10 @@ fn plan_route_response_parsing_is_tolerant_but_conservative() {
 
     assert!(parse_route_plan_response("{\"route\":\"teleport\",\"confidence\":0.9}").is_none());
     assert!(parse_route_plan_response("{\"route\":\"vlm_full\",\"confidence\":1.5}").is_none());
-    assert!(parse_route_plan_response("{\"route\":\"vlm_full\"}").is_none(), "缺 confidence");
+    assert!(
+        parse_route_plan_response("{\"route\":\"vlm_full\"}").is_none(),
+        "缺 confidence"
+    );
     assert!(parse_route_plan_response("完全不是 JSON").is_none());
 }
 
@@ -429,14 +468,22 @@ fn route_decision_priority_chain_is_forced_then_llm_then_heuristic() {
     assert_eq!(llm.route, ChatAnkiRoute::VlmLight);
     assert_eq!(llm.confidence, Some(0.9));
 
-    let hesitant = RoutePlan { confidence: 0.3, ..confident.clone() };
+    let hesitant = RoutePlan {
+        confidence: 0.3,
+        ..confident.clone()
+    };
     let fallback = resolve_route_decision(None, Some(&hesitant), &rd);
-    assert_eq!(fallback.source, RouteSource::Heuristic, "低置信度必须回退启发式");
+    assert_eq!(
+        fallback.source,
+        RouteSource::Heuristic,
+        "低置信度必须回退启发式"
+    );
     assert_eq!(fallback.route, ChatAnkiRoute::SimpleText);
     assert!(fallback.confidence.is_none());
 
     // forced 永远压过高置信度 LLM 计划
-    let forced_wins = resolve_route_decision(Some(ChatAnkiRoute::SimpleText), Some(&confident), &rd);
+    let forced_wins =
+        resolve_route_decision(Some(ChatAnkiRoute::SimpleText), Some(&confident), &rd);
     assert_eq!(forced_wins.source, RouteSource::Forced);
     assert_eq!(forced_wins.route, ChatAnkiRoute::SimpleText);
 }
@@ -447,7 +494,10 @@ fn route_decision_priority_chain_is_forced_then_llm_then_heuristic() {
 fn analyze_output_carries_route_source_and_bounded_recommendations() {
     let rd = ref_data(0, 5); // 图片为主 → 启发式 vlm_full
     for (decision, expected_source) in [
-        (resolve_route_decision(Some(ChatAnkiRoute::SimpleText), None, &rd), "forced"),
+        (
+            resolve_route_decision(Some(ChatAnkiRoute::SimpleText), None, &rd),
+            "forced",
+        ),
         (
             resolve_route_decision(
                 None,
@@ -479,7 +529,10 @@ fn analyze_output_carries_route_source_and_bounded_recommendations() {
         let max_cards = output["recommended"]["maxCards"].as_i64().unwrap();
         assert!((1..=100).contains(&max_cards), "maxCards={max_cards}");
         assert_eq!(output["metrics"]["refImages"], json!(5));
-        assert!(output.get("warnings").is_none(), "无告警时不输出 warnings 键");
+        assert!(
+            output.get("warnings").is_none(),
+            "无告警时不输出 warnings 键"
+        );
     }
 }
 
@@ -494,9 +547,15 @@ fn analyze_output_propagates_degradation_warnings() {
         "unresolvedIds": ["res_ghost"],
     })];
     let output = build_analyze_output(None, "内容", Some(&rd), &decision, &warnings);
-    assert_eq!(output["warnings"][0]["code"], json!("analyze_refs_unresolved"));
     assert_eq!(
-        output["routing"]["reason"].as_str().unwrap_or_default().contains("启发式"),
+        output["warnings"][0]["code"],
+        json!("analyze_refs_unresolved")
+    );
+    assert_eq!(
+        output["routing"]["reason"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("启发式"),
         true,
         "启发式决策必须自带一句话理由"
     );
@@ -512,10 +571,12 @@ fn retemplate_strategy_parses_fill_missing_llm_and_rejects_unknown() {
     for (wire, expected) in [
         ("map_only", ChatAnkiRetemplateStrategy::MapOnly),
         ("fill_missing", ChatAnkiRetemplateStrategy::FillMissing),
-        ("fill_missing_llm", ChatAnkiRetemplateStrategy::FillMissingLlm),
+        (
+            "fill_missing_llm",
+            ChatAnkiRetemplateStrategy::FillMissingLlm,
+        ),
     ] {
-        let parsed: ChatAnkiRetemplateStrategy =
-            serde_json::from_value(json!(wire)).expect(wire);
+        let parsed: ChatAnkiRetemplateStrategy = serde_json::from_value(json!(wire)).expect(wire);
         assert_eq!(parsed, expected);
         assert_eq!(parsed.as_str(), wire, "as_str 与 wire 形态必须回环一致");
     }
@@ -557,7 +618,10 @@ fn qa_lint_error_rules_sample_hits_expected_codes() {
         tags: &[],
         extra_fields: &no_extra,
     });
-    assert!(empty.contains("empty_front") && empty.contains("empty_back"), "{empty:?}");
+    assert!(
+        empty.contains("empty_front") && empty.contains("empty_back"),
+        "{empty:?}"
+    );
 
     // 3: cloze 空挖空 + 非法序号
     let cloze = codes(&CardLintInput {
@@ -567,7 +631,10 @@ fn qa_lint_error_rules_sample_hits_expected_codes() {
         tags: &["生物".to_string()],
         extra_fields: &no_extra,
     });
-    assert!(cloze.contains("cloze_empty_answer") && cloze.contains("cloze_bad_index"), "{cloze:?}");
+    assert!(
+        cloze.contains("cloze_empty_answer") && cloze.contains("cloze_bad_index"),
+        "{cloze:?}"
+    );
 
     // 7: 模板占位符残留
     let placeholder = codes(&CardLintInput {
@@ -577,7 +644,10 @@ fn qa_lint_error_rules_sample_hits_expected_codes() {
         tags: &["占位".to_string()],
         extra_fields: &no_extra,
     });
-    assert!(placeholder.contains("placeholder_residue"), "{placeholder:?}");
+    assert!(
+        placeholder.contains("placeholder_residue"),
+        "{placeholder:?}"
+    );
 
     // 11: MCQ 答案不在选项中
     let mcq_fields: HashMap<String, String> = [
@@ -613,14 +683,23 @@ fn qa_lint_warn_info_rules_sample_hits_expected_codes_and_severities() {
         },
         &cfg,
     );
-    let by_code: HashMap<&str, LintSeverity> =
-        issues.iter().map(|i| (i.code.as_str(), i.severity)).collect();
-    assert_eq!(by_code.get("answer_leak"), Some(&LintSeverity::Warn), "{by_code:?}");
+    let by_code: HashMap<&str, LintSeverity> = issues
+        .iter()
+        .map(|i| (i.code.as_str(), i.severity))
+        .collect();
+    assert_eq!(
+        by_code.get("answer_leak"),
+        Some(&LintSeverity::Warn),
+        "{by_code:?}"
+    );
     assert_eq!(by_code.get("multi_concept"), Some(&LintSeverity::Warn));
     assert_eq!(by_code.get("tags_empty"), Some(&LintSeverity::Info));
 
     // 6: front 超长（阈值可配置）
-    let tight_cfg = LintConfig { max_front_chars: 10, ..LintConfig::default() };
+    let tight_cfg = LintConfig {
+        max_front_chars: 10,
+        ..LintConfig::default()
+    };
     let long = lint_card(
         &CardLintInput {
             front: "这是一个超过十个字符的超长正面问题文本",
@@ -631,7 +710,9 @@ fn qa_lint_warn_info_rules_sample_hits_expected_codes_and_severities() {
         },
         &tight_cfg,
     );
-    assert!(long.iter().any(|i| i.code == "front_too_long" && i.severity == LintSeverity::Warn));
+    assert!(long
+        .iter()
+        .any(|i| i.code == "front_too_long" && i.severity == LintSeverity::Warn));
 
     // 12: 语言混杂只能是 Info（永不拒绝）
     let mixed = lint_card(
@@ -688,14 +769,28 @@ fn qa_lint_duplicate_tracking_and_reject_semantics() {
 
     // Flag（默认）永不拒绝，即便存在 Error 级违规
     let error_issues = lint_card(
-        &CardLintInput { front: "", back: "", text: None, tags: &[], extra_fields: &no_extra },
+        &CardLintInput {
+            front: "",
+            back: "",
+            text: None,
+            tags: &[],
+            extra_fields: &no_extra,
+        },
         &cfg,
     );
-    assert!(error_issues.iter().any(|i| i.severity == LintSeverity::Error));
+    assert!(error_issues
+        .iter()
+        .any(|i| i.severity == LintSeverity::Error));
     assert!(!should_reject(&error_issues, &cfg), "Flag 级永不拒绝");
-    let reject_cfg = LintConfig { level: LintLevel::Reject, ..LintConfig::default() };
+    let reject_cfg = LintConfig {
+        level: LintLevel::Reject,
+        ..LintConfig::default()
+    };
     assert!(should_reject(&error_issues, &reject_cfg));
-    assert!(!should_reject(&second, &reject_cfg), "Warn/Info 永不触发拒绝");
+    assert!(
+        !should_reject(&second, &reject_cfg),
+        "Warn/Info 永不触发拒绝"
+    );
 }
 
 /// merge_flags：保留既有字段规则条目、(code, field) 去重、重复调用幂等、
@@ -724,14 +819,24 @@ fn qa_lint_merge_flags_is_idempotent_and_preserves_legacy_entries() {
     );
     merge_flags(&mut extra, &issues);
     let merged: Vec<Value> = serde_json::from_str(&extra[QA_FLAGS_FIELD]).unwrap();
-    assert!(merged.iter().any(|v| v.get("rule") == Some(&json!("min_length"))), "既有条目保留");
-    assert!(merged.iter().any(|v| v.get("code") == Some(&json!("todo_residue"))));
+    assert!(
+        merged
+            .iter()
+            .any(|v| v.get("rule") == Some(&json!("min_length"))),
+        "既有条目保留"
+    );
+    assert!(merged
+        .iter()
+        .any(|v| v.get("code") == Some(&json!("todo_residue"))));
 
     // 幂等：重复 merge 不产生重复条目
     let before = extra[QA_FLAGS_FIELD].clone();
     merge_flags(&mut extra, &issues);
     let after: Vec<Value> = serde_json::from_str(&extra[QA_FLAGS_FIELD]).unwrap();
-    assert_eq!(serde_json::from_str::<Vec<Value>>(&before).unwrap().len(), after.len());
+    assert_eq!(
+        serde_json::from_str::<Vec<Value>>(&before).unwrap().len(),
+        after.len()
+    );
 
     // 干净卡：无违规且原本无键 → 不写键（不污染）
     let mut clean: HashMap<String, String> = HashMap::new();
@@ -755,7 +860,10 @@ fn preference_retrieve_respects_token_budget_end_to_end() {
         ..Default::default()
     };
     let candidates = extract_preferences(&observation);
-    assert!(candidates.len() >= 2, "显式要求应抽出多类偏好: {candidates:?}");
+    assert!(
+        candidates.len() >= 2,
+        "显式要求应抽出多类偏好: {candidates:?}"
+    );
     let outcome = consolidate(&mut store, &candidates, 1_000);
     assert!(!outcome.added.is_empty());
 
@@ -771,7 +879,10 @@ fn preference_retrieve_respects_token_budget_end_to_end() {
     let zero = retrieve_preference_prompt(&store, "备考生物", &templates, 0);
     assert!(zero.is_empty());
     let tiny = retrieve_preference_prompt(&store, "备考生物", &templates, 1);
-    assert!(tiny.is_empty(), "连 header 都放不下时必须返回空串: {tiny:?}");
+    assert!(
+        tiny.is_empty(),
+        "连 header 都放不下时必须返回空串: {tiny:?}"
+    );
 
     // 每 kind 最多一条：同 kind 注入行数不超过 kind 数
     let lines = full.lines().skip(1).count();
@@ -824,7 +935,10 @@ fn fsrs_suggest_splits_heuristics_cover_enumerated_comparison_and_atomic() {
     assert!(comparison[0].front.contains("有丝分裂"));
     assert!(comparison[1].front.contains("减数分裂"));
 
-    assert!(suggest_splits("水的化学式？", "H2O。", 10).is_empty(), "原子卡不拆");
+    assert!(
+        suggest_splits("水的化学式？", "H2O。", 10).is_empty(),
+        "原子卡不拆"
+    );
     assert!(suggest_splits("", "back", 10).is_empty());
     assert!(suggest_splits("front", "back", 0).is_empty());
 }
@@ -837,14 +951,24 @@ fn fsrs_profile_and_interference_chain_respects_budgets() {
     let rows = vec![
         make_row("card-a", "牛顿第二定律的表达式是什么？", 6, &["力学"], None),
         make_row("card-b", "牛顿第二定律的适用条件？", 4, &["力学"], None),
-        make_row("card-c", "光合作用发生在哪里？", 0, &["生物"], Some("cloze")),
+        make_row(
+            "card-c",
+            "光合作用发生在哪里？",
+            0,
+            &["生物"],
+            Some("cloze"),
+        ),
     ];
     let profile = build_profile(&rows, 10_000, &cfg);
     assert_eq!(profile.total_cards, 3);
     assert!(!profile.is_empty());
     assert_eq!(profile.confusable_tags[0].tag, "力学");
     assert_eq!(profile.confusable_tags[0].total_lapses, 10);
-    assert_eq!(profile.high_lapse_cards.len(), 2, "lapses>=2 的卡才进入示例");
+    assert_eq!(
+        profile.high_lapse_cards.len(),
+        2,
+        "lapses>=2 的卡才进入示例"
+    );
 
     let section = render_profile_section(&profile, &cfg).expect("非空画像必须渲染");
     assert!(section.contains("数据仅本地"));
@@ -898,7 +1022,10 @@ fn protocol_capability_detection_and_resolution_matrix() {
     );
     assert_eq!(
         resolve_output_protocol(Some("auto"), SchemaCapability::Unknown),
-        (OutputProtocol::Delimiter, "auto_capability_unknown_fallback")
+        (
+            OutputProtocol::Delimiter,
+            "auto_capability_unknown_fallback"
+        )
     );
     assert_eq!(
         resolve_output_protocol(None, SchemaCapability::JsonObjectOnly),
@@ -943,7 +1070,11 @@ fn protocol_multi_template_schema_uses_one_of_with_discriminator() {
     for variant in variants {
         let discriminator = &variant["properties"][TEMPLATE_ID_KEY];
         assert_eq!(discriminator["type"], json!("string"));
-        assert_eq!(discriminator["enum"].as_array().unwrap().len(), 1, "判别字段 enum 单值");
+        assert_eq!(
+            discriminator["enum"].as_array().unwrap().len(),
+            1,
+            "判别字段 enum 单值"
+        );
         assert!(variant["required"]
             .as_array()
             .unwrap()
@@ -1030,7 +1161,10 @@ fn cross_module_repair_then_lint_then_merge_chain() {
         },
         &LintConfig::default(),
     );
-    assert!(issues.iter().any(|i| i.code == "todo_residue"), "{issues:?}");
+    assert!(
+        issues.iter().any(|i| i.code == "todo_residue"),
+        "{issues:?}"
+    );
 
     merge_flags(&mut extra_fields, &issues);
     let flags: Vec<Value> = serde_json::from_str(&extra_fields[QA_FLAGS_FIELD]).unwrap();
@@ -1065,7 +1199,11 @@ fn eval_fixture_manifest_stays_consistent_with_production_constants() {
     );
 
     let cases = manifest["cases"].as_array().expect("cases array");
-    assert!(cases.len() >= 28, "基线至少 28 个 fixture，当前 {}", cases.len());
+    assert!(
+        cases.len() >= 28,
+        "基线至少 28 个 fixture，当前 {}",
+        cases.len()
+    );
 
     let mut seen_ids = HashSet::new();
     let allowed_outcomes: HashSet<&str> = ["parse_ok", "repair_ok", "error_card"].into();
@@ -1085,9 +1223,15 @@ fn eval_fixture_manifest_stays_consistent_with_production_constants() {
             eval_fixture_root().join(file).is_file(),
             "case {id} 的夹具文件缺失: {file}"
         );
-        for card in case["expected"]["cards"].as_array().expect("expected.cards") {
+        for card in case["expected"]["cards"]
+            .as_array()
+            .expect("expected.cards")
+        {
             let outcome = card["outcome"].as_str().expect("outcome");
-            assert!(allowed_outcomes.contains(outcome), "case {id} 结局非法: {outcome}");
+            assert!(
+                allowed_outcomes.contains(outcome),
+                "case {id} 结局非法: {outcome}"
+            );
         }
     }
 
@@ -1151,5 +1295,8 @@ fn eval_fixture_repair_expectations_hold_against_production_repair_json() {
             _ => {}
         }
     }
-    assert!(checked >= 1, "至少应存在一个可对照生产 repair_json 的 direct 用例");
+    assert!(
+        checked >= 1,
+        "至少应存在一个可对照生产 repair_json 的 direct 用例"
+    );
 }

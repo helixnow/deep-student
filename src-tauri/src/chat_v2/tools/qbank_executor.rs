@@ -3587,18 +3587,15 @@ impl QBankExecutor {
         // 达标阈值跟随用户目标（缺省 10），与 UI 的每日一练目标范围 5..=50 兼容
         let daily_target = match call.arguments.get("daily_target") {
             None | Some(Value::Null) => None,
-            Some(value) => Some(
-                value
-                    .as_u64()
-                    .filter(|n| (1..=50).contains(n))
-                    .ok_or_else(|| {
-                        qbank_error(
-                            "INVALID_ARGS",
-                            "daily_target 必须是 1..=50 的整数",
-                            "修正每日目标后重试",
-                        )
-                    })? as u32,
-            ),
+            Some(value) => Some(value.as_u64().filter(|n| (1..=50).contains(n)).ok_or_else(
+                || {
+                    qbank_error(
+                        "INVALID_ARGS",
+                        "daily_target 必须是 1..=50 的整数",
+                        "修正每日目标后重试",
+                    )
+                },
+            )? as u32),
         };
         let calendar = service
             .get_check_in_calendar(

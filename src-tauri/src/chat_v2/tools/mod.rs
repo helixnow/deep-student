@@ -35,9 +35,9 @@
 //! 详见 `executor.rs` 中 `ToolExecutor` trait 文档。
 
 pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + OpenAlex）
-// ★ 2026-08 死链路清理：anki_executor（旧 CardForge AnkiToolExecutor，
-// 经 anki_tool_call 事件桥接前端 CardAgent）已删除——pipeline 从不注册它，
-// 前端 CardAgent 也已不再监听 anki_tool_call。Anki 制卡统一走 chatanki_executor。
+                                  // ★ 2026-08 死链路清理：anki_executor（旧 CardForge AnkiToolExecutor，
+                                  // 经 anki_tool_call 事件桥接前端 CardAgent）已删除——pipeline 从不注册它，
+                                  // 前端 CardAgent 也已不再监听 anki_tool_call。Anki 制卡统一走 chatanki_executor。
 mod arg_utils;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）

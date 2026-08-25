@@ -150,8 +150,20 @@ fn injection_contains_profile_and_interference_sections() {
 #[test]
 fn unrelated_document_still_gets_profile_without_interference() {
     let (_tmp, db) = setup_db();
-    insert_card(&db, "t1", "card-x", "细胞呼吸的三个阶段？", "[\"生物\",\"代谢\"]");
-    insert_card(&db, "t1", "card-y", "细胞呼吸的场所？", "[\"生物\",\"代谢\"]");
+    insert_card(
+        &db,
+        "t1",
+        "card-x",
+        "细胞呼吸的三个阶段？",
+        "[\"生物\",\"代谢\"]",
+    );
+    insert_card(
+        &db,
+        "t1",
+        "card-y",
+        "细胞呼吸的场所？",
+        "[\"生物\",\"代谢\"]",
+    );
     let service = FsrsReviewService::new(db.clone());
     service
         .enqueue_cards(&["card-x".to_string(), "card-y".to_string()])

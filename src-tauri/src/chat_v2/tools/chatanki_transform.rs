@@ -193,8 +193,9 @@ impl ChatAnkiTransformArgs {
             None => NormalizedTransformSelection::DefaultLive,
             Some(selection) => match (selection.card_ids, selection.filter) {
                 (Some(_), Some(_)) => {
-                    return Err("selection.cardIds and selection.filter are mutually exclusive"
-                        .to_string());
+                    return Err(
+                        "selection.cardIds and selection.filter are mutually exclusive".to_string(),
+                    );
                 }
                 (None, None) => {
                     return Err("selection requires cardIds or filter".to_string());
@@ -410,12 +411,12 @@ pub fn compile_transform_ops(
                     replacement: replacement.clone(),
                 }
             }
-            NormalizedTransformOp::TagAdd { tags } => CompiledTransformOp::TagAdd {
-                tags: tags.clone(),
-            },
-            NormalizedTransformOp::TagRemove { tags } => CompiledTransformOp::TagRemove {
-                tags: tags.clone(),
-            },
+            NormalizedTransformOp::TagAdd { tags } => {
+                CompiledTransformOp::TagAdd { tags: tags.clone() }
+            }
+            NormalizedTransformOp::TagRemove { tags } => {
+                CompiledTransformOp::TagRemove { tags: tags.clone() }
+            }
         };
         compiled.push(compiled_op);
     }
@@ -464,7 +465,9 @@ impl TransformFieldGrowthError {
 
 fn capture_reference_len(captures: &regex::Captures<'_>, reference: &str) -> usize {
     match reference.parse::<usize>() {
-        Ok(index) => captures.get(index).map_or(0, |matched| matched.as_str().len()),
+        Ok(index) => captures
+            .get(index)
+            .map_or(0, |matched| matched.as_str().len()),
         Err(_) => captures
             .name(reference)
             .map_or(0, |matched| matched.as_str().len()),
@@ -473,10 +476,7 @@ fn capture_reference_len(captures: &regex::Captures<'_>, reference: &str) -> usi
 
 /// 精确计算 regex crate 替换串在一组 captures 上的展开字节数，语义覆盖
 /// `$name` / `$1` / `${name}` / `${1}` / `$$`。只做整数运算，不物化展开串。
-fn expanded_replacement_len(
-    captures: &regex::Captures<'_>,
-    replacement: &str,
-) -> usize {
+fn expanded_replacement_len(captures: &regex::Captures<'_>, replacement: &str) -> usize {
     let bytes = replacement.as_bytes();
     let mut cursor = 0usize;
     let mut expanded = 0usize;
@@ -621,13 +621,8 @@ pub fn apply_transform_ops(
                     )?;
                 }
                 TransformField::Back => {
-                    result.back = bounded_regex_replace(
-                        op_index,
-                        "back",
-                        regex,
-                        &result.back,
-                        replacement,
-                    )?;
+                    result.back =
+                        bounded_regex_replace(op_index, "back", regex, &result.back, replacement)?;
                 }
                 TransformField::Text => {
                     // text 为 null 的卡（非 Cloze 卡）自动跳过，不视为错误。
@@ -658,10 +653,7 @@ pub fn apply_transform_ops(
 }
 
 /// 变换前后字段级 diff（稳定顺序：front/back/text/tags）。
-pub fn changed_field_names(
-    before: &TransformFields,
-    after: &TransformFields,
-) -> Vec<&'static str> {
+pub fn changed_field_names(before: &TransformFields, after: &TransformFields) -> Vec<&'static str> {
     let mut changed = Vec::new();
     if before.front != after.front {
         changed.push("front");
@@ -685,10 +677,7 @@ pub enum TransformCardPlan {
     /// 变换后的字段快照（可能与 before 相同 = 未变更）。
     After(TransformFields),
     /// 该卡计划非法（如脚本输出条目违反合同），apply 时逐卡拒绝、不整批失败。
-    Invalid {
-        code: &'static str,
-        detail: String,
-    },
+    Invalid { code: &'static str, detail: String },
 }
 
 /// ops 模式：把编译后的操作序列应用到选择集，产出与 script 模式同构的逐卡计划。
@@ -699,15 +688,15 @@ pub fn plan_transform_ops(
 ) -> Vec<TransformCardPlan> {
     selected
         .iter()
-        .map(|card| {
-            match apply_transform_ops(ops, &TransformFields::from_card(card)) {
+        .map(
+            |card| match apply_transform_ops(ops, &TransformFields::from_card(card)) {
                 Ok(after) => TransformCardPlan::After(after),
                 Err(growth) => TransformCardPlan::Invalid {
                     code: "field_growth_exceeded",
                     detail: growth.detail(),
                 },
-            }
-        })
+            },
+        )
         .collect()
 }
 
@@ -1309,7 +1298,12 @@ mod tests {
             &[]
         )));
         assert!(!transform_fields_are_valid(&fields("Q", "", None, &[])));
-        assert!(!transform_fields_are_valid(&fields("", "", Some("  "), &[])));
+        assert!(!transform_fields_are_valid(&fields(
+            "",
+            "",
+            Some("  "),
+            &[]
+        )));
     }
 
     // ------------------------------------------------------------------

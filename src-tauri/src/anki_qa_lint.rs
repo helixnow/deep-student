@@ -376,8 +376,7 @@ pub fn issues_from_observation(observation: &FingerprintObservation) -> Vec<Lint
 ///
 /// `Warn`/`Info` 永不触发拒绝——这是"低置信只 flag 不拒绝"的硬保证。
 pub fn should_reject(issues: &[LintIssue], cfg: &LintConfig) -> bool {
-    cfg.level == LintLevel::Reject
-        && issues.iter().any(|i| i.severity == LintSeverity::Error)
+    cfg.level == LintLevel::Reject && issues.iter().any(|i| i.severity == LintSeverity::Error)
 }
 
 /// 将 lint 违规合并进 `extra_fields[_qa_flags]`（JSON 数组字符串）。
@@ -826,8 +825,8 @@ fn scan_cloze(s: &str) -> ClozeScan {
         match s[content_start..].find("}}") {
             Some(off) => {
                 let content = &s[content_start..content_start + off];
-                let index_ok = !digits.is_empty()
-                    && digits.parse::<u32>().map(|n| n >= 1).unwrap_or(false);
+                let index_ok =
+                    !digits.is_empty() && digits.parse::<u32>().map(|n| n >= 1).unwrap_or(false);
                 if !index_ok {
                     scan.bad_index += 1;
                 } else if content.trim().is_empty() {
@@ -849,10 +848,7 @@ fn scan_cloze(s: &str) -> ClozeScan {
 /// 规则 3：cloze `{{cN::...}}` 未配对 / 空挖空 / 非法序号。
 /// 检查对象：Text 字段（优先）+ front（有些模型把 cloze 写进 front）。
 fn check_cloze(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
-    let targets: [(&str, &str); 2] = [
-        ("text", input.text.unwrap_or("")),
-        ("front", input.front),
-    ];
+    let targets: [(&str, &str); 2] = [("text", input.text.unwrap_or("")), ("front", input.front)];
     for (field, content) in targets {
         if !content.contains("{{c") {
             continue;
@@ -931,8 +927,8 @@ fn check_answer_leak(input: &CardLintInput, cfg: &LintConfig, issues: &mut Vec<L
 fn check_multi_concept(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
     let front = strip_html(input.front);
     let question_marks = front.chars().filter(|&c| c == '?' || c == '？').count();
-    let has_fenbie = front.contains("分别")
-        && ['和', '及', '与', '、'].iter().any(|&c| front.contains(c));
+    let has_fenbie =
+        front.contains("分别") && ['和', '及', '与', '、'].iter().any(|&c| front.contains(c));
     let lower = front.to_lowercase();
     let interrogatives = ["what", "why", "how", "when", "where", "which", "who"];
     let english_double = lower.contains(" and ")
@@ -992,8 +988,8 @@ fn check_placeholder(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
     let template_placeholder =
         regex::Regex::new(r"\{\{[A-Z][A-Z0-9_]+\}\}").expect("static regex must compile");
     // 独立 xxx token（3 个及以上 x，两侧非字母数字）
-    let xxx_token =
-        regex::Regex::new(r"(?i)(^|[^a-z0-9])x{3,}([^a-z0-9]|$)").expect("static regex must compile");
+    let xxx_token = regex::Regex::new(r"(?i)(^|[^a-z0-9])x{3,}([^a-z0-9]|$)")
+        .expect("static regex must compile");
 
     for (field, content) in fields {
         if content.is_empty() {
@@ -1095,7 +1091,10 @@ fn check_mcq(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
         .iter()
         .find(|(k, _)| {
             let lower = k.to_lowercase();
-            lower == "correct" || lower == "answer" || lower == "correct_answer" || lower == "correctanswer"
+            lower == "correct"
+                || lower == "answer"
+                || lower == "correct_answer"
+                || lower == "correctanswer"
         })
         .map(|(_, v)| v.trim());
 
@@ -1128,7 +1127,11 @@ fn check_mcq(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
                         issues.push(LintIssue::new(
                             "mcq_answer_not_in_options",
                             "correct",
-                            format!("答案 \"{}\" 对应的选项 {} 缺失或为空", ans, letter.to_uppercase()),
+                            format!(
+                                "答案 \"{}\" 对应的选项 {} 缺失或为空",
+                                ans,
+                                letter.to_uppercase()
+                            ),
                             LintSeverity::Error,
                         ));
                     }
@@ -1544,7 +1547,10 @@ mod tests {
         let t: Vec<String> = vec![];
         let input = basic_input("什么是惯性？", "保持运动状态的性质", &t, &extras);
         let issues = lint_card(&input, &LintConfig::default());
-        let tag_issue = issues.iter().find(|i| i.code == "tags_empty").expect("must flag");
+        let tag_issue = issues
+            .iter()
+            .find(|i| i.code == "tags_empty")
+            .expect("must flag");
         assert_eq!(tag_issue.severity, LintSeverity::Info);
         // Info 永不导致拒绝
         let mut cfg = LintConfig::default();
@@ -1613,14 +1619,21 @@ mod tests {
         let obs = tracker.observe("细胞膜的主要成分是磷脂双分子层结构");
         assert!(!obs.exact_duplicate);
         let sim = obs.near_duplicate.expect("小编辑必须判为近重复");
-        assert!(sim >= DEFAULT_NEAR_DUPLICATE_THRESHOLD && sim < 1.0, "sim={}", sim);
+        assert!(
+            sim >= DEFAULT_NEAR_DUPLICATE_THRESHOLD && sim < 1.0,
+            "sim={}",
+            sim
+        );
 
         // 经 lint 输出为 near_duplicate flag（Warn，不丢卡）
         let issues = issues_from_observation(&obs);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].code, "near_duplicate");
         assert_eq!(issues[0].severity, LintSeverity::Warn);
-        assert!(issues[0].message.contains('%'), "message 应携带相似度百分比");
+        assert!(
+            issues[0].message.contains('%'),
+            "message 应携带相似度百分比"
+        );
     }
 
     #[test]
@@ -1629,7 +1642,10 @@ mod tests {
         tracker.observe("什么是操作系统？");
         let obs = tracker.observe("什么是操作系统？");
         assert!(obs.exact_duplicate);
-        assert!(obs.near_duplicate.is_none(), "精确重复不叠加 near_duplicate");
+        assert!(
+            obs.near_duplicate.is_none(),
+            "精确重复不叠加 near_duplicate"
+        );
         let issues = issues_from_observation(&obs);
         assert_eq!(codes(&issues), vec!["duplicate_in_document"]);
     }
@@ -1654,7 +1670,10 @@ mod tests {
         let mut tracker = FingerprintTracker::new();
         assert_eq!(tracker.observe(""), FingerprintObservation::default());
         assert_eq!(tracker.observe("   "), FingerprintObservation::default());
-        assert_eq!(tracker.observe("<b> </b>"), FingerprintObservation::default());
+        assert_eq!(
+            tracker.observe("<b> </b>"),
+            FingerprintObservation::default()
+        );
         assert!(tracker.is_empty(), "空指纹不得登记");
     }
 
@@ -1724,11 +1743,17 @@ mod tests {
         // 模拟两个 segment task 各自取 handle（生产路径的并发形态）
         let handle_a = document_tracker(&doc_id);
         let handle_b = document_tracker(&doc_id);
-        assert!(Arc::ptr_eq(&handle_a, &handle_b), "同一文档必须共享同一 tracker");
+        assert!(
+            Arc::ptr_eq(&handle_a, &handle_b),
+            "同一文档必须共享同一 tracker"
+        );
 
         handle_a.lock().unwrap().observe("跨segment共享的front");
         let obs = handle_b.lock().unwrap().observe("跨segment共享的front");
-        assert!(obs.exact_duplicate, "另一 segment 的 handle 必须看到已登记指纹");
+        assert!(
+            obs.exact_duplicate,
+            "另一 segment 的 handle 必须看到已登记指纹"
+        );
 
         release_document_tracker(&doc_id);
     }
@@ -1845,7 +1870,10 @@ mod tests {
 
     // -------- 规则 11：选择题 --------
 
-    fn mcq_extras(options: &[(&str, &str)], answer: Option<(&str, &str)>) -> HashMap<String, String> {
+    fn mcq_extras(
+        options: &[(&str, &str)],
+        answer: Option<(&str, &str)>,
+    ) -> HashMap<String, String> {
         let mut m = HashMap::new();
         for (k, v) in options {
             m.insert(k.to_string(), v.to_string());
@@ -1859,18 +1887,30 @@ mod tests {
     #[test]
     fn mcq_valid_card_passes() {
         let extras = mcq_extras(
-            &[("optionA", "地球"), ("optionB", "火星"), ("optionC", "金星"), ("optionD", "木星")],
+            &[
+                ("optionA", "地球"),
+                ("optionB", "火星"),
+                ("optionC", "金星"),
+                ("optionD", "木星"),
+            ],
             Some(("correct", "A")),
         );
         let t = tags(&["天文"]);
         let input = basic_input("太阳系中密度最大的行星？", "地球", &t, &extras);
         let issues = lint_card(&input, &LintConfig::default());
-        assert!(!codes(&issues).iter().any(|c| c.starts_with("mcq_")), "{:?}", issues);
+        assert!(
+            !codes(&issues).iter().any(|c| c.starts_with("mcq_")),
+            "{:?}",
+            issues
+        );
     }
 
     #[test]
     fn mcq_too_few_options_is_error() {
-        let extras = mcq_extras(&[("optionA", "地球"), ("optionB", "  ")], Some(("correct", "A")));
+        let extras = mcq_extras(
+            &[("optionA", "地球"), ("optionB", "  ")],
+            Some(("correct", "A")),
+        );
         let t = tags(&["天文"]);
         let input = basic_input("哪个是行星？", "地球", &t, &extras);
         let issues = lint_card(&input, &LintConfig::default());
@@ -1937,7 +1977,10 @@ mod tests {
             &extras,
         );
         let issues = lint_card(&input, &LintConfig::default());
-        let issue = issues.iter().find(|i| i.code == "mixed_language").expect("must flag");
+        let issue = issues
+            .iter()
+            .find(|i| i.code == "mixed_language")
+            .expect("must flag");
         assert_eq!(issue.severity, LintSeverity::Info);
         let mut cfg = LintConfig::default();
         cfg.level = LintLevel::Reject;
@@ -2006,7 +2049,8 @@ mod tests {
         // 模拟 extract_fields_with_rules 已写入的字段规则违规
         extras.insert(
             QA_FLAGS_FIELD.to_string(),
-            r#"[{"field":"front","rule":"min_length","message":"长度 3 小于最小长度 20"}]"#.to_string(),
+            r#"[{"field":"front","rule":"min_length","message":"长度 3 小于最小长度 20"}]"#
+                .to_string(),
         );
         let issues = vec![LintIssue::new(
             "answer_leak",
@@ -2016,8 +2060,7 @@ mod tests {
         )];
         merge_flags(&mut extras, &issues);
 
-        let merged: Vec<Value> =
-            serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
+        let merged: Vec<Value> = serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0]["rule"], "min_length", "既有条目必须保留在前");
         assert_eq!(merged[1]["code"], "answer_leak");
@@ -2035,8 +2078,7 @@ mod tests {
         )];
         merge_flags(&mut extras, &issues);
         merge_flags(&mut extras, &issues); // 重复 merge
-        let merged: Vec<Value> =
-            serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
+        let merged: Vec<Value> = serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
         assert_eq!(merged.len(), 1, "重复 merge 不产生重复条目");
     }
 
@@ -2044,7 +2086,10 @@ mod tests {
     fn merge_flags_no_issues_no_key() {
         let mut extras = empty_extras();
         merge_flags(&mut extras, &[]);
-        assert!(!extras.contains_key(QA_FLAGS_FIELD), "干净卡片不写 _qa_flags");
+        assert!(
+            !extras.contains_key(QA_FLAGS_FIELD),
+            "干净卡片不写 _qa_flags"
+        );
     }
 
     #[test]
@@ -2058,8 +2103,7 @@ mod tests {
             LintSeverity::Info,
         )];
         merge_flags(&mut extras, &issues);
-        let merged: Vec<Value> =
-            serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
+        let merged: Vec<Value> = serde_json::from_str(extras.get(QA_FLAGS_FIELD).unwrap()).unwrap();
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0]["code"], "legacy_flags_unparsed");
         assert_eq!(merged[0]["message"], "not-json");
@@ -2111,13 +2155,17 @@ mod tests {
     #[test]
     fn qa_flags_field_name_matches_streaming_service() {
         // 两个模块独立声明同名常量以避免耦合；此断言守护两者不漂移
-        assert_eq!(QA_FLAGS_FIELD, crate::streaming_anki_service::QA_FLAGS_FIELD);
+        assert_eq!(
+            QA_FLAGS_FIELD,
+            crate::streaming_anki_service::QA_FLAGS_FIELD
+        );
     }
 
     #[test]
     fn lint_config_deserializes_with_serde_defaults() {
         // 前端只传部分字段时其余用默认值（serde(default)）
-        let cfg: LintConfig = serde_json::from_str(r#"{"level":"reject","max_front_chars":100}"#).unwrap();
+        let cfg: LintConfig =
+            serde_json::from_str(r#"{"level":"reject","max_front_chars":100}"#).unwrap();
         assert_eq!(cfg.level, LintLevel::Reject);
         assert_eq!(cfg.max_front_chars, 100);
         assert!(cfg.check_cloze);
@@ -2143,7 +2191,8 @@ mod tests {
         }
         let declared: BTreeSet<String> = codes::ALL.iter().map(|s| s.to_string()).collect();
         assert_eq!(
-            declared, emitted,
+            declared,
+            emitted,
             "codes 模块与实际产出的 code 漂移：\n仅常量有: {:?}\n仅产出有: {:?}",
             declared.difference(&emitted).collect::<Vec<_>>(),
             emitted.difference(&declared).collect::<Vec<_>>()
@@ -2158,7 +2207,10 @@ mod tests {
             .iter()
             .copied()
             .collect();
-        assert_eq!(from_codes, from_contract, "codes::ALL 与 LINT_CONTRACT_CODES 漂移");
+        assert_eq!(
+            from_codes, from_contract,
+            "codes::ALL 与 LINT_CONTRACT_CODES 漂移"
+        );
     }
 
     #[test]
@@ -2169,8 +2221,8 @@ mod tests {
         assert_eq!(set.len(), codes::ALL.len(), "codes::ALL 含重复项");
         // ALL 覆盖模块内声明的每个 &str 常量（漏列即红）
         let source = include_str!("anki_qa_lint.rs");
-        let decl = regex::Regex::new(r#"pub const [A-Z][A-Z0-9_]*: &str = "([a-z][a-z0-9_]*)";"#)
-            .unwrap();
+        let decl =
+            regex::Regex::new(r#"pub const [A-Z][A-Z0-9_]*: &str = "([a-z][a-z0-9_]*)";"#).unwrap();
         let declared: HashSet<String> = decl
             .captures_iter(source)
             .map(|caps| caps[1].to_string())

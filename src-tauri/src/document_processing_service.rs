@@ -200,7 +200,12 @@ fn segment_document(
 
     // 使用重叠分段策略
     let mut segments = if overlap_size > 0 {
-        segment_with_overlap(content, max_tokens_per_segment, overlap_size, snap_boundaries)?
+        segment_with_overlap(
+            content,
+            max_tokens_per_segment,
+            overlap_size,
+            snap_boundaries,
+        )?
     } else {
         segment_without_overlap(content, max_tokens_per_segment, snap_boundaries)?
     };
@@ -255,9 +260,8 @@ fn estimate_tokens(text: &str) -> usize {
         .count();
 
     let other_chars = char_count - chinese_chars;
-    let estimated_tokens = chinese_chars
-        + (word_count as f32 * 1.3) as usize
-        + (other_chars as f32 * 0.2) as usize;
+    let estimated_tokens =
+        chinese_chars + (word_count as f32 * 1.3) as usize + (other_chars as f32 * 0.2) as usize;
 
     std::cmp::max(estimated_tokens, char_count / 4) // 最少不低于字符数的1/4
 }
@@ -322,8 +326,7 @@ fn segment_without_overlap(
         }
 
         // 检查添加这个段落是否会超出限制
-        if current_tokens + paragraph_tokens > max_tokens_per_segment
-            && !current_segment.is_empty()
+        if current_tokens + paragraph_tokens > max_tokens_per_segment && !current_segment.is_empty()
         {
             // 保存当前分段并开始新分段
             if !current_segment.trim().is_empty() {
@@ -683,8 +686,7 @@ fn segment_with_overlap(
                 combined_tokens = base_tokens;
             }
             if combined_tokens > max_tokens_per_segment {
-                core_segment =
-                    take_prefix_with_token_limit(&core_segment, max_tokens_per_segment);
+                core_segment = take_prefix_with_token_limit(&core_segment, max_tokens_per_segment);
                 base_tokens = estimate_tokens(&core_segment);
                 combined_tokens = base_tokens;
             }
@@ -1067,12 +1069,7 @@ mod tests {
         );
         for (i, seg) in segments.iter().enumerate() {
             let t = estimate_tokens(seg);
-            assert!(
-                t <= 10_000,
-                "分段{}估算 {} tokens 超过 10k 预算",
-                i + 1,
-                t
-            );
+            assert!(t <= 10_000, "分段{}估算 {} tokens 超过 10k 预算", i + 1, t);
             assert!(!seg.trim().is_empty(), "分段{}为空白", i + 1);
         }
     }

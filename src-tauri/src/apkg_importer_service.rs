@@ -568,7 +568,9 @@ fn parse_archive<R: Read + Seek>(
                 .collect::<Vec<_>>();
             orphans.sort();
             for key in orphans {
-                media_warnings.push(format!("包内数字媒体条目未出现在 media 清单中，已跳过: {key}"));
+                media_warnings.push(format!(
+                    "包内数字媒体条目未出现在 media 清单中，已跳过: {key}"
+                ));
                 skip_tracker.record(MEDIA_SKIP_REASON_ORPHAN_ENTRY, key);
             }
             extracted
@@ -3793,10 +3795,7 @@ mod tests {
             result.media_report.skips[0].reason,
             MEDIA_SKIP_REASON_UNSAFE_FILENAME
         );
-        assert_eq!(
-            result.media_report.skips[0].filenames,
-            vec!["C:\\evil.exe"]
-        );
+        assert_eq!(result.media_report.skips[0].filenames, vec!["C:\\evil.exe"]);
     }
 
     /// 安全回归：媒体目录中的悬空符号链接不能让 File::create 跟随链接并在
@@ -3831,12 +3830,10 @@ mod tests {
             MEDIA_SKIP_REASON_IO_ERROR
         );
         assert!(!outside.exists(), "symlink referent must never be created");
-        assert!(
-            std::fs::symlink_metadata(&link)
-                .expect("link remains")
-                .file_type()
-                .is_symlink()
-        );
+        assert!(std::fs::symlink_metadata(&link)
+            .expect("link remains")
+            .file_type()
+            .is_symlink());
     }
 
     /// 解压炸弹：现代包媒体条目 zstd 解压后超过单条目上限 → 拒绝、删除半成品、
@@ -3856,8 +3853,8 @@ mod tests {
             zstd::stream::encode_all(Cursor::new(encode_media_entries(&["bomb.bin"])), 1)
                 .expect("zstd manifest");
         // 512 KiB 零字节 → zstd 后极小，解压后远超 128 KiB 单条目上限
-        let bomb = zstd::stream::encode_all(Cursor::new(vec![0u8; 512 * 1024]), 3)
-            .expect("zstd bomb");
+        let bomb =
+            zstd::stream::encode_all(Cursor::new(vec![0u8; 512 * 1024]), 3).expect("zstd bomb");
         assert!(bomb.len() < 16 * 1024, "炸弹本体必须显著小于解压上限");
         let apkg = make_apkg(vec![
             ("collection.anki21b", compressed),
@@ -3913,7 +3910,10 @@ mod tests {
         assert_eq!(result.media_imported, 1);
         assert_eq!(result.media_skipped, 0);
         let extracted = media_dir.path().join("clip.mp3");
-        assert_eq!(std::fs::read(&extracted).expect("audio bytes"), b"mp3-bytes");
+        assert_eq!(
+            std::fs::read(&extracted).expect("audio bytes"),
+            b"mp3-bytes"
+        );
         let imported = db
             .get_cards_for_document(&result.document_id)
             .expect("imported cards");
@@ -3945,10 +3945,7 @@ mod tests {
         assert_eq!(value["mediaReport"]["skipped"], 1);
         assert_eq!(value["mediaReport"]["skips"][0]["reason"], "entry_missing");
         assert_eq!(value["mediaReport"]["skips"][0]["count"], 1);
-        assert_eq!(
-            value["mediaReport"]["skips"][0]["filenames"][0],
-            "gone.png"
-        );
+        assert_eq!(value["mediaReport"]["skips"][0]["filenames"][0], "gone.png");
         assert!(value["mediaReport"]["mediaDir"]
             .as_str()
             .is_some_and(|dir| !dir.is_empty()));

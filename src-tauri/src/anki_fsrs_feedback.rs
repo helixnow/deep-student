@@ -246,13 +246,15 @@ pub fn build_profile(
     let mut templates: Vec<TemplateLapseStat> = by_template
         .into_iter()
         .filter(|(_, (_, _, total_lapses))| *total_lapses > 0)
-        .map(|(template_id, (cards, due_cards, total_lapses))| TemplateLapseStat {
-            template_id,
-            cards,
-            due_cards,
-            total_lapses,
-            avg_lapses: total_lapses as f64 / cards.max(1) as f64,
-        })
+        .map(
+            |(template_id, (cards, due_cards, total_lapses))| TemplateLapseStat {
+                template_id,
+                cards,
+                due_cards,
+                total_lapses,
+                avg_lapses: total_lapses as f64 / cards.max(1) as f64,
+            },
+        )
         .collect();
     templates.sort_by(|a, b| {
         b.total_lapses
@@ -276,11 +278,7 @@ pub fn build_profile(
             avg_lapses: total_lapses as f64 / cards.max(1) as f64,
         })
         .collect();
-    tags.sort_by(|a, b| {
-        b.total_lapses
-            .cmp(&a.total_lapses)
-            .then(a.tag.cmp(&b.tag))
-    });
+    tags.sort_by(|a, b| b.total_lapses.cmp(&a.total_lapses).then(a.tag.cmp(&b.tag)));
     tags.truncate(cfg.max_tags);
     profile.confusable_tags = tags;
 
@@ -441,7 +439,9 @@ pub fn build_interference_hints(
     if rows.is_empty() || document_content.trim().is_empty() {
         return Vec::new();
     }
-    let keywords: HashSet<String> = extract_keywords(document_content, 128).into_iter().collect();
+    let keywords: HashSet<String> = extract_keywords(document_content, 128)
+        .into_iter()
+        .collect();
     if keywords.is_empty() {
         return Vec::new();
     }
@@ -450,7 +450,8 @@ pub fn build_interference_hints(
         .iter()
         .filter(|r| r.lapses >= cfg.min_lapses_for_hint)
         .filter_map(|r| {
-            let front_keywords: HashSet<String> = extract_keywords(&r.front, 64).into_iter().collect();
+            let front_keywords: HashSet<String> =
+                extract_keywords(&r.front, 64).into_iter().collect();
             let overlap = front_keywords.intersection(&keywords).count();
             if overlap == 0 {
                 return None;
@@ -621,8 +622,14 @@ fn strip_enumeration_marker(line: &str) -> Option<&str> {
         }
     }
     // "1." / "1、" / "1）" / "(1)" 形式
-    let unwrapped = line.strip_prefix('(').or_else(|| line.strip_prefix('（')).unwrap_or(line);
-    let digits: String = unwrapped.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let unwrapped = line
+        .strip_prefix('(')
+        .or_else(|| line.strip_prefix('（'))
+        .unwrap_or(line);
+    let digits: String = unwrapped
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
     if digits.is_empty() {
         return None;
     }
@@ -631,7 +638,11 @@ fn strip_enumeration_marker(line: &str) -> Option<&str> {
     match chars.next() {
         Some(sep) if matches!(sep, '.' | '、' | '．' | ')' | '）' | '：' | ':') => {
             let rest = after[sep.len_utf8()..].trim_start();
-            if rest.is_empty() { None } else { Some(rest) }
+            if rest.is_empty() {
+                None
+            } else {
+                Some(rest)
+            }
         }
         _ => None,
     }
@@ -647,7 +658,9 @@ fn parse_comparison_front(front: &str) -> Option<(String, String)> {
     for conj in ["与", "和", "跟", " vs ", " VS "] {
         if let Some(pos) = head.find(conj) {
             let a = head[..pos].trim().trim_start_matches(['「', '"']);
-            let b = head[pos + conj.len()..].trim().trim_end_matches(['」', '"']);
+            let b = head[pos + conj.len()..]
+                .trim()
+                .trim_end_matches(['」', '"']);
             if !a.is_empty() && !b.is_empty() {
                 return Some((a.to_string(), b.to_string()));
             }
@@ -680,7 +693,10 @@ fn split_sentences(text: &str) -> Vec<String> {
 // ============================================================
 
 /// 从 FSRS 库构建用户复习画像；任何查询失败降级为空画像（绝不报错）。
-pub fn build_user_review_profile(db: &Arc<Database>, cfg: &FsrsFeedbackConfig) -> UserReviewProfile {
+pub fn build_user_review_profile(
+    db: &Arc<Database>,
+    cfg: &FsrsFeedbackConfig,
+) -> UserReviewProfile {
     let now_ms = chrono::Utc::now().timestamp_millis();
     match FsrsReviewService::new(db.clone()).list_feedback_rows(cfg.scan_limit) {
         Ok(rows) => build_profile(&rows, now_ms, cfg),
@@ -846,7 +862,17 @@ mod tests {
                 Some(0),
             ));
         }
-        rows.push(make_row("b1", "f", Some("tmpl-light"), &[], 1, 2, Some(2.0), 0, Some(0)));
+        rows.push(make_row(
+            "b1",
+            "f",
+            Some("tmpl-light"),
+            &[],
+            1,
+            2,
+            Some(2.0),
+            0,
+            Some(0),
+        ));
         rows.push(make_row("c1", "f", None, &[], 2, 3, Some(2.0), 0, Some(0)));
 
         let mut config = cfg();
@@ -864,14 +890,28 @@ mod tests {
     #[test]
     fn confusable_tags_filtered_sorted_capped() {
         let rows = vec![
-            make_row("c1", "f", None, &["三角函数", "数学"], 4, 5, Some(2.0), 0, Some(0)),
+            make_row(
+                "c1",
+                "f",
+                None,
+                &["三角函数", "数学"],
+                4,
+                5,
+                Some(2.0),
+                0,
+                Some(0),
+            ),
             make_row("c2", "f", None, &["三角函数"], 3, 4, Some(2.0), 0, Some(0)),
             make_row("c3", "f", None, &["数学"], 0, 1, Some(2.0), 0, Some(0)),
             // 单卡标签不足以构成"混淆"
             make_row("c4", "f", None, &["孤儿标签"], 9, 9, Some(2.0), 0, Some(0)),
         ];
         let profile = build_profile(&rows, 1, &cfg());
-        let tags: Vec<&str> = profile.confusable_tags.iter().map(|t| t.tag.as_str()).collect();
+        let tags: Vec<&str> = profile
+            .confusable_tags
+            .iter()
+            .map(|t| t.tag.as_str())
+            .collect();
         assert_eq!(tags, vec!["三角函数", "数学"]);
         assert_eq!(profile.confusable_tags[0].total_lapses, 7);
         assert_eq!(profile.confusable_tags[0].cards, 2);
@@ -889,7 +929,9 @@ mod tests {
             .map(|i| {
                 make_row(
                     &format!("c{i}"),
-                    &format!("这是一张非常长的高遗忘卡片正面内容，编号 {i}，用于测试字符预算截断行为"),
+                    &format!(
+                        "这是一张非常长的高遗忘卡片正面内容，编号 {i}，用于测试字符预算截断行为"
+                    ),
                     Some(&format!("tmpl-{i}")),
                     &["标签A", "标签B"],
                     5,
@@ -904,7 +946,11 @@ mod tests {
         config.max_profile_chars = 200;
         let profile = build_profile(&rows, 1, &config);
         let section = render_profile_section(&profile, &config).expect("section");
-        assert!(section.chars().count() <= 200, "len={}", section.chars().count());
+        assert!(
+            section.chars().count() <= 200,
+            "len={}",
+            section.chars().count()
+        );
         assert!(section.ends_with('…'));
         // 预算充足时不截断
         let mut wide = cfg();
@@ -942,9 +988,39 @@ mod tests {
     #[test]
     fn interference_hints_match_by_keyword_overlap() {
         let rows = vec![
-            make_row("hit", "牛顿第二定律的表达式是什么？", None, &[], 5, 6, Some(2.0), 0, Some(0)),
-            make_row("low", "牛顿第二定律适用条件？", None, &[], 0, 1, Some(2.0), 0, Some(0)),
-            make_row("miss", "光合作用的暗反应发生在哪里？", None, &[], 7, 8, Some(2.0), 0, Some(0)),
+            make_row(
+                "hit",
+                "牛顿第二定律的表达式是什么？",
+                None,
+                &[],
+                5,
+                6,
+                Some(2.0),
+                0,
+                Some(0),
+            ),
+            make_row(
+                "low",
+                "牛顿第二定律适用条件？",
+                None,
+                &[],
+                0,
+                1,
+                Some(2.0),
+                0,
+                Some(0),
+            ),
+            make_row(
+                "miss",
+                "光合作用的暗反应发生在哪里？",
+                None,
+                &[],
+                7,
+                8,
+                Some(2.0),
+                0,
+                Some(0),
+            ),
         ];
         let hints = build_interference_hints(&rows, "本章讲解牛顿第二定律及其应用", &cfg());
         let ids: Vec<&str> = hints.iter().map(|h| h.anki_card_id.as_str()).collect();

@@ -406,7 +406,12 @@ async fn executor_media_import_and_export_round_trip(app: &tauri::App) {
                 "builtin-chatanki_import_apkg".to_string(),
                 json!({"resourceId": resource_id}),
             ),
-            &execution_context(&harness, OWNER, "message-media-import", "block-media-import"),
+            &execution_context(
+                &harness,
+                OWNER,
+                "message-media-import",
+                "block-media-import",
+            ),
         )
         .await
         .expect("executor media import result");
@@ -482,7 +487,12 @@ async fn executor_media_import_and_export_round_trip(app: &tauri::App) {
                     "suggestedName": "media_roundtrip.apkg"
                 }),
             ),
-            &execution_context(&harness, OWNER, "message-media-export", "block-media-export"),
+            &execution_context(
+                &harness,
+                OWNER,
+                "message-media-export",
+                "block-media-export",
+            ),
         )
         .await
         .expect("executor media export result");
@@ -509,11 +519,8 @@ async fn executor_media_import_and_export_round_trip(app: &tauri::App) {
     assert_eq!(names, vec!["beep.mp3", "pic.png"]);
     for (key, name) in &manifest {
         let mut bytes = Vec::new();
-        std::io::Read::read_to_end(
-            &mut archive.by_name(key).expect("media entry"),
-            &mut bytes,
-        )
-        .expect("read media entry bytes");
+        std::io::Read::read_to_end(&mut archive.by_name(key).expect("media entry"), &mut bytes)
+            .expect("read media entry bytes");
         let expected: &[u8] = if name == "pic.png" {
             b"png-bytes-e2e"
         } else {

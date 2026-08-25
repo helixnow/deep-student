@@ -525,12 +525,7 @@ impl QuestionBankService {
                 .next();
             if let Some(latest) = latest_submission {
                 if latest.is_correct.is_none() && latest.user_answer == user_answer {
-                    return self.regrade_submission_in_tx(
-                        tx,
-                        question,
-                        latest,
-                        override_val,
-                    );
+                    return self.regrade_submission_in_tx(tx, question, latest, override_val);
                 }
             }
         }
@@ -4203,7 +4198,10 @@ mod tests {
         assert_eq!(flipped.is_correct, Some(true));
         assert_eq!(flipped.submission_id, first.submission_id, "改判同一条提交");
         assert_eq!(flipped.updated_question.attempt_count, 1, "attempt 不双计");
-        assert_eq!(flipped.updated_question.correct_count, 1, "错→对 correct_count +1");
+        assert_eq!(
+            flipped.updated_question.correct_count, 1,
+            "错→对 correct_count +1"
+        );
         assert_eq!(count_submissions(&vfs_db), 1, "不新增作答记录");
 
         // 同向改判幂等：无写入、无副作用
@@ -4218,7 +4216,10 @@ mod tests {
             .regrade_submission(qid, &first.submission_id, false)
             .expect("regrade to wrong");
         assert_eq!(back.is_correct, Some(false));
-        assert_eq!(back.updated_question.correct_count, 0, "对→错 correct_count -1");
+        assert_eq!(
+            back.updated_question.correct_count, 0,
+            "对→错 correct_count -1"
+        );
         assert_eq!(back.updated_question.status, QuestionStatus::Review);
         assert_eq!(count_submissions(&vfs_db), 1);
         let _ = exam_id;

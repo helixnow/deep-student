@@ -164,7 +164,10 @@ pub fn detect_schema_capability(
     {
         return SchemaCapability::JsonSchema;
     }
-    if matches!(adapter.as_str(), "anthropic" | "claude" | "google" | "gemini") {
+    if matches!(
+        adapter.as_str(),
+        "anthropic" | "claude" | "google" | "gemini"
+    ) {
         return SchemaCapability::JsonSchema;
     }
     if url.contains("api.anthropic.com") || url.contains("generativelanguage.googleapis.com") {
@@ -206,18 +209,24 @@ pub fn resolve_output_protocol(
             SchemaCapability::JsonObjectOnly => {
                 (OutputProtocol::Delimiter, "auto_json_object_only_fallback")
             }
-            SchemaCapability::Unknown => {
-                (OutputProtocol::Delimiter, "auto_capability_unknown_fallback")
-            }
+            SchemaCapability::Unknown => (
+                OutputProtocol::Delimiter,
+                "auto_capability_unknown_fallback",
+            ),
         },
-        _ => (OutputProtocol::Delimiter, "unknown_requested_value_fallback"),
+        _ => (
+            OutputProtocol::Delimiter,
+            "unknown_requested_value_fallback",
+        ),
     }
 }
 
 /// 结构化输出请求疑似被端点拒绝（协议不支持 / schema 不合法）的错误特征。
 /// 服务层据此在结构化协议失败后回退 delimiter 重试一次。
 pub fn is_probably_structured_output_rejection(message: &str) -> bool {
-    message.contains("(HTTP 400)") || message.contains("(HTTP 404)") || message.contains("(HTTP 422)")
+    message.contains("(HTTP 400)")
+        || message.contains("(HTTP 404)")
+        || message.contains("(HTTP 422)")
 }
 
 // ==================== 协议格式指令 ====================
@@ -697,10 +706,7 @@ pub fn repair_json(raw: &str) -> Option<String> {
             }
             '}' | ']' => {
                 // 去尾逗号：闭合符前的最后一个有效字符若是逗号则删除
-                while out
-                    .trim_end()
-                    .ends_with(',')
-                {
+                while out.trim_end().ends_with(',') {
                     let trimmed_len = out.trim_end().len();
                     out.truncate(trimmed_len - 1);
                 }
@@ -748,7 +754,11 @@ pub fn repair_json(raw: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn make_rule(is_required: bool, field_type: FieldType, description: &str) -> FieldExtractionRule {
+    fn make_rule(
+        is_required: bool,
+        field_type: FieldType,
+        description: &str,
+    ) -> FieldExtractionRule {
         FieldExtractionRule {
             field_type,
             is_required,
@@ -794,7 +804,8 @@ mod tests {
 
     #[test]
     fn delimiter_instructions_reference_shared_constant() {
-        let text = format_instructions(OutputProtocol::Delimiter, "数量段\n\n", "front、back", "{}");
+        let text =
+            format_instructions(OutputProtocol::Delimiter, "数量段\n\n", "front、back", "{}");
         assert!(text.contains(CARD_DELIMITER));
         assert!(text.contains("数量段"));
         assert!(text.contains("front、back"));
@@ -803,7 +814,8 @@ mod tests {
     #[test]
     fn structured_instructions_use_wrapper_and_omit_delimiter() {
         for protocol in [OutputProtocol::JsonObject, OutputProtocol::JsonSchema] {
-            let text = format_instructions(protocol, "", "front、back", "{\"front\": \"<question>\"}");
+            let text =
+                format_instructions(protocol, "", "front、back", "{\"front\": \"<question>\"}");
             assert!(
                 !text.contains(CARD_DELIMITER),
                 "structured instructions must not mention delimiter: {text}"
@@ -847,8 +859,7 @@ mod tests {
             resolve_output_protocol(Some("delimiter"), SchemaCapability::JsonSchema);
         assert_eq!(protocol, OutputProtocol::Delimiter);
 
-        let (protocol, _) =
-            resolve_output_protocol(Some("json_object"), SchemaCapability::Unknown);
+        let (protocol, _) = resolve_output_protocol(Some("json_object"), SchemaCapability::Unknown);
         assert_eq!(protocol, OutputProtocol::JsonObject);
 
         // 非法取值保守回退 delimiter
@@ -884,7 +895,12 @@ mod tests {
         );
         // 任意 OpenAI 兼容端点 → 未知，不得静默假设支持
         assert_eq!(
-            detect_schema_capability("general", Some("openai_chat_completions"), None, "https://my-gateway.example.com/v1"),
+            detect_schema_capability(
+                "general",
+                Some("openai_chat_completions"),
+                None,
+                "https://my-gateway.example.com/v1"
+            ),
             SchemaCapability::Unknown
         );
     }
@@ -894,12 +910,21 @@ mod tests {
     #[test]
     fn card_schema_maps_types_required_and_enum() {
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        rules.insert("front".to_string(), make_rule(true, FieldType::Text, "问题"));
+        rules.insert(
+            "front".to_string(),
+            make_rule(true, FieldType::Text, "问题"),
+        );
         let mut correct = make_rule(true, FieldType::Text, "正确选项");
         correct.allowed_values = Some(vec![json!("A"), json!("B"), json!("C"), json!("D")]);
         rules.insert("correct".to_string(), correct);
-        rules.insert("tags".to_string(), make_rule(false, FieldType::Array, "标签"));
-        rules.insert("score".to_string(), make_rule(false, FieldType::Number, "分值"));
+        rules.insert(
+            "tags".to_string(),
+            make_rule(false, FieldType::Array, "标签"),
+        );
+        rules.insert(
+            "score".to_string(),
+            make_rule(false, FieldType::Number, "分值"),
+        );
 
         let fields = vec![
             "front".to_string(),
@@ -911,9 +936,15 @@ mod tests {
 
         assert_eq!(schema["type"], json!("object"));
         assert_eq!(schema["properties"]["front"]["type"], json!("string"));
-        assert_eq!(schema["properties"]["correct"]["enum"], json!(["A", "B", "C", "D"]));
+        assert_eq!(
+            schema["properties"]["correct"]["enum"],
+            json!(["A", "B", "C", "D"])
+        );
         assert_eq!(schema["properties"]["tags"]["type"], json!("array"));
-        assert_eq!(schema["properties"]["tags"]["items"]["type"], json!("string"));
+        assert_eq!(
+            schema["properties"]["tags"]["items"]["type"],
+            json!("string")
+        );
         assert_eq!(schema["properties"]["score"]["type"], json!("number"));
         assert_eq!(schema["additionalProperties"], json!(false));
 
@@ -940,7 +971,10 @@ mod tests {
         let schema = build_card_schema(&["front".to_string()], Some(&rules), None);
         assert_eq!(schema["properties"]["front"]["minLength"], json!(2));
         assert_eq!(schema["properties"]["front"]["maxLength"], json!(100));
-        assert_eq!(schema["properties"]["front"]["description"], json!("问题或概念"));
+        assert_eq!(
+            schema["properties"]["front"]["description"],
+            json!("问题或概念")
+        );
     }
 
     #[test]
@@ -963,11 +997,20 @@ mod tests {
 
         let mut rules_by_id: HashMap<String, HashMap<String, FieldExtractionRule>> = HashMap::new();
         let mut lab_rules = HashMap::new();
-        lab_rules.insert("question".to_string(), make_rule(true, FieldType::Text, "题干"));
-        lab_rules.insert("answer".to_string(), make_rule(true, FieldType::Text, "答案"));
+        lab_rules.insert(
+            "question".to_string(),
+            make_rule(true, FieldType::Text, "题干"),
+        );
+        lab_rules.insert(
+            "answer".to_string(),
+            make_rule(true, FieldType::Text, "答案"),
+        );
         rules_by_id.insert("design-lab".to_string(), lab_rules);
         let mut glass_rules = HashMap::new();
-        glass_rules.insert("text".to_string(), make_rule(true, FieldType::Text, "填空文本"));
+        glass_rules.insert(
+            "text".to_string(),
+            make_rule(true, FieldType::Text, "填空文本"),
+        );
         rules_by_id.insert("design-glass".to_string(), glass_rules);
 
         let mut options = empty_options();
@@ -1081,7 +1124,10 @@ mod tests {
 
     #[test]
     fn repair_does_not_touch_delimiter_text_inside_strings() {
-        let raw = format!("{{\"front\": \"包含 {} 的文本\", \"back\": \"A\"", CARD_DELIMITER);
+        let raw = format!(
+            "{{\"front\": \"包含 {} 的文本\", \"back\": \"A\"",
+            CARD_DELIMITER
+        );
         let repaired = repair_json(&raw).expect("repairable");
         let value: Value = serde_json::from_str(&repaired).unwrap();
         assert!(value["front"].as_str().unwrap().contains(CARD_DELIMITER));

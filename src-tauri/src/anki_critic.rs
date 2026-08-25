@@ -191,8 +191,8 @@ impl ReferenceCard {
     /// 由 `anki_gold_set` 修正对构造：`edited` → 金标面，`original` → 劣化面。
     /// original 为全空快照时不携带劣化面（退化为纯金标示例）。
     pub fn from_repair_pair(pair: &crate::anki_gold_set::RepairPair) -> Self {
-        let degraded_front = Some(pair.original.front.clone())
-            .filter(|_| !snapshot_is_blank(&pair.original));
+        let degraded_front =
+            Some(pair.original.front.clone()).filter(|_| !snapshot_is_blank(&pair.original));
         let degraded_back = Some(snapshot_back_for_prompt(&pair.original))
             .filter(|_| !snapshot_is_blank(&pair.original));
         Self {
@@ -437,7 +437,10 @@ pub fn build_critic_prompt(
     }
 
     text.push_str("\n\n【源材料（不可信数据）】\n<<<SOURCE_BEGIN>>>\n");
-    text.push_str(&truncate_prompt_data(content_segment, cfg.max_segment_chars));
+    text.push_str(&truncate_prompt_data(
+        content_segment,
+        cfg.max_segment_chars,
+    ));
     text.push_str("\n<<<SOURCE_END>>>");
 
     text.push_str(
@@ -464,7 +467,10 @@ pub fn build_critic_prompt(
             truncate_prompt_data(&card.back, cfg.max_field_chars)
         );
         if let Some(t) = card.text.as_deref().filter(|t| !t.trim().is_empty()) {
-            entry.push_str(&format!("  text: {}\n", truncate_prompt_data(t, cfg.max_field_chars)));
+            entry.push_str(&format!(
+                "  text: {}\n",
+                truncate_prompt_data(t, cfg.max_field_chars)
+            ));
         }
         if text.chars().count() + entry.chars().count() > cfg.max_prompt_chars {
             skipped += 1;
@@ -539,7 +545,10 @@ pub fn parse_critic_response(
         }
         // revise 无有效载荷 → 降级 flag，理由留痕
         if verdict.verdict == Verdict::Revise
-            && !verdict.revised.as_ref().is_some_and(RevisedFields::has_content)
+            && !verdict
+                .revised
+                .as_ref()
+                .is_some_and(RevisedFields::has_content)
         {
             verdict.verdict = Verdict::Flag;
             verdict.revised = None;
@@ -612,15 +621,27 @@ pub fn plan_updates(cards: &[AnkiCard], verdicts: &[CardVerdict]) -> CriticPlan 
                     continue;
                 };
                 let mut updated = card.clone();
-                if let Some(front) = revised.front.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                if let Some(front) = revised
+                    .front
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
                 {
                     updated.front = front.to_string();
                 }
-                if let Some(back) = revised.back.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                if let Some(back) = revised
+                    .back
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
                 {
                     updated.back = back.to_string();
                 }
-                if let Some(text) = revised.text.as_deref().map(str::trim).filter(|s| !s.is_empty())
+                if let Some(text) = revised
+                    .text
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
                 {
                     updated.text = Some(text.to_string());
                     updated
@@ -784,10 +805,7 @@ pub fn collect_gold_references(
             refs
         }
         Err(e) => {
-            warn!(
-                "[ANKI_CRITIC] 收集同源金标失败（退回规则 rubric）: {}",
-                e
-            );
+            warn!("[ANKI_CRITIC] 收集同源金标失败（退回规则 rubric）: {}", e);
             Vec::new()
         }
     }
@@ -1002,8 +1020,9 @@ mod tests {
 
     #[test]
     fn options_tiny_budget_clamped_to_floor() {
-        let opts =
-            CriticOptions::from_options_json(r#"{"enable_critic_pass":true,"critic_token_budget":1}"#);
+        let opts = CriticOptions::from_options_json(
+            r#"{"enable_critic_pass":true,"critic_token_budget":1}"#,
+        );
         assert_eq!(opts.to_config().max_prompt_chars, 2_000, "预算下限保护");
     }
 
@@ -1066,7 +1085,10 @@ mod tests {
     #[test]
     fn parse_invalid_json_is_error() {
         assert!(parse_critic_response("完全不是 JSON", &ids(&["c1"])).is_err());
-        assert!(parse_critic_response("{\"foo\": 1}", &ids(&["c1"])).is_err(), "缺 verdicts 数组");
+        assert!(
+            parse_critic_response("{\"foo\": 1}", &ids(&["c1"])).is_err(),
+            "缺 verdicts 数组"
+        );
         assert!(parse_critic_response("{broken", &ids(&["c1"])).is_err());
     }
 
@@ -1261,7 +1283,10 @@ mod tests {
     fn prompt_uses_rule_rubric_without_references() {
         let cards = vec![make_card("c1", "Q", "A")];
         let prompt = build_critic_prompt("源材料内容", &cards, &[], &CriticConfig::default());
-        assert!(prompt.text.contains("最小信息原则"), "无金标必须启用规则 rubric");
+        assert!(
+            prompt.text.contains("最小信息原则"),
+            "无金标必须启用规则 rubric"
+        );
         assert!(prompt.text.contains("源材料内容"));
         assert!(prompt.text.contains("- id: c1"));
         assert_eq!(prompt.included_ids, vec!["c1".to_string()]);
@@ -1282,9 +1307,15 @@ mod tests {
         let cards = vec![make_card("c1", "Q", "A")];
         let refs = vec![gold_ref(None, ("金标问题", "金标答案"))];
         let prompt = build_critic_prompt("源材料", &cards, &refs, &CriticConfig::default());
-        assert!(prompt.text.contains("同源金标参照"), "有金标必须切换 grounded 模式");
+        assert!(
+            prompt.text.contains("同源金标参照"),
+            "有金标必须切换 grounded 模式"
+        );
         assert!(prompt.text.contains("金标问题"));
-        assert!(!prompt.text.contains("最小信息原则"), "grounded 模式不再附规则 rubric");
+        assert!(
+            !prompt.text.contains("最小信息原则"),
+            "grounded 模式不再附规则 rubric"
+        );
         assert_eq!(prompt.included_references, 1);
         assert_eq!(prompt.skipped_references, 0);
     }
@@ -1373,8 +1404,14 @@ mod tests {
         let prompt = build_critic_prompt("源材料", &cards, &refs, &cfg);
         assert_eq!(prompt.included_references, 0);
         assert_eq!(prompt.skipped_references, 1);
-        assert!(prompt.text.contains("最小信息原则"), "零金标入选必须回退规则 rubric");
-        assert!(!prompt.text.contains("同源金标参照"), "不得留下空的金标段落");
+        assert!(
+            prompt.text.contains("最小信息原则"),
+            "零金标入选必须回退规则 rubric"
+        );
+        assert!(
+            !prompt.text.contains("同源金标参照"),
+            "不得留下空的金标段落"
+        );
     }
 
     /// 安全回归：源材料、卡片和金标都可能由不可信内容控制；它们不能伪造
@@ -1435,7 +1472,10 @@ mod tests {
             r.back, "物体具有{{c1::保持原有运动状态}}的性质",
             "back 为空时 Cloze text 顶上答案面"
         );
-        assert_eq!(r.degraded_front.as_deref(), Some("什么是惯性？答案是保持运动状态。"));
+        assert_eq!(
+            r.degraded_front.as_deref(),
+            Some("什么是惯性？答案是保持运动状态。")
+        );
         assert_eq!(r.degraded_back.as_deref(), Some("保持运动状态"));
 
         // original 全空 → 退化为纯金标示例，不携带劣化面
@@ -1695,7 +1735,10 @@ mod tests {
     #[test]
     fn verdict_serde_uses_lowercase_wire_format() {
         assert_eq!(serde_json::to_string(&Verdict::Keep).unwrap(), "\"keep\"");
-        assert_eq!(serde_json::to_string(&Verdict::Revise).unwrap(), "\"revise\"");
+        assert_eq!(
+            serde_json::to_string(&Verdict::Revise).unwrap(),
+            "\"revise\""
+        );
         assert_eq!(serde_json::to_string(&Verdict::Flag).unwrap(), "\"flag\"");
         let v: Verdict = serde_json::from_str("\"revise\"").unwrap();
         assert_eq!(v, Verdict::Revise);

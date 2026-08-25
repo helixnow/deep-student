@@ -387,8 +387,15 @@ impl VfsNoteRepo {
     pub const MAX_PROP_KEY_CHARS: usize = 64;
     pub const MAX_PROP_VALUE_CHARS: usize = 512;
     /// 与内建元数据/搜索操作符冲突的保留键（小写比较）
-    pub const PROPS_RESERVED_KEYS: [&'static str; 7] =
-        ["tags", "tag", "path", "title", "isfavorite", "snippet", "props"];
+    pub const PROPS_RESERVED_KEYS: [&'static str; 7] = [
+        "tags",
+        "tag",
+        "path",
+        "title",
+        "isfavorite",
+        "snippet",
+        "props",
+    ];
 
     /// 校验自定义属性对象：键非空/不保留/长度上限/无控制字符；
     /// 值仅允许标量（字符串/数字/布尔），字符串有长度上限。
@@ -3876,12 +3883,9 @@ mod tests {
         assert_eq!(listed[0].props, updated.props);
 
         // 整对象替换语义：删除键 = 写回不含该键的对象
-        let replaced = VfsNoteRepo::set_note_props(
-            &db,
-            &note.id,
-            serde_json::json!({ "status": "done" }),
-        )
-        .unwrap();
+        let replaced =
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "status": "done" }))
+                .unwrap();
         let props = replaced.props.as_ref().unwrap();
         assert!(props.get("priority").is_none());
 
@@ -3927,12 +3931,10 @@ mod tests {
         for index in 0..=VfsNoteRepo::MAX_PROPS {
             too_many.insert(format!("k{index}"), serde_json::json!("v"));
         }
-        assert!(VfsNoteRepo::set_note_props(
-            &db,
-            &note.id,
-            serde_json::Value::Object(too_many)
-        )
-        .is_err());
+        assert!(
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::Value::Object(too_many))
+                .is_err()
+        );
 
         // 校验失败不落库
         let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
