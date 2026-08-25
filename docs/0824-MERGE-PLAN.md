@@ -961,3 +961,45 @@ back 均未触及。`download-pdfium.sh` 对 `licenses/pdfium.txt` 的重写
 | `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
 | `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning，Rust 1.98） |
 | `node scripts/check-migrations.mjs` | ✅ exit 0（111 个迁移文件） |
+
+### Step 21 收口：rel-mobile（#324）附件面板 i18n 双提交落地
+
+日期：2026-08-25。基座 `991227c2`（Step 20 tip；fetch 后远端未前进，
+无需 reset/fast-forward）。仅从 `origin/cursor/0824-rel-mobile-cde6`
+按序 cherry-pick 两个 INCLUDE 提交，未合并任何隔离枝整枝，全程零冲突：
+
+- `1901780e` → `96a1ca42`：zh-CN/en-US 两份 `common.json` 增补
+  `actions.more` 词条（rel-mobile 树上附件面板「⋯更多」按钮的
+  aria-label 键）；
+- `8c7f8415` → `2e788607`：新增
+  `tests/vitest/mobile-uiux/inputBarSplitI18nKeys.contract.test.ts`，
+  扫描拆分 Composer* / 附件面板组件里全部字面量命名空间 t() 键
+  （200+ 个），锁定 zh-CN 与 en-US 必须同时可解析。
+
+**落地后裁决**（`be53b8ba`，与两条 rel 枝对同一 bug 的竞争性修复收敛）：
+cherry-pick 后该测试第三用例在 0824 上 1 红——它断言组件源码含
+`aria-label={t('common:actions.more'`，但 0824 已在 Step 20 经
+rel-i18n（#318）的 `40157848` → `01ed64bf` **有意**把该按钮收敛为复用
+已翻译的顶层 `common:more`，且 `releaseUpgradeI18n.test.ts` 锁定
+`AttachmentPanelBody.tsx` 不得再引用 `common:actions.more`（removedKeys
+只禁组件源码引用，不禁 locale 词条存在；全树无其他 `actions.more`
+消费者）。按第 7 节「修了根因的以既有断言为准」：组件保持
+`common:more` 不回退，新契约第三用例改为断言按钮用 `common:more`，
+同时把 rel-mobile 增补的 `actions.more` 词条锁定为双语可解析
+（`1901780e` 的 locale 增量原样保留）。适配后
+inputBarSplitI18nKeys 3/3 + releaseUpgradeI18n 3/3 全绿。
+
+SKIP（不取）：`9d39c760`（rel-mobile 审查文档，以本节记录代替）。
+不重放 Step 18/19/20 已落地源 SHA；未 push 隔离枝。
+
+Composer* 拆分、附件 200/50、G 44px/safe-area/Android back、HPIAS
+`session_id` 过滤与 18-block allowlist、#177 端口、finder 持久化加固
+均未触及（本步改动面仅 2 行 locale + 1 个新测试文件 + 测试适配）。
+`download-pdfium.sh` 对 `licenses/pdfium.txt` 的重写已恢复，未带入提交。
+
+| 门禁（最终树 `be53b8ba` 上复跑） | 结果 |
+| --- | --- |
+| `npm run version:generate && npm run typecheck` | ✅ exit 0 |
+| `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning，Rust 1.98） |
+| `node scripts/check-migrations.mjs` | ✅ exit 0（111 个迁移文件） |
