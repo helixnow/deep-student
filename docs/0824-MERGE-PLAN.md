@@ -546,3 +546,26 @@ mock 工厂缺 `initReactI18next` 导出，组件传递依赖图加载 i18n 引�
 | a11y（QuestionBankListView/SecurityStatusIndicator）+ qbank 契约 + notes 工作区 + anki-tasks + todo + CloudStorage/sync 面 | ✅ 34 文件 321/321 + ReviewQuestionsView.confirmation 3/3（存量修复后） |
 
 至此第 5 节推荐顺序的 8 个主题仓全部合入完毕。
+
+### Step 8 收口：回收总攻隔离枝的独特修复（不整枝 merge）
+
+日期：2026-08-25。G 合入（`79362482`）后，总攻期间其余代理在 6 条隔离枝上
+继续修质量问题。这些枝各自含重复的 G merge，不能整枝合并；本步 fetch 后
+逐文件 diff，只回收 0824 缺失且正确的 hunk。对照源与处置：
+
+| 隔离枝 @ tip | 回收 | 跳过（含理由） |
+|---|---|---|
+| `0824-g-fix-chat-b0d6` @ `e11fc8d2` | 4 个 chat 契约测试跟进 F 拆分（送信/停止钮契约从 `InputBarUI` 改读 `ComposerToolbar`，composer 面板 token 契约改读 `AttachmentPanelBody`，侧栏字号契约 `text-[13px]`→`text-ui`）；新增 `InputBarUI.mobileSplitContract.source.test.ts` 拆分所有权+44px/16px+OCR i18n 契约；`docs/dev/0824-g-chat.md` | `AttachmentPanelBody`/`ComposerToolbar` 仅格式/注释差异 |
+| `0824-g-fix-gates-c824` @ `d4dace83` | 4 个测试契约修复：desktopGlobalSearch 补 `@/i18n` mock 与 `isInitialized`（隔离真实 i18n 引导）；DGD restore-operations/backup-restore-ui 对齐 B 的 E2EE 三参 `importZip(path, format, password)` 与导入密码确认层；OSS 致谢测试视口可切换（桌面 Dialog 与移动内联分支分别断言） | legacy notes 模块整包复活（TrashDialog/previews/ReferenceSelector/DndFileTree 等，与 G 授权删除相悖）；`NotesContext` trashOpen/libraryOpen（0824 由 `NotesWorkspaceApp` 本地管理，无消费者） |
+| `0824-g-fix-anki-cde6` @ `e1edaa44` | `ResultPanel` 工具栏 coarse 44px+`shrink-0`、存笔记钮 40→44px；`DailyPracticeMode` 上/下月 `aria-label` + `daily.previousMonth/nextMonth` 双语键；`LibraryScreen` 建卡两输入框 coarse `!h-11`；`streakHint` 双语文案对齐日历日+回退语义；新增 TodayScreen.emptyLibrary / reviewActivityStreak / LibraryScreen 空态 `.apkg` 导入 3 组回归测试；confirmation 测试补选中错题→共享 `generateCardsFromText` 用例（保留 `initReactI18next` mock，该枝缺 `8a350d14`）；新增 `ResultPanel.actions.test.tsx`；`docs/dev/0824-g-anki.md` | `library.css`（0824 的 `pointer:coarse`+行内钮兜底为更新版）；`ReviewQuestionsView` 的 `sm:` 断点方案（0824 的 coarse-pointer 方案覆盖触屏平板，更优）；ResultPanel 轮次导航 `md:`→`sm:` 断点改动（无测试锁定，非 44px 修复） |
+| `0824-g-fix-i18n-cde6` @ `308cfdab` | `docs/dev/0824-g-i18n.md`（全量 i18n/a11y 扫描记录） | SkillsList/AnkiTasksApp aria 修复 0824 已有（`79362482` 手工织合时已恢复 A 的 i18n aria）；该枝测试反缺 `initReactI18next` |
+| `0824-g-fix-invariants-cde6` @ `ccf0075d` | `docs/dev/0824-g-invariants.md`（12 项不变量审计，0824 终态全 PASS） | leftovers-safe 硬化 0824 已含（`362dd2df` 即合并该枝复查的 `bfb52a9e`）；SkillsList/AnkiTasksApp diff 为 aria 硬编码回退；第九轮 leftover-audit 重写描述其自身 refresh 谱系，与 0824 直并史不符，仅取其结论：原 24 项 INCLUDE 中 `10f1ad16`（qbank headless 禁令）语义已由 F 的 `f32d820a` 覆盖，重放在终树零净影响 |
+| `0824-g-landing-cde6` @ `fe7a61f9` | `docs/dev/0824-g-landing.md` | 产品代码与 0824 仅注释差异（其"重放 G 热区到拆分输入栏"结果与官方 `79362482` 等价） |
+
+回收前实测：上述 8 个既有测试文件在 0824 tip 上 **13 用例红**（送信钮契约读
+错文件、E2EE 签名不匹配、`text-ui` 断言等），证实缺口真实。回收后验证：
+
+- 全部 14 个涉及测试文件（含 3 个新增）通过；
+- `npm run typecheck` 0 错误（先 `version:generate`）；
+- 红线复查：F 拆分未回退（mobileSplitContract 新契约锁定）、只读闪卡/
+  `cardAgent`/pipeline hooks/host buckets/src-tauri 零触碰。
