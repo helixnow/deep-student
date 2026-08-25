@@ -20,7 +20,8 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
+    ListOutcome, Result, UploadProgressCallback,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -1231,11 +1232,14 @@ impl CloudStorage for WebDavStorage {
 
         // get() 用于 manifest/变更文件等内存级对象：读体加总超时，
         // 防止 request() 的响应头超时通过后、响应体传输中途停滞导致永久挂起。
+        let declared = res.content_length();
         let bytes = tokio::time::timeout(std::time::Duration::from_secs(300), res.bytes())
             .await
             .map_err(|_| AppError::network("读取响应体超时（300 秒）".to_string()))?
             .map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
-        Ok(Some(bytes.to_vec()))
+        let body = bytes.to_vec();
+        ensure_memory_get_matches_declared_len("WebDAV", key, body.len() as u64, declared)?;
+        Ok(Some(body))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
@@ -2138,6 +2142,10 @@ mod tests {
         assert!(
             source.contains("self.verify_remote_object_size(key, file_size)"),
             "WebDAV put_file must stat remote size after PUT; HTTP 2xx is not enough"
+        );
+        assert!(
+            source.contains("ensure_memory_get_matches_declared_len(\"WebDAV\""),
+            "WebDAV get() 必须按 Content-Length 拒绝半包，记录级/清单不得收下截断体"
         );
     }
 }

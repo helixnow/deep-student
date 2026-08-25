@@ -78,6 +78,26 @@ impl ListOutcome {
     }
 }
 
+/// 内存级 `get()` 半包闸：响应体读到 EOF 不等于对象完整。
+///
+/// `get_file` 已按 `stat` 大小拒绝短写；清单 / 变更分片 / 租约走 `get()`，
+/// 声明了 `Content-Length` / `content_length` 却短读时必须 fail-closed，
+/// 不得把截断字节交给解码或推进水位。缺长度字段保持诚实：无法核对则不冒充已核。
+/// 不宣称远端 SHA。
+pub(crate) fn ensure_memory_get_matches_declared_len(
+    provider: &str,
+    key: &str,
+    actual_len: u64,
+    declared: Option<u64>,
+) -> Result<()> {
+    match declared {
+        Some(expected) if actual_len != expected => Err(AppError::network(format!(
+            "{provider} 内存对象下载不完整或对象已变更：{key} 声明 {expected} 字节，实际收到 {actual_len} 字节，已拒绝（请重试）"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 /// 统一的云存储访问 trait
 ///
 /// 支持 WebDAV 和 S3 兼容存储（如 AWS S3、Cloudflare R2、阿里云 OSS、MinIO）
@@ -358,5 +378,28 @@ pub trait CloudStorage: Send + Sync {
         }
 
         Ok(checksum)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_memory_get_matches_declared_len;
+
+    #[test]
+    fn memory_get_accepts_matching_or_missing_length() {
+        assert!(ensure_memory_get_matches_declared_len("S3", "a", 12, Some(12)).is_ok());
+        assert!(
+            ensure_memory_get_matches_declared_len("WebDAV", "a", 12, None).is_ok(),
+            "缺声明长度不得冒充已核，只能诚实收下"
+        );
+    }
+
+    #[test]
+    fn memory_get_rejects_short_body_when_length_declared() {
+        let err = ensure_memory_get_matches_declared_len("S3", "changes/1", 4, Some(12))
+            .expect_err("声明长度与实收不符必须 fail-closed");
+        let msg = err.to_string();
+        assert!(msg.contains("内存对象下载不完整或对象已变更"));
+        assert!(msg.contains("changes/1"));
     }
 }
