@@ -46,6 +46,15 @@ use super::{assets, BackupFile, BackupKeyPolicy, BackupManager, BackupManifest};
 /// 经 `crate::crypto::backup_crypto`（Argon2id + AES-256-GCM 分块）加密。
 pub const ENCRYPTED_SECRETS_ENTRY: &str = "portable_secrets.dsbk";
 
+/// 加密全保真 ZIP 缺少导入密码时的稳定错误码。
+pub const SEALED_BACKUP_PASSWORD_REQUIRED_CODE: &str =
+    "E_BACKUP_SEALED_PASSWORD_REQUIRED";
+
+/// 加密全保真 ZIP 无法解密时的稳定错误码。
+///
+/// AEAD 无法区分错误密码与被篡改/损坏的密文，因此错误码必须诚实覆盖两者。
+pub const SEALED_BACKUP_DECRYPT_FAILED_CODE: &str = "E_BACKUP_SEALED_DECRYPT_FAILED";
+
 /// 备份密码最小长度（字符数）。弱口令会让加密全保真导出形同虚设。
 const MIN_ENCRYPTION_PASSWORD_CHARS: usize = 8;
 
@@ -1431,9 +1440,10 @@ fn unseal_encrypted_secrets(
         ))),
         (true, true) => {
             let Some(password) = password else {
-                return Err(ZipExportError::ExportFailed(
-                    "这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入".to_string(),
-                ));
+                return Err(ZipExportError::ExportFailed(format!(
+                    "[{}] 这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入",
+                    SEALED_BACKUP_PASSWORD_REQUIRED_CODE
+                )));
             };
             let inner_plain = tempfile::NamedTempFile::new()?;
             crate::crypto::backup_crypto::decrypt_backup_file(
@@ -1443,8 +1453,8 @@ fn unseal_encrypted_secrets(
             )
             .map_err(|error| {
                 ZipExportError::ExportFailed(format!(
-                    "解封加密备份失败（备份密码错误或载荷损坏）: {}",
-                    error
+                    "[{}] 解封加密备份失败（备份密码错误或载荷损坏）: {}",
+                    SEALED_BACKUP_DECRYPT_FAILED_CODE, error
                 ))
             })?;
 
@@ -1548,7 +1558,10 @@ fn precheck_sealed_payload_password<R: std::io::Read + std::io::Seek>(
     } else {
         "这是加密全保真备份 ZIP：请提供导出时设置的备份密码后重试导入"
     };
-    Err(ZipExportError::ExportFailed(message.to_string()))
+    Err(ZipExportError::ExportFailed(format!(
+        "[{}] {}",
+        SEALED_BACKUP_PASSWORD_REQUIRED_CODE, message
+    )))
 }
 
 /// 从 ZIP 文件导入备份
@@ -2318,6 +2331,14 @@ mod tests {
             SnapshotKind::PartialOverlay
         );
         assert_eq!(
+            imported_manifest.key_policy,
+            BackupKeyPolicy::ExcludedPortable
+        );
+        assert!(
+            imported_manifest.validate_for_slot_restore().is_err(),
+            "v0.9.44-compatible portable ZIPs may import for inspection but must never replace a slot"
+        );
+        assert_eq!(
             imported_manifest
                 .coverage
                 .as_ref()
@@ -2435,6 +2456,13 @@ mod tests {
             "unexpected error: {}",
             error
         );
+        assert!(
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_PASSWORD_REQUIRED_CODE),
+            "missing-password refusal must carry a stable code: {}",
+            error
+        );
         // 前置检查必须发生在改动目标目录之前：不能留下半成品目录。
         assert!(
             !target.exists(),
@@ -2487,6 +2515,11 @@ mod tests {
         assert!(
             error.to_string().contains("解封加密备份失败"),
             "unexpected error: {}",
+            error
+        );
+        assert!(
+            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            "decrypt refusal must carry a stable code: {}",
             error
         );
         // 解密失败不会落任何敏感明文；外层条目保持原样，目标仍可续传。
@@ -2577,6 +2610,13 @@ mod tests {
             "unexpected error: {}",
             error
         );
+        assert!(
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_PASSWORD_REQUIRED_CODE),
+            "missing-password refusal must carry a stable code: {}",
+            error
+        );
         // 早失败必须发生在解压任何条目之前：目标目录不得被创建/写入
         // （旧行为是全量解压后才在解封阶段报错，再由调用方整目录清理）。
         assert!(
@@ -2611,6 +2651,13 @@ mod tests {
                 .to_string()
                 .contains("请提供导出时设置的备份密码后重试导入"),
             "unexpected error: {}",
+            error
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_PASSWORD_REQUIRED_CODE),
+            "missing-password refusal must carry a stable code: {}",
             error
         );
         assert!(
