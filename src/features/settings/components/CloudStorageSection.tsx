@@ -982,7 +982,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       let result: cloudApi.UploadResult;
       try {
         const appVersion = await TauriAPI.getAppVersion();
-        result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
+        result = await cloudApi.uploadBackup(
+          buildConfig(),
+          zipPath,
+          appVersion,
+          undefined,
+          uploadedArchiveSlotRestorable ? 'disaster_recovery' : 'partial_archive',
+        );
       } catch (e: unknown) {
         throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: localizeCloudError(e) }));
       }
@@ -1029,9 +1035,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      return;
+    }
     setPendingRestoreVersionId(versionId);
     setRestoreConfirmOpen(true);
-  }, [connectionStatus, t]);
+  }, [connectionStatus, syncStatus?.latestVersion, t, versions]);
 
   // 失败重试上下文：记录最近一次恢复的版本号，供进度面板「重试」使用
   const lastRestoreVersionIdRef = useRef<string | null>(null);
@@ -1043,6 +1058,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         'error',
         t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
       );
+      return;
+    }
+    const knownVersion = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(knownVersion)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
       return;
     }
     lastRestoreVersionIdRef.current = versionId;
@@ -1152,7 +1176,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     resolveBackupId,
     resolveCloudZipEncryptionArgs,
     setStage,
+    syncStatus?.latestVersion,
     t,
+    versions,
     waitForGovernanceJob,
   ]);
 
@@ -1160,9 +1186,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleRestore = useCallback(async () => {
     const versionId = pendingRestoreVersionId;
     if (!versionId) return;
+    const version = cloudApi.findCloudBackupVersion(
+      versionId,
+      versions,
+      syncStatus?.latestVersion,
+    );
+    if (cloudApi.isKnownPortableCloudBackup(version)) {
+      showGlobalNotification('warning', t('cloudStorage:history.portableArchiveNotRestorable'));
+      setRestoreConfirmOpen(false);
+      setPendingRestoreVersionId(null);
+      return;
+    }
     setRestoreConfirmOpen(false);
     await performRestore(versionId);
-  }, [pendingRestoreVersionId, performRestore]);
+  }, [pendingRestoreVersionId, performRestore, syncStatus?.latestVersion, t, versions]);
 
   // 上传/下载失败后的重试：按失败操作类型重新触发完整流程
   const retryFailedOperation = useCallback(() => {
@@ -1625,11 +1662,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 </span>
               </div>
               {syncStatus.latestVersion && (
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
-                  <span className="ml-2 font-medium">
-                    {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
-                  </span>
+                <div className="col-span-2 space-y-2">
+                  <div>
+                    <span className="text-muted-foreground">{t('cloudStorage:status.latestVersion')}:</span>
+                    <span className="ml-2 font-medium">
+                      {syncStatus.latestVersion.id} ({cloudApi.formatFileSize(syncStatus.latestVersion.size)})
+                      {syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? ` · ${t('cloudStorage:history.portableArchive')}`
+                        : syncStatus.latestVersion.recoveryKind === 'disaster_recovery'
+                          ? ` · ${t('cloudStorage:history.fullFidelity')}`
+                          : null}
+                    </span>
+                  </div>
+                  <DsButton
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      downloading
+                      || syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                    }
+                    title={
+                      syncStatus.latestVersion.recoveryKind === 'partial_archive'
+                        ? t('cloudStorage:history.portableArchiveNotRestorable')
+                        : t('cloudStorage:actions.downloadLatest')
+                    }
+                    onClick={() => openRestoreConfirm(syncStatus.latestVersion!.id)}
+                  >
+                    {t('cloudStorage:actions.downloadLatest')}
+                  </DsButton>
                 </div>
               )}
             </div>
@@ -1765,14 +1825,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <div className="text-xs text-muted-foreground">
                         {cloudApi.formatFileSize(version.size)} • {cloudApi.formatTimestamp(version.timestamp)}
                         {version.note && ` • ${version.note}`}
+                        {version.recoveryKind === 'partial_archive'
+                          ? ` • ${t('cloudStorage:history.portableArchive')}`
+                          : version.recoveryKind === 'disaster_recovery'
+                            ? ` • ${t('cloudStorage:history.fullFidelity')}`
+                            : null}
                       </div>
                     </div>
                     <div className="flex gap-1">
                       <DsButton
                         size="sm"
                         variant="ghost"
-                        title={t('cloudStorage:history.restore')}
-                        disabled={downloading}
+                        title={
+                          version.recoveryKind === 'partial_archive'
+                            ? t('cloudStorage:history.portableArchiveNotRestorable')
+                            : t('cloudStorage:history.restore')
+                        }
+                        disabled={downloading || version.recoveryKind === 'partial_archive'}
                         onClick={() => openRestoreConfirm(version.id)}
                       >
                         {downloading && restoreVersionId === version.id ? (
@@ -1988,6 +2057,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     </div>
   );
 
+  const pendingRestoreVersion = cloudApi.findCloudBackupVersion(
+    pendingRestoreVersionId,
+    versions,
+    syncStatus?.latestVersion,
+  );
+
   // 恢复确认对话框
   const restoreConfirmDialog = (
     <DsAlertDialog
@@ -1998,9 +2073,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       confirmText={t('cloudStorage:download.confirm')}
       cancelText={t('cloudStorage:download.cancel')}
       confirmVariant="warning"
+      disabled={cloudApi.isKnownPortableCloudBackup(pendingRestoreVersion)}
       onConfirm={handleRestore}
     >
-      <p className="text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
+      {pendingRestoreVersionId && (
+        <p className="text-sm font-medium">
+          {t('cloudStorage:download.confirmVersion', { version: pendingRestoreVersionId })}
+        </p>
+      )}
+      {pendingRestoreVersion?.recoveryKind === 'partial_archive' ? (
+        <p className="mt-1 text-sm text-destructive">
+          {t('cloudStorage:download.confirmKnownPortable')}
+        </p>
+      ) : pendingRestoreVersion?.recoveryKind === 'disaster_recovery' ? (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmKnownFull')}
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('cloudStorage:download.confirmUnknownKind')}
+        </p>
+      )}
+      <p className="mt-1 text-sm font-medium text-destructive">{t('cloudStorage:download.warning')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.partialArchiveNotice')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('cloudStorage:download.restartNotice')}</p>
     </DsAlertDialog>

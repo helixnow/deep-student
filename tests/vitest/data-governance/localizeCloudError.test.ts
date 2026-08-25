@@ -16,7 +16,9 @@ vi.mock('@/utils/cloudStorageApi', async (importOriginal) => {
 
 import {
   CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+  findCloudBackupVersion,
   isImportedArchiveSlotRestorable,
+  isKnownPortableCloudBackup,
   PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE,
   STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE,
   SYNC_E2EE_WRONG_PASSWORD_CODE,
@@ -148,6 +150,20 @@ describe('localizeCloudStorageError', () => {
       expect(kindIdx).toBeGreaterThan(importIdx);
       expect(kindIdx).toBeLessThan(restoreIdx);
     }
+  });
+
+  it('looks up cloud versions and refuses known portable packages before download', () => {
+    const versions = [
+      { id: 'a', recoveryKind: 'disaster_recovery' },
+      { id: 'b', recoveryKind: 'partial_archive' },
+    ];
+    const latest = { id: 'c', recoveryKind: 'partial_archive' };
+    expect(findCloudBackupVersion('b', versions, latest)?.id).toBe('b');
+    expect(findCloudBackupVersion('c', versions, latest)?.id).toBe('c');
+    expect(findCloudBackupVersion('missing', versions, latest)).toBeUndefined();
+    expect(isKnownPortableCloudBackup(findCloudBackupVersion('b', versions, latest))).toBe(true);
+    expect(isKnownPortableCloudBackup(findCloudBackupVersion('a', versions, latest))).toBe(false);
+    expect(isKnownPortableCloudBackup(undefined)).toBe(false);
   });
 
   it('refuses portable/partial import stats before slot restore, and lets missing stats fall through', () => {

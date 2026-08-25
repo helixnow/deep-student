@@ -39,3 +39,16 @@
 **有条件 go**：桌面 WebDAV 整包备份 + 记录级同步 + E2EE 门禁 + 巡检 + 冲突可撤销 + 目标租约 + 可逆资产文件名，可作为本枝高质量可用版本。Android 换机仍几乎只能 WebDAV；整包备份无增量去重，不宣称 SOTA 齐。**生产放量 NO-GO**（CI 未齐、真机未签、整包增量传输未实现）。
 
 收尾子代理（`gpt-5.6-sol-xhigh-fast`）回传后只合修复/文档增量，不再开新功能面。
+
+## 云整包恢复诚实闭环（本枝续打磨）
+
+下列已合入，不宣称增量备份或一键换机：
+
+- 导入 ZIP 后先看 `recovery_kind` / `restorable`，便携/部分归档不启动 `restoreBackup`；缺 stats 仍走整槽门
+- 云端恢复切槽前 `checkDiskSpaceForRestore`，检查失败 fail-closed
+- 云端备份/恢复进入全局维护模式；切槽成功后 `requireMaintenanceRestart`
+- 上传成功后若导出 stats 标明便携归档，额外警告换机整槽会被拒绝
+- 云端版本清单写入可选 `recoveryKind`；历史列表、状态卡「恢复最新」、确认框与 `performRestore` 对已知便携包直接拒绝，不开始下载
+- 恢复确认框写出目标版本号，并按已知便携 / 全保真 / 未标记分述
+- 旧清单缺 `recoveryKind` 仍可点恢复，导入后再门禁
+- 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值

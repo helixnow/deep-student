@@ -131,3 +131,21 @@ R09 合入后，本仓库在**E2EE 覆盖面**上完成了从"文本面加密、
 - 本文 §1 两个"仍开"项（P1-1 冲突 UI、Argon2 钳制）分属 R10-conflict-ui / R10-verifier，不重复认领；其交付后 §3 对应行改判。
 - §2 各"诚实差距"已汇总为 [ROUND-11](./ROUND-11.md) 十路大包：巡检（restic check 档）、时点恢复最小版、增量/去重调研、文件名可逆映射、未同步清单 UI、sync target 租约、密钥轮换调研、备份命名元数据泄露收敛、自动同步档位、Android 真机手册。
 - R09-restore-ops 已交付 WebDAV 续传与解锁指南，R10-download / R10-verifier 按 FIX-QUEUE"只收增量"约定执行,本文不再列为差距。
+
+## 6. 收尾回写（父代理，后继 HEAD）
+
+本节不改写上面基于 `25519c0c` 的正文，只标注其后继已交付因而过时的差距：
+
+| 原文差距 | 现状态 | 证据 |
+|---|---|---|
+| §1 P1-1 cloud-only「保留本地」 | **已关** | R10-conflict-ui；单条/批量可达 + 两击确认 |
+| §1 Argon2 参数上限 | **已关** | `backup_crypto.rs` `KDF_MAX_*` |
+| §0 / §3 仓库巡检 | **已合（下载全量档）** | `repo_check.rs`；DSBK v2 头偏移已修 |
+| §0 / §2.5 文件名可逆 | **已合** | R11-names2 rclone 风格可逆映射 |
+| §0 / §2.1 sync-target 租约 | **已合** | `sync_lease.rs` + `E_SYNC_LEASE_HELD` |
+| §0 / §3 增量/去重 | **积木已合，生产未接线** | 整 ZIP 仍整对象 PUT；不能宣称增量 |
+| §3 时点恢复 | **记录级 history 已合** | ZIP 仍是整机粒度 |
+| 云整包便携/全保真混淆 | **UI/协议已关一截** | 导入后看 `recovery_kind`；云端 `recoveryKind`；已知便携包下载前拒绝 |
+| §2.5 ZIP 备份名暴露时间/设备 | **阶段一已合（R12-neutral-names）** | 新对象 22 位随机 ID；`manifests/<短哈希>.json`；新标记 `createdByDevice` 短哈希；旧时间戳名与旧清单文件名仍按 id 读写 |
+
+**生产放量仍 NO-GO。** 最短剩余：完整 CI 绿灯、Android 真机签字、整包增量传输接线或对外文案继续诚实到底。

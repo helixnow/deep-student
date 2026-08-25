@@ -535,6 +535,27 @@ export interface BackupVersion {
   appVersion?: string;
   /** 备注 */
   note?: string;
+  /**
+   * 导入后能否整槽恢复。旧云端清单没有该字段，按未知处理。
+   * `partial_archive` 表示便携/部分归档，不能替换数据槽。
+   */
+  recoveryKind?: 'disaster_recovery' | 'partial_archive' | string;
+}
+
+export function findCloudBackupVersion(
+  versionId: string | null | undefined,
+  versions: readonly BackupVersion[],
+  latest?: BackupVersion | null,
+): BackupVersion | undefined {
+  if (!versionId) return undefined;
+  return versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined);
+}
+
+export function isKnownPortableCloudBackup(
+  version: Pick<BackupVersion, 'recoveryKind'> | null | undefined,
+): boolean {
+  return version?.recoveryKind === 'partial_archive';
 }
 
 /** 同步状态 */
@@ -722,7 +743,8 @@ export async function uploadBackup(
   config: CloudStorageConfig,
   zipPath: string,
   appVersion?: string,
-  note?: string
+  note?: string,
+  recoveryKind?: string,
 ): Promise<UploadResult> {
   try {
     return await invoke<UploadResult>('cloud_sync_upload', {
@@ -730,6 +752,7 @@ export async function uploadBackup(
       zipPath,
       appVersion,
       note,
+      recoveryKind,
     });
   } catch (error: unknown) {
     throw normalizeCloudStorageError(error);

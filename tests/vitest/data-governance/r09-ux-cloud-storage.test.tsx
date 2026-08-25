@@ -105,6 +105,14 @@ vi.mock('@/utils/cloudStorageApi', () => ({
     if (stats.restorable === false) return false;
     return true;
   },
+  findCloudBackupVersion: (
+    versionId: string | null | undefined,
+    versions: Array<{ id: string }>,
+    latest?: { id: string } | null,
+  ) => versions.find((version) => version.id === versionId)
+    ?? (latest?.id === versionId ? latest : undefined),
+  isKnownPortableCloudBackup: (version?: { recoveryKind?: string } | null) =>
+    version?.recoveryKind === 'partial_archive',
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({
@@ -218,6 +226,15 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
       testBlock.indexOf('errors.connectionFailed'),
     );
 
+    const openRestoreStart = componentSource.indexOf('const openRestoreConfirm = useCallback');
+    const openRestoreEnd = componentSource.indexOf('const lastRestoreVersionIdRef', openRestoreStart);
+    const openRestoreBlock = componentSource.slice(openRestoreStart, openRestoreEnd);
+    expect(openRestoreBlock).toContain('isKnownPortableCloudBackup');
+    expect(openRestoreBlock).toContain('portableArchiveNotRestorable');
+    expect(openRestoreBlock.indexOf('isKnownPortableCloudBackup')).toBeLessThan(
+      openRestoreBlock.lastIndexOf('setRestoreConfirmOpen(true)'),
+    );
+
     const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
     const uploadEnd = componentSource.indexOf('const openRestoreConfirm = useCallback', uploadStart);
     const uploadBlock = componentSource.slice(uploadStart, uploadEnd);
@@ -240,12 +257,24 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(enLocale.upload.portableArchiveUploaded).toMatch(/portable archive/i);
     expect(enLocale.upload.portableArchiveUploaded).toMatch(/slot restore/i);
     expect(Object.keys(zhLocale.upload).sort()).toEqual(Object.keys(enLocale.upload).sort());
+    expect(uploadBlock).toContain("'disaster_recovery' : 'partial_archive'");
+    expect(componentSource).toContain("version.recoveryKind === 'partial_archive'");
+    expect(componentSource).toContain('history.portableArchiveNotRestorable');
+    expect(zhLocale.history.portableArchive).toContain('便携归档');
+    expect(zhLocale.history.fullFidelity).toContain('全保真');
+    expect(enLocale.history.portableArchive).toMatch(/portable archive/i);
+    expect(enLocale.history.fullFidelity).toMatch(/full-fidelity/i);
+    expect(Object.keys(zhLocale.history).sort()).toEqual(Object.keys(enLocale.history).sort());
 
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
     const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
     expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
+      restoreBlock.indexOf('setDownloading(true)'),
+    );
+    expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeGreaterThan(-1);
+    expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeLessThan(
       restoreBlock.indexOf('setDownloading(true)'),
     );
     const importIdx = restoreBlock.indexOf('importZip(');
@@ -425,6 +454,8 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).toContain('**不会**带备份密码');
     expect(guide).toContain('加密全保真 ZIP');
     expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
+    expect(guide).toContain('恢复按钮会直接禁用');
+    expect(guide).toContain('仍先走确认框');
     expect(guide).toContain('拒绝导出');
     expect(guide).toContain('不会套用已存密码');
     expect(guide).toContain('至少 **8** 个字符');
@@ -452,6 +483,18 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(componentSource).toContain("t('cloudStorage:download.warning')");
     expect(componentSource).toContain("t('cloudStorage:download.partialArchiveNotice')");
     expect(componentSource).toContain("t('cloudStorage:download.restartNotice')");
+    expect(componentSource).toContain("t('cloudStorage:download.confirmVersion'");
+    expect(componentSource).toContain('download.confirmKnownPortable');
+    expect(componentSource).toContain('download.confirmKnownFull');
+    expect(componentSource).toContain('download.confirmUnknownKind');
+    expect(zhLocale.download.confirmVersion).toContain('{{version}}');
+    expect(zhLocale.download.confirmKnownPortable).toContain('便携归档');
+    expect(zhLocale.download.confirmKnownFull).toContain('全保真');
+    expect(zhLocale.download.confirmUnknownKind).toContain('没有恢复种类标记');
+    expect(enLocale.download.confirmVersion).toContain('{{version}}');
+    expect(enLocale.download.confirmKnownPortable).toMatch(/portable archive/i);
+    expect(enLocale.download.confirmKnownFull).toMatch(/full-fidelity/i);
+    expect(enLocale.download.confirmUnknownKind).toMatch(/no restore-kind marker/i);
     expect(componentSource).toContain('useStoredCloudEncryptionPassword');
     expect(componentSource).toContain('resolveCloudZipEncryptionArgs');
     expect(componentSource).toContain('DataGovernanceApi.exportZip(');
@@ -460,6 +503,12 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(componentSource).not.toMatch(/importZip\(\s*downloadResult\.localPath\s*\)/);
     expect(componentSource).not.toMatch(/getCloudCredentials\(|secure_get_cloud_credentials/);
     expect(componentSource).toContain('onConfirm={handleRestore}');
+    expect(componentSource).toContain("t('cloudStorage:actions.downloadLatest')");
+    const latestStart = componentSource.indexOf('{syncStatus.latestVersion && (');
+    const latestSlice = componentSource.slice(latestStart, latestStart + 1800);
+    expect(latestSlice).toContain('openRestoreConfirm');
+    expect(latestSlice).not.toContain('performRestore(');
+    expect(latestSlice).toContain("recoveryKind === 'partial_archive'");
     // 恢复确认框用 warning 变体
     expect(componentSource).toMatch(
       /download\.confirmTitle'\)\}[\s\S]{0,400}confirmVariant="warning"/,

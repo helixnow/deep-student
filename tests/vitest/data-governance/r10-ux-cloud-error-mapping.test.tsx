@@ -99,6 +99,8 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   formatFileSize: (n: number) => `${n}B`,
   formatTimestamp: (n: number) => String(n),
   getCloudPlatformErrorI18nKey: mockGetCloudPlatformErrorI18nKey,
+  findCloudBackupVersion: () => undefined,
+  isKnownPortableCloudBackup: () => false,
 }));
 
 vi.mock('@/components/ui/DsDialog', () => ({

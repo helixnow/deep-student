@@ -215,7 +215,7 @@
 | 任务 | 模型建议 | 内容 | 可验证交付物 | 文件面（认领时进 FIX-QUEUE） |
 |---|---|---|---|---|
 | T1 `R12-kdf-clamp` | high | §6 缺口实现：两条路径共用的 KDF 参数上限 + fail-closed + 人话错误 | §6.4 全部测试绿；上限常量带取值依据注释 | `crypto/backup_crypto.rs`、`sync_manager.rs` 错误文案段、`cloudStorage.json`（zh/en）新错误键、前端映射段、上述新测试文件 |
-| T2 `R12-neutral-names` | high | §5.3 阶段一：中性对象名 + manifest 短哈希文件名 + 标记 `createdByDevice` 短哈希 | 新上传对象名不含时间/设备（单测断言正则）；新旧混布目录的上传/下载/裁剪/删除集成测试绿；兼容性矩阵四象限各一测试 | `sync_manager.rs` 命名段、`src-tauri/tests/sync_r12_neutral_names.rs` 新文件 |
+| T2 `R12-neutral-names` | high | §5.3 阶段一：中性对象名 + manifest 短哈希文件名 + 标记 `createdByDevice` 短哈希 | **已合**：新上传 22 位随机 ID；`manifests/<短哈希>.json` 写入并迁移旧名；新标记短哈希；验收 `sync_r12_neutral_names.rs`（四象限 + 混布上传/下载/裁剪/删除） | `sync_manager.rs` 命名段、`src-tauri/tests/sync_r12_neutral_names.rs` |
 | T3 `R12-rotate-wizard` | high | §2 流程产品化：设置页「更换备份密码」引导向导（本地备份检查 → 新目录 → 新密码 → 首传 → 验证清单），**不做原地轮换** | 向导 vitest（步骤门禁：未确认本地备份不得进入下一步）；用户指南 16 新「更换备份密码」小节与本文 §2 一致 | `CloudStorageSection.tsx` 向导组件（或新文件）、`cloudStorage.json`（zh/en）`rotateWizard.*` 键、`tests/vitest/data-governance/r12-rotate-wizard.test.tsx` 新文件、`docs/user-guide/16-数据管理与云同步.md` |
 | T4 `R12-rotate-proto-review` | xhigh（不可用则明示 high） | §4 草案评审：对照 v2 标记全部 fail-closed 分支逐条推演 v3 兼容性；记录级对象重加密时长基准（复用 R11-delta 脚本）；出 go/no-go 结论 | 评审文档 `KEY-ROTATION-R12.md`（含基准数据表与风险裁决）；若 go，附实现轮任务表 | 只读；文档归本目录 |
 

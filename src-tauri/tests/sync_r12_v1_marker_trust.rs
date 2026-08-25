@@ -18,7 +18,9 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{CloudStorage, CloudSyncManager, EncryptionMarker, FileInfo};
+use deep_student_lib::cloud_storage::{
+    device_id_short_hash, CloudStorage, CloudSyncManager, EncryptionMarker, FileInfo,
+};
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::models::AppError;
 use tempfile::TempDir;
@@ -222,7 +224,8 @@ async fn r12_empty_root_v1_marker_still_upgrades_with_first_password() {
         .expect("空仓的 v1 标记应保持旧行为：允许第一台带密码设备一次性升级");
     assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
     assert_eq!(
-        upgraded.created_by_device, "device-legacy-writer",
+        upgraded.created_by_device,
+        device_id_short_hash("device-legacy-writer"),
         "升级不得改写首次写入者"
     );
     assert_eq!(
@@ -269,7 +272,8 @@ async fn r12_correct_password_upgrades_after_trial_decrypt_of_existing_backup() 
         .expect("密码能解开既有备份时应完成一次性升级");
     assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
     assert_eq!(
-        upgraded.created_by_device, "device-legacy-writer",
+        upgraded.created_by_device,
+        device_id_short_hash("device-legacy-writer"),
         "升级不得改写首次写入者"
     );
     assert_eq!(
@@ -331,7 +335,10 @@ async fn r12_wrong_password_cannot_claim_root_with_existing_backups() {
         .await
         .expect("正确密码设备必须仍能完成升级");
     assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
-    assert_eq!(upgraded.created_by_device, "device-legacy-writer");
+    assert_eq!(
+        upgraded.created_by_device,
+        device_id_short_hash("device-legacy-writer")
+    );
 
     // 此后错密码设备被校验子拦截
     assert!(
