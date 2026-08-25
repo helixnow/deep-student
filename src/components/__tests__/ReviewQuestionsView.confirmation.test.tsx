@@ -17,6 +17,8 @@ vi.mock('react-i18next', () => ({
     ),
   }),
   Trans: () => null,
+  // ReviewQuestionsView 的传递依赖图会加载 i18n 初始化模块（其 import 需要该导出）
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 import { ReviewQuestionsView } from '../ReviewQuestionsView';
