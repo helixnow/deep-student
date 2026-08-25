@@ -116,7 +116,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            className="wb-chat-sandbox-expand absolute right-2 top-2 !h-8 !w-8"
+            className="wb-chat-sandbox-expand absolute right-2 top-2 !h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             onClick={() => openSandboxWorkbench(sandboxOwnerKey)}
             aria-label={t('page.expandSandboxWorkbench')}
             title={t('page.expandSandboxWorkbench')}

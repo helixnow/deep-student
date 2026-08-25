@@ -150,28 +150,28 @@ export default function SelectionBoxDebugPlugin({ isActive, isActivated }: Debug
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowOnlyMove(!showOnlyMove)}
-            className={`px-2 py-1 text-xs rounded ${showOnlyMove ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+            className={`px-2 py-1 text-xs rounded [@media(pointer:coarse)]:min-h-11 ${showOnlyMove ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
             title="只显示 mouse_move 事件"
           >
             仅Move
           </button>
           <button
             onClick={() => setIsPaused(!isPaused)}
-            className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-yellow-500' : 'text-muted-foreground'}`}
+            className={`p-1.5 rounded hover:bg-muted [@media(pointer:coarse)]:min-h-11 ${isPaused ? 'text-yellow-500' : 'text-muted-foreground'}`}
             title={isPaused ? '继续记录' : '暂停记录'}
           >
             {isPaused ? <Play size={16} /> : <Pause size={16} />}
           </button>
           <button
             onClick={copyToClipboard}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground [@media(pointer:coarse)]:min-h-11"
             title="复制日志"
           >
             <Copy size={16} />
           </button>
           <button
             onClick={clearEvents}
-            className="p-1.5 rounded hover:bg-muted text-muted-foreground"
+            className="p-1.5 rounded hover:bg-muted text-muted-foreground [@media(pointer:coarse)]:min-h-11"
             title="清除日志"
           >
             <Trash size={16} />

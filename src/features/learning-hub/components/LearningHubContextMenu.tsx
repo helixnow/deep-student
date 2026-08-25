@@ -150,7 +150,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, onClick, ch
   <button
     type="button"
     role="menuitem"
-    className={cn('wb-desk-menu-item', danger && 'wb-desk-menu-item--danger')}
+    // 触屏：菜单行是长按菜单主命中区，保证 ≥44px 触控高度（与 DesktopView 同款写法）
+    className={cn('wb-desk-menu-item [@media(pointer:coarse)]:min-h-11', danger && 'wb-desk-menu-item--danger')}
     disabled={disabled}
     onClick={onClick}
   >

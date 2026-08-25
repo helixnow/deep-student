@@ -310,7 +310,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 onBlur={(e) => {
                   setDailyTarget(normalizeDailyTarget(Number(e.target.value)));
                 }}
-                className="w-24 text-center text-sm font-medium"
+                className="w-24 text-center text-sm font-medium [@media(pointer:coarse)]:!min-h-11"
 />
               <div className="flex gap-2">
                 {[5, 10, 15, 20].map((n) => (
@@ -318,6 +318,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     key={n}
                     variant={dailyTarget === n ? 'default' : 'outline'}
                     size="sm"
+                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     onClick={() => setDailyTarget(n)}
                   >
                     {n}
@@ -336,6 +337,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   void loadCalendar();
                 }}
@@ -418,7 +420,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           <DsButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full h-9 text-sm"
+            className="w-full h-9 text-sm [@media(pointer:coarse)]:!min-h-11"
           >
             {isLoadingPractice ? (
               <>
@@ -445,13 +447,13 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
             <div className="flex items-center gap-2">
-              <DsButton variant="ghost" iconOnly size="sm" onClick={handlePrevMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handlePrevMonth}>
                 <CaretLeft size={16} />
               </DsButton>
               <span className="text-sm font-medium w-24 text-center">
                 {t('daily.yearMonth', { year: calendarYear, month: calendarMonth })}
               </span>
-              <DsButton variant="ghost" iconOnly size="sm" onClick={handleNextMonth}>
+              <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handleNextMonth}>
                 <CaretRight size={16} />
               </DsButton>
             </div>

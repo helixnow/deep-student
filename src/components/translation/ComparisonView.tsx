@@ -21,9 +21,10 @@ interface ComparisonViewProps {
 /** 容器窄于该宽度时改为"原文块+译文块"纵向交错布局（双列各 <180px 时可读性崩坏） */
 const NARROW_STACK_THRESHOLD = 480;
 
-/** 触屏命中区扩展：小图标钮扩到 ≥44px，视觉不变（与 TranslationMain.COARSE_HIT 同款范式） */
+/** 触屏命中区扩展：24px（w-6 h-6）图标钮扩到 ≥44px（24 + 2×10），视觉不变
+ *  （与 TranslationMain.COARSE_HIT 同款范式；此处按钮更小，inset 相应加大） */
 const COARSE_HIT =
-  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']";
+  "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
 
 /**
  * 双语对照视图

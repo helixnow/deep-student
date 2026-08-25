@@ -51,6 +51,9 @@ const RailButton = React.forwardRef<HTMLButtonElement, RailButtonProps>(
       aria-current={active ? 'page' : undefined}
       className={cn(
         'relative flex h-9 w-9 shrink-0 items-center justify-center',
+        // 📱 44px 触控目标：rail 宽 48px（w-12），44px 真实尺寸可容纳；
+        // gap-1 密排纵向堆叠，放大真实尺寸而非 after:-inset（避免热区互相覆盖）
+        '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
         'rounded-[var(--radius-shell-control,0.5rem)] transition-colors duration-150',
         'outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active

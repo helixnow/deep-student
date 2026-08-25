@@ -1117,7 +1117,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 onClick={handlePrevSheet}
                 disabled={currentSheetIndex === 0}
                 title={t('learningHub:officePreview.prevSheet')}
@@ -1146,7 +1146,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                           : tab.name
                       }
                       onClick={() => setCurrentSheetIndex(index)}
-                      className={`h-6 [@media(pointer:coarse)]:h-11 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
+                      className={`h-6 [@media(pointer:coarse)]:!h-11 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
                         compactTabs ? 'max-w-[6rem] px-1.5' : 'max-w-[10rem] px-2'
                       } ${
                         isActive
@@ -1168,7 +1168,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 onClick={handleNextSheet}
                 disabled={currentSheetIndex === sheetCount - 1}
                 title={t('learningHub:officePreview.nextSheet')}

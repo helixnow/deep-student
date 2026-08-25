@@ -114,6 +114,33 @@
   outline-offset: 1px;
 }
 
+/* 触屏：chevron 常显（弱化），否则无法发现折叠入口。
+   注意用 pointer: coarse 而非 hover: none——iPad 外接触控板时 hover: none
+   不匹配，但主输入仍是手指（coarse），hover 显现在触屏上不可达。 */
+@media (pointer: coarse) {
+  .crepe-callout__fold {
+    opacity: 0.5;
+  }
+
+  /* 视觉保持小图标，::after 扩命中到 ≥44px 触控目标。
+     header 的 title 不可交互，命中区居中外溢盖住其边缘无副作用。 */
+  .crepe-callout__icon,
+  .crepe-callout__fold {
+    position: relative;
+  }
+
+  .crepe-callout__icon::after,
+  .crepe-callout__fold::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
 .crepe-callout__fold-svg {
   display: block;
   width: 0.85em;

@@ -259,7 +259,9 @@ const PdfPasswordPrompt: React.FC<{
       <Input
         ref={inputRef}
         type="password"
-        className="ds-pdf__password-input"
+        // 触屏：32px → 44px 触控高度；16px 防 iOS 聚焦自动缩放（同 .ds-search-input coarse 规则，
+        // CSS coarse 块漏掉了该输入框；!important 对冲 .ds-pdf__password-input 的 height/font-size）
+        className="ds-pdf__password-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
         placeholder={t('pdf:password.placeholder')}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -274,10 +276,10 @@ const PdfPasswordPrompt: React.FC<{
         </div>
       )}
       <div className="ds-pdf__password-actions">
-        <DsButton variant="ghost" size="sm" onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>
           {t('pdf:password.cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" onClick={submit} disabled={!password.trim()}>
+        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={submit} disabled={!password.trim()}>
           {t('pdf:password.submit')}
         </DsButton>
       </div>
@@ -1251,10 +1253,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 仅在有浮层打开时注册；桌面端不触发 handleAndroidBack，无行为变化。
   useEffect(() => {
     const hasOverlay =
-      showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
+      selectionTranslation || showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
       sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
     return registerBackHandler(() => {
+      // 可见性守卫：保活但不可见的实例（ViewLayerRenderer keep-alive 隐藏层 /
+      // 后台标签页）不得吞掉其他页面的返回键。注意 visibility:hidden 不清除
+      // 布局盒（getClientRects 仍有返回值），必须单独查 computed visibility。
+      const el = containerRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       if (selectionTranslation) {
         setSelectionTranslation(null);
         return true;
@@ -3000,7 +3009,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <div className="ds-pdf__page-overlay">
             <button
               type="button"
-              className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`}
+              className={`ds-pdf__select-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 [@media(pointer:coarse)]:justify-center ${isSelected ? 'selected' : ''}`}
               onClick={() => handleTogglePageSelect(pageNum)}
               aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
@@ -3113,7 +3122,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               {editingBookmarkId === bm.id ? (
                 <input
                   type="text"
-                  className="ds-bookmark-title-input"
+                  className="ds-bookmark-title-input [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!text-[16px]"
                   value={editingBookmarkTitle}
                   onChange={(e) => setEditingBookmarkTitle(e.target.value)}
                   onKeyDown={(e) => {
@@ -3328,10 +3337,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
           {canPersistAnnotations && rotation === 0 && (
             <>
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+              {/* 色板 36px（bar 内 CSS 特异性高于 coarse 全局 32px）：伪元素扩命中区到 44px
+                  （36 + 2×4；bar gap 10px，相邻命中区不重叠），视觉尺寸不变 */}
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
             </>
           )}
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
@@ -3642,7 +3653,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   {loadErrorHint}
                 </p>
               )}
-              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
+              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2 [@media(pointer:coarse)]:!min-h-11">
                 <ArrowClockwise size={14} />
                 {t('common:retry')}
               </DsButton>
@@ -3771,7 +3782,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'outline'}
-                  className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'outline' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('outline')}
                 >
                   {t('pdf:toolbar.outline')}
@@ -3781,7 +3792,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'thumbnails'}
-                className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('thumbnails')}
               >
                 {t('pdf:toolbar.thumbnails')}
@@ -3790,7 +3801,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'bookmarks'}
-                className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('bookmarks')}
               >
                 {t('pdf:bookmark.tabLabel')}
@@ -3800,7 +3811,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'highlights'}
-                  className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'highlights' ? 'active' : ''}`}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'highlights' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('highlights')}
                 >
                   {t('pdf:toolbar.highlight_tab')}

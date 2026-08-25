@@ -1088,7 +1088,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               size="sm"
               onClick={handleRetryTranslation}
               disabled={isRetrying || !isOnline}
-              className="shrink-0 text-destructive hover:bg-destructive/10"
+              className="shrink-0 text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
               {t('common:retry')}
@@ -1108,7 +1108,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={handleDiscardPartial}
-                className="text-info hover:bg-info/10"
+                className="text-info hover:bg-info/10 [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('translation:workbench_ui.discard_partial')}
               </DsButton>
@@ -1116,7 +1116,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={translationStream.acknowledgePartialResult}
-                className="text-muted-foreground"
+                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
               >
                 {t('translation:workbench_ui.dismiss')}
               </DsButton>
@@ -1159,6 +1159,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               isSyncScroll={isSyncScroll}
               setIsSyncScroll={setIsSyncScroll}
               settingsAsPage={externalSettingsNavigation}
+              isActive={isActive}
               onSwapLanguages={handleSwapLanguages}
               onFilesDropped={handleFilesDropped}
               onSavePrompt={handleSavePrompt}

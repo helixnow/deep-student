@@ -43,7 +43,7 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
     <div
       ref={ref}
       className={cn(
-        'inline-flex h-10 items-center justify-start gap-1 border-b border-[color:var(--shell-workspace-border)] bg-transparent text-[color:var(--text-secondary)] w-full',
+        'inline-flex h-10 [@media(pointer:coarse)]:min-h-11 items-center justify-start gap-1 border-b border-[color:var(--shell-workspace-border)] bg-transparent text-[color:var(--text-secondary)] w-full',
         className
       )}
       {...props}
@@ -68,7 +68,7 @@ const TabsTrigger = React.forwardRef<
       }}
       className={cn(
         // ui-state-colors：active/hover 切换时颜色/边框/阴影平滑过渡（transitions-dev token）
-        'inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-[var(--radius-shell-control)] border border-transparent px-3 py-1.5 text-sm font-medium text-[color:var(--text-secondary)] ring-offset-background ui-state-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:pointer-events-none disabled:opacity-50 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--text-primary)] data-[state=active]:border-[color:var(--button-utility-border)] data-[state=active]:bg-[color:var(--surface-panel-strong)] data-[state=active]:text-[color:var(--text-primary)] data-[state=active]:shadow-[var(--shadow-shell-soft)]',
+        'inline-flex min-h-8 [@media(pointer:coarse)]:min-h-11 items-center justify-center whitespace-nowrap rounded-[var(--radius-shell-control)] border border-transparent px-3 py-1.5 text-sm font-medium text-[color:var(--text-secondary)] ring-offset-background ui-state-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:pointer-events-none disabled:opacity-50 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--text-primary)] data-[state=active]:border-[color:var(--button-utility-border)] data-[state=active]:bg-[color:var(--surface-panel-strong)] data-[state=active]:text-[color:var(--text-primary)] data-[state=active]:shadow-[var(--shadow-shell-soft)]',
         variant === 'bare' && 'border-transparent bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none',
         className
       )}

@@ -403,6 +403,8 @@ export const StyleSettings: React.FC<{
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             'flex items-center gap-2 px-2 h-7 rounded',
+            // 触屏下保持 28px 视觉高度，仅扩大命中区域至 ≥44px
+            "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
             'bg-transparent hover:bg-[var(--mm-bg-hover)]',
             'border border-transparent',
             'transition-colors duration-100',

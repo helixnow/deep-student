@@ -129,7 +129,7 @@ const WorkspaceSendBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-1 text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-['']"
+          className="mt-1 text-2xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:min-h-11"
         >
           {isExpanded ? t('workspaceSend.showLess') : t('workspaceSend.showMore')}
         </button>

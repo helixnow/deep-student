@@ -40,6 +40,15 @@ const isMacOSTauriDesktop = (): boolean => {
   return isMac && isTauri;
 };
 
+/**
+ * 触屏指纹精度低：兜底页按钮在 coarse 指针下补 44px 最小触控高度。
+ * 该组件全靠内联样式（崩溃时 CSS 管线可能已失效），无法走 @media，
+ * 故用 matchMedia 一次性判定（崩溃页生命周期内指针类型不会切换）。
+ */
+const getIsCoarsePointer = (): boolean =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(pointer: coarse)').matches === true;
+
 /** Resolve the active app theme without relying on the app's theme provider. */
 const getErrorFallbackIsDark = (): boolean => {
   if (typeof document !== 'undefined') {
@@ -72,6 +81,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
   const [exportStatus, setExportStatus] = React.useState<string | null>(null);
   const [isDark, setIsDark] = React.useState(getErrorFallbackIsDark);
   const useMacOSGlass = isMacOSTauriDesktop();
+  const coarseMinHeight = getIsCoarsePointer() ? 44 : undefined;
 
   React.useEffect(() => {
     const syncTheme = () => setIsDark(getErrorFallbackIsDark());
@@ -242,6 +252,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
           onClick={() => window.location.reload()}
           style={{
             padding: '10px 24px',
+            minHeight: coarseMinHeight,
             fontSize: 14,
             fontWeight: 500,
             color: '#fff',
@@ -257,6 +268,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
           onClick={() => setShowDetails((value) => !value)}
           style={{
             padding: '10px 24px',
+            minHeight: coarseMinHeight,
             fontSize: 14,
             fontWeight: 500,
             ...secondaryButtonStyle,
@@ -274,6 +286,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
             disabled={exporting}
             style={{
               padding: '10px 24px',
+              minHeight: coarseMinHeight,
               fontSize: 14,
               fontWeight: 500,
               ...secondaryButtonStyle,
@@ -298,6 +311,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
               onClick={handleCopy}
               style={{
                 padding: '6px 16px',
+                minHeight: coarseMinHeight,
                 fontSize: 13,
                 ...secondaryButtonStyle,
                 color: copied ? '#34d399' : secondaryButtonStyle.color,

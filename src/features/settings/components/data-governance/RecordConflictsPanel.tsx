@@ -365,7 +365,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void handleBulkResolve('keep_local')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {t('data:governance.conflict_bulk_keep_local')}
           </DsButton>
@@ -374,7 +374,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void handleBulkResolve('keep_cloud')}
             disabled={loading || pairs.length === 0}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {t('data:governance.conflict_bulk_use_cloud')}
           </DsButton>
@@ -383,7 +383,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={refresh}
             disabled={loading}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             {loading ? (
               <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -397,7 +397,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={handlePurgeResolved}
             disabled={purging}
-            className="h-8 [@media(pointer:coarse)]:h-10"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             title={t('data:governance.conflict_purge_title')}
           >
             <Trash size={14} className="mr-1.5" />
@@ -418,7 +418,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             size="sm"
             onClick={() => void loadMore()}
             disabled={loading}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:!min-h-11"
           >
             {loading && <CircleNotch size={14} className="mr-1.5 animate-spin" />}
             {t('data:governance.conflict_load_more', {
@@ -455,7 +455,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
                     disabled={isResolving || isEditing}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     title={!latestLocal ? t('data:governance.conflict_cloud_only_hint') : undefined}
                   >
                     {t('data:governance.keep_local')}
@@ -465,7 +465,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     title={p.clouds.length > 1 ? t('data:governance.use_cloud_latest', { suffix: '（最新候选）' }) : undefined}
                   >
                     {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
@@ -475,7 +475,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     size="sm"
                     onClick={() => handleStartMerge(p)}
                     disabled={isResolving || isEditing}
-                    className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                   >
                      <PencilSimple size={12} className="mr-1" />
                     {t('data:governance.manual_merge')}
@@ -545,7 +545,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         setMergeEditing(null);
                         setMergeText('');
                       }}
-                      className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                      className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('common:actions.cancel')}
                     </DsButton>
@@ -562,7 +562,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         void handleResolve(p, 'merged', mergeText);
                       }}
                       disabled={isResolving}
-                      className="h-7 text-xs [@media(pointer:coarse)]:h-10"
+                      className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     >
                       {t('data:governance.write_back')}
                     </DsButton>

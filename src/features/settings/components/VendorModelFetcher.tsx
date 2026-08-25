@@ -243,7 +243,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
               ? t('settings:vendor_model_fetcher.search_placeholder')
               : t('settings:vendor_model_fetcher.search_placeholder_empty')
             }
-            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
             disabled={models.length === 0}
           />
         </div>
@@ -252,7 +252,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           size="sm"
           onClick={() => fetchModels(true)}
           disabled={loading || !hasApiKey || !hasBaseUrl}
-          className="shrink-0 h-7 text-xs"
+          className="shrink-0 h-7 text-xs [@media(pointer:coarse)]:!h-11"
         >
           {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
@@ -287,7 +287,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 size="sm"
                 onClick={handleAddAll}
                 disabled={addingAll}
-                className="text-xs h-6 px-2"
+                className="text-xs h-6 px-2 [@media(pointer:coarse)]:!h-11"
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
                 {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}
@@ -327,7 +327,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                       onClick={() => handleAddSingle(m)}
                       disabled={addingId === m.id}
                       className={cn(
-                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors",
+                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors [@media(pointer:coarse)]:min-h-11",
                         "hover:bg-[var(--interactive-hover)] text-foreground",
                         addingId === m.id && "opacity-50 pointer-events-none"
                       )}
@@ -355,7 +355,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     aria-expanded={existingExpanded}
                     aria-controls="vendor-model-fetcher-existing-list"
                     className={cn(
-                      'flex items-center justify-between w-full gap-2 px-3 py-1.5',
+                      'flex items-center justify-between w-full gap-2 px-3 py-1.5 [@media(pointer:coarse)]:min-h-11',
                       'text-2xs uppercase tracking-wider text-muted-foreground/60',
                       'hover:text-muted-foreground hover:bg-[var(--interactive-hover)]',
                       'transition-colors'

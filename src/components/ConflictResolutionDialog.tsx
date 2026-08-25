@@ -994,11 +994,11 @@ export function ConflictResolutionDialog({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <DsButton variant="ghost" onClick={onClose} disabled={isResolving}>
+            <DsButton variant="ghost" onClick={onClose} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
               {t('cancel')}
             </DsButton>
             {hasConflicts && (
-              <DsButton onClick={handleResolve} disabled={isResolving}>
+              <DsButton onClick={handleResolve} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
                 {isResolving ? (
                   <>
                     <CircleNotch size={16} className="animate-spin mr-2" />

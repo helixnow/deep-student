@@ -221,7 +221,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             variant="utility"
             size="sm"
             onClick={handleComplete}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
           >
             <CheckCircle size={13} />
             {t('todo:bulk.complete', { defaultValue: '完成' })}
@@ -232,7 +232,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             size="sm"
             // 点击时刻取「今天」：操作条可能跨午夜常驻（对齐 RescheduleMenu 的口径）
             onClick={() => handleReschedule(localToday())}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.today')}
@@ -242,7 +242,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             variant="utility"
             size="sm"
             onClick={() => handleReschedule(formatLocalDate(addDays(new Date(), 1)))}
-            className="h-7 gap-1 !px-2 text-xs"
+            className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.tomorrow')}
@@ -250,7 +250,11 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
 
           <AppMenu>
             <AppMenuTrigger asChild>
-              <DsButton variant="utility" size="sm" className="h-7 gap-1 !px-2 text-xs">
+              <DsButton
+                variant="utility"
+                size="sm"
+                className="h-7 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
+              >
                 <Flag size={13} />
                 {t('todo:fields.priority')}
               </DsButton>
@@ -269,7 +273,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             size="sm"
             onClick={handleDelete}
             className={cn(
-              'h-7 gap-1 !px-2 text-xs transition-colors',
+              'h-7 gap-1 !px-2 text-xs transition-colors [@media(pointer:coarse)]:!h-11',
               confirmingDelete
                 ? '!bg-[color:hsl(var(--destructive))] !text-white'
                 : 'hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]',
@@ -287,7 +291,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
         variant="ghost"
         size="sm"
         onClick={onClear}
-        className="ml-auto h-7 gap-1 !px-2 text-xs text-muted-foreground"
+        className="ml-auto h-7 gap-1 !px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!h-11"
       >
         <X size={13} />
         {t('todo:bulk.clear', { defaultValue: '清除选择' })}

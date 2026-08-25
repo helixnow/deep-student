@@ -118,18 +118,25 @@ export const MobileDetailOverlay: React.FC<{
     return () => window.clearTimeout(timer);
   }, [open]);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 离场层里仍保持挂载
+      // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
+      // （可见性判定对照 TodoTrashDialog 的 Escape 守卫）
+      const el = containerRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.view);
   }, [open]);
 
   // ===== 左边缘右滑返回（触屏；pointer events + 轴锁定，内联实现） =====
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const [edgeDragX, setEdgeDragX] = useState(0);
   const edgeDragXRef = useRef(0);
   const edgeGestureRef = useRef<{
@@ -357,6 +364,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   useEffect(() => {
     if (!checkMode) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 保活层里仍保持挂载
+      // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
+      // （对照 MobileDetailOverlay 的同款守卫）
+      const el = panelRootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       exitCheckMode();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -643,7 +656,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   }, [clearChecked]);
 
   // 触屏友好：TouchSensor 长按 250ms 激活 + 8px 容差，避免竖向滚动被拖拽排序劫持（R2-07）；
-  // 与 NotesTabsBar/DndFileTree/FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
+  // 与 FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
   const sensors = useTouchFriendlyDndSensors();
 
   const handleDragEnd = useCallback(
@@ -915,7 +928,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56"
+                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11"
                 />
               </div>
             )}
@@ -949,7 +962,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               disabled={filter.view === 'completed'}
               data-selected={filter.showCompleted}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 filter.showCompleted &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -968,7 +981,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               aria-label={t('todo:bulk.selectMode', '选择')}
               title={t('todo:bulk.selectMode', '选择')}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 checkMode &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -996,7 +1009,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   }}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-10 w-full pl-9 pr-3 text-sm"
+                  className="h-10 w-full pl-9 pr-3 text-sm [@media(pointer:coarse)]:h-11"
                 />
               </div>
               <DsButton
@@ -1008,7 +1021,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   setMobileSearchOpen(false);
                 }}
                 aria-label={t('common:actions.close', '关闭')}
-                className="!h-10 !w-10 flex-shrink-0"
+                className="!h-11 !w-11 flex-shrink-0"
               >
                 <X size={16} />
               </DsButton>
@@ -1138,7 +1151,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           type="button"
                           onClick={() => toggleBucketCollapsed(group.bucket)}
                           aria-expanded={!collapsed}
-                          className="group/header -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
+                          className="group/header relative -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3 [@media(pointer:coarse)]:after:content-['']"
                         >
                           <CaretDown
                             size={11}
@@ -1167,7 +1180,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             disabled={reschedulingOverdue}
                             onClick={() => void handleRescheduleOverdueToToday(group.items)}
                             title={t('todo:reschedule.allToTodayHint')}
-                            className="ml-auto h-6 gap-1 !px-2 text-xs"
+                            className="ml-auto h-6 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
                           >
                             <CalendarPlus size={12} />
                             {t('todo:reschedule.allToToday')}

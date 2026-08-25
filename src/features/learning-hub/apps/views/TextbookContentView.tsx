@@ -69,6 +69,7 @@ const LoadingSpinner: React.FC = () => {
  */
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
+  isActive,
 }) => {
   const { t } = useTranslation(['textbook', 'common', 'learningHub', 'pdf']);
   const {
@@ -782,6 +783,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         resourceId={node.id}
         metadataProgress={readingProgress}
         onProgressChange={handleProgressChange}
+        isActive={isActive}
       />
     );
   }

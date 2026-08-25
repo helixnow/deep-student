@@ -2322,7 +2322,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs text-primary"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:!h-11"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
@@ -2330,7 +2330,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
@@ -2352,7 +2352,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
@@ -2374,7 +2374,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
@@ -2394,7 +2394,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}

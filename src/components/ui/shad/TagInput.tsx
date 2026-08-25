@@ -74,7 +74,8 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
             disabled={disabled}
             aria-label={`${translate('common:remove')} ${t}`}
             title={translate('common:remove')}
- className="w-5 h-5 ml-1 inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50"
+            // coarse 指针下用伪元素把 20px 命中区外扩至 44px（视觉仍是小叉）
+            className="w-5 h-5 ml-1 relative inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
           >
             <X size={12} className="text-muted-foreground" />
           </button>
@@ -94,8 +95,9 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          className="border-none focus-visible:ring-0 px-0 py-0 h-6 min-w-[8ch] flex-1"
-/>
+          // coarse 下保证 ≥44px 触控高度（Input 基类的 lg:min-h 会收缩到 32px）
+          className="border-none focus-visible:ring-0 px-0 py-0 h-6 [@media(pointer:coarse)]:!min-h-11 min-w-[8ch] flex-1"
+        />
       </div>
     </div>
   );
