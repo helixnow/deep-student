@@ -97,36 +97,32 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 网关（LiteLLM/OneAPI）可能同时返回多种格式表示同一份缓存数据
     let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
     let openai_cached = usage
         .get("prompt_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
     let responses_cached = usage
         .get("input_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let gemini_cached = usage
-        .get("cached_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let total_cached = anthropic_cache_hit
-        .max(openai_cached)
-        .max(responses_cached)
-        .max(deepseek_cached)
-        .max(gemini_cached);
-    let cached_tokens = if total_cached > 0 {
-        Some(total_cached)
-    } else {
-        None
-    };
+        .and_then(|v| v.as_u64());
+    let gemini_cached = usage.get("cached_tokens").and_then(|v| v.as_u64());
+    // Presence is the measurement signal: an explicit 0 is a measured miss,
+    // while no supported field at all is an unmeasured request.
+    let cached_tokens = [
+        anthropic_cache_hit,
+        openai_cached,
+        responses_cached,
+        deepseek_cached,
+        gemini_cached,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .map(|tokens| tokens.min(u32::MAX as u64) as u32);
 
     // 提取缓存写入 token（计费元数据，不计入命中；观测用）
     // - Anthropic: cache_creation_input_tokens
@@ -135,25 +131,21 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 同一份写入量可能以多种格式重复出现，同样用 max() 归一
     let anthropic_cache_write = usage
         .get("cache_creation_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+        .and_then(|v| v.as_u64());
     let responses_cache_write = usage
         .get("input_tokens_details")
         .and_then(|d| d.get("cache_write_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let gateway_cache_write = usage
-        .get("cache_write_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let total_cache_write = anthropic_cache_write
-        .max(responses_cache_write)
-        .max(gateway_cache_write);
-    let cache_write_tokens = if total_cache_write > 0 {
-        Some(total_cache_write)
-    } else {
-        None
-    };
+        .and_then(|v| v.as_u64());
+    let gateway_cache_write = usage.get("cache_write_tokens").and_then(|v| v.as_u64());
+    let cache_write_tokens = [
+        anthropic_cache_write,
+        responses_cache_write,
+        gateway_cache_write,
+    ]
+    .into_iter()
+    .flatten()
+    .max()
+    .map(|tokens| tokens.min(u32::MAX as u64) as u32);
 
     let mut token_usage =
         TokenUsage::from_api_with_cache(prompt, completion, reasoning_tokens, cached_tokens);

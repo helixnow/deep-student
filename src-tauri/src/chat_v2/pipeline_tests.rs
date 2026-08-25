@@ -1573,6 +1573,28 @@ fn test_parse_api_usage_anthropic_cache_write() {
 }
 
 #[test]
+fn test_parse_api_usage_preserves_observed_zero_cache_values() {
+    // 显式 0 是真实测量（本轮 miss / 未写入），不得与字段缺失混为 None。
+    let measured_zero = json!({
+        "input_tokens": 10,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+    });
+    let measured = parse_api_usage(&measured_zero).unwrap();
+    assert_eq!(measured.cached_tokens, Some(0));
+    assert_eq!(measured.cache_write_tokens, Some(0));
+
+    let unmeasured = parse_api_usage(&json!({
+        "input_tokens": 10,
+        "output_tokens": 20
+    }))
+    .unwrap();
+    assert_eq!(unmeasured.cached_tokens, None);
+    assert_eq!(unmeasured.cache_write_tokens, None);
+}
+
+#[test]
 fn test_token_usage_serialization_camel_case() {
     // 验证 TokenUsage 序列化输出为 camelCase
     let usage = TokenUsage::from_api(1000, 500, Some(200));

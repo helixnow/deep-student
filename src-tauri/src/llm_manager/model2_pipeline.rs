@@ -2712,6 +2712,28 @@ mod tests {
         );
         assert_eq!(serde_json::to_string(&messages).unwrap(), before);
     }
+
+    #[test]
+    fn extract_usage_tokens_preserves_measured_zero_cache_values() {
+        let measured_zero = Some(json!({
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0
+        }));
+        let (_, _, _, cached, cache_write) =
+            LLMManager::extract_usage_tokens(&measured_zero, 99, 99);
+        assert_eq!(cached, Some(0));
+        assert_eq!(cache_write, Some(0));
+
+        let unmeasured = Some(json!({
+            "input_tokens": 10,
+            "output_tokens": 5
+        }));
+        let (_, _, _, cached, cache_write) = LLMManager::extract_usage_tokens(&unmeasured, 99, 99);
+        assert_eq!(cached, None);
+        assert_eq!(cache_write, None);
+    }
 }
 
 fn apply_runtime_reasoning_overrides(
@@ -5655,12 +5677,17 @@ impl LLMManager {
             let dur = start_instant.elapsed().as_millis();
 
             // 从 API 返回的 usage 数据中提取实际 token 数量
-            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
-                Self::extract_usage_tokens(
-                    &captured_usage,
-                    approx_tokens_out,
-                    (request_bytes / 4).max(1),
-                );
+            let (
+                actual_prompt_tokens,
+                actual_completion_tokens,
+                reasoning_tokens,
+                cached_tokens,
+                cache_write_tokens,
+            ) = Self::extract_usage_tokens(
+                &captured_usage,
+                approx_tokens_out,
+                (request_bytes / 4).max(1),
+            );
 
             if let Some(logger) = crate::debug_logger::get_global_logger() {
                 logger
@@ -5690,13 +5717,14 @@ impl LLMManager {
                 } else {
                     crate::chat_v2::types::TokenSource::Heuristic
                 };
-                crate::llm_usage::record_llm_usage_ext(
+                crate::llm_usage::record_llm_usage_cache_ext(
                     crate::llm_usage::CallerType::ChatV2,
                     &config.model,
                     actual_prompt_tokens,
                     actual_completion_tokens,
                     reasoning_tokens,
                     cached_tokens,
+                    cache_write_tokens,
                     Some(stream_event.to_string()),
                     Some(dur as u64),
                     !was_cancelled,
@@ -7280,19 +7308,25 @@ impl LLMManager {
         } else {
             crate::chat_v2::types::TokenSource::Heuristic
         };
-        let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
-            Self::extract_usage_tokens(
-                &usage.cloned(),
-                crate::utils::token_budget::estimate_tokens(&assistant_message),
-                (user_prompt.len() / 4).max(1),
-            );
-        crate::llm_usage::record_llm_usage_ext(
+        let (
+            actual_prompt_tokens,
+            actual_completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            cache_write_tokens,
+        ) = Self::extract_usage_tokens(
+            &usage.cloned(),
+            crate::utils::token_budget::estimate_tokens(&assistant_message),
+            (user_prompt.len() / 4).max(1),
+        );
+        crate::llm_usage::record_llm_usage_cache_ext(
             caller_type,
             &config.model,
             actual_prompt_tokens,
             actual_completion_tokens,
             reasoning_tokens,
             cached_tokens,
+            cache_write_tokens,
             None,
             None,
             true,
@@ -7611,7 +7645,7 @@ impl LLMManager {
         usage: &Option<serde_json::Value>,
         fallback_completion_tokens: usize,
         fallback_prompt_tokens: usize,
-    ) -> (u32, u32, Option<u32>, Option<u32>) {
+    ) -> (u32, u32, Option<u32>, Option<u32>, Option<u32>) {
         if let Some(usage_value) = usage {
             // 提取 prompt_tokens（输入）
             // 如果 API 返回 0 或未返回，尝试从 total_tokens - completion_tokens 推算
@@ -7669,60 +7703,57 @@ impl LLMManager {
             // 提取 cached_tokens（缓存命中，按供应商格式取 max 防中转站重复）
             let anthropic_cache_hit = usage_value
                 .get("cache_read_input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+                .and_then(|v| v.as_u64());
             let openai_cached = usage_value
                 .get("prompt_tokens_details")
                 .and_then(|d| d.get("cached_tokens"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+                .and_then(|v| v.as_u64());
             // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
             let responses_cached = usage_value
                 .get("input_tokens_details")
                 .and_then(|d| d.get("cached_tokens"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+                .and_then(|v| v.as_u64());
             let deepseek_cached = usage_value
                 .get("prompt_cache_hit_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
-            let gemini_cached = usage_value
-                .get("cached_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
-            let max_cached = anthropic_cache_hit
-                .max(openai_cached)
-                .max(responses_cached)
-                .max(deepseek_cached)
-                .max(gemini_cached);
-            let cached_tokens = if max_cached > 0 {
-                Some(max_cached)
-            } else {
-                None
-            };
+                .and_then(|v| v.as_u64());
+            let gemini_cached = usage_value.get("cached_tokens").and_then(|v| v.as_u64());
+            // 字段存在即表示已测量；显式 0 是真实 miss，不能折叠成 None。
+            let cached_tokens = [
+                anthropic_cache_hit,
+                openai_cached,
+                responses_cached,
+                deepseek_cached,
+                gemini_cached,
+            ]
+            .into_iter()
+            .flatten()
+            .max()
+            .map(|tokens| tokens.min(u32::MAX as u64) as u32);
 
             // 缓存写入 token（计费元数据，不计入命中；仅观测日志）
             // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
-            let cache_write_tokens = usage_value
+            let anthropic_cache_write = usage_value
                 .get("cache_creation_input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0)
-                .max(
-                    usage_value
-                        .get("input_tokens_details")
-                        .and_then(|d| d.get("cache_write_tokens"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0),
-                )
-                .max(
-                    usage_value
-                        .get("cache_write_tokens")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0),
-                ) as u32;
+                .and_then(|v| v.as_u64());
+            let responses_cache_write = usage_value
+                .get("input_tokens_details")
+                .and_then(|d| d.get("cache_write_tokens"))
+                .and_then(|v| v.as_u64());
+            let gateway_cache_write = usage_value
+                .get("cache_write_tokens")
+                .and_then(|v| v.as_u64());
+            let cache_write_tokens = [
+                anthropic_cache_write,
+                responses_cache_write,
+                gateway_cache_write,
+            ]
+            .into_iter()
+            .flatten()
+            .max()
+            .map(|tokens| tokens.min(u32::MAX as u64) as u32);
 
             debug!(
-                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={}",
+                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={:?}",
                 prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, cache_write_tokens
             );
 
@@ -7731,6 +7762,7 @@ impl LLMManager {
                 completion_tokens,
                 reasoning_tokens,
                 cached_tokens,
+                cache_write_tokens,
             )
         } else {
             // 没有 API usage 数据，使用估算值
@@ -7742,6 +7774,7 @@ impl LLMManager {
             (
                 estimated_prompt,
                 fallback_completion_tokens as u32,
+                None,
                 None,
                 None,
             )
