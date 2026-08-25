@@ -227,6 +227,28 @@ impl S3Storage {
             full_key.to_string()
         }
     }
+
+    /// 解析 `Content-Range: bytes <start>-<end>/<total>` 的起点。
+    /// 无法解析（含 `bytes */<total>`）返回 `None`，由调用方 fail-closed。
+    fn parse_content_range_start(raw: &str) -> Option<u64> {
+        let rest = raw.trim().strip_prefix("bytes")?.trim_start();
+        let (start, _) = rest.split_once('-')?;
+        start.trim().parse::<u64>().ok()
+    }
+
+    /// 根据 S3 `Content-Range` 决定实际写入起点。
+    /// 缺字段视为服务端忽略 Range，诚实从零重下；起点不一致 fail-closed。
+    fn resume_actual_start(resume_from: u64, content_range: Option<&str>) -> Result<u64> {
+        match content_range {
+            None => Ok(0),
+            Some(header) => match Self::parse_content_range_start(header) {
+                Some(start) if start == resume_from => Ok(start),
+                _ => Err(AppError::network(format!(
+                    "S3 服务端返回的续传起点与请求不一致（fail-closed，拒绝错位追加）：请求 bytes={resume_from}-，Content-Range={header:?}"
+                ))),
+            },
+        }
+    }
 }
 
 #[async_trait]
@@ -520,6 +542,127 @@ impl CloudStorage for S3Storage {
         Ok(checksum)
     }
 
+    fn supports_resumable_download(&self) -> bool {
+        true
+    }
+
+    /// 基于 S3 Range GET 的断点续传。语义对齐 WebDAV：
+    /// 精确 `Content-Range` 追加；缺字段当忽略 Range 从零重下；错位 fail-closed。
+    async fn get_file_resumable(
+        &self,
+        key: &str,
+        dest: &Path,
+        resume_from: u64,
+        progress: Option<DownloadProgressCallback>,
+    ) -> Result<u64> {
+        let info = self
+            .stat(key)
+            .await?
+            .ok_or_else(|| AppError::not_found("云端文件不存在"))?;
+        let total_size = info.size;
+        if resume_from > total_size {
+            return Err(AppError::validation(format!(
+                "本地断点（{resume_from} 字节）大于云端对象（{total_size} 字节），断点无效，请删除断点文件后整包重新下载"
+            )));
+        }
+        let progress: Option<std::sync::Arc<DownloadProgressCallback>> =
+            progress.map(std::sync::Arc::from);
+        if let Some(cb) = progress.as_ref() {
+            cb(resume_from, total_size);
+        }
+        if resume_from == total_size {
+            return Ok(resume_from);
+        }
+
+        let full_key = self.full_key(key);
+        let mut request = self.client.get_object().bucket(&self.bucket).key(&full_key);
+        if resume_from > 0 {
+            request = request.range(format!("bytes={resume_from}-"));
+        }
+        let output = request
+            .send()
+            .await
+            .map_err(|e| AppError::network(format!("S3 续传下载失败: {e}")))?;
+        let actual_start = Self::resume_actual_start(resume_from, output.content_range())?;
+        if actual_start == 0 && resume_from > 0 {
+            tracing::warn!(
+                "S3 服务端未按 Range 续传（无匹配 Content-Range），已丢弃本地断点从零重下: {}",
+                key
+            );
+        }
+
+        let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
+        let mut file = if actual_start > 0 {
+            let file = tokio::fs::OpenOptions::new()
+                .append(true)
+                .open(dest)
+                .await
+                .map_err(|e| AppError::file_system(format!("打开断点文件失败: {e}")))?;
+            let existing = file
+                .metadata()
+                .await
+                .map_err(|e| AppError::file_system(format!("读取断点文件元信息失败: {e}")))?
+                .len();
+            if existing != actual_start {
+                return Err(AppError::file_system(format!(
+                    "断点文件大小（{existing} 字节）与续传起点（{actual_start} 字节）不一致，拒绝错位追加"
+                )));
+            }
+            file
+        } else {
+            tokio::fs::File::create(dest)
+                .await
+                .map_err(|e| AppError::file_system(format!("创建下载文件失败: {e}")))?
+        };
+
+        let mut reader = output.body.into_async_read();
+        let mut written = actual_start;
+        let mut buffer = vec![0u8; 64 * 1024];
+        loop {
+            let bytes_read =
+                tokio::time::timeout(std::time::Duration::from_secs(90), reader.read(&mut buffer))
+                    .await
+                    .map_err(|_| {
+                        AppError::network(
+                    "S3 续传下载停滞超过 90 秒，连接可能已断开（已写入的断点保留，可重试续传）"
+                        .to_string(),
+                )
+                    })?
+                    .map_err(|e| AppError::network(format!("读取 S3 响应失败: {e}")))?;
+            if bytes_read == 0 {
+                break;
+            }
+            let chunk = &buffer[..bytes_read];
+            if written + bytes_read as u64 > total_size {
+                return Err(AppError::validation(format!(
+                    "云端对象返回超过声明大小（{total_size} 字节）的数据，拒绝写入（对象可能已被并发修改）"
+                )));
+            }
+            file.write_all(chunk)
+                .await
+                .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
+            written += bytes_read as u64;
+            if let Some(cb) = progress.as_ref() {
+                cb(written, total_size);
+            }
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+        file.sync_all()
+            .await
+            .map_err(|e| AppError::file_system(format!("同步文件失败: {e}")))?;
+
+        if written != total_size {
+            return Err(AppError::network(format!(
+                "S3 下载在 {written}/{total_size} 字节处中断（已写入的断点保留，可重试续传）"
+            )));
+        }
+        Ok(actual_start)
+    }
+
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         let full_key = self.full_key(key);
 
@@ -715,6 +858,56 @@ mod tests {
             source.contains("self.verify_remote_object_size(key, file_size)"),
             "S3 put_file must HEAD remote size after PUT/multipart; SDK success is not enough"
         );
+        assert!(
+            source.contains("fn supports_resumable_download(&self) -> bool {\n        true"),
+            "S3 必须声明支持 Range 续传，编排层才会保留断点"
+        );
+        assert!(
+            source.contains("request.range(format!(\"bytes={resume_from}-\"))"),
+            "S3 续传必须发 Range GET"
+        );
+    }
+
+    #[test]
+    fn parse_content_range_start_accepts_standard_form() {
+        assert_eq!(
+            S3Storage::parse_content_range_start("bytes 7000-9999/10000"),
+            Some(7000)
+        );
+        assert_eq!(
+            S3Storage::parse_content_range_start(" bytes 0-1/2"),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn parse_content_range_start_rejects_unsatisfiable_form() {
+        assert_eq!(S3Storage::parse_content_range_start("bytes */10000"), None);
+        assert_eq!(S3Storage::parse_content_range_start("bytes"), None);
+    }
+
+    #[test]
+    fn resume_actual_start_restarts_when_range_ignored() {
+        assert_eq!(S3Storage::resume_actual_start(0, None).unwrap(), 0);
+        assert_eq!(
+            S3Storage::resume_actual_start(7000, None).unwrap(),
+            0,
+            "无 Content-Range 必须诚实从零重下，不得冒充续传"
+        );
+        assert_eq!(
+            S3Storage::resume_actual_start(7000, Some("bytes 7000-9999/10000")).unwrap(),
+            7000
+        );
+    }
+
+    #[test]
+    fn resume_actual_start_fails_closed_on_misaligned_range() {
+        let error = S3Storage::resume_actual_start(7000, Some("bytes 7001-9999/10000"))
+            .expect_err("错位 Content-Range 必须 fail-closed");
+        assert!(error.to_string().contains("拒绝错位追加"), "实际: {error}");
+        let error = S3Storage::resume_actual_start(7000, Some("bytes */10000"))
+            .expect_err("无法解析的 Content-Range 必须 fail-closed");
+        assert!(error.to_string().contains("拒绝错位追加"), "实际: {error}");
     }
 
     #[test]

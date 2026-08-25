@@ -48,6 +48,7 @@ describe('P2-1: user guide 16 documents the wrong-password marker takeover unloc
 describe('P2-2: resumable cloud ZIP download stays honest', () => {
   const traits = read('src-tauri/src/cloud_storage/traits.rs');
   const webdav = read('src-tauri/src/cloud_storage/webdav.rs');
+  const s3 = read('src-tauri/src/cloud_storage/s3.rs');
   const syncManager = read('src-tauri/src/cloud_storage/sync_manager.rs');
 
   it('keeps the fail-closed default for providers without resume support', () => {
@@ -63,6 +64,13 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(webdav).toContain('StatusCode::OK => 0');
     // 字节数不足即失败，禁止静默截断当成功。
     expect(webdav).toContain('written != total_size');
+  });
+
+  it('desktop S3 advertises Range resume and refuses misaligned Content-Range', () => {
+    expect(s3).toMatch(/fn supports_resumable_download\(&self\) -> bool \{\s*true\s*\}/);
+    expect(s3).toContain('request.range(format!("bytes={resume_from}-"))');
+    expect(s3).toContain('续传起点与请求不一致');
+    expect(s3).toContain('written != total_size');
   });
 
   it('orchestration keeps the .part checkpoint and verifies the whole-file SHA256', () => {
