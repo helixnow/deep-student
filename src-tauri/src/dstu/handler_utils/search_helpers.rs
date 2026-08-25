@@ -11,8 +11,8 @@ use serde_json::Value;
 use crate::dstu::types::{DstuListOptions, DstuNode, DstuNodeType};
 use crate::vfs::{
     VfsDatabase, VfsEssayRepo, VfsEssaySession, VfsExamRepo, VfsFile, VfsFileRepo, VfsFolderRepo,
-    VfsMindMap, VfsMindMapRepo, VfsNoteRepo, VfsResourceRepo, VfsTextbook, VfsTextbookRepo,
-    VfsTranslationRepo,
+    VfsMindMap, VfsMindMapRepo, VfsNote, VfsNoteRepo, VfsResourceRepo, VfsTextbook,
+    VfsTextbookRepo, VfsTranslationRepo,
 };
 
 use super::{
@@ -74,6 +74,62 @@ fn build_snippet(text: &str, query: &str, max_len: usize) -> Option<String> {
     Some(snippet)
 }
 
+fn normalize_prop_filters(options: &DstuListOptions) -> Vec<(String, String)> {
+    options
+        .prop_filters
+        .as_ref()
+        .map(|filters| {
+            filters
+                .iter()
+                .map(|filter| {
+                    (
+                        filter.key.trim().to_lowercase(),
+                        filter.value.trim().to_lowercase(),
+                    )
+                })
+                .filter(|(key, _value)| !key.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn props_match_filters(props: Option<&Value>, required_props: &[(String, String)]) -> bool {
+    if required_props.is_empty() {
+        return true;
+    }
+    let Some(props) = props.and_then(Value::as_object) else {
+        return false;
+    };
+    let by_key: std::collections::HashMap<String, &Value> = props
+        .iter()
+        .map(|(key, value)| (key.trim().to_lowercase(), value))
+        .collect();
+    required_props.iter().all(|(key, expected)| {
+        let Some(actual) = by_key.get(key) else {
+            return false;
+        };
+        let actual = match actual {
+            Value::String(value) => value.clone(),
+            Value::Number(value) => value.to_string(),
+            Value::Bool(value) => value.to_string(),
+            _ => return false,
+        };
+        actual.to_lowercase().contains(expected)
+    })
+}
+
+fn note_matches_prop_filters(note: &VfsNote, required_props: &[(String, String)]) -> bool {
+    props_match_filters(note.props.as_ref(), required_props)
+}
+
+fn node_matches_prop_filters(node: &DstuNode, required_props: &[(String, String)]) -> bool {
+    let props = node
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("props"));
+    props_match_filters(props, required_props)
+}
+
 /// 搜索笔记
 pub fn search_notes(
     vfs_db: &Arc<VfsDatabase>,
@@ -91,13 +147,15 @@ pub fn search_notes(
         })
         .unwrap_or_default();
     let has_tag_filter = !required_tags.is_empty();
+    let required_props = normalize_prop_filters(options);
+    let has_prop_filter = !required_props.is_empty();
 
     let limit = options.get_limit();
     let offset = options.get_offset();
     let mut results = Vec::new();
 
-    // 无标签过滤时保持原有分页逻辑
-    if !has_tag_filter {
+    // 无后置过滤时保持原有分页逻辑
+    if !has_tag_filter && !has_prop_filter {
         let notes = VfsNoteRepo::list_notes(vfs_db, Some(query), limit, offset)
             .map_err(|e| e.to_string())?;
         for note in notes {
@@ -121,7 +179,7 @@ pub fn search_notes(
         return Ok(results);
     }
 
-    // 标签过滤时，确保分页发生在过滤之后
+    // 标签/属性过滤时，确保分页发生在过滤之后，避免先截断候选再漏掉匹配项。
     let page_size = limit.max(50).min(200);
     let mut skipped = 0u32;
     let mut page_offset = 0u32;
@@ -137,6 +195,9 @@ pub fn search_notes(
             let note_tags: std::collections::HashSet<String> =
                 note.tags.iter().map(|t| t.trim().to_lowercase()).collect();
             if !required_tags.iter().all(|t| note_tags.contains(t)) {
+                continue;
+            }
+            if !note_matches_prop_filters(&note, &required_props) {
                 continue;
             }
             if skipped < offset {
@@ -860,8 +921,59 @@ pub fn search_all(
         results.extend(index_results);
     }
 
+    // 内容索引召回绕过了 search_notes 的分页过滤，统一在合并结果上再守一次，
+    // 确保 prop_filters 对所有返回路径生效。
+    let required_props = normalize_prop_filters(options);
+    if !required_props.is_empty() {
+        results.retain(|node| node_matches_prop_filters(node, &required_props));
+    }
+
     // 按更新时间排序（标题命中和内容命中统一排序）
     results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note_with_props(props: Option<Value>) -> VfsNote {
+        VfsNote {
+            id: "note_search_props".to_string(),
+            resource_id: "res_search_props".to_string(),
+            title: "Search props".to_string(),
+            tags: vec![],
+            is_favorite: false,
+            created_at: "2026-08-25T00:00:00.000Z".to_string(),
+            updated_at: "2026-08-25T00:00:00.000Z".to_string(),
+            deleted_at: None,
+            props,
+        }
+    }
+
+    #[test]
+    fn note_prop_filters_match_keys_and_scalar_values_case_insensitively() {
+        let note = note_with_props(Some(serde_json::json!({
+            "状态": "In Progress",
+            "priority": 2,
+            "pinned": true
+        })));
+        assert!(note_matches_prop_filters(
+            &note,
+            &[
+                ("状态".to_string(), "progress".to_string()),
+                ("PRIORITY".to_lowercase(), "2".to_string()),
+                ("pinned".to_string(), "TRUE".to_lowercase()),
+            ]
+        ));
+        assert!(!note_matches_prop_filters(
+            &note,
+            &[("priority".to_string(), "9".to_string())]
+        ));
+        assert!(!note_matches_prop_filters(
+            &note_with_props(None),
+            &[("status".to_string(), "done".to_string())]
+        ));
+    }
 }

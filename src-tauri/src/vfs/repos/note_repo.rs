@@ -35,6 +35,19 @@ fn next_updated_at(current: &str) -> String {
 /// VFS 笔记表 Repo
 pub struct VfsNoteRepo;
 
+/// 一次性更新 notes 行上的用户元数据。
+///
+/// `None` 表示保留原值；`props: Some({})` 表示清空并规范化为 SQL NULL。
+/// 所有字段在同一条 CAS UPDATE 中提交，避免 DSTU 多字段写入部分成功。
+#[derive(Debug, Clone, Default)]
+pub struct VfsNoteMetadataUpdate {
+    pub title: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub is_favorite: Option<bool>,
+    pub props: Option<serde_json::Value>,
+    pub expected_updated_at: Option<String>,
+}
+
 // ============================================================================
 // 笔记链接图（note_links，见迁移 V20260725__note_links.sql）
 // ============================================================================
@@ -406,6 +419,7 @@ impl VfsNoteRepo {
                 reason: format!("属性数量超出上限（最多 {} 个）", Self::MAX_PROPS),
             });
         }
+        let mut normalized_keys = HashSet::with_capacity(props.len());
         for (key, value) in props {
             let trimmed = key.trim();
             if trimmed.is_empty() {
@@ -424,6 +438,12 @@ impl VfsNoteRepo {
                 return Err(VfsError::InvalidArgument {
                     param: "props".to_string(),
                     reason: format!("属性名 {trimmed:?} 为保留字"),
+                });
+            }
+            if !normalized_keys.insert(trimmed.to_lowercase()) {
+                return Err(VfsError::InvalidArgument {
+                    param: "props".to_string(),
+                    reason: format!("属性名 {trimmed:?} 与已有属性重复"),
                 });
             }
             if trimmed.chars().any(|c| c.is_control()) {
@@ -1861,6 +1881,164 @@ impl VfsNoteRepo {
         Ok(())
     }
 
+    fn normalize_note_props(
+        props: serde_json::Value,
+    ) -> VfsResult<(Option<String>, Option<serde_json::Value>)> {
+        let map = props.as_object().ok_or_else(|| VfsError::InvalidArgument {
+            param: "props".to_string(),
+            reason: "props 必须是键值对象".to_string(),
+        })?;
+        Self::validate_note_props(map)?;
+
+        // 键统一去两侧空白；validate_note_props 已按 trim + 小写拒绝歧义重复键。
+        let normalized: serde_json::Map<String, serde_json::Value> = map
+            .iter()
+            .map(|(key, value)| (key.trim().to_string(), value.clone()))
+            .collect();
+        if normalized.is_empty() {
+            return Ok((None, None));
+        }
+
+        let value = serde_json::Value::Object(normalized);
+        let raw = serde_json::to_string(&value)
+            .map_err(|error| VfsError::Serialization(error.to_string()))?;
+        Ok((Some(raw), Some(value)))
+    }
+
+    /// 原子更新笔记元数据（title/tags/is_favorite/props）。
+    pub fn update_note_metadata(
+        db: &VfsDatabase,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        let conn = db.get_conn_safe()?;
+        Self::update_note_metadata_with_conn(&conn, note_id, update)
+    }
+
+    /// 原子更新笔记元数据（使用现有连接）。
+    ///
+    /// 所有校验先于写入完成，最终只发出一条 UPDATE；若提供
+    /// `expected_updated_at`，同一条 UPDATE 同时执行 CAS。
+    pub fn update_note_metadata_with_conn(
+        conn: &Connection,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        let VfsNoteMetadataUpdate {
+            title,
+            tags,
+            is_favorite,
+            props,
+            expected_updated_at,
+        } = update;
+
+        if let Some(ref title) = title {
+            Self::validate_title(title)?;
+        }
+        if let Some(ref tags) = tags {
+            Self::validate_tags(tags)?;
+        }
+        let normalized_props = props.map(Self::normalize_note_props).transpose()?;
+
+        let current =
+            Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Note".to_string(),
+                id: note_id.to_string(),
+            })?;
+        let expected = expected_updated_at
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if let Some(expected) = expected {
+            if expected != current.updated_at {
+                return Err(VfsError::Conflict {
+                    key: "notes.conflict".to_string(),
+                    message: "The note has been updated elsewhere, please refresh.".to_string(),
+                });
+            }
+        }
+
+        if title.is_none() && tags.is_none() && is_favorite.is_none() && normalized_props.is_none()
+        {
+            return Ok(current);
+        }
+
+        let new_title = title.unwrap_or_else(|| current.title.clone());
+        let new_tags = tags.unwrap_or_else(|| current.tags.clone());
+        let new_favorite = is_favorite.unwrap_or(current.is_favorite);
+        let tags_json = serde_json::to_string(&new_tags)
+            .map_err(|error| VfsError::Serialization(error.to_string()))?;
+        let props_provided = normalized_props.is_some();
+        let props_json = normalized_props
+            .as_ref()
+            .and_then(|(raw, _value)| raw.as_deref());
+        let new_props = normalized_props
+            .as_ref()
+            .map(|(_raw, value)| value.clone())
+            .unwrap_or_else(|| current.props.clone());
+        let now = next_updated_at(&current.updated_at);
+
+        let updated_rows = if let Some(expected) = expected {
+            conn.execute(
+                "UPDATE notes
+                 SET title = ?1, tags = ?2, is_favorite = ?3,
+                     props = CASE WHEN ?4 = 1 THEN ?5 ELSE props END,
+                     updated_at = ?6
+                 WHERE id = ?7 AND deleted_at IS NULL AND updated_at = ?8",
+                params![
+                    new_title,
+                    tags_json,
+                    new_favorite as i32,
+                    props_provided as i32,
+                    props_json,
+                    now,
+                    note_id,
+                    expected
+                ],
+            )?
+        } else {
+            conn.execute(
+                "UPDATE notes
+                 SET title = ?1, tags = ?2, is_favorite = ?3,
+                     props = CASE WHEN ?4 = 1 THEN ?5 ELSE props END,
+                     updated_at = ?6
+                 WHERE id = ?7 AND deleted_at IS NULL",
+                params![
+                    new_title,
+                    tags_json,
+                    new_favorite as i32,
+                    props_provided as i32,
+                    props_json,
+                    now,
+                    note_id
+                ],
+            )?
+        };
+        if updated_rows == 0 {
+            return Err(if expected.is_some() {
+                VfsError::Conflict {
+                    key: "notes.conflict".to_string(),
+                    message: "The note has been updated elsewhere, please refresh.".to_string(),
+                }
+            } else {
+                VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                }
+            });
+        }
+
+        info!("[VFS::NoteRepo] Updated note metadata: {}", note_id);
+        Ok(VfsNote {
+            title: new_title,
+            tags: new_tags,
+            is_favorite: new_favorite,
+            updated_at: now,
+            props: new_props,
+            ..current
+        })
+    }
+
     /// 整对象替换笔记自定义属性（notes.props，见 V20260824__note_props.sql）。
     ///
     /// - `props` 必须是 JSON 对象；键去两侧空白后写入；空对象落库为 NULL。
@@ -1881,47 +2059,14 @@ impl VfsNoteRepo {
         note_id: &str,
         props: serde_json::Value,
     ) -> VfsResult<VfsNote> {
-        let map = props.as_object().ok_or_else(|| VfsError::InvalidArgument {
-            param: "props".to_string(),
-            reason: "props 必须是键值对象".to_string(),
-        })?;
-        Self::validate_note_props(map)?;
-
-        // 键统一去两侧空白（与前端 validateNoteProp 的 trim 语义一致）
-        let normalized: serde_json::Map<String, serde_json::Value> = map
-            .iter()
-            .map(|(k, v)| (k.trim().to_string(), v.clone()))
-            .collect();
-
-        let current_note =
-            Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
-                resource_type: "Note".to_string(),
-                id: note_id.to_string(),
-            })?;
-
-        let now = next_updated_at(&current_note.updated_at);
-        let (props_json, stored): (Option<String>, Option<serde_json::Value>) =
-            if normalized.is_empty() {
-                (None, None)
-            } else {
-                let value = serde_json::Value::Object(normalized);
-                let raw = serde_json::to_string(&value)
-                    .map_err(|e| VfsError::Serialization(e.to_string()))?;
-                (Some(raw), Some(value))
-            };
-
-        conn.execute(
-            "UPDATE notes SET props = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
-            params![props_json, now, note_id],
-        )?;
-
-        info!("[VFS::NoteRepo] Set props for note: {}", note_id);
-
-        Ok(VfsNote {
-            updated_at: now,
-            props: stored,
-            ..current_note
-        })
+        Self::update_note_metadata_with_conn(
+            conn,
+            note_id,
+            VfsNoteMetadataUpdate {
+                props: Some(props),
+                ..Default::default()
+            },
+        )
     }
 
     /// 列出已删除的笔记（回收站）
@@ -3918,6 +4063,13 @@ mod tests {
             serde_json::json!({ "meta": { "nested": true } })
         )
         .is_err());
+        // trim + 大小写后重复的键会导致搜索命中不确定，必须拒绝而非静默覆盖
+        assert!(VfsNoteRepo::set_note_props(
+            &db,
+            &note.id,
+            serde_json::json!({ " Status ": "draft", "status": "done" })
+        )
+        .is_err());
         // 值超长
         let long_value = "v".repeat(VfsNoteRepo::MAX_PROP_VALUE_CHARS + 1);
         assert!(VfsNoteRepo::set_note_props(
@@ -3939,6 +4091,63 @@ mod tests {
         // 校验失败不落库
         let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
         assert!(fetched.props.is_none());
+    }
+
+    #[test]
+    fn test_update_note_metadata_is_atomic_and_honors_occ() {
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "原标题", "正文");
+
+        let updated = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("新标题".to_string()),
+                tags: Some(vec!["math".to_string()]),
+                is_favorite: Some(true),
+                props: Some(serde_json::json!({ "status": "done" })),
+                expected_updated_at: Some(note.updated_at.clone()),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.title, "新标题");
+        assert_eq!(updated.tags, vec!["math"]);
+        assert!(updated.is_favorite);
+        assert_eq!(
+            updated.props.as_ref().and_then(|value| value.get("status")),
+            Some(&serde_json::json!("done"))
+        );
+
+        let stale = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("不应写入".to_string()),
+                expected_updated_at: Some(note.updated_at),
+                ..Default::default()
+            },
+        );
+        assert!(matches!(stale, Err(VfsError::Conflict { .. })));
+        assert_eq!(
+            VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap().title,
+            "新标题"
+        );
+
+        // 任一字段校验失败时，其他字段也不能部分落库。
+        let invalid = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("半成品标题".to_string()),
+                props: Some(serde_json::json!({ "nested": { "bad": true } })),
+                ..Default::default()
+            },
+        );
+        assert!(invalid.is_err());
+        assert_eq!(
+            VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap().title,
+            "新标题"
+        );
     }
 
     #[test]

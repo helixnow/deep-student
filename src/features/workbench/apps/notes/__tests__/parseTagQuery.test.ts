@@ -89,6 +89,15 @@ describe('parseSearchOperators', () => {
     });
   });
 
+  it('supports Unicode custom property keys', () => {
+    expect(parseSearchOperators('线性代数 状态:已完成')).toEqual({
+      textQuery: '线性代数',
+      tags: [],
+      paths: [],
+      props: [{ key: '状态', value: '已完成' }],
+    });
+  });
+
   it('deduplicates operators case-insensitively', () => {
     const parsed = parseSearchOperators('tag:Math tag:math path:A path:a status:X STATUS:x');
     expect(parsed.tags).toEqual(['Math']);

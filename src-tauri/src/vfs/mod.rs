@@ -78,8 +78,8 @@ pub use repos::{
 };
 pub use repos::{
     VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsMindMapRepo, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
-    VfsTranslationRepo,
+    VfsMindMapRepo, VfsNoteMetadataUpdate, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo,
+    VfsTextbookRepo, VfsTodoRepo, VfsTranslationRepo,
 };
 pub use retrieval_planner::{
     fuse_route_results, plan_generation, plan_retrieval, ActiveGenerationModel, CapabilityKind,

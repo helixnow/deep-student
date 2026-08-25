@@ -38,7 +38,7 @@ export function parseSearchOperators(query: string): ParsedSearchQuery {
 
   const textQuery = query
     .replace(
-      /(^|\s)([A-Za-z][\w-]*):("([^"]*)"|([^\s]+))/g,
+      /(^|\s)([\p{L}\p{N}_][\p{L}\p{N}_-]*):("([^"]*)"|([^\s]+))/gu,
       (full, lead: string, rawKey: string, _group: string, quoted?: string, bare?: string) => {
         const value = (quoted ?? bare ?? '').trim();
         const key = rawKey.toLocaleLowerCase();

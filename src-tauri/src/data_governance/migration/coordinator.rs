@@ -2326,6 +2326,52 @@ impl MigrationCoordinator {
         // V20260210: 答题提交（3 列，answer_submissions 表天然幂等）
         self.pre_repair_vfs_v20260210(conn, runner)?;
 
+        // V20260824: notes.props。该版本超过通用 compat replay 的冻结边界，
+        // 必须显式处理“列已落盘但 history 未写入”的 duplicate-column 中间态。
+        self.pre_repair_vfs_v20260824_note_props(conn, runner)?;
+
+        Ok(())
+    }
+
+    /// 收敛 V20260824 notes.props 的两种历史中间态。
+    ///
+    /// - history 已记录、列缺失：补列，修复损坏的迁移契约；
+    /// - 列已存在、history 缺失：说明 ALTER 已提交但记账丢失，直接按当前
+    ///   runner 的 name/checksum 记账，避免 Refinery 重放时报 duplicate column。
+    ///
+    /// 列和记录都缺失时不抢跑，交给 Refinery 正常执行迁移。该显式修复不能
+    /// 通过 `make_alter_columns_safe` 代替，因为通用回放边界冻结在 V20260801。
+    #[cfg(feature = "data_governance")]
+    fn pre_repair_vfs_v20260824_note_props(
+        &self,
+        conn: &rusqlite::Connection,
+        runner: &refinery::Runner,
+    ) -> Result<(), MigrationError> {
+        const VERSION: i32 = 20260824;
+        if !self.table_exists(conn, "notes")? {
+            return Ok(());
+        }
+
+        let recorded = self.is_migration_recorded(conn, VERSION)?;
+        let has_props = self.column_exists(conn, "notes", "props")?;
+        match (recorded, has_props) {
+            (true, false) => {
+                tracing::warn!(
+                    "🔧 [PreRepair] VFS: V{} 已记录但 notes.props 缺失，补齐列",
+                    VERSION
+                );
+                self.add_column_if_missing(conn, "notes", "props", "TEXT")?;
+            }
+            (false, true) => {
+                tracing::warn!(
+                    "🔧 [PreRepair] VFS: notes.props 已存在但 V{} 未记录，补齐迁移记录",
+                    VERSION
+                );
+                self.ensure_refinery_history_table(conn)?;
+                self.mark_migration_complete(conn, runner, VERSION)?;
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -5174,6 +5220,56 @@ mod tests {
         (coordinator, temp_dir)
     }
 
+    /// 构造 v0.9.44 的 VFS head（最后一条迁移为 V20260808）。
+    ///
+    /// 使用当前仓库内不可变的历史 SQL，并按 Refinery runner 的真实
+    /// name/checksum 记账；随后测试只执行该 release 之后的迁移。
+    #[cfg(feature = "data_governance")]
+    fn build_v0944_vfs(coordinator: &MigrationCoordinator) -> rusqlite::Connection {
+        const V0944_VFS_HEAD: i32 = 20260808;
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator.ensure_refinery_history_table(&conn).unwrap();
+        for migration in runner
+            .get_migrations()
+            .iter()
+            .filter(|migration| migration.version() <= V0944_VFS_HEAD)
+        {
+            conn.execute_batch(migration.sql().unwrap_or_default())
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "failed to construct v0.9.44 at V{}_{}: {}",
+                        migration.version(),
+                        migration.name(),
+                        error
+                    )
+                });
+            coordinator
+                .mark_migration_complete(&conn, &runner, migration.version())
+                .unwrap();
+        }
+        conn
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn insert_v0944_note(conn: &rusqlite::Connection, note_id: &str) {
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, ref_count, data, created_at, updated_at)
+             VALUES (?1, ?2, 'note', 'inline', 1, 'legacy body', 1, 1)",
+            rusqlite::params![format!("res_{note_id}"), format!("hash_{note_id}")],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes
+             (id, resource_id, title, tags, is_favorite, created_at, updated_at)
+             VALUES (?1, ?2, 'legacy note', '[]', 0,
+                     '2026-08-06T00:00:00.000Z', '2026-08-06T00:00:00.000Z')",
+            rusqlite::params![note_id, format!("res_{note_id}")],
+        )
+        .unwrap();
+    }
+
     #[cfg(feature = "data_governance")]
     #[test]
     fn sql_splitter_keeps_case_end_inside_trigger_body() {
@@ -5211,6 +5307,83 @@ mod tests {
         assert!(statements[1].contains("value;still-string"));
         assert_eq!(statements[2], "BEGIN TRANSACTION");
         assert_eq!(statements[4], "COMMIT");
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_v0944_vfs_upgrade_adds_nullable_note_props_without_touching_rows() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let mut conn = build_v0944_vfs(&coordinator);
+        insert_v0944_note(&conn, "note_v0944");
+
+        assert!(!coordinator.column_exists(&conn, "notes", "props").unwrap());
+        coordinator
+            .run_refinery_migrations(&mut conn, &DatabaseId::Vfs)
+            .expect("v0.9.44 VFS must upgrade through V20260824");
+
+        assert!(coordinator.column_exists(&conn, "notes", "props").unwrap());
+        let props: Option<String> = conn
+            .query_row(
+                "SELECT props FROM notes WHERE id = 'note_v0944'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            props.is_none(),
+            "legacy rows must use canonical NULL for absent props"
+        );
+        assert!(coordinator.is_migration_recorded(&conn, 20260824).unwrap());
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_v20260824_duplicate_column_rerun_is_repaired_and_preserves_props() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let mut conn = build_v0944_vfs(&coordinator);
+        insert_v0944_note(&conn, "note_partial");
+
+        // 模拟 SQLite 已提交 ALTER，但进程在 Refinery 写 history 前退出。
+        conn.execute("ALTER TABLE notes ADD COLUMN props TEXT", [])
+            .unwrap();
+        conn.execute(
+            "UPDATE notes SET props = '{\"status\":\"draft\"}' WHERE id = 'note_partial'",
+            [],
+        )
+        .unwrap();
+
+        coordinator
+            .run_refinery_migrations(&mut conn, &DatabaseId::Vfs)
+            .expect("duplicate-column intermediate state must be recoverable");
+
+        let props: Option<String> = conn
+            .query_row(
+                "SELECT props FROM notes WHERE id = 'note_partial'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(props.as_deref(), Some("{\"status\":\"draft\"}"));
+        assert!(coordinator.is_migration_recorded(&conn, 20260824).unwrap());
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_v20260824_recorded_schema_gap_backfills_props_column() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_v0944_vfs(&coordinator);
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator
+            .mark_migration_complete(&conn, &runner, 20260824)
+            .unwrap();
+
+        coordinator
+            .pre_repair_vfs_v20260824_note_props(&conn, &runner)
+            .expect("recorded migration with a missing column must converge");
+        assert!(coordinator.column_exists(&conn, "notes", "props").unwrap());
     }
 
     fn create_test_sqlite_db(path: &std::path::Path) {
