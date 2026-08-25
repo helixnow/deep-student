@@ -1245,6 +1245,9 @@ export function useFinderStoreFor(hostId?: string | null): FinderStoreApi {
   return getFinderStore(hostId);
 }
 
+/** 兼容 F 分支调用方的命名；语义与 useFinderStoreFor 完全一致。 */
+export const useHostFinderStore = useFinderStoreFor;
+
 // ============================================================================
 // LH-HOST：活跃宿主（供 App 级导航壳层跟随当前可见的访达）
 // ============================================================================
