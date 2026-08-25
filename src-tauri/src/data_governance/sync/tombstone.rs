@@ -2046,6 +2046,7 @@ mod tests {
 
     #[tokio::test]
     async fn upload_blob_tombstones_fails_when_reread_mismatches() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
         let storage = CorruptTombstoneManifestPut {
             inner: MemoryStorage::default(),
             persist: true,
@@ -2089,6 +2090,7 @@ mod tests {
 
     #[tokio::test]
     async fn upload_blob_tombstones_fails_when_missing_after_put() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
         let storage = CorruptTombstoneManifestPut {
             inner: MemoryStorage::default(),
             persist: false,
@@ -2544,6 +2546,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_events_continues_seq_from_legacy_raw_prefix() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
         let storage = MemoryStorage::default();
         let device = "r12-tomb-seq-continue-device".to_string();
         let operation_id = event_operation_id("blobs", &device, "old-obj", "2026-08-01T00:00:00Z");
