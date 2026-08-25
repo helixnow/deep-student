@@ -1076,7 +1076,7 @@ impl FsrsReviewService {
     ) -> Result<Vec<FsrsEnqueuedCard>> {
         let mut stmt = conn
             .prepare(
-                "SELECT front, back, tags_json, text, template_id,
+                "SELECT front, back, COALESCE(tags_json, '[]'), text, template_id,
                         COALESCE(extra_fields_json, '{}'), COALESCE(images_json, '[]'),
                         COALESCE(is_error_card, 0), error_content
                  FROM anki_cards ac
