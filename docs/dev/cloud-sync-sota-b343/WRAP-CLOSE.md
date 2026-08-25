@@ -54,7 +54,7 @@
 - 设备清单先写已校验临时对象，再发布最终 key 并回读；回读不一致 fail-closed，保留临时对象、回滚未引用 ZIP，不得报成功
 - 整包 ZIP 上传后 `stat` 核对远端大小：`put_file` 只哈希本地文件，短写不得用本地 SHA 报成功；不一致删除对象，不进清单
 - WebDAV / S3 / FTP 的 `put_file` 在 HTTP/STOR 成功后同样 `stat` 核对远端大小（记录级/文件级上传同一条闸）；默认 `put_file` 不自动核对，以免打乱测试假存储的短写模拟。不宣称全量回读 / 远端 SHA
-- 记录级设备清单 / 实例标识 / `superseded_by` / legacy 变更 `put` 后 GET 回读字节；不一致 fail-closed，不得把错误水位当已发布。新变更分片仍走原有 size 回验
+- 记录级设备清单 / 实例标识 / `superseded_by` / legacy 变更 `put` 后 GET 回读字节；不一致 fail-closed，不得把错误水位当已发布。新变更分片在 size 回验之外再 GET 回读字节（流式 `put_file` 与 `put` 重试路径都过）；同长度短写不得推进水位。不宣称远端 SHA
 - 文件级 `file_manifests/<kind>/<uuid>.json` 发布同样 GET 回读；短写不得把错误资产/工作区/blob 清单当已发布
 - tombstone 每设备清单 `put` 后同样 GET 回读；短写不得把错误删除集当已发布。不可变事件原本已回读。不宣称全量回读 / 远端 SHA
 - 云端 `.encryption-marker` 写入后同样 GET 回读；短写不得把错误校验子当已登记，也不得让下一台设备把同一 root 当成未加密。记录级权威快照发布仍关闭（`AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED = false`），未宣称已回读。不宣称全量回读 / 远端 SHA

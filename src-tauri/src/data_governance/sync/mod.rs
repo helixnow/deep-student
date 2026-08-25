@@ -2214,7 +2214,10 @@ impl SyncManager {
                 .map_err(|e| SyncError::Database(format!("写入临时上传文件失败: {}", e)))?;
 
             let streamed_ok = match storage.put_file(&key, tmp.path(), Some(cb)).await {
-                Ok(_) => Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await,
+                Ok(_) => {
+                    Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await
+                        && Self::verify_uploaded_bytes(storage, &key, &final_bytes).await
+                }
                 Err(e) => {
                     tracing::warn!(
                         "[sync] 变更流式上传失败，将回退重试: key={}, err={}",
@@ -2250,6 +2253,26 @@ impl SyncManager {
     ///
     /// stat 失败或对象缺失/大小不符均返回 `false`（视为未确认，触发重传），
     /// 而不是直接报错，以便上层统一处理重试与回退。
+    /// PUT 后 GET 回读字节。size 一致仍可能是同长度短写/错包，
+    /// 记录级变更不得只靠 size 推进水位。不宣称远端 SHA。
+    async fn verify_uploaded_bytes(storage: &dyn CloudStorage, key: &str, expected: &[u8]) -> bool {
+        match storage.get(key).await {
+            Ok(Some(actual)) if actual == expected => true,
+            Ok(Some(_)) => {
+                tracing::warn!("[sync] 上传后回读不一致: key={}", key);
+                false
+            }
+            Ok(None) => {
+                tracing::warn!("[sync] 上传后回读对象不存在: key={}", key);
+                false
+            }
+            Err(e) => {
+                tracing::warn!("[sync] 上传后回读失败: key={}, err={}", key, e);
+                false
+            }
+        }
+    }
+
     async fn verify_uploaded_size(storage: &dyn CloudStorage, key: &str, expected: u64) -> bool {
         match storage.stat(key).await {
             Ok(Some(info)) => {
@@ -2316,13 +2339,27 @@ impl SyncManager {
                     .await
                     .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
                 match storage.stat(&key).await {
-                    Ok(Some(info)) if info.size == expected => Ok(()),
-                    Ok(Some(info)) => Err(SyncError::Network(format!(
-                        "上传后 size 校验失败: key={}, 期望={}, 实际={}",
-                        key, expected, info.size
-                    ))),
+                    Ok(Some(info)) if info.size == expected => {}
+                    Ok(Some(info)) => {
+                        return Err(SyncError::Network(format!(
+                            "上传后 size 校验失败: key={}, 期望={}, 实际={}",
+                            key, expected, info.size
+                        )));
+                    }
+                    Ok(None) => {
+                        return Err(SyncError::Network(format!("上传后对象不存在: key={}", key)));
+                    }
+                    Err(e) => {
+                        return Err(SyncError::Network(format!("上传后回验失败: {}", e)));
+                    }
+                }
+                match storage.get(&key).await {
+                    Ok(Some(read_back)) if read_back == bytes => Ok(()),
+                    Ok(Some(_)) => Err(SyncError::Network(
+                        "记录级变更 上传后回读不一致，已停止并不得推进水位".to_string(),
+                    )),
                     Ok(None) => Err(SyncError::Network(format!("上传后对象不存在: key={}", key))),
-                    Err(e) => Err(SyncError::Network(format!("上传后回验失败: {}", e))),
+                    Err(e) => Err(SyncError::Network(format!("上传后回读失败: {}", e))),
                 }
             }
         })
@@ -12553,6 +12590,14 @@ mod tests {
         assert!(
             source.contains("不得写入清单"),
             "文件级对象短写不得写入工作区/blob/资产清单"
+        );
+        assert!(
+            source.contains("verify_uploaded_bytes"),
+            "记录级变更分片 PUT 后必须 GET 回读，不得只认 size"
+        );
+        assert!(
+            source.contains("记录级变更 上传后回读不一致"),
+            "同长度短写/错包必须拒绝推进水位"
         );
     }
 
