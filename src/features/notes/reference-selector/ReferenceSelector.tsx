@@ -102,6 +102,10 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   hint,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
+  // i18n may replace `t` without changing the query. Keep the request callback
+  // stable so loading-state renders cannot schedule a duplicate debounced load.
+  const translateRef = useRef(t);
+  translateRef.current = t;
 
   // 状态
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,7 +158,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           setItems([]);
           return;
         }
-        const fallbackTitle = t('notes:reference.examSessionFallbackTitle');
+        const fallbackTitle = translateRef.current('notes:reference.examSessionFallbackTitle');
         // 题目集接口不支持服务端搜索，此前 searchQuery 被静默忽略；改为客户端过滤
         const needle = searchQuery.trim().toLocaleLowerCase();
         const mapped = result.value.map(s => examSessionToUnified(s, fallbackTitle));
@@ -171,7 +175,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         setLoading(false);
       }
     }
-  }, [type, searchQuery, t]);
+  }, [type, searchQuery]);
 
   // 打开时重置状态；关闭时清空搜索（避免重开时旧关键词触发双请求）
   useEffect(() => {

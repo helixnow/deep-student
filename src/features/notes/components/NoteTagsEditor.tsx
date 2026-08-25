@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useId } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
 import { springSnap, motionSafe } from "@/styles/motion-springs";
@@ -42,6 +42,13 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
 }) => {
     const { t } = useTranslation(['notes', 'common']);
     const { renameTagAcrossNotes } = useNotes();
+    // Keep the loader identity stable while still reading the latest props/i18n
+    // values. Depending on their identities here can repeatedly reload an open
+    // picker when a parent rebuilds the tags array (or i18n returns a new t).
+    const initialTagsRef = useRef(initialTags);
+    const translateRef = useRef(t);
+    initialTagsRef.current = initialTags;
+    translateRef.current = t;
     const isInline = variant === 'inline';
     const [open, setOpen] = useState(false);
     const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -74,15 +81,17 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
         try {
             const tags = await NotesAPI.listTags();
             setAvailableTags(
-                tags.filter(tag => !initialTags.some(existing => existing.toLowerCase() === tag.toLowerCase()))
+                tags.filter(tag => !initialTagsRef.current.some(
+                    existing => existing.toLowerCase() === tag.toLowerCase()
+                ))
             );
         } catch (error: unknown) {
             console.error("Failed to load tags", error);
-            showGlobalNotification('error', t('notes:header.load_tags_failed'));
+            showGlobalNotification('error', translateRef.current('notes:header.load_tags_failed'));
         } finally {
             setIsLoading(false);
         }
-    }, [initialTags, t]);
+    }, []);
 
     // Load available tags when popover opens
     useEffect(() => {

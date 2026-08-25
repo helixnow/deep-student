@@ -13,6 +13,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { DsButton } from '@/components/ui/DsButton';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
@@ -32,13 +33,6 @@ const SHELL_VAR_RESET = {
   '--shell-layout-gap': '0px',
 } as React.CSSProperties;
 
-function dispatchSessionNavigation(sessionId: string): () => void {
-  const timers = [0, 400, 1200].map((delay) => window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
-  }, delay));
-  return () => timers.forEach((timer) => window.clearTimeout(timer));
-}
-
 export const ChatAppWindow: React.FC<AppWindowProps> = ({
   windowId,
   instanceKey,
@@ -57,17 +51,28 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
   const navigationVisible = compact ? drawerOpen : !sidebarCollapsed;
 
   useLayoutEffect(() => {
-    const findTarget = () => {
-      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
-        .find((element) => element.dataset.windowId === windowId) ?? null;
-      setTitlebarTarget((current) => current === target ? current : target);
-    };
-    findTarget();
-    const observer = new MutationObserver(findTarget);
     const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
     const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
-    observer.observe(shell ?? document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    // slot 在窗口壳内时查询范围收窄到壳节点；仅测试等无壳环境回退全文档
+    const queryRoot: ParentNode = shell ?? document;
+    let currentTarget: HTMLElement | null = null;
+    let observer: MutationObserver | null = null;
+    const findTarget = () => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      if (!target) return;
+      currentTarget = target;
+      setTitlebarTarget((current) => current === target ? current : target);
+      // titlebar slot 与窗口同生命周期；命中后无需继续观察聊天流中的高频 DOM 变更。
+      observer?.disconnect();
+      observer = null;
+    };
+    findTarget();
+    if (!currentTarget) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
   }, [windowId]);
 
   const toggleNavigation = useCallback(() => {
@@ -77,6 +82,13 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     }
     setSidebarCollapsed((collapsed) => !collapsed);
   }, [compact]);
+
+  // Workbench 命令面板与标题栏按钮共用同一侧栏状态；ChatV2Page 内部监听器
+  // 只管理 legacy 页面状态，无法折叠外层 WorkbenchSidebarLayout。
+  useEffect(() => {
+    window.addEventListener('CHAT_TOGGLE_SIDEBAR', toggleNavigation);
+    return () => window.removeEventListener('CHAT_TOGGLE_SIDEBAR', toggleNavigation);
+  }, [toggleNavigation]);
 
   // 消费壳层降档信号（与 ChatSessionSurface 同一策略）：不可见持续 800ms
   // 才降 silky（瞬时遮挡不骤停），回可见立即回 balanced 全速补渲；
@@ -128,10 +140,11 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     }
   }), [activeSessionId, syncWindowTitle]);
 
-  // 首次由历史会话入口打开窗口时，在 ChatV2Page 完成冷启动后切到目标会话。
+  // 首次由历史会话入口打开窗口时：交给导航握手。ChatV2Page 完成冷启动
+  // （初始加载结束）后消费该意图；用户提前手动切会话则意图自动作废。
   useEffect(() => {
     if (!instanceKey || sessionManager.getCurrentSessionId()) return;
-    return dispatchSessionNavigation(instanceKey);
+    requestChatSessionNavigation(instanceKey);
   }, [instanceKey]);
 
   return (

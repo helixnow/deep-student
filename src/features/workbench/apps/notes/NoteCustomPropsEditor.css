@@ -1,0 +1,217 @@
+/* 笔记自定义属性编辑器（属性页「属性」节） */
+
+.notes-props-editor {
+  padding: 10px 12px;
+  border-top: 1px solid hsl(var(--border) / 60%);
+}
+
+.notes-props-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-props-header h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.notes-props-count {
+  margin-left: auto;
+  color: hsl(var(--muted-foreground) / 60%);
+  font-size: 10px;
+}
+
+.notes-props-spinner {
+  animation: notes-props-spin 0.9s linear infinite;
+}
+
+@keyframes notes-props-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-props-spinner { animation: none; }
+}
+
+.notes-props-empty {
+  margin: 8px 0 0;
+  color: hsl(var(--muted-foreground) / 70%);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.notes-props-list {
+  margin: 8px 0 0;
+  display: grid;
+  gap: 2px;
+}
+
+.notes-props-row {
+  display: grid;
+  grid-template-columns: minmax(56px, 40%) 1fr;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 1px 4px;
+  border-radius: var(--notes-radius-control, 6px);
+}
+
+.notes-props-row:hover {
+  background: hsl(var(--accent) / 45%);
+}
+
+.notes-props-row dt {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-props-row dd {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-props-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: hsl(var(--foreground) / 90%);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-props-row-actions {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-props-row:hover .notes-props-row-actions,
+.notes-props-row:focus-within .notes-props-row-actions {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .notes-props-row-actions { opacity: 1; }
+}
+
+.notes-props-row-actions button,
+.notes-props-editing button,
+.notes-props-add-form button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control, 6px);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-props-row-actions button:hover,
+.notes-props-editing button:hover,
+.notes-props-add-form button:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-props-row-actions button:focus-visible,
+.notes-props-editing button:focus-visible,
+.notes-props-add-form button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-props-editing,
+.notes-props-add-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-props-add-form {
+  margin-top: 6px;
+}
+
+.notes-props-editing input,
+.notes-props-add-form input {
+  min-width: 0;
+  flex: 1 1 50%;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control, 6px);
+  color: inherit;
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 11px;
+}
+
+.notes-props-editing input:focus-visible,
+.notes-props-add-form input:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -1px;
+}
+
+.notes-props-add-button {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--notes-radius-control, 6px);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-props-add-button:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.notes-props-add-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-props-error {
+  margin: 6px 0 0;
+  color: hsl(var(--destructive));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+@media (pointer: coarse) {
+  .notes-props-row { min-height: 32px; }
+
+  .notes-props-row-actions button,
+  .notes-props-editing button,
+  .notes-props-add-form button {
+    width: 28px;
+    height: 28px;
+  }
+}

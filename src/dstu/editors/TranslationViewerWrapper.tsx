@@ -38,6 +38,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { alignTexts } from '@/translation/segmentation';
 
 // ============================================================================
 // 类型
@@ -71,14 +72,6 @@ type ViewMode = 'stacked' | 'interleaved';
 function normalizeLang(code?: string): string | undefined {
   if (!code) return undefined;
   return code === 'zh' ? 'zh-CN' : code;
-}
-
-/** 按行拆段（空段丢弃），用于逐段对照 */
-function splitParagraphs(text: string): string[] {
-  return text
-    .split(/\n+/)
-    .map(line => line.trim())
-    .filter(Boolean);
 }
 
 // ============================================================================
@@ -230,16 +223,16 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
 
   const data = state.status === 'ready' ? state.data : null;
 
-  // 逐段对照的段落配对（源段 + 译段交替）
-  const paragraphPairs = useMemo(() => {
-    if (!data) return [];
-    const sourceParas = splitParagraphs(data.source);
-    const translatedParas = splitParagraphs(data.translated);
-    const length = Math.max(sourceParas.length, translatedParas.length);
-    return Array.from({ length }, (_, i) => ({
-      source: sourceParas[i] ?? '',
-      translated: translatedParas[i] ?? '',
-    }));
+  // 逐段对照的段落配对（源段 + 译段交替）。
+  // ★ 分段/对齐规则与工作台对照视图（ComparisonView）共享同一模块：
+  // 空行分段、段落数不一致时句子级启发式降级（带提示，不静默错位）
+  const { paragraphPairs, usedSentenceFallback } = useMemo(() => {
+    if (!data) return { paragraphPairs: [], usedSentenceFallback: false };
+    const { pairs, usedSentenceFallback: fellBack } = alignTexts(data.source, data.translated);
+    return {
+      paragraphPairs: pairs.map((pair) => ({ source: pair.src, translated: pair.tgt })),
+      usedSentenceFallback: fellBack,
+    };
   }, [data]);
 
   const canInterleave = !!data && !!data.source && !!data.translated;
@@ -392,6 +385,12 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         ) : viewMode === 'interleaved' && canInterleave ? (
           // 逐段对照：源段 + 译段交替
           <div className="space-y-1" role="list">
+            {/* 句子级降级提示（与 ComparisonView 同款，不静默错位） */}
+            {usedSentenceFallback && (
+              <div className="mb-2 rounded-md bg-warning/10 px-3 py-1.5 text-xs text-warning">
+                {t('translation:panel_ux.alignment_sentence')}
+              </div>
+            )}
             {paragraphPairs.map((pair, index) => (
               <div
                 key={index}

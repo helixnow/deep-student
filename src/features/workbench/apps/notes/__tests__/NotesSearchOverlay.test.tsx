@@ -113,9 +113,9 @@ describe('NotesSearchOverlay', () => {
       target: { value: 'chem' },
     });
     expect(screen.queryByText('Recently opened')).toBeNull();
-    // 命中片段会被 <mark> 高亮拆分（"Chem" + "istry"），可访问名称计算
-    // 在元素边界插入空格，因此按 "Chem istry" 匹配当前实现。
-    expect(screen.getByRole('option', { name: /Chem ?istry/ })).toBeInTheDocument();
+    // 命中词高亮用 <mark> 拆分标题，jsdom 的可访问名计算会在元素边界补空格
+    //（"Chem istry"），因此按前缀匹配而非完整单词
+    expect(screen.getByRole('option', { name: /Chem/ })).toBeInTheDocument();
   });
 
   it('searches full text through DSTU, renders a safe snippet, and filters unsupported results', async () => {
@@ -341,6 +341,132 @@ describe('NotesSearchOverlay', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /移除标签 math/ }));
     expect(screen.getByRole('combobox')).toHaveValue('formula');
+  });
+
+  it('pages quick-open results past the visible cap with the load-more button', () => {
+    const many = Array.from({ length: 5 }, (_, index) => node({
+      id: `note_${index}`,
+      sourceId: `note_${index}`,
+      path: `/course/note_${index}`,
+      name: `Algebra ${index}`,
+    }));
+
+    render(
+      <NotesSearchOverlay
+        open
+        maxResults={3}
+        resources={many}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    // 页脚以「N+」标注还有未展示的匹配
+    expect(screen.getByText('3+ 条结果')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more results' }));
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(screen.queryByRole('button', { name: 'Load more results' })).toBeNull();
+    expect(screen.getByText('5 条结果')).toBeInTheDocument();
+  });
+
+  it('filters quick-open results with the path: operator', () => {
+    const algebra = node({ name: 'Algebra', path: '/course/note_1' });
+    const biology = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      path: '/science/note_2',
+      name: 'Biology',
+    });
+
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[algebra, biology]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search notes' }), {
+      target: { value: 'path:science' },
+    });
+    expect(screen.getByRole('option', { name: /Biology/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Algebra/ })).toBeNull();
+    // 操作符以完整 chips 展示，可一键移除
+    expect(screen.getByText('path:science')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /移除标签 path:science/ }));
+    expect(screen.getByRole('combobox', { name: 'Search notes' })).toHaveValue('');
+  });
+
+  it('filters quick-open results with generic key:value against metadata.props', () => {
+    const done = node({
+      name: 'Done note',
+      metadata: { props: { Status: 'Done' } },
+    });
+    const draft = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      path: '/course/note_2',
+      name: 'Draft note',
+      metadata: { props: { Status: 'Draft' } },
+    });
+    const bare = node({
+      id: 'note_3',
+      sourceId: 'note_3',
+      path: '/course/note_3',
+      name: 'Bare note',
+    });
+
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[done, draft, bare]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search notes' }), {
+      target: { value: 'status:done' },
+    });
+    expect(screen.getByRole('option', { name: /Done note/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Draft note/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /Bare note/ })).toBeNull();
+    expect(screen.getByText('status:done')).toBeInTheDocument();
+  });
+
+  it('loads more full-text results without clearing the current page', async () => {
+    const batch = Array.from({ length: 30 }, (_, index) => node({
+      id: `note_${index}`,
+      sourceId: `note_${index}`,
+      path: `/course/note_${index}`,
+      name: `Formula ${index}`,
+    }));
+    search.mockResolvedValue({ ok: true, value: batch });
+
+    render(
+      <NotesSearchOverlay
+        open
+        initialMode="full-text"
+        initialQuery="formula"
+        searchDebounceMs={0}
+        maxResults={3}
+        resources={[]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findAllByRole('option')).toHaveLength(3);
+    const loadMore = screen.getByRole('button', { name: 'Load more results' });
+    fireEvent.click(loadMore);
+
+    // 加载期间旧结果保留（不闪空），随后扩展到下一页
+    expect(screen.getAllByRole('option').length).toBeGreaterThanOrEqual(3);
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(6));
+    expect(search).toHaveBeenCalledTimes(2);
   });
 
   it('only exposes a combobox popup relationship when its result list is rendered', async () => {

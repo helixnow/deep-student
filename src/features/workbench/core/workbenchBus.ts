@@ -414,6 +414,7 @@ export const workbenchBus = {
       instanceKey: req.instanceKey,
       title: req.title,
       initialFrame: req.initialFrame,
+      background: req.background,
     });
   },
 

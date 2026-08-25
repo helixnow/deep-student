@@ -7,6 +7,7 @@
  * Ctrl+Alt+Shift→⌘⌥⇧，原 Ctrl 通道在 macOS 上仍作为兜底保留）：
  *
  * - Ctrl+Alt+←/→        平铺左/右半屏
+ * - Ctrl+Alt+T/B        平铺上/下半屏
  * - Ctrl+Alt+U/I/J/K    平铺到四角
  * - Ctrl+Alt+↑          最大化
  * - Ctrl+Alt+↓          恢复原尺寸（非 floating 时）/ 最小化（floating 时）
@@ -174,6 +175,14 @@ function focusedAppHandlesCloseShortcut(): boolean {
   return Boolean(focused && appRegistry.get(focused.typeId)?.handlesCloseShortcut);
 }
 
+/** Tabbed apps may claim Ctrl+Tab / Ctrl+Shift+Tab for internal tab cycling. */
+function focusedAppHandlesTabCycleShortcut(): boolean {
+  const focusedId = getFocusedWindowId();
+  if (!focusedId) return false;
+  const focused = useWindowStore.getState().windows[focusedId];
+  return Boolean(focused && appRegistry.get(focused.typeId)?.handlesTabCycleShortcut);
+}
+
 /** 按 lastFocusedAt 降序（最近使用在前）的全部窗口 id，含最小化窗口 */
 function getSwitcherOrder(): string[] {
   return Object.values(useWindowStore.getState().windows)
@@ -241,6 +250,8 @@ const TILE_ZONE_I18N_KEY: Partial<Record<DisplayMode, string>> = {
   'tiled-tr': 'workbench:tile.zone.topRight',
   'tiled-bl': 'workbench:tile.zone.bottomLeft',
   'tiled-br': 'workbench:tile.zone.bottomRight',
+  'tiled-top': 'workbench:tile.zone.top',
+  'tiled-bottom': 'workbench:tile.zone.bottom',
 };
 
 // ---------------------------------------------------------------------------
@@ -254,6 +265,8 @@ const TILE_MODE_BY_ID: Partial<Record<WorkbenchShortcutId, DisplayMode>> = {
   'tile-tr': 'tiled-tr',
   'tile-bl': 'tiled-bl',
   'tile-br': 'tiled-br',
+  'tile-top': 'tiled-top',
+  'tile-bottom': 'tiled-bottom',
   maximize: 'maximized',
 };
 
@@ -298,30 +311,15 @@ function runShortcut(id: WorkbenchShortcutId): void {
       cycleSameAppWindows(true);
       dispatchShortcutFeedback({ shortcutId: id });
       return;
-    case 'expose': {
-      const wasOpen = overlay.exposeOpen;
+    case 'expose':
+      // 进入/退出的 aria-live 播报统一由 ExposeOverlay 承担（所有入口共用）
       overlay.toggleExpose();
-      const nowOpen = useWorkbenchOverlay.getState().exposeOpen;
-      if (nowOpen && !wasOpen) {
-        const count = Object.values(useWindowStore.getState().windows).filter(
-          (w) => !w.minimized,
-        ).length;
-        announceWorkbench(
-          i18n.t('workbench:a11y.exposeOpened', { count }),
-        );
-      } else if (!nowOpen && wasOpen) {
-        announceWorkbench(
-          i18n.t('workbench:a11y.exposeClosed'),
-        );
-      }
       return;
-    }
     case 'expose-app': {
       // App Exposé（Ctrl+Alt+Shift+E）：以焦点窗口的应用为过滤俯瞰其全部窗口。
       // 俯瞰已开时按 toggle 语义关闭（与 macOS ⌃↓ 再按退出一致）。
       if (overlay.exposeOpen) {
         overlay.closeExpose();
-        announceWorkbench(i18n.t('workbench:a11y.exposeClosed'));
         return;
       }
       const appFocusedId = getFocusedWindowId();
@@ -329,10 +327,6 @@ function runShortcut(id: WorkbenchShortcutId): void {
       const appFocused = useWindowStore.getState().windows[appFocusedId];
       if (!appFocused) return;
       overlay.openExpose({ appTypeId: appFocused.typeId });
-      const count = Object.values(useWindowStore.getState().windows).filter(
-        (w) => !w.minimized && w.typeId === appFocused.typeId,
-      ).length;
-      announceWorkbench(i18n.t('workbench:a11y.exposeOpened', { count }));
       return;
     }
     case 'cheatsheet':
@@ -524,6 +518,17 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       // Let tabbed apps handle Ctrl+W consistently regardless of whether focus
       // is in their editor, tree, or tab strip. Do not reserve close-all.
       if (def.id === 'close-window' && focusedAppHandlesCloseShortcut()) return;
+      // Ctrl+Tab 让位协议（AppDefinition.handlesTabCycleShortcut）：切换器
+      // 会话未开启且焦点应用声明内部标签循环 → 壳层让位（不 preventDefault，
+      // 应用自持监听器消费）。会话已开启则壳层保持所有权直至松开 Ctrl —— 此时
+      // 继续走 preventDefault 分支，应用侧凭 defaultPrevented 跳过。
+      if (
+        (def.id === 'cycle-next' || def.id === 'cycle-prev') &&
+        !useWorkbenchOverlay.getState().switcherOpen &&
+        focusedAppHandlesTabCycleShortcut()
+      ) {
+        return;
+      }
       cancelHold();
       if (e.repeat && def.id !== 'cycle-next' && def.id !== 'cycle-prev') {
         e.preventDefault();

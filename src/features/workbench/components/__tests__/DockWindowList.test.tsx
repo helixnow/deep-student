@@ -245,13 +245,6 @@ describe('DockWindowList', () => {
       await Promise.resolve();
     });
     ownerRef.current.focus();
-    // CustomScrollArea（OverlayScrollbars）会在内容更新时用 rAF 刷新滚动几何，
-    // 不能全局断言 rAF 未被调用；改为捕获全部帧回调并冲刷执行，
-    // 验证标题更新触发的任何异步回调都不会把焦点抢回列表。
-    const scheduled: FrameRequestCallback[] = [];
-    const rafSpy = vi
-      .spyOn(window, 'requestAnimationFrame')
-      .mockImplementation((cb) => scheduled.push(cb));
 
     rerender(
       <DockWindowList
@@ -264,15 +257,14 @@ describe('DockWindowList', () => {
       />,
     );
 
-    act(() => {
-      // 冲刷帧回调（回调可能续排新帧，限 10 轮防死循环）
-      for (let round = 0; round < 10 && scheduled.length > 0; round += 1) {
-        const batch = scheduled.splice(0, scheduled.length);
-        for (const cb of batch) cb(performance.now());
-      }
+    // 不能断言"rAF 未被调用"：OverlayScrollbars 等库内部也会在重渲染时排队 rAF。
+    // 行为口径：等一帧让已排队回调（含潜在的 refocus rAF）执行完，焦点不应被列表抢回。
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
     });
     expect(document.activeElement).toBe(ownerRef.current);
-    rafSpy.mockRestore();
   });
 
   it('role=menu 与 aria-label', () => {

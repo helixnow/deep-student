@@ -66,6 +66,33 @@ const SuspenseFallback: React.FC = () => {
   );
 };
 
+/**
+ * Exposé 停绘占位卡（2026-08 内存再压）：background 档窗口的内容被
+ * visibility + content-visibility 双隐藏（渲染成本 0），而俯瞰会把这类窗
+ * 的壳也铺进网格——不补占位的话缩略图是一块空玻璃。占位卡默认
+ * display:none，仅当壳挂着 data-expose-transform（Exposé 会话内，含退出
+ * 飞回）时由 WindowLifecycle.css 点亮：纯 CSS 驱动，WindowBody 不订阅
+ * overlay store，进出俯瞰零重渲染；应用内容保持停绘，不为俯瞰唤醒。
+ */
+const ExposeDozeCard: React.FC<{ title: string; icon: React.ReactNode }> = ({ title, icon }) => {
+  const { t } = useTranslation('workbench');
+  return (
+    <div className="wb-body-doze" data-wb-expose-doze aria-hidden="true">
+      <span className="wb-body-frozen-card wb-glass wb-glass-highlight">
+        <span className="wb-body-frozen-icon" aria-hidden>
+          {icon ?? <MoonStars size={36} weight="duotone" />}
+        </span>
+        <span className="wb-body-frozen-title">
+          {title || t('workbench:window.dozeTitle')}
+        </span>
+        <span className="wb-body-frozen-hint">
+          {t('workbench:window.dozeHint')}
+        </span>
+      </span>
+    </div>
+  );
+};
+
 const FrozenPlaceholder: React.FC<{
   title: string;
   icon: React.ReactNode;
@@ -185,31 +212,40 @@ export const WindowBody: React.FC<WindowBodyProps> = ({ windowId }) => {
       data-wb-window-body
       data-lifecycle={lifecycle}
       onAnimationEnd={wakeIn ? handleWakeAnimEnd : undefined}
-      style={
-        hidden
-          ? { visibility: 'hidden', contentVisibility: 'hidden' }
-          : undefined
-      }
+      style={hidden ? { visibility: 'hidden' } : undefined}
     >
-      <ActivationPendingMarker windowId={windowId} />
-      <WindowErrorBoundary windowId={windowId}>
-        <Suspense fallback={<SuspenseFallback />}>
-          <>
-            <App
-              windowId={windowId}
-              instanceKey={win.instanceKey}
-              launchPayload={launchPayload}
-              isActive={isActive}
-              isVisible={isVisible}
-              renderThrottleMs={renderThrottleMs}
-              isSuspended={hidden}
-              onTitleChange={handleTitleChange}
-              requestClose={handleRequestClose}
-            />
-            <ActivationReadyMarker windowId={windowId} />
-          </>
-        </Suspense>
-      </WindowErrorBoundary>
+      {/* content-visibility 收在内容壳上（而非根）：根上会连 Exposé 停绘
+          占位卡一起跳过渲染。应用子树保持既有停绘语义不变。 */}
+      <div
+        className="h-full w-full"
+        data-wb-window-content
+        style={
+          hidden
+            ? { visibility: 'hidden', contentVisibility: 'hidden' }
+            : undefined
+        }
+      >
+        <ActivationPendingMarker windowId={windowId} />
+        <WindowErrorBoundary windowId={windowId}>
+          <Suspense fallback={<SuspenseFallback />}>
+            <>
+              <App
+                windowId={windowId}
+                instanceKey={win.instanceKey}
+                launchPayload={launchPayload}
+                isActive={isActive}
+                isVisible={isVisible}
+                renderThrottleMs={renderThrottleMs}
+                isSuspended={hidden}
+                onTitleChange={handleTitleChange}
+                requestClose={handleRequestClose}
+              />
+              <ActivationReadyMarker windowId={windowId} />
+            </>
+          </Suspense>
+        </WindowErrorBoundary>
+      </div>
+      {hidden && <ExposeDozeCard title={win.title} icon={def.icon ?? null} />}
     </div>
   );
 };

@@ -346,6 +346,68 @@ H 的 prompt cache 使 openai_responses 请求快照新增 `prompt_cache_key`
 | 回归：prefix_snapshot / llm_adapter / anki_critic / anki_model_routing / anki_image_occlusion | ✅ 4/4、6/6、45/45、25/25、35/35 |
 | `cargo test --lib model2_pipeline` | ✅ 59/59（存量修复 `f727043e` 后） |
 
-待办：F subapp / G mobile 按第 5 节顺序继续合入（G 参考
+### Step 6：已合入 F subapp（#160/#161，经 step3-subapp 预演）
+
+日期：2026-08-25。本步由第八轮官方合并代理完成。输入：
+
+- 0824 tip `4f05d227`（E+C+H+A+T+B+D）；
+- F 主题仓 `origin/cursor/0824-theme-subapp-cde6` @ `575fee7f`（已含 #160/#161）；
+- 预演分支 `origin/cursor/0824-rehearse-step3-subapp-cde6` @ `64a976ce`
+  （第六轮在 `af3e39d8`——含 A 不含 B/D——上完成的同 tip 合并预演，21 处冲突
+  裁决见 `docs/dev/0824-rehearse-step3-subapp.md`，随本步一并入库）。
+
+**合并执行**：merge commit `0a0a1197`（未 fast-forward 预演分支，在最新 0824
+上重新 merge F）。冲突 28 处 = 预演已知 21 处 + B/D 与 F 重叠新增 7 处。
+
+**预演裁决复用（21 处）**：`af3e39d8..4f05d227`（B+D 两步）对这 21 个文件
+零改动，直接采用预演终态（已含预演 4 个提交的全部修正）。要点：
+
+- finder 分桶取 F 全套（`useFinderStoreFor` 每宿主独立桶 + 视图偏好继承 +
+  活跃宿主机制），删 wrapup 重复测试 `finderStoreHostBuckets.test.ts`、清
+  NavigationContext 死绑定；保留 wrapup「画布导航写入桶 store」与 F 每宿主桶
+  的有益组合（canvasMobile 面包屑因此有真实数据）。
+- wrapup 打在死文件 `useMessageActions.ts` 上的复制失败 i18n，随 F 删除该文件
+  并移植到活着的三个复制处理器（`MessageItem` / `ParallelVariantView` /
+  `useChatPageEvents`）；OCR 阶段标签 i18n 随 F 的 InputBarUI 拆分进
+  `attachmentModeHelpers.ts` 的 `getStageLabel`（该文件非冲突自动并入，
+  修补按预演提示单独移植，防静默丢失）。
+- `qbank-tools.ts` 不整文件取 F：非冲突区保留 0824 的 110 行描述压缩，冲突块
+  取 F 的 count≤50 / `daily_target` /【必填】标注，9 条机器可读契约串已补回。
+- `package.json`/lock/`legal/THIRD_PARTY_NOTICES.txt` 保持 0824 dep-sweep 态；
+  `public/legal/` 副本保持删除。
+- 测试冲突按预演对齐当前实现（i18n mock 按 ns 缓存、mindmap 断言并集、
+  DockWindowList 等真实一帧、Notes 三件套取 F 行为超集、
+  sidebar 集成 mock 补 defaultValue 签名）。
+
+**新增裁决（B/D × F 重叠 7 处，预演基线不含 B/D）**：
+
+- 作文批改三件（`EssayGradingWorkbench` / `GradingMain` / `ResultPanel`）：
+  同位插入取并集——F 的撤销建议 / 存为笔记 / `SuggestionChange` 锚定签名 +
+  双侧逐字节相同的制卡入口（#160/#161 两侧同源）；D 独有内容仅是被 F 锚定
+  签名取代的旧 `onApplySuggestion` 窄签名，无丢失。
+- `generateCardsFromText.ts` + 测试、`selectionCardGeneration.ts`：取 0824 侧
+  非阻塞 `cardAgent.startGeneration` 契约（合并树 CardAgent 文档明确
+  `generateCards` 为阻塞式编程 API、无 UI 生产调用方；成功 toast
+  「已启动 + 查看任务」语义只与直启匹配）。F 侧唯一差异即方法名与注释。
+- `docs/user-guide/12-Anki制卡与模板.md`：尾部修订注释取两侧并集。
+
+合并树与预演终态全树对比：除 B/D 合法增量与预演文档本身外零 diff。
+
+编译门禁结果（Rust stable 1.98.0 + Tauri Linux 系统依赖 + protobuf-compiler
++ PDFium；下载脚本对 `licenses/pdfium.txt` 的重写已恢复，未带入提交）：
+
+| 门禁 | 结果 |
+|---|---|
+| `npm ci` | ✅ 1192 packages（依赖零变化） |
+| `npm run licenses:check` | ✅ `[license-compliance] OK` |
+| `npm run typecheck` | ✅ 0 错误（先 `npm run version:generate`） |
+| `npx vite build` | ✅ 1m09s，仅既有 chunk 体积警告 |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ 仅警告（28 条，与 Step 5 持平） |
+| 定向 vitest：sidebar 集成 / qbank 契约 / finder 分桶 / generateCardsFromText | ✅ 4 文件 40/40 |
+| 定向 vitest：作文批改 + 划词制卡冲突面（8 文件） | ✅ 112/112 |
+| 定向 vitest：notes / mindmap / workbench / finder store（29 文件） | ✅ 286/286 |
+| F 重构面 input-bar 全目录 vitest | ✅ 19 文件 171/171（与预演一致） |
+
+待办：G mobile 按第 5 节顺序继续合入（参考
 `cursor/0824-rehearse-step3-mobile-cde6` / `cursor/0824-rehearse-step3-fg-cde6`
 等预演分支；回归清单见 `docs/dev/0824-step1-review.md` 第 3 节）。

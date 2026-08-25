@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "没有可复制的 AI 回复",
+    "continueBusy": "正在回复中，请稍候",
+    "continueEmpty": "没有可继续的 AI 回复"
+  },
   "error": {
     "loadFailed": "加载失败",
     "retry": "重试",
@@ -150,6 +155,7 @@
       "branchSuccess": "已创建分支会话",
       "branchFailed": "分支失败"
     },
+    "branchedFromHere": "已从此处分支",
     "touchBar": {
       "ariaLabel": "消息快捷操作"
     },
@@ -217,6 +223,8 @@
     "attachmentsUploading": "附件上传中，请稍候",
     "attachmentNotReady": "附件未就绪：{{name}}（{{modes}}）",
     "attachmentProcessing": "附件处理中：{{name}}",
+    "sendBlockedEmpty": "输入内容或添加附件后即可发送",
+    "sendBlockedBusy": "正在回复中，完成后可发送",
     "processingIndicator": "附件处理中...",
     "processingIndicatorPartial": "部分模式未就绪",
     "completedMissingModes": "完成（{{modes}}未就绪）",
@@ -1198,6 +1206,7 @@
     "renameSession": "重命名线程",
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
+    "openInNewWindow": "在新窗口打开",
     "pinGroup": "置顶分组",
     "unpinGroup": "取消置顶分组",
     "archiveSession": "归档线程",
@@ -1260,6 +1269,10 @@
   "pdfRef": {
     "openFailedTitle": "无法打开 PDF 引用",
     "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整"
+  },
+  "contextRef": {
+    "previewFailedTitle": "无法打开引用预览",
+    "previewFailedDesc": "引用的资源不存在或已被移除"
   },
   "modelMention": {
     "suggestions": "模型建议",
@@ -1636,7 +1649,11 @@
     "makeCardsFailed": "制卡启动失败",
     "makeCardsDeckName": "划词制卡",
     "makeCardsRequirements": "根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。",
-    "openTaskDashboard": "打开任务台"
+    "openTaskDashboard": "打开任务台",
+    "saveAsNote": "保存为笔记",
+    "saveAsNotePickFolder": "选择保存目录",
+    "saveAsNoteDefaultTitle": "未命名笔记",
+    "openNote": "打开笔记"
   },
   "explainPopover": {
     "thinking": "思考中...",

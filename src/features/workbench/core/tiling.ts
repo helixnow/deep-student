@@ -130,6 +130,7 @@ const BOTTOM_REACHING_MODES: readonly DisplayMode[] = [
   'tiled-right',
   'tiled-bl',
   'tiled-br',
+  'tiled-bottom',
 ];
 
 /**
@@ -175,6 +176,10 @@ export function zoneToDisplayMode(zone: SnapZone): DisplayMode | null {
       return 'tiled-bl';
     case 'br':
       return 'tiled-br';
+    case 'top-half':
+      return 'tiled-top';
+    case 'bottom-half':
+      return 'tiled-bottom';
     case 'top-maximize':
       return 'maximized';
     default:
@@ -196,6 +201,7 @@ export function computeTiledFrame(mode: DisplayMode, ctx: TilingContext): Frame 
   const availW = Math.max(0, W - m * 3);
   const availH = Math.max(0, H - m * 3);
   const fullH = Math.max(0, H - m * 2);
+  const fullW = Math.max(0, W - m * 2);
 
   // 左右平铺对：ratio 分配
   const leftW = Math.round(availW * ratio);
@@ -223,6 +229,11 @@ export function computeTiledFrame(mode: DisplayMode, ctx: TilingContext): Frame 
       return { x: m, y: rowBottomY, w: colW, h: rowBottomH };
     case 'tiled-br':
       return { x: colRightX, y: rowBottomY, w: colRightW, h: rowBottomH };
+    // 上/下半屏：整宽 + 与四分屏同款的上下二分（中缝 1 个 margin）
+    case 'tiled-top':
+      return { x: m, y: m, w: fullW, h: rowH };
+    case 'tiled-bottom':
+      return { x: m, y: rowBottomY, w: fullW, h: rowBottomH };
     default:
       return null;
   }

@@ -14,6 +14,7 @@ import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
+import { FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 
 interface RuntimeRootEntry {
   id: string;
@@ -742,7 +743,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     {pickerOpen && (
                       <LearningHubSidebar
                         mode="canvas"
-                        hostId="group-picker"
+                        hostId={FINDER_HOST_IDS.groupPicker}
                         sessionActive={pickerOpen}
                         commandsEnabled={false}
                         onClose={() => setPickerOpen(false)}

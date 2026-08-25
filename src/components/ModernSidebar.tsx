@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowSquareOut,
   Atom,
   Archive,
   BookOpen,
@@ -65,6 +66,7 @@ import {
   persistWorkbenchModeEnabled,
   readWorkbenchModeEnabled,
 } from '@/features/settings/components/workbenchMode';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import {
@@ -1139,6 +1141,25 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </AppMenuTrigger>
           <AppMenuContent align="end" width={180}>
             <AppMenuGroup>
+              {/* 在新窗口打开：chat-session multi 实例（仅 workbench 模式；legacy 隐藏） */}
+              {workbenchBus.isEnabled() && (
+                <AppMenuItem
+                  icon={<ArrowSquareOut size={16} />}
+                  onClick={() => {
+                    setOpenRecentSessionMenuId(null);
+                    // 动态引入，避免把 workbench chat 注册链拽进 legacy 首包
+                    void import('@/features/workbench/apps/chat/newSession')
+                      .then(({ openChatSessionInNewWindow }) => {
+                        openChatSessionInNewWindow(session.id);
+                      })
+                      .catch((error) => {
+                        console.warn('[ModernSidebar] open session in new window failed:', error);
+                      });
+                  }}
+                >
+                  {t('chatV2:page.openInNewWindow')}
+                </AppMenuItem>
+              )}
               <AppMenuItem
                 icon={<PencilSimple size={16} />}
                 onClick={() => {

@@ -33,7 +33,12 @@ import {
   exportToImage,
   exportToXmindFile,
 } from './utils/exporters';
-import { createXmindImportReport, importFromXmindZip, importMindMap } from './utils/importers';
+import {
+  createXmindImportReport,
+  importFromMmapZip,
+  importFromXmindZip,
+  importMindMap,
+} from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
@@ -55,6 +60,7 @@ import {
   CaretUp,
   CaretDown,
   CaretLeft,
+  CircleNotch,
   Keyboard,
   WarningCircle,
   Gear,
@@ -115,6 +121,7 @@ import {
 } from './utils/mindmapPreferences';
 import { useCoarsePointer, useMobileScreen } from './hooks/useCoarsePointer';
 import { getAncestors } from './utils/node/traverse';
+import { getAliveSheetTabs, resolveActiveSheet } from './utils/sheetTabs';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -229,7 +236,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   
   // 工具栏面板互斥状态：同一时间只允许打开一个面板
-  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | null>(null);
+  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | 'sheets' | null>(null);
 
   // 移动端全屏内联子屏状态
   const [showMobileStructure, setShowMobileStructure] = useState(false);
@@ -242,6 +249,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   // 导入解析/读取失败：工具栏下方内联错误横幅（禁弹窗），支持一键重试
   const [importError, setImportError] = useState<string | null>(null);
+  // 大文件导入进度反馈：读取/解析期间显示内联忙碌横幅（.xmind zip 解包可能耗时数秒）
+  const [isImporting, setIsImporting] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [associationModeRequest, setAssociationModeRequest] = useState(0);
   const isCoarsePointer = useCoarsePointer();
@@ -486,6 +495,25 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     setViewRootId,
     viewRootId,
   ]);
+
+  // 多 sheet 消费：meta.sheets 记录「哪个一级子节点来自哪个源 sheet」。
+  // 切换器把 viewRootId 聚焦到对应一级子树（侵入最小的多画布形态）；
+  // 仅当仍有 ≥2 个 sheet 的根节点存活时显示（节点被删则对应项自动消失）。
+  const sheetTabs = useMemo(
+    () => getAliveSheetTabs(mindmapDocument),
+    [mindmapDocument],
+  );
+
+  const activeSheet = useMemo(
+    // 专注在 sheet 根或继续下钻其子孙时，切换器都指示所属 sheet
+    () => resolveActiveSheet(mindmapDocument, sheetTabs, viewRootId),
+    [mindmapDocument, sheetTabs, viewRootId],
+  );
+
+  const handleSelectSheet = useCallback((rootNodeId: string | null) => {
+    setViewRootId(rootNodeId);
+    setActivePanel(null);
+  }, [setViewRootId]);
 
   // 快捷键面板已内联到工具栏下方文档流（同版本历史范式），
   // 由 Esc / 关闭按钮 / 面板互斥收起，不再做点击外部关闭。
@@ -740,17 +768,23 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
-          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
+          // .mmap（MindManager）与后端 chat 附件导入能力面对齐
+          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'mmap', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
         ],
       });
 
       if (!filePath) return;
+      // 选中文件后进入忙碌态：大 .xmind/.mmap 解包与万节点解析可能耗时数秒
+      setIsImporting(true);
 
       // P3 导入报告：收集 .xmind 导入时被静默丢弃的图片/概要计数
       const report = createXmindImportReport();
-      const imported = filePath.toLowerCase().endsWith('.xmind')
+      const lowerPath = filePath.toLowerCase();
+      const imported = lowerPath.endsWith('.xmind')
         ? await importFromXmindZip(await TauriAPI.readFileAsBytes(filePath), report)
-        : importMindMap(await fileManager.readTextFile(filePath), 'auto');
+        : lowerPath.endsWith('.mmap')
+          ? await importFromMmapZip(await TauriAPI.readFileAsBytes(filePath))
+          : importMindMap(await fileManager.readTextFile(filePath), 'auto');
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
       type CountableNode = { children?: CountableNode[] };
@@ -773,6 +807,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       const message = error instanceof Error ? error.message : t('mindmap:import.failed');
       console.error('[MindMapContentView] Import failed:', error);
       setImportError(message);
+    } finally {
+      setIsImporting(false);
     }
   }, [setDocument, setFocusedNodeId, t]);
 
@@ -1041,7 +1077,53 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               },
             ]}
           />
-          
+
+          {/* 多 sheet 切换器：仅多 sheet 导入的文档显示（见 sheetTabs memo） */}
+          {sheetTabs && (
+            <AppMenu
+              open={activePanel === 'sheets'}
+              onOpenChange={(open) => setActivePanel(open ? 'sheets' : null)}
+            >
+              <AppMenuTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  className="ds-btn max-w-[200px]"
+                  aria-label={t('mindmap:sheets.switcherLabel')}
+                  title={t('mindmap:sheets.switcherHint')}
+                  data-testid="mm-sheet-switcher"
+                >
+                  <TreeStructure size={15} />
+                  <span className="text-xs truncate">
+                    {activeSheet ? activeSheet.title : t('mindmap:sheets.all')}
+                  </span>
+                  <CaretDown size={10} />
+                </DsButton>
+              </AppMenuTrigger>
+              <AppMenuContent align="start" width={220}>
+                <AppMenuItem
+                  icon={!activeSheet ? <Check size={14} /> : <span className="w-3.5" />}
+                  onClick={() => handleSelectSheet(null)}
+                >
+                  {t('mindmap:sheets.all')}
+                </AppMenuItem>
+                <AppMenuSeparator />
+                {sheetTabs.map((sheet) => (
+                  <AppMenuItem
+                    key={sheet.id}
+                    icon={
+                      activeSheet?.id === sheet.id
+                        ? <Check size={14} />
+                        : <span className="w-3.5" />
+                    }
+                    onClick={() => handleSelectSheet(sheet.rootNodeId)}
+                  >
+                    {sheet.title}
+                  </AppMenuItem>
+                ))}
+              </AppMenuContent>
+            </AppMenu>
+          )}
+
           <div className="w-px h-4 bg-[var(--mm-border)] hidden md:block" />
           
           <div className="flex items-center gap-0.5">
@@ -1211,7 +1293,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
                 {t('mindmap:presentation.enter')}
               </AppMenuItem>
-              <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
+              <AppMenuItem icon={<ShareNetwork size={16} />} shortcut="⌘L" onClick={handleStartAssociation}>
                 {t('mindmap:association.add')}
               </AppMenuItem>
               <AppMenuSeparator />
@@ -1305,6 +1387,21 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               >
                 <span className="text-xs">{t('mindmap:shellV2.conflict.keepServer')}</span>
               </DsButton>
+            </div>
+          </InlineCollapse>
+        )}
+      </AnimatePresence>
+
+      {/* 大文件导入进行中：内联忙碌横幅（进度反馈，防止界面看似卡死） */}
+      <AnimatePresence initial={false}>
+        {isImporting && (
+          <InlineCollapse role="status">
+            <div
+              className="mm-inline-banner flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-muted)]"
+              aria-busy="true"
+            >
+              <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" />
+              <span className="text-sm">{t('mindmap:import.importing')}</span>
             </div>
           </InlineCollapse>
         )}

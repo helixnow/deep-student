@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
 import { StreamingAnnotatedText, isSuggestionErr } from '../components/essay-grading/StreamingAnnotatedText';
 import { hasInlineMarkers, hasScoreMarker, parseStreamingContent, removeScoreTag, removeSectionTags } from './streamingMarkerParser';
+import type { SuggestionChange } from './suggestionAnchors';
 import { ScoreCard } from '../components/essay-grading/ScoreCard';
 import { SentenceDetailView } from '../components/essay-grading/SentenceDetailView';
 import { PolishSectionView } from '../components/essay-grading/PolishSectionView';
@@ -41,8 +42,12 @@ interface GradingStreamRendererProps {
   hideToolbar?: boolean;
   /** 是否隐藏流式状态指示器（父组件已有时设为 true 避免重复） */
   hideStreamingIndicator?: boolean;
-  /** 应用批注中的修改建议到输入区（透传给批注详情卡） */
-  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
+  /** 应用批注中的修改建议到输入区（透传给批注详情卡，前后文锚定） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的建议（透传给批注详情卡） */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 已采纳建议的稳定 key 集合（详情卡据此渲染已采纳态） */
+  appliedSuggestionKeys?: ReadonlySet<string>;
 }
 
 /** 距底部阈值：小于该值视为"贴底"，恢复自动跟随 */
@@ -69,6 +74,8 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   hideToolbar = false,
   hideStreamingIndicator = false,
   onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   const displayPlaceholder = placeholder || t('essay_grading:result_section.placeholder');
@@ -347,6 +354,8 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                 activeMarkerIndex={selectedMarkerIndex}
                 onMarkerSelect={setSelectedMarkerIndex}
                 onApplySuggestion={onApplySuggestion}
+                onUndoSuggestion={onUndoSuggestion}
+                appliedSuggestionKeys={appliedSuggestionKeys}
               />
             ) : (
               <>
