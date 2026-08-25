@@ -14,13 +14,16 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::config::S3Config;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback, CHUNK_SIZE,
-    MIN_MULTIPART_SIZE,
+    ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
+    Result, UploadProgressCallback, CHUNK_SIZE, MIN_MULTIPART_SIZE,
 };
 use crate::models::AppError;
 
 /// S3 multipart 上传的分块数硬限制（AWS 及主流兼容服务通用）
 const MAX_MULTIPART_PARTS: u64 = 10_000;
+/// 单次 `put_file` 内每个 multipart 分块的瞬时失败重试次数（含首次）。
+/// 不跨进程、不跨对象，不是增量传输。
+const MULTIPART_PART_ATTEMPTS: u32 = 3;
 
 /// S3 单个分块大小硬限制：5 GiB
 const MAX_PART_SIZE: u64 = 5 * 1024 * 1024 * 1024;
@@ -249,6 +252,52 @@ impl S3Storage {
             },
         }
     }
+
+    /// 同一 `put_file` 内重试失败分块。不保存 upload_id，中断后仍整对象重传。
+    async fn upload_part_with_retry(
+        &self,
+        full_key: &str,
+        upload_id: &str,
+        part_number: i32,
+        chunk: &[u8],
+    ) -> Result<String> {
+        let mut last_err = None;
+        for attempt in 1..=MULTIPART_PART_ATTEMPTS {
+            let body = aws_sdk_s3::primitives::ByteStream::from(chunk.to_vec());
+            match self
+                .client
+                .upload_part()
+                .bucket(&self.bucket)
+                .key(full_key)
+                .upload_id(upload_id)
+                .part_number(part_number)
+                .body(body)
+                .send()
+                .await
+            {
+                Ok(output) => {
+                    return output
+                        .e_tag()
+                        .map(str::to_string)
+                        .ok_or_else(|| AppError::internal("S3 分块上传未返回 ETag"));
+                }
+                Err(e) => {
+                    if attempt < MULTIPART_PART_ATTEMPTS {
+                        tracing::warn!(
+                            "[CloudStorage::S3] 分块 {part_number} 第 {attempt}/{MULTIPART_PART_ATTEMPTS} 次失败，将重试同一分块: {e}"
+                        );
+                        tokio::time::sleep(std::time::Duration::from_secs(1 << (attempt - 1)))
+                            .await;
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(AppError::network(format!(
+            "S3 分块上传失败（已重试 {MULTIPART_PART_ATTEMPTS} 次）: {}",
+            last_err.expect("至少尝试一次")
+        )))
+    }
 }
 
 #[async_trait]
@@ -377,23 +426,9 @@ impl CloudStorage for S3Storage {
                 let chunk = &buffer[..bytes_read];
                 hasher.update(chunk);
 
-                let body = aws_sdk_s3::primitives::ByteStream::from(chunk.to_vec());
-                let output = self
-                    .client
-                    .upload_part()
-                    .bucket(&self.bucket)
-                    .key(&full_key)
-                    .upload_id(&upload_id)
-                    .part_number(part_number)
-                    .body(body)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::network(format!("S3 分块上传失败: {e}")))?;
-
-                let etag = output
-                    .e_tag()
-                    .ok_or_else(|| AppError::internal("S3 分块上传未返回 ETag"))?
-                    .to_string();
+                let etag = self
+                    .upload_part_with_retry(&full_key, &upload_id, part_number, chunk)
+                    .await?;
                 completed_parts.push(
                     aws_sdk_s3::types::CompletedPart::builder()
                         .set_part_number(Some(part_number))
@@ -691,13 +726,17 @@ impl CloudStorage for S3Storage {
 
         match result {
             Ok(output) => {
-                let bytes = output
-                    .body
-                    .collect()
-                    .await
-                    .map_err(|e| AppError::network(format!("S3 读取响应体失败: {e}")))?
-                    .into_bytes()
-                    .to_vec();
+                let declared = output.content_length().and_then(|n| u64::try_from(n).ok());
+                let bytes = tokio::time::timeout(
+                    std::time::Duration::from_secs(300),
+                    output.body.collect(),
+                )
+                .await
+                .map_err(|_| AppError::network("S3 读取响应体超时（300 秒）".to_string()))?
+                .map_err(|e| AppError::network(format!("S3 读取响应体失败: {e}")))?
+                .into_bytes()
+                .to_vec();
+                ensure_memory_get_matches_declared_len("S3", key, bytes.len() as u64, declared)?;
                 Ok(Some(bytes))
             }
             Err(e) => {
@@ -865,6 +904,14 @@ mod tests {
         assert!(
             source.contains("request.range(format!(\"bytes={resume_from}-\"))"),
             "S3 续传必须发 Range GET"
+        );
+        assert!(
+            source.contains("upload_part_with_retry"),
+            "S3 multipart 单分块瞬时失败必须重试，不得整对象立即 abort"
+        );
+        assert!(
+            source.contains("ensure_memory_get_matches_declared_len(\"S3\""),
+            "S3 get() 必须按 content_length 拒绝半包，记录级/清单不得收下截断体"
         );
     }
 

@@ -2510,6 +2510,8 @@ impl SyncManager {
 
                 {
                     let (_, version, key) = files[index].clone();
+                    // 生产 provider 的 get() 在声明了长度时拒绝半包。
+                    // 截断体不得解码、不得推进水位。不宣称远端 SHA。
                     let Some(data) = storage
                         .get(&key)
                         .await
@@ -12615,6 +12617,10 @@ mod tests {
         assert!(
             source.contains("记录级变更 上传后回读不一致"),
             "同长度短写/错包必须拒绝推进水位"
+        );
+        assert!(
+            source.contains("截断体不得解码、不得推进水位"),
+            "记录级变更下载必须依赖 get() 半包闸，不得把短读当已发布"
         );
     }
 

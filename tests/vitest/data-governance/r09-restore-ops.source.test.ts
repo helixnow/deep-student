@@ -68,6 +68,7 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(webdav).toContain('StatusCode::OK => 0');
     // 字节数不足即失败，禁止静默截断当成功。
     expect(webdav).toContain('written != total_size');
+    expect(webdav).toContain('ensure_memory_get_matches_declared_len("WebDAV"');
   });
 
   it('desktop S3 advertises Range resume and refuses misaligned Content-Range', () => {
@@ -75,6 +76,8 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(s3).toContain('request.range(format!("bytes={resume_from}-"))');
     expect(s3).toContain('续传起点与请求不一致');
     expect(s3).toContain('written != total_size');
+    expect(s3).toContain('upload_part_with_retry');
+    expect(s3).toContain('ensure_memory_get_matches_declared_len("S3"');
   });
 
   it('orchestration keeps the .part checkpoint and verifies the whole-file SHA256', () => {

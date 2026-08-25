@@ -54,12 +54,12 @@
 - 设备清单先写已校验临时对象，再发布最终 key 并回读；回读不一致 fail-closed，保留临时对象、回滚未引用 ZIP，不得报成功
 - 整包 ZIP 上传后 `stat` 核对远端大小：`put_file` 只哈希本地文件，短写不得用本地 SHA 报成功；不一致删除对象，不进清单
 - WebDAV / S3 / FTP 的 `put_file` 在 HTTP/STOR 成功后同样 `stat` 核对远端大小（记录级/文件级上传同一条闸）；默认 `put_file` 不自动核对，以免打乱测试假存储的短写模拟。不宣称全量回读 / 远端 SHA
-- 记录级设备清单 / 实例标识 / `superseded_by` / legacy 变更 `put` 后 GET 回读字节；不一致 fail-closed，不得把错误水位当已发布。新变更分片在 size 回验之外再 GET 回读字节（流式 `put_file` 与 `put` 重试路径都过）；同长度短写不得推进水位。不宣称远端 SHA
+- 记录级设备清单 / 实例标识 / `superseded_by` / legacy 变更 `put` 后 GET 回读字节；不一致 fail-closed，不得把错误水位当已发布。新变更分片在 size 回验之外再 GET 回读字节（流式 `put_file` 与 `put` 重试路径都过）；同长度短写不得推进水位。WebDAV / 桌面 S3 的内存级 `get()` 在响应声明了长度时按 `Content-Length` / `content_length` 拒绝半包，截断变更分片不得解码、不得推进水位；缺长度字段不冒充已核。不宣称远端 SHA
 - 文件级 `file_manifests/<kind>/<uuid>.json` 发布同样 GET 回读；短写不得把错误资产/工作区/blob 清单当已发布
 - tombstone 每设备清单 `put` 后同样 GET 回读；短写不得把错误删除集当已发布。不可变事件原本已回读。不宣称全量回读 / 远端 SHA
 - 云端 `.encryption-marker` 写入后同样 GET 回读；短写不得把错误校验子当已登记，也不得让下一台设备把同一 root 当成未加密。记录级权威快照发布仍关闭（`AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED = false`），未宣称已回读。不宣称全量回读 / 远端 SHA
 - 文件级工作区 / blob / 资产对象 `put_file` 后调用方再 `stat` 核对远端大小；短写不得写入文件级清单。生产 provider 已自核，默认 `put_file` 仍不自动核对。不宣称全量回读 / 远端 SHA
-- 桌面 S3 整包恢复现支持 Range 断点续传（语义对齐 WebDAV：精确续传 / 忽略 Range 从零重下 / 错位 fail-closed）。FTP 仍整包重下。Android 只有 WebDAV。不宣称增量传输
+- 桌面 S3 整包恢复现支持 Range 断点续传（语义对齐 WebDAV：精确续传 / 忽略 Range 从零重下 / 错位 fail-closed）。同一 `put_file` 内 multipart 分块瞬时失败会重试该分块（最多 3 次），不保存 `upload_id`，进程中断后仍整对象重传。FTP 仍整包重下。Android 只有 WebDAV。不宣称增量传输 / 跨会话上传续传
 - 仓库巡检下载：WebDAV / 桌面 S3 走共享 `resume::get_file_with_optional_resume`，同一次巡检内瞬时失败从已写入前缀再试（最多 3 次）；不支持续传的后端仍走整包 `get_file`。每个对象先清掉上一轮 `.partial`，禁止把 A 的前缀接到 B 上。
 - 文件级工作区 / blob / 资产下载同样走该编排。旁路 `.ds-dl.part` 按内容哈希命名，新版本不续旧前缀；过期旁路会清掉。明文校验后再替换业务 `dest`，禁止对已有文件追加。密文按 `cipher_sha256` 落到同目录旁路（不再用匿名 tempfile），跨次同步可续传，解密成功后才删旁路。设置页 `fullZipHint` 与用户指南 16 已写明恢复 / 巡检 / 同步大文件的续传范围。FTP REST 已审 `retr_to_file` 无 REST；实验性、Android 禁用、550 白名单热区，本轮不合，恢复/巡检/文件级仍整包重下。不宣称增量传输
 - 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值
