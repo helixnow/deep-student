@@ -69,8 +69,8 @@ use super::handler_utils::{
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
     VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteRepo,
-    VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
+    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderItem, VfsFolderRepo, VfsNoteMetadataUpdate,
+    VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo, VfsUpdateMindMapParams, VfsUpdateNoteParams,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -101,6 +101,66 @@ const MAX_NAME_LENGTH: usize = 256;
 
 /// 批量操作的最大数量限制 (防止 DoS 和超时)
 const MAX_BATCH_SIZE: usize = 100;
+
+fn parse_note_metadata_update(
+    metadata: &Value,
+    expected_updated_at: Option<String>,
+) -> Result<VfsNoteMetadataUpdate, String> {
+    let object = metadata
+        .as_object()
+        .ok_or_else(|| "笔记 metadata 必须是键值对象".to_string())?;
+    let unknown: Vec<&str> = object
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !matches!(*key, "title" | "tags" | "isFavorite" | "props"))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(format!(
+            "不支持的笔记 metadata 字段: {}；自定义字段请放入 props",
+            unknown.join(", ")
+        ));
+    }
+
+    let title = match object.get("title") {
+        None => None,
+        Some(Value::String(value)) => Some(value.clone()),
+        Some(_) => return Err("title 必须是字符串".to_string()),
+    };
+    let tags = match object.get("tags") {
+        None => None,
+        Some(Value::Array(values)) => {
+            let mut tags = Vec::with_capacity(values.len());
+            for value in values {
+                let Some(tag) = value.as_str() else {
+                    return Err("tags 必须是字符串数组".to_string());
+                };
+                tags.push(tag.to_string());
+            }
+            Some(tags)
+        }
+        Some(_) => return Err("tags 必须是字符串数组".to_string()),
+    };
+    let is_favorite = match object.get("isFavorite") {
+        None => None,
+        Some(Value::Bool(value)) => Some(*value),
+        Some(_) => return Err("isFavorite 必须是布尔值".to_string()),
+    };
+    let props = match object.get("props") {
+        None => None,
+        Some(Value::Object(_)) => object.get("props").cloned(),
+        // DSTU 边界把 null 与空对象统一解释为“无属性”；数据库规范化为 NULL。
+        Some(Value::Null) => Some(serde_json::json!({})),
+        Some(_) => return Err("props 必须是键值对象或 null".to_string()),
+    };
+
+    Ok(VfsNoteMetadataUpdate {
+        title,
+        tags,
+        is_favorite,
+        props,
+        expected_updated_at,
+    })
+}
 
 // ============================================================================
 // Tauri 命令
@@ -3218,30 +3278,8 @@ pub async fn dstu_set_metadata(
     // 根据类型更新元数据（全类型已覆盖：notes/translations/essays/textbooks/exams/files/images/mindmaps/folders）
     let node = match resource_type.as_str() {
         "notes" => {
-            // 从 metadata 中提取 title 和 tags
-            let title = metadata
-                .get("title")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let tags = metadata.get("tags").and_then(|v| {
-                v.as_array().map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect::<Vec<String>>()
-                })
-            });
-            let favorite = metadata.get("isFavorite").and_then(|v| v.as_bool());
-
-            let mut updated_note = match VfsNoteRepo::update_note(
-                &vfs_db,
-                &id,
-                VfsUpdateNoteParams {
-                    content: None,
-                    title,
-                    tags,
-                    expected_updated_at: None,
-                },
-            ) {
+            let update = parse_note_metadata_update(&metadata, expected_updated_at)?;
+            let updated_note = match VfsNoteRepo::update_note_metadata(&vfs_db, &id, update) {
                 Ok(n) => {
                     log::info!(
                         "[DSTU::handlers] dstu_set_metadata: SUCCESS - type=note, id={}",
@@ -3258,45 +3296,6 @@ pub async fn dstu_set_metadata(
                     return Err(e.to_string());
                 }
             };
-
-            if let Some(favorite) = favorite {
-                if let Err(e) = VfsNoteRepo::set_favorite(&vfs_db, &id, favorite) {
-                    log::error!(
-                        "[DSTU::handlers] dstu_set_metadata: FAILED - set note favorite id={}, error={}",
-                        id,
-                        e
-                    );
-                    return Err(e.to_string());
-                }
-                updated_note.is_favorite = favorite;
-            }
-
-            // 自定义键值属性（V20260824）：metadata.props 为对象时整对象替换。
-            // 校验（数量/长度/保留键/标量值）在 repo 层，失败原样抛给前端展示。
-            if let Some(props) = metadata.get("props") {
-                if props.is_object() {
-                    match VfsNoteRepo::set_note_props(&vfs_db, &id, props.clone()) {
-                        Ok(n) => {
-                            log::info!(
-                                "[DSTU::handlers] dstu_set_metadata: set note props, id={}",
-                                id
-                            );
-                            updated_note = n;
-                        }
-                        Err(e) => {
-                            log::error!(
-                                "[DSTU::handlers] dstu_set_metadata: FAILED - set note props id={}, error={}",
-                                id,
-                                e
-                            );
-                            return Err(e.to_string());
-                        }
-                    }
-                } else if !props.is_null() {
-                    return Err("props 必须是键值对象".to_string());
-                }
-            }
-
             note_to_dstu_node(&updated_note)
         }
         "translations" => {
@@ -6494,5 +6493,47 @@ mod tests {
 
         let path2 = build_simple_resource_path("tr_456");
         assert_eq!(path2, "/tr_456");
+    }
+
+    #[test]
+    fn test_parse_note_metadata_update_preserves_typed_fields_and_null_clears_props() {
+        let update = parse_note_metadata_update(
+            &serde_json::json!({
+                "title": "renamed",
+                "tags": ["math", "exam"],
+                "isFavorite": true,
+                "props": null
+            }),
+            Some("2026-08-25T00:00:00.000Z".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(update.title.as_deref(), Some("renamed"));
+        assert_eq!(
+            update.tags,
+            Some(vec!["math".to_string(), "exam".to_string()])
+        );
+        assert_eq!(update.is_favorite, Some(true));
+        assert_eq!(update.props, Some(serde_json::json!({})));
+        assert_eq!(
+            update.expected_updated_at.as_deref(),
+            Some("2026-08-25T00:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn test_parse_note_metadata_update_rejects_silent_field_drops() {
+        let unknown =
+            parse_note_metadata_update(&serde_json::json!({ "status": "done" }), None).unwrap_err();
+        assert!(unknown.contains("props"), "{unknown}");
+
+        assert!(
+            parse_note_metadata_update(&serde_json::json!({ "tags": ["math", 3] }), None,).is_err()
+        );
+        assert!(parse_note_metadata_update(
+            &serde_json::json!({ "props": ["not", "an", "object"] }),
+            None,
+        )
+        .is_err());
     }
 }

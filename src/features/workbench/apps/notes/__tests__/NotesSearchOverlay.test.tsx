@@ -437,6 +437,41 @@ describe('NotesSearchOverlay', () => {
     expect(screen.getByText('status:done')).toBeInTheDocument();
   });
 
+  it('pushes key:value filters into full-text search before backend pagination', async () => {
+    const done = node({
+      name: 'Done note',
+      metadata: { props: { Status: 'Done' } },
+    });
+    const draft = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      name: 'Draft note',
+      metadata: { props: { Status: 'Draft' } },
+    });
+    search.mockResolvedValue({ ok: true, value: [done, draft] });
+
+    render(
+      <NotesSearchOverlay
+        open
+        initialMode="full-text"
+        initialQuery="formula status:done"
+        searchDebounceMs={0}
+        resources={[]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(search).toHaveBeenCalledWith(
+      'formula',
+      expect.objectContaining({
+        propFilters: [{ key: 'status', value: 'done' }],
+      }),
+    ));
+    expect(await screen.findByRole('option', { name: /Done note/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Draft note/ })).toBeNull();
+  });
+
   it('loads more full-text results without clearing the current page', async () => {
     const batch = Array.from({ length: 30 }, (_, index) => node({
       id: `note_${index}`,

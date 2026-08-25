@@ -463,6 +463,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           const result = await dstu.search(searchText, {
             ...searchOptions,
             ...(filterTags.length > 0 ? { tags: filterTags } : {}),
+            ...(queryProps.length > 0 ? { propFilters: queryProps } : {}),
             types: [...resourceTypes],
             limit: fetchLimit,
           });

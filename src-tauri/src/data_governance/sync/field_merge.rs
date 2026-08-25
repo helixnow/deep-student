@@ -566,6 +566,21 @@ mod tests {
     }
 
     #[test]
+    fn note_props_uses_whole_object_lww_not_unsafe_deep_merge() {
+        assert!(
+            !field_merge_columns_for_table("notes").contains(&"props"),
+            "arbitrary props objects have no generally commutative deep-merge strategy"
+        );
+        let local = json!({ "status": "draft", "localOnly": true });
+        let remote = json!({ "status": "done" });
+        let (result, was_merged, conflict) =
+            merge_field("notes", "props", Some(&local), Some(&remote));
+        assert_eq!(result, remote);
+        assert!(!was_merged);
+        assert!(conflict);
+    }
+
+    #[test]
     fn anki_export_receipt_columns_fall_back_to_row_level_lww() {
         // Receipt 四列必须整组一致（同一次导出写回），逐列自动合并会撕裂 receipt，
         // 因此它们不进入自动合并 picklist，冲突时走 row-level LWW（远端最新导出为准）。

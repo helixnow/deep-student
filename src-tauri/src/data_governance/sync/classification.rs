@@ -67,8 +67,8 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             category: SyncCategory::RowSync,
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
-            has_json_blobs: false,
-            merge_notes: "tags field uses set union with single-value tag normalization (memory value-encoded tags like _hits:/_type:, see field_merge NOTES_*_VALUE_TAG_PREFIXES)",
+            has_json_blobs: true,
+            merge_notes: "tags uses set union with single-value tag normalization; is_favorite uses boolean OR; props is an arbitrary JSON object and intentionally stays out of the automatic field-merge picklist, so concurrent whole-object replacements use row-level LWW",
         },
         TableClassification {
             database: "vfs",

@@ -169,6 +169,9 @@ export interface DstuListOptions {
   /** 标签过滤（仅笔记类资源） */
   tags?: string[];
 
+  /** notes.props 自定义属性过滤（键不区分大小写，值为包含匹配） */
+  propFilters?: Array<{ key: string; value: string }>;
+
   /** 排序字段 */
   sortBy?: 'name' | 'createdAt' | 'updatedAt';
 

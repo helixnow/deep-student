@@ -63,7 +63,7 @@ pub use exam_repo::{ImportingSession, VfsExamRepo};
 pub use file_repo::VfsFileRepo;
 pub use folder_repo::VfsFolderRepo;
 pub use mindmap_repo::VfsMindMapRepo;
-pub use note_repo::VfsNoteRepo;
+pub use note_repo::{VfsNoteMetadataUpdate, VfsNoteRepo};
 pub use path_cache_repo::{PathCacheEntry, PathCacheStats, VfsPathCacheRepo};
 pub use pomodoro_repo::VfsPomodoroRepo;
 pub use question_repo::{
