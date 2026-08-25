@@ -155,3 +155,8 @@ Rust `src-tauri/src/dstu/types.rs` 自 v0.9.44 起无变更。
    硬化）是同一个洞的两半，**需一起合入**，任一单独合入门禁仍红。
 2. 两枝无文件交集（本枝只改 `migration-lock.json` + 本文档），
    cherry-pick 顺序无关，无冲突。
+3. 审计期间官方本地已 cherry-pick rel-vfs 的注册硬化
+   （`fix(vfs): harden note props release upgrade` 等）；对该状态实测
+   `check-migrations.mjs` 只剩本枝负责的 1 个错误
+   （`迁移文件未锁定: vfs/V20260824__note_props.sql`），合入本枝的
+   lock 条目后门禁即绿。
