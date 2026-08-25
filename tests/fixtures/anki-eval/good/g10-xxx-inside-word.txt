@@ -1,0 +1,2 @@
+{"front": "标识符 fooxxxbar 是合法的 Python 变量名吗？", "back": "合法：仅由小写字母组成，且不以数字开头。", "tags": ["Python"]}
+<<<ANKI_CARD_JSON_END>>>

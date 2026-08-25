@@ -73,6 +73,7 @@
       "instructions",
       "max_output_tokens",
       "model",
+      "prompt_cache_key",
       "reasoning",
       "store",
       "stream"
@@ -92,6 +93,7 @@
       "instructions",
       "max_output_tokens",
       "model",
+      "prompt_cache_key",
       "reasoning",
       "store",
       "stream"
@@ -111,6 +113,7 @@
       "instructions",
       "max_output_tokens",
       "model",
+      "prompt_cache_key",
       "reasoning",
       "store",
       "stream"
@@ -130,6 +133,7 @@
       "instructions",
       "max_output_tokens",
       "model",
+      "prompt_cache_key",
       "reasoning",
       "store",
       "stream"

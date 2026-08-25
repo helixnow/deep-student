@@ -1,7 +1,14 @@
 /**
- * 聊天划词制卡 — 将选中文本送入 CardForge 生成 Anki 卡片。
+ * 聊天划词制卡 — 将选中文本送入后端制卡管线生成 Anki 卡片。
  *
- * 统一走 cardAgent API，避免依赖已废弃的聊天专用适配器。
+ * 生产路径（Round 3 迁移）：SelectionToolbar → cardAgent.startGeneration →
+ * 后端 tauri command `start_enhanced_document_processing`
+ * （EnhancedAnkiService::start_document_processing——与 ChatAnki
+ * chatanki_start 管线共用的同一后端入口）。启动即返回 documentId，
+ * 不在前端阻塞等待生成完成；进度与结果由任务台（anki-tasks）跟踪。
+ *
+ * 历史版本经 ChatV2AnkiAdapter.generateCards 阻塞收集全部卡片后才提示
+ * “已开始”，该适配器已随 Chat V2 工具桥退役删除。
  */
 
 import type { TFunction } from 'i18next';
@@ -109,7 +116,9 @@ export async function generateCardsFromSelection(
   const maxCards = input.maxCards ?? DEFAULT_SELECTION_MAX_CARDS;
 
   try {
-    const result = await cardAgent.generateCards({
+    // 非阻塞直启后端制卡管线（与 chatanki_start 等价的后端入口），
+    // 启动成功即返回；不依赖 CardAgent 的事件监听初始化。
+    const result = await cardAgent.startGeneration({
       content,
       maxCards,
       options: {

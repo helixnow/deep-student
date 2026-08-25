@@ -4,15 +4,15 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockGenerateCards, mockShowGlobalNotification, mockDispatchAppEvent } =
+const { mockStartGeneration, mockShowGlobalNotification, mockDispatchAppEvent } =
   vi.hoisted(() => ({
-    mockGenerateCards: vi.fn(),
+    mockStartGeneration: vi.fn(),
     mockShowGlobalNotification: vi.fn(),
     mockDispatchAppEvent: vi.fn(),
   }));
 
 vi.mock('@/components/anki/cardforge', () => ({
-  cardAgent: { generateCards: mockGenerateCards },
+  cardAgent: { startGeneration: mockStartGeneration },
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -49,7 +49,7 @@ function input(overrides: Partial<GenerateCardsFromTextInput> = {}): GenerateCar
 describe('generateCardsFromText', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGenerateCards.mockResolvedValue({ ok: true, documentId: 'doc-1' });
+    mockStartGeneration.mockResolvedValue({ ok: true, documentId: 'doc-1' });
   });
 
   it('内容短于阈值时只 toast 警告，不发制卡任务', async () => {
@@ -58,7 +58,7 @@ describe('generateCardsFromText', () => {
     const result = await generateCardsFromText(input({ content: short }));
 
     expect(result).toEqual({ ok: false, reason: 'too_short' });
-    expect(mockGenerateCards).not.toHaveBeenCalled();
+    expect(mockStartGeneration).not.toHaveBeenCalled();
     expect(mockShowGlobalNotification).toHaveBeenCalledWith('warning', '内容太短');
   });
 
@@ -66,7 +66,7 @@ describe('generateCardsFromText', () => {
     const result = await generateCardsFromText(input({ content: '   \n\t  ' }));
 
     expect(result).toEqual({ ok: false, reason: 'too_short' });
-    expect(mockGenerateCards).not.toHaveBeenCalled();
+    expect(mockStartGeneration).not.toHaveBeenCalled();
   });
 
   it('成功时 toast 带「查看任务」action，点击跳转任务面板', async () => {
@@ -74,8 +74,8 @@ describe('generateCardsFromText', () => {
       input({ requirements: '保留原文术语', maxCards: 8 }),
     );
 
-    expect(mockGenerateCards).toHaveBeenCalledTimes(1);
-    expect(mockGenerateCards).toHaveBeenCalledWith({
+    expect(mockStartGeneration).toHaveBeenCalledTimes(1);
+    expect(mockStartGeneration.mock.calls[0][0]).toMatchObject({
       content: '这是一段足够长的学习材料内容，用来生成记忆卡片。',
       maxCards: 8,
       options: {
@@ -103,8 +103,8 @@ describe('generateCardsFromText', () => {
     });
   });
 
-  it('cardAgent 返回 ok:false 时回报 generate_failed 并 toast 原始错误', async () => {
-    mockGenerateCards.mockResolvedValue({ ok: false, error: 'boom' });
+  it('后端启动返回 ok:false 时回报 generate_failed 并 toast 原始错误', async () => {
+    mockStartGeneration.mockResolvedValue({ ok: false, error: 'boom' });
 
     const result = await generateCardsFromText(input());
 
@@ -112,8 +112,8 @@ describe('generateCardsFromText', () => {
     expect(mockShowGlobalNotification).toHaveBeenCalledWith('error', 'boom');
   });
 
-  it('cardAgent 失败但没带错误文案时回退到调用方的 failed 文案', async () => {
-    mockGenerateCards.mockResolvedValue({ ok: false });
+  it('后端启动失败但没带错误文案时回退到调用方的 failed 文案', async () => {
+    mockStartGeneration.mockResolvedValue({ ok: false });
 
     const result = await generateCardsFromText(input());
 
@@ -122,7 +122,7 @@ describe('generateCardsFromText', () => {
   });
 
   it('链路抛错时不外泄异常，转成 generate_failed 结果', async () => {
-    mockGenerateCards.mockRejectedValue(new Error('network down'));
+    mockStartGeneration.mockRejectedValue(new Error('network down'));
 
     const result = await generateCardsFromText(input());
 

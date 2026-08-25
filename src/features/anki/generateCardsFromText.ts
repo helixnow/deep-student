@@ -1,9 +1,9 @@
 /**
  * 从任意学习材料启动制卡任务的共享入口。
  *
- * 直接复用 CardForge 的统一 cardAgent API，只把文案交给调用方，让错题本 /
- * 作文批改 / 笔记这类非聊天表面也能复用，而不依赖聊天适配器或 chatV2
- * 命名空间的 selectionToolbar.* 文案。
+ * 复用聊天划词制卡的同一条链路（CardForge → cardAgent.startGeneration），
+ * 只是把文案交给调用方，让错题本 / 作文批改这类非聊天表面也能复用，
+ * 而不必依赖 chatV2 命名空间的 selectionToolbar.* 文案。
  */
 import { cardAgent } from '@/components/anki/cardforge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -45,7 +45,9 @@ export async function generateCardsFromText(
   }
 
   try {
-    const result = await cardAgent.generateCards({
+    // 与聊天划词一致：非阻塞直启后端制卡管线，进度由任务台跟踪。
+    // startGeneration 不依赖已退役的 ChatV2AnkiAdapter 或事件监听初始化。
+    const result = await cardAgent.startGeneration({
       content,
       maxCards: input.maxCards,
       options: {

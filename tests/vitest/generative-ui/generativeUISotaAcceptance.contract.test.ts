@@ -73,9 +73,9 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
       fs.existsSync(path.join(REPO, 'src/features/generative-ui/utils/dispatchCanvasAIEditRequest.ts')),
   },
   {
-    id: 'flashcard-save-handler',
+    id: 'flashcard-display-only-builder',
     check: () =>
-      fs.existsSync(path.join(REPO, 'src/features/generative-ui/handlers/flashcardActionHandlers.ts')),
+      fs.existsSync(path.join(REPO, 'src/features/generative-ui/utils/buildFlashcardPreviewIntent.ts')),
   },
   {
     id: 'generative-ui-skill',
