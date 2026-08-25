@@ -72,7 +72,7 @@ merge 共产生 52 个冲突（45 个内容冲突、7 个 modify/delete），均
 | `src/features/workbench/components/ExposeOverlay.css` | 取 step5-FG 终态：保留 F expose 主体与 G 触控布局。 |
 | `src/features/workbench/core/legacyNavigationMap.ts` | 取 step5-FG 终态：保留 F 当前 app 映射并接入 G 移动返回行为，不恢复旧 Finder API。 |
 | `src/styles/responsive-utilities.css` | 取 step5-FG 终态：保留正式响应式工具集并叠加 G coarse-pointer 规则。 |
-| `tests/vitest/secondarySurfaceShellContract.test.ts` | 取 step5-FG 终态，使契约断言对齐 F shell 与 G 移动表面并集。 |
+| `tests/vitest/secondarySurfaceShellContract.test.ts` | 以 step5-mobile 裁决刷新 step5-FG 的静默陈旧断言：保留 F template/Anki/skills/chat shell 契约，删除对已随 G 淘汰的 `NotesSidebarV2.tsx` 的读取与断言。 |
 
 此外，按 step5-FG 的合并后修复恢复
 `finderStore.ts` 的 `useHostFinderStore = useFinderStoreFor` 兼容导出；保留
