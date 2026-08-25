@@ -3615,10 +3615,11 @@ END;",
 
     /// 预修复 LLM Usage 数据库的 schema
     ///
-    /// 处理两类问题：
+    /// 处理三类问题：
     /// 1. V20260131: `__change_log` 表被记录为已完成但实际不存在
     ///    （旧版 set_grouped(true) 时代 SQLite DDL 回滚残留）
     /// 2. V20260201: 同步字段迁移失败后的残留状态
+    /// 3. V20260824: `cache_write_tokens` 已添加但 history 未落盘的中断状态
     #[cfg(feature = "data_governance")]
     fn pre_repair_llm_usage_schema(
         &self,
@@ -3633,12 +3634,28 @@ END;",
             "llm_usage_logs",
         )?;
 
-        const SYNC_VERSION: i32 = 20260201;
-
         // 新数据库（尚未创建表）无需预修复
         if !self.table_exists(conn, "llm_usage_logs")? {
             return Ok(());
         }
+
+        // V20260824 位于通用历史兼容重放边界之后，必须显式收敛：
+        // 该迁移只有一条 ADD COLUMN；列存在即证明 DDL 已落盘，可以安全补 history。
+        const CACHE_WRITE_VERSION: i32 = 20260824;
+        const CACHE_WRITE_PREDECESSOR: i32 = 20260525;
+        if !self.is_migration_recorded(conn, CACHE_WRITE_VERSION)?
+            && self.is_migration_recorded(conn, CACHE_WRITE_PREDECESSOR)?
+            && self.column_exists(conn, "llm_usage_logs", "cache_write_tokens")?
+        {
+            tracing::info!(
+                "🔧 [PreRepair] llm_usage: 检测到 cache_write_tokens 已存在但 V{} 未记账，补齐迁移历史",
+                CACHE_WRITE_VERSION
+            );
+            self.ensure_refinery_history_table(conn)?;
+            self.mark_migration_complete(conn, runner, CACHE_WRITE_VERSION)?;
+        }
+
+        const SYNC_VERSION: i32 = 20260201;
 
         // 如果迁移已记录，无需处理
         if self.is_migration_recorded(conn, SYNC_VERSION)? {
@@ -7780,6 +7797,92 @@ mod tests {
         let second = coordinator.migrate_single(DatabaseId::Mistakes).unwrap();
         assert!(second.success);
         assert_eq!(second.applied_count, 0);
+    }
+
+    /// V20260824 is newer than the generic compatibility replay boundary.
+    /// Reproduce an interrupted single-ALTER migration (column persisted,
+    /// refinery history missing) and require the dedicated LLM Usage repair to
+    /// converge without a duplicate-column failure.
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_llm_usage_v20260824_recovers_column_without_history_and_reruns() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        build_db_at_version(&coordinator, &DatabaseId::LlmUsage, 20260525);
+
+        let db_path = coordinator.get_database_path(&DatabaseId::LlmUsage);
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT INTO llm_usage_logs (
+                id, timestamp, provider, model, caller_type,
+                prompt_tokens, completion_tokens, total_tokens
+             ) VALUES (
+                'usage-v0944', '2026-08-09T00:00:00Z', 'openai', 'gpt-4o',
+                'chat_v2', 10, 5, 15
+             )",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(include_str!(
+            "../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .unwrap();
+        assert!(
+            !coordinator.is_migration_recorded(&conn, 20260824).unwrap(),
+            "fixture must model DDL persisted before refinery history"
+        );
+        drop(conn);
+
+        let report = coordinator
+            .migrate_single(DatabaseId::LlmUsage)
+            .expect("dedicated V20260824 repair must avoid duplicate column");
+        assert!(report.success);
+        assert_eq!(report.to_version, 20260824);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let history_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM refinery_schema_history WHERE version = 20260824",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history_count, 1);
+        let old_value: Option<i64> = conn
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'usage-v0944'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(old_value, None, "pre-migration rows must remain unmeasured");
+
+        conn.execute(
+            "INSERT INTO llm_usage_logs (
+                id, timestamp, provider, model, caller_type,
+                prompt_tokens, completion_tokens, total_tokens, cache_write_tokens
+             ) VALUES (
+                'usage-zero', '2026-08-25T00:00:00Z', 'anthropic', 'claude',
+                'chat_v2', 10, 5, 15, 0
+             )",
+            [],
+        )
+        .unwrap();
+        let measured_zero: Option<i64> = conn
+            .query_row(
+                "SELECT cache_write_tokens FROM llm_usage_logs WHERE id = 'usage-zero'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(measured_zero, Some(0));
+        drop(conn);
+
+        let rerun = coordinator
+            .migrate_single(DatabaseId::LlmUsage)
+            .expect("repaired migration must be idempotent");
+        assert!(rerun.success);
+        assert_eq!(rerun.applied_count, 0);
     }
 
     // ========================================================================

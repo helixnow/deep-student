@@ -132,6 +132,25 @@
         { "database": "mistakes", "query": "SELECT enabled FROM automation_definitions WHERE id='auto_gap0000001'", "expected": "0" },
         { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_logs", "expected": "1" }
       ]
+    },
+    {
+      "id": "release_v0_9_44_llm_usage",
+      "kind": "bootstrap_sql",
+      "source_release": "v0.9.44 (tag 1cf6cabc; exact core schema tuple, deterministic SQL reconstruction)",
+      "schema_tuple": { "vfs": 20260808, "chat_v2": 20260806, "mistakes": 20260724, "llm_usage": 20260525 },
+      "tags": ["release_v0_9_44", "old_schema_without_cache_write_tokens", "nullable_add_column", "legacy_writer_compat"],
+      "expected_semantics": "The exact v0.9.44 schema tuple upgrades to HEAD. Existing llm_usage rows survive, gain cache_write_tokens with INTEGER affinity, and remain NULL (unmeasured); old explicit-column INSERT statements remain valid because the new column is nullable.",
+      "history_ops": [],
+      "allowed_extra_tables": {},
+      "seeds": {
+        "llm_usage": { "file": "seeds/partial_history_gap_20260523/llm_usage.sql", "sha256": "879b53a24c005cce7b9da6689165e9b404e9cfca0ddf12edf748c9119bc83b29" }
+      },
+      "oracles": [
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM llm_usage_logs WHERE id='usage_gap_00001'", "expected": "1" },
+        { "database": "llm_usage", "query": "SELECT cache_write_tokens FROM llm_usage_logs WHERE id='usage_gap_00001'", "expected": "NULL" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM pragma_table_info('llm_usage_logs') WHERE name='cache_write_tokens' AND type='INTEGER'", "expected": "1" },
+        { "database": "llm_usage", "query": "SELECT COUNT(*) FROM refinery_schema_history WHERE version=20260824 AND name='add_cache_write_tokens'", "expected": "1" }
+      ]
     }
   ]
 }

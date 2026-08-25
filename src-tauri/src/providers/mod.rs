@@ -3333,51 +3333,60 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
     let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     let openai_cached = usage
         .get("prompt_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     // OpenAI/DeepSeek Responses API: input_tokens_details.cached_tokens
     let responses_cached = usage
         .get("input_tokens_details")
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     let deepseek_cached = usage
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
+        .filter(|v| *v >= 0);
     let gemini_cached = usage
         .get("cached_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
-    let cached_tokens = anthropic_cache_hit
-        .max(openai_cached)
-        .max(responses_cached)
-        .max(deepseek_cached)
-        .max(gemini_cached);
+        .filter(|v| *v >= 0);
+    let cached_tokens = [
+        anthropic_cache_hit,
+        openai_cached,
+        responses_cached,
+        deepseek_cached,
+        gemini_cached,
+    ]
+    .into_iter()
+    .flatten()
+    .max();
 
     // 缓存写入 token（计费元数据，不计入命中；观测用）
     // Anthropic cache_creation_input_tokens / Responses input_tokens_details.cache_write_tokens
     let cache_write_tokens = usage
         .get("cache_creation_input_tokens")
         .and_then(|v| v.as_i64())
-        .unwrap_or(0)
-        .max(
-            usage
-                .get("input_tokens_details")
-                .and_then(|d| d.get("cache_write_tokens"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-        )
-        .max(
-            usage
-                .get("cache_write_tokens")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0),
-        ) as i32;
+        .filter(|v| *v >= 0);
+    let responses_cache_write = usage
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cache_write_tokens"))
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
+    let gateway_cache_write = usage
+        .get("cache_write_tokens")
+        .and_then(|v| v.as_i64())
+        .filter(|v| *v >= 0);
+    let cache_write_tokens = [
+        cache_write_tokens,
+        responses_cache_write,
+        gateway_cache_write,
+    ]
+    .into_iter()
+    .flatten()
+    .max();
 
     // reasoning token：顶层 / OpenAI CC completion_tokens_details / Responses output_tokens_details
     let reasoning_tokens = usage
@@ -3400,8 +3409,8 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         "total_tokens": total_tokens,
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,
-        "cached_tokens": if cached_tokens > 0 { json!(cached_tokens) } else { Value::Null },
-        "cache_write_tokens": if cache_write_tokens > 0 { json!(cache_write_tokens) } else { Value::Null },
+        "cached_tokens": cached_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
+        "cache_write_tokens": cache_write_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
         "reasoning_tokens": reasoning_tokens.map(|v| json!(v)).unwrap_or(Value::Null),
         "total_tokens_openai": total_tokens,
         "original": usage
@@ -5920,6 +5929,26 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
         assert_eq!(event["cached_tokens"], json!(1024));
         assert_eq!(event["cache_write_tokens"], json!(128));
         assert_eq!(event["reasoning_tokens"], json!(90));
+    }
+
+    #[test]
+    fn build_usage_event_preserves_observed_zero_cache_values() {
+        let event = build_usage_event(&json!({
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "input_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
+            }
+        }))
+        .expect("usage event");
+        assert_eq!(event["cached_tokens"], json!(0));
+        assert_eq!(event["cache_write_tokens"], json!(0));
+
+        let unmeasured =
+            build_usage_event(&json!({"input_tokens": 10, "output_tokens": 5})).unwrap();
+        assert!(unmeasured["cached_tokens"].is_null());
+        assert!(unmeasured["cache_write_tokens"].is_null());
     }
 
     #[test]
