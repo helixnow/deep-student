@@ -9681,10 +9681,14 @@ impl SyncManager {
                     ),
                 )));
             }
-            // 明文：续传写入旁路 `.ds-dl.part`，校验后再替换 dest。
+            // 明文：续传写入按内容哈希区分的 `.ds-dl.part`，校验后再替换 dest。
             // 绝不能对已有 dest 追加——旧工作区 / blob / 资产会被接上新前缀。
             if storage.supports_resumable_download() {
-                let part = Self::file_object_part_path(dest);
+                let part = crate::cloud_storage::resume::content_keyed_part_path(
+                    dest,
+                    expected_plain_sha256.unwrap_or("unknown"),
+                );
+                crate::cloud_storage::resume::cleanup_stale_parts(dest, &part);
                 crate::cloud_storage::resume::get_file_with_optional_resume(
                     storage,
                     key,
@@ -9721,18 +9725,15 @@ impl SyncManager {
         std::fs::create_dir_all(parent)
             .map_err(|e| SyncError::Database(format!("创建下载目录失败: {}", e)))?;
 
-        let cipher_tmp = tempfile::Builder::new()
-            .prefix("dsbk-dl-")
-            .suffix(".tmp")
-            .tempfile()
-            .map_err(|e| SyncError::Database(format!("创建下载临时文件失败: {}", e)))?
-            .into_temp_path();
-        // 密文哈希由续传编排（或整包 get_file）的 expected_checksum 完成：
-        // 不匹配即失败并丢弃临时文件。cipher_tmp 是独占临时文件，可直接续传。
+        // 密文旁路按 cipher_sha256 命名，跨次同步可续传；匿名 tempfile
+        // 会在进程退出后丢掉已下载前缀。哈希不匹配时编排会丢弃该旁路。
+        let cipher_part =
+            crate::cloud_storage::resume::content_keyed_part_path(dest, expected_cipher);
+        crate::cloud_storage::resume::cleanup_stale_parts(dest, &cipher_part);
         crate::cloud_storage::resume::get_file_with_optional_resume(
             storage,
             key,
-            &cipher_tmp,
+            &cipher_part,
             Some(expected_cipher),
             progress,
         )
@@ -9746,7 +9747,7 @@ impl SyncManager {
             .tempfile_in(parent)
             .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
             .into_temp_path();
-        cipher.decrypt_file(&cipher_tmp, &plain_tmp).map_err(|e| {
+        cipher.decrypt_file(&cipher_part, &plain_tmp).map_err(|e| {
             SyncError::Database(crate::cloud_storage::sync_e2ee_error(
                 crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
                 format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"),
@@ -9764,16 +9765,8 @@ impl SyncManager {
         plain_tmp
             .persist(dest)
             .map_err(|e| SyncError::Database(format!("替换 {label} 目标文件失败: {e}")))?;
+        let _ = std::fs::remove_file(&cipher_part);
         Ok(())
-    }
-
-    /// 文件级对象续传旁路路径。与业务 `dest` 分开，避免对已有文件追加。
-    fn file_object_part_path(dest: &std::path::Path) -> std::path::PathBuf {
-        let name = dest
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "object".to_string());
-        dest.with_file_name(format!(".{name}.ds-dl.part"))
     }
 
     fn validate_remote_object_key(key: &str, expected_prefix: &str) -> Result<(), SyncError> {

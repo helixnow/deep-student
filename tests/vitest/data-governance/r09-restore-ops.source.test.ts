@@ -99,11 +99,15 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
   });
 
   it('file-level objects resume beside dest, never appending onto the live file', () => {
-    expect(syncMod).toContain('fn file_object_part_path');
+    expect(syncMod).toContain('content_keyed_part_path');
+    expect(syncMod).toContain('cleanup_stale_parts');
     expect(syncMod).toContain('.ds-dl.part');
     expect(syncMod).toContain('get_file_with_optional_resume');
     expect(syncMod).toContain('绝不能对已有 dest 追加');
+    expect(syncMod).not.toContain('prefix("dsbk-dl-")');
+    expect(resume).toContain('fn content_keyed_part_path');
     expect(guide).toContain('工作区 / blob / 资产');
+    expect(guide).toContain('按内容哈希区分');
   });
 });
 

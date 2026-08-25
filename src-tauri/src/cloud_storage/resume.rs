@@ -101,6 +101,50 @@ pub(crate) async fn get_file_with_optional_resume(
     Err(last_err.unwrap_or_else(|| AppError::internal("续传下载失败且未留下错误".to_string())))
 }
 
+/// 文件级续传旁路：文件名带内容哈希前缀，新版本不会续上旧对象的前缀。
+pub(crate) fn content_keyed_part_path(dest: &Path, checksum: &str) -> std::path::PathBuf {
+    let name = dest
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "object".to_string());
+    dest.with_file_name(format!(".{name}.{}.ds-dl.part", checksum_tag(checksum)))
+}
+
+fn checksum_tag(checksum: &str) -> String {
+    let tag: String = checksum
+        .chars()
+        .filter(|ch| ch.is_ascii_hexdigit())
+        .take(16)
+        .collect();
+    if tag.len() >= 8 {
+        tag
+    } else {
+        "unknown".to_string()
+    }
+}
+
+/// 删除同一业务文件的其它续传旁路，只保留当前内容哈希对应的那份。
+pub(crate) fn cleanup_stale_parts(dest: &Path, keep: &Path) {
+    let Some(parent) = dest.parent() else {
+        return;
+    };
+    let Some(name) = dest.file_name() else {
+        return;
+    };
+    let prefix = format!(".{}.", name.to_string_lossy());
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name.starts_with(&prefix) && file_name.ends_with(".ds-dl.part") && path != keep {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// 把已校验的下载旁路文件落到业务 `dest`。先 copy 再删 part，避免 Windows
 /// 上 `rename` 不能覆盖已有文件时先删 dest 造成空窗。
 pub(crate) fn persist_download(part: &Path, dest: &Path) -> Result<()> {
@@ -156,5 +200,45 @@ mod tests {
         persist_download(&part, &dest).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"NEW");
         assert!(!part.exists());
+    }
+
+    #[test]
+    fn content_keyed_part_path_isolates_versions() {
+        let dest = std::path::Path::new("/tmp/workspace.db");
+        let a = content_keyed_part_path(dest, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let b = content_keyed_part_path(dest, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        assert_ne!(a, b);
+        assert!(a
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("aaaaaaaaaaaaaaaa"));
+        assert!(a
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with(".ds-dl.part"));
+        assert_eq!(
+            content_keyed_part_path(dest, "not-hex")
+                .file_name()
+                .unwrap(),
+            std::ffi::OsStr::new(".workspace.db.unknown.ds-dl.part")
+        );
+    }
+
+    #[test]
+    fn cleanup_stale_parts_keeps_only_current_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("asset.bin");
+        let keep = content_keyed_part_path(&dest, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let stale = content_keyed_part_path(&dest, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        let unrelated = dir.path().join(".other.bin.cccccccc.ds-dl.part");
+        std::fs::write(&keep, b"keep").unwrap();
+        std::fs::write(&stale, b"stale").unwrap();
+        std::fs::write(&unrelated, b"other").unwrap();
+        cleanup_stale_parts(&dest, &keep);
+        assert!(keep.exists());
+        assert!(!stale.exists());
+        assert!(unrelated.exists(), "不得误删其它文件的续传旁路");
     }
 }

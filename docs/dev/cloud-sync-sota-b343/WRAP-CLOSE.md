@@ -61,6 +61,6 @@
 - 文件级工作区 / blob / 资产对象 `put_file` 后调用方再 `stat` 核对远端大小；短写不得写入文件级清单。生产 provider 已自核，默认 `put_file` 仍不自动核对。不宣称全量回读 / 远端 SHA
 - 桌面 S3 整包恢复现支持 Range 断点续传（语义对齐 WebDAV：精确续传 / 忽略 Range 从零重下 / 错位 fail-closed）。FTP 仍整包重下。Android 只有 WebDAV。不宣称增量传输
 - 仓库巡检下载：WebDAV / 桌面 S3 走共享 `resume::get_file_with_optional_resume`，同一次巡检内瞬时失败从已写入前缀再试（最多 3 次）；不支持续传的后端仍走整包 `get_file`。每个对象先清掉上一轮 `.partial`，禁止把 A 的前缀接到 B 上。
-- 文件级工作区 / blob / 资产下载同样走该编排。明文写入旁路 `.ds-dl.part`，校验后再替换业务 `dest`，禁止对已有文件追加。密文仍先落到独占临时文件再解密。设置页 `fullZipHint` 与用户指南 16 已写明恢复 / 巡检 / 同步大文件的续传范围。FTP REST 已审 `retr_to_file` 无 REST；实验性、Android 禁用、550 白名单热区，本轮不合，恢复/巡检/文件级仍整包重下。不宣称增量传输
+- 文件级工作区 / blob / 资产下载同样走该编排。旁路 `.ds-dl.part` 按内容哈希命名，新版本不续旧前缀；过期旁路会清掉。明文校验后再替换业务 `dest`，禁止对已有文件追加。密文按 `cipher_sha256` 落到同目录旁路（不再用匿名 tempfile），跨次同步可续传，解密成功后才删旁路。设置页 `fullZipHint` 与用户指南 16 已写明恢复 / 巡检 / 同步大文件的续传范围。FTP REST 已审 `retr_to_file` 无 REST；实验性、Android 禁用、550 白名单热区，本轮不合，恢复/巡检/文件级仍整包重下。不宣称增量传输
 - 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值
 - 记录级变更/清单路径同样收敛：新写入 `data_governance/changes/<短哈希>/`、`v4/shards/<短哈希>/`、`data_governance/manifests/<短哈希>.json`；旧明文目录继续可读并与短哈希并成同一设备 seq 流；写入后迁移旧清单名。tombstone 每设备清单与不可变事件前缀同样改短哈希，旧明文名双读；水位按清单/事件内容里的完整 `device_id` 记账，不把短哈希文件名当游标；路径与内容不一致 fail-closed。文件级 `file_manifests/<kind>/<uuid>.json` 与快照 `snapshots/<库>/<uuid>.json.zst` 新写入不再编码时间或设备；旧明文/短哈希目录仍按整前缀合并。用户指南 16 已写明新备份编号不透明、记录级/文件级路径不再含完整设备名
