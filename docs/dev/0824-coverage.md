@@ -1,21 +1,28 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-24 23:22:28 UTC。
+审计快照：2026-08-25 00:33 UTC（第八轮，0824 已含 A+B+D）。
 
 本表覆盖该时点仍开放的 PR #158–#268，共 111 个（无缺号）。判定对象是同一次
 `git fetch` 固定下来的 `refs/pull/<PR>/head`，不是 PR 标题所指的旧底座：
 
-- 0824：`8b70b2d7950ecc014f010591fd998350f9cb8c4e`
-- B cloud（当前主题 tip）：`5505d5fe9c5c20fae8d2556dd98465af29bb2019`
-- C genui：`bc26f121a84dc4845e72b239e686b5d483e6fc3c`
-- D anki：`07146ea9fd949d0e2955a29359bbe935c8996aba`
-- E optimization：`ae3207fff67875737d1460bb0d021758033f423e`
-- F subapp：`575fee7f475a83de5c0edd3dd378015495fb22ad`
-- G mobile：`4ab24435bb998f7d24fed9e80e39746a4f44edb3`
+- 0824：`4f05d2272217e91a899ed6261356eea1acafc438`
+- B cloud（#177 tip，与主题分支 tip 重合）：`017bb297c4576305b018cafb54fcbe092612a6de`
+- C genui（#214 tip，与主题分支 tip 重合）：`c2786d4b602c8271db0ad116aeb37b3c04fad5b5`
+- D anki（#215 tip，与主题分支 tip 重合）：`f4f1300e85cf08fc4b2b2c9db7d6bc1f94d0019b`
+- E optimization（#213 tip，与主题分支 tip 重合）：`746445fc61914e7eaad8522d7aa4b75083e42762`
+- F subapp（#176 tip，与主题分支 tip 重合）：`97ee408c8b5c7df1087e15986b170a16bd248488`
+- G mobile（#172 tip，与主题分支 tip 重合）：`e963b6df949aa3476c03f6d86c66007b480bba05`
 
-0824 已通过 `0e32e0feade503114430234f024527c1f98f5c03` 合入 B
-的 `a1ee2420d53e11824839a9607320dfa1147c0249`；B 后续仍有独立前进，
-因此当前 B tip 也继续作为主题目标参与判定。
+0824 与各主题分支的合入边界（`git merge-base`）：
+
+- D anki：tip `f4f1300e` 已经是 0824 祖先——D 已通过
+  `a8185664` 全量合入，#215 本轮升格为 `IN_0824`。
+- B cloud：0824 含 B 至 `fb77f0af`；B 之后又前进 27 个提交
+  （R12 delta 系列原语、v1trust、P2 收尾等），#177 tip 尚未进 0824。
+- C genui：0824 含 C 至 `c16a4fbd`；C 之后又前进 30 个提交，#214 tip 尚未进 0824。
+- E optimization：0824 含 E 至 `65bad3ed`；E 之后又前进 4 个提交，#213 tip 尚未进 0824。
+- F subapp / G mobile：与 0824 的 merge-base 均为 main tip `0e4c9fad`，
+  两支与 0824 无任何 git 祖先重叠（F 的部分行为是按 0824 结构选择性移植进去的）。
 
 `IN_0824` 与 `IN_THEME_ONLY` 均以
 `git merge-base --is-ancestor <PR tip> <target tip>` 的精确祖先关系为准。
@@ -45,7 +52,7 @@
 | #174 | IN_0824 |
 | #175 | IN_0824 |
 | #176 | IN_THEME_ONLY(F subapp) |
-| #177 | LEFTOVER |
+| #177 | IN_THEME_ONLY(B cloud) |
 | #178 | IN_0824 |
 | #179 | IN_0824 |
 | #180 | IN_0824 |
@@ -81,9 +88,9 @@
 | #210 | IGNORE |
 | #211 | IN_0824 |
 | #212 | IGNORE |
-| #213 | LEFTOVER |
-| #214 | LEFTOVER |
-| #215 | IN_THEME_ONLY(D anki) |
+| #213 | IN_THEME_ONLY(E optimization) |
+| #214 | IN_THEME_ONLY(C genui) |
+| #215 | IN_0824 |
 | #216 | IN_0824 |
 | #217 | IN_0824 |
 | #218 | IGNORE |
@@ -138,20 +145,34 @@
 | #267 | IN_0824 |
 | #268 | IN_0824 |
 
-汇总：`IN_0824` 87；`IN_THEME_ONLY` 3（G：#172，F：#176，D：#215）；
-`LEFTOVER` 5；`IGNORE` 16。
+汇总：`IN_0824` 88；`IN_THEME_ONLY` 5
+（B：#177，C：#214，E：#213，F：#176，G：#172）；
+`LEFTOVER` 2（#160、#161）；`IGNORE` 16。
+
+相对上一轮（B 合入后快照）的变化：
+
+- #215（D anki）：`IN_THEME_ONLY(D)` → `IN_0824`。D 主题分支已随
+  `a8185664` 全量并入 0824，PR tip 即 D tip。
+- #177（B cloud）：`LEFTOVER` → `IN_THEME_ONLY(B)`。PR tip 现与 B 分支 tip
+  重合（`017bb297`），上一轮多出的 `recoveryKind` 增量已回到 B 主线；
+  但 B 在 0824 合入边界 `fb77f0af` 之后仍有 27 个提交未进 0824。
+- #213（E optimization）：`LEFTOVER` → `IN_THEME_ONLY(E)`。PR tip 现与 E 分支
+  tip 重合（`746445fc`），post-Step-1 增量已收进 E；E 比 0824 边界多 4 个提交。
+- #214（C genui）：`LEFTOVER` → `IN_THEME_ONLY(C)`。PR tip 现与 C 分支 tip
+  重合（`c2786d4b`）；C 比 0824 边界 `c16a4fbd` 多 30 个提交。
 
 ## 非祖先 tip 的处置依据
 
 - `LEFTOVER`：
-  - #160/#161：F 已吸收大部分，但仍缺第五轮审计确认的 6 项
-    flashcards/practice/workbench 增量。
-  - #177：0824 中的 B 合入边界包含 #177 到 `fb77f0af`；当前 B 又包含到
-    `28eb4c9e`，但本次快照的 #177 tip `57cd704d` 仍多出
-    `recoveryKind` 持久化增量，因此不是任何目标 tip 的祖先。
-  - #213/#214：0824 和 E/C 只含较早快照；两 PR 的 post-Step-1
-    CI、测试及产品加固增量仍在 clean leftovers 中，当前 tip 不是任何目标祖先。
-- `IGNORE`：
+  - #160：F 已吸收大部分，但本轮内容级抽查确认 F tip（`97ee408c`）仍缺
+    独特增量——F 仍保留 #160 删除的未渲染 `PracticeModeSelector.tsx`；
+    `questionBankStore` 的 streak/answered 持久化未吸收
+    （#160 中 6 处 `streak` 引用，F 仅 1 处）；`.apkg` 导入仅部分吸收
+    （F 的 `LibraryScreen`/`libraryStore` 缺 #160 的对应改动）。
+  - #161：F tip 完全缺失 `ImmersiveHint.tsx/.css`（沉浸模式可见出口）与
+    `workbench-shell-ux.test.tsx`；关窗拦截、快捷键可发现性等其余壳层
+    改动在 F 中也只有部分对应。
+- `IGNORE`（沿用前几轮内容级结论，本轮 tip 未变化）：
   - #158 的有效叶提交已由 #169/#180/#181/#182/#186、A/T 或等价补丁吸收；
     其中删除已投入运行的 UTF-8 decoder 不应重放。
   - #159/#164 的有用子集已选择性移植进 A；其余与 A 等价或冲突，不能把原 tip
