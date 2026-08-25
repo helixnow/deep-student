@@ -401,7 +401,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             await commitTags(next);
         } catch (error: unknown) {
             console.error('[NotesEditorHeader] Failed to update tags:', error);
-            showGlobalNotification('error', t('notes:tagStateSaveFailed', 'Failed to save tags'));
+            showGlobalNotification(
+                'error',
+                t('notes:graph_notes.tagStateSaveFailed', 'Failed to save tags'),
+            );
         } finally {
             setIsSavingTags(false);
         }
