@@ -849,3 +849,54 @@ Composer*、附件 200/50、G 44px、HPIAS、#177 端口与 `note_props` 均未
 触及。`npm run typecheck`（先 `version:generate`）、`npx vite build`、
 `cargo check --manifest-path src-tauri/Cargo.toml --lib` 均 exit 0；Cargo
 使用 Rust 1.98，输出 28 条既有 warning。
+
+### Step 19 收口：mainbackfill/llmusage/anki/restore 四 rel 枝升级修复
+
+日期：2026-08-25。基座 `427c775f`（Step 18 tip）。复查远端全部
+`cursor/0824-rel-*-cde6` 枝，仅有 mainbackfill/llmusage/anki/restore/
+finder 五条，无新增枝；finder 两提交已于 Step 18 落地，本步不重放
+`9176740b`/`0a6344e1`。按序 cherry-pick 六个 INCLUDE 提交（未合并任何
+隔离枝整枝）：
+
+- `3d3516c3` → `5f324e1f`（mainbackfill）：VFS pre-repair 在
+  `ensure_change_log_table` 之前先补齐 V20260130 契约缺失表
+  （`apply_vfs_init_missing_tables`），main `b2a85a69` 的端口；修复
+  v0.9.44→0824 升级时旧库只有 resources/notes 而 change_log 回放报
+  `no such table: main.questions` 的路径。落地后核实调用顺序：backfill
+  先于 change_log 修复；
+- `c4a3382c` → `920dd665`（llmusage）：cache token 迁移兼容加固，
+  `cache_write_tokens` 保持 nullable、NULL≠0（未测量 ≠ 零），
+  model2_pipeline 与 provider 上报路径同步适配；`coordinator.rs` 与
+  Step 19 首提交自动合并干净；
+- `ef991061` → `0105a7eb`（anki）：新增 V20260824 迁移把旧库 nullable
+  的 `tags_json`/`images_json`/`extra_fields_json` 归一为合法空 JSON，
+  读路径容忍 NULL，`_qa_flags`/`_occlusion` 载荷原样保留。唯一冲突在
+  `tests/fixtures/migrations/manifest.json`（llmusage 与 anki 各追加一个
+  v0.9.44 fixture case，纯加性），保留双 case 解决；
+- `e97b89ff` → `1df0ec6a`（restore）：不安全恢复路径 fail-closed 前移到
+  磁盘预算、清槽与任何数据库写入之前；ZIP 拒收与 E2EE 门禁只紧不松；
+- `92c487f8` → `6cfabf67`（restore）：部分归档恢复不再弹误导性确认，
+  云错误本地化补 zh-CN/en-US 文案，附 dashboard/localize 两组测试；
+- `2ba5522d` → `d7fb7677`（restore，可选项取用）：ZIP 拒收检查纯
+  rustfmt，`cargo fmt --check` 1.98 干净。
+
+随手清理 `1119f9be`：`commands_restore.rs` fail-closed 端口后 `warn`
+导入不再使用，删除以维持 28 条既有 warning 基线。
+
+SKIP（不取）：`465f0872`（anki 审计文档）与 `8ae0c915`（restore ZIP
+兼容文档）均为 docs-only，以本节记录代替；finder 枝全部提交
+（Step 18 已落地）；无其他 rel 枝残留内容。
+
+Composer*、附件 200/50、G 44px、HPIAS 18-block、#177
+reread/size/resume/stall-timeout/multipart-abort、`note_props`、finder
+持久化加固均未触及。编译门禁（Rust 1.98 + 本 VM 补装
+libgtk-3-dev/libwebkit2gtk-4.1-dev/libsoup-3.0-dev/protobuf-compiler +
+`scripts/download-pdfium.sh linux-x64`，下载脚本对
+`licenses/pdfium.txt` 的重写已恢复未带入提交）：
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck`（先 `version:generate`） | ✅ exit 0 |
+| `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning） |
+| `cargo fmt --check` | ✅ exit 0（rustfmt 1.98） |
