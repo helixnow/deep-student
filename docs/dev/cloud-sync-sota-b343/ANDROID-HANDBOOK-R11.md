@@ -156,13 +156,17 @@ npx tauri android build --target aarch64 --apk --ci -- \
   受控 `MainActivity` 在 `onResume` 立刻 persist，前台每 400ms 轮询
   `takePersistableUriPermission`。`ACTION_GET_CONTENT` 常常不可 persist：
   `SecurityException` 必须删队列并 log warn，不得假装已授权。宿主测不能冒充真机绿灯。
+- 数据治理 ZIP **导出**走 Tauri `save()` → `tauri-plugin-dialog` 2.6.0
+  `ACTION_CREATE_DOCUMENT`，persistable grant 有机会成功。**导入**走 `open()` →
+  同一插件的 `ACTION_GET_CONTENT`（源码 TODO `ACTION_OPEN_DOCUMENT`），persist
+  通常被拒；当次物化仍靠当前进程 grant。本枝未 vendor 对话框插件、未改 lockfile。
 
 ### 5.2 仍开缺口
 
 | 级别 | 缺口 | 发布前证据 |
 |---|---|---|
 | P1 | 没有真机 ContentResolver 读写自动化；`Window<Wry>` 不能由当前 mock runtime 驱动 | 本手册 4.1–4.3 全矩阵，至少 Android 13/14 各一台 |
-| P1 | persistable URI grant 真机闭环 | **代码已合**：Rust 队列 + MainActivity 轮询 `takePersistableUriPermission`；`ACTION_GET_CONTENT` 拒绝 persist 时删队列并 warn，不得假装已授权。provider 授权后强杀/重开仍要按 4.1–4.3 签字 |
+| P1 | persistable URI grant 真机闭环 | **代码已合**：Rust 队列 + MainActivity 轮询。导出 `save()` / `ACTION_CREATE_DOCUMENT` 才有机会 persist；导入 `open()` / `ACTION_GET_CONTENT` 通常被拒，当次物化靠进程 grant。强杀/重开仍要按 4.1–4.3 签字 |
 | P1 | 导出复制目标回读 | **代码已合**：`copy_file` 写完后重新打开目标核对长度与 SHA-256，失败不得报成功。真机 DocumentsProvider 延迟提交 / 进程死亡仍要按 4.1–4.3 签字 |
 | P2 | 临时物化前空间预检 | **代码已合**：虚拟 URI 物化前按源大小 2 倍核对临时卷可用空间，不足 fail-closed。真机 ENOSPC / 配额虚报 / SAF 目标卷仍要按 4.1–4.3 签字 |
 | P2 | 不透明 document id 未查询 `OpenableColumns.DISPLAY_NAME/SIZE`；通用导入靠 magic bytes，日志/文件名可读性退化 | Downloads/Drive/厂商 provider 各取一例 |
