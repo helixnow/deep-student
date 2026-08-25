@@ -628,3 +628,50 @@ record-path 命名、v1 marker 信任、Android SAF 原子队列、备份 manife
 16. NOTICES 在 `legal/`（THIRD_PARTY_NOTICES.txt），`public/legal` 不存在 ✅
 17. InputBar 保持 F 拆分 Composer*（5 个 Composer 文件；staleContextRef 测试保留且 24/24 绿）✅
 18. G 44px / safe-area / Android 返回键（min-h-11、ios-safe-area.css、MainActivity OnBackPressedCallback）✅
+
+### Step 10 收口：#177 最新 3 提交 + leftover-160 产品尾款 + regress 隔离回收
+
+日期：2026-08-25。官方 0824 唯一写入者执行。基座 `cb1a0fbe`（Step 9 tip）。
+
+#### 10.1 Cherry-pick #177 最新增量（`origin/cursor/cloud-sync-sota-b343` 对 0824 的 3 个独有提交）
+
+| 源提交 | 落地提交 | 内容 |
+|---|---|---|
+| `ef3c104d` | `4bebbf81` | put_file 后核对远端尺寸（WebDAV/S3/FTP stat 复核，短写/缺失删残片并 fail-closed；默认 trait 实现保持不校验以便测试替身模拟短写） |
+| `8eb675ce` | `394851a7` | record 清单上传后 GET 复读（设备目录/instance.json/superseded_by/legacy change），短写不得推进水位 |
+| `75f12160` | `587cfccd` | 文件级清单（workspace/blob/asset catalogs）发布后经同一 helper 复读 |
+
+三个 pick 全部干净 auto-merge，零冲突；tombstone / WebDAV decode /
+S3 normalize / FTP 550 / Composer* / 附件 200/50 均未被触及（见 10.4）。
+
+#### 10.2 leftover-160 产品尾款（PR #303 @ `5c89a5b2`，同枝直落 `41587d48`）
+
+- `StatisticsScreen.tsx`：`SchedulerSettingsSection` 移到统计面板之后
+  （统计为主内容、调度设置为次级动作），DOM 顺序由新增用例锁定
+  （`compareDocumentPosition` 断言）；
+- `theme-colors.css`：亮/暗两档补 `--brand-secondary` / `--brand-accent`
+  完整颜色定义（Tailwind `brand.secondary`/`brand.accent` 直接消费别名，
+  裸 HSL 通道不可用）；新增 `brandColorTokenContract.test.ts` 契约；
+- loadError / todayScreenEmptyLibrary 两测试 Step 9 已落，未重放；
+  未复活 `PracticeModeSelector`；未触碰 D 只读闪卡与 G 44px。
+
+#### 10.3 regress 隔离枝回收（`origin/cursor/0824-regress-cloud-cde6`，落地 `08b81e29`）
+
+| 文件 | 处置 |
+|---|---|
+| `DataGovernanceDashboard.abg.source.test.ts` | TAKE（新增源码契约：A 8 个 tab aria-label + DEV-only debug 门、B E2EE ZIP 密码走 #177 API、G 44px coarse tab 三者共存；对 0824 现树逐断言 grep 核实后 vitest 3/3 绿） |
+| `commands_zip.rs` 增量 | TAKE（纯 `#[test]`：密码下限按 Unicode 码点计数 + 稳定 `E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT` code；仅测试模块 +24 行，产品零改动，E2EE zip 未动；`cargo test resolve_zip_encryption_password_tests` 15/15 绿，含新增 Unicode 用例） |
+| `threadWidthAlignmentContract.test.ts` 改动 | SKIP（该枝删除 InputBarV2 的 `<ThreadContentShell>` 断言；0824 上 `InputBarV2.tsx` 仍存在且 3 处使用，现行更强版本实测 2/2 绿，照抄即弱化契约） |
+
+#### 10.4 门禁与不变量（HEAD `08b81e29`）
+
+- `npm run typecheck` ✅ exit 0（先 `version:generate`）；
+- `npx vite build` ✅ exit 0，1m01s（6GiB 堆），仅既有 chunk 体积警告；
+- `cargo check --lib` ✅ exit 0（rustc 1.98，28 条既有警告；本 VM 补装
+  GTK/webkit dev 库、protoc、`download-pdfium.sh linux-x64`，均为环境预备）；
+- `cargo fmt --check` ✅ exit 0（含新增 Rust 测试）；
+- 定向 vitest ✅ 11/11（brandColorToken 1、StatisticsScreen 5、
+  DataGovernanceDashboard.abg 3、threadWidthAlignment 现行版 2）；
+- 18 项不变量逐项复查全 PASS（清单同 Step 9 §9.4，其中 #10-13 在
+  #177 三提交触及文件内逐符号核实：`tombstone.rs`、`decode_path`、
+  `normalize_endpoint`、550/501 白名单全部在位）。
