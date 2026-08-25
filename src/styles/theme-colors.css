@@ -264,6 +264,10 @@
   --text-muted: hsl(var(--muted-foreground));
   --text-inverse: hsl(var(--primary-foreground));
 
+  /* Tailwind's brand.secondary / brand.accent mappings consume complete colors
+     directly, so both aliases must be defined rather than bare HSL channels. */
+  --brand-secondary: hsl(var(--info));
+  --brand-accent: color-mix(in oklab, hsl(var(--primary)) 50%, hsl(var(--info)) 50%);
   /* Brand palette + gradients */
   --brand-gradient: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 100%);
   --brand-gradient-hover: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--info)) 80%, hsl(var(--primary)) 100%);
@@ -440,6 +444,10 @@
   --settings-nav-accent-green: hsl(157 55% 58%);
   --settings-nav-accent-sky: hsl(208 70% 70%);
   --settings-nav-accent-pink: hsl(327 52% 74%);
+
+  /* Keep brand utility colors legible on the dark shell. */
+  --brand-secondary: color-mix(in oklab, hsl(var(--info)) 80%, hsl(var(--foreground)) 20%);
+  --brand-accent: color-mix(in oklab, var(--brand-secondary) 50%, hsl(var(--primary)) 50%);
 
   /* 资源图标：底更沉、边更实、前景往 --foreground 提亮，
      -bg / -fg / -border 的 color-mix 公式在亮色档已写好，这里只翻比例。

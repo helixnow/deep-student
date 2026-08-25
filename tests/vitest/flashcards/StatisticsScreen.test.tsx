@@ -78,6 +78,18 @@ describe('StatisticsScreen', () => {
     expect(mocks.getStats).toHaveBeenCalledTimes(2);
   });
 
+  it('places scheduler settings after the statistics panels', async () => {
+    mocks.getStats.mockResolvedValueOnce(firstStats);
+
+    render(<StatisticsScreen />);
+    const statistics = await screen.findByTestId('fsrs-statistics');
+    const settings = screen.getByTestId('fsrs-scheduler-settings');
+
+    expect(
+      statistics.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('shows backend errors and retries successfully', async () => {
     mocks.getStats
       .mockRejectedValueOnce(new Error('stats backend is offline'))
