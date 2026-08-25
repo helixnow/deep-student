@@ -9558,9 +9558,7 @@ impl SyncManager {
             .map_err(|error| SyncError::Database(format!("序列化{}清单失败: {}", label, error)))?;
         let payload = self.encode_payload(&json)?;
         let key = Self::append_only_file_manifest_key(prefix, &self.device_id);
-        storage.put(&key, &payload).await.map_err(|error| {
-            SyncError::Network(format!("发布{}清单失败 {}: {}", label, key, error))
-        })
+        Self::put_bytes_and_reread(storage, &key, &payload, &format!("文件级{label}清单")).await
     }
 
     fn file_transfer_progress(
@@ -12475,6 +12473,10 @@ mod tests {
         assert!(
             source.contains("记录级设备清单"),
             "upload_manifest 必须走回读闸"
+        );
+        assert!(
+            source.contains("文件级{label}清单"),
+            "publish_file_manifest 必须走同一条 GET 回读闸"
         );
     }
 
