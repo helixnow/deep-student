@@ -8,9 +8,9 @@
 //! ## 实现思路（内容寻址不破坏，按需最小增量）
 //!
 //! 每种文件类型按设备维护"已删除清单"文件到云端：
-//! - `data_governance/tombstones/blobs/{device_id}.json`
-//! - `data_governance/tombstones/assets/{device_id}.json`
-//! - `data_governance/tombstones/workspaces/{device_id}.json`
+//! - `data_governance/tombstones/blobs/{短哈希}.json`（旧 `{device_id}.json` 仍可读）
+//! - `data_governance/tombstones/assets/{短哈希}.json`
+//! - `data_governance/tombstones/workspaces/{短哈希}.json`
 //!
 //! 旧版共享文件 `data_governance/tombstones/{blobs,assets,workspaces}.json`
 //! 仍会只读合并，保证升级前已写入的删除不会丢。
@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 
 use super::state::SyncStateStore;
 use super::{parse_flexible_timestamp_public, SyncError};
-use crate::cloud_storage::CloudStorage;
+use crate::cloud_storage::{device_id_short_hash, CloudStorage};
 
 /// Payload 编解码能力（P0-2 修复引入）
 ///
@@ -161,6 +161,11 @@ fn device_component(device_id: &str) -> String {
     }
 }
 
+/// 新 tombstone 路径用短哈希，避免把完整 device_id 写进对象 key。
+fn tombstone_device_path_id(device_id: &str) -> String {
+    device_id_short_hash(device_id)
+}
+
 fn event_operation_id(kind: &str, device_id: &str, object_id: &str, deleted_at: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -209,6 +214,15 @@ fn event_device_prefix(kind: &str, device_id: &str) -> String {
         "{}/{}/{}/",
         TOMBSTONE_EVENTS_PREFIX,
         kind,
+        tombstone_device_path_id(device_id)
+    )
+}
+
+fn event_device_legacy_prefix(kind: &str, device_id: &str) -> String {
+    format!(
+        "{}/{}/{}/",
+        TOMBSTONE_EVENTS_PREFIX,
+        kind,
         device_component(device_id)
     )
 }
@@ -220,6 +234,19 @@ fn event_key(event: &TombstoneEvent) -> String {
         event.seq,
         event.operation_id
     )
+}
+
+fn event_legacy_key(event: &TombstoneEvent) -> String {
+    format!(
+        "{}{:020}-{}.json",
+        event_device_legacy_prefix(&event.kind, &event.device_id),
+        event.seq,
+        event.operation_id
+    )
+}
+
+fn event_key_matches(event: &TombstoneEvent, key: &str) -> bool {
+    key == event_key(event) || key == event_legacy_key(event)
 }
 
 fn event_seq_from_key(key: &str) -> Option<u64> {
@@ -332,7 +359,12 @@ async fn publish_events(
 ) -> Result<(), SyncError> {
     let instance_id = remote_instance_id(storage).await?;
     let state = SyncStateStore::open_default()?;
-    let cloud_keys = list_event_keys(storage, &event_device_prefix(kind, device_id)).await?;
+    let hashed_prefix = event_device_prefix(kind, device_id);
+    let mut cloud_keys = list_event_keys(storage, &hashed_prefix).await?;
+    let legacy_prefix = event_device_legacy_prefix(kind, device_id);
+    if legacy_prefix != hashed_prefix {
+        cloud_keys.extend(list_event_keys(storage, &legacy_prefix).await?);
+    }
     let mut cloud_max = cloud_keys
         .iter()
         .filter_map(|key| event_seq_from_key(key))
@@ -411,7 +443,7 @@ async fn download_events(
         if event.format_version != tombstone_event_format_version()
             || event.kind != kind
             || event.operation_id != expected_operation_id
-            || event_key(&event) != key
+            || !event_key_matches(&event, &key)
             || event.payload_hash.is_empty()
             || event_payload_hash(&event) != event.payload_hash
         {
@@ -494,11 +526,27 @@ pub fn blob_device_tombstone_key(device_id: &str) -> String {
     format!(
         "{}{}.json",
         BLOB_TOMBSTONE_PREFIX,
+        tombstone_device_path_id(device_id)
+    )
+}
+
+fn blob_device_tombstone_legacy_key(device_id: &str) -> String {
+    format!(
+        "{}{}.json",
+        BLOB_TOMBSTONE_PREFIX,
         device_component(device_id)
     )
 }
 
 pub fn asset_device_tombstone_key(device_id: &str) -> String {
+    format!(
+        "{}{}.json",
+        ASSET_TOMBSTONE_PREFIX,
+        tombstone_device_path_id(device_id)
+    )
+}
+
+fn asset_device_tombstone_legacy_key(device_id: &str) -> String {
     format!(
         "{}{}.json",
         ASSET_TOMBSTONE_PREFIX,
@@ -510,8 +558,66 @@ pub fn workspace_device_tombstone_key(device_id: &str) -> String {
     format!(
         "{}{}.json",
         WS_TOMBSTONE_PREFIX,
+        tombstone_device_path_id(device_id)
+    )
+}
+
+fn workspace_device_tombstone_legacy_key(device_id: &str) -> String {
+    format!(
+        "{}{}.json",
+        WS_TOMBSTONE_PREFIX,
         device_component(device_id)
     )
+}
+
+async fn get_device_tombstone_bytes(
+    storage: &dyn CloudStorage,
+    hashed_key: &str,
+    legacy_key: &str,
+    label: &str,
+) -> Result<Option<Vec<u8>>, SyncError> {
+    if let Some(bytes) = storage
+        .get(hashed_key)
+        .await
+        .map_err(|e| SyncError::Network(format!("获取本机 {label} tombstone 清单失败: {}", e)))?
+    {
+        return Ok(Some(bytes));
+    }
+    if legacy_key != hashed_key {
+        return storage.get(legacy_key).await.map_err(|e| {
+            SyncError::Network(format!("获取本机 {label} tombstone 清单失败: {}", e))
+        });
+    }
+    Ok(None)
+}
+
+async fn delete_legacy_device_tombstone(
+    storage: &dyn CloudStorage,
+    hashed_key: &str,
+    legacy_key: &str,
+) {
+    if hashed_key == legacy_key {
+        return;
+    }
+    match storage.stat(legacy_key).await {
+        Ok(Some(_)) => {
+            if let Err(error) = storage.delete(legacy_key).await {
+                tracing::warn!(
+                    "[sync] 迁移 tombstone 后删除旧对象 {} 失败（新清单已发布）: {}",
+                    legacy_key,
+                    error
+                );
+            }
+        }
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(
+                "[sync] 迁移 tombstone 时探测旧对象 {} 失败: {}",
+                legacy_key,
+                error
+            );
+        }
+    }
 }
 
 fn deleted_at_is_newer(candidate: &str, current: &str) -> bool {
@@ -683,12 +789,63 @@ pub struct TombstoneWatermarkAdvance {
     pub last_applied_offset: u64,
 }
 
-fn source_device_from_tombstone_key(prefix: &str, key: &str) -> String {
+fn tombstone_path_stem(prefix: &str, key: &str) -> String {
     key.strip_prefix(prefix)
         .and_then(|rest| rest.strip_suffix(".json"))
         .filter(|rest| !rest.trim().is_empty())
         .unwrap_or("unknown-device")
         .to_string()
+}
+
+/// 路径段是否指向该设备：兼容旧明文（含净化）与新短哈希。
+fn tombstone_path_id_matches_device(path_id: &str, device_id: &str) -> bool {
+    !path_id.is_empty()
+        && (path_id == device_component(device_id)
+            || path_id == tombstone_device_path_id(device_id))
+}
+
+/// 水位必须按内容里的完整 `device_id` 记账。
+///
+/// 新对象文件名是短哈希，不能把 stem 当设备 ID，否则升级后游标对不上、
+/// 会整份重放或漏推。路径与内容不一致、或一份清单混多台设备，fail-closed。
+fn source_device_from_tombstone_entries<'a>(
+    key: &str,
+    prefix: &str,
+    device_ids: impl IntoIterator<Item = &'a str>,
+) -> Result<String, SyncError> {
+    let path_id = tombstone_path_stem(prefix, key);
+    let mut seen_entry = false;
+    let mut unique: Vec<&'a str> = Vec::new();
+    for raw in device_ids {
+        seen_entry = true;
+        let id = raw.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if !unique.contains(&id) {
+            unique.push(id);
+        }
+    }
+    match unique.as_slice() {
+        [] if !seen_entry => Ok(path_id),
+        [] => Err(SyncError::Database(format!(
+            "tombstone 清单缺少 device_id，已停止同步且未推进水位: {}",
+            key
+        ))),
+        [device_id] => {
+            if !tombstone_path_id_matches_device(&path_id, device_id) {
+                return Err(SyncError::Database(format!(
+                    "tombstone 清单路径与内容 device_id 不一致: {}",
+                    key
+                )));
+            }
+            Ok((*device_id).to_string())
+        }
+        _ => Err(SyncError::Database(format!(
+            "tombstone 清单混有多台设备的 device_id，已停止同步且未推进水位: {}",
+            key
+        ))),
+    }
 }
 
 fn tombstone_offset_from_deleted_at(deleted_at: &str) -> u64 {
@@ -852,7 +1009,14 @@ where
         {
             if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")?
             {
-                let source = source_device_from_tombstone_key(BLOB_TOMBSTONE_PREFIX, &key);
+                let source = source_device_from_tombstone_entries(
+                    &key,
+                    BLOB_TOMBSTONE_PREFIX,
+                    manifest
+                        .entries
+                        .values()
+                        .map(|entry| entry.device_id.as_str()),
+                )?;
                 let watermark = watermark_for(&source)?;
                 let (filtered, max_offset) = filter_blob_tombstones_after(manifest, watermark);
                 if max_offset > watermark {
@@ -897,12 +1061,9 @@ pub async fn download_blob_tombstones_for_device(
     codec: &dyn PayloadCodec,
     device_id: &str,
 ) -> Result<BlobTombstones, SyncError> {
-    let key = blob_device_tombstone_key(device_id);
-    match storage
-        .get(&key)
-        .await
-        .map_err(|e| SyncError::Network(format!("获取本机 blob tombstone 清单失败: {}", e)))?
-    {
+    let hashed = blob_device_tombstone_key(device_id);
+    let legacy = blob_device_tombstone_legacy_key(device_id);
+    match get_device_tombstone_bytes(storage, &hashed, &legacy, "blob").await? {
         Some(bytes) => Ok(
             decode_tombstone_file::<BlobTombstones>(codec, &bytes, "local blob")?
                 .unwrap_or_default(),
@@ -1003,7 +1164,14 @@ where
             if let Some(manifest) =
                 decode_tombstone_file::<AssetTombstones>(codec, &bytes, "asset")?
             {
-                let source = source_device_from_tombstone_key(ASSET_TOMBSTONE_PREFIX, &key);
+                let source = source_device_from_tombstone_entries(
+                    &key,
+                    ASSET_TOMBSTONE_PREFIX,
+                    manifest
+                        .entries
+                        .values()
+                        .map(|entry| entry.device_id.as_str()),
+                )?;
                 let watermark = watermark_for(&source)?;
                 let (filtered, max_offset) = filter_asset_tombstones_after(manifest, watermark);
                 if max_offset > watermark {
@@ -1047,12 +1215,9 @@ pub async fn download_asset_tombstones_for_device(
     codec: &dyn PayloadCodec,
     device_id: &str,
 ) -> Result<AssetTombstones, SyncError> {
-    let key = asset_device_tombstone_key(device_id);
-    match storage
-        .get(&key)
-        .await
-        .map_err(|e| SyncError::Network(format!("获取本机 asset tombstone 清单失败: {}", e)))?
-    {
+    let hashed = asset_device_tombstone_key(device_id);
+    let legacy = asset_device_tombstone_legacy_key(device_id);
+    match get_device_tombstone_bytes(storage, &hashed, &legacy, "asset").await? {
         Some(bytes) => Ok(
             decode_tombstone_file::<AssetTombstones>(codec, &bytes, "local asset")?
                 .unwrap_or_default(),
@@ -1144,7 +1309,14 @@ where
             if let Some(manifest) =
                 decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "workspace")?
             {
-                let source = source_device_from_tombstone_key(WS_TOMBSTONE_PREFIX, &key);
+                let source = source_device_from_tombstone_entries(
+                    &key,
+                    WS_TOMBSTONE_PREFIX,
+                    manifest
+                        .entries
+                        .values()
+                        .map(|entry| entry.device_id.as_str()),
+                )?;
                 let watermark = watermark_for(&source)?;
                 let (filtered, max_offset) = filter_workspace_tombstones_after(manifest, watermark);
                 if max_offset > watermark {
@@ -1187,12 +1359,9 @@ pub async fn download_workspace_tombstones_for_device(
     codec: &dyn PayloadCodec,
     device_id: &str,
 ) -> Result<WorkspaceTombstones, SyncError> {
-    let key = workspace_device_tombstone_key(device_id);
-    match storage
-        .get(&key)
-        .await
-        .map_err(|e| SyncError::Network(format!("获取本机 workspace tombstone 清单失败: {}", e)))?
-    {
+    let hashed = workspace_device_tombstone_key(device_id);
+    let legacy = workspace_device_tombstone_legacy_key(device_id);
+    match get_device_tombstone_bytes(storage, &hashed, &legacy, "workspace").await? {
         Some(bytes) => {
             Ok(
                 decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "local workspace")?
@@ -1239,6 +1408,8 @@ pub async fn upload_blob_tombstones(
         .put(&key, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 blob tombstone 失败: {}", e)))?;
+    delete_legacy_device_tombstone(storage, &key, &blob_device_tombstone_legacy_key(device_id))
+        .await;
     Ok(())
 }
 
@@ -1276,6 +1447,8 @@ pub async fn upload_asset_tombstones(
         .put(&key, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 asset tombstone 失败: {}", e)))?;
+    delete_legacy_device_tombstone(storage, &key, &asset_device_tombstone_legacy_key(device_id))
+        .await;
     Ok(())
 }
 
@@ -1306,6 +1479,12 @@ pub async fn upload_workspace_tombstones(
         .put(&key, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 workspace tombstone 失败: {}", e)))?;
+    delete_legacy_device_tombstone(
+        storage,
+        &key,
+        &workspace_device_tombstone_legacy_key(device_id),
+    )
+    .await;
     Ok(())
 }
 
@@ -1703,7 +1882,17 @@ mod tests {
         };
         event.payload_hash = event_payload_hash(&event);
         let key = event_key(&event);
-        assert!(key.starts_with("data_governance/tombstone-events/assets/device-a/"));
+        let hashed = tombstone_device_path_id("device-a");
+        assert!(
+            key.starts_with(&format!(
+                "data_governance/tombstone-events/assets/{hashed}/"
+            )),
+            "新 tombstone 事件路径应使用短哈希: {key}"
+        );
+        assert!(
+            !key.contains("device-a"),
+            "新事件路径不得暴露明文 device_id: {key}"
+        );
         assert_eq!(event_seq_from_key(&key), Some(1));
         assert_eq!(
             serde_json::from_slice::<TombstoneEvent>(&serde_json::to_vec(&event).unwrap()).unwrap(),
@@ -1974,5 +2163,273 @@ mod tests {
             tombstone_offset_from_deleted_at(&past),
             "水位不得被超前条目拉高"
         );
+        assert!(
+            !advances
+                .iter()
+                .any(|advance| advance.source_device_id == tombstone_device_path_id("device-a")),
+            "短哈希文件名不得当成水位设备 ID"
+        );
+    }
+
+    #[test]
+    fn tombstone_watermark_source_uses_content_device_id() {
+        let hashed_key = blob_device_tombstone_key("device-a");
+        let legacy_key = blob_device_tombstone_legacy_key("device-a");
+        assert_eq!(
+            source_device_from_tombstone_entries(&hashed_key, BLOB_TOMBSTONE_PREFIX, ["device-a"])
+                .expect("短哈希路径应还原完整 device_id"),
+            "device-a"
+        );
+        assert_eq!(
+            source_device_from_tombstone_entries(&legacy_key, BLOB_TOMBSTONE_PREFIX, ["device-a"])
+                .expect("旧明文路径仍按完整 device_id 记账"),
+            "device-a"
+        );
+        assert!(source_device_from_tombstone_entries(
+            &hashed_key,
+            BLOB_TOMBSTONE_PREFIX,
+            ["device-b"]
+        )
+        .is_err());
+        assert!(source_device_from_tombstone_entries(
+            &hashed_key,
+            BLOB_TOMBSTONE_PREFIX,
+            ["device-a", "device-b"]
+        )
+        .is_err());
+        assert!(
+            source_device_from_tombstone_entries(&hashed_key, BLOB_TOMBSTONE_PREFIX, [""]).is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn download_blob_tombstones_after_reads_legacy_raw_name_as_same_device() {
+        let storage = MemoryStorage::default();
+        let past = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        let mut manifest = BlobTombstones::default();
+        manifest.entries.insert(
+            "legacy-good".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: past.clone(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        storage
+            .put(
+                &blob_device_tombstone_legacy_key("device-a"),
+                &serde_json::to_vec(&manifest).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (_, advances) = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("旧明文 tombstone 名必须仍计入同一设备水位");
+        assert_eq!(advances.len(), 1);
+        assert_eq!(advances[0].source_device_id, "device-a");
+        assert_eq!(
+            advances[0].last_applied_offset,
+            tombstone_offset_from_deleted_at(&past)
+        );
+    }
+
+    #[tokio::test]
+    async fn download_blob_tombstones_after_rejects_path_content_mismatch() {
+        let storage = MemoryStorage::default();
+        let past = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        let mut manifest = BlobTombstones::default();
+        manifest.entries.insert(
+            "spoof".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: past,
+                device_id: "device-b".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        storage
+            .put(
+                &blob_device_tombstone_key("device-a"),
+                &serde_json::to_vec(&manifest).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let err = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect_err("路径短哈希与内容 device_id 不一致必须 fail-closed");
+        let message = err.to_string();
+        assert!(message.contains("路径与内容"), "实际错误: {message}");
+    }
+
+    #[test]
+    fn tombstone_device_keys_use_short_hash_not_raw_id() {
+        let hashed = tombstone_device_path_id("device-a");
+        assert_eq!(hashed.len(), 16);
+        assert_ne!(hashed, "device-a");
+        assert_eq!(
+            blob_device_tombstone_key("device-a"),
+            format!("data_governance/tombstones/blobs/{hashed}.json")
+        );
+        assert_eq!(
+            blob_device_tombstone_legacy_key("device-a"),
+            "data_governance/tombstones/blobs/device-a.json"
+        );
+        assert!(event_key_matches(
+            &TombstoneEvent {
+                format_version: 4,
+                device_id: "device-a".to_string(),
+                seq: 1,
+                operation_id: "op".to_string(),
+                kind: "blobs".to_string(),
+                object_id: "h".to_string(),
+                deleted_at: "2026-01-01T00:00:00Z".to_string(),
+                size: None,
+                relative_path: None,
+                payload_hash: String::new(),
+            },
+            &format!(
+                "data_governance/tombstone-events/blobs/device-a/00000000000000000001-op.json"
+            )
+        ));
+    }
+
+    #[tokio::test]
+    async fn download_own_blob_tombstone_reads_legacy_raw_name() {
+        let storage = MemoryStorage::default();
+        let mut manifest = BlobTombstones::default();
+        manifest.entries.insert(
+            "legacy-hash".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-01T00:00:00Z".to_string(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        storage
+            .put(
+                &blob_device_tombstone_legacy_key("device-a"),
+                &serde_json::to_vec(&manifest).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let loaded = download_blob_tombstones_for_device(&storage, &PlainCodec, "device-a")
+            .await
+            .expect("旧明文 tombstone 名必须仍可读");
+        assert!(loaded.entries.contains_key("legacy-hash"));
+    }
+
+    #[tokio::test]
+    async fn upload_blob_tombstone_migrates_legacy_raw_name() {
+        let storage = MemoryStorage::default();
+        let mut old = BlobTombstones::default();
+        old.entries.insert(
+            "old".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-01T00:00:00Z".to_string(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        storage
+            .put(
+                &blob_device_tombstone_legacy_key("device-a"),
+                &serde_json::to_vec(&old).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let mut next = BlobTombstones::default();
+        next.entries.insert(
+            "new".to_string(),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-02T00:00:00Z".to_string(),
+                device_id: "device-a".to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        let hashed = blob_device_tombstone_key("device-a");
+        storage
+            .put(&hashed, &serde_json::to_vec(&next).unwrap())
+            .await
+            .unwrap();
+        delete_legacy_device_tombstone(
+            &storage,
+            &hashed,
+            &blob_device_tombstone_legacy_key("device-a"),
+        )
+        .await;
+
+        assert!(storage.get(&hashed).await.unwrap().is_some());
+        assert!(
+            storage
+                .get(&blob_device_tombstone_legacy_key("device-a"))
+                .await
+                .unwrap()
+                .is_none(),
+            "写入短哈希清单后应删除旧明文名"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_events_continues_seq_from_legacy_raw_prefix() {
+        let storage = MemoryStorage::default();
+        let device = "r12-tomb-seq-continue-device".to_string();
+        let operation_id = event_operation_id("blobs", &device, "old-obj", "2026-08-01T00:00:00Z");
+        let mut existing = TombstoneEvent {
+            format_version: 4,
+            device_id: device.clone(),
+            seq: 1,
+            operation_id: operation_id.clone(),
+            kind: "blobs".to_string(),
+            object_id: "old-obj".to_string(),
+            deleted_at: "2026-08-01T00:00:00Z".to_string(),
+            size: None,
+            relative_path: None,
+            payload_hash: String::new(),
+        };
+        existing.payload_hash = event_payload_hash(&existing);
+        storage
+            .put(
+                &event_legacy_key(&existing),
+                &serde_json::to_vec(&existing).unwrap(),
+            )
+            .await
+            .unwrap();
+
+        publish_events(
+            &storage,
+            &PlainCodec,
+            &device,
+            "blobs",
+            vec![(
+                "new-obj".to_string(),
+                "2026-08-02T00:00:00Z".to_string(),
+                None,
+                None,
+            )],
+        )
+        .await
+        .expect("旧明文事件前缀必须计入 cloud max seq");
+
+        let hashed_keys = storage
+            .list(&event_device_prefix("blobs", &device))
+            .await
+            .unwrap();
+        assert_eq!(hashed_keys.len(), 1, "{hashed_keys:?}");
+        assert_eq!(event_seq_from_key(&hashed_keys[0].key), Some(2));
+
+        let downloaded = download_events(&storage, &PlainCodec, "blobs")
+            .await
+            .expect("新旧事件路径必须作为同一设备流被接受");
+        assert_eq!(downloaded.len(), 2);
+        assert_eq!(downloaded[0].seq, 1);
+        assert_eq!(downloaded[1].seq, 2);
     }
 }

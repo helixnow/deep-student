@@ -52,4 +52,4 @@
 - 恢复确认框写出目标版本号，并按已知便携 / 全保真 / 未标记分述
 - 旧清单缺 `recoveryKind` 仍可点恢复，导入后再门禁
 - 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值
-- 记录级变更/清单路径同样收敛：新写入 `data_governance/changes/<短哈希>/`、`v4/shards/<短哈希>/`、`data_governance/manifests/<短哈希>.json`；旧明文目录继续可读并与短哈希并成同一设备 seq 流；写入后迁移旧清单名。`file_manifests/` 与快照路径未动
+- 记录级变更/清单路径同样收敛：新写入 `data_governance/changes/<短哈希>/`、`v4/shards/<短哈希>/`、`data_governance/manifests/<短哈希>.json`；旧明文目录继续可读并与短哈希并成同一设备 seq 流；写入后迁移旧清单名。tombstone 每设备清单与不可变事件前缀同样改短哈希，旧明文名双读；水位按清单/事件内容里的完整 `device_id` 记账，不把短哈希文件名当游标；路径与内容不一致 fail-closed。`file_manifests/` 与快照路径未动。用户指南 16 已写明新备份编号不透明、记录级路径不再含完整设备名
