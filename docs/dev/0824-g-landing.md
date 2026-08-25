@@ -40,7 +40,7 @@ merge 共产生 52 个冲突（45 个内容冲突、7 个 modify/delete），均
 | `src/components/ui/unified-sidebar/UnifiedSidebar.tsx` | 取 step5-FG 终态：保留 F sidebar 主体，叠加 G 触控和小屏规则。 |
 | `src/features/anki-tasks/AnkiTasksApp.tsx` | 取 step5-FG 终态：保留 D/F 任务状态和只读闪卡边界，叠加 G 热区。 |
 | `src/features/anki-tasks/components/SessionRow.tsx` | 取 step5-FG 终态：保留任务行语义，叠加 G 行级触控区。 |
-| `src/features/chat/components/input-bar/InputBarUI.tsx` | 取 step5-FG 终态；保留 F 的 `ComposerToolbar` / `AttachmentPanelBody` / `ComposerTextarea` 拆分，并确认 G 热区落在这些实际承载文件而非恢复旧巨型结构。 |
+| `src/features/chat/components/input-bar/InputBarUI.tsx` | 以最新正式 F 文件为底重放 step5-FG 相对 F-only 父树的 G 增量；拒绝旧巨型实现冲突块，把 Context ring、模型搜索、发送/停止及附件操作热区分别移到 `ComposerToolbar` / `AttachmentPanelBody`，同时保留 `ComposerTextarea`、`sendAvailability` 与 inline blocked hint。 |
 | `src/features/flashcards/screens/StatisticsScreen.tsx` | 取 step5-FG 终态：保留 F 闪卡统计主体与 G 响应式操作。 |
 | `src/features/flashcards/screens/TodayScreen.tsx` | 取 step5-FG 终态：保留 F 今日复习主体与 G 热区。 |
 | `src/features/learning-hub/apps/views/EpubPreview.tsx` | 取 step5-FG 终态：保留 F 预览能力，叠加 G 移动视图。 |
@@ -79,6 +79,12 @@ merge 共产生 52 个冲突（45 个内容冲突、7 个 modify/delete），均
 `generateCardsFromText.ts` 对作文、错题和笔记共用
 `cardAgent.startGeneration` 的 F 契约。附件上限保持单一事实源：
 一般附件 200MB、图片 50MB。
+
+门禁首轮还抓到旧 step5-FG InputBar 整文件裁决会覆盖正式 F 后续拆分与
+`sendAvailability`。最终树不采用该整文件：先恢复 `362dd2dfc` 的拆分目录，再把
+G 相对 step5-FG F-only 父树的 16 文件净增量三方重放；旧结构上的 7 个拒绝 hunk
+分别迁入 `ComposerToolbar` / `AttachmentPanelBody`，其余 5 个
+`InputBarUI` 44px hunk干净保留。
 
 ## 与正式 0824 推进量的差异摘要
 
