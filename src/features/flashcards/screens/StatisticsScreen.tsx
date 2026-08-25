@@ -313,7 +313,6 @@ export const StatisticsScreen: React.FC = () => {
           className="min-h-0 flex-1"
         >
           <div className="wb-fcx-scroll">
-          <SchedulerSettingsSection />
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">
@@ -484,6 +483,10 @@ export const StatisticsScreen: React.FC = () => {
               </div>
             </section>
           </div>
+
+          {/* Statistics are the primary content; keep scheduler controls as the
+              secondary action after the data panels. */}
+          <SchedulerSettingsSection />
           </div>
         </CustomScrollArea>
       ) : null}
