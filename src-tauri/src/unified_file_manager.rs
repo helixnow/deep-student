@@ -422,14 +422,30 @@ pub fn reject_double_encoded_virtual_uri(path: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// MainActivity 轮询此文件并对其中的 `content://` 调用
-/// `takePersistableUriPermission`。路径必须与 Tauri `app_data_dir`
-/// （Android 上即 `filesDir`）一致。
+/// 旧版单文件队列名。MainActivity 仍双读，避免升级窗口丢掉已入队 URI。
 pub const PENDING_SAF_PERSIST_FILE: &str = "pending_saf_persist.uri";
 
+/// 新队列目录：每个 `content://` 一个 `*.uri`，原子 rename 落盘。
+/// 并发导入/导出不得互相覆盖。
+pub const PENDING_SAF_PERSIST_DIR: &str = "pending_saf_persist";
+
+fn persistable_saf_entry_name(uri: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(uri.as_bytes());
+    format!("{}.uri", hex::encode(&digest[..8]))
+}
+
+/// 新队列中某条 `content://` 的落盘路径（测试与 MainActivity 目录约定共用）。
+pub fn persistable_saf_queue_file(app_data_dir: &Path, uri: &str) -> PathBuf {
+    app_data_dir
+        .join(PENDING_SAF_PERSIST_DIR)
+        .join(persistable_saf_entry_name(uri))
+}
+
 /// 异步 ZIP/同步在虚拟 `content://` 上依赖当前进程 URI grant。
-/// 把 URI 写入应用私有目录，交给 MainActivity 尽早 persist。
-/// 选择器若是 `ACTION_GET_CONTENT`，系统可能拒绝 persist——不得假装已授权。
+/// 把 URI 原子写入应用私有队列目录，交给 MainActivity 调用
+/// `takePersistableUriPermission`。选择器若是 `ACTION_GET_CONTENT`，
+/// 系统可能拒绝 persist——不得假装已授权。
 pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), AppError> {
     reject_double_encoded_virtual_uri(uri)?;
     let trimmed = uri.trim();
@@ -441,20 +457,28 @@ pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), A
             "SAF persist 队列拒绝过长或含换行的 URI",
         ));
     }
-    if !app_data_dir.exists() {
-        std::fs::create_dir_all(app_data_dir).map_err(|e| {
-            AppError::file_system(format!(
-                "创建 SAF persist 队列目录失败: {} ({})",
-                app_data_dir.display(),
-                e
-            ))
-        })?;
-    }
-    let pending = app_data_dir.join(PENDING_SAF_PERSIST_FILE);
-    std::fs::write(&pending, trimmed).map_err(|e| {
+    let queue_dir = app_data_dir.join(PENDING_SAF_PERSIST_DIR);
+    std::fs::create_dir_all(&queue_dir).map_err(|e| {
+        AppError::file_system(format!(
+            "创建 SAF persist 队列目录失败: {} ({})",
+            queue_dir.display(),
+            e
+        ))
+    })?;
+    let dest = persistable_saf_queue_file(app_data_dir, trimmed);
+    let tmp = dest.with_extension("uri.tmp");
+    std::fs::write(&tmp, trimmed).map_err(|e| {
         AppError::file_system(format!(
             "写入 SAF persist 队列失败: {} ({})",
-            pending.display(),
+            tmp.display(),
+            e
+        ))
+    })?;
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        AppError::file_system(format!(
+            "提交 SAF persist 队列失败: {} ({})",
+            dest.display(),
             e
         ))
     })
@@ -918,8 +942,9 @@ pub fn ensure_local_path(
 mod tests {
     use super::{
         digest_copy, digest_read, ensure_enough_temp_space, ensure_identical_copy,
-        queue_persistable_saf_uri, reject_double_encoded_virtual_uri, required_temp_copy_bytes,
-        DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_FILE,
+        persistable_saf_queue_file, queue_persistable_saf_uri, reject_double_encoded_virtual_uri,
+        required_temp_copy_bytes, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_DIR,
+        PENDING_SAF_PERSIST_FILE,
     };
     use std::io::Cursor;
 
@@ -981,11 +1006,32 @@ mod tests {
             "content://com.android.externalstorage.documents/document/primary%3Abackup.zip";
         queue_persistable_saf_uri(dir.path(), &format!("  {content}  "))
             .expect("原始 content:// 必须入队");
-        let pending = dir.path().join(PENDING_SAF_PERSIST_FILE);
+        let pending = persistable_saf_queue_file(dir.path(), content);
         assert_eq!(
             std::fs::read_to_string(&pending).expect("read queue"),
             content,
             "入队必须写入 trim 后的原始 content://，不得改编码"
+        );
+        assert!(
+            pending.starts_with(dir.path().join(PENDING_SAF_PERSIST_DIR)),
+            "新队列必须落在 pending_saf_persist/ 目录"
+        );
+        assert!(
+            !dir.path().join(PENDING_SAF_PERSIST_FILE).exists(),
+            "新写入不得再覆盖旧单文件队列"
+        );
+
+        let other = "content://com.android.providers.downloads.documents/document/446";
+        queue_persistable_saf_uri(dir.path(), other).expect("第二条 content:// 必须并列入队");
+        assert_eq!(
+            std::fs::read_to_string(persistable_saf_queue_file(dir.path(), other))
+                .expect("read second"),
+            other
+        );
+        assert_eq!(
+            std::fs::read_to_string(&pending).expect("first survives"),
+            content,
+            "并发入队不得互相覆盖"
         );
 
         queue_persistable_saf_uri(dir.path(), "/tmp/backup.zip").expect("本地路径必须静默跳过");

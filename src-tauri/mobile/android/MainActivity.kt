@@ -23,9 +23,10 @@ class MainActivity : TauriActivity() {
 
   /**
    * Tauri dialog 走 Activity Result API，[onActivityResult] 拦截不到授权回调。
-   * Rust 把待 persist 的 `content://` 写到 [filesDir]/pending_saf_persist.uri，
-   * 前台时立刻尝试并每 400ms 轮询一次。`ACTION_GET_CONTENT` 常常不可 persist：
-   * SecurityException 必须删队列并 warn，不得假装已授权。
+   * Rust 把待 persist 的 `content://` 原子写入 [filesDir]/pending_saf_persist/*.uri，
+   * 并双读旧单文件 pending_saf_persist.uri。前台立刻尝试并每 400ms 轮询。
+   * `ACTION_GET_CONTENT` 常常不可 persist：SecurityException 必须删队列并 warn，
+   * 不得假装已授权。
    */
   private val persistHandler = Handler(Looper.getMainLooper())
   private val persistPoll = object : Runnable {
@@ -109,10 +110,23 @@ class MainActivity : TauriActivity() {
   }
 
   private fun persistPendingSafUri() {
-    val pending = File(filesDir, PENDING_SAF_PERSIST_FILE)
-    if (!pending.isFile) {
-      return
+    val queued = mutableListOf<File>()
+    val legacy = File(filesDir, PENDING_SAF_PERSIST_FILE)
+    if (legacy.isFile) {
+      queued.add(legacy)
     }
+    val directory = File(filesDir, PENDING_SAF_PERSIST_DIR)
+    if (directory.isDirectory) {
+      directory.listFiles()
+        ?.filter { it.isFile && it.name.endsWith(".uri") }
+        ?.let { queued.addAll(it) }
+    }
+    for (pending in queued) {
+      persistQueuedSafFile(pending)
+    }
+  }
+
+  private fun persistQueuedSafFile(pending: File) {
     val raw = try {
       pending.readText().trim()
     } catch (error: Exception) {
@@ -176,6 +190,7 @@ class MainActivity : TauriActivity() {
   private companion object {
     private const val TAG = "DeepStudentSaf"
     private const val PENDING_SAF_PERSIST_FILE = "pending_saf_persist.uri"
+    private const val PENDING_SAF_PERSIST_DIR = "pending_saf_persist"
     private const val PERSIST_POLL_MS = 400L
   }
 }

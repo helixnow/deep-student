@@ -30,9 +30,9 @@
 //!    `classify_path` 走 `reject_double_encoded_virtual_uri` 可读拒绝，
 //!    不解码后当虚拟路径（避免拆掉 document ID）。生产前端始终传原始
 //!    content:// URI；对抗性输入的真机表现仍见手册 4.1–4.3。
-//! 4. **persistable URI grant**：ZIP/同步入口把 `content://` 写入
-//!    `filesDir/pending_saf_persist.uri`；MainActivity 前台轮询
-//!    `takePersistableUriPermission`。`ACTION_GET_CONTENT` 拒绝 persist
+//! 4. **persistable URI grant**：ZIP/同步入口把 `content://` 原子写入
+//!    `filesDir/pending_saf_persist/<hash>.uri`（旧单文件双读）；MainActivity
+//!    前台轮询 `takePersistableUriPermission`。`ACTION_GET_CONTENT` 拒绝 persist
 //!    时必须删队列并 warn，不得假装已授权。真机强杀/重开仍见手册 4.1–4.3。
 //!
 //! 本文件锁定宿主可测半边与源码编排；ContentResolver 真机授权不能冒充绿灯。
@@ -42,8 +42,9 @@ use std::path::Path;
 use deep_student_lib::data_space::{DataSpaceManager, Slot};
 use deep_student_lib::unified_file_manager::{
     extract_extension, extract_file_name, is_opaque_document_id, is_virtual_uri,
-    queue_persistable_saf_uri, reject_double_encoded_virtual_uri, sanitize_file_name_for_fs,
-    sanitize_for_legacy, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED, PENDING_SAF_PERSIST_FILE,
+    persistable_saf_queue_file, queue_persistable_saf_uri, reject_double_encoded_virtual_uri,
+    sanitize_file_name_for_fs, sanitize_for_legacy, DOUBLE_ENCODED_VIRTUAL_URI_REJECTED,
+    PENDING_SAF_PERSIST_DIR, PENDING_SAF_PERSIST_FILE,
 };
 
 // ============================================================================
@@ -119,10 +120,12 @@ fn rust_side_must_queue_content_uri_for_main_activity_persist() {
         "content://com.android.externalstorage.documents/document/primary%3ADownload%2Fbackup.zip";
     queue_persistable_saf_uri(dir.path(), content).expect("content:// 必须入队");
     assert_eq!(
-        std::fs::read_to_string(dir.path().join(PENDING_SAF_PERSIST_FILE)).expect("read queue"),
+        std::fs::read_to_string(persistable_saf_queue_file(dir.path(), content))
+            .expect("read queue"),
         content
     );
     assert_eq!(PENDING_SAF_PERSIST_FILE, "pending_saf_persist.uri");
+    assert_eq!(PENDING_SAF_PERSIST_DIR, "pending_saf_persist");
 }
 
 // ============================================================================
@@ -299,7 +302,10 @@ fn zip_command_materialization_orchestration_is_anchored() {
     let persist_source = read_source("src/unified_file_manager.rs");
     for marker in [
         "pub const PENDING_SAF_PERSIST_FILE: &str = \"pending_saf_persist.uri\"",
+        "pub const PENDING_SAF_PERSIST_DIR: &str = \"pending_saf_persist\"",
+        "pub fn persistable_saf_queue_file",
         "pub fn queue_persistable_saf_uri",
+        "with_extension(\"uri.tmp\")",
         "takePersistableUriPermission",
         "ACTION_GET_CONTENT",
     ] {
@@ -312,6 +318,8 @@ fn zip_command_materialization_orchestration_is_anchored() {
     let activity = read_source("mobile/android/MainActivity.kt");
     for marker in [
         "pending_saf_persist.uri",
+        "PENDING_SAF_PERSIST_DIR = \"pending_saf_persist\"",
+        "it.name.endsWith(\".uri\")",
         "takePersistableUriPermission",
         "PERSIST_POLL_MS = 400L",
         "SecurityException",
