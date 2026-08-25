@@ -54,6 +54,8 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 interface InlineSettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  /** 小屏内联模式：不自绘标题行（宿主顶栏已提供 chrome，关闭走返回键 / 顶栏设置开关） */
+  mobileFullscreen?: boolean;
   // 批阅模式
   modeId: string;
   setModeId: (id: string) => void;
@@ -105,7 +107,7 @@ const SCROLL_VIEWPORT_SELECTOR = '[data-overlayscrollbars-viewport], .scroll-are
 /** 选择芯片（模式/文体/年级共用视觉） */
 const choiceChipClassName = (active: boolean) =>
   cn(
-    '!px-2.5 !py-1 !h-auto text-xs ui-state-colors',
+    '!px-2.5 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-11 text-xs ui-state-colors',
     active
       ? 'bg-primary/10 text-primary border border-primary/30'
       : 'bg-muted/50 text-foreground/70 border border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground'
@@ -124,7 +126,7 @@ const CollapsibleSection: React.FC<{
       type="button"
       onClick={onToggle}
       aria-expanded={isOpen}
-      className="flex w-full items-center justify-between gap-2 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors duration-150 hover:text-foreground motion-reduce:transition-none"
+      className="flex w-full items-center justify-between gap-2 px-4 py-3 [@media(pointer:coarse)]:min-h-11 text-xs font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors duration-150 hover:text-foreground motion-reduce:transition-none"
     >
       <span className="flex items-center gap-2">
         {title}
@@ -161,6 +163,7 @@ const CollapsibleSection: React.FC<{
 export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   isOpen,
   onClose,
+  mobileFullscreen = false,
   modeId,
   setModeId,
   modes,
@@ -527,24 +530,27 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* 头部 */}
-      <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-3 sm:px-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-          <GearSix size={14} />
-          <span>{t('essay_grading:settings.title')}</span>
+      {/* 头部（小屏内联模式不自绘：宿主顶栏已提供 chrome，再画一条会形成双头部；
+          关闭走 Android 返回键 / 宿主顶栏设置开关） */}
+      {!mobileFullscreen && (
+        <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-3 sm:px-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+            <GearSix size={14} />
+            <span>{t('essay_grading:settings.title')}</span>
+          </div>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onClose}
+            className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+            aria-label={t('essay_grading:settings_panel.close')}
+            title={t('essay_grading:settings_panel.close')}
+          >
+            <X size={16} />
+          </DsButton>
         </div>
-        <DsButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={onClose}
-          className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
-          aria-label={t('essay_grading:settings_panel.close')}
-          title={t('essay_grading:settings_panel.close')}
-        >
-          <X size={16} />
-        </DsButton>
-      </div>
+      )}
 
       {/* 内容区 */}
       <CustomScrollArea className="flex-1" viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">
@@ -706,7 +712,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={onRestoreDefaultPrompt}
-                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('essay_grading:prompt_editor.restore_default')}
@@ -717,7 +723,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={handleSavePrompt}
                   className={cn(
-                    "ui-state-colors text-xs",
+                    "ui-state-colors text-xs [@media(pointer:coarse)]:!min-h-11",
                     promptJustSaved
                       ? "bg-success/10 text-success hover:bg-success/10"
                       : "bg-primary/10 text-primary hover:bg-primary/20"
@@ -759,7 +765,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={handleCancelEdit}
-                        className="h-7 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                        className="h-7 [@media(pointer:coarse)]:!h-11 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                       >
                         {t('essay_grading:actions.cancel')}
                       </DsButton>
@@ -768,7 +774,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         size="sm"
                         onClick={handleSave}
                         disabled={isLoading}
-                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                        className="h-7 [@media(pointer:coarse)]:!h-11 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                       >
                         {isLoading ? t('settings:gradingMode.saving') : t('settings:gradingMode.done')}
                       </DsButton>
@@ -799,7 +805,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder={t('settings:gradingMode.placeholderModeName')}
                       className={cn(
-                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30",
+                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]",
                         showValidation && nameInvalid && "border-destructive/50 focus-visible:ring-destructive/30"
                       )}
                     />
@@ -864,7 +870,8 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               onPointerCancel={() => setDragArmedIndex(null)}
                               aria-label={t('essay_grading:settings_panel.drag_reorder')}
                               title={t('essay_grading:settings_panel.drag_reorder')}
-                              className="flex-shrink-0 cursor-grab text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-70"
+                              /* coarse：同行删除钮已放大到 44，把手同款（14px 图标指尖抓不住） */
+                              className="inline-flex flex-shrink-0 cursor-grab items-center justify-center text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:opacity-70"
                             >
                               <DotsSixVertical size={14} />
                             </button>
@@ -873,7 +880,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               onChange={e => handleUpdateDimension(index, 'name', e.target.value)}
                               placeholder={t('settings:gradingMode.placeholderDimensionName')}
                               className={cn(
-                                "h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
+                                "h-7 [@media(pointer:coarse)]:min-h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
                                 showValidation && issue.name && "rounded-sm ring-1 ring-destructive/50"
                               )}
                             />
@@ -884,7 +891,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 value={dim.max_score}
                                 onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
                                 className={cn(
-                                  "h-7 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                                  "h-7 [@media(pointer:coarse)]:min-h-11 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                                   showValidation && issue.score && "ring-1 ring-destructive/50"
                                 )}
                                 min={0}
@@ -899,7 +906,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 iconOnly
                                 onClick={() => handleReorderDimension(index, index - 1)}
                                 disabled={index === 0}
-                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                className="!h-11 !w-11 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
                                 aria-label={t('essay_grading:settings_panel.move_dimension_up')}
                                 title={t('essay_grading:settings_panel.move_dimension_up')}
                               >
@@ -911,7 +918,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                                 iconOnly
                                 onClick={() => handleReorderDimension(index, index + 1)}
                                 disabled={index === formData.score_dimensions.length - 1}
-                                className="!h-9 !w-8 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
+                                className="!h-11 !w-11 text-muted-foreground/50 hover:text-foreground disabled:opacity-30"
                                 aria-label={t('essay_grading:settings_panel.move_dimension_down')}
                                 title={t('essay_grading:settings_panel.move_dimension_down')}
                               >
@@ -923,7 +930,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               size="icon"
                               iconOnly
                               onClick={() => handleRemoveDimension(index)}
-                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                               aria-label={t('essay_grading:settings_panel.remove_dimension')}
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >
@@ -937,7 +944,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={handleAddDimension}
-                      className="group !h-auto w-full !justify-start !px-1 !py-1.5 text-xs text-muted-foreground hover:text-primary"
+                      className="group !h-auto [@media(pointer:coarse)]:!min-h-11 w-full !justify-start !px-1 !py-1.5 text-xs text-muted-foreground hover:text-primary"
                     >
                       <div className="flex h-4 w-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary">
                         <Plus size={10} />
@@ -965,7 +972,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             total_max_score: Number(e.target.value)
                           }))}
                           className={cn(
-                            "h-7 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                            "h-7 [@media(pointer:coarse)]:min-h-11 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
                             showValidation && totalInvalid && "border-destructive/50"
                           )}
                           min={1}
@@ -988,7 +995,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))}
-                            className="!h-auto flex-shrink-0 !px-1.5 !py-0.5 text-[11px] text-primary hover:bg-primary/10"
+                            className="!h-auto [@media(pointer:coarse)]:!min-h-11 flex-shrink-0 !px-1.5 !py-0.5 text-[11px] text-primary hover:bg-primary/10"
                           >
                             {t('essay_grading:settings_panel.validation.sync_total', { sum: calculatedTotal })}
                           </DsButton>
@@ -1032,7 +1039,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={() => currentMode && handleStartEdit(currentMode)}
                   disabled={!currentMode}
-                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Pencil size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.edit_current')}
@@ -1042,7 +1049,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   size="sm"
                   onClick={() => currentMode && handleCopyMode(currentMode)}
                   disabled={!currentMode}
-                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Copy size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.copy_current')}
@@ -1051,7 +1058,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={handleStartCreate}
-                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                  className="!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                 >
                   <Plus size={14} className="text-muted-foreground/60" />
                   {t('essay_grading:settings_panel.create_mode')}
@@ -1063,7 +1070,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     onClick={() => handleConfirmableClick('reset', currentMode)}
                     disabled={isLoading}
                     className={cn(
-                      "!h-8 w-full !justify-start !px-2 text-xs",
+                      "!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs",
                       pendingConfirm !== 'reset' && "text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
                     )}
                   >
@@ -1080,7 +1087,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     onClick={() => handleConfirmableClick('delete', currentMode)}
                     disabled={isLoading}
                     className={cn(
-                      "!h-8 w-full !justify-start !px-2 text-xs",
+                      "!h-8 [@media(pointer:coarse)]:!h-11 w-full !justify-start !px-2 text-xs",
                       pendingConfirm !== 'delete' && "text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
                     )}
                   >

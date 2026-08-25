@@ -148,7 +148,7 @@ export const MindMapEditorWrapper: React.FC<
             <span className="text-sm text-destructive text-center max-w-md">{error}</span>
             {onClose && (
               <DsButton variant="ghost"
-                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
@@ -167,7 +167,7 @@ export const MindMapEditorWrapper: React.FC<
             <span className="text-sm text-muted-foreground">{t('dstu:actions.mindMapCreated')}</span>
             {onClose && (
               <DsButton variant="ghost"
-                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
@@ -195,7 +195,7 @@ export const MindMapEditorWrapper: React.FC<
         <WarningCircle size={48} className="text-destructive/50" />
         <span className="text-destructive text-center max-w-md">{error}</span>
         <DsButton variant="ghost"
-          className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+          className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
           onClick={loadNode}
         >
           <ArrowClockwise size={16} />

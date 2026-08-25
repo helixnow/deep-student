@@ -354,7 +354,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             <DsButton
               variant="danger"
               size="sm"
-              className="!h-9 lg:!h-7 !px-2 text-[12px]"
+              className="!h-9 lg:!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-[12px]"
               onClick={(e) => {
                 e.stopPropagation();
                 resetDeleteConfirmation();
@@ -368,7 +368,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-9 !w-9 lg:!h-7 lg:!w-7"
+              className="!h-9 !w-9 lg:!h-7 lg:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('page.cancelEdit')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -449,6 +449,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   cancelEditSession();
@@ -462,6 +463,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="primary"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   saveSessionTitle(session.id);

@@ -599,6 +599,26 @@
   }
 }
 
+/* 触屏放大底部操作按钮命中区（桌面保持 28px 紧凑密度） */
+@media (pointer: coarse) {
+  .wb-agent-control-open-chat {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .wb-agent-control-actions button:last-child {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .wb-agent-capabilities-toggle {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-agent-control-popover,
   .wb-agent-control-open-chat,

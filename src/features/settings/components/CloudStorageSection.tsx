@@ -1339,7 +1339,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   checked={s3Config.pathStyle}
                   onCheckedChange={(checked) => setS3Config({ ...s3Config, pathStyle: checked })}
                 />
-                <Label htmlFor="s3-path-style" className="ml-2">
+                {/* flex-col 保持标题/提示纵排；coarse min-h-11 扩大开关联动标签的触达高度 */}
+                <Label htmlFor="s3-path-style" className="ml-2 flex flex-col justify-center [@media(pointer:coarse)]:min-h-11">
                   {t('cloudStorage:s3.pathStyle')}
                   <span className="block text-xs text-muted-foreground font-normal">
                     {t('cloudStorage:s3.pathStyleHint')}
@@ -1466,6 +1467,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         <div className="flex flex-wrap gap-2">
           <DsButton
             variant="outline"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={testConnection}
             disabled={testing || !isConfigValid()}
           >
@@ -1482,10 +1484,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </>
             )}
           </DsButton>
-          <DsButton onClick={saveConfig} disabled={!isConfigValid()}>
+          <DsButton
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={saveConfig}
+            disabled={!isConfigValid()}
+          >
             {t('cloudStorage:actions.save')}
           </DsButton>
-          <DsButton variant="danger" onClick={() => setClearConfirmOpen(true)}>
+          <DsButton
+            variant="danger"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={() => setClearConfirmOpen(true)}
+          >
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
@@ -1583,7 +1593,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     <DsButton
                       size="sm"
                       variant="outline"
-                      className="h-6 px-2 text-xs"
+                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                       disabled={uploading || downloading}
                       onClick={retryFailedOperation}
                     >
@@ -1592,7 +1602,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                     <DsButton
                       size="sm"
                       variant="ghost"
-                      className="h-6 px-2 text-xs text-muted-foreground"
+                      className="h-6 px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setOpProgress(null)}
                     >
                       {t('common:actions.close')}
@@ -1606,6 +1616,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="flex flex-wrap gap-2 pt-2">
               <DsButton
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={handleBackupAndUpload}
                 disabled={uploading || downloading}
               >
@@ -1624,6 +1635,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <DsButton
                 size="sm"
                 variant="outline"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowHistory(!showHistory)}
               >
                 <ClockCounterClockwise size={16} className="mr-2" />
@@ -1661,6 +1673,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       <DsButton
                         size="sm"
                         variant="ghost"
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         title={t('cloudStorage:history.restore')}
                         disabled={downloading}
                         onClick={() => openRestoreConfirm(version.id)}
@@ -1677,7 +1690,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="danger"
-                          className="whitespace-nowrap"
+                          className="whitespace-nowrap [@media(pointer:coarse)]:!min-h-11"
                           onClick={() => {
                             setConfirmingDeleteVersionId(null);
                             void handleDeleteVersion();
@@ -1690,6 +1703,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         <DsButton
                           size="sm"
                           variant="ghost"
+                          className="[@media(pointer:coarse)]:!min-h-11"
                           title={t('cloudStorage:history.delete')}
                           aria-label={t('cloudStorage:history.delete')}
                           onClick={() => {

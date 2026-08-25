@@ -225,17 +225,43 @@ button.collapse-toggle:focus-visible {
     position: relative;
   }
 
-  /* ::after 扩展命中区（不改变视觉尺寸）：28px 视觉 + 8px 外扩 ≈ 44px 命中，
+  /* ::after 扩展命中区（不改变视觉尺寸）：28px 视觉 + 8px 外扩 = 44px 命中，
      与 mindmap.css 的 .mm-action-btn::after 同一范式 */
-  .outline-node-row .action-btn::after,
-  .outline-drag-handle::after {
+  .outline-node-row .action-btn::after {
     content: '';
     position: absolute;
     inset: -8px;
   }
 
+  /* 拖拽手柄视觉 24px，需 10px 外扩才够 44px 命中 */
+  .outline-drag-handle::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+
+  /* 任务 checkbox：视觉保持 14px，::before 撑出 44px 命中区（::after 已被对勾占用）。
+     z-index 必须盖过 mindmap.css 里 .node-bullet-container::after 的拖拽命中扩展
+     （伪元素按"最后一个子元素"绘制在 checkbox 之上），否则点按会落到行选中/拖拽；
+     容器自身 z-index:2 已建堆叠上下文，这里的 z-index 不会外泄 */
+  .outline-task-checkbox {
+    position: relative;
+    z-index: 1;
+  }
+
+  .outline-task-checkbox::before {
+    content: '';
+    position: absolute;
+    /* 不用 inset 负值：border-box 下 padding box 仅 11px，负 inset 算不出整 44px */
+    width: 44px;
+    height: 44px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
   .outline-ghost-row {
-    min-height: var(--size-shell-touch-target, 36px);
+    min-height: 44px;
     opacity: 0.7;
   }
 }

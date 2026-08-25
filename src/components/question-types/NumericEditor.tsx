@@ -57,7 +57,7 @@ export const NumericEditor: React.FC<NumericEditorProps> = ({
             placeholder="3.14"
             aria-invalid={showValidation && valueInvalid}
             className={cn(
-              'h-8 text-sm tabular-nums [@media(pointer:coarse)]:text-[16px]',
+              'h-8 text-sm tabular-nums [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]',
               showValidation && valueInvalid && 'border-destructive/60 focus-visible:ring-destructive/30'
             )}
           />
@@ -69,7 +69,7 @@ export const NumericEditor: React.FC<NumericEditorProps> = ({
             onChange={(e) => onChange({ ...value, unit: e.target.value })}
             autoComplete="off"
             placeholder={t('editor.structEdit.numericUnitPlaceholder')}
-            className="h-8 text-sm [@media(pointer:coarse)]:text-[16px]"
+            className="h-8 text-sm [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
           />
         </div>
       </div>
@@ -84,7 +84,7 @@ export const NumericEditor: React.FC<NumericEditorProps> = ({
             placeholder="0.01"
             aria-invalid={toleranceInvalid}
             className={cn(
-              'h-8 text-sm tabular-nums [@media(pointer:coarse)]:text-[16px]',
+              'h-8 text-sm tabular-nums [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]',
               toleranceInvalid && 'border-destructive/60 focus-visible:ring-destructive/30'
             )}
           />

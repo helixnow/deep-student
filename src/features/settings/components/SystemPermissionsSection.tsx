@@ -132,7 +132,7 @@ function AuthorizationRow({
             disabled={actionBusy || actionDisabled}
             aria-busy={actionBusy || undefined}
             onClick={onAction}
-            className="min-h-11 md:min-h-0"
+            className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
           >
             {actionBusy
               ? <ArrowClockwise aria-hidden="true" size={13} className="animate-spin" />
@@ -366,7 +366,7 @@ export function SystemPermissionsSection() {
           <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-border/50 bg-muted/40 px-2 text-2xs font-medium text-muted-foreground">
             {t('system_authorization.files.status')}
           </span>
-          <DsButton variant="default" size="sm" className="min-h-11 md:min-h-0" onClick={openDirectoryPermissions}>
+          <DsButton variant="default" size="sm" className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11" onClick={openDirectoryPermissions}>
             {t('system_authorization.files.manage')}
           </DsButton>
         </div>
@@ -387,7 +387,7 @@ export function SystemPermissionsSection() {
           disabled={refreshing}
           aria-busy={refreshing || undefined}
           onClick={() => void refresh()}
-          className="min-h-11 md:min-h-0"
+          className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise
             aria-hidden="true"

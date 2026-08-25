@@ -293,7 +293,7 @@ const SourceImagesBubble: React.FC<{
     <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
         <ImageIcon size={14} className="flex-shrink-0" />
@@ -663,6 +663,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   useEffect(() => {
     if (!isSmallScreen || !showSettingsPanel) return;
     return registerBackHandler(() => {
+      // 可见性守卫（同 EnhancedPdfViewer）：保活但不可见的实例（display:none
+      // 标签页）不得吞掉活跃视图的返回键、不得触发关闭回调。
+      // visibility:hidden 不清布局盒（getClientRects 仍有返回值），需单独查 computed 值。
+      const el = containerRef.current;
+      if (!el || !el.isConnected) return false;
+      if (el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setShowSettingsPanel(false);
       return true;
     }, BACK_PRIORITY.overlay);
@@ -1441,7 +1448,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
           <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1460,7 +1467,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <p className="text-sm text-muted-foreground">{t('editor.noQuestionsDesc')}</p>
           </div>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1521,6 +1528,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           iconOnly
           onClick={() => setShowSettingsPanel(false)}
           aria-label={t('common:close')}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <X size={16} />
         </DsButton>
@@ -1589,7 +1597,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </div>
               </div>
               {allowTimerControl && (
-                <DsButton variant="ghost" size="sm" onClick={toggleTimer}>
+                <DsButton variant="ghost" size="sm" onClick={toggleTimer} className="[@media(pointer:coarse)]:!min-h-11">
                   {isTimerRunning ? t('editor.pause') : t('editor.resume')}
                 </DsButton>
               )}
@@ -1740,7 +1748,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 !px-2 text-xs"
+          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs"
           onClick={() => setPendingNavigationIndex(null)}
         >
           {t('common:cancel')}
@@ -1748,7 +1756,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
+          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
           onClick={() => {
             const targetIndex = pendingNavigationIndex;
             setPendingNavigationIndex(null);
@@ -1899,7 +1907,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <div className="flex gap-2">
           <DsButton
             variant="outline"
-            className="flex-1"
+            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             onClick={() => {
               setShowCompletionCelebration(false);
               requestNavigate(0);
@@ -1909,7 +1917,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {t('editor.restart')}
           </DsButton>
           <DsButton
-            className="flex-1"
+            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             onClick={() => setShowCompletionCelebration(false)}
           >
             {t('editor.viewQuestions')}
@@ -1947,7 +1955,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <span className="text-sm font-medium text-info">
                     {t('editor.aiGrading')}
                   </span>
-                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
                     {t('common:cancel')}
                   </DsButton>
                 </div>
@@ -1989,7 +1997,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         debugLog.warn('[QuestionBankEditor] AI grading retry failed:', err);
                       });
                     }}
-                    className="ml-auto !h-auto !px-2 !py-0.5 text-xs text-info hover:bg-info/10"
+                    className="ml-auto !h-auto !px-2 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
                   >
                     <ArrowClockwise size={12} />
                     {t('editor.aiRetry')}
@@ -2015,11 +2023,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
                     </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
                     </DsButton>
@@ -2045,11 +2053,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
                 {onMarkCorrect && (
                   <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
                       <Check size={14} />
                       {t('editor.iGotItRight')}
                     </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                       <X size={14} />
                       {t('editor.iGotItWrong')}
                     </DsButton>
@@ -2116,7 +2124,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </div>
               {/* 重做按钮 */}
               {!submitResult.isCorrect && (
-                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
+                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
                   <ArrowClockwise size={14} />
                   {t('editor.retry')}
                 </DsButton>
@@ -2126,7 +2134,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {/* 解析折叠（回退到题目自身解析） */}
             {effectiveExplanation && (
               <div className="pt-2 border-t border-foreground/[0.06]">
-                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 text-warning hover:underline">
+                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-warning hover:underline">
                   <Lightbulb size={16} />
                   {explanationExpanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
                   {explanationExpanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
@@ -2148,7 +2156,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <div className="flex items-center gap-2">
                     <DsAnalysisIconMuted className="w-4 h-4 text-info animate-pulse" />
                     <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
-                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
+                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
                       {t('common:cancel')}
                     </DsButton>
                   </div>
@@ -2186,7 +2194,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             debugLog.warn('[QuestionBankEditor] AI analyze retry failed:', err);
                           });
                         }}
-                        className="!h-auto !px-1.5 !py-0.5 text-xs text-info hover:bg-info/10"
+                        className="!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
                       >
                         <ArrowClockwise size={12} />
                         {t('editor.aiRetry')}
@@ -2228,7 +2236,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
                       },
                     ).catch((err) => { debugLog.error('[QBankEditor] AI analyze failed:', err); });
-                  }} className="!h-auto !p-0 text-info hover:underline">
+                  }} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-info hover:underline">
                   <DsAnalysisIconMuted className="w-4 h-4" />
                   {t('editor.aiAnalysis')}
                 </DsButton>
@@ -2310,7 +2318,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         size="icon"
                         iconOnly
                         onClick={() => setShowSettingsPanel(true)}
-                        className="ml-auto"
+                        className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         aria-label={t('questionBank.settings', 'Settings')}
                         title={t('questionBank.settings', 'Settings')}
                       >
@@ -2369,7 +2377,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     <DsButton
                       variant="ghost"
                       size="sm"
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                       onClick={() => setCropDialogOpen(true)}
                     >
                       <Crop size={14} className="mr-1.5" />
@@ -2448,7 +2456,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             size="lg"
                             onClick={handleSubmit}
                             disabled={!canSubmit || isSubmitting}
-                            className="w-full"
+                            className="w-full [@media(pointer:coarse)]:!min-h-11"
                           >
                             {isSubmitting ? (
                               <><CircleNotch size={16} className="animate-spin" />{t('editor.submitting')}</>
@@ -2519,6 +2527,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             examId={sessionId}
             questionId={currentQuestion.id}
             inline
+            isActive={isActive}
             onImageAdded={() => {
               if (!currentQuestion?.id) return;
 
@@ -2652,7 +2661,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   aria-label={t('editor.settings')}
                   aria-pressed={showSettingsPanel}
                   title={t('editor.settings')}
-                  className="ml-auto"
+                  className="ml-auto [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <GearSix size={16} />
                 </DsButton>
@@ -2720,7 +2729,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setCropDialogOpen(true)}
               >
                 <Crop size={14} className="mr-1.5" />
@@ -2819,7 +2828,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="lg"
                       onClick={handleSubmit}
                       disabled={!canSubmit || isSubmitting}
-                      className="w-full"
+                      className="w-full [@media(pointer:coarse)]:!min-h-11"
                     >
                       {isSubmitting ? (
                         <>
@@ -2887,6 +2896,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           size="sm"
                           onClick={handleSaveNote}
                           disabled={!onUpdateUserNote || noteSaveState === 'saving'}
+                          className="[@media(pointer:coarse)]:!min-h-11"
                         >
                           {t('editor.noteDone')}
                         </DsButton>
@@ -2910,7 +2920,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
                       disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
+                      className="w-full !justify-start !h-auto [@media(pointer:coarse)]:!min-h-11 !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
                     >
                       <div className="flex items-center gap-2 text-sm w-full">
                         <Note size={16} className="text-warning" />
@@ -2984,7 +2994,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-10 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <DsButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 text-xs font-medium [content-visibility:auto] [contain-intrinsic-size:auto_28px]', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
                       </DsButton>
                     );
@@ -3027,6 +3037,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           examId={sessionId}
           questionId={currentQuestion.id}
           inline
+          isActive={isActive}
           onImageAdded={() => {
             if (!currentQuestion?.id) return;
 

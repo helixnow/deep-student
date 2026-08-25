@@ -190,6 +190,16 @@
   transform: translate(-50%, -50%) scaleY(1);
 }
 
+/* 触屏：20px 命中带手指难点中，扩到 44px（8px 本体 ± 18px）。
+   中缝 z=5000 压过窗缘把手；缝上手势本就是调分栏，
+   对齐 notes-pane-resize 的 44px 触控范式 */
+@media (pointer: coarse) {
+  [data-wb-tiling-divider]::before {
+    left: -18px;
+    right: -18px;
+  }
+}
+
 [data-wb-tiling-divider].wb-tile-divider-active::after {
   background: color-mix(in hsl, hsl(var(--primary)) 62%, transparent 38%);
 }

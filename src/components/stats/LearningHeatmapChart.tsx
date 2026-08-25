@@ -327,7 +327,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               onClick={handlePrevYear}
               aria-label={String(selectedYear - 1)}
             >
@@ -339,7 +339,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               onClick={handleNextYear}
               disabled={selectedYear >= new Date().getFullYear()}
               aria-label={String(selectedYear + 1)}
@@ -352,7 +352,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('heatmapChart.title')}
           >
@@ -436,7 +436,9 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
                     'hover:stroke-foreground/60 hover:stroke-[1.5px]',
                     isToday && 'stroke-success stroke-2'
                   )}
-                  onClick={() => onDateClick?.(isoDate, activityData)}
+                  // 无 onDateClick 时不挂 onClick：让 CommonTooltip 判定为纯提示元素，
+                  // 触屏 tap 切换 tooltip 查看每日数据（否则被 childHasOwnClick 直接关掉）
+                  onClick={onDateClick ? () => onDateClick(isoDate, activityData) : undefined}
                 />
               </CommonTooltip>
             );

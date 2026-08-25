@@ -177,7 +177,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
           variant="ghost"
           size="icon"
           iconOnly
-          className="!h-6 !w-6 shrink-0"
+          className="!h-6 !w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 shrink-0"
           onClick={handleClose}
           disabled={creating}
           aria-label={t('chatV2:workspace.createAgent.cancel')}
@@ -205,7 +205,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
                 disabled={creating}
                 aria-pressed={selectedSkillId === skill.id}
                 className={cn(
-                  'w-full !justify-start !p-2 text-left !h-auto transition-colors',
+                  'w-full !justify-start !p-2 text-left !h-auto [@media(pointer:coarse)]:!min-h-11 transition-colors',
                   selectedSkillId === skill.id && 'bg-primary/10 ring-1 ring-inset ring-primary/50',
                   creating && 'opacity-50'
                 )}
@@ -267,12 +267,19 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
 
       {/* 操作区 */}
       <div className="flex items-center justify-end gap-2">
-        <DsButton variant="ghost" size="sm" onClick={handleClose} disabled={creating}>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
+          onClick={handleClose}
+          disabled={creating}
+        >
           {t('chatV2:workspace.createAgent.cancel')}
         </DsButton>
         <DsButton
           variant="primary"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={handleCreate}
           disabled={creating || !selectedSkillId || !currentSessionId}
         >

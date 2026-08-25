@@ -227,6 +227,10 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 }}
                 className={cn(
                   'text-destructive cursor-pointer',
+                  // 触屏扩大命中区至 44px 高：truncate 的 overflow-hidden 会裁剪
+                  // after:-inset 覆盖层，故改用 padding + 负 margin（不撑高状态行）
+                  '[@media(pointer:coarse)]:py-3.5 [@media(pointer:coarse)]:-my-3.5',
+                  '[@media(pointer:coarse)]:px-1.5 [@media(pointer:coarse)]:-mx-1.5',
                   showFullError
                     ? 'min-w-0 max-w-full whitespace-normal break-words'
                     : 'truncate max-w-[100px]'
@@ -239,12 +243,12 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
+                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
                     <span>{t('blocks.paperSave.retry')}</span>
                   </DsButton>
                   {hasMultipleSources && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-2 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </DsButton>
                   )}
@@ -273,7 +277,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
-                '!h-auto !py-1',
+                '!h-auto !py-1 [@media(pointer:coarse)]:!min-h-11',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',

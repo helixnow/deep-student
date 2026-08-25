@@ -106,7 +106,7 @@ const AnkiConnectRefreshButton: React.FC<{
       iconOnly
       onClick={handleClick}
       disabled={refreshing}
-      className="!h-10 !w-10 rounded-full"
+      className="!h-10 !w-10 rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       title={label}
       aria-label={label}
     >
@@ -440,7 +440,7 @@ export const ChatAnkiProgressCompact: React.FC<{
             size="icon"
             iconOnly
             onClick={() => setShowDetails(prev => !prev)}
-            className="!h-8 !w-8 rounded-full"
+            className="relative !h-8 !w-8 rounded-full after:absolute after:-inset-1.5 after:content-['']"
             aria-expanded={showDetails}
             aria-label={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
             title={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}

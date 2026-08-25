@@ -30,7 +30,7 @@ export const CanvasZoomIndicator: React.FC = () => {
       <DsButton
         variant="ghost"
         size="sm"
-        className="mm-canvas-mode-button mm-canvas-zoom-indicator"
+        className="mm-canvas-mode-button mm-canvas-zoom-indicator [@media(pointer:coarse)]:!min-h-11"
         onClick={resetZoom}
         aria-label={t('canvasV2.zoomLevel', {
           defaultValue: '缩放 {{percent}}%，点击恢复 100%',

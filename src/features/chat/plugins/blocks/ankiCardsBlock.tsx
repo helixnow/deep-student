@@ -791,7 +791,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               type="button"
               variant="ghost"
               onClick={() => onDelete(index)}
-              className="!h-10 !w-10 text-destructive hover:text-destructive"
+              className="!h-10 !w-10 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               size="icon"
               iconOnly
               aria-label={t('chatV2.deleteCard')}
@@ -841,6 +841,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               variant="ghost"
               onClick={() => onToggleEdit(index)}
               disabled={savePending}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {t('chatV2.cancelEdit')}
             </DsButton>
@@ -851,6 +852,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={handleSave}
               disabled={savePending}
               aria-busy={savePending}
+              className="[@media(pointer:coarse)]:!min-h-11"
             >
               {savePending ? (
                 <CircleNotch size={14} className="animate-spin" />
@@ -886,9 +888,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 onClick={(e) => { e.stopPropagation(); onQuote(index); }}
                 data-wb-blur-surface
                 className={cn(
-                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                  'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                   isTouchPrimary
-                    ? '!h-10 !w-10 opacity-100'
+                    ? '!h-11 !w-11 opacity-100'
                     : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                 )}
                 aria-label={t('chatBlock.quoteToInput')}
@@ -904,9 +906,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+                'bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.editCard', { index: index + 1 })}
@@ -921,9 +923,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onDelete(index); }}
               data-wb-blur-surface
               className={cn(
-                'bg-background/80 backdrop-blur border hover:bg-destructive/10',
+                'bg-background/80 backdrop-blur border hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                 isTouchPrimary
-                  ? '!h-10 !w-10 opacity-100'
+                  ? '!h-11 !w-11 opacity-100'
                   : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
               )}
               aria-label={t('chatV2.deleteCard')}
@@ -1460,7 +1462,7 @@ const ActionButtons: React.FC<{
         disabled={retryStatus === 'loading'}
         aria-busy={retryStatus === 'loading'}
         variant={retryStatus === 'error' ? 'danger' : 'default'}
-        className="min-h-10 w-full text-xs sm:w-auto sm:text-sm"
+        className="min-h-10 [@media(pointer:coarse)]:!min-h-11 w-full text-xs sm:w-auto sm:text-sm"
       >
         {renderIcon(retryStatus, ArrowClockwise)}
         {t('blocks.ankiCards.retryFailedSegments')}
@@ -1500,7 +1502,7 @@ const ActionButtons: React.FC<{
               disabled={taskControlStatus === 'loading'}
               aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'resume'}
               variant="primary"
-              className="min-h-10 text-xs sm:text-sm"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
             >
               {taskControlStatus !== 'idle' && pendingTaskAction === 'resume'
                 ? renderIcon(taskControlStatus, Play)
@@ -1514,7 +1516,7 @@ const ActionButtons: React.FC<{
               disabled={taskControlStatus === 'loading'}
               aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'pause'}
               variant="default"
-              className="min-h-10 text-xs sm:text-sm"
+              className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
             >
               {taskControlStatus !== 'idle' && pendingTaskAction === 'pause'
                 ? renderIcon(taskControlStatus, Pause)
@@ -1528,7 +1530,7 @@ const ActionButtons: React.FC<{
             disabled={taskControlStatus === 'loading'}
             aria-busy={taskControlStatus === 'loading' && pendingTaskAction === 'cancel'}
             variant="danger"
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {taskControlStatus !== 'idle' && pendingTaskAction === 'cancel'
               ? renderIcon(taskControlStatus, Stop)
@@ -1545,7 +1547,7 @@ const ActionButtons: React.FC<{
             type="button"
             onClick={onToggleExpand}
             variant={isExpanded ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
             {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
@@ -1557,7 +1559,7 @@ const ActionButtons: React.FC<{
             onClick={handleSave}
             disabled={isDisabled || saveStatus === 'loading'}
             variant={saveStatus === 'success' ? 'success' : saveStatus === 'error' ? 'danger' : canReviewBatch ? 'default' : 'primary'}
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             {renderIcon(saveStatus, FloppyDisk)}
             {t(
@@ -1574,7 +1576,7 @@ const ActionButtons: React.FC<{
             disabled={isDisabled || !canReviewBatch}
             title={!canReviewBatch ? t('blocks.ankiCards.reviewBatchNeedsRealIds') : undefined}
             variant="primary"
-            className="min-h-10 text-xs sm:text-sm"
+            className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs sm:text-sm"
           >
             <Stack size={16} />
             {t('blocks.ankiCards.reviewBatch')}
@@ -1586,7 +1588,7 @@ const ActionButtons: React.FC<{
               <DsButton
                 type="button"
                 variant="ghost"
-                className="min-h-10 max-w-[180px] text-xs text-muted-foreground sm:text-sm"
+                className="min-h-10 [@media(pointer:coarse)]:!min-h-11 max-w-[180px] text-xs text-muted-foreground sm:text-sm"
                 title={t('blocks.ankiCards.deckName')}
                 aria-label={t('blocks.ankiCards.deckName')}
               >
@@ -1619,7 +1621,7 @@ const ActionButtons: React.FC<{
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-10 !w-10 justify-self-end"
+                className="!h-10 !w-10 justify-self-end [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('blocks.ankiCards.moreActions')}
                 title={t('blocks.ankiCards.moreActions')}
               >
@@ -2849,7 +2851,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('list')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'list'}
                 aria-label={tAnki('chatBlock.layoutList')}
                 title={tAnki('chatBlock.layoutList')}
@@ -2862,7 +2864,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="icon"
                 iconOnly
                 onClick={() => setLayout('grid')}
-                className="relative !h-8 !w-8 after:absolute after:-inset-1 after:content-['']"
+                className="relative !h-8 !w-8 after:absolute after:-inset-1.5 after:content-['']"
                 aria-pressed={layout === 'grid'}
                 aria-label={tAnki('chatBlock.layoutGrid')}
                 title={tAnki('chatBlock.layoutGrid')}
@@ -2874,7 +2876,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 size="sm"
                 variant="ghost"
                 onClick={handleToggleExpand}
-                className="min-h-10 px-2"
+                className="min-h-10 [@media(pointer:coarse)]:!min-h-11 px-2"
               >
                 <CaretUp size={14} />
                 {t('blocks.ankiCards.collapse')}
@@ -2897,7 +2899,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={handleInvertSelection}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {t('blocks.ankiCards.invertSelection')}
                 </DsButton>
@@ -2907,7 +2909,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   variant="ghost"
                   onClick={handleDeleteSelected}
                   disabled={batchAction !== null}
-                  className="min-h-8 text-xs text-destructive hover:text-destructive"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs text-destructive hover:text-destructive"
                 >
                   <Trash size={13} />
                   {t('blocks.ankiCards.deleteSelected')}
@@ -2919,7 +2921,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleSaveSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'save'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'save' ? (
                     <CircleNotch size={13} className="animate-spin" />
@@ -2935,7 +2937,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   onClick={() => void handleExportSelected()}
                   disabled={batchAction !== null || isGenerating}
                   aria-busy={batchAction === 'export'}
-                  className="min-h-8 text-xs"
+                  className="min-h-8 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {batchAction === 'export' ? (
                     <CircleNotch size={13} className="animate-spin" />
@@ -3009,7 +3011,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={() => setVisibleCount((prev) => prev + CARDS_PAGE_SIZE)}
-                  className="min-h-10 text-xs"
+                  className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs"
                 >
                   {t('blocks.ankiCards.showMore', { remaining: cards.length - visibleCount })}
                 </DsButton>
@@ -3020,7 +3022,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     size="sm"
                     variant="ghost"
                     onClick={() => setVisibleCount((prev) => prev + 50)}
-                    className="min-h-10 text-xs text-muted-foreground"
+                    className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showMoreBig', { count: 50 })}
                   </DsButton>
@@ -3030,7 +3032,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     size="sm"
                     variant="ghost"
                     onClick={() => setVisibleCount(cards.length)}
-                    className="min-h-10 text-xs text-muted-foreground"
+                    className="min-h-10 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showAll', { total: cards.length })}
                   </DsButton>

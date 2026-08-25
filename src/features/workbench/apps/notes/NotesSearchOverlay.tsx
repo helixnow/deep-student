@@ -600,6 +600,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，open 态也随之滞留——
+      // 此时不消费返回键、不误关搜索面板，交还给当前活跃视图
+      // （对照 NotesWorkspaceApp explorer handler 的同款守卫）
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
