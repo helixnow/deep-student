@@ -2530,6 +2530,30 @@ mod resolve_zip_encryption_password_tests {
     }
 
     #[test]
+    fn password_minimum_counts_unicode_code_points_and_keeps_stable_code() {
+        let error = resolve_zip_encryption_password(
+            Some("😀😀😀😀".into()),
+            Some(true),
+            Some("stored-passphrase".into()),
+        )
+        .expect_err("4 emoji are 4 Unicode code points and must remain too short");
+        assert!(
+            error.contains(crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE),
+            "Unicode short-password refusal must carry the stable code: {error}"
+        );
+
+        assert_eq!(
+            resolve_zip_encryption_password(
+                Some("😀😀😀😀😀😀😀😀".into()),
+                Some(true),
+                Some("stored-passphrase".into()),
+            )
+            .expect("8 emoji are 8 Unicode code points"),
+            Some("😀😀😀😀😀😀😀😀".into())
+        );
+    }
+
+    #[test]
     fn short_leftover_does_not_force_portable_when_flag_off() {
         assert_eq!(
             resolve_zip_encryption_password(None, Some(false), Some("short".into())).unwrap(),

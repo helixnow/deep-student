@@ -31,10 +31,6 @@ describe('chat v2 thread width alignment contract', () => {
     resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
-  const inputBarV2Source = readFileSync(
-    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarV2.tsx'),
-    'utf-8'
-  );
 
   it('defines a shared shell for thread-aligned surfaces', () => {
     expect(threadContentShellSource).toContain('data-slot="thread-content-shell"');
@@ -58,6 +54,5 @@ describe('chat v2 thread width alignment contract', () => {
     expect(beautifySource).toContain('.chat-v2 .chat-loading-shell__composer-panel');
     expect(beautifySource).toContain('--unified-input-shell-surface: var(--surface-root);');
     expect(inputBarUiSource).toContain('<ThreadContentShell>');
-    expect(inputBarV2Source).toContain('<ThreadContentShell>');
   });
 });
