@@ -256,21 +256,92 @@ pub fn copy_file(window: &Window, source: &str, target: &str) -> Result<u64, App
 
     let mut reader = open_reader(window, &source_path)?;
     let mut writer = open_writer(window, &target_path, true)?;
-
-    let bytes_copied = std::io::copy(&mut reader, &mut writer).map_err(|e| {
-        AppError::file_system(format!(
-            "复制文件失败 ({} -> {}): {}",
-            source_path.display(),
-            target_path.display(),
-            e
-        ))
-    })?;
+    let copy_label = format!("{} -> {}", source_path.display(), target_path.display());
+    let (bytes_copied, source_digest) = digest_copy(&mut reader, &mut writer, &copy_label)?;
 
     writer.flush().map_err(|e| {
         AppError::file_system(format!("刷新文件失败: {} ({})", target_path.display(), e))
     })?;
+    drop(writer);
+    drop(reader);
+
+    // [R12-saf-verify] 不能只凭 copy+flush 报成功：部分 DocumentsProvider 延迟提交，
+    // 必须重新打开目标核对长度与 SHA-256。回读失败或内容不一致一律 fail-closed。
+    let mut verify_reader = open_reader(window, &target_path).map_err(|e| {
+        AppError::file_system(format!(
+            "目标回读失败，已停止并不得报成功: {} ({})",
+            target_path.display(),
+            e
+        ))
+    })?;
+    let (verified, target_digest) = digest_read(&mut verify_reader, &target_path.display())?;
+    ensure_identical_copy(
+        bytes_copied,
+        source_digest,
+        verified,
+        target_digest,
+        &target_path.display(),
+    )?;
 
     Ok(bytes_copied)
+}
+
+fn digest_copy(
+    reader: &mut impl Read,
+    writer: &mut impl Write,
+    label: &str,
+) -> Result<(u64, [u8; 32]), AppError> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buffer)
+            .map_err(|e| AppError::file_system(format!("复制文件失败 ({label}): {e}")))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+        writer
+            .write_all(&buffer[..n])
+            .map_err(|e| AppError::file_system(format!("复制文件失败 ({label}): {e}")))?;
+        total += n as u64;
+    }
+    Ok((total, hasher.finalize().into()))
+}
+
+fn digest_read(reader: &mut impl Read, label: &str) -> Result<(u64, [u8; 32]), AppError> {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buffer)
+            .map_err(|e| AppError::file_system(format!("回读文件失败 ({label}): {e}")))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+        total += n as u64;
+    }
+    Ok((total, hasher.finalize().into()))
+}
+
+fn ensure_identical_copy(
+    copied: u64,
+    source_digest: [u8; 32],
+    verified: u64,
+    target_digest: [u8; 32],
+    target_label: &str,
+) -> Result<(), AppError> {
+    if copied != verified || source_digest != target_digest {
+        return Err(AppError::file_system(format!(
+            "目标回读校验失败: {target_label}（已写 {copied} 字节，回读 {verified} 字节，内容不一致则拒绝报成功）"
+        )));
+    }
+    Ok(())
 }
 
 pub fn write_text_file(window: &Window, raw_path: &str, content: &str) -> Result<(), AppError> {
@@ -759,5 +830,39 @@ pub fn ensure_local_path(
                 cleanup: Some(dest_path),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{digest_copy, digest_read, ensure_identical_copy};
+    use std::io::Cursor;
+
+    #[test]
+    fn digest_copy_roundtrip_matches_reread() {
+        let payload = b"saf-export-verify-payload";
+        let mut source = Cursor::new(payload.as_slice());
+        let mut dest = Cursor::new(Vec::new());
+        let (copied, source_digest) = digest_copy(&mut source, &mut dest, "roundtrip").unwrap();
+        assert_eq!(copied, payload.len() as u64);
+        dest.set_position(0);
+        let (verified, target_digest) = digest_read(&mut dest, "roundtrip").unwrap();
+        ensure_identical_copy(copied, source_digest, verified, target_digest, "roundtrip")
+            .expect("相同内容必须通过回读校验");
+    }
+
+    #[test]
+    fn ensure_identical_copy_rejects_size_or_hash_mismatch() {
+        let mut source = Cursor::new(b"abc");
+        let mut dest = Cursor::new(Vec::new());
+        let (copied, source_digest) = digest_copy(&mut source, &mut dest, "mismatch").unwrap();
+        let err = ensure_identical_copy(copied, source_digest, copied + 1, source_digest, "short")
+            .expect_err("长度不一致必须 fail-closed");
+        assert!(err.to_string().contains("目标回读校验失败"));
+
+        let other = [0u8; 32];
+        let err = ensure_identical_copy(copied, source_digest, copied, other, "tampered")
+            .expect_err("哈希不一致必须 fail-closed");
+        assert!(err.to_string().contains("目标回读校验失败"));
     }
 }

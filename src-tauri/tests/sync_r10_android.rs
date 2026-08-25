@@ -234,6 +234,18 @@ fn zip_command_materialization_orchestration_is_anchored() {
         "导入完成后必须清理从 content:// 物化的临时 ZIP"
     );
 
+    let copy_source = read_source("src/unified_file_manager.rs");
+    for marker in [
+        "digest_copy",
+        "目标回读失败，已停止并不得报成功",
+        "目标回读校验失败",
+    ] {
+        assert!(
+            copy_source.contains(marker),
+            "SAF 导出复制必须回读校验长度/SHA-256，缺少锚点 {marker:?}"
+        );
+    }
+
     // 导出侧：temp_zip_export 临时导出 → 复制回虚拟 URI → 失败也清理。
     for marker in [
         "is_virtual_uri(&output_path)",
