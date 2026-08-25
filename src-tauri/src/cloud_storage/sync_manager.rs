@@ -500,6 +500,15 @@ impl CloudSyncManager {
         }
 
         self.storage.put(key, &data).await?;
+        match self.storage.get(key).await? {
+            Some(ref read_back) if read_back == &data => {}
+            _ => {
+                return Err(AppError::internal(
+                    "manifest 发布后回读校验失败，已停止并不得报成功（已保留已校验临时对象）"
+                        .to_string(),
+                ));
+            }
+        }
         let _ = self.storage.delete(&temp_key).await;
 
         Ok(())
@@ -2127,6 +2136,82 @@ mod tests {
         assert_ne!(
             manager.device_manifest_key(),
             manager.device_manifest_legacy_key()
+        );
+    }
+
+    struct CorruptFinalPutStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for CorruptFinalPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupt-final"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(".tmp") {
+                CloudStorage::put(&self.inner, key, data).await
+            } else {
+                CloudStorage::put(&self.inner, key, b"corrupted-manifest").await
+            }
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_fails_when_published_manifest_reread_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(CorruptFinalPutStorage {
+                inner: Arc::clone(&inner),
+            }),
+            "device-corrupt".to_string(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.zip");
+        std::fs::write(&zip, b"zip-bytes-manifest-reread").unwrap();
+
+        let error = manager
+            .upload(&zip, Some("1.2.3".into()), None)
+            .await
+            .expect_err("最终清单回读不一致必须 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains("manifest 发布后回读校验失败，已停止并不得报成功"),
+            "拒绝原因必须指向发布后回读，实际: {error}"
+        );
+
+        let files = inner.files.lock().unwrap();
+        assert!(
+            !files
+                .keys()
+                .any(|key| key.starts_with(BACKUPS_DIR) && key.ends_with(".zip")),
+            "清单发布失败必须回滚未引用 ZIP，不得留下可见半包"
+        );
+        assert!(
+            files.keys().any(|key| key.ends_with(".tmp")),
+            "已校验的临时清单必须保留，供对照损坏的最终对象"
         );
     }
 
