@@ -47,8 +47,7 @@ use super::{assets, BackupFile, BackupKeyPolicy, BackupManager, BackupManifest};
 pub const ENCRYPTED_SECRETS_ENTRY: &str = "portable_secrets.dsbk";
 
 /// 加密全保真 ZIP 缺少导入密码时的稳定错误码。
-pub const SEALED_BACKUP_PASSWORD_REQUIRED_CODE: &str =
-    "E_BACKUP_SEALED_PASSWORD_REQUIRED";
+pub const SEALED_BACKUP_PASSWORD_REQUIRED_CODE: &str = "E_BACKUP_SEALED_PASSWORD_REQUIRED";
 
 /// 加密全保真 ZIP 无法解密时的稳定错误码。
 ///
@@ -2518,7 +2517,9 @@ mod tests {
             error
         );
         assert!(
-            error.to_string().contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            error
+                .to_string()
+                .contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
             "decrypt refusal must carry a stable code: {}",
             error
         );
