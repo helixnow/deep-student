@@ -9,7 +9,11 @@
  * - 重复触发在前端即被拦截，无需等后端报错。
  */
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import {
+  persist,
+  type PersistStorage,
+  type StorageValue,
+} from 'zustand/middleware';
 
 interface GlobalSyncState {
   /** 是否有同步正在进行（任意入口触发的都算） */
@@ -342,17 +346,94 @@ type AutoSyncPersisted = Pick<
   'enabled' | 'intervalPreset' | 'lastOutcome' | 'lastRunAtMs'
 >;
 
+const AUTO_SYNC_OUTCOMES = new Set<AutoSyncOutcome>([
+  'success',
+  'failure',
+  'skipped_unconfigured',
+  'skipped_busy',
+  'skipped_lease_held',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function migrateAutoSyncPersisted(persisted: unknown): AutoSyncPersisted {
-  const p = (persisted ?? {}) as Partial<AutoSyncPersisted>;
+  const p = isRecord(persisted) ? persisted : {};
   const intervalPreset =
     p.intervalPreset === '15m' || p.intervalPreset === '1h' || p.intervalPreset === '6h'
       ? p.intervalPreset
       : AUTO_SYNC_DEFAULT_INTERVAL_PRESET;
+  const lastOutcome =
+    p.lastOutcome === null || AUTO_SYNC_OUTCOMES.has(p.lastOutcome as AutoSyncOutcome)
+      ? p.lastOutcome as AutoSyncOutcome | null
+      : null;
   return {
     enabled: p.enabled === true,
     intervalPreset,
-    lastOutcome: p.lastOutcome ?? null,
-    lastRunAtMs: typeof p.lastRunAtMs === 'number' ? p.lastRunAtMs : null,
+    lastOutcome,
+    lastRunAtMs:
+      typeof p.lastRunAtMs === 'number'
+      && Number.isFinite(p.lastRunAtMs)
+      && p.lastRunAtMs >= 0
+        ? p.lastRunAtMs
+        : null,
+  };
+}
+
+/**
+ * Zustand's default JSON storage lets JSON.parse reject hydration. A broken
+ * payload then leaves hasHydrated() false and repeats the same failure on every
+ * launch. Discard unreadable envelopes at the storage boundary so defaults can
+ * hydrate normally; the merge below separately sanitizes valid JSON.
+ */
+function createAutoSyncPersistStorage(): PersistStorage<AutoSyncPersisted> | undefined {
+  let storage: Storage;
+  try {
+    if (typeof window === 'undefined') return undefined;
+    storage = window.localStorage;
+  } catch {
+    return undefined;
+  }
+
+  const discard = (name: string) => {
+    try {
+      storage.removeItem(name);
+    } catch {
+      // Best effort: an unavailable storage backend is equivalent to no state.
+    }
+  };
+
+  return {
+    getItem: (name) => {
+      let raw: string | null;
+      try {
+        raw = storage.getItem(name);
+      } catch {
+        return null;
+      }
+      if (raw === null) return null;
+
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, 'state')) {
+          discard(name);
+          return null;
+        }
+        return parsed as StorageValue<AutoSyncPersisted>;
+      } catch {
+        discard(name);
+        return null;
+      }
+    },
+    setItem: (name, value) => {
+      try {
+        storage.setItem(name, JSON.stringify(value));
+      } catch {
+        // Persistence is best effort; runtime auto-sync state remains usable.
+      }
+    },
+    removeItem: discard,
   };
 }
 
@@ -381,6 +462,7 @@ export const useAutoSyncStore = create<AutoSyncState>()(
     {
       name: 'dstu-auto-sync',
       version: 2,
+      storage: createAutoSyncPersistStorage(),
       partialize: (state): AutoSyncPersisted => ({
         enabled: state.enabled,
         intervalPreset: state.intervalPreset,
@@ -388,6 +470,10 @@ export const useAutoSyncStore = create<AutoSyncState>()(
         lastRunAtMs: state.lastRunAtMs,
       }),
       migrate: migrateAutoSyncPersisted,
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...migrateAutoSyncPersisted(persistedState),
+      }),
     },
   ),
 );
