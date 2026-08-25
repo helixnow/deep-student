@@ -40,4 +40,15 @@ Date: 2026-08-25
 
 ## Verification
 
-Verification results are recorded after the implementation commit is pushed.
+| Gate | Result |
+|---|---|
+| `npm ci` | PASS — 1,192 lockfile packages installed. |
+| `npx vitest run src/features/anki-tasks/__tests__/AnkiTasksApp.loadError.test.tsx tests/vitest/flashcards/todayScreenEmptyLibrary.test.tsx tests/vitest/flashcards/StatisticsScreen.test.tsx tests/vitest/brandColorTokenContract.test.ts` | PASS — 4 files, 11 tests. |
+| `npm run version:generate && npm run typecheck` | PASS — zero TypeScript errors. (`typecheck` alone initially reported the expected missing generated `src/version.ts`.) |
+| `npx vite build` | PASS — 19,809 modules transformed; only existing circular/dynamic-import and chunk-size warnings. |
+| `rustup run stable cargo check --manifest-path src-tauri/Cargo.toml --lib` | PASS with Rust/Cargo 1.98.0 after installing the CI Linux libraries and PDFium resource; 28 existing warnings. |
+
+The VM default Cargo 1.83.0 cannot parse edition-2024 dependencies, so the
+successful Rust gate used the repository/CI-compatible stable 1.98.0
+toolchain. The PDFium downloader's tracked license-file rewrite was reverted;
+no verification artifact remains in the Git diff.
