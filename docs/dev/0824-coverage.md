@@ -1,28 +1,34 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-25 00:33 UTC（第八轮，0824 已含 A+B+D）。
+审计快照：2026-08-25 01:29 UTC（第九轮，0824 已含 A+B+D+F）。
 
 本表覆盖该时点仍开放的 PR #158–#268，共 111 个（无缺号）。判定对象是同一次
 `git fetch` 固定下来的 `refs/pull/<PR>/head`，不是 PR 标题所指的旧底座：
 
-- 0824：`4f05d2272217e91a899ed6261356eea1acafc438`
-- B cloud（#177 tip，与主题分支 tip 重合）：`017bb297c4576305b018cafb54fcbe092612a6de`
+- 0824：`6e1aec786cf4d0a2437c6d97bd35152fb0159986`
+- B cloud（#177 tip）：`4b2afeeec3720da45f06741e6c046ab0323547af`
 - C genui（#214 tip，与主题分支 tip 重合）：`c2786d4b602c8271db0ad116aeb37b3c04fad5b5`
 - D anki（#215 tip，与主题分支 tip 重合）：`f4f1300e85cf08fc4b2b2c9db7d6bc1f94d0019b`
 - E optimization（#213 tip，与主题分支 tip 重合）：`746445fc61914e7eaad8522d7aa4b75083e42762`
-- F subapp（#176 tip，与主题分支 tip 重合）：`97ee408c8b5c7df1087e15986b170a16bd248488`
+- F subapp 实际主题 tip：`575fee7f475a83de5c0edd3dd378015495fb22ad`
+  （#176 tip `97ee408c8b5c7df1087e15986b170a16bd248488` 是其祖先）
 - G mobile（#172 tip，与主题分支 tip 重合）：`e963b6df949aa3476c03f6d86c66007b480bba05`
 
 0824 与各主题分支的合入边界（`git merge-base`）：
 
+- F subapp：实际 tip `575fee7f` 是 0824 合并提交 `0a0a1197` 的第二父提交，
+  已全量进入 0824；#176 tip `97ee408c` 也因此升格为 `IN_0824`。上一轮以
+  `97ee408c` 当作 F tip 的内容结论在本轮全部废弃并重算。
 - D anki：tip `f4f1300e` 已经是 0824 祖先——D 已通过
-  `a8185664` 全量合入，#215 本轮升格为 `IN_0824`。
-- B cloud：0824 含 B 至 `fb77f0af`；B 之后又前进 27 个提交
-  （R12 delta 系列原语、v1trust、P2 收尾等），#177 tip 尚未进 0824。
+  `a8185664` 全量合入。
+- B cloud：0824 含 B 至 `fb77f0af`；当前 #177 tip 在边界后有 29 个提交，
+  尚未进 0824。
 - C genui：0824 含 C 至 `c16a4fbd`；C 之后又前进 30 个提交，#214 tip 尚未进 0824。
 - E optimization：0824 含 E 至 `65bad3ed`；E 之后又前进 4 个提交，#213 tip 尚未进 0824。
-- F subapp / G mobile：与 0824 的 merge-base 均为 main tip `0e4c9fad`，
-  两支与 0824 无任何 git 祖先重叠（F 的部分行为是按 0824 结构选择性移植进去的）。
+- G mobile：与 0824 的 merge-base 仍为 main tip `0e4c9fad`；#172 tip 尚未进 0824。
+
+特别核对的精确 tip 祖先结果：#160 否、#161 否、#172 否、#176 **是**、
+#177 否、#213 否、#214 否。
 
 `IN_0824` 与 `IN_THEME_ONLY` 均以
 `git merge-base --is-ancestor <PR tip> <target tip>` 的精确祖先关系为准。
@@ -36,7 +42,7 @@
 | #158 | IGNORE |
 | #159 | IGNORE |
 | #160 | LEFTOVER |
-| #161 | LEFTOVER |
+| #161 | IGNORE |
 | #162 | IGNORE |
 | #163 | IGNORE |
 | #164 | IGNORE |
@@ -51,7 +57,7 @@
 | #173 | IN_0824 |
 | #174 | IN_0824 |
 | #175 | IN_0824 |
-| #176 | IN_THEME_ONLY(F subapp) |
+| #176 | IN_0824 |
 | #177 | IN_THEME_ONLY(B cloud) |
 | #178 | IN_0824 |
 | #179 | IN_0824 |
@@ -145,34 +151,34 @@
 | #267 | IN_0824 |
 | #268 | IN_0824 |
 
-汇总：`IN_0824` 88；`IN_THEME_ONLY` 5
-（B：#177，C：#214，E：#213，F：#176，G：#172）；
-`LEFTOVER` 2（#160、#161）；`IGNORE` 16。
+汇总：`IN_0824` 89；`IN_THEME_ONLY` 4
+（B：#177，C：#214，E：#213，G：#172）；
+`LEFTOVER` 1（#160）；`IGNORE` 17。
 
-相对上一轮（B 合入后快照）的变化：
+相对上一轮（A+B+D 快照）的变化：
 
-- #215（D anki）：`IN_THEME_ONLY(D)` → `IN_0824`。D 主题分支已随
-  `a8185664` 全量并入 0824，PR tip 即 D tip。
-- #177（B cloud）：`LEFTOVER` → `IN_THEME_ONLY(B)`。PR tip 现与 B 分支 tip
-  重合（`017bb297`），上一轮多出的 `recoveryKind` 增量已回到 B 主线；
-  但 B 在 0824 合入边界 `fb77f0af` 之后仍有 27 个提交未进 0824。
-- #213（E optimization）：`LEFTOVER` → `IN_THEME_ONLY(E)`。PR tip 现与 E 分支
-  tip 重合（`746445fc`），post-Step-1 增量已收进 E；E 比 0824 边界多 4 个提交。
-- #214（C genui）：`LEFTOVER` → `IN_THEME_ONLY(C)`。PR tip 现与 C 分支 tip
-  重合（`c2786d4b`）；C 比 0824 边界 `c16a4fbd` 多 30 个提交。
+- #176（F subapp）：`IN_THEME_ONLY(F)` → `IN_0824`。精确 PR tip `97ee408c`
+  是实际 F tip `575fee7f` 的祖先，而实际 F 已通过 `0a0a1197` 并入 0824。
+- #161：`LEFTOVER` → `IGNORE`。实际 F 在旧 `97ee408c` 之后通过适配提交
+  `450b4443` 吸收壳层交互改动，并由 `575fee7f` 对齐空桌面 tour 契约；
+  `ImmersiveHint.tsx/.css` 与 `workbench-shell-ux.test.tsx` 均已存在于 0824。
+  原 PR tip 不是祖先，不能标为 `IN_0824`，但已无需要整支重放的独特增量。
+- #160 仍是 `LEFTOVER`，但旧依据已失效：实际 F 已吸收空卡库、加载失败、
+  制卡入口、番茄钟、practice 进度、删除未渲染 selector 等生产改动。当前仍未
+  进入 0824 的可取增量缩小为两份回归测试：
+  `AnkiTasksApp.loadError.test.tsx` 与 `todayScreenEmptyLibrary.test.tsx`。
+- #177 tip 已前进到 `4b2afeee`，仍为 `IN_THEME_ONLY(B)`；相对 0824 的
+  `fb77f0af` 边界现有 29 个提交。#172/#213/#214 的分类不变。
 
 ## 非祖先 tip 的处置依据
 
 - `LEFTOVER`：
-  - #160：F 已吸收大部分，但本轮内容级抽查确认 F tip（`97ee408c`）仍缺
-    独特增量——F 仍保留 #160 删除的未渲染 `PracticeModeSelector.tsx`；
-    `questionBankStore` 的 streak/answered 持久化未吸收
-    （#160 中 6 处 `streak` 引用，F 仅 1 处）；`.apkg` 导入仅部分吸收
-    （F 的 `LibraryScreen`/`libraryStore` 缺 #160 的对应改动）。
-  - #161：F tip 完全缺失 `ImmersiveHint.tsx/.css`（沉浸模式可见出口）与
-    `workbench-shell-ux.test.tsx`；关窗拦截、快捷键可发现性等其余壳层
-    改动在 F 中也只有部分对应。
-- `IGNORE`（沿用前几轮内容级结论，本轮 tip 未变化）：
+  - #160：生产行为已由实际 F tip `575fee7f` 吸收；但上述两份独立回归测试
+    在 0824 树中不存在。其 scheduler 面板重排与 0824 当前“统计加载失败时
+    调度设置仍可用”的布局契约冲突，不计为待重放增量。
+- `IGNORE`：
+  - #161 的有效行为与测试已按 F 当前结构吸收；`450b4443` 是适配重放，
+    所以源 tip `d7fdb76d` 不是 0824 祖先，但也不应再整支合入。
   - #158 的有效叶提交已由 #169/#180/#181/#182/#186、A/T 或等价补丁吸收；
     其中删除已投入运行的 UTF-8 decoder 不应重放。
   - #159/#164 的有用子集已选择性移植进 A；其余与 A 等价或冲突，不能把原 tip
