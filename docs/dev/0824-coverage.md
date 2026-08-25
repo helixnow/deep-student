@@ -1,12 +1,15 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-25 03:10 UTC（第十轮，0824 已含 A+B+D+F+G）。
+审计快照：2026-08-25 03:55 UTC（第十一轮，0824 已含 A+B+D+F+G）。
 
 本表覆盖该时点仍开放的 PR #158–#268，共 111 个（无缺号）。判定对象是同一次
 `git fetch` 固定下来的 `refs/pull/<PR>/head`，不是 PR 标题所指的旧底座：
 
-- 0824：`c119f92ba8b4053f818a28b059b80a4b66bcf0fc`
-- B cloud（#177 tip）：`8e1ad9cd9b91a48fefab41fb46dfa6c6c2bc6d0d`
+- 0824：`e88340c6470b855b8dd2abec8ec23711921ac2c6`
+  （较上一轮 `c119f92b` 前进 5 个提交：chat-v2 契约跟随 composer 拆分、
+  E2EE 导入与 i18n 启动隔离对齐、G 收尾隔离枝独特修复恢复 `15c903c1`、
+  step 8 收尾记录、G 合后契约回归修复）
+- B cloud（#177 tip）：`100c118d4d2846429089bc04c337accdbe486a24`
 - C genui（#214 tip）：`c2786d4b602c8271db0ad116aeb37b3c04fad5b5`
 - D anki（#215 tip）：`f4f1300e85cf08fc4b2b2c9db7d6bc1f94d0019b`
 - E optimization（#213 tip）：`746445fc61914e7eaad8522d7aa4b75083e42762`
@@ -15,24 +18,23 @@
 - G mobile（#172 tip）：`e963b6df949aa3476c03f6d86c66007b480bba05`
   （主题分支 tip `4ab24435bb99` 是其后代，已整支进入 0824）
 
-注：C/E 的主题分支本轮已被重建为适配枝——`0824-theme-genui` 现为
-`c16a4fbd` + 2 个适配提交、`0824-theme-opt` 现为 `65bad3ed` + 1 个文档提交，
-均不再承载精确 PR tip；B 的主题分支 `0824-theme-cloud` 持有 #177 到快照
-`017bb297`，落后 PR tip 9 个提交。覆盖判定对象仍是 PR tip 本身；
-`IN_THEME_ONLY` 自本轮起表示「该 PR 即 B/C/E 主题工作流的活跃头部，
-其精确 tip 尚未进入 0824」。
+注：C/E 的主题分支仍是适配枝——`0824-theme-genui` 为 `c16a4fbd` + 2 个
+适配提交（tip `bc26f121`）、`0824-theme-opt` 为 `65bad3ed` + 1 个文档提交
+（tip `ae3207ff`），均不承载精确 PR tip；B 的主题分支 `0824-theme-cloud`
+经合并提交 `9bc4896f` 持有 #177 到快照 `017bb297`，落后 PR tip 12 个提交。
+覆盖判定对象仍是 PR tip 本身；`IN_THEME_ONLY` 表示「该 PR 即 B/C/E 主题
+工作流的活跃头部，其精确 tip 尚未进入 0824」。
 
 0824 与各主题分支的合入边界（`git merge-base`）：
 
-- G mobile：主题 tip `4ab24435` 经合并提交 `79362482` 全量进入 0824
-  （0824 随后追加 `8a350d14` 补全 react-i18next mock）；#172 tip
-  `e963b6df` 是其祖先，升格为 `IN_0824`。
+- G mobile：主题 tip `4ab24435` 经合并提交 `79362482` 全量进入 0824；
+  #172 tip `e963b6df` 是其祖先，维持 `IN_0824`。
 - F subapp：实际 tip `575fee7f` 是 0824 合并提交 `0a0a1197` 的第二父提交，
   已全量进入 0824；#176 tip `97ee408c` 维持 `IN_0824`。
 - D anki：tip `f4f1300e` 已经是 0824 祖先——D 已通过 `a8185664` 全量合入。
-- B cloud：0824 含 B 至 `fb77f0af`；#177 tip 前进到 `8e1ad9cd`（sync 路径
-  哈希化收尾、SAF 导出 size/sha256 校验、Android SAF 持久授权等），
-  边界后现有 36 个提交，尚未进 0824。
+- B cloud：0824 含 B 至 `fb77f0af`；#177 tip 前进到 `100c118d`（本轮新增
+  3 个提交：Android SAF 持久 URI 原子入队、发布备份 manifest 成功前重读、
+  远端 size 不匹配时拒绝备份 ZIP 上传），边界后现有 39 个提交，尚未进 0824。
 - C genui：0824 含 C 至 `c16a4fbd`；#214 tip 在边界后有 30 个提交，尚未进 0824。
 - E optimization：0824 含 E 至 `65bad3ed`；#213 tip 在边界后有 4 个提交，
   尚未进 0824。
@@ -46,8 +48,8 @@
 `IGNORE` 表示精确 tip 不应再整支合入（有用部分已经选择性移植/等价吸收，
 或该 tip 已明确被取代、冲突或弃用）。
 本轮对 111 个 tip 全量重跑精确祖先判定（恰 90 个为 0824 祖先，与表一致）；
-非祖先 tip 的 `IGNORE`/`LEFTOVER` 处置沿用第九轮内容级裁决，
-仅对 #160 的剩余增量做了树内复核。
+21 个非祖先 tip 中除 #177 外自上一轮均未移动（tip 哈希不变），
+`IGNORE`/`LEFTOVER` 处置沿用内容级裁决，仅对 #160 的剩余增量做了树内复核。
 
 | PR | 状态 |
 |---:|---|
@@ -166,29 +168,32 @@
 汇总：`IN_0824` 90；`IN_THEME_ONLY` 3（B：#177，C：#214，E：#213）；
 `LEFTOVER` 1（#160）；`IGNORE` 17。
 
-相对上一轮（A+B+D+F 快照）的变化：
+相对上一轮（第十轮，0824 tip `c119f92b`）的变化：
 
-- #172（G mobile）：`IN_THEME_ONLY(G)` → `IN_0824`。精确 PR tip `e963b6df`
-  是 G 主题 tip `4ab24435` 的祖先，后者经合并提交 `79362482` 全量并入 0824。
-- #177 tip 从 `4b2afeee` 前进到 `8e1ad9cd`（新增 9 个提交：sync 路径哈希化
-  收尾、SAF 导出 size/sha256 校验、fs fail-closed、Android 持久授权等），
-  仍为 `IN_THEME_ONLY(B)`；相对 0824 的 `fb77f0af` 边界从 29 个提交增至 36 个。
-  B 主题分支 `0824-theme-cloud` 仅吸收到快照 `017bb297`，落后 PR tip 9 个提交。
-- #213/#214 分类不变；但 C/E 主题分支已被重建为适配枝，不再包含二者的精确
-  tip（见上文注），覆盖判定对象不受影响（仍是 PR tip）。
-- #160 仍是 `LEFTOVER`：两份回归测试 `AnkiTasksApp.loadError.test.tsx` 与
-  `todayScreenEmptyLibrary.test.tsx` 在 0824 树中仍不存在（本轮复核）。
-  另注：`cursor/0824-g-fix-anki-cde6` 已带
-  `tests/vitest/flashcards/TodayScreen.emptyLibrary.test.tsx`，该分支合入后
-  可覆盖其中一份增量。
-- 其余 106 个 tip 分类不变。
+- 111 个 tip 的分类全部不变；变化在事实基线与 #160/#177 的细节。
+- #177 tip 从 `8e1ad9cd` 前进到 `100c118d`（新增 3 个提交：Android SAF
+  持久 URI 原子入队、发布备份 manifest 成功前重读、远端 size 不匹配时
+  拒绝备份 ZIP 上传），仍为 `IN_THEME_ONLY(B)`；相对 0824 的 `fb77f0af`
+  边界从 36 个提交增至 39 个。B 主题分支 `0824-theme-cloud` 仍只吸收到
+  快照 `017bb297`（现经合并提交 `9bc4896f` 持有），落后 PR tip 12 个提交。
+- #160 仍是 `LEFTOVER`，但独特增量缩小：0824 新提交 `15c903c1` 已带入
+  适配版 `tests/vitest/flashcards/TodayScreen.emptyLibrary.test.tsx`，
+  覆盖了原 `todayScreenEmptyLibrary.test.tsx` 的核心回归（空卡库不得
+  显示伪 100% 完成态）；`AnkiTasksApp.loadError.test.tsx` 的两个用例
+  （首载失败应报错并可重试、刷新失败保留旧会话并挂 stale 横幅）在
+  0824 树中仍无对应文件（本轮复核：`src/features/anki-tasks/__tests__/`
+  下仅有 emptyState 与 polling 两份测试）。
+- 其余 19 个非祖先 tip 自上一轮均未移动，分类与处置不变。
 
 ## 非祖先 tip 的处置依据
 
 - `LEFTOVER`：
-  - #160：生产行为已由实际 F tip `575fee7f` 吸收；但上述两份独立回归测试
-    在 0824 树中不存在。其 scheduler 面板重排与 0824 当前“统计加载失败时
-    调度设置仍可用”的布局契约冲突，不计为待重放增量。
+  - #160：生产行为已由实际 F tip `575fee7f` 吸收；空卡库回归测试的核心
+    契约已由 `15c903c1` 的适配版吸收（原文件中「非空卡库全部复习完仍报
+    100%」与「有卡但无到期时显示 idle 而非空库态」两个补充用例未随迁）。
+    剩余独特增量是 `AnkiTasksApp.loadError.test.tsx`（两个负载失败态
+    用例），在 0824 树中不存在。其 scheduler 面板重排与 0824 当前
+    “统计加载失败时调度设置仍可用”的布局契约冲突，不计为待重放增量。
 - `IGNORE`：
   - #161 的有效行为与测试已按 F 当前结构吸收；`450b4443` 是适配重放，
     所以源 tip `d7fdb76d` 不是 0824 祖先，但也不应再整支合入。
