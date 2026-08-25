@@ -1948,9 +1948,10 @@ impl VfsNoteRepo {
         let expected = expected_updated_at
             .as_deref()
             .map(str::trim)
-            .filter(|value| !value.is_empty());
-        if let Some(expected) = expected {
-            if expected != current.updated_at {
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(ref expected) = expected {
+            if expected.as_str() != current.updated_at.as_str() {
                 return Err(VfsError::Conflict {
                     key: "notes.conflict".to_string(),
                     message: "The note has been updated elsewhere, please refresh.".to_string(),
@@ -1963,57 +1964,47 @@ impl VfsNoteRepo {
             return Ok(current);
         }
 
-        let new_title = title.unwrap_or_else(|| current.title.clone());
-        let new_tags = tags.unwrap_or_else(|| current.tags.clone());
-        let new_favorite = is_favorite.unwrap_or(current.is_favorite);
-        let tags_json = serde_json::to_string(&new_tags)
-            .map_err(|error| VfsError::Serialization(error.to_string()))?;
-        let props_provided = normalized_props.is_some();
-        let props_json = normalized_props
-            .as_ref()
-            .and_then(|(raw, _value)| raw.as_deref());
-        let new_props = normalized_props
-            .as_ref()
-            .map(|(_raw, value)| value.clone())
-            .unwrap_or_else(|| current.props.clone());
         let now = next_updated_at(&current.updated_at);
-
-        let updated_rows = if let Some(expected) = expected {
-            conn.execute(
-                "UPDATE notes
-                 SET title = ?1, tags = ?2, is_favorite = ?3,
-                     props = CASE WHEN ?4 = 1 THEN ?5 ELSE props END,
-                     updated_at = ?6
-                 WHERE id = ?7 AND deleted_at IS NULL AND updated_at = ?8",
-                params![
-                    new_title,
-                    tags_json,
-                    new_favorite as i32,
-                    props_provided as i32,
-                    props_json,
-                    now,
-                    note_id,
-                    expected
-                ],
-            )?
-        } else {
-            conn.execute(
-                "UPDATE notes
-                 SET title = ?1, tags = ?2, is_favorite = ?3,
-                     props = CASE WHEN ?4 = 1 THEN ?5 ELSE props END,
-                     updated_at = ?6
-                 WHERE id = ?7 AND deleted_at IS NULL",
-                params![
-                    new_title,
-                    tags_json,
-                    new_favorite as i32,
-                    props_provided as i32,
-                    props_json,
-                    now,
-                    note_id
-                ],
-            )?
+        let mut assignments = Vec::new();
+        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut push_assignment = |column: &str, value: Box<dyn rusqlite::ToSql>| {
+            assignments.push(format!("{column} = ?{}", values.len() + 1));
+            values.push(value);
         };
+        if let Some(title) = title {
+            push_assignment("title", Box::new(title));
+        }
+        if let Some(tags) = tags {
+            let tags_json = serde_json::to_string(&tags)
+                .map_err(|error| VfsError::Serialization(error.to_string()))?;
+            push_assignment("tags", Box::new(tags_json));
+        }
+        if let Some(is_favorite) = is_favorite {
+            push_assignment("is_favorite", Box::new(is_favorite as i32));
+        }
+        if let Some((props_json, _normalized_value)) = normalized_props {
+            // None binds SQL NULL, which is the canonical representation for
+            // both an absent property object and an explicitly empty object.
+            push_assignment("props", Box::new(props_json));
+        }
+        push_assignment("updated_at", Box::new(now));
+        drop(push_assignment);
+
+        let id_param = values.len() + 1;
+        values.push(Box::new(note_id.to_string()));
+        let mut sql = format!(
+            "UPDATE notes SET {} WHERE id = ?{} AND deleted_at IS NULL",
+            assignments.join(", "),
+            id_param
+        );
+        if let Some(expected) = expected.as_ref() {
+            let expected_param = values.len() + 1;
+            values.push(Box::new(expected.clone()));
+            sql.push_str(&format!(" AND updated_at = ?{expected_param}"));
+        }
+        let value_refs: Vec<&dyn rusqlite::ToSql> =
+            values.iter().map(|value| value.as_ref()).collect();
+        let updated_rows = conn.execute(&sql, value_refs.as_slice())?;
         if updated_rows == 0 {
             return Err(if expected.is_some() {
                 VfsError::Conflict {
@@ -2029,13 +2020,9 @@ impl VfsNoteRepo {
         }
 
         info!("[VFS::NoteRepo] Updated note metadata: {}", note_id);
-        Ok(VfsNote {
-            title: new_title,
-            tags: new_tags,
-            is_favorite: new_favorite,
-            updated_at: now,
-            props: new_props,
-            ..current
+        Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "Note".to_string(),
+            id: note_id.to_string(),
         })
     }
 
@@ -4147,6 +4134,41 @@ mod tests {
         assert_eq!(
             VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap().title,
             "新标题"
+        );
+
+        // 未提供的列不能出现在 UPDATE 的赋值清单中。除了避免无谓触发
+        // note_tags/change-log trigger，这也保证无 OCC 的部分更新不会把读取
+        // current 之后由另一连接写入的字段覆盖回旧快照。
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_unprovided_note_metadata
+             BEFORE UPDATE OF tags, is_favorite, props ON notes
+             WHEN OLD.id = '{}'
+             BEGIN
+               SELECT RAISE(ABORT, 'omitted metadata column was assigned');
+             END;",
+            note.id.replace('\'', "''")
+        ))
+        .unwrap();
+        drop(conn);
+        let title_only = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("仅标题更新".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("partial update must not assign omitted metadata columns");
+        assert_eq!(title_only.title, "仅标题更新");
+        assert_eq!(title_only.tags, vec!["math"]);
+        assert!(title_only.is_favorite);
+        assert_eq!(
+            title_only
+                .props
+                .as_ref()
+                .and_then(|value| value.get("status")),
+            Some(&serde_json::json!("done"))
         );
     }
 
