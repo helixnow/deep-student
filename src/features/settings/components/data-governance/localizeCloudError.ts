@@ -75,6 +75,14 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   ) {
     return t('cloudStorage:errors.partialArchiveNotSlotable');
   }
+  switch (readCloudStorageErrorCode(error)) {
+    case 'E_BACKUP_SEALED_PASSWORD_REQUIRED':
+      return t('cloudStorage:errors.sealedBackupPasswordRequired');
+    case 'E_BACKUP_SEALED_DECRYPT_FAILED':
+      return t('cloudStorage:errors.sealedBackupDecryptFailed');
+    case 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE':
+      return t('cloudStorage:errors.atomicRestoreUnavailable');
+  }
   if (/Missing WebDAV configuration/.test(raw)) {
     return t('cloudStorage:errors.missingWebdavConfig');
   }

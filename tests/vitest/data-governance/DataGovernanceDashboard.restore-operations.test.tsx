@@ -99,6 +99,9 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   loadStoredCloudStorageConfigSafe: () => null,
   loadStoredCloudStorageConfigWithCredentials: vi.fn().mockResolvedValue(null),
   getCloudPlatformErrorI18nKey: () => undefined,
+  isImportedArchiveSlotRestorable: (
+    stats?: { recovery_kind?: unknown; restorable?: unknown } | null,
+  ) => stats?.recovery_kind !== 'partial_archive' && stats?.restorable !== false,
 }));
 
 vi.mock('@/features/settings/components/data-governance/OverviewTab', () => ({
@@ -762,6 +765,95 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await waitFor(() => {
       expect(mockDataGovernanceApi.getBackupList.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('does not offer immediate slot restore after importing a partial archive', async () => {
+    mockOpenDialog.mockResolvedValue('/path/to/v0.9.44-portable.zip');
+    mockDataGovernanceApi.importZip.mockResolvedValue({
+      job_id: 'import-partial-001',
+      kind: 'import',
+      status: 'queued',
+      message: 'started',
+    });
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+    await confirmImportWithoutPassword();
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      capturedListenerCallbacks.onComplete!({
+        job_id: 'import-partial-001',
+        kind: 'import',
+        status: 'completed',
+        phase: 'done',
+        progress: 100,
+        processed_items: 10,
+        total_items: 10,
+        cancellable: false,
+        created_at: '2026-08-25T00:00:00Z',
+        result: {
+          success: true,
+          requires_restart: false,
+          stats: {
+            backup_id: 'v0944-portable',
+            recovery_kind: 'partial_archive',
+            restorable: false,
+          },
+        },
+      });
+    });
+
+    expect(
+      screen.queryByText('data:governance.import_complete_title'),
+    ).not.toBeInTheDocument();
+    expect(mockDataGovernanceApi.restoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('offers immediate slot restore after importing a disaster-recovery archive', async () => {
+    mockOpenDialog.mockResolvedValue('/path/to/full-fidelity.zip');
+    mockDataGovernanceApi.importZip.mockResolvedValue({
+      job_id: 'import-full-001',
+      kind: 'import',
+      status: 'queued',
+      message: 'started',
+    });
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToBackupTab();
+    await confirmImportWithoutPassword();
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.importZip).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      capturedListenerCallbacks.onComplete!({
+        job_id: 'import-full-001',
+        kind: 'import',
+        status: 'completed',
+        phase: 'done',
+        progress: 100,
+        processed_items: 10,
+        total_items: 10,
+        cancellable: false,
+        created_at: '2026-08-25T00:00:00Z',
+        result: {
+          success: true,
+          requires_restart: false,
+          stats: {
+            backup_id: 'full-fidelity',
+            recovery_kind: 'disaster_recovery',
+            restorable: true,
+          },
+        },
+      });
+    });
+
+    expect(
+      await screen.findByText('data:governance.import_complete_title'),
+    ).toBeInTheDocument();
   });
 
   it('shows import progress with correct operation text', async () => {
