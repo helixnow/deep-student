@@ -900,3 +900,64 @@ libgtk-3-dev/libwebkit2gtk-4.1-dev/libsoup-3.0-dev/protobuf-compiler +
 | `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
 | `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning） |
 | `cargo fmt --check` | ✅ exit 0（rustfmt 1.98） |
+
+### Step 20 收口：i18n/VFS/schema/chat/cloud/leftover 六 rel 枝升级修复
+
+日期：2026-08-25。基座 `30fc858b`（Step 19 tip；fetch 后远端未前进，
+无需 fast-forward）。仅按序 cherry-pick 六条枝的 13 个 INCLUDE 提交，
+未合并任何隔离枝整枝，未使用 `-X theirs/ours`，全程零冲突：
+
+- A) i18n（#318，`origin/cursor/0824-rel-i18n-cde6`）：
+  - `40157848` → `01ed64bf`：release 升级提示复用已翻译 key；
+  - `b6246382` → `a4057892`：auto-sync 旧存储水合安全恢复；
+  - `3db6bfec` → `5f80e9a0`：侧栏导航 i18n key 归位；
+  - `af6078a8` → `65a53f3d`：笔记标签错误改用既有 key；
+  - `ff151fa4` → `705a05f4`：笔记通知 key 修正；
+- B) VFS（#319，`origin/cursor/0824-rel-vfs-cde6`，明确不 merge 该枝
+  的 `2bfe7c31` merge commit）：
+  - `b3ce56cd` → `f702121b`：note_props release 升级加固，新增
+    `pre_repair_vfs_v20260824_note_props`；
+  - `028a2a62` → `e7aa650e`：v0.9.44 迁移按版本序回放测试；
+  - `4759bd0c` → `77ee8ecb`：部分元数据保留与搜索分页修复；
+- C) schema（#321，`origin/cursor/0824-rel-schema-cde6`）：
+  - `6dae7316` → `caa86864`：manifest 锁定 vfs V20260824 note_props，
+    与 VFS 组零文件交集；
+- D) chat（#320，`origin/cursor/0824-rel-chat-cde6`）：
+  - `6c9a231f` → `249df98a`：chat release 升级边界加固（HPIAS
+    `session_id` 过滤对缺失/非字符串 id 拒收收紧，`guardedListen`
+    白名单只紧不松）；
+  - `8e6d8e8f` → `71a51913`：HPIAS allowlist 行为测试；
+- E) cloud（`origin/cursor/0824-rel-cloud-cde6`）：
+  - `e9952820` → `17f8cdba`：无标记旧版加密密码先对既有备份验证，
+    v1 marker 下明文与损坏内容仍 fail-closed；不回放 #177 已移植
+    SHA；
+- F) leftover tests（`origin/cursor/0824-leftover-rescan-cde6`）：
+  - `199b3377` → `0b3d20ed`：钉住卡片表面与 PDF 移动端标签页的 0824
+    集成契约（纯测试）。
+
+coordinator.rs 为加法式合并：Step 19 的
+`apply_vfs_init_missing_tables` backfill（含 recorded note_props 恢复）
+原样保留，`b3ce56cd` 的 `pre_repair_vfs_v20260824_note_props` 叠加
+其上，落地 diff 与源提交逐行一致，自动合并无 hunk 丢失。
+
+SKIP（不取）：`a6e2621b`（i18n docs）、`2bfe7c31`（VFS merge
+commit，禁整支 merge）、`13d45b0a`（VFS docs）、`1483d071`/`b0cdd9fe`
+（schema docs）、`cb842c8a`/`a2ed8071`（leftover rescan docs）；
+Step 18 finder `9176740b`/`0a6344e1` 与 Step 19 源 SHA
+`3d3516c3`/`c4a3382c`/`ef991061`/`e97b89ff`/`92c487f8`/`2ba5522d`
+均不重放；mobile 枝尚不存在，不等待。
+
+pipeline hooks、GenerativeUiExecutor、H cache、utf8_stream 调用方、
+model_special_tokens、闪卡只读、cardAgent.startGeneration、附件
+200/50、finder host buckets、qbank-tools 压缩+daily_target、
+tombstone/WebDAV decode/S3 normalize/FTP 550、HPIAS session+18
+allowlist、NOTICES 在 legal/、Composer*、G 44px/safe-area/Android
+back 均未触及。`download-pdfium.sh` 对 `licenses/pdfium.txt` 的重写
+已恢复，未带入提交。
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run version:generate && npm run typecheck` | ✅ exit 0 |
+| `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning，Rust 1.98） |
+| `node scripts/check-migrations.mjs` | ✅ exit 0（111 个迁移文件） |
