@@ -69,7 +69,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     tags: tagsProp,
     onTagsChange,
 }) => {
-    const { t, i18n } = useTranslation(['notes', 'common']);
+    const { t, i18n } = useTranslation(['notes', 'common', 'translation']);
     const isZh = (i18n.language || '').startsWith('zh');
     
     // ========== 模式判断 ==========
@@ -320,13 +320,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         ? [
             {
                 key: 'chars',
-                label: t('notes:editor.stats.chars_label', { defaultValue: isZh ? '字数' : 'Characters' }),
+                label: t('translation:stats.characters', { defaultValue: isZh ? '字数' : 'Characters' }),
                 value: String(displayCharCount),
             },
             ...(stats
                 ? [{
                     key: 'words',
-                    label: t('notes:editor.stats.words_label', { defaultValue: isZh ? '词数' : 'Words' }),
+                    label: t('translation:stats.words', { defaultValue: isZh ? '词数' : 'Words' }),
                     value: String(stats.wordCount),
                 }]
                 : []),
@@ -401,7 +401,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             await commitTags(next);
         } catch (error: unknown) {
             console.error('[NotesEditorHeader] Failed to update tags:', error);
-            showGlobalNotification('error', t('notes:header.tags_save_failed', '标签保存失败'));
+            showGlobalNotification('error', t('notes:tagStateSaveFailed', 'Failed to save tags'));
         } finally {
             setIsSavingTags(false);
         }

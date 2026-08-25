@@ -111,11 +111,11 @@ function getBlockMenuActionLabel(action: BlockMenuAction): string {
     case 'heading-3': return i18next.t('notes:blockMenu.heading3', 'Heading 3');
     case 'bullet-list': return i18next.t('notes:blockMenu.bulletList', 'Bulleted list');
     case 'ordered-list': return i18next.t('notes:blockMenu.orderedList', 'Numbered list');
-    case 'task-list': return i18next.t('notes:blockMenu.taskList', 'To-do list');
+    case 'task-list': return i18next.t('notes:slashMenu.listGroup.taskList', 'To-do list');
     case 'quote': return i18next.t('notes:blockMenu.quote', 'Quote');
-    case 'code-block': return i18next.t('notes:blockMenu.codeBlock', 'Code block');
-    case 'callout': return i18next.t('notes:blockMenu.callout', 'Callout');
-    case 'toggle': return i18next.t('notes:blockMenu.toggle', 'Toggle list');
+    case 'code-block': return i18next.t('notes:slashMenu.advancedGroup.codeBlock', 'Code block');
+    case 'callout': return i18next.t('notes:slashMenu.advancedGroup.callout', 'Callout');
+    case 'toggle': return i18next.t('notes:toggle.slashLabel', 'Toggle list');
     case 'duplicate': return i18next.t('notes:blockMenu.duplicate', 'Duplicate');
     case 'delete': return i18next.t('notes:blockMenu.delete', 'Delete');
   }

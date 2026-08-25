@@ -1775,8 +1775,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   onClick={handleWorkbenchModeAction}
                 >
                   {workbenchModeEnabled
-                    ? t('sidebar:actions.hide_workbench_mode', '隐藏学习桌面')
-                    : t('sidebar:actions.show_workbench_mode', '显示学习桌面')}
+                    ? t('sidebar:hide_workbench_mode', { defaultValue: 'Hide Learning Desktop' })
+                    : t('sidebar:show_workbench_mode', { defaultValue: 'Show Learning Desktop' })}
                 </AppMenuItem>
               </AppMenuGroup>
             </AppMenuContent>

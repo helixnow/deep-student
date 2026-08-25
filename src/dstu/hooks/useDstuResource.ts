@@ -108,12 +108,12 @@ export function useDstuResource(
             setOriginalContent(null);
           }
         } else {
-          reportError(contentResult.error, i18n.t('common:loadResource', { defaultValue: '加载资源' }));
+          reportError(contentResult.error, i18n.t('dstu:resource.getResource', { defaultValue: 'Load resource' }));
           setError(contentResult.error);
         }
       }
     } else {
-      reportError(nodeResult.error, i18n.t('common:loadResource', { defaultValue: '加载资源' }));
+      reportError(nodeResult.error, i18n.t('dstu:resource.getResource', { defaultValue: 'Load resource' }));
       setError(nodeResult.error);
     }
 

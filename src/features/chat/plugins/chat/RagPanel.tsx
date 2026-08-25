@@ -49,7 +49,7 @@ interface RagPanelProps {
 // ============================================================================
 
 export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
-  const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
+  const { t } = useTranslation(['chat_host', 'common', 'chatV2', 'enhanced_rag']);
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
@@ -264,18 +264,18 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
                 <div className="mt-2 border-t border-border/50 pt-2">
                   <label className="flex items-center justify-between [@media(pointer:coarse)]:min-h-11">
                     <span className="text-[12px] text-foreground">
-                      {t('chatV2:ragPanel.multimodalRerankLabel')}
+                      {t('enhanced_rag:enable_reranking')}
                     </span>
                     <Switch
                       size="sm"
                       checked={multimodalEnableReranking}
                       onCheckedChange={toggleMultimodalReranking}
                       disabled={ragControlsDisabled || !multimodalEnabled}
-                      aria-label={t('chatV2:ragPanel.multimodalRerankLabel')}
+                      aria-label={t('enhanced_rag:enable_reranking')}
                     />
                   </label>
                   <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                    {t('chatV2:ragPanel.multimodalRerankHelper')}
+                    {t('chat_host:rag.panel.rerank_helper')}
                   </p>
                 </div>
               </div>

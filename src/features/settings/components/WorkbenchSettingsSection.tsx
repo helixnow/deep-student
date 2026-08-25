@@ -360,9 +360,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       } else if (result.status === 'limit-exceeded') {
         showGlobalNotification(
           'warning',
-          t('workbench:settings.wallpaper.limitReached', {
+          t('workbench:wallpaperManager.limitReached', {
             limit: result.limit,
-            defaultValue: '壁纸库已满（{{limit}} 张），请先删除部分壁纸',
+            defaultValue: 'Wallpaper library is full ({{limit}} images). Remove some before importing.',
           }),
         );
       } else if (result.status === 'error') {

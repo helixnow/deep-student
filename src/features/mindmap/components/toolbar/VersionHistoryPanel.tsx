@@ -389,6 +389,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                               <span className="tabular-nums whitespace-nowrap">
                                 {t('mindmap:shellV2.versions.nodeCount', {
                                   count: preview.nodeCount,
+                                  defaultValue: '{{count}} node(s)',
                                 })}
                               </span>
                               <span aria-hidden>·</span>

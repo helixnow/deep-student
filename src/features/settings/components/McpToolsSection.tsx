@@ -4066,7 +4066,7 @@ export function McpToolsSection({
             {t('settings:tool_permissions.title')}
             {!permissionsExpanded && (
               <span className="ml-1 text-xs font-normal text-muted-foreground">
-                {t('settings:tool_permissions.expand_hint', '点击展开')}
+                {t('common:expand', { defaultValue: 'Expand' })}
               </span>
             )}
           </DsButton>
