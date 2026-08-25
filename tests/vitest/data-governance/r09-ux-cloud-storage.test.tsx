@@ -427,6 +427,9 @@ describe('CloudStorageSection 整包备份诚实文案', () => {
     expect(zhLocale.actions.fullZipHint).toContain('CDC');
     expect(zhLocale.actions.fullZipHint).toContain('拒绝导出');
     expect(zhLocale.actions.fullZipHint).toContain('不会套用已存密码');
+    expect(zhLocale.actions.fullZipHint).toContain('断点续传');
+    expect(zhLocale.actions.fullZipHint).toContain('FTP 仍需整包重下');
+    expect(zhLocale.repoCheck.description).toContain('断点续传');
     expect(enLocale.actions.fullZipHint).toMatch(/full ZIP/i);
     expect(enLocale.actions.fullZipHint).toMatch(/single object/i);
     expect(enLocale.actions.fullZipHint).toMatch(/no incremental transfer/i);
@@ -434,6 +437,9 @@ describe('CloudStorageSection 整包备份诚实文案', () => {
     expect(enLocale.actions.fullZipHint).toContain('CDC');
     expect(enLocale.actions.fullZipHint).toMatch(/export is refused/i);
     expect(enLocale.actions.fullZipHint).toMatch(/will not apply the stored password/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/resumable/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/FTP still restarts/i);
+    expect(enLocale.repoCheck.description).toMatch(/resumable/i);
     expect(Object.keys(zhLocale.actions).sort()).toEqual(Object.keys(enLocale.actions).sort());
   });
 
