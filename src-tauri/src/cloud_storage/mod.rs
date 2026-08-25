@@ -31,6 +31,8 @@ pub mod delta_upload;
 mod ftp;
 /// [R11-check] 云端仓库巡检（restic `check` 档，只读不修）
 pub mod repo_check;
+/// 断点续传下载编排（巡检 / 文件级对象共用；整包 ZIP 仍走 sync_manager）。
+pub(crate) mod resume;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
 /// [R11-lease] 记录级同步的云端目标租约（TTL、陈旧回收、两阶段选主）。

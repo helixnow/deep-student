@@ -9681,10 +9681,27 @@ impl SyncManager {
                     ),
                 )));
             }
-            storage
-                .get_file(key, dest, expected_plain_sha256, progress)
+            // 明文：续传写入旁路 `.ds-dl.part`，校验后再替换 dest。
+            // 绝不能对已有 dest 追加——旧工作区 / blob / 资产会被接上新前缀。
+            if storage.supports_resumable_download() {
+                let part = Self::file_object_part_path(dest);
+                crate::cloud_storage::resume::get_file_with_optional_resume(
+                    storage,
+                    key,
+                    &part,
+                    expected_plain_sha256,
+                    progress,
+                )
                 .await
                 .map_err(|e| SyncError::Network(format!("下载 {label} 失败: {e}")))?;
+                crate::cloud_storage::resume::persist_download(&part, dest)
+                    .map_err(|e| SyncError::Database(format!("保存 {label} 失败: {e}")))?;
+            } else {
+                storage
+                    .get_file(key, dest, expected_plain_sha256, progress)
+                    .await
+                    .map_err(|e| SyncError::Network(format!("下载 {label} 失败: {e}")))?;
+            }
             return Ok(());
         };
 
@@ -9710,11 +9727,17 @@ impl SyncManager {
             .tempfile()
             .map_err(|e| SyncError::Database(format!("创建下载临时文件失败: {}", e)))?
             .into_temp_path();
-        // 密文哈希校验由 get_file 的 expected_checksum 完成：不匹配即失败。
-        storage
-            .get_file(key, &cipher_tmp, Some(expected_cipher), progress)
-            .await
-            .map_err(|e| SyncError::Network(format!("下载加密对象 {label} 失败: {e}")))?;
+        // 密文哈希由续传编排（或整包 get_file）的 expected_checksum 完成：
+        // 不匹配即失败并丢弃临时文件。cipher_tmp 是独占临时文件，可直接续传。
+        crate::cloud_storage::resume::get_file_with_optional_resume(
+            storage,
+            key,
+            &cipher_tmp,
+            Some(expected_cipher),
+            progress,
+        )
+        .await
+        .map_err(|e| SyncError::Network(format!("下载加密对象 {label} 失败: {e}")))?;
 
         // 解密到 dest 同目录临时文件，成功且明文哈希匹配后才原子替换 dest。
         let plain_tmp = tempfile::Builder::new()
@@ -9742,6 +9765,15 @@ impl SyncManager {
             .persist(dest)
             .map_err(|e| SyncError::Database(format!("替换 {label} 目标文件失败: {e}")))?;
         Ok(())
+    }
+
+    /// 文件级对象续传旁路路径。与业务 `dest` 分开，避免对已有文件追加。
+    fn file_object_part_path(dest: &std::path::Path) -> std::path::PathBuf {
+        let name = dest
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "object".to_string());
+        dest.with_file_name(format!(".{name}.ds-dl.part"))
     }
 
     fn validate_remote_object_key(key: &str, expected_prefix: &str) -> Result<(), SyncError> {

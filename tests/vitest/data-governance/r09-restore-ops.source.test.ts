@@ -51,6 +51,8 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
   const s3 = read('src-tauri/src/cloud_storage/s3.rs');
   const syncManager = read('src-tauri/src/cloud_storage/sync_manager.rs');
   const repoCheck = read('src-tauri/src/cloud_storage/repo_check.rs');
+  const resume = read('src-tauri/src/cloud_storage/resume.rs');
+  const syncMod = read('src-tauri/src/data_governance/sync/mod.rs');
   const guide = read('docs/user-guide/16-数据管理与云同步.md');
 
   it('keeps the fail-closed default for providers without resume support', () => {
@@ -86,13 +88,22 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
 
   it('repo check uses resumable download when the provider advertises it', () => {
     expect(repoCheck).toContain('download_object_for_check');
-    expect(repoCheck).toContain('supports_resumable_download()');
-    expect(repoCheck).toContain('get_file_resumable');
-    expect(repoCheck).toContain('REPO_CHECK_DOWNLOAD_ATTEMPTS');
+    expect(repoCheck).toContain('get_file_with_optional_resume');
     // 每个对象必须先清残留，续传路径会追加，复用同一 .partial 会串对象。
     expect(repoCheck).toContain('remove_file(&local_path)');
+    expect(resume).toContain('get_file_resumable');
+    expect(resume).toContain('RESUMABLE_GET_ATTEMPTS');
+    expect(resume).toContain('dest_resume_len');
     expect(guide).toContain('巡检同一对象时支持**断点续传**');
     expect(guide).toContain('FTP 仍整包重下');
+  });
+
+  it('file-level objects resume beside dest, never appending onto the live file', () => {
+    expect(syncMod).toContain('fn file_object_part_path');
+    expect(syncMod).toContain('.ds-dl.part');
+    expect(syncMod).toContain('get_file_with_optional_resume');
+    expect(syncMod).toContain('绝不能对已有 dest 追加');
+    expect(guide).toContain('工作区 / blob / 资产');
   });
 });
 
