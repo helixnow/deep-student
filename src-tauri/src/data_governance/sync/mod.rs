@@ -157,7 +157,7 @@ where
 
 #[cfg(feature = "data_governance")]
 // 云存储集成
-use crate::cloud_storage::CloudStorage;
+use crate::cloud_storage::{device_id_short_hash, CloudStorage};
 
 /// 同步清单
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1312,9 +1312,74 @@ impl SyncManager {
     /// They must not advance cursors across a prune gap or authorize pruning.
     const AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED: bool = false;
 
-    /// 构建按设备隔离的清单路径
+    /// 记录级对象路径里的设备目录名：短哈希，避免把完整 device_id 写进 key。
+    /// 清单 JSON / 变更 payload 仍写完整 `device_id`。
+    fn device_path_id(device_id: &str) -> String {
+        device_id_short_hash(device_id)
+    }
+
+    /// 路径段是否指向该设备：兼容旧明文 `device_id` 与新短哈希。
+    fn path_id_matches_device(path_id: &str, device_id: &str) -> bool {
+        !path_id.is_empty() && (path_id == device_id || path_id == Self::device_path_id(device_id))
+    }
+
+    /// 新写入的 per-device 清单：`data_governance/manifests/<短哈希>.json`
     fn device_manifest_key(device_id: &str) -> String {
+        format!(
+            "{}/{}.json",
+            Self::MANIFESTS_PREFIX,
+            Self::device_path_id(device_id)
+        )
+    }
+
+    /// 旧客户端写下的 `data_governance/manifests/<device_id>.json`
+    fn device_manifest_legacy_key(device_id: &str) -> String {
         format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
+    }
+
+    /// 把路径里的设备段收成规范 device_id，避免新旧前缀被当成两台设备。
+    ///
+    /// 优先本机、再设备清单内容、再「同一 listing 里同时出现明文与其短哈希」。
+    fn resolve_path_device_id(
+        path_id: &str,
+        self_device_id: &str,
+        manifests: &HashMap<String, SyncManifest>,
+        path_aliases: &HashMap<String, String>,
+    ) -> String {
+        if Self::path_id_matches_device(path_id, self_device_id) {
+            return self_device_id.to_string();
+        }
+        if let Some(manifest) = manifests
+            .values()
+            .find(|manifest| Self::path_id_matches_device(path_id, &manifest.device_id))
+        {
+            if !manifest.device_id.trim().is_empty() {
+                return manifest.device_id.clone();
+            }
+        }
+        if let Some(canonical) = manifests
+            .keys()
+            .find(|canonical| Self::path_id_matches_device(path_id, canonical))
+        {
+            return canonical.clone();
+        }
+        path_aliases
+            .get(path_id)
+            .cloned()
+            .unwrap_or_else(|| path_id.to_string())
+    }
+
+    /// 同一 listing 里同时出现 `device_id` 与其短哈希时，短哈希并进明文 ID。
+    fn path_device_aliases(path_ids: &HashSet<String>) -> HashMap<String, String> {
+        let mut aliases = HashMap::new();
+        for raw in path_ids {
+            let hashed = Self::device_path_id(raw);
+            if hashed != *raw && path_ids.contains(&hashed) {
+                aliases.insert(hashed, raw.clone());
+                aliases.insert(raw.clone(), raw.clone());
+            }
+        }
+        aliases
     }
 
     fn v4_features() -> Vec<String> {
@@ -1621,6 +1686,9 @@ impl SyncManager {
         })
         .await?;
 
+        self.delete_legacy_device_manifest_if_migrated(storage, &self.device_id)
+            .await;
+
         tracing::info!(
             "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}, encrypted={}",
             manifest.device_id,
@@ -1631,6 +1699,37 @@ impl SyncManager {
         );
 
         Ok(())
+    }
+
+    async fn delete_legacy_device_manifest_if_migrated(
+        &self,
+        storage: &dyn CloudStorage,
+        device_id: &str,
+    ) {
+        let new_key = Self::device_manifest_key(device_id);
+        let legacy_key = Self::device_manifest_legacy_key(device_id);
+        if new_key == legacy_key {
+            return;
+        }
+        match storage.stat(&legacy_key).await {
+            Ok(Some(_)) => {
+                if let Err(error) = storage.delete(&legacy_key).await {
+                    tracing::warn!(
+                        "[sync] 迁移设备清单后删除旧对象 {} 失败（新清单已发布）: {}",
+                        legacy_key,
+                        error
+                    );
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    "[sync] 迁移设备清单时探测旧对象 {} 失败: {}",
+                    legacy_key,
+                    error
+                );
+            }
+        }
     }
 
     async fn mark_device_manifest_superseded(
@@ -1644,12 +1743,21 @@ impl SyncManager {
         }
         self.validate_remote_format(storage, true).await?;
 
-        let key = Self::device_manifest_key(old_device_id);
-        let mut manifest = match storage
-            .get(&key)
+        let hashed_key = Self::device_manifest_key(old_device_id);
+        let legacy_key = Self::device_manifest_legacy_key(old_device_id);
+        let hashed_bytes = storage
+            .get(&hashed_key)
             .await
-            .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?
-        {
+            .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?;
+        let legacy_bytes = if hashed_bytes.is_none() && legacy_key != hashed_key {
+            storage
+                .get(&legacy_key)
+                .await
+                .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?
+        } else {
+            None
+        };
+        let mut manifest = match hashed_bytes.or(legacy_bytes) {
             Some(bytes) => {
                 let decoded = self.decode_payload(&bytes)?;
                 serde_json::from_slice::<SyncManifest>(&decoded)
@@ -1680,9 +1788,11 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("序列化旧设备清单失败: {}", e)))?;
         let payload = self.encode_payload(&json)?;
         storage
-            .put(&key, &payload)
+            .put(&hashed_key, &payload)
             .await
             .map_err(|e| SyncError::Network(format!("上传旧设备 superseded_by 失败: {}", e)))?;
+        self.delete_legacy_device_manifest_if_migrated(storage, old_device_id)
+            .await;
         Ok(())
     }
 
@@ -1723,7 +1833,9 @@ impl SyncManager {
                 .and_then(|f| f.strip_suffix(".json"))
                 .unwrap_or("");
 
-            if file_device_id == self.device_id || file_device_id.is_empty() {
+            if file_device_id.is_empty()
+                || Self::path_id_matches_device(file_device_id, &self.device_id)
+            {
                 continue;
             }
 
@@ -1753,6 +1865,9 @@ impl SyncManager {
                         continue;
                     }
                 };
+                if Self::path_id_matches_device(&manifest.device_id, &self.device_id) {
+                    continue;
+                }
                 any_found = true;
                 if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
                     if latest_created_at.is_none_or(|prev| dt > prev) {
@@ -1870,7 +1985,7 @@ impl SyncManager {
                 "云端清单列表被截断，已停止同步以避免漏读设备状态".to_string(),
             ));
         }
-        let mut manifests = HashMap::new();
+        let mut manifests: HashMap<String, SyncManifest> = HashMap::new();
         for file in list.files {
             let Some(device_id) = file
                 .key
@@ -1898,7 +2013,23 @@ impl SyncManager {
             })?;
             match serde_json::from_slice::<SyncManifest>(&decoded) {
                 Ok(manifest) => {
-                    manifests.insert(device_id.to_string(), manifest);
+                    let canonical = if manifest.device_id.trim().is_empty() {
+                        device_id.to_string()
+                    } else {
+                        manifest.device_id.clone()
+                    };
+                    let incoming_hashed = file.key == Self::device_manifest_key(&canonical);
+                    if let Some(existing) = manifests.get(&canonical) {
+                        if manifest.published_max_seq < existing.published_max_seq {
+                            continue;
+                        }
+                        if manifest.published_max_seq == existing.published_max_seq
+                            && !incoming_hashed
+                        {
+                            continue;
+                        }
+                    }
+                    manifests.insert(canonical, manifest);
                 }
                 Err(e) => {
                     return Err(SyncError::Database(format!(
@@ -2189,6 +2320,16 @@ impl SyncManager {
 
         let mut v3_files: HashMap<String, Vec<(u64, u64, String)>> = HashMap::new();
         let mut legacy_files: Vec<(String, u64, String)> = Vec::new();
+        let listed_path_ids: HashSet<String> = files
+            .iter()
+            .filter_map(|key| match Self::parse_change_key(key) {
+                Some(ParsedChangeKey::V4Shard { device_id, .. })
+                | Some(ParsedChangeKey::V3 { device_id, .. })
+                | Some(ParsedChangeKey::Legacy { device_id, .. }) => Some(device_id),
+                None => None,
+            })
+            .collect();
+        let path_aliases = Self::path_device_aliases(&listed_path_ids);
         for key in files {
             match Self::parse_change_key(&key) {
                 Some(ParsedChangeKey::V4Shard {
@@ -2202,21 +2343,33 @@ impl SyncManager {
                     seq,
                     version,
                 }) => {
-                    if device_id == self.device_id {
+                    if Self::path_id_matches_device(&device_id, &self.device_id) {
                         continue;
                     }
-                    v3_files.entry(device_id).or_default().push((
+                    let canonical = Self::resolve_path_device_id(
+                        &device_id,
+                        &self.device_id,
+                        &device_manifests,
+                        &path_aliases,
+                    );
+                    v3_files.entry(canonical).or_default().push((
                         seq,
                         Self::normalize_version_to_seconds(version),
                         key,
                     ));
                 }
                 Some(ParsedChangeKey::Legacy { device_id, version }) => {
-                    if device_id == self.device_id {
+                    if Self::path_id_matches_device(&device_id, &self.device_id) {
                         continue;
                     }
+                    let canonical = Self::resolve_path_device_id(
+                        &device_id,
+                        &self.device_id,
+                        &device_manifests,
+                        &path_aliases,
+                    );
                     legacy_files.push((
-                        device_id,
+                        canonical,
                         Self::normalize_version_to_seconds(version),
                         key,
                     ));
@@ -2238,11 +2391,20 @@ impl SyncManager {
                     uploader, duplicate[0].0, duplicate[0].2, duplicate[1].2
                 )));
             }
-            let mut expected = store.get_cursor(&instance_id, &uploader)?.saturating_add(1);
+            let mut expected = store
+                .get_cursor(&instance_id, &uploader)?
+                .max(store.get_cursor(&instance_id, &Self::device_path_id(&uploader))?)
+                .saturating_add(1);
             let listed_max = files.iter().map(|(seq, _, _)| *seq).max().unwrap_or(0);
             let published_max = device_manifests
                 .get(&uploader)
                 .map(|m| m.published_max_seq)
+                .or_else(|| {
+                    device_manifests
+                        .values()
+                        .find(|m| Self::path_id_matches_device(&uploader, &m.device_id))
+                        .map(|m| m.published_max_seq)
+                })
                 .unwrap_or(0)
                 .max(listed_max);
 
@@ -2301,7 +2463,15 @@ impl SyncManager {
                             key
                         )));
                     }
-                    if !payload.source_device_id.is_empty() && payload.source_device_id != uploader
+                    let path_device_id = match Self::parse_change_key(&key) {
+                        Some(ParsedChangeKey::V4Shard { device_id, .. })
+                        | Some(ParsedChangeKey::V3 { device_id, .. })
+                        | Some(ParsedChangeKey::Legacy { device_id, .. }) => device_id,
+                        None => String::new(),
+                    };
+                    if !payload.source_device_id.is_empty()
+                        && payload.source_device_id != uploader
+                        && !Self::path_id_matches_device(&path_device_id, &payload.source_device_id)
                     {
                         return Err(SyncError::Network(format!(
                             "变更分片路径 device 与 payload 不一致: {}",
@@ -2333,6 +2503,11 @@ impl SyncManager {
                         all_changes.push((source_device.clone(), source_seq, version, change));
                     }
                     cursor_advancements.insert(uploader.clone(), seq);
+                    cursor_advancements.insert(Self::device_path_id(&uploader), seq);
+                    if !source_device.is_empty() {
+                        cursor_advancements.insert(source_device.clone(), seq);
+                        cursor_advancements.insert(Self::device_path_id(&source_device), seq);
+                    }
                     index += 1;
                 }
 
@@ -2467,17 +2642,20 @@ impl SyncManager {
         match Self::parse_change_key(key) {
             Some(ParsedChangeKey::V4Shard { device_id, .. })
             | Some(ParsedChangeKey::V3 { device_id, .. })
-            | Some(ParsedChangeKey::Legacy { device_id, .. }) => device_id == self_device_id,
+            | Some(ParsedChangeKey::Legacy { device_id, .. }) => {
+                Self::path_id_matches_device(&device_id, self_device_id)
+            }
             None => false,
         }
     }
 
     /// 从文件路径解析版本号
     fn parse_version_from_key(key: &str) -> Option<u64> {
-        // v3 格式: data_governance/changes/{device_id}/{seq}-{version}-{nonce}.json.zst
-        // 新格式: data_governance/changes/{device_id}/{version}-{nonce}.json.zst
-        // 旧格式: data_governance/changes/{device_id}/{version}-{nonce}.json
-        //     或: data_governance/changes/{device_id}/{version}.json
+        // v3 格式: data_governance/changes/{path_id}/{seq}-{version}-{nonce}.json.zst
+        // 新格式: data_governance/changes/{path_id}/{version}-{nonce}.json.zst
+        // 旧格式: data_governance/changes/{path_id}/{version}-{nonce}.json
+        //     或: data_governance/changes/{path_id}/{version}.json
+        // path_id 新写入为 device_id 短哈希，读取仍兼容旧明文 device_id。
         match Self::parse_change_key(key) {
             Some(ParsedChangeKey::V4Shard { version, .. }) => Some(version),
             Some(ParsedChangeKey::V3 { version, .. }) => Some(version),
@@ -2623,7 +2801,7 @@ impl SyncManager {
         format!(
             "{}/{}/{}-{}.json.zst",
             Self::CHANGES_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             version,
             nonce
         )
@@ -2635,7 +2813,7 @@ impl SyncManager {
         format!(
             "{}/{}/{:012}-{}-{}.json.zst",
             Self::CHANGES_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             seq,
             version,
             nonce
@@ -2648,7 +2826,7 @@ impl SyncManager {
         format!(
             "{}/{}/{:012}-{}-{}.json.zst",
             Self::V4_SHARDS_PREFIX,
-            self.device_id,
+            Self::device_path_id(&self.device_id),
             seq,
             version,
             operation_id
@@ -2689,20 +2867,24 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         device_id: &str,
     ) -> Result<u64, SyncError> {
-        let mut keys = Self::list_complete_keys(
-            storage,
-            &format!("{}/{}", Self::CHANGES_PREFIX, device_id),
-            "本设备 v3 变更文件",
-        )
-        .await?;
-        keys.extend(
-            Self::list_complete_keys(
-                storage,
-                &format!("{}/{}", Self::V4_SHARDS_PREFIX, device_id),
-                "本设备 v4 变更分片",
-            )
-            .await?,
-        );
+        let hashed = Self::device_path_id(device_id);
+        let mut prefixes = vec![
+            format!("{}/{}", Self::CHANGES_PREFIX, hashed),
+            format!("{}/{}", Self::V4_SHARDS_PREFIX, hashed),
+        ];
+        if hashed != device_id {
+            prefixes.push(format!("{}/{}", Self::CHANGES_PREFIX, device_id));
+            prefixes.push(format!("{}/{}", Self::V4_SHARDS_PREFIX, device_id));
+        }
+        let mut keys = Vec::new();
+        for prefix in prefixes {
+            let label = if prefix.contains("/v4/shards/") {
+                "本设备 v4 变更分片"
+            } else {
+                "本设备 v3 变更文件"
+            };
+            keys.extend(Self::list_complete_keys(storage, &prefix, label).await?);
+        }
         Ok(keys
             .iter()
             .filter_map(|key| match Self::parse_change_key(key) {
@@ -2715,7 +2897,7 @@ impl SyncManager {
                     device_id: parsed,
                     seq,
                     ..
-                }) if parsed == device_id => Some(seq),
+                }) if Self::path_id_matches_device(&parsed, device_id) => Some(seq),
                 _ => None,
             })
             .max()
@@ -3180,7 +3362,10 @@ impl SyncManager {
         let active_cutoff = chrono::Utc::now() - chrono::Duration::days(active_days as i64);
         let mut active_consumer_cursors = Vec::new();
         for (device_id, manifest) in manifests {
-            if device_id == self.device_id || manifest.superseded_by.is_some() {
+            if Self::path_id_matches_device(&device_id, &self.device_id)
+                || Self::path_id_matches_device(&manifest.device_id, &self.device_id)
+                || manifest.superseded_by.is_some()
+            {
                 continue;
             }
             let active = Self::parse_flexible_timestamp(&manifest.created_at)
@@ -3301,7 +3486,8 @@ impl SyncManager {
             match Self::parse_change_key(&key) {
                 Some(ParsedChangeKey::V4Shard { device_id, seq, .. })
                 | Some(ParsedChangeKey::V3 { device_id, seq, .. })
-                    if device_id == self.device_id && seq <= safe_seq =>
+                    if Self::path_id_matches_device(&device_id, &self.device_id)
+                        && seq <= safe_seq =>
                 {
                     storage.delete(&key).await.map_err(|e| {
                         SyncError::Network(format!("删除变更文件失败 {}: {}", key, e))
@@ -12095,10 +12281,15 @@ mod tests {
     fn regression_c1_v3_change_key_parses_seq_and_timestamp() {
         let manager = SyncManager::new("device-1".to_string());
         let key = manager.build_change_key_v3(42, 1_707_500_000);
+        let path_id = SyncManager::device_path_id("device-1");
 
         assert_eq!(
             SyncManager::parse_version_from_key(&key),
             Some(1_707_500_000)
+        );
+        assert!(
+            !key.contains("device-1"),
+            "新 v3 路径不得暴露明文 device_id: {key}"
         );
         assert!(matches!(
             SyncManager::parse_change_key(&key),
@@ -12106,7 +12297,7 @@ mod tests {
                 device_id,
                 seq: 42,
                 version: 1_707_500_000,
-            }) if device_id == "device-1"
+            }) if device_id == path_id
         ));
     }
 
@@ -12114,7 +12305,15 @@ mod tests {
     fn v4_change_shard_key_is_sequenced_and_parseable() {
         let manager = SyncManager::new("device-1".to_string());
         let key = manager.build_change_key_v4(43, 1_707_500_001);
-        assert!(key.starts_with("data_governance/v4/shards/device-1/"));
+        let path_id = SyncManager::device_path_id("device-1");
+        assert!(
+            key.starts_with(&format!("data_governance/v4/shards/{path_id}/")),
+            "新 v4 分片应落在短哈希目录: {key}"
+        );
+        assert!(
+            !key.contains("device-1"),
+            "新 v4 路径不得暴露明文 device_id: {key}"
+        );
         assert!(matches!(
             SyncManager::parse_change_key(&key),
             Some(ParsedChangeKey::V4Shard {
@@ -12122,7 +12321,7 @@ mod tests {
                 seq: 43,
                 version: 1_707_500_001,
                 operation_id,
-            }) if device_id == "device-1" && !operation_id.is_empty()
+            }) if device_id == path_id && !operation_id.is_empty()
         ));
     }
 
@@ -12317,6 +12516,64 @@ mod tests {
         // 但版本号应可正确解析
         assert_eq!(SyncManager::parse_version_from_key(&key1), Some(1707500000));
         assert_eq!(SyncManager::parse_version_from_key(&key2), Some(1707500000));
+        let path_id = SyncManager::device_path_id("device-1");
+        assert!(key1.contains(&format!("data_governance/changes/{path_id}/")));
+        assert!(
+            !key1.contains("device-1"),
+            "legacy 变更路径也不得暴露明文 device_id: {key1}"
+        );
+    }
+
+    #[test]
+    fn record_path_id_is_short_hash_and_matches_raw_or_hashed() {
+        let raw = "device-1";
+        let hashed = SyncManager::device_path_id(raw);
+        assert_eq!(hashed.len(), 16);
+        assert_ne!(hashed, raw);
+        assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(SyncManager::path_id_matches_device(raw, raw));
+        assert!(SyncManager::path_id_matches_device(&hashed, raw));
+        assert!(!SyncManager::path_id_matches_device("device-other", raw));
+        assert_eq!(
+            SyncManager::device_manifest_key(raw),
+            format!("data_governance/manifests/{hashed}.json")
+        );
+        assert_eq!(
+            SyncManager::device_manifest_legacy_key(raw),
+            "data_governance/manifests/device-1.json"
+        );
+    }
+
+    #[test]
+    fn is_own_change_file_accepts_hashed_and_legacy_raw_prefix() {
+        let hashed = SyncManager::device_path_id("device-1");
+        let hashed_key =
+            format!("data_governance/changes/{hashed}/000000000001-1707500000-nonce.json.zst");
+        let raw_key = "data_governance/changes/device-1/000000000001-1707500000-nonce.json.zst";
+        let other = format!(
+            "data_governance/changes/{}/000000000001-1707500000-nonce.json.zst",
+            SyncManager::device_path_id("device-2")
+        );
+        assert!(SyncManager::is_own_change_file(&hashed_key, "device-1"));
+        assert!(SyncManager::is_own_change_file(raw_key, "device-1"));
+        assert!(!SyncManager::is_own_change_file(&other, "device-1"));
+    }
+
+    #[test]
+    fn path_aliases_merge_raw_and_hashed_prefixes() {
+        let raw = "device-peer".to_string();
+        let hashed = SyncManager::device_path_id(&raw);
+        let mut ids = HashSet::new();
+        ids.insert(raw.clone());
+        ids.insert(hashed.clone());
+        ids.insert("unrelated".to_string());
+        let aliases = SyncManager::path_device_aliases(&ids);
+        assert_eq!(
+            aliases.get(&hashed).map(String::as_str),
+            Some("device-peer")
+        );
+        assert_eq!(aliases.get(&raw).map(String::as_str), Some("device-peer"));
+        assert!(aliases.get("unrelated").is_none());
     }
 
     #[test]
