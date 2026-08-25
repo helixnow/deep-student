@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
         'chrome.dismiss': '忽略',
         'chrome.streaming': '生成中',
         'action.unregistered_hint': '未注册',
+        'action.unregistered_label': '未注册操作',
         'action.copy_intent': '复制意图',
         'action.copy_block': '复制该组件',
         'panel.no_intent': '无 UI 意图数据',
@@ -188,7 +189,8 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: '应用到笔记' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '应用到笔记' })).not.toBeInTheDocument();
   });
 
   it('enables hpias event bridge when researchSessionId is present', () => {
@@ -212,6 +214,54 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
       enabled: true,
       sessionId: 'chat-hpias-1',
     });
+  });
+
+  it('subscribes to hpias_event while the research block is still streaming', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research' },
+    });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: true },
+          toolInput: { intent, researchSessionId: 'chat-hpias-stream' },
+        })}
+        isStreaming
+        store={makeStore()}
+      />,
+    );
+
+    expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
+      enabled: true,
+      sessionId: 'chat-hpias-stream',
+    });
+  });
+
+  it('does not subscribe to hpias_event when research blocks lack a session id', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research' },
+    });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
+      enabled: false,
+      sessionId: undefined,
+    });
+    expect(screen.queryByTestId('hpias-generative-research-panel')).not.toBeInTheDocument();
   });
 
   it('shows live hpias panel after session events and keeps non-research blocks', () => {
@@ -257,6 +307,48 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     );
 
     expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getByText('Research starting…')).toBeInTheDocument();
+  });
+
+  it('keeps the live panel for session A after session B starts', () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research question?' },
+    });
+    intent.blocks.unshift({ type: 'text', props: { body: 'Research starting…' } });
+
+    render(
+      <GenerativeUIBlockComponent
+        block={makeBlock({
+          toolOutput: { intent, isStreaming: false },
+          toolInput: { intent, researchSessionId: 'live-a' },
+        })}
+        store={makeStore()}
+      />,
+    );
+
+    act(() => {
+      const handleEvent = useHpiasStore.getState().actions.handleEvent;
+      handleEvent({ type: 'session_started', session_id: 'live-a', question: 'A' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 'live-a',
+        round: 1,
+        plan: { core: { queries: ['Topic A stays'] } },
+      });
+      handleEvent({ type: 'session_started', session_id: 'live-b', question: 'B' });
+      handleEvent({
+        type: 'plan_generated',
+        session_id: 'live-b',
+        round: 1,
+        plan: { core: { queries: ['Topic B wins'] } },
+      });
+    });
+
+    expect(screen.getByTestId('hpias-generative-research-panel')).toBeInTheDocument();
+    expect(screen.getAllByText('Topic A stays').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Topic B wins')).not.toBeInTheDocument();
     expect(screen.getByText('Research starting…')).toBeInTheDocument();
   });
 });

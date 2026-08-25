@@ -2370,8 +2370,9 @@ export class ChatV2TauriAdapter {
           // 流式错误 - 重置状态为 idle
           chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
-          this.store.completeStream('error');
+          // 先归一化再收尾，孤儿 preparing 块才能显示后端真实原因而不是通用兜底文案
           const streamError = normalizeStreamTerminalError(payload.error);
+          this.store.completeStream('error', streamError);
           this.store.updateMessageMeta(
             payload.messageId!,
             streamErrorMetaPatch(streamError),
@@ -2879,7 +2880,7 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Execute wake session failed:', errorMsg);
       this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
-      this.store.completeStream('error');
+      this.store.completeStream('error', normalizeStreamTerminalError(error));
       showGlobalNotification('error', formatUserFacingError(
         error,
         'chatV2:error.sendFailed',
@@ -3606,7 +3607,7 @@ export class ChatV2TauriAdapter {
       console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
       // 清除流式状态
       // 🔧 修复：同时清除 stale currentStreamingMessageId（completeStream 在 idle 时不清除它）
-      this.store.completeStream('error');
+      this.store.completeStream('error', normalizeStreamTerminalError(error));
       this.store.setCurrentStreamingMessage(null);
       // 🔧 修复：不在此处显示通知，让 store.continueMessage 的 fallback（sendMessage）处理
       // 原代码在此显示 "继续执行失败" 通知，但 store 会 fallback 到 sendMessage('继续')，

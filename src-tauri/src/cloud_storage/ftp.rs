@@ -286,6 +286,33 @@ impl FtpStorage {
             || err.contains("directory not found")
     }
 
+    /// 删除时仅把明确表达 not-found / gone 的 550 CWD 回复视为父目录已不存在。
+    ///
+    /// 550 也用于权限失败和服务端策略拒绝（vsftpd 的 `550 Failed to change
+    /// directory.` 即属无法归类的多义回复）；仅凭状态码或排除少量权限文案放行，
+    /// 会把真实删除失败误报为成功。无法归类的 550 必须按真实错误上抛（fail-closed）。
+    fn is_missing_directory_error(error: &AppError) -> bool {
+        if Self::is_not_found_error(error) {
+            return true;
+        }
+        let err = error.to_string().to_lowercase();
+        if Self::extract_status_code(&err) != Some(550) {
+            return false;
+        }
+        let explicitly_missing = [
+            "not found",
+            "no such file",
+            "no such directory",
+            "not retrievable",
+            "does not exist",
+            "不存在",
+        ]
+        .iter()
+        .any(|marker| err.contains(marker));
+        let explicitly_gone = err.contains("410") && err.contains("gone");
+        explicitly_missing || explicitly_gone
+    }
+
     fn parse_list_entry(line: &str) -> Option<FtpListEntry> {
         let parsed = FtpListFile::from_mlsx_line(line)
             .or_else(|_| FtpListFile::try_from(line))
@@ -985,12 +1012,12 @@ impl CloudStorage for FtpStorage {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
                     let full_parent = self.remote_path(parent_path);
-                    if let Err(e) = client.cwd(&Self::absolute_path(&full_parent)).await {
-                        if Self::is_not_found_error(&e) {
-                            let _ = client.quit().await;
-                            return Ok(());
+                    if let Err(err) = client.cwd(&Self::absolute_path(&full_parent)).await {
+                        if !Self::is_missing_directory_error(&err) {
+                            return Err(err);
                         }
-                        return Err(e);
+                        let _ = client.quit().await;
+                        return Ok(());
                     }
                 }
             }
@@ -1303,6 +1330,21 @@ mod tests {
     }
 
     #[test]
+    fn explicit_missing_parent_directory_cwd_is_treated_as_absent() {
+        for message in [
+            "FTP CWD 失败：Invalid response: [550] 550 /root/data_governance/assets: No such file or directory",
+            "FTP CWD 失败：Invalid response: [550] 550 Directory not found.",
+            "FTP CWD 失败：Invalid response: [550] 550 410 Gone.",
+        ] {
+            let error = AppError::file_system(message);
+            assert!(
+                FtpStorage::is_missing_directory_error(&error),
+                "expected {message} to be treated as a missing directory"
+            );
+        }
+    }
+
+    #[test]
     fn test_extract_status_code() {
         assert_eq!(
             FtpStorage::extract_status_code("invalid response: [550] 550 no such file"),
@@ -1314,6 +1356,23 @@ mod tests {
         );
         assert_eq!(FtpStorage::extract_status_code("object not found"), None);
         assert_eq!(FtpStorage::extract_status_code("connection reset"), None);
+    }
+
+    #[test]
+    fn ambiguous_or_permission_denied_cwd_is_still_an_error() {
+        for message in [
+            "FTP CWD 失败：Invalid response: [550] 550 Failed to change directory.",
+            "FTP CWD 失败：Invalid response: [550] 550 Permission denied.",
+            "FTP CWD 失败：Invalid response: [550] 550 Requested action not taken.",
+            "FTP CWD 失败：Invalid response: [450] 450 No such directory.",
+            "FTP CWD 失败：Invalid response: [450] 450 /root/550: No such directory.",
+        ] {
+            let error = AppError::file_system(message);
+            assert!(
+                !FtpStorage::is_missing_directory_error(&error),
+                "expected ambiguous or non-550 CWD failure to remain an error: {message}"
+            );
+        }
     }
 
     #[test]

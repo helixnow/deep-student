@@ -97,7 +97,7 @@ export function CollapsibleModelSelector({
       <DsButton
         type="button"
         variant="ghost"
-        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
+        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11', buttonClassName)}
         disabled={disabled}
         onClick={toggleExpanded}
       >
@@ -140,7 +140,7 @@ export function CollapsibleModelSelector({
                   <span>{t('model_selector.total_model_count', { count: totalCount })}</span>
                   {cacheTimeText && (
                     <span className="flex items-center gap-1">
-                      {isFromCache && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{t('model_selector.cached')}</span>}
+                      {isFromCache && <span className="text-2xs px-1.5 py-0.5 rounded bg-muted">{t('model_selector.cached')}</span>}
                       {cacheTimeText}
                     </span>
                   )}
@@ -161,7 +161,7 @@ export function CollapsibleModelSelector({
                           <button
                             type="button"
                             className={cn(
-                              'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
+                              'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm [@media(pointer:coarse)]:min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
                               'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
                               selected
                                 ? 'bg-accent text-accent-foreground'

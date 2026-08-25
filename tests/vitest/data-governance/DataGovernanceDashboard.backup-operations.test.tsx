@@ -175,7 +175,7 @@ beforeEach(() => {
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
   const backupTab = await screen.findByRole('button', {
-    name: /备份|data:governance\.tab_backup/i,
+    name: /^(?:备份|data:governance\.tab_backup)$/i,
   });
   fireEvent.click(backupTab);
   await waitFor(() => {
@@ -206,13 +206,13 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     const tieredToggle = screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     });
     fireEvent.click(tieredToggle);
 
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.core_label/i)).toBeInTheDocument();
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.important_label/i)).toBeInTheDocument();
-    expect(screen.getByText(/settings:data_governance\.backup_tiers\.rebuildable_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/核心数据|settings:data_governance\.backup_tiers\.core_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/重要数据|settings:data_governance\.backup_tiers\.important_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/可重建数据|settings:data_governance\.backup_tiers\.rebuildable_label/i)).toBeInTheDocument();
 
     const exportBtn = screen.getByRole('button', {
       name: /导出备份|data:governance\.export_backup/i,
@@ -232,7 +232,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const exportBtn = screen.getByRole('button', {
@@ -268,12 +268,12 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     // 找到 rebuildable 层级的可点击区域（core + important 已默认选中）
     const rebuildableTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.rebuildable_label/i,
+      /可重建数据|settings:data_governance\.backup_tiers\.rebuildable_label/i,
     );
 
     // 追加勾选 rebuildable 层级
@@ -310,12 +310,12 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     // 取消 core 层级选择（important 仍保持默认选中）
     const coreTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.core_label/i,
+      /核心数据|settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
 
@@ -341,12 +341,12 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     // 取消默认选中的 core 与 important 层级
     const coreTier = screen.getByText(
-      /settings:data_governance\.backup_tiers\.core_label/i,
+      /核心数据|settings:data_governance\.backup_tiers\.core_label/i,
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
     const importantTier = screen.getByText(
@@ -622,7 +622,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -707,7 +707,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     await navigateToBackupTab();
 
     fireEvent.click(screen.getByRole('checkbox', {
-      name: /data:governance\.use_tiered_backup/i,
+      name: /使用分层备份|data:governance\.use_tiered_backup/i,
     }));
 
     const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
@@ -932,7 +932,7 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
     expect(fullBackupBtn).toBeDisabled();
     expect(
       screen.getByRole('checkbox', {
-        name: /data:governance\.use_tiered_backup/i,
+        name: /使用分层备份|data:governance\.use_tiered_backup/i,
       }),
     ).toBeDisabled();
 

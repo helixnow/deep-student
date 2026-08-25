@@ -17,10 +17,14 @@ import {
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
 import { coercePartialIntent } from './utils/coercePartialIntent';
-import { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
+import {
+  collectUnregisteredActionIds,
+  firstReachableActionBarIndex,
+} from './utils/collectUnregisteredActionIds';
 import { fingerprintGenerativeUIIntent } from './utils/fingerprintGenerativeUIIntent';
 import { pushDefaultGenerativeUIIntentSnapshot } from './utils/intentSnapshotRing';
 import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
   STREAM_BUFFER_CAPPED_WARNING,
   isSerializedStreamValueOverCap,
   isStreamBufferOverCap,
@@ -36,6 +40,7 @@ import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
 import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
+import { GenerativeActionUndoStack } from './handlers/actionUndoStack';
 
 import './blocks';
 import './generative-ui.css';
@@ -91,6 +96,7 @@ function resolveDisplayIntent(
   incomingWarnings: string[] | undefined,
   truncatedCount: number | undefined,
   isStreaming: boolean,
+  maxStreamChars: number,
 ): {
   intent: GenerativeUIIntent | null;
   warnings: string[];
@@ -103,7 +109,7 @@ function resolveDisplayIntent(
   const explicitCount = positiveCount(truncatedCount);
 
   if (typeof input !== 'string') {
-    if (isStreaming && isSerializedStreamValueOverCap(input)) {
+    if (isStreaming && isSerializedStreamValueOverCap(input, maxStreamChars)) {
       return {
         intent: null,
         warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
@@ -131,7 +137,7 @@ function resolveDisplayIntent(
     };
   }
 
-  if (isStreaming && isStreamBufferOverCap(input.length)) {
+  if (isStreaming && isStreamBufferOverCap(input.length, maxStreamChars)) {
     return {
       intent: null,
       warnings: mergeWarnings(extra, [STREAM_BUFFER_CAPPED_WARNING]),
@@ -142,7 +148,7 @@ function resolveDisplayIntent(
     };
   }
 
-  const parsed = parseGenerativeUIIntent(input);
+  const parsed = parseGenerativeUIIntent(input, maxStreamChars);
   if (parsed.ok) {
     const capped = capIntentBlocks(parsed.intent);
     const warnings = mergeWarnings(
@@ -159,7 +165,7 @@ function resolveDisplayIntent(
     };
   }
 
-  const recovered = parseGenerativeUIIntentRecovered(input);
+  const recovered = parseGenerativeUIIntentRecovered(input, maxStreamChars);
   if (recovered.ok) {
     const warnings = mergeWarnings(extra, recovered.warnings);
     let recoveredOverflow: number | undefined;
@@ -185,7 +191,7 @@ function resolveDisplayIntent(
   }
 
   if (isStreaming) {
-    const coerced = coercePartialIntent(input);
+    const coerced = coercePartialIntent(input, maxStreamChars);
     if (coerced.intent) {
       const capped = capIntentBlocks(coerced.intent);
       const warnings = mergeWarnings(
@@ -230,6 +236,7 @@ export function GenerativeUIRenderer({
   actionHandlers,
   warnings: incomingWarnings,
   truncatedCount: incomingTruncatedCount,
+  maxStreamChars = MAX_GENERATIVE_UI_STREAM_CHARS,
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
@@ -238,9 +245,17 @@ export function GenerativeUIRenderer({
   const contrast = usePrefersContrast();
   const rendererId = useId();
   const actionsTargetId = `generative-ui-actions-${rendererId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const undoStack = useMemo(() => new GenerativeActionUndoStack(), []);
   const resolved = useMemo(
-    () => resolveDisplayIntent(intentInput, incomingWarnings, incomingTruncatedCount, isStreaming),
-    [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming],
+    () =>
+      resolveDisplayIntent(
+        intentInput,
+        incomingWarnings,
+        incomingTruncatedCount,
+        isStreaming,
+        maxStreamChars,
+      ),
+    [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming, maxStreamChars],
   );
   const actionBarRenderContext = useMemo(
     () => ({ actionHandlers, onAction }),
@@ -261,6 +276,10 @@ export function GenerativeUIRenderer({
     () => (displayIntent ? collectUnregisteredActionIds(displayIntent, actionHandlers) : []),
     [actionHandlers, displayIntent],
   );
+  const reachableActionBarIndex = displayIntent
+    ? firstReachableActionBarIndex(displayIntent, actionHandlers)
+    : -1;
+  const hasActionBar = reachableActionBarIndex >= 0;
 
   useEffect(() => {
     if (!displayIntent || !resolved.snapshotEligible) return;
@@ -320,13 +339,15 @@ export function GenerativeUIRenderer({
       aria-label={t('a11y.region_label')}
       aria-busy={isStreaming || undefined}
     >
-      <a
-        href={`#${actionsTargetId}`}
-        className="sr-only focus:not-sr-only"
-        data-skip-to-actions
-      >
-        {t('a11y.skip_to_actions')}
-      </a>
+      {hasActionBar ? (
+        <a
+          href={`#${actionsTargetId}`}
+          className="sr-only focus:not-sr-only"
+          data-skip-to-actions
+        >
+          {t('a11y.skip_to_actions')}
+        </a>
+      ) : null}
       {showChrome ? (
         <GenerativeUIChrome
           key="generative-ui-chrome"
@@ -345,8 +366,6 @@ export function GenerativeUIRenderer({
       ) : null}
 
       <div
-        id={actionsTargetId}
-        tabIndex={-1}
         className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
         data-layout-columns={columns}
@@ -360,6 +379,7 @@ export function GenerativeUIRenderer({
               span={block.span}
               layoutMode={mode}
               blockId={block.id}
+              focusTargetId={index === reachableActionBarIndex ? actionsTargetId : undefined}
               renderContext={block.type === 'action-bar' ? actionBarRenderContext : undefined}
             >
               {node}
@@ -404,6 +424,7 @@ export function GenerativeUIRenderer({
                 {...actionBarProps}
                 actionHandlers={actionHandlers}
                 onAction={onAction}
+                undoStack={undoStack}
               />,
             );
           }

@@ -68,6 +68,18 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
+// ModernSidebar 的会话搜索入口依赖 CommandPaletteProvider 上下文；
+// 本测试只关心会话指示器，stub 掉 useCommandPalette 以免整棵 Provider 树入场。
+vi.mock('@/command-palette', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/command-palette')>();
+  return {
+    ...actual,
+    useCommandPalette: () => ({
+      openSessionSearch: () => undefined,
+    }),
+  };
+});
+
 vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     getCurrentSessionId: getCurrentSessionIdMock,

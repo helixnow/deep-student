@@ -1,6 +1,8 @@
 //! 摘要 prompt 模板（按会话模式选择）、结构校验、标识符保真审计与消息渲染。
 
-use crate::chat_v2::types::{block_types, CanonicalContentPart, ChatMessage, MessageBlock, MessageRole};
+use crate::chat_v2::types::{
+    block_types, CanonicalContentPart, ChatMessage, MessageBlock, MessageRole,
+};
 use crate::models::ChatMessage as LegacyChatMessage;
 use chrono::Utc;
 use std::collections::HashSet;

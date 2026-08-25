@@ -74,6 +74,8 @@ describe('fileDefinition (PDF multimodal)', () => {
       }],
     };
 
+    // injectModes is explicit: the default is text-only, while this case opts
+    // into text + page images and verifies OCR remains opt-in.
     const blocks = fileDefinition.formatToBlocks(resource, {
       isMultimodal: false,
       injectModes: { pdf: ['text', 'image'] },

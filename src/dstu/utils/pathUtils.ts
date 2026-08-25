@@ -8,6 +8,7 @@
  * 2. 支持新路径格式（/{folder_path}/{resource_id}）
  */
 
+import i18next from 'i18next';
 import type { ParsedPath, PathUtils } from '../types/path';
 import {
   MAX_RESOURCE_ID_LENGTH,
@@ -78,21 +79,31 @@ function isResourceId(segment: string): boolean {
  */
 function validateResourceId(id: string): { valid: boolean; error?: string } {
   if (!id) {
-    return { valid: false, error: '资源ID不能为空' };
+    return {
+      valid: false,
+      error: i18next.t('llm_usage:dstu_path.emptyId', { defaultValue: '资源ID不能为空' }),
+    };
   }
   
   // [PATH-006] 长度限制检查
   if (id.length > MAX_RESOURCE_ID_LENGTH) {
     return { 
       valid: false, 
-      error: `资源ID长度超限: ${id.length} 字符（最大 ${MAX_RESOURCE_ID_LENGTH}）` 
+      error: i18next.t('llm_usage:dstu_path.idLengthExceeded', {
+        length: id.length,
+        max: MAX_RESOURCE_ID_LENGTH,
+        defaultValue: '资源ID长度超限: {{length}} 字符（最大 {{max}}）',
+      }),
     };
   }
   
   // 前缀检查
   const resourceType = inferResourceType(id);
   if (!resourceType) {
-    return { valid: false, error: '资源ID格式无效：缺少有效前缀' };
+    return {
+      valid: false,
+      error: i18next.t('llm_usage:dstu_path.invalidPrefix', { defaultValue: '资源ID格式无效：缺少有效前缀' }),
+    };
   }
   
   return { valid: true };
@@ -240,7 +251,11 @@ function build(folderPath: string | null, resourceId: string): string {
   
   // [PATH-006] 验证资源 ID 长度
   if (resourceId.length > MAX_RESOURCE_ID_LENGTH) {
-    throw new Error(`资源ID长度超限: ${resourceId.length} 字符（最大 ${MAX_RESOURCE_ID_LENGTH}）`);
+    throw new Error(i18next.t('llm_usage:dstu_path.idLengthExceeded', {
+      length: resourceId.length,
+      max: MAX_RESOURCE_ID_LENGTH,
+      defaultValue: '资源ID长度超限: {{length}} 字符（最大 {{max}}）',
+    }));
   }
   
   if (!folderPath || folderPath === '/') {

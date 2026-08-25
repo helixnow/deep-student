@@ -70,12 +70,10 @@ impl S3Storage {
     /// 归一化规则（全部是纯字符串变换，不发网络请求）：
     /// 1. 去除首尾空白与尾部 `/`；
     /// 2. 缺少 scheme 时补 `https://`（控制台复制的域名通常不带 scheme）；
-    /// 3. host 以 `{bucket}.` 开头、且剥离后剩余部分仍是至少三段的服务域名
-    ///    （如 `cos.ap-beijing.myqcloud.com`）时剥离该前缀，交由 SDK 重新拼接
-    ///    （IP/localhost 不做剥离，两段域名保守跳过以免误伤真实端点）；
-    /// 4. path 以 `/{bucket}` 结尾时剥离（path-style 形式的控制台地址）。
+    /// 3. 仅当 host 是已知 provider 的 `{bucket}.{service-host}` 形式时剥离 bucket，
+    ///    交由 SDK 重新拼接。自建域名和 path-style endpoint 不做猜测性改写。
     ///
-    /// 未触发第 3/4 条时原样返回（仅做 trim/补 scheme），确保已能工作的配置
+    /// 未触发第 3 条时原样返回（仅做 trim/补 scheme），确保已能工作的配置
     /// 的 endpoint 字符串与 instance_binding_hint 完全不变。
     fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
         let trimmed = endpoint.trim().trim_end_matches('/');
@@ -93,40 +91,45 @@ impl S3Storage {
             return with_scheme;
         };
 
-        let mut changed = false;
-
-        // 剥离 host 前缀 "{bucket}."（仅域名；IP/localhost 不适用 virtual-host 寻址）
+        // 只识别 provider 明确定义的 bucket-host 域名。不能仅凭首段等于 bucket
+        // 判断，否则 bucket 名为 "s3" 时会把规范 AWS endpoint
+        // `s3.us-east-1.amazonaws.com` 错改为 `us-east-1.amazonaws.com`。
+        // path-style endpoint 的 bucket 路径属于用户配置，同样不做猜测性剥离。
         if let Some(url::Host::Domain(host)) = url.host() {
             let host = host.to_string();
             if let Some(rest) = host.strip_prefix(&format!("{bucket}.")) {
-                let rest = rest.to_string();
-                if rest.matches('.').count() >= 2 && url.set_host(Some(&rest)).is_ok() {
+                if Self::is_known_provider_service_host(rest) && url.set_host(Some(rest)).is_ok() {
                     tracing::info!(
                         "[CloudStorage::S3] endpoint 中检测到 bucket 前缀域名，已归一化为服务端点: {} -> {}",
                         host,
                         rest
                     );
-                    changed = true;
+                    return url.to_string().trim_end_matches('/').to_string();
                 }
             }
         }
 
-        // 剥离 path 尾部 "/{bucket}"
-        let path = url.path().trim_end_matches('/').to_string();
-        if let Some(rest) = path.strip_suffix(&format!("/{bucket}")) {
-            url.set_path(if rest.is_empty() { "/" } else { rest });
-            tracing::info!(
-                "[CloudStorage::S3] endpoint 路径中检测到 bucket 后缀，已归一化: {} -> {}",
-                path,
-                url.path()
-            );
-            changed = true;
-        }
+        with_scheme
+    }
 
-        if changed {
-            url.to_string().trim_end_matches('/').to_string()
-        } else {
-            with_scheme
+    fn is_known_provider_service_host(host: &str) -> bool {
+        let labels = host.split('.').collect::<Vec<_>>();
+        match labels.as_slice() {
+            // 腾讯云 COS: cos.<region>.myqcloud.com
+            ["cos", region, "myqcloud", "com"] => !region.is_empty(),
+            // 阿里云 OSS: oss-<region>.aliyuncs.com
+            [service, "aliyuncs", "com"] => service
+                .strip_prefix("oss-")
+                .is_some_and(|region| !region.is_empty()),
+            // 缤纷云 S4
+            ["s3", "bitiful", "net"] => true,
+            // AWS S3 global/regional endpoint.
+            ["s3", "amazonaws", "com"] => true,
+            ["s3", region, "amazonaws", "com"] => !region.is_empty(),
+            [service, "amazonaws", "com"] => service
+                .strip_prefix("s3-")
+                .is_some_and(|region| !region.is_empty()),
+            _ => false,
         }
     }
 
@@ -819,19 +822,18 @@ mod tests {
     }
 
     #[test]
-    fn normalize_endpoint_strips_bucket_path_suffix() {
-        // path-style 形式的控制台地址
+    fn normalize_endpoint_keeps_path_style_paths_untouched() {
+        // path-style endpoint 的 bucket 路径属于用户配置，不能猜测性剥离。
         assert_eq!(
             S3Storage::normalize_endpoint(
                 "https://cos.ap-beijing.myqcloud.com/mybucket",
                 "mybucket"
             ),
-            "https://cos.ap-beijing.myqcloud.com"
+            "https://cos.ap-beijing.myqcloud.com/mybucket"
         );
-        // 保留 bucket 之外的基础路径
         assert_eq!(
             S3Storage::normalize_endpoint("https://gw.example.com/s3/mybucket", "mybucket"),
-            "https://gw.example.com/s3"
+            "https://gw.example.com/s3/mybucket"
         );
     }
 
@@ -874,6 +876,16 @@ mod tests {
         assert_eq!(
             S3Storage::normalize_endpoint("https://s3.bitiful.net", "s3"),
             "https://s3.bitiful.net"
+        );
+        // 即使剩余 host 段数充足，也只剥离明确的 provider bucket-host 模式。
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://mybucket.s3.example.com", "mybucket"),
+            "https://mybucket.s3.example.com"
+        );
+        // bucket 恰好名为 s3 时，规范 AWS regional endpoint 不能被误剥。
+        assert_eq!(
+            S3Storage::normalize_endpoint("https://s3.us-east-1.amazonaws.com", "s3"),
+            "https://s3.us-east-1.amazonaws.com"
         );
         // bucket 为空时只做 trim/补 scheme
         assert_eq!(

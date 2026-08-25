@@ -3,6 +3,7 @@
  * 仅在 DEV + 小屏时挂载（见 App.tsx）。支持拖动，避免挡住侧栏内容。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, Bug, House } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,7 @@ async function openDevTools() {
 }
 
 export const DevMobileRecoveryFab: React.FC = () => {
+  const { t } = useTranslation('dev');
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<FabPosition>(() => readStoredPosition() ?? defaultPosition());
   const [dragging, setDragging] = useState(false);
@@ -160,7 +162,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleReload}
             >
               <ArrowClockwise size={16} />
@@ -169,7 +171,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleResetView}
             >
               <House size={16} />
@@ -178,7 +180,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
             <DsButton
               variant="ghost"
               size="sm"
-              className="!justify-start gap-2 !px-3"
+              className="!justify-start gap-2 !px-3 [@media(pointer:coarse)]:!min-h-11"
               onClick={handleDevTools}
             >
               <Bug size={16} />
@@ -190,12 +192,12 @@ export const DevMobileRecoveryFab: React.FC = () => {
           variant="secondary"
           size="sm"
           className={cn(
-            'h-9 rounded-full px-3 text-xs font-semibold shadow-md touch-none select-none',
+            'h-9 rounded-full px-3 text-xs font-semibold shadow-md touch-none select-none [@media(pointer:coarse)]:!min-h-11',
             open && !dragging && 'ring-2 ring-primary/30',
             dragging && 'cursor-grabbing opacity-90',
           )}
           aria-expanded={open}
-          aria-label="开发恢复菜单（可拖动）"
+          aria-label={t('recovery_fab.aria_label', { defaultValue: '开发恢复菜单（可拖动）' })}
           onPointerDown={handleFabPointerDown}
           onPointerMove={handleFabPointerMove}
           onPointerUp={handleFabPointerUp}

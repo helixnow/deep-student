@@ -16,6 +16,7 @@ const RESEARCH_SURFACE_ACTION_IDS = new Set([
   'export-plan',
   'export-intent',
   'copy-intent',
+  'copy-block',
 ]);
 
 function isResearchOnlyActionBar(block: { type: string; props?: unknown }): boolean {
@@ -124,4 +125,37 @@ export async function startHpiasEventBridge(
   return guardedListen(HPIAS_EVENT_CHANNEL, (event) => {
     handler(event.payload);
   });
+}
+
+let sharedListen: Promise<() => void | Promise<void>> | null = null;
+let sharedRefs = 0;
+
+/**
+ * 进程内共享一条 `hpias_event` 订阅。
+ * 多个 Chat 研究块只 listen 一次，避免 synthesis 等事件被重复折叠。
+ * 不按 session 过滤：路由交给 HpiasStore 切片。
+ */
+export async function retainSharedHpiasEventBridge(): Promise<() => void | Promise<void>> {
+  sharedRefs += 1;
+  if (!sharedListen) {
+    sharedListen = startHpiasEventBridge({});
+  }
+  const listenPromise = sharedListen;
+  let released = false;
+  return async () => {
+    if (released) return;
+    released = true;
+    sharedRefs = Math.max(0, sharedRefs - 1);
+    if (sharedRefs === 0 && sharedListen === listenPromise) {
+      sharedListen = null;
+      const unlisten = await listenPromise;
+      await unlisten();
+    }
+  };
+}
+
+/** 单测重置共享订阅，避免跨用例泄漏 listen。 */
+export function resetSharedHpiasEventBridgeForTests(): void {
+  sharedRefs = 0;
+  sharedListen = null;
 }

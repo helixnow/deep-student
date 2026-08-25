@@ -6,6 +6,7 @@
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { createEmpty } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import i18n from '@/i18n';
 import type { CrepeEditorApi } from '@/components/crepe';
 import { upsertWikilinkNoteCache } from './wikilinkNotesCache';
 
@@ -86,7 +87,13 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
       return noteId;
     } catch (error: unknown) {
       console.error('[createNoteFromWikilinkTitle] failed:', error);
-      showGlobalNotification('error', `创建笔记「${trimmed}」失败`);
+      showGlobalNotification(
+        'error',
+        i18n.t('graph_conflict:wikilink.create_failed', {
+          defaultValue: '创建笔记「{{title}}」失败',
+          title: trimmed,
+        }),
+      );
       return null;
     } finally {
       // 只清理自己这个槽位，不影响其它标题的 in-flight 创建

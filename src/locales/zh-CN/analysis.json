@@ -136,5 +136,14 @@
       "panel_state_saved": "面板状态已保存",
       "panel_closed": "面板已关闭"
     }
+  },
+  "open_resource": {
+    "action": "打开资源",
+    "handler_not_registered": "OpenResourceHandler 未注册",
+    "handler_not_registered_for": "OpenResourceHandler 未注册: {{target}}",
+    "not_found": "资源未找到: {{path}}",
+    "folder_not_openable": "文件夹不能在编辑器中打开",
+    "editor_not_registered": "未注册类型为 {{type}} 的编辑器",
+    "unknown_location": "未知的打开位置: {{location}}"
   }
 }

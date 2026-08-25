@@ -11,7 +11,9 @@
 //!   log warn；tools 越界仅剔除越界项（不作废整个文件）；
 //! - `tools` 必须是安全全集的子集：安全全集 = 协作工具
 //!   （workspace_send/query）∪ headless 只读白名单
-//!   （[`crate::chat_v2::headless::headless_allowed_tools`]）；
+//!   （[`crate::chat_v2::headless::headless_allowed_tools`]）∪ chatanki 只读
+//!   卡面四工具（[`CHATANKI_READONLY_TOOLS`]，Multi-agent Phase 2）；
+//!   chatanki 写工具与 workspace 文档读写工具永远不在安全全集内；
 //! - tools 覆盖时自动并入 workspace_send/query，保证完成协作面不丢；
 //! - `skills:` 与 `reasoning_effort:` 会进入 worker runtime；找不到声明技能的
 //!   内容快照时，subagent 创建会 fail-closed；
@@ -36,6 +38,22 @@ const MAX_FILES: usize = 64;
 
 /// 完成协作面：tools 覆盖时无条件并入，保证 worker 始终能与父级协作。
 const COLLABORATION_TOOLS: [&str; 2] = ["builtin-workspace_send", "builtin-workspace_query"];
+
+/// Multi-agent Phase 2（QAAgent 只读卡面）：允许自定义档案声明的 chatanki
+/// **只读**工具。四者均为 Low 敏感度、纯读取（get_cards/status 只回读卡片与
+/// 进度，analyze 只做预估，list_templates 只列模板），不产生任何卡片写入。
+///
+/// 跨会话所有权由 chatanki 执行器的只读预检兜底：worker 只有在
+/// `chatanki_executor::install_workspace_card_read_scope` 安装了同 workspace
+/// coordinator 只读作用域时才能读到 coordinator 拥有的文档；写工具
+/// （run/update/delete/transform/...）不在此清单，也永远不得加入——
+/// 见 `chatanki_write_and_workspace_document_tools_stay_blocked_fail_closed`。
+pub const CHATANKI_READONLY_TOOLS: [&str; 4] = [
+    "builtin-chatanki_get_cards",
+    "builtin-chatanki_status",
+    "builtin-chatanki_analyze",
+    "builtin-chatanki_list_templates",
+];
 
 static CUSTOM_AGENT_FILE_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -155,12 +173,16 @@ fn is_valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// 自定义 profile 可声明的工具安全全集：协作工具 ∪ headless 只读白名单。
+/// 自定义 profile 可声明的工具安全全集：协作工具 ∪ headless 只读白名单
+/// ∪ chatanki 只读卡面四工具（Phase 2）。
 fn safe_tool_set() -> HashSet<String> {
     let mut set: HashSet<String> = crate::chat_v2::headless::headless_allowed_tools()
         .into_iter()
         .collect();
     for tool in COLLABORATION_TOOLS {
+        set.insert(tool.to_string());
+    }
+    for tool in CHATANKI_READONLY_TOOLS {
         set.insert(tool.to_string());
     }
     set
@@ -530,6 +552,139 @@ mod tests {
                 "builtin-workspace_send",
                 "builtin-workspace_query",
                 "builtin-web_search",
+            ]
+        );
+    }
+
+    /// Multi-agent Phase 2 编排契约（Round 4 #4，双向 fail-closed 之「拦截」向）：
+    /// chatanki **写**工具与 workspace 文档读写工具不在自定义子代理的安全全集
+    /// （headless 只读白名单 ∪ workspace_send/query ∪ chatanki 只读四工具）内，
+    /// 档案里声明必须被剔除。Phase 2 只放行只读卡面（get_cards/status/
+    /// analyze/list_templates），写边界与 Phase 1 完全一致。
+    ///
+    /// coordinator 编排（docs/research/anki-ai-native/agents/）依赖该边界：
+    /// 子代理只读卡面 + 产出文本契约，所有卡片/文档写操作由主代理执行。
+    /// 若未来放宽 worker 写工具，此测试会先失败，迫使同步评审编排文档与
+    /// 审批语义。
+    #[test]
+    fn chatanki_write_and_workspace_document_tools_stay_blocked_fail_closed() {
+        let safe = safe_tool_set();
+        // 覆盖 chatanki 全部写面：生成 / 单卡与批量修改删除 / 补卡 / 复习写 /
+        // 库级写 / 模板与变换写 / 任务控制 / 数据外发（export/sync/import）。
+        for tool in [
+            "builtin-chatanki_run",
+            "builtin-chatanki_start",
+            "builtin-chatanki_import_apkg",
+            "builtin-chatanki_update_card",
+            "builtin-chatanki_batch_update_cards",
+            "builtin-chatanki_delete_card",
+            "builtin-chatanki_delete_cards",
+            "builtin-chatanki_add_cards",
+            "builtin-chatanki_enqueue_review",
+            "builtin-chatanki_undo_last_review",
+            "builtin-chatanki_set_suspended",
+            "builtin-chatanki_update_library_card",
+            "builtin-chatanki_enqueue_library_review",
+            "builtin-chatanki_set_library_suspended",
+            "builtin-chatanki_undo_library_last_review",
+            "builtin-chatanki_delete_library_card",
+            "builtin-chatanki_retemplate",
+            "builtin-chatanki_transform",
+            "builtin-chatanki_control",
+            "builtin-chatanki_export",
+            "builtin-chatanki_sync",
+            "builtin-workspace_read_document",
+            "builtin-workspace_update_document",
+        ] {
+            assert!(
+                !safe.contains(tool),
+                "safe tool set must not contain {tool}; relaxing it requires \
+                 revisiting the Phase 2 coordinator orchestration docs"
+            );
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_file(
+            dir.path(),
+            "escalating.md",
+            "---\nname: escalating-agent\nbase: worker\ntools: [builtin-chatanki_run, builtin-chatanki_batch_update_cards, builtin-workspace_read_document, builtin-workspace_update_document, builtin-resource_read]\n---\nBody.\n",
+        );
+
+        let profile = find_custom_profile(dir.path(), "escalating-agent").unwrap();
+        assert_eq!(
+            profile.allowed_tools,
+            vec![
+                "builtin-workspace_send",
+                "builtin-workspace_query",
+                "builtin-resource_read",
+            ]
+        );
+    }
+
+    /// Multi-agent Phase 2 双向 fail-closed 之「放行」向：chatanki 只读四工具
+    /// 进入安全全集，档案声明后完整保留；且四者确实是 chatanki 执行器口径的
+    /// Low 敏感度只读工具（防止未来有人把写工具塞进该常量）。
+    #[test]
+    fn chatanki_readonly_tools_are_allowed_and_low_sensitivity() {
+        let safe = safe_tool_set();
+        for tool in CHATANKI_READONLY_TOOLS {
+            assert!(safe.contains(tool), "safe tool set must contain {tool}");
+        }
+
+        // 常量本身的只读性由执行器敏感度分级钉死：四者全部 Low。
+        use crate::chat_v2::tools::executor::{ToolExecutor, ToolSensitivity};
+        let executor = crate::chat_v2::tools::ChatAnkiToolExecutor::new();
+        for tool in CHATANKI_READONLY_TOOLS {
+            assert!(executor.can_handle(tool), "{tool} must be a chatanki tool");
+            assert_eq!(
+                executor.sensitivity_level(tool),
+                ToolSensitivity::Low,
+                "{tool} must stay Low sensitivity to qualify as read-only card surface"
+            );
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_file(
+            dir.path(),
+            "qa-readonly.md",
+            "---\nname: qa-readonly\nbase: worker\ntools: [builtin-chatanki_get_cards, builtin-chatanki_status, builtin-chatanki_analyze, builtin-chatanki_list_templates]\n---\nBody.\n",
+        );
+        let profile = find_custom_profile(dir.path(), "qa-readonly").unwrap();
+        assert_eq!(
+            profile.allowed_tools,
+            vec![
+                "builtin-workspace_send",
+                "builtin-workspace_query",
+                "builtin-chatanki_get_cards",
+                "builtin-chatanki_status",
+                "builtin-chatanki_analyze",
+                "builtin-chatanki_list_templates",
+            ]
+        );
+    }
+
+    /// 双向 fail-closed 的混合声明用例：同一档案里读写混declare 时，只读四工具
+    /// 保留、写工具剔除——sanitize 是逐项裁剪而不是整体作废，也绝不因为
+    /// 读工具合法就顺带放行同前缀写工具。
+    #[test]
+    fn chatanki_mixed_readonly_and_write_declaration_keeps_only_readonly() {
+        let dir = tempfile::tempdir().unwrap();
+        write_agent_file(
+            dir.path(),
+            "qa-mixed.md",
+            "---\nname: qa-mixed\nbase: worker\ntools: [builtin-chatanki_get_cards, builtin-chatanki_batch_update_cards, builtin-chatanki_status, builtin-chatanki_delete_cards, builtin-chatanki_analyze, builtin-chatanki_run, builtin-chatanki_list_templates, builtin-workspace_update_document]\n---\nBody.\n",
+        );
+
+        let profile = find_custom_profile(dir.path(), "qa-mixed").unwrap();
+        assert_eq!(
+            profile.allowed_tools,
+            vec![
+                "builtin-workspace_send",
+                "builtin-workspace_query",
+                "builtin-chatanki_get_cards",
+                "builtin-chatanki_status",
+                "builtin-chatanki_analyze",
+                "builtin-chatanki_list_templates",
             ]
         );
     }

@@ -391,7 +391,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
               value={topKInput}
               onChange={(event) => setTopKInput(event.target.value)}
               onBlur={handleRerankerTopKBlur}
-              className="!w-20 h-8 text-xs bg-transparent"
+              className="!w-20 h-8 text-xs bg-transparent [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
 />
           </SettingRow>
         </div>
@@ -409,7 +409,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           ]}
           size="sm"
           variant="ghost"
-          className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+          className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!min-h-11"
           width={100}
 />
       </SettingRow>

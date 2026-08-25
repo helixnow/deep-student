@@ -24,6 +24,8 @@ import {
   Chat,
   FolderOpen,
   Copy,
+  Clipboard,
+  StackSimple,
   ArrowCounterClockwise,
   Warning,
   FlowArrow,
@@ -106,8 +108,14 @@ export interface LearningHubContextMenuProps {
   onDeleteResource?: (resource: ResourceListItem) => void;
   /** 引用到对话 */
   onReferenceToChat?: (target: ContextMenuTarget) => void;
-  /** 复制 */
+  /** 复制（写入 Finder 内部剪贴板，配合粘贴/Cmd+V） */
   onCopy?: (target: ContextMenuTarget) => void;
+  /** ★ 制造副本（对标访达 Duplicate：原地复制一份） */
+  onDuplicate?: (target: ContextMenuTarget) => void;
+  /** ★ 粘贴（剪贴板内容复制到当前文件夹）；未传或 pasteCount=0 时不显示 */
+  onPaste?: () => void;
+  /** 剪贴板内条目数（粘贴菜单项文案与可用态） */
+  pasteCount?: number;
   /** ★ 2026-06-12（审阅问题 FE-M4）：移动到指定文件夹 */
   onMoveTo?: (target: ContextMenuTarget) => void;
   /** 收藏/取消收藏 */
@@ -142,7 +150,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, onClick, ch
   <button
     type="button"
     role="menuitem"
-    className={cn('wb-desk-menu-item', danger && 'wb-desk-menu-item--danger')}
+    // 触屏：菜单行是长按菜单主命中区，保证 ≥44px 触控高度（与 DesktopView 同款写法）
+    className={cn('wb-desk-menu-item [@media(pointer:coarse)]:min-h-11', danger && 'wb-desk-menu-item--danger')}
     disabled={disabled}
     onClick={onClick}
   >
@@ -186,6 +195,9 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onDeleteResource,
   onReferenceToChat,
   onCopy,
+  onDuplicate,
+  onPaste,
+  pasteCount = 0,
   onMoveTo,
   onToggleFavorite,
   onRestoreItem,
@@ -434,6 +446,24 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
 
     return (
     <>
+      {/* ★ 粘贴：剪贴板有内容时置顶显示（访达同位） */}
+      {onPaste && pasteCount > 0 && (
+        <>
+          <MenuItem
+            icon={<Clipboard size={15} weight="duotone" />}
+            onClick={() => {
+              closeMenu();
+              setTimeout(() => onPaste(), 50);
+            }}
+          >
+            {pasteCount > 1
+              ? t('contextMenu.pasteCount', { count: pasteCount })
+              : t('contextMenu.paste')}
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
+
       {/* 新建文件夹 - 仅在文件夹视图显示 */}
       {dataView === 'folder' && (
         <>
@@ -579,6 +609,32 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         </>
       )}
 
+      {/* ★ 复制（文件夹递归复制） */}
+      {onCopy && (
+        <MenuItem
+          icon={<Copy size={15} weight="duotone" />}
+          onClick={() => {
+            onCopy(target);
+            closeMenu();
+          }}
+        >
+          {t('contextMenu.copy')}
+        </MenuItem>
+      )}
+
+      {/* ★ 制造副本（访达 Duplicate） */}
+      {canCreate && onDuplicate && (
+        <MenuItem
+          icon={<StackSimple size={15} weight="duotone" />}
+          onClick={() => {
+            closeMenu();
+            setTimeout(() => onDuplicate(target), 50);
+          }}
+        >
+          {t('contextMenu.duplicate')}
+        </MenuItem>
+      )}
+
       {/* ★ 移动到… */}
       {canMove && onMoveTo && (
         <MenuItem
@@ -680,6 +736,19 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             }}
           >
             {t('contextMenu.copy')}
+          </MenuItem>
+        )}
+
+        {/* ★ 制造副本（访达 Duplicate） */}
+        {canCreate && onDuplicate && (
+          <MenuItem
+            icon={<StackSimple size={15} weight="duotone" />}
+            onClick={() => {
+              closeMenu();
+              setTimeout(() => onDuplicate(target), 50);
+            }}
+          >
+            {t('contextMenu.duplicate')}
           </MenuItem>
         )}
 

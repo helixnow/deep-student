@@ -54,6 +54,16 @@ const watchState = vi.hoisted(() => ({
   callback: null as ((event: { type: string; path: string; node?: typeof nodes[number] }) => void) | null,
 }));
 
+// 重命名后的双链回写是独立模块（有专属单测），这里只验证宿主的触发契约
+const { syncWikiLinksAfterNoteRename, showGlobalNotification } = vi.hoisted(() => ({
+  syncWikiLinksAfterNoteRename: vi.fn(),
+  showGlobalNotification: vi.fn(),
+}));
+
+vi.mock('../wikilinkRenameSync', () => ({ syncWikiLinksAfterNoteRename }));
+
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification }));
+
 vi.mock('@/utils/notesApi', () => ({
   NotesAPI: { listTags },
 }));
@@ -95,7 +105,12 @@ import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import { registerContentCloseConfirmationHandler } from '../../content/ContentCloseConfirmation';
 import { __resetContentDirtyRegistry, registerContentDirtyChecker } from '../../content/contentDirtyRegistry';
 import { requestWorkspaceResource, resetWorkspaceRegistryForTests } from '../workspaceRegistry';
-import { NotesWorkspaceApp } from '../NotesWorkspaceApp';
+import {
+  listWorkspaceResources,
+  NotesWorkspaceApp,
+  RESOURCE_LIST_MAX_TOTAL,
+  RESOURCE_LIST_PAGE_SIZE,
+} from '../NotesWorkspaceApp';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
   type NotesWorkspaceCommandAction,
@@ -175,10 +190,24 @@ describe('NotesWorkspaceApp', () => {
     search.mockResolvedValue({ ok: true, value: [] });
     getContent.mockReset();
     getContent.mockResolvedValue({ ok: true, value: '' });
+    syncWikiLinksAfterNoteRename.mockReset();
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+    });
+    showGlobalNotification.mockReset();
     watchState.callback = null;
+    // @tanstack/virtual-core 在清理时调用 observer.unobserve，stub 必须完整
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
+      unobserve() {}
       disconnect() {}
+    });
+    // jsdom 未实现 IntersectionObserver，提供含 observe/unobserve/disconnect 的局部 shim
+    vi.stubGlobal('IntersectionObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
     });
     const titlebarSlot = document.createElement('div');
     titlebarSlot.dataset.wbTitlebarSlot = '';
@@ -214,8 +243,9 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all open files/ }));
     const menu = screen.getByRole('menu');
 
-    expect(menu.parentElement).toBe(document.body);
+    // 菜单本体是 CustomScrollArea 的 viewport；portal 落点断言看滚动壳的挂载父级
     expect(menu.closest('[data-wb-titlebar-slot]')).toBeNull();
+    expect(menu.closest('.notes-tabs-overflow-menu')?.parentElement).toBe(document.body);
   });
 
   it('keeps note and mindmap types separate in one content area', async () => {
@@ -266,6 +296,102 @@ describe('NotesWorkspaceApp', () => {
     const workspace = document.querySelector('[data-wb-notes-workspace]');
     expect(workspace).toHaveAttribute('data-explorer-open', 'true');
     expect(document.querySelector('[data-notes-explorer]')).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('really collapses the wide-window explorer via toggle-sidebar and moves the titlebar tabs', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    const workspace = document.querySelector('[data-wb-notes-workspace]')!;
+    const split = document.querySelector('.wb-sys-split')!;
+    const titlebarTabs = document.querySelector<HTMLElement>('.notes-titlebar-tabs')!;
+    expect(workspace).toHaveAttribute('data-explorer-open', 'true');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
+    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+
+    dispatchWorkspaceCommand('toggle-sidebar');
+
+    expect(workspace).toHaveAttribute('data-explorer-open', 'false');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'true');
+    expect(document.querySelector('.wb-sys-aside')).toHaveAttribute('aria-hidden', 'true');
+    // 折叠后 titlebar 标签回落到窗控件最小间距（sidebarLayoutWidth 归零）
+    expect(titlebarTabs.style.paddingLeft).toBe('76px');
+
+    dispatchWorkspaceCommand('toggle-sidebar');
+
+    expect(workspace).toHaveAttribute('data-explorer-open', 'true');
+    expect(split).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'false');
+    expect(titlebarTabs.style.paddingLeft).toBe('272px');
+  });
+
+  it('opens a mindmap for cold-launch instance keys with the real mm_ prefix', async () => {
+    // 资源须存在于库中，否则 loadResources 会把冷启动 tab 当失效资源清掉
+    const mmNode = {
+      id: 'mm_42', sourceId: 'mm_42', path: '/course/mm_42', name: '前缀导图', type: 'mindmap',
+      createdAt: 3, updatedAt: 3,
+    };
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return Promise.resolve({ ok: true, value: [...nodes, mmNode] }) as never;
+    });
+
+    render(<NotesWorkspaceApp {...props({ instanceKey: 'mm_42' })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mm_42')).toBeInTheDocument();
+  });
+
+  it('opens a note for cold-launch instance keys without the mindmap prefix', async () => {
+    render(<NotesWorkspaceApp {...props({ instanceKey: 'note_1' })} />);
+
+    expect(await screen.findByTestId('note-editor-note_1')).toBeInTheDocument();
+  });
+
+  it('falls back to the mm_ instance key when the launch payload has no resourceId', async () => {
+    // 回归（I8 补强）：payload 只带 resourceType 时 id 回退 instanceKey，
+    // mm_ 前缀不得再被当成笔记打开
+    const mmNode = {
+      id: 'mm_42', sourceId: 'mm_42', path: '/course/mm_42', name: '前缀导图', type: 'mindmap',
+      createdAt: 3, updatedAt: 3,
+    };
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return Promise.resolve({ ok: true, value: [...nodes, mmNode] }) as never;
+    });
+
+    render(<NotesWorkspaceApp {...props({
+      instanceKey: 'mm_42',
+      launchPayload: { resourceType: 'mindmap' },
+    })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mm_42')).toBeInTheDocument();
+  });
+
+  it('accepts the legacy `type` payload alias when opening a mindmap', async () => {
+    render(<NotesWorkspaceApp {...props({
+      launchPayload: { type: 'mindmap', resourceId: 'mindmap_1' },
+    })} />);
+
+    expect(await screen.findByTestId('mindmap-editor-mindmap_1')).toBeInTheDocument();
+  });
+
+  it('opens a mindmap requested from the resource library (requestWorkspaceResource)', async () => {
+    // 回归：学习资源库通过 requestWorkspaceResource 打开导图的跨模块路径
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('章节导图');
+
+    await act(async () => {
+      await requestWorkspaceResource({ type: 'mindmap', id: 'mindmap_1' }, 'notes-window');
+    });
+
+    expect(await screen.findByTestId('mindmap-editor-mindmap_1')).toBeInTheDocument();
+    expect(mindmapProps.at(-1)?.storeInstanceId).toBe('notes-window:mindmap:mindmap_1');
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-pane="main"]')?.getAttribute('data-resource-id')).toBe('mindmap_1');
+    });
   });
 
   it('selects the closing tab neighbor and supports automatic keyboard tab navigation', async () => {
@@ -363,7 +489,8 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.keyDown(firstTab, { key: 'F10', shiftKey: true });
     const menu = await screen.findByRole('menu');
     expect(firstTab).toHaveAttribute('aria-expanded', 'true');
-    await waitFor(() => expect(within(menu).getByRole('menuitemcheckbox')).toHaveFocus());
+    // 菜单含多个 checkbox 项（钉住 / 右侧拆分）；实现聚焦第一个
+    await waitFor(() => expect(within(menu).getAllByRole('menuitemcheckbox')[0]).toHaveFocus());
 
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => {
@@ -669,6 +796,7 @@ describe('NotesWorkspaceApp', () => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) { resizeCallbacks.push(callback); }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -719,9 +847,14 @@ describe('NotesWorkspaceApp', () => {
       sortOrder: 0, createdAt: 1, updatedAt: 1,
     };
     vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [folder] });
+    // getFolderTree 的 items 是 VfsFolderItem（itemType/itemId），不是 DstuNode
     vi.mocked(folderApi.getFolderTree).mockResolvedValue({
       ok: true,
-      value: [{ folder, items: [nodes[0]], children: [] }],
+      value: [{
+        folder,
+        items: [{ id: 'fi_1', folderId: 'fld_course', itemType: 'note', itemId: 'note_1', sortOrder: 0, createdAt: 1 }],
+        children: [],
+      }],
     });
     const { createEmpty } = await import('@/dstu');
     vi.mocked(createEmpty).mockResolvedValueOnce({ ok: true, value: nodes[0] } as never);
@@ -796,7 +929,12 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.click(await within(dialog).findByRole('option', { name: /匹配笔记/ }));
 
     await screen.findByTestId('note-editor-note_1');
-    expect(consumeNotesFindQuery('note_1')).toBe('内容');
+    // publish 在 openResource await 之后的续体中落地，编辑器挂载可能先一步
+    // 被 findByTestId 捕获 —— 用 waitFor 容忍这一微任务间隙（consume 读到
+    // null 不删除 pending，重试安全）
+    await waitFor(() => {
+      expect(consumeNotesFindQuery('note_1')).toBe('内容');
+    });
   });
 
   it('toggles the backlinks panel from a workspace command', async () => {
@@ -948,13 +1086,14 @@ describe('NotesWorkspaceApp', () => {
     });
   });
 
-  it('keeps the compact explorer inside the shared aria-hidden drawer until reopened', async () => {
+  it('routes the compact drawer handle to the fullscreen files subscreen (P0-5 去抽屉化)', async () => {
     const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) {
         resizeCallbacks.push(callback);
       }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
@@ -965,9 +1104,199 @@ describe('NotesWorkspaceApp', () => {
       }
     });
 
+    // 窄窗契约：共享抽屉常隐藏（sidebar 槽位为 null），把手改道全屏「文件」子屏
     const drawer = document.querySelector<HTMLElement>('[data-wb-sys-drawer]')!;
     await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'true'));
+    expect(document.querySelector('[data-notes-files-subscreen]')).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: /显示导航|Show navigation/ }));
-    await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'false'));
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-files-subscreen]')).not.toBeNull();
+    });
+    expect(drawer).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /关闭文件|Close files/ }));
+    await waitFor(() => {
+      expect(document.querySelector('[data-notes-files-subscreen]')).toBeNull();
+    });
+  });
+
+  it('keeps the create-folder input on blur while it has text or an IME composition', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+    fireEvent.click(screen.getByRole('button', { name: /新建文件夹|New folder/ }));
+    const input = await screen.findByRole('textbox', { name: /新建文件夹|New folder/ });
+
+    // 已有输入：失焦（点错地方）不得清空取消
+    fireEvent.change(input, { target: { value: '半成品名字' } });
+    fireEvent.blur(input);
+    expect(screen.getByRole('textbox', { name: /新建文件夹|New folder/ })).toHaveValue('半成品名字');
+
+    // IME 合成中：点候选词触发的 blur 也不得取消（即使值为空）
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.compositionStart(input);
+    fireEvent.blur(input);
+    expect(screen.getByRole('textbox', { name: /新建文件夹|New folder/ })).toBeInTheDocument();
+
+    // 合成结束且没有内容：失焦才视为取消
+    fireEvent.compositionEnd(input);
+    fireEvent.blur(input);
+    expect(screen.queryByRole('textbox', { name: /新建文件夹|New folder/ })).toBeNull();
+    expect(folderApi.createFolder).not.toHaveBeenCalled();
+  });
+
+  it('syncs title-based wiki links after a note rename and reports the summary', async () => {
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 2, rewrittenLinks: 3, skippedDirtySources: 0, failedSources: 0, scanFailed: false,
+    });
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新课堂笔记' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledTimes(1));
+    // knownNotes 必须携带重命名前的标题快照，否则旧标题无从解析
+    expect(syncWikiLinksAfterNoteRename).toHaveBeenCalledWith({
+      noteId: 'note_1',
+      oldTitle: '课堂笔记',
+      newTitle: '新课堂笔记',
+      knownNotes: [{ id: 'note_1', title: '课堂笔记' }],
+    });
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('success', expect.stringContaining('已同步更新 2 篇'));
+    });
+  });
+
+  it('warns when some wiki links could not be synced after a rename', async () => {
+    syncWikiLinksAfterNoteRename.mockResolvedValue({
+      updatedSources: 0, rewrittenLinks: 0, skippedDirtySources: 1, failedSources: 1, scanFailed: false,
+    });
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新课堂笔记' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('warning', expect.stringContaining('2 篇笔记中的双链未同步'));
+    });
+  });
+
+  it('does not run the wiki-link rename sync for mindmap renames', async () => {
+    vi.mocked(dstu.rename).mockClear();
+    render(<NotesWorkspaceApp {...props()} />);
+    const resource = await screen.findByRole('treeitem', { name: /章节导图/ });
+    fireEvent.contextMenu(resource);
+    fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    fireEvent.change(input, { target: { value: '新章节导图' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(dstu.rename).toHaveBeenCalledTimes(1));
+    expect(syncWikiLinksAfterNoteRename).not.toHaveBeenCalled();
+  });
+
+  it('notifies once when the resource list is truncated instead of silently dropping files', async () => {
+    // 首页整整一页 + 次页失败 = 保留已取到的部分并标记截断
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({
+      id: `note_page_${index}`,
+      sourceId: `note_page_${index}`,
+      path: `/bulk/note_page_${index}`,
+      name: `批量笔记 ${index}`,
+      type: 'note',
+      createdAt: index,
+      updatedAt: index,
+    }));
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      if (options?.typeFilter === 'mindmap') {
+        return Promise.resolve({ ok: true, value: [nodes[1]] }) as never;
+      }
+      if ((options?.offset ?? 0) === 0) {
+        return Promise.resolve({ ok: true, value: fullPage }) as never;
+      }
+      return Promise.resolve({
+        ok: false,
+        error: { toUserMessage: () => '后续分页失败' },
+      }) as never;
+    });
+    render(<NotesWorkspaceApp {...props()} />);
+    await waitFor(() => {
+      expect(showGlobalNotification).toHaveBeenCalledWith('warning', expect.stringContaining('仅显示部分内容'));
+    });
+    expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+    // 已取到的第一页（1000+1 个文件）仍然可用，而不是整树报错。
+    // 树本体在千级节点时走虚拟化渲染（jsdom 视口高度为 0，只挂载首行），
+    // 因此断言状态栏计数而非具体树节点文本。
+    await screen.findByText(/1001 个文件/);
+    expect(screen.queryByText(/加载失败|无法加载/)).toBeNull();
+  });
+});
+
+describe('listWorkspaceResources', () => {
+  beforeEach(() => {
+    vi.mocked(dstu.list).mockReset();
+  });
+
+  it('pages through the library with aligned offsets until a short page', async () => {
+    const pageOne = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    const pageTwo = [{ id: 'note_last' }];
+    vi.mocked(dstu.list)
+      .mockResolvedValueOnce({ ok: true, value: pageOne } as never)
+      .mockResolvedValueOnce({ ok: true, value: pageTwo } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_PAGE_SIZE + 1);
+    expect(result.truncated).toBe(false);
+    expect(dstu.list).toHaveBeenCalledTimes(2);
+    expect(dstu.list).toHaveBeenNthCalledWith(1, '/', {
+      typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: RESOURCE_LIST_PAGE_SIZE, offset: 0,
+    });
+    expect(dstu.list).toHaveBeenNthCalledWith(2, '/', {
+      typeFilter: 'note', sortBy: 'name', sortOrder: 'asc', limit: RESOURCE_LIST_PAGE_SIZE, offset: RESOURCE_LIST_PAGE_SIZE,
+    });
+  });
+
+  it('stops at the hard cap and reports truncation', async () => {
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    vi.mocked(dstu.list).mockResolvedValue({ ok: true, value: fullPage } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_MAX_TOTAL);
+    expect(result.truncated).toBe(true);
+    expect(dstu.list).toHaveBeenCalledTimes(RESOURCE_LIST_MAX_TOTAL / RESOURCE_LIST_PAGE_SIZE);
+  });
+
+  it('keeps earlier pages and flags truncation when a follow-up page fails', async () => {
+    const fullPage = Array.from({ length: RESOURCE_LIST_PAGE_SIZE }, (_, index) => ({ id: `note_${index}` }));
+    vi.mocked(dstu.list)
+      .mockResolvedValueOnce({ ok: true, value: fullPage } as never)
+      .mockResolvedValueOnce({ ok: false, error: { toUserMessage: () => 'boom' } } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(true);
+    expect(result.nodes).toHaveLength(RESOURCE_LIST_PAGE_SIZE);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('propagates a first-page failure as a load error', async () => {
+    vi.mocked(dstu.list).mockResolvedValue({ ok: false, error: { toUserMessage: () => 'boom' } } as never);
+
+    const result = await listWorkspaceResources('note');
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.toUserMessage()).toBe('boom');
   });
 });

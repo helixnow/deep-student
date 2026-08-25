@@ -54,6 +54,7 @@ src/features/generative-ui/
 
 - `version` 缺省视为 `"1"`；仅允许 `"1"` / `"1.1"`；拒绝 `"2"` 等未知值
 - `layout.mode` 识别 `stack` | `grid`；未知 mode 不拒绝整份 intent（前端钳制）
+- `blocks[].type` 必须落在 18 种内置白名单（`ALLOWED_GENERATIVE_UI_BLOCK_TYPES`）；未知 / 缺 type / 非对象块在入口拒绝
 - e2e：`execute_v1_1_grid_layout_emits_generative_ui` + `execute_rejects_version_2`
 
 ## 3. 内置块（18 种）
@@ -66,7 +67,7 @@ src/features/generative-ui/
 |------|------|
 | ActionBar | `riskLevel` low/medium/high + handler 注册表安全模式 |
 | Notes 写入 | `canvas:ai-edit-request` → AIDiffPanel → Accept/Reject |
-| 闪卡保存 | `save-to-library` → `saveCardsToLibrary`（chat/anki 管线） |
+| 闪卡预览 | `flashcard-preview` 只读展示；保存、QA/critic 与审计统一由 `anki_cards` 管线负责 |
 | AI 标记 | `GenerativeUIChrome` + `AiContentLabel` |
 
 ## 5. Chat 桥接
@@ -129,7 +130,7 @@ Rust **`hpias::HpiasEventEmitter`**（Round 20）在 `render_generative_ui` 携�
 | Rust Intent v1.1 | version/layout 契约 + e2e ✅ Round 41 |
 | 18 块 + v1.1 layout E2E | Playwright CT + [TAURI_E2E.md](./TAURI_E2E.md) ✅ Round 41 |
 | prompt props 同步 | ✅ few-shot / skill 18 type（Round 41） |
-| 闪卡 save-to-library | ✅ Round 10 |
+| 闪卡预览 | ✅ 只读展示；无独立保存管线 |
 | Research/Translation 专用块 | paper-digest + research-plan + research-report POC ✅ |
 | HpiasStore 实时接线 | `HpiasGenerativeResearchPanel` ✅ Round 14；Round 41 接入新块 |
 | Hpias Chat 事件桥 | `hpiasEventBridge` + Chat 块挂载 ✅ Round 16 |

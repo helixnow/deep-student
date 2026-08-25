@@ -41,7 +41,6 @@ vi.mock('@/utils/fileManager', () => ({
 
 vi.mock('@/components/anki/cardforge/prompts', () => ({
   buildCardGenerationSystemPrompt: vi.fn(() => 'system'),
-  buildCardGenerationUserPrompt: vi.fn(() => 'user'),
   buildContentAnalysisPrompt: vi.fn(() => 'analysis'),
 }));
 
@@ -104,6 +103,20 @@ describe('CardAgent', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('CardAgent 初始化失败');
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('only listens to anki_generation_event — the anki_tool_call bridge is gone', async () => {
+    // 死链路清理证明：pipeline 不再注册后端 AnkiToolExecutor，
+    // CardAgent 不得再监听任何工具桥事件（anki_tool_call），
+    // 否则会在生产环境挂上一个永远不会触发、却可能被伪造事件命中的监听器。
+    const agent = new CardAgent();
+    await agent.waitForReady();
+
+    // 注意：模块级单例 cardAgent 与本测试的实例各注册一次生成事件监听，
+    // 这里按事件名去重后断言：除 anki_generation_event 外不得监听任何事件
+    const listenedEvents = vi.mocked(listen).mock.calls.map(([eventName]) => eventName);
+    expect([...new Set(listenedEvents)]).toEqual(['anki_generation_event']);
+    expect(listenedEvents).not.toContain('anki_tool_call');
   });
 
   it('rejects empty content', async () => {
@@ -185,7 +198,18 @@ describe('CardAgent', () => {
       .mocked(invoke)
       .mock.calls.find(([command]) => command === 'start_enhanced_document_processing');
     expect(startCall).toBeTruthy();
-    const startArgs = startCall?.[1] as { options?: Record<string, unknown> } | undefined;
+    const startArgs = startCall?.[1] as {
+      documentContent?: string;
+      options?: Record<string, unknown>;
+    } | undefined;
+
+    // Prompt 装配契约：材料只经 documentContent 注入 user 消息，
+    // system prompt 经 custom_anki_prompt 作为后端 system 消息基础层，
+    // 不再使用 {{DOCUMENT_CONTENT}} 占位符，也不再误传 options.system_prompt
+    expect(startArgs?.documentContent).toBe('Hello');
+    expect(startArgs?.options?.custom_anki_prompt).toBe('system');
+    expect(startArgs?.options).not.toHaveProperty('system_prompt');
+
     expect(startArgs?.options).toEqual(
       expect.objectContaining({
         template_ids: ['basic'],
@@ -211,6 +235,82 @@ describe('CardAgent', () => {
         }),
       })
     );
+  });
+
+  describe('startGeneration (划词制卡生产路径)', () => {
+    it('starts the backend pipeline and returns documentId without waiting for events', async () => {
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      vi.mocked(invoke).mockResolvedValue('doc-selection');
+
+      const result = await agent.startGeneration({
+        content: '划词选中的学习材料',
+        maxCards: 10,
+        options: { deckName: 'Selection', customRequirements: '优先关键概念' },
+      });
+
+      // 非阻塞：不等待 DocumentProcessingCompleted，直接返回
+      expect(result).toEqual({ ok: true, documentId: 'doc-selection' });
+
+      const startCalls = vi
+        .mocked(invoke)
+        .mock.calls.filter(([command]) => command === 'start_enhanced_document_processing');
+      expect(startCalls).toHaveLength(1);
+
+      const startArgs = startCalls[0]?.[1] as {
+        documentContent?: string;
+        originalDocumentName?: string;
+        options?: Record<string, unknown>;
+      };
+
+      // 与 generateCards 共用同一套选项装配（Prompt/模板契约一致）
+      expect(startArgs.documentContent).toBe('划词选中的学习材料');
+      expect(startArgs.originalDocumentName).toBe('Selection');
+      expect(startArgs.options?.custom_anki_prompt).toBe('system');
+      expect(startArgs.options?.max_cards_per_mistake).toBe(10);
+      expect(startArgs.options?.custom_requirements).toBe('优先关键概念');
+      expect(startArgs.options?.template_ids).toEqual(['basic']);
+      expect(startArgs.options).not.toHaveProperty('system_prompt');
+    });
+
+    it('rejects empty content without touching the backend', async () => {
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      const result = await agent.startGeneration({ content: '   ' });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('内容不能为空');
+      expect(invoke).not.toHaveBeenCalledWith(
+        'start_enhanced_document_processing',
+        expect.anything()
+      );
+    });
+
+    it('does not depend on event listener initialization', async () => {
+      // 与 generateCards 不同：startGeneration 不注册卡片收集器，
+      // 即使事件监听初始化失败也应能直启后端管线
+      vi.mocked(listen).mockRejectedValue(new Error('listen failed'));
+      vi.mocked(invoke).mockResolvedValue('doc-no-listener');
+
+      const agent = new CardAgent();
+      const result = await agent.startGeneration({ content: '监听失败也能启动' });
+
+      expect(result).toEqual({ ok: true, documentId: 'doc-no-listener' });
+    });
+
+    it('propagates backend start failures', async () => {
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      vi.mocked(invoke).mockRejectedValue(new Error('backend down'));
+
+      const result = await agent.startGeneration({ content: '会失败的启动' });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('backend down');
+    });
   });
 
   it('returns idle-timeout with task:error event after inactivity', async () => {
@@ -256,7 +356,9 @@ describe('CardAgent', () => {
         }),
       })
     );
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.error).toContain('生成空闲超时');
     expect(result.cards).toHaveLength(0);
     expect(result.paused).toBe(false);
   });

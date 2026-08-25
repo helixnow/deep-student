@@ -73,11 +73,11 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
       className="wb-ai-briefing-widget wb-glass wb-glass-highlight"
       data-testid="wb-ai-briefing-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
-      aria-label={t('generativeUi:workbench.briefing_label', { defaultValue: 'AI 学习简报' })}
+      aria-label={t('generativeUi:workbench.briefing_label')}
     >
       <header className="wb-ai-briefing-header">
         <Sparkle className="h-4 w-4 text-primary" weight="fill" aria-hidden />
-        {t('generativeUi:workbench.briefing_label', { defaultValue: 'AI 学习简报' })}
+        {t('generativeUi:workbench.briefing_label')}
       </header>
       <div className="wb-ai-briefing-body">
         <GenerativeUIPanel

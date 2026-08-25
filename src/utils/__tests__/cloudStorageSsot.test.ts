@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18next from 'i18next';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
@@ -90,6 +91,12 @@ describe('cloud storage backend SSOT DTO', () => {
 
   it('rejects a selected provider without its config block', () => {
     expect(() => toSafeCloudStorageConfig({ provider: 'ftp' })).toThrow('Missing FTP');
+    expect(() => toSafeCloudStorageConfig({ provider: 'webdav' })).toThrow(
+      i18next.t('backend_errors:cloud_storage.missing_webdav_config'),
+    );
+    expect(() => toSafeCloudStorageConfig({ provider: 's3' })).toThrow(
+      i18next.t('backend_errors:cloud_storage.missing_s3_config'),
+    );
   });
 
   it('never lets localStorage overwrite an existing backend config', async () => {

@@ -12,6 +12,12 @@ import type { EditorLocation, EditorMode, EditorProps, OpenResourceOptions } fro
 import { editorRegistry, loadEditorComponent } from './editorRegistry';
 import { Result, ok, err, VfsError, VfsErrorCode, reportError } from '@/shared/result';
 import type { CurrentView } from '@/types/navigation';
+import i18n from '@/i18n';
+
+/** reportError 的动作名（用户可见的错误上下文） */
+function openResourceActionLabel(): string {
+  return i18n.t('analysis:open_resource.action', { defaultValue: '打开资源' });
+}
 
 // ============================================================================
 // 资源打开状态管理
@@ -197,12 +203,17 @@ export async function openResource(
     const error = new VfsError(
       VfsErrorCode.INVALID_STATE,
       options?.handlerNamespace || options?.targetView
-        ? `OpenResourceHandler 未注册: ${options.handlerNamespace ?? options.targetView}`
-        : 'OpenResourceHandler 未注册',
+        ? i18n.t('analysis:open_resource.handler_not_registered_for', {
+            target: options.handlerNamespace ?? options.targetView,
+            defaultValue: 'OpenResourceHandler 未注册: {{target}}',
+          })
+        : i18n.t('analysis:open_resource.handler_not_registered', {
+            defaultValue: 'OpenResourceHandler 未注册',
+          }),
       false
     );
     console.warn('[DSTU] OpenResourceHandler not registered. Cannot open resource.');
-    reportError(error, '打开资源');
+    reportError(error, openResourceActionLabel());
     return err(error);
   }
 
@@ -216,17 +227,20 @@ export async function openResource(
     const { dstu } = await import('./api');
     const nodeResult = await dstu.get(path);
     if (!nodeResult.ok) {
-      reportError(nodeResult.error, '打开资源');
+      reportError(nodeResult.error, openResourceActionLabel());
       return err(nodeResult.error);
     }
     if (!nodeResult.value) {
       const error = new VfsError(
         VfsErrorCode.NOT_FOUND,
-        `资源未找到: ${path}`,
+        i18n.t('analysis:open_resource.not_found', {
+          path,
+          defaultValue: '资源未找到: {{path}}',
+        }),
         true,
         { path }
       );
-      reportError(error, '打开资源');
+      reportError(error, openResourceActionLabel());
       return err(error);
     }
     node = nodeResult.value;
@@ -239,12 +253,14 @@ export async function openResource(
   if (node.type === 'folder') {
     const error = new VfsError(
       VfsErrorCode.INVALID_STATE,
-      '文件夹不能在编辑器中打开',
+      i18n.t('analysis:open_resource.folder_not_openable', {
+        defaultValue: '文件夹不能在编辑器中打开',
+      }),
       false,
       { path, type: node.type }
     );
     console.warn('[DSTU] Cannot open folder in editor:', path);
-    reportError(error, '打开资源');
+    reportError(error, openResourceActionLabel());
     return err(error);
   }
 
@@ -253,12 +269,15 @@ export async function openResource(
   if (!entry) {
     const error = new VfsError(
       VfsErrorCode.INVALID_STATE,
-      `未注册类型为 ${node.type} 的编辑器`,
+      i18n.t('analysis:open_resource.editor_not_registered', {
+        type: node.type,
+        defaultValue: '未注册类型为 {{type}} 的编辑器',
+      }),
       false,
       { type: node.type }
     );
     console.warn('[DSTU] No editor registered for type:', node.type);
-    reportError(error, '打开资源');
+    reportError(error, openResourceActionLabel());
     return err(error);
   }
 
@@ -284,12 +303,15 @@ export async function openResource(
     default: {
       const error = new VfsError(
         VfsErrorCode.VALIDATION,
-        `未知的打开位置: ${location}`,
+        i18n.t('analysis:open_resource.unknown_location', {
+          location,
+          defaultValue: '未知的打开位置: {{location}}',
+        }),
         false,
         { location }
       );
       console.warn('[DSTU] Unknown location:', location);
-      reportError(error, '打开资源');
+      reportError(error, openResourceActionLabel());
       return err(error);
     }
   }

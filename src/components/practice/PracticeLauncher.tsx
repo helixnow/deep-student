@@ -5,8 +5,6 @@
  * - 基础模式（顺序/随机/错题优先/按标签）→ 直接进入做题
  * - 高级模式（限时/模拟考/每日/组卷）→ 展开配置面板
  * - 顶部快速统计摘要
- * 
- * @see PracticeModeSelector 模式卡片网格
  */
 
 import React, { lazy, Suspense, useState, useCallback, useMemo, useEffect } from 'react';
@@ -56,6 +54,8 @@ export interface PracticeLauncherProps {
   currentQuestionId?: string | null;
   /** 收藏标记题目 ID 集：透传给限时/模拟考的答题卡角标（未传回退全局 store） */
   markedQuestionIds?: ReadonlySet<string>;
+  /** 宿主标签页是否活跃：保活隐藏（display:none）的实例不注册 Android 返回键 handler */
+  isActive?: boolean;
   className?: string;
 }
 
@@ -83,6 +83,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   onRequestedModeHandled,
   currentQuestionId,
   markedQuestionIds,
+  isActive,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -90,12 +91,14 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
 
   useEffect(() => {
-    if (!activeAdvanced) return;
+    // isActive === false：保活隐藏（display:none 标签页）的实例不注册，
+    // 避免吞掉当前活跃视图的返回键（未传 isActive 的宿主行为不变）
+    if (!activeAdvanced || isActive === false) return;
     return registerBackHandler(() => {
       setActiveAdvanced(null);
       return true;
     }, BACK_PRIORITY.view);
-  }, [activeAdvanced]);
+  }, [activeAdvanced, isActive]);
   const timedSession = useQuestionBankStore(state => state.timedSession);
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
   const mockExamScoreCard = useQuestionBankStore(state => state.mockExamScoreCard);
@@ -472,6 +475,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setIsTagPickerOpen(false)}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
@@ -487,7 +491,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleStartPracticeByTag(tag)}
-                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10"
+                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Tag size={14} className="shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">{label}</span>
@@ -512,6 +516,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               aria-label={t('common:back')}
               title={t('common:back')}
               onClick={() => setActiveAdvanced(null)}
+              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <CaretLeft size={16} />
             </DsButton>
@@ -538,6 +543,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 }}
                 currentQuestionId={currentQuestionId}
                 markedQuestionIds={markedQuestionIds}
+                isActive={isActive}
 />
             )}
             {activeAdvanced === 'mock_exam' && (
@@ -546,6 +552,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 onStart={() => onStartPractice('mock_exam')}
                 currentQuestionId={currentQuestionId}
                 markedQuestionIds={markedQuestionIds}
+                isActive={isActive}
 />
             )}
             {activeAdvanced === 'daily' && (
@@ -559,6 +566,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 examId={examId}
                 availableTags={allTags}
                 onGenerate={() => onStartPractice('paper')}
+                isActive={isActive}
 />
             )}
           </Suspense>

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 describe('SiliconFlow one-click assignment mapping', () => {
   it('includes qbank grading mapping key in preset assignments', () => {
     const source = readFileSync(
-      '/Volumes/cipan/deep-student/src/features/settings/components/SiliconFlowSection.tsx',
+      resolve(process.cwd(), 'src/features/settings/components/SiliconFlowSection.tsx'),
       'utf-8'
     );
 

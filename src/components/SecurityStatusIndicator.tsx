@@ -110,7 +110,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <h3 className={`text-sm font-medium ${textClass}`}>
               {t('securityStatus.title')}
             </h3>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh')} aria-label="refresh">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" title={t('securityStatus.refresh')} aria-label={t('securityStatus.refresh')}>
               <ArrowClockwise className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
             </DsButton>
           </div>

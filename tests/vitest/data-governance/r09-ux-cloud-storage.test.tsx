@@ -244,11 +244,15 @@ describe('CloudStorageSection 整包备份诚实文案', () => {
     expect(zhLocale.actions.fullZipHint).toContain('没有增量传输');
     expect(zhLocale.actions.fullZipHint).toContain('去重');
     expect(zhLocale.actions.fullZipHint).toContain('CDC');
+    expect(zhLocale.actions.fullZipHint).toContain('拒绝导出');
+    expect(zhLocale.actions.fullZipHint).toContain('不会套用已存密码');
     expect(enLocale.actions.fullZipHint).toMatch(/full ZIP/i);
     expect(enLocale.actions.fullZipHint).toMatch(/single object/i);
     expect(enLocale.actions.fullZipHint).toMatch(/no incremental transfer/i);
     expect(enLocale.actions.fullZipHint).toMatch(/deduplication/i);
     expect(enLocale.actions.fullZipHint).toContain('CDC');
+    expect(enLocale.actions.fullZipHint).toMatch(/export is refused/i);
+    expect(enLocale.actions.fullZipHint).toMatch(/will not apply the stored password/i);
     expect(Object.keys(zhLocale.actions).sort()).toEqual(Object.keys(enLocale.actions).sort());
   });
 
@@ -269,9 +273,17 @@ describe('用户指南 16 不把默认云端整包写成可换机', () => {
     expect(guide).toContain('**不会**带备份密码');
     expect(guide).toContain('加密全保真 ZIP');
     expect(guide).toContain('校验会明确拒绝，不会覆盖当前数据');
+    expect(guide).toContain('拒绝导出');
+    expect(guide).toContain('不会套用已存密码');
     expect(guide).not.toContain('产物永远是便携归档');
     expect(guide).not.toContain('适合迁移学习数据本身');
     expect(guide).not.toContain('也可以走云端：老设备「立即备份到云端」');
+  });
+
+  it('写明坚果云中文路径与 S3 控制台 bucket 前缀域名', () => {
+    expect(guide).toContain('我的坚果云');
+    expect(guide).toContain('静默列空');
+    expect(guide).toContain('bucket.bucket');
   });
 });
 
@@ -301,12 +313,16 @@ describe('CloudStorageSection 危险操作确认接线（源码契约）', () =>
     expect(zhLocale.download.partialArchiveNotice).toContain('整槽恢复');
     expect(zhLocale.download.partialArchiveNotice).toContain('未配置');
     expect(zhLocale.download.partialArchiveNotice).toContain('加密全保真');
+    expect(zhLocale.download.partialArchiveNotice).toContain('拒绝导出');
+    expect(zhLocale.download.partialArchiveNotice).toContain('不会套用已存密码');
     expect(zhLocale.download.partialArchiveNotice).not.toContain('永远是便携归档');
     expect(zhLocale.download.description).toContain('未配置云端端到端加密密码');
     expect(zhLocale.download.warning).toContain('通过整槽恢复校验');
     expect(zhLocale.download.restartNotice).toContain('通过整槽恢复校验');
     expect(enLocale.download.partialArchiveNotice).toMatch(/portable archive/i);
     expect(enLocale.download.partialArchiveNotice).toMatch(/full-fidelity/i);
+    expect(enLocale.download.partialArchiveNotice).toMatch(/export is refused/i);
+    expect(enLocale.download.partialArchiveNotice).toMatch(/will not apply the stored password/i);
     expect(enLocale.download.partialArchiveNotice).not.toMatch(/always exports/i);
     expect(enLocale.download.description).toMatch(/without a cloud end-to-end encryption password/i);
     expect(enLocale.download.warning).toMatch(/only after slot-restore validation/i);

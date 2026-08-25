@@ -29,9 +29,12 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('if (currentView === \'chat-v2\') {');
     expect(appSource).toContain('return currentChatHeaderTitle;');
     expect(appSource).toContain("const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');");
-    expect(appSource).toContain("if (!chatHeaderSessionId) {\n      setCurrentChatHeaderTitle('');");
+    expect(appSource).toContain(
+      "if (!chatHeaderSessionId) {\n      setCurrentChatHeaderSessionId(null);\n      setCurrentChatHeaderTitle('');"
+    );
     expect(appSource).toContain("if (!state) {\n      return '';");
-    expect(appSource).toContain('t(\'sidebar:navigation.chat_v2\', \'新会话\')');
+    // i18n 默认值已收敛到 locale 文件，调用点不再内联 defaultValue
+    expect(appSource).toContain("'chat-v2': t('sidebar:navigation.chat_v2'),");
   });
 
   it('subscribes the chat header to current-session changes and active-session title updates', () => {
@@ -63,12 +66,15 @@ describe('app chat header title contract', () => {
   it('keeps desktop header nav and title cells as explicit hotzones beyond the inner icon buttons', () => {
     expect(appSource).toContain('data-shell-hotzone="desktop-nav"');
     expect(appSource).toContain('data-shell-hotzone="desktop-title"');
-    expect(appSource).toContain('const desktopHeaderNavHotzoneLabel = t(\'chatV2:page.newSession\', \'新建会话\')');
-    expect(appSource).toContain('const desktopHeaderTitleHotzoneLabel = t(\'common:command_palette_label\', \'命令面板\')');
+    expect(appSource).toContain('const desktopHeaderNavHotzoneLabel = t(\'chatV2:page.newSession\');');
+    expect(appSource).toContain('const desktopHeaderTitleHotzoneLabel = t(\'common:command_palette_label\');');
     expect(appSource).toContain('const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {');
     expect(appSource).toContain("const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');");
     expect(appSource).toContain('void startDragging(event);');
-    expect(appSource).toContain('onMouseDown={workbenchActive ? undefined : handleDesktopTitlebarMouseDown}');
+    // 工作台模式整个 titlebar 不渲染（拖拽由 wb-menubar 接管），
+    // 因此 onMouseDown 无需再按 workbenchActive 分流
+    expect(appSource).toContain('{!isSmallScreen && !workbenchActive && (');
+    expect(appSource).toContain('onMouseDown={handleDesktopTitlebarMouseDown}');
     expect(appSource).toContain('onMouseDown={handleHeaderHotzoneMouseDown}');
     expect(appSource).toContain('onMouseMove={handleHeaderHotzoneMouseMove}');
     expect(appSource).toContain('onMouseUp={handleHeaderHotzoneMouseUp}');
@@ -174,7 +180,7 @@ describe('app chat header title contract', () => {
     expect(accessoryEnd).toBeGreaterThan(accessoryStart);
     const accessorySource = appSource.slice(accessoryStart, accessoryEnd);
 
-    expect(appSource).toContain("const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');");
+    expect(appSource).toContain("const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar');");
     expect(accessorySource).toContain('<CommonTooltip content={label} position="bottom">');
     expect(accessorySource).not.toContain('title={label}');
 
@@ -196,11 +202,13 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {');
     expect(appSource).toContain("return groupCache.get(state.groupId)?.name ?? '';");
     expect(appSource).toContain('state.groupId !== prevState.groupId');
-    expect(appSource).toContain("window.addEventListener('chat-v2:groups-updated', syncCurrentChatHeaderGroupName);");
+    // 分组列表更新事件已迁移到统一的 app 事件总线（useAppEvent）
+    expect(appSource).toContain('useAppEvent(APP_EVENTS.CHAT_GROUPS_UPDATED, () => {');
+    expect(appSource).toContain('syncCurrentChatHeaderGroupName();');
     expect(appSource).toContain('const desktopHeaderNewSessionTooltipLabel = currentChatHeaderGroupName');
     expect(appSource).toContain("t('chatV2:page.newSessionInGroup', {");
     expect(appSource).toContain('groupName: currentChatHeaderGroupName');
-    expect(appSource).toContain("defaultValue: '在 {{groupName}} 中新建会话'");
+    expect(appSource).toContain(': desktopHeaderNavHotzoneLabel;');
     expect(appSource).toContain('newSessionLabel={desktopHeaderNewSessionTooltipLabel}');
     expect(appSource).toContain('aria-label={desktopHeaderNewSessionTooltipLabel}');
     expect(groupManagementSource).toContain('setGroupsCache(sorted);\n    emitGroupListUpdated();');

@@ -5,8 +5,9 @@
  * bus 会把请求交给这里翻译回现有 CustomEvent 导航（设计 §9.3：
  * 调用方无感知，legacy 路径 100% 复用现有 App.tsx / 页面监听链路）。
  *
- * 本模块保持零重依赖（只 import types 与 workbenchBus），
- * App.tsx 启动时深路径引入并 install，一次注册全局生效。
+ * 本模块保持轻依赖（types、workbenchBus、导航握手模块，以及启动期已在 App
+ * 依赖图中的 showGlobalNotification / i18n 工具），App.tsx 启动时深路径引入
+ * 并 install，一次注册全局生效。
  *
  * 映射表（typeId → legacy 行为）：
  * - chat                → NAVIGATE_TO_VIEW chat-v2 (+ navigate-to-session / CHAT_V2_SET_INPUT)
@@ -16,11 +17,15 @@
  * - files / notes       → NAVIGATE_TO_VIEW learning-hub（notes 工作区是 OS 专属壳，
  *                         legacy 下资源仍在资源库中打开）
  * - settings/todo/skills/templates/taskDashboard/sandbox → NAVIGATE_TO_VIEW 对应视图
- * - pomodoro / browser / flashcards → 显式 no-op（GlobalPomodoroWidget 常驻；
- *                         内置浏览器与闪卡复习台是 OS 模式专属，legacy 无对应页面）
+ * - pomodoro             → 显式 no-op（GlobalPomodoroWidget 常驻，静默即可）
+ * - browser / flashcards → no-op + 全局通知「仅桌面端可用」（OS 模式专属，
+ *                         legacy 无对应页面，静默会让用户以为点击无效）
  */
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { t } from '@/utils/i18n';
 import type { ActivateRequest, LaunchRequest } from './types';
 import { workbenchBus } from './workbenchBus';
+import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 
 const RESOURCE_TYPE_IDS = new Set([
   'note',
@@ -48,8 +53,9 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   sandbox: 'sandbox-workbench',
 };
 
-/** 有意 no-op 的 typeId：legacy 壳没有对应页面，静默忽略而非 warn
- * （flashcards 复习台与内置浏览器均为 OS 模式专属应用） */
+/** 有意 no-op 的 typeId：legacy 壳没有对应页面，不做导航也不 warn。
+ * pomodoro 静默（GlobalPomodoroWidget 常驻 legacy 壳）；browser / flashcards
+ * 为 OS 模式专属应用，no-op 时给一条「仅桌面端可用」的全局通知。 */
 const LEGACY_NOOP_TYPE_IDS = new Set(['pomodoro', 'browser', 'flashcards']);
 
 function dispatch(name: string, detail?: unknown): void {
@@ -76,10 +82,8 @@ export function translateLegacyNavigation(
   if (typeId === 'chat') {
     dispatch('NAVIGATE_TO_VIEW', { view: 'chat-v2' });
     if (instanceKey) {
-      // ChatV2Page 可能尚未挂载，按命令面板同款节奏多次派发（setCurrentSessionId 幂等）
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 0);
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 400);
-      dispatchDeferred('navigate-to-session', { sessionId: instanceKey }, 1200);
+      // ChatV2Page 可能尚未挂载：交给导航握手（就绪立即派发，未就绪挂起待消费）
+      requestChatSessionNavigation(instanceKey);
     }
     if (kind === 'activate') {
       const activate = req as ActivateRequest;
@@ -112,7 +116,20 @@ export function translateLegacyNavigation(
     return;
   }
 
-  if (LEGACY_NOOP_TYPE_IDS.has(typeId)) return;
+  if (LEGACY_NOOP_TYPE_IDS.has(typeId)) {
+    // pomodoro 例外：GlobalPomodoroWidget 常驻 legacy 壳，无需提示
+    if (typeId !== 'pomodoro') {
+      showGlobalNotification(
+        'info',
+        t(
+          'legacyFallback.desktopOnly',
+          { name: t(`apps.${typeId}`, undefined, 'workbench') },
+          'workbench',
+        ),
+      );
+    }
+    return;
+  }
 
   console.warn('[workbench] legacy fallback has no mapping for typeId:', typeId);
 }

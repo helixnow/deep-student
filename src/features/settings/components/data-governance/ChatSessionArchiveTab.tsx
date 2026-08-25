@@ -256,6 +256,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           <DsButton
             variant="ghost"
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => {
               if (restoreArchivedGroup && ownerGroup) {
                 void restoreGroup(ownerGroup.id);
@@ -276,6 +277,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           <DsButton
             variant={confirmingDelete ? 'danger' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => permanentlyDeleteSession(session.id)}
             disabled={busy}
             aria-label={confirmingDelete
@@ -317,6 +319,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
         <DsButton
           variant="ghost"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={loadArchivedSessions}
           disabled={loading || actionSessionId !== null || actionGroupId !== null}
         >
@@ -371,6 +374,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                     <DsButton
                       variant="ghost"
                       size="sm"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       onClick={() => restoreGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}
                       aria-label={t('data:governance.archive_restore_group')}
@@ -385,6 +389,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                     <DsButton
                       variant={confirmingDeleteGroup ? 'danger' : 'ghost'}
                       size="sm"
+                      className="[@media(pointer:coarse)]:!min-h-11"
                       onClick={() => permanentlyDeleteGroup(group.id)}
                       disabled={actionGroupId === group.id || actionSessionId !== null}
                       aria-label={confirmingDeleteGroup

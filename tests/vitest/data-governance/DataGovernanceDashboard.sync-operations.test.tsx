@@ -73,7 +73,8 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
 const mockLoadStoredCloudStorageConfigSafe = vi.hoisted(() => vi.fn());
 const mockLoadStoredCloudStorageConfigWithCredentials = vi.hoisted(() => vi.fn());
 
-vi.mock('@/utils/cloudStorageApi', () => ({
+vi.mock('@/utils/cloudStorageApi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/cloudStorageApi')>()),
   loadStoredCloudStorageConfigSafe: mockLoadStoredCloudStorageConfigSafe,
   loadStoredCloudStorageConfigWithCredentials: mockLoadStoredCloudStorageConfigWithCredentials,
   // CloudStorageSection 模块加载时读取的常量（缺失会导致整个测试文件加载失败）
@@ -248,7 +249,7 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
 /** 导航到同步 Tab 的辅助函数 */
 async function navigateToSyncTab() {
   const syncTab = await screen.findByRole('button', {
-    name: /同步|data:governance\.tab_sync/i,
+    name: /^(?:同步|data:governance\.tab_sync)$/i,
   });
   fireEvent.click(syncTab);
   await waitFor(() => {

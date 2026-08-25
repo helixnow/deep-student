@@ -812,6 +812,7 @@
     "import_button": "Import",
     "title": "Data Governance",
     "description": "Manage database migrations, backups, sync, and audit logs",
+    "tabs_nav_label": "Data governance tabs",
     "tab_overview": "Overview",
     "tab_recovery": "Recovery",
     "tab_archive": "Archive",

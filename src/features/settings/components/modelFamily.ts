@@ -37,6 +37,8 @@ const FAMILY_RULES: FamilyRule[] = [
   { pattern: /^claude-(?:2|instant)/i, family: { id: 'claude-legacy', label: 'Claude (Legacy)', order: 13 } },
 
   // === Google ===
+  // Gemini 3.x（3.1 / 3.5 等），需先于通用 ^gemini 兜底
+  { pattern: /gemini-?3(?:[.-]|$)/i, family: { id: 'gemini-3', label: 'Gemini 3', order: 19 } },
   { pattern: /gemini-?2\.5/i, family: { id: 'gemini-2.5', label: 'Gemini 2.5', order: 20 } },
   { pattern: /gemini-?2\.0/i, family: { id: 'gemini-2.0', label: 'Gemini 2.0', order: 21 } },
   { pattern: /gemini-?1\.5/i, family: { id: 'gemini-1.5', label: 'Gemini 1.5', order: 22 } },
@@ -61,12 +63,18 @@ const FAMILY_RULES: FamilyRule[] = [
   { pattern: /^qwen/i, family: { id: 'qwen', label: 'Qwen', order: 44 } },
 
   // === Meta Llama ===
+  { pattern: /llama-?4/i, family: { id: 'llama-4', label: 'Llama 4', order: 49 } },
   { pattern: /llama-?3/i, family: { id: 'llama-3', label: 'Llama 3', order: 50 } },
   { pattern: /llama-?2/i, family: { id: 'llama-2', label: 'Llama 2', order: 51 } },
+
+  // === xAI ===
+  { pattern: /^grok/i, family: { id: 'grok', label: 'Grok', order: 55 } },
 
   // === Mistral ===
   { pattern: /mixtral/i, family: { id: 'mixtral', label: 'Mixtral', order: 60 } },
   { pattern: /codestral/i, family: { id: 'codestral', label: 'Codestral', order: 61 } },
+  // Magistral（推理产线）不含 "mistral" 子串，需要独立规则
+  { pattern: /magistral/i, family: { id: 'magistral', label: 'Magistral', order: 63 } },
   { pattern: /mistral/i, family: { id: 'mistral', label: 'Mistral', order: 62 } },
 
   // === 国内大模型 ===
@@ -75,8 +83,10 @@ const FAMILY_RULES: FamilyRule[] = [
   { pattern: /(?:moonshot|kimi)/i, family: { id: 'moonshot', label: 'Moonshot', order: 72 } },
   { pattern: /(?:doubao|skylark|seed-)/i, family: { id: 'doubao', label: 'Doubao', order: 73 } },
   { pattern: /hunyuan/i, family: { id: 'hunyuan', label: 'Hunyuan', order: 74 } },
-  { pattern: /^abab/i, family: { id: 'minimax', label: 'MiniMax', order: 75 } },
+  // MiniMax：新一代 slug 为 minimax-m3 / minimax-m2.7 / MiniMax-M2.5，同时保留旧版 abab 前缀
+  { pattern: /(?:^abab|minimax)/i, family: { id: 'minimax', label: 'MiniMax', order: 75 } },
   { pattern: /^yi[-_]/i, family: { id: 'yi', label: 'Yi', order: 76 } },
+  { pattern: /^ernie/i, family: { id: 'ernie', label: 'ERNIE', order: 77 } },
 
   // === 能力分类（fallback） ===
   // 注意：reranker 必须先于 embedding 检查（匹配顺序），但显示顺序让 embedding 在前（order 小）

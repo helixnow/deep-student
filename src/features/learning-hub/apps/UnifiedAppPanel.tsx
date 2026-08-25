@@ -218,7 +218,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       if (cancelled) return;
 
       if (!result.ok) {
-        reportError(result.error, '加载资源');
+        reportError(result.error, t('common:loadResource', { defaultValue: '加载资源' }));
         setError(result.error.toUserMessage());
         setIsLoading(false);
         return;
@@ -367,13 +367,13 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setLocalReloadNonce((n) => n + 1)}
-            className="gap-1.5 [@media(pointer:coarse)]:min-h-11"
+            className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('common:reload')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:close')}
             </DsButton>
           )}

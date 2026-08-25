@@ -69,10 +69,18 @@ export function dispatchCanvasAIEditRequest(
     reason: dispatchReason('edit_dispatch_unclaimed', '没有匹配的笔记编辑器认领建议'),
   };
 
+  const sanitized = validation.data;
   window.dispatchEvent(
     new CustomEvent('canvas:ai-edit-request', {
       detail: {
-        ...payload,
+        requestId: payload.requestId,
+        noteId: payload.noteId,
+        targetWindowId: payload.targetWindowId,
+        operation: sanitized.operation,
+        content: sanitized.content,
+        search: sanitized.search,
+        replace: sanitized.replace,
+        section: sanitized.section,
         onSettled: options?.onSettled,
         onLocalDisposition: (disposition: { accepted: boolean; reason?: string }) => {
           result = disposition.accepted

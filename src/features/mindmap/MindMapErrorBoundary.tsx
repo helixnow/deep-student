@@ -73,7 +73,7 @@ export class MindMapErrorBoundary extends React.Component<
             <DsButton
               variant="default"
               onClick={this.handleReset}
-              className="mt-1"
+              className="mt-1 [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise size={16} className="mr-2" />
               {i18next.t('mindmap:retryLoad')}

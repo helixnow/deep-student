@@ -23,7 +23,8 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    build_provider_adapter, is_official_deepseek_config, normalize_nonstream_response_to_openai,
+    parser,
     provider_quirks::{resolve_endpoint_quirks, resolve_quirks, MaxTokensField, ProviderQuirks},
     request_adapter_for_config, routing, should_use_openai_responses_for_config, ApiConfig,
     ImagePayload, LLMManager, MergedChatMessage, Result, AUTH_MODE_OPENAI_CODEX_OAUTH,
@@ -407,16 +408,73 @@ fn ensure_model_accepts_message_modalities(
     Ok(())
 }
 
+const PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS: usize = 200;
+
+/// 上游把 reason/code/message 写成字符串、数字或布尔的情况都存在，统一取标量文本。
+fn provider_stream_scalar_text(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn provider_stream_error_detail(value: &Value) -> Option<String> {
+    let raw = provider_stream_scalar_text(value.pointer("/details/message"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/error/message")))
+        .or_else(|| provider_stream_scalar_text(value.get("details")))
+        .or_else(|| provider_stream_scalar_text(value.get("message")))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/error/message")))?;
+
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() > PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS {
+        let head: String = collapsed
+            .chars()
+            .take(PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS)
+            .collect();
+        Some(format!("{head}..."))
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn provider_stream_failure_classification(prefix: &str, reason: &str) -> Option<String> {
+    match reason {
+        "max_output_tokens" | "max_tokens" => Some(format!(
+            "{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”"
+        )),
+        "response.cancelled" | "response.canceled" | "cancelled" | "canceled" => {
+            Some(format!("{prefix}（上游取消）；已保留已生成内容，可重试"))
+        }
+        "content_filter" | "safety" => {
+            Some(format!("{prefix}（内容安全策略中止）；已保留已生成内容"))
+        }
+        _ if reason.starts_with("response.incomplete") => {
+            Some(format!("{prefix}；已保留已生成内容，可重试或发送“继续”"))
+        }
+        _ => None,
+    }
+}
+
 fn provider_stream_failure_message(
     value: &Value,
     requires_explicit_completion: bool,
     is_codex: bool,
 ) -> String {
-    let terminal_reason = value.get("reason").and_then(Value::as_str);
-    let detail_reason = value
-        .pointer("/details/reason")
-        .and_then(Value::as_str)
-        .or_else(|| value.pointer("/details/code").and_then(Value::as_str));
+    let terminal_reason = provider_stream_scalar_text(value.get("reason"));
+    let detail_reason = provider_stream_scalar_text(value.pointer("/details/reason"))
+        .or_else(|| provider_stream_scalar_text(value.pointer("/details/code")));
     let prefix = if is_codex {
         "OpenAI Codex 回复未完整结束"
     } else if requires_explicit_completion {
@@ -425,20 +483,20 @@ fn provider_stream_failure_message(
         "模型回复未完整结束"
     };
 
-    match detail_reason.or(terminal_reason) {
-        Some("max_output_tokens" | "max_tokens") => {
-            format!("{prefix}（达到模型输出上限）；已保留已生成内容，可重试或发送“继续”")
-        }
-        Some("response.cancelled" | "response.canceled" | "cancelled" | "canceled") => {
-            format!("{prefix}（上游取消）；已保留已生成内容，可重试")
-        }
-        Some("content_filter" | "safety") => {
-            format!("{prefix}（内容安全策略中止）；已保留已生成内容")
-        }
-        Some(reason) if reason.starts_with("response.incomplete") => {
-            format!("{prefix}；已保留已生成内容，可重试或发送“继续”")
-        }
-        _ => format!("{prefix}；已保留已生成内容，可重试"),
+    // 数字状态码（如 details.code=499）无法分类，此时仍要回退到顶层 reason 的已知分类。
+    let classified = detail_reason
+        .as_deref()
+        .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        .or_else(|| {
+            terminal_reason
+                .as_deref()
+                .and_then(|reason| provider_stream_failure_classification(prefix, reason))
+        })
+        .unwrap_or_else(|| format!("{prefix}；已保留已生成内容，可重试"));
+
+    match provider_stream_error_detail(value) {
+        Some(detail) => format!("{classified}；上游返回：{detail}"),
+        None => classified,
     }
 }
 
@@ -528,23 +586,25 @@ fn deepseek_model_supports_server_side_web_search(model: &str) -> bool {
 /// DeepSeek 官方 + Responses 协议下启用服务端联网搜索：
 /// - 协议必须是 openai_responses（`{"type":"web_search"}` 仅 Responses 支持）
 /// - 必须是官方 DeepSeek 端点
+/// - 模型支持工具
+///   （以上三条已收敛进 `ProviderQuirks::server_side_web_search`，见
+///   `provider_quirks::resolve_quirks`）
 /// - 模型必须在官方 web_search 列名（仅 flash 系列；Responses 门控已放开
 ///   v4-pro，不能再依赖「上游保证仅 flash」，见
 ///   `deepseek_model_supports_server_side_web_search`）
-/// - 模型支持工具
 /// - 会话未显式关闭 web 搜索（chat_v2 的 `web_search_enabled` 开关）
 ///
 /// 启用后本地 function 版 web_search 会被替换为服务端原生工具，避免双重搜索。
 #[inline]
 fn server_side_web_search_enabled(
     quirks: &ProviderQuirks,
-    model: &str,
+    config: &ApiConfig,
     llm_context: &HashMap<String, Value>,
 ) -> bool {
     if !quirks.server_side_web_search {
         return false;
     }
-    if !deepseek_model_supports_server_side_web_search(model) {
+    if !deepseek_model_supports_server_side_web_search(&config.model) {
         return false;
     }
     if llm_context
@@ -1086,7 +1146,10 @@ mod tests {
         assert_eq!(stable_prompt_cache_key(Some("translation")), "translation");
         // 空输入回落到固定常量而非随机 UUID：同一输入必须得到同一 key
         assert_eq!(stable_prompt_cache_key(None), FALLBACK_PROMPT_CACHE_KEY);
-        assert_eq!(stable_prompt_cache_key(Some("   ")), FALLBACK_PROMPT_CACHE_KEY);
+        assert_eq!(
+            stable_prompt_cache_key(Some("   ")),
+            FALLBACK_PROMPT_CACHE_KEY
+        );
         assert_eq!(stable_prompt_cache_key(None), stable_prompt_cache_key(None));
     }
 
@@ -1252,6 +1315,32 @@ mod tests {
     }
 
     #[test]
+    fn stream_input_reassembles_chinese_split_across_byte_chunks() {
+        use crate::providers::{OpenAIAdapter, StreamEvent};
+
+        // issue #122：TCP 分帧把 3 字节汉字切成两个 chunk，
+        // 管线入口不得对半截 UTF-8 做 lossy 解码。
+        let source = "data: {\"choices\":[{\"delta\":{\"content\":\"数学题\"}}]}\n\n";
+        let bytes = source.as_bytes();
+        let split = source.find('数').unwrap() + 1;
+
+        let mut buffer = crate::utils::sse_buffer::SseEventBuffer::new();
+        let first = process_sse_stream_input(&mut buffer, Some(&bytes[..split]));
+        assert!(first.is_empty(), "半截 UTF-8 不应产出事件");
+
+        let mut blocks = process_sse_stream_input(&mut buffer, Some(&bytes[split..]));
+        blocks.extend(process_sse_stream_input(&mut buffer, None));
+        assert_eq!(blocks.len(), 1);
+        assert!(!blocks[0].contains('\u{fffd}'));
+
+        let events = OpenAIAdapter.parse_stream(&blocks[0]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StreamEvent::ContentChunk(content) if content == "数学题"
+        )));
+    }
+
+    #[test]
     fn codex_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, true)
             .expect_err("Codex EOF without a terminal event must fail");
@@ -1266,7 +1355,9 @@ mod tests {
     fn openai_responses_api_key_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, false)
             .expect_err("Responses EOF without a terminal event must fail");
-        assert!(error.to_string().contains("OpenAI Responses"));
+        // 非 Codex 的显式结束协议统一用中性 "LLM provider" 文案（兼容网关也走此路径）。
+        assert!(error.to_string().contains("LLM provider"));
+        assert!(error.to_string().contains("未收到完整结束标记"));
         assert!(!error.to_string().contains("OpenAI Codex"));
     }
 
@@ -1287,6 +1378,121 @@ mod tests {
         let error = validate_stream_termination(true, true, Some(&message), true)
             .expect_err("a provider failure must not be hidden by Done");
         assert!(error.to_string().contains("输出上限"));
+    }
+
+    #[test]
+    fn provider_failure_keeps_upstream_message_for_numeric_codes() {
+        // OpenRouter/中转站风格：code 是数字，旧实现的 as_str() 失配后丢掉原文
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": {
+                    "code": 429,
+                    "message": "Provider returned error: rate limit exceeded for gpt-5"
+                }
+            }),
+            false,
+            false,
+        );
+        assert!(message.contains("模型回复未完整结束"));
+        assert!(message.contains("rate limit exceeded for gpt-5"));
+    }
+
+    #[test]
+    fn provider_failure_falls_back_to_nested_and_top_level_messages() {
+        let nested = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.failed",
+                "details": { "error": { "message": "insufficient_quota: 余额不足" } }
+            }),
+            true,
+            false,
+        );
+        assert!(nested.contains("insufficient_quota: 余额不足"));
+
+        let top_level = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "message": "upstream gateway closed the connection"
+            }),
+            false,
+            false,
+        );
+        assert!(top_level.contains("upstream gateway closed the connection"));
+
+        let plain_details = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "stream_error",
+                "details": "Bad gateway"
+            }),
+            false,
+            false,
+        );
+        assert!(plain_details.contains("Bad gateway"));
+    }
+
+    #[test]
+    fn provider_failure_classifies_known_reasons_and_truncates_detail() {
+        let cancelled = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.cancelled",
+                "details": { "code": 499 }
+            }),
+            true,
+            true,
+        );
+        assert!(cancelled.contains("OpenAI Codex"));
+        assert!(cancelled.contains("上游取消"));
+
+        let filtered = provider_stream_failure_message(
+            &json!({
+                "type": "content_blocked",
+                "reason": "safety",
+                "stop_details": { "category": "self_harm" }
+            }),
+            false,
+            false,
+        );
+        assert!(filtered.contains("内容安全策略中止"));
+
+        // 上游把整段 HTML 塞进 message 时，只保留截断后的片段
+        let long_detail = format!("<html>{}</html>", "x".repeat(500));
+        let truncated = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "max_tokens",
+                "details": { "message": long_detail }
+            }),
+            false,
+            false,
+        );
+        assert!(truncated.contains("输出上限"));
+        assert!(truncated.contains("上游返回：<html>"));
+        assert!(truncated.ends_with("..."));
+        let detail_part = truncated
+            .rsplit("上游返回：")
+            .next()
+            .expect("appended detail must exist");
+        assert!(detail_part.chars().count() <= PROVIDER_STREAM_ERROR_DETAIL_MAX_CHARS + 3);
+    }
+
+    #[test]
+    fn provider_failure_without_upstream_message_keeps_plain_classification() {
+        let message = provider_stream_failure_message(
+            &json!({
+                "type": "provider_error",
+                "reason": "response.incomplete",
+                "details": { "reason": "max_output_tokens" }
+            }),
+            true,
+            false,
+        );
+        assert!(message.contains("输出上限"));
+        assert!(!message.contains("上游返回"));
     }
 
     #[test]
@@ -1340,7 +1546,9 @@ mod tests {
         let sanitized = sanitize_request_body_for_audit(&body).to_string();
         assert!(!sanitized.contains("c2VjcmV0"));
         assert!(!sanitized.contains("provider-secret-state"));
-        assert!(sanitized.contains("base64 data"));
+        // image_url 键先被 debug_log_service 的 embedded_binary 整体脱敏吃掉，
+        // 不再落入 "[base64 data: ...]" 占位符分支。
+        assert!(sanitized.contains("embedded_binary"));
         assert!(sanitized.contains("[REDACTED]"));
     }
 
@@ -1735,7 +1943,7 @@ mod tests {
 
         assert!(server_side_web_search_enabled(
             &resolve_quirks(&base),
-            &base.model,
+            &base,
             &enabled_context
         ));
 
@@ -1744,7 +1952,7 @@ mod tests {
         disabled_context.insert("web_search_enabled".to_string(), json!(false));
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&base),
-            &base.model,
+            &base,
             &disabled_context
         ));
 
@@ -1753,7 +1961,7 @@ mod tests {
         chat_config.api_protocol = Some("openai_chat_completions".to_string());
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&chat_config),
-            &chat_config.model,
+            &chat_config,
             &enabled_context
         ));
 
@@ -1764,7 +1972,7 @@ mod tests {
         third_party.base_url = "https://api.siliconflow.cn/v1".to_string();
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&third_party),
-            &third_party.model,
+            &third_party,
             &enabled_context
         ));
 
@@ -1774,7 +1982,7 @@ mod tests {
         proxy.api_protocol = Some("openai_responses".to_string());
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&proxy),
-            &proxy.model,
+            &proxy,
             &enabled_context
         ));
 
@@ -1783,7 +1991,7 @@ mod tests {
         no_tools.supports_tools = false;
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&no_tools),
-            &no_tools.model,
+            &no_tools,
             &enabled_context
         ));
     }
@@ -1814,7 +2022,7 @@ mod tests {
         );
         assert!(!server_side_web_search_enabled(
             &resolve_quirks(&pro),
-            &pro.model,
+            &pro,
             &context
         ));
 
@@ -1823,7 +2031,7 @@ mod tests {
         vision_exp.model = "deepseek-v4-flash-vision-exp".to_string();
         assert!(server_side_web_search_enabled(
             &resolve_quirks(&vision_exp),
-            &vision_exp.model,
+            &vision_exp,
             &context
         ));
 
@@ -1832,7 +2040,7 @@ mod tests {
             let mut legacy = base.clone();
             legacy.model = alias.to_string();
             assert!(
-                server_side_web_search_enabled(&resolve_quirks(&legacy), &legacy.model, &context),
+                server_side_web_search_enabled(&resolve_quirks(&legacy), &legacy, &context),
                 "legacy 别名 {alias} 应放行"
             );
         }
@@ -2262,7 +2470,11 @@ mod tests {
         merge_consecutive_user_messages_respecting_transients(&mut with, &guard);
 
         assert_eq!(with[0]["content"], skill_content, "技能消息不得被合并改写");
-        assert_eq!(&with[1..], &without[..], "非技能 user 合并结果必须与无技能时一致");
+        assert_eq!(
+            &with[1..],
+            &without[..],
+            "非技能 user 合并结果必须与无技能时一致"
+        );
     }
 
     /// P1-8：瞬态技能/锚点消息永不与邻接 user 合并；
@@ -2282,7 +2494,10 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["content"], "u1", "屏障前的 user 不得跨屏障合并");
         assert_eq!(messages[1]["content"], skill_content);
-        assert_eq!(messages[2]["content"], "u2\n\nu3", "屏障后的连续 user 照常合并");
+        assert_eq!(
+            messages[2]["content"], "u2\n\nu3",
+            "屏障后的连续 user 照常合并"
+        );
     }
 
     // ============================================================
@@ -2452,7 +2667,10 @@ mod tests {
             "原有 image block 字节不变"
         );
         assert_eq!(arr[2]["type"], "text");
-        assert!(arr[2]["text"].as_str().unwrap().contains("<injected_context>"));
+        assert!(arr[2]["text"]
+            .as_str()
+            .unwrap()
+            .contains("<injected_context>"));
     }
 
     /// 找不到可承载的 user 消息时：追加独立 user 尾段，绝不触碰 system
@@ -2487,7 +2705,11 @@ mod tests {
             json!({"role": "user", "content": "q"}),
         ];
         let before = serde_json::to_string(&messages).unwrap();
-        LLMManager::append_injection_to_current_user_message(&mut messages, "   ", &no_transients());
+        LLMManager::append_injection_to_current_user_message(
+            &mut messages,
+            "   ",
+            &no_transients(),
+        );
         assert_eq!(serde_json::to_string(&messages).unwrap(), before);
     }
 }
@@ -2935,7 +3157,7 @@ fn stable_prompt_cache_key(session_id: Option<&str>) -> String {
 /// 仅 OpenAI Responses 协议与 OpenAI 官方 Chat Completions 需要；
 /// DeepSeek 官方（含其 Responses 公测端点）不支持该字段，不写。
 fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
-    if super::is_official_deepseek_config(config) {
+    if is_official_deepseek_config(config) {
         return false;
     }
     should_use_openai_responses_for_config(config)
@@ -2947,7 +3169,7 @@ fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
 /// 参数**只对 OpenAI 官方端点**合法——DeepSeek 官方明确不支持，第三方
 /// OpenAI 兼容网关/反代行为不可知（轻则静默忽略、重则 400），一律不写。
 fn provider_accepts_prompt_cache_retention(config: &ApiConfig) -> bool {
-    !super::is_official_deepseek_config(config)
+    !is_official_deepseek_config(config)
         && super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
 }
 
@@ -3894,7 +4116,7 @@ impl LLMManager {
             // 使用自定义工具（Pipeline 接管执行，但需要 LLM 知道工具 schema）
             let mut tools = custom_tools.unwrap_or_default();
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, &config.model, context) {
+            if server_side_web_search_enabled(&quirks, &config, context) {
                 apply_server_side_web_search_tool(&mut tools);
                 debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses）");
             }
@@ -3916,7 +4138,7 @@ impl LLMManager {
             // 构建工具列表，包含本地工具和 MCP 工具
             let mut tools = self.build_tools_with_mcp(&window).await;
             // 🆕 DeepSeek 官方 + Responses：替换本地 web_search 为服务端原生工具
-            if server_side_web_search_enabled(&quirks, &config.model, context) {
+            if server_side_web_search_enabled(&quirks, &config, context) {
                 if let Some(tools_array) = tools.as_array_mut() {
                     apply_server_side_web_search_tool(tools_array);
                     debug!("[LLM] 注入服务端 web_search 工具（DeepSeek Responses, legacy 路径）");
@@ -6529,6 +6751,69 @@ impl LLMManager {
             image_payloads,
             caller_type,
             "utility",
+        )
+        .await
+    }
+
+    /// Resolve one Anki Sidekick role against the current model assignments.
+    ///
+    /// Slot probing is deliberately best-effort: missing or concurrently removed
+    /// configuration returns `None`, allowing callers to retain their legacy model2 path.
+    pub async fn resolve_anki_role_decision(
+        &self,
+        role: crate::anki_model_routing::AnkiModelRole,
+        mode: crate::anki_model_routing::RoutingMode,
+    ) -> Option<crate::anki_model_routing::RoleDecision> {
+        let slots = self.probe_anki_routing_slots().await;
+        let plan = crate::anki_model_routing::plan_routing(mode, &slots)?;
+        plan.log_debug();
+        Some(plan.decision(role).clone())
+    }
+
+    /// Execute an Anki utility prompt on its routed role model.
+    ///
+    /// Routing only selects among already-enabled text configs. If the selected
+    /// config disappears between probing and execution, fall back to the existing
+    /// model2 behavior instead of failing the surrounding Anki pipeline.
+    pub async fn call_anki_routed_raw_prompt(
+        &self,
+        decision: Option<&crate::anki_model_routing::RoleDecision>,
+        task: &str,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+    ) -> Result<StandardModel2Output> {
+        if let Some(decision) = decision {
+            let config = self.get_api_configs().await.ok().and_then(|configs| {
+                configs.into_iter().find(|config| {
+                    config.id == decision.config_id
+                        && config.enabled
+                        && !config.is_embedding
+                        && !config.is_reranker
+                        && !config.is_image_generation
+                })
+            });
+            if let Some(config) = config {
+                return self
+                    .call_raw_prompt_with_config(
+                        config,
+                        user_prompt,
+                        image_payloads,
+                        crate::llm_usage::CallerType::Anki,
+                        task,
+                    )
+                    .await;
+            }
+            debug!(
+                "[ANKI_ROUTING] {} 角色配置 {} 已不可用，回退 model2",
+                decision.role.as_str(),
+                decision.config_id
+            );
+        }
+
+        self.call_model2_raw_prompt(
+            user_prompt,
+            image_payloads,
+            crate::llm_usage::CallerType::Anki,
         )
         .await
     }

@@ -11,7 +11,6 @@ import { generativeUIRegistry } from '@/features/generative-ui/registry';
 import {
   RESEARCH_ACTION_IDS,
   NOTE_EDIT_ACTION_IDS,
-  FLASHCARD_ACTION_IDS,
 } from '@/features/generative-ui/bridge/resolveGenerativeUIChatActionHandlers';
 import { HPIAS_EVENT_CHANNEL } from '@/features/generative-ui/bridge/hpiasEventBridge';
 
@@ -51,7 +50,6 @@ const BRIDGE_FILES = [
 const HANDLER_FILES = [
   'handlers/workbenchLearningHandlers.ts',
   'handlers/notesEditActionHandlers.ts',
-  'handlers/flashcardActionHandlers.ts',
   'handlers/translationBriefingActionHandlers.ts',
   'handlers/researchBriefingActionHandlers.ts',
   'handlers/examBriefingActionHandlers.ts',
@@ -62,6 +60,7 @@ const HANDLER_FILES = [
 const BUILDER_UTILS = [
   'utils/buildLearningBriefingIntent.ts',
   'utils/buildAiDashboardIntent.ts',
+  'utils/buildFlashcardPreviewIntent.ts',
   'utils/buildTranslationBriefingIntent.ts',
   'utils/buildHpiasResearchDashboardIntent.ts',
   'utils/buildResearchPlanIntent.ts',
@@ -166,9 +165,8 @@ describe('generativeUIModuleIntegration contract', () => {
     expect(guardedSrc).toContain(`'${HPIAS_EVENT_CHANNEL}'`);
   });
 
-  it('action id registries cover note/flashcard/research handler sets', () => {
+  it('action id registries cover note and research handler sets', () => {
     expect(NOTE_EDIT_ACTION_IDS).toContain('apply-note-edit');
-    expect(FLASHCARD_ACTION_IDS).toContain('save-to-library');
     expect(RESEARCH_ACTION_IDS).toEqual(['copy-report', 'export-plan', 'export-intent']);
   });
 

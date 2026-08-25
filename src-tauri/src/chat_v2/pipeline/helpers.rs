@@ -1023,18 +1023,18 @@ impl ChatV2Pipeline {
         {
             return existing.clone();
         }
-        let persisted =
-            match ChatV2Repo::get_session_frozen_tool_schema_order(&self.db, session_id) {
-                Ok(baseline) => baseline,
-                Err(err) => {
-                    log::warn!(
+        let persisted = match ChatV2Repo::get_session_frozen_tool_schema_order(&self.db, session_id)
+        {
+            Ok(baseline) => baseline,
+            Err(err) => {
+                log::warn!(
                         "[ChatV2::pipeline] Failed to load persisted frozen tool schema order (fallback to fresh baseline): session_id={}, error={}",
                         session_id,
                         err
                     );
-                    Vec::new()
-                }
-            };
+                Vec::new()
+            }
+        };
         let mut orders = self
             .frozen_tool_schema_orders
             .lock()
@@ -1757,7 +1757,10 @@ mod tests {
         // 轮 N：5 个 user 轮，锚点批量推进到 5 - K = 2
         let mut turn_n: Vec<LegacyChatMessage> = Vec::new();
         for i in 0..5 {
-            turn_n.extend(make_big_tool_round(&format!("call-{}", i), &format!("turn {}", i)));
+            turn_n.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
         }
         let (anchor, eligible_n) =
             advance_microcompact_anchor(None, None, microcompact_batch_eligible_turns(&turn_n));
@@ -1769,7 +1772,10 @@ mod tests {
         // （lineage 不变）→ 锚点冻结在 2，不随轮次滑动到 3。
         let mut turn_n1: Vec<LegacyChatMessage> = Vec::new();
         for i in 0..6 {
-            turn_n1.extend(make_big_tool_round(&format!("call-{}", i), &format!("turn {}", i)));
+            turn_n1.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
         }
         let (anchor_n1, eligible_n1) = advance_microcompact_anchor(
             Some(&anchor),
@@ -1830,7 +1836,10 @@ mod tests {
     fn test_plan_history_overflow_compaction_before_fifo() {
         let mut history: Vec<LegacyChatMessage> = Vec::new();
         for i in 0..5 {
-            history.extend(make_big_tool_round(&format!("call-{}", i), &format!("turn {}", i)));
+            history.extend(make_big_tool_round(
+                &format!("call-{}", i),
+                &format!("turn {}", i),
+            ));
         }
 
         // 预算充足 → 无需处理
@@ -2090,7 +2099,10 @@ mod tests {
             &HashSet::new(),
         );
         let anchor_ids = built.audit.injected_skill_ids.clone();
-        assert_eq!(anchor_ids, vec!["skill-a".to_string(), "skill-b".to_string()]);
+        assert_eq!(
+            anchor_ids,
+            vec!["skill-a".to_string(), "skill-b".to_string()]
+        );
 
         let mut live = history_prefix();
         live.extend(built.messages);
@@ -2189,14 +2201,13 @@ mod tests {
             4,
         );
         // 已注入的 skill-a 不重复；只有差集 skill-new
-        assert_eq!(batch.audit.injected_skill_ids, vec!["skill-new".to_string()]);
+        assert_eq!(
+            batch.audit.injected_skill_ids,
+            vec!["skill-new".to_string()]
+        );
         injected.extend(batch.audit.injected_skill_ids.iter().cloned());
 
-        insert_skill_messages_after_tool_result(
-            &mut messages,
-            "call-load-skills",
-            batch.messages,
-        );
+        insert_skill_messages_after_tool_result(&mut messages, "call-load-skills", batch.messages);
 
         // 新技能恰好插在 tool result 之后
         assert_eq!(messages.len(), 6);

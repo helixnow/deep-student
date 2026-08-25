@@ -208,7 +208,26 @@
 }
 
 @media (pointer: coarse) {
+  /* 触屏：折叠头命中区扩到 44px */
+  .nfs-header {
+    min-height: 44px;
+  }
+
+  /* 触屏：收藏行及其主按钮命中区扩到 44px，桌面保持 28px 密度 */
+  .nfs-item {
+    min-height: 44px;
+  }
+
+  .nfs-item-main {
+    min-height: 44px;
+    height: auto;
+  }
+
+  /* 触屏：常显并把命中区扩到 44px，负 margin 保持 24px 布局占位不变 */
   .nfs-unfavorite {
+    width: 44px;
+    height: 44px;
+    margin: -10px;
     opacity: 1;
   }
 }

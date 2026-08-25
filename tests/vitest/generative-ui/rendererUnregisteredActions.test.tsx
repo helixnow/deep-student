@@ -6,7 +6,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { GenerativeUIRenderer } from '@/features/generative-ui/GenerativeUIRenderer';
-import { collectUnregisteredActionIds } from '@/features/generative-ui/utils/collectUnregisteredActionIds';
+import {
+  collectUnregisteredActionIds,
+  firstReachableActionBarIndex,
+  intentHasReachableActionBar,
+} from '@/features/generative-ui/utils/collectUnregisteredActionIds';
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 import '@/features/generative-ui/blocks';
 
@@ -20,6 +24,7 @@ vi.mock('react-i18next', () => ({
         'a11y.skip_to_actions': '跳到操作栏',
         'a11y.action_bar_label': '操作栏',
         'action.unregistered_hint': '未注册',
+        'action.unregistered_label': '未注册操作',
       };
       return map[key] ?? key;
     },
@@ -80,9 +85,10 @@ describe('GenerativeUIRenderer unregistered action-bar ids', () => {
         actionHandlers={{}}
       />,
     );
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('data-action-unregistered', '');
-    expect(button).toHaveAttribute('title', '未注册');
+    expect(screen.queryByRole('button', { name: '未注册操作' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ghost' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-skip-to-actions]')).toBeNull();
     expect(unregisteredHint()).not.toBeNull();
   });
 });
@@ -126,5 +132,94 @@ describe('collectUnregisteredActionIds', () => {
       'missing-a',
       'missing-b',
     ]);
+  });
+
+  it('does not treat inherited prototype keys as registered handlers', () => {
+    const intent: GenerativeUIIntent = {
+      version: '1',
+      blocks: [
+        {
+          type: 'action-bar',
+          props: { actions: [{ id: 'toString', label: 'Proto' }] },
+        },
+      ],
+    };
+
+    expect(collectUnregisteredActionIds(intent, Object.create(null))).toEqual(['toString']);
+    expect(collectUnregisteredActionIds(intent, {})).toEqual(['toString']);
+  });
+});
+
+describe('intentHasReachableActionBar', () => {
+  const actionIntent: GenerativeUIIntent = {
+    version: '1.1',
+    blocks: [
+      {
+        type: 'action-bar',
+        id: 'actions',
+        props: {
+          actions: [
+            { id: 'copy-block', label: 'Copy' },
+            { id: 'open-note', label: 'Open' },
+          ],
+        },
+      },
+    ],
+  };
+
+  it('treats any action-bar as reachable when no handler registry is provided', () => {
+    expect(intentHasReachableActionBar(actionIntent)).toBe(true);
+    expect(intentHasReachableActionBar(actionIntent, undefined)).toBe(true);
+  });
+
+  it('requires at least one own-key handler when a registry is provided', () => {
+    expect(intentHasReachableActionBar(actionIntent, {})).toBe(false);
+    expect(
+      intentHasReachableActionBar(actionIntent, {
+        'copy-block': { label: 'Copy', onClick: () => undefined },
+      }),
+    ).toBe(true);
+    expect(
+      intentHasReachableActionBar(actionIntent, Object.create({ 'copy-block': true })),
+    ).toBe(false);
+  });
+
+  it('is false without action ids', () => {
+    expect(
+      intentHasReachableActionBar({
+        version: '1.1',
+        blocks: [{ type: 'stat-card', props: { value: '1' } }],
+      }),
+    ).toBe(false);
+    expect(
+      intentHasReachableActionBar({
+        version: '1.1',
+        blocks: [{ type: 'action-bar', props: { actions: [] } }],
+      }),
+    ).toBe(false);
+  });
+
+  it('points at the first reachable action-bar index', () => {
+    const mixed: GenerativeUIIntent = {
+      version: '1.1',
+      blocks: [
+        { type: 'text', props: { body: 'hello' } },
+        {
+          type: 'action-bar',
+          props: { actions: [{ id: 'ghost', label: 'Ghost' }] },
+        },
+        {
+          type: 'action-bar',
+          props: { actions: [{ id: 'copy-block', label: 'Copy' }] },
+        },
+      ],
+    };
+    expect(firstReachableActionBarIndex(mixed)).toBe(1);
+    expect(firstReachableActionBarIndex(mixed, {})).toBe(-1);
+    expect(
+      firstReachableActionBarIndex(mixed, {
+        'copy-block': { label: 'Copy' },
+      }),
+    ).toBe(2);
   });
 });

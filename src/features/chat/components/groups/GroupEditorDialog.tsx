@@ -14,6 +14,7 @@ import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
+import { FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
 
 interface RuntimeRootEntry {
   id: string;
@@ -75,11 +76,17 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
 import { configureTaskWorkspace } from '../../api/taskWorkspaceApi';
+
+/**
+ * 移动端全局顶栏「保存」桥接：GroupEditorPanel 挂载期间写入受控提交句柄
+ * （保存中防重入、空名称时聚焦名称输入），由 useChatPageLayout 的
+ * 分组编辑器顶栏分支调用。面板卸载时清空，避免陈旧闭包被点击。
+ */
+export const groupEditorSubmitRef: React.MutableRefObject<(() => void) | null> = { current: null };
 
 interface GroupEditorPanelProps {
   mode: 'create' | 'edit';
@@ -131,7 +138,6 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   onMobileBrowse,
 }) => {
   const { t } = useTranslation(['chatV2', 'common', 'skills']);
-  const { isSmallScreen } = useBreakpoint();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('');
@@ -446,18 +452,33 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     t,
   ]);
 
+  // 小屏全局顶栏「保存」入口：复用同一提交流程；空名称时聚焦名称输入给出反馈
+  useEffect(() => {
+    groupEditorSubmitRef.current = () => {
+      if (isSaving) return;
+      if (!name.trim()) {
+        nameInputRef.current?.focus();
+        return;
+      }
+      void handleSubmit();
+    };
+    return () => {
+      groupEditorSubmitRef.current = null;
+    };
+  }, [handleSubmit, isSaving, name]);
+
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Action Buttons - Absolute Positioned */}
+      {/* Action Buttons - Absolute Positioned；小屏「取消/保存」由全局顶栏返回箭头与保存按钮承担 */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-11">
+          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 [@media(pointer:coarse)]:!h-11 px-3 max-md:hidden">
             {t('common:cancel')}
           </DsButton>
           <DsButton 
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3 max-md:h-11"
+            className="h-8 [@media(pointer:coarse)]:!h-11 px-3 max-md:hidden"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
           </DsButton>
@@ -504,8 +525,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       key={iconName}
                       onClick={() => setIcon(iconName)}
                       className={cn(
-                        // 移动端触控目标放大到 44px，桌面保持 36px
-                        "w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
+                        // 移动端/触屏触控目标放大到 44px，桌面细指针保持 36px
+                        "w-9 h-9 max-md:w-11 max-md:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                           : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
@@ -519,7 +540,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {icon && (
                     <div
                       onClick={() => setIcon('')}
-                      className="w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      className="w-9 h-9 max-md:w-11 max-md:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={t('common:clear')}
                     >
                       <X size={16} />
@@ -531,7 +552,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   value={icon}
                   onChange={(e) => setIcon(e.target.value)}
                   placeholder={t('page.groupIconPlaceholder')}
-                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
+                  className="h-8 [@media(pointer:coarse)]:h-11 text-sm [@media(pointer:coarse)]:text-[16px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
                 />
               </div>
             </PropertyRow>
@@ -541,7 +562,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t('page.groupDescriptionPlaceholder')}
-                className="h-9 border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
+                className="h-9 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
               />
             </PropertyRow>
 
@@ -563,7 +584,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     value={defaultRuntimeRootId}
                     onChange={(e) => handleSelectRuntimeRoot(e.target.value)}
                     disabled={rootsLoading || isAuthorizingRoot}
-                    className="h-9 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
+                    className="h-9 [@media(pointer:coarse)]:h-11 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm [@media(pointer:coarse)]:text-[16px] text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
                   >
                     <option value="">{t('page.groupDefaultRuntimeRootNone')}</option>
                     {defaultRuntimeRootId
@@ -584,7 +605,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     variant="ghost"
                     onClick={() => void handleBrowseAndAuthorizeRoot()}
                     disabled={isAuthorizingRoot}
-                    className="h-8 px-3 shrink-0"
+                    className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0"
                   >
                     {isAuthorizingRoot ? (
                       <CircleNotch size={14} className="mr-1.5 animate-spin" />
@@ -598,7 +619,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       variant="ghost"
                       onClick={clearRuntimeRoot}
                       disabled={isAuthorizingRoot}
-                      className="h-8 px-3 shrink-0 text-muted-foreground hover:text-destructive"
+                      className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0 text-muted-foreground hover:text-destructive"
                       title={t('common:clear')}
                     >
                       <X size={14} className="mr-1.5" />
@@ -636,7 +657,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                                     key={skill.id}
                                     onClick={() => toggleSkill(skill.id)}
                                     className={cn(
-                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm border cursor-pointer transition-colors select-none",
+                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm border cursor-pointer transition-colors select-none [@media(pointer:coarse)]:min-h-11",
                                         checked 
                                           ? "bg-primary/10 text-primary border-primary/20" 
                                           : "bg-background border-border hover:bg-[var(--interactive-hover)] text-muted-foreground"
@@ -684,9 +705,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
-                          // 视觉紧凑，透明伪元素扩大触控命中区
-                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
-                          isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                          // 视觉紧凑，透明伪元素扩大触控命中区（18px 视觉 + 14px×2 外扩 = 46px ≥ 44px）
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-3.5 after:content-[\'\']',
+                          // 触屏（pointer:coarse）无 hover，常显移除按钮；指针设备保持 hover/focus 显隐
+                          'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100'
                         )}
                         aria-label={t('common:remove')}
                       >
@@ -710,7 +732,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 }
               }}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
+                'w-full flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11 rounded-md border border-dashed text-sm transition-colors cursor-pointer',
                 !onMobileBrowse && pickerOpen
                   ? 'border-primary/40 bg-primary/5 text-foreground'
                   : 'border-border/60 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border'
@@ -742,7 +764,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     {pickerOpen && (
                       <LearningHubSidebar
                         mode="canvas"
-                        hostId="group-picker"
+                        hostId={FINDER_HOST_IDS.groupPicker}
                         sessionActive={pickerOpen}
                         commandsEnabled={false}
                         onClose={() => setPickerOpen(false)}
@@ -770,7 +792,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               <DsButton
                 variant="warning"
                 onClick={onArchive}
-                className="h-8 px-3"
+                className="h-8 [@media(pointer:coarse)]:!h-11 px-3"
               >
                 <Archive size={14} className="mr-1.5" />
                 {t('page.archiveGroup')}

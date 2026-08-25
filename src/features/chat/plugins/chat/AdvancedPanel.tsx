@@ -331,8 +331,8 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               variant="ghost"
               size="sm"
               className={cn(
-                // 触控目标保底：移动/平板 min-h-8，桌面 lg 起恢复紧凑
-                'ml-auto !h-auto min-h-8 lg:min-h-0 !px-1.5 !py-0.5 text-2xs',
+                // 触控目标保底：移动/平板 min-h-8，桌面 lg 起恢复紧凑；触屏保证 ≥44px
+                'ml-auto !h-auto min-h-8 lg:min-h-0 [@media(pointer:coarse)]:!min-h-11 !px-1.5 !py-0.5 text-2xs',
                 isStreaming && 'pointer-events-none opacity-60'
               )}
               onClick={() => {

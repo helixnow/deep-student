@@ -131,6 +131,8 @@ jobs:
       # 的全平台发布里 —— 失败即阻塞发布。左移到 PR。
       - name: Build production bundle
         if: matrix.task == 'build'
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
         run: npx vite build
 
       # WI-8：bundle 体积门禁。阈值 = R3 刷新后的 2026-08-24 基线（commit
@@ -199,6 +201,11 @@ jobs:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # vitest.config.ts 的 poolOptions.forks.execArgv 只作用于 fork 子进程，
+      # 主进程（收集结果、跑 vite transform）走 Node 默认堆，随 runner 内存浮动。
+      # 与各平台 build job 对齐，把上限固定下来。
+      NODE_OPTIONS: '--max-old-space-size=4096'
     strategy:
       fail-fast: false
       matrix:
@@ -216,12 +223,14 @@ jobs:
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
+      # --logHeapUsage：非 TTY 下默认 reporter 不打印在跑的文件，分片 OOM 时
+      # 日志里没有任何归因线索。带上每个文件的堆占用，下一轮才知道该改谁。
       - name: Run vitest shard
         env:
           # 与 vitest.config.ts 的 CI forks 堆上限一致；父进程也抬高，
           # 避免编排进程先于 worker 顶到默认 4GB。
           NODE_OPTIONS: '--max-old-space-size=6144'
-        run: npx vitest run --shard=${{ matrix.shard }}/4
+        run: npx vitest run --shard=${{ matrix.shard }}/4 --logHeapUsage
 
   # ============================================
   # 后端静态检查（fmt + clippy）
@@ -534,10 +543,11 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Compile Windows backend
-        working-directory: src-tauri
-        run: cargo check --lib
-
+      # 单次 cargo test 同时承担编译与执行：此前先 cargo check --lib 再
+      # cargo test --lib 在 Windows 上等于完整编译两遍（check 的 metadata
+      # 产物无法被 test 的 codegen 复用），30 分钟超时被取消。编译失败
+      # 仍会让本步骤直接红。测试保持默认并行：起进程的 AppContainer 用例
+      # 已被实现内的命名 ACL 互斥锁串行化，无跨线程共享状态冲突。
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
         run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture

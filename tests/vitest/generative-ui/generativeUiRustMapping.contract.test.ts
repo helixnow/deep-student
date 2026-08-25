@@ -23,6 +23,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('Rust executor tool name matches frontend skill builtin tool', () => {
     expect(executorSrc).toContain('const TOOL_NAME: &str = "render_generative_ui"');
+    expect(executorSrc).toContain('block_type_mapping_for_render_generative_ui_is_generative_ui');
   });
 
   it('Rust executor accepts intent version 1 and 1.1, rejects unknown', () => {
@@ -50,6 +51,8 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(e2eSrc).toContain('"version": "1.1"');
     expect(e2eSrc).toContain('"mode": "grid"');
     expect(e2eSrc).toContain('execute_rejects_version_2');
+    expect(e2eSrc).toContain('execute_rejects_unknown_block_type');
+    expect(e2eSrc).toContain('unknown-widget');
     expect(e2eSrc).toContain('event_types::GENERATIVE_UI');
   });
 
@@ -65,13 +68,24 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('fn parse_note_edit');
     expect(executorSrc).toContain('fn intent_has_apply_note_edit');
     expect(executorSrc).toContain('noteEdit.operation');
+    expect(executorSrc).toContain('noteEdit.isRegex 不被支持');
+    expect(executorSrc).toContain('parse_note_edit_rejects_regex_flag');
+    expect(executorSrc).toContain('MAX_NOTE_EDIT_INPUT_BYTES');
+    expect(executorSrc).toContain('parse_note_edit_rejects_oversized_payload');
+    expect(executorSrc).toContain('parse_note_edit_strips_unknown_fields');
   });
 
   it('Rust executor parses and emits researchSessionId for HPIAS Chat bridge', () => {
     expect(executorSrc).toContain('fn parse_research_session_id');
     expect(executorSrc).toContain('researchSessionId');
+    expect(executorSrc).toContain('MAX_RESEARCH_SESSION_ID_LENGTH');
+    expect(executorSrc).toContain('parse_research_session_id_rejects_unsafe_or_oversized');
+    expect(executorSrc).toContain('parse_research_session_id_falls_back_to_intent_meta');
+    expect(executorSrc).toContain('/meta/researchSessionId');
     expect(executorSrc).toContain('execute_preserves_research_session_id_in_output');
+    expect(executorSrc).toContain('parse_note_edit_rejects_non_string_fields');
     expect(executorSrc).toContain('emit_hpias_session_started_if_needed');
+    expect(executorSrc).toContain('intent_has_research_blocks(&intent)');
   });
 
   it('hpias Rust module emits on hpias_event channel', () => {
@@ -148,6 +162,39 @@ describe('generativeUI Rust dual-mapping contract', () => {
   it('Rust executor requires MAX_GENERATIVE_UI_BLOCKS of 32', () => {
     expect(executorSrc).toContain('MAX_GENERATIVE_UI_BLOCKS');
     expect(executorSrc).toContain('32');
+    expect(executorSrc).toContain('MAX_GENERATIVE_UI_INTENT_CHARS');
+    expect(executorSrc).toContain('parse_intent_rejects_oversized_payload');
+  });
+
+  it('Rust executor allowlists the 18 registered generative-ui block types', () => {
+    expect(executorSrc).toContain('ALLOWED_GENERATIVE_UI_BLOCK_TYPES');
+    expect(executorSrc).toContain('fn validate_block_types');
+    expect(executorSrc).toContain('parse_intent_rejects_unknown_block_type');
+    expect(executorSrc).toContain('parse_intent_rejects_missing_block_type');
+    expect(executorSrc).toContain('parse_intent_rejects_non_object_block');
+    expect(executorSrc).toContain('parse_intent_accepts_all_registered_block_types');
+    for (const type of [
+      'stat-card',
+      'alert',
+      'list',
+      'progress',
+      'action-bar',
+      'text',
+      'key-value-grid',
+      'flashcard-preview',
+      'review-calendar',
+      'mistake-analysis',
+      'mindmap-embed',
+      'paper-digest',
+      'research-plan',
+      'research-report',
+      'markdown',
+      'chart',
+      'steps',
+      'table',
+    ]) {
+      expect(executorSrc, `Rust allowlist missing ${type}`).toContain(`"${type}"`);
+    }
   });
 
   it('documents that TS allows empty blocks while Rust ingress rejects them', () => {

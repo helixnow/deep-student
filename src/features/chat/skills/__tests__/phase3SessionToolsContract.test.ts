@@ -63,17 +63,14 @@ describe('phase 3 session tool contracts', () => {
       },
     });
     expect(tool.inputSchema.properties.date_from.description).toContain('YYYY-MM-DD');
-    expect(tool.inputSchema.properties.date_to.description).toContain('RFC3339');
+    expect(tool.inputSchema.properties.date_to.description).toContain('不得早于 date_from');
   });
 
   it('matches the backend export modes, range, placement, and return fields', () => {
     const tool = getTool('builtin-session_export');
 
     expect(tool.description).toContain('Medium');
-    expect(tool.description).toContain('messageCount');
     expect(tool.description).toContain('markdown');
-    expect(tool.description).toContain('totalChars');
-    expect(tool.description).toContain('truncated');
     expect(tool.description).toContain('2000');
     expect(tool.description).toContain('无损写入');
     expect(tool.description).toContain('noteId');

@@ -62,7 +62,6 @@ vi.mock('react-i18next', () => ({
         'blocks.markdown.empty': '暂无正文',
         'notes.edit_apply': '应用到笔记',
         'notes.edit_dismiss': '忽略建议',
-        'flashcard.save_to_library': '保存到词库',
         'research.actions.copy_report': '复制报告',
         'research.actions.export_plan': '导出计划',
         'research.actions.export_intent': '导出全部意图',
@@ -426,7 +425,7 @@ describe('generativeUIChatBlock new types runtime', () => {
 
     expect(mockedUseHpiasEventBridge).toHaveBeenCalledWith({
       enabled: false,
-      sessionId: null,
+      sessionId: undefined,
     });
   });
 });

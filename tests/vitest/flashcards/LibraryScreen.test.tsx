@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   undoLastReview: vi.fn(),
   unsuspendCard: vi.fn(),
   updateLibraryCard: vi.fn(),
+  invoke: vi.fn(),
+  pickSingleFile: vi.fn(),
+  showGlobalNotification: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -68,6 +71,20 @@ vi.mock('@/features/flashcards/events', () => ({
   requestFlashcardsDueRefresh: mocks.requestDueRefresh,
 }));
 
+vi.mock('@/utils/fileManager', () => ({
+  fileManager: {
+    pickSingleFile: mocks.pickSingleFile,
+  },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mocks.invoke,
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: mocks.showGlobalNotification,
+}));
+
 import { LibraryScreen } from '@/features/flashcards/screens/LibraryScreen';
 import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
 
@@ -117,6 +134,8 @@ describe('LibraryScreen', () => {
     mocks.startBatchSession.mockResolvedValue(true);
     mocks.suspendCard.mockResolvedValue({ state: {}, changed: true });
     mocks.unsuspendCard.mockResolvedValue({ state: {}, changed: true });
+    mocks.pickSingleFile.mockResolvedValue('/tmp/deck.apkg');
+    mocks.invoke.mockResolvedValue({ imported_cards: 12 });
   });
 
   afterEach(() => {
@@ -257,5 +276,30 @@ describe('LibraryScreen', () => {
     expect(mocks.deleteCard).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
     await waitFor(() => expect(mocks.deleteCard).toHaveBeenCalledWith('active'));
+  });
+
+  it('imports an .apkg from the empty-library entry and refreshes the due queue', async () => {
+    mocks.listCards.mockResolvedValue(response([]));
+
+    render(<LibraryScreen />);
+    expect(await screen.findByText('库中暂无卡片')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'library.import.apkg' })[0]);
+
+    await waitFor(() => {
+      expect(mocks.pickSingleFile).toHaveBeenCalledWith({
+        title: expect.stringContaining('.apkg'),
+        filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
+      });
+      expect(mocks.invoke).toHaveBeenCalledWith('import_apkg_to_library', {
+        path: '/tmp/deck.apkg',
+      });
+    });
+    expect(mocks.requestDueRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.listCards).toHaveBeenCalledTimes(2);
+    expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
+      'success',
+      'library.import.success',
+    );
   });
 });

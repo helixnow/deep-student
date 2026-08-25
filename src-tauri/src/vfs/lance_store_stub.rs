@@ -155,7 +155,11 @@ impl VfsLanceStore {
         Ok(0)
     }
 
-    pub async fn delete_by_resource(&self, _modality: &str, _resource_id: &str) -> VfsResult<usize> {
+    pub async fn delete_by_resource(
+        &self,
+        _modality: &str,
+        _resource_id: &str,
+    ) -> VfsResult<usize> {
         Ok(0)
     }
 

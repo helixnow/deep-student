@@ -133,19 +133,6 @@
   color: var(--text-primary, hsl(var(--foreground)));
 }
 
-/* 触屏：27px 头部图标钮 / 28px 待办勾选放大命中区（视觉随行高自适应） */
-@media (pointer: coarse) {
-  .wb-agenda-icon-button {
-    width: 38px;
-    height: 38px;
-  }
-
-  .wb-agenda-check {
-    width: 38px;
-    flex-basis: 38px;
-  }
-}
-
 .wb-agenda-add-button {
   margin-left: 2px;
   background: hsl(var(--primary) / 13%);
@@ -517,5 +504,50 @@
 
   .wb-agenda-days {
     animation: none;
+  }
+}
+
+/*
+ * 触屏：可点控件命中区放大至 44px（HIG 最小触控目标）。
+ * 块置于文件末尾——与基础规则同特异性，靠书写顺序保证 coarse 值胜出
+ * （旧版写在 .wb-agenda-check 基础规则之前，width/flex-basis 被基础值压回 28px）。
+ * 月历日格保持 32px 行高：列宽本已 ≈44px，加高会把定宽组件撑爆，属密度折衷
+ * （与 MiniCalendar 同类）。
+ */
+@media (pointer: coarse) {
+  /* 44px 命中会自然增高内容；定高 424px 必然剪掉待办列表，改为随内容自适应 */
+  .wb-agenda-widget {
+    height: auto;
+    max-height: calc(100% - 36px);
+  }
+
+  .wb-agenda-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* 头部本就 min-height 44：月份药丸加高不改排版基线 */
+  .wb-agenda-month {
+    min-height: 44px;
+  }
+
+  .wb-agenda-open-button {
+    min-height: 44px;
+  }
+
+  .wb-agenda-check {
+    width: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+  }
+
+  /* 勾选钮已把行撑到 44：正文按钮跟满行高，不再新增高度 */
+  .wb-agenda-item-main {
+    min-height: 44px;
+  }
+
+  .wb-agenda-more {
+    min-height: 44px;
+    flex-basis: 44px;
   }
 }

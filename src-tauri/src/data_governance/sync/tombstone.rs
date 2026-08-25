@@ -1651,6 +1651,8 @@ mod tests {
         // 短 hash（非 64 位 hex 直接拒绝）
         assert!(find_blob_by_hash(dir, "a").is_none());
         assert!(find_blob_by_hash(dir, "abhash123").is_none());
+        let non_hex = format!("zz{}", "c".repeat(62));
+        assert!(find_blob_by_hash(dir, &non_hex).is_none());
     }
 
     #[test]

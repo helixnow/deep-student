@@ -10,11 +10,24 @@
  * 落库 readingProgress.page / bookmarks；node_converters.rs 在 textbook 与 file
  * 的 metadata 中回读 readingProgress / bookmarks。）
  *
+ * ★ 进度通道白名单：本控制器的 setMetadata payload 只允许携带
+ * readingProgress / bookmarks 两个字段。禁止把 node metadata 里的
+ * highlights / annotationRevision / title 等字段透传进来——
+ * 后端 textbook 分支一旦看到 highlights 就切换到批注 OCC 通道并要求
+ * expected_updated_at，进度写入会直接 CONFLICT 失败；stale 的 title
+ * 透传则会回滚并发重命名。
+ *
+ * ★ metadata 在控制器创建时快照（sanitize 后深拷贝所属字段）。
+ * dispose()/flush() 不得回读组件层的活 ref：node 切换时 ref 已指向
+ * 新 node，旧控制器的收尾 flush 若读活 ref 会把新 node 的数据串写进
+ * 旧 node 的路径。
+ *
  * 防抖契约：阅读进度防抖只在本层做一次（默认 1s），Viewer 包装层
  * （TextbookPdfViewer）为直通上报——不要再在调用侧叠加防抖。
  * 关 tab / 切换 node 时由 dispose() 内的 flush 兜底落盘。
  */
 
+import i18n from '@/i18n';
 import { dstu } from '@/dstu';
 import { vfsFileApi } from '@/api/vfsFileApi';
 import { reportError, toVfsError, type Result } from '@/shared/result';
@@ -29,8 +42,58 @@ export interface PreviewPersistTarget {
   kind: PreviewPersistKind;
   nodeId: string;
   nodePath: string;
-  /** 始终读最新 metadata，供 merge，避免覆盖并发字段 */
-  getMetadata: () => Record<string, unknown> | undefined | null;
+  /**
+   * 创建时的 node metadata 快照（只会提取 readingProgress / bookmarks）。
+   * 不要传"始终读最新值"的 getter：见文件头「metadata 快照」说明。
+   */
+  metadata?: Record<string, unknown> | null;
+}
+
+/** 进度通道允许写入的字段快照（创建时 sanitize + 拷贝，与源对象解耦） */
+interface ProgressChannelSnapshot {
+  readingProgress?: { page: number; lastReadAt?: number };
+  bookmarks?: Bookmark[];
+}
+
+function cloneReadingProgress(progress: ReadingProgress): ReadingProgress {
+  return {
+    page: progress.page,
+    ...(typeof progress.lastReadAt === 'number' ? { lastReadAt: progress.lastReadAt } : {}),
+  };
+}
+
+function cloneBookmarks(bookmarks: Bookmark[]): Bookmark[] {
+  return bookmarks.map((bookmark) => ({ ...bookmark }));
+}
+
+/**
+ * 从 node metadata 中提取进度通道白名单字段（readingProgress / bookmarks）。
+ * 返回值为拷贝，调用方后续修改源对象不影响快照。
+ */
+export function sanitizeProgressChannelMetadata(
+  metadata: Record<string, unknown> | undefined | null,
+): ProgressChannelSnapshot {
+  const snapshot: ProgressChannelSnapshot = {};
+  if (!metadata || typeof metadata !== 'object') return snapshot;
+
+  const progress = metadata.readingProgress as
+    | { page?: unknown; lastReadAt?: unknown }
+    | undefined;
+  if (progress && typeof progress === 'object' && typeof progress.page === 'number') {
+    snapshot.readingProgress = {
+      page: progress.page,
+      ...(typeof progress.lastReadAt === 'number'
+        ? { lastReadAt: progress.lastReadAt }
+        : {}),
+    };
+  }
+
+  const bookmarks = metadata.bookmarks;
+  if (Array.isArray(bookmarks)) {
+    snapshot.bookmarks = cloneBookmarks(bookmarks as Bookmark[]);
+  }
+
+  return snapshot;
 }
 
 export interface PreviewPersistOptions {
@@ -71,17 +134,20 @@ export function createPreviewPersistController(
   let writeChain: Promise<void> = Promise.resolve();
 
   const currentTarget = { ...target };
+  // ★ 创建时快照（白名单字段深拷贝）：dispose flush 不再回读任何组件层活 ref
+  const metadataSnapshot = sanitizeProgressChannelMetadata(target.metadata);
 
+  /**
+   * ★ 白名单 merge：payload 只含 readingProgress / bookmarks。
+   * 本控制器写过的值（latest*）优先，其次取创建时快照；
+   * highlights / annotationRevision 等其余字段一律不进进度通道。
+   */
   const mergeBase = (): Record<string, unknown> => {
-    const meta = currentTarget.getMetadata();
-    const merged = meta && typeof meta === 'object' ? { ...meta } : {};
-    if (latestProgress) {
-      merged.readingProgress = {
-        page: latestProgress.page,
-        lastReadAt: latestProgress.lastReadAt,
-      };
-    }
-    if (latestBookmarks) merged.bookmarks = latestBookmarks;
+    const merged: Record<string, unknown> = {};
+    const progress = latestProgress ?? metadataSnapshot.readingProgress ?? null;
+    if (progress) merged.readingProgress = cloneReadingProgress(progress);
+    const bookmarks = latestBookmarks ?? metadataSnapshot.bookmarks ?? null;
+    if (bookmarks) merged.bookmarks = cloneBookmarks(bookmarks);
     return merged;
   };
 
@@ -118,31 +184,33 @@ export function createPreviewPersistController(
   };
 
   const persistProgress = async (progress: ReadingProgress) => {
-    latestProgress = progress;
+    const ownedProgress = cloneReadingProgress(progress);
+    latestProgress = ownedProgress;
     const newMetadata = {
       ...mergeBase(),
-      readingProgress: {
-        page: progress.page,
-        lastReadAt: progress.lastReadAt,
-      },
+      readingProgress: ownedProgress,
     };
     const result = await setMetadataWithRetry(newMetadata, 'readingProgress');
     if (!result.ok) {
-      reportError(result.error, '保存阅读进度');
+      reportError(
+        result.error,
+        i18n.t('practice:preview_persist.save_progress', { defaultValue: '保存阅读进度' }),
+      );
       options?.onProgressError?.(result.error);
     }
   };
 
   const persistBookmarks = async (bookmarks: Bookmark[]) => {
-    latestBookmarks = bookmarks;
+    const ownedBookmarks = cloneBookmarks(bookmarks);
+    latestBookmarks = ownedBookmarks;
     const newMetadata = {
       ...mergeBase(),
-      bookmarks,
+      bookmarks: ownedBookmarks,
     };
 
     if (currentTarget.kind === 'textbook') {
       try {
-        await updateBookmarksWithRetry(bookmarks);
+        await updateBookmarksWithRetry(ownedBookmarks);
       } catch (err: unknown) {
         options?.onBookmarksError?.(err);
         throw err;
@@ -152,7 +220,10 @@ export function createPreviewPersistController(
 
     const result = await setMetadataWithRetry(newMetadata, 'bookmarks');
     if (!result.ok) {
-      reportError(result.error, '保存书签');
+      reportError(
+        result.error,
+        i18n.t('practice:preview_persist.save_bookmarks', { defaultValue: '保存书签' }),
+      );
       options?.onBookmarksError?.(result.error);
     }
   };
@@ -188,20 +259,26 @@ export function createPreviewPersistController(
     const pendingWrite = enqueue(async () => {
       const mergedMetadata = mergeBase();
       if (progress) {
-        mergedMetadata.readingProgress = {
-          page: progress.page,
-          lastReadAt: progress.lastReadAt,
-        };
+        mergedMetadata.readingProgress = cloneReadingProgress(progress);
       }
       if (bookmarks) {
-        mergedMetadata.bookmarks = bookmarks;
+        const ownedBookmarks = cloneBookmarks(bookmarks);
+        mergedMetadata.bookmarks = ownedBookmarks;
         if (currentTarget.kind === 'textbook') {
           try {
-            await updateBookmarksWithRetry(bookmarks);
+            await updateBookmarksWithRetry(ownedBookmarks);
           } catch (err: unknown) {
             // ★ flush 常在关窗/切 node 前的最后一次落盘：书签双写通道失败
             // 不能连带丢掉 pending 的阅读进度，继续走 setMetadata。
-            reportError(toVfsError(err, '保存书签失败'), '保存书签');
+            reportError(
+              toVfsError(
+                err,
+                i18n.t('practice:preview_persist.save_bookmarks_failed', {
+                  defaultValue: '保存书签失败',
+                }),
+              ),
+              i18n.t('practice:preview_persist.save_bookmarks', { defaultValue: '保存书签' }),
+            );
             options?.onBookmarksError?.(err);
           }
         }
@@ -209,7 +286,12 @@ export function createPreviewPersistController(
 
       const result = await setMetadataWithRetry(mergedMetadata, 'flush');
       if (!result.ok) {
-        reportError(result.error, '保存未持久化的阅读进度/书签');
+        reportError(
+          result.error,
+          i18n.t('practice:preview_persist.flush_unsaved', {
+            defaultValue: '保存未持久化的阅读进度/书签',
+          }),
+        );
         if (progress) options?.onProgressError?.(result.error);
         if (bookmarks) options?.onBookmarksError?.(result.error);
       }
@@ -223,8 +305,9 @@ export function createPreviewPersistController(
   return {
     scheduleProgress: (progress) => {
       if (disposed) return;
-      latestProgress = progress;
-      pendingProgress = progress;
+      const ownedProgress = cloneReadingProgress(progress);
+      latestProgress = ownedProgress;
+      pendingProgress = ownedProgress;
       if (progressTimer != null) window.clearTimeout(progressTimer);
       progressTimer = window.setTimeout(() => {
         progressTimer = null;
@@ -240,8 +323,9 @@ export function createPreviewPersistController(
 
     scheduleBookmarks: (bookmarks) => {
       if (disposed) return;
-      latestBookmarks = bookmarks;
-      pendingBookmarks = bookmarks;
+      const ownedBookmarks = cloneBookmarks(bookmarks);
+      latestBookmarks = ownedBookmarks;
+      pendingBookmarks = ownedBookmarks;
       if (bookmarksTimer != null) window.clearTimeout(bookmarksTimer);
       bookmarksTimer = window.setTimeout(() => {
         bookmarksTimer = null;

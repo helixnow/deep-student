@@ -128,5 +128,19 @@
   "metrics": {
     "parse_addr_failed": "解析DSTU_METRICS_ADDR失败",
     "server_error": "metrics server错误"
+  },
+  "note_content": {
+    "load_note_failed": "加载笔记内容失败",
+    "load_note_action": "加载笔记内容",
+    "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。",
+    "save_note_action": "保存笔记",
+    "update_title_action": "更新标题",
+    "update_tags_action": "更新标签",
+    "stale_editor_write_rejected": "笔记实例已切换，拒绝写入过期编辑器",
+    "editor_readonly": "笔记编辑器为只读状态",
+    "full_write_occ_failed": "笔记正文已变化，全文写入 OCC 校验失败",
+    "full_replace_not_confirmed": "编辑器未确认全文替换",
+    "flush_capability_missing": "编辑器未提供持久化确认能力",
+    "full_replace_persist_failed": "笔记全文替换未通过持久化验证"
   }
 }

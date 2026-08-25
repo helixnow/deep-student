@@ -92,7 +92,14 @@ function errorTitle(
   }
 }
 
-export const ReviewSessionScreen: React.FC = () => {
+export interface ReviewSessionScreenProps {
+  /** 工作台窗口/标签页是否处于前台；后台实例不得接管全局评分快捷键。 */
+  isActive?: boolean;
+}
+
+export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
+  isActive = true,
+}) => {
   const { t } = useTranslation('flashcards');
   const queue = useFsrsReviewStore((state) => state.queue);
   const queueIndex = useFsrsReviewStore((state) => state.queueIndex);
@@ -353,8 +360,8 @@ export const ReviewSessionScreen: React.FC = () => {
     undoLastReview,
   ]);
   useEventRegistry(
-    [{ target: 'window', type: 'keydown', listener: onKeyDown }],
-    [onKeyDown],
+    isActive ? [{ target: 'window', type: 'keydown', listener: onKeyDown }] : [],
+    [isActive, onKeyDown],
   );
 
   const onEditKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -386,7 +393,7 @@ export const ReviewSessionScreen: React.FC = () => {
           variant="default"
           disabled={ratingBusy}
           onClick={() => void rate(lastRated)}
-          className="shrink-0 text-xs"
+          className="shrink-0 text-xs [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={14} />
           {t('session.retry')}
@@ -418,12 +425,22 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {retryBatchRequest ? (
-            <DsButton type="button" variant="primary" onClick={() => void retryBatchSession()}>
+            <DsButton
+              type="button"
+              variant="primary"
+              onClick={() => void retryBatchSession()}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               <ArrowClockwise size={16} />
               {t('session.retry')}
             </DsButton>
           ) : null}
-          <DsButton type="button" variant="default" onClick={endSession}>
+          <DsButton
+            type="button"
+            variant="default"
+            onClick={endSession}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
             {t('session.backToday')}
           </DsButton>
         </div>
@@ -495,7 +512,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => setBatchNoticeDismissed(true)}
             aria-label={t('library.dismiss')}
             title={t('library.dismiss')}
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <X size={13} />
           </DsButton>
@@ -503,7 +520,7 @@ export const ReviewSessionScreen: React.FC = () => {
       ) : null}
 
       <div className="flex items-center justify-between gap-2">
-        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
+        <DsButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1 [@media(pointer:coarse)]:!min-h-11">
           <ArrowLeft size={14} />
           {t('session.exit')}
         </DsButton>
@@ -544,6 +561,7 @@ export const ReviewSessionScreen: React.FC = () => {
         </div>
       </div>
 
+      {/* DsButton 在 lg 断点后压缩到 30px，宽屏触屏平板会跌破触控基线，coarse 兜底 ≥44px（与 library.css .fc-lib-row-actions 同基线） */}
       <div className="flex items-center justify-end gap-1">
         <DsButton
           type="button"
@@ -555,6 +573,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.undo')}
           aria-keyshortcuts="Z Control+Z Meta+Z"
           title={`${t('session.undo')} · Z`}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <ArrowCounterClockwise size={16} />
         </DsButton>
@@ -568,6 +587,7 @@ export const ReviewSessionScreen: React.FC = () => {
             onClick={() => void resumeLastSuspended()}
             aria-label={t('session.resume')}
             title={t('session.resume')}
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Play size={16} />
           </DsButton>
@@ -582,6 +602,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('session.edit')}
           aria-keyshortcuts="E"
           title={`${t('session.edit')} · E`}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <PencilSimple size={16} />
         </DsButton>
@@ -595,6 +616,7 @@ export const ReviewSessionScreen: React.FC = () => {
           aria-label={t('review.skip')}
           aria-keyshortcuts="S"
           title={`${t('review.skip')} · S`}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <SkipForward size={16} />
         </DsButton>
@@ -607,6 +629,7 @@ export const ReviewSessionScreen: React.FC = () => {
           onClick={() => void suspendCurrent()}
           aria-label={t('session.suspend')}
           title={t('session.suspend')}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <Pause size={16} />
         </DsButton>
@@ -624,7 +647,7 @@ export const ReviewSessionScreen: React.FC = () => {
               value={draftFront}
               onChange={(event) => setDraftFront(event.target.value)}
               autoFocus
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
             />
           </label>
           {draftClozeInvalid ? (
@@ -638,7 +661,7 @@ export const ReviewSessionScreen: React.FC = () => {
             <textarea
               value={draftBack}
               onChange={(event) => setDraftBack(event.target.value)}
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
             />
           </label>
           <div className="flex items-center justify-between gap-2">
@@ -653,6 +676,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="ghost"
                 disabled={ratingBusy}
                 onClick={() => setEditing(false)}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <X size={16} />
                 {t('session.cancelEdit')}
@@ -662,6 +686,7 @@ export const ReviewSessionScreen: React.FC = () => {
                 variant="primary"
                 disabled={ratingBusy || !draftIsValid}
                 onClick={() => void saveEdit()}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <FloppyDisk size={16} />
                 {t('session.saveEdit')}

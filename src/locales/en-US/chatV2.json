@@ -1,4 +1,9 @@
 {
+  "commands": {
+    "copyLastEmpty": "No AI response to copy",
+    "continueBusy": "A response is in progress, please wait",
+    "continueEmpty": "No AI response to continue"
+  },
   "error": {
     "loadFailed": "Load failed",
     "retry": "Retry",
@@ -150,6 +155,7 @@
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
     },
+    "branchedFromHere": "Branched from here",
     "touchBar": {
       "ariaLabel": "Message quick actions"
     },
@@ -217,6 +223,8 @@
     "attachmentsUploading": "Uploading attachments, please wait",
     "attachmentNotReady": "Attachment not ready: {{name}} ({{modes}})",
     "attachmentProcessing": "Attachment processing: {{name}}",
+    "sendBlockedEmpty": "Type a message or add an attachment to send",
+    "sendBlockedBusy": "Replying now — you can send when it finishes",
     "processingIndicator": "Processing attachments...",
     "processingIndicatorPartial": "Some modes not ready",
     "completedMissingModes": "Completed ({{modes}} not ready)",
@@ -753,6 +761,12 @@
       "retryFailedSegments": "Retry failed segments",
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
+      "occlusion": {
+        "badge": "Image occlusion",
+        "draftHint": "Automatically generated occlusion draft; check it before exporting",
+        "imageAlt": "Image occlusion card",
+        "imageUnavailable": "The occlusion image could not be loaded; text content was preserved"
+      },
       "syncStatus": {
         "pending": "Pending",
         "syncing": "Syncing...",
@@ -807,6 +821,22 @@
           "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready.",
           "recovered": "Automatic generation did not finish; {{count}} usable cards were supplied by the fallback path.",
           "limitReached": "Reached the configured card limit ({{limit}} cards); generation finished normally."
+        },
+        "media": {
+          "label": "Media",
+          "summary": "Media: {{imported}}/{{declared}} imported, {{skipped}} skipped",
+          "skipReasonLine": "{{reason}} × {{count}}",
+          "filenamesSample": "e.g. {{names}}",
+          "reasons": {
+            "mediaImportDisabled": "Media import disabled",
+            "manifestUnparsed": "Media manifest could not be parsed",
+            "mediaDirUnavailable": "Media directory unavailable",
+            "unsafeFilename": "Unsafe filename blocked",
+            "entryMissing": "Entry missing from the package",
+            "entryOversized": "File exceeds the size limit",
+            "ioError": "Write failed (IO error)",
+            "orphanEntry": "Orphan entry (not declared in manifest)"
+          }
         }
       },
       "errors": {
@@ -841,6 +871,9 @@
       },
       "warnings": {
         "generationRecovered": "Automatic generation encountered a problem; the fallback path supplied {{count}} usable cards.",
+        "maxCardsClamped": "Requested {{requested}} cards; the per-run limit reduced this to {{applied}}. Split the material into multiple runs for more cards.",
+        "preferenceMemoryPersistFailed": "Card-making preferences from this session could not be saved; generated cards and edits were not affected.",
+        "preferenceMemoryStoreInvalid": "Invalid stored card-making preferences were ignored and generation continued.",
         "imageTruncated": "Only the first {{shown}} of {{total}} images were used (limit {{limit}}). Split attachments and retry if needed.",
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
@@ -1173,6 +1206,7 @@
     "renameSession": "Rename Thread",
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
+    "openInNewWindow": "Open in New Window",
     "pinGroup": "Pin group",
     "unpinGroup": "Unpin group",
     "archiveSession": "Archive Thread",
@@ -1235,6 +1269,10 @@
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
     "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete."
+  },
+  "contextRef": {
+    "previewFailedTitle": "Cannot Open Reference Preview",
+    "previewFailedDesc": "The referenced resource does not exist or has been removed."
   },
   "modelMention": {
     "suggestions": "Model Suggestions",
@@ -1611,7 +1649,11 @@
     "makeCardsFailed": "Failed to start card generation",
     "makeCardsDeckName": "Selection cards",
     "makeCardsRequirements": "Generate high-quality memory cards from the selected excerpt, prioritizing key concepts and facts in the selection.",
-    "openTaskDashboard": "Open task dashboard"
+    "openTaskDashboard": "Open task dashboard",
+    "saveAsNote": "Save as note",
+    "saveAsNotePickFolder": "Choose a folder",
+    "saveAsNoteDefaultTitle": "Untitled note",
+    "openNote": "Open note"
   },
   "explainPopover": {
     "thinking": "Thinking...",

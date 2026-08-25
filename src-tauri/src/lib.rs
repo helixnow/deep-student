@@ -6,6 +6,14 @@
 pub mod adapters;
 pub mod anki;
 pub mod anki_connect_service;
+pub mod anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
+pub mod anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
+pub mod anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
+pub mod anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
+pub mod anki_image_occlusion; // AI 图像遮挡制卡纯函数层（OcclusionSpec 校验 / cloze 导出约定 / IMAGE_DESC 启发式盒建议，Round 4 #5）
+pub mod anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
+pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
+pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
 pub mod apkg_importer_service;
@@ -265,6 +273,59 @@ fn prepare_linux_appimage_runtime_env() {
     // Reduce known WebKit/GPU instability on some Linux desktop stacks.
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
+/// Linux X11 HiDPI 兜底（#65/#66「窗口显示得很小」）：
+/// X11 上 GTK 可能在窗口映射后才上报真实 scale factor（GDK_SCALE、KDE
+/// 缩放等），初始客户区被按物理像素解释，换算成逻辑像素后小于
+/// tauri.linux.conf.json 的 minWidth/minHeight。此处按逻辑像素复核，
+/// 不足则恢复到配置默认尺寸（不低于下限）并重新居中。正常尺寸下为
+/// 幂等 no-op，可在 ScaleFactorChanged 时安全复检。
+#[cfg(target_os = "linux")]
+fn enforce_linux_main_window_min_logical_size(window: &tauri::WebviewWindow) {
+    use tauri::LogicalSize;
+
+    let app_config = window.app_handle().config();
+    let Some(window_config) = app_config.app.windows.iter().find(|w| w.label == "main") else {
+        return;
+    };
+    let min_width = window_config.min_width.unwrap_or(0.0);
+    let min_height = window_config.min_height.unwrap_or(0.0);
+    if min_width <= 0.0 || min_height <= 0.0 {
+        return;
+    }
+
+    let scale_factor = window.scale_factor().unwrap_or(1.0);
+    let Ok(physical_size) = window.inner_size() else {
+        return;
+    };
+    let logical_size = physical_size.to_logical::<f64>(scale_factor);
+
+    // 容忍 1 逻辑像素内的取整误差，避免正常尺寸下反复触发 set_size。
+    if logical_size.width + 1.0 >= min_width && logical_size.height + 1.0 >= min_height {
+        return;
+    }
+
+    let target_width = window_config.width.max(min_width);
+    let target_height = window_config.height.max(min_height);
+    warn!(
+        "[setup] Linux 主窗口客户区 {:.0}x{:.0}（逻辑px，scale={}）低于配置下限 {:.0}x{:.0}，重设为 {:.0}x{:.0}",
+        logical_size.width,
+        logical_size.height,
+        scale_factor,
+        min_width,
+        min_height,
+        target_width,
+        target_height
+    );
+    let _ = window.set_min_size(Some(LogicalSize::new(min_width, min_height)));
+    if let Err(e) = window.set_size(LogicalSize::new(target_width, target_height)) {
+        warn!("[setup] 重设 Linux 主窗口尺寸失败: {}", e);
+        return;
+    }
+    if window_config.center {
+        let _ = window.center();
     }
 }
 
@@ -1479,6 +1540,20 @@ pub fn run() {
             // 快速学习小窗按需创建。不要在 setup 阶段同步构建第二个隐藏
             // WebView；Windows 上它会与主窗口启动事件争用 UI 消息循环。
 
+            // Linux X11 HiDPI 兜底：客户区逻辑尺寸不得低于 linux conf 的
+            // minWidth/minHeight。scale factor 可能在窗口映射后才更新，
+            // 因此 ScaleFactorChanged 时复检（函数本身幂等）。
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                enforce_linux_main_window_min_logical_size(&window);
+                let window_for_scale_check = window.clone();
+                window.on_window_event(move |event| {
+                    if matches!(event, tauri::WindowEvent::ScaleFactorChanged { .. }) {
+                        enforce_linux_main_window_min_logical_size(&window_for_scale_check);
+                    }
+                });
+            }
+
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
@@ -2015,7 +2090,6 @@ pub fn run() {
             ,crate::chat_v2::handlers::block_actions::chat_v2_update_block_tool_output
             ,crate::chat_v2::handlers::block_actions::chat_v2_get_anki_cards_from_block_by_document_id
             ,crate::chat_v2::handlers::block_actions::chat_v2_upsert_streaming_block
-            ,crate::chat_v2::handlers::block_actions::chat_v2_anki_cards_result
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions

@@ -150,6 +150,15 @@
   background: transparent;
 }
 
+/* 图谱页：撑满剩余高度，画布自身处理滚动/缩放 */
+.notes-backlinks-panel-graph {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .notes-backlinks-panel-actions {
   display: flex;
   flex: 0 0 auto;
@@ -364,6 +373,28 @@
 
 @keyframes notes-backlinks-panel-spin {
   to { transform: rotate(360deg); }
+}
+
+/* 触屏放大反链行命中区；桌面维持 32px 密度 */
+@media (pointer: coarse) {
+  .notes-backlinks-panel-link {
+    min-height: 44px;
+  }
+
+  .notes-backlinks-panel-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .notes-backlinks-panel-message button {
+    min-height: 44px;
+    height: auto;
+  }
+
+  /* 属性/链接页签随 40px 头部拉伸：min-height 让头部长到 44px 命中高度 */
+  .notes-backlinks-panel-tab {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -976,10 +976,7 @@ mod tests {
         assert!(should_use_openai_responses_for_config(&flash));
 
         // 列名型号：显式与默认（api_protocol=None）均走 Responses
-        for model in [
-            "deepseek-v4-pro",
-            "deepseek-v4-flash-vision-exp",
-        ] {
+        for model in ["deepseek-v4-pro", "deepseek-v4-flash-vision-exp"] {
             let default_route = ApiConfig {
                 model: model.to_string(),
                 ..flash.clone()
@@ -2899,11 +2896,7 @@ fn base_url_host(base_url: &str) -> String {
         .split(['/', '?', '#'])
         .next()
         .unwrap_or_default();
-    host_port
-        .split(':')
-        .next()
-        .unwrap_or_default()
-        .to_string()
+    host_port.split(':').next().unwrap_or_default().to_string()
 }
 
 fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
@@ -3040,7 +3033,8 @@ fn deepseek_model_supports_openai_responses(model: &str) -> bool {
 /// provider_type/provider_scope 是否声称 DeepSeek 供应商（不校验端点归属）。
 fn config_claims_deepseek_provider(config: &ApiConfig) -> bool {
     normalize_provider_protocol_registry_value(config.provider_type.as_deref()) == "deepseek"
-        || normalize_provider_protocol_registry_value(config.provider_scope.as_deref()) == "deepseek"
+        || normalize_provider_protocol_registry_value(config.provider_scope.as_deref())
+            == "deepseek"
 }
 
 /// 是否为 DeepSeek 官方端点。仅官方端点适用 Responses/服务端搜索门控；
@@ -6633,6 +6627,28 @@ impl LLMManager {
             config.model, config.base_url
         );
         Ok(config)
+    }
+
+    /// 只读能力探测：Anki Sidekick 模型分层路由的槽位快照（Round 4 #7）。
+    ///
+    /// 仅读取现有模型分配与 API 配置，不发起任何网络调用、不写任何状态。
+    /// 任何读取失败都返回空槽位（调用侧回退单模型旧路径），绝不阻断制卡。
+    pub async fn probe_anki_routing_slots(&self) -> crate::anki_model_routing::AnkiRoutingSlots {
+        let assignments = match self.get_model_assignments().await {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取模型分配失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        let configs = match self.get_api_configs().await {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取 API 配置失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        crate::anki_model_routing::build_slots(&assignments, &configs)
     }
 
     /// 统一模型选择函数

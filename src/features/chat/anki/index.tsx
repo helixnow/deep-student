@@ -19,6 +19,10 @@ import {
   type SaveAnkiCardIdMapping,
 } from '@/services/ankiApiAdapter';
 import { ankiConnectClient } from '@/services/ankiConnectClient';
+import {
+  filterExportableCards,
+  validateCardsForExport,
+} from '@/components/anki/cardforge';
 import { Card3DPreview } from '@/components/Card3DPreview';
 
 // ============================================================================
@@ -274,7 +278,9 @@ async function autoImportApkgIfEnabled(filePath: string): Promise<void> {
 /**
  * 导出卡片为 APKG 文件
  *
- * 使用 ChatV2AnkiAdapter 导出
+ * 直接调用后端 export_multi_template_apkg 命令；导出前经
+ * CardForge exportNormalize 的 validateCardsForExport 统一校验，
+ * error 级问题卡（错误卡/空卡）被排除出导出集合。
  */
 export async function exportCardsAsApkg(
   params: AnkiActionParams & { deckName?: string; noteType?: string }
@@ -290,17 +296,13 @@ export async function exportCardsAsApkg(
   }
 
   try {
-    // 多模板导出：直接调用后端 export_cards_as_apkg_with_template
+    // 多模板导出：直接调用后端 export_multi_template_apkg
     // 每张卡片保留自己的 template_id，后端会按卡片分组加载对应模板
-    const errorCardCount = cards.filter((card) => {
-      const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
-      return row.is_error_card === true || row.isErrorCard === true;
-    }).length;
-    const cardsForExport = cards
-      .filter((card) => {
-        const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
-        return row.is_error_card !== true && row.isErrorCard !== true;
-      })
+    // 导出前校验（与 CardAgent.exportCards 同一套 exportNormalize 规则）：
+    // error 级问题卡（错误卡/全空卡）排除出导出集合，warning 仅记录
+    const validation = validateCardsForExport(cards);
+    const errorCardCount = cards.length - validation.exportableCount;
+    const cardsForExport = filterExportableCards(cards, validation)
       .map(card => ({
         front: card.front ?? card.fields?.Front ?? '',
         back: card.back ?? card.fields?.Back ?? '',
@@ -645,7 +647,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         </div>
         {cards.length > 0 && !disabled && (
           // 视觉不变（负 margin 抵消 padding），实际命中区扩大满足触控目标
-          <DsButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 !px-2 text-xs text-muted-foreground hover:text-foreground">
+          <DsButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 [@media(pointer:coarse)]:!min-h-11 !px-2 text-xs text-muted-foreground hover:text-foreground">
             {t('chatV2.clickToEdit')} →
           </DsButton>
         )}

@@ -812,6 +812,7 @@
     "import_button": "导入",
     "title": "数据治理",
     "description": "管理数据库迁移、备份、同步和审计日志",
+    "tabs_nav_label": "数据治理页签",
     "tab_overview": "概览",
     "tab_recovery": "恢复",
     "tab_archive": "归档",

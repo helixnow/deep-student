@@ -166,9 +166,8 @@ pub(crate) fn assign_final_round_reasoning_items(
     items: Vec<(Option<String>, Value)>,
 ) {
     for (paired_tool_call_id, item) in items {
-        let key = paired_tool_call_id.unwrap_or_else(|| {
-            crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY.to_string()
-        });
+        let key = paired_tool_call_id
+            .unwrap_or_else(|| crate::chat_v2::types::RESPONSES_FINAL_REASONING_KEY.to_string());
         dest.insert(key, item);
     }
 }
@@ -547,12 +546,24 @@ impl ChatV2Pipeline {
                 enable_thinking,
                 ctx.options.enable_thinking
             );
+            let wrap_token_policy = self
+                .resolve_active_api_config(ctx)
+                .await
+                .map(|config| {
+                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                        config.provider_type.as_deref(),
+                        config.provider_scope.as_deref(),
+                        &config.model,
+                    )
+                })
+                .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
             let adapter = Arc::new(ChatV2LLMAdapter::new(
                 emitter.clone(),
                 ctx.assistant_message_id.clone(),
                 enable_thinking,
                 ctx.options.skill_state_version,
                 Some(format!("tool-round-{}", recursion_depth)),
+                wrap_token_policy,
             ));
 
             // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容
@@ -1782,10 +1793,8 @@ impl ChatV2Pipeline {
                                 // load_skills 的 tool result 之后追加，禁止删光后
                                 // 整包重插到当前 user 之前（那会改写同轮内存前缀）。
                                 // ============================================================
-                                if let Some(anchor_call_id) = tool_result
-                                    .tool_call_id
-                                    .clone()
-                                    .filter(|id| !id.is_empty())
+                                if let Some(anchor_call_id) =
+                                    tool_result.tool_call_id.clone().filter(|id| !id.is_empty())
                                 {
                                     let empty_skill_contents = std::collections::HashMap::new();
                                     let batch_contents = ctx
@@ -1809,12 +1818,11 @@ impl ChatV2Pipeline {
                                         .dropped_skill_ids
                                         .extend(batch.audit.dropped_skill_ids.clone());
                                     if !batch.audit.injected_skill_ids.is_empty() {
-                                        injected_skill_ids.extend(
-                                            batch.audit.injected_skill_ids.iter().cloned(),
-                                        );
-                                        cumulative_skill_audit.injected_skill_ids.extend(
-                                            batch.audit.injected_skill_ids.iter().cloned(),
-                                        );
+                                        injected_skill_ids
+                                            .extend(batch.audit.injected_skill_ids.iter().cloned());
+                                        cumulative_skill_audit
+                                            .injected_skill_ids
+                                            .extend(batch.audit.injected_skill_ids.iter().cloned());
                                         cumulative_skill_audit.estimated_tokens +=
                                             batch.audit.estimated_tokens;
                                         let anchors = ctx
@@ -1824,10 +1832,7 @@ impl ChatV2Pipeline {
                                         anchors.tool_anchored.push(
                                             crate::chat_v2::types::ToolAnchoredSkills {
                                                 tool_call_id: anchor_call_id.clone(),
-                                                skill_ids: batch
-                                                    .audit
-                                                    .injected_skill_ids
-                                                    .clone(),
+                                                skill_ids: batch.audit.injected_skill_ids.clone(),
                                             },
                                         );
                                         log::info!(
@@ -3727,8 +3732,7 @@ mod tests {
             "跨轮基线必须还原已发出顺序，新工具只追加末尾"
         );
         for (index, expected) in sent_bytes.iter().enumerate() {
-            let actual =
-                serde_json::to_vec(&turn2_tools[index]).expect("serialize tool schema");
+            let actual = serde_json::to_vec(&turn2_tools[index]).expect("serialize tool schema");
             assert_eq!(
                 &actual, expected,
                 "两轮请求之间已发出 tools 的序列化字节必须逐字节不变"
@@ -3818,11 +3822,7 @@ mod tests {
                 "name": "alpha_tool", "description": "A v1"
             } }),
         ];
-        freeze_tool_schemas_for_prompt_cache(
-            &mut rebuilt,
-            &mut frozen_names,
-            &mut frozen_schemas,
-        );
+        freeze_tool_schemas_for_prompt_cache(&mut rebuilt, &mut frozen_names, &mut frozen_schemas);
         let names: Vec<&str> = rebuilt.iter().map(tool_schema_sort_key).collect();
         assert_eq!(
             names,
@@ -3926,11 +3926,7 @@ mod tests {
             sent,
             "前置条件：键序不同导致序列化字节不同"
         );
-        freeze_tool_schemas_for_prompt_cache(
-            &mut permuted,
-            &mut frozen_names,
-            &mut frozen_schemas,
-        );
+        freeze_tool_schemas_for_prompt_cache(&mut permuted, &mut frozen_names, &mut frozen_schemas);
         assert_eq!(
             serde_json::to_vec(&permuted[0]).expect("serialize tool schema"),
             sent,
@@ -3949,7 +3945,10 @@ mod tests {
             make_empty_message("user", "turn 0 user".to_string()),
             make_empty_message("assistant", "turn 0 reply".to_string()),
         ];
-        let turn_skills = vec![make_transient_skill_message("skill-turn", "turn skill body")];
+        let turn_skills = vec![make_transient_skill_message(
+            "skill-turn",
+            "turn skill body",
+        )];
         let current_user = make_empty_message("user", "turn 1 user".to_string());
 
         // 模拟 execute_with_tools 每轮的消息组装
@@ -4003,7 +4002,10 @@ mod tests {
         let tool_round1 = vec![load_call.clone(), load_result.clone()];
         let batches = vec![(
             "call-load".to_string(),
-            vec![make_transient_skill_message("skill-lazy", "lazy skill body")],
+            vec![make_transient_skill_message(
+                "skill-lazy",
+                "lazy skill body",
+            )],
         )];
 
         let round1 = build_round(&tool_round1, &batches);
@@ -4020,7 +4022,9 @@ mod tests {
         // 断言 2：轮 0 全量是轮 1 的严格字节前缀
         assert_eq!(&round1_bytes[..round0_bytes.len()], &round0_bytes[..]);
         // 新技能批次必须落在 load_skills tool result 之后（当前 user 之后）
-        assert!(is_transient_skill_message(round1.last().expect("non-empty")));
+        assert!(is_transient_skill_message(
+            round1.last().expect("non-empty")
+        ));
 
         // ===== 轮 2：追加下一批工具结果，环内批次位置不得漂移 =====
         let mut next_call = make_empty_message("assistant", String::new());

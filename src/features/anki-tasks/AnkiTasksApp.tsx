@@ -22,7 +22,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   ArrowsClockwise, ArrowCounterClockwise, Warning, CheckCircle,
   CircleNotch, FileText, Hash, TrendUp, ChartBar,
-  MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee,
+  MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee, Palette,
 } from '@phosphor-icons/react';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
@@ -68,6 +68,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   const [sessions, setSessions] = useState<DocumentSession[]>([]);
   const [stats, setStats] = useState<AnkiStats | null>(null);
   const [loading, setLoading] = useState(true);
+  // 主加载失败必须与「暂无任务」区分开：空列表是事实，加载失败是未知
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 会话列表滚动视口：长列表（上限可到数百行）虚拟化，压低常驻 DOM 规模
@@ -224,8 +226,12 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       hasActiveRef.current = nextHasActive;
       setSessions(s);
       setStats(st);
+      setLoadError(null);
     } catch (err: unknown) {
       debugLog.error('[AnkiTasks] load failed:', err);
+      if (generation !== loadGenerationRef.current) return;
+      // 不吞错：列表保持上一次已知数据，同时暴露错误态 + 重试
+      setLoadError(getErrorMessage(err));
     } finally {
       if (generation === loadGenerationRef.current) {
         setLoading(false);
@@ -448,7 +454,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     onMenuClick: sidebarOpen
       ? () => setSidebarOpen(false)
       : () => setSidebarOpen(true),
-  }, [t, isSmallScreen, sidebarOpen]);
+  }, [t, isSmallScreen, sidebarOpen, workbenchWindowId],
+  // Workbench 窗口内嵌入时不接管全局移动端顶栏（对照 TodoContentView）
+  !workbenchWindowId);
 
   const renderMobileShell = (body: React.ReactNode) => {
     if (!isSmallScreen) {
@@ -502,17 +510,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
-              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
+              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7 [@media(pointer:coarse)]:!h-11">
                 <ArrowsDownUp size={14} />
                 <span className="text-[11px]">{sortLabel}</span>
               </DsButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7 [@media(pointer:coarse)]:!h-11" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -548,7 +556,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                       size="sm"
                       variant={preventSleep ? 'secondary' : 'ghost'}
                       onClick={togglePreventSleep}
-                      className="ml-1 h-6 text-[12px]"
+                      className="ml-1 h-6 text-[12px] [@media(pointer:coarse)]:!h-11"
                     >
                       <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
                       {t('taskDashboard.preventSleep')}
@@ -582,7 +590,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
-                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
+                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px] [@media(pointer:coarse)]:!min-h-11">
                   {t('taskDashboard.openTemplateLib')}
                 </DsButton>
               )}
@@ -649,10 +657,28 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
-            className="w-full justify-center h-9"
+            className="w-full justify-center h-11"
           >
             {t('taskDashboard.openTemplateLib')}
           </DsButton>
+        )}
+
+        {/* 刷新失败但仍有上一次数据：标明数据可能已过时，而不是静默沿用 */}
+        {loadError && sessions.length > 0 && (
+          <div
+            role="status"
+            data-testid="anki-tasks-stale-banner"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/10 px-3 py-2 text-xs"
+          >
+            <Warning size={14} className="text-[color:hsl(var(--warning))]" />
+            <span className="min-w-0 break-words text-muted-foreground">
+              {t('taskDashboard.refreshFailedStale')}
+            </span>
+            <DsButton size="sm" variant="utility" className="ml-auto" onClick={load}>
+              <ArrowsClockwise size={13} />
+              {t('taskDashboard.retry')}
+            </DsButton>
+          </div>
         )}
 
         {/* ======== 任务列表 ======== */}
@@ -666,9 +692,13 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               size="compact"
               className="flex-shrink-0"
               itemClassName={isSmallScreen
-                // 移动端加大纵向点击区，接近触控目标标准
-                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap'
-                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap'}
+                // 移动端加大纵向点击区，接近触控目标标准；
+                // 触控闸门必须用 pointer:coarse（iPad 横屏视口 ≥768 走桌面分支，
+                // 不能只靠 isSmallScreen）。!min-h-11 带 important：app.css 的
+                // .study-shell-segmented-button { min-height: 0 } 会盖掉基元里
+                // 非 important 的 coarse min-h-11
+                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
               options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
                 const labelText =
                   tab === 'all'
@@ -704,10 +734,10 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
+                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px] [@media(pointer:coarse)]:!h-11"
               />
               {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label="clear">
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                   <X size={12} />
                 </DsButton>
               )}
@@ -716,15 +746,15 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
+                <DsButton size="sm" variant="utility" onClick={cycleSort} className="[@media(pointer:coarse)]:!min-h-11" aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
                   <span className="text-[11px]">{sortLabel}</span>
                 </DsButton>
-                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="[@media(pointer:coarse)]:!min-h-11" aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -734,8 +764,23 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             )}
           </div>
 
-          {sessions.length === 0 ? (
-            /* 空状态 + CTA */
+          {loadError && sessions.length === 0 ? (
+            /* 加载失败 ≠ 没有任务：显式错误态 + 重试 */
+            <div className="wb-at-empty" role="alert" data-testid="anki-tasks-load-error">
+              <Warning size={28} className="text-[color:hsl(var(--warning))]" />
+              <p className="font-medium text-foreground text-[13px]">
+                {t('taskDashboard.loadFailed')}
+              </p>
+              <p className="max-w-md break-words text-xs text-muted-foreground/70">
+                {loadError}
+              </p>
+              <DsButton size="sm" variant="primary" className="mt-2" onClick={load}>
+                <ArrowsClockwise size={14} />
+                {t('taskDashboard.retry')}
+              </DsButton>
+            </div>
+          ) : sessions.length === 0 ? (
+            /* 空状态 + 双引导：去聊天发起制卡（主）/ 打开模板库先备好模板（次） */
             <div className="wb-at-empty">
               <FileText size={28} className="text-muted-foreground/30" />
               <p className="font-medium text-foreground text-[13px]">
@@ -744,20 +789,33 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="text-xs text-muted-foreground/70">
                 {t('taskDashboard.emptyHint')}
               </p>
-              <DsButton
-                size="sm"
-                variant="primary"
-                className="mt-2"
-                onClick={() => {
-                  // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
-                  // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
-                  onNavigateToChat?.('__new__');
-                }}
-                disabled={!onNavigateToChat}
-              >
-                <ChatCircleDots size={14} />
-                {t('taskDashboard.goToChat')}
-              </DsButton>
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                <DsButton
+                  size="sm"
+                  variant="primary"
+                  className="[@media(pointer:coarse)]:!min-h-11"
+                  onClick={() => {
+                    // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
+                    // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
+                    onNavigateToChat?.('__new__');
+                  }}
+                  disabled={!onNavigateToChat}
+                >
+                  <ChatCircleDots size={14} />
+                  {t('taskDashboard.goToChat')}
+                </DsButton>
+                {onOpenTemplateManagement && (
+                  <DsButton
+                    size="sm"
+                    variant="default"
+                    className="[@media(pointer:coarse)]:!min-h-11"
+                    onClick={onOpenTemplateManagement}
+                  >
+                    <Palette size={14} />
+                    {t('taskDashboard.openTemplateLib')}
+                  </DsButton>
+                )}
+              </div>
             </div>
           ) : sortedAndFiltered.length === 0 ? (
             <div className="wb-at-empty">

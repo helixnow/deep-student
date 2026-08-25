@@ -8,11 +8,8 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
-  }),
-}));
+// react-i18next 走全局别名 mock（tests/ct/mocks/react-i18next.tsx），
+// 解析真实 zh-CN 文案；下方查询按当前 locale 文案对齐。
 
 describe('PlanGateCard', () => {
   beforeEach(() => {

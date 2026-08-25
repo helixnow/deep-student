@@ -15,6 +15,7 @@ use std::time::Instant;
 
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
+use super::pipeline::helpers::MicrocompactAnchor;
 use super::types::{
     block_types, AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession,
     CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
@@ -23,7 +24,6 @@ use super::types::{
     AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY, FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
     MICROCOMPACT_ANCHOR_METADATA_KEY,
 };
-use super::pipeline::helpers::MicrocompactAnchor;
 
 /// 从 session.metadata 解析持久化的 tools 会话冻结基线。
 ///
@@ -59,7 +59,9 @@ fn available_skills_snapshot_from_metadata(metadata: Option<&Value>) -> Option<S
 /// 缺键 / 字段缺失 / 类型不符一律返回 None（等同进程内首次观察，按当前
 /// 历史批量建锚——旧会话升级路径的冷缓存语义）。
 fn microcompact_anchor_from_metadata(metadata: Option<&Value>) -> Option<MicrocompactAnchor> {
-    let anchor = metadata?.get(MICROCOMPACT_ANCHOR_METADATA_KEY)?.as_object()?;
+    let anchor = metadata?
+        .get(MICROCOMPACT_ANCHOR_METADATA_KEY)?
+        .as_object()?;
     let eligible_user_turns = anchor.get("eligibleUserTurns")?.as_u64()? as usize;
     let lineage = anchor
         .get("lineage")
@@ -2788,8 +2790,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<String> {
         let mut session = Self::get_session_with_conn(conn, session_id)?
             .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
-        if let Some(existing) = available_skills_snapshot_from_metadata(session.metadata.as_ref())
-        {
+        if let Some(existing) = available_skills_snapshot_from_metadata(session.metadata.as_ref()) {
             // first-write-wins：已冻结（含空串）绝不覆盖，返回持久化权威值。
             return Ok(existing);
         }
@@ -4314,8 +4315,7 @@ mod tests {
         // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复
         // 得到同一顺序，provider 侧 tools 前缀字节不被字母序冷重建打碎。
         let conn = setup_test_db();
-        let session =
-            ChatSession::new("sess_frozen_tools".to_string(), "general_chat".to_string());
+        let session = ChatSession::new("sess_frozen_tools".to_string(), "general_chat".to_string());
         ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
 
         // 首见序基线（非字母序：zeta 在 alpha 前，还原字节序全靠持久化）
@@ -4449,11 +4449,12 @@ mod tests {
         let conn = setup_test_db();
         let session = ChatSession::new("sess_frozen_empty".to_string(), "chat".to_string());
         ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
-        assert!(
-            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_frozen_empty")
-                .unwrap()
-                .is_empty()
-        );
+        assert!(ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_frozen_empty"
+        )
+        .unwrap()
+        .is_empty());
     }
 
     #[test]
@@ -4538,7 +4539,10 @@ mod tests {
             "catalog appeared after install",
         )
         .unwrap();
-        assert_eq!(after_install, "", "空串快照是合法冻结态，安装后不得追加目录");
+        assert_eq!(
+            after_install, "",
+            "空串快照是合法冻结态，安装后不得追加目录"
+        );
     }
 
     #[test]
@@ -4597,9 +4601,7 @@ mod tests {
         // 回归（P0 microcompact 锚点跨进程）：写锚点 → 模拟桌面 App 重启
         // （进程内存 HashMap 清空，只剩 DB）→ 从 session.metadata 恢复后
         // advance 得到同一 eligible_user_turns，不跳变到当前 U - K。
-        use crate::chat_v2::pipeline::helpers::{
-            advance_microcompact_anchor, MicrocompactAnchor,
-        };
+        use crate::chat_v2::pipeline::helpers::{advance_microcompact_anchor, MicrocompactAnchor};
 
         let conn = setup_test_db();
         let session = ChatSession::new("sess_mc_anchor".to_string(), "general_chat".to_string());
@@ -4607,8 +4609,7 @@ mod tests {
 
         // 缺键 = 进程内首次观察语义
         assert_eq!(
-            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
-                .unwrap(),
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor").unwrap(),
             None
         );
 
@@ -4630,18 +4631,19 @@ mod tests {
         // eligible_user_turns 仍冻结在 3 —— 中间轮工具输出不会突然占位符化。
         let (after_restart, eligible) =
             advance_microcompact_anchor(Some(&restored), Some("cmp_1"), 9);
-        assert_eq!(eligible, 3, "重启后必须得到同一 eligible_user_turns，不跳到当前 U-K");
+        assert_eq!(
+            eligible, 3,
+            "重启后必须得到同一 eligible_user_turns，不跳到当前 U-K"
+        );
         assert_eq!(after_restart, anchor, "无 compaction 事件时锚点本身不变");
 
         // 仍只随 compaction 事件推进：lineage 变化才批量推进并允许覆写持久化
-        let (advanced, eligible) =
-            advance_microcompact_anchor(Some(&restored), Some("cmp_2"), 9);
+        let (advanced, eligible) = advance_microcompact_anchor(Some(&restored), Some("cmp_2"), 9);
         assert_eq!(eligible, 9);
         ChatV2Repo::set_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor", &advanced)
             .unwrap();
         assert_eq!(
-            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor")
-                .unwrap(),
+            ChatV2Repo::get_session_microcompact_anchor_with_conn(&conn, "sess_mc_anchor").unwrap(),
             Some(advanced)
         );
     }

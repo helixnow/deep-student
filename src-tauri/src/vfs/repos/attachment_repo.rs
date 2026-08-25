@@ -138,7 +138,9 @@ const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 /// 超过 1MB 即走 external blob 存储，不会膨胀 resources 表）
 /// ★ 2026-06-12（审阅问题 M8）：图片上限 10MB→50MB。现代手机原图/HEIC 转
 /// JPEG 普遍超过 10MB，旧限制导致常见照片无法导入。
-const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
+/// ★ #62/ATT-09：这两个常量是全局附件上限的唯一权威来源，其他模块的
+/// 校验与错误提示应引用这里（或 `max_upload_size_bytes`），禁止再散落硬编码。
+pub(crate) const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
 /// 附件原始内容的内部来源。调用方可直接处理磁盘文件，避免先读取并 base64 编码，
@@ -264,6 +266,11 @@ fn archive_kind_from_magic(data: &[u8]) -> Option<ArchiveKind> {
 /// ZIP 清单条目上限（防注入内容过长 / 存储膨胀）
 const ZIP_MANIFEST_MAX_ENTRIES: usize = 200;
 
+/// 清单首行机器标记 —— 与前端 `archiveManifest.ts` 的 `ARCHIVE_MANIFEST_MARKER`
+/// 严格对齐。语言中立：前端据此识别清单文本，不再依赖自然语言前缀
+/// （历史数据的 `[压缩包清单]` 前缀由前端做只读兼容识别）。
+pub(crate) const ARCHIVE_MANIFEST_MARKER: &str = "[#archive-manifest]";
+
 fn format_manifest_size(bytes: u64) -> String {
     if bytes >= 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
@@ -292,9 +299,11 @@ pub(crate) fn build_zip_manifest_text(name: &str, data: &[u8]) -> Option<String>
     };
     let total = archive.len();
     let shown = total.min(ZIP_MANIFEST_MAX_ENTRIES);
-    let mut lines: Vec<String> = Vec::with_capacity(shown + 2);
+    let mut lines: Vec<String> = Vec::with_capacity(shown + 3);
+    // 首行为机器标记（前端识别用，展示时剥除）；人类可读摘要保留在第二行
+    lines.push(ARCHIVE_MANIFEST_MARKER.to_string());
     lines.push(format!(
-        "[压缩包清单] {}：共 {} 个条目{}",
+        "压缩包 {}：共 {} 个条目{}",
         name,
         total,
         if total > shown {

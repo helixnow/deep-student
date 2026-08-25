@@ -8,6 +8,10 @@
 //! 本解码器在 chunk 之间保留末尾不完整的字节序列（最多 3 字节），
 //! 与下一个 chunk 拼接后再解码，彻底消除跨 chunk 边界的乱码。
 //! 真正非法的字节（非"不完整"而是"无效"）仍替换为 U+FFFD 并继续。
+//!
+//! 调用方：`crate::utils::sse_buffer::SseEventBuffer` 在所有 LLM 流式管线
+//! （model2_pipeline、翻译、作文/题库评分、Anki、VLM grounding 等）的
+//! 字节 chunk 入口统一使用本解码器（issue #122）。
 
 /// 跨 chunk 增量 UTF-8 解码器。
 ///

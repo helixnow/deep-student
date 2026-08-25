@@ -28,7 +28,7 @@ const SKILL_BLOCK_TYPES = [
   'table',
 ];
 
-const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit', 'save-to-library'];
+const SKILL_ACTION_IDS = ['start-review', 'open-qbank', 'export-plan', 'copy-report', 'copy-block', 'export-intent', 'apply-note-edit'];
 
 describe('generativeUiSkill contract', () => {
   it('skill content lists every registered block type', () => {
@@ -70,6 +70,7 @@ describe('generativeUiSkill contract', () => {
   it('skill content documents researchSessionId HPIAS bridge', () => {
     expect(generativeUiSkill.content).toContain('researchSessionId');
     expect(generativeUiSkill.content).toContain('hpias_event');
+    expect(generativeUiSkill.content).toMatch(/必须.*researchSessionId|researchSessionId.*必须/);
   });
 
   it('skill content lists markdown/chart/steps/table usage in one line each', () => {

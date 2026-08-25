@@ -288,7 +288,9 @@ export const SnappySlider = React.forwardRef<HTMLDivElement, SnappySliderProps>(
           aria-valuenow={clampedCurrent}
         />
       </SnappySliderHeader>
-      <div className="relative h-[--mark-slider-height]">
+      {/* 触屏（pointer:coarse）下把 6px 高的交互行撑到 ≥44px 命中高度；
+          轨道/手柄均以 top-1/2 居中定位，视觉不变 */}
+      <div className="relative h-[--mark-slider-height] [@media(pointer:coarse)]:min-h-11">
         <div ref={sliderRef} className="absolute inset-0">
           <div className="absolute top-1/2 -translate-y-1/2 w-full h-[--mark-slider-track-height] rounded-sm overflow-hidden bg-primary/10 dark:bg-primary/20">
             <div
@@ -325,7 +327,7 @@ export const SnappySlider = React.forwardRef<HTMLDivElement, SnappySliderProps>(
           >
             {showBubble && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-0.5 whitespace-nowrap">
-                <span className={cn('text-[10px] font-medium text-muted-foreground', isOutOfBounds && 'opacity-75')}>
+                <span className={cn('text-2xs font-medium text-muted-foreground', isOutOfBounds && 'opacity-75')}>
                   {displayedBubbleValue}
                 </span>
               </div>
@@ -385,7 +387,7 @@ const SnappySliderValue = React.forwardRef<
 
   return (
     <div
-      className="group inline-flex min-w-12 cursor-text items-center rounded bg-primary/5 px-1 py-[2px] focus-within:ring-1 focus-within:ring-primary/70 dark:bg-primary/10"
+      className="group inline-flex min-w-12 cursor-text items-center rounded bg-primary/5 px-1 py-[2px] focus-within:ring-1 focus-within:ring-primary/70 dark:bg-primary/10 [@media(pointer:coarse)]:min-h-11"
       onClick={handleContainerClick}
     >
       {prefix && <span className="shrink-0 select-none text-xs text-primary/75 dark:text-primary/80">{prefix}</span>}
@@ -395,7 +397,8 @@ const SnappySliderValue = React.forwardRef<
         inputMode="decimal"
         style={{ width: `${valueCh}ch` }}
         className={cn(
-          'min-w-0 border-none bg-transparent text-right text-xs text-primary outline-none',
+          // 触屏（coarse）16px：iOS 对 <16px 输入聚焦时会强制放大页面（宽度按 ch 自适应字号）
+          'min-w-0 border-none bg-transparent text-right text-xs text-primary outline-none [@media(pointer:coarse)]:text-[max(16px,var(--font-size-lg))]',
           '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
           'dark:text-primary/90',
           className,

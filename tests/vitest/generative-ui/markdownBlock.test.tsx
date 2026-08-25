@@ -122,6 +122,53 @@ describe('sanitizeGenerativeMarkdown contract', () => {
     expect(sanitized).toContain('https://ok.test');
     expect(sanitized).toContain('data:image/png;base64,xx');
   });
+
+  it('rewrites markdown javascript: / file: links without touching fenced code', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      'See [click](javascript:alert(1)) and ![x](file:///etc/passwd)\n```md\n[keep](javascript:alert(1))\n```',
+    );
+    expect(sanitized).toContain('[click](#)');
+    expect(sanitized).toContain('![x](#)');
+    expect(sanitized).not.toMatch(/\[click]\(javascript:/);
+    expect(sanitized).not.toMatch(/file:/);
+    expect(sanitized).toContain('[keep](javascript:alert(1))');
+  });
+
+  it('rewrites markdown reference definitions, autolinks, and srcset/poster', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      [
+        '[go][evil]',
+        '[evil]: javascript:alert(1)',
+        'See <javascript:alert(1)> and <https://ok.test>',
+        '<img srcset="javascript:alert(1) 1x, https://ok.test/a.png 2x" poster="file:///x">',
+      ].join('\n'),
+    );
+    expect(sanitized).toContain('[evil]: #');
+    expect(sanitized).not.toMatch(/javascript:/);
+    expect(sanitized).not.toMatch(/file:/);
+    expect(sanitized).toContain('<https://ok.test>');
+    expect(sanitized).toContain('https://ok.test/a.png');
+  });
+
+  it('rewrites ping and background URL attributes', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      '<a href="https://ok.test" ping="javascript:alert(1)">go</a><td background="file:///x">c</td>',
+    );
+    expect(sanitized).not.toMatch(/javascript:/);
+    expect(sanitized).not.toMatch(/file:/);
+    expect(sanitized).toContain('https://ok.test');
+    expect(sanitized).toContain('go');
+  });
+
+  it('strips style and srcdoc attributes before render', () => {
+    const sanitized = sanitizeGenerativeMarkdown(
+      '<p style="background:url(javascript:alert(1))">hi</p><div srcdoc="<script>alert(1)</script>">x</div>',
+    );
+    expect(sanitized).not.toMatch(/style=/i);
+    expect(sanitized).not.toMatch(/srcdoc=/i);
+    expect(sanitized).not.toMatch(/javascript:/i);
+    expect(sanitized).toContain('hi');
+  });
 });
 
 describe('MarkdownBlock', () => {

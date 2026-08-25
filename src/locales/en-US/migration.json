@@ -64,5 +64,28 @@
     "rollbackCompleted": "Rollback completed",
     "rollbackFailed": "Rollback failed",
     "checkFailed": "Status check failed"
+  },
+  "style_lab": {
+    "status": {
+      "converged": "Converged",
+      "in_progress": "In progress",
+      "needs_push": "Needs push",
+      "not_started": "Not started"
+    },
+    "metrics": {
+      "overall_rate": "Overall migration",
+      "source_files": "Source files",
+      "important": "!important",
+      "hardcoded_colors": "Hardcoded colors",
+      "files_count": "{{count}} files"
+    },
+    "sections": {
+      "component_progress": "Component family migration progress",
+      "css_quality": "CSS quality metrics"
+    },
+    "footer": {
+      "scan_meta": "Scanned at {{time}} · took {{duration}}ms · run",
+      "refresh_suffix": "to refresh"
+    }
   }
 }

@@ -19,7 +19,7 @@ import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext } from '../../core/types';
 import { ankiTaskBadgeSource } from './ankiTaskSource';
 import { flashcardsDueBadgeSource } from './flashcardsDueSource';
-import { pomodoroBadgeSource } from './pomodoroSource';
+import { pomodoroBadgeSource, startPomodoroBadgeNotifier } from './pomodoroSource';
 import { handleTodoActivation } from './todoActivation';
 import {
   createFlashcardsAgentManifest,
@@ -296,4 +296,8 @@ export function registerSystemApps(): void {
     onActivation: handlePomodoroActivation,
     agentManifest: createPomodoroAgentManifest(handlePomodoroActivation),
   });
+
+  // Dock 角标即时推送：番茄钟运行态翻转 → badgeBus（anki/flashcards 在各自
+  // setCount 内推送；轮询仅作 30s 兜底，见 DockItem）
+  startPomodoroBadgeNotifier();
 }

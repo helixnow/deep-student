@@ -1,0 +1,49 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const readInputBarSource = (file: string) => readFileSync(
+  resolve(process.cwd(), 'src/features/chat/components/input-bar', file),
+  'utf-8'
+);
+
+describe('split input bar mobile contract', () => {
+  const inputBarSource = readInputBarSource('InputBarUI.tsx');
+  const toolbarSource = readInputBarSource('ComposerToolbar.tsx');
+  const panelSource = readInputBarSource('AttachmentPanelBody.tsx');
+  const helperSource = readInputBarSource('attachmentModeHelpers.ts');
+
+  it('keeps split components as the owners of toolbar and attachment rendering', () => {
+    expect(inputBarSource).toContain("import { ComposerToolbar } from './ComposerToolbar';");
+    expect(inputBarSource).toContain("import { AttachmentPanelBody } from './AttachmentPanelBody';");
+    expect(inputBarSource).not.toContain('function ContextWindowUsageRing');
+    expect(toolbarSource).toContain('function ContextWindowUsageRing');
+  });
+
+  it('keeps coarse-pointer toolbar controls and search at mobile-safe sizes', () => {
+    expect(toolbarSource).toContain(
+      '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
+    );
+    expect(toolbarSource).toContain(
+      '[@media(pointer:coarse)]:after:-inset-2'
+    );
+    expect(toolbarSource).toContain(
+      'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base'
+    );
+  });
+
+  it('keeps attachment panel actions at least 44px on coarse pointers', () => {
+    expect(panelSource).toContain('className="!h-11 !min-w-11"');
+    expect(panelSource.match(/\[@media\(pointer:coarse\)\]:!min-h-11/g)?.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it('keeps compact composer hints tappable without changing desktop density', () => {
+    expect(inputBarSource.match(/\[@media\(pointer:coarse\)\]:!h-11/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('keeps localized OCR stage labels in the extracted helper', () => {
+    expect(helperSource).toContain('export function getStageLabel(');
+    expect(helperSource).toContain("t('learningHub:processing.ocrRecognizing')");
+    expect(panelSource).toContain('getStageLabel(t, mediaProgress, isPdf, isImage)');
+  });
+});

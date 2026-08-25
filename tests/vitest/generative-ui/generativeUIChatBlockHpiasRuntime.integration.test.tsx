@@ -10,6 +10,8 @@ import { createStore } from 'zustand';
 import { GenerativeUIBlockComponent } from '@/features/chat/plugins/blocks/generativeUI';
 import { buildResearchPlanIntent } from '@/features/generative-ui/utils/buildResearchPlanIntent';
 import { buildStyleLabHpiasDemoTimeline } from '@/features/generative-ui/demo/styleLabHpiasDemo';
+import { resetSharedHpiasEventBridgeForTests } from '@/features/generative-ui/bridge/hpiasEventBridge';
+import { useHpiasStore } from '@/stores/researchStore';
 import type { ChatStore } from '@/features/chat/core/types';
 import type { Block } from '@/features/chat/core/types';
 
@@ -73,10 +75,13 @@ function makeStore() {
 describe('generativeUIChatBlockHpiasRuntime integration', () => {
   beforeEach(() => {
     hpiasListenHandlers.length = 0;
+    resetSharedHpiasEventBridgeForTests();
+    useHpiasStore.getState().actions.clear();
   });
 
   afterEach(() => {
     hpiasListenHandlers.length = 0;
+    resetSharedHpiasEventBridgeForTests();
   });
 
   it('subscribes to hpias_event via real useHpiasEventBridge hook', async () => {
@@ -132,5 +137,42 @@ describe('generativeUIChatBlockHpiasRuntime integration', () => {
     expect(screen.getByText('Status line')).toBeInTheDocument();
     expect(document.querySelectorAll('[data-generative-research-plan]').length).toBe(1);
     expect(document.querySelector('[data-generative-research-report]')).toBeTruthy();
+  });
+
+  it('shares one hpias_event listen across two research chat blocks', async () => {
+    const intent = buildResearchPlanIntent({
+      title: 'Deep research runtime',
+      steps: [{ label: 'Plan', status: 'pending' }],
+      labels: { metaTitle: 'Research Q?' },
+    });
+
+    const block = makeBlock({
+      toolOutput: { intent, isStreaming: false },
+      toolInput: { intent, researchSessionId: SESSION },
+    });
+
+    render(
+      <>
+        <GenerativeUIBlockComponent block={block} store={makeStore()} />
+        <GenerativeUIBlockComponent
+          block={{ ...block, id: 'gen-hpias-block-2' }}
+          store={makeStore()}
+        />
+      </>,
+    );
+
+    await waitFor(() => expect(hpiasListenHandlers.length).toBe(1));
+
+    act(() => {
+      emitHpiasPayload({ type: 'session_started', session_id: SESSION, question: 'Q' });
+      emitHpiasPayload({
+        type: 'synthesis_updated',
+        session_id: SESSION,
+        round: 1,
+        synthesis: 'once',
+      });
+    });
+
+    expect(useHpiasStore.getState().synthesis).toBe('once');
   });
 });

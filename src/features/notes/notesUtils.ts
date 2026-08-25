@@ -1,9 +1,51 @@
 import i18next from 'i18next';
 import { type NoteItem } from "../../utils/notesApi";
-import type { TreeData } from "./DndFileTree";
+import type { ReferenceNode } from "./types/reference";
 import { deriveNoteTitleText } from "../../utils/notesTitle";
 
 export { deriveNoteTitleText };
+
+// ----------------------------------------------------------------------
+// Tree Data Types
+// （原 DndFileTree/types.ts，组件 2026-08 零挂载删除后类型迁至此处；
+//   ReferenceNode 等引用类型仍以 ./types/reference 为唯一来源，勿在此重复定义）
+// ----------------------------------------------------------------------
+
+/**
+ * 节点类型标识
+ * - note: 笔记节点（原生）
+ * - folder: 文件夹节点
+ * - reference: 引用节点
+ */
+export type NodeType = 'note' | 'folder' | 'reference';
+
+/**
+ * 引用节点附加数据
+ */
+export interface ReferenceData {
+    /** 引用节点信息 */
+    referenceNode: ReferenceNode;
+    /** 是否失效（原数据已删除） */
+    isInvalid?: boolean;
+    /** 是否正在校验中 */
+    isValidating?: boolean;
+}
+
+export interface TreeNode {
+    id: string;
+    title: string;
+    isFolder: boolean;
+    children?: string[];
+    data?: any;
+    canMove?: boolean;
+    canRename?: boolean;
+    /** 节点类型（用于区分笔记/文件夹/引用） */
+    nodeType?: NodeType;
+    /** 引用节点数据（仅 nodeType='reference' 时存在） */
+    referenceData?: ReferenceData;
+}
+
+export type TreeData = Record<string, TreeNode>;
 
 // ----------------------------------------------------------------------
 // Types
@@ -206,7 +248,7 @@ export const sortTreeChildren = (
 // ----------------------------------------------------------------------
 
 /**
- * 计算从根到指定节点的面包屑路径（NotesHeader 依赖）。
+ * 计算从根到指定节点的面包屑路径（NotesEditorHeader / 侧栏依赖）。
  *
  * 支持传入笔记 ID 或文件夹 ID；未找到时返回空数组（调用方可安全 map）。
  *
@@ -287,7 +329,7 @@ export const getPathToNote = (
 // ----------------------------------------------------------------------
 
 /**
- * 从笔记列表 + 文件夹结构构建 DndFileTree 的树数据。
+ * 从笔记列表 + 文件夹结构构建文件树数据（TreeData）。
  *
  * 行为要点：
  * - 顶层顺序优先采用持久化的 rootChildren，缺失项按标题字典序补齐；
@@ -295,7 +337,7 @@ export const getPathToNote = (
  * - sortMethod 非 'manual' 时对根与所有文件夹递归排序（见 sortTreeChildren）。
  *
  * @param params 构建参数（见 TreeBuildParams）
- * @returns DndFileTree 消费的 TreeData（含 root 节点）
+ * @returns 树数据映射 TreeData（含 root 节点）
  */
 export const buildTreeData = ({
     notes,

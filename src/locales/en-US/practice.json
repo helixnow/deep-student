@@ -68,7 +68,11 @@
     "confirmMessage": "Are you sure you want to finish this timed practice?",
     "confirmWarning": "You have {{count}} unanswered questions. Are you sure you want to submit?",
     "cancel": "Cancel",
-    "confirmSubmit": "Confirm Submit"
+    "confirmSubmit": "Confirm Submit",
+    "lastResultTitle": "Last Session Result",
+    "lastResultTimeout": "Auto-submitted on timeout",
+    "lastResultSummary": "Answered {{answered}} / {{total}} · {{correct}} correct · {{rate}}% accuracy",
+    "anotherRound": "One More Round"
   },
   "questionType": {
     "single_choice": "Single Choice",
@@ -149,6 +153,8 @@
     "start": "Start Today's Practice",
     "calendar": "Check-in Calendar",
     "yearMonth": "{{month}}/{{year}}",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -164,7 +170,8 @@
     "streak": "Streak",
     "calendarLoadFailed": "Failed to load the check-in calendar",
     "startError": "Failed to load daily practice",
-    "completedDetail": "{{correct}} / {{total}} answered correctly"
+    "completedDetail": "{{correct}} / {{total}} answered correctly",
+    "anotherRound": "Practice Another Round"
   },
   "paper": {
     "title": "Paper Generator",
@@ -197,7 +204,8 @@
     "exportComingSoon": "PDF / Word export is coming soon. Use Markdown export or preview for now.",
     "exportTitle": "Export Paper",
     "exportSuccess": "Paper exported",
-    "exportFailed": "Export failed. Please try again."
+    "exportFailed": "Export failed. Please try again.",
+    "comingSoonBadge": "Coming Soon"
   },
   "tagNav": {
     "knowledgePoints": "Knowledge Points",
@@ -531,5 +539,11 @@
   "stepper": {
     "decrease": "Decrease {{label}} count",
     "increase": "Increase {{label}} count"
+  },
+  "preview_persist": {
+    "save_progress": "Save reading progress",
+    "save_bookmarks": "Save bookmarks",
+    "save_bookmarks_failed": "Failed to save bookmarks",
+    "flush_unsaved": "Save unpersisted reading progress/bookmarks"
   }
 }

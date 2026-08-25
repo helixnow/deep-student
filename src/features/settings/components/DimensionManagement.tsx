@@ -377,7 +377,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             variant={isAddingNew ? 'default' : 'ghost'}
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:!h-11 text-xs px-2 py-0"
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
@@ -387,7 +387,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
-            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
+            className="flex-1 sm:flex-none h-7 [@media(pointer:coarse)]:!h-11 text-xs px-2 py-0"
           >
             {t('common:refresh')}
           </DsButton>
@@ -401,7 +401,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                <X size={14} />
             </DsButton>
           </div>
@@ -414,7 +414,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                 value={newDimension}
                 onChange={(e) => setNewDimension(e.target.value)}
                 placeholder={`${dimensionRange[0]} - ${dimensionRange[1]}`}
-                className="h-8 text-xs"
+                className="h-8 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                 autoFocus
               />
             </div>
@@ -457,7 +457,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                   <Badge
                     key={preset}
                     variant={isSelected ? 'default' : 'outline'}
-                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
+                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
                     onClick={() => !exists && setNewDimension(String(preset))}
                   >
                     {preset}
@@ -468,7 +468,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           )}
           
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/20">
-            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 text-xs flex-1 md:flex-none">
+            <DsButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1 md:flex-none">
               {t('common:cancel')}
             </DsButton>
             <DsButton 
@@ -476,7 +476,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               size="sm" 
               onClick={handleCreateDimension} 
               disabled={creating || !newDimension}
-              className="h-7 text-xs flex-1 md:flex-none"
+              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1 md:flex-none"
             >
               {creating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
               {t('common:create')}
@@ -533,7 +533,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <p className="text-xs text-muted-foreground/50 mb-4 max-w-md px-4">
               {t('settings:dimension_management.no_data_hint')}
             </p>
-            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 text-xs">
+            <DsButton onClick={handleOpenCreateDialog} variant="ghost" size="sm" className="h-8 [@media(pointer:coarse)]:!h-11 text-xs">
               {t('settings:dimension_management.create_first_dimension')}
             </DsButton>
           </div>
@@ -628,7 +628,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       size="sm"
                                       onClick={() => handleSetAsDefault(dim)}
                                       disabled={settingDefault || !dim.modelConfigId}
-                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
+                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                                     >
                                       <span className="text-2xs">⭐</span>
                                     </DsButton>
@@ -640,7 +640,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
                                     className={cn(
-                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5",
+                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-2.5",
                                       isExpanded ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-foreground"
                                     )}
                                   >
@@ -655,7 +655,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     onClick={() => handleToggleDeleteConfirm(dim)}
                                     aria-expanded={isConfirmingDelete}
                                     className={cn(
-                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9",
+                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11",
                                       isConfirmingDelete
                                         ? "text-destructive bg-destructive/10"
                                         : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"
@@ -690,7 +690,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         size="sm"
                                         onClick={() => setExpandedRow(null)}
                                         disabled={updating}
-                                        className="h-7 text-xs"
+                                        className="h-7 [@media(pointer:coarse)]:!h-11 text-xs"
                                       >
                                         {t('common:cancel')}
                                       </DsButton>
@@ -699,7 +699,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         size="sm"
                                         onClick={handleConfirmChangeModel}
                                         disabled={updating || !selectedModelId}
-                                        className="h-7 text-xs"
+                                        className="h-7 [@media(pointer:coarse)]:!h-11 text-xs"
                                       >
                                         {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                                         {t('common:confirm')}
@@ -724,7 +724,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                             size="sm"
                                             onClick={() => setSelectedModelId(model.id)}
                                             className={cn(
-                                              "!h-auto !px-2.5 !py-1 text-xs",
+                                              "!h-auto !px-2.5 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11",
                                               model.id === selectedModelId
                                                 ? "bg-primary/10 text-primary border border-primary/30"
                                                 : "bg-muted/50 text-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground border border-transparent"
@@ -776,7 +776,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => setConfirmingDeleteRow(null)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-xs"
+                                        className="h-6 [@media(pointer:coarse)]:!h-11 px-2 text-xs"
                                       >
                                         {t('common:cancel')}
                                       </DsButton>
@@ -786,7 +786,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => handleDeleteDimension(dim)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-xs"
+                                        className="h-6 [@media(pointer:coarse)]:!h-11 px-2 text-xs"
                                       >
                                         {deleting && isConfirmingDelete
                                           ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -865,7 +865,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={() => handleSetAsDefault(dim)}
                               disabled={settingDefault || !dim.modelConfigId}
-                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95"
+                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:!h-11 px-2 active:scale-95"
                             >
                               <span className="mr-1">⭐</span>
                               {t('settings:dimension_management.set_as_default')}
@@ -877,7 +877,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
                           className={cn(
-                            "text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95",
+                            "text-2xs h-7 [@media(pointer:coarse)]:!h-11 px-2 active:scale-95",
                             isExpanded && "bg-primary/10 text-primary"
                           )}
                         >
@@ -891,7 +891,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           onClick={() => handleToggleDeleteConfirm(dim)}
                           aria-expanded={isConfirmingDelete}
                           className={cn(
-                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 p-0 active:scale-95 transition-colors",
+                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 p-0 active:scale-95 transition-colors",
                             isConfirmingDelete
                               ? "text-destructive bg-destructive/10"
                               : "text-destructive/60 hover:text-destructive"
@@ -928,7 +928,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => setConfirmingDeleteRow(null)}
                               disabled={deleting}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {t('common:cancel')}
                             </DsButton>
@@ -938,7 +938,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => handleDeleteDimension(dim)}
                               disabled={deleting}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {deleting && isConfirmingDelete
                                 ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -992,7 +992,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={() => setExpandedRow(null)}
                               disabled={updating}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {t('common:cancel')}
                             </DsButton>
@@ -1001,7 +1001,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               size="sm"
                               onClick={handleConfirmChangeModel}
                               disabled={updating || !selectedModelId}
-                              className="h-7 text-xs flex-1"
+                              className="h-7 [@media(pointer:coarse)]:!h-11 text-xs flex-1"
                             >
                               {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                               {t('common:confirm')}

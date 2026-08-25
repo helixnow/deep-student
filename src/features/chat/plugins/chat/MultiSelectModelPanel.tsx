@@ -350,8 +350,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           type="button"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
-          // 伪元素扩大触控命中区（视觉保持 18/20px 方块）
-          className={cn(indicatorClass, 'mt-0.5 relative after:absolute after:-inset-2.5 after:content-[\'\']', disabled && 'cursor-not-allowed')}
+          // 伪元素扩大触控命中区（视觉保持 18/20px 方块）；coarse 指针 -inset-[13px] 使命中区 ≥44px（18+13×2）
+          className={cn(indicatorClass, 'mt-0.5 relative after:absolute after:-inset-2.5 [@media(pointer:coarse)]:after:-inset-[13px] after:content-[\'\']', disabled && 'cursor-not-allowed')}
         >
           {isSelected && <Check size={12} />}
         </button>
@@ -362,6 +362,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           disabled={disabled}
           className={cn(
             'min-w-0 flex-1 !h-auto !flex-col !items-start !justify-start !gap-0.5 !whitespace-normal !px-0 !py-0 text-left',
+            // coarse 指针下 !h-auto !py-0 会把单行标签压到 ~20px，min-h 保证 ≥44px 触控命中
+            '[@media(pointer:coarse)]:!min-h-11',
             '!bg-transparent dark:!bg-transparent !hover:bg-transparent dark:!hover:bg-transparent !active:bg-transparent',
             '!text-inherit hover:!text-inherit dark:hover:!text-inherit active:!text-inherit',
             isMobile && '!gap-0',
@@ -414,8 +416,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               }}
               disabled={disabled || savingDefault}
               className={cn(
-                // 伪元素扩大触控命中区（视觉 24px）
-                'mt-0.5 !h-6 !w-6 opacity-60 relative after:absolute after:-inset-2 after:content-[\'\']',
+                // 伪元素扩大触控命中区（视觉 24px，触屏命中 44px）
+                'mt-0.5 !h-6 !w-6 opacity-60 relative after:absolute after:-inset-2 [@media(pointer:coarse)]:after:-inset-2.5 after:content-[\'\']',
                 'text-muted-foreground !hover:bg-transparent !active:bg-transparent hover:!text-muted-foreground',
                 (disabled || savingDefault) && 'cursor-not-allowed opacity-40'
               )}
@@ -485,12 +487,13 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                   }}
                   disabled={disabled || selectedModels.length === 0}
                   title={t('chatV2:modelMention.retry')}
+                  className="[@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('chatV2:modelRetry.retry')}
                 </DsButton>
               )}
-              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
                 <X size={16} />
               </DsButton>
             </div>
@@ -516,6 +519,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             }}
             disabled={disabled || selectedModels.length === 0}
             title={t('chatV2:modelMention.retry')}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelRetry.retry')}
@@ -566,7 +570,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                     className={cn(
                       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                       'hover:bg-[var(--interactive-hover)] active:bg-muted/80',
-                      'select-none cursor-pointer'
+                      'select-none cursor-pointer',
+                      '[@media(pointer:coarse)]:min-h-11'
                     )}
                   >
                     {isCollapsed ? (

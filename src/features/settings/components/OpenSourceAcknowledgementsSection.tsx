@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CaretDown, CaretUp, FileText, ListChecks } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   DsDialog,
   DsDialogBody,
@@ -150,6 +151,21 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
     }
   };
 
+  // 移动端内联许可证正文的系统返回键：先回到致谢列表，而不是退出整个 About 分区。
+  // 必须注册 overlay 档——移动端设置本体是打开的 Radix Sheet（role="dialog"
+  // data-state="open"），androidBackCoordinator 的 Radix Escape 兜底在任何低于
+  // overlay 档的 handler 之前执行并会命中该 Sheet，view 档在这里拿不到事件。
+  // overlay 档栈语义（后注册先执行）下，正文之上再打开的弹层仍先于本 handler 关闭。
+  // 仅在正文可见时注册；关闭正文或组件随 AboutTab 卸载（切分区 / 回分区列表 /
+  // Sheet 关闭）即注销，不会误吞其他页面的返回键。
+  useEffect(() => {
+    if (!isSmallScreen || !open || !legalDocument) return;
+    return registerBackHandler(() => {
+      setLegalDocument(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, open, legalDocument]);
+
   const container = {
     hidden: { opacity: 0 },
     show: {
@@ -233,7 +249,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       <DsButton
         variant="ghost"
         size="sm"
-        className="flex-1 justify-center"
+        className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
         onClick={() => void openLegalDocument('project')}
       >
         <FileText size={14} />
@@ -242,7 +258,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
       <DsButton
         variant="ghost"
         size="sm"
-        className="flex-1 justify-center"
+        className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
         onClick={() => void openLegalDocument('thirdParty')}
       >
         <ListChecks size={14} />
@@ -262,7 +278,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             onClick={() => handleOpenChange(!open)}
             aria-label={t('acknowledgements.openSource.openDialog')}
             aria-expanded={isSmallScreen ? open : undefined}
-            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85"
+            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85 [@media(pointer:coarse)]:!min-h-11"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             {isSmallScreen ? (
@@ -339,7 +355,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="flex-1 justify-center"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => setLegalDocument(null)}
                 >
                   <ArrowLeft size={14} />
@@ -348,7 +364,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="flex-1 justify-center"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}
@@ -360,7 +376,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                 <DsButton
                   variant="default"
                   size="sm"
-                  className="flex-1 justify-center"
+                  className="flex-1 justify-center [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleOpenChange(false)}
                 >
                   {t('acknowledgements.openSource.closeDialog')}

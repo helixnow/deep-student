@@ -807,11 +807,23 @@ impl ChatV2Pipeline {
 
         // 创建 LLM 适配器（使用变体的事件发射）
         let enable_thinking = options.enable_thinking.unwrap_or(true);
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let emitter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
 
         // Each concrete variant attempt gets a unique hook key. Variant IDs are reused by retry,
@@ -1173,11 +1185,23 @@ impl ChatV2Pipeline {
         let mut messages = chat_history;
         messages.push(current_user_message);
 
+        let wrap_token_policy = self
+            .resolve_api_config_by_id(options.model_id.as_deref())
+            .await
+            .map(|config| {
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                    config.provider_type.as_deref(),
+                    config.provider_scope.as_deref(),
+                    &config.model,
+                )
+            })
+            .unwrap_or(crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled);
         let adapter = Arc::new(VariantLLMAdapter::new(
             Arc::clone(&ctx),
             enable_thinking,
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
+            wrap_token_policy,
         ));
         let stream_event = super::tool_loop::build_run_scoped_stream_event(
             &session_id,
@@ -1575,8 +1599,7 @@ impl ChatV2Pipeline {
 
             // P1-8：本轮环内新加载的技能批次（tool_call_id → 消息），
             // 在工具结果消息 push 完成后插到对应 tool result 之后
-            let mut pending_round_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> =
-                Vec::new();
+            let mut pending_round_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
 
             // 🔧 渐进披露：load_skills 执行后动态追加工具
             for tool_result in &tool_results {
@@ -1674,10 +1697,8 @@ impl ChatV2Pipeline {
                             // P1-8 环内技能锚定：新加载技能（差集）锚到本次
                             // load_skills 的 tool result 之后，禁止整包重插到
                             // 当前 user 之前
-                            if let Some(anchor_call_id) = tool_result
-                                .tool_call_id
-                                .clone()
-                                .filter(|id| !id.is_empty())
+                            if let Some(anchor_call_id) =
+                                tool_result.tool_call_id.clone().filter(|id| !id.is_empty())
                             {
                                 let empty_skill_contents = std::collections::HashMap::new();
                                 let batch = build_in_loop_skill_messages(
@@ -2237,13 +2258,12 @@ impl ChatV2Pipeline {
                     // tool_call_id / round_text / meta 回填（thought_signature、
                     // reasoning_content、Responses reasoning item）/ 检索脱敏
                     // 与单变体 load_chat_history 字节一致
-                    let (assistant_tool_msg, tool_msg) =
-                        super::history::build_tool_round_messages(
-                            message.meta.as_ref(),
-                            replay,
-                            tool_block,
-                            None,
-                        );
+                    let (assistant_tool_msg, tool_msg) = super::history::build_tool_round_messages(
+                        message.meta.as_ref(),
+                        replay,
+                        tool_block,
+                        None,
+                    );
                     chat_history.push(assistant_tool_msg);
                     chat_history.push(tool_msg);
 
@@ -3586,11 +3606,8 @@ mod variant_replay_tests {
         });
         ChatV2Repo::create_message_with_conn(&conn, &assistant_msg).unwrap();
 
-        let mut injection_block = MessageBlock::new(
-            "msg_mv_a1".to_string(),
-            block_types::WORKSPACE_INJECTION,
-            0,
-        );
+        let mut injection_block =
+            MessageBlock::new("msg_mv_a1".to_string(), block_types::WORKSPACE_INJECTION, 0);
         injection_block.id = "blk_mv_inject".to_string();
         injection_block.status = block_status::SUCCESS.to_string();
         injection_block.content = Some("[来自工作区] 主代理插话：先查 A".to_string());
@@ -3628,7 +3645,14 @@ mod variant_replay_tests {
         ChatV2Repo::create_block_with_conn(&conn, &content).unwrap();
 
         // ---- 本轮（变体重生成目标）：user + assistant 会被排除 ----
-        insert_user_turn(&conn, session_id, "msg_mv_u2", "blk_mv_u2", "再来一次", 3_000);
+        insert_user_turn(
+            &conn,
+            session_id,
+            "msg_mv_u2",
+            "blk_mv_u2",
+            "再来一次",
+            3_000,
+        );
         let mut variant_assistant = ChatMessage::new_assistant(session_id.to_string());
         variant_assistant.id = "msg_mv_a2".to_string();
         variant_assistant.timestamp = 4_000;

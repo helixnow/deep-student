@@ -12,7 +12,11 @@
 // pdf_protocol 中仅 resolve_allowed_dirs / handle_asset_protocol / cors_origin_for_request
 // 为 pub，其余辅助函数（Range 解析、CORS 构造、预算、句柄复核）为私有，
 // 按任务约定在本文件内复制实现，不修改 pdf_protocol.rs。
+// ★ 2026-08-23（#59 例外）：白名单路径包含判定是安全关键比较，
+// 统一复用 pdf_protocol::path_is_within（Windows \\?\ verbatim 书写形式归一化），
+// 避免两个协议对同一路径给出不同的 403 判定。
 
+use crate::pdf_protocol::path_is_within;
 use log::{info, warn};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -114,7 +118,10 @@ fn opened_file_matches_authorized_path(
         else {
             return false;
         };
-        actual_path == expected_path && allowed_dirs.iter().any(|dir| actual_path.starts_with(dir))
+        actual_path == expected_path
+            && allowed_dirs
+                .iter()
+                .any(|dir| path_is_within(&actual_path, dir))
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -130,7 +137,7 @@ fn opened_file_matches_authorized_path(
             && post_open_path == expected_path
             && allowed_dirs
                 .iter()
-                .any(|dir| post_open_path.starts_with(dir))
+                .any(|dir| path_is_within(&post_open_path, dir))
     }
 }
 
@@ -189,9 +196,11 @@ pub fn resolve_blob_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(state) = app.try_state::<crate::commands::AppState>() {
         if let Some(vfs_db) = state.vfs_db.as_ref() {
-            if let Ok(blobs_dir) = std::fs::canonicalize(vfs_db.blobs_dir()) {
-                dirs.push(blobs_dir);
-            }
+            // #59：canonicalize 失败时保留原始路径（与 resolve_allowed_dirs 一致），
+            // 书写形式差异由 path_is_within 归一化处理。
+            let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
+                .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
+            dirs.push(blobs_dir);
         }
     }
     dirs
@@ -206,7 +215,10 @@ fn is_allowed_media_extension(ext: &str) -> bool {
 /// - blobs 目录内：任意扩展名（含无扩展名），目录本身即授权边界；
 /// - 其余白名单目录：必须命中媒体扩展名白名单（大小写不敏感）。
 fn extension_permitted(canonical_path: &Path, blob_dirs: &[PathBuf]) -> bool {
-    if blob_dirs.iter().any(|dir| canonical_path.starts_with(dir)) {
+    if blob_dirs
+        .iter()
+        .any(|dir| path_is_within(canonical_path, dir))
+    {
         return true;
     }
     canonical_path
@@ -222,22 +234,44 @@ fn extension_permitted(canonical_path: &Path, blob_dirs: &[PathBuf]) -> bool {
 fn has_hidden_segment_within(canonical_path: &Path, allowed_dirs: &[PathBuf]) -> bool {
     let Some(base) = allowed_dirs
         .iter()
-        .filter(|dir| canonical_path.starts_with(dir))
+        .filter(|dir| path_is_within(canonical_path, dir))
         .max_by_key(|dir| dir.components().count())
     else {
         // 不在白名单内：调用方应已拒绝，此处保守视为隐藏
         return true;
     };
-    let Ok(relative) = canonical_path.strip_prefix(base) else {
-        return true;
-    };
-    relative.components().any(|c| {
-        matches!(
-            c,
-            std::path::Component::Normal(name)
-                if name.to_string_lossy().starts_with('.')
-        )
-    })
+    hidden_component_after(canonical_path, base)
+}
+
+/// `path` 在 `base` 之下的相对部分是否含点号开头的组件。
+/// 组件级 strip_prefix 失败时（Windows 上两侧 \\?\ verbatim 书写形式不一致），
+/// 用归一化文本做同义比较；无法确定相对关系时保守视为隐藏（fail-closed）。
+fn hidden_component_after(path: &Path, base: &Path) -> bool {
+    if let Ok(relative) = path.strip_prefix(base) {
+        return relative.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(name)
+                    if name.to_string_lossy().starts_with('.')
+            )
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        use crate::pdf_protocol::{windows_comparable_path_text, windows_path_starts_with};
+        if let (Some(path_text), Some(base_text)) = (path.to_str(), base.to_str()) {
+            if windows_path_starts_with(path_text, base_text) {
+                let path_norm = windows_comparable_path_text(path_text);
+                let base_norm = windows_comparable_path_text(base_text);
+                // 大小写折叠不影响 '.' 前缀判定
+                let rest = path_norm.strip_prefix(&base_norm).unwrap_or("");
+                return rest.split('\\').any(|segment| segment.starts_with('.'));
+            }
+        }
+    }
+
+    true
 }
 
 /// 根据文件扩展名返回 MIME 类型（大小写不敏感）。
@@ -378,9 +412,10 @@ pub fn handle_asset_protocol(
     };
 
     // 安全检查 1：目录白名单 — 规范路径必须位于已授权目录下
+    // （#59：path_is_within 归一化 Windows 的 \\?\ verbatim 与普通盘符书写形式）
     let is_in_allowed_dir = allowed_dirs
         .iter()
-        .any(|dir| canonical_path.starts_with(dir));
+        .any(|dir| path_is_within(&canonical_path, dir));
     if !is_in_allowed_dir {
         warn!(
             "[filestream] 拒绝访问白名单外路径: {}",
@@ -665,7 +700,10 @@ pub async fn filestream_check_access(app: tauri::AppHandle, path: String) -> Res
     };
 
     let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(&app);
-    if !allowed_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+    if !allowed_dirs
+        .iter()
+        .any(|dir| path_is_within(&canonical, dir))
+    {
         return Ok(false);
     }
 
@@ -920,6 +958,66 @@ mod tests {
         let response =
             handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
         assert_eq!(response.status(), tauri::http::StatusCode::NOT_FOUND);
+    }
+
+    /// #59 回归：中文目录 + 中文文件名经百分号编码 URL 加载必须成功，
+    /// 白名单外的中文路径仍必须 403。
+    #[test]
+    fn test_protocol_serves_chinese_path_and_rejects_outside_whitelist() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let allowed_dirs = vec![temp_dir.path().canonicalize().expect("canonical tempdir")];
+        let blob_dirs: Vec<PathBuf> = Vec::new();
+
+        let nested = temp_dir.path().join("学习软件").join("学习");
+        std::fs::create_dir_all(&nested).expect("mkdir chinese dirs");
+        let media_path = nested.join("网课录音.mp3");
+        std::fs::write(&media_path, b"ID3-test-body").expect("write media");
+
+        let encoded = urlencoding::encode(&media_path.to_string_lossy()).into_owned();
+        let request = make_get_request(&format!("filestream://localhost/{}", encoded));
+        let response =
+            handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
+        assert_eq!(response.status(), tauri::http::StatusCode::OK);
+        assert_eq!(
+            response.headers().get("Content-Type").unwrap(),
+            "audio/mpeg"
+        );
+        assert_eq!(response.body().as_slice(), b"ID3-test-body");
+
+        // 白名单外的中文路径 → 403
+        let outside = tempfile::tempdir().expect("outside tempdir");
+        let outside_path = outside.path().join("明朝那些事儿.pdf");
+        std::fs::write(&outside_path, b"%PDF-secret").expect("write outside");
+        let encoded = urlencoding::encode(&outside_path.to_string_lossy()).into_owned();
+        let request = make_get_request(&format!("filestream://localhost/{}", encoded));
+        let response =
+            handle_asset_protocol(&request, &allowed_dirs, &blob_dirs).expect("response");
+        assert_eq!(response.status(), tauri::http::StatusCode::FORBIDDEN);
+    }
+
+    /// Windows 实机验证：白名单目录为普通盘符形式、请求路径为 \\?\ verbatim 时，
+    /// 隐藏路径段检查不得因书写形式差异误拒非隐藏路径，也不得放行隐藏路径。
+    #[cfg(windows)]
+    #[test]
+    fn test_hidden_segment_check_with_mixed_verbatim_forms_on_windows() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let media_dir = temp_dir.path().join("媒体");
+        std::fs::create_dir_all(&media_dir).expect("mkdir");
+        let media_path = media_dir.join("a.mp4");
+        std::fs::write(&media_path, b"data").expect("write media");
+
+        // 白名单保持普通形式，请求路径为 canonicalize 的 verbatim 形式
+        let allowed = vec![temp_dir.path().to_path_buf()];
+        let canonical_file = std::fs::canonicalize(&media_path).expect("canonical file");
+        assert!(!has_hidden_segment_within(&canonical_file, &allowed));
+
+        // 隐藏路径段仍被拒绝
+        let hidden_dir = temp_dir.path().join(".secret");
+        std::fs::create_dir_all(&hidden_dir).expect("mkdir hidden");
+        let hidden_path = hidden_dir.join("a.mp4");
+        std::fs::write(&hidden_path, b"data").expect("write hidden");
+        let canonical_hidden = std::fs::canonicalize(&hidden_path).expect("canonical hidden");
+        assert!(has_hidden_segment_within(&canonical_hidden, &allowed));
     }
 
     #[test]

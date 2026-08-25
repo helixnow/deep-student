@@ -264,6 +264,20 @@ interface DesktopState {
   removeShortcut: (id: string) => void;
 
   /**
+   * ★ 悬挂引用清理：移除目标资源/文件夹已被删除的快捷方式。
+   *
+   * 由删除流程（软删/永久删/清空回收站）调用，targetIds 为被删除的
+   * 资源或文件夹 ID。返回被移除的快捷方式，供软删 Undo 时原样恢复。
+   */
+  pruneShortcutsForTargets: (targetIds: Iterable<string>) => DesktopShortcut[];
+
+  /**
+   * ★ 恢复此前被 pruneShortcutsForTargets 移除的快捷方式
+   *（软删 Undo 场景；按原 id/position 放回，已存在同 id 则跳过）。
+   */
+  restoreShortcuts: (shortcuts: DesktopShortcut[]) => void;
+
+  /**
    * 更新快捷方式名称
    * @param id 快捷方式 ID
    * @param name 新名称
@@ -421,6 +435,31 @@ export const useDesktopStore = create<DesktopState>()(
 
       removeShortcut: (id) => {
         set({ shortcuts: get().shortcuts.filter(s => s.id !== id) });
+      },
+
+      pruneShortcutsForTargets: (targetIds) => {
+        const idSet = targetIds instanceof Set ? targetIds : new Set(targetIds);
+        if (idSet.size === 0) return [];
+
+        const { shortcuts } = get();
+        const removed = shortcuts.filter(s =>
+          (s.type === 'resource' && s.target.resourceId != null && idSet.has(s.target.resourceId)) ||
+          (s.type === 'folder' && s.target.folderId != null && idSet.has(s.target.folderId))
+        );
+        if (removed.length === 0) return [];
+
+        const removedIds = new Set(removed.map(s => s.id));
+        set({ shortcuts: shortcuts.filter(s => !removedIds.has(s.id)) });
+        return removed;
+      },
+
+      restoreShortcuts: (toRestore) => {
+        if (toRestore.length === 0) return;
+        const { shortcuts } = get();
+        const existingIds = new Set(shortcuts.map(s => s.id));
+        const additions = toRestore.filter(s => !existingIds.has(s.id));
+        if (additions.length === 0) return;
+        set({ shortcuts: [...shortcuts, ...additions] });
       },
 
       renameShortcut: (id, name) => {

@@ -142,6 +142,8 @@ export {
   normalizeHpiasEventPayload,
   omitResearchBlocksFromIntent,
   startHpiasEventBridge,
+  retainSharedHpiasEventBridge,
+  resetSharedHpiasEventBridgeForTests,
 } from './bridge/hpiasEventBridge';
 export { useHpiasEventBridge } from './hooks/useHpiasEventBridge';
 export {
@@ -151,7 +153,10 @@ export {
   extractHpiasEventTypes,
 } from './contracts/hpiasLifecycleContract';
 export type { HpiasPipelineLifecycleType } from './contracts/hpiasLifecycleContract';
-export { extractResearchSessionId } from './utils/extractResearchSessionId';
+export {
+  extractResearchSessionId,
+  MAX_RESEARCH_SESSION_ID_LENGTH,
+} from './utils/extractResearchSessionId';
 export { buildFlashcardPreviewIntent } from './utils/buildFlashcardPreviewIntent';
 export { buildPaperDigestIntent } from './utils/buildPaperDigestIntent';
 export { buildResearchPlanIntent } from './utils/buildResearchPlanIntent';
@@ -173,16 +178,9 @@ export {
   RESEARCH_REPORT_CITATION_PATTERN,
 } from './utils/parseResearchReportCitations';
 export {
-  extractFlashcardsFromIntent,
-  flashcardPreviewToAnkiCards,
-} from './utils/extractFlashcardsFromIntent';
-export { createFlashcardSaveActionHandlers } from './handlers/flashcardActionHandlers';
-export type { FlashcardSaveContext, FlashcardActionLabels } from './handlers/flashcardActionHandlers';
-export {
   resolveGenerativeUIChatActionHandlers,
   collectGenerativeUIActionIds,
   NOTE_EDIT_ACTION_IDS,
-  FLASHCARD_ACTION_IDS,
   RESEARCH_ACTION_IDS,
 } from './bridge/resolveGenerativeUIChatActionHandlers';
 export { createResearchBriefingActionHandlers } from './handlers/researchBriefingActionHandlers';
@@ -315,7 +313,11 @@ export type {
   GenerativeUIParseErrorCode,
   ClassifiedGenerativeUIParseError,
 } from './utils/classifyGenerativeUIParseErrors';
-export { collectUnregisteredActionIds } from './utils/collectUnregisteredActionIds';
+export {
+  collectUnregisteredActionIds,
+  firstReachableActionBarIndex,
+  intentHasReachableActionBar,
+} from './utils/collectUnregisteredActionIds';
 
 // 注册内置块
 import './blocks';

@@ -6,7 +6,13 @@
 
 import { z } from 'zod';
 import type { GenerativeLayoutMode, GenerativeLayoutUnit, GenerativeUIIntent } from './types';
+import { sanitizeResearchSessionId } from './utils/extractResearchSessionId';
 import { sanitizeGenerativeTextLeaves } from './utils/sanitizeGenerativeText';
+import {
+  MAX_GENERATIVE_UI_STREAM_CHARS,
+  STREAM_BUFFER_CAPPED_WARNING,
+  isStreamBufferOverCap,
+} from './utils/streamBufferGuard';
 
 export const GENERATIVE_UI_INTENT_VERSIONS = ['1', '1.1'] as const;
 export const GENERATIVE_LAYOUT_UNITS = [1, 2, 3] as const;
@@ -49,6 +55,10 @@ const generativeUIMetaSchema = z
   .object({
     title: z.string().max(200).optional(),
     description: z.string().max(1000).optional(),
+    researchSessionId: z
+      .unknown()
+      .optional()
+      .transform((value) => sanitizeResearchSessionId(value) ?? undefined),
   })
   .optional();
 
@@ -189,13 +199,19 @@ export type TextBlockProps = z.infer<typeof textBlockPropsSchema>;
 export type KeyValueGridProps = z.infer<typeof keyValueGridPropsSchema>;
 
 /** 从 JSON 字符串解析并校验 UI 意图 */
-export function parseGenerativeUIIntent(raw: string): {
+export function parseGenerativeUIIntent(
+  raw: string,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+): {
   ok: true;
   intent: GenerativeUIIntentSchema;
 } | {
   ok: false;
   errors: string[];
 } {
+  if (isStreamBufferOverCap(raw.length, maxChars)) {
+    return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -324,7 +340,10 @@ export function recoverGenerativeUIIntent(value: unknown): RecoveredGenerativeUI
 }
 
 /** 宽松 parse helper：完整 JSON 失败时尽量保留合法 blocks */
-export function parseGenerativeUIIntentRecovered(input: string | unknown):
+export function parseGenerativeUIIntentRecovered(
+  input: string | unknown,
+  maxChars: number = MAX_GENERATIVE_UI_STREAM_CHARS,
+):
   | {
       ok: true;
       intent: GenerativeUIIntentSchema;
@@ -338,6 +357,9 @@ export function parseGenerativeUIIntentRecovered(input: string | unknown):
     } {
   let value: unknown = input;
   if (typeof input === 'string') {
+    if (isStreamBufferOverCap(input.length, maxChars)) {
+      return { ok: false, errors: [STREAM_BUFFER_CAPPED_WARNING] };
+    }
     try {
       value = JSON.parse(input);
     } catch (e) {

@@ -235,7 +235,10 @@ export const essayDstuAdapter = {
       typeFilter: 'essay',
     });
     if (!result.ok) {
-      reportError(result.error, 'List essay grading sessions');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_essay.list_sessions', { defaultValue: 'List essay grading sessions' })
+      );
       return err(result.error);
     }
     return ok({
@@ -252,7 +255,10 @@ export const essayDstuAdapter = {
     console.log(LOG_PREFIX, 'getEssay via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, 'Get essay session detail');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_essay.get_session_detail', { defaultValue: 'Get essay session detail' })
+      );
       return result;
     }
     return ok(result.value);
@@ -266,7 +272,10 @@ export const essayDstuAdapter = {
     console.log(LOG_PREFIX, 'deleteEssay via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, 'Delete essay session');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_essay.delete_session', { defaultValue: 'Delete essay session' })
+      );
     }
     return result;
   },
@@ -290,7 +299,10 @@ export const essayDstuAdapter = {
       // 先获取当前状态
       const getResult = await dstu.get(path);
       if (!getResult.ok) {
-        reportError(getResult.error, 'Get essay session');
+        reportError(
+          getResult.error,
+          i18next.t('app_menu:dstu_essay.get_session', { defaultValue: 'Get essay session' })
+        );
         return err(getResult.error);
       }
 
@@ -300,7 +312,10 @@ export const essayDstuAdapter = {
     // 使用统一的 setFavorite API
     const setResult = await dstu.setFavorite(path, newFavorite);
     if (!setResult.ok) {
-      reportError(setResult.error, 'Toggle favorite');
+      reportError(
+        setResult.error,
+        i18next.t('app_menu:dstu_essay.toggle_favorite', { defaultValue: 'Toggle favorite' })
+      );
       return err(setResult.error);
     }
 
@@ -318,7 +333,10 @@ export const essayDstuAdapter = {
 
     const result = await dstu.setFavorite(path, isFavorite);
     if (!result.ok) {
-      reportError(result.error, 'Set favorite');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_essay.set_favorite', { defaultValue: 'Set favorite' })
+      );
     }
     return result;
   },
@@ -387,7 +405,10 @@ export const essayDstuAdapter = {
       });
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'getFullSession failed:', error);
-      return err(toVfsError(error, 'Get full essay session'));
+      return err(toVfsError(
+        error,
+        i18next.t('app_menu:dstu_essay.get_full_session', { defaultValue: 'Get full essay session' })
+      ));
     }
   },
 
@@ -442,7 +463,10 @@ export const essayDstuAdapter = {
       });
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'createSession failed:', error);
-      return err(toVfsError(error, 'Create essay session'));
+      return err(toVfsError(
+        error,
+        i18next.t('app_menu:dstu_essay.create_session', { defaultValue: 'Create essay session' })
+      ));
     }
   },
 
@@ -470,7 +494,10 @@ export const essayDstuAdapter = {
       isFavorite: data.isFavorite,
     });
     if (!result.ok) {
-      reportError(result.error, 'Update session metadata');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_essay.update_session_metadata', { defaultValue: 'Update session metadata' })
+      );
     }
     return result;
   },

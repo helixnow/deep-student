@@ -48,6 +48,7 @@ function FolderNode({
   onToggleExpand,
   parentExcluded = false,
 }: FolderNodeProps) {
+  const { t } = useTranslation('learningHub');
   const isExcluded = parentExcluded || excludeIds.has(node.folder.id);
   const isSelected = selectedId === node.folder.id;
   const isExpanded = expandedIds.has(node.folder.id);
@@ -105,7 +106,20 @@ function FolderNode({
         }}
       >
         {hasChildren ? (
-          <DsButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            tabIndex={-1}
+            className={cn(
+              '!h-5 !w-5 !p-0.5',
+              // 📱 触屏：命中区扩到 44px，负 margin 抵消尺寸差以保住缩进与行高
+              '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-m-3'
+            )}
+            onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }}
+            aria-label={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
+            aria-expanded={isExpanded}
+          >
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',
@@ -292,7 +306,7 @@ export function FolderPickerDialog({
             size="sm"
             onClick={() => onOpenChange(false)}
             aria-label={t('common:back')}
-            className="gap-1 min-h-11 px-2 shrink-0"
+            className="gap-1 min-h-11 [@media(pointer:coarse)]:!min-h-11 px-2 shrink-0"
           >
             <CaretLeft className="h-4 w-4" aria-hidden="true" />
             {t('common:back')}
@@ -312,7 +326,7 @@ export function FolderPickerDialog({
             variant="ghost"
             size="sm"
             onClick={() => onOpenChange(false)}
-            className="[@media(pointer:coarse)]:min-h-[44px] px-4"
+            className="[@media(pointer:coarse)]:!min-h-[44px] px-4"
           >
             {t('common:cancel')}
           </DsButton>
@@ -321,7 +335,7 @@ export function FolderPickerDialog({
             size="sm"
             onClick={handleConfirm}
             disabled={isLoading}
-            className="[@media(pointer:coarse)]:min-h-[44px] px-4"
+            className="[@media(pointer:coarse)]:!min-h-[44px] px-4"
           >
             {t('finder.folderPicker.confirm')}
           </DsButton>
@@ -347,10 +361,10 @@ export function FolderPickerDialog({
         </div>
 
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="[@media(pointer:coarse)]:!min-h-11">
             {t('common:cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
+          <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading} className="[@media(pointer:coarse)]:!min-h-11">
             {t('finder.folderPicker.confirm')}
           </DsButton>
         </DsDialogFooter>

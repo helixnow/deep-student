@@ -235,6 +235,10 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
           // 触屏 pr-12：为常显的「更多 + 关闭」两个入口留出空间
           'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[38px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
+          // 触屏热区补足 44px：上下各伸出 3px（吃掉 my-[3px]）；用上下两条伪元素而非整面
+          // after:-inset-y；「更多/关闭」按钮以 z-[1] 在各自列内压过这两条切换热区
+          '[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:bottom-full [@media(pointer:coarse)]:before:h-[3px] [@media(pointer:coarse)]:before:content-[""]',
+          '[@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:top-full [@media(pointer:coarse)]:after:h-[3px] [@media(pointer:coarse)]:after:content-[""]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
           'transition-[background-color,color,opacity] duration-150',
           isActive
@@ -274,10 +278,12 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               setCtxMenu({ x: rect.left, y: rect.bottom + 4 });
             }}
             className={cn(
-              'absolute right-6 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] opacity-60',
+              'absolute right-6 top-1/2 -translate-y-1/2 z-[1] rounded-md bg-inherit p-[3px] opacity-60',
               'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-              // 热区只向左/上/下扩展，右侧到自身边缘为止，避免与右侧关闭按钮热区重叠
-              'before:absolute before:-inset-y-[8px] before:-left-[8px] before:right-0 before:content-[""]',
+              // 热区高度补足 44px（视觉 20px + 上下各 12px，正好到标签栏上下边缘）；
+              // 只向左/上/下扩展，右侧到自身边缘为止，避免与右侧关闭按钮热区重叠；
+              // z-[1] 让上下 3px 条带处压过标签自身的 before/after 切换热区（本按钮仅触屏渲染）
+              'before:absolute before:-inset-y-[12px] before:-left-[8px] before:right-0 before:content-[""]',
             )}
           >
             <DotsThree size={14} weight="bold" />
@@ -294,9 +300,11 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             'absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] transition-opacity duration-100',
             'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-            // 触屏热区只向右/上/下扩展，左侧到自身边缘为止，避免与「更多」按钮热区重叠
+            // 触屏热区高度补足 44px（视觉 18px + 上下各 13px）；只向右/上/下扩展，
+            // 左侧到自身边缘为止，避免与「更多」按钮热区重叠；
+            // z-[1] 让上下 3px 条带处压过标签自身的 before/after 切换热区
             'before:absolute before:-inset-[5px] before:content-[""]',
-            '[@media(pointer:coarse)]:before:-inset-y-[10px] [@media(pointer:coarse)]:before:-right-[10px] [@media(pointer:coarse)]:before:left-0',
+            '[@media(pointer:coarse)]:z-[1] [@media(pointer:coarse)]:before:-inset-y-[13px] [@media(pointer:coarse)]:before:-right-[10px] [@media(pointer:coarse)]:before:left-0',
           )}
         >
           <X size={12} />

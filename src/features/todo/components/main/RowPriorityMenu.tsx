@@ -72,7 +72,8 @@ export const RowPriorityMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
             iconOnly
             title={t('todo:actions.setPriority', '设置优先级')}
             aria-label={t('todo:actions.setPriority', '设置优先级')}
-            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden"
+            // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
+            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Flag
               size={16}

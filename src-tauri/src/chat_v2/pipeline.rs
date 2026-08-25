@@ -1158,11 +1158,7 @@ mod tests {
         pipeline.store_session_frozen_tool_schema_order(&session_id, &baseline);
 
         // 模拟进程重启：清空共享内存基线，只剩 DB
-        pipeline
-            .frozen_tool_schema_orders
-            .lock()
-            .unwrap()
-            .clear();
+        pipeline.frozen_tool_schema_orders.lock().unwrap().clear();
 
         let restored = pipeline.load_session_frozen_tool_schema_order(&session_id);
         assert_eq!(
@@ -1171,17 +1167,10 @@ mod tests {
         );
 
         // append-only：重启后继续推进不得打乱已持久化前缀
-        let advanced: Vec<String> = vec![
-            "zeta_tool".into(),
-            "alpha_tool".into(),
-            "new_tool".into(),
-        ];
+        let advanced: Vec<String> =
+            vec!["zeta_tool".into(), "alpha_tool".into(), "new_tool".into()];
         pipeline.store_session_frozen_tool_schema_order(&session_id, &advanced);
-        pipeline
-            .frozen_tool_schema_orders
-            .lock()
-            .unwrap()
-            .clear();
+        pipeline.frozen_tool_schema_orders.lock().unwrap().clear();
         assert_eq!(
             pipeline.load_session_frozen_tool_schema_order(&session_id),
             advanced

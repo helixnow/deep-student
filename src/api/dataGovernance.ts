@@ -759,7 +759,8 @@ export async function backupAndExportZip(
  * @param includeChecksums 是否包含校验和文件（可选，默认 true）
  * @param encryptionPassword 可选 E2EE 备份密码（加密全保真导出，见 backupAndExportZip）
  * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
- *   显式非空密码优先；未配置则保持便携 ZIP。不要把安全存储密码读回前端。
+ *   显式非空密码优先；开关打开却读不到密码时后端拒绝导出，不会默默打成便携包。
+ *   不要把安全存储密码读回前端。
  */
 export async function exportZip(
   backupId: string,
@@ -790,7 +791,8 @@ export async function exportZip(
  * @param password 可选 E2EE 备份密码：导入加密全保真包时必须提供与导出时
  *   相同的密码，才能解封为可整槽恢复的完整快照
  * @param useStoredCloudEncryptionPassword 未显式传密码时，是否从安全存储读取已存云端 E2EE 密码。
- *   显式非空密码优先；未配置则保持无密码导入。不要把安全存储密码读回前端。
+ *   只对带密封载荷的加密全保真 ZIP 生效；便携包忽略 stored，避免旧云端包导入失败。
+ *   不要把安全存储密码读回前端。
  */
 export async function importZip(
   zipPath: string,

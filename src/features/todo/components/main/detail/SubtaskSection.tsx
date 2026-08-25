@@ -93,7 +93,7 @@ const SubtaskRow: React.FC<{
           }
         }}
         title={t('todo:subtasks.openDetail')}
-        className="group/subtask flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-shell-control)] px-1 py-1 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
+        className="group/subtask flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-shell-control)] px-1 py-1 [@media(pointer:coarse)]:min-h-11 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
       >
         {/* 拖拽把手：hover 常显、触屏淡显；不与行点击冲突 */}
         <span
@@ -104,7 +104,8 @@ const SubtaskRow: React.FC<{
           }}
           onClick={(e) => e.stopPropagation()}
           aria-hidden="true"
-          className="flex h-4 w-3.5 flex-shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/0 transition-colors duration-150 active:cursor-grabbing group-hover/subtask:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40"
+          // 触屏：视觉 14×16 太小，实际盒撑到 44×44；负 margin 抵消宽度增量保持布局不变
+          className="flex h-4 w-3.5 flex-shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/0 transition-colors duration-150 active:cursor-grabbing group-hover/subtask:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-mx-[15px]"
         >
           <DotsSixVertical size={13} weight="bold" />
         </span>
@@ -114,7 +115,8 @@ const SubtaskRow: React.FC<{
             e.stopPropagation();
             onToggle(sub);
           }}
-          className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
+          // 触屏：内容仅 16px，p-3.5（14×2）才够 44px 命中；负 margin 保持布局不变
+          className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5"
           aria-label={
             sub.status === 'completed'
               ? t('todo:actions.markPending')
@@ -364,7 +366,7 @@ export const SubtaskSection: React.FC<{
           onClick={() => void handleAiBreakdown()}
           disabled={aiBreaking}
           className={cn(
-            'flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs transition-colors duration-150 motion-reduce:transition-none',
+            'flex items-center gap-1 rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-xs transition-colors duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
             aiBreaking
               ? 'cursor-default text-muted-foreground/50'
               : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)] hover:text-foreground',
@@ -426,7 +428,7 @@ export const SubtaskSection: React.FC<{
             }
           }}
           placeholder={t('todo:subtasks.addPlaceholder')}
-          className="h-7 flex-1 border-0 bg-transparent px-0 text-ui focus-visible:ring-0 placeholder:text-muted-foreground/50"
+          className="h-7 flex-1 border-0 bg-transparent px-0 text-ui focus-visible:ring-0 placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:h-11"
         />
       </div>
     </div>

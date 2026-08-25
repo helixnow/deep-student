@@ -38,7 +38,14 @@ import {
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useUIStore } from '@/stores/uiStore';
-import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
+import {
+  useMobileHeader,
+  MobileSlidingLayout,
+  MobileSubviewChromeProvider,
+  useMobileSubviewChromeHost,
+  DEFAULT_GESTURE_IGNORE_SELECTOR,
+  type ScreenPosition,
+} from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
 import { LEARNING_HUB_MOBILE_RESET_EVENT } from '@/dev/DevMobileRecoveryFab';
@@ -57,7 +64,7 @@ import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import { useFinderStore } from './stores/finderStore';
+import { useFinderStoreFor, FINDER_HOST_IDS } from './stores/finderStore';
 import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
@@ -487,14 +494,18 @@ export const LearningHubPage: React.FC = () => {
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
-  const finderCurrentPath = useFinderStore(state => state.currentPath);
-  const finderGoUp = useFinderStore(state => state.goUp);
-  const finderJumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
-  const finderRefresh = useFinderStore(state => state.refresh);
-  const finderQuickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
-  const finderEnterFolder = useFinderStore(state => state.enterFolder);
-  const finderSearchQuery = useFinderStore(state => state.searchQuery);
-  const finderSetSearchQuery = useFinderStore(state => state.setSearchQuery);
+  // ★ LH-HOST：页面顶栏/抽屉必须读写与本页访达同一个宿主桶
+  const useHostFinderStore = useFinderStoreFor(
+    isSmallScreen ? FINDER_HOST_IDS.pageMobile : FINDER_HOST_IDS.page,
+  );
+  const finderCurrentPath = useHostFinderStore(state => state.currentPath);
+  const finderGoUp = useHostFinderStore(state => state.goUp);
+  const finderJumpToBreadcrumb = useHostFinderStore(state => state.jumpToBreadcrumb);
+  const finderRefresh = useHostFinderStore(state => state.refresh);
+  const finderQuickAccessNavigate = useHostFinderStore(state => state.quickAccessNavigate);
+  const finderEnterFolder = useHostFinderStore(state => state.enterFolder);
+  const finderSearchQuery = useHostFinderStore(state => state.searchQuery);
+  const finderSetSearchQuery = useHostFinderStore(state => state.setSearchQuery);
   const finderBreadcrumbs = finderCurrentPath.breadcrumbs;
   const finderViewCapabilities = getViewCapabilities(finderCurrentPath.viewKind);
 
@@ -701,13 +712,22 @@ export const LearningHubPage: React.FC = () => {
     t,
   ]);
 
+  // 右屏 app 内的全屏内联子屏（题库导出/历史/裁剪等）接管顶栏：
+  // 子屏通过 useMobileSubviewChrome 推入栈，这里取栈顶并入本视图的
+  // useMobileHeader 配置（保持 'learning-hub' 单一写者）。仅右屏可见时生效，
+  // 滑回中屏/左屏后顶栏立即恢复目录/侧栏语义，子屏仍保持打开等待返回。
+  const { activeSubviewChrome, subviewChromeHost } = useMobileSubviewChromeHost();
+  const rightSubviewChrome = screenPosition === 'right' ? activeSubviewChrome : null;
+
   // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
-    title: screenPosition === 'left'
-      ? rootTitle
-      : screenPosition === 'right' && activeTab
-        ? (activeTab.title || t('common:untitled'))
-        : undefined,
+    title: rightSubviewChrome
+      ? rightSubviewChrome.title
+      : screenPosition === 'left'
+        ? rootTitle
+        : screenPosition === 'right' && activeTab
+          ? (activeTab.title || t('common:untitled'))
+          : undefined,
     titleNode: screenPosition === 'center' ? (
       <MobileBreadcrumb
         rootTitle={centerViewTitle}
@@ -717,15 +737,17 @@ export const LearningHubPage: React.FC = () => {
     ) : undefined,
     showMenu: screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
     onMenuClick: screenPosition === 'right'
-      ? () => setScreenPosition('center')
+      ? (rightSubviewChrome
+        ? rightSubviewChrome.onBack
+        : () => setScreenPosition('center'))
       : screenPosition === 'center' && isInSubfolder
         ? () => finderGoUp()
         : screenPosition === 'left'
           ? () => setScreenPosition('center')
           : () => setScreenPosition('left'),
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    rightActions: mobileHeaderRightActions,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions]);
+    rightActions: rightSubviewChrome ? rightSubviewChrome.rightActions : mobileHeaderRightActions,
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions, rightSubviewChrome]);
 
   // 📱 Android 返回键接入目录层级后退（契约第 4 条）：
   // 中间屏且在子文件夹时，返回键先执行 goUp（与顶栏返回箭头同语义），
@@ -1163,6 +1185,9 @@ export const LearningHubPage: React.FC = () => {
   // Android 返回键收回（A-5）与抽屉底部应用导航
   if (isSmallScreen) {
     return (
+      // 子屏 chrome 接管通道只在移动分支提供：桌面分栏无统一顶栏，
+      // 子屏探测不到宿主时保持页内自绘顶栏（useMobileSubviewChrome 返回 false）
+      <MobileSubviewChromeProvider value={subviewChromeHost}>
       <div
         className="study-shell-page relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       >
@@ -1248,7 +1273,7 @@ export const LearningHubPage: React.FC = () => {
           >
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page-mobile"
+              hostId={FINDER_HOST_IDS.pageMobile}
               sessionActive={isLearningHubViewActive && screenPosition === 'center'}
               // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
               // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
@@ -1264,6 +1289,7 @@ export const LearningHubPage: React.FC = () => {
           </div>
         </MobileSlidingLayout>
       </div>
+      </MobileSubviewChromeProvider>
     );
   }
 
@@ -1287,7 +1313,7 @@ export const LearningHubPage: React.FC = () => {
           <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
-              hostId="page"
+              hostId={FINDER_HOST_IDS.page}
               sessionActive={isLearningHubViewActive}
               commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}
@@ -1305,9 +1331,14 @@ export const LearningHubPage: React.FC = () => {
           </div>
         </Panel>
 
-        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度 */}
+        {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度。
+            触屏热区走库内建 hitAreaMargins（coarse 19px → 6+2×19=44px），
+            ::after 范式对 react-resizable-panels 的 rect 命中检测不生效 */}
         {hasOpenApp && (
-          <PanelResizeHandle className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50">
+          <PanelResizeHandle
+            hitAreaMargins={{ coarse: 19, fine: 5 }}
+            className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50"
+          >
             <DotsSixVertical size={12} className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </PanelResizeHandle>
         )}

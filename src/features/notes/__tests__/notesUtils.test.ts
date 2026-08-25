@@ -1,7 +1,7 @@
 /**
  * notesUtils 单测
  *
- * 覆盖 NotesHeader / 侧栏依赖的 getPathToNote 健壮性，
+ * 覆盖 NotesEditorHeader / 侧栏依赖的 getPathToNote 健壮性，
  * 以及 normalizeContentForEditor 对畸形 JSON 的容错。
  */
 
@@ -12,7 +12,7 @@ vi.mock('i18next', () => ({
 }));
 
 import { getPathToNote, normalizeContentForEditor, sortTreeChildren } from '../notesUtils';
-import type { TreeData } from '../DndFileTree';
+import type { TreeData } from '../notesUtils';
 import type { NoteItem } from '../../../utils/notesApi';
 
 const note = (id: string, title: string): NoteItem =>

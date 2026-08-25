@@ -251,7 +251,11 @@ fn message_export_value(
                 .into_iter()
                 .filter(|v| Some(v.id.as_str()) == active_id.as_deref())
                 .collect();
-            message.variants = if active.is_empty() { None } else { Some(active) };
+            message.variants = if active.is_empty() {
+                None
+            } else {
+                Some(active)
+            };
         }
     }
 
@@ -463,18 +467,14 @@ mod tests {
         inactive_answer.content = Some("alternative answer".to_string());
         inactive_answer.set_success();
 
-        let mut active_variant = Variant::new_with_id(
-            ACTIVE_VARIANT_ID.to_string(),
-            "model-x".to_string(),
-        );
+        let mut active_variant =
+            Variant::new_with_id(ACTIVE_VARIANT_ID.to_string(), "model-x".to_string());
         active_variant.block_ids = vec![thinking.id.clone(), answer.id.clone(), tool.id.clone()];
         active_variant.status = variant_status::SUCCESS.to_string();
         active_variant.created_at = 2_000;
 
-        let mut inactive_variant = Variant::new_with_id(
-            INACTIVE_VARIANT_ID.to_string(),
-            "model-y".to_string(),
-        );
+        let mut inactive_variant =
+            Variant::new_with_id(INACTIVE_VARIANT_ID.to_string(), "model-y".to_string());
         inactive_variant.block_ids = vec![inactive_answer.id.clone()];
         inactive_variant.status = variant_status::SUCCESS.to_string();
         inactive_variant.created_at = 2_001;
@@ -564,8 +564,7 @@ mod tests {
             match line_type(line) {
                 "message" => {
                     assert!(!seen_compaction, "message 行不得出现在 compaction 之后");
-                    current_message_id =
-                        Some(line["message"]["id"].as_str().unwrap().to_string());
+                    current_message_id = Some(line["message"]["id"].as_str().unwrap().to_string());
                     message_lines += 1;
                 }
                 "block" => {
@@ -711,7 +710,10 @@ mod tests {
         assert!(!text.contains("hunter2"), "URL password 必须被打码");
         assert!(!text.contains("token=leaked"), "URL token 参数必须被打码");
         assert!(!text.contains(SKILL_BODY), "技能全文快照必须被剥离");
-        assert!(!text.contains(PREVIEW_BASE64), "附件 previewUrl 不得内联导出");
+        assert!(
+            !text.contains(PREVIEW_BASE64),
+            "附件 previewUrl 不得内联导出"
+        );
         // 非敏感内容保持原样。
         assert!(text.contains("safe=yes"), "非敏感 query 参数应保留");
         assert!(text.contains("final answer"));
@@ -791,7 +793,10 @@ mod tests {
         );
         match result {
             Err(ChatV2Error::SessionNotFound(id)) => assert_eq!(id, "sess_does_not_exist"),
-            other => panic!("expected SessionNotFound, got {:?}", other.map(|s| s.session_id)),
+            other => panic!(
+                "expected SessionNotFound, got {:?}",
+                other.map(|s| s.session_id)
+            ),
         }
         assert!(buffer.is_empty(), "会话不存在时不得写出任何行");
     }

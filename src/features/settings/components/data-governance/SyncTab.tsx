@@ -266,7 +266,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="h-8"
+              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               <ArrowClockwise
                 size={14}
@@ -279,7 +279,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={onDetectConflicts}
               disabled={loading}
-              className="h-8"
+              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
               <MagnifyingGlass size={14} className="mr-1.5" />
               {t("data:governance.detect_conflicts")}
@@ -386,7 +386,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             variant="ghost"
             size="sm"
             onClick={onToggleCloudSettingsEditor}
-            className="h-8"
+            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
           >
             <Cloud size={14} className="mr-1.5" />
             {t("data:governance.open_cloud_settings")}
@@ -407,7 +407,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
-                className="bg-background hover:bg-[var(--interactive-hover)]"
+                className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
               >
                 {t("data:governance.cloud_sync_configure_now")}
               </DsButton>
@@ -486,7 +486,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8"
+                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t("data:governance.sync_bidirectional")}
@@ -496,7 +496,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("upload", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
+                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Upload size={14} className="mr-1.5" />
                 {t("data:governance.sync_upload")}
@@ -506,7 +506,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("download", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
+                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Download size={14} className="mr-1.5" />
                 {t("data:governance.sync_download")}
@@ -592,7 +592,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             size="sm"
                             onClick={onRetrySync}
                             disabled={syncRunning}
-                            className="h-6 text-xs px-2"
+                            className="h-6 text-xs px-2 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                           >
                             <ArrowClockwise size={12} className="mr-1" />
                             {t("common:actions.retry")}
@@ -603,7 +603,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={onViewAuditLog}
-                            className="h-6 text-xs px-2"
+                            className="h-6 text-xs px-2 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                           >
                             <FileText size={12} className="mr-1" />
                             {t("data:governance.view_audit_log")}
@@ -661,7 +661,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("keep_local")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {t("data:governance.keep_local")}
             </DsButton>
@@ -670,7 +670,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("use_cloud")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {t("data:governance.use_cloud")}
             </DsButton>
@@ -679,7 +679,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("keep_latest")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {t("data:governance.keep_latest")}
             </DsButton>
@@ -688,7 +688,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("manual")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)]"
+              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
             >
               {t("data:governance.manual")}
             </DsButton>

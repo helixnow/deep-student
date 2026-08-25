@@ -85,7 +85,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
             size="sm"
             onClick={handleAdd}
             disabled={value.items.length >= MAX_ITEMS}
-            className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
+            className="ui-press h-5 px-1.5 text-[10px] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:text-xs"
           >
             <Plus size={10} className="mr-0.5" />
             {t('editor.structEdit.addItem')}
@@ -94,7 +94,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
         {value.items.map((item, index) => (
           <div
             key={item.key}
-            className="group flex min-h-8 items-center gap-1.5 rounded-md border border-border/40 bg-muted/10 px-1.5 transition-colors hover:border-border/70"
+            className="group flex min-h-8 items-center gap-1.5 rounded-md border border-border/40 bg-muted/10 px-1.5 transition-colors hover:border-border/70 [@media(pointer:coarse)]:min-h-11"
           >
             <span className="w-5 flex-shrink-0 text-center text-[10px] font-semibold text-muted-foreground">
               {item.key}
@@ -111,7 +111,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
               iconOnly
               onClick={() => handleRemove(index)}
               aria-label={t('editor.structEdit.removeItem')}
-              className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:opacity-70"
+              className="!h-4 !w-4 !p-0 flex-shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:opacity-70"
             >
               <X size={10} />
             </DsButton>
@@ -133,7 +133,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
           {value.correctOrder.map((key, index) => (
             <div
               key={key}
-              className="flex min-h-8 items-center gap-1.5 rounded-md border border-border/40 bg-muted/10 px-1.5"
+              className="flex min-h-8 items-center gap-1.5 rounded-md border border-border/40 bg-muted/10 px-1.5 [@media(pointer:coarse)]:min-h-11"
             >
               <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                 {index + 1}
@@ -149,7 +149,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
                 disabled={index === 0}
                 onClick={() => moveCorrect(index, index - 1)}
                 aria-label={t('editor.ordering.moveUp')}
-                className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretUp size={12} />
               </DsButton>
@@ -160,7 +160,7 @@ export const OrderingEditor: React.FC<OrderingEditorProps> = ({ value, onChange,
                 disabled={index === value.correctOrder.length - 1}
                 onClick={() => moveCorrect(index, index + 1)}
                 aria-label={t('editor.ordering.moveDown')}
-                className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+                className="!h-6 !w-6 !p-0 flex-shrink-0 text-muted-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretDown size={12} />
               </DsButton>

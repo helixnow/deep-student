@@ -15,9 +15,9 @@ use std::fs;
 #[cfg(feature = "lance")]
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tracing::{debug, warn};
 #[cfg(feature = "lance")]
 use tracing::{error, info};
-use tracing::{debug, warn};
 
 #[cfg(feature = "lance")]
 use rusqlite::OptionalExtension;

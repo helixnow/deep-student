@@ -5,6 +5,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18next from 'i18next';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { getErrorMessage } from './errorUtils';
 
@@ -183,7 +184,7 @@ export interface CloudConfigSsotResponse {
 export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudStorageConfig {
   switch (config.provider) {
     case 'webdav': {
-      if (!config.webdav) throw new Error('Missing WebDAV configuration');
+      if (!config.webdav) throw new Error(i18next.t('backend_errors:cloud_storage.missing_webdav_config'));
       return {
         provider: 'webdav',
         webdav: {
@@ -195,7 +196,7 @@ export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudS
       };
     }
     case 's3': {
-      if (!config.s3) throw new Error('Missing S3 configuration');
+      if (!config.s3) throw new Error(i18next.t('backend_errors:cloud_storage.missing_s3_config'));
       return {
         provider: 's3',
         s3: {

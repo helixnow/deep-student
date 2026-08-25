@@ -39,6 +39,7 @@ import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 // P1-08: 统一使用核心常量
 import {
   ATTACHMENT_MAX_SIZE,
+  ATTACHMENT_IMAGE_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
@@ -81,7 +82,7 @@ const DEFAULT_ACCEPT_TYPES = Array.from(new Set([
 
 // P1-08: 使用统一常量，不再硬编码
 // 旧值: DEFAULT_MAX_SIZE = 10MB, DEFAULT_MAX_COUNT = 10
-// 新值: ATTACHMENT_MAX_SIZE = 50MB, ATTACHMENT_MAX_COUNT = 20
+// 通用文件以 core/constants 的 ATTACHMENT_MAX_SIZE 为准；图片走 ATTACHMENT_IMAGE_MAX_SIZE。
 
 // ============================================================================
 // 辅助函数
@@ -95,6 +96,11 @@ function getFileExtension(fileName: string): string {
   return parts.length > 1 ? parts.pop()!.toLowerCase() : '';
 }
 
+function isImageAttachment(mimeType: string, fileName: string): boolean {
+  return mimeType.startsWith('image/')
+    || ATTACHMENT_IMAGE_EXTENSIONS.includes(getFileExtension(fileName));
+}
+
 /**
  * 获取附件类型
  */
@@ -102,11 +108,10 @@ function getAttachmentType(
   mimeType: string,
   fileName: string
 ): 'image' | 'document' | 'audio' | 'video' | 'other' {
-  if (mimeType.startsWith('image/')) return 'image';
+  if (isImageAttachment(mimeType, fileName)) return 'image';
   if (mimeType.startsWith('video/')) return 'video';
   if (mimeType.startsWith('audio/')) return 'audio';
   const ext = getFileExtension(fileName);
-  if (ATTACHMENT_IMAGE_EXTENSIONS.includes(ext)) return 'image';
   if (ATTACHMENT_DOCUMENT_EXTENSIONS.includes(ext)) return 'document';
   // ★ opml/mm 为 XML 纯文本思维导图，按文档（文本注入）处理；xmind/mmap 落入 other
   if (ATTACHMENT_MINDMAP_TEXT_EXTENSIONS.includes(ext)) return 'document';
@@ -188,10 +193,13 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         return null;
       }
 
-      // 检查文件大小
-      if (file.size > maxSize) {
+      // 图片与后端 50MB 上限保持一致；其他附件继续使用 200MB 通用上限。
+      const effectiveMaxSize = isImageAttachment(file.type, file.name)
+        ? Math.min(maxSize, ATTACHMENT_IMAGE_MAX_SIZE)
+        : maxSize;
+      if (file.size > effectiveMaxSize) {
         const error = t('attachmentUploader.errors.tooLarge', {
-          max: formatFileSize(maxSize),
+          max: formatFileSize(effectiveMaxSize),
         });
         setUploadError(error);
         onUploadError?.(error);
@@ -247,8 +255,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
           // ★ VFS 引用模式：上传到 VFS，存储引用
           try {
             // 确定资源类型：图片 vs 文件
-            const fileExt = getFileExtension(file.name);
-            const isImage = file.type.startsWith('image/') || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt);
+            const isImage = isImageAttachment(file.type, file.name);
             const typeId = isImage ? IMAGE_TYPE_ID : FILE_TYPE_ID;
 
             // 1. 上传附件到 VFS（自动去重）
@@ -379,6 +386,11 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
     maxFiles: maxCount,
     maxFileSize: maxSize,
   });
+  const imageMaxSize = Math.min(maxSize, ATTACHMENT_IMAGE_MAX_SIZE);
+  const maxSizeHint = imageMaxSize === maxSize
+    ? formatFileSize(maxSize)
+    : `${t('attachmentUploader.types.image')} ${formatFileSize(imageMaxSize)} / `
+      + `${t('attachmentUploader.types.document')} ${formatFileSize(maxSize)}`;
 
   // 粘贴事件处理
   useEffect(() => {
@@ -469,7 +481,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
             </p>
             <p className="text-xs opacity-70">
               {t('attachmentUploader.maxSize', {
-                size: formatFileSize(maxSize),
+                size: maxSizeHint,
               })}
             </p>
           </div>
@@ -503,7 +515,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         <div className="mt-2 flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
           <WarningCircle size={16} className="flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label={t('common:close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 hover:bg-destructive/20" aria-label={t('common:close')}>
             <X size={16} />
           </DsButton>
         </div>

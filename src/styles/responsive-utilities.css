@@ -15,7 +15,7 @@
  * （曾导致 Android 上所有按钮高度异常）。只对明确标记 .touch-target 的元素
  * 应用 44px 最小尺寸；其他按钮由组件自行设置合适的触摸区域。
  */
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
   /* 触屏没有可靠 hover：侧栏图标按钮只保留按压态，避免 hover 残留成半圆/方块。 */
   .shell-icon-button.shell-icon-button:hover {
     background: var(--button-plain-bg);
@@ -115,16 +115,19 @@
     max-height: none !important;
   }
 
-  /* 移动统一抽屉：导航行/分组标题字号整体放大，便于触控阅读 */
+  /* 移动统一抽屉：导航行/分组标题字号整体放大，便于触控阅读。
+     max(地板, token)：跟随界面字号缩放（--font-size-scale 0.85~1.3）放大，
+     但缩小档不跌破移动可读地板（shadcn-variables.css「移动字号地板」约定：
+     正文/列表行 ≥14px；输入框 ≥16px，否则 iOS WKWebView 聚焦时自动放大页面）。 */
   [data-mobile-unified-drawer] .desktop-shell-nav-section-label {
-    font-size: 14px !important;
-    line-height: 18px !important;
+    font-size: max(14px, var(--font-size-base)) !important;
+    line-height: 1.3 !important;
   }
 
   [data-mobile-unified-drawer] .desktop-shell-sidebar-row,
   [data-mobile-unified-drawer] .desktop-shell-nav-row,
   [data-mobile-unified-drawer] .desktop-shell-thread-row {
-    font-size: 16px !important;
+    font-size: max(16px, var(--font-size-lg)) !important;
     /* 豁免 app.css 的 min-height:32px !important 桌面密度（该处同为
        !important，但本选择器特异性 (0,2,0) 更高）：移动抽屉导航行
        必须满足 44px 触控高度基线 */
@@ -137,18 +140,9 @@
     height: 1.25rem !important;
   }
 
-  /* 笔记树等页内侧栏内容 */
-  [data-mobile-unified-drawer] .rct-tree {
-    font-size: 16px;
-  }
-
-  [data-mobile-unified-drawer] .rct-tree-item-button {
-    min-height: 2.75rem;
-    height: auto;
-  }
-
+  /* 搜索框是输入控件：16px 是 iOS 聚焦缩放地板，只允许向上跟随缩放 */
   [data-mobile-unified-drawer] .sidebar-shell-search {
-    font-size: 16px !important;
+    font-size: max(16px, var(--font-size-lg)) !important;
   }
 }
 
@@ -165,7 +159,7 @@
   min-height: var(--control-height-touch, 44px);
 }
 
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
   .touch-row {
     min-height: 48px;
     padding-top: var(--touch-row-pad-y, 0.5rem);

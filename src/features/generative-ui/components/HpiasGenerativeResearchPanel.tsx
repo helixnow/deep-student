@@ -28,14 +28,32 @@ export function HpiasGenerativeResearchPanel({
 }: HpiasGenerativeResearchPanelProps) {
   const { t } = useTranslation('generativeUi');
   const exportMarkdownLabels = useMemo(() => buildExportMarkdownI18nLabels(t), [t]);
-  const sessionId = useHpiasStore((s) => s.sessionId);
-  const round = useHpiasStore((s) => s.round);
-  const plan = useHpiasStore((s) => s.plan);
-  const synthesis = useHpiasStore((s) => s.synthesis);
-  const retrievalCount = useHpiasStore((s) => s.retrievalCount);
-  const selectedCount = useHpiasStore((s) => s.selectedCount);
-  const subAgents = useHpiasStore((s) => s.subAgents);
-  const roundStatus = useHpiasStore((s) => s.roundsView[s.round]?.status);
+  const sessionSlice = useHpiasStore((s) =>
+    expectedSessionId ? s.sessions[expectedSessionId] : undefined,
+  );
+  const topSessionId = useHpiasStore((s) => s.sessionId);
+  const topRound = useHpiasStore((s) => s.round);
+  const topPlan = useHpiasStore((s) => s.plan);
+  const topSynthesis = useHpiasStore((s) => s.synthesis);
+  const topRetrievalCount = useHpiasStore((s) => s.retrievalCount);
+  const topSelectedCount = useHpiasStore((s) => s.selectedCount);
+  const topSubAgents = useHpiasStore((s) => s.subAgents);
+  const topRoundStatus = useHpiasStore((s) => s.roundsView[s.round]?.status);
+
+  const usePinnedSlice = Boolean(expectedSessionId && sessionSlice);
+  const useTopLevel =
+    !expectedSessionId || (!usePinnedSlice && topSessionId === expectedSessionId);
+
+  const sessionId = usePinnedSlice ? sessionSlice!.sessionId : useTopLevel ? topSessionId : null;
+  const round = usePinnedSlice ? sessionSlice!.round : topRound;
+  const plan = usePinnedSlice ? sessionSlice!.plan : topPlan;
+  const synthesis = usePinnedSlice ? sessionSlice!.synthesis : topSynthesis;
+  const retrievalCount = usePinnedSlice ? sessionSlice!.retrievalCount : topRetrievalCount;
+  const selectedCount = usePinnedSlice ? sessionSlice!.selectedCount : topSelectedCount;
+  const subAgents = usePinnedSlice ? sessionSlice!.subAgents : topSubAgents;
+  const roundStatus = usePinnedSlice
+    ? sessionSlice!.roundsView[sessionSlice!.round]?.status
+    : topRoundStatus;
 
   const snapshot = useMemo(
     () =>

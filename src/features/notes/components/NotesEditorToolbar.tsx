@@ -33,8 +33,10 @@ import {
   ChatCenteredText,
   CaretCircleDown,
   BracketsSquare,
+  Cards,
 } from '@phosphor-icons/react';
 import { useNotesOptional } from '../NotesContext';
+import { generateCardsFromNote } from '../generateCardsFromNote';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { isMacOS } from '@/utils/platform';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
@@ -52,7 +54,7 @@ interface NotesEditorToolbarProps {
 }
 
 /**
- * 按平台格式化快捷键文案（macOS 符号风格对齐 NotesHeader：⌥⌘L / ⌘⇧P）。
+ * 按平台格式化快捷键文案（macOS 符号风格：⌥⌘L / ⌘⇧P）。
  *
  * 快捷键单一来源说明（已对照真实 keymap 校验，替代原 formatKeymap TODO）：
  * - @milkdown/preset-commonmark：Mod-B 粗体、Mod-I 斜体、Mod-E 行内代码、
@@ -69,7 +71,7 @@ function formatShortcut(
 ): string {
   const { mod = true, alt = false, shift = false, key } = parts;
   if (mac) {
-    // 对齐 NotesHeader：⌥⌘L、⌘⇧P
+    // macOS 符号风格：⌥⌘L、⌘⇧P
     if (alt && shift) return `⌥⇧⌘${key}`;
     if (alt) return `⌥⌘${key}`;
     if (shift) return `⌘⇧${key}`;
@@ -112,6 +114,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   const isDisabled = !editor || readOnly;
   const mac = isMacOS();
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [generatingCards, setGeneratingCards] = useState(false);
 
   // 内联区横向滚动：仅在真实溢出时展示渐隐 mask 提示
   const inlineRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +222,22 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
     runWithCtx(insertEmptyToggle);
   }, [runWithCtx]);
 
+  /**
+   * 生成卡片：把当前笔记全文送进共享制卡入口（与错题本 / 作文批改同一条 CardForge 通道）。
+   * 只读笔记同样可以制卡，因此不受 readOnly 影响，仅在编辑器缺失或任务提交中禁用。
+   */
+  const handleGenerateCards = useCallback(() => {
+    if (!editor || generatingCards) return;
+    setGeneratingCards(true);
+    void generateCardsFromNote({
+      editor,
+      noteTitle: notesContext?.active?.title,
+      translate: tr,
+    }).finally(() => {
+      setGeneratingCards(false);
+    });
+  }, [editor, generatingCards, notesContext?.active?.title, tr]);
+
   /** 插入 `[[` 触发 wikilink 自动补全浮层（与手动输入同一路径） */
   const handleWikilink = useCallback(() => {
     if (!editor) return;
@@ -262,6 +281,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   const actionByLabel = new Map(formatActions.map((item) => [item.label, item]));
 
   const toolbarLabel = tr('notes:toolbar.label', '格式化');
+  const generateCardsLabel = tr('notes:toolbar.generateCards', '生成卡片');
 
   /** role="menu" 方向键 roving tabindex */
   const handleMenuKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -318,7 +338,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                     iconOnly
                     disabled={isDisabled}
                     aria-label={item.label}
-                    className="flex-none ui-press hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                    className="flex-none ui-press [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={item.action}
                   >
@@ -331,6 +351,22 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         ))}
         <span className="notes-editor-toolbar-divider" aria-hidden="true" />
       </div>
+      {/* 生成卡片：常驻主操作，内联区在窄屏收起后仍可点到；触屏保证 44px 命中区 */}
+      <CommonTooltip content={generateCardsLabel}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          disabled={!editor || generatingCards}
+          aria-label={generateCardsLabel}
+          aria-busy={generatingCards || undefined}
+          className="notes-editor-generate-cards flex-none ui-press hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)] [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={handleGenerateCards}
+        >
+          <Cards className="h-4 w-4" />
+        </DsButton>
+      </CommonTooltip>
       <Popover open={overflowOpen} onOpenChange={setOverflowOpen}>
         <CommonTooltip content={toolbarLabel}>
           <PopoverTrigger asChild>
@@ -339,7 +375,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               size="icon"
               iconOnly
               disabled={isDisabled}
-              className={overflowOpen ? 'notes-editor-format-trigger active flex-none' : 'notes-editor-format-trigger flex-none'}
+              className={overflowOpen ? 'notes-editor-format-trigger active flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11' : 'notes-editor-format-trigger flex-none [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11'}
               aria-label={toolbarLabel}
               aria-haspopup="menu"
               aria-expanded={overflowOpen}
@@ -369,7 +405,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
                 size="sm"
                 role="menuitem"
                 tabIndex={index === menuActiveIndex ? 0 : -1}
-                className="notes-toolbar-overflow-item hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                className="notes-toolbar-overflow-item [@media(pointer:coarse)]:!min-h-11 hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
                 aria-label={item.label}
                 onMouseDown={(event) => event.preventDefault()}
                 onFocus={() => setMenuActiveIndex(index)}

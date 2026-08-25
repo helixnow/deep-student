@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiCardsBlockData } from '../ankiCardsBlock';
 import { parseAnkiSegmentCounts } from './ankiSegmentCounts';
+import { AnkiMediaReportView } from './AnkiMediaReportView';
+import type { AnkiMediaReport } from './ankiMediaReport';
 import './chat-anki-cards.css';
 
 type StepId = 'routing' | 'importing' | 'generating' | 'completed' | 'failed' | 'cancelled';
@@ -104,7 +106,7 @@ const AnkiConnectRefreshButton: React.FC<{
       iconOnly
       onClick={handleClick}
       disabled={refreshing}
-      className="!h-10 !w-10 rounded-full"
+      className="!h-10 !w-10 rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
       title={label}
       aria-label={label}
     >
@@ -117,6 +119,8 @@ export const ChatAnkiProgressCompact: React.FC<{
   progress?: AnkiCardsBlockData['progress'];
   ankiConnect?: AnkiCardsBlockData['ankiConnect'];
   warnings?: AnkiCardsBlockData['warnings'];
+  /** APKG 媒体导入报告（tool_output.mediaReport，已解析）。 */
+  mediaReport?: AnkiMediaReport | null;
   cardsCount: number;
   blockStatus: string;
   finalStatus?: string;
@@ -126,6 +130,7 @@ export const ChatAnkiProgressCompact: React.FC<{
   progress,
   ankiConnect,
   warnings,
+  mediaReport,
   cardsCount,
   blockStatus,
   finalStatus,
@@ -140,15 +145,19 @@ export const ChatAnkiProgressCompact: React.FC<{
   const percent = useMemo(() => clampRatioToPercent(progress?.completedRatio), [progress?.completedRatio]);
   const stage = progress?.stage;
   const normalizedFinalStatus =
-    typeof finalStatus === 'string' ? finalStatus.toLowerCase() : undefined;
+    typeof finalStatus === 'string' ? finalStatus.trim().toLowerCase() : undefined;
   const normalizedStage =
-    typeof stage === 'string' ? stage.toLowerCase() : undefined;
+    typeof stage === 'string' ? stage.trim().toLowerCase() : undefined;
+  const finalStatusIsCancelled =
+    normalizedFinalStatus === 'cancelled' || normalizedFinalStatus === 'canceled';
   const statusHint =
-    normalizedStage === 'completed_with_errors'
-      ? normalizedStage
-      : normalizedFinalStatus ??
-        normalizedStage ??
-        (blockStatus === 'error' ? 'failed' : blockStatus === 'success' ? 'completed' : undefined);
+    finalStatusIsCancelled
+      ? normalizedFinalStatus
+      : normalizedStage === 'completed_with_errors'
+        ? normalizedStage
+        : normalizedFinalStatus ??
+          normalizedStage ??
+          (blockStatus === 'error' ? 'failed' : blockStatus === 'success' ? 'completed' : undefined);
 
   const isCancelled = statusHint === 'cancelled' || statusHint === 'canceled';
   const isCompletedWithErrors = statusHint === 'completed_with_errors';
@@ -221,6 +230,8 @@ export const ChatAnkiProgressCompact: React.FC<{
   const activeIndex = useMemo(() => steps.findIndex(s => s.id === step), [steps, step]);
 
   const ankiConnectMeta = useMemo(() => getAnkiConnectState(ankiConnect), [ankiConnect]);
+  // 仅凭 mediaReport 挂载时没有连接检测上下文，不显示误导性的“检查中”。
+  const showAnkiConnectState = ankiConnect !== undefined || progress !== undefined;
   const cardsGenerated = typeof progress?.cardsGenerated === 'number' ? progress.cardsGenerated : cardsCount;
   const parsedCounts = useMemo(() => parseAnkiSegmentCounts(progress?.counts), [progress?.counts]);
   const segTotal = parsedCounts?.total;
@@ -396,21 +407,25 @@ export const ChatAnkiProgressCompact: React.FC<{
 
         {/* AnkiConnect 状态 + 刷新按钮 + 百分比 */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Badge
-            variant={ankiConnectMeta.variant}
-            className={cn('max-w-[180px] truncate whitespace-nowrap rounded-full px-2 py-0.5 text-xs sm:max-w-[220px]', ankiConnectMeta.className)}
-            data-testid="chatanki-progress-anki-connect"
-            title={ankiConnect?.error ?? undefined}
-          >
-            {t('blocks.ankiCards.progress.ankiConnect.label')}:{' '}
-            {t(ANKI_CONNECT_LABEL_KEYS[ankiConnectMeta.label])}
-          </Badge>
-          {onRefreshAnkiConnect && ankiConnectMeta.state !== 'connected' && (
-            <AnkiConnectRefreshButton
-              onRefresh={onRefreshAnkiConnect}
-              label={t('blocks.ankiCards.progress.ankiConnect.refresh')}
-            />
+          {showAnkiConnectState && (
+            <Badge
+              variant={ankiConnectMeta.variant}
+              className={cn('max-w-[180px] truncate whitespace-nowrap rounded-full px-2 py-0.5 text-xs sm:max-w-[220px]', ankiConnectMeta.className)}
+              data-testid="chatanki-progress-anki-connect"
+              title={ankiConnect?.error ?? undefined}
+            >
+              {t('blocks.ankiCards.progress.ankiConnect.label')}:{' '}
+              {t(ANKI_CONNECT_LABEL_KEYS[ankiConnectMeta.label])}
+            </Badge>
           )}
+          {showAnkiConnectState &&
+            onRefreshAnkiConnect &&
+            ankiConnectMeta.state !== 'connected' && (
+              <AnkiConnectRefreshButton
+                onRefresh={onRefreshAnkiConnect}
+                label={t('blocks.ankiCards.progress.ankiConnect.refresh')}
+              />
+            )}
           {typeof smoothedPercent === 'number' && (
             <span
               className={cn('text-xs tabular-nums flex-shrink-0', isError ? 'text-destructive' : 'text-muted-foreground')}
@@ -425,7 +440,7 @@ export const ChatAnkiProgressCompact: React.FC<{
             size="icon"
             iconOnly
             onClick={() => setShowDetails(prev => !prev)}
-            className="!h-8 !w-8 rounded-full"
+            className="relative !h-8 !w-8 rounded-full after:absolute after:-inset-1.5 after:content-['']"
             aria-expanded={showDetails}
             aria-label={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
             title={tAnki(showDetails ? 'chatBlock.detailsCollapse' : 'chatBlock.detailsExpand')}
@@ -521,8 +536,13 @@ export const ChatAnkiProgressCompact: React.FC<{
 
       {errorMessage && (
         <div
-          role="alert"
-          className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs leading-snug text-destructive"
+          role={isCancelled ? 'status' : 'alert'}
+          className={cn(
+            'mt-2 rounded-md border px-2 py-1.5 text-xs leading-snug',
+            isCancelled
+              ? 'border-warning/40 bg-warning/10 text-warning'
+              : 'border-destructive/30 bg-destructive/10 text-destructive',
+          )}
           data-testid="chatanki-progress-error"
         >
           {errorMessage}
@@ -562,6 +582,9 @@ export const ChatAnkiProgressCompact: React.FC<{
           ))}
         </div>
       )}
+
+      {/* APKG 媒体导入报告：进度/完成态均展示跳过原因（若 tool_output 有） */}
+      {mediaReport && <AnkiMediaReportView report={mediaReport} />}
 
       {ankiConnectMeta.state === 'not_connected' && ankiConnect?.error && (
         <div className="mt-1 text-xs leading-snug text-warning">
