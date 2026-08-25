@@ -1,17 +1,13 @@
 import React from 'react';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// vitest.setup.ts 的 matchMedia mock 恒为 matches:false，会让 useBreakpoint 判成
-// isSmallScreen（<768）走 P1-9 移动端内联分支。本套件断言的是桌面 Dialog 行为，
-// 按 1280px 桌面视口模拟 min-width 查询。
-beforeAll(() => {
-  const DESKTOP_WIDTH = 1280;
+const setViewportWidth = (width: number) => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => {
     const minWidth = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(query);
     return {
-      matches: minWidth ? DESKTOP_WIDTH >= Number(minWidth[1]) : false,
+      matches: minWidth ? width >= Number(minWidth[1]) : false,
       media: query,
       onchange: null,
       addListener: vi.fn(),
@@ -21,6 +17,11 @@ beforeAll(() => {
       dispatchEvent: vi.fn(),
     };
   }) as unknown as typeof window.matchMedia;
+};
+
+// 默认以桌面宽度覆盖 Dialog 行为；移动内联契约在对应测试内显式切换。
+beforeEach(() => {
+  setViewportWidth(1280);
 });
 
 vi.mock('framer-motion', () => ({
@@ -104,8 +105,8 @@ describe('OpenSourceAcknowledgementsSection', () => {
   });
 
   it('expands the full acknowledgements list inline only after the user clicks the trigger', async () => {
-    // vitest.setup 的 matchMedia mock 恒为 false ⇒ useBreakpoint().isSmallScreen 为 true，
-    // 组件走 P1-9 移动端分支：致谢名单在 About 页内联展开，而不是打开 Dialog。
+    // P1-9 移动端分支：致谢名单在 About 页内联展开，而不是打开 Dialog。
+    setViewportWidth(390);
     const user = userEvent.setup();
 
     render(<OpenSourceAcknowledgementsSection />);
