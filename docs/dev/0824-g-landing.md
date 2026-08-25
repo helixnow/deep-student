@@ -99,7 +99,8 @@ step5 预演以 `4f05d227` 为基线；本分支从正式 `362dd2dfc` 起步。�
 Learning Hub 正式 F 落地修复及其测试），另有本次明确采用的
 `DataGovernanceDashboard` step5-mobile 三方版本；没有发现无法由正式推进量或该
 显式裁决解释的代码路径。开始合并时 `origin/cursor/0824-cde6` tip 即
-`362dd2dfc`，尚无更晚正式提交；最终推送前会再次 fetch 并记录若有新增推进。
+`362dd2dfc`；完成全部门禁后再次 fetch，正式 tip 仍为 `362dd2dfc`，没有需要追加
+比较或反向合并的官方推进。
 
 ## 关键合同与门禁
 
@@ -108,4 +109,19 @@ Learning Hub 正式 F 落地修复及其测试），另有本次明确采用的
 - 共享制卡入口使用 `cardAgent.startGeneration`。
 - Finder compact 触屏命中区至少 44px；PDF 四个移动侧栏 tab 为 44px。
 - InputBar 一般附件 200MB、图片 50MB，浏览器选择/拖放与 Tauri 路径共用限制函数。
-- 编译与定向测试结果在完成门禁后补记。
+
+最终代码提交 `5e57228fe` 上的门禁：
+
+1. `npm ci`：通过，安装 lockfile 的 1192 packages。
+2. `npm run build`：通过；prebuild 的版本生成、license check 与 TypeScript
+   typecheck 均通过，Vite 转换 19808 modules，仅有既存循环 chunk/重复导入告警。
+3. `rustup run stable cargo check --manifest-path src-tauri/Cargo.toml --lib --locked`：
+   通过（Rust 1.98.0、CI 同款 Linux 依赖与 PDFium），28 个既存 warning、0 error。
+4. G/F/B/D 关键契约：25 files / 174 tests 全过，覆盖 mobile-uiux 三契约、
+   secondary shell、DataGovernance A/B/G、cloud conflict、qbank、Finder host、
+   display-only flashcard、`cardAgent.startGeneration`、附件 200/50 和 a11y。
+5. F 拆分 InputBar 全目录：19 files / 171 tests 全过，覆盖 inline blocked hint、
+   附件 chips、移动内联面板、工具栏、权限/推理/模型和发送可用性。
+
+门禁产生的 `pdfium.txt` 临时改写已还原；PDFium 二进制与构建产物均为 gitignored，
+最终工作树无验证残留。
