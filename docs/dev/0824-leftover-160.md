@@ -52,3 +52,34 @@ The VM default Cargo 1.83.0 cannot parse edition-2024 dependencies, so the
 successful Rust gate used the repository/CI-compatible stable 1.98.0
 toolchain. The PDFium downloader's tracked license-file rewrite was reverted;
 no verification artifact remains in the Git diff.
+
+## Absorption record (2026-08-25)
+
+Official `cursor/0824-cde6` @ `188500e0` ("docs: record latest step 13 cloud
+increment") already contains every INCLUDE item from this isolation branch.
+The absorbing commits — both ancestors of `188500e0` — are:
+
+- `f38d0041` "test(0824): port #160 load-error and today-progress regression
+  tests"
+- `41587d48` "feat(flashcards): move scheduler settings below statistics +
+  brand token aliases (from #303 / #160 leftovers)"
+
+Per-file status against official `188500e0`:
+
+| Item | Absorbed | Evidence |
+|---|---|---|
+| `src/features/anki-tasks/__tests__/AnkiTasksApp.loadError.test.tsx` | Yes (`f38d0041`) | Present in official; identical assertions and coverage. Only cosmetic variance vs this branch (zh-CN vs English comments, line wrapping, test-name phrasing). Official's version supersedes. |
+| `tests/vitest/flashcards/todayScreenEmptyLibrary.test.tsx` | Yes (`f38d0041`) | Present in official; identical assertions and coverage. Same cosmetic-only variance as above. |
+| `StatisticsScreen` scheduler-below-stats | Yes (`41587d48`) | `src/features/flashcards/screens/StatisticsScreen.tsx` and the ordering assertion in `tests/vitest/flashcards/StatisticsScreen.test.tsx` ("places scheduler settings after the statistics panels") are byte-identical between official and this branch. |
+| `brandColorTokenContract` / `theme-colors` brand aliases | Yes (`41587d48`) | `tests/vitest/brandColorTokenContract.test.ts` and the `--brand-secondary` / `--brand-accent` light+dark definitions in `src/styles/theme-colors.css` are byte-identical between official and this branch. |
+
+Remaining unique content on this isolation branch vs official `0824`:
+
+- The only file `0824` lacks is this document, `docs/dev/0824-leftover-160.md`
+  — docs only. The two ported test files carry cosmetic comment/format
+  differences that official's absorbed versions supersede; there is no
+  product (`src/`, `src-tauri/`) diff that this branch would add.
+
+Recommendation for the parent: close PR #303 as absorbed, or leave it open
+purely as an absorbed-record — merging it would add no product or test
+coverage beyond what `188500e0` already carries.
