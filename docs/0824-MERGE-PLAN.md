@@ -743,3 +743,13 @@ fetch 时 #177 无新增 unique 内容（`origin/cursor/0824-cde6..#177` 的
 `0fcbc59b`→`947910db`、`bb81e9d6`→`06f32d0e`、`86a1e7c4`→`6887bf84`、
 `6d6769bc`→`bf8ab827`）。本步仅此文档说明，无产品代码变更，按约定
 跳过全量编译门禁；Step 13 已记录 compile exit 0 与 18/18 PASS。
+
+### Step 15 收口：generative-ui 内置技能本地化
+
+日期：2026-08-25。基座 `1f567a56`（Step 14 tip）；仅 cherry-pick
+leftover-genui 的 `5cf6dccf` → `414abdc7`，为中英文 `skills.json` 的
+`builtinNames` / `builtinDescriptions` 补齐 `generative-ui`。未合入隔离枝
+或 8-shard CI 改动；Composer*、附件 200/50、G 44px、HPIAS allowlist 与
+#177 端口均未触及。`npm run typecheck`、`npx vite build` 均 exit 0；
+`cargo check --manifest-path src-tauri/Cargo.toml --lib` 已用 Rust 1.98
+执行，但本 VM 缺少 `gdk-3.0` 开发库，环境阶段 exit 101。
