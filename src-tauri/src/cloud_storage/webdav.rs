@@ -21,7 +21,7 @@ use tokio_util::io::ReaderStream;
 use super::config::WebDavConfig;
 use super::traits::{
     ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
-    ListOutcome, Result, UploadProgressCallback,
+    ListOutcome, Result, UploadProgressCallback, MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -1230,14 +1230,26 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        // get() 用于 manifest/变更文件等内存级对象：读体加总超时，
-        // 防止 request() 的响应头超时通过后、响应体传输中途停滞导致永久挂起。
+        // get() 用于 manifest/变更文件等内存级对象：按块停滞超时，
+        // 防止响应头通过后响应体半挂死。慢但有进展的分片不受总时长限制。
         let declared = res.content_length();
-        let bytes = tokio::time::timeout(std::time::Duration::from_secs(300), res.bytes())
+        let mut stream = res.bytes_stream();
+        let mut body = Vec::new();
+        loop {
+            let next = tokio::time::timeout(
+                std::time::Duration::from_secs(MEMORY_GET_STALL_SECS),
+                stream.next(),
+            )
             .await
-            .map_err(|_| AppError::network("读取响应体超时（300 秒）".to_string()))?
-            .map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
-        let body = bytes.to_vec();
+            .map_err(|_| {
+                AppError::network("WebDAV 内存对象下载停滞超过 90 秒，连接可能已断开".to_string())
+            })?;
+            let Some(chunk) = next else {
+                break;
+            };
+            let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
+            body.extend_from_slice(&bytes);
+        }
         ensure_memory_get_matches_declared_len("WebDAV", key, body.len() as u64, declared)?;
         Ok(Some(body))
     }
@@ -2146,6 +2158,10 @@ mod tests {
         assert!(
             source.contains("ensure_memory_get_matches_declared_len(\"WebDAV\""),
             "WebDAV get() 必须按 Content-Length 拒绝半包，记录级/清单不得收下截断体"
+        );
+        assert!(
+            source.contains("WebDAV 内存对象下载停滞超过 90 秒"),
+            "WebDAV get() 必须按块停滞超时，不得只靠整段 300 秒总超时"
         );
     }
 }

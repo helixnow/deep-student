@@ -84,6 +84,10 @@ impl ListOutcome {
 /// 声明了 `Content-Length` / `content_length` 却短读时必须 fail-closed，
 /// 不得把截断字节交给解码或推进水位。缺长度字段保持诚实：无法核对则不冒充已核。
 /// 不宣称远端 SHA。
+/// 内存级 `get()` 单块停滞上限，与 `get_file` / 续传路径的 90 秒对齐。
+/// 不限制总时长：慢但有进展的变更分片可以继续。不宣称远端 SHA。
+pub(crate) const MEMORY_GET_STALL_SECS: u64 = 90;
+
 pub(crate) fn ensure_memory_get_matches_declared_len(
     provider: &str,
     key: &str,

@@ -15,7 +15,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use super::config::S3Config;
 use super::traits::{
     ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
-    Result, UploadProgressCallback, CHUNK_SIZE, MIN_MULTIPART_SIZE,
+    Result, UploadProgressCallback, CHUNK_SIZE, MEMORY_GET_STALL_SECS, MIN_MULTIPART_SIZE,
 };
 use crate::models::AppError;
 
@@ -805,17 +805,28 @@ impl CloudStorage for S3Storage {
         match result {
             Ok(output) => {
                 let declared = output.content_length().and_then(|n| u64::try_from(n).ok());
-                let bytes = tokio::time::timeout(
-                    std::time::Duration::from_secs(300),
-                    output.body.collect(),
-                )
-                .await
-                .map_err(|_| AppError::network("S3 读取响应体超时（300 秒）".to_string()))?
-                .map_err(|e| AppError::network(format!("S3 读取响应体失败: {e}")))?
-                .into_bytes()
-                .to_vec();
-                ensure_memory_get_matches_declared_len("S3", key, bytes.len() as u64, declared)?;
-                Ok(Some(bytes))
+                let mut reader = output.body.into_async_read();
+                let mut body = Vec::new();
+                let mut buffer = vec![0u8; 64 * 1024];
+                loop {
+                    let n = tokio::time::timeout(
+                        std::time::Duration::from_secs(MEMORY_GET_STALL_SECS),
+                        reader.read(&mut buffer),
+                    )
+                    .await
+                    .map_err(|_| {
+                        AppError::network(
+                            "S3 内存对象下载停滞超过 90 秒，连接可能已断开".to_string(),
+                        )
+                    })?
+                    .map_err(|e| AppError::network(format!("S3 读取响应体失败: {e}")))?;
+                    if n == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&buffer[..n]);
+                }
+                ensure_memory_get_matches_declared_len("S3", key, body.len() as u64, declared)?;
+                Ok(Some(body))
             }
             Err(e) => {
                 // 检查是否是 NoSuchKey 错误
@@ -990,6 +1001,10 @@ mod tests {
         assert!(
             source.contains("ensure_memory_get_matches_declared_len(\"S3\""),
             "S3 get() 必须按 content_length 拒绝半包，记录级/清单不得收下截断体"
+        );
+        assert!(
+            source.contains("S3 内存对象下载停滞超过 90 秒"),
+            "S3 get() 必须按块停滞超时，不得用整段 collect 冒充已读完"
         );
         assert!(
             source.contains("abort_stale_multipart_uploads"),
