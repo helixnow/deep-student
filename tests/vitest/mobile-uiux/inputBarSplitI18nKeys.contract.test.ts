@@ -6,8 +6,11 @@ import { describe, expect, it } from 'vitest';
  * 拆分输入栏 i18n 键解析契约（0824 rel-mobile 审查）
  *
  * 背景：AttachmentPanelBody（v0.9.44 → 0824 Composer 拆分新增）曾引用
- * `common:actions.more` 作为移动端「⋯更多」按钮的 aria-label，但两份 locale
- * 里都没有这个键——en-US 读屏用户只能听到中文 fallback「更多」。
+ * `common:actions.more` 作为移动端「⋯更多」按钮的 aria-label，但当时两份
+ * locale 里都没有这个键——en-US 读屏用户只能听到中文 fallback「更多」。
+ * 0824 上 rel-i18n(#318) 已把该按钮收敛为复用已翻译的顶层 `common:more`
+ * （releaseUpgradeI18n.test.ts 锁定组件不得再引用 `common:actions.more`）；
+ * rel-mobile(#324) 增补的 `actions.more` 词条保留，并在此锁定为双语可解析。
  *
  * 本契约把拆分出的 Composer* / 附件面板组件里所有**字面量、带显式命名空间**
  * 的 t() 键锁定为「zh-CN 与 en-US 必须同时可解析」。模板字符串键
@@ -98,10 +101,11 @@ describe('split input bar i18n key resolution contract', () => {
     const panelSource = readSource(
       'src/features/chat/components/input-bar/AttachmentPanelBody.tsx',
     );
-    expect(panelSource).toContain("aria-label={t('common:actions.more'");
+    expect(panelSource).toContain("aria-label={t('common:more'");
     expect(panelSource).toContain("aria-label={t('common:actions.close')}");
     for (const locale of LOCALES) {
       const common = loadNamespace(locale, 'common');
+      expect(resolveKey(common, 'more')).toBe(true);
       expect(resolveKey(common, 'actions.more')).toBe(true);
       expect(resolveKey(common, 'actions.close')).toBe(true);
     }
