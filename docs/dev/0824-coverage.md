@@ -1,20 +1,20 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-25 07:20 UTC（第十四轮）。官方 0824 固定在
-`2b6488a6`；#177 按本轮指定的 rewind 点 `4e28168c` 判定。GitHub 上该分支
-随后又出现了 `519fb9d2`，它属于 rewind 后的新推进，不冒充本轮冻结 tip。
+审计快照：2026-08-25 12:47 UTC（第十五轮）。官方 0824 固定在
+`991227c2`；#177 按当前开放 PR tip `89808fd8` 判定，其应保留内容已在
+Step 17 前后全部等价落地。
 
 范围包括该时点仍开放的 PR #158–#268（111 个，无缺号），以及编号更大且
-head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
+head 以 `cursor/0824-` 开头的开放 PR（48 个），合计 159 个：
 
 - 官方 0824：`origin/cursor/0824-cde6` @
-  `2b6488a6be592720c2a2878cb287323ca0113d97`
-- 上一轮目标：`188500e0e4d8b59b0495b10fb550122d65fd57f9`
-  （本轮官方 tip 在其后新增 3 个提交）
-- #177 本轮 rewind tip：
-  `4e28168ce33a600636616108854495c118cf05e7`
-- 本审计 PR #293 的冻结 tip：
-  `43b2b7405affdbdd32b11c86fd280b778ea33596`
+  `991227c26703f6b59bd7bb1a739ef9fdcf971157`
+- 上一轮目标：`2b6488a6be592720c2a2878cb287323ca0113d97`
+  （本轮官方 tip 在其后新增 35 个提交，覆盖 Step 16–20）
+- #177 当前开放 tip：
+  `89808fd8a5470e03eb2383ee6375c81b90f10d28`
+- 本次更新前 #293 tip：
+  `dfe924a05f394d61a4cd8a3de9281499ac22aa60`
 - 关键源 tip：#160 `7c1a5094595f0ee3323135a597cc769305388cd7`；
   #172 `e963b6df949aa3476c03f6d86c66007b480bba05`；
   #176 `97ee408c8b5c7df1087e15986b170a16bd248488`；
@@ -25,30 +25,33 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 状态定义：
 
 - `IN_0824`：精确 PR tip 满足
-  `git merge-base --is-ancestor <PR tip> 2b6488a6...`；#177 的“精确 tip”特指
-  本轮明确冻结的 rewind SHA `4e28168c`。
+  `git merge-base --is-ancestor <PR tip> 991227c2...`。
 - `IN_THEME_ONLY`：精确 tip 不是 0824 祖先，但仍是待落主题仓祖先；本轮为 0。
 - `CONTENT_EQUIV`：精确 tip **不是** Git 祖先，但其待保留内容已通过 patch-id
   等价 cherry-pick 或按当前结构适配移植；不能把它表述成祖先关系。
+- `ALREADY`：隔离/rel PR 的已裁决 `INCLUDE` 已进入 0824；PR tip 本身因
+  docs、merge commit 或不同 cherry-pick SHA 仍不是祖先，不应整枝再合。
+- `INCLUDE`：仍有已核实的独特产品或测试增量，应从源枝按提交取用。
 - `LEFTOVER`：仍有应该进入 0824 的独特 `INCLUDE`。
 - `IGNORE`：不应再整枝合入；产品已吸收，或只剩已裁决的 `ALREADY`、
   过期文档、预演 merge、CI shard / `DROP`。
 
 精确祖先检查结果：
 
-- #158–#268：91/111 为 0824 祖先，20/111 不是。
-- 编号更大的 33 个 0824 PR：仅 #269 的 tip 是 0824 祖先，另 32 个不是。
-- 合计 92/144 为祖先、52/144 不是；表中 92 个 `IN_0824` 与结果逐项一致。
-- 关键点：#172、#176、#177 rewind tip、#215 为祖先；#160、#213、#214
+- #158–#268：90/111 为 0824 祖先，21/111 不是。
+- 编号更大的 48 个 0824 PR：仅 #269 的 tip 是 0824 祖先，另 47 个不是。
+- 合计 91/159 为祖先、68/159 不是；表中 91 个 `IN_0824` 与结果逐项一致。
+- 关键点：#172、#176、#215 为祖先；#160、#177 当前 tip、#213、#214
   均不是。
 
 关键项的内容裁决：
 
-- #177 现记为 `IN_0824`：rewind 后的精确 tip `4e28168c` 是
-  `2b6488a6` 的祖先。rewind 只改变源分支边界；此前已从 #177 选择性移植到
-  0824 的后续 cloud 修复（包括 `4bebbf81`、`394851a7`、`587cfccd`、
-  `af414ed6`、`947910db`、`06f32d0e`、`6887bf84`、`bf8ab827`）仍是
-  0824 的有效内容，**不得因 #177 rewind 而删除或建议回退**。
+- #177 改记 `CONTENT_EQUIV`：当前开放 tip `89808fd8` 不是 `991227c2`
+  的祖先。Step 17 对 `0824..#177` 的 14 个提交复核中，12 个已与此前端口
+  patch 等价；另两个分别以 `edd5672d` → `957fe6d7`、`89808fd8` →
+  `172fd10d` 落地，当时 `git cherry 0824 #177` 已无 `+` 残留。此前
+  `4bebbf81`、`394851a7`、`587cfccd`、`af414ed6`、`947910db`、
+  `06f32d0e`、`6887bf84`、`bf8ab827` 等有效端口同样必须保留。
 - #160 记为 `CONTENT_EQUIV`。其产品主体已由 F 吸收；缺失回归测试已由
   `f38d0041` 适配移植（`AnkiTasksApp.loadError.test.tsx` 与
   `todayScreenEmptyLibrary.test.tsx`），scheduler 顺序与 brand token 尾款由
@@ -61,6 +64,15 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
   generative-ui 内置 skill 名称/描述 i18n。隔离枝提交 `5cf6dccf` 已由
   0824 的 `414abdc7` 以相同 patch-id `dc567c3e...` 落地；其余 23 项
   `ALREADY`、6 项 `DROP`，源 tip 虽非祖先但待保留内容已齐。
+- #312 记为 `ALREADY`：两个纯测试提交已在 Step 17 以 `c8f40a01`、
+  `54da9c33` 落地；其余仅为隔离报告。
+- #313–#323 均记为 `ALREADY`：Step 18–20 已按提交吸收 finder、anki、
+  restore、mainbackfill、llmusage、i18n、VFS、chat、leftover-rescan
+  集成测试、schema lock 与 cloud markerless 修复；源枝审计文档与 merge
+  commit 不重放。
+- #324 记为 `INCLUDE`：`991227c2` 尚未包含 `actions.more` 的
+  zh-CN/en-US locale 项及对应 split input-bar i18n 契约测试；只应取
+  `1901780e`、`8c7f8415`，不整枝合入其 docs tip `9d39c760`。
 
 | PR | 状态 |
 |---:|---|
@@ -83,7 +95,7 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 | #174 | IN_0824 |
 | #175 | IN_0824 |
 | #176 | IN_0824 |
-| #177 | IN_0824 |
+| #177 | CONTENT_EQUIV |
 | #178 | IN_0824 |
 | #179 | IN_0824 |
 | #180 | IN_0824 |
@@ -176,8 +188,8 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 | #267 | IN_0824 |
 | #268 | IN_0824 |
 
-#158–#268 小计：`IN_0824` 91；`IN_THEME_ONLY` 0；`CONTENT_EQUIV` 2
-（#160、#214）；`LEFTOVER` 0；`IGNORE` 18。
+#158–#268 小计：`IN_0824` 90；`IN_THEME_ONLY` 0；`CONTENT_EQUIV` 3
+（#160、#177、#214）；`LEFTOVER` 0；`IGNORE` 18。
 
 ## 编号更大的开放 0824 PR
 
@@ -186,7 +198,7 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 
 | PR | 冻结 tip | 0824 精确祖先 | 状态 |
 |---:|:---|:---:|:---|
-| #269 | `2b6488a6` | 是 | IN_0824 |
+| #269 | `991227c2` | 是 | IN_0824 |
 | #270 | `bc26f121` | 否 | IGNORE |
 | #271 | `ae3207ff` | 否 | IGNORE |
 | #275 | `d2762072` | 否 | IGNORE |
@@ -202,7 +214,7 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 | #290 | `dba60698` | 否 | IGNORE |
 | #291 | `884f402d` | 否 | IGNORE |
 | #292 | `0aab5fd7` | 否 | IGNORE |
-| #293 | `43b2b740` | 否 | LEFTOVER |
+| #293 | `dfe924a0` | 否 | LEFTOVER |
 | #294 | `76be463d` | 否 | IGNORE |
 | #295 | `02172aa6` | 否 | IGNORE |
 | #296 | `60d1cbbf` | 否 | IGNORE |
@@ -219,15 +231,31 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
 | #307 | `f5b8bc9f` | 否 | IGNORE |
 | #308 | `ec66d3a5` | 否 | IGNORE |
 | #309 | `1be75038` | 否 | IGNORE |
+| #310 | `ab03bab3` | 否 | IGNORE |
+| #311 | `8f84c745` | 否 | IGNORE |
+| #312 | `10ccd369` | 否 | ALREADY |
+| #313 | `f2b55909` | 否 | ALREADY |
+| #314 | `465f0872` | 否 | ALREADY |
+| #315 | `2ba5522d` | 否 | ALREADY |
+| #316 | `3d3516c3` | 否 | ALREADY |
+| #317 | `c4a3382c` | 否 | ALREADY |
+| #318 | `a6e2621b` | 否 | ALREADY |
+| #319 | `13d45b0a` | 否 | ALREADY |
+| #320 | `8e6d8e8f` | 否 | ALREADY |
+| #321 | `cb842c8a` | 否 | ALREADY |
+| #322 | `b0cdd9fe` | 否 | ALREADY |
+| #323 | `e9952820` | 否 | ALREADY |
+| #324 | `9d39c760` | 否 | INCLUDE |
 
 新增范围小计：`IN_0824` 1；`IN_THEME_ONLY` 0；`CONTENT_EQUIV` 0；
-`LEFTOVER` 1（#293）；`IGNORE` 31。
+`ALREADY` 12（#312–#323）；`INCLUDE` 1（#324）；`LEFTOVER` 1（#293）；
+`IGNORE` 33。
 
 处置依据：
 
 - #270/#271/#275 与 #279–#302 是已被官方合成取代的主题、leftover 或预演
   整枝。它们的 merge / 文档 tip 不是 0824 祖先，但产品 `INCLUDE` 已进入
-  `2b6488a6`；旧合成树不应再合。
+  `991227c2`；旧合成树不应再合。
 - #303 的 #160 测试与产品尾款已分别由 `f38d0041`、`41587d48` 落地；
   #304 的可保留回归增量已由 `08b81e29` 落地；#305 的 18 项不变量结论已在
   官方 merge plan 中持续复验。三者剩余均为隔离枝记录，记 `IGNORE`。
@@ -235,19 +263,29 @@ head 以 `cursor/0824-` 开头的开放 PR（33 个），合计 144 个：
   均为不应整枝合入的隔离文档。#309 的唯一产品 `INCLUDE` 已以 `414abdc7`
   等价进入官方 0824，剩余为 #214 审计记录，因此也记 `IGNORE`。
 - #301/#302 的 G 差异结论和落地结果已进入官方 Step 8 记录；不重合旧审计枝。
+- #310/#311 分别是 Step 15 不变量与编译门禁报告，仅作对照，记 `IGNORE`。
+  #312 的两个测试已由 Step 17 吸收，记 `ALREADY`。
+- #313 的 finder 两提交由 Step 18 吸收；#314–#317 的 anki、restore、
+  mainbackfill、llmusage 由 Step 19 吸收；#318–#323 的 i18n、VFS、chat、
+  leftover-rescan 测试、schema lock、cloud markerless 由 Step 20 吸收。
+  这些 rel/隔离 PR 均记 `ALREADY`，不得整枝重放。
+- #324 的 `1901780e` locale 修复与 `8c7f8415` 契约测试在 `991227c2`
+  仍缺失，记 `INCLUDE`；`9d39c760` 为 docs-only 收尾，不随产品提交取用。
 - #293 是本覆盖审计本身，仍有应合入 0824 的唯一文档增量，因此在冻结快照中
   是唯一 `LEFTOVER`；它不是产品或测试缺口。
 
 ## 汇总与剩余项
 
-144 个开放 PR 总计：
+159 个开放 PR 总计：
 
-- `IN_0824` 92
+- `IN_0824` 91
 - `IN_THEME_ONLY` 0
-- `CONTENT_EQUIV` 2（#160、#214）
+- `CONTENT_EQUIV` 3（#160、#177、#214）
+- `ALREADY` 12（#312–#323）
+- `INCLUDE` 1（#324）
 - `LEFTOVER` 1（#293，仅本审计文档）
-- `IGNORE` 49
+- `IGNORE` 51
 
-剩余 `LEFTOVER`：**#293**。除本审计文档外，产品、测试和 CI 均无待移植
-`INCLUDE`；#213 没有剩余 `INCLUDE`，#160/#214 已内容等价，#177 rewind
-tip 已在 0824。0824 中已落地的 #177 后续 cloud ports 必须保留。
+剩余产品/测试 `INCLUDE`：**#324**；剩余文档 `LEFTOVER`：**#293**。
+#213 没有剩余 `INCLUDE`，#160/#177/#214 已内容等价。0824 中已落地的
+#177 cloud ports 必须保留。
