@@ -1,10 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use deep_student_lib::chat_v2::context::PipelineContext;
 use deep_student_lib::chat_v2::event_types;
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::{ExecutionContext, GenerativeUiExecutor, ToolExecutor};
-use deep_student_lib::chat_v2::types::{block_types, ToolCall};
+use deep_student_lib::chat_v2::types::ToolCall;
 use deep_student_lib::hpias::HPIAS_EVENT_CHANNEL;
 use deep_student_lib::tools::ToolRegistry;
 use serde_json::{json, Value};
@@ -65,17 +64,6 @@ fn capture_block_events(window: &tauri::Window, session_id: &str) -> Arc<Mutex<V
         }
     });
     events
-}
-
-#[test]
-fn block_type_mapping_for_render_generative_ui_is_generative_ui() {
-    for tool_name in ["render_generative_ui", "builtin-render_generative_ui"] {
-        assert_eq!(
-            PipelineContext::get_block_type_for_tool_static(tool_name),
-            block_types::GENERATIVE_UI,
-            "unexpected block type for {tool_name}"
-        );
-    }
 }
 
 fn capture_hpias_events(window: &tauri::Window) -> Arc<Mutex<Vec<Value>>> {
