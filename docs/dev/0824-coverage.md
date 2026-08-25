@@ -1,61 +1,71 @@
 # 0824 开放 PR tip 覆盖审计
 
-审计快照：2026-08-25 04:15 UTC（第十二轮，0824 已快进至 cloud-latest 落点）。
+审计快照：2026-08-25 06:30 UTC（第十三轮）。本轮只执行了一次
+`git fetch`，同时冻结 `refs/heads/*` 与 `refs/pull/*/head`；下列 SHA 和祖先
+判定全部来自该快照。
 
-本表覆盖该时点仍开放的 PR #158–#268，共 111 个（无缺号）。判定对象是同一次
-`git fetch` 固定下来的 `refs/pull/<PR>/head`，不是 PR 标题所指的旧底座：
+范围包括该时点仍开放的 PR #158–#268（111 个，无缺号），以及编号更大且
+head 以 `cursor/0824-` 开头的开放 PR（29 个），合计 140 个：
 
-- 本轮起点（上一轮官方 0824）：
-  `e88340c6470b855b8dd2abec8ec23711921ac2c6`
-- 本轮目标（实时 `origin/cursor/0824-cde6`）：
-  `2630dc95f5ea1bb1422ddedc7cc8eb8adcacd85b`
-  （与预期 `origin/cursor/0824-rehearse-cloud-latest-cde6` 完全相同；起点后
-  46 个提交）
-- B cloud 落地检查点：`100c118d4d2846429089bc04c337accdbe486a24`
-  （已进入 0824）；本次冻结的 #177 实时 tip 已前进到
-  `ef3c104d89d0cf23b21880c11c0ba690028f9468`
-- C genui（#214 tip）：`c2786d4b602c8271db0ad116aeb37b3c04fad5b5`
-- D anki（#215 tip）：`f4f1300e85cf08fc4b2b2c9db7d6bc1f94d0019b`
-- E optimization（#213 tip）：`746445fc61914e7eaad8522d7aa4b75083e42762`
-- F subapp 实际主题 tip：`575fee7f475a83de5c0edd3dd378015495fb22ad`
-  （#176 tip `97ee408c8b5c7df1087e15986b170a16bd248488` 是其祖先）
-- G mobile（#172 tip）：`e963b6df949aa3476c03f6d86c66007b480bba05`
-  （主题分支 tip `4ab24435bb99` 是其后代，已整支进入 0824）
+- 官方 0824：`origin/cursor/0824-cde6` @
+  `188500e0e4d8b59b0495b10fb550122d65fd57f9`
+- 上一轮目标：`2630dc95f5ea1bb1422ddedc7cc8eb8adcacd85b`
+  （本轮官方 tip 在其后新增 19 个提交）
+- #177 实时分支：`origin/cursor/cloud-sync-sota-b343` /
+  `refs/pull/177/head` @
+  `6d6769bc94868e8d5f68da63100678c9e87798d3`
+- 本审计 PR #293 的冻结 tip：
+  `8d8c304d8383a865a6f3b3f6c5f8cdf8d5ba2102`
+- 关键源 tip：#160 `7c1a5094595f0ee3323135a597cc769305388cd7`；
+  #172 `e963b6df949aa3476c03f6d86c66007b480bba05`；
+  #176 `97ee408c8b5c7df1087e15986b170a16bd248488`；
+  #213 `746445fc61914e7eaad8522d7aa4b75083e42762`；
+  #214 `c2786d4b602c8271db0ad116aeb37b3c04fad5b5`；
+  #215 `f4f1300e85cf08fc4b2b2c9db7d6bc1f94d0019b`
 
-0824 与关键 PR 的精确边界（`git merge-base --is-ancestor`）：
+状态定义：
 
-- G mobile：主题 tip `4ab24435` 经合并提交 `79362482` 全量进入 0824；
-  #172 tip `e963b6df` 是其祖先，维持 `IN_0824`。
-- F subapp：实际 tip `575fee7f` 是 0824 合并提交 `0a0a1197` 的第二父提交，
-  已全量进入 0824；#176 tip `97ee408c` 维持 `IN_0824`。
-- D anki：tip `f4f1300e` 已经是 0824 祖先——D 已通过 `a8185664` 全量合入。
-- B cloud：预期落地检查点 `100c118d` 是 0824 祖先，满足本轮落地条件；
-  但同一次 PR 快照中的 #177 tip 已前进到 `ef3c104d`，新增提交
-  `fix(cloud): verify remote size after provider put_file`，相对实时 0824 仍有
-  1 个独特提交。因此表格按精确 tip 记为 `LEFTOVER`，不能把已经落地的
-  `100c118d` 误记成当前 PR tip。
-- C genui：#214 精确 tip 仍有 30 个 Git 独特提交；产品增量大多已等价吸收，
-  该旧整枝不应重合，余项裁决为 `IGNORE`。
-- E optimization：#213 精确 tip 仍有 4 个独特提交，留给 leftover-opt
-  选择性吸收，记为 `LEFTOVER`。
+- `IN_0824`：精确 PR tip 满足
+  `git merge-base --is-ancestor <PR tip> 188500e0...`。
+- `IN_THEME_ONLY`：精确 tip 不是 0824 祖先，但仍是待落主题仓祖先；本轮为 0。
+- `CONTENT_EQUIV`：精确 tip **不是** Git 祖先，但其待保留内容已通过 patch-id
+  等价 cherry-pick 或按当前结构适配移植；不能把它表述成祖先关系。
+- `LEFTOVER`：仍有应该进入 0824 的独特 `INCLUDE`。
+- `IGNORE`：不应再整枝合入；产品已吸收，或只剩已裁决的 `ALREADY`、
+  过期文档、预演 merge、CI shard / `DROP`。
 
-特别核对的精确 tip 祖先结果：#160 否、#161 否、#172 **是**、#176 是、
-#177 否（但落地检查点 `100c118d` 是）、#213 否、#214 否、#215 是。
+精确祖先检查结果：
 
-`IN_0824` 与 `IN_THEME_ONLY` 均以
-`git merge-base --is-ancestor <PR tip> <target tip>` 的精确祖先关系为准。
-`LEFTOVER` 表示当前 PR tip 仍有未进入 0824 或 B–G 主题仓的独特增量；
-`IGNORE` 表示精确 tip 不应再整支合入（有用部分已经选择性移植/等价吸收，
-或该 tip 已明确被取代、冲突或弃用）。
-本轮对 111 个 tip 全量重跑精确祖先判定：恰 90 个为实时 0824 祖先，
-21 个不是；表中 90 个 `IN_0824` 与祖先检查逐项一致。当前没有仍应保留为
-`IN_THEME_ONLY` 的 tip。
+- #158–#268：90/111 为 0824 祖先，21/111 不是。
+- 新增的 29 个 0824 PR：仅 #269 的 tip 是 0824 祖先，另 28 个不是。
+- 合计 91/140 为祖先、49/140 不是；表中 91 个 `IN_0824` 与结果逐项一致。
+- 关键点：#172、#176、#215 为祖先；#160、#177、#213、#214 均不是。
+
+非祖先关键项的内容裁决：
+
+- #177 记为 `CONTENT_EQUIV`。对冻结 tip 执行
+  `git cherry 188500e0... 6d6769bc...`，从 `ef3c104d` 到 `6d6769bc`
+  的 8 个提交全部返回 `-`：其 patch-id 分别由 0824 中的
+  `4bebbf81`、`394851a7`、`587cfccd`、`af414ed6`、`947910db`、
+  `06f32d0e`、`6887bf84`、`bf8ab827` 等价承载。**原 #177 SHA
+  不是 0824 祖先**；这是 cherry-pick 内容等价，不能伪称 Git 祖先。
+- #160 记为 `CONTENT_EQUIV`。其产品主体已由 F 吸收；缺失回归测试已由
+  `f38d0041` 适配移植（`AnkiTasksApp.loadError.test.tsx` 与
+  `todayScreenEmptyLibrary.test.tsx`），scheduler 顺序与 brand token 尾款由
+  `41587d48` 落地。源 tip 仍不是祖先，但审计过的产品/测试 `INCLUDE` 已齐。
+- #213 记为 `IGNORE`：最后两个 `INCLUDE` 已按当前树移植为
+  `e83d4081`（provider-contract parser）与 `6a903224`（rustfmt）；
+  `746445fc` 的旧测试修改和 `e311daa4` 的 skill 契约均已实测
+  `ALREADY` 或会回退当前契约，没有剩余 `INCLUDE`。
+- #214 维持 `IGNORE`：产品增量已由 leftovers-safe 选择性吸收；剩余提交是
+  与 A 四分片相冲突的八分片 CI shards、被现行 6 GiB 配置超越的堆配置及
+  旧枝文档，均为 `ALREADY` / `DROP`，没有剩余 `INCLUDE`。
 
 | PR | 状态 |
 |---:|---|
 | #158 | IGNORE |
 | #159 | IGNORE |
-| #160 | LEFTOVER |
+| #160 | CONTENT_EQUIV |
 | #161 | IGNORE |
 | #162 | IGNORE |
 | #163 | IGNORE |
@@ -72,7 +82,7 @@
 | #174 | IN_0824 |
 | #175 | IN_0824 |
 | #176 | IN_0824 |
-| #177 | LEFTOVER |
+| #177 | CONTENT_EQUIV |
 | #178 | IN_0824 |
 | #179 | IN_0824 |
 | #180 | IN_0824 |
@@ -108,7 +118,7 @@
 | #210 | IGNORE |
 | #211 | IN_0824 |
 | #212 | IGNORE |
-| #213 | LEFTOVER |
+| #213 | IGNORE |
 | #214 | IGNORE |
 | #215 | IN_0824 |
 | #216 | IN_0824 |
@@ -165,46 +175,70 @@
 | #267 | IN_0824 |
 | #268 | IN_0824 |
 
-汇总：`IN_0824` 90；`IN_THEME_ONLY` 0；`LEFTOVER` 3（#160、#177、#213）；
-`IGNORE` 18。
+#158–#268 小计：`IN_0824` 90；`IN_THEME_ONLY` 0；`CONTENT_EQUIV` 2
+（#160、#177）；`LEFTOVER` 0；`IGNORE` 19。
 
-相对上一轮（第十一轮，0824 tip `e88340c6`）的变化：
+## 编号更大的开放 0824 PR
 
-- 官方 0824 从 `e88340c6` 快进到预期落点 `2630dc95f`，与
-  cloud-latest 完全一致；#172、#176、#215 继续是精确祖先。
-- #177 的预期检查点 `100c118d` 已随落点进入 0824；但 PR 在本次冻结前又
-  前进 1 个提交到 `ef3c104d`，故当前精确 tip 从 `IN_THEME_ONLY` 改为
-  `LEFTOVER`。
-- #213 从 `IN_THEME_ONLY` 改为 `LEFTOVER`：精确 tip 的 4 个独特提交仍需
-  leftover-opt 选择性吸收。#214 从 `IN_THEME_ONLY` 改为 `IGNORE`：
-  产品能力大多已在当前树中，旧 tip 不应再整支合入。
-- #160 维持 `LEFTOVER`；生产行为已在 F，剩余价值是未吸收的回归测试。
-- 其余状态不变；`IN_THEME_ONLY` 因本轮落地与余项裁决降为 0。
+只列冻结时仍开放且 head 为 `cursor/0824-*` 的 PR；已关闭的
+#272–#274、#276–#278、#285–#286 不在范围内。
 
-## 非祖先 tip 的处置依据
+| PR | 冻结 tip | 0824 精确祖先 | 状态 |
+|---:|:---|:---:|:---|
+| #269 | `188500e0` | 是 | IN_0824 |
+| #270 | `bc26f121` | 否 | IGNORE |
+| #271 | `ae3207ff` | 否 | IGNORE |
+| #275 | `ca796f3b` | 否 | IGNORE |
+| #279 | `a121e9df` | 否 | IGNORE |
+| #280 | `b2dbbe71` | 否 | IGNORE |
+| #281 | `904cca53` | 否 | IGNORE |
+| #282 | `c8eb191f` | 否 | IGNORE |
+| #283 | `93a890d1` | 否 | IGNORE |
+| #284 | `67ea40f7` | 否 | IGNORE |
+| #287 | `0b0fe816` | 否 | IGNORE |
+| #288 | `051c06e7` | 否 | IGNORE |
+| #289 | `5a0eab09` | 否 | IGNORE |
+| #290 | `dba60698` | 否 | IGNORE |
+| #291 | `884f402d` | 否 | IGNORE |
+| #292 | `0aab5fd7` | 否 | IGNORE |
+| #293 | `8d8c304d` | 否 | LEFTOVER |
+| #294 | `76be463d` | 否 | IGNORE |
+| #295 | `02172aa6` | 否 | IGNORE |
+| #296 | `60d1cbbf` | 否 | IGNORE |
+| #297 | `cb48a5d7` | 否 | IGNORE |
+| #298 | `4d236cb8` | 否 | IGNORE |
+| #299 | `bf8f1b72` | 否 | IGNORE |
+| #300 | `0c07e5e2` | 否 | IGNORE |
+| #301 | `119f9f0b` | 否 | IGNORE |
+| #302 | `fe7a61f9` | 否 | IGNORE |
+| #303 | `5c89a5b2` | 否 | IGNORE |
+| #304 | `03bbc4f8` | 否 | IGNORE |
+| #305 | `52d30c05` | 否 | IGNORE |
 
-- `LEFTOVER`：
-  - #160：生产行为已由实际 F tip `575fee7f` 吸收；空卡库回归测试的核心
-    契约已由 `15c903c1` 的适配版吸收（原文件中「非空卡库全部复习完仍报
-    100%」与「有卡但无到期时显示 idle 而非空库态」两个补充用例未随迁）。
-    剩余独特增量是 `AnkiTasksApp.loadError.test.tsx`（两个负载失败态
-    用例），在 0824 树中不存在。其 scheduler 面板重排与 0824 当前
-    “统计加载失败时调度设置仍可用”的布局契约冲突，不计为待重放增量。
-  - #177：`100c118d` 及其之前的落地范围已经进入 0824；实时 tip
-    `ef3c104d` 只剩 1 个独特提交（provider `put_file` 后核验远端 size）。
-  - #213：精确 tip 仍有 4 个独特提交；在 leftover-opt 完成选择性吸收前
-    保留，不应把旧主题整枝直接重合。
-- `IGNORE`：
-  - #214 的产品增量大多已经等价吸收；精确 tip 的 30 个 Git 独特提交包含
-    旧底座/整枝历史，余项不值得作为独立 leftover 重放。
-  - #161 的有效行为与测试已按 F 当前结构吸收；`450b4443` 是适配重放，
-    所以源 tip `d7fdb76d` 不是 0824 祖先，但也不应再整支合入。
-  - #158 的有效叶提交已由 #169/#180/#181/#182/#186、A/T 或等价补丁吸收；
-    其中删除已投入运行的 UTF-8 decoder 不应重放。
-  - #159/#164 的有用子集已选择性移植进 A；其余与 A 等价或冲突，不能把原 tip
-    整体再合入。
-  - #162/#163/#167 的有用行为已按 F 当前结构移植；原 tip 不应复活旧结构。
-  - #170、#198、#200、#203 分别因虚构模型、错误的 200MB 图片语义、被新
-    special-token 实现取代、与 #209 契约冲突而明确弃用。
-  - #205/#208/#209/#210/#212/#218 已按当前实现重放到随 A 一并进入 0824 的
-    T tests；重放提交不是原 tip 的 Git 祖先，原 tip 无需再合。
+新增范围小计：`IN_0824` 1；`IN_THEME_ONLY` 0；`CONTENT_EQUIV` 0；
+`LEFTOVER` 1（#293）；`IGNORE` 27。
+
+处置依据：
+
+- #270/#271/#275 与 #279–#302 是已被官方合成取代的主题、leftover 或预演
+  整枝。它们的 merge / 文档 tip 不是 0824 祖先，但产品 `INCLUDE` 已进入
+  `188500e0`；旧合成树不应再合。
+- #303 的 #160 测试与产品尾款已分别由 `f38d0041`、`41587d48` 落地；
+  #304 的可保留回归增量已由 `08b81e29` 落地；#305 的 18 项不变量结论已在
+  官方 merge plan 中持续复验。三者剩余均为隔离枝记录，记 `IGNORE`。
+- #301/#302 的 G 差异结论和落地结果已进入官方 Step 8 记录；不重合旧审计枝。
+- #293 是本覆盖审计本身，仍有应合入 0824 的唯一文档增量，因此在冻结快照中
+  是唯一 `LEFTOVER`；它不是产品或测试缺口。
+
+## 汇总与剩余项
+
+140 个开放 PR 总计：
+
+- `IN_0824` 91
+- `IN_THEME_ONLY` 0
+- `CONTENT_EQUIV` 2（#160、#177）
+- `LEFTOVER` 1（#293，仅本审计文档）
+- `IGNORE` 46
+
+剩余 `LEFTOVER`：**#293**。除本审计文档外，产品、测试和 CI 均无待移植
+`INCLUDE`；#213/#214 没有剩余 `INCLUDE`，#160/#177 也不再是 leftover。
