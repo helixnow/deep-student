@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useHpiasStore } from '@/stores/researchStore';
 import {
   HPIAS_EVENT_CHANNEL,
@@ -48,6 +48,17 @@ describe('hpiasEventBridge', () => {
       question: 'keep',
     });
     expect(useHpiasStore.getState().sessionId).toBe('target');
+  });
+
+  it('fails closed when a scoped event has no valid session id', () => {
+    const onEvent = vi.fn();
+    const handler = createHpiasEventBridgeHandler({ sessionId: 'target', onEvent });
+
+    handler({ type: 'session_started', question: 'missing id' });
+    handler({ type: 'session_started', session_id: 42, question: 'invalid id' });
+
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(useHpiasStore.getState().sessionId).toBeNull();
   });
 
   it('detects research blocks in intent', () => {
