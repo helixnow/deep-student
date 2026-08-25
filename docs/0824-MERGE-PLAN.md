@@ -690,3 +690,26 @@ S3 normalize / FTP 550 / Composer* / 附件 200/50 均未被触及（见 10.4）
   S3 normalize、FTP 550/501、Composer*、附件 200/50、G 44px 与 HPIAS
   18-block allowlist 均保持；
 - SKIP：内容已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`，以及全部隔离 PR。
+
+### Step 12 收口：#177 文件级对象上传后尺寸核验
+
+日期：2026-08-25。基座 `db6032d4`（Step 11 tip）；仅 cherry-pick #177 新增的
+`bb81e9d6` → `06f32d0e`（fix(sync): verify file-level object size before
+writing manifests），干净落地零冲突。fetch 时 #177 tip 即为 `bb81e9d6`，
+其后无更新提交。
+
+- 内容：新增 `put_file_and_verify_size` helper（复用 Step 10 落地的
+  `verify_uploaded_size`），文件级 workspace/blob/asset 对象 `put_file` 后
+  `stat` 核对远端大小，短写 fail-closed 不得写入文件级清单；生产 provider
+  的 `put_file` 已自核，此处拦默认实现。附源码契约断言与
+  `TruncateFileObjectPut` 截断替身回归测试。
+- 编译门禁：`npm run typecheck`、`npx vite build`、
+  `cargo check --manifest-path src-tauri/Cargo.toml --lib` 均 exit 0；
+- 定向 Rust 回归 `workspace_upload_fails_when_remote_object_size_mismatches`
+  1/1 通过；
+- Step 9 §9.4 的 18 项不变量逐项复查仍为 **18/18 PASS**（本提交仅触及
+  `sync/mod.rs` 与 #177 自述文档；tombstone、WebDAV decode、S3 normalize、
+  FTP 550/501、Composer* 拆分、附件 200/50、G 44px、HPIAS 18-block
+  allowlist 全部在位）；
+- SKIP：已等价落地的 `ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/
+  `0fcbc59b`，以及全部隔离 PR。
