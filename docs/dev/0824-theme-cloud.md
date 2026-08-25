@@ -1,9 +1,9 @@
 # 0824 theme cloud integration
 
-PR #275 tracks the cloud-only theme warehouse. It includes #177 through
-`ef3c104d8` (and therefore the requested `100c118d4`), while retaining the
-#169 parsed FTP 550 tombstone handling, #174 WebDAV/S3 normalization, and the
-theme R02 regression tests.
+PR #275 tracks the cloud-only theme warehouse. It includes all seven #177
+increments through `6d6769bc`, while retaining the #169 parsed FTP 550
+tombstone handling, #174 WebDAV/S3 normalization, and the theme R02 regression
+tests.
 
 Validation gates:
 
