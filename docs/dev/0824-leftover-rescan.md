@@ -1,8 +1,8 @@
 # 0824 open PR leftover 重扫
 
-扫描快照：2026-08-25 11:18 UTC  
+扫描快照：2026-08-25 11:18 UTC
 固定基线：`origin/cursor/0824-cde6` @
-`30fc858baa54685a9fa62959d50a2b0fc6100da3`  
+`30fc858baa54685a9fa62959d50a2b0fc6100da3`
 隔离分支：`cursor/0824-leftover-rescan-cde6`
 
 ## 结论
