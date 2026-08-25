@@ -936,6 +936,14 @@
       "path": "vfs/V20260808__file_deletion_intent_journal.sql",
       "sha256": "6f3aed34ac12166a5bd0540383e8e3a366a2442b0adae51464031557aec65dff",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20260824,
+      "name": "note_props",
+      "path": "vfs/V20260824__note_props.sql",
+      "sha256": "6607400be7282ab39ad24edfd8d49caba3d6eee212e38926ff6f968d8fd49cb9",
+      "dangers": []
     }
   ]
 }
