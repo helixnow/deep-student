@@ -15,10 +15,10 @@ import type { Block } from '@/features/chat/core/types';
 import type { AnkiCardsBlockData } from '@/features/chat/plugins/blocks/ankiCardsBlock';
 import { blockRegistry } from '@/features/chat/registry';
 
-// Mock i18n（仅覆盖本组件使用的 key，支持 {{var}} 插值）
+// Mock i18n（仅覆盖本组件使用的 key）
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string } & Record<string, unknown>) => {
+    t: (key: string, options?: { defaultValue?: string }) => {
       const dict: Record<string, string> = {
         'blocks.ankiCards.edit': 'Edit',
         'blocks.ankiCards.save': 'Save',
@@ -37,10 +37,14 @@ vi.mock('react-i18next', () => ({
         'blocks.ankiCards.progress.metrics.cardsValue': 'Cards: {{count}}',
         'blocks.ankiCards.progress.metrics.segmentsValue': 'Segments: {{completed}}/{{total}}',
       };
-      const template = dict[key] ?? options?.defaultValue ?? key;
-      return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
-        options && options[name] !== undefined ? String(options[name]) : match
-      );
+      if (dict[key]) {
+        // 简易 {{var}} 插值，贴近真实 i18n 行为
+        return dict[key].replace(/\{\{(\w+)\}\}/g, (_match, name: string) =>
+          String((options as Record<string, unknown> | undefined)?.[name] ?? ''),
+        );
+      }
+      if (options?.defaultValue) return options.defaultValue;
+      return key;
     },
   }),
   // Some modules initialize i18n in test environment and expect this export.

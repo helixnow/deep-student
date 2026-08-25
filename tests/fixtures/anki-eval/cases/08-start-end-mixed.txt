@@ -1,0 +1,6 @@
+<<<ANKI_CARD_JSON_START>>>
+{"front": "什么是虚拟内存？", "back": "以磁盘扩展物理内存的抽象，为每个进程提供独立且连续的地址空间。"}
+<<<ANKI_CARD_JSON_END>>>
+<<<ANKI_CARD_JSON_START>>>
+{"front": "缺页中断何时发生？", "back": "进程访问的页面不在物理内存中时触发，由操作系统调页载入。"}
+<<<ANKI_CARD_JSON_END>>>

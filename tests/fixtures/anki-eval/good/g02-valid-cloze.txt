@@ -1,0 +1,2 @@
+{"text": "光合作用的场所是 {{c1::叶绿体}}，有氧呼吸的主要场所是 {{c2::线粒体}}。", "template_id": "cloze", "tags": ["生物"]}
+<<<ANKI_CARD_JSON_END>>>

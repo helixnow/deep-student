@@ -17,7 +17,7 @@ describe('generativeUIArchitectureContract', () => {
     expect(indexSrc).toContain('parseGenerativeUIIntent');
     expect(indexSrc).toContain('resolveGenerativeUIChatActionHandlers');
     expect(indexSrc).toContain('dispatchCanvasAIEditRequest');
-    expect(indexSrc).toContain('createFlashcardSaveActionHandlers');
+    expect(indexSrc).not.toContain('createFlashcardSaveActionHandlers');
     expect(indexSrc).toContain('ChartBlock');
     expect(indexSrc).toContain('MarkdownBlock');
     expect(indexSrc).toContain('StepsBlock');

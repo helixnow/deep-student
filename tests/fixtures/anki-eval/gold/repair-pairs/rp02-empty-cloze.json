@@ -1,0 +1,20 @@
+{
+  "id": "rp02-empty-cloze",
+  "label": "edited_minor",
+  "source": "synthetic-style-rewrite",
+  "description": "cloze 挖空内容为空（模型漏填答案），用户补上挖空内容。改前应命中 cloze_empty_answer，改后零命中。",
+  "original": {
+    "front": "",
+    "back": "",
+    "text": "细胞的能量工厂是 {{c1::}}，负责有氧呼吸产生 ATP。"
+  },
+  "edited": {
+    "front": "",
+    "back": "",
+    "text": "细胞的能量工厂是 {{c1::线粒体}}，负责有氧呼吸产生 ATP。"
+  },
+  "expected": {
+    "originalCodes": ["cloze_empty_answer"],
+    "editedCodes": []
+  }
+}

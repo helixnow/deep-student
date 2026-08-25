@@ -1355,7 +1355,9 @@ mod tests {
     fn openai_responses_api_key_stream_requires_an_explicit_terminal_success() {
         let error = validate_stream_termination(true, false, None, false)
             .expect_err("Responses EOF without a terminal event must fail");
-        assert!(error.to_string().contains("OpenAI Responses"));
+        // 非 Codex 的显式结束协议统一用中性 "LLM provider" 文案（兼容网关也走此路径）。
+        assert!(error.to_string().contains("LLM provider"));
+        assert!(error.to_string().contains("未收到完整结束标记"));
         assert!(!error.to_string().contains("OpenAI Codex"));
     }
 
@@ -1544,7 +1546,9 @@ mod tests {
         let sanitized = sanitize_request_body_for_audit(&body).to_string();
         assert!(!sanitized.contains("c2VjcmV0"));
         assert!(!sanitized.contains("provider-secret-state"));
-        assert!(sanitized.contains("base64 data"));
+        // image_url 键先被 debug_log_service 的 embedded_binary 整体脱敏吃掉，
+        // 不再落入 "[base64 data: ...]" 占位符分支。
+        assert!(sanitized.contains("embedded_binary"));
         assert!(sanitized.contains("[REDACTED]"));
     }
 
@@ -6747,6 +6751,69 @@ impl LLMManager {
             image_payloads,
             caller_type,
             "utility",
+        )
+        .await
+    }
+
+    /// Resolve one Anki Sidekick role against the current model assignments.
+    ///
+    /// Slot probing is deliberately best-effort: missing or concurrently removed
+    /// configuration returns `None`, allowing callers to retain their legacy model2 path.
+    pub async fn resolve_anki_role_decision(
+        &self,
+        role: crate::anki_model_routing::AnkiModelRole,
+        mode: crate::anki_model_routing::RoutingMode,
+    ) -> Option<crate::anki_model_routing::RoleDecision> {
+        let slots = self.probe_anki_routing_slots().await;
+        let plan = crate::anki_model_routing::plan_routing(mode, &slots)?;
+        plan.log_debug();
+        Some(plan.decision(role).clone())
+    }
+
+    /// Execute an Anki utility prompt on its routed role model.
+    ///
+    /// Routing only selects among already-enabled text configs. If the selected
+    /// config disappears between probing and execution, fall back to the existing
+    /// model2 behavior instead of failing the surrounding Anki pipeline.
+    pub async fn call_anki_routed_raw_prompt(
+        &self,
+        decision: Option<&crate::anki_model_routing::RoleDecision>,
+        task: &str,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+    ) -> Result<StandardModel2Output> {
+        if let Some(decision) = decision {
+            let config = self.get_api_configs().await.ok().and_then(|configs| {
+                configs.into_iter().find(|config| {
+                    config.id == decision.config_id
+                        && config.enabled
+                        && !config.is_embedding
+                        && !config.is_reranker
+                        && !config.is_image_generation
+                })
+            });
+            if let Some(config) = config {
+                return self
+                    .call_raw_prompt_with_config(
+                        config,
+                        user_prompt,
+                        image_payloads,
+                        crate::llm_usage::CallerType::Anki,
+                        task,
+                    )
+                    .await;
+            }
+            debug!(
+                "[ANKI_ROUTING] {} 角色配置 {} 已不可用，回退 model2",
+                decision.role.as_str(),
+                decision.config_id
+            );
+        }
+
+        self.call_model2_raw_prompt(
+            user_prompt,
+            image_payloads,
+            crate::llm_usage::CallerType::Anki,
         )
         .await
     }

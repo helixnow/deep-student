@@ -22,6 +22,18 @@
     "title": "Ready to grade",
     "description": "Enter or paste an essay in the input area, then click \"Start Grading\" to see annotated results here in real time"
   },
+  "make_cards": {
+    "label": "Generate cards",
+    "running": "Submitting…",
+    "disabled_grading": "Available once grading finishes",
+    "disabled_no_result": "No grading result yet, so there is nothing to turn into cards",
+    "deck_name": "Essay feedback",
+    "requirements": "Build memory cards from the annotations and rewrite suggestions in the feedback. Focus on the issues that were flagged and the better phrasing, and never turn the whole essay into a single card.",
+    "too_short": "The grading result is too short to make useful cards",
+    "started": "Card generation started. Track progress in the task dashboard.",
+    "failed": "Failed to start card generation",
+    "open_task_dashboard": "Open task dashboard"
+  },
   "confirm": {
     "clear": "Clear?",
     "cancel": "Cancel?"
