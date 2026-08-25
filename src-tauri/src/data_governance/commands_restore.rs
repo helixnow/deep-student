@@ -2,7 +2,7 @@
 
 use std::path::Path;
 use tauri::{Manager, State};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
