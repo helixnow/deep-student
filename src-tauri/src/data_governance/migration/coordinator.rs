@@ -5060,11 +5060,15 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         let runner = coordinator.create_vfs_runner().unwrap();
         coordinator.ensure_refinery_history_table(&conn).unwrap();
-        for migration in runner
+        let mut migrations: Vec<_> = runner
             .get_migrations()
             .iter()
             .filter(|migration| migration.version() <= V0944_VFS_HEAD)
-        {
+            .collect();
+        // Refinery sorts migrations when Runner::run executes them, but the
+        // embedded registry's raw slice does not promise version order.
+        migrations.sort_unstable_by_key(|migration| migration.version());
+        for migration in migrations {
             conn.execute_batch(migration.sql().unwrap_or_default())
                 .unwrap_or_else(|error| {
                     panic!(
