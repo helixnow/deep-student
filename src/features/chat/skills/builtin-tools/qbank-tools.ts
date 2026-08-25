@@ -220,7 +220,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_update_question',
-      description: '更新题目（Medium，OCC）。支持题干、选项、题型与 structured_data。expected_updated_at 取自最新 qbank_get_question，冲突后重读，禁止盲重试。返回 bounded question/previous、changed_fields、reversible=false、reversibleWithOcc=true 与 undo 提示；长字段按 2000 字符截断并带 truncated 标记，previous 可空字段不保证自动清空。',
+      description: '更新题目信息（Medium，OCC 反向更新）。支持题干、选项、题型和 structured_data（切换到 matching/ordering/numeric 必须同调用提供对应 structured_data）。必须先调用 qbank_get_question 取得最新 updated_at，并原样作为 expected_updated_at 传入；冲突后重新读取，禁止盲重试。成功返回 bounded question、bounded previous、changed_fields、updated_at、reversible=false、reversibleWithOcc=true 与 undo 提示；两份题目中长字段用 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明截断，previous 的可空字段不保证能自动清空。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -313,7 +313,7 @@ export const qbankToolsSkill: SkillDefinition = {
           },
           tag: { type: 'string', description: '当 mode=by_tag 时，指定要练习的标签' },
           current_card_id: { type: 'string', description: '当前题目 ID（顺序模式用）' },
-          review_only: { type: 'boolean', default: false, description: '只选 status=review 的错题/待复习题' },
+          review_only: { type: 'boolean', default: false, description: '只选择 status=review 的错题/待复习题' },
         },
         required: ['session_id'],
       },
@@ -526,7 +526,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_delete_questions',
-      description: '批量软删除 1-20 道题（High，Agent 不可恢复，reversible=false）。每次调用前必须用 builtin-ask_user 列明准确题目与数量取得确认，授权不得记忆或复用。以 question_id 为键传入完整版本映射；原子 OCC，冲突时整批不删。返回 deleted_count/deleted/soft_deleted/recovery。',
+      description: '批量软删除 1-20 道题（High，当前 Agent 不可恢复，reversible=false）。每次调用前都必须加载 ask-user 并用 builtin-ask_user 列明准确题目与数量取得确认；授权永不记忆、不得复用，无人值守/headless 不得执行。逐题先读取 updated_at，并以 questions 表 question_id 为键传入完整版本映射；原子 OCC 冲突时整批不删除。返回 deleted_count、deleted、soft_deleted 与 recovery。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -551,7 +551,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_toggle_favorite',
-      description: '切换一道题的收藏状态（Medium，OCC，可撤销）。先读最新 updated_at。返回 bounded question、previous.is_favorite、reversible=true 与精确 undo；长字段按 2000 字符截断并标记。',
+      description: '切换一道题的收藏状态（Medium，OCC，可撤销）。用 question_id，或用同一题目集的 session_id+card_id 定位；先读最新 updated_at。返回 bounded question、previous.is_favorite、reversible=true 与精确 undo；长字段以 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明 2000 字符截断。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -668,7 +668,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_start_timed_practice',
-      description: '选出一组限时练习题（Low，UI 混合模式）。返回持久保存的版本化 handoff 与尚未执行的 workbenchAction，不会自动打开 UI；作答必须由用户完成，handoff 语义见技能说明「UI 混合模式」。',
+      description: '选出一组限时练习题（Low，UI 混合模式）。返回随 Chat 工具结果持久保存的版本化 handoff 和尚未执行的 workbenchAction；不会自动打开 UI。返回 handoff_persisted=true、session_persisted=false、requires_user_interaction=true、agentCanAnswer=false、workbenchAction.executed=false/payloadHydrationSupported=true。Workbench authoritative ACK 后会话已注入，必须由用户作答。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -682,7 +682,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_generate_mock_exam',
-      description: '按配置选出模拟考题目（Low，UI 混合模式）。返回持久保存的版本化 handoff 与尚未执行的 workbenchAction，不会自动打开 UI；作答必须由用户完成，handoff 语义见技能说明「UI 混合模式」。',
+      description: '按配置选出模拟考题目（Low，UI 混合模式）。返回随 Chat 工具结果持久保存的版本化 handoff 与尚未执行的 workbenchAction，不会自动打开 UI；handoff_persisted=true、session_persisted=false、requires_user_interaction=true、agentCanAnswer=false、workbenchAction.executed=false/payloadHydrationSupported=true。Workbench authoritative ACK 后会话已注入，作答必须由用户完成。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -722,13 +722,13 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_get_daily_practice',
-      description: '按错题、新题、复习题优先级选出每日一练（Low，UI 混合模式）。返回持久保存的版本化 handoff 与尚未执行的 workbenchAction，不会自动打开 UI；作答必须由用户完成，handoff 语义见技能说明「UI 混合模式」。',
+      description: '按错题、新题、复习题优先级选出每日一练（Low，UI 混合模式）。返回随 Chat 工具结果持久保存的版本化 handoff 和未执行的 workbenchAction；不会自动打开 UI，handoff_persisted=true、session_persisted=false、requires_user_interaction=true、agentCanAnswer=false、payloadHydrationSupported=true。Workbench authoritative ACK 后会话已注入，作答必须由用户完成。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          session_id: { type: 'string', minLength: 1, description: '题目集 ID' },
-          count: { type: 'integer', minimum: 1, maximum: 20, default: 10, description: '每日练习题数' },
+          session_id: { type: 'string', minLength: 1, description: '【必填】题目集 ID' },
+          count: { type: 'integer', minimum: 1, maximum: 50, default: 10, description: '每日练习题数，最多 50（与练习面板的每日目标范围一致）' },
         },
         required: ['session_id'],
       },
@@ -741,8 +741,9 @@ export const qbankToolsSkill: SkillDefinition = {
         additionalProperties: false,
         properties: {
           session_id: { type: 'string', minLength: 1, description: '可选题目集 ID；省略为全局' },
-          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '年份' },
-          month: { type: 'integer', minimum: 1, maximum: 12, description: '月份' },
+          year: { type: 'integer', minimum: 1970, maximum: 9999, description: '【必填】年份' },
+          month: { type: 'integer', minimum: 1, maximum: 12, description: '【必填】月份' },
+          daily_target: { type: 'integer', minimum: 1, maximum: 50, description: '可选达标判定目标题数（缺省 10，跟随用户每日一练目标）' },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '单页最多 20 条' },
         },
@@ -751,7 +752,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_generate_paper',
-      description: '按题型/难度/标签生成试卷（Medium）。preview 只返回内存预览、不创建文件；markdown 才真实写入应用数据目录 exports/qbank/*.md 并返回路径；PDF/Word 会被拒绝。questions 最多返回 20 条（questions_truncated 标记），长字段按 2000 字符截断并标记。',
+      description: '按题型/难度/标签生成试卷（Medium）。preview 只返回内存预览，export_path=null、file_created=false；markdown 才真实写入应用数据目录 exports/qbank/*.md 并返回路径。仅支持 preview|markdown，PDF/Word 会被拒绝。返回 questions 最多 20 条并用 questions_truncated 标记题数截断；每个 bounded question 的长字段以 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明 2000 字符截断。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -783,7 +784,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_search_questions',
-      description: '全文检索题干、答案和解析（Low，只读）。支持题目集/状态/难度/题型/标签/收藏筛选与排序；返回 results/total/page/page_size/has_more/search_time_ms/truncated，单页最多 20 条。长字段与 highlight_* 按 2000 字符截断并标记，不能把预览当全文。',
+      description: '全文检索题干、答案和解析（Low，只读）。支持题目集/状态/难度/题型/标签/收藏筛选与排序；返回 results、total、page、page_size、has_more、search_time_ms、truncated。单页最多 20 条；每项 question 的长字段以 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明 2000 字符截断；highlight_content/highlight_answer/highlight_explanation 为 {text,truncated} 或 null，不能把预览当全文。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
