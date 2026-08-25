@@ -22,6 +22,7 @@ import {
   resolveFinderHostId,
   resolveInitialViewPreferences,
   resetFinderStoreRegistryForTests,
+  sanitizeFinderViewPreferences,
   setActiveFinderHostId,
   useActiveFinderState,
   useFinderStore,
@@ -233,6 +234,43 @@ describe('finderStore persisted preference migration', () => {
     expect(
       resolveInitialViewPreferences('page', { getItem: () => 'not json' }),
     ).toEqual(DEFAULT_FINDER_VIEW_PREFERENCES);
+  });
+
+  it('whitelists structurally valid JSON instead of trusting persisted field types', () => {
+    expect(sanitizeFinderViewPreferences({
+      viewMode: { value: 'list' },
+      sortBy: 'name',
+      sortOrder: 'sideways',
+      quickAccessCollapsed: 'yes',
+      currentPath: { folderId: 'must-not-hydrate' },
+    })).toEqual({ sortBy: 'name' });
+  });
+
+  it('does not let Zustand hydration re-inject rejected v0 preferences', () => {
+    const bucketId = 'corrupt-upgrade-test';
+    const key = finderPersistKey(bucketId);
+    window.localStorage.setItem(key, JSON.stringify({
+      state: {
+        viewMode: null,
+        sortBy: 'name',
+        sortOrder: ['desc'],
+        quickAccessCollapsed: 1,
+        currentPath: { folderId: 'stale-folder' },
+      },
+      version: 0,
+    }));
+
+    try {
+      const store = createFinderStore(bucketId);
+      expect(store.getState().viewMode).toBe(DEFAULT_FINDER_VIEW_PREFERENCES.viewMode);
+      expect(store.getState().sortBy).toBe('name');
+      expect(store.getState().sortOrder).toBe(DEFAULT_FINDER_VIEW_PREFERENCES.sortOrder);
+      expect(store.getState().quickAccessCollapsed)
+        .toBe(DEFAULT_FINDER_VIEW_PREFERENCES.quickAccessCollapsed);
+      expect(store.getState().currentPath.folderId).toBeNull();
+    } finally {
+      window.localStorage.removeItem(key);
+    }
   });
 
   it('writes each bucket to its own persist key', () => {

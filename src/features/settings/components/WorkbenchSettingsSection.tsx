@@ -28,6 +28,11 @@ import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { setMaterialTier, type MaterialTierSetting } from '@/features/workbench/core/materialTier';
 import { listWorkbenchShortcuts } from '@/features/workbench/core/shortcuts';
+import {
+  parsePersistedTileMargins,
+  parsePersistedWallpaper,
+  type PersistedTileMargins,
+} from '@/features/workbench/core/persistedSettings';
 import { WALLPAPER_PRESETS, DEFAULT_WALLPAPER, type WallpaperConfig } from '@/features/workbench/components/WallpaperLayer';
 import {
   parseTitleBarDoubleClickAction,
@@ -96,10 +101,7 @@ export const PERFORMANCE_PROFILE_PRESETS: Record<
 
 export type WallpaperSetting = WallpaperConfig;
 
-export interface TileMarginsSetting {
-  enabled: boolean;
-  px: number;
-}
+export type TileMarginsSetting = PersistedTileMargins;
 
 const DEFAULT_TILE_MARGINS: TileMarginsSetting = { enabled: true, px: 8 };
 const TILE_MARGIN_MIN = 0;
@@ -124,17 +126,6 @@ async function closeBrowserForDisabledGate(): Promise<void> {
     // Browser may be unavailable or already closed; the persisted gate remains authoritative.
     console.warn('[WorkbenchSettings] browser gate cleanup failed:', getErrorMessage(error));
   }
-}
-
-function parseJsonSetting<T>(raw: unknown, fallback: T): T {
-  if (typeof raw !== 'string' || !raw.trim()) return fallback;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return { ...fallback, ...(parsed as Partial<T>) };
-  } catch {
-    // 坏数据回退默认值
-  }
-  return fallback;
 }
 
 function parseProfile(raw: unknown): PerformanceProfile {
@@ -252,9 +243,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setMode(modeResult.enabled);
       setPerformanceProfile(parseProfile(profileVal));
       setMaterialTierState(parseMaterialTier(tierVal));
-      const wp = parseJsonSetting<WallpaperSetting>(wallpaperVal, DEFAULT_WALLPAPER);
+      const wp = parsePersistedWallpaper(wallpaperVal, DEFAULT_WALLPAPER);
       setWallpaper(wp);
-      setTileMargins(parseJsonSetting<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
+      setTileMargins(parsePersistedTileMargins(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setRestoreSession(String(restoreSessionVal ?? '') === 'true');

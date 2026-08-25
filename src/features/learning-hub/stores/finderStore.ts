@@ -441,6 +441,39 @@ export const DEFAULT_FINDER_VIEW_PREFERENCES: FinderViewPreferences = {
 
 type PersistStorageLike = Pick<Storage, 'getItem'>;
 
+const FINDER_VIEW_MODES = new Set<ViewMode>(['grid', 'list', 'columns']);
+const FINDER_SORT_FIELDS = new Set<SortBy>(['name', 'updatedAt', 'createdAt', 'type', 'size']);
+const FINDER_SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whitelist persisted Finder preferences at the storage boundary.
+ *
+ * Zustand's default merge trusts structurally valid JSON. A stale/corrupt value
+ * such as `{ viewMode: {} }` would therefore replace the typed initial state
+ * after our first read and later crash render/sort paths.
+ */
+export function sanitizeFinderViewPreferences(input: unknown): Partial<FinderViewPreferences> {
+  if (!isRecord(input)) return {};
+  const result: Partial<FinderViewPreferences> = {};
+  if (FINDER_VIEW_MODES.has(input.viewMode as ViewMode)) {
+    result.viewMode = input.viewMode as ViewMode;
+  }
+  if (FINDER_SORT_FIELDS.has(input.sortBy as SortBy)) {
+    result.sortBy = input.sortBy as SortBy;
+  }
+  if (FINDER_SORT_ORDERS.has(input.sortOrder as SortOrder)) {
+    result.sortOrder = input.sortOrder as SortOrder;
+  }
+  if (typeof input.quickAccessCollapsed === 'boolean') {
+    result.quickAccessCollapsed = input.quickAccessCollapsed;
+  }
+  return result;
+}
+
 function readPersistedPreferences(
   storage: PersistStorageLike,
   key: string,
@@ -453,8 +486,10 @@ function readPersistedPreferences(
   }
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { state?: Partial<FinderViewPreferences> };
-    return parsed?.state && typeof parsed.state === 'object' ? parsed.state : null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) return null;
+    const preferences = sanitizeFinderViewPreferences(parsed.state);
+    return Object.keys(preferences).length > 0 ? preferences : null;
   } catch {
     return null;
   }
@@ -1204,6 +1239,13 @@ export function createFinderStore(bucketId: string) {
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
         quickAccessCollapsed: state.quickAccessCollapsed,
+      }),
+      // The eager seed above and Zustand's hydration both read the same
+      // payload. Keep the second read behind the same whitelist; otherwise the
+      // default shallow merge can re-introduce values rejected by migration.
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...sanitizeFinderViewPreferences(persistedState),
       }),
     }
   )
