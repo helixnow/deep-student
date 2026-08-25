@@ -57,5 +57,6 @@
 - 记录级设备清单 / 实例标识 / `superseded_by` / legacy 变更 `put` 后 GET 回读字节；不一致 fail-closed，不得把错误水位当已发布。新变更分片仍走原有 size 回验
 - 文件级 `file_manifests/<kind>/<uuid>.json` 发布同样 GET 回读；短写不得把错误资产/工作区/blob 清单当已发布
 - tombstone 每设备清单 `put` 后同样 GET 回读；短写不得把错误删除集当已发布。不可变事件原本已回读。不宣称全量回读 / 远端 SHA
+- 云端 `.encryption-marker` 写入后同样 GET 回读；短写不得把错误校验子当已登记，也不得让下一台设备把同一 root 当成未加密。记录级权威快照发布仍关闭（`AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED = false`），未宣称已回读。不宣称全量回读 / 远端 SHA
 - 新整包对象名改为 22 位随机 ID，不再编码时间/设备短 ID；设备清单改短哈希文件名，旧 `manifests/<device_id>.json` 读取合并、写入后迁移；新标记 `createdByDevice` 只登记短哈希，升级保留旧全文值
 - 记录级变更/清单路径同样收敛：新写入 `data_governance/changes/<短哈希>/`、`v4/shards/<短哈希>/`、`data_governance/manifests/<短哈希>.json`；旧明文目录继续可读并与短哈希并成同一设备 seq 流；写入后迁移旧清单名。tombstone 每设备清单与不可变事件前缀同样改短哈希，旧明文名双读；水位按清单/事件内容里的完整 `device_id` 记账，不把短哈希文件名当游标；路径与内容不一致 fail-closed。文件级 `file_manifests/<kind>/<uuid>.json` 与快照 `snapshots/<库>/<uuid>.json.zst` 新写入不再编码时间或设备；旧明文/短哈希目录仍按整前缀合并。用户指南 16 已写明新备份编号不透明、记录级/文件级路径不再含完整设备名

@@ -598,11 +598,21 @@ impl CloudSyncManager {
         })
     }
 
-    /// 序列化并覆盖写入云端加密标记。
+    /// 序列化并覆盖写入云端加密标记。`put` 成功不等于对象完整落地；
+    /// 短写会把错误校验子当已登记，或让下一台设备把同一 root 当成未加密。
     async fn write_encryption_marker(&self, marker: &EncryptionMarker) -> Result<()> {
         let data = serde_json::to_vec_pretty(marker)
             .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))?;
-        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await
+        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await?;
+        match self.storage.get(ENCRYPTION_MARKER_FILE).await? {
+            Some(ref read_back) if read_back == &data => Ok(()),
+            Some(_) => Err(AppError::internal(
+                "加密标记上传后回读不一致，已停止并不得报成功".to_string(),
+            )),
+            None => Err(AppError::internal(
+                "加密标记上传后对象不存在，已停止并不得报成功".to_string(),
+            )),
+        }
     }
 
     /// 幂等写入云端加密标记：已存在则保持原样（保留首次写入者与时间）。
@@ -1961,6 +1971,107 @@ mod tests {
             .0
             .clone();
         assert_eq!(raw, b"not-json".to_vec());
+    }
+
+    struct CorruptEncryptionMarkerPut {
+        inner: Arc<MemoryStorage>,
+        persist: bool,
+    }
+
+    #[async_trait]
+    impl CloudStorage for CorruptEncryptionMarkerPut {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupt-encryption-marker"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key == ENCRYPTION_MARKER_FILE {
+                if !self.persist {
+                    return Ok(());
+                }
+                return CloudStorage::put(&self.inner, key, b"corrupted-encryption-marker").await;
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn persist_encryption_marker_fails_when_reread_mismatches() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(CorruptEncryptionMarkerPut {
+                inner: Arc::clone(&inner),
+                persist: true,
+            }),
+            "device-marker-reread".to_string(),
+        );
+        let error = manager
+            .persist_encryption_marker()
+            .await
+            .expect_err("加密标记回读不一致必须 fail-closed");
+        assert!(
+            error.to_string().contains("加密标记上传后回读不一致"),
+            "拒绝原因必须指向标记回读，实际: {error}"
+        );
+        assert_eq!(
+            inner
+                .files
+                .lock()
+                .unwrap()
+                .get(ENCRYPTION_MARKER_FILE)
+                .map(|(data, _)| data.as_slice()),
+            Some(b"corrupted-encryption-marker".as_slice()),
+            "损坏的标记可保留供对照，但不得报成功"
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_encryption_marker_fails_when_missing_after_put() {
+        let inner = Arc::new(MemoryStorage::default());
+        let manager = CloudSyncManager::new(
+            Box::new(CorruptEncryptionMarkerPut {
+                inner: Arc::clone(&inner),
+                persist: false,
+            }),
+            "device-marker-missing".to_string(),
+        );
+        let error = manager
+            .persist_encryption_marker()
+            .await
+            .expect_err("加密标记上传后缺失必须 fail-closed");
+        assert!(
+            error.to_string().contains("加密标记上传后对象不存在"),
+            "拒绝原因必须指向标记缺失，实际: {error}"
+        );
+        assert!(
+            inner
+                .files
+                .lock()
+                .unwrap()
+                .get(ENCRYPTION_MARKER_FILE)
+                .is_none(),
+            "假装成功却未落地的标记不得被当成已登记"
+        );
     }
 
     /// [R06] 未知 KDF（可能来自更新版本应用）不能被当作旧标记升级覆盖，必须 fail-closed。
