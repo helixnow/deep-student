@@ -1621,13 +1621,34 @@ impl SyncManager {
         });
         let bytes = serde_json::to_vec_pretty(&body)
             .map_err(|e| SyncError::Database(format!("序列化远端实例标识失败: {}", e)))?;
-        storage
-            .put(Self::INSTANCE_KEY, &bytes)
-            .await
-            .map_err(|e| SyncError::Network(format!("写入远端实例标识失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, Self::INSTANCE_KEY, &bytes, "远端实例标识").await?;
         let store = SyncStateStore::open_default()?;
         store.bind_instance(&instance_id, provider, &endpoint_hint)?;
         Ok(instance_id)
+    }
+
+    /// 小对象 PUT 后 GET 回读字节。`put` 成功不等于对象完整落地；
+    /// 设备清单 / 实例标识静默短写会让后续同步把错误水位当已发布。
+    async fn put_bytes_and_reread(
+        storage: &dyn CloudStorage,
+        key: &str,
+        payload: &[u8],
+        context: &str,
+    ) -> Result<(), SyncError> {
+        storage
+            .put(key, payload)
+            .await
+            .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
+        match storage.get(key).await {
+            Ok(Some(read_back)) if read_back == payload => Ok(()),
+            Ok(Some(_)) => Err(SyncError::Network(format!(
+                "{context} 上传后回读不一致，已停止并不得报成功"
+            ))),
+            Ok(None) => Err(SyncError::Network(format!(
+                "{context} 上传后对象不存在，已停止并不得报成功"
+            ))),
+            Err(e) => Err(SyncError::Network(format!("{context} 上传后回读失败: {e}"))),
+        }
     }
 
     /// 上传本地清单到云端（按设备隔离，自带网络重试）
@@ -1678,10 +1699,7 @@ impl SyncManager {
             let payload = payload.clone();
             let key = key.clone();
             async move {
-                storage
-                    .put(&key, &payload)
-                    .await
-                    .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))
+                Self::put_bytes_and_reread(storage, &key, &payload, "记录级设备清单").await
             }
         })
         .await?;
@@ -1787,10 +1805,8 @@ impl SyncManager {
         let json = serde_json::to_vec_pretty(&manifest)
             .map_err(|e| SyncError::Database(format!("序列化旧设备清单失败: {}", e)))?;
         let payload = self.encode_payload(&json)?;
-        storage
-            .put(&hashed_key, &payload)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传旧设备 superseded_by 失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, &hashed_key, &payload, "旧设备 superseded_by 清单")
+            .await?;
         self.delete_legacy_device_manifest_if_migrated(storage, old_device_id)
             .await;
         Ok(())
@@ -2094,10 +2110,7 @@ impl SyncManager {
         // [P0-2] 保持与新链路一致的加密行为
         let payload = self.encode_payload(&json)?;
 
-        storage
-            .put(&key, &payload)
-            .await
-            .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+        Self::put_bytes_and_reread(storage, &key, &payload, "记录级变更(legacy)").await?;
 
         tracing::info!(
             "[sync] 变更数据已上传(legacy): device={}, count={}, key={}, encrypted={}",
@@ -12437,6 +12450,14 @@ mod tests {
         assert!(
             source.contains("Ok(Some(info)) if info.size == expected"),
             "size 与期望不符时必须拒绝推进 mark"
+        );
+        assert!(
+            source.contains("put_bytes_and_reread"),
+            "设备清单/实例标识/legacy 变更必须 GET 回读，不得只认 put 成功"
+        );
+        assert!(
+            source.contains("记录级设备清单"),
+            "upload_manifest 必须走回读闸"
         );
     }
 
