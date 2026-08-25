@@ -72,13 +72,45 @@ describe('migrateIntentToV11', () => {
   it('does not mutate the source intent', () => {
     const source: GenerativeUIIntent = {
       version: '1',
-      blocks: [{ type: 'text', props: { body: 'src' }, span: 9 as unknown as 3 }],
+      blocks: [{
+        type: 'text',
+        props: { body: 'src', nested: { labels: ['keep'] } },
+        span: 9 as unknown as 3,
+      }],
     };
     const snapshot = structuredClone(source);
 
-    migrateIntentToV11(source, { layout: { mode: 'grid', columns: 2 } });
+    const migrated = migrateIntentToV11(source, { layout: { mode: 'grid', columns: 2 } });
+    const nested = migrated.blocks[0]?.props?.nested as { labels: string[] };
+    nested.labels.push('migrated-only');
 
     expect(source).toEqual(snapshot);
+    expect(migrated.blocks[0]?.props).not.toBe(source.blocks[0]?.props);
+  });
+
+  it('preserves additive document and block fields during a loose upgrade', () => {
+    const source = {
+      version: '1',
+      blocks: [{
+        type: 'future-widget',
+        props: { nested: { value: 1 } },
+        vendorState: { enabled: true },
+      }],
+      vendorDocumentState: { revision: 7 },
+    } as unknown as GenerativeUIIntent;
+
+    const migrated = migrateIntentToV11(source) as GenerativeUIIntent & {
+      vendorDocumentState: { revision: number };
+    };
+    const migratedBlock = migrated.blocks[0] as GenerativeUIIntent['blocks'][number] & {
+      vendorState: { enabled: boolean };
+    };
+
+    expect(migrated.vendorDocumentState).toEqual({ revision: 7 });
+    expect(migratedBlock.vendorState).toEqual({ enabled: true });
+    expect(migrated.vendorDocumentState).not.toBe(
+      (source as unknown as { vendorDocumentState: object }).vendorDocumentState,
+    );
   });
 
   it('treats missing version as v1 and is idempotent after the first pass', () => {

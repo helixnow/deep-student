@@ -103,13 +103,17 @@ export function createHpiasEventBridgeHandler(
     const event = normalizeHpiasEventPayload(payload);
     if (!event) return;
 
-    if (
-      options.sessionId &&
-      'session_id' in event &&
-      typeof event.session_id === 'string' &&
-      event.session_id !== options.sessionId
-    ) {
-      return;
+    if (options.sessionId) {
+      // A scoped bridge must fail closed. Previously an event with no
+      // session_id (or a malformed non-string id) bypassed the mismatch check
+      // and contaminated the requested session's research state.
+      if (
+        !('session_id' in event) ||
+        typeof event.session_id !== 'string' ||
+        event.session_id !== options.sessionId
+      ) {
+        return;
+      }
     }
 
     handleEvent(event);

@@ -5,6 +5,8 @@
  * blocks.markdown / chart / steps / table、a11y.*、demo.recipes.* 必须存在且非空。
  */
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import zh from '@/locales/zh-CN/generativeUi.json';
 import en from '@/locales/en-US/generativeUi.json';
 import { INTENT_RECIPES } from '@/features/generative-ui/demo/intentRecipes';
@@ -47,6 +49,37 @@ function readPath(obj: Record<string, unknown>, path: string): unknown {
     if (!acc || typeof acc !== 'object') return undefined;
     return (acc as Record<string, unknown>)[key];
   }, obj);
+}
+
+function collectSourceFiles(root: string): string[] {
+  return fs.readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const absolutePath = path.join(root, entry.name);
+    if (entry.isDirectory()) return collectSourceFiles(absolutePath);
+    return /\.(?:ts|tsx)$/.test(entry.name) ? [absolutePath] : [];
+  });
+}
+
+function collectLiteralLocaleKeys(): string[] {
+  const srcRoot = path.join(process.cwd(), 'src');
+  const generativeUiRoot = path.join(srcRoot, 'features/generative-ui');
+  const keys = new Set<string>();
+
+  for (const file of collectSourceFiles(generativeUiRoot)) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/\bt\(\s*['"]([^'"]+)['"]/g)) {
+      const key = match[1];
+      if (key && !key.includes(':')) keys.add(key);
+    }
+  }
+
+  for (const file of collectSourceFiles(srcRoot)) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const match of source.matchAll(/['"]generativeUi:([A-Za-z0-9_.-]+)['"]/g)) {
+      if (match[1]) keys.add(match[1]);
+    }
+  }
+
+  return [...keys].sort();
 }
 
 const REQUIRED_BLOCK_KEYS = [
@@ -191,6 +224,19 @@ describe('generativeUi i18n parity contract (zh-CN / en-US)', () => {
         interpolationTokens(enValue),
         `placeholder mismatch for ${key}`,
       ).toEqual(interpolationTokens(zhValue));
+    }
+  });
+
+  it('registers the namespace and covers every literal production callsite', () => {
+    const i18nSource = fs.readFileSync(path.join(process.cwd(), 'src/i18n.ts'), 'utf8');
+    const allNamespaces = i18nSource.match(/const\s+ALL_NS\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+    expect(allNamespaces).toMatch(/['"]generativeUi['"]/);
+
+    for (const key of collectLiteralLocaleKeys()) {
+      expect(readPath(zh as Record<string, unknown>, key), `zh-CN missing used key: ${key}`)
+        .toEqual(expect.any(String));
+      expect(readPath(en as Record<string, unknown>, key), `en-US missing used key: ${key}`)
+        .toEqual(expect.any(String));
     }
   });
 });

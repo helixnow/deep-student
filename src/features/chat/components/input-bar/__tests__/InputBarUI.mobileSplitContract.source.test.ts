@@ -12,12 +12,26 @@ describe('split input bar mobile contract', () => {
   const toolbarSource = readInputBarSource('ComposerToolbar.tsx');
   const panelSource = readInputBarSource('AttachmentPanelBody.tsx');
   const helperSource = readInputBarSource('attachmentModeHelpers.ts');
+  const chatContainerSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/ChatContainer.tsx'),
+    'utf-8'
+  );
+  const legacyInputBarSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/InputBar.tsx'),
+    'utf-8'
+  );
 
   it('keeps split components as the owners of toolbar and attachment rendering', () => {
     expect(inputBarSource).toContain("import { ComposerToolbar } from './ComposerToolbar';");
     expect(inputBarSource).toContain("import { AttachmentPanelBody } from './AttachmentPanelBody';");
     expect(inputBarSource).not.toContain('function ContextWindowUsageRing');
     expect(toolbarSource).toContain('function ContextWindowUsageRing');
+  });
+
+  it('keeps the active chat surface on InputBarV2 instead of the legacy InputBar', () => {
+    expect(chatContainerSource).toContain('<InputBarV2');
+    expect(chatContainerSource).not.toMatch(/<InputBar(?:\s|>)/);
+    expect(legacyInputBarSource).toContain('@deprecated Legacy');
   });
 
   it('keeps coarse-pointer toolbar controls and search at mobile-safe sizes', () => {

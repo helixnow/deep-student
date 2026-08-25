@@ -21,6 +21,18 @@ export interface MigrateIntentToV11Options {
   layout?: MigrateIntentToV11Layout;
 }
 
+function cloneJsonValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneJsonValue(item)) as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, cloneJsonValue(item)]),
+    ) as T;
+  }
+  return value;
+}
+
 function normalizeMode(mode: unknown): GenerativeLayoutMode {
   return mode === 'grid' ? 'grid' : 'stack';
 }
@@ -37,9 +49,10 @@ function normalizeLayout(
 }
 
 function normalizeBlock(block: GenerativeBlockIntent): GenerativeBlockIntent {
-  const next: GenerativeBlockIntent = { type: block.type };
-  if (block.props !== undefined) next.props = block.props;
-  if (block.id !== undefined) next.id = block.id;
+  // This is a version migration rather than a schema filter. Keep additive
+  // block fields from imported/future documents and detach nested JSON props
+  // so editing the migrated document cannot mutate the persisted v1 source.
+  const next = cloneJsonValue(block);
   if (block.span !== undefined) next.span = clampGenerativeLayoutUnit(block.span);
   return next;
 }
@@ -53,11 +66,12 @@ export function migrateIntentToV11(
   options: MigrateIntentToV11Options = {},
 ): GenerativeUIIntent {
   const layout = normalizeLayout(options.layout ?? intent.layout);
-  const migrated: GenerativeUIIntent = {
-    version: '1.1',
-    blocks: (intent.blocks ?? []).map((block) => normalizeBlock(block)),
-  };
+  // Preserve additive top-level fields for lossless upgrades. Generative UI
+  // intents cross persistence/import boundaries and are JSON-compatible.
+  const migrated = cloneJsonValue(intent);
+  migrated.version = '1.1';
+  migrated.blocks = (intent.blocks ?? []).map((block) => normalizeBlock(block));
   if (layout) migrated.layout = layout;
-  if (intent.meta !== undefined) migrated.meta = { ...intent.meta };
+  else delete migrated.layout;
   return migrated;
 }
