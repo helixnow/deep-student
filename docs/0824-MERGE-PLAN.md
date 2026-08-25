@@ -782,3 +782,54 @@ src-tauri/Cargo.toml --lib`（Rust 1.98，本 VM 补装
 libgtk-3-dev/libwebkit2gtk-4.1-dev/libsoup-3.0-dev/protobuf-compiler 并
 经 `scripts/download-pdfium.sh` 取回 `libpdfium.so` 后 exit 0，28 条
 既有 warning）。不合并任何隔离 PR，不 reset 0824 到 #177 tip。
+
+### Step 17 收口：#177 多段清理/GET 停滞超时 + regress 两测试回收
+
+日期：2026-08-25。基座 `865d2e4c`（Step 16 tip）。fetch
+`origin/cursor/cloud-sync-sota-b343`，tip 前进到 `89808fd8`；
+`0824..#177` 共 14 个提交，其中 12 个经 `git cherry` 确认与
+Step 10-16 的端口 patch 等价（`ef3c104d`/`8eb675ce`/`75f12160`/
+`f39f0d3a`/`0fcbc59b`/`bb81e9d6`/`86a1e7c4`/`6d6769bc`/`f7efe4e5`/
+`405ad31f`/`a439433a`/`519fb9d2`，SKIP 不重放）；2 个为真正新增，
+按序干净 cherry-pick 零冲突：
+
+- `edd5672d` → `957fe6d7`：同 key 的 S3 multipart 上传在开新 multipart
+  前列出并 abort 6 小时以前的陈旧 upload（崩溃残留持续吃配额）；
+  缺 `Initiated` 或 list/abort 出错不阻塞当前上传，避免误杀并行的
+  同 hash 活跃上传；
+- `89808fd8` → `172fd10d`：record 级 shard/manifest 走的内存对象 GET
+  在 WebDAV 与 S3 上改用与文件下载一致的 90s per-chunk 停滞超时
+  （原为 300s 全体超时或 SDK collect 裸等），声明长度时仍拒短体。
+
+编译期间与收口后两次复 fetch #177，tip 均为 `89808fd8`，其后无更多
+提交；`git cherry 0824 #177` 无 `+` 残留。
+
+另按可选项回收 `origin/cursor/0824-regress-latest-cde6` 两个纯测试
+提交（与上述两端口零文件重叠，逐 hunk 核实仅测试编译生效）：
+
+- `2e74b23c` → `c8f40a01`：`state.rs` 新增 `#[cfg(test)]`-only
+  `test_write_lock`，三个会写共享 `sync_state.db` 的 tombstone 测试
+  入口取锁串行，消除并行 harness 下 SQLite 死锁检测绕过 busy_timeout
+  直接 `database is locked` 的偶发红灯；产品代码零改动；
+- `f4ef3459` → `54da9c33`：`builtinSkillLocalization.test.ts` 钉住
+  zh-CN/en-US 的 generative-ui 内置名与描述（锁 Step 15 落地内容）。
+
+- 编译门禁：`npm run typecheck`（先 `version:generate`）、
+  `npx vite build`（仅既有 chunk 警告）、`cargo check --manifest-path
+  src-tauri/Cargo.toml --lib` 均 exit 0（Rust 1.98，本 VM 补装
+  libgtk-3-dev/libwebkit2gtk-4.1-dev/libsoup-3.0-dev/protobuf-compiler
+  并经 `scripts/download-pdfium.sh` 取回 `libpdfium.so`；28 条既有
+  warning）；
+- 定向测试：`builtinSkillLocalization` vitest 4/4 绿；三个串行化
+  tombstone 测试 `cargo test --lib` 3/3 绿；
+- Step 9 §9.4 的 18 项不变量逐项复查仍为 **18/18 PASS**：tombstone
+  （`tombstone.rs` 在树且发布后复读在位）、WebDAV `decode_path`、
+  S3 `normalize_endpoint`、FTP 550/501 白名单、Composer* 拆分
+  （input-bar 下 Composer 组件族齐全）、附件 200/50
+  （`ATTACHMENT_MAX_SIZE`/`ATTACHMENT_IMAGE_MAX_SIZE`）、G 44px /
+  safe-area / Android 返回键、HPIAS `session_id` 过滤与 18-block
+  allowlist（`generative_ui_executor.rs` 恰 18 项）、无 mythos-5 /
+  haiku-5 真实条目（仅防伪造守护）、NOTICES 在 `legal/`、
+  GenerativeUiExecutor 注册等全部在位；
+- SKIP：#177 全部已等价落地的 12 个 SHA（不回退不重置），以及全部
+  隔离 PR；regress 枝其余内容未取。
