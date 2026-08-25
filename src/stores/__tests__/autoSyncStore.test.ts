@@ -6,7 +6,7 @@
  *    skipped 不影响退避计数、关闭开关后停止调度；
  * 2. performAutoSyncOnce 的安全防线：无配置 / 缺凭据 / 凭据状态查询失败时
  *    绝不执行同步（fail-close），与全局同步锁互斥，断层预检 fail-close；
- * 3. useAutoSyncStore：默认关闭，且只持久化 enabled 一个字段。
+ * 3. useAutoSyncStore：默认关闭、持久化白名单，以及损坏 localStorage 的恢复。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -346,6 +346,7 @@ describe('useAutoSyncStore', () => {
   beforeEach(() => {
     useAutoSyncStore.setState({
       enabled: false,
+      intervalPreset: '15m',
       lastOutcome: null,
       lastRunAtMs: null,
       consecutiveFailures: 0,
@@ -375,5 +376,42 @@ describe('useAutoSyncStore', () => {
       // 关闭以停掉 setEnabled(true) 启动的单例调度器，避免测试残留定时器
       useAutoSyncStore.getState().setEnabled(false);
     }
+  });
+
+  it('discards malformed persisted JSON and completes hydration with defaults', async () => {
+    localStorage.setItem('dstu-auto-sync', '{"state":');
+
+    await useAutoSyncStore.persist.rehydrate();
+
+    expect(useAutoSyncStore.persist.hasHydrated()).toBe(true);
+    expect(useAutoSyncStore.getState()).toMatchObject({
+      enabled: false,
+      intervalPreset: '15m',
+      lastOutcome: null,
+      lastRunAtMs: null,
+      consecutiveFailures: 0,
+    });
+    expect(localStorage.getItem('dstu-auto-sync')).toBeNull();
+  });
+
+  it('sanitizes invalid fields from a current-version persisted envelope', async () => {
+    localStorage.setItem('dstu-auto-sync', JSON.stringify({
+      version: 2,
+      state: {
+        enabled: 'true',
+        intervalPreset: 'daily',
+        lastOutcome: 'unknown',
+        lastRunAtMs: -1,
+      },
+    }));
+
+    await useAutoSyncStore.persist.rehydrate();
+
+    expect(useAutoSyncStore.getState()).toMatchObject({
+      enabled: false,
+      intervalPreset: '15m',
+      lastOutcome: null,
+      lastRunAtMs: null,
+    });
   });
 });
