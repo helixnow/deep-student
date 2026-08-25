@@ -457,6 +457,14 @@
       ]
     },
     {
+      "database": "mistakes",
+      "version": 20260824,
+      "name": "normalize_anki_card_optional_json",
+      "path": "mistakes/V20260824__normalize_anki_card_optional_json.sql",
+      "sha256": "b184526ebb7044c223b239b32f67e4a26f33a7d82abc509929f1a9cf0bc29067",
+      "dangers": []
+    },
+    {
       "database": "vfs",
       "version": 20260130,
       "name": "init",
