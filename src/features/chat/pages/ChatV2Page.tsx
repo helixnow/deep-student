@@ -58,7 +58,7 @@ const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedA
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
-import { useChatPageLayout } from './useChatPageLayout';
+import { useChatPageLayout, openAppInLearningHubRef } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
@@ -887,7 +887,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         {/* 应用面板（当有 openApp 时显示） */}
         {openApp && (
           <>
-            <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
+            <PanelResizeHandle
+              hitAreaMargins={{ coarse: 19, fine: 5 }}
+              className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center"
+            >
               <DotsSixVertical size={12} className="text-muted-foreground/50" />
             </PanelResizeHandle>
             <Panel
@@ -957,6 +960,15 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setMobileResourcePanelOpen(false);
   }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
 
+  // 移动端右屏资源预览顶栏「在学习中心打开」：挂载期间写入桥接句柄
+  //（与 groupEditorSubmitRef 同模式，见 useChatPageLayout）
+  useEffect(() => {
+    openAppInLearningHubRef.current = handleOpenInLearningHub;
+    return () => {
+      openAppInLearningHubRef.current = null;
+    };
+  }, [handleOpenInLearningHub]);
+
   const openCurrentSessionSettings = useCallback(() => {
     if (!currentSessionId) return;
     const store = sessionManager.get(currentSessionId);
@@ -974,7 +986,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
-    mobileSandboxOpen, closeMobileSandbox,
+    mobileSandboxOpen, closeMobileSandbox, sandboxOwnerKey,
     openAppTitle: openApp ? (openApp.title ?? '') : null,
     closeMobileOpenApp,
     groupEditorOpen,
@@ -1028,10 +1040,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <X size={16} className="text-muted-foreground" />
             </DsButton>
           </div>
@@ -1103,12 +1115,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             hint={t('page.emptyPage.hint')}
             actions={
               <>
-                <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
+                <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void createSession()}>
                   <Plus size={14} />
                   {t('page.newChat')}
                 </DsButton>
                 {!isSmallScreen && sessions.length > 0 && (
-                  <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                  <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => setViewMode('browser')}>
                     <SquaresFour size={14} />
                     {t('browser.title')}
                   </DsButton>
@@ -1143,11 +1155,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           variant="ghost"
           size="sm"
           autoFocus
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={() => setPendingArchiveGroup(null)}
         >
           {t('common:cancel')}
         </DsButton>
-        <DsButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+        <DsButton variant="warning" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void confirmArchiveGroup()}>
           {t('page.archiveGroupConfirm')}
         </DsButton>
       </div>
@@ -1242,6 +1255,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               {sandboxWorkbenchOpen && sandboxActiveSession ? (
                 <SandboxWorkbenchSurface
                   embedded
+                  // 移动端右屏已有统一顶栏（useChatPageLayout 的 mobileSandboxOpen
+                  // 分支，含刷新/检查器动作），再画 SandboxToolbar 会形成双顶栏
+                  //（与 SandboxWorkbenchPage 独立视图的小屏处理对齐）
+                  hideToolbar
                   className="h-full"
                   onClose={handleCloseSandbox}
                   ownerKey={sandboxOwnerKey}
@@ -1391,7 +1408,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               iconOnly
               onClick={toggleSandboxWorkbench}
               className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg',
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
                 sandboxWorkbenchOpen
                   ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
                   : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'

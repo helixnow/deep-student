@@ -1054,7 +1054,7 @@ export function FinderFileList({
             variant="default"
             size="sm"
             onClick={onRetry}
-            className="[@media(pointer:coarse)]:min-h-11"
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowClockwise size={14} className="mr-1.5" />
             {t('finder.error.retry')}
@@ -1093,7 +1093,7 @@ export function FinderFileList({
           <DsButton
             variant="default"
             size="sm"
-            className="mt-4 [@media(pointer:coarse)]:min-h-11"
+            className="mt-4 [@media(pointer:coarse)]:!min-h-11"
             onClick={(e) => {
               e.stopPropagation();
               onContainerContextMenu(e);

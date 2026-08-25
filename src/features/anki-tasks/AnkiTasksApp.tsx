@@ -448,7 +448,9 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     onMenuClick: sidebarOpen
       ? () => setSidebarOpen(false)
       : () => setSidebarOpen(true),
-  }, [t, isSmallScreen, sidebarOpen]);
+  }, [t, isSmallScreen, sidebarOpen, workbenchWindowId],
+  // Workbench 窗口内嵌入时不接管全局移动端顶栏（对照 TodoContentView）
+  !workbenchWindowId);
 
   const renderMobileShell = (body: React.ReactNode) => {
     if (!isSmallScreen) {
@@ -502,17 +504,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
-              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
+              <DsButton size="sm" variant="utility" onClick={cycleSort} className="h-7 [@media(pointer:coarse)]:!h-11">
                 <ArrowsDownUp size={14} />
                 <span className="text-[11px]">{sortLabel}</span>
               </DsButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7" aria-label={t('taskDashboard.recoverStuck')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7 [@media(pointer:coarse)]:!h-11" aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -548,7 +550,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                       size="sm"
                       variant={preventSleep ? 'secondary' : 'ghost'}
                       onClick={togglePreventSleep}
-                      className="ml-1 h-6 text-[12px]"
+                      className="ml-1 h-6 text-[12px] [@media(pointer:coarse)]:!h-11"
                     >
                       <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
                       {t('taskDashboard.preventSleep')}
@@ -582,7 +584,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               </CommonTooltip>
               {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
               {!isSmallScreen && (
-                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
+                <DsButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px] [@media(pointer:coarse)]:!min-h-11">
                   {t('taskDashboard.openTemplateLib')}
                 </DsButton>
               )}
@@ -649,7 +651,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
-            className="w-full justify-center h-9"
+            className="w-full justify-center h-11"
           >
             {t('taskDashboard.openTemplateLib')}
           </DsButton>
@@ -666,9 +668,13 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               size="compact"
               className="flex-shrink-0"
               itemClassName={isSmallScreen
-                // 移动端加大纵向点击区，接近触控目标标准
-                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap'
-                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap'}
+                // 移动端加大纵向点击区，接近触控目标标准；
+                // 触控闸门必须用 pointer:coarse（iPad 横屏视口 ≥768 走桌面分支，
+                // 不能只靠 isSmallScreen）。!min-h-11 带 important：app.css 的
+                // .study-shell-segmented-button { min-height: 0 } 会盖掉基元里
+                // 非 important 的 coarse min-h-11
+                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
               options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
                 const labelText =
                   tab === 'all'
@@ -704,10 +710,10 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px]"
+                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-[12px] [@media(pointer:coarse)]:!h-11"
               />
               {search && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
                   <X size={12} />
                 </DsButton>
               )}
@@ -716,15 +722,15 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
+                <DsButton size="sm" variant="utility" onClick={cycleSort} className="[@media(pointer:coarse)]:!min-h-11" aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
                   <span className="text-[11px]">{sortLabel}</span>
                 </DsButton>
-                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
+                <DsButton size="sm" variant="utility" onClick={load} className="w-11 p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="[@media(pointer:coarse)]:!min-h-11" aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -747,7 +753,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               <DsButton
                 size="sm"
                 variant="primary"
-                className="mt-2"
+                className="mt-2 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
                   // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图

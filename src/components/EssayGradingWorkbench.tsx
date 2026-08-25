@@ -1376,6 +1376,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onGenerateCards={() => { void handleGenerateCards(); }}
           isGeneratingCards={isGeneratingCards}
           settingsAsPage={externalSettingsNavigation}
+          isActive={isActive}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
             total: totalRounds,

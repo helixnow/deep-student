@@ -361,30 +361,6 @@
   gap: 4px;
 }
 
-.icon-button {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  color: hsl(var(--muted-foreground));
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.icon-button:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--foreground));
-}
-
-.icon-button.danger:hover {
-  background: hsl(var(--danger-bg));
-  color: hsl(var(--danger));
-}
-
 /* 预览区域 */
 .preview-section {
   background: hsl(var(--card));

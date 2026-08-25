@@ -271,14 +271,14 @@ const ReviewQuestionCard: React.FC<{
         !isSelected && !isExpanded && 'hover:bg-accent'
       )}
     >
-      <div className="group flex min-h-11 items-center gap-2 px-2 py-1.5 sm:min-h-0">
-        {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
+      <div className="group flex items-center gap-2 px-2 py-1.5 [@media(pointer:coarse)]:min-h-11">
+        {/* 复选框：触控命中区 ≥44px（coarse 指针，含平板），视觉盒保持 16px */}
         <button
           type="button"
           role="checkbox"
           aria-checked={isSelected}
           aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
-          className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+          className="flex h-6 w-6 shrink-0 items-center justify-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-2 [@media(pointer:coarse)]:-ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
           onClick={(e) => {
             e.stopPropagation();
             onSelect(!isSelected);
@@ -352,7 +352,7 @@ const ReviewQuestionCard: React.FC<{
               'shrink-0 transition-transform duration-200 ease-standard',
               isExpanded
                 ? 'rotate-90 text-muted-foreground/60'
-                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60'
+                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40'
             )}
           />
         </button>
@@ -432,7 +432,7 @@ const ReviewQuestionCard: React.FC<{
                     variant="warning"
                     size="sm"
                     onClick={onRedo}
-                    className="gap-1.5 !h-auto min-h-8 !px-2.5 !py-1 text-xs"
+                    className="gap-1.5 !h-auto min-h-8 [@media(pointer:coarse)]:!min-h-[44px] !px-2.5 !py-1 text-xs"
                   >
                     <ArrowClockwise size={13} />
                     {t('review:questions.redo')}
@@ -772,6 +772,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <SegmentedControl<ReviewSortBy>
           ariaLabel={t('review:questions.sortLabel')}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           value={sortBy}
           onValueChange={setSortBy}
           options={[

@@ -227,8 +227,8 @@ const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
         alt={preview.name}
         className="w-full h-full object-cover"
       />
-      {/* Hover 遮罩 */}
-      <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Hover 遮罩（触屏无 hover：放大入口半透明常显，与 AttachmentPreview/ImagePreview 同理） */}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 transition-opacity">
         <ArrowsOut size={20} className="text-white drop-shadow-md" />
       </div>
     </button>
@@ -446,7 +446,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
           size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
           // ★ 低-13：去掉 !py-0.5 压缩，恢复 sm 尺寸的默认高度（触控更易命中）
-          className="!px-2 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
+          className="!px-2 [@media(pointer:coarse)]:!min-h-11 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {isExpanded ? (
             <span>{t('contextRefs.collapse')}</span>

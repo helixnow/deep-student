@@ -281,6 +281,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   iconButtonClass,
                   isMobile && '!rounded-full',
                   'relative transition-colors disabled:opacity-60',
+                  '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                   open && 'bg-[color:var(--button-secondary-surface)]',
                 )}
                 aria-label={t('chatV2:inputBar.plusMenu.trigger')}
@@ -661,7 +662,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
         <button
           type="button"
-          className="shrink-0 text-[11px] text-warning underline-offset-2 hover:underline"
+          className="inline-flex shrink-0 items-center text-[11px] text-warning underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-11"
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
@@ -677,7 +678,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
             'bg-warning/15 px-1.5 text-[10px] font-medium leading-none text-warning',
             'hover:bg-warning/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning/40',
-            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-['']",
+            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-[''] [@media(pointer:coarse)]:after:-inset-y-2.5",
           )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="full-access-active"
@@ -697,7 +698,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
             'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
             'bg-destructive px-1.5 text-[10px] font-medium leading-none text-destructive-foreground shadow-sm',
             'hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/50',
-            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-['']",
+            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-[''] [@media(pointer:coarse)]:after:-inset-y-2.5",
           )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="danger-full-access-active"

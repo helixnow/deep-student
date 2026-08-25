@@ -235,11 +235,11 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full bg-background gap-4 px-6" role="alert">
         <p className="text-destructive text-center break-words max-w-md">{error}</p>
         <div className="flex gap-2">
-          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
+            <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
               {t('common:close')}
             </DsButton>
           )}

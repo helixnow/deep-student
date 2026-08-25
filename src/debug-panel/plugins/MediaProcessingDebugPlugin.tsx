@@ -157,7 +157,7 @@ const EventEntry: React.FC<{
 
   return (
     <div
-      className="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors"
+      className="border-b border-border/50 py-2 px-2 hover:bg-muted/30 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11"
       onClick={onToggle}
     >
       <div className="flex items-center gap-2">
@@ -638,13 +638,14 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <DsButton
             variant={isPaused ? 'warning' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setIsPaused(!isPaused)}
           >
             {isPaused ? <Eye size={16} className="mr-1" /> : <EyeSlash size={16} className="mr-1" />}
             {isPaused ? '恢复' : '暂停'}
           </DsButton>
 
-          <DsButton variant="ghost" size="sm" onClick={clearEvents}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={clearEvents}>
             <Trash size={16} className="mr-1" />
             清空
           </DsButton>
@@ -652,6 +653,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <DsButton
             variant={showStore ? 'primary' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setShowStore(!showStore)}
           >
             <Lightning size={16} className="mr-1" />
@@ -663,6 +665,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <DsButton
             variant={filter === 'all' ? 'primary' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setFilter('all')}
           >
             全部
@@ -670,6 +673,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <DsButton
             variant={filter === 'pdf' ? 'primary' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setFilter('pdf')}
           >
             <FileText size={12} className="mr-1" />
@@ -678,6 +682,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <DsButton
             variant={filter === 'image' ? 'primary' : 'ghost'}
             size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
             onClick={() => setFilter('image')}
           >
             <FileImage size={12} className="mr-1" />

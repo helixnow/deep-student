@@ -216,7 +216,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
-        className="w-full !justify-start gap-1.5 !py-0.5 text-left text-muted-foreground hover:text-foreground"
+        className="w-full !justify-start gap-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-left text-muted-foreground hover:text-foreground"
       >
         <CaretDown
           className={cn(

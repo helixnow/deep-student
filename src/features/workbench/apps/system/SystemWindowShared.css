@@ -272,12 +272,6 @@
     transform: translateY(-50%);
     opacity: 1;
   }
-
-  /* 抽屉关闭按钮：22px 视觉过小，触屏放大到 40px 命中区 */
-  .wb-sys-drawer-close {
-    width: 40px;
-    height: 40px;
-  }
 }
 
 /* ---- 遮罩 ---- */
@@ -374,6 +368,16 @@
 .wb-sys-drawer-close:focus-visible {
   outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
   outline-offset: 1px;
+}
+
+/* 抽屉关闭按钮：22px 视觉过小，触屏放大到 44px 命中区。
+   必须排在上方 22px 基线之后——同特异性下靠源顺序取胜，
+   写在基线前的 coarse 覆盖会被基线反压回 22px（R89 修复） */
+@media (pointer: coarse) {
+  .wb-sys-drawer-close {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* 抽屉面板自身可编程聚焦（tabIndex=-1），不画默认外框 */

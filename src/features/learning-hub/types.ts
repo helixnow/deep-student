@@ -28,7 +28,7 @@ export type WorkMode = 'canvas' | 'fullscreen';
 
 /**
  * 视图模式
- * - list: 列表视图（复用 DndFileTree）
+ * - list: 列表视图
  * - grid: 图标/网格视图
  * - columns: Finder 分栏视图（仅桌面全屏宿主使用；与 stores/finderStore 的
  *   ViewMode 保持一致，分栏 UI 落地前由 FinderFileList 回退为 grid 渲染）

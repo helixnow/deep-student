@@ -62,6 +62,7 @@ const LoadingSpinner: React.FC = () => {
  */
 const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   node,
+  isActive,
 }) => {
   const { t } = useTranslation(['textbook', 'common', 'learningHub']);
   const {
@@ -727,7 +728,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     if (!fileContent) {
       return contentLoadingView;
     }
-    return <EpubPreview base64Content={fileContent} fileName={node.name} resourceId={node.id} />;
+    return <EpubPreview base64Content={fileContent} fileName={node.name} resourceId={node.id} isActive={isActive} />;
   }
 
   // 纯文本预览

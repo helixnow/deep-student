@@ -79,7 +79,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
         </div>
         
         {onClose && (
-          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('attachmentValidation.close_notice')}>
             <X size={16} />
           </DsButton>
         )}

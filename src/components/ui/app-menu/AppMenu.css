@@ -527,10 +527,21 @@
   }
 }
 
-/* 触屏设备（无 hover）：菜单项触控目标 ≥40px（移动端契约），
-   用 pointer:coarse 而非视口宽度判定，覆盖 640-767px 触屏平板 */
-@media (hover: none) and (pointer: coarse) {
+/* 触屏设备：菜单项触控目标 ≥44px（iOS HIG 基线）。
+   只判定 pointer:coarse，不叠加 hover:none——iPad 外接触控板时
+   hover:hover 与 pointer:coarse 并存，叠加条件会导致规则失效 */
+@media (pointer: coarse) {
   .app-menu-item {
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  /* 选项组按钮不复用 .app-menu-item（16px 标签 + 10px 描述 ≈ 34px），单独补 44 */
+  .app-menu-option-item {
+    min-height: 44px;
+  }
+
+  /* iOS 对 <16px 输入聚焦时会强制放大页面（token 基线 13px） */
+  .app-menu-search-input {
+    font-size: 16px;
   }
 }

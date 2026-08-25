@@ -481,7 +481,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+              className="relative !h-10 !w-10 !p-0 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
               aria-label={createSessionLabel}
               title={createSessionLabel}
               onClick={() => handleCreateSessionInFolder(id)}
@@ -495,7 +495,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="relative !h-10 !w-10 !p-0 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
                     aria-label={t('page.groupActions')}
                     title={t('page.groupActions')}
                   >
@@ -551,7 +551,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <DsButton
                 variant="warning"
                 size="sm"
-                className="!h-9 lg:!h-7 !px-2 text-[12px]"
+                className="!h-9 lg:!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-[12px]"
                 onClick={() => {
                   clearArchiveConfirm();
                   onArchiveGroup(group);
@@ -563,7 +563,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-9 !w-9 lg:!h-7 lg:!w-7"
+                className="!h-9 !w-9 lg:!h-7 lg:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('common:cancel')}
                 onClick={clearArchiveConfirm}
               >
@@ -662,7 +662,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               onClick={onCreateGroup}
               aria-label={t('page.createGroup')}
               title={t('page.createGroup')}
-              className="!h-10 !w-10 -my-2 shrink-0 text-muted-foreground/80"
+              className="!h-10 !w-10 -my-2 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2.5 shrink-0 text-muted-foreground/80"
             >
               <Plus size={15} />
             </DsButton>
@@ -715,7 +715,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     size="sm"
                     onClick={() => { void loadMoreSessions(); }}
                     disabled={isLoadingMore}
-                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)] [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
                     <span>{t('page.loadMore')}</span>
@@ -780,7 +780,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2"
+          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
           aria-label={t('page.clearSearch')}
           onClick={() => handleSearchChange('')}
         >
@@ -803,7 +803,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground"
+          className="shell-icon-button !h-10 !w-10 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full shrink-0 text-muted-foreground"
           onClick={() => setSessionSheetOpen(false)}
           aria-label={t('common:close')}
         >

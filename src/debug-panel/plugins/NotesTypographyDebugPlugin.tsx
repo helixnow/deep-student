@@ -263,7 +263,7 @@ export default function NotesTypographyDebugPlugin() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setPaused(!paused)}
-            className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${
+            className={`px-2 py-1 text-xs rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 ${
               paused 
                 ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
                 : 'bg-gray-500 text-white hover:bg-gray-600'
@@ -275,7 +275,7 @@ export default function NotesTypographyDebugPlugin() {
           </button>
           <button
             onClick={clearLogs}
-            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="清空日志"
           >
             <Trash size={12} />
@@ -283,7 +283,7 @@ export default function NotesTypographyDebugPlugin() {
           </button>
           <button
             onClick={copyToClipboard}
-            className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="复制全部日志"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -334,7 +334,7 @@ export default function NotesTypographyDebugPlugin() {
       {/* 最新快照 */}
       {state.snapshots.length > 0 && (
         <details className="p-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded">
-          <summary className="cursor-pointer font-semibold">
+          <summary className="cursor-pointer font-semibold [@media(pointer:coarse)]:min-h-11">
             📸 最新编辑器快照 ({new Date(state.snapshots[0].timestamp).toLocaleTimeString()})
           </summary>
           <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
@@ -363,12 +363,12 @@ export default function NotesTypographyDebugPlugin() {
           placeholder="搜索日志..."
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600"
+          className="flex-1 px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
         />
         <select
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value)}
-          className="px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600"
+          className="px-2 py-1 text-xs border rounded dark:bg-gray-800 dark:border-gray-600 [@media(pointer:coarse)]:min-h-11"
         >
           <option value="all">全部分类</option>
           <option value="lifecycle">生命周期</option>
@@ -407,7 +407,7 @@ export default function NotesTypographyDebugPlugin() {
               </div>
               {Object.keys(log.details).length > 0 && (
                 <details className="mt-1">
-                  <summary className="cursor-pointer text-[10px] text-blue-600 dark:text-blue-400">
+                  <summary className="cursor-pointer text-[10px] text-blue-600 dark:text-blue-400 [@media(pointer:coarse)]:min-h-11">
                     详情 ({Object.keys(log.details).length} 个字段)
                   </summary>
                   <pre className="mt-1 p-1 bg-white dark:bg-gray-900 rounded text-[9px] overflow-x-auto">
@@ -423,7 +423,7 @@ export default function NotesTypographyDebugPlugin() {
       {/* 使用说明 */}
       <div className="pt-2 border-t border-gray-300 dark:border-gray-700 text-gray-500 text-[10px]">
         <details>
-          <summary className="cursor-pointer">使用说明</summary>
+          <summary className="cursor-pointer [@media(pointer:coarse)]:min-h-11">使用说明</summary>
           <div className="mt-1 space-y-1">
             <div>1. 打开笔记模块，选择一篇笔记</div>
             <div>2. 在编辑器中选中一些文本</div>

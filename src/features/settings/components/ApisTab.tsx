@@ -132,7 +132,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
         className="py-0"
         contentClassName="space-y-4"
       >
-        {/* Settings 顶栏已渲染 tab 标题（故 hideHeader 防重复），
+        {/* 移动端 Settings Sheet header 已渲染 tab 标题（故 hideHeader 防重复），
             这里单独补回分区描述，给从欢迎弹窗进来的新用户「这是什么/该做什么」的定位。
             移动端进入供应商详情态时隐藏，避免挤占详情面板。 */}
         {!(isSmallScreen && mobileVendorDetailOpen) && (

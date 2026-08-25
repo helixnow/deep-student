@@ -298,11 +298,12 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
       return (
         <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
+          {/* 不挂 onClick：CommonTooltip 仅对无自身点击行为的子元素启用触屏 tap 切换，
+              否则 reason 在触屏上只能靠 hover 不可达（点击不会冒泡触发选项选择） */}
           <button
             type="button"
             aria-label={t('askUser.optionReasonLabel')}
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)]"
-            onClick={(e) => e.stopPropagation()}
+            className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
             onPointerDown={(e) => e.stopPropagation()}
           >
             <Info size={14} weight="bold" />
@@ -412,7 +413,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                 <label
                   key={index}
                   className={cn(
-                    'flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-shell-control)] border px-3 py-2 transition-colors',
+                    'flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-shell-control)] border px-3 py-2 transition-colors [@media(pointer:coarse)]:min-h-11',
                     isChecked
                       ? 'border-[color:var(--border-strong)] bg-[color:var(--interactive-selected)]'
                       : isRecommended
@@ -458,7 +459,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   size="sm"
                   onClick={() => handleSingleSelect(index, option.label)}
                   disabled={isResponding}
-                  className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent"
+                  className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!-my-2"
                 >
                   <span className="flex-1">{option.label}</span>
                 </DsButton>
@@ -483,7 +484,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             size="sm"
             onClick={handleMultiConfirm}
             disabled={isResponding || (checkedIndices.size === 0 && !customInput.trim())}
-            className="w-full"
+            className="w-full [@media(pointer:coarse)]:!min-h-11"
           >
             <Check size={14} className="mr-1.5" />
             {t('askUser.confirmSelection')}
@@ -525,6 +526,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               disabled={isResponding || !customInput.trim()}
               iconOnly
               aria-label={t('askUser.send')}
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <PaperPlaneRight size={14} />
             </DsButton>

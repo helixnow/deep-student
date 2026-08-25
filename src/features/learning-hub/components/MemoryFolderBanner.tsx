@@ -485,13 +485,13 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={4}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-[11px] [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setBatchImportType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
@@ -520,7 +520,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setActivePanel(null); } }}
                 autoFocus
-                className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
+                className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
               />
               <Textarea
                 placeholder={t('memory.content_placeholder_study')}
@@ -534,13 +534,13 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   }
                 }}
                 rows={3}
-                className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
+                className="w-full px-2 py-1.5 text-[11px] [@media(pointer:coarse)]:text-[16px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
                 <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setNewType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-2xs', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>

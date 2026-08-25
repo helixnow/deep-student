@@ -465,6 +465,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleProfileChange(next as PerformanceProfile);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'quality',
@@ -499,6 +500,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleTierChange(next as MaterialTierSetting);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             { value: 'auto', label: t('workbench:settings.materialTier.auto') },
             { value: 'full', label: t('workbench:settings.materialTier.full') },
@@ -529,6 +531,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               }
             }}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             options={[
               { value: 'theme', label: t('workbench:settings.wallpaper.kindTheme') },
               { value: 'image', label: t('workbench:settings.wallpaper.kindImage') },
@@ -544,7 +547,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               options={presetOptions}
               size="sm"
               variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
+              className="h-8 [@media(pointer:coarse)]:!h-11 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={100}
             />
           ) : (
@@ -555,7 +558,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               disabled={!loaded || wallpaperImportPending}
               aria-busy={wallpaperImportPending}
               onClick={() => void chooseCustomWallpaper()}
-              className="h-8 gap-1.5 text-xs"
+              className="h-8 [@media(pointer:coarse)]:!h-11 gap-1.5 text-xs"
             >
               {wallpaperImportPending ? (
                 <CircleNotch size={14} className="animate-spin" aria-hidden="true" />
@@ -578,7 +581,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 // noop
               }
             }}
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 [@media(pointer:coarse)]:!h-11 gap-1.5 text-xs"
           >
             {t('workbench:settings.wallpaper.manage', '管理壁纸')}
           </DsButton>
@@ -613,7 +616,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
                 const px = Math.max(TILE_MARGIN_MIN, Math.min(TILE_MARGIN_MAX, parsed));
                 saveTileMargins({ ...tileMargins, px });
               }}
-              className="!w-20 h-8 text-xs bg-transparent"
+              className="!w-20 h-8 [@media(pointer:coarse)]:h-11 text-xs [@media(pointer:coarse)]:text-[16px] bg-transparent"
             />
             <span className="text-xs text-muted-foreground/70">px</span>
           </div>
@@ -639,7 +642,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               setDockSize(next);
               void persist(WORKBENCH_SETTING_KEYS.dockSize, String(next), next);
             }}
-            className="h-5 min-w-0 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-5 [@media(pointer:coarse)]:h-11 min-w-0 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
           />
           <output
             aria-live="polite"
@@ -701,6 +704,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             void persist(WORKBENCH_SETTING_KEYS.titleBarDoubleClick, value, value);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             { value: 'zoom', label: t('workbench:settings.titleBarDoubleClick.zoom') },
             { value: 'minimize', label: t('workbench:settings.titleBarDoubleClick.minimize') },
@@ -754,6 +758,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             handleBrowserNetworkModeChange(next as BrowserNetworkMode);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'local_whitelist',
@@ -806,6 +811,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               void persist(WORKBENCH_SETTING_KEYS.agentControl, value, value);
             }}
             size="compact"
+            itemClassName="[@media(pointer:coarse)]:!min-h-11"
             options={[
               {
                 value: 'off',
@@ -863,6 +869,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             void persist(WORKBENCH_SETTING_KEYS.agentPacing, value, value);
           }}
           size="compact"
+          itemClassName="[@media(pointer:coarse)]:!min-h-11"
           options={[
             {
               value: 'fast',
@@ -892,7 +899,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             if (browserControlsDisabled) return;
             setBrowserAdvancedOpen((prev) => !prev);
           }}
-          className="flex items-center gap-1.5 py-2 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="flex items-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
         >
           <span
             aria-hidden="true"

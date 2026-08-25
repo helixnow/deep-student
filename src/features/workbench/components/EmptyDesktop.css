@@ -288,3 +288,16 @@
     font-size: 11px;
   }
 }
+
+/* 触屏：主 CTA（~34px）与 tour 胶囊钮（~23px）升到 44px 命中高度；
+   空桌面卡片无高度约束，桌面细指针密度不变 */
+@media (pointer: coarse) {
+  .wb-empty-cta {
+    min-height: 44px;
+  }
+
+  .wb-empty-tour-btn {
+    min-height: 44px;
+    padding-block: 4px;
+  }
+}

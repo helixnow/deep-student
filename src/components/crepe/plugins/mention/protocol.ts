@@ -1,5 +1,5 @@
 /**
- * note:// 内部协议（与 NotesHeader 复制链接一致）
+ * note:// 内部协议（@ 提及序列化与 wikilinks / 反链解析共用）
  */
 
 import { NOTE_HREF_PROTOCOL } from './types';

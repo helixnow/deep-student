@@ -446,7 +446,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_prev')}
                 onClick={nav.onPrev}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretLeft size={11} />
               </DsButton>
@@ -457,7 +457,7 @@ const MarkerDetailCard: React.FC<{
                 aria-label={t('essay_grading:result_ui.annotation_next')}
                 onClick={nav.onNext}
                 disabled={nav.total <= 1}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <CaretRight size={11} />
               </DsButton>
@@ -467,7 +467,7 @@ const MarkerDetailCard: React.FC<{
                 iconOnly
                 aria-label={t('essay_grading:result_ui.annotation_close')}
                 onClick={nav.onClose}
-                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
+                className="!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <X size={11} />
               </DsButton>
@@ -528,7 +528,7 @@ const MarkerDetailCard: React.FC<{
               variant="ghost"
               size="sm"
               onClick={() => onApplySuggestion(applyChange)}
-              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
             >
               <Check size={12} />
               {t('essay_grading:markers.apply')}
@@ -539,7 +539,7 @@ const MarkerDetailCard: React.FC<{
               variant="ghost"
               size="sm"
               onClick={handleCopy}
-              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
               {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
