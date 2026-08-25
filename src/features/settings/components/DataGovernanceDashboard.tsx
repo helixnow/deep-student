@@ -587,6 +587,15 @@ function localizeBackupJobError(
   ) {
     return t('data:governance.restore_partial_archive_refused');
   }
+  if (message.includes('E_BACKUP_SEALED_PASSWORD_REQUIRED')) {
+    return t('data:governance.import_sealed_password_required');
+  }
+  if (message.includes('E_BACKUP_SEALED_DECRYPT_FAILED')) {
+    return t('data:governance.import_sealed_decrypt_failed');
+  }
+  if (message.includes('E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE')) {
+    return t('data:governance.restore_atomic_unavailable');
+  }
   return message;
 }
 
@@ -876,9 +885,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         const backupId = stats && typeof stats === 'object'
           ? (stats as Record<string, unknown>).backup_id as string | undefined
           : undefined;
-        if (backupId && resultSuccess) {
+        const importedArchiveIsRestorable = cloudApi.isImportedArchiveSlotRestorable(stats);
+        if (backupId && resultSuccess && importedArchiveIsRestorable) {
           setImportedBackupId(backupId);
           setShowRestorePromptDialog(true);
+        } else if (resultSuccess && !importedArchiveIsRestorable) {
+          // Portable/partial archives import successfully for inspection/export,
+          // but must never be offered as an immediate full-slot restore.
+          setImportedBackupId(null);
+          setShowRestorePromptDialog(false);
         }
       } else if (op === 'restore') {
         showGlobalNotification(
