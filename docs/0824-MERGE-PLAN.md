@@ -753,3 +753,32 @@ leftover-genui 的 `5cf6dccf` → `414abdc7`，为中英文 `skills.json` 的
 #177 端口均未触及。`npm run typecheck`、`npx vite build` 均 exit 0；
 `cargo check --manifest-path src-tauri/Cargo.toml --lib` 已用 Rust 1.98
 执行，但本 VM 缺少 `gdk-3.0` 开发库，环境阶段 exit 101。
+
+### Step 16 收口：#177 rewind 后再前进，续传/复读四提交落地
+
+日期：2026-08-25。基座 `2b6488a6`（Step 15 tip）。#177
+（`origin/cursor/cloud-sync-sota-b343`）曾被 rewind 到
+`4e28168c`（temp materialization 2x 空间 fail-closed，为 0824 的祖先），
+随后又前进到新 tip `519fb9d2`。fetch 时 `0824..#177` 按 SHA 共 12 个
+提交，其中 8 个经 `git cherry` 确认与 Step 10-13 的端口 patch 等价
+（`ef3c104d`/`8eb675ce`/`75f12160`/`f39f0d3a`/`0fcbc59b`/`bb81e9d6`/
+`86a1e7c4`/`6d6769bc`，SKIP 不回退不重置）；4 个为真正新增内容，按序
+干净 cherry-pick 零冲突：
+
+- `f7efe4e5` → `8c8b79bd`：文件级下载在目标旁 `.resume` 续传，不再
+  覆盖 live dest（新增 `cloud_storage/resume.rs`）；
+- `405ad31f` → `aa2a6744`：文件级续传分片改按内容哈希键控，源变更即
+  作废旧分片；
+- `a439433a` → `42696414`：record-level change shard PUT 后 GET 复读，
+  短写 fail-closed；
+- `519fb9d2` → `72660bf4`：内存对象 GET 尺寸核验拒绝截断响应，S3 分片
+  下载失败重试（`traits.rs` 新增校验 helper，WebDAV/S3 接入）。
+
+落地后复核 `git cherry 0824 #177` 无 `+` 残留，`0824..#177` 无新增
+unique 内容。编译门禁三项全过：`npm run typecheck`（先
+`npm run version:generate` 生成 `src/version.ts`）、`npx vite build`
+（仅既有 chunk 警告）、`cargo check --manifest-path
+src-tauri/Cargo.toml --lib`（Rust 1.98，本 VM 补装
+libgtk-3-dev/libwebkit2gtk-4.1-dev/libsoup-3.0-dev/protobuf-compiler 并
+经 `scripts/download-pdfium.sh` 取回 `libpdfium.so` 后 exit 0，28 条
+既有 warning）。不合并任何隔离 PR，不 reset 0824 到 #177 tip。
