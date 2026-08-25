@@ -21,6 +21,13 @@ use super::commands_backup::{
 
 const RESTORE_ACTIVATION_MARKER: &str = ".restore_activation_pending.json";
 
+fn atomic_restore_unavailable_error() -> String {
+    format!(
+        "[{}] A/B 数据空间管理器不可用，已在写入任何恢复数据前中止；当前数据未改动",
+        super::backup::ATOMIC_RESTORE_UNAVAILABLE_CODE
+    )
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct RestoreActivationMarker {
     backup_id: String,
@@ -632,24 +639,20 @@ async fn execute_restore_with_progress(
     // ============ 阶段 3: Replace (15-80%) - 逐数据库恢复 ============
     // 获取非活跃插槽目录：恢复写入非活跃插槽，避免 Windows OS error 32
     // （活跃插槽的数据库文件被连接池持有，Windows 上无法写入/删除）
-    let (inactive_dir, inactive_slot) = match crate::data_space::get_data_space_manager() {
-        Some(mgr) => {
-            let slot = mgr.inactive_slot();
-            let dir = mgr.slot_dir(slot);
-            info!(
-                "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
-                slot.name(),
-                dir.display()
-            );
-            (dir, Some(slot))
-        }
-        None => {
-            // 未启用双空间模式，回退到 slots/slotB
-            let dir = app_data_dir.join("slots").join("slotB");
-            warn!("[data_governance] DataSpaceManager 未初始化，回退到 slotB");
-            (dir, None)
-        }
+    // 整槽恢复只能由 DataSpaceManager 原子登记 A/B 切换。旧回退路径会先把
+    // 完整数据库写进 slotB，最后才因无法登记切槽而失败，留下半恢复槽。
+    // 必须在磁盘预算、清槽和任何数据库写入之前 fail-closed。
+    let Some(data_space_manager) = crate::data_space::get_data_space_manager() else {
+        job_ctx.fail(atomic_restore_unavailable_error());
+        return;
     };
+    let inactive_slot = data_space_manager.inactive_slot();
+    let inactive_dir = data_space_manager.slot_dir(inactive_slot);
+    info!(
+        "[data_governance] 恢复目标: 非活跃插槽 {} ({})",
+        inactive_slot.name(),
+        inactive_dir.display()
+    );
 
     // 磁盘空间预检查：备份大小 × 2 作为安全余量（Android 设备存储较紧张）
     {
@@ -698,34 +701,30 @@ async fn execute_restore_with_progress(
     }
 
     // ★ 审阅 15 P1-2 / S1 遗留：恢复写入前清空目标插槽，避免残留文件混入恢复结果
-    if let Some(slot) = inactive_slot {
-        if let Some(mgr) = crate::data_space::get_data_space_manager() {
-            match mgr.clear_slot_for_restore(slot) {
-                Ok(trash) => {
-                    if let Some(trash_path) = trash {
-                        info!(
-                            "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
-                            slot.name(),
-                            trash_path.display()
-                        );
-                    } else {
-                        info!(
-                            "[data_governance] 恢复前插槽 {} 已为空（或已重建）",
-                            slot.name()
-                        );
-                    }
-                }
-                Err(e) => {
-                    let msg = format!(
-                        "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
-                        slot.name(),
-                        e
-                    );
-                    error!("[data_governance] {}", msg);
-                    job_ctx.fail(msg);
-                    return;
-                }
+    match data_space_manager.clear_slot_for_restore(inactive_slot) {
+        Ok(trash) => {
+            if let Some(trash_path) = trash {
+                info!(
+                    "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
+                    inactive_slot.name(),
+                    trash_path.display()
+                );
+            } else {
+                info!(
+                    "[data_governance] 恢复前插槽 {} 已为空（或已重建）",
+                    inactive_slot.name()
+                );
             }
+        }
+        Err(e) => {
+            let msg = format!(
+                "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
+                inactive_slot.name(),
+                e
+            );
+            error!("[data_governance] {}", msg);
+            job_ctx.fail(msg);
+            return;
         }
     }
 
@@ -1083,25 +1082,16 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    let Some(slot) = inactive_slot else {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail("DataSpaceManager 未初始化，无法原子登记恢复切槽".to_string());
-        return;
-    };
-    let Some(mgr) = crate::data_space::get_data_space_manager() else {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail("DataSpaceManager 不可用，无法原子登记恢复切槽".to_string());
-        return;
-    };
-    if let Err(e) = mgr.mark_restore_cutover_pending(slot, &backup_id) {
+    if let Err(e) = data_space_manager.mark_restore_cutover_pending(inactive_slot, &backup_id) {
         let _ = set_restore_cutover_maintenance(&app, false);
         let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
         job_ctx.fail(format!("登记恢复切槽失败: {}", e));
         return;
     }
-    info!("[data_governance] 已原子登记下次启动切换到 {}", slot.name());
+    info!(
+        "[data_governance] 已原子登记下次启动切换到 {}",
+        inactive_slot.name()
+    );
 
     job_ctx.mark_running(
         BackupJobPhase::Cleanup,
@@ -1180,6 +1170,21 @@ async fn execute_restore_with_progress(
             resumable_job_id: None,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::atomic_restore_unavailable_error;
+
+    #[test]
+    fn atomic_restore_unavailable_refusal_has_stable_code() {
+        let error = atomic_restore_unavailable_error();
+        assert!(
+            error.contains(super::super::backup::ATOMIC_RESTORE_UNAVAILABLE_CODE),
+            "atomic-restore refusal must carry a stable code: {error}"
+        );
+        assert!(error.contains("写入任何恢复数据前中止"));
+    }
 }
 
 // ==================== 可恢复的执行函数 ====================

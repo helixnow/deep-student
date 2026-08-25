@@ -61,6 +61,9 @@ pub const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE: &str =
 /// 便携/部分归档拒绝整槽恢复的稳定 code（文案仍可改语言）。
 pub const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE: &str = "E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE";
 
+/// A/B 数据空间管理器不可用时拒绝整槽恢复的稳定 code。
+pub const ATOMIC_RESTORE_UNAVAILABLE_CODE: &str = "E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE";
+
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
 
