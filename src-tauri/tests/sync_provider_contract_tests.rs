@@ -7,8 +7,8 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, FtpConfig, S3Config,
-    StorageProvider, WebDavConfig,
+    create_storage, device_id_short_hash, CloudStorage, CloudStorageConfig, CloudSyncManager,
+    FtpConfig, S3Config, StorageProvider, WebDavConfig,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
@@ -30,6 +30,20 @@ fn docker_contract_enabled() -> bool {
 
 fn unique_root(provider: &str) -> String {
     format!("deep-student-sync-contract/{provider}/{}", Uuid::new_v4())
+}
+
+fn record_change_prefix(device_id: &str) -> String {
+    format!(
+        "data_governance/changes/{}/",
+        device_id_short_hash(device_id)
+    )
+}
+
+fn record_manifest_key(device_id: &str) -> String {
+    format!(
+        "data_governance/manifests/{}.json",
+        device_id_short_hash(device_id)
+    )
 }
 
 async fn run_basic_object_contract(storage: Box<dyn CloudStorage>) {
@@ -731,7 +745,7 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
 
     upload_vfs_changes_and_manifest(storage.as_ref(), &source_manager, &source_vfs).await;
 
-    let manifest_key = format!("data_governance/manifests/{source_device_id}.json");
+    let manifest_key = record_manifest_key(&source_device_id);
     let manifest_bytes = storage
         .get(&manifest_key)
         .await
@@ -746,7 +760,7 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
     }
 
     let change_files = storage
-        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .list(&record_change_prefix(&source_device_id))
         .await
         .expect("list encrypted data governance changes");
     assert_eq!(
@@ -875,7 +889,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
         .expect("upload encrypted compatibility changes");
 
     let plain_files = storage
-        .list(&format!("data_governance/changes/{plaintext_device_id}/"))
+        .list(&record_change_prefix(&plaintext_device_id))
         .await
         .expect("list plaintext compatibility changes");
     assert_eq!(plain_files.len(), 1);
@@ -890,7 +904,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     );
 
     let encrypted_files = storage
-        .list(&format!("data_governance/changes/{encrypted_device_id}/"))
+        .list(&record_change_prefix(&encrypted_device_id))
         .await
         .expect("list encrypted compatibility changes");
     assert_eq!(encrypted_files.len(), 1);
@@ -986,7 +1000,7 @@ async fn run_duplicate_enriched_change_files_are_idempotent_contract(
         .expect("upload second retry copy");
 
     let retry_files = storage
-        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .list(&record_change_prefix(&source_device_id))
         .await
         .expect("list duplicate retry change files");
     assert_eq!(

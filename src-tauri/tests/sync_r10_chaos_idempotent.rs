@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use chrono::Utc;
-use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
+use deep_student_lib::cloud_storage::{device_id_short_hash, CloudStorage, FileInfo};
 use deep_student_lib::data_governance::sync::{ChangeOperation, SyncChangeWithData, SyncManager};
 use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
@@ -201,7 +201,10 @@ async fn r10_chaos_upload_retry_storm_collapses_before_apply() {
 
     // 云端确实存在 3 个不可变分片（重试不覆盖、可审计）
     let shard_keys: Vec<String> = storage
-        .list(&format!("data_governance/changes/{uploader_id}/"))
+        .list(&format!(
+            "data_governance/changes/{}/",
+            device_id_short_hash(&uploader_id)
+        ))
         .await
         .unwrap()
         .into_iter()
