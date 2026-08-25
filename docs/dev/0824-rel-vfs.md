@@ -12,18 +12,24 @@
 
 ## 上游 backfill 状态
 
-截至 2026-08-25 本次隔离时：
+截至 2026-08-25：
 
 - `3d3516c349701c8f69c500e5d452861b65437673` 是 GitHub 上的原始
   “backfill VFS tables before change log repair”提交；
 - `b2a85a6900034943a2bedb7c5ebcf95ec7854fea` 是已进入 `origin/main`
   的对应修复；
-- `b2a85a69` 不是 `origin/cursor/0824-cde6` 的祖先，`0824` 尚未包含该修复。
+- 初始隔离基线 `427c775f` 尚未包含 backfill；验证期间 live
+  `origin/cursor/0824-cde6` 前进到 `30fc858b`，并以 `5f324e1f`
+  落入该修复的发行分支版本。本隔离分支已合并该 live 基线；
+- `5f324e1f` 不是 `b2a85a69` 的同一 Git 提交或同一 patch-id，但包含相同的
+  missing-VFS-table backfill，并额外在重建 `notes` 时恢复已记录的
+  `V20260824` `props` 契约。因此官方 `0824` 当前已具备该 backfill。
 
 该 backfill 修复的是更早的稀疏旧库（只有 `resources/notes`，缺少
 `questions/review_plans/folders`）在重放 `V20260131` trigger 时失败的问题。
 完整的 `v0.9.44` 数据库已经具有这些表，所以 note-props release 修复不依赖
-该提交；若它并行落到 `0824`，本分支的 `V20260824` 专项 pre-repair 仍可独立工作。
+该提交；它落到 `0824` 后，本分支的 `V20260824` 专项 pre-repair 仍负责
+duplicate-column/history gap，两者职责正交并可组合工作。
 
 ## 发现与修复
 
