@@ -391,3 +391,69 @@ async fn hashed_payload_device_id_still_full_and_readable() {
     assert_eq!(payload.source_device_id, device);
     assert_eq!(payload.device_id, device);
 }
+
+struct CorruptManifestPut {
+    inner: MemStorage,
+}
+
+#[async_trait]
+impl CloudStorage for CorruptManifestPut {
+    fn provider_name(&self) -> &'static str {
+        "memory-corrupt-record-manifest"
+    }
+
+    async fn check_connection(&self) -> CloudResult<()> {
+        Ok(())
+    }
+
+    async fn put(&self, key: &str, data: &[u8]) -> CloudResult<()> {
+        if key.contains("data_governance/manifests/") && key.ends_with(".json") {
+            CloudStorage::put(&self.inner, key, b"corrupted-record-manifest").await
+        } else {
+            CloudStorage::put(&self.inner, key, data).await
+        }
+    }
+
+    async fn get(&self, key: &str) -> CloudResult<Option<Vec<u8>>> {
+        CloudStorage::get(&self.inner, key).await
+    }
+
+    async fn list(&self, prefix: &str) -> CloudResult<Vec<FileInfo>> {
+        CloudStorage::list(&self.inner, prefix).await
+    }
+
+    async fn delete(&self, key: &str) -> CloudResult<()> {
+        CloudStorage::delete(&self.inner, key).await
+    }
+
+    async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
+        CloudStorage::stat(&self.inner, key).await
+    }
+}
+
+#[tokio::test]
+async fn upload_manifest_fails_when_reread_mismatches() {
+    let storage = CorruptManifestPut {
+        inner: MemStorage::default(),
+    };
+    let device = unique_device("r12-rec-reread");
+    let error = SyncManager::new(device.clone())
+        .upload_manifest(&storage, &sample_manifest(&device, 1, 0))
+        .await
+        .expect_err("清单回读不一致必须 fail-closed");
+    assert!(
+        error
+            .to_string()
+            .contains("记录级设备清单 上传后回读不一致"),
+        "拒绝原因必须指向清单回读，实际: {error}"
+    );
+    assert!(
+        storage
+            .inner
+            .get(&hashed_manifest_key(&device))
+            .await
+            .unwrap()
+            .is_some(),
+        "损坏的最终对象可保留供对照，但不得报成功"
+    );
+}

@@ -48,7 +48,10 @@ describe('P2-1: user guide 16 documents the wrong-password marker takeover unloc
 describe('P2-2: resumable cloud ZIP download stays honest', () => {
   const traits = read('src-tauri/src/cloud_storage/traits.rs');
   const webdav = read('src-tauri/src/cloud_storage/webdav.rs');
+  const s3 = read('src-tauri/src/cloud_storage/s3.rs');
   const syncManager = read('src-tauri/src/cloud_storage/sync_manager.rs');
+  const repoCheck = read('src-tauri/src/cloud_storage/repo_check.rs');
+  const guide = read('docs/user-guide/16-数据管理与云同步.md');
 
   it('keeps the fail-closed default for providers without resume support', () => {
     expect(traits).toContain('RESUMABLE_DOWNLOAD_UNSUPPORTED');
@@ -65,6 +68,13 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(webdav).toContain('written != total_size');
   });
 
+  it('desktop S3 advertises Range resume and refuses misaligned Content-Range', () => {
+    expect(s3).toMatch(/fn supports_resumable_download\(&self\) -> bool \{\s*true\s*\}/);
+    expect(s3).toContain('request.range(format!("bytes={resume_from}-"))');
+    expect(s3).toContain('续传起点与请求不一致');
+    expect(s3).toContain('written != total_size');
+  });
+
   it('orchestration keeps the .part checkpoint and verifies the whole-file SHA256', () => {
     expect(syncManager).toContain('supports_resumable_download()');
     expect(syncManager).toMatch(/\.\{version_id\}\.zip\.part/);
@@ -72,6 +82,17 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
     expect(syncManager).toContain('SHA256 校验失败');
     // 失败保留断点是续传的前提：不能在错误路径清理 partial。
     expect(syncManager).toContain('失败时不清理断点文件');
+  });
+
+  it('repo check uses resumable download when the provider advertises it', () => {
+    expect(repoCheck).toContain('download_object_for_check');
+    expect(repoCheck).toContain('supports_resumable_download()');
+    expect(repoCheck).toContain('get_file_resumable');
+    expect(repoCheck).toContain('REPO_CHECK_DOWNLOAD_ATTEMPTS');
+    // 每个对象必须先清残留，续传路径会追加，复用同一 .partial 会串对象。
+    expect(repoCheck).toContain('remove_file(&local_path)');
+    expect(guide).toContain('巡检同一对象时支持**断点续传**');
+    expect(guide).toContain('FTP 仍整包重下');
   });
 });
 

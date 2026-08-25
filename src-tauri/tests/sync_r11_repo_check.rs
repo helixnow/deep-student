@@ -13,6 +13,7 @@
 //!    **绝不**给出「全绿」；且 manifests 列表截断时跳过孤儿判定（防误报）。
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -20,7 +21,9 @@ use chrono::{DateTime, Utc};
 use deep_student_lib::cloud_storage::repo_check::{
     run_repo_check, RepoCheckProblemKind, RepoCheckStatus,
 };
-use deep_student_lib::cloud_storage::{CloudStorage, CloudSyncManager, FileInfo, ListOutcome};
+use deep_student_lib::cloud_storage::{
+    CloudStorage, CloudSyncManager, DownloadProgressCallback, FileInfo, ListOutcome,
+};
 use deep_student_lib::models::AppError;
 
 type CloudResult<T> = Result<T, AppError>;
@@ -171,6 +174,128 @@ impl CloudStorage for TruncatingStorage {
 
     async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
         self.0.stat(key).await
+    }
+}
+
+/// 声明支持续传、但前几次 `get_file_resumable` 会在写出前缀后失败。
+/// 用于钉死巡检对 WebDAV/S3 大对象走断点重试，而不是一次失败就 Incomplete。
+struct FlakyResumableStorage {
+    inner: SharedStorage,
+    prefix_bytes: usize,
+    remaining_failures: Mutex<u32>,
+    resume_starts: Mutex<Vec<u64>>,
+}
+
+impl FlakyResumableStorage {
+    fn new(inner: SharedStorage, prefix_bytes: usize, failures: u32) -> Self {
+        Self {
+            inner,
+            prefix_bytes,
+            remaining_failures: Mutex::new(failures),
+            resume_starts: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl CloudStorage for FlakyResumableStorage {
+    fn provider_name(&self) -> &'static str {
+        "memory-flaky-resume"
+    }
+
+    async fn check_connection(&self) -> CloudResult<()> {
+        Ok(())
+    }
+
+    async fn put(&self, key: &str, data: &[u8]) -> CloudResult<()> {
+        self.inner.put(key, data).await
+    }
+
+    async fn get(&self, key: &str) -> CloudResult<Option<Vec<u8>>> {
+        self.inner.get(key).await
+    }
+
+    async fn list(&self, prefix: &str) -> CloudResult<Vec<FileInfo>> {
+        self.inner.list(prefix).await
+    }
+
+    async fn delete(&self, key: &str) -> CloudResult<()> {
+        self.inner.delete(key).await
+    }
+
+    async fn stat(&self, key: &str) -> CloudResult<Option<FileInfo>> {
+        self.inner.stat(key).await
+    }
+
+    fn supports_resumable_download(&self) -> bool {
+        true
+    }
+
+    async fn get_file_resumable(
+        &self,
+        key: &str,
+        dest: &Path,
+        resume_from: u64,
+        progress: Option<DownloadProgressCallback>,
+    ) -> CloudResult<u64> {
+        self.resume_starts.lock().unwrap().push(resume_from);
+
+        let data = self
+            .inner
+            .get(key)
+            .await?
+            .ok_or_else(|| AppError::not_found("云端文件不存在"))?;
+        let total = data.len() as u64;
+        if resume_from > total {
+            return Err(AppError::validation(format!(
+                "本地断点（{resume_from} 字节）大于云端对象（{total} 字节）"
+            )));
+        }
+
+        let mut remaining = &data[resume_from as usize..];
+        let mut remaining_failures = self.remaining_failures.lock().unwrap();
+        let interrupted = if *remaining_failures > 0 {
+            *remaining_failures -= 1;
+            if self.prefix_bytes < remaining.len() {
+                remaining = &remaining[..self.prefix_bytes];
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        drop(remaining_failures);
+
+        use std::io::Write;
+        let mut file = if resume_from > 0 {
+            let existing = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+            if existing != resume_from {
+                return Err(AppError::file_system(format!(
+                    "断点文件大小（{existing} 字节）与续传起点（{resume_from} 字节）不一致"
+                )));
+            }
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(dest)
+                .map_err(|e| AppError::file_system(e.to_string()))?
+        } else {
+            std::fs::File::create(dest).map_err(|e| AppError::file_system(e.to_string()))?
+        };
+        file.write_all(remaining)
+            .map_err(|e| AppError::file_system(e.to_string()))?;
+        file.flush()
+            .map_err(|e| AppError::file_system(e.to_string()))?;
+        if let Some(cb) = progress.as_ref() {
+            cb(resume_from + remaining.len() as u64, total);
+        }
+
+        if interrupted {
+            return Err(AppError::network(
+                "模拟巡检下载中断（断点保留，可重试续传）".to_string(),
+            ));
+        }
+        Ok(resume_from)
     }
 }
 
@@ -458,4 +583,45 @@ async fn truncated_manifests_listing_suppresses_orphan_false_positives() {
         "{:?}",
         report.problems
     );
+}
+
+// ==================== 6. 巡检大对象断点续传 ====================
+
+#[tokio::test]
+async fn resumable_provider_retries_from_partial_and_reports_green() {
+    let storage = Arc::new(MemoryStorage::default());
+    let manager = manager_on(&storage, "device-a");
+    upload_bytes(&manager, b"PK\x03\x04 resumable repo-check payload").await;
+
+    let flaky = FlakyResumableStorage::new(shared(&storage), 8, 1);
+    let report = run_repo_check(&flaky).await.unwrap();
+
+    assert_eq!(report.status, RepoCheckStatus::Ok, "{:?}", report.problems);
+    assert_eq!(report.objects_checked, 1);
+    let starts = flaky.resume_starts.lock().unwrap().clone();
+    assert_eq!(starts.len(), 2, "第一次失败后必须按断点再试: {starts:?}");
+    assert_eq!(starts[0], 0);
+    assert_eq!(starts[1], 8, "第二次必须从已写入的 8 字节前缀继续");
+}
+
+#[tokio::test]
+async fn exhausted_resumable_retries_stay_incomplete() {
+    let storage = Arc::new(MemoryStorage::default());
+    let manager = manager_on(&storage, "device-a");
+    upload_bytes(&manager, b"PK\x03\x04 never finishes").await;
+
+    // 超过 REPO_CHECK_DOWNLOAD_ATTEMPTS=3：三次都写出前缀后失败。
+    let flaky = FlakyResumableStorage::new(shared(&storage), 4, 10);
+    let report = run_repo_check(&flaky).await.unwrap();
+
+    assert_eq!(report.status, RepoCheckStatus::Incomplete);
+    assert!(
+        kinds(&report).contains(&RepoCheckProblemKind::ObjectReadFailed),
+        "{:?}",
+        report.problems
+    );
+    assert_ne!(report.status, RepoCheckStatus::Ok);
+    let starts = flaky.resume_starts.lock().unwrap().clone();
+    assert_eq!(starts.len(), 3, "用尽重试次数后必须停: {starts:?}");
+    assert_eq!(starts, vec![0, 4, 8]);
 }
