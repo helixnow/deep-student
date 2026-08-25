@@ -72,6 +72,22 @@ const OPEN_OVERLAY_SELECTOR = [
   '[data-radix-popper-content-wrapper] [role="dialog"]',
 ].join(', ');
 
+/**
+ * 是否存在 excluded 之外的打开中 Radix 浮层。
+ * 供「自身就是 Radix dialog 的全屏容器」（如移动端 Settings Sheet）使用：
+ * 这类容器必须以 overlay 档注册返回 handler（view 档永远轮不到——容器自身
+ * 常驻命中 Escape 兜底探测），但其上方还可能叠着未显式注册的 Radix 浮层
+ * （shad/Select 下拉等），此时容器 handler 应返回 false 让行，交给兜底探测
+ * 先关最上层浮层，维持「先关浮层再退页面」的层级语义。
+ */
+export function hasOpenRadixOverlayBesides(excluded: Element | null): boolean {
+  const overlays = document.querySelectorAll(OPEN_OVERLAY_SELECTOR);
+  for (let i = 0; i < overlays.length; i++) {
+    if (overlays[i] !== excluded) return true;
+  }
+  return false;
+}
+
 function dismissTopOverlayViaEscape(): boolean {
   const openOverlay = document.querySelector(OPEN_OVERLAY_SELECTOR);
   if (!openOverlay) return false;

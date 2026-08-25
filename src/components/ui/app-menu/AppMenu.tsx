@@ -102,6 +102,11 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   React.useEffect(() => {
     if (!actualOpen) return;
     return registerBackHandler(() => {
+      // 触发器所在视图离屏时（保活视图被 inert / display:none 隐藏）让行给当前
+      // 活跃层：不吞返回键、也不关用户看不见的菜单。判定挂在触发器容器上——
+      // 内容层 portal 到 body / overlay 容器，反映不了宿主视图的隐藏态。
+      const el = containerRef.current;
+      if (!el || el.closest('[inert]') || el.offsetParent === null) return false;
       setOpen(false);
       return true;
     }, BACK_PRIORITY.overlay);

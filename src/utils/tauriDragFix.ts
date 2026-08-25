@@ -3,6 +3,10 @@
  *
  * Tauri WebView 可能会拦截拖拽事件，导致网页内的拖拽功能失效
  * 这个模块提供了修复方案
+ *
+ * 注：原 react-complex-tree（.rct-tree*）专项规则已移除——DndFileTree 于 2026-08
+ * 零挂载删除后，src/ 中不再有任何 rct-* 类；workbench 笔记树（nwt-*）为独立实现，
+ * 不依赖本注入。当前模块暂无调用方，保留通用规则以备 Tauri 拖拽问题复现时接入。
  */
 
 import React from 'react';
@@ -40,24 +44,6 @@ export const enableWebDrag = () => {
       -webkit-user-drag: element !important;
       user-drag: element !important;
       cursor: move !important;
-    }
-    
-    /* react-complex-tree 特定修复 */
-    .rct-tree-item-li {
-      -webkit-app-region: no-drag !important;
-      -webkit-user-drag: auto !important;
-    }
-    
-    .rct-tree-item-li[draggable="true"] {
-      -webkit-user-drag: element !important;
-      cursor: move !important;
-    }
-    
-    /* 防止事件被拦截 */
-    .rct-tree,
-    .rct-tree * {
-      pointer-events: auto !important;
-      -webkit-app-region: no-drag !important;
     }
   `;
   

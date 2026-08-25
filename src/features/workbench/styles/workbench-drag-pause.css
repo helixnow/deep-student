@@ -68,8 +68,6 @@
 :root[data-wb-settling] .timeline-item--running .timeline-item__marker,
 :root[data-wb-dragging] .inline-tool-indicator--running .inline-tool-indicator__pulse,
 :root[data-wb-settling] .inline-tool-indicator--running .inline-tool-indicator__pulse,
-:root[data-wb-dragging] .anki-card-panel__spinner,
-:root[data-wb-settling] .anki-card-panel__spinner,
 
 /* ---- 制卡任务 / 待办 / 自动化 ---- */
 :root[data-wb-dragging] .wb-at-pulse-dot,

@@ -338,19 +338,19 @@ export default function LayoutDebugPlugin() {
           <h3 className="font-semibold text-sm">布局调试器</h3>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 text-xs">
+          <label className="flex items-center gap-1 text-xs [@media(pointer:coarse)]:min-h-11">
             <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             自动刷新
           </label>
           <button
             onClick={refresh}
-            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             刷新
           </button>
           <button
             onClick={copyToClipboard}
-            className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
+            className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-1"
             title="复制所有布局信息"
           >
             {copied ? (
@@ -469,7 +469,7 @@ export default function LayoutDebugPlugin() {
                 {/* 显示所有影响此元素的CSS规则 */}
                 {elem.cssRules && elem.cssRules.length > 0 && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer font-semibold text-blue-600 dark:text-blue-400">
+                    <summary className="cursor-pointer font-semibold text-blue-600 dark:text-blue-400 [@media(pointer:coarse)]:min-h-11">
                       📋 影响此元素的CSS规则 ({elem.cssRules.length})
                     </summary>
                     <div className="mt-1 ml-2 space-y-1 text-xs">

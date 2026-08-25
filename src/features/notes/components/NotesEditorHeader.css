@@ -17,6 +17,20 @@
   color: hsl(var(--foreground) / 0.85);
 }
 
+/* 触屏：触发器文本仅 ~15px 高，伪元素撑出 ≥44px 命中区
+ * （tabIndex=0，点按聚焦经 :focus-within 展开统计详情） */
+@media (pointer: coarse) {
+  .notes-doc-stats-trigger {
+    position: relative;
+  }
+
+  .notes-doc-stats-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -15px -3px;
+  }
+}
+
 .notes-doc-stats-detail {
   position: absolute;
   top: calc(100% + 6px);

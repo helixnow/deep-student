@@ -325,7 +325,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   aria-pressed={chartMode === 'bars'}
                   onClick={() => setChartMode('bars')}
                   className={cn(
-                    'w-6 h-6 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9',
+                    'w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
                     chartMode === 'bars'
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground/50 hover:text-foreground'
@@ -341,7 +341,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
                   aria-pressed={chartMode === 'radar'}
                   onClick={() => setChartMode('radar')}
                   className={cn(
-                    'w-6 h-6 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9',
+                    'w-6 h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
                     chartMode === 'radar'
                       ? 'bg-primary/10 text-primary'
                       : 'text-muted-foreground/50 hover:text-foreground'

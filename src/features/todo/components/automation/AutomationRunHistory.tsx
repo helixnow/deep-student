@@ -195,6 +195,7 @@ function CopyButton({
         variant="ghost"
         size="icon"
         iconOnly
+        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         aria-label={stateLabel}
         title={stateLabel}
         onClick={handleCopy}
@@ -273,7 +274,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
         borderColor: 'var(--border-soft, var(--border))',
         // 长列表滚动性能：视窗外的折叠行跳过渲染
         contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 42px',
+        containIntrinsicSize: 'auto 44px',
       } as React.CSSProperties}
     >
       <button
@@ -282,7 +283,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
         aria-controls={detailId}
         onClick={() => onToggle(run.id)}
         className={cn(
-          'group flex w-full min-w-0 items-center gap-2.5 px-3 py-2.5 text-left',
+          'group flex w-full min-w-0 items-center gap-2.5 px-3 py-2.5 text-left [@media(pointer:coarse)]:min-h-11',
           'transition-colors duration-150 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
         )}
         style={{ borderRadius: 'var(--radius-shell-row, 6px)', transitionTimingFunction: EASE }}
@@ -453,6 +454,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   disabled={busy}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -469,6 +471,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   disabled={busy}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -485,6 +488,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 <DsButton
                   variant="ghost"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={(event) => {
                     event.stopPropagation();
                     onOpenSession(run.sessionId as string);
@@ -631,7 +635,7 @@ export function AutomationRunHistory({
             onChange={(event) => setAutomationFilter(event.target.value)}
             aria-label={t('todo:automation.history.filterByTask')}
             className={cn(
-              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground',
+              'h-7 max-w-52 truncate bg-transparent px-2 text-xs text-muted-foreground [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base',
               'transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             )}
             style={{
@@ -659,7 +663,7 @@ export function AutomationRunHistory({
               aria-pressed={statusFilter === filter.value}
               onClick={() => setStatusFilter(filter.value)}
               className={cn(
-                'h-7 px-2 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                'h-7 px-2 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [@media(pointer:coarse)]:h-11',
                 statusFilter === filter.value
                   ? 'bg-muted font-medium text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -683,6 +687,7 @@ export function AutomationRunHistory({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => {
                 setAutomationFilter('all');
                 setStatusFilter('all');
@@ -735,6 +740,7 @@ export function AutomationRunHistory({
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setVisibleCount((count) => count + VISIBLE_STEP)}
               >
                 {t('todo:automation.history.showMore', {

@@ -473,7 +473,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
                 // 触屏无 hover：保持常显，否则"设为默认"入口不可达
                 '[@media(pointer:coarse)]:opacity-100',
-                'relative after:absolute after:-inset-2 after:content-[\'\']',
+                // coarse 指针下 -inset-3 使命中区达 44px（20+12×2），细指针维持 36px 免误触
+                'relative after:absolute after:-inset-2 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-3',
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
@@ -535,6 +536,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 }}
                 disabled={disabled || compareSelected.length === 0}
                 title={t('chatV2:modelMention.retry')}
+                className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowCounterClockwise size={14} />
                 {t('chatV2:modelMention.retry')}
@@ -625,6 +627,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClick={() => toggleVendorCollapse(group.vendorId)}
                       className={cn(
                         'flex w-full select-none items-center gap-2 rounded-[var(--menu-shell-row-radius)] px-[var(--menu-shell-row-padding-x)] py-1 text-left transition-colors',
+                        '[@media(pointer:coarse)]:min-h-11',
                         'hover:bg-[color:var(--menu-shell-row-hover)]'
                       )}
                     >
@@ -673,7 +676,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClose();
                       triggerOpenSettingsModels();
                     }}
-                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:!min-h-11"
                   >
                     {t('chatV2:modelPicker.goToSettings')}
                   </DsButton>
@@ -699,7 +702,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             }}
             disabled={disabled || compareSelected.length === 0}
             title={t('chatV2:modelMention.retry')}
-            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelMention.retry')}

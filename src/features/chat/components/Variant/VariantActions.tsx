@@ -146,7 +146,7 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
   return (
     <AppMenu>
       <AppMenuTrigger asChild>
-        <DsButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
+        <DsButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
           <DotsThree size={16} />
         </DsButton>
       </AppMenuTrigger>

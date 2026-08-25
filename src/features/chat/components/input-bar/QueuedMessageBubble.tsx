@@ -40,7 +40,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         }
       }}
       className={cn(
-        'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer',
+        'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer [@media(pointer:coarse)]:min-h-11',
         'bg-neutral-100 dark:bg-neutral-800/80 border border-transparent',
         'transition-colors duration-200',
         'ui-rise-in',

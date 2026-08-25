@@ -71,3 +71,11 @@
   box-shadow: 0 2px 6px hsl(var(--shadow-base, var(--foreground)) / 0.25);
   pointer-events: none;
 }
+
+/* 触屏下缩放百分比按钮扩至 44px 可触达高度 */
+@media (pointer: coarse) {
+  .mm-canvas-touch-actions .mm-canvas-zoom-indicator {
+    height: 44px;
+    min-height: 44px;
+  }
+}

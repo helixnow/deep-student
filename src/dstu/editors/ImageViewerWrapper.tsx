@@ -114,7 +114,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
             onClick={() => void loadImage()}
           >
             <ArrowClockwise size={16} />
@@ -122,7 +122,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -144,7 +144,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         </div>
         <div className="flex items-center gap-1">
           <button
-            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             onClick={handleZoomOut}
             title={t('common:zoomOut')}
           >
@@ -154,14 +154,14 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
             {Math.round(zoom * 100)}%
           </span>
           <button
-            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             onClick={handleZoomIn}
             title={t('common:zoomIn')}
           >
             <MagnifyingGlassPlus size={16} />
           </button>
           <button
-            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md ml-2"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md ml-2 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             onClick={handleRotate}
             title={t('common:rotate')}
           >
@@ -169,7 +169,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {'onClose' in props && props.onClose && (
             <button
-              className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)] ml-2"
+              className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)] ml-2 [@media(pointer:coarse)]:min-h-11"
               onClick={props.onClose}
             >
               {t('common:actions.close')}

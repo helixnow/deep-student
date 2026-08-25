@@ -25,7 +25,7 @@ export function SandboxToolbar({
 }: SandboxToolbarProps) {
   const { t } = useTranslation('workbench');
   // 触屏（coarse 指针）下图标按钮放大到 ≥40px 触控目标
-  const iconBtnClass = '!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10';
+  const iconBtnClass = '!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
       <div className="min-w-0 flex-1">

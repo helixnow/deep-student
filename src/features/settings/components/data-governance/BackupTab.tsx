@@ -450,7 +450,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <DsButton size="sm" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onResumeJob?.(job.job_id)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
               </DsButton>
@@ -483,7 +483,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={onCancelBackup}
-                className="text-destructive hover:text-destructive"
+                className="text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
               >
                 <XCircle className="h-4 w-4 mr-1" />
                 {t('common:cancel')}
@@ -552,26 +552,28 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="add-to-backup-list"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={addToBackupList}
               onCheckedChange={(checked) => setAddToBackupList(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="add-to-backup-list" className="text-sm">
+            <Label htmlFor="add-to-backup-list" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.add_to_backup_list')}
             </Label>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
             <Checkbox
               id="use-tiered-backup"
+              className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={useTieredBackup}
               onCheckedChange={(checked) => setUseTieredBackup(Boolean(checked))}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="use-tiered-backup" className="text-sm">
+            <Label htmlFor="use-tiered-backup" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.use_tiered_backup')}
             </Label>
           </div>
@@ -667,7 +669,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   {ASSET_TYPES.map((asset) => (
                     <div
                       key={asset.value}
-                      className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 p-2 [@media(pointer:coarse)]:min-h-11 rounded-md border cursor-pointer transition-colors ${
                         selectedAssetTypes.includes(asset.value)
                           ? 'border-primary/50 bg-primary/5'
                           : 'border-border/60 hover:border-border hover:bg-[color:var(--sidebar-quiet-hover)]'
@@ -715,7 +717,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={handleBackupAndExport}
             disabled={loading || isBackupRunning}
-            className="h-9"
+            className="h-9 [@media(pointer:coarse)]:!h-11"
           >
             {isBackupRunning ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -729,12 +731,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={() => setShowImportPasswordDialog(true)}
             disabled={loading || isBackupRunning}
-            className="h-9"
+            className="h-9 [@media(pointer:coarse)]:!h-11"
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}
           </DsButton>
-          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
+          <DsButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9 [@media(pointer:coarse)]:!h-11">
             <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
           </DsButton>
@@ -763,6 +765,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               onClick={() => void loadBackupConfig(true)}
             >
               <ArrowClockwise size={14} className="mr-1.5" />
@@ -837,7 +840,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   type="number"
                   min={1}
                   max={100}
-                  className="w-20 h-8 text-sm"
+                  className="w-20 h-8 [@media(pointer:coarse)]:h-11 text-sm"
                   value={backupConfig.maxBackupCount ?? ''}
                   placeholder={t('data:governance.max_backup_count_unlimited')}
                   disabled={configSaving}
@@ -976,7 +979,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
@@ -987,7 +990,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('export');
@@ -1001,7 +1004,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         onClick={() => {
                           if (backup.backup_type === 'incremental') {
                             showGlobalNotification(
@@ -1035,7 +1038,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => {
                           setSelectedBackup(backup.path);
                           setActionType('delete');
@@ -1185,7 +1188,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="primary" size="sm" onClick={onRestartNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestartNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}
           </DsButton>
@@ -1205,10 +1208,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogFooter>
-          <DsButton variant="ghost" size="sm" onClick={onRestoreLater}>
+          <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreLater}>
             {t('data:governance.restore_later')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={onRestoreNow}>
+          <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onRestoreNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restore_now')}
           </DsButton>
@@ -1332,7 +1335,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
         </DsDialogBody>
         <DsDialogFooter>
-          <DsButton variant="default" size="sm" onClick={onCloseVerifyDialog}>
+          <DsButton variant="default" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCloseVerifyDialog}>
             {t('common:actions.close')}
           </DsButton>
         </DsDialogFooter>

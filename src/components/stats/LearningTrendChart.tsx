@@ -123,7 +123,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       <TrendUp size={28} className="mb-3 opacity-40" />
       <p className="text-sm">{t('trendChart.noRecord')}</p>
       {onRefresh && (
-        <DsButton variant="ghost" size="sm" className="mt-3" onClick={onRefresh}>
+        <DsButton variant="ghost" size="sm" className="mt-3 [@media(pointer:coarse)]:!min-h-11" onClick={onRefresh}>
           <ArrowsClockwise size={14} />
           {t('trendChart.refreshData')}
         </DsButton>
@@ -618,7 +618,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                   variant="ghost" size="sm"
                   onClick={() => handleDateRangeChange(value)}
                   className={cn(
-                    'ui-state-colors !h-auto !px-2 !py-1 text-xs',
+                    'ui-state-colors !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11',
                     selectedRange === value
                       ? 'bg-background font-medium shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -635,7 +635,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('trendChart.refreshData')}
           >

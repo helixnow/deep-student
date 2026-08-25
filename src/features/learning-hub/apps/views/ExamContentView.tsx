@@ -18,6 +18,8 @@ import {
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
+import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
@@ -99,6 +101,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ exam
             examId={examId}
             className="p-4"
             onClose={() => setShowCalendar(false)}
+            isActive={isActive}
           />
         ) : isSessionActive ? (
           <ReviewSession examId={examId} isActive={isActive} />
@@ -299,6 +302,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   );
 
   const sessionId = node.id;
+  const isSmallScreen = useIsMobile();
 
   // 渲染日志放入 effect，保持 render 纯函数（避免 StrictMode 双调用产生重复日志）
   useEffect(() => {
@@ -579,7 +583,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const detail = (event as CustomEvent<SettingsRequest>).detail;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
 
-      const open = detail?.open;
+      // 顶栏「更多→设置」不带 open（toggle 语义），而设置面板只在练习视图渲染：
+      // 非 practice 时直接翻转 settingsPanelOpen 既无可见反馈，还会让之后进入
+      // 练习时面板意外弹出。toggle 仅在 practice 有效；非 practice 统一按「打开」
+      // 处理，复用 open === true 的进练习守卫。
+      const open = detail?.open ?? (viewMode === 'practice' ? undefined : true);
       if (open === true && !hasQuestions) {
         detail?.acknowledge?.({
           handled: false,
@@ -1680,6 +1688,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
   const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
 
+  // 📱 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
+  // 返回键先执行页内返回（practice 回启动台，二级视图回题库列表），
+  // 而不是让 MobileSlidingLayout 直接把整个右屏收回中屏。
+  //
+  // ⚠️ 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
+  // MobileSlidingLayout 的 A-5 注释），view 档在右屏打开时永远轮不到。
+  // 本 handler 仅在进入非根态时才注册（必然晚于布局 mount 时的注册），
+  // 同优先级后注册者先执行，因此能先拿到事件；之后打开的浮层（Dialog/
+  // AppMenu 等）注册更晚仍优先于本 handler，「先关浮层」语义不受影响。
+  const hardwareBackRef = useRef({ viewMode, isActive, requestViewMode });
+  hardwareBackRef.current = { viewMode, isActive, requestViewMode };
+  const isNonRootViewMode = viewMode !== 'list' && viewMode !== 'launcher';
+  useEffect(() => {
+    if (!isSmallScreen || !isNonRootViewMode) return;
+    return registerBackHandler(() => {
+      const { viewMode: mode, isActive: active, requestViewMode: request } = hardwareBackRef.current;
+      if (active === false || mode === 'list' || mode === 'launcher') return false;
+      // 右屏离屏时（MobileSlidingLayout 给非可见屏加 inert）让行给布局/导航层
+      if (agentFlashRootRef.current?.closest('[inert]')) return false;
+      // requestViewMode 内部的草稿/复习/CSV 导入守卫可能弹确认面板或阻断；
+      // 无论结果如何都消费本次返回，避免确认面板刚弹出整个右屏就被收走
+      request(mode === 'practice' ? 'launcher' : 'list');
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, isNonRootViewMode]);
+
   // ========== Tab 栏滑动选中指示器 + 方向键可达 ==========
   const tabListRef = useRef<HTMLDivElement | null>(null);
   const [tabIndicator, setTabIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -1957,7 +1991,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </DsButton>
@@ -2024,7 +2058,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:min-h-11"
+                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:!min-h-11"
               >
                 {isResuming ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -2047,7 +2081,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <span className="text-sm text-destructive truncate" title={error}>
               {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
-            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
+            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:!min-h-11">
               <ArrowClockwise size={14} />
               {t('common:actions.retry')}
             </DsButton>
@@ -2088,7 +2122,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'list' || undefined}
               aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'list'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2109,7 +2143,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'practice' || undefined}
               aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'practice'
                   ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
@@ -2130,7 +2164,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:min-h-11',
+                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
                       activeTopTab === 'more'
                         ? 'text-accent-foreground font-medium hover:bg-transparent'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
@@ -2170,7 +2204,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
+                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!h-11"
                 />
                 
                 <DsButton
@@ -2186,7 +2220,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:min-h-11',
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     isAdvancedRuntimeTimer
                       ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
                       : isTimerRunning
@@ -2226,7 +2260,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={handleOpenExport}
                 aria-label={t('learningHub:exam.tab.export')}
                 title={t('learningHub:exam.tab.export')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
@@ -2240,7 +2274,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
                     title={t('learningHub:exam.tab.addQuestion')}
-                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
                   >
                     <Plus size={14} />
                     <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
@@ -2347,6 +2381,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onRequestedModeHandled={() => setLauncherRequestedMode(null)}
               currentQuestionId={sessionCurrentQuestionId}
               markedQuestionIds={favoriteQuestionIds}
+              isActive={isActive}
             />
           ) : viewMode === 'manage' && hasQuestions ? (
             <QuestionBankManageView
@@ -2484,6 +2519,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           examName={sessionDetail?.summary?.exam_name || node.name}
           examId={sessionId}
           inline
+          isActive={isActive}
         />
         {/* onJumpToQuestion 直连宿主导航而不走 QBANK_FOCUS_EVENT 回退：
             该事件不带 targetResourceId，同一题目集多窗（标签页保活）时会让
@@ -2494,6 +2530,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           onOpenChange={handleHistoryOpenChange}
           inline
           onJumpToQuestion={handleOpenQuestion}
+          isActive={isActive}
         />
       </Suspense>
     </div>

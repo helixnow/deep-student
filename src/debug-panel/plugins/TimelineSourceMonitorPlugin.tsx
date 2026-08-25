@@ -380,7 +380,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={handleExport}
-            className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="导出日志"
           >
             <Download size={12} />
@@ -388,7 +388,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
           </button>
           <button
             onClick={handleClear}
-            className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
+            className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1 [@media(pointer:coarse)]:min-h-11"
             title="清空数据"
           >
             <Trash size={12} />
@@ -445,7 +445,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
         <select
           value={filterChannel}
           onChange={(e) => setFilterChannel(e.target.value as any)}
-          className="px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-slate-200"
+          className="px-2 py-1 text-sm bg-slate-800 border border-slate-600 rounded text-slate-200 [@media(pointer:coarse)]:min-h-11"
         >
           <option value="all">全部</option>
           <option value="rag">RAG</option>
@@ -481,7 +481,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                   >
                     <button
                       onClick={() => toggleStageExpanded(event.id)}
-                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left"
+                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left [@media(pointer:coarse)]:min-h-11"
                     >
                       {isExpanded ? (
                         <CaretDown size={16} className="text-slate-400 flex-shrink-0" />
@@ -560,7 +560,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                   >
                     <button
                       onClick={() => toggleSourceExpanded(event.id)}
-                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left"
+                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left [@media(pointer:coarse)]:min-h-11"
                     >
                       {isExpanded ? (
                         <CaretDown size={16} className="text-slate-400 flex-shrink-0" />
@@ -615,7 +615,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                             </div>
                           )}
                           <details className="mt-2">
-                            <summary className="text-slate-400 cursor-pointer hover:text-slate-300">
+                            <summary className="text-slate-400 cursor-pointer hover:text-slate-300 [@media(pointer:coarse)]:min-h-11">
                               查看完整来源 ({event.sourceCount} 项)
                             </summary>
                             <pre className="mt-2 p-2 bg-slate-950 rounded text-xs text-slate-300 overflow-x-auto max-h-64 overflow-y-auto">

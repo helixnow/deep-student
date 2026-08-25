@@ -158,7 +158,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={filterLevel}
             onChange={(e) => setFilterLevel(e.target.value as any)}
-            className="px-2 py-1 text-sm rounded border border-border bg-background"
+            className="px-2 py-1 text-sm rounded border border-border bg-background [@media(pointer:coarse)]:min-h-11"
           >
             <option value="all">所有级别</option>
             <option value="debug">Debug</option>
@@ -170,7 +170,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <select
             value={filterStage}
             onChange={(e) => setFilterStage(e.target.value)}
-            className="px-2 py-1 text-sm rounded border border-border bg-background"
+            className="px-2 py-1 text-sm rounded border border-border bg-background [@media(pointer:coarse)]:min-h-11"
           >
             {stages.map(s => (
               <option key={s} value={s}>{s === 'all' ? '所有阶段' : s}</option>
@@ -182,19 +182,19 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             placeholder="关键词搜索..."
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            className="px-2 py-1 text-sm rounded border border-border bg-background w-40"
+            className="px-2 py-1 text-sm rounded border border-border bg-background w-40 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:text-[16px]"
           />
         </div>
 
         {/* 操作按钮 */}
-        <label className="flex items-center gap-1 text-sm cursor-pointer">
+        <label className="flex items-center gap-1 text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
           <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
 
         <button
           onClick={copyAll}
-          className="flex items-center gap-1 px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90"
+          className="flex items-center gap-1 px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
         >
           <Copy size={16} />
           复制全部
@@ -202,7 +202,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
 
         <button
           onClick={clearLogs}
-          className="px-3 py-1 text-sm rounded border border-border hover:bg-muted"
+          className="px-3 py-1 text-sm rounded border border-border hover:bg-muted [@media(pointer:coarse)]:min-h-11"
         >
           清空
         </button>
@@ -270,7 +270,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                       <div className="font-semibold mb-1">{log.message}</div>
                       {log.data && (
                         <details className="mt-1">
-                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-11">
                             展开数据 ▼
                           </summary>
                           <pre className="mt-2 p-2 rounded bg-muted overflow-auto max-h-96 text-xs">

@@ -647,7 +647,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         </div>
         {cards.length > 0 && !disabled && (
           // 视觉不变（负 margin 抵消 padding），实际命中区扩大满足触控目标
-          <DsButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 !px-2 text-xs text-muted-foreground hover:text-foreground">
+          <DsButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 [@media(pointer:coarse)]:!min-h-11 !px-2 text-xs text-muted-foreground hover:text-foreground">
             {t('chatV2.clickToEdit')} →
           </DsButton>
         )}

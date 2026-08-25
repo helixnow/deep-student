@@ -83,7 +83,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           <span className="text-xs">{t('common:anki.settings.open_on_failure_label')}</span>
           <Switch checked={settings.anki_connect_open_folder_on_failure} onCheckedChange={(v) => savePartial({ anki_connect_open_folder_on_failure: v })} />
         </div>
-        <DsButton size="sm" className="w-full h-auto py-1.5 text-xs whitespace-normal" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
+        <DsButton size="sm" className="w-full h-auto py-1.5 text-xs whitespace-normal [@media(pointer:coarse)]:!min-h-11" onClick={testConnection} disabled={!settings.anki_connect_enabled || testing}>
           {testing ? t('common:anki.settings.testing') : t('common:anki.settings.test_connection_short')}
         </DsButton>
       </div>
@@ -132,7 +132,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
           placeholder={t('common:anki.settings.export_deck_placeholder')}
           value={settings.anki_connect_default_deck || ''}
           onChange={(event) => savePartial({ anki_connect_default_deck: event.target.value })}
-          className="h-8 w-64 max-w-full bg-transparent text-xs"
+          className="h-8 w-64 max-w-full bg-transparent text-xs [@media(pointer:coarse)]:h-11"
         />
       </SettingRow>
 
@@ -140,6 +140,7 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
         <DsButton
           variant="default"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={testConnection}
           disabled={!settings.anki_connect_enabled || testing}
         >

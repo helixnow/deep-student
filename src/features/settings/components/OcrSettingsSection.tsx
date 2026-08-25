@@ -71,7 +71,7 @@ const SwitchRow = ({
 }) => (
   // 整行可点切换，开关本体 stopPropagation 避免双重切换
   <div
-    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded [@media(pointer:coarse)]:min-h-11"
     onClick={() => {
       if (!disabled) onCheckedChange(!checked);
     }}
@@ -275,7 +275,7 @@ export const OcrSettingsSection: React.FC = () => {
             size="sm"
             onClick={handleReset}
             disabled={saving}
-            className="gap-1"
+            className="gap-1 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
