@@ -278,7 +278,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onRemovePdfPageRef,
   onClearPdfPageRefs,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
+  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -2163,7 +2163,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderMcpPanel ? renderMcpPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 460;
-          inlineAriaLabel = 'MCP';
+          inlineAriaLabel = t('analysis:input_bar.mcp.title');
           break;
         case 'advanced':
           inlineContent = renderAdvancedPanel ? renderAdvancedPanel() : null;
@@ -2176,7 +2176,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderSkillPanel ? renderSkillPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 480;
-          inlineAriaLabel = 'Skills';
+          inlineAriaLabel = t('skills:title');
           break;
         default:
           break;

@@ -30,10 +30,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
-import { getErrorMessage } from '@/utils/errorUtils';
-import { cancelPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { PdfProcessingStatus as StorePdfProcessingStatus } from '@/features/pdf/stores/pdfProcessingStore';
-import { logAttachment } from '../../debug/chatV2Logger';
 import type { AttachmentMeta } from '../../core/types/common';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
@@ -95,45 +92,8 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
 }) => {
   const { t } = useTranslation(['analysis', 'common', 'chatV2']);
 
-  const handleClearAllAttachments = () => {
-    attachments.forEach(att => {
-      if (att.sourceId) {
-        void cancelPdfProcessing(att.sourceId).catch((error) => {
-          logAttachment('ui', 'cancel_processing_failed', {
-            attachmentId: att.id,
-            sourceId: att.sourceId,
-            error: getErrorMessage(error),
-          }, 'warning');
-        });
-      }
-      if (att.previewUrl?.startsWith('blob:')) {
-        URL.revokeObjectURL(att.previewUrl);
-      }
-    });
-    onClearAttachments();
-  };
-
-  const handleRemoveAttachment = (attachment: AttachmentMeta) => {
-    logAttachment('ui', 'attachment_remove', {
-      attachmentId: attachment.id,
-      sourceId: attachment.sourceId,
-      fileName: attachment.name,
-      status: attachment.status,
-    });
-    if (attachment.sourceId) {
-      void cancelPdfProcessing(attachment.sourceId).catch((error) => {
-        logAttachment('ui', 'cancel_processing_failed', {
-          attachmentId: attachment.id,
-          sourceId: attachment.sourceId,
-          error: getErrorMessage(error),
-        }, 'warning');
-      });
-    }
-    if (attachment.previewUrl?.startsWith('blob:')) {
-      URL.revokeObjectURL(attachment.previewUrl);
-    }
-    onRemoveAttachment(attachment.id);
-  };
+  // remove/clear 语义已收敛进 store（sessionActions）：取消 PDF 处理、
+  // 释放 Blob URL、清理 pdfProcessingStore 均由 store 单点执行，面板只传 id。
 
   return (
     <>
@@ -190,7 +150,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                     className={coarseRowClass}
                     icon={<Trash className="w-4 h-4" weight="bold" />}
                     destructive
-                    onClick={handleClearAllAttachments}
+                    onClick={onClearAttachments}
                   >
                     {t('analysis:input_bar.attachments.clear_all')}
                   </AppMenuItem>
@@ -236,7 +196,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
               </DsButton>
             )}
             {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClearAllAttachments}>
+              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClearAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
               </DsButton>
             )}
@@ -379,7 +339,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                       {t('common:retry')}
                     </DsButton>
                   )}
-                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => handleRemoveAttachment(attachment)}>
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onRemoveAttachment(attachment.id)}>
                     {t('analysis:input_bar.attachments.remove')}
                   </DsButton>
                 </div>

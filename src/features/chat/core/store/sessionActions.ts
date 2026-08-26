@@ -8,6 +8,7 @@ import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { cancelPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { modeRegistry } from '../../registry';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -71,6 +72,20 @@ function blockingInteractionPatch(interaction: BlockingInteraction | null): {
     return { pendingBlockingInteraction: interaction, pendingApprovalRequest: legacy };
   }
   return { pendingBlockingInteraction: interaction, pendingApprovalRequest: null };
+}
+
+/**
+ * remove/clear 语义收敛（SSOT）：取消后端 PDF 处理属于"移除附件"动作本身，
+ * 由 store 统一 fire-and-forget，UI 只负责传 id，不再各自补偿取消/释放逻辑。
+ */
+function cancelAttachmentProcessing(attachmentId: string, sourceId: string): void {
+  void cancelPdfProcessing(sourceId).catch((error) => {
+    logAttachment('store', 'cancel_processing_failed', {
+      attachmentId,
+      sourceId,
+      error: getErrorMessage(error),
+    }, 'warning');
+  });
 }
 
 export function createSessionActions(
@@ -215,6 +230,11 @@ export function createSessionActions(
             status: attachment?.status,
           });
 
+          // ★ remove 语义收敛：取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
+          if (attachment?.sourceId) {
+            cancelAttachmentProcessing(attachmentId, attachment.sourceId);
+          }
+
           set((s) => ({
             attachments: s.attachments.filter((a) => a.id !== attachmentId),
           }));
@@ -259,6 +279,13 @@ export function createSessionActions(
             count: attachmentCount,
             attachments: attachmentInfo,
           });
+
+          // ★ clear 语义收敛：逐个取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
+          for (const att of state.attachments) {
+            if (att.sourceId) {
+              cancelAttachmentProcessing(att.id, att.sourceId);
+            }
+          }
 
           // 🔧 P1-25: 释放所有 Blob URLs，避免内存泄漏
           const blobUrls = state.attachments
