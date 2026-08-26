@@ -155,12 +155,14 @@ impl ChatV2Pipeline {
                 .as_ref()
                 .filter(|anchors| !anchors.turn_skill_ids.is_empty())
             {
-                let restored = rebuild_anchored_skill_messages(
+                // r3 digest 门禁：锚点带 digest 时校验当轮正文未漂移
+                let restored = rebuild_anchored_skill_messages_gated(
                     &anchors.turn_skill_ids,
                     ctx.options
                         .replay_skill_contents
                         .as_ref()
                         .or(ctx.options.skill_contents.as_ref()),
+                    Some(anchors),
                 );
                 if !restored.is_empty() {
                     // live 注入点：本轮 user 消息之前（is_continue 轮为历史末尾）
@@ -321,12 +323,14 @@ impl ChatV2Pipeline {
                             still_pending.push(anchored);
                             continue;
                         }
-                        let restored = rebuild_anchored_skill_messages(
+                        // r3 digest 门禁：tool 级锚点与 turn 级共用同一 digest map
+                        let restored = rebuild_anchored_skill_messages_gated(
                             &anchored.skill_ids,
                             ctx.options
                                 .replay_skill_contents
                                 .as_ref()
                                 .or(ctx.options.skill_contents.as_ref()),
+                            skill_anchors.as_ref(),
                         );
                         chat_history.extend(restored);
                     }
@@ -350,12 +354,14 @@ impl ChatV2Pipeline {
                         anchored.skill_ids,
                         anchored.tool_call_id
                     );
-                    let restored = rebuild_anchored_skill_messages(
+                    // r3 digest 门禁：兜底追加路径同样过门禁
+                    let restored = rebuild_anchored_skill_messages_gated(
                         &anchored.skill_ids,
                         ctx.options
                             .replay_skill_contents
                             .as_ref()
                             .or(ctx.options.skill_contents.as_ref()),
+                        skill_anchors.as_ref(),
                     );
                     chat_history.extend(restored);
                 }
@@ -806,19 +812,62 @@ impl ChatV2Pipeline {
 /// P1-8：按锚点记录的技能 id 重建瞬态技能消息（与 live 同一渲染函数，
 /// 相同正文下字节相等）。正文缺失（技能被删除且无 replay 快照）时跳过
 /// 并告警 —— 该技能位置的前缀会漂移，但不阻塞重放。
+///
+/// 无 digest 门禁的兼容入口：等价于 `rebuild_anchored_skill_messages_gated`
+/// 传 `anchors = None`（即全部走「有正文就重建」的旧行为）。保留本签名
+/// 是为了 helpers.rs / skill_replay_digest_tests.rs 里既有的重放一致性与
+/// 反例测试不动；生产 history 重放路径一律走门禁版。
 pub(super) fn rebuild_anchored_skill_messages(
     skill_ids: &[String],
     skill_contents: Option<&std::collections::HashMap<String, String>>,
 ) -> Vec<LegacyChatMessage> {
+    rebuild_anchored_skill_messages_gated(skill_ids, skill_contents, None)
+}
+
+/// Wave2-A r3：带正文 digest 门禁的锚定技能重放（生产入口）。
+///
+/// `anchors` 提供锚定时刻的正文 digest 查询
+/// （[`crate::chat_v2::types::SkillInjectionAnchors::content_digest_for`]，
+/// turn 级与 tool 级锚点共用同一 map）。逐锚点判定：
+///
+/// - 正文缺失（技能被删且无 replay 快照）→ warn + skip（旧行为不变）；
+/// - 锚点带 digest 且正文存在：仅当
+///   [`crate::chat_v2::types::skill_body_digest`]`(id, body) == stored`
+///   才重建；不一致 → warn（mismatch）+ skip —— **绝不把当轮新正文
+///   伪装成旧历史字节发给 provider**（既伪造历史又必然打断 prompt cache）；
+/// - 旧锚点无该 skill 的 digest（含 `anchors = None` / 旧 JSON 反序列化出的
+///   空 map）→ 保持旧行为，有正文就重建（向后兼容）。
+///
+/// skip 不阻塞其余锚点、不换序；重建命中走 live 同一渲染函数
+/// `make_transient_skill_message`，字节永不漂移。digest 只读不写，
+/// 技能正文本身仍不落库（`without_skill_contents` 纪律不变）。
+pub(super) fn rebuild_anchored_skill_messages_gated(
+    skill_ids: &[String],
+    skill_contents: Option<&std::collections::HashMap<String, String>>,
+    anchors: Option<&crate::chat_v2::types::SkillInjectionAnchors>,
+) -> Vec<LegacyChatMessage> {
     let mut restored = Vec::with_capacity(skill_ids.len());
     for skill_id in skill_ids {
-        match skill_contents.and_then(|contents| contents.get(skill_id)) {
-            Some(content) => restored.push(make_transient_skill_message(skill_id, content)),
-            None => log::warn!(
+        let Some(content) = skill_contents.and_then(|contents| contents.get(skill_id)) else {
+            log::warn!(
                 "[ChatV2::pipeline] P1-8: anchored skill '{}' has no content in this request; replay prefix may drift at its position",
                 skill_id
-            ),
+            );
+            continue;
+        };
+        if let Some(stored) = anchors.and_then(|a| a.content_digest_for(skill_id)) {
+            let current = crate::chat_v2::types::skill_body_digest(skill_id, content);
+            if current != stored {
+                log::warn!(
+                    "[ChatV2::pipeline] P1-8: anchored skill '{}' content digest mismatch (anchored={}, current={}); skipping rebuild instead of forging history with the edited body — replay prefix will drift at its position",
+                    skill_id,
+                    stored,
+                    current
+                );
+                continue;
+            }
         }
+        restored.push(make_transient_skill_message(skill_id, content));
     }
     restored
 }
@@ -1120,6 +1169,81 @@ pub(super) fn is_tool_call_block(block: &MessageBlock) -> bool {
             | block_types::WORKBENCH_OPS
     );
     is_tool_type && block.tool_name.is_some()
+}
+
+// ============================================================
+// Wave2-A r3：digest 门禁单元测试（只写不跑，行为对齐
+// skill_replay_digest_tests.rs 的契约副本）
+// ============================================================
+
+#[cfg(test)]
+mod skill_replay_gate_tests {
+    use super::*;
+    use crate::chat_v2::types::{skill_body_digest, SkillInjectionAnchors};
+    use std::collections::HashMap;
+
+    fn anchors_with_digests(entries: &[(&str, &str)]) -> SkillInjectionAnchors {
+        SkillInjectionAnchors {
+            skill_content_digests: entries
+                .iter()
+                .map(|(id, body)| (id.to_string(), skill_body_digest(id, body)))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn contents_map(entries: &[(&str, &str)]) -> HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(id, body)| (id.to_string(), body.to_string()))
+            .collect()
+    }
+
+    /// digest 不一致（正文被编辑）→ skip，不得把新正文伪装成旧历史；
+    /// digest 一致 → 与 live 渲染同字节；skip 不阻塞其余锚点、不换序。
+    #[test]
+    fn gate_skips_mismatch_and_rebuilds_match_in_anchor_order() {
+        let anchors = anchors_with_digests(&[
+            ("skill-a", "正文 A（未改）"),
+            ("skill-b", "正文 B v1"),
+        ]);
+        let ids = vec!["skill-a".to_string(), "skill-b".to_string()];
+        // 当轮请求携带的 skill-b 正文已被编辑为 v2
+        let contents = contents_map(&[("skill-a", "正文 A（未改）"), ("skill-b", "正文 B v2")]);
+
+        let restored = rebuild_anchored_skill_messages_gated(&ids, Some(&contents), Some(&anchors));
+        assert_eq!(restored.len(), 1, "漂移的 skill-b 必须被 skip");
+        let live = make_transient_skill_message("skill-a", "正文 A（未改）");
+        assert_eq!(restored[0].role, live.role);
+        assert_eq!(restored[0].content, live.content);
+        assert_eq!(restored[0].metadata, live.metadata);
+    }
+
+    /// 旧锚点（无 digest 字段 / 该 skill 无 digest 记录）→ 保持旧行为：
+    /// 有正文就重建；正文缺失仍 warn+skip。二参兼容入口 == 门禁版传 None。
+    #[test]
+    fn legacy_anchor_without_digest_keeps_old_rebuild_behavior() {
+        let ids = vec!["skill-old".to_string(), "skill-ghost".to_string()];
+        let contents = contents_map(&[("skill-old", "旧锚点正文")]);
+
+        // 旧 JSON 反序列化出的锚点：digest map 为空
+        let legacy_anchors = SkillInjectionAnchors::default();
+        let gated =
+            rebuild_anchored_skill_messages_gated(&ids, Some(&contents), Some(&legacy_anchors));
+        assert_eq!(gated.len(), 1, "无 digest → 有正文就重建（兼容旧锚点）");
+        assert_eq!(
+            gated[0].content,
+            make_transient_skill_message("skill-old", "旧锚点正文").content
+        );
+
+        // 二参兼容入口与门禁版传 None 输出一致
+        let ungated = rebuild_anchored_skill_messages(&ids, Some(&contents));
+        assert_eq!(ungated.len(), gated.len());
+        assert_eq!(ungated[0].content, gated[0].content);
+
+        // 正文缺失（skill-ghost）在两条路径都被 skip，不阻塞重放
+        assert!(rebuild_anchored_skill_messages_gated(&ids, None, Some(&legacy_anchors)).is_empty());
+    }
 }
 
 // ============================================================

@@ -435,3 +435,205 @@ TODO 为基线遗留，非本轮引入）。
 - 待 add：4 个产品文件（工作区 M）+ 6 份 untracked r2 文档 + 本台账追加节。
 - 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
 - **不标 Goal complete**：编译/测试验证轮未跑，第 3 轮任务书已排。
+
+---
+
+# Wave2-A 第 3 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 3 轮子代理 #10「台账员」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1 轮 P1–P11 编号与内容一字不改，第 2 轮章节不动。
+  本席未改任何产品代码、未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/ROUND-03-TASKS.md` 与七份 r3 文档
+  （`r3-llm-content-forward.md` #1、`r3-skill-digest-types.md` #2、
+  `r3-skill-replay-gate.md` #3、`r3-utf8-probe.md` #6、`r3-adapter-parallel.md` #7、
+  `r3-review-replay.md` #8、`r3-review-branch-copy.md` #9），
+  以及本席对工作区 `git status` / `git diff` / grep 的独立复核。
+
+## R3-1. 本轮 diff 形态（台账员独立取证）
+
+基线枝 tip `f94f88d1`（第 2 轮四层接线已提交）。第 3 轮全部改动均在工作区未提交：
+
+```
+ src-tauri/src/chat_v2/pipeline.rs             |  17 +（mod 注册 + 阶段 4.6 调用）
+ src-tauri/src/chat_v2/pipeline/history.rs     | 138 +/− （#3 门禁 + 测试）
+ src-tauri/src/chat_v2/pipeline/persistence.rs |  61 + （#1 新函数）
+ src-tauri/src/chat_v2/pipeline/tool_loop.rs   |  46 + （digest 生产者，见 R3-4）
+ src-tauri/src/chat_v2/types.rs                | 124 + （#2 digest 类型合同）
+ src-tauri/src/llm_manager/utf8_stream.rs      |  23 + （#6 探针）
+ src-tauri/src/utils/sse_buffer.rs             |  15 + （#6 探针）
+```
+
+untracked 新文件：`llm_content_crash_tests.rs`（#4，205 行）、
+`skill_replay_digest_tests.rs`（#5，441 行）、`stream_filter_core.rs`（#7 骨架，141 行）
++ `ROUND-03-TASKS.md` + 七份 r3 文档 + 本台账追加节。
+
+红线自证（本席 grep/status 复核）：coordinator.rs / hooks.rs / helpers.rs /
+multi_variant.rs 本轮零改动；过滤器负例测试未删（#5/#7 文件均为新增）。
+
+## R3-2. #1 llm_content 前移（P5 落地）
+
+- 新函数 `ChatV2Pipeline::persist_user_llm_content_early`（persistence.rs:275），
+  **唯一调用点为 pipeline.rs 阶段 4.6 @ :993**（#1 文档锚定行号；父代理在文件头
+  挂 5 行 `mod` 声明后，本席复核当前工作区已漂移至 **:998**，仍是全仓唯一调用点）。
+- 时机链（#8 逐条核实属实）：`save_user_message_immediately` 行已 INSERT（:732）→
+  阶段 4.5 `compile_frozen_context`（:984-987）后 `live_user_llm_content()` 为 Some →
+  阶段 4.6 轻量 UPDATE 只写 user CONTENT 块 `llm_content` 一列 → 阶段 5
+  `execute_with_tools`（tool_loop.rs:1188 发起首个主对话 provider 请求）。
+- 措辞收窄（#8 §1.2，采纳）：阶段 3 检索 / 4.5 辅助 MM/OCR 可能更早有网络 I/O，
+  但它们是 llm_content 的**输入**，逻辑上不存在更早的持久化点——口径统一为
+  「**首个主对话 provider 请求之前**」。
+- 明确不做：save_results 整体不前移；工具块 `tool_call_id`/`round_text` 留原 sidecar；
+  失败只 warn 不阻断，后续保存点同参幂等重写。
+- 两个既有怪癖记录不翻案（#8 §1.3）：is_continue 轮写入「未发送的包装」与既有
+  save_results 逐字节同行为；multi_variant 扇出不走 `execute_internal`，变体崩溃
+  窗口仍在，留后续轮。
+
+## R3-3. #2/#3 技能 digest 类型 + history 重放门禁（P2 推进）
+
+- **类型合同（types.rs，#2）**：`SkillInjectionAnchors` 增 `skill_content_digests:
+  HashMap<String, String>`（skill_id → sha256 hex）+ `skill_content_rev: Option<u64>`，
+  均 `serde(default)` + 空值跳过——旧 JSON 可解析、无 digest 时序列化字节与 r3 前
+  一致（双向兼容）。`skill_body_digest(id, body) = sha256(id‖0x1f‖body‖0x1e)`，
+  复用仓内 sha2 不引新 crate，骨架与 `tool_schema_digest`/`DoomLoopGuard` 同族。
+  钉死向量 `316f875d…bd3dc` 由 #8 用 `sha256sum` 独立验算通过（本轮唯一可提前
+  证伪的硬事实）。隐私纪律保持：`without_skill_contents` 不动，anchors 只存不可逆
+  hash，正文仍不落库。
+- **重放门禁（history.rs，#3）**：新增 `rebuild_anchored_skill_messages_gated`
+  （原二参签名降级为兼容包装传 `anchors=None`，保住 helpers.rs 与 #5 测试的既有
+  断言）。判定表：正文缺失 → warn+skip（旧行为）；digest 匹配 → 重建（live 同
+  渲染函数，字节相等）；**digest 不一致 → warn+skip，禁止用新正文伪装旧历史**；
+  无 digest（旧锚点）→ 旧行为兼容。三个消费点 `history.rs:159`（turn 级）/
+  `:327`（tool 级命中）/ `:358`（tool 级兜底）全部过门禁，#8 核实 digest 与锚点
+  严格同源同轮，无跨轮错配。
+
+## R3-4. digest 生产者已落（缺口 B 关闭——静态）
+
+#8 审阅时点全仓 grep 确认 digest **无生产写入方**（缺口 B：门禁对一切真实数据
+空转）。本席取证期间，生产者已由并行席位落入工作区：`tool_loop.rs` +46 行，
+两处锚点构造在**锚定时刻**填 digest（本席读 diff 复核）：
+
+- turn 级（tool_loop.rs:708-737 区）：对 `built.audit.injected_skill_ids` 逐 id 取
+  渲染注入消息所用的**同一** `skill_contents` 调 `skill_body_digest` 写入 map；
+- tool 级（:1972-2008 区）：load_skills 环内锚定同理，正文来源即渲染本批消息的
+  同一 `batch_contents`，与 turn 级共用消息级 digest map。
+
+两处均遵守：digest 与发出字节严格同源；正文不可得的 id 不写（重放侧走「旧锚点
+无 digest」兼容分支），不编造假 digest；不 bump prefix generation。
+**缺口 B 在源码层面关闭**（未编译验证，见 R3-8）。
+
+## R3-5. #6 Utf8 探针（#122 只定位不修复）与 #4/#5 测试
+
+- **探针（#6）**：`utf8_stream.rs`（decode `Some(invalid_len)` 真非法分支 :80-87、
+  flush 非空残留 :113-116）与 `sse_buffer.rs`（flush lossy 尾部 :211-216）共三个
+  `log::warn!`。只记录长度类元数据（invalid_len / valid_up_to / pos / pending 长度 /
+  chunk_len / 行数），**不打印任何 chunk 字节或用户文本**（PII 纪律）。两文件头
+  均注明「issue #122 定位探针，**不声称修复**」；U+FFFD 替换语义零改动。探针
+  只能证明/排除这两个文件内的两条 `�` 产生路径，不覆盖前端渲染层。
+- **测试只写不跑（#4/#5）**：`llm_content_crash_tests.rs` 模拟「已发 provider、
+  sidecar 未保存时崩溃」（无前移 → 下一轮 history 只有裸 user；有前移 →
+  llm_content 在）；`skill_replay_digest_tests.rs` 覆盖技能正文修改/删除后重放
+  旧锚点（digest 变 → 不得输出新正文；删除 → warn+skip）。两文件的
+  `#[cfg(test)] mod` 已由父代理挂入 `pipeline.rs:96/:98`。注意：#5 文件内
+  「无门禁生产函数按 id 盲取返回 v2 字节」的反例段按其文件头声明，应在门禁
+  落地后改为对门禁版断言 skip——本轮该文件已冻结，留后续轮收口。
+
+## R3-6. #7 双适配器骨架（未大迁移）
+
+- 对照 `llm_adapter.rs` vs `variant_adapter.rs` 盘点**平行点 14 条**，其中
+  #1–#5（wrap_token_filter 应用、`<think>` 标签状态机约 180 行、flush 冲刷、
+  on_content_chunk、on_reasoning_chunk）为逐行级复制约 400 行，划为第一刀。
+- 骨架 `stream_filter_core.rs`（141 行）已建：纯状态机（不持锁、不持 emitter、
+  不管块生命周期），`process_content / process_reasoning / flush / reset` 四入口，
+  返回 `Vec<RoutedPiece>{Thinking|Content}`。**本轮不迁移任何现有逻辑**；块生命
+  周期与工具 args 节流留第二刀。
+- 关键锚点：两侧 `on_reasoning_chunk` 目前均为**裸转发不过任何过滤器**——
+  `process_reasoning` 当前直通，即第 4 轮 reasoning 过滤的一行挂点。
+- 挂载状态勘误（本席复核）：#7 文档与骨架文件头均写「未在 pipeline.rs 声明
+  mod、属死代码占位」，但父代理收轮时已挂 `pipeline.rs:99`
+  `pub(crate) mod stream_filter_core;`——骨架**已参与编译**。文件自带
+  `#![allow(dead_code)]`（注释着 R4 接线后移除），故挂载无告警风险，但两处
+  文档表述已过时，第 4 轮接线者注意。
+
+## R3-7. 审阅结论（#8 重放正确性 / #9 分支复制）
+
+- **#8 重放确认，零翻案**：#1 时机链、写入幂等、失败语义确认；#2 算法/兼容/
+  隐私/钉死向量确认；#3 门禁语义、三消费点、作用域、字节一致性确认。但合同
+  未收全，两缺口：
+  - **缺口 A（仍开）**：API 合同明文要求 digest 冲突「返回『需开新 prefix
+    generation』信号」，当前实现只 warn+skip——技能消息从历史前缀消失（前缀
+    实质失效）而 r2 的 `toolFacePrefixGeneration` 代际层不知情，违反「前缀变更
+    必须显式换代」纪律。本席 grep 复核：history.rs 无 `digest_conflict` /
+    `GatedRebuild`，信号未落。#8 已给补丁草案（gated 版返回
+    `GatedRebuild { messages, digest_conflict }`，三消费点 OR 后落 ctx），
+    **列入第 4 轮**。
+  - **缺口 B（已关，见 R3-4）**：#8 审阅时点生产者缺失的结论在当时成立，
+    随后 tool_loop.rs +46 落地，本席以晚于 #8 的工作区状态复核关闭。
+  - 小问题 C（仍开）：二参兼容入口非 test 构建下潜在 dead_code 告警，本席
+    grep 复核 history.rs 无 `cfg_attr`/`allow(dead_code)` 处理，留第 4 轮或
+    验证轮顺手处置。
+- **#9 分支复制确认，不翻案**：digest 随消息 `meta_json` 整体 clone（
+  `manage_session.rs:1587` `meta: msg.meta.clone()`）**免费继承**，
+  `copy_block_replay_with_conn` 三列 SQL（repo.rs:1988-1997）**不需要、也不应该**
+  为 digest 扩第四列——「JSON 容器整体继承，物理列才需要逐列 SQL」。
+  `without_skill_runtime_contents` 只清正文不碰 anchors；ID 重映射不触 meta。
+  确认一条不变量：**provider tool_call_id 在分支复制全链路必须逐字保持**，
+  否则锚点定位链断。非阻塞记录：旧 build 写回会丢新键（降级即合同规定的
+  旧锚点行为，故障安全）。
+
+## R3-8. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff，本席或 r3 文档留痕）
+
+- 本轮 diff 全貌与席位归属（R3-1 清单）——本席 `git status` / `git diff --stat`
+  复核，与各席独占表一致（#1 的 pipeline.rs 调用 + 父代理 mod 注册共处一文件，
+  任务卡允许）。
+- `persist_user_llm_content_early` 全仓唯一调用点（persistence.rs 定义 +
+  pipeline.rs 阶段 4.6 一处）——本席 grep 复核。
+- 门禁三消费点行号（:159/:327/:358）、二参兼容包装（history.rs:820-824 委托
+  gated 传 None）——本席 grep 复核。
+- tool_loop.rs 生产者两处落地形态（+46，turn/tool 级同源填 digest）——本席读
+  diff 复核（晚于 #8 审阅时点）。
+- 缺口 A 未落（history.rs 零命中 `digest_conflict`/`GatedRebuild`）、小问题 C
+  未处置——本席 grep 复核。
+- 钉死向量 sha256 独立验算（#8 用 `printf | sha256sum`）——采信 #8，属运行
+  哈希工具而非 cargo/测试，不违铁律。
+- #6 探针只记长度元数据、文件头免责声明在——本席读 diff 复核。
+- 红线：coordinator.rs / hooks.rs 本轮零改动——本席 `git status` 复核。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**：本轮 +371（7 个 M 文件）+ 787 行新文件
+  （两测试 + 骨架）**未经 cargo check / cargo test / rustfmt**；#4/#5 测试与
+  types/history 的新 `#[cfg(test)]` 模块均仅为源码存在，不排除低级编译错误。
+  缺口 B 的「关闭」同样仅是源码层面。
+- #8 审阅期间行号随并行写入漂移（如 pipeline.rs :993→:998），静态行号仅为
+  快照口径。
+- 探针能否真实命中 #122 的乱码路径、digest 门禁在真实编辑技能场景下的行为，
+  均无运行时证据。
+- 崩溃窗口收窄的实际收益（崩溃后下一轮 history 含 llm_content）依赖 #4 测试
+  与真实崩溃复现，本轮均未执行。
+
+## R3-9. 第 4 轮预告（按用户任务书 + 本轮遗留）
+
+主题五项（P9 域为主）：
+
+1. **reasoning 过滤**：两适配器 `on_reasoning_chunk` 裸转发 → 接
+   `StreamFilterCore::process_reasoning`（挂点已备好，见 R3-6）。
+2. **常量表统一**：`utils/model_special_tokens.rs` 与
+   `streaming_anki_service.rs:45` 双常量表收敛为单一来源引用。
+3. **非流式出口**：出口路径挂接同一过滤（E 域算法不动只做常量引用）。
+4. **consume_prefix O(n²)**：算法面评估与修复。
+5. **目录生命周期**：P4 `availableSkillsSnapshot` first-write-wins 无换代出口，
+   挂 prefixGeneration 提供出口。
+
+第 3 轮遗留并入：缺口 A 切代信号（#8 §4.1 草案）、小问题 C dead_code、
+#5 反例段改门禁断言、multi_variant 扇出路径的 llm_content 前移与
+stream_filter_core 文档挂载表述勘误（R3-6）。
+
+## R3-10. 收轮交接（给父代理）
+
+- 待 add：7 个产品文件（工作区 M）+ 3 个新 rs 文件 + 8 份 untracked 文档 +
+  本台账追加节。
+- 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
+- **不标 Goal complete**：编译/测试验证轮未跑，缺口 A 未收，第 4 轮任务书已排。

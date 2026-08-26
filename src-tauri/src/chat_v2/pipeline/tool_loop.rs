@@ -705,12 +705,33 @@ impl ChatV2Pipeline {
                 injected_skill_ids.extend(built.audit.injected_skill_ids.iter().cloned());
                 cumulative_skill_audit = built.audit.clone();
                 if !built.audit.injected_skill_ids.is_empty() {
+                    // Wave2-A r3：锚定时刻立刻记录正文 digest。正文来源即上面
+                    // 渲染注入消息所用的同一 `skill_contents`（replay_skill_contents
+                    // 优先、退回 options.skill_contents）——digest 与发出的字节
+                    // 严格同源。正文不可得的 id 不写（重放侧按「旧锚点无 digest」
+                    // 走兼容分支），绝不编造假 digest；anchors 只存 hash 不存正文。
+                    let content_digests: Vec<(String, String)> = built
+                        .audit
+                        .injected_skill_ids
+                        .iter()
+                        .filter_map(|id| {
+                            skill_contents.get(id).map(|body| {
+                                (
+                                    id.clone(),
+                                    crate::chat_v2::types::skill_body_digest(id, body),
+                                )
+                            })
+                        })
+                        .collect();
                     let anchors = ctx
                         .options
                         .skill_injection_anchors
                         .get_or_insert_with(Default::default);
                     anchors.turn_skill_ids = built.audit.injected_skill_ids.clone();
                     anchors.before_turn_user = ctx.options.is_continue != Some(true);
+                    for (id, digest) in content_digests {
+                        anchors.skill_content_digests.insert(id, digest);
+                    }
                 }
                 frozen_turn_skill_injection = Some(built);
             }
@@ -1951,6 +1972,28 @@ impl ChatV2Pipeline {
                                             .extend(batch.audit.injected_skill_ids.iter().cloned());
                                         cumulative_skill_audit.estimated_tokens +=
                                             batch.audit.estimated_tokens;
+                                        // Wave2-A r3：环内锚定同样在写锚点时立刻记
+                                        // digest，正文来源即渲染本批消息的同一
+                                        // `batch_contents`（replay_skill_contents 优先、
+                                        // 退回 options.skill_contents）。tool 级与 turn
+                                        // 级共用消息级 skill_content_digests map（按
+                                        // skill_id 键，同轮同 id 必同体）。正文不可得
+                                        // 不写假 digest；不 bump prefix generation。
+                                        let content_digests: Vec<(String, String)> = batch
+                                            .audit
+                                            .injected_skill_ids
+                                            .iter()
+                                            .filter_map(|id| {
+                                                batch_contents.get(id).map(|body| {
+                                                    (
+                                                        id.clone(),
+                                                        crate::chat_v2::types::skill_body_digest(
+                                                            id, body,
+                                                        ),
+                                                    )
+                                                })
+                                            })
+                                            .collect();
                                         let anchors = ctx
                                             .options
                                             .skill_injection_anchors
@@ -1961,6 +2004,9 @@ impl ChatV2Pipeline {
                                                 skill_ids: batch.audit.injected_skill_ids.clone(),
                                             },
                                         );
+                                        for (id, digest) in content_digests {
+                                            anchors.skill_content_digests.insert(id, digest);
+                                        }
                                         log::info!(
                                             "[ChatV2::pipeline] P1-8: anchored {} in-loop skill(s) after load_skills tool_call_id={}",
                                             batch.audit.injected_skill_ids.len(),

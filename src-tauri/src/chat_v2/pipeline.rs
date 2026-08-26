@@ -92,6 +92,11 @@ mod prefix_snapshot_tests;
 mod prefix_generation_fork_tests;
 #[cfg(test)]
 mod prefix_generation_restore_tests;
+#[cfg(test)]
+mod llm_content_crash_tests;
+#[cfg(test)]
+mod skill_replay_digest_tests;
+pub(crate) mod stream_filter_core;
 pub mod prompt;
 pub mod retrieval;
 pub mod summary;
@@ -984,6 +989,18 @@ impl ChatV2Pipeline {
         tokio::select! {
             result = self.compile_frozen_context(ctx) => result?,
             _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
+
+        // 阶段 4.6：R3-#1 llm_content 前移 —— 编译已冻结、用户块行已 INSERT
+        // （阶段 5 execute_with_tools 发起首个 provider 请求之前），轻量补写
+        // user CONTENT 块 llm_content sidecar，消除「已发 provider、sidecar
+        // 未保存」的崩溃窗口。失败只 warn 不阻断发送。
+        if let Err(e) = self.persist_user_llm_content_early(ctx).await {
+            log::warn!(
+                "[ChatV2::pipeline] persist_user_llm_content_early failed (non-fatal, save_results will backfill): session={}, err={}",
+                ctx.session_id,
+                e
+            );
         }
 
         // 阶段 5：调用 LLM（带工具递归）
