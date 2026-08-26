@@ -21,6 +21,7 @@ import {
 } from './quickLookPreview';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
 import { DsButton } from '@/components/ui/DsButton';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
@@ -92,6 +93,16 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
     ],
     [onClose],
   );
+
+  // 📱 Android 返回键：浮层打开时先关浮层（契约第 4 条）。自绘 portal 无
+  // data-state="open"，androidBackCoordinator 的 Radix 兜底匹配不到，必须
+  // 显式注册（对照 LearningHubContextMenu）。组件仅在打开时挂载，无需 open 门控。
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [onClose]);
 
   const Icon = TYPE_ICONS[item.type] || IllustratedGenericFileIcon;
   const typeLabel = item.type === 'folder'
@@ -189,7 +200,9 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             variant="ghost"
             size="icon"
             iconOnly
-            className="!h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+            // 📱 触屏：视觉保持 40px 防标题栏撑高，伪元素 after:-inset-1 外扩 4px
+            // 使命中区达 48px ≥44px（对齐 FinderToolbar / FinderQuickAccess 范式）
+            className="relative !h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']"
             onClick={onClose}
             aria-label={t('common:close')}
           >

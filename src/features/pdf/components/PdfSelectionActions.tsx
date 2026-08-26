@@ -28,7 +28,7 @@ import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import { ExplainPopover } from '@/features/chat/components/ExplainPopover';
 import { TranslationPopover } from '@/features/chat/components/TranslationPopover';
 import { generateCardsFromSelection } from '@/features/chat/services/selectionCardGeneration';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerVisibilityGuardedBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /**
  * 触屏底部避让高度：阅读器底栏 + 进度细线 + Home Indicator 的经验值。
@@ -73,14 +73,16 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     setTranslateState(null);
   }, []);
 
-  // 📱 Android 返回键：先关结果面板，不要直接退出阅读器
+  // 📱 Android 返回键：先关结果面板，不要直接退出阅读器。
+  // 用共享可见性守卫注册：保活但不可见的 PDF 实例（ViewLayerRenderer
+  // keep-alive 隐藏层）若残留打开的面板，不得吞掉活跃页面的返回键。
   React.useEffect(() => {
     if (!panelOpen) return;
-    return registerBackHandler(() => {
+    return registerVisibilityGuardedBackHandler(containerRef, () => {
       closePanel();
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [panelOpen, closePanel]);
+  }, [panelOpen, closePanel, containerRef]);
 
   const handleExplain = useCallback((text: string) => {
     setTranslateState(null);

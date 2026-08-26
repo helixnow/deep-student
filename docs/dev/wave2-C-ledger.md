@@ -297,3 +297,43 @@
 - Android back 序列（菜单→面板→抽屉→view→navigation）的运行时顺序。
 - 编译/类型检查/lint/CI 门禁——全部未跑。
 - 第 1 轮 locale 补键的渲染效果（仅静态核对键名与消费点一致）。
+
+---
+
+## 第 5 轮对账 / 第 6 轮首位欠账
+
+对账基线 /workspace HEAD `cf8eb9e8`（r1–r4 已提交，工作树干净）；全部断言本轮重新 grep 取证，原文 `/tmp/0824-wave2-c-r5/09-reconcile.md`。对账时点第 5 轮仅 pdf-chrome 席位有在途未提交改动（androidBackCoordinator / EnhancedPdfViewer / PdfSelectionActions，即卡 6），其余七席位（chat/hub/settings/anki-chrome、check-i18n、i18n-alias、i18n-ast）工作树干净未落盘，其结果不计入本对账。
+
+### P1–P8 状态一览
+
+| 项 | 状态 | 一句话证据 |
+|---|---|---|
+| P1 | 部分 | 短修在（isWithinComposerTerritory :1058/:1404 共用）；**owned-overlay 零生产接线**（registerOwnedOverlay 仅本体+2 测试文件），closest 过宽未限定 menuId |
+| P2 | 已落地（1 残债） | cancel 顶层 sourceId 守卫 :233-236；残债：pdfProcessingStore.remove 仍嵌 resourceId 分支 :249-250（孤儿附件 store 条目不清，r4-07 审阅点名两轮未修） |
+| P3 | 部分 | 批 1–3 落地（契约 :73-83 coarse 下沉、lint 规则挂 warn+40 行白名单）；批 4 codemod 未做，~4000 散点存量原样，**warn 未升 error** |
+| P4 | 已落地 | canCapturePhoto platform 判定；布局仍 isMobile（设计如此） |
+| P5 | 已落地 | inert/二段 clamp/t()（skills:title 等双语键核验在）/role=img 已去 |
+| P6 | 部分 | 缺键已补（R1）；**契约测试未升级**（无模板键枚举、四文件未入清单，grep 零命中）——第 5 轮 i18n 三席位在补，未落盘 |
+| P7 | 未做→在途 | V1 吞 back 截至 HEAD 未修（PdfSelectionActions :79-81 仍无守卫，registerVisibilityGuardedBackHandler 全库零命中）；pdf-chrome 席位在途；V2/V4 未动 |
+| P8 | 部分 | 发现#2 InputBarUI 让行已做+coordinator 测试 2 份已写；发现#1 未修（ShadApiEditModal:50 仍用旧 useKeyboardInset），McpToolsSection 让行、useKeyboardHeight 单测未做 |
+
+扫描补充项：卡 5（learning-hub F1–F4）/卡 7（settings 触控+键盘双轨）/卡 8（宽表卡片化，ResponsiveDataList 零命中）/卡 9（Checkbox coarse 热区零命中）全部未做。按 10 卡计修复面 ≈ 4.9/10。
+
+### 第 6 轮二检必须翻的前 5 项（按风险降序）
+
+1. **owned-overlay 尚未接线**——P1 高危族只靠不限定 menuId 的 closest 短修防守，误保护面未知；28 处外点监听零迁移，coordinator 侧新 API 是死代码。翻：overlayOwnership 消费点数（应仍为 0）、closest 是否限定实例。
+2. **真机/运行验证空白**——五轮 20+ 测试文件、tsc/lint 一次未跑，全部「已落地」运行置信为 0。翻：若解禁执行先跑 vitest+tsc；仍禁则人工复核新测试可运行性。
+3. **pdf store remove 仍嵌 resourceId**——sessionActions.ts:249-250，孤儿附件单删 store 残留、与 clearAttachments 不对称；一行级修但连续两轮只登记不修，且孤儿用例测试钉住缺陷现状（修时必须同步改测试）。
+4. **lint 仍 warn**——门禁无阻断力散点可回流；升 error 前置（批 4 清存量）未启动、白名单 40 行无人复审。翻：eslint.config.js:122 严重级与存量计数是否收敛（对照 r1-09 基数 4079）。
+5. **宽表未卡片化**——BackupTab 6 列宽表原样（规范④最重违规），ResponsiveDataList 未建；实施须守 WebDAV/S3/FTP 禁区只动展示层。翻：settings-chrome 席位产出与禁区 rg 零命中。
+
+次级欠账登记：卡 5 三 FAIL、卡 7 键盘双轨、卡 9 Checkbox 热区、P6 契约升级、P7 V2/V4、P8 发现#1、McpToolsSection 让行、useKeyboardHeight 单测。
+
+### 完成度诚实估计（第 1–5 轮审+改，95% 置信）
+
+- 审阅/定性面 ≈ 完成（静态口径，P1–P8 判定+全库核验表齐）。
+- 修复面按卡计 ≈ 4.9/10，风险加权约 55–60%；第 5 轮在途席位落盘后预计再 +15–20 个百分点，对账时点不可计。
+- 验证面 = **0%**（零测试执行、零编译、零真机）。
+- 综合：静态口径 **50%–60%（95% 置信区间，点估计 55%）**；经运行验证口径 **0%**。两口径必须分开报。
+- 本轮未标注 Goal complete（按指令不得标注）；对账过程未运行测试、未改产品代码、未 git commit。
+- 时点补记：对账收尾时观察到同轮席位并发落盘（pdf-chrome / i18n-alias 报告入 /tmp，工作树出现 i18n-alias 席位的 `inputBarSplitI18nKeys.contract.test.ts` +11 行 actions.more alias 断言——非 P6 所欠模板键升级，P6 结论不变）。本节全部证据取证于 HEAD `cf8eb9e8` 干净树时点；第 6 轮二检须以届时 HEAD 重新取证，不得转抄本表。

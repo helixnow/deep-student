@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
  * 撑出 ≥44×44 命中区，而不是伪元素 after:-inset 扩区——伪元素扩区在
  * 密排行内会互相覆盖（见 wave2-C-r1/09-touch-44.md §2），只保留为
  * 逃生舱（@/components/ui/coarseHit）。
- * 用 min-* 而非 h-*/w-* 或 !important：min-height/min-width 在 CSS 求值
+ * 用 min-* 而非 h-* / w-* 或 !important：min-height/min-width 在 CSS 求值
  * 层面天然赢过调用方的 height/width（h-6/h-7/h-9 等视觉尺寸类可原样
  * 保留），细指针（桌面鼠标）下整组类不生效，视觉不被撑大。
  * 图标视觉尺寸（24/28/36）由 children 自己控制，本组件不干预。

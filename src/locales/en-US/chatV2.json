@@ -250,6 +250,7 @@
     "thinkingUnsupported": "Reasoning unsupported",
     "thinkingUnsupportedDescription": "This model does not support reasoning",
     "thinkingDepth": {
+      "minimal": "Minimal",
       "low": "Low",
       "medium": "Medium",
       "high": "High",

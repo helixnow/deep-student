@@ -250,6 +250,7 @@
     "thinkingUnsupported": "不支持推理",
     "thinkingUnsupportedDescription": "该模型不支持推理",
     "thinkingDepth": {
+      "minimal": "最低",
       "low": "低",
       "medium": "中",
       "high": "高",

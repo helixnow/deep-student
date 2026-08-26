@@ -9,6 +9,7 @@ import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isErr } from '@/shared/result';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMobileSubviewChrome } from '@/components/layout';
 import './finder-animations.css';
 
 interface FolderPickerDialogProps {
@@ -234,6 +235,20 @@ export function FolderPickerDialog({
 
   const resolvedTitle = title || t('finder.folderPicker.title');
 
+  // 📱 小屏 learning-hub 承载（中屏子屏）：标题/返回上移 App 级统一顶栏，
+  // 页内不再自绘返回行；返回箭头与上方系统返回键同语义（关闭子屏）。
+  // 无宿主（桌面分栏 / 「保存为笔记」的独立 fixed 承载等）返回 false，保持自绘返回行。
+  // 注意：通道只接管顶栏，不注册返回键——上面的 registerBackHandler 必须保留。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: resolvedTitle,
+      onBack: () => onOpenChange(false),
+      screen: 'center',
+    },
+    [resolvedTitle, onOpenChange],
+    inline && open,
+  );
+
   // 树内容（Dialog / 内联子屏共用）
   const treeBody = isLoading ? (
     <div className="flex items-center justify-center h-32 px-5">
@@ -299,21 +314,23 @@ export function FolderPickerDialog({
         role="dialog"
         aria-label={resolvedTitle}
       >
-        {/* 顶栏：返回 + 标题 */}
-        <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
-          <DsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            aria-label={t('common:back')}
-            className="gap-1 min-h-11 [@media(pointer:coarse)]:!min-h-11 px-2 shrink-0"
-          >
-            <CaretLeft className="h-4 w-4" aria-hidden="true" />
-            {t('common:back')}
-          </DsButton>
-          <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
-          <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
-        </div>
+        {/* 顶栏：返回 + 标题（有统一顶栏宿主时由其接管，页内不再自绘） */}
+        {!subviewChromeHosted && (
+          <div className="flex items-center gap-1 border-b border-border/50 pl-1 pr-2 py-1.5 shrink-0">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              aria-label={t('common:back')}
+              className="gap-1 min-h-11 [@media(pointer:coarse)]:!min-h-11 px-2 shrink-0"
+            >
+              <CaretLeft className="h-4 w-4" aria-hidden="true" />
+              {t('common:back')}
+            </DsButton>
+            <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
+            <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
+          </div>
+        )}
 
         {/* 文件夹树列表 */}
         <CustomScrollArea className="flex-1 min-h-0" fullHeight>

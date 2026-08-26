@@ -101,8 +101,22 @@ describe('mobile behaviour', () => {
     expect(panelBlock).toContain('var(--ds-pdf-safe-bottom)');
   });
 
-  it('lets the Android back button close the result panel first', () => {
-    expect(actionsSource).toContain('registerBackHandler');
+  it('lets the Android back button close the result panel first, with a visibility guard', () => {
+    // Wave2-C R5（台账 03 V1）：从「handler 存在」升级为「守卫存在」——
+    // 必须走共享的可见性守卫注册（宿主 containerRef 不可见时让行），
+    // 保活隐藏的 PDF 实例不得吞掉活跃页面的返回键。
+    expect(actionsSource).toContain(
+      "import { registerVisibilityGuardedBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator'",
+    );
+    expect(actionsSource).toContain('registerVisibilityGuardedBackHandler(containerRef,');
     expect(actionsSource).toContain('BACK_PRIORITY.overlay');
+    // 不允许退回无守卫的裸注册
+    expect(actionsSource).not.toMatch(/(?<!Guarded)registerBackHandler\(/);
+  });
+
+  it('the viewer overlay chain shares the same guarded registration', () => {
+    // EnhancedPdfViewer 的浮层关闭链改用同一共享守卫，不再手抄三重检查
+    expect(viewerSource).toContain('registerVisibilityGuardedBackHandler(containerRef,');
+    expect(viewerSource).not.toMatch(/(?<!Guarded)registerBackHandler\(/);
   });
 });

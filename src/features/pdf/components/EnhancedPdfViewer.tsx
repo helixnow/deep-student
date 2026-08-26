@@ -74,7 +74,7 @@ import { PDF_OPTIONS } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerVisibilityGuardedBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   resolvePdfAnnotationSaveBaseline,
@@ -1256,14 +1256,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       selectionTranslation || showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
       sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
-    return registerBackHandler(() => {
-      // 可见性守卫：保活但不可见的实例（ViewLayerRenderer keep-alive 隐藏层 /
-      // 后台标签页）不得吞掉其他页面的返回键。注意 visibility:hidden 不清除
-      // 布局盒（getClientRects 仍有返回值），必须单独查 computed visibility。
-      const el = containerRef.current;
-      if (!el || !el.isConnected) return false;
-      if (el.getClientRects().length === 0) return false;
-      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+    // 可见性守卫由共享 registerVisibilityGuardedBackHandler 内置：保活但
+    // 不可见的实例（ViewLayerRenderer keep-alive 隐藏层）不吞返回键。
+    return registerVisibilityGuardedBackHandler(containerRef, () => {
       if (selectionTranslation) {
         setSelectionTranslation(null);
         return true;

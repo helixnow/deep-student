@@ -70,6 +70,43 @@ export function registerBackHandler(handler: BackHandler, priority: number = BAC
   };
 }
 
+/** 与 React ref 兼容的元素容器（框架无关，只要求 .current） */
+export interface BackHandlerElementRef {
+  readonly current: Element | null;
+}
+
+/**
+ * 元素可见性守卫（2026-08 Wave2-C R5，扫描台账 03 V1 机制化）：
+ * 保活但不可见的实例（ViewLayerRenderer keep-alive 隐藏层 / 后台标签页）
+ * 不得吞掉当前活跃页面的系统返回键。注意 visibility:hidden 不清除布局盒
+ * （getClientRects 仍有返回值），必须单独查 computed visibility。
+ */
+export function isElementVisibleForBack(el: Element | null): boolean {
+  if (!el || !el.isConnected) return false;
+  if (el.getClientRects().length === 0) return false;
+  if (window.getComputedStyle(el).visibility === 'hidden') return false;
+  return true;
+}
+
+/**
+ * 带可见性守卫的返回键注册：宿主元素（通常是组件根 containerRef）不可见时
+ * handler 直接让行（返回 false），事件继续沿栈下发。
+ *
+ * 供挂在同一保活视图体系内的浮层组件共用（EnhancedPdfViewer /
+ * PdfSelectionActions 等），避免各处手抄 isConnected/getClientRects/visibility
+ * 三重检查。排序与栈语义与 registerBackHandler 完全一致（内部就是它）。
+ */
+export function registerVisibilityGuardedBackHandler(
+  elementRef: BackHandlerElementRef,
+  handler: BackHandler,
+  priority: number = BACK_PRIORITY.overlay,
+): () => void {
+  return registerBackHandler(() => {
+    if (!isElementVisibleForBack(elementRef.current)) return false;
+    return handler();
+  }, priority);
+}
+
 /**
  * Radix 系浮层兜底探测：Dialog/AlertDialog/Menu/Popover/Select 打开时，
  * 向 document 派发 Escape 让 Radix 自行关闭。
