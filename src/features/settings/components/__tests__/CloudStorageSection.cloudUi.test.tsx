@@ -366,6 +366,12 @@ describe('CloudStorageSection cloud UI guarantees', () => {
     const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
     expect(restoreBlock).not.toContain('isExplicitCloudEncryptionPasswordTooShort');
     expect(restoreBlock).not.toContain('encryption.tooShort');
+    // 云下载已经用 secure-store SSOT 解掉外层 DSBK。导入阶段不得再次透传
+    // 输入框里的显式短口令：v0.9.44 解密后是无 portable_secrets.dsbk 的旧 ZIP，
+    // 显式口令会被该 ZIP 正确判为“不适用”并导致恢复失败。stored 开关则只在
+    // 0824 密封 ZIP 上生效，旧 ZIP 会忽略。
+    expect(restoreBlock).not.toContain('const zipArgs = resolveCloudZipEncryptionArgs()');
+    expect(restoreBlock).toContain('credentialStatus.encryptionPasswordConfigured || undefined');
 
     // 上传（新设密文）仍保留最小长度门
     const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
