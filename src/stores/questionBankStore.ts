@@ -816,9 +816,16 @@ let checkInCalendarRequestSeq = 0;
 // Store 状态
 // ============================================================================
 
-/** 本轮做题进度（仅内存，跨视图切换保留，不跨进程） */
-export interface PracticeSessionProgress {
-  examId: string | null;
+/** 做题会话归属；同一题库的两个保活视图也必须使用不同的 viewInstanceId。 */
+export interface PracticeSessionOwner {
+  examId: string;
+  viewInstanceId: string;
+}
+
+/** 本轮做题进度（仅内存，跨子视图切换保留，不跨进程） */
+export interface PracticeSessionProgress extends PracticeSessionOwner {
+  /** 当前实例允许作答的题目，用于拒绝串入其他题库的题目。 */
+  questionIds: string[];
   /** 连续答对数（明确答错清零；主观题待判定不中断） */
   streakCount: number;
   totalCorrectCount: number;
@@ -826,12 +833,31 @@ export interface PracticeSessionProgress {
   answeredIds: string[];
 }
 
-const EMPTY_PRACTICE_SESSION: PracticeSessionProgress = {
-  examId: null,
-  streakCount: 0,
-  totalCorrectCount: 0,
-  answeredIds: [],
-};
+export function getPracticeSessionKey(owner: PracticeSessionOwner): string | null {
+  if (
+    typeof owner?.examId !== 'string'
+    || owner.examId.length === 0
+    || typeof owner?.viewInstanceId !== 'string'
+    || owner.viewInstanceId.length === 0
+  ) {
+    return null;
+  }
+  // JSON 元组避免 examId / viewInstanceId 中出现分隔符时产生键碰撞。
+  return JSON.stringify([owner.examId, owner.viewInstanceId]);
+}
+
+function createEmptyPracticeSession(
+  owner: PracticeSessionOwner,
+  questionIds: readonly string[],
+): PracticeSessionProgress {
+  return {
+    ...owner,
+    questionIds: Array.from(new Set(questionIds.filter((id) => typeof id === 'string' && id.length > 0))),
+    streakCount: 0,
+    totalCorrectCount: 0,
+    answeredIds: [],
+  };
+}
 
 interface QuestionBankState {
   // 数据
@@ -944,19 +970,27 @@ interface QuestionBankState {
   ) => void;
   
   /**
-   * 做题会话的即时进度（连对 / 已作答集合）。
+   * 做题会话的即时进度（连对 / 已作答集合），按 examId + viewInstanceId 分片。
    * 提到 store 是为了让「做题 → 错题本 → 回做题」不清零；
-   * 未持久化，所以进程重启后仍然从零开始。
+   * 未持久化，所以视图卸载或进程重启后仍然从零开始。
    */
-  practiceSession: PracticeSessionProgress;
-  /** 切换题集时重置本轮进度；examId 未变则原样保留。 */
-  ensurePracticeSession: (examId: string | null) => void;
-  /** 记录一次作答，返回更新后的快照（调用方需要同帧读到新连对数）。 */
+  practiceSessions: Record<string, PracticeSessionProgress>;
+  /** 注册或刷新实例可作答的题目；已有实例保留仍有效的进度。 */
+  ensurePracticeSession: (
+    owner: PracticeSessionOwner,
+    questionIds: readonly string[],
+  ) => PracticeSessionProgress | null;
+  /**
+   * 记录一次作答并返回更新后的快照。
+   * 归属无效、实例未注册或题目不属于实例时 fail-closed，不写入任何分片。
+   */
   recordPracticeSessionAnswer: (
+    owner: PracticeSessionOwner,
     questionId: string,
     isCorrect: boolean | null,
-  ) => PracticeSessionProgress;
-  resetPracticeSession: (examId?: string | null) => void;
+  ) => PracticeSessionProgress | null;
+  resetPracticeSession: (owner: PracticeSessionOwner) => PracticeSessionProgress | null;
+  releasePracticeSession: (owner: PracticeSessionOwner) => void;
 
   // 练习模式状态
   timedSession: TimedPracticeSession | null;
@@ -1025,7 +1059,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       // 并发防护：请求 ID，确保只有最新请求的结果会被应用
       loadRequestId: 0,
       
-      practiceSession: EMPTY_PRACTICE_SESSION,
+      practiceSessions: {},
 
       // 练习模式状态（2026-01 新增）
       timedSession: null,
@@ -1050,15 +1084,56 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       
       resetFilters: () => set({ filters: {} }),
 
-      ensurePracticeSession: (examId) => {
-        if (get().practiceSession.examId === examId) return;
-        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId } });
+      ensurePracticeSession: (owner, questionIds) => {
+        const key = getPracticeSessionKey(owner);
+        if (!key || !Array.isArray(questionIds)) return null;
+
+        const normalizedQuestionIds = Array.from(
+          new Set(questionIds.filter((id) => typeof id === 'string' && id.length > 0)),
+        );
+        const previous = get().practiceSessions[key];
+        if (!previous) {
+          const created = createEmptyPracticeSession(owner, normalizedQuestionIds);
+          set((state) => ({
+            practiceSessions: { ...state.practiceSessions, [key]: created },
+          }));
+          return created;
+        }
+
+        const allowedIds = new Set(normalizedQuestionIds);
+        const answeredIds = previous.answeredIds.filter((id) => allowedIds.has(id));
+        const unchanged = previous.questionIds.length === normalizedQuestionIds.length
+          && previous.questionIds.every((id, index) => id === normalizedQuestionIds[index])
+          && answeredIds.length === previous.answeredIds.length;
+        if (unchanged) return previous;
+
+        const next: PracticeSessionProgress = {
+          ...previous,
+          questionIds: normalizedQuestionIds,
+          answeredIds,
+        };
+        set((state) => ({
+          practiceSessions: { ...state.practiceSessions, [key]: next },
+        }));
+        return next;
       },
 
-      recordPracticeSessionAnswer: (questionId, isCorrect) => {
-        const previous = get().practiceSession;
+      recordPracticeSessionAnswer: (owner, questionId, isCorrect) => {
+        const key = getPracticeSessionKey(owner);
+        if (!key || typeof questionId !== 'string' || questionId.length === 0) return null;
+
+        const previous = get().practiceSessions[key];
+        if (
+          !previous
+          || previous.examId !== owner.examId
+          || previous.viewInstanceId !== owner.viewInstanceId
+          || !previous.questionIds.includes(questionId)
+        ) {
+          return null;
+        }
+
         const next: PracticeSessionProgress = {
-          examId: previous.examId,
+          ...previous,
           // null（主观题待判定）既不加连对也不中断
           streakCount: isCorrect === true
             ? previous.streakCount + 1
@@ -1068,12 +1143,33 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             ? previous.answeredIds
             : [...previous.answeredIds, questionId],
         };
-        set({ practiceSession: next });
+        set((state) => ({
+          practiceSessions: { ...state.practiceSessions, [key]: next },
+        }));
         return next;
       },
 
-      resetPracticeSession: (examId = get().practiceSession.examId) => {
-        set({ practiceSession: { ...EMPTY_PRACTICE_SESSION, examId: examId ?? null } });
+      resetPracticeSession: (owner) => {
+        const key = getPracticeSessionKey(owner);
+        if (!key) return null;
+        const previous = get().practiceSessions[key];
+        if (!previous) return null;
+
+        const next = createEmptyPracticeSession(owner, previous.questionIds);
+        set((state) => ({
+          practiceSessions: { ...state.practiceSessions, [key]: next },
+        }));
+        return next;
+      },
+
+      releasePracticeSession: (owner) => {
+        const key = getPracticeSessionKey(owner);
+        if (!key || !get().practiceSessions[key]) return;
+        set((state) => {
+          const practiceSessions = { ...state.practiceSessions };
+          delete practiceSessions[key];
+          return { practiceSessions };
+        });
       },
 
       // API Actions

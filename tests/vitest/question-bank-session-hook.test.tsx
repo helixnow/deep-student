@@ -24,6 +24,10 @@ vi.mock('@/debug-panel/plugins/ExamSheetProcessingDebugPlugin', () => ({
 }));
 
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
+import {
+  getPracticeSessionKey,
+  useQuestionBankStore,
+} from '@/stores/questionBankStore';
 
 function makeStoreQuestion(id: string, content: string) {
   return {
@@ -66,6 +70,50 @@ function makeStats(correctRate = 0) {
 describe('useQuestionBankSession', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+    useQuestionBankStore.setState({ practiceSessions: {} });
+  });
+
+  it('gives two kept-alive hook instances independent practice-session shards', async () => {
+    mockInvoke.mockImplementation(async (command: string) => {
+      if (command === 'qbank_get_stats') return makeStats();
+      if (command === 'qbank_list_questions') {
+        return {
+          questions: [makeStoreQuestion('q1', 'shared question')],
+          total: 1,
+          page: 1,
+          page_size: 50,
+          has_more: false,
+        };
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => ({
+      left: useQuestionBankSession({ examId: 'exam_shared' }),
+      right: useQuestionBankSession({ examId: 'exam_shared' }),
+    }));
+
+    await waitFor(() => {
+      expect(result.current.left.questions).toHaveLength(1);
+      expect(result.current.right.questions).toHaveLength(1);
+    });
+
+    const leftOwner = result.current.left.practiceSessionOwner!;
+    const rightOwner = result.current.right.practiceSessionOwner!;
+    expect(leftOwner.examId).toBe('exam_shared');
+    expect(rightOwner.examId).toBe('exam_shared');
+    expect(leftOwner.viewInstanceId).not.toBe(rightOwner.viewInstanceId);
+
+    act(() => {
+      useQuestionBankStore.getState().recordPracticeSessionAnswer(leftOwner, 'q1', true);
+    });
+
+    const left = useQuestionBankStore.getState().practiceSessions[getPracticeSessionKey(leftOwner)!];
+    const right = useQuestionBankStore.getState().practiceSessions[getPracticeSessionKey(rightOwner)!];
+    expect(left.answeredIds).toEqual(['q1']);
+    expect(left.streakCount).toBe(1);
+    expect(right.answeredIds).toEqual([]);
+    expect(right.streakCount).toBe(0);
   });
 
   it('initial load fetches all pages instead of only the first page', async () => {
