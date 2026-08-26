@@ -1,8 +1,10 @@
 /**
  * 「保存为笔记」共享落点。
  *
- * 改造前各入口（聊天消息、聊天划词、快捷助手）都是 `createNote(title, text)` 一把梭：
+ * 改造前各入口（聊天消息、聊天划词）都是 `createNote(title, text)` 一把梭：
  * 笔记默认落在资源库根目录，toast 只说"已保存"，用户既不知道存去哪、也点不开。
+ * （快捷助手不在此列：轻量独立窗直落根目录属独立产品语义，书面豁免见
+ * docs/dev/wave2-B-r3-quick-assistant-exemption.md。）
  *
  * 这里统一三件事：
  * 1. 落点：调用方先选目录（复用 learning-hub 的 FolderPickerDialog），folderId 随
@@ -145,7 +147,7 @@ export function notifySaveTextAsNoteResult(
 
   const { noteId, title, landed } = result;
   // toast 明示实际位置：落根目录时（无论是用户选的还是后端兼容降级）不再谎称
-  // 已到所选目录。i18n 键由 i18n 员补充，这里先给 defaultValue 兜底。
+  // 已到所选目录。两个 landed 键 zh/en 均已落库（chatV2.json），defaultValue 仅兜底。
   const message =
     landed === 'folder'
       ? i18n.t('chatV2:messageItem.actions.saveAsNoteSuccessInFolder', {

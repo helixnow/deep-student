@@ -152,7 +152,16 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
     try {
       precheckOk = (await runWorkbenchDeactivationTransaction('mode-off')).ok;
     } catch {
-      precheckOk = false;
+      // 事务内部的取消 toast 只在「窗口拒绝关闭」分支发出；promise 意外
+      // reject（canClose 回调抛错等）时内部无任何提示，这里兜底通知一次，
+      // 与 WorkbenchSettingsSection.handleModeChange 的 catch 对齐——否则
+      // 侧边栏 / 品牌菜单入口只会看到开关静默弹回。两分支互斥，无双 toast。
+      showGlobalNotification(
+        'info',
+        i18n.t('workbench:deactivation.cancelled', {
+          defaultValue: '已取消停用，学习桌面保持开启。',
+        }),
+      );
     }
     if (!precheckOk) return false;
   }

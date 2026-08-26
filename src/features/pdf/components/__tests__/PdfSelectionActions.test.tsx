@@ -8,7 +8,9 @@
  * 3. 保存为笔记 → 先弹目录选择器，而不是闷头写根目录
  * 4. 解释 / 翻译 → 内联结果面板，且面板打开时工具条让位
  * 5. 制卡 → 复用 selectionCardGeneration，带上下文
- * 6. 添加到聊天 → 走既有 CHAT_V2_SET_INPUT 全局事件
+ * 6. 添加到聊天 → 优先 onQuoteToChat locator 回调（资源引用 + page）；
+ *    无回调或页码不可得时走 PREFILL_CHAT_INPUT 包装（带 sourceName），
+ *    任何情况下都不派发裸 CHAT_V2_SET_INPUT
  */
 
 import React from 'react';
@@ -78,6 +80,10 @@ function renderActions(props: Partial<React.ComponentProps<typeof PdfSelectionAc
     React.useEffect(() => setMounted(true), []);
     return (
       <div ref={containerRef} style={{ position: 'relative' }}>
+        {/* 模拟 pdf.js 页面包裹层：resolveSelectionPage 靠 data-page-number 定位 */}
+        <div data-page-number="3">
+          <span data-testid="page-text">{SELECTED}</span>
+        </div>
         {mounted && (
           <PdfSelectionActions
             containerRef={containerRef}
@@ -93,10 +99,20 @@ function renderActions(props: Partial<React.ComponentProps<typeof PdfSelectionAc
   return render(<Host />);
 }
 
+/** 在页面包裹层内建立真实 DOM 选区，让 resolveSelectionPage 解析出页码 3 */
+function selectTextInsidePage() {
+  const range = document.createRange();
+  range.selectNodeContents(screen.getByTestId('page-text'));
+  const domSelection = window.getSelection()!;
+  domSelection.removeAllRanges();
+  domSelection.addRange(range);
+}
+
 const button = (name: string) => screen.getByRole('button', { name, hidden: true });
 
 beforeEach(() => {
   cleanup();
+  window.getSelection()?.removeAllRanges();
   generateCardsFromSelection.mockReset();
   saveAsNoteStart.mockReset();
   selectionState = {
@@ -202,7 +218,53 @@ describe('cards and chat handoff', () => {
     expect(input.contextAfter).toBe('后文');
   });
 
-  it('hands the selection to chat over the existing global event', () => {
+  it('prefers the onQuoteToChat locator callback when the selection page is known', () => {
+    const onQuoteToChat = vi.fn();
+    renderActions({ onQuoteToChat });
+    selectTextInsidePage();
+
+    const prefills: CustomEvent[] = [];
+    const listener = (e: Event) => prefills.push(e as CustomEvent);
+    window.addEventListener('PREFILL_CHAT_INPUT', listener);
+    fireEvent.click(button('添加到聊天'));
+    window.removeEventListener('PREFILL_CHAT_INPUT', listener);
+
+    expect(onQuoteToChat).toHaveBeenCalledWith({ text: SELECTED, page: 3 });
+    expect(prefills).toHaveLength(0);
+  });
+
+  it('falls back to the PREFILL_CHAT_INPUT wrapper when no locator callback is wired', () => {
+    renderActions();
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener('PREFILL_CHAT_INPUT', listener);
+    fireEvent.click(button('添加到聊天'));
+    window.removeEventListener('PREFILL_CHAT_INPUT', listener);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].detail).toEqual({
+      content: SELECTED,
+      autoSend: false,
+      sourceName: '量子力学讲义',
+    });
+  });
+
+  it('falls back to PREFILL when the callback exists but the page cannot be resolved', () => {
+    const onQuoteToChat = vi.fn();
+    renderActions({ onQuoteToChat });
+    // 不建 DOM 选区：resolveSelectionPage 拿不到页码，locator 语义不成立
+
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener('PREFILL_CHAT_INPUT', listener);
+    fireEvent.click(button('添加到聊天'));
+    window.removeEventListener('PREFILL_CHAT_INPUT', listener);
+
+    expect(onQuoteToChat).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+  });
+
+  it('never dispatches the raw CHAT_V2_SET_INPUT channel from the reader', () => {
     renderActions();
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
@@ -210,7 +272,6 @@ describe('cards and chat handoff', () => {
     fireEvent.click(button('添加到聊天'));
     window.removeEventListener('CHAT_V2_SET_INPUT', listener);
 
-    expect(events).toHaveLength(1);
-    expect(events[0].detail).toEqual({ content: SELECTED, autoSend: false });
+    expect(events).toHaveLength(0);
   });
 });

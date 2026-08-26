@@ -33,8 +33,11 @@ export const isTabDirty = (tab: OpenTab): boolean => isContentDirty(tab.type, ta
 export const confirmTabClose = async (tab: OpenTab): Promise<boolean> => {
   if (!isTabDirty(tab)) return true;
   const offerSave = hasContentSaveHandler(tab.type, tab.resourceId);
+  // ★ r6-review（关标签）：原引用 workbench:notes.confirmCloseUnsaved 为不存在
+  // 的键（workbench 命名空间无 notes 对象），对话框会露出裸 key。改用既有
+  // 标签页措辞键（r2 i18n 文档声明的复用备选，zh/en 双语齐），不新造键。
   const decision = await requestContentCloseDecision({
-    description: i18next.t('workbench:notes.confirmCloseUnsaved'),
+    description: i18next.t('workbench:notesWorkspace.confirmCloseUnsaved'),
     offerSave,
   });
   if (decision === 'save') {

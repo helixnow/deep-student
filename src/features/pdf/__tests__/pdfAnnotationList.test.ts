@@ -51,6 +51,16 @@ describe('sortHighlightsForList', () => {
     expect(sortHighlightsForList([v2, legacy]).map((h) => h.id)).toEqual(['legacy', 'v2']);
   });
 
+  it('sorts rect-less highlights to the end of the page (same coord space)', () => {
+    // createdAt 反向设置：若错误落回 createdAt 兜底会把 no-rects 排前
+    const noRects = hl({ id: 'no-rects', rects: [], createdAt: 1 });
+    const normal = hl({ id: 'normal', createdAt: 2 });
+    expect(sortHighlightsForList([noRects, normal]).map((h) => h.id)).toEqual([
+      'normal',
+      'no-rects',
+    ]);
+  });
+
   it('does not mutate the input array', () => {
     const items = [hl({ id: 'b', pageIndex: 2 }), hl({ id: 'a', pageIndex: 1 })];
     sortHighlightsForList(items);

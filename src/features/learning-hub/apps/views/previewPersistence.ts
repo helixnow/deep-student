@@ -205,8 +205,20 @@ export function createPreviewPersistController(
       try {
         await updateBookmarksWithRetry(ownedBookmarks);
       } catch (err: unknown) {
+        // ★ 与 flush 的书签段同一口径（r6 复核对齐）：双写通道失败不 rethrow
+        // ——rethrow 会 ① 跳过下方 setMetadata，书签在两条通道上一条都没落；
+        // ② 沿 enqueue 链传到 scheduleBookmarks 的 catch，onBookmarksError
+        // 对同一次失败二次触发。此处报错后继续走 DSTU 通道。
+        reportError(
+          toVfsError(
+            err,
+            i18n.t('practice:preview_persist.save_bookmarks_failed', {
+              defaultValue: '保存书签失败',
+            }),
+          ),
+          i18n.t('practice:preview_persist.save_bookmarks', { defaultValue: '保存书签' }),
+        );
         options?.onBookmarksError?.(err);
-        throw err;
       }
     }
     // file：仅 DSTU metadata（见文件头 NOTE(backend)）

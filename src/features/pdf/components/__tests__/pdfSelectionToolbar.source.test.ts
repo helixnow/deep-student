@@ -93,6 +93,25 @@ describe('PdfSelectionActions reuses existing capabilities', () => {
   });
 });
 
+describe('add-to-chat channel contract (0824 Wave2-B r6)', () => {
+  it('forwards fileName as documentTitle — not the DSTU resourcePath tail (resource ID)', () => {
+    const mount = viewerSource.slice(viewerSource.indexOf('<PdfSelectionActions'));
+    expect(mount).toContain('documentTitle={fileName}');
+    expect(viewerSource).not.toContain('documentTitle={resourcePath');
+  });
+
+  it('forwards the onQuoteToChat locator callback through the viewer', () => {
+    const mount = viewerSource.slice(viewerSource.indexOf('<PdfSelectionActions'));
+    expect(mount).toContain('onQuoteToChat={onQuoteToChat}');
+  });
+
+  it('routes the chat fallback through the PREFILL wrapper, never a raw CHAT_V2_SET_INPUT dispatch', () => {
+    expect(actionsSource).toContain('sendSelectionToChatInput');
+    // 裸通道假定聊天视图已在前台；从阅读器出发必须走会切视图的 PREFILL 包装
+    expect(actionsSource).not.toContain('APP_EVENTS.CHAT_V2_SET_INPUT');
+  });
+});
+
 describe('mobile behaviour', () => {
   it('prefers the area below the selection so the toolbar clears the colour menu', () => {
     expect(actionsSource).toContain('placement="below"');

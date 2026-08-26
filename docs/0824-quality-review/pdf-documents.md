@@ -119,3 +119,75 @@ DSTU 路径的末段是资源 ID，不是名字——`src-tauri/src/dstu/types.r
 ## 结论
 
 后端两个文件的改造可以直接作为该仓库「怎么安全地重构遗留代码」的范例：先抽纯函数、把隐含前提（token 估算单调性、白名单不放宽）显式化成测试、修复与重构在同一次 diff 里可分辨。前端的功能扩张幅度大但多数子系统（导航、搜索、持久化、钳位）遵循了同样的方法论。需要在合流前处理的是：`documentTitle` 传 `fileName`（一行）、划词双链路收敛为一条（含笔记落点统一、聊天通道归一、删除失效的懒加载或删除抵消它的静态导入）、CSS 分隔线重复定义合并。OCR 与文档解析（`pdf_ocr_service.rs`、`document_parser.rs`）本轮零改动，不存在需要评审的变更。
+
+## r6-review（划词）
+
+> 0824 Wave2-B 第 6 轮复核，范围：EnhancedPdfViewer 划词菜单、PdfSelectionActions、
+> onQuoteToChat 转发、聊天通道归一（无裸 CHAT_V2_SET_INPUT）、笔记条唯一性、
+> documentTitle=fileName。口径：静态读码 + grep；环境无 node_modules 且本轮禁 npm，
+> 测试未执行。
+
+### 逐项核验
+
+1. **EnhancedPdfViewer 菜单收敛 ✅**。viewer 内建面只剩三块且均不含学习动作：
+   桌面划词浮动菜单 `ds-highlight-menu`（4 色高亮 + 复制 + 关闭，
+   `EnhancedPdfViewer.tsx:3208-3265`）、移动底部条 `ds-pdf__highlight-bar`
+   （同能力集，`:3236-3264`）、高亮块操作层（改色 + 删除，`:3268-3349`）。
+   学习动作（解释/翻译/笔记/制卡/添加到聊天）统一由懒加载的
+   `PdfSelectionActions` 承载（`:82` React.lazy，`:3193-3201` 挂载，
+   Suspense 包裹、`enabled={resolvedEnableTextSelection}` 门控）。
+   本文件上方「划词能力是两套平行系统」一节所述双链路已不存在：链路 A 的
+   `onCreateNote`/翻译面板/出题入口在 pdf feature 内 grep 零命中，
+   `.ds-pdf__translation-panel` CSS 已标废弃删除（`enhanced-pdf.css:2067`）。
+   **无第二套笔记条 ✅**——「保存为笔记」仅 SelectionToolbar 一处入口，走
+   `useSaveAsNoteFlow` 目录选择器，旧的 `dstu.create('/')` 落根目录路径已删。
+
+2. **PdfSelectionActions ✅**。复用共享层 `SelectionToolbar`/`useTextSelection`；
+   解释/翻译弹层 React.lazy、制卡动态 import（拆包契约由
+   `pdfSelectionToolbar.source.test.ts` 钉住）；页码解析
+   `resolveSelectionPage`（`PdfSelectionActions.tsx:132-142`）取
+   `data-page-number`，失败按无页码降级不阻断动作；笔记正文带
+   「摘自《fileName》第 N 页」来源行，与链路 A 摘录格式一致。
+
+3. **onQuoteToChat 转发 ✅**。全链贯通：`EnhancedPdfViewer.tsx:3199` →
+   `TextbookPdfViewer.tsx:270` → 两个上层视图均接 `useReferenceToChat`，
+   metadata 带 `selectedText` + `buildSelectionLocator(page)`（`page:N`）：
+   `TextbookContentView.tsx:512-522`（sourceType textbook）、
+   `FileContentView.tsx:263-273`（sourceType file）。工具条侧优先级正确：
+   有回调且页码可得走 locator 回调，否则 PREFILL 兜底
+   （`PdfSelectionActions.tsx:183-190`）。`PdfReader.tsx` 未传
+   onQuoteToChat 属预期——独立阅读器无 DSTU 资源身份，落 PREFILL 兜底且
+   `fileName` 取自 `file.name`（`PdfReader.tsx:302`）。
+
+4. **无裸 CHAT_V2_SET_INPUT ✅（运行时）/ ❌（测试已过期，本轮已修）**。
+   运行时 pdf feature 内对 `CHAT_V2_SET_INPUT` 仅存注释引用，唯一派发通道是
+   `sendSelectionToChatInput` 的 `PREFILL_CHAT_INPUT` 包装
+   （`selectionStudyActions.ts:51-62`，detail 带 page/sourceName，
+   autoSend=false）。**但行为测试 `PdfSelectionActions.test.tsx` 仍锁旧契约**：
+   头注写「添加到聊天 → 走既有 CHAT_V2_SET_INPUT 全局事件」，用例监听
+   `CHAT_V2_SET_INPUT` 且断言 detail 无 sourceName——按现实现该用例收到
+   0 个事件、`toHaveLength(1)` 必失败，属第 4/5 轮通道收敛后漏更新的红测试。
+
+5. **documentTitle=fileName ✅**。`EnhancedPdfViewer.tsx:3198`
+   `documentTitle={fileName}`，本文件上方 P1（resourcePath 末段资源 ID
+   泄入笔记来源行）已修，挂载处注释明确写了「必须用 fileName」的原因。
+
+### 本轮补丁（仅测试，运行时零改动）
+
+- `PdfSelectionActions.test.tsx`：改写「添加到聊天」用例组——
+  ① onQuoteToChat + 页面选区（jsdom 内建 `data-page-number="3"` 包裹层 +
+  真实 DOM Range）→ 断言回调收到 `{ text, page: 3 }` 且无 PREFILL 派发；
+  ② 无回调 → PREFILL detail `{ content, autoSend: false, sourceName }`；
+  ③ 有回调但页码不可得 → 回调不触发、落 PREFILL；
+  ④ 任何情况不派发裸 `CHAT_V2_SET_INPUT`。头注同步更新。
+- `pdfSelectionToolbar.source.test.ts`：新增 r6 契约组——
+  `documentTitle={fileName}`（并显式禁止退回 `documentTitle={resourcePath`）、
+  `onQuoteToChat={onQuoteToChat}` 转发、actionsSource 不得出现
+  `APP_EVENTS.CHAT_V2_SET_INPUT`。
+
+### 未验证声明
+
+环境无 node_modules 且本轮禁 npm，上述测试补丁未执行，jsdom Selection API
+（`createRange`/`addRange`）行为为静态推演（jsdom ≥16 支持，vitest.config.ts
+environment='jsdom'）。第 8 轮前的执行轮次应跑
+`src/features/pdf/components/__tests__/` 两个文件确认绿。

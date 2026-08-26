@@ -363,6 +363,9 @@ export const LearningHubPage: React.FC = () => {
           .sort((a, b) => a.openedAt - b.openedAt)[0];
         if (toEvict) {
           next = next.filter(t => t.tabId !== toEvict.tabId);
+          // ★ r6-review（关标签）：被淘汰的恰是右侧分屏 tab 时同步退出分屏，
+          // 避免 splitView.rightTabId 悬空、右侧面板留下空白占位
+          setSplitView(prev => (prev?.rightTabId === toEvict.tabId ? null : prev));
         }
       }
       // 3. 新建 tab

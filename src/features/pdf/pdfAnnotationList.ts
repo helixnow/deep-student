@@ -56,8 +56,13 @@ export function sortHighlightsForList<T extends AnnotationHighlight>(
     if (a.pageIndex !== b.pageIndex) return a.pageIndex - b.pageIndex;
     const sameCoordSpace = (a.coordVersion ?? 0) === (b.coordVersion ?? 0);
     if (sameCoordSpace) {
-      const dy = topOf(a) - topOf(b);
-      if (dy !== 0 && Number.isFinite(dy)) return dy;
+      // 逐向比较而非相减：无 rects 的 Infinity 才能真正落到页尾
+      // （相减得 ±Infinity/NaN 会被丢弃），NaN（损坏数据）两比较均
+      // 不成立，自然落到 createdAt 兜底
+      const ta = topOf(a);
+      const tb = topOf(b);
+      if (ta < tb) return -1;
+      if (tb < ta) return 1;
     }
     return a.createdAt - b.createdAt;
   });

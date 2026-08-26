@@ -52,6 +52,8 @@ async function readSetting(key: string): Promise<string | null> {
 }
 
 let syncStarted = false;
+/** 热更新是否已先于启动回放到达（r6 复核补丁：晚到的启动读不得覆盖更新值） */
+let hotUpdateSeen = false;
 
 /**
  * 一次性接线：启动回放（get_setting）+ 'workbench:settings-changed' 热更新。
@@ -61,12 +63,14 @@ export function ensureDesktopNameSync(): void {
   if (syncStarted) return;
   syncStarted = true;
   void readSetting(DESKTOP_NAME_SETTING_KEY).then((raw) => {
+    if (hotUpdateSeen) return;
     useDesktopNameStore.getState().setName(parsePersistedDesktopName(raw));
   });
   if (typeof window !== 'undefined') {
     window.addEventListener('workbench:settings-changed', (e: Event) => {
       const { key, value } = (e as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
       if (key !== DESKTOP_NAME_SETTING_KEY) return;
+      hotUpdateSeen = true;
       useDesktopNameStore.getState().setName(parsePersistedDesktopName(value));
     });
   }

@@ -468,3 +468,31 @@ P9(Exposé)维持第 8 轮、测试对齐(waitFor 化 + 划词契约改写)维�
 ### 5.4 第 6 轮预告
 
 十名复核员按第 2–5 轮落地面逐 diff 复核（事务/冻结/关标签/保存链/书签/划词/handoff/Agent/SOTA×2），翻案当轮落地。仍禁止编译/实测。
+
+---
+
+## 第 6 轮（全面二检）
+
+### 6.1 执行口径
+
+十名复核员全部 `claude-fable-5-thinking-high`。未跑编译/测试。结论见 `docs/dev/wave2-B-r6-review.md` 与 `docs/dev/wave2-B-r6-review-close-tabs.md`。
+
+### 6.2 当轮落地补丁
+
+- 事务：`persistWorkbenchModeEnabled` reject 补兜底 toast（与设置页对称）。
+- 冻结：exam 纳入 `canSuspend` / `resolveDirtyResourceId`（脏 exam 窗不再被冻）。
+- 关标签：close gate i18n 键改用已存在的 `notesWorkspace.confirmCloseUnsaved`；LRU 淘汰同步清 splitView。
+- 书签：textbook 双写失败后仍继续 DSTU `setMetadata`（与 flush 对齐）。
+- 划词：行为测试改为断言 PREFILL / onQuoteToChat，不再锁 CHAT_V2_SET_INPUT。
+- 保存链：头注去掉快捷助手「漏迁」表述；清若干死键。
+- SOTA 笔记：补图谱图例 i18n；desktopName 热更新时序守卫。
+- SOTA-PDF：无 rects 的批注排序兑现「排到页尾」。
+- handoff / Agent：无产品补丁，静态通过。
+
+### 6.3 已验证 / 未验证
+
+已验证：读码 + grep。未验证：未编译、未跑 vitest。
+
+### 6.4 第 7 轮预告
+
+交互级测试源码补强（只写不跑）：dirty 取消矩阵、冻结保护、跨断点焦点、书签交错、标签移动后恢复、保存部分成功、划词单链路、handoff 双向。
