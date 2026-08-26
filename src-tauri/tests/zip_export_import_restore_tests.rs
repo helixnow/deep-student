@@ -622,8 +622,7 @@ fn rewrap_sealed_payload_password(
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).expect("read source zip entry");
         let name = entry.name().to_string();
-        let options =
-            zip::write::FileOptions::default().compression_method(entry.compression());
+        let options = zip::write::FileOptions::default().compression_method(entry.compression());
         if entry.is_dir() {
             writer
                 .add_directory(name, options)
@@ -642,8 +641,7 @@ fn rewrap_sealed_payload_password(
         let old_payload = scratch.path().join("old.dsbk");
         let inner_plain = scratch.path().join("inner.zip");
         let new_payload = scratch.path().join("short-password.dsbk");
-        let mut old_payload_file =
-            std::fs::File::create(&old_payload).expect("create old payload");
+        let mut old_payload_file = std::fs::File::create(&old_payload).expect("create old payload");
         std::io::copy(&mut entry, &mut old_payload_file).expect("extract old payload");
         old_payload_file.flush().expect("flush old payload");
         deep_student_lib::crypto::backup_crypto::decrypt_backup_file(
@@ -705,12 +703,8 @@ fn encrypted_zip_import_really_accepts_a_legacy_short_password() {
     .expect("legacy short password must reach the unseal layer");
     let import_root = TempDir::new().expect("legacy short import root");
     let imported_dir = import_root.path().join("imported");
-    import_backup_from_zip_with_password(
-        &legacy_zip,
-        &imported_dir,
-        resolved_password.as_deref(),
-    )
-    .expect("real DSBK unseal must accept the legacy short password");
+    import_backup_from_zip_with_password(&legacy_zip, &imported_dir, resolved_password.as_deref())
+        .expect("real DSBK unseal must accept the legacy short password");
 
     let imported = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
         .expect("load unsealed manifest");
