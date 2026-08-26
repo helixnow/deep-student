@@ -356,3 +356,84 @@ P3(handoff descriptor)维持第 5 轮、P7(划词收敛)维持第 4 轮、P9(Exp
 6. **提交**:第 4 轮收尾由父代理统一 commit/push;台账员追加「第 4 轮」节。
 
 P3(handoff descriptor)与 P10(SOTA 子集)维持第 5 轮、P9(Exposé)维持第 8 轮,不提前。
+
+## 第 4 轮(P7 划词收敛 + 阅读器残项 + 导图/翻译/待办小应用 + EPUB 复核)
+
+> P 编号沿用 2.2 勘正后的用户口径:本轮主轴为 **P7 划词收敛**;其余为 smallapps 静态子集与阅读器残项,不占 P 编号。
+
+### 4.1 执行口径
+
+- 禁止 npm/vitest/编译全程遵守;**未跑任何测试**,全部验证为静态 grep 干跑 + 逐行读码 + 正则手推(待办 NL 解析)。
+- 未 commit/push(父代理统一处置)。第 3 轮产出已随 `6fe01f2a` 入库,当前工作区未提交 diff **全部为第 4 轮产出**:26 个文件 modified(+937/-357,`git diff --stat`),untracked 为 6 份 r4 文档 + 3 个新源/测试文件(`mindmap/utils/imageSanitize.ts` 及其测试、`todo/utils/domVisibility.ts`);本节为台账第 4 轮追加。
+
+### 4.2 产品落地清单(全部静态证据,行号为撰写时工作区实况;划词域验收以符号/字符串锚点为准)
+
+| # | 落地项 | 证据 |
+|---|---|---|
+| P7a | **划词单工具条终态**:高亮菜单(桌面 `ds-highlight-menu` / 移动 `ds-pdf__highlight-bar`)只剩 **4 色色板(`canPersistAnnotations && rotation === 0` 门禁)+ 复制**(移动条另有标签/关闭结构件);链路 A 学习动作五钮 ×2、六个 handler(`openSelectionTranslation/openSelectionQuestionGeneration/openSelectionCardGeneration/handleQuoteSelection/handleNoteSelection` 等)、viewer 内翻译面板(`ds-pdf__translation-panel` 三规则块 + `SelectionTranslationPopover` lazy 声明 + state)全删;**学习动作单条化**收敛到 `PdfSelectionActions` 挂共享层 `SelectionToolbar`:解释/翻译/保存为笔记(目录选择 + 页码 locator + 真实 fileName)/制卡/添加到聊天,「生成题目」不进终态工具条 | 审阅 V4/V7 通过:viewer 全文 `Translate/Exam/Cards/ChatCircleText/NotePencil` icon 零命中;`ds-pdf__translation-panel` 全仓仅剩 CSS 指路注释(enhanced-pdf.css:1958);共享层 `git diff --stat -- src/shared/selection` 为空(V9) |
+| P7b | **`onQuoteToChat` 已接线**(通道 1,审阅员必修补丁):补丁前该 prop 被标 @deprecated 且挂载点不传,通道 1 在唯一挂载点断线;审阅员三步接线(props 注释改写 + 解构加回 + 挂载点 `onQuoteToChat={onQuoteToChat}`)后全链在线:`FileContentView/TextbookContentView.handleQuoteToChat` → `TextbookPdfViewer` 透传 → `EnhancedPdfViewer` 转发(3168)→ `PdfSelectionActions.handleAddToChat`(页码可得走回调 → `referenceToChat` 资源引用 + `page:N` locator;否则 PREFILL 兜底) | 审阅 V2 通过;`onQuoteToChat` 上不再有 @deprecated 字样;两侧 payload 同源 `PdfSelectionPayload` |
+| P7c | **PDF 域不再裸派发 `CHAT_V2_SET_INPUT`**:通道 3 清零,产品代码命中仅剩解释性注释 ×4 与旧测试用例(测试文本更新属待办 C,按设计文档缓期第 7 轮);兜底统一走 `selectionStudyActions.sendSelectionToChatInput`(typed `dispatchAppEvent(PREFILL_CHAT_INPUT)`,detail 交叉类型并入 `page/sourceName`,全局 `PrefillChatInputDetail` 契约不动,空文本返回 false 不派发);`CHAT_V2_SET_INPUT` 常量与两监听方(useChatPageEvents/WorkbenchEventBridge)、App 壳层转发、聊天域内部 MessageItem 均不动(非 PDF 辖区) | 审阅 V1 通过(产品代码);V10 通过:PREFILL 监听方仍只有 `App.tsx:1817`,PDF 域发起方仅 `selectionStudyActions.ts` |
+| P7d | **懒加载四闩与 documentTitle 不回归**:viewer `React.lazy(PdfSelectionActions)`(82)、组件内两弹层模块级 lazy(43-48)、制卡点击时动态 import(175)俱在;`documentTitle={fileName}` 1 命中(3167)注释保留 | 审阅 V5/V6 通过 |
+| 残项 | **阅读器残项三 helper**(`pdfViewState.ts`/`pdfSearch.ts`,全部为新增导出、**不接线不生效**,viewer 接线点已逐条标注留后续轮):① 切文档 zoom/viewMode 继承语义头注声明为**有意行为**(非 bug 不改行为)+ 导出 `resolvePdfViewStateOnSwitch(defaults, persisted)` 纯函数;② `createSearchProgressThrottle(publish, everyNChunks=5)` 搜索进度节流(首块即发/终块必发/flush 补发,只节流进度数字不碰命中结果);③ `pdf-viewstate:` 轻量 GC:`savePdfViewState` 载荷追加 `savedAt` 元数据(读取丢弃不泄漏)+ `sweepPdfViewStates({maxEntries=200, keepResourcePath})` 近似 LRU 淘汰,不在 import 时自动扫全库 | `wave2-B-r4-reader-residuals.md`;运行时行为唯一变化 = 写入 JSON 多 `savedAt` 字段;两测试文件新增断言组(未执行) |
+| 导图 | **images 清洗与限域**(smallapps M1+M5):① 新增 `utils/imageSanitize.ts` 纯函数模块——`MindMapImage.src` 类型承诺的运行时实现:data URL 限白名单 MIME(与 importers `IMAGE_MIME_BY_EXT` 同口径)+ 单图 256 KiB/数量 128/累计 8 MiB 预算,远程仅放行 https;`clipboardCodec.sanitizeForest`(结构化载荷补 images 字段,复制含图节点不再丢图,整片森林共享一份预算)与 `importFromJson.ensureIds`(JSON 导入逐节点白名单重建)两入口接入,常量刻意不 import importers(避免 jszip/i18n 重依赖入剪贴板路径成环);② `ReciteStatusBar` 复习导航滚动**限域到本实例 `.mindmap-container`**(barRef.closest 反查,分屏/保活多实例不再滚动另一棵树)+ nodeId 经 `CSS.escape`(含引号/反斜杠的导入 id 不再拼出非法 selector) | diff:6 文件 +66/-23 + 新模块 107 行 + 测试 140 行;**无对应 r4 任务文档**,归属据审阅 §四 diff 核查补记(疑似并行写手交码未交文);审阅判定未越权(纯 mindmap 域,不碰 PDF/聊天/共享层) |
+| 翻译 | **isActive + 分段 + 流桥**(smallapps F1/F3):① `TranslateWorkbench` 自动翻译 effect 头部显式 `isActive === false` 守卫 + deps 补 isActive(堵住恢复历史会话时 prompt 异步补签名致非活跃保活页发起流式翻译的时序窗口;切回活跃 effect 重跑不丢自动翻译);② `segmentation.ts` CRLF 归一(`\r\n?`→`\n`)+ 段落分隔正则改 `/\n(?:[ \t]*\n)+/`(纯空白行也算边界;纯 LF 干净空行输入切分结果与旧实现一致);③ 流桥所有权/阶段:快照新增可选 `phase`(判活跃看 phase 而非「有快照」),`publish/clear` 增可选 `ownerToken`(clear 带 token 仅当前所有者生效,修复同 key 双实例先卸载方清掉后发布者快照;无 token 保持原语义,旧调用方零改动) | `wave2-B-r4-translate-essay.md`;第 2 轮 dirty checker/save handler 原样;F2(prompt 来源显式字段)书面裁决**本轮不改**(持久化契约是字符串、内存标记制造第二真相源、legal/medical 展示模板 key 在禁改区),下一轮整体做 |
+| 待办 | **helper + NL 解析先行**(smallapps T2/T3 半步):① 新增 `todo/utils/domVisibility.ts`(`isEffectivelyVisible` = 旧两套判定严格并集、`isHostWindowFocused` 原样上提),收敛刻意只做 3 处(todoShellNav 删本地实现改 import、TodoMainPanel 两处返回键守卫),其余同款守卫留待 util 上提共享层后统一收编;② `TodoRepeatRule` 新增可选 `byMonthDay/until` + parse/serialize 白名单(旧前后端自然降级)+ `repeatRuleLabel` 展示(zh/en 补 5 键);parser 支持「每月1号和15号」「every 1st and 15th」「直到/until + 日期」(until 先于日期匹配剥离,防被抢成到期日);**明确不宣称后端生效**:`compute_next_due_date` 不识别新字段,前端 `stepRepeatDate/nextRepeatOccurrence` 刻意不动,两边一致降级,推进语义对齐列为跨波项;③ `TemplateManagementApp` 补 ⌘F(workbenchWindowId 存在时让位 + 保活可见性守卫) | `wave2-B-r4-todo.md`;测试追加 9 解析 + 3 往返用例(含负例,未执行);44px/todo-tools schema/coordinator.rs 零触碰 |
+| EPUB | **复核通过,零代码改动**:① `EpubPreview` 返回键守卫已正确——`isActive && isNarrow && sidebarOpen` 三重门控,隐藏保活 tab 不注册;isActive 供给链闭合(TabPanelContainer→UnifiedAppPanel→两宿主显式透传),失活仅注销 handler 不改 sidebarOpen;② `TextbookPdfViewer` 跨文档串页已修(`lastReportedPageRef` 按 `[resourcePath, filePath]` 重置),注释准确,无双重防抖 | `wave2-B-r4-epub-textbook.md`;两独占文件零 diff |
+
+### 4.3 六份 r4 文档索引
+
+| 文档 | 角色 | 一句话内容 |
+|---|---|---|
+| `wave2-B-r4-selection-toolbar-design.md` | 划词收敛-设计 | 终态裁决细化:事件通道表、逐文件删/留清单(§3.1-3.7)、待办 A/B/C、验收 V1-V10、i18n 死键候选 |
+| `wave2-B-r4-review.md` | 审阅员 | 必修补丁(onQuoteToChat 接线)+ V1-V10 逐条核对 + onCreateNote 死链记账 + 并行任务越权核查(零禁改区实改) |
+| `wave2-B-r4-reader-residuals.md` | 阅读器残项 | 三 helper(切档继承语义/搜索节流/viewstate GC),全部不接线不生效,接线点逐条标注 |
+| `wave2-B-r4-todo.md` | 待办/模板 | domVisibility util 收敛 3 处、byMonthDay/until 解析先行、⌘F 覆盖独立模板页;「故意没做」清单 |
+| `wave2-B-r4-translate-essay.md` | 翻译/作文 | isActive 守卫、分段 CRLF/空白行、流桥 phase+ownerToken;作文 isActive 收口复核通过;F2 书面缓期裁决 |
+| `wave2-B-r4-epub-textbook.md` | EPUB/教材 | 纯复核零改动:EpubPreview back 守卫正确、TextbookPdfViewer 串页已修 |
+
+### 4.4 测试源码状态(已写未跑)
+
+- `pdfViewState.test.ts`(7 断言组)/ `pdfSearch.test.ts`(4 断言组):残项纯函数测试。
+- `imageSanitize.test.ts`(新文件 140 行):导图清洗白名单/预算测试。
+- `todoQuickAddParser.test.ts`(+103 行级):9 解析 + 3 往返用例,基准日 2026-06-12 与既有同范式。
+- 划词域测试文本**未更新**(待办 C):`PdfSelectionActions.test.tsx` 旧「添加到聊天」用例监听 `CHAT_V2_SET_INPUT` 按新契约必红;`pdfSelectionToolbar.source.test.ts` 尚缺 onQuoteToChat 正负向闩;`selectionStudyActions.test.ts` 缺 `sendSelectionToChatInput` 两例——改写口径见设计文档 §四,与第 7 轮 lazy waitFor 化叠加。
+- 以上全部为用例文本,**未执行 vitest**。
+
+### 4.5 已验证 / 未验证(第 4 轮口径)
+
+**已验证(静态证据 = grep 干跑 + 逐行读码 + 正则手推):**
+
+- 审阅验收 V1/V2/V4-V7/V9/V10 通过(见 4.2 表);通道 1 全链五级转发逐点 grep 复核;共享层 `src/shared/selection` 零 diff。
+- 禁改区全 diff 关键字扫描(`anki|qbank|coordinator|finder|44px`)零实改;`coordinator.rs`/src-tauri 无 diff;enhanced-pdf.css 44px 触控目标与 `pointer: coarse` 块未动;第 2 轮 TranslateWorkbench dirty checker/save handler 事务原样。
+- 导图清洗两入口(剪贴板/JSON 导入)预算共享口径与 xmind 导入一致;流桥新字段/新参数全部可选,既有测试(不可写)调用签名静态核对不受影响;待办 NL 解析正则手推 5 条路径(含 2 负例)。
+- EPUB 两复核项调用链逐级核对闭合。
+
+**未验证(如实声明):**
+
+- **未编译未跑测试**:全部新旧测试文件红绿未知;tsc 未跑;懒加载/接线/清洗/节流的运行时行为未经执行验证——第 8 轮前禁止。
+- 划词行为级不变量(双工具面互不重叠、结果面板让位、Escape/Android 返回键、132px 底部避让、referenceToChat 自建会话)静态不可证,留第 8 轮实测。
+- 待办 byMonthDay/until 仅解析/展示先行,滚动语义前后端均未生效(设计如此,非缺陷)。
+- 流桥双实例场景、导图分屏限域滚动均为静态推演,未真机确认。
+
+### 4.6 记账与遗留移交
+
+1. **V3/V8 未达成(onCreateNote 死链,设计文档待办 B)**:EnhancedPdfViewer 已不解构不消费该 prop,上游 FileContentView/TextbookContentView 的 `handleCreateNote(Sync)` + `useSaveAsNoteFlow` 实例 + picker 渲染成为死重;安全拆除需同改三个视图层文件(均不在本轮可写清单),拆除清单已在审阅 §3.1 与设计文档 §3.4 备妥,拆完 V3/V8 转绿。**注意保留两视图 `handleQuoteToChat` 与 `buildSelectionLocator`(通道 1 唯一实现)**。
+2. **孤儿库函数(归属第 5 轮 Agent 结合裁决)**:`sendSelectionToQuestionGeneration`、`buildQuestionGenerationPrompt`、`makeCardsFromSelection`、`MIN_SELECTION_LENGTH_FOR_QUESTIONS` 及其测试,现无 UI 调用方;第 5 轮若裁定不复用,连同 `pdf:selection.questionPrompt*/selectionEmpty/selectionTooShort` 键按死码流程处理。
+3. **i18n 死键(移交 i18n 员,zh/en 同步)**:`pdf:selection.quote_to_chat/create_note/generateQuestions/makeCards`、`pdf:toolbar.translate_selection`(全仓零非 JSON 引用已复核);叠加第 3 轮遗留死键清单未复扫。
+4. **导图改动补记归属**:mindmap 改动簇无对应 r4 任务文档,本节 4.2 表已据 diff 补记内容与判定;若后续交文,以其为准补索引。
+5. F2(翻译 prompt 来源显式字段)按 4.2 表书面裁决整体后移;essay 草稿级持久化(2.5/3.7 遗留)继续挂账。
+6. 待办守卫收敛剩余 5 处(TodoItemDetail/TodoItemRow/TagsEditor/TodoTrashDialog/TemplateManagementApp 内联守卫)待 util 上提共享层后统一收编。
+
+### 4.7 第 5 轮派遣预告(按用户原计划)
+
+> 共同禁令沿用:禁止编译/测试/npm/cargo/vitest;不碰 coordinator.rs、tool_loop、anki/qbank 服务层、移动 44px、finder 分桶;不 commit/push(父代理做);改码后行号重新对表。
+
+1. **P3 handoff descriptor**:`{version, appType, resourceId, innerRoute?, savedAt}` 独立 settings key,双向消费一次即清,sanitize + 纯函数测试(第 1 轮 workbench-gap SOTA 子集 C 项);不需要合桶(finder 分桶不变量)。
+2. **Agent 结合**:agentRuntime 落 act 前调用现成 `requestWakePrefetch`(零新 API);同时裁决第 4 轮孤儿库函数(出题/制卡 PREFILL 通道)复用或死码化——若复用,detail 须按 `sendSelectionToChatInput` 同款并入 page/sourceName。
+3. **P10 SOTA 笔记侧**:G3 边类型分色、A7 observe 增补出链、C4 命令↔Agent 清单对齐、L4 aliases 解析层(notes-gap 4 条)。
+4. **P10 SOTA PDF 侧**:S1 批注列表精确定位、S6 制卡附来源行、S2 批注汇总导出笔记、S4 来源行可回链引用(pdf-gap 4 条);与 onCreateNote 死链拆除(4.6 第 1 条)同文件项合并开刀,避免二次开文件。
+5. **P10 SOTA 工作台侧**:G3 脏信号补漏(第 2 轮已消化主体,只查漏)。
+6. **审阅**:对 1-5 逐行审 + 行号对表更新;i18n 死键复扫(4.6 第 3 条 + 第 2/3 轮清单)。
+7. **提交**:第 5 轮收尾由父代理统一 commit/push;台账员追加「第 5 轮」节。
+
+P9(Exposé)维持第 8 轮、测试对齐(waitFor 化 + 划词契约改写)维持第 7 轮,不提前。

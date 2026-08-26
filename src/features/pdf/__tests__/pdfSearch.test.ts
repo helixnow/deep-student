@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { collectPageSearchMatches } from '../pdfSearch';
+import { collectPageSearchMatches, createSearchProgressThrottle } from '../pdfSearch';
 
 describe('collectPageSearchMatches', () => {
   it('returns no matches for empty query or empty items', () => {
@@ -49,5 +49,46 @@ describe('collectPageSearchMatches', () => {
       'target',
     );
     expect(matchCount).toBe(1);
+  });
+});
+
+describe('createSearchProgressThrottle', () => {
+  it('publishes the first chunk immediately, then every Nth chunk', () => {
+    const published: number[] = [];
+    const throttle = createSearchProgressThrottle((p) => published.push(p.scanned), 5);
+    for (let chunk = 1; chunk <= 12; chunk++) {
+      throttle.report({ scanned: chunk * 2, total: 100 });
+    }
+    // 分块 1（首个）、5、10 → scanned 2、10、20
+    expect(published).toEqual([2, 10, 20]);
+  });
+
+  it('always publishes the final progress even off-interval', () => {
+    const published: number[] = [];
+    const throttle = createSearchProgressThrottle((p) => published.push(p.scanned), 5);
+    throttle.report({ scanned: 2, total: 6 });
+    throttle.report({ scanned: 4, total: 6 });
+    throttle.report({ scanned: 6, total: 6 });
+    // 首块 + 终块（scanned === total）；中间块被抑制
+    expect(published).toEqual([2, 6]);
+  });
+
+  it('flush emits the latest suppressed progress exactly once', () => {
+    const published: number[] = [];
+    const throttle = createSearchProgressThrottle((p) => published.push(p.scanned), 5);
+    throttle.report({ scanned: 2, total: 100 });
+    throttle.report({ scanned: 4, total: 100 });
+    throttle.report({ scanned: 6, total: 100 });
+    throttle.flush();
+    throttle.flush();
+    expect(published).toEqual([2, 6]);
+  });
+
+  it('clamps the interval to at least 1 (publish every chunk)', () => {
+    const published: number[] = [];
+    const throttle = createSearchProgressThrottle((p) => published.push(p.scanned), 0);
+    throttle.report({ scanned: 2, total: 100 });
+    throttle.report({ scanned: 4, total: 100 });
+    expect(published).toEqual([2, 4]);
   });
 });

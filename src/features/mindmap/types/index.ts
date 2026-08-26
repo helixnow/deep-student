@@ -12,6 +12,7 @@ export type {
   NodeId,
   NodeStyle,
   MindMapNodeStyle,
+  MindMapImage,
   MindMapNode,
   CreateNodeParams,
   UpdateNodeParams,

@@ -1955,34 +1955,11 @@
   height: 36px;
 }
 
-/* ============================================================================
-   划词翻译卡片（复用聊天 TranslationPopover，viewer 内底部浮层）
-   ============================================================================ */
-
-/* .ds-highlight-menu__divider（色板与动作按钮的分隔线）在上方
+/* 已废弃（0824 Wave2-B 第 4 轮划词收敛）：.ds-pdf__translation-panel
+   —— viewer 内建划词菜单的 A 链路翻译浮层，随该链路一并移除；
+   翻译现统一走共享层 SelectionToolbar 的 .ds-pdf__selection-panel（下方区块）。
+   .ds-highlight-menu__divider（色板与动作按钮的分隔线）在上方
    「划词/高亮浮动菜单」区块统一定义，此处不再重复 */
-
-.ds-pdf__translation-panel {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
-  width: min(600px, calc(100% - 24px));
-  z-index: 140;
-  border-radius: 12px;
-  background: hsl(var(--popover));
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-}
-
-/* 卡片自带 mt-2（消息流内联布局残留），浮层场景抵消掉 */
-.ds-pdf__translation-panel > [data-translation-popover] {
-  margin-top: 0;
-}
-
-/* chrome 隐藏时贴底（保留 safe-area），与高亮操作条同规则 */
-.ds-pdf-viewer.chrome-hidden .ds-pdf__translation-panel {
-  bottom: calc(var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
-}
 
 /* ============================================================================
    划词结果面板（解释 / 翻译）

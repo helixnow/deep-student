@@ -566,6 +566,10 @@
     "everyNYears": "Every {{count}} years",
     "weeklyOn": "Weekly on {{days}}",
     "everyNWeeksOn": "Every {{count}} weeks on {{days}}",
+    "monthlyOn": "Monthly on day {{days}}",
+    "everyNMonthsOn": "Every {{count}} months on day {{days}}",
+    "monthDayJoin": ", ",
+    "withUntil": "{{label}}, until {{date}}",
     "weekdayJoin": ", ",
     "weekdayShort": {
       "0": "Sun",

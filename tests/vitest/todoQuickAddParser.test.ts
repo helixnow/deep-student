@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseQuickAddInput } from '../../src/features/todo/quickAddParser';
+import { parseRepeatRule, serializeRepeatRule } from '../../src/features/todo/types';
 
 // 固定基准：2026-06-12 是周五
 const FRI = new Date(2026, 5, 12, 10, 0, 0);
@@ -198,5 +199,107 @@ describe('todo quickAdd natural language parser', () => {
     expect(r.dueTime).toBe('07:00');
     expect(r.priority).toBe('high');
     expect(r.title).toBe('早读');
+  });
+
+  // ===== byMonthDay / until（仅前端解析+展示；后端滚动暂不消费）=====
+
+  it('parses 每月1号和15号 as monthly with byMonthDay', () => {
+    const r = parseQuickAddInput('每月1号和15号交房租', FRI);
+    expect(r.repeat).toEqual({ freq: 'monthly', interval: 1, byMonthDay: [1, 15] });
+    expect(r.title).toBe('交房租');
+    // 基准 6/12：本月 1 号已过，最近的选中日是 6/15
+    expect(r.dueDate).toBe('2026-06-15');
+  });
+
+  it('parses 每月1号、15号 with 顿号 separators', () => {
+    const r = parseQuickAddInput('每月1号、15号 对账', FRI);
+    expect(r.repeat).toEqual({ freq: 'monthly', interval: 1, byMonthDay: [1, 15] });
+    expect(r.title).toBe('对账');
+  });
+
+  it('keeps single 每月N号 behavior unchanged (no byMonthDay)', () => {
+    // 单日不产生 byMonthDay：维持「每月」+ 日期锚定的既有语义
+    const r = parseQuickAddInput('每月15号 交房租', FRI);
+    expect(r.repeat).toEqual({ freq: 'monthly', interval: 1 });
+    expect(r.dueDate).toBe('2026-06-15');
+  });
+
+  it('parses every 1st and 15th as monthly with byMonthDay', () => {
+    const r = parseQuickAddInput('pay rent every 1st and 15th', FRI);
+    expect(r.repeat).toEqual({ freq: 'monthly', interval: 1, byMonthDay: [1, 15] });
+    expect(r.title).toBe('pay rent');
+    expect(r.dueDate).toBe('2026-06-15');
+  });
+
+  it('does not confuse every N units with ordinal day lists', () => {
+    // 裸数字 + 单位仍是间隔重复，不产生 byMonthDay
+    const r = parseQuickAddInput('review every 2 weeks', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 2 });
+  });
+
+  it('parses 直到 + ISO date as repeat until', () => {
+    const r = parseQuickAddInput('每天背单词直到2026-09-30', FRI);
+    expect(r.repeat).toEqual({ freq: 'daily', interval: 1, until: '2026-09-30' });
+    expect(r.title).toBe('背单词');
+    expect(r.dueDate).toBe('2026-06-12');
+  });
+
+  it('parses 直到N月N日 without stealing it as due date', () => {
+    const r = parseQuickAddInput('每周一交周报 直到12月31日', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1, until: '2026-12-31' });
+    // 到期日仍是「每周一」锚定的 6/15，不是 12/31
+    expect(r.dueDate).toBe('2026-06-15');
+    expect(r.title).toBe('交周报');
+  });
+
+  it('parses english until month-day', () => {
+    const r = parseQuickAddInput('standup daily until dec 31', FRI);
+    expect(r.repeat).toEqual({ freq: 'daily', interval: 1, until: '2026-12-31' });
+    expect(r.title).toBe('standup');
+  });
+
+  it('ignores until expressions without a repeat rule', () => {
+    const r = parseQuickAddInput('普通事项', FRI);
+    expect(r.repeat).toBeUndefined();
+  });
+});
+
+describe('todo repeat rule serialize/parse round-trip (byMonthDay/until)', () => {
+  it('round-trips monthly byMonthDay and until', () => {
+    const json = serializeRepeatRule({
+      freq: 'monthly',
+      interval: 1,
+      byMonthDay: [1, 15],
+      until: '2026-12-31',
+    });
+    expect(parseRepeatRule(json)).toEqual({
+      freq: 'monthly',
+      interval: 1,
+      byMonthDay: [1, 15],
+      until: '2026-12-31',
+    });
+  });
+
+  it('drops byMonthDay for non-monthly freq and malformed until', () => {
+    expect(
+      parseRepeatRule(JSON.stringify({ freq: 'weekly', interval: 1, byMonthDay: [1, 15] })),
+    ).toEqual({ freq: 'weekly', interval: 1 });
+    expect(
+      parseRepeatRule(JSON.stringify({ freq: 'daily', interval: 1, until: '9月30日' })),
+    ).toEqual({ freq: 'daily', interval: 1 });
+    // 非法月内日被过滤，全非法则整个字段不落
+    expect(
+      parseRepeatRule(JSON.stringify({ freq: 'monthly', interval: 1, byMonthDay: [0, 32] })),
+    ).toEqual({ freq: 'monthly', interval: 1 });
+  });
+
+  it('keeps legacy payloads unchanged', () => {
+    expect(parseRepeatRule('{"freq":"monthly","interval":2}')).toEqual({
+      freq: 'monthly',
+      interval: 2,
+    });
+    expect(serializeRepeatRule({ freq: 'daily', interval: 1 })).toBe(
+      '{"freq":"daily","interval":1}',
+    );
   });
 });
