@@ -35,6 +35,7 @@ import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
+import { ensureAutoSyncSchedulerStarted, useAutoSyncStore } from '@/stores/syncStatusStore';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
@@ -771,6 +772,31 @@ function App() {
 
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
   useEffect(() => initReminderScheduler(), []);
+
+  // ☁️ 自动同步调度器（应用级主启动点，与 initReminderScheduler 同模式）：
+  //   持久化开关为开时，重启后无需进设置页即恢复排程。必须等 persist
+  //   hydration 完成后再 start——否则会用默认 enabled:false 误判为 no-op，
+  //   或在持久化状态读入前误读开关。start() 本身防重（已排程/执行中直接
+  //   return），ensureAutoSyncSchedulerStarted 幂等，StrictMode 双调用与
+  //   设置页的兼容性调用都不会起第二个 timer；开关关闭时 start 为 no-op。
+  useEffect(() => {
+    const persistApi = useAutoSyncStore.persist as
+      | typeof useAutoSyncStore.persist
+      | undefined;
+    // 极端环境（localStorage 不可用）下 persist 中间件未接 storage，
+    // 无 hydration 阶段可等，直接按内存默认态启动（enabled:false → no-op）
+    if (!persistApi) {
+      ensureAutoSyncSchedulerStarted();
+      return;
+    }
+    if (persistApi.hasHydrated()) {
+      ensureAutoSyncSchedulerStarted();
+      return;
+    }
+    return persistApi.onFinishHydration(() => {
+      ensureAutoSyncSchedulerStarted();
+    });
+  }, []);
 
   // ★ 4.2 制卡完成通知（应用级，后台时发系统通知）
   useEffect(() => {

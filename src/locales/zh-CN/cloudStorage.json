@@ -128,6 +128,14 @@
     "clearConfig": "清除配置"
   },
 
+  "phase": {
+    "draftUntested": "草稿未测试：当前表单内容尚未发布，不影响已发布配置",
+    "draftTested": "草稿测试通过，尚未发布——点「保存配置」后才会生效",
+    "draftTestFailed": "草稿测试失败，未发布；已发布配置未受影响",
+    "testing": "正在测试草稿连接…",
+    "published": "配置已发布"
+  },
+
   "clearConfirm": {
     "title": "清除云存储配置？",
     "description": "此操作将从本设备删除已保存的服务器地址、账号密码以及端到端加密密码。",
@@ -283,6 +291,7 @@
     "secureStoreReadFailed": "无法读取已保存的凭据。请恢复系统安全存储的访问权限后重新打开此面板；现有凭据未被修改。",
     "secureStoreWriteFailed": "凭据尚未保存。请恢复系统安全存储的访问权限后再次点击保存。",
     "configSsotFailed": "配置未保存：无法写入后端同步配置",
+    "configPublishFailed": "配置未发布：本次凭据与配置均未生效，原有已发布配置保持不变",
     "configCleared": "配置已清除",
     "configClearPartial": "配置已从当前界面移除，但部分后端数据清理失败",
     "versionDeleted": "版本已删除"

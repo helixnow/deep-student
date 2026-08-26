@@ -592,17 +592,392 @@ pub async fn cloud_config_ssot_get(
     }
 }
 
+// ============================================================================
+// [Wave2-D R2] 草稿测试 / 事务化发布（draft → test → publish 状态机后端面）
+// ============================================================================
+//
+// 消费 agent 3 在 `secure_store.rs` 落地的 staged-generation 凭据 API
+// （`SecureStore` 方法）：
+// - `cloud_credentials_active_generation()`：只读；pointer key 缺失 = 0。
+// - `write_staged_cloud_credentials(update, preexisting)`：合并写 staged 槽
+//   （active 与 pointer 不变），返回 staged generation（= active + 1），
+//   即后续 commit / abort 的 `expected_generation` 句柄。
+// - `commit_staged_cloud_credentials(expected)`：staged → active 原子提升，
+//   幂等可重放；成功后 active generation == expected。
+// - `abort_staged_cloud_credentials(expected)`：按句柄丢弃 staged，幂等。
+// - `delete_cloud_credentials_transactional()`：三记录快照+删除，内部失败
+//   自恢复；不导出恢复句柄，故 clear 的跨库恢复用本文件自持的凭据快照。
+
+/// 草稿连接测试失败（网络/认证/服务器侧）的稳定 IPC 错误码。
+pub const CLOUD_CONNECTION_CHECK_FAILED_CODE: &str = "E_CLOUD_CONNECTION_CHECK_FAILED";
+
+/// 与 secure_store 私有 `get_secure_store` 等价的实例构造（该 fn 私有且
+/// secure_store.rs 本轮禁改，构造路径 `new_with_dir` / `new` 均为 pub）。
+fn cloud_secure_store(app: &tauri::AppHandle) -> crate::secure_store::SecureStore {
+    use tauri::Manager as _;
+    let config = crate::secure_store::SecureStoreConfig::default();
+    if let Ok(app_data_dir) = app.path().app_data_dir() {
+        return crate::secure_store::SecureStore::new_with_dir(config, app_data_dir);
+    }
+    crate::secure_store::SecureStore::new(config)
+}
+
+/// [`SecureStoreError`](crate::secure_store::SecureStoreError) 的稳定 code 映射。
+///
+/// `SecureStoreError::stable_code` / `to_command_error` 是 secure_store 的私有
+/// 方法且本轮禁改该文件，故在命令面复刻同一张 code 表（前端契约不变）。
+fn secure_store_stable_code(error: &crate::secure_store::SecureStoreError) -> &'static str {
+    use crate::secure_store::SecureStoreError;
+    match error {
+        SecureStoreError::KeychainUnavailable(_) | SecureStoreError::PlatformUnsupported(_) => {
+            "SECURE_STORE_UNAVAILABLE"
+        }
+        SecureStoreError::KeyNotFound(_) => "SECURE_STORE_KEY_NOT_FOUND",
+        SecureStoreError::AccessDenied(_) => "SECURE_STORE_ACCESS_DENIED",
+        SecureStoreError::SerializationError(_) => "SECURE_STORE_DATA_INVALID",
+        SecureStoreError::EncryptionError(_) => "SECURE_STORE_CRYPTO_ERROR",
+        SecureStoreError::CloudEncryptionPasswordTooShort(_) => {
+            crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE
+        }
+        SecureStoreError::CloudCredentialGenerationConflict(_) => {
+            crate::secure_store::CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE
+        }
+        _ => "SECURE_STORE_INTERNAL",
+    }
+}
+
+fn secure_store_command_error(
+    error: crate::secure_store::SecureStoreError,
+    operation: &'static str,
+) -> crate::error_details::CommandError {
+    crate::error_details::CommandError::new(secure_store_stable_code(&error), error.to_string())
+        .with_data(serde_json::json!({ "operation": operation }))
+}
+
+/// 云存储层 [`AppError`](crate::models::AppError) → `CommandError`。
+///
+/// 平台能力错误（`create_storage` / `validate` 注入的
+/// `details.code`，如 [`FTP_UNSUPPORTED_ON_ANDROID_CODE`] /
+/// [`S3_UNSUPPORTED_IN_BUILD_CODE`]）沿用其稳定 code；其余用调用方给的兜底码。
+fn cloud_app_error_to_command_error(
+    error: crate::models::AppError,
+    fallback_code: &'static str,
+) -> crate::error_details::CommandError {
+    let code = error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("code"))
+        .and_then(|code| code.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| fallback_code.to_string());
+    crate::error_details::CommandError::new(code, error.message)
+}
+
+/// 新设短口令 fail-closed 门（复用 secure_store 的既有准入规则与稳定 code）。
+///
+/// `encryption_password_is_preexisting = true`（存量口令：换机重输 / legacy
+/// 迁移）放行任意非空长度，与 `update_cloud_credentials_with_policy` 一致。
+fn reject_short_new_encryption_password(
+    credentials: &crate::secure_store::CloudStorageCredentials,
+    encryption_password_is_preexisting: bool,
+) -> Result<(), crate::error_details::CommandError> {
+    if !encryption_password_is_preexisting
+        && crate::secure_store::cloud_encryption_password_too_short(
+            credentials.encryption_password.as_deref(),
+        )
+    {
+        return Err(crate::error_details::CommandError::new(
+            crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+            crate::secure_store::cloud_encryption_password_too_short_message(),
+        ));
+    }
+    Ok(())
+}
+
+/// 把请求携带的草稿凭据直接填入 runtime 配置。
+///
+/// 与 `hydrate_cloud_config` 相反：**绝不**触碰安全存储（不读不写），secret
+/// 只来自本次 IPC 载荷。空/空白字段保持空串，交给
+/// `CloudStorageConfig::validate` fail-closed。
+fn apply_draft_credentials(
+    config: &mut CloudStorageConfig,
+    credentials: &crate::secure_store::CloudStorageCredentials,
+) {
+    fn nonempty(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|value| !value.is_empty())
+    }
+    if let Some(webdav) = config.webdav.as_mut() {
+        if let Some(password) = nonempty(credentials.webdav_password.as_deref()) {
+            webdav.password = password.to_string();
+        }
+    }
+    if let Some(s3) = config.s3.as_mut() {
+        if let Some(secret) = nonempty(credentials.s3_secret_access_key.as_deref()) {
+            s3.secret_access_key = secret.to_string();
+        }
+    }
+    if let Some(ftp) = config.ftp.as_mut() {
+        if let Some(password) = nonempty(credentials.ftp_password.as_deref()) {
+            ftp.password = password.to_string();
+        }
+    }
+    config.encryption_password = nonempty(credentials.encryption_password.as_deref())
+        .map(str::to_string);
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudConfigDraftTestResponse {
+    pub ok: bool,
+    /// 当前 active 凭据 generation。本命令只读，绝不 bump。
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudConfigPublishResponse {
+    pub ok: bool,
+    /// 提交成功后的新 active generation。
+    pub generation: u64,
+    pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+    pub config: SafeCloudStorageConfig,
+}
+
+/// 草稿连接测试：用**请求里的凭据**直接试连，零持久化副作用。
+///
+/// 与 `cloud_storage_check_connection`（cloud_storage/mod.rs，入口即
+/// `hydrate_cloud_config`，只能测「已发布」的配置）不同，本命令：
+/// - 不读安全存储、不写 SSOT、不写任何 secret、不 bump generation；
+/// - 非敏感字段走与保存完全相同的 `validate_and_normalize`（平台能力码一致）；
+/// - 新设短口令 fail-closed（`E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT`），
+///   `encryptionPasswordIsPreexisting: true` 的存量口令放行。
+///
+/// 成功返回 `{ ok: true, generation }`，generation 为当前 active 值（未变），
+/// 供前端在随后的 `cloud_config_publish` 前检测并发变更。
+#[tauri::command]
+pub async fn cloud_config_test_connection_draft(
+    app: tauri::AppHandle,
+    config: SafeCloudStorageConfig,
+    credentials: crate::secure_store::CloudStorageCredentials,
+    encryption_password_is_preexisting: Option<bool>,
+) -> Result<CloudConfigDraftTestResponse, crate::error_details::CommandError> {
+    reject_short_new_encryption_password(
+        &credentials,
+        encryption_password_is_preexisting.unwrap_or(false),
+    )?;
+
+    // 与 save 同一套非敏感校验/规范化：平台能力（Android FTP / 无 S3 构建）
+    // 在此以既有稳定码拒绝，公网明文运输沿用 allowInsecure 准入。
+    let config = config
+        .validate_and_normalize()
+        .map_err(CloudConfigSsotError::into_command_error)?;
+
+    let mut runtime = config.into_runtime_config();
+    apply_draft_credentials(&mut runtime, &credentials);
+    runtime.validate().map_err(|error| match error.code() {
+        Some(code) => crate::error_details::CommandError::new(code, error.to_string()),
+        // 规范化已通过，剩余失败面基本是「草稿缺少必需凭据」。
+        None => crate::error_details::CommandError::new(
+            "E_CLOUD_CREDENTIALS_UNAVAILABLE",
+            error.to_string(),
+        ),
+    })?;
+
+    let storage = crate::cloud_storage::create_storage(&runtime)
+        .await
+        .map_err(|error| cloud_app_error_to_command_error(error, "E_CLOUD_CONFIG_INVALID"))?;
+    storage
+        .check_connection()
+        .await
+        .map_err(|error| {
+            cloud_app_error_to_command_error(error, CLOUD_CONNECTION_CHECK_FAILED_CODE)
+        })?;
+
+    // 只读探测 active generation（pointer key 缺失 = 0）。不写任何 secret。
+    let generation = cloud_secure_store(&app)
+        .cloud_credentials_active_generation()
+        .map_err(|error| secure_store_command_error(error, "cloud_credentials_active_generation"))?;
+
+    Ok(CloudConfigDraftTestResponse {
+        ok: true,
+        generation,
+    })
+}
+
+/// 事务化发布：staged 凭据 + SSOT 两段写，任一失败回到旧 generation/旧 SSOT。
+///
+/// 算法（所有失败路径都保持旧 active generation 不变）：
+/// 1. 短口令门（同草稿测试，先于任何写入）；
+/// 2. snapshot 当前 SSOT 原始记录（raw 字节，NotConfigured 当 None——用 raw
+///    而非 parsed load，保证旧记录即使已不再通过当前校验也能按原样恢复）；
+/// 3. 非敏感配置 `validate_and_normalize` 预检（失败则连 staged 都不写）；
+/// 4. `write_staged_cloud_credentials`（active 不变），拿 expected generation；
+/// 5. `save_cloud_config_ssot`；失败 → `abort_staged_cloud_credentials`，
+///    返回错（旧 SSOT 未变）；
+/// 6. `commit_staged_cloud_credentials(expected)`；失败 → 把 SSOT 恢复为
+///    snapshot（有则 save 旧值，无则 delete setting），再 abort staged，返回错。
+///
+/// `cloud_config_ssot_save` 保持原行为（迁移/内部旧入口）；前端新状态机改用
+/// 草稿测试 + 本命令。
+#[tauri::command]
+pub async fn cloud_config_publish(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::commands::AppState>,
+    config: SafeCloudStorageConfig,
+    credentials: crate::secure_store::CloudStorageCredentials,
+    encryption_password_is_preexisting: Option<bool>,
+) -> Result<CloudConfigPublishResponse, crate::error_details::CommandError> {
+    reject_short_new_encryption_password(
+        &credentials,
+        encryption_password_is_preexisting.unwrap_or(false),
+    )?;
+
+    // (a) raw SSOT snapshot；读失败即中止（什么都没写）。
+    let ssot_snapshot = state
+        .database
+        .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
+        .map_err(|error| {
+            CloudConfigSsotError::Storage(error.to_string()).into_command_error()
+        })?;
+
+    // 非敏感预检：无效草稿绝不进入 staged 写。
+    let config = config
+        .validate_and_normalize()
+        .map_err(CloudConfigSsotError::into_command_error)?;
+
+    // (b) 凭据进 staged 槽；active 记录与 generation pointer 不变。返回的
+    // staged generation（= active + 1）即 commit/abort 的 expected 句柄，
+    // 也是提交成功后的新 active generation。
+    let store = cloud_secure_store(&app);
+    let staged_generation = store
+        .write_staged_cloud_credentials(
+            &credentials,
+            encryption_password_is_preexisting.unwrap_or(false),
+        )
+        .map_err(|error| secure_store_command_error(error, "write_staged_cloud_credentials"))?;
+
+    // (c)/(d) 发布非敏感 SSOT；失败则丢弃 staged，旧 SSOT 未被触碰。
+    let config = match save_cloud_config_ssot(&state.database, config) {
+        Ok(config) => config,
+        Err(error) => {
+            if let Err(abort_error) = store.abort_staged_cloud_credentials(staged_generation) {
+                tracing::warn!(
+                    "发布失败后丢弃 staged 凭据失败（active 未受影响）: {}",
+                    abort_error
+                );
+            }
+            return Err(error.into_command_error());
+        }
+    };
+
+    // (e)/(f) staged → active 原子提升；失败则恢复 SSOT snapshot 再丢弃 staged。
+    if let Err(error) = store.commit_staged_cloud_credentials(staged_generation) {
+        let restored = match &ssot_snapshot {
+            Some(encoded) => state
+                .database
+                .save_setting(CLOUD_CONFIG_SSOT_SETTING_KEY, encoded),
+            None => state.database.delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY),
+        };
+        if let Err(restore_error) = &restored {
+            tracing::warn!(
+                "提交凭据失败且 SSOT 恢复失败（凭据仍为旧 generation）: {}",
+                restore_error
+            );
+        }
+        if let Err(abort_error) = store.abort_staged_cloud_credentials(staged_generation) {
+            tracing::warn!("提交失败后丢弃 staged 凭据失败: {}", abort_error);
+        }
+        return Err(crate::error_details::CommandError::new(
+            secure_store_stable_code(&error),
+            error.to_string(),
+        )
+        .with_data(serde_json::json!({
+            "operation": "commit_staged_cloud_credentials",
+            "ssotRestored": restored.is_ok(),
+        })));
+    }
+    let generation = staged_generation;
+
+    Ok(CloudConfigPublishResponse {
+        ok: true,
+        generation,
+        provider: config.provider_name().to_string(),
+        root: config.root().map(str::to_string),
+        config,
+    })
+}
+
+/// 清除云配置：先事务性删除凭据，再删非敏感 SSOT 记录。
+///
+/// [Wave2-D R2] 顺序与旧实现相反（旧：先删 SSOT、后删凭据，第二步失败留下
+/// 「SSOT 已空、凭据残留」的孤儿 secret）。新顺序保证任何失败路径都不会留下
+/// 无 SSOT 配对的凭据：
+/// 1. 先读一次 SSOT（fail-early：设置库连读都失败时，两条记录都不动），并
+///    快照当前凭据记录（`delete_cloud_credentials_transactional` 的内部快照
+///    只覆盖它自己失败时的自恢复，不导出恢复句柄，跨库恢复须自持副本）；
+/// 2. `delete_cloud_credentials_transactional` 删除凭据（active + staged +
+///    generation pointer，内部失败自恢复并上抛）；
+/// 3. 删 SSOT；若失败，用步骤 1 的凭据快照 best-effort 恢复 active 记录
+///    （generation pointer 无 pub 恢复口，重置为缺失 = 0 = legacy 语义，读
+///    路径不受影响；恢复结果在 `data.credentialsRestored` 里如实上报）。
+///
+/// 错误通道从 `String` 收敛为 [`crate::error_details::CommandError`]（稳定
+/// code）。成功返回形状不变（空 `CloudConfigSsotResponse`），前端 `clearConfig`
+/// 对 rejection 只做泛化 catch，兼容。
 #[tauri::command]
 pub async fn cloud_config_ssot_clear(
     app: tauri::AppHandle,
     state: tauri::State<'_, crate::commands::AppState>,
-) -> Result<CloudConfigSsotResponse, String> {
-    state
+) -> Result<CloudConfigSsotResponse, crate::error_details::CommandError> {
+    // Fail-early snapshot read: if the settings layer cannot even be read we
+    // must not start deleting credentials we could never pair with an SSOT
+    // delete afterwards.
+    let _ssot_snapshot = state
         .database
-        .delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
-        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()).to_string())?;
-    crate::secure_store::delete_cloud_credentials_for_app(&app)
-        .map_err(|error| error.to_string())?;
+        .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
+        .map_err(|error| {
+            CloudConfigSsotError::Storage(error.to_string()).into_command_error()
+        })?;
+
+    let store = cloud_secure_store(&app);
+    // 凭据快照仅驻留本调用栈，用于步骤 3 失败时的 best-effort 恢复。
+    let credentials_snapshot = store
+        .get_cloud_credentials()
+        .map_err(|error| secure_store_command_error(error, "cloud_config_ssot_clear"))?;
+
+    // Step 1: delete secrets first (transactional: snapshots then deletes
+    // active + staged + generation pointer, self-restoring on its own failure).
+    store
+        .delete_cloud_credentials_transactional()
+        .map_err(|error| {
+            secure_store_command_error(error, "delete_cloud_credentials_transactional")
+        })?;
+
+    // Step 2: delete the non-secret SSOT record; on failure restore the
+    // credential record so the old state survives intact.
+    if let Err(error) = state.database.delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY) {
+        let restored = match &credentials_snapshot {
+            Some(snapshot) => store.save_cloud_credentials(snapshot),
+            None => Ok(()),
+        };
+        if let Err(restore_error) = &restored {
+            tracing::warn!(
+                "清除云配置失败且凭据恢复失败（凭据已删、SSOT 残留）: {}",
+                restore_error
+            );
+        }
+        return Err(crate::error_details::CommandError::new(
+            "E_CLOUD_CONFIG_STORAGE",
+            CloudConfigSsotError::Storage(error.to_string()).to_string(),
+        )
+        .with_data(serde_json::json!({
+            "operation": "cloud_config_ssot_clear",
+            "credentialsRestored": restored.is_ok(),
+        })));
+    }
+
     Ok(CloudConfigSsotResponse {
         configured: false,
         provider: None,

@@ -177,6 +177,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [showFtpPassword, setShowFtpPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
+  // 三态配置状态机（前端认知）：'draft' = 表单内容尚未发布（含已测试但未
+  // 发布），'published' = 表单与后端已发布配置一致。草稿测试的成功/失败都
+  // 不改变该状态；只有 cloud_config_publish 成功才置 'published'。
+  const [configPhase, setConfigPhase] = useState<'draft' | 'published'>('draft');
+  // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
+  const hydratingFormRef = useRef(true);
   const [secureStoreIssue, setSecureStoreIssue] = useState<string | null>(null);
   const [credentialStatus, setCredentialStatus] = useState<cloudApi.CloudStorageCredentialStatus>({
     webdavPasswordConfigured: false,
@@ -276,6 +282,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     { action: 'save' | 'test'; allowInsecure: boolean } | null
   >(null);
 
+  // 任何表单编辑都把前端认知回退为「未测试的草稿」：后端已发布配置不受
+  // 影响，但陈旧的「已连接」测试结论不能继续代表编辑后的表单内容。
+  useEffect(() => {
+    if (hydratingFormRef.current) {
+      hydratingFormRef.current = false;
+      return;
+    }
+    setConfigPhase('draft');
+    setConnectionStatus('unknown');
+  }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
+
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
@@ -313,6 +330,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       try {
         const config = await cloudApi.resolveCloudStorageConfig();
         if (config && active) {
+          // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
+          // 并把前端认知置为「已发布」。
+          hydratingFormRef.current = true;
+          setConfigPhase('published');
           setProvider(config.provider);
           loadedFtpConfig = config.provider === 'ftp' || Boolean(config.ftp);
           setHasStoredFtpConfig(loadedFtpConfig);
@@ -414,7 +435,26 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     };
   }, [provider, webdavConfig, s3Config, ftpConfig, root, allowInsecure, encryptionPassword]);
 
-  // 实际执行保存逻辑
+  // 当前表单里的凭据快照。空字段不上送：草稿测试时表示「回填已发布凭据
+  // 后试连」，发布时表示「保留已发布值」（合并语义只在 publish 生效）。
+  const buildFormCredentials = useCallback((): cloudApi.CloudStorageCredentials => ({
+    webdavPassword:
+      provider === 'webdav' && webdavConfig.password.trim()
+        ? webdavConfig.password
+        : undefined,
+    s3SecretAccessKey:
+      provider === 's3' && s3Config.secretAccessKey.trim()
+        ? s3Config.secretAccessKey
+        : undefined,
+    ftpPassword:
+      provider === 'ftp' && ftpConfig.password.trim()
+        ? ftpConfig.password
+        : undefined,
+    encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
+  }), [provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword]);
+
+  // 实际执行发布逻辑：凭据+非敏感配置经 cloud_config_publish 单逻辑提交，
+  // 失败保持旧 generation——后端不留半配置，前端也不写本地 SSOT 缓存/标记。
   const doSaveConfig = useCallback(async (
     allowInsecureOverride = false,
     acceptPreexistingShortPassword = false,
@@ -430,60 +470,51 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
     const config = buildConfig(allowInsecureOverride);
 
-    // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
-    // 避免安全存储（本机加密文件，见 secure_store.rs）写入失败留下无法工作的半配置状态。
+    let published: cloudApi.CloudConfigPublishResponse;
     try {
-      const storedCredentialStatus = await cloudApi.saveCredentials({
-        webdavPassword:
-          provider === 'webdav' && webdavConfig.password.trim()
-            ? webdavConfig.password
-            : undefined,
-        s3SecretAccessKey:
-          provider === 's3' && s3Config.secretAccessKey.trim()
-            ? s3Config.secretAccessKey
-            : undefined,
-        ftpPassword:
-          provider === 'ftp' && ftpConfig.password.trim()
-            ? ftpConfig.password
-            : undefined,
-        encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-      }, { encryptionPasswordIsPreexisting: acceptPreexistingShortPassword });
-      setCredentialStatus(storedCredentialStatus);
-      setSecureStoreIssue(null);
+      published = await cloudApi.publishCloudConfig(config, buildFormCredentials(), {
+        encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
+      });
     } catch (e: unknown) {
-      console.error('Failed to save credentials to secure storage:', e);
+      console.error('Failed to publish cloud configuration:', e);
+      // 发布失败即整体失败：旧凭据与旧配置仍然生效，表单草稿原样保留。
+      // SECURE_STORE_* 给可行动的密钥库提示，其余按稳定 code 本地化。
       const secureMessage = markSecureStoreIssue(e, 'write');
-      const userMessage =
-        secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed');
       showGlobalNotification(
         'error',
-        `${userMessage}: ${getErrorMessage(e)}`,
+        `${secureMessage ?? t('cloudStorage:messages.configPublishFailed')}: ${localizeCloudError(e)}`,
       );
       return;
     }
 
-    try {
-      const saved = await cloudApi.saveCloudConfigSsot(config);
-      const persistedAllowInsecure = saved.config?.allowInsecure ?? false;
-      setAllowInsecure(persistedAllowInsecure);
-      if (saved.config) {
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
-        localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
-      }
-    } catch (e: unknown) {
-      console.error('Failed to save credential-free cloud config SSOT:', e);
-      // [R10-ux] 与加载路径对齐：带上后端拒绝原因（经 localizeCloudError 映射），
-      // 否则平台能力类拒绝（如无 S3 构建）只剩一句「配置未保存」，用户无从下手。
-      showGlobalNotification(
-        'error',
-        `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
-      );
-      return;
-    }
-
+    setSecureStoreIssue(null);
+    setAllowInsecure(published.config.allowInsecure ?? false);
+    // 仅 UI 缓存；只有发布成功后才允许写，后端 SSOT 为准。
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config));
+    localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
+    setConfigPhase('published');
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
-  }, [buildConfig, provider, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
+
+    // 凭据存在旗标经只读接口刷新（secret 值不回传 IPC）；刷新失败不影响
+    // 发布结果，仅保留旧徽标。
+    try {
+      setCredentialStatus(await cloudApi.getCredentialStatus());
+    } catch (e: unknown) {
+      console.warn('Failed to refresh credential status after publish:', e);
+    }
+
+    // 发布成功后再刷新已发布配置的状态与版本列表；刷新失败只影响展示，
+    // 不影响发布结果。
+    try {
+      const status = await cloudApi.getSyncStatus(config);
+      setSyncStatus(status);
+      const versionList = await cloudApi.listVersions(config);
+      setVersions(versionList);
+    } catch (e: unknown) {
+      console.warn('Failed to refresh cloud status after publish:', e);
+    }
+  }, [buildConfig, buildFormCredentials, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
 
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
@@ -525,7 +556,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     await doSaveConfig(false);
   }, [buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
-  // 实际执行测试连接逻辑
+  // 实际执行测试连接逻辑：草稿试连。表单配置与凭据只随本次 IPC 一次性传给
+  // 后端 cloud_config_test_connection_draft，后端不写安全存储、不改 active
+  // SSOT/generation。成功/失败都不落任何持久化（不写安全存储、不写后端
+  // SSOT、不写本地 SSOT 缓存/迁移标记）——测试失败的配置永远停留在表单
+  // 草稿里，本地「已发布」认知（configPhase）也不因测试而改变。
   const doTestConnection = useCallback(async (
     allowInsecureOverride = allowInsecure,
     acceptPreexistingShortPassword = false,
@@ -542,84 +577,33 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setConnectionStatus('unknown');
     try {
       const config = buildConfig(allowInsecureOverride);
-      // Testing newly-entered credentials commits them once to secure storage;
-      // routine connection/status IPC below carries only empty placeholders.
-      try {
-        const status = await cloudApi.saveCredentials({
-          webdavPassword:
-            provider === 'webdav' && webdavConfig.password.trim()
-              ? webdavConfig.password
-              : undefined,
-          s3SecretAccessKey:
-            provider === 's3' && s3Config.secretAccessKey.trim()
-              ? s3Config.secretAccessKey
-              : undefined,
-          ftpPassword:
-            provider === 'ftp' && ftpConfig.password.trim()
-              ? ftpConfig.password
-              : undefined,
-          encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-        }, { encryptionPasswordIsPreexisting: acceptPreexistingShortPassword });
-        setCredentialStatus(status);
-      } catch (e: unknown) {
-        setConnectionStatus('failed');
-        const secureMessage = markSecureStoreIssue(e, 'write');
-        showGlobalNotification(
-          'error',
-          `${secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed')}: ${getErrorMessage(e)}`,
-        );
-        return;
-      }
-
-      // Persist every tested non-secret config first. Backend operations ignore
-      // IPC metadata and rebuild exclusively from this SSOT record.
-      try {
-        const saved = await cloudApi.saveCloudConfigSsot(config);
-        if (saved.config) {
-          setAllowInsecure(saved.config.allowInsecure ?? false);
-          localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(saved.config));
-          localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
-        }
-      } catch (e: unknown) {
-        setConnectionStatus('failed');
-        showGlobalNotification(
-          'error',
-          `${t('cloudStorage:messages.configSsotFailed')}: ${localizeCloudError(e)}`,
-        );
-        return;
-      }
-
-      try {
-        await cloudApi.checkConnection(config);
-        setConnectionStatus('connected');
-        showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-
-        const latestSyncStatus = await cloudApi.getSyncStatus(config);
-        setSyncStatus(latestSyncStatus);
-
-        const versionList = await cloudApi.listVersions(config);
-        setVersions(versionList);
-      } catch (e: unknown) {
-        setConnectionStatus('failed');
-        showGlobalNotification(
-          'error',
-          `${t('cloudStorage:errors.connectionFailed')}: ${localizeCloudError(e)}`,
-        );
-      }
+      await cloudApi.testConnectionDraft(config, buildFormCredentials(), {
+        encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
+      });
+      // 测试成功也仍是「已测试的草稿」：不发布；状态/版本等「已发布」视图
+      // 留到发布成功后再刷新，避免草稿结论与已发布数据混在一起。
+      setConnectionStatus('connected');
+      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+    } catch (e: unknown) {
+      setConnectionStatus('failed');
+      // SECURE_STORE_*（草稿回填已发布凭据时读安全存储失败）优先给可行动
+      // 提示，其余按稳定 code 本地化。
+      const secureMessage = markSecureStoreIssue(e, 'read');
+      showGlobalNotification(
+        'error',
+        `${t('cloudStorage:errors.connectionFailed')}: ${secureMessage ?? localizeCloudError(e)}`,
+      );
     } finally {
       setTesting(false);
     }
   }, [
     allowInsecure,
     buildConfig,
+    buildFormCredentials,
     encryptionPassword,
-    ftpConfig.password,
     localizeCloudError,
     markSecureStoreIssue,
-    provider,
-    s3Config.secretAccessKey,
     t,
-    webdavConfig.password,
   ]);
 
   // 确认保存不安全 FTP/WebDAV 配置
@@ -678,6 +662,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       });
     }
     setConnectionStatus('unknown');
+    setConfigPhase('draft');
     setSyncStatus(null);
     setVersions([]);
     showGlobalNotification(
@@ -1625,6 +1610,39 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             </DsButton>
           )}
         </div>
+
+        {/* 三态状态徽标：未测试的草稿 / 测试中 / 已发布。草稿测试成功也只是
+            「已测试的草稿」，点「保存配置」发布之前不会改变已发布配置。 */}
+        {(testing || configPhase === 'published' || isConfigValid()) && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="cloud-config-phase">
+            {testing ? (
+              <>
+                <CircleNotch size={14} className="animate-spin" />
+                <span>{t('cloudStorage:phase.testing')}</span>
+              </>
+            ) : configPhase === 'published' ? (
+              <>
+                <ShieldCheck size={14} className="text-green-500" />
+                <span>{t('cloudStorage:phase.published')}</span>
+              </>
+            ) : connectionStatus === 'connected' ? (
+              <>
+                <CheckCircle size={14} className="text-amber-500" />
+                <span>{t('cloudStorage:phase.draftTested')}</span>
+              </>
+            ) : connectionStatus === 'failed' ? (
+              <>
+                <XCircle size={14} className="text-red-500" />
+                <span>{t('cloudStorage:phase.draftTestFailed')}</span>
+              </>
+            ) : (
+              <>
+                <WarningCircle size={14} className="text-amber-500" />
+                <span>{t('cloudStorage:phase.draftUntested')}</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* 操作按钮 */}
         <div className="flex flex-wrap gap-2">

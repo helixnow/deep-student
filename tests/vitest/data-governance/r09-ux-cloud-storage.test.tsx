@@ -87,6 +87,8 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   clearEncryptionPassword: vi.fn(),
   saveCredentials: vi.fn(),
   saveCloudConfigSsot: vi.fn(),
+  publishCloudConfig: vi.fn(),
+  testConnectionDraft: vi.fn(),
   checkConnection: vi.fn(),
   getSyncStatus: vi.fn(),
   listVersions: vi.fn(),
@@ -206,7 +208,7 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     const saveBlock = componentSource.slice(saveStart, saveEnd);
     expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
     expect(saveBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
-      saveBlock.indexOf('await cloudApi.saveCredentials'),
+      saveBlock.indexOf('await cloudApi.publishCloudConfig'),
     );
 
     const testStart = componentSource.indexOf('const doTestConnection = useCallback');
@@ -216,15 +218,12 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
       testBlock.indexOf('setTesting(true)'),
     );
-    expect(testBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
-      testBlock.indexOf('await cloudApi.saveCredentials'),
-    );
-    expect(testBlock).toContain('cloudStorage:messages.configSavedButCredentialsFailed');
-    expect(testBlock).toContain('cloudStorage:messages.configSsotFailed');
+    // 草稿试连零持久化：不写安全存储、不写后端/本地 SSOT、更不发布。
+    expect(testBlock).toContain('testConnectionDraft');
+    expect(testBlock).not.toContain('saveCredentials');
+    expect(testBlock).not.toContain('saveCloudConfigSsot');
+    expect(testBlock).not.toContain('publishCloudConfig');
     expect(testBlock).toContain('cloudStorage:errors.connectionFailed');
-    expect(testBlock.indexOf('configSavedButCredentialsFailed')).toBeLessThan(
-      testBlock.indexOf('errors.connectionFailed'),
-    );
 
     const openRestoreStart = componentSource.indexOf('const openRestoreConfirm = useCallback');
     const openRestoreEnd = componentSource.indexOf('const lastRestoreVersionIdRef', openRestoreStart);

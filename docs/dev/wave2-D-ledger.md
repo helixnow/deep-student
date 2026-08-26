@@ -110,3 +110,32 @@
 - EncryptedRootMemory 损坏文件 fail-closed 后下一次 `remember` 会空文件重建，丢掉其他 root 记忆（03；有单测锁住此行为）。
 - prove 试解会把明文写到临时盘（03/P11）。
 - FTP `ensure_directory` 吞错（02/08）；日志已可见，语义未改。
+
+## 9. 第 2 轮落地（配置事务 + auto-sync）
+
+产品在 worktree 组装后合入本枝。10×`claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 已落地
+
+- 设计稿：`docs/dev/wave2-D-config-state-machine.md`、`docs/dev/wave2-D-config-sync-generation.md`
+- `cloud_config_test_connection_draft`：请求凭据直填，不 hydrate、不写 SSOT/凭据、不 bump generation
+- `cloud_config_publish`：snapshot SSOT → write_staged → save SSOT → commit_staged；失败 abort + 恢复 SSOT
+- `secure_store` staged generation：active 键不变；staged + pointer；缺省 generation=0；短口令 preexisting 未收紧
+- `cloud_config_ssot_clear`：先事务删凭据再删 SSOT，失败回滚凭据
+- `CloudStorageSection`：测试只走 draft；保存走 publish；三态徽标
+- App.tsx hydration 后 `ensureAutoSyncSchedulerStarted`；设置页调用保留为双保险
+- 红灯测试源码：`CloudStorageSection.draft-test.test.tsx`、`autoSyncStore.bootstrap.test.ts`（未执行）
+- `r09-ux-cloud-storage.test.tsx` / `cloudSyncPhase0.source.test.ts` 源码契约已对齐新路径
+
+### 红线自证（R2 收轮）
+
+- `apply_vfs_init_missing_tables` `:2383/:2280/:5873`
+- `pre_repair_vfs_v20260824_note_props` `:2345/:2331/:5388`
+- `coordinator.rs` 不在本轮 diff
+
+### R2 欠账（给 R6 二检）
+
+- 审阅员 08 在 03 落笔前审的是旧文件；03 已落地。staged 密文仍在 `.secure/*.enc`，会被 backup 整目录复制进 `crypto/.secure/`（未发布草稿口令可能进备份）。目录 fsync / 进程锁未做。
+- publish 与多 IPC 前端原语的 generation 快照挂钩未落（07 文档建议 `expected_generation`）
+- 迁移仍走专用两段写；未改走 publish 原语（09 建议 R6 再议）
+- 一切动态验证仍未跑

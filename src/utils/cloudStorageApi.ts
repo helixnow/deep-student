@@ -433,6 +433,78 @@ export async function clearCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
   return invoke<CloudConfigSsotResponse>('cloud_config_ssot_clear');
 }
 
+// ============== 草稿测试 / 发布（配置事务边界） ==============
+
+/** `cloud_config_test_connection_draft` 的返回。连接失败走 rejection。 */
+export interface CloudConfigDraftTestResponse {
+  ok: boolean;
+  /** 当前 active 凭据 generation；草稿测试只读，绝不 bump。 */
+  generation: number;
+}
+
+/**
+ * `cloud_config_publish` 的返回：后端在一次逻辑提交内写入凭据与非敏感
+ * 配置（任何一步失败保持旧 generation 与旧 SSOT）。secret 值不回传；
+ * 凭据存在旗标另经只读的 `getCredentialStatus` 获取。
+ */
+export interface CloudConfigPublishResponse {
+  ok: boolean;
+  /** 提交成功后的新 active generation。 */
+  generation: number;
+  provider: StorageProvider;
+  root?: string;
+  config: SafeCloudStorageConfig;
+}
+
+/**
+ * 草稿试连：把当前表单的非敏感配置与凭据一次性传给后端做连接测试。
+ * 后端不写安全存储、不改 active SSOT/generation——测试失败的配置只存在
+ * 于表单草稿中，永远不会成为「已发布」配置。
+ *
+ * 凭据空字段表示「草稿缺该凭据」；「空=保留」的合并语义只属于 publish，
+ * 不属于草稿测试。
+ *
+ * 保留后端 CommandError envelope，调用方按稳定 code（SECURE_STORE_* /
+ * 平台能力 code）展示可行动提示。
+ */
+export async function testConnectionDraft(
+  config: CloudStorageConfig,
+  credentials: CloudStorageCredentials,
+  options?: {
+    /** 声明草稿携带的是存量加密口令（换机/重装重输），放行 8 字符门。 */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
+): Promise<CloudConfigDraftTestResponse> {
+  return invoke<CloudConfigDraftTestResponse>('cloud_config_test_connection_draft', {
+    config: toSafeCloudStorageConfig(config),
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
+}
+
+/**
+ * 发布配置：凭据+非敏感配置由后端 `cloud_config_publish` 作为单个逻辑
+ * 提交写入；失败保持旧 generation（旧凭据与旧 SSOT 原样生效），绝不留
+ * 「凭据已换、配置还旧」的半更新态。凭据空字段=保留已发布值的合并语义
+ * 仅在本命令生效。
+ *
+ * 保留后端 CommandError envelope，调用方按稳定 code 展示可行动提示。
+ */
+export async function publishCloudConfig(
+  config: CloudStorageConfig,
+  credentials: CloudStorageCredentials,
+  options?: {
+    /** 声明提交的是存量加密口令（换机/重装重输），放行 8 字符门。 */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
+): Promise<CloudConfigPublishResponse> {
+  return invoke<CloudConfigPublishResponse>('cloud_config_publish', {
+    config: toSafeCloudStorageConfig(config),
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
+}
+
 function credentialsFromLegacyConfig(config: CloudStorageConfig): CloudStorageCredentials {
   return {
     webdavPassword: config.webdav?.password || undefined,
@@ -617,7 +689,11 @@ export interface DownloadResult {
 // ============== 存储层 API ==============
 
 /**
- * 检查云存储连接
+ * 检查云存储连接（同步引擎内部使用）
+ *
+ * 该命令由后端从已发布 SSOT + 安全存储 hydrate 凭据，只能验证「已发布」
+ * 配置。设置页的测试按钮不要再走这里——草稿测试必须用 `testConnectionDraft`，
+ * 否则会拿旧凭据得出与表单草稿无关的结论。
  */
 export async function checkConnection(config: CloudStorageConfig): Promise<boolean> {
   try {

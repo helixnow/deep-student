@@ -128,6 +128,14 @@
     "clearConfig": "Clear Configuration"
   },
 
+  "phase": {
+    "draftUntested": "Draft not tested: the current form content is not published and does not affect the published configuration",
+    "draftTested": "Draft tested successfully but not published yet — click Save Configuration to make it effective",
+    "draftTestFailed": "Draft test failed. Nothing was published; the published configuration is unchanged",
+    "testing": "Testing the draft connection...",
+    "published": "Configuration published"
+  },
+
   "clearConfirm": {
     "title": "Clear cloud storage configuration?",
     "description": "This removes the saved server address, account credentials, and the end-to-end encryption password from this device.",
@@ -283,6 +291,7 @@
     "secureStoreReadFailed": "Saved credentials could not be read. Restore access to your system secure storage, then reopen this panel. Existing credentials were not changed.",
     "secureStoreWriteFailed": "Credentials were not saved. Restore access to your system secure storage, then click Save again.",
     "configSsotFailed": "Configuration was not saved because the backend sync configuration could not be persisted",
+    "configPublishFailed": "Configuration was not published: neither the credentials nor the configuration took effect, and the previously published configuration is unchanged",
     "configCleared": "Configuration cleared",
     "configClearPartial": "The configuration was removed from this view, but some backend data could not be cleared",
     "versionDeleted": "Version deleted"

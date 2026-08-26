@@ -2676,6 +2676,8 @@ pub fn run() {
             ,crate::cloud_config_commands::cloud_config_ssot_save
             ,crate::cloud_config_commands::cloud_config_ssot_get
             ,crate::cloud_config_commands::cloud_config_ssot_clear
+            ,crate::cloud_config_commands::cloud_config_test_connection_draft
+            ,crate::cloud_config_commands::cloud_config_publish
             ,crate::data_governance::commands_sync::data_governance_get_sync_status
             ,crate::data_governance::commands_sync::data_governance_detect_conflicts
             ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
