@@ -139,6 +139,12 @@ fn build_occlusion_cloze_text(spec: &crate::anki_image_occlusion::OcclusionSpec)
 /// 该函数只接受 `ValidatedOcclusionSpec`，因此先过 `validate_spec`；
 /// spec 非法（外部伪造/退化数据）时返回空串——不产 IO 语法，
 /// 可复习主路径（标准 Cloze Text）不受影响。
+///
+/// wave2-E r3 起默认 Cloze 导出路径**不再**把该结果写入 Extra（机器语法
+/// 不得在揭底时暴露给用户）；本函数保留给后续官方 Image Occlusion
+/// notetype 导出路径（IO 语法届时写入 IO notetype 的专用 Occlusion 字段，
+/// 而非用户可见的 Extra）。
+#[allow(dead_code)]
 fn format_io_rects(spec: &crate::anki_image_occlusion::OcclusionSpec) -> String {
     crate::anki_image_occlusion::validate_spec(
         spec,
@@ -155,8 +161,11 @@ fn format_io_rects(spec: &crate::anki_image_occlusion::OcclusionSpec) -> String 
 /// - 媒体：`card.images` 为空时把 imageRef 原样补进去，由
 ///   `collect_media_entries` 统一解析为包内文件名；文件缺失/不可读时该函数
 ///   已有跳过 + missing 报告语义，note 本身（Text 仍在）照常导出，不 panic；
-/// - Extra：追加 IO 矩形语法（`format_io_rects`），不覆盖用户已有 Extra，
-///   无 Extra 键时并入 `card.back` 内容以维持 Cloze Extra 的既有回退语义。
+/// - Extra：**不写入任何 IO 矩形语法**（wave2-E r3 字段泄漏修正）。
+///   `{{cN::image-occlusion:rect:...}}` 是机器语法，默认 Cloze notetype 揭底时
+///   Extra 会原样展示，用户会看到一串坐标乱码；因此 Extra 只保留人类补充
+///   内容，无 Extra 键时由 `resolve_card_field_value` 的 "extra" 分支
+///   回退 `card.back`，本函数不再插入 Extra 键。
 ///
 /// 本函数只读 `_occlusion`，删除动作统一在 `normalize_cards_for_export` 的
 /// `_` 前缀 retain 中完成。
@@ -192,47 +201,16 @@ fn convert_occlusion_card_for_export(card: &mut AnkiCard) {
         };
         card.text = Some(text);
     }
-
-    // IO 矩形语法进 Extra（揭底后可见；主路径复习不依赖它）。
-    let io_rects = format_io_rects(&spec);
-    if io_rects.is_empty() {
-        return;
-    }
-    let existing_extra_key = card
-        .extra_fields
-        .keys()
-        .find(|key| key.eq_ignore_ascii_case("Extra"))
-        .cloned();
-    match existing_extra_key {
-        Some(key) => {
-            if let Some(value) = card.extra_fields.get_mut(&key) {
-                if value.trim().is_empty() {
-                    *value = io_rects;
-                } else {
-                    value.push_str("<br>");
-                    value.push_str(&io_rects);
-                }
-            }
-        }
-        None => {
-            // 无 Extra 键时 resolve_card_field_value 会回退 card.back；
-            // 这里把 back 并入，避免插入 Extra 后丢失原有回退内容。
-            let back = clean_template_placeholders(&card.back);
-            let value = if back.trim().is_empty() {
-                io_rects
-            } else {
-                format!("{}<br>{}", back, io_rects)
-            };
-            card.extra_fields.insert("Extra".to_string(), value);
-        }
-    }
+    // 注意：IO 矩形语法（format_io_rects）刻意不写入 Extra——
+    // 默认 Cloze notetype 揭底会把 Extra 原样渲染给用户，机器语法必须不可见。
 }
 
 /// 导出入口统一规范化（唯一权威层）：只作用于导出流水线内的数据副本，
 /// 不写回卡片库——`_original_generation` 是 critic 修正对挖掘的数据源，
 /// 库内必须保留。
 ///
-/// 1. 遮挡转换器：消费 `_occlusion` 生成可复习 Cloze Text + 媒体 + IO 语法；
+/// 1. 遮挡转换器：消费 `_occlusion` 生成可复习 Cloze Text + 媒体
+///    （IO 矩形语法不再写入 Extra，见 convert_occlusion_card_for_export）；
 /// 2. 删除所有 `_` 前缀机器协议字段。注意此处不删 `Anki*` 保留键：
 ///    card_sched_restore 仍需读取它们回写复习进度，字段表层
 ///    （is_internal_protocol_field 过滤）已单独保证它们不进 model。
@@ -2971,7 +2949,7 @@ mod tests {
     }
 
     #[test]
-    fn occlusion_conversion_builds_cloze_text_media_and_io_extra() {
+    fn occlusion_conversion_builds_cloze_text_media_without_io_extra() {
         let mut card = test_card("occ", "front", "揭底说明");
         card.extra_fields = HashMap::from([(
             "_occlusion".to_string(),
@@ -2988,12 +2966,42 @@ mod tests {
         assert!(text.contains("{{c2::右心室}}"));
         // images 为空时从 imageRef 补收集
         assert_eq!(converted.images, vec!["/tmp/media/diagram.png".to_string()]);
-        // IO 矩形语法进 Extra，并保留 back 回退内容
-        let extra = converted.extra_fields.get("Extra").expect("Extra field");
-        assert!(extra.starts_with("揭底说明<br>"));
-        assert!(extra.contains("{{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.1}}"));
+        // wave2-E r3：转换器不再插入 Extra 键（机器 IO 语法不得进入用户可见
+        // 的揭底区）；Extra 取值由 resolve_card_field_value 回退 card.back。
+        assert!(!converted
+            .extra_fields
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("Extra")));
+        let resolved_extra = resolve_card_field_value(converted, "Extra");
+        assert_eq!(resolved_extra, "揭底说明", "Extra 必须回退人类可读的 back");
+        assert!(
+            !resolved_extra.contains("image-occlusion:rect"),
+            "导出 Extra 不得含 IO 机器语法"
+        );
         // 转换后 `_occlusion` 必须被删除
         assert!(!converted.extra_fields.contains_key("_occlusion"));
+    }
+
+    #[test]
+    fn occlusion_conversion_leaves_human_extra_untouched() {
+        // 用户已有 Extra（人类补充）：转换器不得改写、不得追加 IO 语法。
+        let mut card = test_card("occ-extra", "front", "back");
+        card.extra_fields = HashMap::from([
+            (
+                "_occlusion".to_string(),
+                occlusion_spec_json("/tmp/media/diagram.png"),
+            ),
+            ("Extra".to_string(), "人工笔记：注意瓣膜方向".to_string()),
+        ]);
+        let mut cards = vec![card];
+        normalize_cards_for_export(&mut cards);
+        let converted = &cards[0];
+        assert_eq!(
+            converted.extra_fields.get("Extra").map(String::as_str),
+            Some("人工笔记：注意瓣膜方向")
+        );
+        let resolved_extra = resolve_card_field_value(converted, "Extra");
+        assert!(!resolved_extra.contains("image-occlusion:rect"));
     }
 
     #[test]
@@ -3115,6 +3123,13 @@ mod tests {
         assert!(
             !note_flds.contains("_occlusion"),
             "`_occlusion` spec JSON 不得进入 note 字段值"
+        );
+        // wave2-E r3 泄漏回归闸：包括 Extra 在内的任何 note 字段
+        // 都不得含 IO 机器语法（揭底时用户不应看见坐标乱码）
+        assert!(
+            !note_flds.contains("image-occlusion:rect"),
+            "导出 note 字段（含 Extra）不得含 IO 语法: {}",
+            note_flds
         );
 
         // 两个 cloze 序号 → 两张卡

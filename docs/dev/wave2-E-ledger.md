@@ -310,3 +310,37 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 ---
 
 *Goal 未完成。不因第 2 轮落地而变更。*
+
+---
+
+## 8. 第 3 轮（可观测与任务台，2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 已落地
+
+| 项 | 状态 |
+| --- | --- |
+| P1-1 Extra 不再倾倒 IO 语法 | 已落；`_` 三道闸仍在 |
+| P1-2 CriticSummary 后端全字段 serde | 已落 gold_references / routed_* |
+| P1-2 前端 Adapter + Banner + locale | 已落；QA badge 语义未破坏 |
+| P1-3 TaskCompleted 带计数 + completed_with_warnings | 已落（status 仍 Completed） |
+| P1-3 classify 混合态优先 active | 已落 |
+| P1-3 list/stats 拆开 allSettled | 已落 |
+| 事件链兼容 | 无阻断（r3-08） |
+| 只读预览 | 仍完好（r3-09） |
+
+### 仍开放
+
+- `agent.occlusion.*` 仍孤儿（第 5 轮 a11y）
+- VFS imageRef 解析、IO notetype、UI 编辑 user 戳
+- 任务台 locale 部分用 defaultValue 兜底
+
+### 已验证 / 未验证
+
+- 已验证：静态 diff + 事件标签旧前端可忽略
+- 未验证：未跑 vitest/cargo；真实事件时序未测
+
+---
+
+*Goal 未完成。*

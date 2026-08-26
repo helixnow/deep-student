@@ -1093,7 +1093,8 @@
       "revisedFlag": "该卡由 AI 终审自动修订，建议复查",
       "skippedOverBudget": "{{count}} 张卡因预算限制未评审",
       "goldReferences": "本次评审参照了 {{count}} 组金标卡对",
-      "degraded": "AI 终审不可用，本批卡片未经终审直接保留"
+      "degraded": "AI 终审不可用，本批卡片未经终审直接保留",
+      "persistFailures": "{{count}} 张卡的终审修订写回失败，展示内容可能与已保存版本不一致"
     },
     "fsrsFeedback": {
       "title": "复习画像回流",

@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
   Trash, DownloadSimple, ArrowSquareOut, XCircle,
-  CircleNotch, FileText, Hash, TrendUp, ChartBar, Circle,
+  CircleNotch, FileText, Hash, TrendUp, ChartBar, Circle, Warning,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -26,7 +26,7 @@ import {
   retryFailedDocumentTasks,
 } from '@/features/anki/taskControl';
 import {
-  classify, timeAgo, formatDate, getCardFieldValue,
+  classify, hasWarnings, timeAgo, formatDate, getCardFieldValue,
   CARDS_PAGE_SIZE, type DocumentSession,
 } from '../types';
 import { PropRow, StatusTag, InlineProgress } from './bits';
@@ -56,7 +56,13 @@ export const SessionRow: React.FC<{
     if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
   }, []);
 
+  // classify 已修为互斥且不丢运行事实（types.ts）：failed+running 混合态
+  // group='active'，行内暂停/取消（绑 group === 'active'）保持可见；
+  // 失败/警告用下方非阻断徽章叠加提示，不改变分组与状态标签
   const group = classify(session);
+  const sessionHasWarnings = hasWarnings(session);
+  // 徽章计数：混合态计失败分段，「带警告完成」计后端 optional 警告数
+  const warningCount = session.failedTasks + (session.warningTasks ?? 0);
 
   // 加载卡片 — 错误时通知用户而非静默吞没；同时并行加载关联模板，避免列名闪烁
   const loadedSigRef = useRef<string | null>(null);
@@ -275,6 +281,21 @@ export const SessionRow: React.FC<{
           {session.documentName || session.documentId.slice(0, 12)}
         </span>
 
+        {/* 非阻断警告徽章：混合态（运行中但有失败分段）/「带警告完成」。
+            仅叠加提示，不改变状态标签与分组，也不拦任何操作 */}
+        {sessionHasWarnings && (
+          <span
+            data-testid="wb-at-warning-badge"
+            title={t('taskDashboard.sessionWarningsHint', {
+              defaultValue: '存在失败或警告分段（不阻断运行与完成）',
+            })}
+            className="inline-flex flex-shrink-0 items-center gap-0.5 rounded-sm px-1 py-0.5 text-[10px] font-medium text-[color:hsl(var(--warning))] bg-[color:hsl(var(--warning)/0.12)]"
+          >
+            <Warning size={11} />
+            {warningCount > 0 && <span className="tabular-nums">{warningCount}</span>}
+          </span>
+        )}
+
         {/* 状态（宽度与表头 60/72px 对齐，避免小屏列错位） */}
         <div className="w-[60px] sm:w-[72px] flex-shrink-0">
           <StatusTag group={group} paused={group === 'active' && session.activeTasks === 0 && session.pausedTasks > 0} />
@@ -383,6 +404,12 @@ export const SessionRow: React.FC<{
               {group === 'active' && (
                 <span className="ml-2 text-xs text-muted-foreground">
                   {session.activeTasks} {t('taskDashboard.statusActive')} / {session.pausedTasks} {t('taskDashboard.statusPaused')}
+                  {/* 混合态：运行组里失败分段不静默，明示计数（重试入口在下方常显） */}
+                  {session.failedTasks > 0 && (
+                    <span className="ml-1 text-[color:hsl(var(--warning))]">
+                      / {session.failedTasks} {t('taskDashboard.statusFailed')}
+                    </span>
+                  )}
                 </span>
               )}
             </PropRow>

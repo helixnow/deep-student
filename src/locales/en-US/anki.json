@@ -1093,7 +1093,8 @@
       "revisedFlag": "This card was auto-revised by the AI final review; please double-check",
       "skippedOverBudget": "{{count}} cards were skipped due to the review budget",
       "goldReferences": "This review referenced {{count}} gold-standard card pairs",
-      "degraded": "AI final review was unavailable; this batch was kept as-is without review"
+      "degraded": "AI final review was unavailable; this batch was kept as-is without review",
+      "persistFailures": "{{count}} card revisions from the final review failed to write back; what you see may differ from the saved version"
     },
     "fsrsFeedback": {
       "title": "Review-profile feedback",
