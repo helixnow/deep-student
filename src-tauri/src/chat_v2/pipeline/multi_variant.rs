@@ -582,22 +582,24 @@ impl ChatV2Pipeline {
 
         // P1 tools 前缀代际（方案 A）：join 收敛点。所有变体的工具环与其
         // hook 生命周期已经结束，这里按**变体索引序**（不是完成竞态序）
-        // 收集各变体本地 order（VariantMeta.tool_face_prefix，变体环内只
-        // 推本地、不写共享），确定性合并回会话基线；检出真分叉（互异且
-        // 不可 append-only 对齐的尾部）时 generation += 1。锁内合并克隆、
+        // 收集各变体本地快照（VariantMeta.tool_face_prefix，含 order 与
+        // 窗口 digest；变体环内只推本地、不写共享），确定性合并回会话
+        // 基线；检出真分叉（互异且不可 append-only 对齐的尾部）时
+        // generation += 1，digest 按共识规则采纳。锁内合并克隆、
         // 放锁后写库（advance 失败仅 warn，不阻断）。
         {
-            let variant_local_orders: Vec<(usize, Vec<String>)> = variant_contexts
-                .iter()
-                .enumerate()
-                .filter_map(|(variant_index, (ctx, _))| {
-                    ctx.get_meta()
-                        .and_then(|meta| meta.tool_face_prefix)
-                        .map(|prefix| (variant_index, prefix.order))
-                })
-                .collect();
-            if !variant_local_orders.is_empty() {
-                self.converge_session_tool_face_prefix(&session_id, &variant_local_orders);
+            let variant_local_prefixes: Vec<(usize, crate::chat_v2::types::ToolFacePrefixSnapshot)> =
+                variant_contexts
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(variant_index, (ctx, _))| {
+                        ctx.get_meta()
+                            .and_then(|meta| meta.tool_face_prefix)
+                            .map(|prefix| (variant_index, prefix))
+                    })
+                    .collect();
+            if !variant_local_prefixes.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }
         }
 
@@ -2849,20 +2851,21 @@ impl ChatV2Pipeline {
         }
 
         // P1 tools 前缀代际：重试批 join 之后按变体索引序收敛（与主
-        // fan-out 同一收敛原语；单变体重试 = 纯扩展不切代由 converge
-        // 的前缀检查构造保证）。
+        // fan-out 同一收敛原语，快照含 order 与窗口 digest；单变体重试
+        // = 纯扩展不切代由 converge 的前缀检查构造保证）。
         {
-            let variant_local_orders: Vec<(usize, Vec<String>)> = variant_contexts
-                .iter()
-                .enumerate()
-                .filter_map(|(variant_index, (ctx, _, _))| {
-                    ctx.get_meta()
-                        .and_then(|meta| meta.tool_face_prefix)
-                        .map(|prefix| (variant_index, prefix.order))
-                })
-                .collect();
-            if !variant_local_orders.is_empty() {
-                self.converge_session_tool_face_prefix(&session_id, &variant_local_orders);
+            let variant_local_prefixes: Vec<(usize, crate::chat_v2::types::ToolFacePrefixSnapshot)> =
+                variant_contexts
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(variant_index, (ctx, _, _))| {
+                        ctx.get_meta()
+                            .and_then(|meta| meta.tool_face_prefix)
+                            .map(|prefix| (variant_index, prefix))
+                    })
+                    .collect();
+            if !variant_local_prefixes.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_prefixes);
             }
         }
 
@@ -3008,8 +3011,10 @@ impl ChatV2Pipeline {
             .await;
 
         // P1 tools 前缀代际：变体环结束后收敛（禁止变体内中途 store）。
+        // 快照整体传入：单变体输入构造上不切代，窗口 digest 经共识规则
+        // 采纳（单变体本地 order 恒等于收敛结果，digest 直接生效）。
         if let Some(prefix) = ctx.get_meta().and_then(|meta| meta.tool_face_prefix) {
-            self.converge_session_tool_face_prefix(&session_id, &[(0, prefix.order)]);
+            self.converge_session_tool_face_prefix(&session_id, &[(0, prefix)]);
         }
 
         // 处理结果并更新变体状态

@@ -101,7 +101,13 @@ def fetch(conn: sqlite3.Connection, days: Optional[int]):
     where = ""
     params: list = []
     if days:
-        where = "WHERE timestamp >= datetime('now', ?1)"
+        # llm_usage_logs.timestamp 是 RFC3339（'T' 分隔，repo/collector 均写
+        # created_at.to_rfc3339()，如 2026-08-26T10:30:00.123+00:00），而
+        # datetime('now') 生成空格分隔（2026-08-26 10:30:00）。TEXT 列是字典序
+        # 比较，'T' > ' '，混用两种形状会把截止日**当天早于截止时刻**的行也
+        # 全部放进来（--days 最多多算近一天）。用同形状的 strftime 生成截止串，
+        # 字典序才等价于时间序。
+        where = "WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?1)"
         params.append(f"-{days} days")
 
     def has_col(name: str) -> bool:
@@ -218,7 +224,15 @@ def parse_stream_event_scope(value):
         return value, None, None
     scope = value[len(STREAM_EVENT_PREFIX):]
     marker_at = scope.rfind(GENERATION_MARKER)
-    if marker_at != -1 and scope[marker_at + len(GENERATION_MARKER):].isdigit():
+    if marker_at != -1:
+        generation = scope[marker_at + len(GENERATION_MARKER):]
+        # 与 Rust 解析器同口径（chat_v2_stream_identity: raw_generation
+        # .parse::<u64>() 失败 → 整个事件名不视为合法 chat_v2 run scope）：
+        # 代际后缀非 ASCII 数字时不拆列，按原值整体分组 —— 写入侧对同样
+        # 形状也是走 fallback、整个事件名落 session_id。isascii() 排除
+        # str.isdigit() 会放行而 u64 解析会拒绝的全角/上标数字。
+        if not (generation.isascii() and generation.isdigit()):
+            return value, None, None
         scope = scope[:marker_at]
     session, sep, rest = scope.rpartition("_var_")
     if not sep:

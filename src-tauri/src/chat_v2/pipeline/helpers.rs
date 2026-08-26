@@ -17,7 +17,9 @@ use std::collections::{HashMap, HashSet};
 /// - `order`：append-only 首见序基线（持久化仍落 `frozenToolSchemaOrder`
 ///   键）；
 /// - `schema_digest`：可选 tools schema 冻结字节摘要（`toolSchemaDigest`
-///   键），只填空位 / 由冻结原语显式推进，绝不被 None 抹掉。
+///   键）。load 回填只填空位；唯一推进点是 converge 收敛点的共识采纳
+///   （见 `converge_session_tool_face_prefix` 的 digest 收敛规则），
+///   绝不被 None 抹掉。
 ///
 /// 冻结矩阵定位（冻什么 / 不冻什么 / 何时切代）：`order` 会话级冻、
 /// schema 字节窗口级冻（本结构只存 digest 摘要）、`generation` 仅
@@ -1114,8 +1116,8 @@ impl ChatV2Pipeline {
     }
 
     /// 🆕 P1 tools 前缀代际：fan-out join 收敛点 —— 把各变体的本地工具面
-    /// order 按**变体索引序**（不是完成竞态序）确定性合并回会话基线，并
-    /// 判定是否切代。
+    /// 快照（`VariantMeta.tool_face_prefix`）按**变体索引序**（不是完成
+    /// 竞态序）确定性合并回会话基线，并判定是否切代。
     ///
     /// 合并语义（与 prefix_generation_fork_tests.rs 契约一致）：
     /// - 各变体本地 order 都是「fan-out 入口快照基线 + 本地 append-only
@@ -1129,35 +1131,64 @@ impl ChatV2Pipeline {
     ///   相等 → 不 bump。单变体输入时收敛结果恒等于其本地 order，前缀
     ///   检查恒真 → 永不切代（单变体重试 = 纯扩展）。
     ///
+    /// **digest 收敛（r6 #1 接线修复）**：这里是会话级
+    /// `schema_digest`（持久化键 `toolSchemaDigest`）的唯一推进点 ——
+    /// tool_loop 单变体路径按矩阵纪律只打日志不持久化，变体窗口 digest
+    /// 随快照交本收敛点评估。采纳规则（保守、确定性、绝不造假）：
+    /// 仅当存在「本地 order 恰等于收敛结果」的变体（= 该变体本窗口发出
+    /// 的正是收敛后的完整工具面）且这些变体报告的 digest 全部一致时，
+    /// 才把该 digest 写入基线；真分叉 / digest 互异 / 全体空窗口（None）
+    /// 时保持既有值 —— None 永不抹掉已有 digest（与 repo advance 的
+    /// 「快照无 digest 不抹掉持久化值」契约一致）。入参快照的
+    /// `generation` 字段忽略（变体只回带入口代号，权威代号在会话 entry）。
+    ///
     /// 锁序（不倒置）：收敛计算在锁外完成，锁内只做 append-only 合并 +
-    /// 条件 bump + 克隆快照；**放锁后**才调
+    /// 条件 bump + digest 采纳 + 克隆快照；**放锁后**才调
     /// `advance_session_tool_face_prefix` 写库（IMMEDIATE 事务内不回调
     /// 内存锁）。持久化失败只降级打 warn（内存基线仍权威），不阻断发送。
     ///
     /// 冻结矩阵定位：这里是**唯一切代点**。真分叉 → `generation += 1`；
-    /// 纯前缀扩展 / 仅 schema digest 变化 → 不切（digest 推进不在本函数，
-    /// 见矩阵）。完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`。
+    /// 纯前缀扩展 / 仅 schema digest 变化 → 不切（digest 只按上述规则
+    /// 采纳，绝不触发 bump）。完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`。
     pub(crate) fn converge_session_tool_face_prefix(
         &self,
         session_id: &str,
-        variant_local_orders: &[(usize, Vec<String>)],
+        variant_local_prefixes: &[(usize, ToolFacePrefixSnapshot)],
     ) -> ToolFaceBaseline {
         // 按变体索引升序确定性排序（调用方通常已按索引序收集，这里再
         // 排一次保证与完成竞态序彻底解耦）。
-        let mut ordered: Vec<&(usize, Vec<String>)> = variant_local_orders.iter().collect();
+        let mut ordered: Vec<&(usize, ToolFacePrefixSnapshot)> =
+            variant_local_prefixes.iter().collect();
         ordered.sort_by_key(|(variant_index, _)| *variant_index);
 
         // 锁外收敛计算：从空表出发按索引序合并（每个本地 order 自带入口
         // 快照基线前缀，合并结果 = 基线 + 各变体新尾部按索引序拼接）。
         let mut converged: Vec<String> = Vec::new();
-        for (_, local_order) in &ordered {
-            super::tool_loop::merge_frozen_tool_schema_order_baseline(&mut converged, local_order);
+        for (_, snapshot) in &ordered {
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(
+                &mut converged,
+                &snapshot.order,
+            );
         }
         let true_fork = ordered
             .iter()
-            .any(|(_, local_order)| !converged.starts_with(local_order.as_slice()));
+            .any(|(_, snapshot)| !converged.starts_with(snapshot.order.as_slice()));
 
-        // 锁内合并 + 条件切代 + 克隆；放锁后再写库。
+        // 锁外 digest 采纳判定：候选 = 「本地 order == 收敛结果」且带
+        // digest 的变体；全体候选一致才采纳（同名同序但字节互异 —— 如
+        // MCP 扇出中途刷新 —— 视为无共识，保持既有值）。
+        let converged_digest: Option<String> = {
+            let mut candidates = ordered
+                .iter()
+                .filter(|(_, snapshot)| snapshot.order == converged)
+                .filter_map(|(_, snapshot)| snapshot.schema_digest.as_ref());
+            match candidates.next() {
+                Some(first) if candidates.all(|digest| digest == first) => Some(first.clone()),
+                _ => None,
+            }
+        };
+
+        // 锁内合并 + 条件切代 + digest 采纳 + 克隆；放锁后再写库。
         let baseline = {
             let mut orders = self
                 .frozen_tool_schema_orders
@@ -1173,6 +1204,9 @@ impl ChatV2Pipeline {
                     entry.generation,
                     ordered.len()
                 );
+            }
+            if let Some(digest) = converged_digest {
+                entry.schema_digest = Some(digest);
             }
             entry.clone()
         };

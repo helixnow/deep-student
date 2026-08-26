@@ -1099,3 +1099,184 @@ run_id 三级（多变体 steady-state 按 `(session_id, variant_id)` 聚合，r
 - 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
 - **不标 Goal complete**：编译/测试验证轮未跑，P1 事件序列测试已知必挂
   待修，两处翻案待改口，第 6 轮十面二检已排。
+
+---
+
+# Wave2-A 第 6 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 6 轮子代理 #10「provider P2 + 台账」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1 轮 P1–P11 编号与内容一字不改，第 2/3/4/5 轮章节不动。
+  本席未改任何产品代码、未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/ROUND-06-TASKS.md` 与**十份 r6 文档全量读毕**
+  （`r6-gen.md` #1、`r6-freeze.md` #2、`r6-llm-content.md` #3、`r6-skill.md` #4、
+  `r6-filter.md` #5、`r6-catalog.md` #6、`r6-telemetry.md` #7、`r6-p0.md` #8、
+  `r6-p1.md` #9、`r6-p2.md` #10 本席自产），以及本席对工作区
+  `git status` / `git diff` / `git log -S` / grep 的独立复核。
+
+## R6-1. 本轮 diff 形态（台账员独立取证）
+
+基线枝 tip `4b784bb4`（第 5 轮已提交）。第 6 轮为**十面二检轮**（对 1–5 轮
+全部落地面做第二遍交叉检查），改动均在工作区未提交，`git diff --stat` 合计
+**4 文件，+119/−42**：
+
+```
+ scripts/cache-hit-report.py                     | 18 +   （#7 两处 bug 修）
+ src-tauri/src/chat_v2/pipeline/helpers.rs       | 58 +/− （#1 digest 收敛接线）
+ src-tauri/src/chat_v2/pipeline/multi_variant.rs | 61 +/− （#1 三调用点传全快照）
+ src-tauri/src/utils/model_special_tokens.rs     | 24 +   （#5 tail-hold 泄漏修）
+```
+
+untracked：`ROUND-06-TASKS.md` + 十份 r6 文档 + 本台账追加节。
+
+红线自证（本席 grep/status 复核）：hooks.rs / coordinator.rs / tool_loop.rs /
+history.rs / repo.rs / types.rs / persistence.rs 本轮零改动；负例测试一条
+未删未改（#5 §1 逐条清点）；provider 三席（#8/#9/#10）按任务卡只写文档，
+`providers/mod.rs` 零工作区改动。
+
+## R6-2. 十面裁决总表
+
+| # | 面 | 裁决 | 一句话结论 |
+|---|---|---|---|
+| 1 | 代际（helpers/multi_variant） | **翻案 + 补丁** | order/generation 全确认；会话级 `schema_digest` 死接线（converge 收不到变体 digest → `toolSchemaDigest` 生产死键）——本轮唯一明确产品 bug，已在独占面落最小补丁（见 R6-3） |
+| 2 | 冻结原语（tool_loop） | 确认 | 三原语自 r2 零漂移、单变体不切代成立；独立检出同一 digest 断头（F-1）上报不越权修，另记 F-2/F-3/F-4 三条低危备忘 |
+| 3 | llm_content（persistence） | 确认（零改动） | 8 条数据行生命周期链全过（含本轮新核的「后续保存不抹早写」SQL 列清单证据）；新明确一处**既有**缺口：retry 轮 live 包装无处落库（§3.3，修复位在 retry handler，越权只记录） |
+| 4 | 技能版本化（history） | 确认（零改动） | r3 门禁四分支 + r5 信号边界/幂等/记录点全部与代码对上；留档五条非 bug 观察（缺正文不进信号、tool 锚点滤空静默、变体路径无锚点还原等） |
+| 5 | 过滤器（model_special_tokens） | **确认 ×2 + 补丁 ×1** | 游标化与 reasoning 独立过滤二检通过；检出并修复空白行致 tail-hold 原样泄漏的明确 bug（`"…<|im_end|>\n\n"` 契约违背）+ 1 条回归测试 |
+| 6 | 目录生命周期（progressiveDisclosure） | 确认（零改动） | 原子首发/pending 兑现/delta/换代键四面全确认（含本轮新析的分支复制继承正确性）；delta 接线认识升级：需跨 TS/Rust 传输面，建议接线轮排成对席位 |
+| 7 | 遥测（cache-hit-report.py） | **补丁 ×2** | Rust↔Python 解析器对拍主体确认；修复 `--days` 截止串时间戳形状混用（字典序陷阱、最多多算近一天）与非数字代际后缀读写两侧分组分歧两处明确 bug |
+| 8 | provider P0 | 确认（只文档） | 断点形状/双门控/三类快照 + 两伴随测试静态模拟执行全绿、快照层与 wire 层等价；6 条观察（含调用方块级断点静默丢弃属刻意单一作者制） |
+| 9 | provider P1 | 确认（只文档） | R5-6「执行必挂」断言已在合入前改正且钉住真实生产契约（下游双消费点交叉验证）；补核 `usage: null` 噪声与实例复用两个此前未记录面；9 条相关测试无第二个必挂断言 |
+| 10 | provider P2 + 台账 | 确认（只文档） | 透传活化/四槽守卫全项重验通过；新增零损剥除论证（system marker 存活时 tools 前缀仍被覆盖）；#6 三遗留（误剥向量/system 剥除零覆盖/Null 微瑕）维持定性 |
+
+**裁决分布：确认 8 / 翻案 1（#1，含补丁）/ 补丁 3 面（#1、#5、#7）。**
+1–5 轮的核心裁决（方案 A 代际、digest 门禁、四槽预算、遥测三列、原子首发
+等）**无一被推翻**；唯一翻案对象是 r2 起三份文档一致宣称却从未接通的
+digest 持久化链路。
+
+## R6-3. 本轮唯一产品级翻案：`toolSchemaDigest` 死接线（#1 修，#2 独立检出）
+
+- **双席独立收敛于同一结论**：#2（冻结原语面）从 tool_loop 侧顺链发现
+  converge 只收 order、变体 digest 无人消费、持久化键循环依赖无引导点
+  （F-1），因修复位在 helpers/multi_variant 不越权，上报待裁；#1（代际面）
+  同轮独立翻案并按独占权限落地补丁——轮内闭环，无需跨轮顺延。
+- **缺陷定性**（两席一致）：纯观测面缺陷，**无请求字节错误**——order/
+  generation/变体重放全不受影响；但 `tool_loop.rs:1137-1138` 注释、矩阵 F2、
+  ROUND-02 任务卡合同三处一致描述的「digest 推进只在 converge、摘要落库
+  对账」在 `4b784bb4` 上为假，且单变体「digest changed」日志每窗口首建
+  恒报 `None -> Some(...)`，对账观测永久失真。
+- **补丁形态**（本席读 diff 复核）：converge 入参
+  `&[(usize, Vec<String>)]` → `&[(usize, ToolFacePrefixSnapshot)]`，
+  multi_variant 三调用点（主扇出/重试批/单变体重试）不再 `.map` 丢弃
+  digest；锁外共识判定 + 锁内条件采纳——仅「本地 order 恰等于收敛结果
+  且全体候选 digest 一致」才写入，真分叉/字节互异/全 None 保持既有值
+  （None 永不抹掉）。**不改 order 合并、fork 判定、bump 条件、锁序，
+  不改发往 provider 的任何字节**；tool_loop/repo/types 零改动，
+  tool_loop 的「digest 推进只在 converge」注释由假变真。
+- 新增覆盖债：digest 共识采纳无测试（fork 契约副本未覆盖新行为，
+  #1 §4.1 与 #2 F-4 同记），留验证轮。
+
+## R6-4. 另两处补丁摘要（#5、#7，各自独占面）
+
+- **#5 tail-hold 空白行泄漏**：模块契约「粘流末、其后直到 flush 只有空白
+  的 close token 应删除」被 `process_newline` 破坏——只有紧跟 closer 的
+  第一个换行继续 hold，随后的空行触发 `release_tail_hold` 把
+  `<|im_end|>` 原样放行。修复为候选行无 token 且 hold 非空（此时必为纯
+  空白）时空白连换行追加进双缓冲继续 hold；「空行后仍有正文则原样放行」
+  负例语义零回退，新增回归测试 1 条。三处文档同向证明是契约 bug 而非
+  设计取舍，翻不了案。
+- **#7 报告脚本两 bug**：① `--days` 用 `datetime('now')`（空格分隔）与
+  存量 RFC3339（'T' 分隔）做 TEXT 字典序比较，`'T' > ' '` 使截止日当天
+  全量放行——改 `strftime('%Y-%m-%dT%H:%M:%S', 'now', ?1)` 同形状；
+  ② 代际后缀非数字时 Rust 写入侧整体 fallback、Python 读侧却继续拆列，
+  同一行两侧分组分歧——改为与 Rust 同口径整体不拆（`isascii()+isdigit()`
+  排除全角数字）。顺带记录：`repo.rs:214/:638` Rust 侧两条查询同踩
+  ① 的 idiom，越车道未修，列入遗留。
+
+## R6-5. R5-8 遗留表逐项更新（本席 grep/git 复核）
+
+| 遗留项 | 状态 |
+|---|---|
+| P1 事件序列测试键位错误（R5-6 翻案「执行必挂」） | **已关闭**——断言在 `4b784bb4` 落库时即为修正后形态 `usage["prompt_tokens_details"]["cached_tokens"]`（本席 `git log -S` 独立取证：该测试在 `2d70b400` 不存在、入库即修正；#8 §五.6 / #9 §一 交叉一致），父代理第 5 轮收轮时已吸收 #6 修法 |
+| R5-M2-1 宣称改口（scope key 过强表述） | **已澄清定性**——#7 §一核实该翻案只打 CACHE_DEBUG 指纹 scope key，usage 行不受影响（单变体记账走 tool_loop 路，不经 stream_event 解析）；注释改口仍未做，留验证轮顺手 |
+| #7 架构文档三处勘误 | 未处置（本轮无席位覆盖该文档） |
+| 守卫外误剥向量（保险打点先于核算） | 仍开——#10 重验代码顺序与可达性（生产打点面 = `model2_pipeline.rs:4046` 1 个 system marker，块级合计 2 ≤ 3），维持潜伏级 |
+| #7 delta 发送路径接线 | 仍开，**认识升级**：#6 §3.2 论证接线需 SendOptions 新字段透传 + Rust 注入点，跨 TS/Rust 两侧独占面——三轮顺延的根因即单席独占面不够，建议接线轮排成对席位 |
+| qbank_grading 出口挂接（R4-4 越界项） | 仍开（本轮无席位认领） |
+| 小问题 C：二参兼容入口 dead_code | 仍开（history.rs 本轮零改动，#4 未处置） |
+| stream_filter_core 文档改口（R4-8） | 仍开（无人接线） |
+
+## R6-6. 本轮新增遗留/观察（供第 7 轮与验证轮）
+
+1. **retry 轮 live 包装无处落库**（#3 §3.3，新明确的既有缺口）：retry 传
+   新 `user_message_id`，早写与 save_results 双双查不到块——retry 实发
+   包装从未写入原 user 行，下一轮 history 重放首发字节，与 retry 轮 live
+   字节可漂移。V20260806 起既有语义、非 R3 引入；修复位在 retry handler。
+   与 multi_variant 扇出无早写（R3 已记）同组。
+2. **digest 共识采纳零测试**（#1/#2 同记）+ **变体早退漏收敛第四处**
+   （#1 §1.5 新点名 `:1630` `?` 传播，维持低危）。
+3. **F-2/F-3/F-4**（#2）：digest 截断字节切片理论 panic（不可达）、digest
+   是窗口冻结快照身份而非单轮请求指纹（遥测消费方勿误用）、digest/门面无
+   直接单测。
+4. **#4 五条观察**中值得留意两条：技能删除/停用（正文缺失）不进切代信号
+   ——有 digest 即证明锚定时正文在，缺失同为确定性漂移，属语义扩展候选；
+   变体路径 `load_variant_chat_history` 完全无技能锚点还原（multi_variant
+   席位面）。
+5. **Rust 侧 `--days` 同形陷阱**（#7）：`llm_usage/repo.rs:214/:638` 与
+   脚本 bug ① 同 idiom，待裁决修复。
+6. **P2 面维持项**（#10）：守卫 system 剥除循环零测试覆盖（建议验证轮补
+   1 条穿透用例）、`Value::Null` 透传微瑕（内部口径自洽、仅序列化面）、
+   automatic 异 TTL 400 面（归后续调研卡）。
+7. **#8 观察 1**：Responses 面调用方块级断点被 `push_message_parts` 静默
+   剥掉——刻意的适配器单一作者制（守 S13 陷阱与 4 写槽预算），记为设计
+   决策非缺陷；与 Anthropic 侧 tools 透传开口形成有意不对称。
+8. **台账勘误（#9 移交，本席在此更正）**：第 1 轮第 5 节 P1 行所记 EOF
+   接线行号 `model2_pipeline.rs:5011` 现漂移至 `:5382`、stream_options
+   测试 `:6118` 现漂移至 `:6404`（内容均未变仅行号）；r1「Anthropic 顶层
+   cache_control 非标」定性已由 R5 #6 按官方文档纠正为标准 automatic
+   caching 参数（占 1 槽），引用 r1 台账者以 R5-7/R6 口径为准。
+
+## R6-7. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff / git log -S）
+
+- 本轮 diff 全貌与席位归属（R6-1，4 文件 +119/−42）——本席 `git status` /
+  `git diff --stat` 复核，与任务卡独占表一致（#1 两文件、#5 一文件、
+  #7 一脚本，其余七席零代码改动）。
+- 红线：hooks / coordinator / tool_loop / history / repo / types /
+  persistence / providers 本轮零改动——本席 status + grep 复核。
+- P1 测试键位修正的落库时点（`git log -S` 唯一命中 `4b784bb4` +
+  `2d70b400` 反证）——本席独立取证，#8/#9 交叉一致。
+- #1 补丁的 diff 形态（converge 签名升级、三调用点、共识判定块）与
+  #5 补丁（process_newline 中间臂 + 回归测试）、#7 补丁（WHERE 子句 +
+  代际校验）——本席逐 hunk 读 diff 复核。
+- P2 面全部行号与代码形态——本席在 `r6-p2.md` 逐项重验（透传、守卫、
+  接线序、唯一构造路径、三测试、枚举无 cache_control）。
+- 十份 r6 文档的裁决与证据链——本席全量通读；跨席结论（F-1 双席独立、
+  P1 键位三席取证）相互印证无矛盾。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**（铁律）：本轮 +119/−42（Rust×3 + Python×1）
+  未经 cargo check / cargo test / python 执行；#1 digest 收敛与 #5 泄漏修
+  的新增行为均无测试执行证据（#5 有测试源码、#1 连源码覆盖都缺）。
+- 各席「静态模拟执行会绿」的判定（#8 三类快照、#9 九条测试）均为人工
+  推演，非运行时证据。
+- #7 两 bug 的修复效果（报表行集收窄、分组一致）未对真实库运行对拍。
+
+## R6-8. 第 7 轮 / 验证轮预告
+
+十面二检收官：1–5 轮核心裁决零翻案，唯一产品 bug（digest 死接线）轮内
+闭环。累计未验证债务已达 6 轮（r2 起全部产品改动 + 全部测试源码零执行），
+**验证轮（cargo check / cargo test / tsc / 脚本试跑）应为最高优先级**；
+候选清单：digest 共识采纳契约测试、守卫 system 剥除穿透用例、R5-M2-1
+注释改口、stream_filter_core 文档改口、retry 落库缺口裁决、delta 跨面
+接线成对席位、qbank 出口挂接、Rust 侧 `--days` idiom。
+
+## R6-9. 收轮交接（给父代理）
+
+- 待 add：4 个产品/脚本文件（工作区 M）+ 11 个 untracked 文件
+  （ROUND-06-TASKS + 十份 r6 文档）+ 本台账追加节。
+- 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
+- **不标 Goal complete**：编译/测试验证轮仍未跑，digest 收敛无测试覆盖，
+  验证轮任务书待排。

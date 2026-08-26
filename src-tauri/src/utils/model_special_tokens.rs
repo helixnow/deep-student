@@ -474,6 +474,16 @@ impl ModelWrapTokenStreamFilter {
             if !self.line_candidate_tokens.is_empty() && self.code.is_none() {
                 // Remove the token-only logical line, including its newline.
                 self.record_stripped_candidate_tokens();
+            } else if !self.tail_hold_raw.is_empty() {
+                // Whitespace-only line while a tail closer is held: only
+                // whitespace has arrived since the closer, so it is still a
+                // possible stream tail — keep holding line and newline.
+                // (A held tail implies `code` is `None`: opening a fence goes
+                // through `begin_literal_content`, which releases the hold.)
+                self.tail_hold_raw.push_str(&self.line_candidate);
+                self.tail_hold_raw.push('\n');
+                self.tail_hold_stripped.push_str(&self.line_candidate);
+                self.tail_hold_stripped.push('\n');
             } else {
                 self.release_tail_hold(output);
                 output.push_str(&self.line_candidate);
@@ -797,6 +807,20 @@ mod tests {
         // Held whitespace between/after the closers survives; token text does not.
         assert_eq!(filter_chunks(&["回答完毕<|im_end|>\n"]), "回答完毕\n");
         assert_eq!(filter_chunks(&["回答完毕<|end_of_box|> "]), "回答完毕 ");
+    }
+
+    #[test]
+    fn strips_tail_glued_closer_followed_by_blank_lines_at_flush() {
+        // Regression: the first newline after a held closer kept holding, but
+        // a following blank/whitespace-only line released the hold verbatim,
+        // leaking the token even though only whitespace followed until flush.
+        assert_eq!(filter_chunks(&["回答完毕<|im_end|>\n\n"]), "回答完毕\n\n");
+        assert_eq!(filter_chunks(&["回答完毕<|im_end|>\n \n"]), "回答完毕\n \n");
+        // Substantive content after the blank line still releases verbatim.
+        assert_eq!(
+            filter_chunks(&["字面<|im_end|>\n\n下一段正文"]),
+            "字面<|im_end|>\n\n下一段正文"
+        );
     }
 
     #[test]
