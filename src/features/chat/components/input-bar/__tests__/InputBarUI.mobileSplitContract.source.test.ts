@@ -38,9 +38,12 @@ describe('split input bar mobile contract', () => {
     expect(toolbarSource).toContain(
       '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
     );
+    // 第一批高频散点已从透明伪元素外扩改为实体 44×44 盒（--touch-target-size），
+    // 伪元素命中区会与相邻控件互相重叠，工具栏内不允许再出现
     expect(toolbarSource).toContain(
-      '[@media(pointer:coarse)]:after:-inset-2'
+      '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
     );
+    expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:after:-inset');
     expect(toolbarSource).toContain(
       'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base'
     );

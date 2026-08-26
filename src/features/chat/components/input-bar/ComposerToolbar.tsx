@@ -48,16 +48,18 @@ import { ThinkingDepthSlider } from './ThinkingDepthSlider';
 import { ContextUsagePopover } from './ContextUsagePopover';
 
 // ============================================================================
-// 样式常量（P1-3 触控目标：36px 视觉尺寸不变，触屏用透明伪元素扩命中区域到 ≥44px）
+// 样式常量（P1-3 触控目标：图标视觉尺寸不变，coarse pointer 下控件本体撑成
+// ≥44×44 实体 flex box（--touch-target-size），命中区即盒模型，不再用透明
+// after:-inset 伪元素外扩——伪元素会越过 gap 与相邻控件的命中区互相重叠）
 // ============================================================================
 
-const coarseHitAreaClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']";
-// ★ M5：28px 级小控件（h-7 推理触发器等）需要更大的外扩量才能凑满 ≥44px
-const coarseHitAreaLgClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
-const coarseHitAreaXlClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
+const coarseSolidTouchTargetClass =
+  '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]';
+// 宽度由内容决定的触发器（带文字标签）只抬高度，避免 min-w 干扰 truncate
+const coarseSolidTouchHeightClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
 const iconButtonClass = cn(
   'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
-  coarseHitAreaClass
+  coarseSolidTouchTargetClass
 );
 const studyUiButtonBaseClassName =
   'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
@@ -131,7 +133,6 @@ function ContextWindowUsageRing({
   const ringRadius = 6.75;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
-  const ariaLabel = t('chatV2:tokenUsage.contextWindow');
   const tooltipContent = (
     <div className="w-48 p-1.5 text-xs">
       <div className="flex items-center justify-between gap-3">
@@ -202,13 +203,13 @@ function ContextWindowUsageRing({
 
   return (
     <CommonTooltip content={tooltipContent} position="top" disabled={disabled}>
+      {/* 纯视觉内层：焦点/aria-label/aria-haspopup 与 44×44 实体命中区
+          统一由 ContextUsagePopover 的 button 触发器承担，内环不再自带
+          tabIndex 与 after:-inset 伪元素命中区（避免与外层触发器双重重叠） */}
       <span
         data-testid="context-window-usage-control"
-        role="img"
-        tabIndex={0}
-        aria-label={ariaLabel}
-        title={ariaLabel}
-        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
+        aria-hidden="true"
+        className="relative inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)]"
       >
         <svg
           data-testid="context-window-usage-ring"
@@ -600,6 +601,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             ref={runtimeModelTriggerRef}
             className={cn(
               'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-ui font-semibold leading-none',
+              // coarse 下外壳随内部触发器抬到 44 高，避免子元素纵向溢出行盒
+              coarseSolidTouchHeightClass,
               enableThinking && !thinkingUnsupported
                 ? 'text-[color:var(--text-primary)]'
                 : 'text-[color:var(--text-muted)]'
@@ -614,7 +617,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                     data-testid="thinking-runtime-menu-trigger"
                     className={cn(
                       'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                      coarseHitAreaLgClass
+                      coarseSolidTouchHeightClass
                     )}
                     title={thinkingRuntimeTitle}
                     aria-label={
@@ -829,7 +832,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                   disabled={thinkingUnsupported}
                   className={cn(
                     'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                    coarseHitAreaXlClass,
+                    coarseSolidTouchTargetClass,
                     thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                   )}
                   title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}

@@ -35,7 +35,8 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+// P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
+import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
@@ -316,11 +317,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
-  // 🔧 A-6/P1-6 语义澄清（两个"移动端"判断有意分裂，勿合并）：
-  // - isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的唯一依据
-  //   （内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
-  // - isMobileEnv（pointer: coarse，见下方声明）：仅用于**设备能力**判断
-  //   （是否展示拍照入口等），窄窗口桌面端不该出现相机、宽屏触摸设备应保留相机。
+  // 🔧 A-6/P1-6 → R3 能力三分离（三个判定各答一个问题，勿合并）：
+  // - 布局 = isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的
+  //   唯一依据（内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
+  // - 触摸 = any-pointer: coarse（inputBarCapabilities.TOUCH_CAPABILITY_MEDIA_QUERY）：
+  //   JS 侧如需触摸能力布尔统一走该查询；样式侧继续用 CSS 媒体查询类。
+  // - 相机 = canCapturePhoto（平台/捕获能力，见下方声明）：仅控制拍照入口，
+  //   窄窗口桌面端不该出现相机、Android/iOS 宽屏设备应保留相机。
   const isMobile = mobileLayout?.isMobile ?? false;
   // ⌨️ P0-2 键盘统一：订阅全局键盘 inset 单例（iOS overlay 检测 + Android
   // adjustResize 自动归零），不再自管 visualViewport 双轨逻辑
@@ -802,10 +805,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t]);
 
   // ========== 相机拍照处理 ==========
-  // A-6/P1-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
-  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态。
-  // 注意：isMobileEnv 只回答"设备能不能"（能力），布局分支一律用 isMobile（断点）。
-  const isMobileEnv = useMediaQuery('(pointer: coarse)');
+  // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或
+  // input capture 特性 + 移动壳兜底），不再复用 pointer 媒体查询——
+  // 触摸 ≠ 有摄像头（桌面触摸屏误报、外接键鼠的手机/平板漏报）。
+  // 平台检测在会话内不变，挂载时求值一次即可。
+  // 布局分支一律用 isMobile（断点）；触摸能力见 TOUCH_CAPABILITY_MEDIA_QUERY。
+  const canCapturePhoto = useMemo(() => detectCanCapturePhoto(), []);
 
   const handleCameraClick = useCallback(() => {
     if (cameraInputRef.current) {
@@ -2112,7 +2117,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     <AttachmentPanelBody
       attachments={attachments}
       isMobile={isMobile}
-      isMobileEnv={isMobileEnv}
+      // prop 名 isMobileEnv 为下游兼容保留（AttachmentPanelBody 本轮独占锁），
+      // 语义已是「相机捕获能力」：只控制拍照入口
+      isMobileEnv={canCapturePhoto}
       pdfStatusMap={pdfStatusMap}
       formatModeList={formatModeList}
       onPickFiles={handlePickFiles}
@@ -2482,7 +2489,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         {/* ★ 拆分：底部工具栏（加号菜单/水位环/推理菜单/发送停止）在 ComposerToolbar.tsx */}
         <ComposerToolbar
           isMobile={isMobile}
-          isMobileEnv={isMobileEnv}
+          // prop 名 isMobileEnv 为下游兼容保留（ComposerToolbar→ComposerPlusMenu
+          // 本轮独占锁），语义已是「相机捕获能力」：只控制拍照入口
+          isMobileEnv={canCapturePhoto}
           isStreaming={isStreaming}
           sessionId={sessionId}
           isPlusMenuOpen={isAttachmentMenuOpen}

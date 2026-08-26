@@ -52,11 +52,12 @@ vi.mock('@/components/layout/MobileLayoutContext', () => ({
   }),
 }));
 
-// 设备能力（pointer: coarse）→ isMobileEnv=true，让「拍照」菜单项出现。
-// 全局 vitest.setup 的 matchMedia mock 恒为 false，这里按 query 精确放行。
-vi.mock('@/hooks/useMediaQuery', () => {
-  const useMediaQuery = (query: string) => query === '(pointer: coarse)';
-  return { useMediaQuery, default: useMediaQuery };
+// 设备能力 → canCapturePhoto=true，让「拍照」菜单项出现。
+// R3 能力三分离后拍照入口不再走 pointer: coarse 媒体查询（jsdom 的 UA 非
+// Android/iOS 会判 false），改 mock 能力模块本身。
+vi.mock('../inputBarCapabilities', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../inputBarCapabilities')>();
+  return { ...actual, canCapturePhoto: () => true };
 });
 
 function panelStatesWith(open: Partial<PanelStates>): PanelStates {
@@ -187,7 +188,7 @@ describe('InputBarUI attachment more-menu pointer chain (卡1 修复前红/修�
     const { onSetPanelState } = renderInputBar();
     const { root, items } = openAttachmentMoreMenu();
 
-    // isMobileEnv=true（pointer: coarse mock）时源码顺序第二项是「拍照」
+    // canCapturePhoto=true（能力模块 mock）时源码顺序第二项是「拍照」
     expect(items.length).toBeGreaterThanOrEqual(2);
     const cameraItem = items[1];
     expect(cameraItem.classList.contains('app-menu-item-destructive')).toBe(false);

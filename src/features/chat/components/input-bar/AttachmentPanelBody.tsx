@@ -49,6 +49,13 @@ import {
   getStageLabel,
 } from './attachmentModeHelpers';
 
+/**
+ * 行目标体系化：菜单行/列表行在 pointer:coarse 下实体高度 ≥44px，
+ * 统一走 --touch-target-size token（与 AppMenu.css 的 coarse 基线一致），
+ * 不再散写 min-h-[44px] 魔法数。
+ */
+const coarseRowClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
+
 export interface AttachmentPanelBodyProps {
   attachments: AttachmentMeta[];
   isMobile: boolean;
@@ -163,7 +170,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
               </AppMenuTrigger>
               <AppMenuContent align="end" width={200}>
                 <AppMenuItem
-                  className="min-h-[44px]"
+                  className={coarseRowClass}
                   icon={<FolderOpen className="w-4 h-4" weight="bold" />}
                   onClick={onOpenResourceLibrary}
                 >
@@ -171,7 +178,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                 </AppMenuItem>
                 {isMobileEnv && (
                   <AppMenuItem
-                    className="min-h-[44px]"
+                    className={coarseRowClass}
                     icon={<Camera className="w-4 h-4" weight="bold" />}
                     onClick={onOpenCamera}
                   >
@@ -180,7 +187,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                 )}
                 {attachments.length > 0 && (
                   <AppMenuItem
-                    className="min-h-[44px]"
+                    className={coarseRowClass}
                     icon={<Trash className="w-4 h-4" weight="bold" />}
                     destructive
                     onClick={handleClearAllAttachments}
@@ -315,7 +322,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
             const showInjectModeSelector = isImage || isPdf;
 
             return (
-              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
+              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', coarseRowClass, toneClass)}>
                 {/* 第一行：文件名、大小、状态、移除按钮 */}
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">

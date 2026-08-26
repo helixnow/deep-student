@@ -222,9 +222,11 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
   const showAdvanced = Boolean(onOpenAdvancedPanel);
-  // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层），触控行高 ≥44px
+  // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层）
+  // 行目标体系化：触控行高跟随 pointer:coarse（设备能力）而非布局断点，
+  // 统一走 --touch-target-size token（44px），与 AppMenu.css 的 coarse 基线一致
   const useFlatMobileMenu = isMobile;
-  const mobileItemClass = 'min-h-[44px]';
+  const mobileItemClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
 
   const skillBadge = activeSkillCount > 0 ? (
     <span className="rounded-full bg-[color:var(--button-primary-surface)] px-1.5 text-2xs font-medium text-[color:var(--button-primary-foreground)]">
@@ -662,7 +664,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
         <button
           type="button"
-          className="inline-flex shrink-0 items-center text-[11px] text-warning underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-11"
+          className="inline-flex shrink-0 items-center text-[11px] text-warning underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
@@ -673,41 +675,56 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
         <button
           type="button"
           // Compact inline chip next to "+" — full guidance lives in title/aria-label.
-          // Pseudo-element expands hit target without growing toolbar height.
+          // 实体命中区：coarse 下按钮自身抬到 --touch-target-size（44px），
+          // 不再用 after 伪元素扩区（会与相邻 gap-1 控件命中重叠）；
+          // 视觉胶囊由内层 span 保持 h-6 不变，工具条高度不受影响。
           className={cn(
-            'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
-            'bg-warning/15 px-1.5 text-[10px] font-medium leading-none text-warning',
-            'hover:bg-warning/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warning/40',
-            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-[''] [@media(pointer:coarse)]:after:-inset-y-2.5",
+            'group inline-flex shrink-0 items-center justify-center focus-visible:outline-none',
+            '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
           )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="full-access-active"
           title={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
           aria-label={t('chatV2:authority.permissionPreset.fullAccessDowngradeHint')}
         >
-          <ShieldWarning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
-          <span className="max-w-[3.75rem] truncate">
-            {t('chatV2:authority.permissionPreset.fullAccessActive')}
+          <span
+            className={cn(
+              'inline-flex h-6 items-center gap-0.5 rounded-md',
+              'bg-warning/15 px-1.5 text-[10px] font-medium leading-none text-warning',
+              'group-hover:bg-warning/25 group-focus-visible:ring-1 group-focus-visible:ring-warning/40',
+            )}
+          >
+            <ShieldWarning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+            <span className="max-w-[3.75rem] truncate">
+              {t('chatV2:authority.permissionPreset.fullAccessActive')}
+            </span>
           </span>
         </button>
       )}
       {permissionPreset === 'danger_full_access' && (
         <button
           type="button"
+          // 同上：实体命中区替代伪元素扩区，视觉胶囊保持 h-6
           className={cn(
-            'relative inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md',
-            'bg-destructive px-1.5 text-[10px] font-medium leading-none text-destructive-foreground shadow-sm',
-            'hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive/50',
-            "after:absolute after:-inset-y-1.5 after:-inset-x-1 after:content-[''] [@media(pointer:coarse)]:after:-inset-y-2.5",
+            'group inline-flex shrink-0 items-center justify-center focus-visible:outline-none',
+            '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
           )}
           onClick={() => applyPermissionPreset('relaxed')}
           data-testid="danger-full-access-active"
           title={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
           aria-label={t('chatV2:authority.permissionPreset.dangerDowngradeHint')}
         >
-          <Warning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
-          <span className="max-w-[3.75rem] truncate">
-            {t('chatV2:authority.permissionPreset.dangerActive')}
+          <span
+            className={cn(
+              'inline-flex h-6 items-center gap-0.5 rounded-md',
+              'bg-destructive px-1.5 text-[10px] font-medium leading-none text-destructive-foreground shadow-sm',
+              'group-hover:bg-destructive/90 group-focus-visible:ring-1 group-focus-visible:ring-destructive/50',
+            )}
+          >
+            <Warning size={12} weight="fill" className="shrink-0" aria-hidden="true" />
+            <span className="max-w-[3.75rem] truncate">
+              {t('chatV2:authority.permissionPreset.dangerActive')}
+            </span>
           </span>
         </button>
       )}
