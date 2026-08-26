@@ -1648,3 +1648,79 @@ provider 20 条静态未见明显必红矛盾，也仍不构成执行通过。
 内部日志措辞（`pipeline.rs` / `persistence.rs` 的 `save_results will backfill`
 过强承诺 → 「target missing / later save points may retry」），未改控制流。
 TauriAdapter 用户通知英文化留给后续会话（需 i18n key，越出本轮扫尾）。
+
+---
+
+# 第 10 轮终版归档
+
+- 日期：2026-08-26。
+- 本会话第 1–10 轮至此完成；本节只追加终版归档，不改写第 1–9 轮正文。
+- 全部产物停在独立演进枝 `cursor/0824-wave2-agent-cache-a875` 与 Draft PR #345；
+  不整支合回官方枝，是否选择性吸收、何时转 Ready 均留人工裁决。
+- **不标 Goal complete**：这里的“完成”只指十轮静态审阅、实现与文档归档完成，
+  不表示编译、测试、CI、真实 provider 请求或缓存收益验证完成。
+- 官方 tip 仍为 `origin/cursor/0824-cde6` @ `061b4815`。本枝 tip 不在台账中固化为
+  后续永真值；本次归档快照的 `git log -1 --oneline` 为
+  `659b8c54 docs(wave2-A): close round-9 leftover docs and wording`，最终一律以
+  实际执行 `git log -1` 的结果为准。
+
+## P1–P11 终态
+
+“已落地待验证”表示生产实现或约定文档已静态落盘，但运行门禁为零；“部分”表示
+核心改造已落盘，同时同一问题面仍有明确产品缺口；“未做”表示整项没有落地。
+
+| 项 | 终态 | 终版口径 |
+|---|---|---|
+| P1 | **已落地待验证** | 方案 A 的 generation / snapshot / 确定性 converge 与 digest 共识采纳链已落盘；跨路径并发窄窗和真实恢复收益仍待验证。 |
+| P2 | **部分** | 技能正文 digest 门禁、同源生产、冲突去重信号已落盘；正文缺失不触发切代、multi-variant 技能锚点还原等产品债未收。 |
+| P3 | **已落地待验证** | 名字序、schema 字节、digest 已收敛到会话级 tool-face 冻结/恢复语义；字节对拍和 fork/restore 尚未运行。 |
+| P4 | **部分** | 目录原子首发、pending generation 与 reload 后兑现已落盘；delta 发送链及 live 会话即时拾取 pending 未接通。 |
+| P5 | **部分** | 主对话发送前 early persist 已落盘；retry 新 id 与 multi_variant 扇出的崩溃窗仍未修。 |
+| P6 | **已落地待验证** | 非法 `ttl:"24h"` 的零调用 retention 死实现已删除，未来复活约束已钉死；仅有静态删除证据。 |
+| P7 | **部分** | session / variant / run 分列、四段 post-adapter 指纹和报表口径已落盘；V20260826 中断收敛与 Rust 侧时间窗债未收。 |
+| P8 | **已落地待验证** | hooks 四小件已落盘，默认顺序与 TOCTOU 静态未变；fail-closed 测试仍有脱离生产 seam 的质量债。 |
+| P9 | **部分** | reasoning 独立过滤、常量单源、游标化和已授权出口已落盘；qbank_grading 出口仍未挂接。 |
+| P10 | **部分** | Step 22 P0/P1 与 Anthropic P2 四槽/marker 改造已静态落盘；G-CC400、G3 和 null/守卫覆盖债仍在。 |
+| P11 | **已落地待验证** | 21 行 Agent/provider 架构矩阵及后续原则已归档；其“契合/已改造”判断仍只获静态证据。 |
+
+整项归类为“未做”的 P 项为**无**；“未做”集中在上表各“部分”项和下述残留
+产品债，不能因 P1–P11 均有产物而省略。
+
+## 已验证 / 未验证
+
+### 已验证（仅静态）
+
+- 仅验证源码/文档存在性、符号与调用关系、`grep` / `git diff` / `git log` 证据，
+  以及跨席位静态复核；“已落地”一律不等于可编译或运行正确。
+- 静态确认官方 tip 仍为 `061b4815`，本会话产物位于独立枝及 Draft #345；
+  `coordinator.rs` 红线、默认 hooks 顺序和既有负例均维持先前静态口径。
+
+### 未验证（编译测试门禁与残留产品债）
+
+- npm/TypeScript/Vite、cargo check/test/build、rustfmt、migration checker、Vitest、
+  CI、真实 SQLite 升级/中断恢复、真实 provider 请求、缓存命中率和 mutation test
+  均未形成通过证据；本轮亦未执行 npm/cargo/安装/编译/测试。
+- 残留产品债至少包括：retry 与 multi_variant early-persist、catalog delta 与 live
+  pending 接线、技能删除切代、G-CC400、Anthropic 稳定/易变 system 拆分、FIFO/
+  compaction 协同、V20260826 中断收敛、qbank 出口、hooks 测试生产 seam，以及
+  明确未修的 issue #122。
+- 因此本枝继续保持 Draft，编译测试门禁与上述产品债共同构成“不标 Goal complete”
+  的终版理由。
+
+## 第 10 轮并行文档摘录
+
+归档终检时已出现 1 份 `r10-*.md`，摘录一句：
+
+- `r10-pr-body.md`：> “状态：**Draft**。本文中的‘已落地’只表示源码/文档层面的
+  静态落地，不表示已经通过编译、测试、CI 或真实 provider 请求验证。”
+
+其余任务卡中的预期文件名在终检时尚未出现，不冒充已落盘产物。
+
+## R10-父代理收轮补记
+
+十席文件收轮时已全部落盘：`r10-review-{concurrency,replay,protocol,frontend}.md`、
+`r10-redlines.md`、`r10-cache-hit-static.md`、`r10-residual-risks.md`、
+`r10-pr-body.md`、`r10-delivery.md`、`ROUND-10-TASKS.md`。四人交叉终审均为
+确认（并发面 1 条文档级翻案：compaction 事务接了 pending mark；重放面 1 条
+文档级翻案：变体 sidecar 保存点实为测试模块）。红线 10/10 静态 PASS。
+PR #345 **保持 Draft**，不转 Ready。不标 Goal complete。
