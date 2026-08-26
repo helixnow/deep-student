@@ -1,6 +1,7 @@
 //! 工具环执行（`execute_with_tools`）与 prompt-cache「工具面冻结」原语区。
 //!
-//! # 冻结矩阵速查（完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`）
+//! # 冻结矩阵速查（完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`，
+//! 冻/不冻 + 清/不清终稿见 `docs/dev/wave2-A/r9-clear-freeze-matrix.md`）
 //!
 //! **冻什么**（三层，粒度由粗到细）：
 //! - **tools 名字序** —— 会话级、append-only 首见序基线
@@ -21,21 +22,37 @@
 //!   任何单变体路径都无权 bump。
 //!
 //! **不冻什么**（明确豁免，勿在本文件加冻结）：
-//! - 技能正文（transient 注入消息体）—— 本文件只做轮内位置锚定
-//!   （P1-8 `frozen_turn_skill_injection`），正文字节冻结属 P2 第 3 轮；
-//! - available_skills 目录换代 —— P0 已有首写冻结快照
-//!   （repo `freeze_session_available_skills_snapshot`），目录重生成 /
-//!   换代策略属 P4，不归本代际机制管；
+//! - 技能正文（transient 注入消息体）—— 正文字节仍不落库；本文件只做
+//!   轮内位置锚定（P1-8 `frozen_turn_skill_injection`）并随锚点持久化
+//!   正文摘要（anchors `skill_content_digests` / `skill_content_rev`，
+//!   r3 落地）。重放由 history 侧 digest 门禁把关：mismatch →
+//!   warn+skip+切代信号，绝不用当轮新正文伪装旧历史；删除 / 正文缺失
+//!   同样 warn+skip 但**不进信号**（r5 刻意收窄，反例留档见
+//!   skill_replay_edit_delete_tests）；
+//! - available_skills 目录换代 —— 首写冻结快照（repo
+//!   `freeze_session_available_skills_snapshot`）+ 独立目录代
+//!   `availableSkillsSnapshotGeneration` / 换代声明
+//!   `availableSkillsSnapshotPendingGeneration`（r4–r5 落地）。目录
+//!   换代走目录代，**不走**本文件的 tool-face generation，两套代际
+//!   互不搭线；
 //! - system 前缀内 user_profile 等易变段 —— prompt_builder 侧语义，
 //!   每轮可随记忆库变化，明确不冻。
 //!
 //! **代际何时切**（唯一切代点 = fan-out join 收敛
 //! `helpers::converge_session_tool_face_prefix`）：
 //! - ≥2 变体本地 order 互异、不可 append-only 对齐（存在变体本地
-//!   order 不是收敛结果的前缀）→ 真分叉，`generation += 1`；
+//!   order 不是收敛结果的前缀）→ 真分叉，`generation += 1`；这仍是
+//!   tool-face generation **唯一** bump 来源；
 //! - 单变体纯前缀扩展 / 窗口 digest 变化 → **不切代**：本文件单变体
 //!   路径只打日志（见 [`freeze_tool_face_for_prompt_cache`] 调用处），
-//!   变更随下一稳定窗口 / 多变体 converge 评估。
+//!   变更随下一稳定窗口 / 多变体 converge 评估；
+//! - digest 共识采纳（r6 接线）：converge 仅当存在「本地 order ==
+//!   收敛 order」的变体、且这些变体报告的 digest 全部一致，才把该
+//!   digest 写入基线；真分叉 / digest 互异 / 全空（None）保持既有值，
+//!   None 永不抹掉——采纳本身绝不触发 bump；
+//! - 技能 digest mismatch 信号不在这里切代：走 available_skills 目录代
+//!   （`helpers::record_skill_digest_prefix_generation_signal` → pending
+//!   generation 声明），绝不伪造工具面分叉逼 converge +1。
 
 use super::*;
 

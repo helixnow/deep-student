@@ -840,6 +840,9 @@ impl ChatV2Pipeline {
 /// 传 `anchors = None`（即全部走「有正文就重建」的旧行为）。保留本签名
 /// 是为了 helpers.rs / skill_replay_digest_tests.rs 里既有的重放一致性与
 /// 反例测试不动；生产 history 重放路径一律走门禁版。
+/// 非 test 构建下本入口仅作兼容薄包装（无生产调用方），生产路径走
+/// [`rebuild_anchored_skill_messages_gated_with_signal`]。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn rebuild_anchored_skill_messages(
     skill_ids: &[String],
     skill_contents: Option<&std::collections::HashMap<String, String>>,
@@ -868,6 +871,9 @@ pub(super) fn rebuild_anchored_skill_messages(
 /// 本签名是「无切代信号出参」的兼容入口（r3 契约与本文件内既有测试
 /// 保持不动），委托给带信号版并丢弃信号。生产 history 重放路径改走
 /// [`rebuild_anchored_skill_messages_gated_with_signal`]。
+/// 非 test 构建下本入口仅作兼容薄包装（无生产调用方），生产路径走
+/// [`rebuild_anchored_skill_messages_gated_with_signal`]。
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn rebuild_anchored_skill_messages_gated(
     skill_ids: &[String],
     skill_contents: Option<&std::collections::HashMap<String, String>>,

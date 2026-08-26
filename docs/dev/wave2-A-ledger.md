@@ -1485,3 +1485,166 @@ provider 20 条静态未见明显必红矛盾，也仍不构成执行通过。
   commit/push。
 - 验证目标仍未达成：需先由环境提供项目要求的 Rust 1.98.0 与已物化的前端依赖，
   再执行定向测试；执行前宜先按 R8-3 修复最高风险的脱靶断言。
+
+---
+
+# Wave2-A 第 9 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 9 轮子代理 #10「组装/红线自证/轮末台账」
+  （`gpt-5.6-sol-xhigh-fast`）
+- 日期：2026-08-26
+- 基线：`cursor/0824-wave2-agent-cache-a875` @ `dd300cd3`；官方基座
+  `origin/cursor/0824-cde6` @ `061b4815`
+- 性质：只追加本节，第 1–8 轮正文一字不改；本席未改产品/测试代码，未安装依赖或
+  工具链，未执行 npm/cargo/编译/测试，未 commit/push。
+- 依据：`docs/dev/wave2-A/ROUND-09-TASKS.md`、本席静态 grep / `git diff`，
+  以及取证时点的工作区状态。
+
+## R9-1. 按任务卡登记的本轮预期产出
+
+以下仅是任务卡的**预期产出清单**，不在各席文件出现前冒充已完成：
+
+| # | 独占面 | 本轮预期产出 |
+|---|---|---|
+| 1 | `history.rs` compat 入口属性/注释 + `r9-open-items.md` | 小问题 C dead_code 属性收口；遗漏项按已闭合/仍开/观察项分类 |
+| 2 | `wave2-A-agent-architecture.md` 只追加 | 架构文档勘误节；补记 B2/B4/B7 状态 |
+| 3 | `stream_filter_core.rs` 文件头 + `r4-catalog-delta.md` 只追加 | 骨架挂载状态改口；目录换代键名勘误 |
+| 4 | `tool_loop.rs:1-39` rustdoc | 按 R3–R6 现状重写「冻什么/不冻什么/何时切代」矩阵说明 |
+| 5 | `r2-freeze-matrix.md` 只追加 + `r9-clear-freeze-matrix.md` | 清理语义与冻结语义终稿矩阵 |
+| 6 | `model2_pipeline.rs` fingerprint 注释 + `r9-dead-code.md` | R5-M2-1 scope 宣称收窄；死代码扫描报告 |
+| 7 | `r9-write-only.md` | 只写字段最终扫描，只报告，不删除序列化字段 |
+| 8 | `r9-i18n.md` | 本会话新增日志/文案的一致性扫描 |
+| 9 | `r9-pr-body.md` | PR 描述初稿，明确区分静态已验证与运行时未验证 |
+| 10 | 本台账只追加 | 组装任务卡预期、红线 grep 自证与轮末诚实状态 |
+
+首次取证时 `docs/dev/wave2-A/r9-*.md` 为 **0 份**；本节落笔后的第二次快照出现
+`r9-pr-body.md`（#9），摘录其结论：
+
+> “状态：**Draft**。本文中的‘已落地’只表示源码/文档层面的静态落地，不表示已经
+> 通过编译、测试、CI 或真实 provider 请求验证。”
+
+其余席位产物仍以父代理收轮时工作区为准。
+
+## R9-2. 七条红线静态自证
+
+以下均为本席实际执行的静态命令与关键命中；“无输出”只证明当前源码/差异面未命中，
+不等同于编译或运行通过。
+
+1. **默认 hooks 顺序未变，审计钩子仍在 — PASS（静态）**
+
+   ```text
+   $ rg -n -C4 'default_pipeline_hooks|ApprovalGateHook|TaskAuditHook' \
+       src-tauri/src/chat_v2/pipeline/hooks.rs
+   159:pub(crate) fn default_pipeline_hooks() -> Arc<Vec<Arc<dyn PipelineHook>>> {
+   160:    Arc::new(vec![
+   161:        Arc::new(ApprovalGateHook) as Arc<dyn PipelineHook>,
+   162:        Arc::new(TaskAuditHook) as Arc<dyn PipelineHook>,
+   163:    ])
+   1517:    fn default_hooks_keep_approval_gate_first() {
+   1523:        assert_eq!(names, ["approval_gate", "task_audit"]);
+   ```
+
+   `ApprovalGateHook` 仍是 `vec` 首元素，`TaskAuditHook` 仍紧随其后；顺序守卫测试源码也在。
+
+2. **保留字面 token 的负例测试仍在 — PASS（静态）**
+
+   ```text
+   $ rg -n 'preserves_literal_tokens_in_prose' \
+       src-tauri/src/utils/model_special_tokens.rs
+   691:    fn preserves_literal_tokens_in_prose() {
+   ```
+
+   测试体仍断言正文中的 `<|im_end|>` / `<|begin_of_box|>` 字面量原样保留。
+
+3. **`coordinator.rs` 相对官方基座零 diff — PASS（静态）**
+
+   ```text
+   $ git diff --exit-code origin/cursor/0824-cde6 -- \
+       src-tauri/src/data_governance/migration/coordinator.rs
+   （无输出，exit 0）
+   ```
+
+4. **无生产 `ChatV2AnkiAdapter` — PASS（静态）**
+
+   ```text
+   $ rg -n --glob '!**/__tests__/**' --glob '!**/*.test.*' \
+       --glob '!**/*.spec.*' \
+       '(import[^;]*ChatV2AnkiAdapter|new[[:space:]]+ChatV2AnkiAdapter)' \
+       src src-tauri/src
+   （无输出，exit 1）
+   ```
+
+   广搜名称的命中仅为历史说明注释与负向守卫测试；`src` 下也没有名称含
+   `ChatV2AnkiAdapter` 的模块文件。未发现生产 import 或构造。
+
+5. **无 `mythos-5` / `haiku-5` 真实内置目录条目 — PASS（静态）**
+
+   ```text
+   $ rg -n 'model:[[:space:]]*"[^"]*(mythos-5|haiku-5)|id:[[:space:]]*"[^"]*(mythos-5|haiku-5)' \
+       src-tauri/src/llm_manager/builtin_vendors.rs
+   （无输出，exit 1）
+   ```
+
+   宽搜仅命中适配层代际解析/测试，以及 `builtin_vendors.rs:1681-1692` 的负向目录
+   守卫（明确断言无 `claude-haiku-5` 且无 `mythos`，内置 Haiku 为 4.5），不是真实目录项。
+
+6. **`apply_openai_prompt_cache_retention` 实现/调用已不存在 — PASS（静态）**
+
+   ```text
+   $ rg -n 'fn[[:space:]]+apply_openai_prompt_cache_retention|apply_openai_prompt_cache_retention[[:space:]]*\(' \
+       src-tauri/src
+   （无输出，exit 1）
+   $ rg -n 'apply_openai_prompt_cache_retention' src-tauri/src
+   src-tauri/src/llm_manager/model2_pipeline.rs:3584:
+     // P6 裁决（R5 #1）：`apply_openai_prompt_cache_retention` /
+   ```
+
+   唯一残留是说明该死实现已删除的裁决注释，不存在函数定义或调用。
+
+7. **UTF-8 invalid warn 探针仍在，且明确不声称修复 #122 — PASS（静态）**
+
+   ```text
+   $ rg -n -C3 'issue #122|Some\(invalid_len\)|log::warn!' \
+       src-tauri/src/llm_manager/utf8_stream.rs
+   3://! 注：本文件包含 issue #122 定位探针（invalid 分支的 log::warn，仅记录长度类
+   4://! 元数据，不记录任何 chunk/用户文本内容），不声称修复 #122。
+   75:                        Some(invalid_len) => {
+   76:                            // issue #122 定位探针（不声称修复）：真正非法字节触发
+   80:                            log::warn!(
+   113:            log::warn!(
+   ```
+
+   真非法字节分支与 flush 残留分支的 warn 均在；注释只称定位探针，未宣称修复。
+
+## R9-3. 已验证 / 未验证
+
+### 已验证（仅静态）
+
+- 任务卡十席预期产出已登记；七条红线均以源码 grep 或定向 `git diff` 取证。
+- `HEAD = dd300cd3`，分支为 `cursor/0824-wave2-agent-cache-a875`；本席写入前工作区
+  只有 untracked `ROUND-09-TASKS.md`，随后出现 #1 的 `history.rs` 改动与 #9 的
+  `r9-pr-body.md`；本席未改这两处。
+- 本席可写面仅本台账追加节，未改更早轮次正文或任何产品/测试文件。
+
+### 未验证
+
+- 环境仍为 `rustc 1.83.0 (90b35a623 2024-11-26)`，不满足任务卡所述项目
+  Rust 1.98 环境；按约束未安装、升级或切换工具链。
+- 未执行任何 cargo/npm/编译/格式化/测试/CI 门禁；七条 PASS 全是静态结论，
+  不证明代码可编译、测试可运行或运行时行为正确。
+- 第二次快照仅见 #9 的 `r9-pr-body.md`；其余预期产出没有在本节冒充完成。
+
+## R9-4. 收轮交接
+
+- 本席仅追加了「Wave2-A 第 9 轮台账（#10 台账员，只追加）」一节。
+- 本席未 commit/push/改 PR；后续若出现 `r9-*.md`，由父代理收轮时补齐汇总结论。
+- 验证门禁仍未运行，本节不标 Goal complete。
+
+## R9-5. 父代理收轮补记
+
+第 9 轮十席文件均已落盘。父代理抽查产品 diff 后认定：`history.rs` 仅
+`cfg_attr`+rustdoc；`stream_filter_core.rs` 仅文件头；`tool_loop.rs` 仅文件头
+矩阵改口；`model2_pipeline.rs` 仅 fingerprint 注释。另按 #8 i18n 建议改了两处
+内部日志措辞（`pipeline.rs` / `persistence.rs` 的 `save_results will backfill`
+过强承诺 → 「target missing / later save points may retry」），未改控制流。
+TauriAdapter 用户通知英文化留给后续会话（需 i18n key，越出本轮扫尾）。

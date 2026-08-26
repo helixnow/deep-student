@@ -127,3 +127,57 @@ Anthropic TTL 1h 全链路 + 四槽守卫(B2 残余,含 `cache_creation` 分桶�
 | `docs/dev/wave2-A/r4-*.md`(8 份) | reasoning 过滤、常量单源、出口挂接、目录原子首发/换代/delta、过滤哲学审阅(A6/A9/A12 依据) |
 
 外部引用以各 r1 文档内的引用清单为准(均为 2026-08-26 检索),本文不重复罗列。
+
+---
+
+## 6. 第 9 轮勘误与状态补记(只追加,§1–§5 原文一字未动)
+
+- 作者:0824 Wave2-A 第 9 轮子代理 #2(claude-fable-5-thinking-xhigh)
+- 日期:2026-08-26;基线:`cursor/0824-wave2-agent-cache-a875` @ `dd300cd3`(第 8 轮已收)
+- 性质:只写文档,追加勘误。本席未改任何产品代码、未执行编译/测试。下列「现况」均为本席对当前工作区源码的 grep/读码复核(静态证据),并与台账 R5/R6/R7/R8 章节交叉核实。**第 8 轮实测入口已被工具链门禁阻断(本机 rustc 1.83,仓需 1.98,台账 R8-1),验证轮至今未发生,全部「已改造(待验证)」项的"待验证"状态整体维持。本节不标 Goal complete。**
+
+### 6.1 B2 状态勘误:四槽预算 + 工具 marker 已改造(待验证);TTL 1h 仍缺
+
+勘误:§2.2 B2 行原句「`convert_tool_definition` 恒 `cache_control: None` → `has_marker` 死分支」与判定「半契合(r5 #2 落地中:四槽预算 + 工具 marker 死分支修复)」。现况:第 5 轮已在源码层面落地完毕,第 9 轮口径判定为**已改造(待验证)**:
+
+- 工具 marker 透传:`convert_tool_definition` 收口处透传调用方 `cache_control`(`providers/mod.rs:3334`,不再恒 `None`),`:2402` 的 `has_marker` 判定自此可达——调用方已打块级 marker 时原样保留、不再无条件追加尾部保险断点(伴随测试 `anthropic_tool_cache_control_passthrough_suppresses_tail_breakpoint` @ `:5772`,只写未跑)。
+- 四槽预算守卫:`enforce_anthropic_cache_breakpoint_budget`(`:2930`,调用点 `:2414`,`ANTHROPIC_CACHE_BREAKPOINT_BUDGET = 4` @ `:2923`)——顶层 automatic 恒占 1 槽,块级(tools + system)预算 3,超额按「tools 先于 system、段内靠前先剥」留尾剥头。第 6 轮 #10 二检全项重验通过(R6-2 行 10,含零损剥除论证);第 7 轮补预算契约测试文件 `wave2_a_anthropic_budget_tests.rs`(`#[cfg(test)]` 接线于 `:3796`,只写未跑)。
+- **仍缺(维持原改造建议,归 §4 路线四)**:TTL 1h 全链路未动——`CacheControl` 结构体至今仅 `cache_type` 一个字段(`:2889-2892`),`providers/mod.rs` 全文件无 `ttl` 字样(本席 grep 复核);`cache_creation` 5m/1h 分桶解析同样未落。B2 剩余缺口就此收窄为「TTL 1h + 分桶解析」。
+
+### 6.2 B4 状态勘误:retention 死实现已删除,禁止再带 24h 接线
+
+勘误:§2.2 B4 行原句「P6:死实现(两函数全仓零调用点)且 5.6+ 分支带非法值 `ttl:"24h"`」与判定「**不契合**(死实现带错值;r5 #1 裁决执行中)」。现况:第 5 轮已按第 1 轮第 7 节「优先删除」裁决执行完毕——`apply_openai_prompt_cache_retention` / `provider_accepts_prompt_cache_retention` 两个死实现**整体删除**,本席 grep 复核全仓仅剩 `model2_pipeline.rs:3588` 起的 P6 裁决注释(钉死三条接线硬约束:仅官方 OpenAI 端点、GPT-5.6+ 仅 `ttl:"30m"`、必须快照测试;R5-2 取证、r5 #5 审阅确认删除安全)。第 9 轮口径判定为**已改造(待验证)**;因被删实现本就零调用点,线上请求字节从未含 retention 参数(不发即官方默认 30m,恰为唯一合法值),残余风险仅编译级。**任何情况禁止再带 `ttl:"24h"` / `prompt_cache_retention:"24h"` 接线**——该禁令已以原位注释形式钉在未来复活者的必经之路上。
+
+### 6.3 B7 状态勘误:遥测身份三列已改造(待验证);coordinator 中断收敛硬编码 V20260824 未修
+
+勘误:§2.2 B7 行原句「P7:`record_llm_usage_cache_ext` 拿随机 `stream_event` 冒充 session_id,多变体 steady 统计失真」与判定「**不契合**(r5 #1/#3 落地中)」。现况:第 5 轮已落地、第 6 轮二检并修 2 bug,第 9 轮口径判定为**已改造(待验证)**:
+
+- session/variant/run 分列:`llm_usage/types.rs:143/:148` 新增 `variant_id` / `run_id` 两列(builder `:264/:270`);migration `V20260826__add_stream_identity.sql` 注册于 `data_governance/migration/llm_usage.rs:152`、入迁移集 `:193`(`SET.count() == 8` 断言在位),读路径 `llm_usage/repo.rs:688-690` 已引用——均本席 grep 复核。
+- 四段指纹与报告脚本:`CHAT_V2_CACHE_DEBUG` 指纹改 post-adapter 最终 body 四段切分并记录首个分叉段(R5-2);`scripts/cache-hit-report.py` 三级分组(session_id / variant_id / run_id 共 27 处命中,本席 grep),第 6 轮 #7 又修复 `--days` 时间戳形状字典序陷阱与非数字代际后缀两侧分组分歧两处 bug(R6-4)。
+- **未修(注明,本轮归 D)**:仓内「ALTER 已落盘、refinery history 未落盘」中断态的两处显式收敛**均硬编码只认 V20260824**——`data_governance/migration/coordinator.rs:3843`(`CACHE_WRITE_VERSION: i32 = 20260824`)与 `llm_usage/database.rs:495`(`VERSION: i32 = 20260824`),本席 grep 复核至今如此。V20260826 同为重放边界之后的 ADD COLUMN(且为**两条** ALTER,V20260824 式「列存在即证明整迁移落盘」的证明不可照搬),残留态重跑将以 `duplicate column name: variant_id` 硬失败且两条收敛路径都不认领(R5-M2-2,P2)。`coordinator.rs` 在第 9 轮红线禁碰清单内,本轮**归 D、未修**,待后续显式授权 coordinator.rs + database.rs 成对收敛并仿 V20260824 双侧测试补齐。
+
+### 6.4 原则三维持声明
+
+§1 原则三「子代理不复用母前缀」**原文维持,不改向**。第 5–8 轮无任何朝「母子共享前缀」方向的改动(各轮台账红线自证,`subagent_executor.rs` / `agent_profile.rs` 零触碰);A7 判定维持契合。A7 改造建议中的自证测试(同 profile 跨派发子代理 system 走 `stable_system` 字节纪律的稳定测试)**仍欠**——第 7 轮测试席补的是会话内跨轮 system 稳定测试(`system_prefix_bytes_identical_across_rounds_*` 等,见 `r7-test-inventory.md` :87/:115),未覆盖子代理跨派发场景,继续挂 §4 路线四。
+
+### 6.5 统计补充:第 9 轮口径判定分布(§2.3 原文不动)
+
+按 6.1–6.3 勘误后的**第 9 轮口径**(基线 `dd300cd3`,静态证据,21 行不变):
+
+| 判定 | 行 | 数量 |
+|------|----|------|
+| 契合 | A1 A4 A5 A7 A8 A9 A13 A14 B3 B6 | 10 |
+| 已改造(待验证) | A10 A11 B2 B4 B7 | 5 |
+| 半契合 | A2 A6 A12 | 3 |
+| 不契合 | A3 B1 B5 | 3 |
+
+相对 §2.3 终稿分布(10/2/4/5)的迁移:B2(半契合)与 B4/B7(不契合)三行经第 5 轮落地迁入「已改造(待验证)」;A12 维持半契合但实质收窄(缺口 A 与前端换代兑现已闭环,见 6.6-1,剩 delta 发送路径接线与 qbank 出口挂接)。「已改造(待验证)」5 行共同等待同一个验证轮(第 8 轮已尝试、被 rustc 1.83 工具链门禁阻断,R8-1);「不契合」只剩 A3(compaction 边界钩子)、B1(Anthropic 断点位置)、B5(CC 400 面)三个未认领结构项,与 §4 路线三口径一致。
+
+### 6.6 历史勘误三处(正文过时句,原段不改写)
+
+1. **勘误**:§2.1 A11 行原句「第 5 轮 #8/#9 正在收 digest 冲突切代信号与前端 pending generation 消费(见 §4)」及 §4 路线二原句「缺口 A(digest 冲突只 warn+skip 不发切代信号,r5 #8 进行中)、TauriAdapter 消费 `availableSkillsSnapshotPendingGeneration` 兑现目录换代(r5 #9 进行中)」。**现况**:两项均已于第 5 轮落地——缺口 A 走 catalog pending 通道收口(门禁升级 `rebuild_anchored_skill_messages_gated_with_signal` 三消费点全改走,信号聚合唯一写点 `record_skill_digest_prefix_generation_signal`,R5-6,本席 grep 复核两符号在 history.rs/helpers.rs 在位);前端 pending 兑现闭环(TauriAdapter.ts `pendingGeneration` 13 处命中,本席 grep;R5-6 取证、R6-2 行 6 二检确认)。另补记 A11 面新事实:第 6 轮唯一产品级翻案——会话级 `toolSchemaDigest` 死接线(converge 只收 order 不收变体 digest)由 #1 检出并在独占面修复(R6-3),纯观测面缺陷、无请求字节错误;digest 共识采纳仍零测试覆盖(验证轮项)。delta 发送路径接线三轮顺延仍开,R6-5 认识升级:需跨 TS/Rust 两侧独占面,建议接线轮排成对席位。
+2. **勘误**:§2.3 末句「B2/B4/B7 三项由第 5 轮并行席位落地中,B1/B5 为已锚定未认领的最大遗留」。**现况**:前半句已过时——三项第 5 轮已落地(R5-2/R5-3),其中 B2/B7 面经第 6 轮十面二检重验(R6-2 行 7/10),B4 删除经 r5 #5 审阅确认删除安全(R5-7);后半句维持有效(B1/B5 至第 9 轮仍未认领)。
+3. **勘误**(处置台账 R6-5 所记「#7 架构文档三处勘误未处置」,依据 `r5-review-arch.md` §四):
+   - §4 路线一原句「第 2–4 轮累计 30+ 文件、约 +1700/−170 产品与测试源码一次都未编译」——数字**低估约一半**。r5 #7 实测 `git diff --stat 167eb104..2d70b400 -- src-tauri/src src` 为 **26 个唯一源码文件、+3722/−162**(其中四个新增测试文件合计 +1465);「30+」系按轮次人次(8+10+13=31)误计,「+1700」漏加 R2 已提交部分(+360)与全部测试文件。方向不变(体量巨大且零验证),量化口径以本条为准。
+   - §2.1 A1 行「变化」列原句「半契合项(文档化)已收口」——措辞错误:r1 初判 A1 即为契合,从未有过半契合判定(半契合→契合的迁移只发生在 A13);本意应为「r1 的改造建议(P8 文档化)已收口」。不影响 §2.3 统计(迁移句只列 A13,正确)。
+   - 文档头免责声明原句「第 2–4 轮全部改动尚未经 cargo check / cargo test / tsc 验证」——覆盖面偏窄:第 1 轮 P8 的 hooks.rs 改动(`167eb104`)与 A1/B3 所依赖的 Step 22「已修」裁决同为静态结论、自带测试从未执行。口径应读作「**第 1–5 轮(现至第 8 轮)全部产品改动与 Step 22 已修裁决均为静态结论,未经运行时验证**」。属表述收紧,不改 B3 判定。

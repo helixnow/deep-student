@@ -7,20 +7,23 @@
 //! 本文件是第一刀抽取的骨架：**纯状态机**，不持锁、不持 emitter、不管块生命周期，
 //! 输入 chunk、输出路由片段，由两适配器在各自的锁纪律与事件落点下消费。
 //!
-//! 状态：本轮（R3）仅建骨架 + 注释，`pipeline.rs` 尚未声明 `mod stream_filter_core;`
-//! （属死代码占位）。第 4 轮接线计划：
+//! 状态（R9 改口）：`pipeline.rs` **已声明** `pub(crate) mod stream_filter_core;`
+//! （不再是「未声明 mod 的死代码占位」），但本核心**仍未接线**——两适配器
+//! 尚未持有 `StreamFilterCore`，无生产调用方。后续接线计划（第二刀迁移）：
 //! 1. 把 `ChatV2LLMAdapter::process_think_tag_buffer` / `flush_think_tag_buffer` /
 //!    `ends_with_potential_think_start|end` 的查找逻辑**移动**（非复制）到本文件；
 //! 2. 两适配器删除各自的 `in_think_tag` / `think_tag_buffer` / `wrap_token_filter`
 //!    三字段，改持一把 `Mutex<StreamFilterCore>`；
-//! 3. ~~在 `process_reasoning` 挂 reasoning 过滤~~（R4 #1 已完成：本文件
-//!    `process_reasoning` 已填实，两适配器 `on_reasoning_chunk` 也已各自内联挂
-//!    独立 `reasoning_wrap_token_filter`；接线本核心时删除适配器内联实现即可）。
+//! 3. ~~在 `process_reasoning` 挂 reasoning 过滤~~（R4 #1 已完成，但**未迁入
+//!    本核心**：本文件 `process_reasoning` 已填实，两适配器 `on_reasoning_chunk`
+//!    的 reasoning 过滤是各自独立的 `reasoning_wrap_token_filter` 内联实例；
+//!    接线本核心时删除适配器内联实现即可）。
 //!
 //! 红线：迁移时必须保持"最早匹配标签优先"与"不完整前缀保留"语义；
 //! HTML 负例测试（`<table>`/`<td>` 不得误判为 think 标签）随迁不删。
 
-#![allow(dead_code)] // R3 骨架：未在 pipeline.rs 声明 mod，R4 接线后移除
+#![allow(dead_code)] // 保留：pipeline.rs 已声明 mod，但核心未接线、尚无生产调用方
+// （R4 reasoning 过滤已在两适配器内联完成，未迁入本核心）；适配器接线后移除本属性。
 
 use crate::utils::model_special_tokens::{ModelWrapTokenPolicy, ModelWrapTokenStreamFilter};
 

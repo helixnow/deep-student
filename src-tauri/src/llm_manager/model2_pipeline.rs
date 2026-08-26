@@ -3337,9 +3337,13 @@ fn cache_debug_fingerprint_store(
     STORE.get_or_init(Default::default)
 }
 
-/// 记录 post-adapter 四段指纹与首个分叉段。
+/// 记录 post-adapter 的 system / tools / history / current-user 四段指纹与首个分叉段。
 ///
-/// 首次见到该作用域记 `baseline`；四段全同记 `none`（前缀未变，理应
+/// `scope_key` 为 `session::variant`。单变体路径里的 `variant_id` 实际通常是
+/// assistant 消息 ID，每个 turn 都会新建，因此跨 turn 往往没有同 key 的上一请求，
+/// 常落为 `baseline`；本日志不能解读为「跨 turn 稳态指纹」。
+///
+/// 同一 key 首次出现记 `baseline`；四段全同记 `none`（前缀未变，理应
 /// 高命中）；否则记首个分叉段名——该段之前为缓存命中区，之后全 miss。
 fn cache_debug_log_post_adapter_fingerprint(stream_event: &str, model: &str, body: &Value) {
     let scope_key = match chat_v2_stream_identity(stream_event) {

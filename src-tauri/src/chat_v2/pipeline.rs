@@ -1003,7 +1003,7 @@ impl ChatV2Pipeline {
         // 未保存」的崩溃窗口。失败只 warn 不阻断发送。
         if let Err(e) = self.persist_user_llm_content_early(ctx).await {
             log::warn!(
-                "[ChatV2::pipeline] persist_user_llm_content_early failed (non-fatal, save_results will backfill): session={}, err={}",
+                "[ChatV2::pipeline] persist_user_llm_content_early failed (non-fatal, later save points may retry when the target block exists): session={}, err={}",
                 ctx.session_id,
                 e
             );

@@ -91,3 +91,47 @@ load_skills 渐进披露）→ join 之后收敛（`:600` / `:2865` / `:3012`）
 1. **冻**：tools 名字序会话级 append-only 冻结（`frozenToolSchemaOrder`）、已发出 schema 字节窗口级冻结（一次工具环 = 一个稳定窗口，仅 digest 落库）、generation 会话级单调（`toolFacePrefixGeneration`，三键同 IMMEDIATE 事务）。
 2. **不冻**：技能正文（P2 第 3 轮，本轮只有轮内位置锚定）、available_skills 目录换代（P0 首写快照之外的重生成属 P4）、system 内 user_profile 等易变段。
 3. **切代**：唯一切代点是 fan-out join 的 `converge_session_tool_face_prefix`——≥2 变体本地 order 不是收敛结果前缀（真分叉）才 +1；load 回填、单变体纯扩展、digest 变化一律不切。
+
+---
+
+## 6. 第 9 轮补记（勘误 + R3–R6 语义现势；只追加，不改写 §1–§5 原文）
+
+- 补记人：0824 Wave2-A 第 9 轮 #5（claude-fable-5-thinking-xhigh），tip `dd300cd3`。
+- 纪律：本节为 append-only 补记；§1–§5 原文一字未动。未跑 cargo / npm /
+  任何测试，未 commit（父代理收轮）。
+- **勘误总则：§1–§4 中的行号是第 2 轮快照，R3–R8 的 rustdoc 扩充与新增函数
+  已使其整体漂移（漂移量 0–127 行不等，`types.rs` 四键未动、`repo.rs` 漂移
+  最大），今后一律以代码符号为准**；下表给出
+  第 9 轮时点的现行行号，仅作本轮阅读辅助，不承诺继续维护。
+
+### 6.1 行号勘误表（符号 → §1–§4 原文行号 → 第 9 轮现行行号）
+
+| # | 符号 | 原文行号 | 现行行号（tip `dd300cd3` 工作区） |
+|---|---|---|---|
+| E1 | `helpers.rs` `load_session_tool_face_prefix` | :1076 | :1078 |
+| E2 | `helpers.rs` `converge_session_tool_face_prefix`（bump 点） | :1140（bump :1168-1169） | :1153（真分叉判定 :1173-1175、bump :1199-1206、r6 digest 共识采纳 :1180-1189 与 :1208-1210） |
+| E3 | `helpers.rs` `store_session_frozen_tool_schema_order` | :1213 | :1318 |
+| E4 | `tool_loop.rs` 五原语 `freeze_tool_schema_order_for_prompt_cache` / `merge_frozen_tool_schema_order_baseline` / `freeze_tool_schemas_for_prompt_cache` / `tool_schema_digest` / `freeze_tool_face_for_prompt_cache` | :78 / :117 / :147 / :189 / :220 | :95 / :134 / :164 / :206 / :237 |
+| E5 | `tool_loop.rs` 单变体窗口局部冻结副本 `frozen_tool_schemas` | :442 | :459 |
+| E6 | `tool_loop.rs` 单变体窗口 digest 变化日志（不 bump） | :1101-1112 | :1139-1150（写回点 :1156-1159） |
+| E7 | `tool_loop.rs` `frozen_turn_skill_injection` | :419 | :436 |
+| E8 | `repo.rs` `advance_session_tool_face_prefix`（`_with_conn`） | :2964（:2977） | :3091（:3104；generation 取 max :3122、三者无变化跳写 :3126-3131、不推 updated_at :3156） |
+| E9 | `repo.rs` `get_session_tool_face_prefix` | :2927 | :3054（`_with_conn` :3063） |
+| E10 | `repo.rs` `freeze_session_available_skills_snapshot` | :2803 | :2851（`_with_conn` :2865） |
+| E11 | `types.rs` 四键常量 + `ToolFacePrefixSnapshot` | :459 / :470 / :492 / :502 / :515 | **未漂移**（:459 / :470 / :492 / :502 / :515） |
+| E12 | `multi_variant.rs` 调用面（load / converge / 统一门面） | :509、:2777、:2990 / :600、:2865、:3012 / :1362、:1728 | :509、:2779、:2993 / :602、:2868、:3017 / :1364、:1730 |
+
+### 6.2 R3–R6 落地后需要补记的语义（§1–§4 写作时尚不存在）
+
+| # | 原文条目 | 补记 |
+|---|---|---|
+| S1 | N1「技能正文不冻（P2 第 3 轮）」 | r3 已落地**digest 门禁**而非正文字节冻结：锚点只持久化 `skill_body_digest(id, body)`（`types.rs:1195`，sha256），正文本身仍不落库（`without_skill_contents` 纪律）；重放走 `history::rebuild_anchored_skill_messages_gated_with_signal`（`history.rs:898`），mismatch → skip 不伪造历史。「正文不冻」结论不变，冻的是 digest。 |
+| S2 | N2「目录重生成 / 升级换代属 P4」 | **已过时**：换代机制已在 R4-#6 / r5 #8 / r5 #9 落地——compaction 落盘事务（`compaction.rs:1114`）与技能 digest mismatch 信号（`helpers.rs:1256`）写 `availableSkillsSnapshotPendingGeneration`（`repo.rs:2937`，幂等折叠），freeze 原语仅在 `pending > generation` 时放行覆盖（`repo.rs:2874-2886`，唯一合法覆盖路径），前端 `TauriAdapter.ensureAvailableSkillsSnapshotFrozen`（`TauriAdapter.ts:5437`）按 live registry 重生成并兑现新代 first write。「换代不触发 F3 bump、两套机制独立」的结论**依然成立且已被实现钉死**。 |
+| S3 | F3 / §3「digest 变化一律不切」 | r6 补了**共识采纳**：converge 仅当存在「本地 order == 收敛 order」的变体且这些变体 digest 全部一致才采纳写入基线（`helpers.rs:1180-1189`）；采纳本身绝不触发 bump，None 永不抹掉已有值。 |
+| S4 | §3 不切代清单 | 追加一行：**技能正文 digest mismatch 不进 converge、不 bump tool-face generation**——它是 history 段漂移而非工具序分叉，走 catalog pending 信号（`helpers.rs:1237-1246` rustdoc 明示「伪造分叉 order 逼 converge +1 会破坏本矩阵的切代不变量」）。 |
+
+### 6.3 终稿指针
+
+本会话「清什么 / 不清什么、冻什么 / 不冻什么」的收口终稿见
+`docs/dev/wave2-A/r9-clear-freeze-matrix.md`（第 9 轮 #5 新建）；
+`tool_loop.rs` 文件头速查版由第 9 轮 #4 按 R3–R6 现状改口。

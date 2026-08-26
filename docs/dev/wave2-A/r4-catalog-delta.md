@@ -130,3 +130,37 @@ if (deltaPrompt) {
 
 顺序建议：瞬态技能指令在前（已加载技能的使用说明），delta 在后
 （尚未加载技能的发现线索），避免模型把 delta 误读为已加载。
+
+---
+
+## 7. 勘误（R9 追记，§1–§6 原文保持不动）
+
+### 7.1 §4 键名与换代 API 形态已被 R4 #6 实际落地取代
+
+§4 所写「单键 `availableSkillsCatalogGeneration` + 独立 refresh API
+（`refresh_session_available_skills_snapshot`）」是设计稿形态，**未按此落地**。
+R4 #6 实际落地以 `docs/dev/wave2-A/r4-catalog-compaction.md` 与 repo 双键
+（`src-tauri/src/chat_v2/repo.rs` 的
+`AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY` /
+`AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY`）为准：
+
+- `availableSkillsSnapshotGeneration`——已生效代号，缺键=0，普通首冻不写
+  （旧会话字节形态不变）；
+- `availableSkillsSnapshotPendingGeneration`——待生效代号，仅 compaction
+  落盘事务写入；**pending 必须严格大于 generation 才允许覆盖**已冻结快照，
+  `pending <= generation` 的脏数据视为无标记；
+- **不新增独立 refresh API**：换代由既有 freeze 原语
+  （`chat_v2_freeze_available_skills_snapshot`）在存在有效 pending 标记时
+  兑现（generation := pending 并清除标记），普通 first-write-wins 路径行为
+  与升级前逐字节一致。
+
+拆两键的原因见 compaction 文档「两处偏离及理由」节：live registry 在前端，
+compaction 事务内无法重生成快照本体，换代的「声明」（后端事务写 pending）
+与「兑现」（前端重生成 + freeze）发生在两个进程、两个时刻，§4 的单代号键
+表达不了中间态。
+
+### 7.2 §5/§6 delta 发送路径——仍开
+
+`generateAvailableSkillsDeltaPrompt` 仍未接到 `TauriAdapter.ts` / SendOptions
+发送路径，§6 的接线片段至今没有消费方。该缺口**仍开，需 TS+Rust 对席**
+（前端瞬态注入点 + 后端历史构建侧口径确认）一并收口。

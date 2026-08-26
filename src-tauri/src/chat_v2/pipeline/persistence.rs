@@ -288,7 +288,7 @@ impl ChatV2Pipeline {
         let Some(block_id) = Self::existing_user_content_block_id(&conn, &ctx.user_message_id)
         else {
             log::debug!(
-                "[ChatV2::pipeline] persist_user_llm_content_early: user content block not found (message={}), skip — save_results will backfill",
+                "[ChatV2::pipeline] persist_user_llm_content_early: user content block not found (message={}), skip — target row missing; later save points may retry if the block exists",
                 ctx.user_message_id
             );
             return Ok(());
