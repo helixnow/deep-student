@@ -344,6 +344,40 @@ fn remove_crypto_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
+fn rollback_published_crypto(
+    target_master: &Path,
+    target_secure: &Path,
+    rollback_master: &Path,
+    rollback_secure: &Path,
+    installed_master: bool,
+    installed_secure: bool,
+    moved_master: bool,
+    moved_secure: bool,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    if installed_master {
+        if let Err(error) = remove_crypto_path(target_master) {
+            errors.push(format!("删除新主密钥失败: {}", error));
+        }
+    }
+    if installed_secure {
+        if let Err(error) = remove_crypto_path(target_secure) {
+            errors.push(format!("删除新安全目录失败: {}", error));
+        }
+    }
+    if moved_master {
+        if let Err(error) = fs::rename(rollback_master, target_master) {
+            errors.push(format!("恢复旧主密钥失败: {}", error));
+        }
+    }
+    if moved_secure {
+        if let Err(error) = fs::rename(rollback_secure, target_secure) {
+            errors.push(format!("恢复旧安全目录失败: {}", error));
+        }
+    }
+    errors
+}
+
 /// 生成安全且高概率唯一的备份 ID（目录名）
 ///
 /// 约束：
@@ -3518,12 +3552,29 @@ impl BackupManager {
         manifest: &BackupManifest,
         backup_subdir: &Path,
     ) -> Result<usize, BackupError> {
+        self.restore_crypto_keys_from_manifest_transactional(manifest, backup_subdir, |_| Ok(()))
+    }
+
+    /// Publish manifest-verified crypto material and keep the previous global
+    /// generation available until `after_publish` durably commits the matching
+    /// restore cutover. If that commit fails, both `.master_key` and `.secure`
+    /// are restored to their exact pre-publication state.
+    pub(crate) fn restore_crypto_keys_from_manifest_transactional<F>(
+        &self,
+        manifest: &BackupManifest,
+        backup_subdir: &Path,
+        after_publish: F,
+    ) -> Result<usize, BackupError>
+    where
+        F: FnOnce(usize) -> Result<(), BackupError>,
+    {
         let plan = manifest
             .crypto_restore_plan()
             .ok_or_else(|| BackupError::Manifest("备份缺少 crypto restore plan".to_string()))?;
         let actual_files = Self::collect_backup_files_under(backup_subdir, "crypto")?;
         if matches!(plan.status, CoverageStatus::Absent | CoverageStatus::Empty) {
             if actual_files.is_empty() {
+                after_publish(0)?;
                 return Ok(0);
             }
             return Err(BackupError::Manifest(
@@ -3556,7 +3607,7 @@ impl BackupManager {
             }
         }
         Self::verify_crypto_material(manifest, backup_subdir)?;
-        self.restore_crypto_keys(backup_subdir)
+        self.restore_crypto_keys_transactional(backup_subdir, after_publish)
     }
 
     /// 从备份目录恢复加密密钥文件到应用数据目录
@@ -3564,6 +3615,17 @@ impl BackupManager {
     /// 恢复 `.master_key` 和 `.secure/` 目录，使跨设备恢复后 API 密钥可正常解密。
     /// 仅在备份中包含 crypto/ 子目录时执行。
     pub fn restore_crypto_keys(&self, backup_subdir: &Path) -> Result<usize, BackupError> {
+        self.restore_crypto_keys_transactional(backup_subdir, |_| Ok(()))
+    }
+
+    fn restore_crypto_keys_transactional<F>(
+        &self,
+        backup_subdir: &Path,
+        after_publish: F,
+    ) -> Result<usize, BackupError>
+    where
+        F: FnOnce(usize) -> Result<(), BackupError>,
+    {
         let backup_metadata = fs::symlink_metadata(backup_subdir).map_err(|e| {
             BackupError::RestoreFailed(format!("无法检查备份目录，目标密钥保持不变: {}", e))
         })?;
@@ -3575,7 +3637,10 @@ impl BackupManager {
 
         let crypto_src = backup_subdir.join("crypto");
         match fs::symlink_metadata(&crypto_src) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                after_publish(0)?;
+                return Ok(0);
+            }
             Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
             Ok(_) => {
                 return Err(BackupError::RestoreFailed(
@@ -3726,6 +3791,7 @@ impl BackupManager {
             })?;
         }
         if !has_master && !has_secure {
+            after_publish(0)?;
             return Ok(0);
         }
 
@@ -3779,27 +3845,16 @@ impl BackupManager {
         })();
 
         if let Err(commit_error) = commit_result {
-            let mut rollback_errors = Vec::new();
-            if installed_master {
-                if let Err(e) = remove_crypto_path(&target_master) {
-                    rollback_errors.push(format!("删除新主密钥失败: {}", e));
-                }
-            }
-            if installed_secure {
-                if let Err(e) = remove_crypto_path(&target_secure) {
-                    rollback_errors.push(format!("删除新安全目录失败: {}", e));
-                }
-            }
-            if moved_master {
-                if let Err(e) = fs::rename(&rollback_master, &target_master) {
-                    rollback_errors.push(format!("恢复旧主密钥失败: {}", e));
-                }
-            }
-            if moved_secure {
-                if let Err(e) = fs::rename(&rollback_secure, &target_secure) {
-                    rollback_errors.push(format!("恢复旧安全目录失败: {}", e));
-                }
-            }
+            let rollback_errors = rollback_published_crypto(
+                &target_master,
+                &target_secure,
+                &rollback_master,
+                &rollback_secure,
+                installed_master,
+                installed_secure,
+                moved_master,
+                moved_secure,
+            );
             return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
                 format!("密钥原子提交失败，已恢复原目标: {}", commit_error)
             } else {
@@ -3811,20 +3866,50 @@ impl BackupManager {
             }));
         }
 
-        if has_master {
-            crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
-        }
-        if has_secure {
-            crate::secure_store::SecureStore::restrict_permissions(&target_secure, true);
-            for entry in fs::read_dir(&target_secure)? {
-                let entry = entry?;
-                if entry.file_type()?.is_file() {
-                    crate::secure_store::SecureStore::restrict_permissions(&entry.path(), false);
+        let restored = usize::from(has_master) + secure_file_count;
+        let publish_result = (|| -> Result<(), BackupError> {
+            if has_master {
+                crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
+            }
+            if has_secure {
+                crate::secure_store::SecureStore::restrict_permissions(&target_secure, true);
+                for entry in fs::read_dir(&target_secure)? {
+                    let entry = entry?;
+                    if entry.file_type()?.is_file() {
+                        crate::secure_store::SecureStore::restrict_permissions(
+                            &entry.path(),
+                            false,
+                        );
+                    }
                 }
             }
-        }
+            after_publish(restored)
+        })();
 
-        let restored = usize::from(has_master) + secure_file_count;
+        if let Err(cutover_error) = publish_result {
+            let rollback_errors = rollback_published_crypto(
+                &target_master,
+                &target_secure,
+                &rollback_master,
+                &rollback_secure,
+                installed_master,
+                installed_secure,
+                moved_master,
+                moved_secure,
+            );
+            return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
+                format!(
+                    "密钥发布后的恢复切槽提交失败，已恢复旧密钥: {}",
+                    cutover_error
+                )
+            } else {
+                format!(
+                    "密钥发布后的恢复切槽提交失败且旧密钥回滚不完整: {}; {}",
+                    cutover_error,
+                    rollback_errors.join("; ")
+                )
+            }));
+        }
         info!("[Restore] 加密密钥原子恢复完成: {} 个文件", restored);
         Ok(restored)
     }

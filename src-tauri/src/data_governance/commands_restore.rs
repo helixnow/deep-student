@@ -81,6 +81,30 @@ fn write_restore_activation_marker(
     )
 }
 
+fn publish_restore_keys_and_commit_cutover<F>(
+    manager: &super::backup::BackupManager,
+    manifest: &super::backup::BackupManifest,
+    backup_subdir: &Path,
+    commit_cutover: F,
+) -> Result<usize, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let keys_required = manifest.key_policy == super::backup::BackupKeyPolicy::IncludedLocal;
+    manager
+        .restore_crypto_keys_from_manifest_transactional(manifest, backup_subdir, move |restored| {
+            if keys_required && restored == 0 {
+                return Err(super::backup::BackupError::RestoreFailed(
+                    "备份声明包含加密密钥，但未恢复任何密钥文件".to_string(),
+                ));
+            }
+            commit_cutover().map_err(|error| {
+                super::backup::BackupError::RestoreFailed(format!("登记恢复切槽失败: {}", error))
+            })
+        })
+        .map_err(|error| error.to_string())
+}
+
 /// Commit device/cursor generation only after the restored slot has become
 /// active and its migrations have succeeded during startup.
 pub(crate) fn finalize_restore_activation(active_dir: &Path) -> Result<bool, String> {
@@ -857,27 +881,6 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    // ============ 阶段 3a: 恢复加密密钥（跨设备恢复支持） ============
-    manager.set_app_data_dir(inactive_dir.clone());
-    match manager.restore_crypto_keys(&backup_subdir) {
-        Ok(count) => {
-            if manifest.key_policy == super::backup::BackupKeyPolicy::IncludedLocal && count == 0 {
-                job_ctx.fail("备份声明包含加密密钥，但未恢复任何密钥文件".to_string());
-                return;
-            }
-            if count > 0 {
-                info!(
-                    "[data_governance] 加密密钥恢复完成: {} 个文件（API 密钥可跨设备解密）",
-                    count
-                );
-            }
-        }
-        Err(e) => {
-            job_ctx.fail(format!("加密密钥恢复失败: {}", e));
-            return;
-        }
-    }
-
     // ============ 阶段 3b: Replace/Assets (80-92%) - 恢复资产文件 ============
     if restore_assets == Some(false) {
         job_ctx.fail("完整快照恢复不能跳过资产；请使用完整恢复".to_string());
@@ -1082,11 +1085,29 @@ async fn execute_restore_with_progress(
         return;
     }
 
-    if let Err(e) = data_space_manager.mark_restore_cutover_pending(inactive_slot, &backup_id) {
-        let _ = set_restore_cutover_maintenance(&app, false);
-        let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-        job_ctx.fail(format!("登记恢复切槽失败: {}", e));
-        return;
+    // The candidate is fully restored, migrated, baselined and protected by
+    // the maintenance barrier. Keep the previous global crypto generation in
+    // the publication rollback directory until pending-slot registration is
+    // durable; a registration failure restores the old keys before returning.
+    let restored_crypto_keys =
+        match publish_restore_keys_and_commit_cutover(&manager, &manifest, &backup_subdir, || {
+            data_space_manager
+                .mark_restore_cutover_pending(inactive_slot, &backup_id)
+                .map_err(|error| error.to_string())
+        }) {
+            Ok(count) => count,
+            Err(error) => {
+                let _ = set_restore_cutover_maintenance(&app, false);
+                let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
+                job_ctx.fail(format!("提交恢复密钥与切槽失败: {}", error));
+                return;
+            }
+        };
+    if restored_crypto_keys > 0 {
+        info!(
+            "[data_governance] 加密密钥与恢复切槽原子提交完成: {} 个文件",
+            restored_crypto_keys
+        );
     }
     info!(
         "[data_governance] 已原子登记下次启动切换到 {}",
@@ -1174,7 +1195,46 @@ async fn execute_restore_with_progress(
 
 #[cfg(test)]
 mod tests {
-    use super::atomic_restore_unavailable_error;
+    use super::{atomic_restore_unavailable_error, publish_restore_keys_and_commit_cutover};
+    use crate::data_governance::backup::{
+        calculate_file_sha256, BackupFile, BackupKeyPolicy, BackupManager, BackupManifest,
+        CoverageStatus,
+    };
+    use crate::data_space::{DataSpaceManager, Slot};
+    use std::fs;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn crypto_restore_manifest(backup_subdir: &Path) -> BackupManifest {
+        let paths = ["crypto/.master_key", "crypto/.secure/.key_seed"];
+        let files = paths
+            .iter()
+            .map(|relative| {
+                let path = backup_subdir.join(relative);
+                BackupFile {
+                    path: (*relative).to_string(),
+                    size: fs::metadata(&path).unwrap().len(),
+                    sha256: calculate_file_sha256(&path).unwrap(),
+                    database_id: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut manifest = BackupManifest::new("test");
+        manifest.key_policy = BackupKeyPolicy::IncludedLocal;
+        manifest.files = files;
+        let crypto = manifest
+            .coverage
+            .as_mut()
+            .unwrap()
+            .domains
+            .get_mut("crypto")
+            .unwrap();
+        crypto.status = CoverageStatus::Complete;
+        crypto.paths = paths.iter().map(|path| (*path).to_string()).collect();
+        crypto.file_count = crypto.paths.len();
+        crypto.total_size = manifest.files.iter().map(|file| file.size).sum();
+        manifest
+    }
 
     #[test]
     fn atomic_restore_unavailable_refusal_has_stable_code() {
@@ -1184,6 +1244,87 @@ mod tests {
             "atomic-restore refusal must carry a stable code: {error}"
         );
         assert!(error.contains("写入任何恢复数据前中止"));
+    }
+
+    #[test]
+    fn post_key_publication_failure_restores_old_global_keys_and_active_slot() {
+        for old_keys_exist in [true, false] {
+            let app_data = TempDir::new().unwrap();
+            let data_space = DataSpaceManager::new(app_data.path().to_path_buf());
+            data_space.ensure_layout().unwrap();
+            fs::write(data_space.slot_dir(Slot::A).join("active.db"), b"old-slot").unwrap();
+            fs::write(
+                data_space.slot_dir(Slot::B).join("candidate.db"),
+                b"new-slot",
+            )
+            .unwrap();
+
+            if old_keys_exist {
+                fs::write(app_data.path().join(".master_key"), b"old-master").unwrap();
+                let old_secure = app_data.path().join(".secure");
+                fs::create_dir_all(&old_secure).unwrap();
+                fs::write(old_secure.join(".key_seed"), b"old-seed").unwrap();
+                fs::write(old_secure.join("old.enc"), b"old-credential").unwrap();
+            }
+
+            let backup_root = TempDir::new().unwrap();
+            let backup_subdir = backup_root.path().join("snapshot");
+            let backup_secure = backup_subdir.join("crypto/.secure");
+            fs::create_dir_all(&backup_secure).unwrap();
+            fs::write(
+                backup_subdir.join("crypto/.master_key"),
+                b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            )
+            .unwrap();
+            let new_seed = "aa".repeat(32);
+            fs::write(backup_secure.join(".key_seed"), &new_seed).unwrap();
+            let manifest = crypto_restore_manifest(&backup_subdir);
+
+            let mut manager = BackupManager::new(backup_root.path().join("manager"));
+            manager.set_app_data_dir(app_data.path().to_path_buf());
+            let mut failure_injected_after_publication = false;
+            let error = publish_restore_keys_and_commit_cutover(
+                &manager,
+                &manifest,
+                &backup_subdir,
+                || {
+                    failure_injected_after_publication = true;
+                    assert_eq!(
+                        fs::read(app_data.path().join(".master_key")).unwrap(),
+                        b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+                    );
+                    assert_eq!(
+                        fs::read_to_string(app_data.path().join(".secure/.key_seed")).unwrap(),
+                        new_seed
+                    );
+                    assert_eq!(data_space.active_slot(), Slot::A);
+                    Err("injected post-key-publication failure".to_string())
+                },
+            )
+            .expect_err("cutover failure after key publication must abort");
+
+            assert!(failure_injected_after_publication);
+            assert!(error.contains("已恢复旧密钥"), "{error}");
+            assert_eq!(data_space.active_slot(), Slot::A);
+            assert!(data_space.restore_cutover_pending().unwrap().is_none());
+            if old_keys_exist {
+                assert_eq!(
+                    fs::read(app_data.path().join(".master_key")).unwrap(),
+                    b"old-master"
+                );
+                assert_eq!(
+                    fs::read(app_data.path().join(".secure/.key_seed")).unwrap(),
+                    b"old-seed"
+                );
+                assert_eq!(
+                    fs::read(app_data.path().join(".secure/old.enc")).unwrap(),
+                    b"old-credential"
+                );
+            } else {
+                assert!(!app_data.path().join(".master_key").exists());
+                assert!(!app_data.path().join(".secure").exists());
+            }
+        }
     }
 }
 
