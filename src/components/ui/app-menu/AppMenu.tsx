@@ -35,9 +35,33 @@ interface AppMenuContextValue {
   mode: 'dropdown' | 'context';
   position: { x: number; y: number };
   setPosition: (pos: { x: number; y: number }) => void;
+  /** 浮层归属 ownerId：非 null 时菜单打开会向 OverlayCoordinator 登记归属。 */
+  overlayOwnerId: string | null;
 }
 
 const AppMenuContext = React.createContext<AppMenuContextValue | null>(null);
+
+// ============ Overlay Owner Context ============
+// 面板级 overlayOwnerId 供给：面板（owner）用 Provider 包住内容后，其中所有
+// AppMenu 打开时自动向 OverlayCoordinator 登记浮层归属，无需逐个调用点传 prop。
+// 默认 null（不登记），既有调用点行为不变；AppMenu 的 overlayOwnerId prop
+// 优先于该 context（就近覆盖）。
+
+const AppMenuOverlayOwnerContext = React.createContext<string | null>(null);
+
+export interface AppMenuOverlayOwnerProviderProps {
+  /** 面板自定的稳定 ownerId（如 'input-bar-composer'）；null 表示不登记。 */
+  ownerId: string | null;
+  children: React.ReactNode;
+}
+
+export function AppMenuOverlayOwnerProvider({ ownerId, children }: AppMenuOverlayOwnerProviderProps) {
+  return (
+    <AppMenuOverlayOwnerContext.Provider value={ownerId}>
+      {children}
+    </AppMenuOverlayOwnerContext.Provider>
+  );
+}
 
 // 键盘导航的起始锚点：识别"当前选中"的菜单项（勾选态 / aria-checked）
 function isCheckedMenuItem(item: HTMLElement): boolean {
@@ -56,18 +80,27 @@ export interface AppMenuProps {
   onOpenChange?: (open: boolean) => void;
   /** 菜单模式：dropdown (下拉) 或 context (右键) */
   mode?: 'dropdown' | 'context';
+  /**
+   * 浮层归属 ownerId（可选）。提供后（或由 AppMenuOverlayOwnerProvider 供给），
+   * 菜单打开时会 registerOwnedOverlay({ ownerId, element: contentRef })，让 owner
+   * 面板的外点关闭 / back 处理把"点在菜单里"识别为面板内。默认不登记。
+   */
+  overlayOwnerId?: string;
   /** 根容器类名 */
   className?: string;
   children: React.ReactNode;
 }
 
-export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, children }: AppMenuProps) {
+export function AppMenu({ open, onOpenChange, mode = 'dropdown', overlayOwnerId, className, children }: AppMenuProps) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const actualOpen = isControlled ? !!open : internalOpen;
   const menuId = React.useId();
   const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
+  // prop 优先于 context；两者都缺省时为 null（不登记，60 消费点零破坏）。
+  const contextOverlayOwnerId = React.useContext(AppMenuOverlayOwnerContext);
+  const resolvedOverlayOwnerId = overlayOwnerId ?? contextOverlayOwnerId;
 
   const setOpen = React.useCallback(
     (next: boolean) => {
@@ -132,7 +165,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   }, [actualOpen, handleKeyDown, setOpen]);
 
   return (
-    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition }}>
+    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition, overlayOwnerId: resolvedOverlayOwnerId }}>
       <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
@@ -256,6 +289,7 @@ export function AppMenuContent({
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
   const { t } = useTranslation('app_menu');
+  const { registerOwnedOverlay } = useOverlayCoordinator();
   // 嵌套层级感知：从最近的 <OverlayLayerProvider> 读取基准 z-index 并抬升一档；
   // 没有 Provider 时退化为默认 popover 档（行为与未引入 Provider 前一致）。
   const nestedZ = useNestedOverlayZ();
@@ -316,6 +350,26 @@ export function AppMenuContent({
       }
     };
   }, [isOpen, shouldRender]);
+
+  // 浮层归属登记：ownerId 存在且菜单可见（含关闭动画期）时登记 contentRef。
+  // effect 挂在 shouldRender 上而非 isOpen：portal 内容在 shouldRender 置 true
+  // 的那次 commit 才挂载，effect 于 commit 后执行，此时 contentRef.current 必已
+  // 就绪（挂在 isOpen/根组件上首开时 ref 还是 null，会被登记表判为无效登记）。
+  // 附带 selector 兜底：子菜单 SubContent 各自 portal 到 body、不在 contentRef
+  // 之内，但同样带 data-app-menu-id，selector 让点在飞出层里也判为归属内。
+  // 无 Provider 时 registerOwnedOverlay 为 noop，cleanup 幂等。
+  const overlayOwnerId = ctx?.overlayOwnerId ?? null;
+  const menuId = ctx?.menuId;
+  React.useEffect(() => {
+    if (!shouldRender || !overlayOwnerId || !menuId) return;
+    const element = contentRef.current;
+    if (!element) return;
+    return registerOwnedOverlay({
+      ownerId: overlayOwnerId,
+      element,
+      selector: `[data-app-menu-id="${menuId}"]`,
+    });
+  }, [contentRef, menuId, overlayOwnerId, registerOwnedOverlay, shouldRender]);
 
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
@@ -1259,6 +1313,7 @@ export function AppMenuShortcut({ className, ...rest }: AppMenuShortcutProps) {
 
 export {
   AppMenu as Root,
+  AppMenuOverlayOwnerProvider as OverlayOwnerProvider,
   AppMenuTrigger as Trigger,
   AppMenuContent as Content,
   AppMenuGroup as Group,

@@ -233,6 +233,17 @@ export function createSessionActions(
           // ★ remove 语义收敛：取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
           if (attachment?.sourceId) {
             cancelAttachmentProcessing(attachmentId, attachment.sourceId);
+
+            // ★ P0 修复：清理 pdfProcessingStore 中的状态，防止内存泄漏和状态污染。
+            // 键是 sourceId（与后端事件一致），与 cancel 并列在 sourceId 门控下，
+            // 不受 resourceId 门控 —— 仅有 sourceId 的中间态附件（尚未入库）同样要清理。
+            usePdfProcessingStore.getState().remove(attachment.sourceId);
+            // ★ 调试日志：记录 Store 清理
+            logAttachment('store', 'processing_store_cleanup', {
+              sourceId: attachment.sourceId,
+              attachmentId,
+            });
+            console.log('[ChatStore] removeAttachment: Removed pdfProcessingStore status for sourceId', attachment.sourceId);
           }
 
           set((s) => ({
@@ -243,18 +254,6 @@ export function createSessionActions(
           if (attachment?.resourceId) {
             state.removeContextRef(attachment.resourceId);
             console.log('[ChatStore] removeAttachment: Removed ContextRef for', attachment.resourceId);
-            
-            // ★ P0 修复：清理 pdfProcessingStore 中的状态，防止内存泄漏和状态污染
-            // ★ P0 修复：使用 sourceId 作为 key（与后端事件一致）
-            if (attachment.sourceId) {
-              usePdfProcessingStore.getState().remove(attachment.sourceId);
-              // ★ 调试日志：记录 Store 清理
-              logAttachment('store', 'processing_store_cleanup', {
-                sourceId: attachment.sourceId,
-                attachmentId,
-              });
-              console.log('[ChatStore] removeAttachment: Removed pdfProcessingStore status for sourceId', attachment.sourceId);
-            }
           }
 
           // 🔧 P1-25: 释放 Blob URL，避免内存泄漏

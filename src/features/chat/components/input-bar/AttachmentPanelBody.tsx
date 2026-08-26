@@ -56,7 +56,11 @@ const coarseRowClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)
 export interface AttachmentPanelBodyProps {
   attachments: AttachmentMeta[];
   isMobile: boolean;
-  /** pointer: coarse 设备能力判断（拍照入口） */
+  /**
+   * 相机捕获能力（拍照入口）。上游传入 inputBarCapabilities.canCapturePhoto()
+   * （平台/capture 特性判定），早已不是 pointer: coarse。prop 名为历史遗留，
+   * 待改名为 canCapturePhoto。
+   */
   isMobileEnv: boolean;
   /** PDF/图片处理进度 Store 快照（key = sourceId/file_id） */
   pdfStatusMap: Map<string, StorePdfProcessingStatus>;

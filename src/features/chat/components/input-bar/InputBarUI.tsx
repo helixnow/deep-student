@@ -35,6 +35,7 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 // P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
 import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
@@ -100,6 +101,19 @@ const INITIAL_PLACEHOLDER_HEIGHT = INPUT_BAR_CONFIG.heights.placeholder;
 const HEIGHT_CHANGE_THRESHOLD = INPUT_BAR_CONFIG.heights.changeThreshold;
 const IDLE_DELAY_MS = INPUT_BAR_CONFIG.delays.idle;
 const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
+
+/**
+ * owned-overlay 登记的 ownerId：Composer 面板打开期间，向 OverlayCoordinator
+ * 声明「AppMenu portal 浮层（[data-app-menu-id]）归 Composer 所有」。
+ * 外点关闭 / 焦点门控查询同一 id，见 isWithinComposerTerritory。
+ */
+const COMPOSER_OVERLAY_OWNER_ID = 'input-bar-composer';
+/**
+ * 登记用 selector：全库 AppMenu 内容/子菜单 portal 均带 data-app-menu-id
+ * （值为各菜单实例的 menuId，动态且多实例），Composer 内有多个 AppMenu
+ * （加号菜单/模型菜单等），故登记泛化属性 selector，与原 closest 判定范围一致。
+ */
+const COMPOSER_OWNED_OVERLAY_SELECTOR = '[data-app-menu-id]';
 
 /**
  * 调度 idle 回调的工具函数
@@ -1051,9 +1065,26 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
 
+  // 🔗 owned-overlay 归属：面板打开期间向 OverlayCoordinator 登记
+  // 「AppMenu portal 浮层归 Composer 所有」，供下方谓词按 ownerId 查询。
+  // 无 Provider 时 registerOwnedOverlay 为 noop、isOwnedOverlayTarget 恒 false
+  // （fallback 语义见 OverlayCoordinator.tsx），此时靠谓词里保留的 closest
+  // 兜底继续工作，行为与接线前一致。
+  const { registerOwnedOverlay, isOwnedOverlayTarget } = useOverlayCoordinator();
+  useEffect(() => {
+    if (!hasAnyPanelOpen) return;
+    return registerOwnedOverlay({
+      ownerId: COMPOSER_OVERLAY_OWNER_ID,
+      selector: COMPOSER_OWNED_OVERLAY_SELECTOR,
+    });
+  }, [hasAnyPanelOpen, registerOwnedOverlay]);
+
   // 🔧 统一谓词：节点是否落在 Composer 领地内 = 输入壳 + 内联面板容器 + 桌面
   // overlay + AppMenu portal。AppMenu 内容 portal 挂在 body 上（全库都带
-  // data-app-menu-id），三个 ref 的 contains 覆盖不到，需用 closest 兜住。
+  // data-app-menu-id），三个 ref 的 contains 覆盖不到：第四条件走
+  // OverlayCoordinator 的归属查询（有 Provider 且面板打开时命中）；末条
+  // closest 保留为 fail-open 回退——无 Provider / 登记窗口外（面板刚关闭的
+  // 同一事件）时仍按旧行为兜住，两者判定范围一致，不会互相扩大。
   // 焦点门控与外点关闭共用此判定，避免两套逻辑分叉。
   const isWithinComposerTerritory = useCallback((node: Node | null): boolean => {
     if (!node) return false;
@@ -1061,9 +1092,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       inputContainerRef.current?.contains(node)
       || panelContainerRef.current?.contains(node)
       || composerPanelOverlayRef.current?.contains(node)
-      || (node instanceof Element && node.closest('[data-app-menu-id]'))
+      || isOwnedOverlayTarget(COMPOSER_OVERLAY_OWNER_ID, node)
+      || (node instanceof Element && node.closest(COMPOSER_OWNED_OVERLAY_SELECTOR))
     );
-  }, []);
+  }, [isOwnedOverlayTarget]);
 
   // ⌨️ P0-2 焦点门控：追踪焦点是否落在 composer 区域内的任一可编辑元素上。
   // 判定范围放宽到输入壳 + 面板容器 + 桌面 overlay，保证在组合面板内的

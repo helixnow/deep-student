@@ -212,7 +212,7 @@ describe('sessionActions.removeAttachment 单附件删除语义（卡 1 修复�
     expect(cancelPdfProcessingMock).toHaveBeenCalledWith('file_pdf_1');
   });
 
-  it('【修复前红】仅有 sourceId（无 resourceId）的中间态附件同样取消后端任务', async () => {
+  it('【修复前红】仅有 sourceId（无 resourceId）的中间态附件同样取消后端任务并清理 pdf store', async () => {
     // 面板路径今天就会 cancel 这种附件（AttachmentPanelBody 只看 att.sourceId）；
     // 收敛进 store 后该语义必须保住 —— cancel 键在 sourceId 上，不得受 resourceId 门控。
     const { actions, removeContextRefMock } = createHarness([orphanSourcePdf()]);
@@ -222,6 +222,10 @@ describe('sessionActions.removeAttachment 单附件删除语义（卡 1 修复�
 
     expect(cancelPdfProcessingMock).toHaveBeenCalledTimes(1);
     expect(cancelPdfProcessingMock).toHaveBeenCalledWith('file_orphan_3');
+    // pdfProcessingStore 清理同样只受 sourceId 门控（R6 翻案：旧实现嵌在
+    // resourceId 分支里，仅有 sourceId 的中间态附件删除后进度条目泄漏 → 此断言红）
+    expect(pdfStoreRemoveMock).toHaveBeenCalledTimes(1);
+    expect(pdfStoreRemoveMock).toHaveBeenCalledWith('file_orphan_3');
     // 无 resourceId → 没有 ContextRef 可移除
     expect(removeContextRefMock).not.toHaveBeenCalled();
   });

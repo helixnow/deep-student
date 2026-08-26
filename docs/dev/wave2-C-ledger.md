@@ -336,4 +336,15 @@
 - 验证面 = **0%**（零测试执行、零编译、零真机）。
 - 综合：静态口径 **50%–60%（95% 置信区间，点估计 55%）**；经运行验证口径 **0%**。两口径必须分开报。
 - 本轮未标注 Goal complete（按指令不得标注）；对账过程未运行测试、未改产品代码、未 git commit。
-- 时点补记：对账收尾时观察到同轮席位并发落盘（pdf-chrome / i18n-alias 报告入 /tmp，工作树出现 i18n-alias 席位的 `inputBarSplitI18nKeys.contract.test.ts` +11 行 actions.more alias 断言——非 P6 所欠模板键升级，P6 结论不变）。本节全部证据取证于 HEAD `cf8eb9e8` 干净树时点；第 6 轮二检须以届时 HEAD 重新取证，不得转抄本表。
+- 时点补记：对账收尾时观察到同轮席位并发落盘。第 6 轮二检须以届时 HEAD 重新取证。
+
+## 第 5 轮已落地（chrome FAIL + i18n 守卫）
+
+- learning-hub F1/F2/F3：子屏走 useMobileSubviewChrome（含 screen 标记）；QuickLook 注册 overlay back。F3 关闭钮仍用 after:-inset 逃生舱——第 6 轮改 TouchTarget/coarseHit。
+- PDF V1：`registerVisibilityGuardedBackHandler` 加法；PdfSelectionActions + EnhancedPdfViewer 共用。
+- anki/qbank chrome：Checkbox 基元热区已在 CSS（更正 R1）；吸底条补 aria-label；删手抄 before:-inset。
+- settings：折叠钮 DsButton；键盘双轨删除 useKeyboardInset；BackupTab 卡片化（只展示层）。
+- Chat：无独立 chrome FAIL；补右侧≤2 source 契约。
+- i18n：模板键展开 + 叶子必须非空字符串；actions.more 正式 alias；check-i18n 非 0 exit + check:i18n:strict。补 thinkingDepth.minimal 双语。
+- 修 TouchTarget JSDoc 中 `h-*/w-*` 提前截断注释（父代理注释白名单）。
+- 第 6 轮首位：owned-overlay 接线、pdf store remove 嵌 resourceId、lint 仍 warn、F3 伪元素逃生舱、真机空白。

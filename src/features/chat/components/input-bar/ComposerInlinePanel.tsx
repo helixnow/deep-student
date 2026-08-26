@@ -70,7 +70,7 @@ export function ComposerInlinePanel({
   const availableSpace = `calc(85vh - var(--keyboard-inset, 0px) - 180px)`;
   // 二段式下限：可用空间 ≥160px 才保底 160px；不足（短横屏 + 键盘）时下限退化
   // 为可用空间本身并靠内部滚动消化，max(0px, ...) 兜底防止负值。
-  // 禁止无条件 clamp(160px, ...)——那会在极端视口把面板撑出屏幕。
+  // 禁止把 160px 写成无条件的 clamp 下限——那会在极端视口把面板撑出屏幕。
   const minHeightFloor = `max(0px, min(160px, ${availableSpace}))`;
   const heightValue = `clamp(${minHeightFloor}, ${availableSpace}, ${maxHeight}px)`;
 

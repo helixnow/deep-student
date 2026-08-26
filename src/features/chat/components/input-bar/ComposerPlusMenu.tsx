@@ -68,7 +68,11 @@ export interface ComposerPlusMenuProps {
   tooltipDisabled?: boolean;
   /** 布局断点（MobileLayoutContext）：true 时渲染单层扁平菜单 */
   isMobile?: boolean;
-  /** 设备能力（pointer: coarse）：仅控制拍照入口是否出现 */
+  /**
+   * 相机捕获能力：仅控制拍照入口是否出现。上游传入
+   * inputBarCapabilities.canCapturePhoto()（平台/capture 特性判定），
+   * 早已不是 pointer: coarse。prop 名为历史遗留，待改名为 canCapturePhoto。
+   */
   isMobileEnv?: boolean;
   onAddAttachment: () => void;
   onOpenResourceLibrary: () => void;

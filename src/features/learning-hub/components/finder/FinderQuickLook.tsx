@@ -20,6 +20,7 @@ import {
   type QuickLookVisualResult,
 } from './quickLookPreview';
 import { cn } from '@/lib/utils';
+import { coarseHitClassFor36 } from '@/components/ui/coarseHit';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
@@ -200,9 +201,13 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             variant="ghost"
             size="icon"
             iconOnly
-            // 📱 触屏：视觉保持 40px 防标题栏撑高，伪元素 after:-inset-1 外扩 4px
-            // 使命中区达 48px ≥44px（对齐 FinderToolbar / FinderQuickAccess 范式）
-            className="relative !h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']"
+            // 📱 触屏：视觉保持 40px 防标题栏撑高（实体 44px TouchTarget 会撑高
+            // 这条 py-2 标题栏），伪元素扩区走 coarseHit.ts 共享出口的 -inset-1 档
+            // （coarseHitClassFor36 字面量），40px + 两侧各 4px = 48px ≥44px 命中区
+            className={cn(
+              '!h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+              coarseHitClassFor36
+            )}
             onClick={onClose}
             aria-label={t('common:close')}
           >
