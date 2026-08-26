@@ -37,7 +37,7 @@ describe('split input bar mobile contract', () => {
 
   it('keeps coarse-pointer toolbar controls and search at mobile-safe sizes', () => {
     expect(toolbarSource).toContain(
-      '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
+      '[@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]'
     );
     // 第一批高频散点已从透明伪元素外扩改为实体 44×44 盒（--touch-target-size），
     // 伪元素命中区会与相邻控件互相重叠，工具栏内不允许再出现
@@ -46,7 +46,7 @@ describe('split input bar mobile contract', () => {
     );
     expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:after:-inset');
     expect(toolbarSource).toContain(
-      'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base'
+      'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!text-base'
     );
   });
 
@@ -61,7 +61,9 @@ describe('split input bar mobile contract', () => {
   });
 
   it('keeps compact composer hints tappable without changing desktop density', () => {
-    expect(inputBarSource.match(/\[@media\(pointer:coarse\)\]:!h-11/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(
+      inputBarSource.match(/\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/g)?.length
+    ).toBeGreaterThanOrEqual(5);
   });
 
   it('keeps localized OCR stage labels in the extracted helper', () => {

@@ -2362,7 +2362,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
@@ -2370,7 +2370,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
@@ -2392,7 +2392,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
@@ -2414,7 +2414,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
@@ -2434,7 +2434,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}

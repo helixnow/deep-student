@@ -66,7 +66,7 @@ const studyUiButtonBaseClassName =
 const studyUiButtonSizeIconClassName =
   'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
 const studyUiSendButtonSizeClass =
-  'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11';
+  'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]';
 const studyUiBlackActionButtonClass =
   '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
 const studyUiSendButtonEmptyStateClass =
@@ -731,7 +731,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                                 type="search"
                                 // 📱 触控目标 + 16px 输入契约：.ds-search-input 的 coarse 规则挂在
                                 // enhanced-pdf.css（仅 PDF 视图加载），此处内联补齐防 iOS 聚焦缩放
-                                className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
+                                className="app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!text-base"
                                 placeholder={runtimeModelSearchPlaceholder}
                                 value={runtimeModelSearch}
                                 onChange={(event) => setRuntimeModelSearch(event.target.value)}
@@ -876,7 +876,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             onClick={onStop}
             disabled={!canAbort}
             // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-            className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full shadow-sm')}
+            className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] !rounded-full shadow-sm')}
             aria-label={canAbort
               ? t('analysis:input_bar.actions.stop')
               : t('chatV2:inputBar.stopping')}

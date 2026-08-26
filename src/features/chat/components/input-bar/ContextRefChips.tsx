@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import type { ContextRef } from '../../resources/types';
 
 // ============================================================================
@@ -186,7 +187,7 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               <Icon size={12} weight="bold" className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('chatV2:common.removeNamed', { name: label })} title={t('common:actions.remove')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className={cn('ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative', coarseHitClassForBadge16)} aria-label={t('chatV2:common.removeNamed', { name: label })} title={t('common:actions.remove')}>
                   <X size={10} weight="bold" />
                 </DsButton>
               )}

@@ -287,7 +287,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   iconButtonClass,
                   isMobile && '!rounded-full',
                   'relative transition-colors disabled:opacity-60',
-                  '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!min-w-11',
+                  '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
                   open && 'bg-[color:var(--button-secondary-surface)]',
                 )}
                 aria-label={t('chatV2:inputBar.plusMenu.trigger')}

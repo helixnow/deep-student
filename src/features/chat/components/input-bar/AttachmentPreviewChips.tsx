@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -424,7 +425,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   aria-label={t('chatV2:common.retryNamed', { name: attachment.name })}
                   title={t('common:retry')}
                   className={cn(
-                    "relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
+                    'ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none',
+                    coarseHitClassFor24,
                     isError
                       ? 'border-destructive/40 text-destructive hover:bg-destructive/10'
                       : 'border-warning/40 text-warning hover:bg-warning/10'
