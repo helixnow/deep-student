@@ -53,8 +53,9 @@ PDF 页面预览仍因缺少稳定逐页 `image_ref` 而不生成 marker；坐�
 直接图片 ref 时同样执行，避免 JSON、围栏或协议标签进入普通卡正文。
 
 内部 `[ANKI_OCCLUSION_DRAFT:...]` marker 的既有剥离和首张成功卡消费语义不变，
-最终仍复用 Cloze 卡与 `_occlusion` extra field，不创建 Anki 原生 Image
-Occlusion note type。
+最终只把 `_occlusion` extra field 与 tag 合并进模型原先的普通卡；候选 Cloze
+`Text`、图片媒体以及 `_occlusion` 到 APKG/AnkiConnect 的转换均未接，不会导出
+为可复习的 Anki 遮挡卡。
 
 ## 测试覆盖
 

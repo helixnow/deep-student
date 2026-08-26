@@ -117,8 +117,8 @@
 - [x] 子代理 #5：AI 图像遮挡制卡首版（详见 `round4/05-image-occlusion.md`）
   - 新增 `anki_image_occlusion.rs` 纯函数层：`OcclusionSpec{imageRef, boxes}`
     归一化坐标（0-1）校验（越界/重叠 IoU/空盒/零序号 结构化拒绝）、
-    Cloze 导出字段约定（`Text` + `extra_fields["_occlusion"]` JSON +
-    `image-occlusion` tag，兼容既有 APKG 路径）、`[IMAGE_DESC]` 启发式
+    Cloze 候选字段约定（`Text` + `extra_fields["_occlusion"]` JSON +
+    `image-occlusion` tag，生产导出尚未消费）、`[IMAGE_DESC]` 启发式
     网格盒建议（零 LLM 成本，输出直接可过校验）、像素换算三重保证
   - 前端最小渲染：`utils/imageOcclusion.ts`（解析/换算与 Rust 镜像）+
     `ImageOcclusionOverlay.tsx`（百分比定位、同 clozeIndex 组揭开、受控/非受控）
@@ -181,7 +181,7 @@
 - [x] Image Occlusion 折叠/展开预览：生产 `anki_cards` 块解析 `_occlusion`，
       解析本地/VFS/URL 图片并挂载遮挡揭示交互
 - [ ] 图像遮挡完整闭环：VlmFull 直接图片的启发式 `_occlusion` 草稿已接；
-      PDF 页图、真实 grounding、卡片编辑器与原生 note type 仍未接
+      PDF 页图、真实 grounding、卡片编辑器及 APKG/AnkiConnect 可复习遮挡转换仍未接
 - [x] ChatAnki critic 用户入口：流式收尾、CAS、grounded 参照和 Critic 路由已接，
       run/start 公开 `enableCriticPass`；缺省 `false`，仅显式 `true` 时运行
 
@@ -209,7 +209,7 @@
   划词制卡仍使用 `CardAgent.startGeneration`，不能把整个 CardForge 模块当死代码。
 - [x] Image Occlusion 仅将 VlmFull 直接图片的文字描述变成启发式 `_occlusion`
   网格草稿并附到首张卡；折叠/展开预览已接，但没有真实视觉坐标、PDF 页图、
-  遮挡编辑器或原生 note type 闭环。
+  遮挡编辑器，也没有任何可复习 Anki 遮挡导出闭环。
 - [x] 现码评分更新为 **8.5/10**：偏好写入、原始快照和 Planner/Vlm 消费关闭了
   三个实质缺口；critic 公开开关保持默认关闭且不单独上调评分，完整图像遮挡仍未闭环。
 - [x] PR [#215](https://github.com/helixnow/deep-student/pull/215) 最终文档口径统一：

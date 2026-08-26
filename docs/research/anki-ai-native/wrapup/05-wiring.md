@@ -6,7 +6,7 @@
 
 | 项目 | 代码事实 | 本轮结论 |
 |---|---|---|
-| Image Occlusion | `VlmFull` 在直接图片 ref 存在时，把 `[IMAGE_DESC]` 经 `propose_boxes_from_image_desc` 和校验转成内部 draft marker；流式生成会从 prompt 剥离 marker，并把 `_occlusion` 与 `image-occlusion` tag 合并到该分段首张成功卡 | **最小接线**。无图片、无有效描述、校验或解析失败均降级普通卡；PDF 页图、真实图像 grounding、前端预览/编辑和原生 Anki Image Occlusion note type 仍未接 |
+| Image Occlusion | `VlmFull` 在直接图片 ref 存在时，把 `[IMAGE_DESC]` 经 `propose_boxes_from_image_desc` 和校验转成内部 draft marker；流式生成会从 prompt 剥离 marker，并把 `_occlusion` 与 `image-occlusion` tag 合并到该分段首张成功卡 | **最小接线**。无图片、无有效描述、校验或解析失败均降级普通卡；PDF 页图、真实图像 grounding、编辑器及 APKG/AnkiConnect 可复习遮挡转换仍未接 |
 | Preference memory | retrieve 从持久化 settings key `chatanki_preference_memory_store` 读取 `PreferenceStore`；全仓库没有生产写入该 key 的路径，`extract_preferences` / `consolidate` 仅由测试调用 | **读取侧已接，写入侧未接**。全新安装 key 不存在，实际注入为 no-op；不得宣称会自动学习偏好 |
 | Anki model routing | streaming 生成消费 `Generator`；critic 通过 `resolve_anki_role_decision` 与 `call_anki_routed_raw_prompt` 消费 `Critic`，路由或配置失效时回退 model2 | **不只用于 Generator**。Generator / Critic 已接；Planner / Vlm 角色目前没有生产消费者 |
 | FingerprintTracker registry | 主调度完成、取消、删除、按文档导出释放 tracker；resume 查询失败、无剩余任务，以及手动单任务重试达到文档终态也释放；暂停时刻意保留供 resume | **已覆盖已知终态**。未发现仍可复现的按 `document_id` 无界残留路径 |
