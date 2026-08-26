@@ -28,7 +28,7 @@
  * | 9     | openTab LRU 淘汰（MAX_TABS）   | 脏标签跳过淘汰（不弹框、不静默丢草稿，可暂超上限） |
  * | 10    | 保活实例淘汰（Container）      | TabPanelContainer keepAlive 集合豁免脏标签         |
  * | 11    | dstu deleted/purged 事件       | 豁免 gate（实体已删，保留原直删逻辑）              |
- * | 12    | 恢复后失效校验                 | 第 3 轮范围，本轮不动（Page 恢复逻辑保持原样）     |
+ * | 12    | 恢复后失效校验                 | r3 P8：按稳定 resourceId 校验，仅 NOT_FOUND 删标签 |
  * | 13    | 路由切走（Page unmount）       | 无法异步拦截；对注册了 save handler 的脏标签尽力 flush |
  * | 14    | 窗口关闭（beforeunload）       | 任一脏标签 → preventDefault（补齐非笔记类型）      |
  *
@@ -44,6 +44,7 @@ import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/op
 import type { DstuNode } from '@/dstu/types';
 import { createEmpty, dstu, type CreatableResourceType } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { VfsErrorCode } from '@/shared/result';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
@@ -138,14 +139,50 @@ const inferResourceTypeFromFileName = (fileName: string): ResourceType => {
 
 // ============================================================================
 // ★ I10 修复：标签页持久化（localStorage）
+// ★ P8（Wave2-B r3）：payload 版本化 + OpenTab 逐字段白名单解析 + 保存写透缓存
 // ============================================================================
 
+// 沿用 v1 存储 key（避免升级即丢历史标签）；版本号放在 payload 内。
+// v1 payload 无 version 字段，v2 起写入 version=2；两者共用同一逐条
+// 白名单解析（v1 数据缺字段/带脏字段时按下方策略修复或丢弃）。
 const TABS_STORAGE_KEY = 'learning-hub-tabs-v1';
+const TABS_STORAGE_VERSION = 2;
 
 interface PersistedTabsState {
   tabs: OpenTab[];
   activeTabId: string | null;
 }
+
+/** 可持久化标签的资源类型白名单（'all' 是浏览筛选值，不是可打开的资源类型） */
+const PERSISTABLE_TAB_TYPES: readonly string[] = [
+  'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
+];
+
+/**
+ * ★ P8-3：逐字段白名单解析一条持久化标签。策略：
+ * - 整条丢弃（不可修复的键）：tabId（激活/分屏引用键）、resourceId
+ *   （恢复校验与面板加载键）、type（决定面板类型路由）任一损坏即丢弃该条。
+ * - 字段修复（可安全回退）：dstuPath 损坏 → 回退 `/${resourceId}`（面板
+ *   加载本就只用 resourceId，恢复校验还会刷新真实 path）；title 损坏 →
+ *   空串（恢复校验以 node.name 回填）；openedAt 损坏 → Date.now()（仅参与
+ *   LRU 排序，防 NaN/非数值污染排序）；isPinned 非 true → 视为未固定。
+ */
+const parsePersistedTab = (raw: unknown): OpenTab | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.tabId !== 'string' || !t.tabId) return null;
+  if (typeof t.resourceId !== 'string' || !t.resourceId) return null;
+  if (typeof t.type !== 'string' || !PERSISTABLE_TAB_TYPES.includes(t.type)) return null;
+  return {
+    tabId: t.tabId,
+    type: t.type as ResourceType,
+    resourceId: t.resourceId,
+    dstuPath: typeof t.dstuPath === 'string' && t.dstuPath ? t.dstuPath : `/${t.resourceId}`,
+    title: typeof t.title === 'string' ? t.title : '',
+    openedAt: typeof t.openedAt === 'number' && Number.isFinite(t.openedAt) ? t.openedAt : Date.now(),
+    isPinned: t.isPinned === true,
+  };
+};
 
 let persistedTabsCache: PersistedTabsState | null = null;
 
@@ -159,30 +196,52 @@ const loadPersistedTabs = (): PersistedTabsState => {
       persistedTabsCache = fallback;
       return fallback;
     }
-    const parsed = JSON.parse(raw) as Partial<PersistedTabsState>;
-    const tabs = Array.isArray(parsed.tabs)
-      ? parsed.tabs.filter(
-          (t): t is OpenTab =>
-            !!t && typeof t.tabId === 'string' && typeof t.resourceId === 'string' && typeof t.dstuPath === 'string'
-        )
-      : [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      persistedTabsCache = fallback;
+      return fallback;
+    }
+    const payload = parsed as { tabs?: unknown; activeTabId?: unknown };
+    const tabs: OpenTab[] = [];
+    // 去重：tabId 是 React key 与激活/分屏引用键，resourceId 是 openTab
+    // 的去重不变量；损坏数据出现重复时保留先出现的一条
+    const seenTabIds = new Set<string>();
+    const seenResourceIds = new Set<string>();
+    if (Array.isArray(payload.tabs)) {
+      for (const item of payload.tabs) {
+        const tab = parsePersistedTab(item);
+        if (!tab) continue; // 整条损坏 → 丢弃该条，不影响其余标签
+        if (seenTabIds.has(tab.tabId) || seenResourceIds.has(tab.resourceId)) continue;
+        seenTabIds.add(tab.tabId);
+        seenResourceIds.add(tab.resourceId);
+        tabs.push(tab);
+      }
+    }
     const activeTabId =
-      typeof parsed.activeTabId === 'string' && tabs.some(t => t.tabId === parsed.activeTabId)
-        ? parsed.activeTabId
+      typeof payload.activeTabId === 'string' && seenTabIds.has(payload.activeTabId)
+        ? payload.activeTabId
         : tabs[tabs.length - 1]?.tabId ?? null;
     persistedTabsCache = { tabs, activeTabId };
     return persistedTabsCache;
   } catch {
+    // JSON 整体损坏 → 丢弃整份数据回空态，下次保存写入干净的 v2 payload
     persistedTabsCache = fallback;
     return fallback;
   }
 };
 
+// ★ P8-1：保存时同步写透模块级缓存。此前只写 localStorage，同一 renderer
+// 内 Page 卸载重挂时 useState 从过期 cache 初始化，首次持久化 effect 随即
+// 用旧快照覆盖回 localStorage（会话内新开的标签被回滚丢失）。
 const savePersistedTabs = (tabs: OpenTab[], activeTabId: string | null) => {
+  persistedTabsCache = { tabs, activeTabId };
   try {
-    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs, activeTabId }));
+    localStorage.setItem(
+      TABS_STORAGE_KEY,
+      JSON.stringify({ version: TABS_STORAGE_VERSION, tabs, activeTabId })
+    );
   } catch {
-    // localStorage 不可用时静默忽略
+    // localStorage 不可用时静默忽略（缓存已更新，同会话内 remount 恢复不受影响）
   }
 };
 
@@ -224,7 +283,13 @@ export const LearningHubPage: React.FC = () => {
     savePersistedTabs(tabs, activeTabId);
   }, [tabs, activeTabId]);
 
-  // ★ I10 修复：恢复后后台校验资源有效性，关闭已删除/已移动资源的失效标签页
+  // ★ P8-2（Wave2-B r3）：恢复后按稳定 resourceId 后台校验。
+  // dstuPath 是人类可读路径，资源被移动/重命名后即过期，此前用它校验会把
+  // 「已移动」误判为「已失效」而删标签（r1 §2b）。这里与 UnifiedAppPanel
+  // 的加载键对齐，统一请求 `/${resourceId}`：
+  // - 成功 → 标签保留，重绑最新 dstuPath/title（node.path/node.name）
+  // - NOT_FOUND → 实体确认不存在，删标签
+  // - 其他错误（网络/超时/内部等瞬态失败）→ 保留标签，由面板加载自行报错
   const restoredValidationDone = useRef(false);
   useEffect(() => {
     if (restoredValidationDone.current) return;
@@ -234,18 +299,41 @@ export const LearningHubPage: React.FC = () => {
 
     let cancelled = false;
     void (async () => {
-      const invalidIds: string[] = [];
+      const invalidIds = new Set<string>();
+      const rebinds = new Map<string, { dstuPath: string; title: string }>();
       for (const tab of restored) {
-        const result = await dstu.get(tab.dstuPath);
+        const result = await dstu.get(`/${tab.resourceId}`);
         if (cancelled) return;
-        if (!result.ok) {
-          invalidIds.push(tab.tabId);
+        if (result.ok) {
+          const node = result.value;
+          rebinds.set(tab.tabId, {
+            dstuPath: node.path || `/${tab.resourceId}`,
+            // node.name 为空时保留旧 title（避免把标签刷成空白）
+            title: node.name || tab.title,
+          });
+        } else if (result.error.code === VfsErrorCode.NOT_FOUND) {
+          invalidIds.add(tab.tabId);
         }
+        // 非 NOT_FOUND 的失败不做任何处理：不能凭瞬态错误断定实体已死
       }
-      if (invalidIds.length === 0) return;
+      if (invalidIds.size === 0 && rebinds.size === 0) return;
       setTabs(prev => {
-        const next = prev.filter(t => !invalidIds.includes(t.tabId));
-        if (next.length === prev.length) return prev;
+        let changed = false;
+        const next: OpenTab[] = [];
+        for (const tab of prev) {
+          if (invalidIds.has(tab.tabId)) {
+            changed = true;
+            continue;
+          }
+          const rebind = rebinds.get(tab.tabId);
+          if (rebind && (tab.dstuPath !== rebind.dstuPath || tab.title !== rebind.title)) {
+            next.push({ ...tab, ...rebind });
+            changed = true;
+          } else {
+            next.push(tab);
+          }
+        }
+        if (!changed) return prev;
         setActiveTabId(currentId => {
           if (currentId && next.some(t => t.tabId === currentId)) return currentId;
           return next[next.length - 1]?.tabId ?? null;

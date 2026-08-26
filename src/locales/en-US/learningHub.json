@@ -168,7 +168,9 @@
     "openResourceFailed": "Failed to open resource",
     "createNotAllowed": "The current view does not support creating resources",
     "resourceDeletedOrMoved": "The resource was deleted or moved. The invalid tab has been closed.",
-    "resourceNotFound": "The requested resource was not found"
+    "resourceNotFound": "The requested resource was not found",
+    "bookmarksSaveConflict": "Bookmark save conflict: bookmarks for this resource were updated in another window. Your change was not applied — refresh and try again.",
+    "restoreDroppedCorrupted": "Dropped {{count}} corrupted record(s) while restoring tabs"
   },
   "success": {
     "referenceToChat": "Added to chat context",

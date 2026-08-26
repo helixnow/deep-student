@@ -269,3 +269,90 @@
 8. **提交**:第 3 轮收尾由父代理统一 commit/push;台账员追加「第 3 轮」节。
 
 P3(handoff descriptor)维持第 5 轮、P7(划词收敛)维持第 4 轮、P9(Exposé)维持第 8 轮、P10(SOTA 子集)维持第 5 轮,均不提前。
+
+## 第 3 轮(P6 保存落点收口 + P5 书签三态 + P8 标签恢复 + 数据流审阅)
+
+> P 编号沿用 2.2 勘正后的用户口径:P5 书签、P6 保存落点、P8 标签恢复。
+
+### 3.1 执行口径
+
+- 禁止 npm/cargo/vitest 全程遵守;**未编译、未跑任何测试**,全部验证为静态读码 + grep + python json.load(locale 键集合比对)。
+- 未 commit/push(父代理统一处置)。第 2 轮产出已随前序提交入库,当前工作区未提交 diff **全部为第 3 轮产出**:15 个文件 modified(+580/-224,`git diff --stat`),5 个 untracked(4 份 r3 文档 + 1 个新测试文件 `previewPersistence.bookmarkRace.test.ts`);本节为台账第 3 轮追加。
+
+### 3.2 产品落地清单(全部静态 grep 证据,行号为撰写时工作区实况)
+
+| # | 落地项 | 证据(现码行号) |
+|---|---|---|
+| P6a | **dstu tags 持久化 + folderId 单事务**:`dstu_create` note 分支不再硬编码 `tags: vec![]`;`metadata.tags` fail-closed 解析(存在则必须字符串数组,否则整单 `INVALID_ARGUMENT` 拒绝,限额由 `note_repo::validate_tags` 在事务内兜底);`metadata.folderId`(要求 `fld_` 前缀)与 path 推导合流后经 `create_note_in_folder` BEGIN IMMEDIATE 单事务落盘 | `handlers.rs:728-752`(folderId 双源合流)、`:800-826`(tags 解析 + 单事务调用) |
+| P6b | **saveTextAsNote 一次提交 + landed 三态**:前端两次 IPC(create + move)合一,`notesDstuAdapter.createNote(title, content, tags, folderId)` 单次提交;新增 `resolveLandedFolder` 用 `folderApi.getFolderItems` 回查实际落点,`landed: 'folder' \| 'root'` 为**实际落点非意图落点**(回查失败保守降报 root,不谎报目录);目录确认落位才补发 `item-added` 事件,toast 按落点分文案;移动失败假 `ok:true` 问题随两步模型消亡 | `saveTextAsNote.ts:40-44,82,102,113-126,146-150`;`notesDstuAdapter.ts` 四参签名 → `metadata.folderId` |
+| P6c | **三入口收敛**:TextbookContentView / FileContentView 划词做笔记、EssayGradingWorkbench 存笔记,全部迁至共享 `useSaveAsNoteFlow` + `SaveAsNoteFolderPicker`(openSource 分别 'pdf-selection'×2 / 'essay-grading');标题摘录首 30 字兜底 node.name,正文保留页码 locator;Essay 动态 import 只剩 exportFormatter | 三文件 grep `useSaveAsNoteFlow` 命中;数据流审阅 §三逐项通过(无悬空 import、deps 数组齐) |
+| P6d | **quick-assistant 书面豁免**:裁决为独立产品语义**不迁入**共享流程——轻量窗无 FolderPickerDialog / showGlobalNotification / DSTU_OPEN_NOTE 宿主(三支柱皆缺),四键捕获族(笔记/错题/卡片/待办)一击直存不应分裂,且 `metadata.source: 'quick-assistant'` 为 `dstu.create` 直调独有能力,迁移反丢信息;`service.ts` 仅加 8 行豁免头注,**函数体零改动** | `wave2-B-r3-quick-assistant-exemption.md` 全文;`service.ts` 头注 |
+| P5a | **后端 bookmarks 三态契约**(textbook 与 files/file/image 两分支同构):① 带 `expected_updated_at` → `replace_bookmarks_if_version` OCC 原子替换(对齐 highlights);② 无版本 + 同请求带 readingProgress → 视为进度捎带的陈旧快照,**跳过书签写入**(防跨实例交错清空);③ 无版本 + 仅 bookmarks = 显式书签通道 → `update_bookmarks` 整数组覆盖写仍允许(log 标注 versionless explicit channel)。highlights OCC(`:3594-3595` 无版本仍拒)与 `textbooks_update_bookmarks` 独立命令不动 | `handlers.rs:3633-3670`(textbook)、`:3821-3850`(files);`coordinator.rs` 零触碰 |
+| P5b | **previewPersistence 通道隔离**:`persistProgress` payload 只含 readingProgress(翻页绝不携带 bookmarks,消灭「翻页清另一窗书签」最高频形态);`persistBookmarks` payload 只含 bookmarks(命中显式通道,textbook 仍先走 updateBookmarks 双写);`flush()` 两者同时 pending 时**按通道分写不合并 payload**(bookmarks 先、progress 后,onBookmarksError/onProgressError 各自触发不互串);文件头契约注释同步改写 | `previewPersistence.ts:20-29`(头注)、`:183-198`(progress 单字段)、`:198-218`(bookmarks 单字段);flush 分写见数据流审阅 §1.2 |
+| P8a | **savePersistedTabs 写透缓存**:先更新模块级 `persistedTabsCache` 再写 localStorage(storage 抛异常不影响缓存),消除 Page 卸载重挂时惰性初始化读到过期快照、首次持久化 effect 用旧数据覆盖回滚的时序 | `LearningHubPage.tsx:187,224-237` |
+| P8b | **恢复校验改稳定 resourceId**:后台校验从 `dstu.get(tab.dstuPath)` 改为 `dstu.get('/' + tab.resourceId)`(与 UnifiedAppPanel 实际加载键对齐);三分支:成功 → 保留并**重绑** `dstuPath = node.path`、`title = node.name`(移动/重命名不再误删);`NOT_FOUND` → 删标签;其他错误码 → 保留(不凭瞬态错误断死实体)。即第 2 轮 close gate 十四入口预留的入口 12 | `LearningHubPage.tsx:31,291,314-317`;`VfsErrorCode` 自 `@/shared/result` 导入(`:47`) |
+| P8c | **OpenTab 版本化白名单解析**:存储 key 沿用 `learning-hub-tabs-v1`(不丢历史),payload 写 `version: 2`,v1/v2 共用 `parsePersistedTab` 逐字段白名单(tabId/resourceId/type 损坏整条丢弃;dstuPath/title/openedAt/isPinned 可修复回退);追加 tabId 与 resourceId 双重去重;JSON 整体损坏回空态 | `LearningHubPage.tsx:170,212` |
+| i18n | **新键 5 个双语齐**:i18n 员预置 4 个(`chatV2:messageItem.actions.saveAsNoteSuccessInFolder/.saveAsNoteSavedAtRoot`、`learningHub:errors.bookmarksSaveConflict/.restoreDroppedCorrupted`),数据流审阅补 1 个实际被引用的 `saveAsNoteSuccessAtRoot`(`saveTextAsNote.ts:155` 引用,中性措辞不谎称失败);`saveAsNoteSavedAtRoot`(旧两步语义)成死键,后续轮次按死键流程处理;`bookmarksSaveConflict/restoreDroppedCorrupted` 本轮代码零引用,属预置占位 | `zh/en chatV2.json`、`zh/en learningHub.json`;清单见 `wave2-B-r3-i18n.md` |
+
+### 3.3 数据流审阅补丁(本轮内部红转绿,3 处)
+
+审阅员-数据流逐条比对本轮前后端契约,发现并修复 **2 处高危不一致**(细节见 `wave2-B-r3-dataflow-review.md` §一):
+
+1. **纯书签写 fail-closed vs 前端无版本书签写**:本轮 handlers 初版把无版本纯书签写直接 `CONFLICT` 拒绝,而前端唯一 setMetadata 书签写入方 `persistBookmarks` 天然不持有 `updated_at`——按初版代码 textbook/file **每一次书签保存都会被拒**。修复取更小切口改后端:即 3.2 表 P5a 三态第 ③ 条(fail-closed → 显式通道覆盖写)。
+2. **flush 合并 payload 命中「防交错跳过」**:初版 flush 把 pending 的 progress+bookmarks 合并单写,恰命中三态第 ② 条,关窗前显式书签变更被静默丢弃(textbook 有双写兜底,**file 会真丢**)。修复:即 3.2 表 P5b 的 flush 分通道。随动改 `previewPersistence.test.ts` 一例断言(合并单写 → 两次分写;该测试文件不在审阅员字面可写清单内,属「修契约所必须」,已在文档 §1.2 备案)。
+3. i18n key 错位:`saveTextAsNote.ts` 实际引用 `saveAsNoteSuccessAtRoot` 而预置的是旧语义 `saveAsNoteSavedAtRoot`,en-US 会露中文兜底,补键修复(见 3.2 表 i18n 行)。
+
+其余逐条比对通过项(tags fail-closed 全仓调用方形状核对、createNote→metadata.folderId 契约、landed 回查、三入口迁移、豁免裁决、locale 占位键)见该文档 §三表。
+
+### 3.4 四份 r3 文档索引
+
+| 文档 | 角色 | 一句话内容 |
+|---|---|---|
+| `wave2-B-r3-dataflow-review.md` | 审阅员-数据流 | 前后端契约逐条比对;2 高危不一致修复(书签三态第③条、flush 分写)+ 1 i18n 补键;遗留移交 3 项 |
+| `wave2-B-r3-tab-restore.md` | 实现员-标签恢复 | P8-1 写透缓存 / P8-2 稳定 ID 重绑三分支 / P8-3 版本化白名单解析 + 双重去重 |
+| `wave2-B-r3-quick-assistant-exemption.md` | 入口收敛-2 | quick-assistant 存笔记豁免裁决,三支柱无宿主 + 四键族语义 + metadata.source 能力差证据链 |
+| `wave2-B-r3-i18n.md` | i18n 员 | 4 新键双语 + 复用声明(5 组既有键不重造)+ 设计取舍(不带 folder 名插值、冲突键落 learningHub 避开 practice 钉死测试) |
+
+### 3.5 测试源码状态(已写未跑)
+
+- `saveTextAsNote.test.ts`(+131 行级改写):对齐单次提交契约——createNote 四参、目录失败整体 `ok:false`、兼容降级 landed:root、事件仅确认入目录才发、toast 按落点措辞;第 1 轮点名的旧行为钉绿用例(原 `:115-125` 两步模型)已随契约改写。
+- `previewPersistence.test.ts`(+76 行级):新增跨窗口交错用例;「dispose flush combined payload」一例由审阅员改为分写断言(call1 仅 bookmarks、call2 仅 readingProgress)。
+- `previewPersistence.bookmarkRace.test.ts`(新文件):P5 书签竞态红转绿测试。
+- 以上全部为**用例文本,未执行 vitest**;`previewPersistence.i18n.test.ts` 的 `toEqual(ZH_LABELS)` 整组钉死未触碰(冲突键刻意落 learningHub 命名空间避开)。
+
+### 3.6 已验证 / 未验证(第 3 轮口径)
+
+**已验证(静态证据 = grep 行号 + 逐行读码 + json.load 键集合比对):**
+
+- handlers.rs 改动均在既有 match 分支内换调用,`update_bookmarks` 签名与调用点一致(同函数内既有同签名调用可证);tags 解析 fail-closed 方向与全仓 6 处 `dstu.create` note 调用方(均传字符串数组字面量)无形状冲突。
+- 三态契约与前端通道隔离互相咬合:进度写(payload 无 bookmarks)不触书签,显式书签写(payload 仅 bookmarks)命中第③条,flush 分写后无任何路径落入第②条误伤。
+- `landed` 回查保守方向正确(降报 root 不谎报 folder);`item-added` 事件仅确认入目录才发,与 folderApi.addItem 契约一致。
+- P8 恢复校验仅 `NOT_FOUND` 删标签,fail 方向与第 2 轮 close gate 一致(fail-closed 保标签);close gate 十四入口、finder 分桶调用点、UnifiedAppPanel 加载逻辑零触碰。
+- locale 4 份 JSON 解析通过,zh/en 叶子键集合逐组相等;禁改区(coordinator.rs / tool_loop / highlights OCC / textbooks_update_bookmarks 独立命令 / anki/qbank / 44px)零触碰。
+
+**未验证(如实声明):**
+
+- **未编译未跑测试**:Rust 侧 `cargo check` 未跑(match 分支换调用的类型正确性为人工比对);TS 侧 tsc/vitest 未跑,3 个测试文件红绿未知;第 8 轮前禁止。
+- 书签三态第③条为**无 OCC 覆盖写**:跨窗口同时编辑书签仍可能互相覆盖(本轮只消灭「翻页清书签」最高频形态);闭环需前端 controller 持有并透传 `expected_updated_at` + `bookmarksSaveConflict` 接 toast,属后续轮切口(数据流审阅 §四.3)。
+- 「showGlobalNotification 在 quick 窗无宿主渲染」为挂载树静态推演,未真机确认。
+- `resolveLandedFolder` 回查在目录树大时的额外一次 IPC 开销未实测。
+
+### 3.7 遗留移交
+
+1. 死键:`chatV2:messageItem.actions.saveAsNoteSavedAtRoot`;入口迁移后 `pdf:selection.note_saved/note_save_failed/note_default_title`、`essay_grading:result_section.saved_as_note` 全仓零引用——移交后续 i18n 员按死键流程复扫(第 2 轮死键清单本轮也未复扫)。
+2. `saveTextAsNote.ts:4` 头注旧入口清单含「快捷助手」,与豁免裁决不一致,建议改为「聊天消息、聊天划词」并附豁免文档索引(头注非 key 字符串,本轮两角色均无权改)。
+3. `learningHub:errors.bookmarksSaveConflict / restoreDroppedCorrupted` 为预置占位零引用,留后续轮接线或按死键处理。
+4. essay「保存并关闭」草稿级持久化问题(2.5 遗留)本轮未消化,P8 恢复校验只管标签存活不管正文恢复,继续挂账。
+
+### 3.8 第 4 轮派遣预告(按用户原计划)
+
+> 共同禁令沿用:禁止编译/测试/npm/cargo/vitest;不碰 coordinator.rs、tool_loop、anki/qbank 服务层、移动 44px、finder 分桶;不 commit/push(父代理做);改码后行号重新对表。
+
+1. **划词收敛(P7)设计 + 实现**:PDF 划词双链路收敛主刀(同选区两条工具条、笔记落点分叉、翻译面板×2、制卡入口×2、聊天通道×3);插入点底稿 anchor-pdf §七(删 B/留 A 两方向精确锚点),验收不变量 5 条见 pdf-gap §四 S3;笔记落点分叉在本轮 P6c 收敛后需重新对表。
+2. **阅读器残项**:PDF 侧第 1 轮遗留(批注定位 S1 等静态子集中与划词收敛同文件的项顺带消化,避免二次开文件)。
+3. **导图 / 翻译作文 / 待办**:小应用域改动(smallapps-gap 静态子集:M1 导图剪贴板 images 白名单、M5 背诵导航 CSS.escape、F3 翻译分段修复、T6 待办 NL 词表;E1 essay save handler 已在第 2 轮消化,只补漏)。
+4. **EPUB**:阅读器 EPUB 支持面调研/落地(以现有 preview 持久化三态契约为基线,书签/进度通道直接复用 P5 成果)。
+5. **审阅**:对 1–4 逐行审(与 P5/P6 本轮契约的交互、行号对表更新)。
+6. **提交**:第 4 轮收尾由父代理统一 commit/push;台账员追加「第 4 轮」节。
+
+P3(handoff descriptor)与 P10(SOTA 子集)维持第 5 轮、P9(Exposé)维持第 8 轮,不提前。

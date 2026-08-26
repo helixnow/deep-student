@@ -183,21 +183,25 @@ export const notesDstuAdapter = {
    *
    * @param title 标题
    * @param content 内容
-   * @param tags 标签
+   * @param tags 标签（进 metadata.tags）
+   * @param folderId 目标目录 ID（进 metadata.folderId，与 importMarkdownContent 一致；
+   *                 null/缺省 = 根目录）。目录归属由后端 dstu_create 单事务落盘，
+   *                 不再需要创建后二次 moveItem。
    * @returns 新创建的笔记节点
    */
   async createNote(
     title: string,
     content: string = '',
-    tags: string[] = []
+    tags: string[] = [],
+    folderId?: string | null,
   ): Promise<Result<DstuNode, VfsError>> {
     const path = '/';
-    console.log(LOG_PREFIX, 'createNote via DSTU:', path);
+    console.log(LOG_PREFIX, 'createNote via DSTU:', path, 'folderId:', folderId ?? null);
     const result = await dstu.create(path, {
       type: 'note',
       name: title,
       content,
-      metadata: { tags },
+      metadata: folderId ? { tags, folderId } : { tags },
     });
     if (!result.ok) {
       reportError(result.error, 'Create note');

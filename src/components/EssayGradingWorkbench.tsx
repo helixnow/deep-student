@@ -33,6 +33,7 @@ import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
+import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -1514,16 +1515,17 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     showGlobalNotification('success', t('essay_grading:toast.suggestion_undone'));
   }, [isGrading, inputText, t]);
 
-  // ★ 批改结果「存为笔记」直达：整理题目/正文/批改结果为 Markdown，写入笔记库
+  // ★ 批改结果「存为笔记」：整理题目/正文/批改结果为 Markdown，改走共享
+  // saveTextAsNote 流程（先选目录，成功 toast 带「打开笔记」动作），与聊天消息 /
+  // PDF 划词的落点行为一致，不再 createNote 直落资源库根目录
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'essay-grading' });
+  const startSaveAsNote = saveAsNoteFlow.start;
   const handleSaveAsNote = useCallback(async () => {
     const safeResult = gradingResult ?? '';
     if (!safeResult) return;
     try {
-      // 动态导入：导出格式化器与笔记适配器都不在批改主路径上
-      const [{ formatGradingResultForExport }, { notesDstuAdapter }] = await Promise.all([
-        import('../essay-grading/exportFormatter'),
-        import('@/dstu/adapters/notesDstuAdapter'),
-      ]);
+      // 动态导入：导出格式化器不在批改主路径上
+      const { formatGradingResultForExport } = await import('../essay-grading/exportFormatter');
       const safeInput = inputText ?? '';
       const baseTitle =
         currentSession?.title?.trim() ||
@@ -1540,17 +1542,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
       content += `## ${t('essay_grading:result_section.title')}\n\n`;
       content += formatGradingResultForExport(safeResult, safeInput);
-      const result = await notesDstuAdapter.createNote(title, content);
-      if (result.ok) {
-        showGlobalNotification('success', t('essay_grading:result_section.saved_as_note'));
-      } else {
-        showGlobalNotification('error', result.error.toUserMessage());
-      }
+      // 打开目录选择器；确认后由共享流程写入并弹出结果 toast
+      startSaveAsNote({ content, title });
     } catch (error: unknown) {
       console.error('[EssayGrading] Save as note failed:', error);
       showGlobalNotification('error', t('essay_grading:errors.save_note_failed'));
     }
-  }, [gradingResult, inputText, topicText, currentSession?.title, currentRoundNumber, t]);
+  }, [gradingResult, inputText, topicText, currentSession?.title, currentRoundNumber, startSaveAsNote, t]);
 
   // ★ 生成卡片：把「原文 + 批改结果」交给既有制卡链路（CardForge 批次任务）
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
@@ -1670,6 +1668,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           applyRoundSelection(index);
         }}
       />
+
+      {/* 「存为笔记」目录选择器（窄屏走全屏子屏，见 useSaveAsNoteFlow） */}
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
     </div>
   );
 };
