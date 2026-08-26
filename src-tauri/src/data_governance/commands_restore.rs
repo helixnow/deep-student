@@ -85,6 +85,7 @@ fn publish_restore_keys_and_commit_cutover<F>(
     manager: &super::backup::BackupManager,
     manifest: &super::backup::BackupManifest,
     backup_subdir: &Path,
+    target_slot: &str,
     commit_cutover: F,
 ) -> Result<usize, String>
 where
@@ -92,16 +93,24 @@ where
 {
     let keys_required = manifest.key_policy == super::backup::BackupKeyPolicy::IncludedLocal;
     manager
-        .restore_crypto_keys_from_manifest_transactional(manifest, backup_subdir, move |restored| {
-            if keys_required && restored == 0 {
-                return Err(super::backup::BackupError::RestoreFailed(
-                    "备份声明包含加密密钥，但未恢复任何密钥文件".to_string(),
-                ));
-            }
-            commit_cutover().map_err(|error| {
-                super::backup::BackupError::RestoreFailed(format!("登记恢复切槽失败: {}", error))
-            })
-        })
+        .restore_crypto_keys_from_manifest_transactional(
+            manifest,
+            backup_subdir,
+            Some((manifest.backup_id.as_str(), target_slot)),
+            move |restored| {
+                if keys_required && restored == 0 {
+                    return Err(super::backup::BackupError::RestoreFailed(
+                        "备份声明包含加密密钥，但未恢复任何密钥文件".to_string(),
+                    ));
+                }
+                commit_cutover().map_err(|error| {
+                    super::backup::BackupError::RestoreFailed(format!(
+                        "登记恢复切槽失败: {}",
+                        error
+                    ))
+                })
+            },
+        )
         .map_err(|error| error.to_string())
 }
 
@@ -1086,23 +1095,30 @@ async fn execute_restore_with_progress(
     }
 
     // The candidate is fully restored, migrated, baselined and protected by
-    // the maintenance barrier. Keep the previous global crypto generation in
-    // the publication rollback directory until pending-slot registration is
-    // durable; a registration failure restores the old keys before returning.
-    let restored_crypto_keys =
-        match publish_restore_keys_and_commit_cutover(&manager, &manifest, &backup_subdir, || {
+    // the maintenance barrier. Key publication writes a durable journal first,
+    // keeps the previous global crypto generation in the fixed rollback
+    // directory until pending-slot registration is durable, and a registration
+    // failure restores the old keys before returning. A crash mid-publication
+    // is reconciled at next startup by matching the journal against the lease.
+    let restored_crypto_keys = match publish_restore_keys_and_commit_cutover(
+        &manager,
+        &manifest,
+        &backup_subdir,
+        inactive_slot.name(),
+        || {
             data_space_manager
                 .mark_restore_cutover_pending(inactive_slot, &backup_id)
                 .map_err(|error| error.to_string())
-        }) {
-            Ok(count) => count,
-            Err(error) => {
-                let _ = set_restore_cutover_maintenance(&app, false);
-                let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
-                job_ctx.fail(format!("提交恢复密钥与切槽失败: {}", error));
-                return;
-            }
-        };
+        },
+    ) {
+        Ok(count) => count,
+        Err(error) => {
+            let _ = set_restore_cutover_maintenance(&app, false);
+            let _ = std::fs::remove_file(inactive_dir.join(RESTORE_ACTIVATION_MARKER));
+            job_ctx.fail(format!("提交恢复密钥与切槽失败: {}", error));
+            return;
+        }
+    };
     if restored_crypto_keys > 0 {
         info!(
             "[data_governance] 加密密钥与恢复切槽原子提交完成: {} 个文件",
@@ -1287,6 +1303,7 @@ mod tests {
                 &manager,
                 &manifest,
                 &backup_subdir,
+                Slot::B.name(),
                 || {
                     failure_injected_after_publication = true;
                     assert_eq!(
@@ -1298,6 +1315,10 @@ mod tests {
                         new_seed
                     );
                     assert_eq!(data_space.active_slot(), Slot::A);
+                    // 密钥发布期间 journal 必须已持久化，供崩溃后的启动侧收敛。
+                    assert!(
+                        crate::crypto_publication::journal_path(app_data.path()).exists()
+                    );
                     Err("injected post-key-publication failure".to_string())
                 },
             )
@@ -1307,6 +1328,9 @@ mod tests {
             assert!(error.contains("已恢复旧密钥"), "{error}");
             assert_eq!(data_space.active_slot(), Slot::A);
             assert!(data_space.restore_cutover_pending().unwrap().is_none());
+            // 就地回滚成功后事务已解决：journal 与回滚目录不得残留。
+            assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+            assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
             if old_keys_exist {
                 assert_eq!(
                     fs::read(app_data.path().join(".master_key")).unwrap(),
