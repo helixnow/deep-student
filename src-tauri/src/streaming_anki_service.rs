@@ -1901,11 +1901,6 @@ impl StreamingAnkiService {
             .map(|(k, v)| (k.clone(), self.clean_template_placeholders(v)))
             .collect();
 
-        // enable_qa_pass=false 时不携带字段 QA 违规留痕（校验本身照跑，仅不落盘）
-        if !qa_pass_enabled {
-            cleaned_extra_fields.remove(QA_FLAGS_FIELD);
-        }
-
         // Cloze 模板兼容：若模板声明 Text 字段但当前缺失，则尝试补齐
         let needs_text_field = resolved_template_fields
             .as_ref()
@@ -1966,6 +1961,12 @@ impl StreamingAnkiService {
             crate::anki_qa_lint::duplicate_key_source(&lint_input),
         ));
         crate::anki_qa_lint::merge_flags(&mut cleaned_extra_fields, &lint_issues);
+
+        // enable_qa_pass=false 时校验仍照常执行，但字段规则与 lint 的 QA 留痕均不落盘。
+        // 必须在 merge_flags 之后移除，避免 lint 将 _qa_flags 写回。
+        if !qa_pass_enabled {
+            cleaned_extra_fields.remove(QA_FLAGS_FIELD);
+        }
 
         // 首次入库时固化生成原文，供后续用户编辑后挖掘 grounded critic 修正对。
         // entry-once helper 不覆盖模板/用户已有值；超限或序列化失败仅少一份快照，
@@ -4469,6 +4470,63 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn parse_and_save_card_honors_qa_pass_flag_persistence_contract() {
+        let (svc, _dir) = make_persisted_test_service();
+        let default_enabled = StructuredOutputOptions::from_options_json("{}").qa_pass_enabled();
+        assert!(default_enabled, "QA flag persistence must remain enabled by default");
+
+        for (label, qa_pass_enabled, expect_flags) in [
+            ("disabled", false, false),
+            ("enabled", true, true),
+            ("default", default_enabled, true),
+        ] {
+            let document_id = format!("doc-qa-pass-{label}-{}", uuid::Uuid::new_v4());
+            let task_id = format!("qa-pass-{label}-task");
+            crate::anki_qa_lint::release_document_tracker(&document_id);
+            seed_task(&svc.db, &task_id, &document_id, 0);
+
+            // front == back is a deterministic lint violation produced after field extraction.
+            let identical = format!("{label} identical content");
+            let payload = json!({ "front": identical, "back": identical }).to_string();
+            let card = svc
+                .parse_and_save_card(
+                    &payload,
+                    &task_id,
+                    &document_id,
+                    &fingerprint_options(),
+                    qa_pass_enabled,
+                    None,
+                )
+                .await
+                .expect("invalid card must still parse")
+                .expect("invalid card must still be saved");
+
+            assert_eq!(
+                card.extra_fields.contains_key(QA_FLAGS_FIELD),
+                expect_flags,
+                "{label} QA mode returned unexpected _qa_flags"
+            );
+            if expect_flags {
+                assert!(
+                    qa_flag_codes(&card)
+                        .iter()
+                        .any(|code| code == "front_back_identical"),
+                    "{label} QA mode must preserve lint flags"
+                );
+            }
+
+            let persisted = svc.db.get_cards_for_task(&task_id).expect("stored card");
+            assert_eq!(persisted.len(), 1);
+            assert_eq!(
+                persisted[0].extra_fields.contains_key(QA_FLAGS_FIELD),
+                expect_flags,
+                "{label} QA mode persisted unexpected _qa_flags"
+            );
+            crate::anki_qa_lint::release_document_tracker(&document_id);
+        }
     }
 
     // -------------------- 收尾 #4：首次入库原文快照 --------------------
