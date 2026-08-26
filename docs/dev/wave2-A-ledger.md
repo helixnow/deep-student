@@ -1389,3 +1389,99 @@ multi_variant / repo / types / persistence 全部不在 diff 中；本轮 diff
 - 本席未 commit/push/gh（遵嘱）；验证轮（cargo check → cargo test）
   仍为最高优先级欠账（承接 R6-8），首跑顺序建议：先 check 全仓，
   再按 R7-4 风险梯度从直打生产符号的四个文件跑起。
+
+---
+
+# Wave2-A 第 8 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 8 轮子代理 #10「台账员」（`gpt-5.6-sol-xhigh-fast`）
+- 日期：2026-08-26
+- 基线：`cursor/0824-wave2-agent-cache-a875` @ `c1cde7e3`
+- 性质：只追加章节。第 1–7 轮章节一字不动；本席未改任何产品/测试代码，
+  未执行编译、测试或格式化，未安装依赖或工具链，未 commit/push。
+- 依据：`ROUND-08-TASKS.md` 与九份 `r8-*.md` 全量读毕（六份环境阻断报告 +
+  `r8-assert-quality-{a,b,c}.md` 三份静态断言复核），以及本席独立执行的
+  `rustc --version`、`rustup toolchain list`、`git status` 静态取证。
+
+## R8-1. 实测入口被工具链版本门禁阻断
+
+本机实测为：
+
+```text
+rustc 1.83.0 (90b35a623 2024-11-26)
+1.83.0-x86_64-unknown-linux-gnu (active, default)
+```
+
+任务卡要求 `rustc 1.98.0`；本机仅安装 1.83.0，**未安装 1.98.0**。六个实测席位均在
+版本探针后立即停止：未安装、升级或切换工具链，未执行 `cargo test`、`cargo check`、
+`cargo build` 或 `rustfmt`，**未空转编译**。
+
+| # | 原定实测面 | 结果 |
+|---|---|---|
+| 1 | `tool_loop` 定向测试 | 未执行；rustc 1.83.0 阻断 |
+| 2 | `hooks` 定向测试 | 未执行；rustc 1.83.0 阻断 |
+| 3 | `helpers` 定向测试 | 未执行；rustc 1.83.0 阻断 |
+| 4 | `providers` 定向测试 | 未执行；rustc 1.83.0 阻断 |
+| 5 | `model_special_tokens` 定向测试 | 未执行；rustc 1.83.0 阻断 |
+| 6 | Rust `prefix_snapshot` + Vitest `TauriAdapter` | Rust 未执行；Vitest runner/依赖未物化，亦未执行 |
+
+#6 另确认 Node `v22.14.0` 存在，但 `node_modules/.bin/vitest` 与全局 `vitest` 均不存在。
+按任务约束未执行 `npm install` / `npm ci` / `npx`，因此 TauriAdapter 测试同样只能记为
+**未验证（依赖未安装）**，不能记为通过或失败。
+
+## R8-2. #7–#9 静态断言质量复核结论
+
+| 复核面 | 规模 | 静态裁决 |
+|---|---:|---|
+| fork | 8 tests / 80 assertions | **低**。核心 converge/generation/restart/advance 多为测试内副本，未调用生产 `converge_session_tool_face_prefix` 或真实 repo；生产实现大面积突变仍可假绿。 |
+| skill | 14 / 104 | **门禁中上、全链低**。终局用例直打生产 digest gate/插入原语，能抓门禁回归；但生产锚点写入、history 三消费点、repo 换代信号未贯通。前四条 FNV 副本也不验证生产 SHA-256。 |
+| llm_content crash | 13 / 35 | **低**。全部核心时序、持久化和重放由 fake/手写副本模拟；可作场景清单，不能验收生产阶段 4.6、SQLite UPDATE/读取或真实 history override。 |
+| provider prefix snapshot | 6 | **有回归价值但证据边界被夸大**。三家生产转换入口确有直调，选定 JSON 组件的确定性序列化可证；孤立段相等不等于完整 wire-byte 前缀，更不能推出缓存命中。除 Responses 的部分长度检查外，新增动态尾部被转换器丢弃时多条测试仍可绿。 |
+| Anthropic budget | 14 | **核心较强，留一个实质漏口**。生产守卫、3 槽边界、跨 tools→system 剥除顺序及保险断点交互均有有效断言；但调用方传入 `cache_control:null` 会形成 `Some(Value::Null)` 并可能原样序列化，现有“无 null”测试只覆盖守卫 `take()` 产生的 `None`。 |
+| `model_special_tokens` | 17 | **A-**。完整输出精确相等、正反例、跨 chunk、flush、Markdown、reset、大块语义覆盖较强；公共 helper 把 `process` 与 `flush` 输出合并后才断言，未锁正常文本及时流出，亦不锁 O(n²) 复杂度及完整 reset/分割矩阵。 |
+| `hooks` | 6 | **C**。默认链顺序、准入初值、灾难命令分类三条有生产锚点；另三条 fail-closed 测试只调用测试专用 `approval_manager_required`，真实 `ApprovalGateHook::before_tool` 即使错误放行仍可全绿，单条质量为 D。 |
+
+三份静态报告的共同结论：测试场景设计本身有价值，但“测试数量/断言数量”不能替代生产
+seam。当前 35 条 fork/skill/crash 测试尤其不能整体作为 fork/crash 落地正确性的验收证据；
+provider 20 条静态未见明显必红矛盾，也仍不构成执行通过。
+
+## R8-3. 静态复核给出的补强优先级
+
+1. **最高优先：hooks fail-closed 改打生产路径。** 直调
+   `ApprovalGateHook::before_tool`，覆盖 Low/Medium/High/unknown +
+   `approval_manager=None`，并用 counting executor 证明 Block 后零执行。
+2. **fork/crash 从副本迁到生产 seam。** fork 抽生产纯内核供 80 处既有 oracle
+   复用，并留真实 DB 的 load/converge/advance/restart 用例；crash 用测试 DB +
+   真实 early persist/repo/history 链，不再比较同源 String clone。
+3. **补 Anthropic null 输入反例。** tools/system 两路均覆盖调用方
+   `cache_control:null`/非法 marker，钉死最终请求无 JSON null。
+4. **收窄 provider prefix 宣称并补动态尾部存活断言。** 组件确定性不能写成 raw
+   wire prefix/cache hit 充分证据；每条转换路径应证明第二轮 assistant/tool/user
+   尾部仍在。
+5. **保留并加强有效面。** skill 补生产锚点→metadata/repo→history→signal
+   贯通；token filter 补逐次输出 trace、全 token 分割矩阵与 reset 状态矩阵。
+
+## R8-4. 已验证 / 未验证
+
+### 已验证（仅环境探针与静态读码）
+
+- `HEAD = c1cde7e3`；第 8 轮工作区只有 `ROUND-08-TASKS.md`、九份 `r8-*.md`
+  与本台账追加，产品/测试代码零改动。
+- 本机 rustc 实为 1.83.0；`rustup toolchain list` 仅列 1.83.0 active/default，
+  1.98.0 未安装。
+- 九份报告已全量读取；上表结论均来自静态调用边界、生产符号引用与断言 oracle
+  复核，不冒充运行时证据。
+
+### 未验证
+
+- 第 8 轮原定六组 Rust 定向测试全部零执行；TauriAdapter Vitest 亦零执行。
+- 自第 1 轮累计的 Rust/TS 测试债仍未获得任何本轮编译或运行证据；不能声明可编译，
+  不能声明任一测试通过或失败。
+- 三份断言复核未做 mutation test，其“典型错误仍可假绿”均为静态调用图推演。
+
+## R8-5. 收轮交接
+
+- 待父代理处理：本台账修改 + `ROUND-08-TASKS.md` + 九份 `r8-*.md`；本席未
+  commit/push。
+- 验证目标仍未达成：需先由环境提供项目要求的 Rust 1.98.0 与已物化的前端依赖，
+  再执行定向测试；执行前宜先按 R8-3 修复最高风险的脱靶断言。
