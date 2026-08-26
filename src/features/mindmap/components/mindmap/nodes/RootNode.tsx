@@ -57,6 +57,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   );
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
+  const markBlanksPresented = useMindMapStore(state => state.markBlanksPresented);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
   const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
@@ -204,6 +205,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
         isBold={data.style?.fontWeight === 'bold'}
         onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
+        onBlanksPresented={(rangeIndices) => markBlanksPresented(data.nodeId, rangeIndices)}
         onAddBlank={(range) => addBlankRange(data.nodeId, range)}
         onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
         onToggleBold={() =>

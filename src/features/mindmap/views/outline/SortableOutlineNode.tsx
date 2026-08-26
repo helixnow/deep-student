@@ -158,6 +158,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     mergeWithPrevious,
     mergeNextIntoCurrent,
     revealBlank,
+    markBlanksPresented,
     addBlankRange,
     removeBlankRange,
     removeNodeRef,
@@ -1222,6 +1223,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
             revealedIndices={revealedForNode}
             reciteMode={reciteMode}
             onRevealBlank={(rangeIndex) => revealBlank(node.id, rangeIndex)}
+            onBlanksPresented={(rangeIndices) => markBlanksPresented(node.id, rangeIndices)}
             onAddBlank={(range) => addBlankRange(node.id, range)}
             onRemoveBlank={(rangeIndex) => removeBlankRange(node.id, rangeIndex)}
             className={cn(

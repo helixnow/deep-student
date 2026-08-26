@@ -58,6 +58,8 @@ export interface NodeContentProps {
   /** 编辑中 Tab：提交正文后新建子节点并进入编辑 */
   onCommitAndCreateChild?: () => void;
   onRevealBlank?: (rangeIndex: number) => void;
+  /** 背诵会话统计：遮盖态挖空实际渲染进视口时上报（透传 BlankedText） */
+  onBlanksPresented?: (rangeIndices: number[]) => void;
   onAddBlank?: (range: BlankRange) => void;
   onRemoveBlank?: (rangeIndex: number) => void;
   onToggleBold?: () => void;
@@ -94,6 +96,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   onCommitAndCreateSibling,
   onCommitAndCreateChild,
   onRevealBlank,
+  onBlanksPresented,
   onAddBlank,
   onRemoveBlank,
   onToggleBold,
@@ -323,6 +326,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             allowSelectionActions={!reciteMode}
             isBold={isBold}
             onRevealBlank={onRevealBlank}
+            onBlanksPresented={onBlanksPresented}
             onAddBlank={text.length > 0 ? onAddBlank : undefined}
             onRemoveBlank={onRemoveBlank}
             onToggleBold={onToggleBold}
