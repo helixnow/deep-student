@@ -348,3 +348,17 @@
 - i18n：模板键展开 + 叶子必须非空字符串；actions.more 正式 alias；check-i18n 非 0 exit + check:i18n:strict。补 thinkingDepth.minimal 双语。
 - 修 TouchTarget JSDoc 中 `h-*/w-*` 提前截断注释（父代理注释白名单）。
 - 第 6 轮首位：owned-overlay 接线、pdf store remove 嵌 resourceId、lint 仍 warn、F3 伪元素逃生舱、真机空白。
+
+## 第 6 轮已落地（二检翻案）
+
+- P1：InputBarUI 登记 `registerOwnedOverlay` + 查询 `isOwnedOverlayTarget`，closest 作 fail-open；AppMenu 可选 `overlayOwnerId`（默认不登记）。
+- P2 残债：`pdfProcessingStore.remove` 提升到 sourceId 顶层。
+- F3：FinderQuickLook 关闭钮改 `coarseHitClassFor36`。
+- a11y：inertClamp 测试假红（注释含 `clamp(160px,`）已改写。
+- chrome 新观察：小屏划词「保存为笔记」子屏 hosted 但 screen 不匹配——登记第 7+ 轮。
+- lint 仍 warn（第 8 轮升 error）。真机仍空白。
+
+## 第 7 轮已落地（交互序列测试源码，只写不跑）
+
+- 新增矩阵：overlay pointer、back 全场景、keyboard inset 契约、safe-area 不变量、读屏顺序、附件三路径、命中补遗、i18n 动态键。
+- 原文 `docs/dev/wave2-C-r7/`。第 8 轮才允许 vitest。
