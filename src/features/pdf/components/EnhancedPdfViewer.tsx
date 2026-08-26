@@ -3273,12 +3273,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       )}
 
       {/* 阅读划词工具条（共享层 SelectionToolbar）：解释 / 翻译 / 保存为笔记 /
-          生成卡片 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。 */}
+          生成卡片 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。
+          注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID
+          （如 /我的教材/tb_xyz789），不是人类可读的文件名。 */}
       <PdfSelectionActions
         containerRef={containerRef}
         enabled={resolvedEnableTextSelection}
         isMobileLike={isMobileLike}
-        documentTitle={resourcePath ? resourcePath.split('/').pop() : undefined}
+        documentTitle={fileName}
       />
 
       {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
