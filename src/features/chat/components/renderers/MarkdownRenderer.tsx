@@ -838,6 +838,24 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             return <p {...props}>{children}</p>;
           },
           span: ({ children, node: _node, ...props }: any) => {
+            // Generative UI research reports mark non-interactive source labels with their
+            // literal citation id. Re-apply note semantics after rehype-sanitize strips `role`.
+            const researchCitationLabel = props['data-citation'];
+            if (
+              typeof researchCitationLabel === 'string' &&
+              researchCitationLabel !== 'true'
+            ) {
+              return (
+                <span
+                  {...props}
+                  role="note"
+                  aria-label={researchCitationLabel}
+                >
+                  {children}
+                </span>
+              );
+            }
+
             // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
             const isMindmapCitation = props['data-mindmap-citation'] === 'true';
             if (isMindmapCitation) {
