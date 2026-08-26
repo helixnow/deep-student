@@ -362,3 +362,42 @@
 
 - 新增矩阵：overlay pointer、back 全场景、keyboard inset 契约、safe-area 不变量、读屏顺序、附件三路径、命中补遗、i18n 动态键。
 - 原文 `docs/dev/wave2-C-r7/`。第 8 轮才允许 vitest。
+
+## 第 8 轮台账（input-bar 触控机制放量与散点收敛）
+
+### 机制放量与替换口径
+
+- HEAD `900e7a33`，前序提交 `73883668`。`eslint.config.js` 已将 `src/features/chat/components/input-bar/**` 的 `ds-components/coarse-touch-target` 由全局 `warn` 单目录放量为 `error`；全库其余目录仍为 `warn`，后置测试文件 override 仍为 `off`。这是「机制吃散点」，不是十路各自追加 44px 小修。
+- input-bar 内旧的 coarse `!min-h-11` / `!h-11` 与内联 `after:-inset`，统一替换为 `--touch-target-size`，或导入 `@/components/ui/coarseHit` 的既有档位；桌面视觉尺寸和动作语义不借机改写。分批明细见 `wave2-C-r8-attach-scatter.md`、`wave2-C-r8-chips-leftover.md`、`wave2-C-r8-bars-leftover.md`。
+
+### 已知残留
+
+- `AttachmentPanelBody.tsx` 仍有无 coarse 前缀的 `className="!h-11 !min-w-11"`（另有两处 `!h-11 !w-11`）；`InputBarUI.mobileSplitContract.source.test.ts` 仍以精确字面量钉住该契约，不误报为本轮 coarse 散点。
+- `ComposerToolbar.tsx` 注释仍含 `after:-inset` 字样；R7 命中契约依赖「注释文本与渲染字符串字面量分离」的扫描口径，不能把注释命中算作产品类名残留。
+
+### 已验证（仅本轮已有证据）
+
+- 静态证据：`73883668` 加入 input-bar 单目录 `error` override，并保持全局 `warn`、测试 `off`；`900e7a33` 将余下 bars/chips 散点改走 token 或 `coarseHit`。当前源码仍可定位上述两类有意残留。
+- 已发生的命令证据：`npm ci` 成功。
+- 仓内尚无本轮定向 vitest 报告文件：**定向 vitest 进行中，本台账不预支绿**。
+
+### 未验证与边界
+
+- 真机四项仍留白：键盘 inset、厂商 WebView、VoiceOver/TalkBack、44px 实机命中。
+- `vite build`、`cargo`、migrations 在本轮台账时点未跑；定向 vitest 也尚无可归档报告，四项门禁未齐。
+- 不标 Goal complete。sidebar 缺键继续按 v0.9.44 既有债归档，不算 0824 回归。
+
+### 第 9 轮首位欠账
+
+- 全库 `coarse-touch-target` 仍为 `warn`，尚未全局升 `error`。
+- Learning Hub「保存为笔记」子屏仍有 hosted `screen` 不匹配。
+- 真机验证仍空白。
+- 定向 vitest / `vite build` / `cargo` / migrations 四项门禁尚未齐套。
+
+### 第 8 轮实测补记（vitest / lint / typecheck 已回，只追加）
+
+- input-bar 族：`238 passed / 7 failed`。7 条全是测试未随机制更新（`cancelAttachmentProcessing` 包装、注释里的 `after:-inset`、`useDeferredOpen` 220ms 退场、owned-overlay 常量、`enumerateDevices` 注释），**不是产品回归**。明细 `wave2-C-r8-vitest-input-bar.md`。
+- mobile 契约：navigation 29 / keyboard 18 / shared 21 / mobile-uiux 140（过期 `after:-inset` 计数断言已改为 token 所有权）/ check-i18n 10 绿。`coarseTouchTargetRule.test.ts` 收集期环境失败（`import.meta.url` 非 file: scheme）。明细 `wave2-C-r8-vitest-mobile.md`。
+- lint input-bar：`coarse-touch-target` **0 error**；`version:generate && typecheck` 绿。明细 `wave2-C-r8-redlight.md`。
+- 本补记时点仍未跑：`vite build` / `cargo check --lib` / `check-migrations`。
+

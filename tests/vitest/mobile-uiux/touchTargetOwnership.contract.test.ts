@@ -3,16 +3,14 @@
  *
  * 关注「谁拥有这个命中区」而非「命中区有多大」：
  * - 每个触控控件的 testid 有且只有一个生产文件所有者（防拆分/重构时悄悄复制或丢失）；
- * - 水位环的命中区只有一个所有者（ComposerToolbar 环 span 与 ContextUsagePopover
- *   触发器不得同时挂 after:-inset 扩区——双重扩区是相邻偷点的根源之一）。
+ * - 水位环的命中区只有一个所有者（ContextUsagePopover 触发器使用共享尺寸
+ *   token，ComposerToolbar 内环保持纯视觉）。
  *
  * 刻意不做「数有多少处 min-h-11」的尺寸计数断言：计数断言在无关重构时误报、
  * 在真正回归（比如把 min-h-11 挂错元素）时又照样通过，属于假保护。
  * 真实命中尺寸归 Playwright CT / 设计走查。
  *
- * ⚠️ 预期状态：机制落地后应全部转绿。在基线 e90fb360 上，
- * 「single hit-area owner」一条预期为红（环与 popover 触发器各挂一个
- * [@media(pointer:coarse)]:after:-inset-2，合计双重）；其余所有权断言基线即绿。
+ * ⚠️ 预期状态：机制落地后应全部转绿。
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -67,8 +65,10 @@ const TOUCH_TARGET_OWNERS: Record<string, string[]> = {
   'ComposerPlusMenu.tsx': ['btn-toggle-attachments'],
 };
 
-const countOccurrences = (haystack: string, needle: string): number =>
-  haystack.split(needle).length - 1;
+const COARSE_MIN_H_TOKEN =
+  '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
+const COARSE_MIN_W_TOKEN =
+  '[@media(pointer:coarse)]:min-w-[var(--touch-target-size)]';
 
 describe('input-bar touch target ownership contract', () => {
   const productionSources = listProductionSources();
@@ -110,9 +110,7 @@ describe('input-bar touch target ownership contract', () => {
     }
   });
 
-  it('keeps a single hit-area owner for the context usage ring across files', () => {
-    // 基线红：ComposerToolbar 的环 span 与 ContextUsagePopover 的触发器 span
-    // 各挂一个 coarse after:-inset-2，命中区双重外扩、无单一所有者。
+  it('keeps a token-sized popover trigger as the single hit-area owner', () => {
     const toolbarSource = sourceByFile.get('ComposerToolbar.tsx')!;
     const popoverSource = sourceByFile.get('ContextUsagePopover.tsx')!;
 
@@ -126,15 +124,11 @@ describe('input-bar touch target ownership contract', () => {
     expect(triggerStart).toBeGreaterThan(-1);
     expect(triggerEnd).toBeGreaterThan(triggerStart);
 
-    const ringExpansions = countOccurrences(
-      toolbarSource.slice(ringFnStart, ringFnEnd),
-      'after:-inset'
-    );
-    const triggerExpansions = countOccurrences(
-      popoverSource.slice(triggerStart, triggerEnd),
-      'after:-inset'
-    );
-    expect(ringExpansions + triggerExpansions).toBeLessThanOrEqual(1);
+    const ringSlice = toolbarSource.slice(ringFnStart, ringFnEnd);
+    const triggerSlice = popoverSource.slice(triggerStart, triggerEnd);
+    expect(ringSlice).not.toContain('[@media(pointer:coarse)]');
+    expect(triggerSlice).toContain(COARSE_MIN_H_TOKEN);
+    expect(triggerSlice).toContain(COARSE_MIN_W_TOKEN);
   });
 
   it('keeps some coarse-pointer treatment in every owner file (mechanism-agnostic)', () => {
