@@ -496,3 +496,22 @@ P9(Exposé)维持第 8 轮、测试对齐(waitFor 化 + 划词契约改写)维�
 ### 6.4 第 7 轮预告
 
 交互级测试源码补强（只写不跑）：dirty 取消矩阵、冻结保护、跨断点焦点、书签交错、标签移动后恢复、保存部分成功、划词单链路、handoff 双向。
+
+## 第 7 轮（测试台账 · 只写不跑）
+
+### 7.1 执行口径
+
+- 本轮只产出测试源码与台账，**零产品代码改动**；未跑 vitest/tsc/编译（第 8 轮统一执行）；未 commit/push（父代理统一处置）。
+- 截稿时 git status：**9 个测试文件**（3 modified：`PdfSelectionActions.test.tsx` +44/-8、`scheduler.canSuspend.test.ts` +137、`saveTextAsNote.test.ts` +41；6 untracked：`deactivation.cancel-matrix.test.ts`、`handoffDescriptor.test.ts`、`handoff.legacyRoundtrip.test.ts`、`workbenchActiveSmallScreenContract.test.ts`、`tabRestoreRebind.source.test.ts`、`tabsPersistenceWriteThrough.test.ts`，合计 926 行）+ 本台账两份 docs。
+
+### 7.2 与 §6.4 八主题对照
+
+七主题落档：dirty 取消矩阵（cancel-matrix，reason×拒绝源全矩阵、零副作用）、冻结保护（canSuspend 追加多 dirty 穿插记账 + exam 单资源工作区四例）、跨断点焦点（workbenchActive 源码契约钉死 `workbenchMode && !isMobilePlatform()`）、标签移动后恢复（P8 源码契约 + 探测式行为测试双档）、保存部分成功（saveTextAsNoteAndNotify 端到端 landed/error 三例）、划词单链路（单 toolbar、locator 双通道静默、PREFILL detail 整形、反空转加固）、handoff 双向（纯函数层 264 行 + 往返/落盘 143 行）。**书签交错截稿无新档**（第 3 轮已入库的 bookmarkRace/交错用例兜底；后交档则追加记账）。
+
+### 7.3 红→绿预期
+
+除 `tabsPersistenceWriteThrough.test.ts` 当前形态**预期整组 skip**（探测式，待第 8 轮抽出 tabsPersistence 模块后自动激活）外，其余 8 文件全部为**预期直接绿的回归钉**（被测行为已在第 2–6 轮落地）；r1 遗留的「lazy 弹层致同步断言跑红」以 `vi.mock` 模块级拦截消化，未走 waitFor 化。逐文件预期、误红风险（字符串锚/mock 形状漂移）与第 8 轮排查次序见 `docs/dev/wave2-B-r7-tests.md`。
+
+### 7.4 第 8 轮预告
+
+统一执行本轮 9 文件 + 第 2–5 轮全部已写未跑测试文本；红灯按「先对锚点/mock 形状，再定性产品回归」排查；P9（Exposé）与真机项（beforeunload/窄窗 compact/handoff round-trip）同轮实测。

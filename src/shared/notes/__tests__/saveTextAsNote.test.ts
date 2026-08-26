@@ -8,6 +8,11 @@
  * 3. 目标目录创建失败且未落盘 → 整体 ok:false
  * 4. 后端兼容形态静默落根 → ok:true 但 landed:'root'，toast 明示实际位置
  * 5. 成功 toast 带「打开笔记」，点了走既有 DSTU_OPEN_NOTE 契约
+ *
+ * 第 7 轮追加（本轮只写不跑，未在本地执行）：把 landed folder/root 的 toast
+ * 文案分叉与「创建失败 → ok:false」再从 saveTextAsNoteAndNotify 端到端路径锁
+ * 一遍——单元层断言（notifySaveTextAsNoteResult）挡不住组合函数把 landed 或
+ * error 传丢的回归。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -260,5 +265,41 @@ describe('saveTextAsNoteAndNotify', () => {
     );
     expect(result.ok).toBe(true);
     expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- 第 7 轮追加：toast 文案分叉必须由实际落点（landed）驱动，端到端锁一遍 ----
+
+  it('toasts the folder wording end-to-end when the note is confirmed in the chosen folder', async () => {
+    const result = await saveTextAsNoteAndNotify({ content: '相对论要点', folderId: 'folder-9' });
+
+    expect(result).toEqual({ ok: true, noteId: 'note-1', title: '相对论要点', landed: 'folder' });
+    const [level, message] = showGlobalNotification.mock.calls[0];
+    expect(level).toBe('success');
+    expect(message).toBe('「相对论要点」已保存到所选目录');
+  });
+
+  it('toasts the root wording end-to-end when a compat backend drops the note at the root', async () => {
+    // 意图落 folder-9，但回查发现笔记不在目录里 → landed:'root'，文案不得谎称所选目录
+    getFolderItems.mockResolvedValue(ok([{ itemId: 'note-other', itemType: 'note', folderId: 'folder-9' }]));
+
+    const result = await saveTextAsNoteAndNotify({ content: '相对论要点', folderId: 'folder-9' });
+
+    expect(result).toEqual({ ok: true, noteId: 'note-1', title: '相对论要点', landed: 'root' });
+    const [level, message] = showGlobalNotification.mock.calls[0];
+    expect(level).toBe('success');
+    expect(message).toBe('「相对论要点」已保存到资源库根目录');
+    expect(message).not.toContain('所选目录');
+  });
+
+  it('returns ok:false and toasts an error (not success) when the create itself fails', async () => {
+    createNote.mockResolvedValue(err('目录不存在'));
+
+    const result = await saveTextAsNoteAndNotify({ content: '正文', folderId: 'folder-x' });
+
+    expect(result).toEqual({ ok: false, error: '目录不存在' });
+    expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+    const [level, message] = showGlobalNotification.mock.calls[0];
+    expect(level).toBe('error');
+    expect(message).toBe('目录不存在');
   });
 });

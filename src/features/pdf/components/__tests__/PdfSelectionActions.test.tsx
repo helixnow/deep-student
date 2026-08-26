@@ -11,6 +11,9 @@
  * 6. 添加到聊天 → 优先 onQuoteToChat locator 回调（资源引用 + page）；
  *    无回调或页码不可得时走 PREFILL_CHAT_INPUT 包装（带 sourceName），
  *    任何情况下都不派发裸 CHAT_V2_SET_INPUT
+ * 7. documentTitle 契约：宿主必须传人类可读 fileName（EnhancedPdfViewer 的
+ *    documentTitle={fileName} 由 pdfSelectionToolbar.source.test.ts 锁定），
+ *    这里验证它确实落到笔记来源行与 PREFILL 的 sourceName
  */
 
 import React from 'react';
@@ -143,6 +146,13 @@ describe('PdfSelectionActions mounting', () => {
       expect(button(label)).toBeEnabled();
     }
   });
+
+  it('mounts exactly one toolbar — learning actions live on a single surface', () => {
+    renderActions();
+    // 单工具条契约：学习动作只由这一条共享 SelectionToolbar 承载；
+    // viewer 内建 ds-highlight-menu 只留高亮选色 + 复制（由 source contract 锁定）
+    expect(screen.getAllByRole('toolbar', { hidden: true })).toHaveLength(1);
+  });
 });
 
 describe('save as note', () => {
@@ -224,13 +234,19 @@ describe('cards and chat handoff', () => {
     selectTextInsidePage();
 
     const prefills: CustomEvent[] = [];
-    const listener = (e: Event) => prefills.push(e as CustomEvent);
-    window.addEventListener('PREFILL_CHAT_INPUT', listener);
+    const rawInputs: CustomEvent[] = [];
+    const prefillListener = (e: Event) => prefills.push(e as CustomEvent);
+    const rawListener = (e: Event) => rawInputs.push(e as CustomEvent);
+    window.addEventListener('PREFILL_CHAT_INPUT', prefillListener);
+    window.addEventListener('CHAT_V2_SET_INPUT', rawListener);
     fireEvent.click(button('添加到聊天'));
-    window.removeEventListener('PREFILL_CHAT_INPUT', listener);
+    window.removeEventListener('PREFILL_CHAT_INPUT', prefillListener);
+    window.removeEventListener('CHAT_V2_SET_INPUT', rawListener);
 
     expect(onQuoteToChat).toHaveBeenCalledWith({ text: SELECTED, page: 3 });
+    // locator 回调命中时不再走任何事件通道（既无 PREFILL 也无裸通道）
     expect(prefills).toHaveLength(0);
+    expect(rawInputs).toHaveLength(0);
   });
 
   it('falls back to the PREFILL_CHAT_INPUT wrapper when no locator callback is wired', () => {
@@ -262,16 +278,28 @@ describe('cards and chat handoff', () => {
 
     expect(onQuoteToChat).not.toHaveBeenCalled();
     expect(events).toHaveLength(1);
+    // 降级不丢来源标注（documentTitle → sourceName），也不伪造页码
+    expect(events[0].detail).toEqual({
+      content: SELECTED,
+      autoSend: false,
+      sourceName: '量子力学讲义',
+    });
   });
 
   it('never dispatches the raw CHAT_V2_SET_INPUT channel from the reader', () => {
     renderActions();
-    const events: CustomEvent[] = [];
-    const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener('CHAT_V2_SET_INPUT', listener);
+    const rawInputs: CustomEvent[] = [];
+    const prefills: CustomEvent[] = [];
+    const rawListener = (e: Event) => rawInputs.push(e as CustomEvent);
+    const prefillListener = (e: Event) => prefills.push(e as CustomEvent);
+    window.addEventListener('CHAT_V2_SET_INPUT', rawListener);
+    window.addEventListener('PREFILL_CHAT_INPUT', prefillListener);
     fireEvent.click(button('添加到聊天'));
-    window.removeEventListener('CHAT_V2_SET_INPUT', listener);
+    window.removeEventListener('CHAT_V2_SET_INPUT', rawListener);
+    window.removeEventListener('PREFILL_CHAT_INPUT', prefillListener);
 
-    expect(events).toHaveLength(0);
+    // PREFILL 确实发出 → 点击走完了派发路径，「无裸通道」断言不是空转
+    expect(prefills).toHaveLength(1);
+    expect(rawInputs).toHaveLength(0);
   });
 });
