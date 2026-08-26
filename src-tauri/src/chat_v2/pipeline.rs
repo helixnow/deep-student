@@ -88,6 +88,10 @@ mod parallel_exec_tests;
 pub mod persistence;
 #[cfg(test)]
 mod prefix_snapshot_tests;
+#[cfg(test)]
+mod prefix_generation_fork_tests;
+#[cfg(test)]
+mod prefix_generation_restore_tests;
 pub mod prompt;
 pub mod retrieval;
 pub mod summary;

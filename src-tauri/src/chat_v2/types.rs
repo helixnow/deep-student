@@ -480,6 +480,45 @@ pub const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY: &str = "availableSkillsSnapsho
 /// 读写只 upsert 该键、绝不覆盖其他键。
 pub const MICROCOMPACT_ANCHOR_METADATA_KEY: &str = "microcompactAnchor";
 
+/// 🆕 P1 tools 前缀代际：session.metadata 中持久化当前代号 `g` 的键名。
+///
+/// 值为非负整数（JSON number）。缺键视为 `0`（旧会话兼容：升级前的会话
+/// 等同第 0 代，order 回退现有 `frozenToolSchemaOrder` 键）。代号仅在
+/// fan-out 收敛点检出真分叉（≥2 变体产生互异且无法 append-only 对齐的
+/// 尾部）时 +1；单变体纯前缀扩展永不切代。该键与 `frozenToolSchemaOrder`
+/// （权威基线 `B_g`）必须在同一 IMMEDIATE 事务内一起推进，避免"代号新、
+/// 序旧"的半提交状态。与 authority/plan 等键共存于同一 metadata 对象，
+/// 读写只 merge 该键、绝不覆盖其他键；写库不推 updated_at。
+pub const TOOL_FACE_PREFIX_GENERATION_METADATA_KEY: &str = "toolFacePrefixGeneration";
+
+/// 🆕 P1 tools schema 字节摘要：session.metadata 中持久化摘要的键名。
+///
+/// 值为字符串（已发出 tools schema 冻结字节的 digest，算法由冻结原语
+/// 决定）。缺键视为无摘要（旧会话 / 尚未启用字节冻结的窗口，解析为
+/// None）。摘要用于检测"同名工具 schema 字节变了"的静默漂移；单变体
+/// digest 变化只记录、不盲目切代（见 tool_loop 冻结原语约定）。与
+/// authority/plan 等键共存于同一 metadata 对象，读写只 merge 该键、
+/// 绝不覆盖其他键；写库不推 updated_at。
+pub const TOOL_SCHEMA_DIGEST_METADATA_KEY: &str = "toolSchemaDigest";
+
+/// 🆕 P1 tools 前缀代际快照：`(g, B_g, digest)` 三元组的统一形态。
+///
+/// - `generation`：当前代号 `g`，持久化缺键时回退 0；
+/// - `order`：该代的权威 append-only 工具名基线 `B_g`（持久化仍落在
+///   `frozenToolSchemaOrder` 键，代际键不重复存序，保持旧读路径兼容）;
+/// - `schema_digest`：可选的 schema 冻结字节摘要（`toolSchemaDigest` 键）。
+///
+/// 兼作 `VariantMeta::tool_face_prefix` 的重放快照：记录该变体当轮实际
+/// 发出的前缀状态，重放时据此逐字节还原 tools 段。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolFacePrefixSnapshot {
+    pub generation: u64,
+    pub order: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_digest: Option<String>,
+}
+
 /// Session-level Ask / Plan / Craft authority mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1257,6 +1296,11 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+    /// 该变体当轮实际发出的 tools 前缀快照（代际 + append-only 序 +
+    /// 可选 schema 字节摘要）。会话级 metadata 只存收敛后的终态，重放
+    /// 单个变体的真实字节要靠这里逐字节还原。老数据缺字段解析为 None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_face_prefix: Option<ToolFacePrefixSnapshot>,
 }
 
 /// Canonical, persistence-safe message content.
