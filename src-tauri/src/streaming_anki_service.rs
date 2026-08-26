@@ -1481,7 +1481,10 @@ impl StreamingAnkiService {
                         );
                         if let Ok(error_card) = self
                             .create_error_card(
-                                &format!("卡片在流结束时于字符串中途被截断，内容不完整: {}", payload),
+                                &format!(
+                                    "卡片在流结束时于字符串中途被截断，内容不完整: {}",
+                                    payload
+                                ),
                                 task_id,
                             )
                             .await
