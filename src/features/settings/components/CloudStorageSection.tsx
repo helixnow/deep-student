@@ -1101,12 +1101,19 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       let importedBackupId: string;
       let importSummary: BackupJobSummary;
       try {
-        const zipArgs = resolveCloudZipEncryptionArgs();
+        // cloud_sync_download has already rebuilt secrets from secure-store SSOT and
+        // used that password to decrypt the outer DSBK object. Never forward the
+        // still-populated React input as an explicit inner-ZIP password here:
+        // v0.9.44 cloud backups decrypt to a legacy ZIP without
+        // portable_secrets.dsbk, and that ZIP correctly rejects an explicit
+        // password as inapplicable. Requesting the stored password lets the backend
+        // apply it only when an 0824 full-fidelity ZIP actually has a sealed inner
+        // payload; legacy ZIPs ignore it.
         const importJob = await DataGovernanceApi.importZip(
           downloadResult.localPath,
           undefined,
-          zipArgs.encryptionPassword,
-          zipArgs.useStoredCloudEncryptionPassword,
+          undefined,
+          credentialStatus.encryptionPasswordConfigured || undefined,
         );
         importSummary = await waitForGovernanceJob(importJob.job_id, 'import');
         importedBackupId = resolveBackupId(importSummary) ?? '';
@@ -1178,12 +1185,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
+    credentialStatus.encryptionPasswordConfigured,
     enterMaintenanceMode,
     exitMaintenanceMode,
     localizeCloudError,
     requireMaintenanceRestart,
     resolveBackupId,
-    resolveCloudZipEncryptionArgs,
     setStage,
     syncStatus?.latestVersion,
     t,

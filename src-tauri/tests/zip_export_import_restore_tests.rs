@@ -26,13 +26,14 @@
 
 #![cfg(feature = "data_governance")]
 
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use deep_student_lib::data_governance::backup::{
     export_backup_to_zip,
     zip_export::{
         import_backup_from_zip, import_backup_from_zip_with_password,
-        zip_contains_encrypted_secrets,
+        zip_contains_encrypted_secrets, ENCRYPTED_SECRETS_ENTRY,
     },
     BackupKeyPolicy, BackupManager, BackupManifest, SnapshotKind, ZipExportOptions,
 };
@@ -602,6 +603,120 @@ fn zip_contains_sealed_secrets(zip_path: &Path) -> bool {
             .map(|entry| entry.name() == "portable_secrets.dsbk")
             .unwrap_or(false)
     })
+}
+
+/// 模拟旧版本已用短口令写出的同格式密封 ZIP：0824 导出端仍应拒绝新设短口令，
+/// 因此测试先用合规口令生成生产 ZIP，再只把 DSBK 密封载荷换成短口令加密。
+fn rewrap_sealed_payload_password(
+    source_zip: &Path,
+    target_zip: &Path,
+    old_password: &str,
+    new_password: &str,
+) {
+    let source = std::fs::File::open(source_zip).expect("open source sealed zip");
+    let mut archive = zip::ZipArchive::new(source).expect("parse source sealed zip");
+    let target = std::fs::File::create(target_zip).expect("create rewrapped zip");
+    let mut writer = zip::ZipWriter::new(target);
+    let scratch = TempDir::new().expect("rewrap scratch");
+
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).expect("read source zip entry");
+        let name = entry.name().to_string();
+        let options =
+            zip::write::FileOptions::default().compression_method(entry.compression());
+        if entry.is_dir() {
+            writer
+                .add_directory(name, options)
+                .expect("copy zip directory");
+            continue;
+        }
+
+        writer
+            .start_file(&name, options)
+            .expect("start copied zip file");
+        if name != ENCRYPTED_SECRETS_ENTRY {
+            std::io::copy(&mut entry, &mut writer).expect("copy regular zip entry");
+            continue;
+        }
+
+        let old_payload = scratch.path().join("old.dsbk");
+        let inner_plain = scratch.path().join("inner.zip");
+        let new_payload = scratch.path().join("short-password.dsbk");
+        let mut old_payload_file =
+            std::fs::File::create(&old_payload).expect("create old payload");
+        std::io::copy(&mut entry, &mut old_payload_file).expect("extract old payload");
+        old_payload_file.flush().expect("flush old payload");
+        deep_student_lib::crypto::backup_crypto::decrypt_backup_file(
+            &old_payload,
+            &inner_plain,
+            old_password,
+        )
+        .expect("decrypt original payload");
+        deep_student_lib::crypto::backup_crypto::encrypt_backup_file(
+            &inner_plain,
+            &new_payload,
+            new_password,
+        )
+        .expect("encrypt payload with legacy short password");
+        let mut new_payload_file =
+            std::fs::File::open(new_payload).expect("open rewrapped payload");
+        std::io::copy(&mut new_payload_file, &mut writer).expect("write rewrapped payload");
+    }
+
+    writer.finish().expect("finish rewrapped zip");
+}
+
+/// 解密兼容必须落到真实 DSBK + ZIP 解封链，而不只是移除前端文案/校验。
+#[test]
+fn encrypted_zip_import_really_accepts_a_legacy_short_password() {
+    const LEGACY_SHORT_PASSWORD: &str = "short6";
+
+    let (_source_guard, backup_dir, manifest) = create_full_backup();
+    let export_root = TempDir::new().expect("export root");
+    let current_zip = export_root.path().join("current-password.zip");
+    export_backup_to_zip(
+        &backup_dir.join(&manifest.backup_id),
+        &ZipExportOptions {
+            output_path: Some(current_zip.clone()),
+            encryption_password: Some(ENCRYPTION_PASSWORD.to_string()),
+            ..Default::default()
+        },
+    )
+    .expect("create production sealed zip");
+
+    let legacy_zip = export_root.path().join("legacy-short-password.zip");
+    rewrap_sealed_payload_password(
+        &current_zip,
+        &legacy_zip,
+        ENCRYPTION_PASSWORD,
+        LEGACY_SHORT_PASSWORD,
+    );
+    assert!(
+        zip_contains_encrypted_secrets(&legacy_zip).expect("peek legacy sealed zip"),
+        "rewrapped fixture must retain portable_secrets.dsbk"
+    );
+
+    let resolved_password = resolve_import_zip_password(
+        Some(LEGACY_SHORT_PASSWORD.to_string()),
+        Some(false),
+        None,
+        true,
+    )
+    .expect("legacy short password must reach the unseal layer");
+    let import_root = TempDir::new().expect("legacy short import root");
+    let imported_dir = import_root.path().join("imported");
+    import_backup_from_zip_with_password(
+        &legacy_zip,
+        &imported_dir,
+        resolved_password.as_deref(),
+    )
+    .expect("real DSBK unseal must accept the legacy short password");
+
+    let imported = BackupManifest::load_from_file(&imported_dir.join("manifest.json"))
+        .expect("load unsealed manifest");
+    imported
+        .validate_for_slot_restore()
+        .expect("short-password import must recover a restorable full snapshot");
 }
 
 /// stored-password 解析接到现有 ZIP 导出模式：未请求 stored→便携；开关无密码→拒绝；开关+stored→加密全保真；显式覆盖 stored。
