@@ -3255,7 +3255,7 @@ pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdap
         "openai_responses" => Box::new(crate::providers::OpenAIResponsesAdapter::new()),
         "anthropic_messages" => Box::new(crate::providers::AnthropicAdapter::new()),
         "google_generate_content" => Box::new(crate::providers::GeminiAdapter::new()),
-        _ => Box::new(crate::providers::OpenAIAdapter),
+        _ => Box::new(crate::providers::OpenAIAdapter::new()),
     }
 }
 

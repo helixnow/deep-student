@@ -1686,7 +1686,7 @@ mod tests {
                 .any(|m| m.model.contains("claude-haiku-5") || m.id.contains("claude-haiku-5")),
             "fabricated `claude-haiku-5` must not enter the builtin catalog"
         );
-        // 同理 mythos-5 仅存在于适配层代际判定，不应作为内置模型下发
+        // Mythos 5 是 restricted 限量型号：适配层必须支持，但不进入大众内置目录。
         assert!(!BUILTIN_MODELS.iter().any(|m| m.model.contains("mythos")));
         // Haiku 线内置的就是 4.5
         assert!(BUILTIN_MODELS.iter().any(|m| m.model == "claude-haiku-4-5"));
