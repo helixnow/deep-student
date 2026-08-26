@@ -445,6 +445,39 @@ pub trait CloudStorage: Send + Sync {
         ))
     }
 
+    /// [R5-prove-cost] 本后端是否支持对象前缀读取（[`Self::get_prefix`]）。
+    ///
+    /// 返回 `true` 的后端必须实现 `get_prefix`；调用方（如上传前的口令首块
+    /// 试解）只在此方法返回 `true` 时走前缀读取，否则回退整文件下载路径
+    /// （诚实但更贵，行为与历史一致）。
+    fn supports_prefix_read(&self) -> bool {
+        false
+    }
+
+    /// [R5-prove-cost] 读取对象前 `prefix_len` 字节（部分读取，如 DSBK v2
+    /// 首块试解只需「头 + 首个密文块」）。
+    ///
+    /// 契约（实现方必须全部满足）：
+    /// - `Ok(Some(bytes))`：`bytes` 是对象的**真实前缀**，长度 =
+    ///   `min(prefix_len, 对象总长)`；禁止返回错位/拼接/截断冒充的字节；
+    /// - 对象不存在 → `Ok(None)`；
+    /// - 通过 HTTP `Range: bytes=0-N` 实现时，若服务端忽略 Range 返回整对象
+    ///   （HTTP 200），实现必须在收满 `prefix_len` 字节后**停止消费响应体并
+    ///   丢弃连接**，不得把整个对象读进内存、也不得读完再截断；
+    /// - `prefix_len == 0` → 直接返回空前缀，不发起网络请求。
+    ///
+    /// 默认实现 fail-closed：未声明能力（`supports_prefix_read` = false）的
+    /// 后端明确报错，绝不静默整包下载冒充前缀读取——调用方应先检查能力位，
+    /// 不支持时自行走整文件路径。
+    async fn get_prefix(&self, key: &str, prefix_len: u64) -> Result<Option<Vec<u8>>> {
+        let _ = (key, prefix_len);
+        Err(AppError::configuration(format!(
+            "云存储后端 {} 不支持对象前缀读取（get_prefix）；调用方应先检查 \
+             supports_prefix_read，不支持时回退整文件下载路径",
+            self.provider_name()
+        )))
+    }
+
     /// 流式下载文件到本地（SOTA 特性）
     ///
     /// # Arguments
@@ -659,6 +692,25 @@ mod tests {
         async fn stat(&self, _key: &str) -> Result<Option<FileInfo>> {
             Ok(None)
         }
+    }
+
+    /// [R5-prove-cost] 未声明前缀读取能力的后端：能力位默认 false，
+    /// `get_prefix` 默认实现必须 fail-closed，绝不静默整包下载冒充前缀。
+    #[tokio::test]
+    async fn default_get_prefix_fails_closed() {
+        let storage = FixedBodyStorage {
+            body: vec![7u8; 512],
+            exists: true,
+        };
+        assert!(!storage.supports_prefix_read(), "默认必须不声明能力");
+        let err = storage
+            .get_prefix("backups/x.zip", 64)
+            .await
+            .expect_err("默认 get_prefix 必须明确报错");
+        assert!(
+            err.to_string().contains("不支持对象前缀读取"),
+            "错误应指明能力缺失与回退方向: {err}"
+        );
     }
 
     #[tokio::test]

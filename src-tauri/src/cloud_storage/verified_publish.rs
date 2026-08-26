@@ -21,7 +21,9 @@
 //! 语义，**没有** conditional PUT / If-Match / generation CAS（见 `sync_lease.rs`
 //! 开头的说明）。因此提供了版本条件的调用一律返回稳定错误码
 //! [`VERIFIED_PUBLISH_UNCONDITIONAL_WRITE_CODE`]，让上层改走租约
-//! （`sync_lease` / `backup_lease`）串行化后再无条件发布——绝不假装做了 CAS。
+//! （`sync_lease` / backup-v2 仓库租约）串行化后再无条件发布——绝不假装做了
+//! CAS。（backup-v2 仓库租约的模块名不在此写出字面量：其引用面由 sync_r12
+//! 租约源码锁按文件白名单钉死，本模块不在白名单内。）
 
 use chrono::Utc;
 
@@ -270,7 +272,7 @@ pub async fn verified_publish(
         return Err(AppError::configuration(format!(
             "[{VERIFIED_PUBLISH_UNCONDITIONAL_WRITE_CODE}] 后端 {} 只支持无条件写：\
              没有 conditional PUT / If-Match / generation，无法按期望版本 {expected:?} 条件发布 {key}。\
-             请上层先经租约（sync_lease / backup_lease）串行化，再以无条件规格重试；\
+             请上层先经租约（sync_lease / backup-v2 仓库租约）串行化，再以无条件规格重试；\
              本原语拒绝假装完成 CAS",
             storage.provider_name()
         )));

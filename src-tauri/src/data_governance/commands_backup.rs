@@ -55,6 +55,23 @@ pub(super) fn get_backup_dir(app_data_dir: &Path) -> PathBuf {
 const RECOVERY_KIND_DISASTER: &str = "disaster_recovery";
 const RECOVERY_KIND_PARTIAL_ARCHIVE: &str = "partial_archive";
 
+/// [R5-i18n] 备份目录不存在的稳定错误码。
+///
+/// 用户可见错误按「`[CODE] 中文诊断`」惯例携带稳定码（对齐
+/// `ATOMIC_RESTORE_UNAVAILABLE_CODE` 的用法）：前端
+/// `localizeCloudError.ts` 按 code 换本地化文案，中文诊断只作日志与兜底。
+pub const BACKUP_DIR_MISSING_CODE: &str = "E_BACKUP_DIR_MISSING";
+
+/// [R5-i18n] 恢复磁盘预算 checked arithmetic 溢出的稳定错误码。
+pub const RESTORE_DISK_BUDGET_OVERFLOW_CODE: &str = "E_RESTORE_DISK_BUDGET_OVERFLOW";
+
+/// 备份目录不存在时的统一用户可见错误（带稳定码）。
+pub(super) fn backup_dir_missing_error() -> String {
+    format!(
+        "[{BACKUP_DIR_MISSING_CODE}] 备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置"
+    )
+}
+
 fn classify_recovery_kind(manifest: &super::backup::BackupManifest) -> (&'static str, bool) {
     if manifest.validate_for_slot_restore().is_ok() {
         (RECOVERY_KIND_DISASTER, true)
@@ -72,16 +89,16 @@ where
     I: IntoIterator<Item = u64>,
 {
     let files_size = file_sizes.into_iter().try_fold(0u64, |total, size| {
-        total
-            .checked_add(size)
-            .ok_or_else(|| "恢复备份文件大小统计溢出，已拒绝继续".to_string())
+        total.checked_add(size).ok_or_else(|| {
+            format!("[{RESTORE_DISK_BUDGET_OVERFLOW_CODE}] 恢复备份文件大小统计溢出，已拒绝继续")
+        })
     })?;
-    let backup_size = files_size
-        .checked_add(asset_size)
-        .ok_or_else(|| "恢复备份总大小统计溢出，已拒绝继续".to_string())?;
-    let required_bytes = backup_size
-        .checked_mul(2)
-        .ok_or_else(|| "恢复磁盘预算计算溢出，已拒绝继续".to_string())?;
+    let backup_size = files_size.checked_add(asset_size).ok_or_else(|| {
+        format!("[{RESTORE_DISK_BUDGET_OVERFLOW_CODE}] 恢复备份总大小统计溢出，已拒绝继续")
+    })?;
+    let required_bytes = backup_size.checked_mul(2).ok_or_else(|| {
+        format!("[{RESTORE_DISK_BUDGET_OVERFLOW_CODE}] 恢复磁盘预算计算溢出，已拒绝继续")
+    })?;
     Ok((backup_size, required_bytes))
 }
 
@@ -1269,7 +1286,7 @@ pub async fn data_governance_delete_backup(
     let backup_dir = get_backup_dir(&app_data_dir);
 
     if !backup_dir.exists() {
-        return Err("备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置".to_string());
+        return Err(backup_dir_missing_error());
     }
 
     let manager = BackupManager::new(backup_dir.clone());
@@ -1315,7 +1332,7 @@ pub async fn data_governance_check_disk_space_for_restore(
     let backup_dir = get_backup_dir(&app_data_dir);
 
     if !backup_dir.exists() {
-        return Err("备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置".to_string());
+        return Err(backup_dir_missing_error());
     }
 
     // 读取备份清单以获取备份大小
@@ -1336,8 +1353,13 @@ pub async fn data_governance_check_disk_space_for_restore(
 
     // 必须查询实际恢复目标槽所在卷。目标槽或 DataSpaceManager 不可用时无法
     // 证明查询的是正确卷，按 fail-close 处理，禁止回退到根卷或当前工作目录。
-    let data_space = crate::data_space::get_data_space_manager()
-        .ok_or_else(|| "数据空间管理器未初始化，无法确定恢复目标卷".to_string())?;
+    // 复用 A/B 管理器不可用的既有稳定码：用户侧补救动作一致（重启应用后重试）。
+    let data_space = crate::data_space::get_data_space_manager().ok_or_else(|| {
+        format!(
+            "[{}] 数据空间管理器未初始化，无法确定恢复目标卷",
+            super::backup::ATOMIC_RESTORE_UNAVAILABLE_CODE
+        )
+    })?;
     let restore_target = data_space.inactive_dir();
     if !restore_target.is_dir() {
         return Err(format!(
@@ -1390,7 +1412,7 @@ pub async fn data_governance_verify_backup(
     let backup_dir = get_backup_dir(&app_data_dir);
 
     if !backup_dir.exists() {
-        return Err("备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置".to_string());
+        return Err(backup_dir_missing_error());
     }
 
     let manager = BackupManager::new(backup_dir.clone());
@@ -1479,10 +1501,10 @@ pub async fn data_governance_auto_verify_latest_backup(
     let backup_dir = get_backup_dir(&app_data_dir);
 
     if !backup_dir.exists() {
-        return Err(
-            "备份目录不存在，无法执行自动验证。请前往「设置 > 数据治理 > 备份」检查备份目录配置"
-                .to_string(),
-        );
+        return Err(format!(
+            "[{BACKUP_DIR_MISSING_CODE}] 备份目录不存在，无法执行自动验证。\
+             请前往「设置 > 数据治理 > 备份」检查备份目录配置"
+        ));
     }
 
     let manager = BackupManager::new(backup_dir.clone());

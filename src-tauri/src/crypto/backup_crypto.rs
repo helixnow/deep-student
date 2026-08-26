@@ -57,6 +57,72 @@ fn ensure_kdf_params_within_app_limits(m_cost: u32, t_cost: u32, p_cost: u32) ->
     Ok(())
 }
 
+// =====================================================================================
+// [Wave2-R5-kdf] 新设口令 / 新写入面的平台相关 KDF 内存封顶
+// =====================================================================================
+//
+// 上面的 `KDF_MAX_*` 是**解密与存量 verifier 复算**的全局上限（1 GiB），红线是
+// 只许放宽、不许收紧——收紧会拒收自家旧备份/旧校验子。本节引入的是另一条
+// **方向相反、作用面更窄**的封顶：只作用于「本机即将新产生的写入面」（新建
+// 加密会话、新建密码校验子），目的是防止移动端（Android/iOS，物理内存与
+// 前台内存预算远小于桌面）被高 m_cost 参数拖进 OOM/被系统杀进程。
+//
+// 语义边界（有意为之，勿混淆两组上限）：
+// - 移动端新写入面封顶 256 MiB（这是**上限封顶**，不是默认值；默认写入参数
+//   仍是 `DEFAULT_M_COST` = 64 MiB / t=3 / p=4，本轮未做任何改动）；
+// - 桌面端新写入面维持与全局上限一致（1 GiB），即行为无变化，仅文档化；
+// - **解密路径与存量 verifier 复算完全不经过本封顶**：容器头/校验子登记的
+//   参数只要在全局 `KDF_MAX_*` 内就照常派生。桌面端写出的 512 MiB 备份在
+//   移动端依旧可以解密（慢，但不能打不开）；
+// - 全局常量 `KDF_MAX_M_COST_KIB` 等被 migration-lock/协议锁单测锁定
+//   （`sync_r10_protocol_locks.rs` / `sync_r10_verifier.rs`），本节不改其值。
+
+/// 移动端（Android/iOS）**新设口令 / 新加密写入面**的 Argon2id 内存封顶
+/// （KiB）：256 MiB。上限封顶，不是默认值；解密/存量路径不使用本常量。
+pub const KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE: u32 = 256 * 1024;
+
+/// 新设口令（新建加密会话 / 新建密码校验子）允许的最大 Argon2id m_cost（KiB），
+/// 按运行平台分支：
+///
+/// - Android / iOS：[`KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE`]（256 MiB 封顶）；
+/// - 桌面（其余平台）：维持全局上限 [`KDF_MAX_M_COST_KIB`]（1 GiB），行为不变。
+///
+/// 返回值恒 `<= KDF_MAX_M_COST_KIB`：新写入面封顶只能比全局解密上限更严或
+/// 相等，绝不放宽解密侧的既有判定。
+pub fn kdf_max_m_cost_for_new_password() -> u32 {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE
+    } else {
+        KDF_MAX_M_COST_KIB
+    }
+}
+
+/// 新写入面参数超出本平台封顶时的用户级错误文案。
+///
+/// 与 [`KDF_PARAMS_REJECTED_MESSAGE`]（解密/校验路径的「数据异常」文案）刻意
+/// 区分：这里拒绝的是**本机主动发起的新加密参数**，责任在参数选择而非云端数据。
+pub const KDF_NEW_PASSWORD_PARAMS_REJECTED_MESSAGE: &str =
+    "所选加密强度参数超出本设备可安全承受的内存范围，已停止本次加密。\
+     请使用默认加密参数（无需任何设置），或降低自定义参数后重试；\
+     已有的加密数据不受影响，仍可正常解密。";
+
+/// 校验**新写入面**（新建加密会话 / 新建校验子）的 KDF 参数：
+/// 先过全局上限（超全局按「参数异常」拒绝），再过平台相关的新设封顶。
+///
+/// 解密与存量 verifier 复算**不得**调用本函数——它们只受
+/// [`ensure_kdf_params_within_app_limits`]（经 [`derive_key`]）约束。
+fn ensure_kdf_params_allowed_for_new_encryption(
+    m_cost: u32,
+    t_cost: u32,
+    p_cost: u32,
+) -> Result<()> {
+    ensure_kdf_params_within_app_limits(m_cost, t_cost, p_cost)?;
+    if m_cost > kdf_max_m_cost_for_new_password() {
+        return Err(anyhow!("{KDF_NEW_PASSWORD_PARAMS_REJECTED_MESSAGE}"));
+    }
+    Ok(())
+}
+
 /// 流式（分块）加密容器版本。`encrypt_backup_file` 写出此版本；
 /// `decrypt_backup_file` 同时兼容读取 v1（整文件单块）。
 const BACKUP_CRYPTO_VERSION_STREAM: u8 = 2;
@@ -526,6 +592,154 @@ pub fn is_encrypted_backup(data: &[u8]) -> bool {
 }
 
 // =====================================================================================
+// [R5-prove-cost] DSBK v2 首块试解（只读加法 API，供上传前口令证明降本）
+// =====================================================================================
+//
+// v2 分块容器的每个密文块都带独立 AES-256-GCM tag，且「是否最后一块」并入
+// nonce（[`stream_chunk_nonce`] 的 final_flag）：只要知道对象总长，就能确定
+// 首块的 nonce 与边界，用「头 + 首个密文块」在不下载其余分块、不解密全文、
+// 不落任何明文的前提下证明口令与该对象一致——错口令在首块 tag 校验即失败
+//（一次 Argon2 派生 + 一个分块的 AES-GCM，秒级）。
+//
+// v1 整文件单块容器只有一个覆盖全文的 tag，无法部分试解：调用方须回退
+// 整文件下载 + 整文件解密路径（[`decrypt_backup_file`]，存量 v1 备份不受影响）。
+//
+// 本节只做加法：不改动任何既有加密/解密函数，不改默认 Argon2 参数
+//（`DEFAULT_M_COST`/`DEFAULT_T_COST`/`DEFAULT_P_COST`），不收紧 KDF 应用级
+// 上限——派生仍统一走 [`derive_key`]，超限参数在派生开始前照旧被拒。
+
+/// 首块试解计划：调用方据此决定要读取多少前缀字节、走哪条路径。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirstChunkPlan {
+    /// v2 分块容器：读取对象前 `prefix_len` 字节（头 + 首个密文块）即可试解。
+    StreamV2 {
+        /// 覆盖「v2 头 + 首个密文块」所需的对象前缀总长（≤ 对象总长）。
+        prefix_len: u64,
+    },
+    /// v1 整文件单块容器：无法部分试解，须整文件下载 + 整文件解密。
+    LegacyV1WholeFile,
+}
+
+/// 首块试解的投机前缀长度：v2 头 + 默认 1 MiB 分块 + GCM tag（≈ 1 MiB + 60 B）。
+///
+/// 本应用写出的 v2 容器分块恒为 1 MiB（`STREAM_PLAINTEXT_CHUNK`，写入面从未
+/// 改过），一次前缀读取即可覆盖首块；头部声明其他分块大小（外部工具写入）时，
+/// 调用方按 [`plan_first_chunk_trial`] 给出的精确长度补读一次。
+pub fn dsbk_first_chunk_speculative_prefix_len(object_len: u64) -> u64 {
+    object_len.min((DSBK_V2_HEADER_LEN + STREAM_PLAINTEXT_CHUNK + DSBK_GCM_TAG_LEN) as u64)
+}
+
+/// 由对象头部字节与对象总长制定首块试解计划（只读布局解析，不派生、不解密）。
+///
+/// * `head` — 对象起始字节；v1 判定只需 5 字节，v2 计划需要 ≥ [`DSBK_V2_HEADER_LEN`]。
+/// * `object_len` — 云端对象总长（来自 manifest / stat），用于把首块长度
+///   钳到对象边界并拒绝「头声称的最小体积」都不满足的截断对象。
+///
+/// 返回 `Err` 的情形（全部 fail-closed，调用方不得当作口令错误以外的放行）：
+/// 无 DSBK 魔数、未知版本、v2 头被截断、chunk 字段非法（0 或超过
+/// [`DSBK_MAX_PLAINTEXT_CHUNK`]）、对象总长连一个 GCM tag 都装不下。
+pub fn plan_first_chunk_trial(head: &[u8], object_len: u64) -> Result<FirstChunkPlan> {
+    if head.len() < 5 {
+        return Err(anyhow!("对象太短，读不到 DSBK 版本字节"));
+    }
+    if &head[0..4] != BACKUP_MAGIC {
+        return Err(anyhow!("非加密备份文件（无 DSBK 标头）"));
+    }
+    match head[4] {
+        BACKUP_CRYPTO_VERSION => Ok(FirstChunkPlan::LegacyV1WholeFile),
+        BACKUP_CRYPTO_VERSION_STREAM => {
+            if head.len() < DSBK_V2_HEADER_LEN {
+                return Err(anyhow!(
+                    "DSBK v2 头被截断：{} 字节 < {DSBK_V2_HEADER_LEN} 字节",
+                    head.len()
+                ));
+            }
+            let plaintext_chunk = u32::from_le_bytes(
+                head[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?,
+            ) as u64;
+            if plaintext_chunk == 0 || plaintext_chunk > DSBK_MAX_PLAINTEXT_CHUNK as u64 {
+                return Err(anyhow!("加密分块大小非法: {plaintext_chunk}"));
+            }
+            let cipher_chunk = plaintext_chunk + DSBK_GCM_TAG_LEN as u64;
+            let body_len = object_len
+                .checked_sub(DSBK_V2_HEADER_LEN as u64)
+                .filter(|len| *len >= DSBK_GCM_TAG_LEN as u64)
+                .ok_or_else(|| {
+                    anyhow!("加密备份缺少数据块（对象总长 {object_len} 字节，装不下 v2 头 + GCM tag）")
+                })?;
+            Ok(FirstChunkPlan::StreamV2 {
+                prefix_len: DSBK_V2_HEADER_LEN as u64 + body_len.min(cipher_chunk),
+            })
+        }
+        other => Err(anyhow!("不支持的加密版本: {other}")),
+    }
+}
+
+/// 用「头 + 首个密文块」前缀对 DSBK v2 容器做首块试解（纯内存，不落任何明文）。
+///
+/// * `prefix` — 对象起始字节，长度须 ≥ [`plan_first_chunk_trial`] 给出的
+///   `prefix_len`（多给不影响，只用前 `prefix_len` 字节）；
+/// * `object_len` — 云端对象总长，用于判定首块是否 final 块（final 标记并入
+///   nonce，判错即 tag 失败，防截断语义与整文件解密一致）。
+///
+/// 语义：
+/// - `Ok(())` — 首块 AEAD tag 验证通过：口令正确且首块未损坏；
+/// - `Err` — 口令错误 / 数据损坏 / KDF 参数超限（派生前拒绝）/ v1 容器
+///   （须走整文件解密路径）/ 前缀不足。调用方一律 fail-closed。
+///
+/// 首块明文只在内存中短暂存在，验证后立即 zeroize，绝不写盘。
+pub fn trial_decrypt_first_chunk(prefix: &[u8], object_len: u64, password: &str) -> Result<()> {
+    let plan = plan_first_chunk_trial(prefix, object_len)?;
+    let FirstChunkPlan::StreamV2 { prefix_len } = plan else {
+        return Err(anyhow!(
+            "DSBK v1 容器为整文件单块，无法首块试解，请走整文件解密路径"
+        ));
+    };
+    if (prefix.len() as u64) < prefix_len {
+        return Err(anyhow!(
+            "对象前缀不足以覆盖首个密文块：需要 {prefix_len} 字节，实得 {} 字节",
+            prefix.len()
+        ));
+    }
+
+    // 头部布局与 decrypt_backup_file 的 v2 路径逐字段一致（SSOT 常量钳位）。
+    let m_cost = u32::from_le_bytes(prefix[5..9].try_into()?);
+    let t_cost = u32::from_le_bytes(prefix[9..13].try_into()?);
+    let p_cost = u32::from_le_bytes(prefix[13..17].try_into()?);
+    let salt: [u8; 16] = prefix[17..33].try_into()?;
+    let nonce_prefix: [u8; 7] = prefix[33..40].try_into()?;
+    let plaintext_chunk = u32::from_le_bytes(
+        prefix[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN].try_into()?,
+    ) as u64;
+    let cipher_chunk = plaintext_chunk + DSBK_GCM_TAG_LEN as u64;
+
+    // final 判定与流式解密一致：首块之后再无字节 → 首块即 final 块。
+    let body_len = object_len - DSBK_V2_HEADER_LEN as u64;
+    let is_final = body_len <= cipher_chunk;
+    let first_block = &prefix[DSBK_V2_HEADER_LEN..prefix_len as usize];
+
+    // KDF 应用级上限在 derive_key 第一步拦截（超限不分配派生内存，亚秒拒绝）。
+    let mut key = derive_key(password, &salt, m_cost, t_cost, p_cost)?;
+    let cipher = match Aes256Gcm::new_from_slice(&key) {
+        Ok(cipher) => cipher,
+        Err(e) => {
+            key.zeroize();
+            return Err(anyhow!("创建 AES cipher 失败: {e}"));
+        }
+    };
+    let nonce = stream_chunk_nonce(&nonce_prefix, 0, is_final);
+    let result = cipher.decrypt(Nonce::from_slice(&nonce), first_block);
+    key.zeroize();
+    match result {
+        Ok(mut plaintext) => {
+            plaintext.zeroize();
+            Ok(())
+        }
+        Err(e) => Err(anyhow!("备份解密失败（密码错误或数据损坏）: {e}")),
+    }
+}
+
+// =====================================================================================
 // [R07-file-e2ee] 会话级文件加密器：一次 Argon2 派生，跨对象复用密钥
 // =====================================================================================
 
@@ -569,10 +783,16 @@ impl FileCipherSession {
     ///
     /// 生产路径请用 [`FileCipherSession::new`]（默认参数）；本构造器主要供
     /// 测试用低成本参数换取速度（容器头会如实登记参数，互操作不受影响）。
+    ///
+    /// [Wave2-R5-kdf] 会话密钥是**新写入面**（本会话加密出的对象都携带这组
+    /// 参数），故 m_cost 受平台相关封顶 [`kdf_max_m_cost_for_new_password`]
+    /// 约束；会话内**解密对端对象**的 [`Self::key_for`] 不经过本封顶，仍按
+    /// 全局上限放行（桌面写出的高参数对象在移动端必须可解）。
     pub fn with_params(password: &str, m_cost: u32, t_cost: u32, p_cost: u32) -> Result<Self> {
         if password.is_empty() {
             return Err(anyhow!("加密密码不能为空"));
         }
+        ensure_kdf_params_allowed_for_new_encryption(m_cost, t_cost, p_cost)?;
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
         let key = derive_key(password, &salt, m_cost, t_cost, p_cost)?;
@@ -719,7 +939,14 @@ fn verifier_digest(
 }
 
 /// 用默认 Argon2id 参数与新随机 salt 为 `password` 生成校验子。
+///
+/// [Wave2-R5-kdf] 新建校验子是**新写入面**，登记参数受平台相关封顶
+/// [`kdf_max_m_cost_for_new_password`] 约束（默认参数 64 MiB 远低于任何平台
+/// 封顶，此检查在此仅作为编译期锚点：未来有人把默认参数或本函数改成可携带
+/// 自定义参数时，封顶自动生效）。**复算存量校验子**的
+/// [`check_password_verifier`] 不经过本封顶，仍按全局上限放行。
 pub fn create_password_verifier(password: &str) -> Result<PasswordVerifier> {
+    ensure_kdf_params_allowed_for_new_encryption(DEFAULT_M_COST, DEFAULT_T_COST, DEFAULT_P_COST)?;
     let mut salt = [0u8; 16];
     OsRng.fill_bytes(&mut salt);
     let digest = verifier_digest(
@@ -1185,6 +1412,85 @@ mod tests {
         assert!(!dec.exists(), "拒绝发生在创建输出文件之前");
     }
 
+    // ---------------- [Wave2-R5-kdf] 新设口令平台封顶 ----------------
+
+    #[test]
+    fn new_password_cap_matches_platform_and_never_loosens_global_cap() {
+        let cap = kdf_max_m_cost_for_new_password();
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            assert_eq!(
+                cap, KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE,
+                "移动端新写入面封顶必须是 256 MiB"
+            );
+        } else {
+            assert_eq!(
+                cap, KDF_MAX_M_COST_KIB,
+                "桌面端新写入面维持全局上限（行为不变，仅文档化）"
+            );
+        }
+        assert!(
+            cap <= KDF_MAX_M_COST_KIB,
+            "新写入面封顶只能比全局解密上限更严或相等，绝不放宽解密侧判定"
+        );
+    }
+
+    #[test]
+    fn new_password_cap_covers_default_write_surface_on_every_platform() {
+        // 默认生产参数（64 MiB / t=3 / p=4）必须在最严的平台封顶（移动端
+        // 256 MiB）之内，否则默认加密在移动端会被自家封顶拒绝。
+        assert!(DEFAULT_M_COST <= KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE);
+        assert!(DEFAULT_M_COST <= kdf_max_m_cost_for_new_password());
+        // 封顶内参数照常可建新会话（低成本参数）与新校验子（默认参数）
+        assert!(FileCipherSession::with_params("pw", 8, 1, 1).is_ok());
+        assert!(create_password_verifier("pw").is_ok());
+    }
+
+    #[test]
+    fn session_with_params_rejects_m_cost_above_new_password_cap() {
+        // 超出本平台新写入面封顶一格：必须拒绝，且不产生任何派生开销。
+        let over = kdf_max_m_cost_for_new_password() + 1;
+        let start = std::time::Instant::now();
+        let err = FileCipherSession::with_params("pw", over, 1, 1)
+            .err()
+            .expect("超封顶的新加密会话必须拒绝");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(200),
+            "封顶检查必须在派生开始前拒绝，实际耗时 {:?}",
+            start.elapsed()
+        );
+        // 桌面上 over 已同时超全局上限（两组封顶相等），两种文案都可接受；
+        // 关键是必须 Err 且为用户级文案之一。
+        let text = err.to_string();
+        assert!(
+            text.contains("超出本设备可安全承受") || text.contains("加密参数异常"),
+            "错误应为用户级文案: {text}"
+        );
+    }
+
+    #[test]
+    fn decrypt_and_legacy_verifier_paths_are_not_tightened_by_new_password_cap() {
+        // 红线：解密/存量 verifier 复算仍按全局上限（1 GiB）放行。
+        // 介于「移动端新设封顶」与「全局上限」之间的 m_cost 对解密预检必须
+        // 依旧通过（真派生要吃数百 MiB 内存，这里只锁预检判定方向）。
+        let legacy_m = KDF_NEW_PASSWORD_MAX_M_COST_KIB_MOBILE + 1;
+        assert!(legacy_m <= KDF_MAX_M_COST_KIB, "测试前提：区间非空");
+        assert!(
+            ensure_kdf_params_within_app_limits(legacy_m, DEFAULT_T_COST, DEFAULT_P_COST).is_ok(),
+            "解密/存量路径的预检不得引用新设封顶"
+        );
+        // 对照：同一参数在新写入面预检里，移动端必须拒绝、桌面维持放行。
+        let new_write = ensure_kdf_params_allowed_for_new_encryption(
+            legacy_m,
+            DEFAULT_T_COST,
+            DEFAULT_P_COST,
+        );
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            assert!(new_write.is_err(), "移动端新写入面必须拒绝 256 MiB 以上");
+        } else {
+            assert!(new_write.is_ok(), "桌面端新写入面行为不变");
+        }
+    }
+
     // ---------------- [R10-verifier] 本机加密目录记忆 ----------------
 
     #[test]
@@ -1264,5 +1570,202 @@ mod tests {
         std::fs::write(&enc, &v1).unwrap();
         decrypt_backup_file(&enc, &dec, "pw").unwrap();
         assert_eq!(std::fs::read(&dec).unwrap(), plain.as_slice());
+    }
+
+    // ---------------- [R5-prove-cost] DSBK v2 首块试解 ----------------
+
+    /// 用低成本参数把 `plain_len` 字节的固定 pattern 明文加密为 v2 容器字节。
+    fn cheap_v2_object(password: &str, plain_len: usize) -> Vec<u8> {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.bin");
+        let enc = dir.path().join("enc.dsbk");
+        let plain: Vec<u8> = (0..plain_len).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&input, &plain).unwrap();
+        cheap_session(password)
+            .encrypt_file(&input, &enc)
+            .unwrap();
+        std::fs::read(&enc).unwrap()
+    }
+
+    #[test]
+    fn first_chunk_trial_proves_password_with_prefix_only() {
+        // 多块对象（3 个分块）：只凭「头 + 首块」前缀即可证明口令，
+        // 其余分块字节完全不需要在场。
+        let object = cheap_v2_object("prove-pw", STREAM_PLAINTEXT_CHUNK * 2 + 123);
+        let object_len = object.len() as u64;
+        let FirstChunkPlan::StreamV2 { prefix_len } =
+            plan_first_chunk_trial(&object, object_len).unwrap()
+        else {
+            panic!("v2 容器必须给出 StreamV2 计划");
+        };
+        assert_eq!(
+            prefix_len,
+            (DSBK_V2_HEADER_LEN + STREAM_PLAINTEXT_CHUNK + DSBK_GCM_TAG_LEN) as u64,
+            "多块对象的首块前缀 = 头 + 满分块 + tag"
+        );
+        assert!(prefix_len < object_len, "前缀必须严格小于整包");
+
+        // 只保留前缀，其余字节丢弃——试解仍必须通过。
+        let prefix = &object[..prefix_len as usize];
+        trial_decrypt_first_chunk(prefix, object_len, "prove-pw")
+            .expect("正确口令的首块试解必须通过");
+        assert!(
+            trial_decrypt_first_chunk(prefix, object_len, "wrong-pw").is_err(),
+            "错误口令必须在首块 tag 校验即失败"
+        );
+    }
+
+    #[test]
+    fn first_chunk_trial_final_flag_matches_object_size() {
+        // final 标记并入 nonce：单块对象（首块即 final）与恰好一整块的对象
+        // 都必须按对象总长正确判定，否则 tag 必然失败。
+        for plain_len in [0usize, 100, STREAM_PLAINTEXT_CHUNK] {
+            let object = cheap_v2_object("final-pw", plain_len);
+            let object_len = object.len() as u64;
+            let FirstChunkPlan::StreamV2 { prefix_len } =
+                plan_first_chunk_trial(&object, object_len).unwrap()
+            else {
+                panic!("v2 容器必须给出 StreamV2 计划");
+            };
+            assert_eq!(
+                prefix_len, object_len,
+                "单块对象的首块前缀就是整个对象（plain_len={plain_len}）"
+            );
+            trial_decrypt_first_chunk(&object, object_len, "final-pw")
+                .unwrap_or_else(|e| panic!("plain_len={plain_len} 首块试解应通过: {e}"));
+        }
+        // 多块对象的首块是非 final 块：谎报对象总长（假装单块）必须 tag 失败，
+        // 不能把非 final 块当 final 解出来。
+        let object = cheap_v2_object("final-pw", STREAM_PLAINTEXT_CHUNK + 1024);
+        let FirstChunkPlan::StreamV2 { prefix_len } =
+            plan_first_chunk_trial(&object, object.len() as u64).unwrap()
+        else {
+            panic!("v2 容器必须给出 StreamV2 计划");
+        };
+        assert!(
+            trial_decrypt_first_chunk(&object[..prefix_len as usize], prefix_len, "final-pw")
+                .is_err(),
+            "把多块对象谎报成单块（final 判定翻转）必须失败"
+        );
+    }
+
+    #[test]
+    fn first_chunk_trial_tampered_first_block_fails() {
+        let mut object = cheap_v2_object("tamper-pw", 4096);
+        let object_len = object.len() as u64;
+        object[DSBK_V2_HEADER_LEN + 1] ^= 0xFF;
+        assert!(
+            trial_decrypt_first_chunk(&object, object_len, "tamper-pw").is_err(),
+            "首块密文被篡改必须 tag 失败"
+        );
+    }
+
+    #[test]
+    fn first_chunk_plan_v1_requires_whole_file() {
+        // v1 单块容器：计划必须回退整文件路径，试解 API 必须拒绝（而不是误报口令错误以外的成功）。
+        let v1 = encrypt_backup(b"legacy payload", "pw").unwrap();
+        assert_eq!(
+            plan_first_chunk_trial(&v1, v1.len() as u64).unwrap(),
+            FirstChunkPlan::LegacyV1WholeFile
+        );
+        let err = trial_decrypt_first_chunk(&v1, v1.len() as u64, "pw")
+            .expect_err("v1 容器不支持首块试解");
+        assert!(
+            err.to_string().contains("整文件"),
+            "错误应指引整文件路径: {err}"
+        );
+        // 存量 v1 仍可整文件解密（回退路径的正确性由既有 API 保证）。
+        assert_eq!(decrypt_backup(&v1, "pw").unwrap(), b"legacy payload");
+    }
+
+    #[test]
+    fn first_chunk_plan_rejects_bad_headers() {
+        // 非 DSBK
+        assert!(plan_first_chunk_trial(b"PK\x03\x04zip!", 100).is_err());
+        // 太短
+        assert!(plan_first_chunk_trial(b"DSB", 100).is_err());
+        // 未知版本
+        let mut unknown = cheap_v2_object("pw", 128);
+        unknown[4] = 9;
+        assert!(plan_first_chunk_trial(&unknown, unknown.len() as u64).is_err());
+
+        // chunk 字段非法：0 与超上限都必须在任何派生/解密之前拒绝
+        let good = cheap_v2_object("pw", 128);
+        for bad_chunk in [0u32, DSBK_MAX_PLAINTEXT_CHUNK + 1] {
+            let mut bad = good.clone();
+            bad[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN]
+                .copy_from_slice(&bad_chunk.to_le_bytes());
+            let err = plan_first_chunk_trial(&bad, bad.len() as u64)
+                .expect_err("非法 chunk 必须拒绝");
+            assert!(err.to_string().contains("分块大小非法"), "实际: {err}");
+        }
+
+        // 对象总长装不下「头 + 一个 tag」：截断对象
+        let err = plan_first_chunk_trial(&good, (DSBK_V2_HEADER_LEN + DSBK_GCM_TAG_LEN - 1) as u64)
+            .expect_err("装不下最小体积的对象必须拒绝");
+        assert!(err.to_string().contains("缺少数据块"), "实际: {err}");
+    }
+
+    #[test]
+    fn first_chunk_trial_truncated_prefix_rejected() {
+        let object = cheap_v2_object("prefix-pw", 4096);
+        let object_len = object.len() as u64;
+        // 前缀差 1 字节：必须在解密前明确拒绝（fail-closed），不得越界或误判
+        let err = trial_decrypt_first_chunk(&object[..object.len() - 1], object_len, "prefix-pw")
+            .expect_err("前缀不足必须拒绝");
+        assert!(err.to_string().contains("前缀不足"), "实际: {err}");
+    }
+
+    #[test]
+    fn first_chunk_trial_oversized_kdf_params_rejected_fast() {
+        // 头部 m_cost 改成极大值：必须在派生开始前拒绝（与整文件解密同一道闸）。
+        let mut object = cheap_v2_object("kdf-pw", 4096);
+        let object_len = object.len() as u64;
+        object[5..9].copy_from_slice(&u32::MAX.to_le_bytes());
+        let start = std::time::Instant::now();
+        let err = trial_decrypt_first_chunk(&object, object_len, "kdf-pw")
+            .expect_err("超限 KDF 参数必须拒绝");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(200),
+            "必须在派生开始前拒绝（亚秒返回），实际耗时 {:?}",
+            start.elapsed()
+        );
+        assert!(err.to_string().contains("加密参数异常"), "实际: {err}");
+    }
+
+    #[test]
+    fn speculative_prefix_len_covers_own_write_surface() {
+        // 投机前缀必须覆盖本应用自己写出的一切 v2 对象的首块计划：
+        // 大对象一次前缀读即可完成试解，小对象钳到对象总长。
+        for plain_len in [0usize, 100, STREAM_PLAINTEXT_CHUNK, STREAM_PLAINTEXT_CHUNK * 2 + 7] {
+            let object = cheap_v2_object("spec-pw", plain_len);
+            let object_len = object.len() as u64;
+            let FirstChunkPlan::StreamV2 { prefix_len } =
+                plan_first_chunk_trial(&object, object_len).unwrap()
+            else {
+                panic!("v2 容器必须给出 StreamV2 计划");
+            };
+            let speculative = dsbk_first_chunk_speculative_prefix_len(object_len);
+            assert!(
+                speculative >= prefix_len,
+                "自家写入面（1 MiB 分块）必须一次投机前缀读覆盖：plain_len={plain_len}, \
+                 speculative={speculative}, plan={prefix_len}"
+            );
+            assert!(speculative <= object_len, "投机前缀不得超过对象总长");
+        }
+        // 外部工具写出更大分块（>1 MiB）时投机前缀不够：由计划给出精确长度补读。
+        let mut foreign = cheap_v2_object("spec-pw", 128);
+        foreign[DSBK_V2_CHUNK_OFFSET..DSBK_V2_HEADER_LEN]
+            .copy_from_slice(&(4u32 * 1024 * 1024).to_le_bytes());
+        let pretended_len = (DSBK_V2_HEADER_LEN + 8 * 1024 * 1024) as u64;
+        let FirstChunkPlan::StreamV2 { prefix_len } =
+            plan_first_chunk_trial(&foreign, pretended_len).unwrap()
+        else {
+            panic!("v2 容器必须给出 StreamV2 计划");
+        };
+        assert!(
+            prefix_len > dsbk_first_chunk_speculative_prefix_len(pretended_len),
+            "非默认大分块必须触发按计划补读"
+        );
     }
 }

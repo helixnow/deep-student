@@ -35,6 +35,8 @@ pub mod assets;
 
 pub mod delta_inventory;
 
+pub mod portable_precheck;
+
 pub mod restore_plan;
 
 pub mod zip_export;
@@ -69,7 +71,10 @@ pub const ATOMIC_RESTORE_UNAVAILABLE_CODE: &str = "E_BACKUP_ATOMIC_RESTORE_UNAVA
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
 
-pub use zip_export::{export_backup_to_zip, ZipExportError, ZipExportOptions, ZipExportResult};
+pub use zip_export::{
+    export_backup_to_zip, export_backup_to_zip_with_progress, ZipExportError, ZipExportOptions,
+    ZipExportPhase, ZipExportProgress, ZipExportResult,
+};
 
 // 恢复编排的域消费契约（DomainRestorePlan 消费 + 未消费断言）。
 pub use restore_plan::{

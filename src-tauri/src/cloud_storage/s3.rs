@@ -780,6 +780,81 @@ impl CloudStorage for S3Storage {
         Ok(actual_start)
     }
 
+    fn supports_prefix_read(&self) -> bool {
+        true
+    }
+
+    /// [R5-prove-cost] 基于 S3 Range GET 的对象前缀读取（`bytes=0-{prefix_len-1}`）。
+    ///
+    /// 诚实语义对齐 WebDAV：
+    /// - 返回 `Content-Range` 时校验起点必须为 0（错位 fail-closed）；
+    /// - 服务端忽略 Range（无 `Content-Range`，整对象响应）时只消费前
+    ///   `prefix_len` 字节后停止读取并丢弃连接，不整包读入内存；
+    /// - `NoSuchKey` → `Ok(None)`。
+    async fn get_prefix(&self, key: &str, prefix_len: u64) -> Result<Option<Vec<u8>>> {
+        if prefix_len == 0 {
+            return Ok(Some(Vec::new()));
+        }
+        let full_key = self.full_key(key);
+        let result = self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(&full_key)
+            .range(format!("bytes=0-{}", prefix_len - 1))
+            .send()
+            .await;
+        let output = match result {
+            Ok(output) => output,
+            Err(e) => {
+                let service_error = e.into_service_error();
+                if service_error.is_no_such_key() {
+                    return Ok(None);
+                }
+                return Err(AppError::network(format!("S3 前缀读取失败: {service_error}")));
+            }
+        };
+
+        // 起点必须是 0：错位前缀比失败更危险（试解结论会失真）。
+        // 无 Content-Range = 服务端忽略 Range 返回整对象，起点即 0，合法。
+        if let Some(content_range) = output.content_range() {
+            match Self::parse_content_range_start(content_range) {
+                Some(0) => {}
+                _ => {
+                    return Err(AppError::network(format!(
+                        "S3 服务端返回的前缀起点不是 0（fail-closed，拒绝错位字节）：\
+                         请求 bytes=0-，Content-Range={content_range:?}"
+                    )));
+                }
+            }
+        }
+
+        // 有界缓冲：只收前 prefix_len 字节；预分配封顶 8 MiB，防御异常大的
+        // prefix_len 造成一次性大分配（正常首块试解 ≈ 1 MiB + 60 B）。
+        let mut reader = output.body.into_async_read();
+        let mut prefix: Vec<u8> =
+            Vec::with_capacity(usize::try_from(prefix_len.min(8 * 1024 * 1024)).unwrap_or(0));
+        let mut buffer = vec![0u8; 64 * 1024];
+        while (prefix.len() as u64) < prefix_len {
+            let bytes_read =
+                tokio::time::timeout(std::time::Duration::from_secs(90), reader.read(&mut buffer))
+                    .await
+                    .map_err(|_| {
+                        AppError::network("S3 前缀读取停滞超过 90 秒，连接可能已断开".to_string())
+                    })?
+                    .map_err(|e| AppError::network(format!("读取 S3 响应失败: {e}")))?;
+            if bytes_read == 0 {
+                break; // 对象比 prefix_len 短：诚实返回实际前缀
+            }
+            let need = usize::try_from(prefix_len - prefix.len() as u64)
+                .unwrap_or(usize::MAX)
+                .min(bytes_read);
+            prefix.extend_from_slice(&buffer[..need]);
+        }
+        // 收满即返回；reader/连接随作用域丢弃，剩余响应体不再消费。
+        Ok(Some(prefix))
+    }
+
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         let full_key = self.full_key(key);
 
@@ -1041,6 +1116,19 @@ mod tests {
         assert!(
             source.contains("abort_stale_multipart_uploads"),
             "S3 multipart 必须在创建新 upload 前清理同一 key 的陈旧未完成上传"
+        );
+        // [R5-prove-cost] 前缀读取：能力位 + Range GET + 有界消费。
+        assert!(
+            source.contains("fn supports_prefix_read(&self) -> bool {\n        true"),
+            "S3 必须声明支持前缀读取，prove 首块试解才不会回退整包下载"
+        );
+        assert!(
+            source.contains(".range(format!(\"bytes=0-{}\", prefix_len - 1))"),
+            "S3 前缀读取必须发 bytes=0-N 的 Range GET"
+        );
+        assert!(
+            source.contains("while (prefix.len() as u64) < prefix_len"),
+            "S3 前缀读取必须在收满 prefix_len 后停止消费响应体（服务端忽略 Range 时也不得整包读入）"
         );
         assert!(
             source.contains("MULTIPART_STALE_SECS"),

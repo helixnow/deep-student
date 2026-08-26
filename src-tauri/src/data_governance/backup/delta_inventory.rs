@@ -10,6 +10,9 @@
 //! 仍是「全量 ZIP → 单对象 `put_file`」，**不得**因本模块存在而宣称增量
 //! 备份已实现。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 硬约束：
 //!
 //! - hash 一律以磁盘真实内容为准；[`BackupManifest`] 只用于交叉核对，

@@ -64,6 +64,11 @@ pub enum SecureStoreError {
     /// 云端 E2EE 密码短于最小 Unicode 码点数；不是密钥库故障。
     #[error("{0}")]
     CloudEncryptionPasswordTooShort(String),
+    /// [Wave2-R5] 云端 E2EE **新设**密码命中弱口令黑名单或熵下限；不是密钥库
+    /// 故障。只在新设入口触发——`encryption_password_is_preexisting = true`
+    /// 的存量口令入口完全不经过弱口令检查（与短口令放行同一取向）。
+    #[error("{0}")]
+    CloudEncryptionPasswordTooWeak(String),
     /// staged generation 与调用方期望不一致（并发提交 / 过期句柄）。
     /// 不是 IO 故障：重读 active generation 后重新 stage 即可恢复。
     #[error("{0}")]
@@ -82,6 +87,7 @@ impl SecureStoreError {
             Self::SerializationError(_) => "SECURE_STORE_DATA_INVALID",
             Self::EncryptionError(_) => "SECURE_STORE_CRYPTO_ERROR",
             Self::CloudEncryptionPasswordTooShort(_) => CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
+            Self::CloudEncryptionPasswordTooWeak(_) => CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE,
             Self::CloudCredentialGenerationConflict(_) => {
                 CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE
             }
@@ -1948,6 +1954,115 @@ pub fn cloud_encryption_password_too_short_message() -> String {
     )
 }
 
+// ==================== [Wave2-R5] 新设口令弱口令准入 ====================
+//
+// 与 8 字符长度门**同一路径、同一开关**：只作用于新设加密口令
+// （`encryption_password_is_preexisting = false`）。存量口令入口（换机/重装
+// 重输、legacy 迁移，preexisting = true）完全不经过本检查——密文已经存在，
+// 按新设标准拒绝存量口令会把旧加密备份变成产品内打不开的黑盒。
+
+/// [Wave2-R5] 弱口令拒绝的稳定 IPC code。前端只按 code 分派，文案可改语言。
+pub const CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE: &str = "E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK";
+
+/// 新设口令最少需要的**不同** Unicode 码点数（熵下限的粗粒度近似）。
+///
+/// 拦的是「aaaaaaaa」「abababab」「12121212」这类通过了 8 字符长度门、但
+/// 字符集小到近乎零熵的口令。4 个不同字符是刻意保守的下限：正常人手选的
+/// 任何口令都轻松通过，不会造成新设摩擦。
+pub const MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS: usize = 4;
+
+/// 极弱口令小黑名单（榜单常客级）。
+///
+/// 收录规则（刻意保持很小，不追求覆盖率）：
+/// - 只收 8 字符及以上——更短的（如 "letmein"、"123456"）先被长度门拒绝，
+///   收进来是死代码；
+/// - 只收各大泄露口令榜（RockYou / NCSC / SecLists top 列表）常年霸榜、且
+///   与本产品无关的通用弱口令；不收人名等误伤面大的词；
+/// - 匹配前先 `trim` + Unicode 小写化，大小写变体（"Password123"）同样命中。
+///
+/// 这不是（也不可能是）完整的口令强度评估：目的只是把「攻击者第一批就会试」
+/// 的口令挡在新设入口，其余强度判断留给前端提示与用户自己。
+const CLOUD_ENCRYPTION_PASSWORD_BLACKLIST: &[&str] = &[
+    "password",
+    "password1",
+    "password12",
+    "password123",
+    "passw0rd",
+    "p@ssw0rd",
+    "12345678",
+    "123456789",
+    "1234567890",
+    "11111111",
+    "00000000",
+    "88888888",
+    "66666666",
+    "aa123456",
+    "abc12345",
+    "a1b2c3d4",
+    "1q2w3e4r",
+    "1qaz2wsx",
+    "qwer1234",
+    "qwertyui",
+    "qwertyuiop",
+    "asdfghjk",
+    "asdfghjkl",
+    "zxcvbnm123",
+    "iloveyou",
+    "sunshine",
+    "princess",
+    "football",
+    "baseball",
+    "superman",
+    "internet",
+    "computer",
+];
+
+/// 新设口令是否命中弱口令判定（黑名单或熵下限）。
+///
+/// 语义与 [`cloud_encryption_password_too_short`] 对齐：`None`、空串、纯空白
+/// 都返回 `false`——合并语义里它们表示「保留现有值」，不是一次新设。
+pub(crate) fn cloud_encryption_password_too_weak(password: Option<&str>) -> bool {
+    let Some(password) = password.map(str::trim).filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    let lowered = password.to_lowercase();
+    if CLOUD_ENCRYPTION_PASSWORD_BLACKLIST.contains(&lowered.as_str()) {
+        return true;
+    }
+    let distinct_chars = password
+        .chars()
+        .collect::<std::collections::HashSet<char>>()
+        .len();
+    distinct_chars < MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS
+}
+
+pub fn cloud_encryption_password_too_weak_message() -> String {
+    format!(
+        "[{}] 云端端到端加密密码过于常见或过于单一（常见弱口令、或不同字符少于 {} 个），\
+         请换一个更难猜的密码",
+        CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE, MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS
+    )
+}
+
+/// **新设**加密口令的统一准入门：长度门在前（保持既有错误优先级），弱口令
+/// 门在后。两个写入口（[`SecureStore::update_cloud_credentials_with_policy`]
+/// 与 [`SecureStore::write_staged_cloud_credentials`]）在
+/// `encryption_password_is_preexisting = false` 时都必须走本函数，保证
+/// 「新设」的判定标准只有一份；preexisting = true 时调用方直接跳过本函数。
+fn check_new_cloud_encryption_password(password: Option<&str>) -> Result<(), SecureStoreError> {
+    if cloud_encryption_password_too_short(password) {
+        return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
+            cloud_encryption_password_too_short_message(),
+        ));
+    }
+    if cloud_encryption_password_too_weak(password) {
+        return Err(SecureStoreError::CloudEncryptionPasswordTooWeak(
+            cloud_encryption_password_too_weak_message(),
+        ));
+    }
+    Ok(())
+}
+
 /// 手写 Debug：secret 字段一律脱敏为 `[REDACTED]`，仅保留 Some/None 的存在性
 /// 信息（排障需要知道哪些凭据已配置，但绝不需要明文值）。
 impl std::fmt::Debug for CloudStorageCredentials {
@@ -2100,22 +2215,19 @@ impl SecureStore {
 
     /// `update_cloud_credentials`，带口令准入策略。
     ///
-    /// 8 字符下限只是**新设**加密口令的准入规则。v0.9.44 对口令长度没有任何
-    /// 限制，密文已经存在：换机/重装后重输原口令、legacy localStorage→SSOT
-    /// 迁移携带的存量口令，如果按新设标准拒绝，用户的旧加密备份就变成产品内
-    /// 打不开的黑盒。`encryption_password_is_preexisting = true` 声明提交的是
-    /// 存量口令，放行任意非空长度；新设入口保持 fail-closed。
+    /// 8 字符下限与 [Wave2-R5] 弱口令检查（黑名单 + 熵下限）只是**新设**加密
+    /// 口令的准入规则。v0.9.44 对口令长度/强度没有任何限制，密文已经存在：
+    /// 换机/重装后重输原口令、legacy localStorage→SSOT 迁移携带的存量口令，
+    /// 如果按新设标准拒绝，用户的旧加密备份就变成产品内打不开的黑盒。
+    /// `encryption_password_is_preexisting = true` 声明提交的是存量口令，
+    /// 放行任意非空口令（短的、弱的都放行）；新设入口保持 fail-closed。
     pub fn update_cloud_credentials_with_policy(
         &self,
         update: &CloudStorageCredentials,
         encryption_password_is_preexisting: bool,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
-        if !encryption_password_is_preexisting
-            && cloud_encryption_password_too_short(update.encryption_password.as_deref())
-        {
-            return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
-                cloud_encryption_password_too_short_message(),
-            ));
+        if !encryption_password_is_preexisting {
+            check_new_cloud_encryption_password(update.encryption_password.as_deref())?;
         }
         let mut credentials = self.get_cloud_credentials()?.unwrap_or_default();
         credentials.apply_nonempty_update(update);
@@ -2210,20 +2322,17 @@ impl SecureStore {
     ///
     /// - 合并语义与 `update_cloud_credentials` 相同（空/省略 = 保留），但保留的
     ///   基线是**当前 active** 的值：staged 记录里存的是合并后的完整凭据快照。
-    /// - 短口令准入与 `update_cloud_credentials_with_policy` 完全一致：
-    ///   `encryption_password_is_preexisting = true` 放行存量短口令，新设 fail-closed。
+    /// - 口令准入（长度门 + [Wave2-R5] 弱口令门）与
+    ///   `update_cloud_credentials_with_policy` 完全一致：
+    ///   `encryption_password_is_preexisting = true` 放行存量短/弱口令，新设 fail-closed。
     /// - **不改 active 记录、不改 generation pointer**；重复调用覆盖旧 staged。
     pub fn write_staged_cloud_credentials(
         &self,
         update: &CloudStorageCredentials,
         encryption_password_is_preexisting: bool,
     ) -> Result<u64, SecureStoreError> {
-        if !encryption_password_is_preexisting
-            && cloud_encryption_password_too_short(update.encryption_password.as_deref())
-        {
-            return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
-                cloud_encryption_password_too_short_message(),
-            ));
+        if !encryption_password_is_preexisting {
+            check_new_cloud_encryption_password(update.encryption_password.as_deref())?;
         }
         let mut merged = self.get_cloud_credentials()?.unwrap_or_default();
         merged.apply_nonempty_update(update);
@@ -2408,8 +2517,8 @@ fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
 /// 保存云存储凭据到安全存储。
 ///
 /// `encryption_password_is_preexisting`：前端在「重输存量口令」入口（换机/
-/// 重装恢复、legacy 云配置迁移）置 true，跳过新设口令的最小长度准入；
-/// 缺省/false 保持新设口令 fail-closed。
+/// 重装恢复、legacy 云配置迁移）置 true，跳过新设口令的最小长度与
+/// [Wave2-R5] 弱口令准入；缺省/false 保持新设口令 fail-closed。
 #[tauri::command]
 pub fn secure_save_cloud_credentials(
     app: tauri::AppHandle,
@@ -2922,6 +3031,109 @@ mod cloud_hydration_tests {
         );
     }
 
+    // ---------------- [Wave2-R5] 新设口令弱口令门 ----------------
+
+    #[test]
+    fn weak_password_predicate_semantics() {
+        // 黑名单：大小写变体与首尾空白都命中
+        assert!(cloud_encryption_password_too_weak(Some("password123")));
+        assert!(cloud_encryption_password_too_weak(Some("Password123")));
+        assert!(cloud_encryption_password_too_weak(Some("  qwertyuiop  ")));
+        assert!(cloud_encryption_password_too_weak(Some("12345678")));
+        // 熵下限：通过 8 字符长度门但不同字符 < 4 的口令
+        assert!(cloud_encryption_password_too_weak(Some("aaaaaaaa")));
+        assert!(cloud_encryption_password_too_weak(Some("abababab")));
+        assert!(cloud_encryption_password_too_weak(Some("12121212")));
+        // 恰好 4 个不同字符：达到熵下限，放行
+        assert!(!cloud_encryption_password_too_weak(Some("aabbccdd")));
+        // 正常口令放行
+        assert!(!cloud_encryption_password_too_weak(Some(
+            "correct horse battery staple"
+        )));
+        assert!(!cloud_encryption_password_too_weak(Some(
+            "long-enough-password"
+        )));
+        // None / 空 / 纯空白 = 「保留现有值」，不是新设，不判弱
+        assert!(!cloud_encryption_password_too_weak(None));
+        assert!(!cloud_encryption_password_too_weak(Some("")));
+        assert!(!cloud_encryption_password_too_weak(Some("   ")));
+    }
+
+    #[test]
+    fn new_password_gate_checks_length_before_weakness() {
+        // 既短又弱（"1234567" 是 7 字符的低熵串）：长度门在前，错误优先级不变。
+        let error = check_new_cloud_encryption_password(Some("1234567"))
+            .expect_err("短口令必须先被长度门拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn new_weak_encryption_password_is_rejected_and_not_persisted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        for weak in ["password123", "aaaaaaaa"] {
+            let error = store
+                .update_cloud_credentials(&CloudStorageCredentials {
+                    encryption_password: Some(weak.to_string()),
+                    ..Default::default()
+                })
+                .expect_err("新设弱口令必须拒绝");
+            assert!(
+                matches!(error, SecureStoreError::CloudEncryptionPasswordTooWeak(_)),
+                "unexpected error: {error}"
+            );
+            assert_eq!(error.stable_code(), CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE);
+            assert!(
+                store
+                    .get_cloud_credentials()
+                    .expect("read cloud credentials")
+                    .is_none(),
+                "被拒绝的弱口令不得留下任何持久化痕迹"
+            );
+        }
+
+        // 正常强度口令照常写入
+        let status = store
+            .update_cloud_credentials(&CloudStorageCredentials {
+                encryption_password: Some("correct horse battery staple".to_string()),
+                ..Default::default()
+            })
+            .expect("正常口令应写入");
+        assert!(status.encryption_password_configured);
+    }
+
+    /// 升级兼容红线：弱口令检查只影响新设。v0.9.44 时代用户完全可能用
+    /// "password123" 加密过备份——换机/重装重输、legacy 迁移必须放行，
+    /// 否则旧加密备份在产品内永远打不开。
+    #[test]
+    fn preexisting_weak_encryption_password_is_accepted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量弱口令必须放行");
+        assert!(status.encryption_password_configured);
+
+        let stored = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("credentials persisted");
+        assert_eq!(stored.encryption_password.as_deref(), Some("password123"));
+    }
+
     #[test]
     fn clearing_encryption_password_keeps_transport_credentials() {
         let dir = TempDir::new().expect("create tempdir");
@@ -3231,6 +3443,56 @@ mod cloud_hydration_tests {
             .expect("read active credentials")
             .expect("committed record present");
         assert_eq!(active.encryption_password.as_deref(), Some("short6"));
+    }
+
+    /// [Wave2-R5] staged 写入的弱口令政策与 update_cloud_credentials_with_policy
+    /// 完全一致：新设弱口令 fail-closed 拒绝且不留 staged 残留；preexisting
+    /// 放行并可走完 commit 全程。
+    #[test]
+    fn staged_write_enforces_the_same_weak_password_policy() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store = store_in(&dir);
+
+        let error = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect_err("新设弱口令必须拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooWeak(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(error.stable_code(), CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE);
+        assert!(store
+            .get_staged_cloud_credentials_record()
+            .expect("read staged record")
+            .is_none());
+
+        // 存量弱口令（v0.9.44 时代）放行，且能走完 commit 全程
+        let staged_generation = store
+            .write_staged_cloud_credentials(
+                &CloudStorageCredentials {
+                    encryption_password: Some("password123".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量弱口令必须放行");
+        store
+            .commit_staged_cloud_credentials(staged_generation)
+            .expect("commit preexisting weak password");
+        let active = store
+            .get_cloud_credentials()
+            .expect("read active credentials")
+            .expect("committed record present");
+        assert_eq!(
+            active.encryption_password.as_deref(),
+            Some("password123")
+        );
     }
 
     /// 过期 generation 句柄的 commit / abort 一律 fail-closed 冲突，active 不动。

@@ -6,6 +6,9 @@
 //! CDC 已实现——它只是「未变文件复用 / 增量传输」的积木，本轮未接 UI 之前
 //! 功能不可暴露（源码锁测试 `sync_r12_delta_upload.rs` 强制该事实）。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 职责边界：
 //!
 //! - 输入是一个**已验证**的备份 staging 根目录（含合法 `manifest.json`）。
@@ -559,6 +562,9 @@ async fn upload_new_object(
 ///   [`InventoryDiff::reuse_candidates`]（`manifest.json` 永远重新上传）；
 /// - 旧 index / descriptor 解析、校验、解密失败一律 fail-closed，零新对象写入；
 /// - 索引 PUT 是唯一可见 commit point；之前任何失败只留不可见孤儿，不回滚。
+///
+/// **[experimental 隔离入口]** 生产代码零调用方（sync_r12 源码锁钉死）；
+/// 接线须先满足 docs/dev/wave2-D-backup-v2-decision.md 的前置清单。
 pub async fn publish_verified_staging(
     storage: Arc<dyn CloudStorage>,
     staging_root: &Path,

@@ -193,3 +193,55 @@
 - 防降级可能误伤「启用加密后仍列出的明文历史版本」——任务卡要求拒；R6 可加显式 opt-in
 - 控制对象调用方仍有部分走 `get()` 默认 256MiB
 - 未跑任何测试
+
+## 12. 第 5 轮落地（文案收敛）
+
+未跑编译/测试。coordinator 零触碰。
+
+### 已落地
+
+- code-only 第一批：`cloudStorageApi.codeFromDiagnosticText` 通用提取 `[E_...]` 前缀；
+  `localizeCloudError` 新映射 `E_SYNC_E2EE_DOWNGRADE_REJECTED` / `E_SYNC_E2EE_CLAIM_CONFLICT`
+  （经 `syncE2eeErrorMapping` 两个新 kind）/ `E_SYNC_BAD_OBJECT_FAIL_CLOSED` /
+  `E_DG_TOMBSTONE_LIMITER_BUSY` + zh/en 8 个新 key
+- 后端补码：`commands_backup.rs` `E_BACKUP_DIR_MISSING`（4 处）、
+  `E_RESTORE_DISK_BUDGET_OVERFLOW`（3 处）、恢复目标卷不可用复用
+  `E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE`；`commands_zip.rs`
+  `E_ZIP_EXPORT_TEMP_MISSING` / `E_ZIP_EXPORT_COPY_TARGET_FAILED`
+- `syncE2eeErrorMapping.test.ts` 契约测试源码同步（新 kind / 新码 / e2ee_claim.rs 跨层），未执行
+- 升级窗口文档 `wave2-D-upgrade-plaintext-window.md`（明文混布 T0–T4、防降级默认拒、opt-in 未做）
+
+### R5 欠账
+
+- 全仓仍有大量裸中文错误（commands_backup 同步/校验路径等），只收敛了第一批
+- 历史版本列表无加密标识，明文版本恢复前无法预警（文档 §3.1）
+- 未跑任何测试
+
+## 13. 第 5 轮落地（prove 降本）
+
+未跑编译/测试。zip_export / commands_zip / coordinator 零触碰。
+
+### 已落地
+
+- `backup_crypto.rs` 只加不改：`FirstChunkPlan` / `plan_first_chunk_trial` /
+  `trial_decrypt_first_chunk` / `dsbk_first_chunk_speculative_prefix_len`——
+  v2「头 + 首个密文块」内存试解（明文 zeroize 不落盘），KDF 上限仍统一走
+  `derive_key` 第一步拦截；默认 Argon2 参数与上限常量一字未动
+- `traits.rs` 新能力位 `supports_prefix_read` + `get_prefix`（默认 fail-closed，
+  绝不整包冒充前缀）；WebDAV / S3 以 Range `bytes=0-N` 实现（起点错位
+  fail-closed，服务端忽略 Range 时收满即断流）；FTP 保持默认 → 整文件回退
+- `sync_manager.rs` `prove_password_against_existing_backups` 重构：
+  首块快路径（错密码秒级失败）→ 失败回退次新版本再试一块 → v1 单块容器 /
+  无前缀读取后端走整文件回退（错误码/文案与历史逐字一致）；明文 ZIP 判别
+  只读 4 字节魔数
+- 测试只写不跑：backup_crypto 8 件（计划/试解/final 判定/篡改/超限 KDF/
+  截断前缀/投机长度）、sync_manager 6 件（计数存储断言零整包 get、次新回退、
+  v1 整文件回退、非默认分块补读）、traits/s3 源码锁
+
+### R5-prove 欠账
+
+- FTP 无前缀读取（REST 只能给后缀）：仍整包下载 prove
+- 次新回退语义：口令只需解开最新或次新之一即视为证明（换口令恰在一版前的
+  混口令仓可能被旧口令认领；已在 doc 注释声明）
+- 整文件回退路径的试解产物仍明文落临时盘（仅 v1 / 无能力后端）
+- 未跑任何测试

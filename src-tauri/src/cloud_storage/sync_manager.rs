@@ -332,6 +332,17 @@ fn default_encryption_root_memory() -> Option<crate::crypto::backup_crypto::Encr
     })
 }
 
+/// [R5-prove-cost] 首块快路径对单个备份版本的判定结果。
+///
+/// 快路径失败（口令错误 / 首块损坏 / 前缀读不完整）以 `Err` 直接返回，
+/// **不会**再整包重试同一对象——v2 首块的 AEAD 结论已是该对象的终局。
+enum FirstChunkProveOutcome {
+    /// 已有终局结论：v2 首块试解通过，或（允许时）判定为历史明文 ZIP。
+    Settled,
+    /// v1 单块容器：单个 AEAD tag 覆盖全文，无法部分试解，须整文件回退路径。
+    LegacyV1NeedsWholeFile,
+}
+
 impl CloudSyncManager {
     /// 创建云同步管理器
     pub fn new(storage: Box<dyn CloudStorage>, device_id: String) -> Self {
@@ -1113,7 +1124,8 @@ impl CloudSyncManager {
                 // Plain ZIP backups are a legitimate pre-E2EE state and may start a
                 // new encrypted chain with the user-selected password.
                 //
-                // [R4-e2ee-cas] 试解（整包下载 + 全量解密，可能长于租约 TTL）
+                // [R4-e2ee-cas] 试解（[R5-prove-cost] 首块快路径秒级；v1 /
+                // 无前缀读取后端仍整包下载 + 全量解密，可能长于租约 TTL）
                 // 在取租约之前完成；随后的首次认领不再盲 PUT——认领协议保证
                 // 并发的另一台设备要么看见我们的租约、要么看见已发布的标记
                 // 而失败，空仓「prove 直接放行」的路径同样先过认领协议。
@@ -1195,22 +1207,36 @@ impl CloudSyncManager {
         }
     }
 
-    /// [R12-v1-trust] 升级旧版（v1）加密标记前，用本机密码对该 root 的既有
-    /// 备份做一次试解密。
+    /// [R12-v1-trust][R5-prove-cost] 升级/登记加密标记前，用本机密码对该 root
+    /// 的既有备份做试解密。
     ///
     /// v1 标记没有校验子，无法直接比对密码；但只要该 root 已有备份，「密码
-    /// 与既有密文一致」就是可以当场验证的事实——先下载一份（取 manifest 的
-    /// 最新版本）并用现有 DSBK 解密管线完整试解，通过后才允许把本机密码固化
-    /// 进 v2 标记。任何一步失败（备份列表读不到、下载失败/半包、对象不是
-    /// DSBK 密文、解密失败）都返回错误、保持 v1 标记原样（fail-closed），
+    /// 与既有密文一致」就是可以当场验证的事实——通过后才允许把本机密码固化
+    /// 进 v2 标记。任何一步失败（备份列表读不到、读取失败/半包、对象不是
+    /// DSBK 密文、解密失败）都返回错误、保持标记原样（fail-closed），
     /// 持有正确密码的设备之后仍可完成升级。
     ///
-    /// 空仓（只有 v1 标记、没有任何备份）没有可试解的对象：保持旧行为，
-    /// 允许第一台带密码上传的设备认领该 root。
+    /// [R5-prove-cost] 成本模型（全部发生在写入任何 `backups/` 对象之前）：
+    /// - **首块快路径**：DSBK v2 分块容器每块自带独立 AEAD tag，后端支持
+    ///   前缀读取（`supports_prefix_read`）时只下载「头 + 首个密文块」
+    ///   （≈ 1 MiB）在内存中试解首块——错密码在首块 tag 校验即失败（秒级，
+    ///   不整包下载、不全量解密、明文不落盘）；
+    /// - **整文件回退**：v1 单块容器（单 tag 覆盖全文，无法部分试解，存量
+    ///   v1 备份仍必须可证明）或后端不支持前缀读取时，保持历史行为：整包
+    ///   下载 + 完整试解到临时文件；
+    /// - **次新版本回退**：最新备份试解失败（对象损坏 / 读不到 / 密码不符）
+    ///   时，再对次新版本试一次（同样优先首块）；两者都失败才报错，且报错
+    ///   沿用最新版本那次尝试的错误（错误码与文案与历史一致）。注意该回退
+    ///   意味着「密码能解开该 root 的最新或次新备份」即视为证明——最新对象
+    ///   被截断/损坏时不再把正确密码挡在门外。
+    ///
+    /// 空仓（没有任何备份）没有可试解的对象：保持旧行为，允许第一台带密码
+    /// 上传的设备认领该 root。
     ///
     /// `allow_plaintext_zip` 只用于 marker 缺失的 v0.9.44 升级路径：历史明文
-    /// ZIP 没有既有密码可证明，允许用户从此启用 E2EE；其他非 DSBK/非 ZIP
-    /// 内容仍按损坏 fail-closed。v1 marker 声称仓库已经加密，因此不允许明文。
+    /// ZIP 没有既有密码可证明，允许用户从此启用 E2EE（判别只需 4 字节魔数，
+    /// 快路径下同样无需整包）；其他非 DSBK/非 ZIP 内容仍按损坏 fail-closed。
+    /// v1 marker 声称仓库已经加密，因此不允许明文。
     async fn prove_password_against_existing_backups(
         &self,
         password: &str,
@@ -1223,7 +1249,7 @@ impl CloudSyncManager {
             ))
         })?;
 
-        let Some(version) = manifest
+        let Some(newest) = manifest
             .latest
             .as_ref()
             .and_then(|id| manifest.versions.iter().find(|v| &v.id == id))
@@ -1231,7 +1257,192 @@ impl CloudSyncManager {
         else {
             return Ok(());
         };
+        // [R5-prove-cost] 次新版本 = manifest（新在前）里第一个不同于最新版的条目。
+        let second_newest = manifest.versions.iter().find(|v| v.id != newest.id);
 
+        let primary_error = match self
+            .prove_password_against_version(password, allow_plaintext_zip, newest)
+            .await
+        {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        let Some(fallback) = second_newest else {
+            return Err(primary_error);
+        };
+        tracing::warn!(
+            "最新备份 {} 试解失败（{primary_error}），回退次新版本 {} 再试一块",
+            newest.id,
+            fallback.id
+        );
+        match self
+            .prove_password_against_version(password, allow_plaintext_zip, fallback)
+            .await
+        {
+            Ok(()) => {
+                tracing::warn!(
+                    "次新版本 {} 试解通过（最新备份 {} 可能已损坏或暂不可读），放行",
+                    fallback.id,
+                    newest.id
+                );
+                Ok(())
+            }
+            Err(fallback_error) => {
+                tracing::warn!("次新版本 {} 回退试解同样失败: {fallback_error}", fallback.id);
+                // 报错沿用最新版本那次尝试：错误码与文案对用户保持稳定。
+                Err(primary_error)
+            }
+        }
+    }
+
+    /// [R5-prove-cost] 对单个备份版本做一次口令试解：优先首块快路径，
+    /// 仅 v1 单块容器或后端无前缀读取能力时走整文件回退。
+    async fn prove_password_against_version(
+        &self,
+        password: &str,
+        allow_plaintext_zip: bool,
+        version: &BackupVersion,
+    ) -> Result<()> {
+        if self.storage.supports_prefix_read() {
+            match self
+                .try_prove_with_first_chunk(password, allow_plaintext_zip, version)
+                .await?
+            {
+                FirstChunkProveOutcome::Settled => return Ok(()),
+                // 仅 v1 需要整文件：v2 首块的失败已在上面以 Err 返回，
+                // 绝不为错密码/损坏首块再整包下载同一对象。
+                FirstChunkProveOutcome::LegacyV1NeedsWholeFile => {}
+            }
+        }
+        self.prove_password_with_whole_file(password, allow_plaintext_zip, version)
+            .await
+    }
+
+    /// [R5-prove-cost] 试解未通过（口令错误 / 对象非 DSBK / 首块或全文损坏）
+    /// 的统一用户级错误：首块快路径与整文件回退共用，文案与历史逐字一致。
+    fn prove_trial_failed_error(
+        allow_plaintext_zip: bool,
+        version_id: &str,
+        error: impl std::fmt::Display,
+    ) -> AppError {
+        AppError::configuration(super::sync_e2ee_error(
+            super::SYNC_E2EE_WRONG_PASSWORD_CODE,
+            format!(
+                "{}，用本机密码试解最新备份 {} 未通过：\
+                 {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
+                 若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
+                if allow_plaintext_zip {
+                    "云端尚无加密标记但已有旧版加密备份，登记校验子前"
+                } else {
+                    "云端加密标记为旧版（无密码校验子），升级前"
+                },
+                version_id
+            ),
+        ))
+    }
+
+    /// [R5-prove-cost] 首块快路径：只读取「v2 头 + 首个密文块」前缀，在内存
+    /// 中试解首块证明口令（明文不落盘）。
+    ///
+    /// 读取策略：先按投机长度（头 + 默认 1 MiB 分块 + tag，本应用写入面一次
+    /// 覆盖）读一次前缀；头部声明了更大的非默认分块（外部工具写入）时，按
+    /// [`crate::crypto::backup_crypto::plan_first_chunk_trial`] 给出的精确长度
+    /// 补读一次。对象总长以 manifest 登记值为准——与真实对象不符（被并发
+    /// 替换/截断）时首块 tag 校验必然失败，fail-closed。
+    async fn try_prove_with_first_chunk(
+        &self,
+        password: &str,
+        allow_plaintext_zip: bool,
+        version: &BackupVersion,
+    ) -> Result<FirstChunkProveOutcome> {
+        use crate::crypto::backup_crypto;
+
+        let remote_key = format!("{}/{}.zip", BACKUPS_DIR, version.id);
+        let read_failure = |error: AppError| {
+            AppError::configuration(format!(
+                "升级云端加密标记前需确认本机密码能解开既有备份，但读取备份 {} 的首块失败：\
+                 {error}。本次未改动加密标记，请稍后重试。",
+                version.id
+            ))
+        };
+        let missing_object = || {
+            AppError::configuration(format!(
+                "升级云端加密标记前需确认本机密码能解开既有备份，但备份对象 {} 在云端不存在。\
+                 本次未改动加密标记，请稍后重试。",
+                version.id
+            ))
+        };
+
+        let speculative = backup_crypto::dsbk_first_chunk_speculative_prefix_len(version.size);
+        let mut prefix = self
+            .storage
+            .get_prefix(&remote_key, speculative)
+            .await
+            .map_err(read_failure)?
+            .ok_or_else(missing_object)?;
+
+        // 明文 ZIP 判别只需 4 字节魔数（仅 marker 缺失的 v0.9.44 升级路径放行）。
+        if allow_plaintext_zip {
+            let head = &prefix[..prefix.len().min(4)];
+            let is_plain_zip = matches!(
+                head,
+                [b'P', b'K', 3, 4] | [b'P', b'K', 5, 6] | [b'P', b'K', 7, 8]
+            );
+            if !backup_crypto::is_encrypted_backup(head) && is_plain_zip {
+                return Ok(FirstChunkProveOutcome::Settled);
+            }
+        }
+
+        let plan = backup_crypto::plan_first_chunk_trial(&prefix, version.size).map_err(
+            |error| Self::prove_trial_failed_error(allow_plaintext_zip, &version.id, error),
+        )?;
+        let prefix_len = match plan {
+            backup_crypto::FirstChunkPlan::LegacyV1WholeFile => {
+                return Ok(FirstChunkProveOutcome::LegacyV1NeedsWholeFile);
+            }
+            backup_crypto::FirstChunkPlan::StreamV2 { prefix_len } => prefix_len,
+        };
+        if (prefix.len() as u64) < prefix_len {
+            // 非默认大分块（外部写入面）：按计划的精确长度补读一次。
+            prefix = self
+                .storage
+                .get_prefix(&remote_key, prefix_len)
+                .await
+                .map_err(read_failure)?
+                .ok_or_else(missing_object)?;
+        }
+        if (prefix.len() as u64) < prefix_len {
+            return Err(read_failure(AppError::network(format!(
+                "前缀读取不完整：需要 {prefix_len} 字节，实得 {} 字节\
+                 （对象可能已被并发替换或截断）",
+                prefix.len()
+            ))));
+        }
+
+        // Argon2 派生 + 首块 AES-GCM 是 CPU 密集操作：spawn_blocking。
+        // 首块明文只在内存中短暂存在（试解 API 内部 zeroize），不落盘。
+        let password_owned = password.to_string();
+        let object_len = version.size;
+        let trial = tokio::task::spawn_blocking(move || {
+            backup_crypto::trial_decrypt_first_chunk(&prefix, object_len, &password_owned)
+        })
+        .await
+        .map_err(|e| AppError::internal(format!("试解密任务执行失败: {e}")))?;
+
+        trial.map_err(|error| {
+            Self::prove_trial_failed_error(allow_plaintext_zip, &version.id, error)
+        })?;
+        Ok(FirstChunkProveOutcome::Settled)
+    }
+
+    /// 整文件回退试解：整包下载 + 完整解密到临时文件（历史行为，逐字保留
+    /// 错误文案）。存量 DSBK v1 与不支持前缀读取的后端走此路径。
+    async fn prove_password_with_whole_file(
+        &self,
+        password: &str,
+        allow_plaintext_zip: bool,
+        version: &BackupVersion,
+    ) -> Result<()> {
         let temp = tempfile::tempdir()
             .map_err(|e| AppError::file_system(format!("创建试解密临时目录失败: {e}")))?;
         let downloaded = self
@@ -1287,20 +1498,7 @@ impl CloudSyncManager {
         .map_err(|e| AppError::internal(format!("试解密任务执行失败: {e}")))?;
 
         trial.map_err(|error| {
-            AppError::configuration(super::sync_e2ee_error(
-                super::SYNC_E2EE_WRONG_PASSWORD_CODE,
-                format!(
-                    "{}，用本机密码试解最新备份 {} 未通过：\
-                     {error}。本次未改动加密标记，也未写入任何备份对象。请核对加密密码后重试；\
-                     若确认密码无误，说明该备份由其他密码加密或已损坏，请人工检查该云端目录。",
-                    if allow_plaintext_zip {
-                        "云端尚无加密标记但已有旧版加密备份，登记校验子前"
-                    } else {
-                        "云端加密标记为旧版（无密码校验子），升级前"
-                    },
-                    version.id
-                ),
-            ))
+            Self::prove_trial_failed_error(allow_plaintext_zip, &version.id, error)
         })?;
 
         Ok(())
@@ -2291,6 +2489,381 @@ mod tests {
 
     fn manager_on(storage: &Arc<MemoryStorage>, device_id: &str) -> CloudSyncManager {
         CloudSyncManager::new(Box::new(Arc::clone(storage)), device_id.to_string())
+    }
+
+    // ================== [R5-prove-cost] prove 首块降本 ==================
+
+    /// 计数存储：声明支持前缀读取，并记录 backups/ 对象的整包 `get` 与
+    /// 每次 `get_prefix`——试解成本断言（首块路径不得整包下载）的观测点。
+    struct PrefixReadStorage {
+        inner: Arc<MemoryStorage>,
+        prefix_reads: Mutex<Vec<(String, u64)>>,
+        full_backup_gets: Mutex<Vec<String>>,
+    }
+
+    impl PrefixReadStorage {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                inner: Arc::new(MemoryStorage::default()),
+                prefix_reads: Mutex::new(Vec::new()),
+                full_backup_gets: Mutex::new(Vec::new()),
+            })
+        }
+
+        fn reset_counters(&self) {
+            self.prefix_reads.lock().unwrap().clear();
+            self.full_backup_gets.lock().unwrap().clear();
+        }
+
+        fn prefix_reads_snapshot(&self) -> Vec<(String, u64)> {
+            self.prefix_reads.lock().unwrap().clone()
+        }
+
+        fn prefix_read_count(&self) -> usize {
+            self.prefix_reads.lock().unwrap().len()
+        }
+
+        fn full_backup_get_count(&self) -> usize {
+            self.full_backup_gets.lock().unwrap().len()
+        }
+
+        fn object(&self, key: &str) -> Vec<u8> {
+            self.inner
+                .files
+                .lock()
+                .unwrap()
+                .get(key)
+                .map(|(data, _)| data.clone())
+                .expect("对象应存在")
+        }
+
+        fn object_len(&self, key: &str) -> u64 {
+            self.object(key).len() as u64
+        }
+
+        fn put_raw(&self, key: &str, data: Vec<u8>) {
+            self.inner
+                .files
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), (data, Utc::now()));
+        }
+    }
+
+    #[async_trait]
+    impl CloudStorage for Arc<PrefixReadStorage> {
+        fn provider_name(&self) -> &'static str {
+            "memory-prefix-read"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            self.inner.put(key, data).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            if key.starts_with(BACKUPS_DIR) {
+                self.full_backup_gets.lock().unwrap().push(key.to_string());
+            }
+            self.inner.get(key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            self.inner.list(prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.inner.delete(key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            self.inner.stat(key).await
+        }
+
+        fn supports_prefix_read(&self) -> bool {
+            true
+        }
+
+        async fn get_prefix(&self, key: &str, prefix_len: u64) -> Result<Option<Vec<u8>>> {
+            self.prefix_reads
+                .lock()
+                .unwrap()
+                .push((key.to_string(), prefix_len));
+            Ok(self.inner.files.lock().unwrap().get(key).map(|(data, _)| {
+                let end = (prefix_len as usize).min(data.len());
+                data[..end].to_vec()
+            }))
+        }
+    }
+
+    fn manager_on_prefix(storage: &Arc<PrefixReadStorage>, device_id: &str) -> CloudSyncManager {
+        CloudSyncManager::new(Box::new(Arc::clone(storage)), device_id.to_string())
+    }
+
+    /// 用低成本 Argon2 参数（容器头如实登记，互操作不受影响）把 `payload`
+    /// 加密成 DSBK v2 文件并走真实 upload 管线入云，返回版本 ID。
+    async fn seed_v2_backup(
+        storage: &Arc<PrefixReadStorage>,
+        password: &str,
+        payload: &[u8],
+    ) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let plain = dir.path().join("backup.zip");
+        let sealed = dir.path().join("backup.zip.dsbk");
+        std::fs::write(&plain, payload).unwrap();
+        crate::crypto::backup_crypto::FileCipherSession::with_params(password, 8, 1, 1)
+            .unwrap()
+            .encrypt_file(&plain, &sealed)
+            .unwrap();
+        manager_on_prefix(storage, "device-seeder")
+            .upload(&sealed, Some("1.0.0".into()), None)
+            .await
+            .expect("播种加密备份应成功")
+            .version
+            .id
+    }
+
+    /// [R5-prove-cost][要求 1/3] v2 备份 + 支持前缀读取的后端：v1 标记升级
+    /// 只读「头 + 首块」，不整包下载、不产生任何 backups/ 整包 get。
+    #[tokio::test]
+    async fn prove_uses_first_chunk_without_full_download_for_v2() {
+        let storage = PrefixReadStorage::new();
+        manager_on_prefix(&storage, "device-legacy")
+            .persist_encryption_marker()
+            .await
+            .unwrap();
+        // 3 个分块（2 MiB + 123 B 明文）：首块前缀必须严格小于整包
+        let version_id =
+            seed_v2_backup(&storage, "team-pw-2026", &vec![7u8; 2 * 1024 * 1024 + 123]).await;
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-a");
+        let upgraded = manager
+            .verify_encryption_password_before_upload("team-pw-2026")
+            .await
+            .expect("首块试解应证明口令并完成一次性升级");
+        assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        assert!(upgraded.key_verifier.is_some());
+
+        assert!(storage.prefix_read_count() >= 1, "必须走前缀读取");
+        assert_eq!(
+            storage.full_backup_get_count(),
+            0,
+            "首块路径不得整包下载 backups/ 对象"
+        );
+        let object_len = storage.object_len(&format!("{}/{}.zip", BACKUPS_DIR, version_id));
+        for (key, len) in storage.prefix_reads_snapshot() {
+            assert!(key.ends_with(&format!("{version_id}.zip")), "前缀读取目标: {key}");
+            assert!(
+                len < object_len,
+                "前缀读取必须严格小于整包（{len} < {object_len}）"
+            );
+        }
+    }
+
+    /// [R5-prove-cost][要求 3] 错密码在首块 tag 校验即失败：不整包下载、
+    /// 不改动标记，错误码与文案与历史一致。
+    #[tokio::test]
+    async fn prove_wrong_password_fails_fast_on_first_chunk() {
+        let storage = PrefixReadStorage::new();
+        manager_on_prefix(&storage, "device-legacy")
+            .persist_encryption_marker()
+            .await
+            .unwrap();
+        let version_id =
+            seed_v2_backup(&storage, "team-pw-2026", &vec![9u8; 2 * 1024 * 1024]).await;
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-mistaken");
+        let error = manager
+            .verify_encryption_password_before_upload("wrong-pw-2026")
+            .await
+            .expect_err("错密码必须被首块试解拦截")
+            .to_string();
+        assert!(
+            error.contains(crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE),
+            "必须带稳定错误码: {error}"
+        );
+        assert!(
+            error.contains("试解") && error.contains("未通过") && error.contains(&version_id),
+            "文案必须与历史一致（指出试解未通过与版本）: {error}"
+        );
+        assert_eq!(
+            storage.full_backup_get_count(),
+            0,
+            "错密码不得触发整包下载（秒级失败，不等全量）"
+        );
+        let marker = manager.read_encryption_marker().await.unwrap().unwrap();
+        assert_eq!(marker.version, 1, "试解失败必须保持 v1 标记原样");
+        assert!(marker.key_verifier.is_none());
+    }
+
+    /// [R5-prove-cost][要求 2] 最新对象首块损坏：回退次新版本再试一块，
+    /// 正确密码不被损坏对象挡在门外；两次尝试都只读前缀。
+    #[tokio::test]
+    async fn prove_falls_back_to_second_newest_when_latest_corrupt() {
+        let storage = PrefixReadStorage::new();
+        manager_on_prefix(&storage, "device-legacy")
+            .persist_encryption_marker()
+            .await
+            .unwrap();
+        let older = seed_v2_backup(&storage, "team-pw-2026", b"older intact backup").await;
+        let newest = seed_v2_backup(&storage, "team-pw-2026", b"newest to corrupt").await;
+        assert_ne!(older, newest);
+
+        // 损坏最新对象的首块密文（保留可解析的 v2 头）：首块 tag 必然失败。
+        let newest_key = format!("{}/{}.zip", BACKUPS_DIR, newest);
+        let mut bytes = storage.object(&newest_key);
+        bytes[crate::crypto::backup_crypto::DSBK_V2_HEADER_LEN + 1] ^= 0xFF;
+        storage.put_raw(&newest_key, bytes);
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-a");
+        let upgraded = manager
+            .verify_encryption_password_before_upload("team-pw-2026")
+            .await
+            .expect("最新对象损坏时必须回退次新版本完成口令证明");
+        assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        assert!(
+            storage.prefix_read_count() >= 2,
+            "最新 + 次新各至少一次前缀读取"
+        );
+        assert_eq!(
+            storage.full_backup_get_count(),
+            0,
+            "回退同样走首块，不整包下载"
+        );
+        let touched: Vec<String> = storage
+            .prefix_reads_snapshot()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert!(
+            touched.iter().any(|k| k.contains(&older)),
+            "必须读到次新版本的前缀: {touched:?}"
+        );
+    }
+
+    /// [R5-prove-cost][要求 4] 存量 DSBK v1 单块容器：无法部分试解，
+    /// 必须仍可经整文件回退路径证明口令（先读前缀判定版本，再整包下载）。
+    #[tokio::test]
+    async fn prove_v1_container_still_proves_via_whole_file() {
+        let storage = PrefixReadStorage::new();
+        manager_on_prefix(&storage, "device-legacy")
+            .persist_encryption_marker()
+            .await
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let sealed = dir.path().join("legacy.dsbk");
+        std::fs::write(
+            &sealed,
+            crate::crypto::backup_crypto::encrypt_backup(b"legacy v1 payload", "team-pw-2026")
+                .unwrap(),
+        )
+        .unwrap();
+        manager_on_prefix(&storage, "device-seeder")
+            .upload(&sealed, Some("0.9.44".into()), None)
+            .await
+            .unwrap();
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-a");
+        let upgraded = manager
+            .verify_encryption_password_before_upload("team-pw-2026")
+            .await
+            .expect("v1 容器必须仍可经整文件回退证明口令");
+        assert_eq!(upgraded.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        assert!(
+            storage.prefix_read_count() >= 1,
+            "先读前缀判定容器版本（v1 → 整文件回退）"
+        );
+        assert!(
+            storage.full_backup_get_count() >= 1,
+            "v1 回退必须整包下载（历史行为保持）"
+        );
+    }
+
+    /// [R5-prove-cost] marker 缺失的 v0.9.44 明文 ZIP：4 字节魔数判别即可
+    /// 放行启用 E2EE，不整包下载。
+    #[tokio::test]
+    async fn prove_plain_zip_detected_from_prefix_without_full_download() {
+        let storage = PrefixReadStorage::new();
+        let dir = tempfile::tempdir().unwrap();
+        let plain_zip = dir.path().join("legacy.zip");
+        std::fs::write(&plain_zip, b"PK\x03\x04legacy plaintext zip payload").unwrap();
+        manager_on_prefix(&storage, "device-legacy")
+            .upload(&plain_zip, Some("0.9.44".into()), None)
+            .await
+            .unwrap();
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-upgraded");
+        let marker = manager
+            .verify_encryption_password_before_upload("new-e2ee-pw")
+            .await
+            .expect("没有既有密码的明文 ZIP 不应阻断首次启用 E2EE");
+        assert_eq!(marker.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        assert!(storage.prefix_read_count() >= 1, "判别走前缀读取");
+        assert_eq!(
+            storage.full_backup_get_count(),
+            0,
+            "明文判别只需前缀魔数，不整包下载"
+        );
+    }
+
+    /// [R5-prove-cost] 外部工具写出的非默认大分块（4 MiB）v2 容器：投机前缀
+    /// （≈1 MiB）不够首块，必须按计划精确补读一次；伪造首块试解失败时也
+    /// 绝不整包下载（fail-closed 且成本有界）。
+    #[tokio::test]
+    async fn prove_non_default_chunk_triggers_precise_topup_read() {
+        let storage = PrefixReadStorage::new();
+        manager_on_prefix(&storage, "device-legacy")
+            .persist_encryption_marker()
+            .await
+            .unwrap();
+
+        // 手工构造：合法 v2 头（低成本 KDF 参数，派生秒级）+ 5 MiB 伪密文体。
+        let mut object = Vec::new();
+        object.extend_from_slice(b"DSBK");
+        object.push(2);
+        object.extend_from_slice(&8u32.to_le_bytes()); // m_cost
+        object.extend_from_slice(&1u32.to_le_bytes()); // t_cost
+        object.extend_from_slice(&1u32.to_le_bytes()); // p_cost
+        object.extend_from_slice(&[0u8; 16]); // salt
+        object.extend_from_slice(&[0u8; 7]); // nonce prefix
+        object.extend_from_slice(&(4u32 * 1024 * 1024).to_le_bytes()); // chunk = 4 MiB
+        object.extend_from_slice(&vec![0xA5u8; 5 * 1024 * 1024]); // 伪密文体
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("foreign.dsbk");
+        std::fs::write(&path, &object).unwrap();
+        manager_on_prefix(&storage, "device-seeder")
+            .upload(&path, None, None)
+            .await
+            .unwrap();
+        storage.reset_counters();
+
+        let manager = manager_on_prefix(&storage, "device-a");
+        let error = manager
+            .verify_encryption_password_before_upload("any-pw")
+            .await
+            .expect_err("伪造首块必须试解失败（fail-closed）")
+            .to_string();
+        assert!(
+            error.contains("未通过"),
+            "错误应为试解未通过文案: {error}"
+        );
+        assert!(
+            storage.prefix_read_count() >= 2,
+            "非默认分块必须触发按计划补读"
+        );
+        assert_eq!(
+            storage.full_backup_get_count(),
+            0,
+            "失败也不得整包下载"
+        );
     }
 
     #[tokio::test]

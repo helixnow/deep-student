@@ -20,15 +20,30 @@
 //! storage.put("backups/data.zip", &data).await?;
 //! ```
 
-/// [R12-delta-lease] backup-v2 / GC 独立仓库租约（`backup-v2/locks/`，零生产接线）。
+/// [R12-delta-lease] backup-v2 / GC 独立仓库租约（`backup-v2/locks/`，零生产接线；
+/// 裁决见 docs/dev/wave2-D-backup-v2-decision.md）。
 pub mod backup_lease;
 /// [R4-bad-write] 坏正式对象收敛：隔离到 `.quarantine/`（附原因记录）+
 /// 已校验 `.tmp` 优先收敛；只有坏正式对象时 fail-closed。零生产接线。
 pub mod bad_object;
 mod config;
+// ============================================================================
+// [Wave2-D R5 裁决] backup-v2 / delta 原语族 = **experimental 隔离**。
+//
+// 上方 backup_lease 与下方四个 delta_* 模块只是「未变文件复用 / 增量传输」的
+// 未接线积木：仅 sync_r12_* 集成测试消费，生产 Cloud backup/restore 默认路径
+// 仍是「全量 ZIP → 单对象 put/get」，不得因这些模块存在而宣称增量备份已实现。
+// 引用面由 sync_r12_* 源码锁（字面子串 × `src/**/*.rs` 文件白名单）钉死：
+// 本文件只允许出现各模块的裸声明行，禁止 pub use、禁止命令层导出。
+// 裁决记录与接线前置清单：docs/dev/wave2-D-backup-v2-decision.md。
+// ============================================================================
+/// [R12-delta-format] backup-v2 快照/仓库配置纯 codec（experimental，零生产接线）。
 pub mod delta_format;
+/// [R12-delta-gc] backup-v2 两遍 candidate/grace GC 原语（experimental，零生产接线）。
 pub mod delta_gc;
+/// [R12-delta-restore] backup-v2 快照恢复原语（experimental，零生产接线）。
 pub mod delta_restore;
+/// [R12-delta-upload] backup-v2 快照发布原语（experimental，零生产接线）。
 pub mod delta_upload;
 /// [R4-e2ee-cas] `.encryption-marker` 首次认领 / v1 升级的租约认领协议
 /// （能力探测 + `.encryption-marker.lease` 双寄存器互斥，替代盲 PUT）。

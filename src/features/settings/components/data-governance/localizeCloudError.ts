@@ -82,6 +82,21 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
       return t('cloudStorage:errors.sealedBackupDecryptFailed');
     case 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE':
       return t('cloudStorage:errors.atomicRestoreUnavailable');
+    // [R5-i18n] R4 新稳定码 + commands_backup / commands_zip 第一批 code-only。
+    // 云端目录/对象状态类附上原文（排查需要对象 key 等细节）；
+    // 本机配置/资源类只给人话，原文进日志即可。
+    case 'E_SYNC_BAD_OBJECT_FAIL_CLOSED':
+      return `${t('cloudStorage:errors.syncBadObjectFailClosed')}\n(${raw})`;
+    case 'E_DG_TOMBSTONE_LIMITER_BUSY':
+      return t('cloudStorage:errors.governanceBusy');
+    case 'E_BACKUP_DIR_MISSING':
+      return t('cloudStorage:errors.backupDirMissing');
+    case 'E_RESTORE_DISK_BUDGET_OVERFLOW':
+      return t('cloudStorage:errors.restoreDiskBudgetOverflow');
+    case 'E_ZIP_EXPORT_TEMP_MISSING':
+      return t('cloudStorage:errors.zipExportTempMissing');
+    case 'E_ZIP_EXPORT_COPY_TARGET_FAILED':
+      return `${t('cloudStorage:errors.zipExportCopyTargetFailed')}\n(${raw})`;
   }
   // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
   // 后台任务失败消息以 `[E_...] 说明` 形式携带稳定码，没有 CommandError

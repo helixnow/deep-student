@@ -4,6 +4,9 @@
 //! 它没有接入任何上传、下载、命令或 UI 路径；生产 Cloud backup 仍是
 //! 「全量 ZIP → 单对象 `put_file`」，**不得**因本模块存在而宣称增量备份已实现。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 硬约束（对应 DELTA-R11 §4）：
 //!
 //! - 每个 [`SnapshotDescriptorV2`] 都是**自包含**的完整对象表；schema 使用

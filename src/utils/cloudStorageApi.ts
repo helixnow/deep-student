@@ -19,10 +19,18 @@ export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
 export const SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE = 'E_SYNC_E2EE_MEMORY_PERSIST_FAILED';
+export const SYNC_E2EE_DOWNGRADE_REJECTED_CODE = 'E_SYNC_E2EE_DOWNGRADE_REJECTED';
+export const SYNC_E2EE_CLAIM_CONFLICT_CODE = 'E_SYNC_E2EE_CLAIM_CONFLICT';
+export const SYNC_BAD_OBJECT_FAIL_CLOSED_CODE = 'E_SYNC_BAD_OBJECT_FAIL_CLOSED';
+export const DG_TOMBSTONE_LIMITER_BUSY_CODE = 'E_DG_TOMBSTONE_LIMITER_BUSY';
 export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
 export const SEALED_BACKUP_PASSWORD_REQUIRED_CODE = 'E_BACKUP_SEALED_PASSWORD_REQUIRED';
 export const SEALED_BACKUP_DECRYPT_FAILED_CODE = 'E_BACKUP_SEALED_DECRYPT_FAILED';
 export const ATOMIC_RESTORE_UNAVAILABLE_CODE = 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE';
+export const BACKUP_DIR_MISSING_CODE = 'E_BACKUP_DIR_MISSING';
+export const RESTORE_DISK_BUDGET_OVERFLOW_CODE = 'E_RESTORE_DISK_BUDGET_OVERFLOW';
+export const ZIP_EXPORT_TEMP_MISSING_CODE = 'E_ZIP_EXPORT_TEMP_MISSING';
+export const ZIP_EXPORT_COPY_TARGET_FAILED_CODE = 'E_ZIP_EXPORT_COPY_TARGET_FAILED';
 
 /**
  * Whether an imported ZIP's job stats say the archive can replace the data slot.
@@ -82,6 +90,12 @@ export function getCloudStorageErrorCode(error: unknown): string | undefined {
 }
 
 function codeFromDiagnosticText(text: string): string | undefined {
+  // [R5-i18n] 后端用户可见错误的通用惯例是 `[E_...] 中文诊断`（对齐
+  // restore_codes.rs / ATOMIC_RESTORE_UNAVAILABLE_CODE 的用法）：优先提取
+  // 方括号里的稳定码，新码无须逐个登记即可参与 code-only 映射。
+  const bracketed = /\[(E_[A-Z0-9_]+)\]/.exec(text);
+  if (bracketed) return bracketed[1];
+  // 兜底：旧诊断可能不带方括号、码出现在文案中间。
   if (text.includes(CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE)) {
     return CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE;
   }
