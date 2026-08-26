@@ -48,8 +48,9 @@ pub use config::{
 pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
     device_id_short_hash, generate_device_id_after_restore, get_device_id,
-    persist_device_id_after_restore, rotate_device_id_after_restore, BackupVersion, CloudManifest,
-    CloudSyncManager, DownloadResult, EncryptionMarker, SyncStatus, UploadResult,
+    last_encryption_memory_persist_failure, persist_device_id_after_restore,
+    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
+    EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
 };
 pub use traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
@@ -64,6 +65,9 @@ pub const SYNC_E2EE_WRONG_PASSWORD_CODE: &str = "E_SYNC_E2EE_WRONG_PASSWORD";
 pub const SYNC_E2EE_MARKER_CORRUPTED_CODE: &str = "E_SYNC_E2EE_MARKER_CORRUPTED";
 /// 云端已加密，但本机未提供 / 未配置解密密码。
 pub const SYNC_E2EE_PASSWORD_REQUIRED_CODE: &str = "E_SYNC_E2EE_PASSWORD_REQUIRED";
+/// [P11] 「本机加密目录记忆」（第二道明文防线）持久化失败：不阻断本次云操作，
+/// 但本机记忆降级，经 `SyncStatus.encryptionMemoryPersistFailure` 暴露到设置页。
+pub const SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE: &str = "E_SYNC_E2EE_MEMORY_PERSIST_FAILED";
 
 /// 给 E2EE fail-closed 诊断加上稳定 code，文案仍可改语言。
 pub fn sync_e2ee_error(code: &'static str, message: impl std::fmt::Display) -> String {

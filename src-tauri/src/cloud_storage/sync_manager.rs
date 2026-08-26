@@ -177,6 +177,53 @@ pub struct SyncStatus {
     /// 错误信息
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// [P11] 上次「本机加密目录记忆」持久化失败状态（`None` = 最近一次登记成功
+    /// 或本进程内从未失败）。失败不阻断云操作，但第二道明文防线在本机降级，
+    /// 必须暴露给设置页。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_memory_persist_failure: Option<EncryptionMemoryPersistFailure>,
+}
+
+/// [P11] 「本机加密目录记忆」持久化失败的可查询状态。
+///
+/// 只携带稳定错误码与发生时间：文案由前端 i18n 渲染，不在后端堆用户可见英文长句。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptionMemoryPersistFailure {
+    /// 稳定错误码（恒为 [`super::SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE`]）
+    pub code: String,
+    /// 失败发生时间
+    pub at: DateTime<Utc>,
+}
+
+/// [P11] 进程内最近一次 remember 失败（成功后清除）。记忆文件本身写不进磁盘时
+/// 无法可靠地把失败状态也持久化到同一磁盘，故采用进程内状态：设置页每次查询
+/// 同步状态都会读到本进程的最新登记结果。
+static LAST_ENCRYPTION_MEMORY_PERSIST_FAILURE: std::sync::Mutex<
+    Option<EncryptionMemoryPersistFailure>,
+> = std::sync::Mutex::new(None);
+
+fn record_encryption_memory_persist_failure() {
+    if let Ok(mut slot) = LAST_ENCRYPTION_MEMORY_PERSIST_FAILURE.lock() {
+        *slot = Some(EncryptionMemoryPersistFailure {
+            code: super::SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE.to_string(),
+            at: Utc::now(),
+        });
+    }
+}
+
+fn clear_encryption_memory_persist_failure() {
+    if let Ok(mut slot) = LAST_ENCRYPTION_MEMORY_PERSIST_FAILURE.lock() {
+        *slot = None;
+    }
+}
+
+/// [P11] 查询上次「本机加密目录记忆」持久化失败状态（`None` = 无失败）。
+pub fn last_encryption_memory_persist_failure() -> Option<EncryptionMemoryPersistFailure> {
+    LAST_ENCRYPTION_MEMORY_PERSIST_FAILURE
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
 }
 
 /// 上传结果
@@ -247,13 +294,22 @@ impl CloudSyncManager {
 
     /// [R10-verifier] 本机登记「该云端目录曾经加密」（幂等，失败只警告不阻断：
     /// 记忆是第二道防线，云端标记仍是第一道门禁）。
+    ///
+    /// [P11] 失败/成功会同步更新进程内「上次 remember 失败」状态，经
+    /// [`SyncStatus::encryption_memory_persist_failure`] 暴露到设置页；
+    /// fail-closed：失败时记忆未写入，[`Self::encrypted_root_remembered_locally`]
+    /// 仍从文件实读，不会假装已写入。
     fn remember_encrypted_root(&self) {
         if let Some(memory) = &self.encryption_memory {
             let fingerprint = crate::crypto::backup_crypto::EncryptedRootMemory::fingerprint(
                 &self.storage.instance_binding_hint(),
             );
-            if let Err(error) = memory.remember(&fingerprint) {
-                tracing::warn!("登记本机加密目录记忆失败（不阻断本次操作）: {error}");
+            match memory.remember(&fingerprint) {
+                Ok(()) => clear_encryption_memory_persist_failure(),
+                Err(error) => {
+                    tracing::warn!("登记本机加密目录记忆失败（不阻断本次操作）: {error}");
+                    record_encryption_memory_persist_failure();
+                }
             }
         }
     }
@@ -537,6 +593,8 @@ impl CloudSyncManager {
                         latest_version: latest,
                         last_sync_time: device_last_sync,
                         error: None,
+                        encryption_memory_persist_failure:
+                            last_encryption_memory_persist_failure(),
                     }
                 }
                 Err(e) => SyncStatus {
@@ -545,6 +603,7 @@ impl CloudSyncManager {
                     latest_version: None,
                     last_sync_time: None,
                     error: Some(format!("读取 manifest 失败: {e}")),
+                    encryption_memory_persist_failure: last_encryption_memory_persist_failure(),
                 },
             },
             Err(e) => SyncStatus {
@@ -553,6 +612,7 @@ impl CloudSyncManager {
                 latest_version: None,
                 last_sync_time: None,
                 error: Some(e.to_string()),
+                encryption_memory_persist_failure: last_encryption_memory_persist_failure(),
             },
         }
     }

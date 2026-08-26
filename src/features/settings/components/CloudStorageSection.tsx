@@ -1720,6 +1720,19 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               )}
             </div>
 
+            {/* [P11] 本机加密目录记忆写入失败：第二道明文防线降级，必须可见 */}
+            {syncStatus.encryptionMemoryPersistFailure && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-sm">
+                <WarningCircle size={16} className="mt-0.5 shrink-0 text-amber-500" />
+                <span>
+                  {t('cloudStorage:status.encryptionMemoryPersistFailed')}
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({syncStatus.encryptionMemoryPersistFailure.code})
+                  </span>
+                </span>
+              </div>
+            )}
+
             {/* 进度面板：上传/下载时显示 */}
             {opProgress && (
               <div className={`rounded-lg border p-3 space-y-2 text-sm ${

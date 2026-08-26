@@ -18,6 +18,7 @@ export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_L
 export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
+export const SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE = 'E_SYNC_E2EE_MEMORY_PERSIST_FAILED';
 export const PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE = 'E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE';
 export const SEALED_BACKUP_PASSWORD_REQUIRED_CODE = 'E_BACKUP_SEALED_PASSWORD_REQUIRED';
 export const SEALED_BACKUP_DECRYPT_FAILED_CODE = 'E_BACKUP_SEALED_DECRYPT_FAILED';
@@ -573,6 +574,14 @@ export function isKnownPortableCloudBackup(
   return version?.recoveryKind === 'partial_archive';
 }
 
+/** [P11] 「本机加密目录记忆」（第二道明文防线）持久化失败状态 */
+export interface EncryptionMemoryPersistFailure {
+  /** 稳定错误码（恒为 SYNC_E2EE_MEMORY_PERSIST_FAILED_CODE；文案走 i18n） */
+  code: string;
+  /** 失败发生时间（RFC3339） */
+  at: string;
+}
+
 /** 同步状态 */
 export interface SyncStatus {
   /** 是否已连接 */
@@ -585,6 +594,8 @@ export interface SyncStatus {
   lastSyncTime?: string;
   /** 错误信息 */
   error?: string;
+  /** [P11] 上次「本机加密目录记忆」持久化失败（缺省 = 无失败） */
+  encryptionMemoryPersistFailure?: EncryptionMemoryPersistFailure;
 }
 
 /** 上传结果 */

@@ -1,0 +1,112 @@
+# 0824 Wave2-D（cloud/data）台账
+
+> 只追加。不标 Goal complete。第 1–7 轮「已验证」只写静态证据。
+> 第 1 轮骨架曾按 MERGE-PLAN 误映射 P1–P12；本节起以任务卡原文为权威编号。
+
+## 0. 缺档与身份
+
+- `docs/0824-quality-review/*` 在 tip `061b4815` **不存在**。本台账以任务卡 P1–P12 + MERGE-PLAN Step 22/23 + `/tmp/0824-wave2-r1-reports/01–09` 代码实证重建。
+- 基线：`origin/cursor/0824-cde6` @ `061b4815`（Step 23 文档）。fetch 后远端未前进。
+- 独立枝：`cursor/0824-wave2-cloud-data-a875`（空提交 `bfbe1951`）
+- Draft PR：https://github.com/helixnow/deep-student/pull/348 （base = `cursor/0824-cde6`）
+- 不整支合回官方 0824。禁止反向合 main。禁止 merge 隔离/预演/leftover 枝。
+
+## 1. P1–P12 归组（任务卡原文）
+
+| # | 标题 | 主文件 | Step22 宣称 | R1 代码实证 | 计划轮 | 数据不可逆 |
+| --- | --- | --- | --- | --- | --- | --- |
+| P1 | 测试连接先发布后测试；失败不回滚 | `CloudStorageSection.tsx` `doTestConnection`；`cloud_config_commands.rs`；`secure_store.rs:2055-2076` | 未修（cross-cutting FAIL） | **确认 FAIL**：saveCredentials→saveCloudConfigSsot→checkConnection，失败只改 UI；写入即发布（07 报告） | R2 | 中（坏配置变正式 SSOT） |
+| P2 | auto-sync 只在设置页挂载 | `syncStatusStore.ts:510-512`；`SyncSettingsSection.tsx:124`；`SyncTab.tsx:173` | 未修 | **确认**：全仓仅这两处调用；App 无接线；rehydrate 不 start（07） | R2 | 中（该排程不排程） |
+| P3 | E2EE marker 并发认领无 CAS | `sync_manager.rs:566-847` | 未修 | **确认**：盲 PUT+回读；空仓两设备不同口令可同时认领成功；`backup_lease.rs` 零生产接线（01） | R4 | **高**（口令分叉/孤儿密文） |
+| P4 | 内存 GET 无字节预算 | `webdav.rs:1219-1254`；`s3.rs:797-832`；`traits.rs` `get()` | 未修 | **确认**：trait 无预算；控制对象走无界 `get()`；数据对象走 `get_file`（02） | R4 | 中（OOM / 坏控制对象） |
+| P5 | 复读坏写无恢复协议 | tombstone / per-device manifest / `.tmp` | 未修 | **确认**：三类坏写 fail-closed 且无自动收敛；manifest 回读失败保留 `.tmp` 但无人消费；`get_manifest` 一坏全失败（01） | R4 | **高**（同步永久卡死） |
+| P6 | 手动下载防降级不对称 | `cloud_storage/mod.rs:503-557`（`cloud_sync_download`） | 未修 | **确认不拒**：只看头 4 字节，不读 marker；marker 在 + 明文对象仍成功（01） | R4 | **高**（加密链被明文替换） |
+| P7 | 持久域未消费（vfs-governance 阻断 #2） | `commands_restore.rs`；`DomainRestorePlan` | Step22 只修密钥事务，**未修本条** | **确认**：主命令接 `restore_crypto_keys_from_manifest_transactional`；`restore_audit_db_from_manifest` 生产零调用；`persistent/` 被跳过；webview_settings/custom_grading_modes 恢复即删除；无未消费断言；assets 下 UntrustedExecutable 被整槽自动落盘（05） | R3 | **高**（域丢失/不可信技能落盘） |
+| P8 | 稀疏 VFS init 不补索引/FTS/视图 | `coordinator.rs` `apply_vfs_init_missing_tables`；`migration/vfs.rs:56-223` | 未修（两加法本身必须保留） | **确认**：只抽 `CREATE TABLE IF NOT EXISTS`，不补 `idx_folders_parent` / `questions_fts` / `trash_view`（06） | R3 | **高**（升级后库不可用或绕 verifier） |
+| P9 | crypto journal 故障矩阵不足 | `crypto_publication.rs` | Step22 新增，仅正常路径+部分 crash | **部分**：三点 crash 已有单测；审计库在事务外 best-effort；缺非对称部分 rename / `remove_journal` 失败分支（03） | R7 写测试 | **高**（密钥/槽不一致） |
+| P10 | notes.props 畸形静默 None | `vfs/repos/note_repo.rs:2164-2194` | 未修 | R1 未深读（越权于 VFS repo；本路只在 coordinator 加法侧相关） | R3 | 低–中 |
+| P11 | 口令/导出打磨 | prove 全量、错密码、双实现导出、KDF、弱口令、EncryptedRootMemory | 部分（短口令放行已修） | prove 全量下载+整文件试解、明文落临时盘（03）；导出双实现仍在、加密分支无进度/取消（04）；skip 已修 manifest.json；EncryptedRootMemory 失败已暴露设置页（08） | R1 低风险子集已落；其余 R5 | 中–高 |
+| P12 | 迁移与兼容 | V20260824 去重、change_log 传播、明文窗口、code-only 错误、backup-v2 裁决 | 去重+短口令已修 | 去重在 **mistakes** 库 SQL，fixture **确含碰撞对**（06/09）；同步传播契约未做 | R5 | **高**（迁移改库） |
+
+## 2. Step 22 十一 pick 复核（09 报告）
+
+结论：**11/11 语义在 tip 上仍在**；Step 22 **未跑**定向测试（MERGE-PLAN 已承认）。本会话保留二检权，不把「语义在」写成「已验证绿」。
+
+| # | 落地 SHA | 组 | 内容 | 09 结论 | 本会话动作 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `1523c285` | backup #334 | sealed 续传必须输入密码 | 语义在（BackupTab + peek + resume 透传） | 不重做；R5 便携包误输口令前置仍开放 |
+| 2 | `3a1b79bb` | backup #334 | 本地 ZIP 文案诚实化 | 语义在 | 不重做 |
+| 3 | `87563bd4` | backup #339 | 清加密 ZIP 残留 | 语义在；`sealedBackupPasswordRequired` 故意保留 | 不重做 |
+| 4 | `2f4e79e9` | restore #330 | 密钥随槽位切换一并提交 | 语义在（`publish_restore_keys_and_commit_cutover`） | 不重做；P7 域消费仍开放 |
+| 5 | `2bc68277` | restore #340 | `crypto_publication.rs` crash-safe | 文件与 journal 路径在 | 不重做实现；R7 补故障矩阵源码 |
+| 6 | `5c3cb512` | upgrade #343 | NULL-source 去重 | SQL+fixture 碰撞对在（mistakes 库，非 coordinator） | R5 再核 fixture 与 change_log 传播 |
+| 7 | `2c56db91` | upgrade #343 | 存量短口令放行 | 语义在；冲突 2 组合解正确 | 不重做；红线：存量不收紧 |
+| 8 | `de56f37f` | upgrade #343 | 云恢复短口令 | 语义在 | 不重做 |
+| 9–11 | `31c0ea85` / `800f7121` / `bc2a655b` / `23eb0af6` | 测试收口 | 断言对齐 | 在；`performRestore` 不再要求短口令拒收 | 不重做 |
+
+另核：Step 22 **未触碰** `coordinator.rs`。两加法仍在：
+
+- `apply_vfs_init_missing_tables` 定义 `:2383` 生产 `:2280` 测试 `:5873`
+- `pre_repair_vfs_v20260824_note_props` 定义 `:2345` 调用 `:2331` 测试 `:5388`
+
+## 3. 第 1 轮落地（产品）
+
+三件低风险速修（08，worktree → 本枝）：
+
+1. EncryptedRootMemory 上次 remember 失败经 `SyncStatus.encryptionMemoryPersistFailure` + 稳定码 `E_SYNC_E2EE_MEMORY_PERSIST_FAILED` 暴露到 `CloudStorageSection`；失败仍不阻断云操作，也不假装已写入。
+2. ZIP 续传 `skip_existing`：`manifest.json`（末段、大小写不敏感）与 `.db` 同级不可跳过；新增测试源码 `test_resumable_import_never_skips_manifest_json`（未执行）。
+3. FTP `ensure_directory`：550/already exists 保持 debug，真实 MKDIR 失败升 warn。**函数仍对真实失败返回 `Ok(())`**（本轮只改日志，不改语义）。
+
+## 4. 18 不变量本路静态自证（R1）
+
+| 项 | 结论 | 证据 |
+| --- | --- | --- |
+| 13 WebDAV decode_path | 仍在 | `webdav.rs:597-601`，守卫 `2146-2153`（02） |
+| 14 S3 normalize_endpoint | 仍在 | `s3.rs:85-120` + 行为单测（02） |
+| 15 FTP 550/501 白名单 | 仍在 | `ftp.rs:273-287`，门在 `:278`，守卫 `1443-1450`（02） |
+| coordinator 两加法 | 仍在 | 见 §2 行号；本轮产品 diff 未改该文件 |
+
+## 5. 已验证 / 未验证
+
+### 已验证（仅静态）
+
+- tip `061b4815` fetch 后未前进；本枝由其拉出
+- coordinator 两加法行号级仍在
+- 不变量 13/14/15 仍在
+- P1–P8 / P11 子集的 FAIL 形态有行号实证
+- Step22 11 pick 语义仍在（未跑测试）
+- 第 1 轮三件速修源码已落盘
+
+### 未验证
+
+- 未跑 typecheck / vite / cargo check / check-migrations / 任何测试
+- 未做真云 / 真机 / 真实旧库
+- P3–P8 产品修复未开工
+- EncryptedRootMemory 失败态、manifest 不可跳过、FTP warn **未执行**
+- 质量评审原文缺档
+
+## 6. 越权只读记录
+
+| 轮 | 文件 | 操作 | 理由 |
+| --- | --- | --- | --- |
+| R1 | `src-tauri/src/vfs/repos/note_repo.rs` | 未读 | P10 延至 R3；本轮未越权写 |
+| R1 | `src/App.tsx` | 只读检索 | 确认 auto-sync 无挂载（07） |
+
+## 7. 第 2 轮预告（配置事务 + auto-sync）
+
+冻结设计（实施任务卡以此为准）：
+
+- **草稿**：表单态，不写 active SSOT / active 凭据。
+- **测试**：新命令 `cloud_config_test_connection_draft`，一次性草稿配置+凭据，**不改** active generation。
+- **发布**：新命令 `cloud_config_publish`，凭据+配置单逻辑提交；失败保持旧 generation。
+- **secure_store**：在既有 `cloud_storage_credentials` 上叠加 staged generation + active pointer；「空=保留」只作用于 publish 合并，不作用于 draft 测试。
+- **auto-sync**：hydration 完成后由 App/服务层幂等 `ensureAutoSyncSchedulerStarted`；设置页不再是唯一启动点。
+- 红灯测试源码（不跑）：「测试失败 SSOT 未变」「重启不进设置 timer 存在」。
+
+## 8. 关键发现（给后续轮，非本轮修）
+
+- P6 手动下载是**成功降级**而非「有防降级但不对称」——比任务卡描述更严重。
+- P7 主编排把 `assets/workspaces/agents/**` 整槽落盘，与 UntrustedExecutable 拦截矛盾。
+- EncryptedRootMemory 损坏文件 fail-closed 后下一次 `remember` 会空文件重建，丢掉其他 root 记忆（03；有单测锁住此行为）。
+- prove 试解会把明文写到临时盘（03/P11）。
+- FTP `ensure_directory` 吞错（02/08）；日志已可见，语义未改。

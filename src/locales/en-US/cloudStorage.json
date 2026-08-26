@@ -145,7 +145,8 @@
     "cloudVersions": "Cloud Versions",
     "latestVersion": "Latest Version",
     "deviceId": "Device ID",
-    "never": "Never synced"
+    "never": "Never synced",
+    "encryptionMemoryPersistFailed": "Failed to persist the local encrypted-folder memory. The local second-line plaintext guard is temporarily degraded (the cloud encryption marker still applies). Check disk space and write permissions for the data directory."
   },
   
   "history": {

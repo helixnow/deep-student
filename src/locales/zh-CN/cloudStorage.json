@@ -145,7 +145,8 @@
     "cloudVersions": "云端版本数",
     "latestVersion": "最新版本",
     "deviceId": "设备 ID",
-    "never": "从未同步"
+    "never": "从未同步",
+    "encryptionMemoryPersistFailed": "本机「加密目录记忆」写入失败：本机第二道明文防护暂时降级（云端加密标记仍然生效）。请检查数据目录的磁盘空间与写入权限。"
   },
   
   "history": {

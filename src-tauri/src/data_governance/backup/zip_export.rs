@@ -1827,9 +1827,15 @@ where
         };
 
         // 断点续传：跳过已存在且大小匹配的文件（但数据库文件不能跳过，因为大小可能相同但内容不同）
+        // [P11] manifest.json（任意层级、大小写不敏感）同样不可跳过：它是恢复链的
+        // 元数据 SSOT，重新导出后大小可能不变而内容已变，跳过会让旧清单冒充新快照。
         if skip_existing && !file.is_dir() {
             let is_db_file = file_name.to_ascii_lowercase().ends_with(".db");
-            if !is_db_file {
+            let is_manifest = relative_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("manifest.json"));
+            if !is_db_file && !is_manifest {
                 match std::fs::symlink_metadata(&outpath) {
                     Ok(metadata)
                         if !metadata.file_type().is_symlink()
@@ -2406,6 +2412,64 @@ mod tests {
 
         assert!(file_count > 0);
         assert!(target.join("manifest.json").is_file());
+    }
+
+    /// [P11] 续传 skip 白名单不得覆盖 manifest.json：同大小不同内容的旧清单
+    /// 必须被归档内容重新覆盖，否则旧清单会冒充新快照进入恢复链。
+    #[test]
+    fn test_resumable_import_never_skips_manifest_json() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("plain.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        import_backup_from_zip_resumable(&output_path, &target, |_| {}, || false, None).unwrap();
+
+        // 篡改已落盘的 manifest.json：保持字节数不变但内容不同，
+        // 命中「已存在且大小匹配」的 skip 条件。
+        let manifest_path = target.join("manifest.json");
+        let original = std::fs::read(&manifest_path).unwrap();
+        let tampered = vec![b'x'; original.len()];
+        assert_ne!(original, tampered);
+        std::fs::write(&manifest_path, &tampered).unwrap();
+
+        let mut skipped: Vec<String> = Vec::new();
+        import_backup_from_zip_resumable(
+            &output_path,
+            &target,
+            |progress| {
+                if progress.message.contains("跳过已存在") {
+                    if let Some(file) = progress.current_file.clone() {
+                        skipped.push(file);
+                    }
+                }
+            },
+            || false,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            skipped
+                .iter()
+                .all(|name| !name.to_ascii_lowercase().ends_with("manifest.json")),
+            "manifest.json must never be skipped by resume: {:?}",
+            skipped
+        );
+        let restored = std::fs::read(&manifest_path).unwrap();
+        assert_eq!(
+            restored, original,
+            "manifest.json must be re-extracted from the archive, not skipped"
+        );
     }
 
     #[test]

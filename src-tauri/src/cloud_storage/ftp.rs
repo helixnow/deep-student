@@ -368,10 +368,15 @@ impl FtpStorage {
                     tracing::debug!("[FtpStorage] 创建目录：/{}", current);
                 }
                 Err(e) => {
-                    // 550 表示目录已存在，可以忽略
+                    // 550 表示目录已存在，可以忽略（保持 debug，不制造噪音）
                     let err_str = e.to_string();
-                    if !err_str.contains("550") && !err_str.contains("already exists") {
-                        tracing::debug!("[FtpStorage] MKDIR /{} 失败：{}", current, e);
+                    if err_str.contains("550") || err_str.contains("already exists") {
+                        tracing::debug!("[FtpStorage] MKDIR /{} 已存在（忽略）：{}", current, e);
+                    } else {
+                        // 真实创建失败升为 warn：当前语义仍不在此处返回 Err
+                        //（由后续对该路径的写入操作以带上下文的错误显式失败），
+                        // 但排障日志必须可见。
+                        tracing::warn!("[FtpStorage] MKDIR /{} 失败：{}", current, e);
                     }
                 }
             }
