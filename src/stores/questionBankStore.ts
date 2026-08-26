@@ -1031,8 +1031,10 @@ interface QuestionBankState {
    * - 首答：completed/answered +1，correct 按判定 +0/+1（answered_question_ids 幂等）；
    * - 已答题再次上报（改判/重答）：completed 不重复计，correct 按
    *   旧判定 → 新判定 差量修正（true→false 会 -1，null→true 会 +1）；
-   * - 已答但无判定基线（answered_results 缺项，旧版会话残留）：保持首答锁，
-   *   等后端 get_daily_practice 全量重算收敛；
+   * - 已答但无判定基线（answered_results 缺项：旧版会话残留，或权威快照
+   *   覆盖 answered_question_ids 引入的会话外题目）：保持首答锁 fail-closed，
+   *   由 submit/regrade 响应的权威快照（applyAuthoritativeDailyProgress）
+   *   或下次 get_daily_practice 全量重算收敛；
    * - 跨题目集 / 非会话题目忽略。
    */
   recordPracticeAnswer: (

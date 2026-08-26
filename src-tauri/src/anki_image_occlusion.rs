@@ -12,7 +12,8 @@
 //!    `<img src>`）与 `extra_fields["_occlusion"]` spec。生产入库
 //!    （`streaming_anki_service::parse_and_save_card`）现已消费该 text
 //!    （仅在模型未产出非空 text 时补入）并把 `_occlusion.imageRef` 写入
-//!    `AnkiCard.images`；导出转换仍未接通。
+//!    `AnkiCard.images`（`vlm://` 占位引用被过滤，不入 images）；
+//!    导出转换仍未接通。
 //! 3. **启发式建议**：`propose_boxes_from_image_desc` 从 VlmFull/VlmLight
 //!    已产出的 `[IMAGE_DESC: ...]` 条目文本中提取标签并按网格布局出候选盒，
 //!    作为「无坐标 VLM → 有坐标遮挡」的零成本首版桥（无图测试不碰模型）。
@@ -487,11 +488,18 @@ pub fn parse_occlusion_field(extra_fields: &HashMap<String, String>) -> Option<O
     serde_json::from_str::<OcclusionSpec>(raw).ok()
 }
 
+/// VLM 坐标块不负责选图时使用的占位引用 scheme（完整占位为
+/// `vlm://pending-image`，见 [`parse_occlusion_boxes_from_vlm`]）。
+/// 与 apkg / AnkiConnect 导出侧的 `vlm://` 无图降级约定一致。
+const VLM_PENDING_IMAGE_SCHEME: &str = "vlm://";
+
 /// 从卡片 `extra_fields` 解析遮挡图片引用（入库侧填充 `AnkiCard.images` 用）。
 ///
 /// 读取 `_occlusion` JSON 的 `imageRef`（serde camelCase 契约），并容忍
-/// 手写/旧数据的 `image_ref` snake_case 键。无 `_occlusion` 字段、JSON
-/// 不合法或引用为空/纯空白时返回 `None`。
+/// 手写/旧数据的 `image_ref` snake_case 键。以下情况返回 `None`：
+/// 无 `_occlusion` 字段、JSON 不合法、引用为空/纯空白，以及引用为
+/// `vlm://` 占位（未被生产接线替换的 `vlm://pending-image` 不是可解析
+/// 媒体，r2 契约 §2.1 要求不入 images；导出两侧同样过滤该 scheme）。
 pub fn occlusion_image_ref_from_fields(extra: &HashMap<String, String>) -> Option<String> {
     let raw = extra.get(OCCLUSION_FIELD)?;
     let value: serde_json::Value = serde_json::from_str(raw).ok()?;
@@ -500,7 +508,8 @@ pub fn occlusion_image_ref_from_fields(extra: &HashMap<String, String>) -> Optio
         .or_else(|| value.get("image_ref"))
         .and_then(serde_json::Value::as_str)?
         .trim();
-    (!image_ref.is_empty()).then(|| image_ref.to_string())
+    (!image_ref.is_empty() && !image_ref.starts_with(VLM_PENDING_IMAGE_SCHEME))
+        .then(|| image_ref.to_string())
 }
 
 /// 把校验后的 spec 渲染为 Anki 23.10+ 原生 Image Occlusion 的
@@ -1233,6 +1242,32 @@ mod tests {
             r#"{"imageRef":"   ","boxes":[]}"#.to_string(),
         );
         assert!(occlusion_image_ref_from_fields(&fields).is_none());
+    }
+
+    #[test]
+    fn test_occlusion_image_ref_from_fields_rejects_vlm_pending_placeholder() {
+        // r2 契约 §2.1：未被生产接线替换的 vlm:// 占位不入 images。
+        let mut fields: HashMap<String, String> = HashMap::new();
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"vlm://pending-image","boxes":[]}"#.to_string(),
+        );
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        // 前后空白不影响占位判定
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"  vlm://pending-image  ","boxes":[]}"#.to_string(),
+        );
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        // 真实引用（含 vfs:// scheme）不受影响
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"vfs://images/diagram.png","boxes":[]}"#.to_string(),
+        );
+        assert_eq!(
+            occlusion_image_ref_from_fields(&fields).as_deref(),
+            Some("vfs://images/diagram.png")
+        );
     }
 
     // ---- Anki 原生 IO cloze 语法 ----

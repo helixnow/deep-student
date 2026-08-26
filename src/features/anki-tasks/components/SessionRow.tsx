@@ -331,23 +331,25 @@ export const SessionRow: React.FC<{
             [@media(pointer:coarse)]:w-auto [@media(pointer:coarse)]:min-w-[120px]"
           onClick={e => e.stopPropagation()}
         >
+          {/* icon-only 按钮必须带 aria-label：CommonTooltip 只挂 aria-describedby
+              （且仅悬停可见时），不构成可访问名称——读屏用户会听到空按钮 */}
           {group === 'active' && session.activeTasks > 0 && (
             <CommonTooltip content={t('pause')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton size="sm" variant="ghost" onClick={() => act('pause')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('pause')}>
                 <Pause size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.pausedTasks > 0 && (
             <CommonTooltip content={t('resume')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton size="sm" variant="ghost" onClick={() => act('resume')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('resume')}>
                 <Play size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {group === 'active' && (
             <CommonTooltip content={t('tasks.cancelTask')}>
-              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton size="sm" variant="ghost" onClick={() => act('cancel')} disabled={!!busy} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('tasks.cancelTask')}>
                 <XCircle size={12} />
               </DsButton>
             </CommonTooltip>
@@ -363,14 +365,14 @@ export const SessionRow: React.FC<{
           )}
           {session.totalCards > 0 && (
             <CommonTooltip content={t('taskDashboard.quickExport')}>
-              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.quickExport')}>
                 <DownloadSimple size={12} />
               </DsButton>
             </CommonTooltip>
           )}
           {session.sourceSessionId && (
             <CommonTooltip content={t('taskDashboard.jumpToChat')}>
-              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
+              <DsButton size="sm" variant="ghost" onClick={onJump} className="w-6 h-6 p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" aria-label={t('taskDashboard.jumpToChat')}>
                 <ArrowSquareOut size={12} />
               </DsButton>
             </CommonTooltip>
@@ -383,6 +385,7 @@ export const SessionRow: React.FC<{
               onClick={handleDelete}
               disabled={!!busy}
               className={`h-6 p-0 [@media(pointer:coarse)]:!h-11 ${deleteConfirm ? 'px-2 gap-1' : 'w-6 [@media(pointer:coarse)]:!w-11'}`}
+              aria-label={deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
             >
               <Trash size={12} />
               {deleteConfirm && (

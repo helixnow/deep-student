@@ -3,11 +3,16 @@
  *
  * 数据来源：后端 `emit_critic_summary`（streaming_anki_service.rs）派发的
  * `CriticSummary` 事件载荷，wire 格式为 snake_case
- * （examined / kept / revised / flagged / skipped_over_budget /
- * gold_references / persist_failures / degraded）。前端块数据
- * （AnkiCardsBlockData）尚未正式声明该字段，因此本组件接受 `unknown`
- * 并在内部宽松解析（同时兼容 snake_case 与 camelCase），挂载处只需
- * `(data as { criticSummary?: unknown }).criticSummary` 透传即可。
+ * （examined / kept / revised / flagged / rejected_unknown_ids /
+ * skipped_over_budget / gold_references / gold_references_truncated /
+ * persist_failures / degraded，另有可选 routed_* 路由观测字段）。
+ * TauriAdapter.handleAnkiGenerationEvent 归一化为 camelCase 后 patch 进
+ * `block.toolOutput.criticSummary`（AnkiCardsBlockData 已正式声明该字段，
+ * 类型见 ankiCardsBlockState.AnkiCriticSummary）。本组件仍接受 `unknown`
+ * 并在内部宽松解析（同时兼容 snake_case 与 camelCase）：这是对历史
+ * 会话持久化数据与后端序列化策略调整的防御边界；本横幅只渲染其中
+ * 与用户相关的子集（rejectedUnknownIds / goldReferencesTruncated /
+ * routed_* 仅用于调试面板观测，不在横幅展示）。
  *
  * 呈现规则：
  * - 无数据（undefined / 非对象 / 全零且未降级）→ 不渲染；

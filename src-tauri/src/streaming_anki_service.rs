@@ -2166,6 +2166,7 @@ impl StreamingAnkiService {
         }
 
         // 遮挡卡把 `_occlusion.imageRef` 写入 images，供渲染/导出侧定位媒体。
+        // helper 内部过滤 `vlm://` 占位引用（r2 契约 §2.1，与导出两侧降级一致）。
         // 该构造点此前恒为空列表；保持「已有 images 不追加覆盖」的合并语义，
         // 未来上游若已填充 images 则原样保留。
         let mut images: Vec<String> = Vec::new();
@@ -5326,6 +5327,53 @@ mod tests {
             .extra_fields
             .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
         assert_eq!(card.images, vec!["image-source-2".to_string()]);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn occlusion_pending_placeholder_image_ref_stays_out_of_images() {
+        // r2 契约 §2.1 / §9：`vlm://pending-image` 占位（VLM 块不选图、
+        // 生产接线未替换的边缘）不得进入 card.images——导出两侧已过滤，
+        // 入库侧必须对齐，否则渲染/媒体收集会拿到不可解析引用。
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-occlusion-pending-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "occlusion-pending-task", &document_id, 0);
+        let marker = crate::anki_image_occlusion::build_occlusion_draft_marker(
+            "vlm://pending-image",
+            "[IMAGE_DESC: 主动脉；肺动脉]",
+            &crate::anki_image_occlusion::OcclusionConfig::default(),
+        )
+        .expect("marker");
+        let fields = crate::anki_image_occlusion::extract_occlusion_draft_fields(&marker)
+            .expect("occlusion fields");
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"心脏的大血管有哪些？","back":"主动脉和肺动脉"}"#,
+                "occlusion-pending-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                Some(&fields),
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        assert!(
+            card.images.is_empty(),
+            "vlm:// 占位引用不得进入 images: {:?}",
+            card.images
+        );
+        // 机器字段与 tag 照常合并（占位只影响 images 过滤，不阻断草稿入库）
+        assert!(card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert!(card
+            .tags
+            .iter()
+            .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG));
         crate::anki_qa_lint::release_document_tracker(&document_id);
     }
 

@@ -981,8 +981,8 @@ mod tests {
         .expect("query submission state")
     }
 
-    /// 未删除 mastery 事件按 outcome 计数（幂等键前缀 me_qbank_{submission_id}，
-    /// 若接入换判纠正原语，修订事件带 _rN 后缀，同属该前缀）。
+    /// 未删除 mastery 事件按 outcome 计数（幂等键前缀 me_qbank_{submission_id}；
+    /// 换判纠正的修订事件带 _rN 后缀，同属该前缀）。
     fn live_mastery_events(
         conn: &rusqlite::Connection,
         submission_id: &str,
@@ -1085,16 +1085,18 @@ mod tests {
         assert_eq!(sub_correct, Some(1));
         assert_eq!(method, "ai");
 
-        // 换判不重复插事件：幂等键 me_qbank_{sid} 已存在 → DO NOTHING，
-        // 事件链上恰 1 条首判信号（wrong）。换判方向纠正
-        // （record_qbank_verdict_correction_with_conn 的 tombstone+_rN 路径）
-        // 由 r4-03 提供、接线留待后续轮，接入后此处应改断言为
-        // 未删除事件只剩 correct。
+        // 换判走原语的纠正分路（record_qbank_verdict_correction_with_conn）：
+        // 首判 wrong 信号被 tombstone，存活事件恰 1 条 _rN correct 修订，
+        // 方向跟随最新判定而非被 ON CONFLICT DO NOTHING 锁死在首判。
         assert_eq!(
-            live_mastery_events(&conn, &submission_id, "wrong")
-                + live_mastery_events(&conn, &submission_id, "correct"),
+            live_mastery_events(&conn, &submission_id, "correct"),
             1,
-            "换判不得重复插 mastery 事件"
+            "换判后存活信号必须是 correct 修订事件"
+        );
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "wrong"),
+            0,
+            "首判 wrong 信号必须被 tombstone"
         );
         assert!(!outcome.needs_review_plan);
     }
@@ -1133,13 +1135,16 @@ mod tests {
         assert_eq!(sub_correct, Some(0));
         assert_eq!(method, "ai");
 
-        // 同上：换判不重复插事件（首判 correct 信号停在链上，
-        // 方向纠正待 r4-03 纠正原语接线后改断言）。
+        // 同上：换判纠正分路——首判 correct 被 tombstone，存活信号翻到 wrong。
         assert_eq!(
-            live_mastery_events(&conn, &submission_id, "wrong")
-                + live_mastery_events(&conn, &submission_id, "correct"),
+            live_mastery_events(&conn, &submission_id, "wrong"),
             1,
-            "换判不得重复插 mastery 事件"
+            "换判后存活信号必须是 wrong 修订事件"
+        );
+        assert_eq!(
+            live_mastery_events(&conn, &submission_id, "correct"),
+            0,
+            "首判 correct 信号必须被 tombstone"
         );
         assert!(
             outcome.needs_review_plan,

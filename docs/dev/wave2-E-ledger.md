@@ -429,3 +429,59 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 ---
 
 *Goal 未完成。*
+
+---
+
+## 11. 第 6 轮二检 · SOTA 三项复核（r6-10，2026-08-26）
+
+模型：`claude-fable-5-thinking-high`。只读复核，零补丁；未跑测试/编译；未改 workbench 壳 / preview。
+复核基线 tip：`35ea482a`。详报：`docs/dev/wave2-E-r6-10-sota.md`。
+
+### 结论：SOTA 三项全部仍在，接线完整，零阻断缺陷
+
+| # | 项 | 状态 | 关键证据 |
+| --- | --- | --- | --- |
+| 1 | 复习 UX（UndoNudge + 用时显示封顶） | **仍在** | UndoNudge 在 `ReviewSessionScreen.tsx:732-737` 挂载，回执 `logId/rating` 契约与 store 撤销弹栈（fsrsReviewStore.ts:1396-1408）逐行核对通过；显示封顶 60s 仅 UI，落库仍走 `MAX_ANSWER_DURATION_MS`（:89/:1158），两口径互不污染 |
+| 2 | FSRS 可视化（FsrsParamsPanel） | **仍在** | `StatisticsScreen.tsx:487` 挂载；`fsrs_get_due` 契约本轮新核：参数 `limit` 匹配、`get_due_inner` 钳 500 与面板 `DUE_SAMPLE_LIMIT` 一致、`FsrsDueCard` flatten+camelCase 使 stability/difficulty 落顶层；全文件仅一处只读 invoke，零写零上传 |
+| 3 | 隔离队列（Library 分区） | **仍在** | `partitionLibraryQueues` 稳定分区（libraryView.ts:49-56）；LibraryScreen `visibleItems` 顺序与渲染/键盘导航/连选一致（:166-178）；区头整批入队复用 `bulkEnqueue`（:350-353），未新开后端命令 |
+
+### 非阻断观察（留档，不出补丁）
+
+- FsrsParamsPanel `withParams/withoutParams` 用 min/max 组合，半残行（只有一个参数）时两数不闭合；
+  后端评分恒成对写 stability/difficulty，实际不可达，属防御性写法。
+- UndoNudge / FsrsParamsPanel / Library 分区区头文案走 `t(key, { defaultValue })`（第 5 轮 locale
+  非独占的既定约束）；正式词条落 locale 归后续 locale 独占轮。
+
+### 红线复核
+
+显示封顶不影响统计、FSRS opt-in 未动、面板只读 —— 三条第 5 轮红线均未回退；本轮零代码改动。
+
+### 已验证 / 未验证
+
+- 已验证（静态）：三项挂载点、store/后端契约、locale 键真实性（`session.again/hard/good/easy`、
+  `session.undo` 双语在位）、a11y 属性、渲染顺序契约。
+- 未验证：运行时行为与相关 vitest 套件（本轮禁令未跑）。
+
+---
+
+## 12. 第 6 轮二检补丁汇总（2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。未跑本会话测试套件。
+
+| 面 | 结论 | 当轮补丁 |
+| --- | --- | --- |
+| 遮挡入库 | 无翻案 | `vlm://` 占位不入 images |
+| APKG / AnkiConnect | Extra 无 IO；无泄漏 | 无代码 |
+| gold | 三分支完好 | `update_anki_card` 打 user 戳 |
+| CriticSummary | 前端接到 gold_references | 注释校正 |
+| 任务台 | 混合态不再短路 | SessionRow aria-label |
+| verdict | 三路一致 | 测试/注释收紧 |
+| daily | 改判不再被首答锁吞 | hook 透传 dailyProgress 并权威回写 |
+| i18n/读侧 | 英 UI 不直出中文 lint | 模板 description 读侧 Option |
+| SOTA | 三项仍在 | 无代码 |
+
+过程：i18n 代理再次私自 cargo check，不作门禁证据。
+
+---
+
+*Goal 未完成。*

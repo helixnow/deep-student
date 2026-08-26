@@ -282,8 +282,10 @@ impl MasteryService {
     /// - 修订 id 冲突（同一纠正在事务重放）→ ON CONFLICT DO NOTHING 兜底；
     /// - 链上无任何事件（如 AI 判分路从未写首判）→ 退化为首判 record。
     ///
-    /// question_bank 侧接线（regrade_submission_in_tx / AI 管线落库段）留待后续轮，
-    /// 故本函数必须保持 pub。
+    /// question_bank 侧已接线：`apply_submission_verdict_in_tx` 的换判分路
+    /// （`Some(old) != new`）统一调本函数，覆盖人工改判外壳与 AI 管线落库段；
+    /// 自持事务版 [`Self::record_qbank_verdict_correction`]（补偿脚本用）
+    /// 也经由此实现，故本函数保持 pub。
     pub fn record_qbank_verdict_correction_with_conn(
         &self,
         conn: &Connection,

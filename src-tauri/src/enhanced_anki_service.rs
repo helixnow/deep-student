@@ -727,7 +727,16 @@ impl EnhancedAnkiService {
     }
 
     /// 更新卡片
-    pub fn update_anki_card(&self, card: AnkiCard) -> Result<(), AppError> {
+    ///
+    /// 金标溯源（wave2-E r6，与 `chatanki_update_library_card` 对称）：UI 编辑
+    /// 在写库前后端统一覆盖写入 `_content_provenance`（actor=user），不信任
+    /// 前端 payload 自带的 provenance；戳与内容同一次 UPDATE 落盘，NotFound /
+    /// 失败路径不产生任何写入，自然无戳。gold 挖掘只认带此证明的编辑为修正对。
+    pub fn update_anki_card(&self, mut card: AnkiCard) -> Result<(), AppError> {
+        crate::anki_gold_set::insert_content_provenance(
+            &mut card.extra_fields,
+            &crate::anki_gold_set::ContentProvenance::user("update_anki_card"),
+        );
         match self.db.update_anki_card_rows(&card) {
             Ok(1) => Ok(()),
             Ok(0) => Err(AppError::not_found(format!(

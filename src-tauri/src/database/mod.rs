@@ -2570,7 +2570,9 @@ impl Database {
             Ok(crate::models::CustomAnkiTemplate {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                description: row.get(2)?,
+                // description 列可空（schema 无 NOT NULL；同步/旧库插入可省略），
+                // NULL 兜底空串，避免整批模板读取失败。
+                description: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                 author: row.get(3)?,
                 version: row.get(4)?,
                 preview_front: row.get(5)?,
@@ -2645,7 +2647,8 @@ impl Database {
                 Ok(crate::models::CustomAnkiTemplate {
                     id: row.get(0)?,
                     name: row.get(1)?,
-                    description: row.get(2)?,
+                    // description 列可空（同 get_all_custom_templates），NULL 兜底空串。
+                    description: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
                     author: row.get(3)?,
                     version: row.get(4)?,
                     preview_front: row.get(5)?,
