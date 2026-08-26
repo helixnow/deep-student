@@ -21,6 +21,11 @@
 //! - `flag`：仅在 `extra_fields["_qa_flags"]` 追加 `llm_critic` 条目留痕，
 //!   卡片内容不动（与 `anki_qa_lint` 的 Flag 语义一致，绝不丢卡）。
 //!
+//! `enable_qa_pass=false`（"不要 QA 留痕"公开契约）时裁决与统计照常执行，
+//! 但所有 `_qa_flags` 写入（flag 留痕 / revise 审计 / relint）一律不落盘，
+//! 与 `parse_and_save_card` 的入库收口保持同一语义；revise 的内容修订
+//! 仍写回（critic 由 `enable_critic_pass` 单独显式开启）。
+//!
 //! ## 设计硬约束
 //!
 //! - **默认关闭**：`CriticOptions::from_options_json` 解析同一份
@@ -674,6 +679,35 @@ pub fn plan_updates(cards: &[AnkiCard], verdicts: &[CardVerdict]) -> CriticPlan 
     plan
 }
 
+/// `enable_qa_pass=false` 时的落盘收口（纯函数，与 `parse_and_save_card`
+/// 在入库前移除 `_qa_flags` 的行为对齐）：
+///
+/// - 所有待写回卡片先剥离 `_qa_flags`（flag 留痕、`llm_critic_revised`
+///   审计条目、revise 后 relint 条目一律不落盘）；
+/// - 剥离后与原卡无内容差异的更新（典型为 flag 裁决）整体丢弃，
+///   避免空写回触发 CAS、递增 local_version 并进入同步链路。
+///
+/// 裁决统计（kept/revised/flagged）不在此改动——critic 观测照常，
+/// 只是不产生持久化 QA 留痕。
+pub fn sanitize_plan_for_disabled_qa_pass(plan: &mut CriticPlan, originals: &[AnkiCard]) {
+    plan.updates.retain_mut(|card| {
+        card.extra_fields.remove(anki_qa_lint::QA_FLAGS_FIELD);
+        let Some(orig) = originals.iter().find(|orig| orig.id == card.id) else {
+            // 原卡不在送审快照中理论上不可达；防御性保留写回交给 CAS 判定
+            return true;
+        };
+        // 对照原卡时同样忽略 _qa_flags：flag-only 更新必须判定为无差异，
+        // 不能因原卡带历史留痕而落盘一次"纯留痕删除"写回。
+        let mut orig_extra = orig.extra_fields.clone();
+        orig_extra.remove(anki_qa_lint::QA_FLAGS_FIELD);
+        card.front != orig.front
+            || card.back != orig.back
+            || card.text != orig.text
+            || card.tags != orig.tags
+            || card.extra_fields != orig_extra
+    });
+}
+
 fn join_reasons(reasons: &[String]) -> String {
     let joined = reasons
         .iter()
@@ -896,13 +930,25 @@ pub async fn run_critic_pass(
         Err(_) => Err(format!("超过 {} 秒未返回", CRITIC_MODEL_TIMEOUT_SECS)),
     };
 
-    let (plan, rejected_unknown_ids, degraded) =
+    let (mut plan, rejected_unknown_ids, degraded) =
         plan_from_model_output(model_output, &examined, &allowed_ids);
     summary.kept = plan.kept;
     summary.revised = plan.revised;
     summary.flagged = plan.flagged;
     summary.rejected_unknown_ids = rejected_unknown_ids;
     summary.degraded = degraded;
+
+    // enable_qa_pass=false（公开契约"不要 QA 留痕"）：裁决与统计照常，
+    // 但 flag 留痕 / revise 审计 / relint 的 _qa_flags 一律不落盘，
+    // 与 parse_and_save_card 的入库收口同语义。开关与 CriticOptions/
+    // 路由模式一样从同一份 options JSON 二次解析。
+    let qa_pass_enabled = crate::anki_protocol::StructuredOutputOptions::from_options_json(
+        &task.anki_generation_options_json,
+    )
+    .qa_pass_enabled();
+    if !qa_pass_enabled {
+        sanitize_plan_for_disabled_qa_pass(&mut plan, &examined);
+    }
 
     // 持久化：模型调用最长可达 180 秒，送审后用户可能已经编辑同一卡片。
     // 必须用送审快照的 updated_at 做 CAS，绝不能用无版本 UPDATE 覆盖用户新内容。
@@ -1237,6 +1283,82 @@ mod tests {
             "修订内容必须重跑确定性 lint: {:?}",
             flags
         );
+    }
+
+    // -------- enable_qa_pass=false 落盘收口 --------
+
+    #[test]
+    fn disabled_qa_pass_drops_flag_only_updates() {
+        let cards = vec![make_card("c1", "Q", "A")];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Flag,
+            reasons: vec!["答案疑似泄漏".to_string()],
+            revised: None,
+        }];
+        let mut plan = plan_updates(&cards, &verdicts);
+        assert_eq!(plan.updates.len(), 1, "前置：flag 裁决本身会产生留痕写回");
+
+        sanitize_plan_for_disabled_qa_pass(&mut plan, &cards);
+        assert!(
+            plan.updates.is_empty(),
+            "关 QA 留痕后 flag-only 更新必须整体丢弃，不得空写回"
+        );
+        assert_eq!(plan.flagged, 1, "裁决统计（观测）不受留痕收口影响");
+    }
+
+    #[test]
+    fn disabled_qa_pass_keeps_revision_content_without_qa_flags() {
+        // revise 引入占位符 → relint 命中 placeholder_residue；
+        // 关 QA 留痕时内容修订仍写回，但 _qa_flags（审计 + relint）不落盘。
+        let cards = vec![make_card("c1", "问题", "答案")];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Revise,
+            reasons: vec![],
+            revised: Some(RevisedFields {
+                back: Some("请参考 {{DOCUMENT_CONTENT}}".to_string()),
+                ..Default::default()
+            }),
+        }];
+        let mut plan = plan_updates(&cards, &verdicts);
+        assert!(
+            !qa_flags(&plan.updates[0]).is_empty(),
+            "前置：revise 会写入审计与 relint 条目"
+        );
+
+        sanitize_plan_for_disabled_qa_pass(&mut plan, &cards);
+        assert_eq!(plan.updates.len(), 1, "内容修订必须保留写回");
+        let updated = &plan.updates[0];
+        assert_eq!(updated.back, "请参考 {{DOCUMENT_CONTENT}}");
+        assert!(
+            !updated
+                .extra_fields
+                .contains_key(anki_qa_lint::QA_FLAGS_FIELD),
+            "关 QA 留痕后 llm_critic_revised 审计与 relint 条目均不得落盘"
+        );
+    }
+
+    #[test]
+    fn disabled_qa_pass_ignores_legacy_flags_when_diffing() {
+        // 原卡带历史 _qa_flags 时，flag-only 更新仍视为无差异：
+        // 不能借留痕收口落盘一次"纯留痕删除"写回。
+        let mut card = make_card("c1", "Q", "A");
+        card.extra_fields.insert(
+            anki_qa_lint::QA_FLAGS_FIELD.to_string(),
+            r#"[{"code":"answer_leak","field":"front","message":"旧留痕","severity":"warn"}]"#
+                .to_string(),
+        );
+        let cards = vec![card];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Flag,
+            reasons: vec![],
+            revised: None,
+        }];
+        let mut plan = plan_updates(&cards, &verdicts);
+        sanitize_plan_for_disabled_qa_pass(&mut plan, &cards);
+        assert!(plan.updates.is_empty(), "flag-only 更新不得因历史留痕落盘");
     }
 
     // -------- 降级路径 --------
