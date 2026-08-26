@@ -184,16 +184,21 @@ pub struct ChatV2Pipeline {
     /// `eligible_user_turns`（load/store 见 helpers.rs），不再按当前历史
     /// 跳变到 `U - K`。
     microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
-    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → append-only 首见序
-    /// 工具名基线。同一 session 内已发出的 tools 相对顺序跨轮（跨
-    /// execute_with_tools 调用）保持，新工具只追加末尾 —— 禁止下一稳定
-    /// 窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会从第 0 字节变化，
-    /// 整段 prompt cache 失效）。所有 Pipeline clone 共享；这里是热路径
-    /// 读缓存，真身持久化在 session.metadata（`frozenToolSchemaOrder`）：
+    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → 权威工具面基线
+    /// `ToolFaceBaseline { generation, order, schema_digest }`（P1 代际
+    /// 升级：值型从裸 `Vec<String>` 扩为带代号的快照，单锁不变）。
+    /// 同一 session 内已发出的 tools 相对顺序（`order`，append-only
+    /// 首见序）跨轮（跨 execute_with_tools 调用）保持，新工具只追加末尾
+    /// —— 禁止下一稳定窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会
+    /// 从第 0 字节变化，整段 prompt cache 失效）。`generation` 仅在多变体
+    /// fan-out 收敛点检出真分叉时 +1（converge 见 helpers.rs），单变体
+    /// 纯扩展与 miss 回填永不 bump。所有 Pipeline clone 共享；这里是热
+    /// 路径读缓存，真身持久化在 session.metadata（`frozenToolSchemaOrder`
+    /// + `toolFacePrefixGeneration` + 可选 `toolSchemaDigest` 三键）：
     /// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，内存 miss 时
-    /// 从 metadata 恢复同一前缀序（load/store 见 helpers.rs），不再按
-    /// 字母序冷重建。
-    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    /// 从 metadata 恢复同一前缀序与代号（load/store/converge 见
+    /// helpers.rs），不再按字母序冷重建。
+    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, helpers::ToolFaceBaseline>>>,
     /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。

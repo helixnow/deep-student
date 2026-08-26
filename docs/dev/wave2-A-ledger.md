@@ -303,3 +303,135 @@ issue #122（禁修）。G-CC400 / G-FIFO / G-compact-hooks / G-ttl1h 见额外�
   网关 400 实锤）为当日 web 检索产物，未经真实 API 请求验证。
 - 18 不变量其余 13 项本轮未重新取证（沿用 Step 23 记录）；抽查的 5 项也仅为静态 grep，
   未跑对应测试。
+
+---
+
+# Wave2-A 第 2 轮台账（#10 提交员/台账，只追加）
+
+- 作者：0824 Wave2-A 第 2 轮子代理 #10「提交员/台账」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1 轮 P1–P11 编号与内容一字不改。本席未改任何产品代码、
+  未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/r2-impl-generation.md`（#1）、`r2-impl-tool-loop.md`（#2）、
+  `r2-unified-freeze.md`（#3）、`r2-repo-prefix-gen.md`（#4）、
+  `r2-review-concurrency.md`（#7）、`r2-review-semantics.md`（#8），
+  以及本席对工作区 `git diff --stat` / `git log` / grep 的独立复核。
+
+## R2-1. 本轮 diff 形态（提交员独立取证）
+
+已提交（`d0505bc6`，wip）：`ROUND-02-TASKS.md`、`r2-repo-prefix-gen.md`、
+`repo.rs`（+312/−2）、`types.rs`（+44）、`pipeline.rs`（+4，测试模块注册）、
+`prefix_generation_fork_tests.rs`（+280，新文件）、
+`prefix_generation_restore_tests.rs`（+539，新文件）。
+
+工作区未提交（相对 `HEAD = d0505bc6`）：
+
+```
+ src-tauri/src/chat_v2/pipeline.rs               |  23 +--
+ src-tauri/src/chat_v2/pipeline/helpers.rs       | 204 +++++++++++++----
+ src-tauri/src/chat_v2/pipeline/multi_variant.rs | 144 +++++++++---
+ src-tauri/src/chat_v2/pipeline/tool_loop.rs     | 105 ++++++--
+ 4 files changed, 405 insertions(+), 71 deletions(-)
+```
+
+untracked：`r2-impl-generation.md`、`r2-impl-tool-loop.md`、`r2-unified-freeze.md`、
+`r2-review-concurrency.md`、`r2-review-semantics.md`（+ 本文件本节改动）。
+
+## R2-2. 方案 A（fan-out 统一代际）落地状态：产品接线已完成（四层齐备）
+
+| 层 | 席位 | 状态 | 要点 |
+|---|---|---|---|
+| repo/types（`d0505bc6` 已提交） | #4 | ✅ 完成 | 三键 `toolFacePrefixGeneration`（u64）+ `frozenToolSchemaOrder`（原键保留权威）+ `toolSchemaDigest`；`ToolFacePrefixSnapshot` + `VariantMeta.tool_face_prefix`；`get/advance_session_tool_face_prefix(_with_conn)` IMMEDIATE 事务读-合并-写、generation 取 max 只进不退、digest None 不抹已有值、无变更早退、不推 `updated_at`；缺键回退 generation=0；分支复制零改动（metadata clone 免费继承） |
+| helpers/pipeline（工作区） | #1 | ✅ 完成 | `frozen_tool_schema_orders` 值型升级为 `ToolFaceBaseline { generation, order, schema_digest }`（单锁不变）；新增 `load_session_tool_face_prefix`（miss 回填永不 bump）与 `converge_session_tool_face_prefix`（按 variant_index 升序合并、真分叉才 +1、单变体构造上不切代、放锁后 advance）；旧 load/store 改薄封装、持久化通道升级为 advance 双键同事务 |
+| multi_variant（工作区） | #1+#3 | ✅ 完成 | 三处 fan-out（主 `:509`、重试批 `:2756`、单变体重试 `:2969`）spawn 前一次快照 Arc 分发；变体内独立 load 与两处中途 store 已删（环内只推本地副本）；join 后三处 converge（`:600`/`:2844`/`:2991`）统一收敛；变体结束写 `VariantMeta.tool_face_prefix`（generation 写入口代际不自增、digest 写变体本地推进值）；多变体补齐此前缺失的字节级 schema 冻结 |
+| tool_loop 单变体（工作区） | #2+#3 | ✅ 完成 | `tool_schema_digest`（名字序 sha256 + 0x1f/0x1e 定界，空窗口 None）；load 改走 `load_session_tool_face_prefix` 三元组就位（generation/digest 不再局部缺省）；digest 变化只打 info **不 bump**（单变体纯扩展不切代纪律）；store 仍 append-only 不动 generation |
+
+**接缝已闭合**：#2 落地时因 #1 并行而内联的 load/store 段 TODO，已由 #3 收敛时删除。
+本席 grep 复核：本轮 4 文件 diff 中 **TODO 零命中**（`multi_variant.rs:628` 的检索资源
+TODO 为基线遗留，非本轮引入）。
+
+## R2-3. 统一入口 `freeze_tool_face_for_prompt_cache`（#3）
+
+- 位置 `tool_loop.rs:181`，`pub(crate)`，签名
+  `(tools, frozen_names, frozen_schemas) -> Option<String>`：内部即原
+  `freeze_tool_schemas_for_prompt_cache`（名字序 append-only 冻结 + 已发出 schema
+  窗口内无条件字节回写，语义逐字未动）+ 返回 `tool_schema_digest`。
+- 三个调用点（本席 grep 复核）：单变体环内 `tool_loop.rs:1057`、多变体初始 MCP
+  注入 `multi_variant.rs:1362`、load_skills 渐进披露刷新 `multi_variant.rs:1728`。
+- **门面不是替代**：`freeze_tool_schema_order_for_prompt_cache` /
+  `freeze_tool_schemas_for_prompt_cache` / `tool_schema_digest` 原符号全部保留，
+  既有冻结测试与反例测试仍直接调用原语。
+- 返回 None（空窗口）不得抹掉已有 digest；Some 时推进本地窗口 digest。
+
+## R2-4. 反例测试源码：已落盘、已注册、未执行
+
+- `prefix_generation_fork_tests.rs`（#5，280 行）与
+  `prefix_generation_restore_tests.rs`（#6，539 行）已随 `d0505bc6` 提交，
+  并在 `pipeline.rs:92/:94` 注册 `mod`（`:90` 的 `prefix_snapshot_tests` 为
+  第 1 轮 `59c7f0aa` 既有）。
+- 契约锚点：#1 的 converge 语义逐条对齐 `converge_orders_by_variant_index`
+  （A 追加 X、B 追加 Y → `[base…, X, Y]` 且 +1；单变体 append 不 bump），
+  load 回填对齐 `locked_refill_baseline`（miss 回填永不 bump）。
+- **一次都未运行**（铁律）：不排除编译错误；`cargo test` 留给父代理收轮后的
+  验证轮。
+
+## R2-5. 审阅结论：双确认、零翻案
+
+- **#7 并发/锁序：确认。** 五项检查全过——①无 mutex×SQLite IMMEDIATE 交叉死锁
+  （三原语零跨锁持有、事务体不回调内存锁、写路径统一 IMMEDIATE 无升级死锁）；
+  ②load miss 双建收敛 generation=0；③converge 放锁后写库；④变体中途写共享态
+  已彻底消除（唯一写点收归 join 后 converge）；⑤store 与 converge 并发不会错误
+  bump。附 3 条低危备注（变体早退跳过 meta 写回、跨路径分叉理论窗口、async 内
+  同步 DB IO），均为缓存效率取舍，不构成正确性缺陷、不需要补丁。
+- **#8 hooks 语义/TOCTOU：确认。** hooks.rs 第 2 轮零改动（相对基线仅第 1 轮 P8
+  提交 `167eb104`）；`ApprovalGateHook` 仍链首、十五段准入未触及、TOCTOU 三段
+  （入口 Kill Switch / 审批后复核 / tool_loop 执行前终检）全部在位；tool_loop
+  四个 hook 调用点仅行号下移、控制流逐字节不变；multi_variant 工具执行仍全量走
+  `execute_tool_calls → execute_single_tool`，删除的中途 store 不在准入路径上。
+
+## R2-6. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff）
+
+- 本轮 diff 全貌与归属：已提交 `d0505bc6`（#4 + #5/#6 测试源码）与工作区 4 文件
+  改动（#1/#2/#3），文件面与各席任务卡独占声明一致——本席 `git log` / `git
+  status` / `git diff --stat` 复核。
+- 统一入口三调用点行号（`tool_loop.rs:181/:1057`、`multi_variant.rs:1362/:1728`）
+  与测试模块注册（`pipeline.rs:90/92/94`）——本席 grep 复核。
+- 本轮 4 文件 diff TODO 零命中（#2 接缝 TODO 已被 #3 删除）——本席 grep 复核。
+- hooks.rs 本轮零 diff、`coordinator.rs`/`repo.rs` 旧函数保留——采信 #7/#8
+  文档所载 grep/diff 证据，与本席 `git status`（hooks.rs 不在改动列表）交叉一致。
+- 锁序/事务边界/切代规则的正确性论证：采信 #7 逐行审阅（含代码引用块），
+  #8 对准入序列逐段核对；两份审阅相互独立、结论一致。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**：本轮 +405/−71 产品代码与 819 行新测试源码
+  **未经 cargo check / cargo test / rustfmt**；#8 亦标注审阅期间行号随并行写入
+  漂移，静态行号仅为快照。不排除低级编译错误（如可见性、借用、feature gate）。
+- digest 稳定性依赖 serde_json preserve_order 的论证（#2）为源码推理，
+  未以运行时字节对拍验证。
+- provider 侧 prompt cache 命中率收益（方案 A 的动机）无任何真实 API 证据。
+- #7 的 3 条低危备注（变体早退 / 跨路径分叉窗口 / 同步 DB IO）本轮未修，
+  留后续轮评估。
+
+## R2-7. 第 3 轮预告（按用户任务书）
+
+1. **P5 llm_content 前移**：assistant 历史重建时 llm_content 优先于 UI content，
+   消除「显示文本 ≠ 发送字节」的缓存失配（第 1 轮 P5 登记项，本轮明确不做）。
+2. **技能正文版本化**：load_skills 渐进披露的技能正文纳入版本/摘要管理，
+   与 tools 面 digest 同构，防技能文本漂移破坏前缀。
+3. **崩溃窗口测试**：converge 写库前进程崩溃 / advance 半途的恢复路径反例
+   （只写不跑，延续 #5/#6 模式）。
+4. **Utf8 探针**：多字节字符在冻结字节边界/截断路径上的探针测试。
+5. **双适配器审阅**：Anthropic + OpenAI Responses 两适配器对 `(g, B_g, digest)`
+   消费口径的一致性审阅。
+
+（第 2 轮遗留输入：#7 三条低危备注、R2-4 未执行的测试套件、#2 digest 运行时
+对拍——由第 3 轮及验证轮酌情吸收。）
+
+## R2-8. 收轮交接（给父代理）
+
+- 待 add：4 个产品文件（工作区 M）+ 6 份 untracked r2 文档 + 本台账追加节。
+- 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
+- **不标 Goal complete**：编译/测试验证轮未跑，第 3 轮任务书已排。

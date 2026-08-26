@@ -502,6 +502,11 @@ impl ChatV2Pipeline {
         let session_id_arc = Arc::new(session_id.clone());
         // ★ 2026-03 修复：共享 user_context_refs 给所有变体，确保多模态内容不丢失
         let context_refs_arc = Arc::new(request.user_context_refs.clone().unwrap_or_default());
+        // P1 tools 前缀代际（方案 A）：spawn 之前一次性快照 (g, B_g)，Arc
+        // 分发给所有变体 —— 消除变体内独立 load 的轮内竞态，同一扇出内
+        // 所有变体从同一字节基线出发。环内只推进本地副本，join 之后在
+        // converge_session_tool_face_prefix 收敛点统一写回。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
 
         // 🔧 P1修复：使用任务追踪器追踪并行任务
         // 创建并行任务
@@ -516,6 +521,7 @@ impl ChatV2Pipeline {
             let context_refs_clone = Arc::clone(&context_refs_arc);
             let state_clone = chat_v2_state.clone();
             let variant_meta_clone = ctx.get_meta();
+            let tool_face_baseline_clone = Arc::clone(&tool_face_baseline_arc);
 
             let future = async move {
                 self_ref.execute_single_variant_with_config(
@@ -528,6 +534,7 @@ impl ChatV2Pipeline {
                     shared_ctx,
                     Vec::new(),
                     (*context_refs_clone).clone(),
+                    tool_face_baseline_clone,
                 ).await
             };
 
@@ -570,6 +577,27 @@ impl ChatV2Pipeline {
                     // 标记为错误
                     ctx.fail(&format!("Task panicked: {}", e));
                 }
+            }
+        }
+
+        // P1 tools 前缀代际（方案 A）：join 收敛点。所有变体的工具环与其
+        // hook 生命周期已经结束，这里按**变体索引序**（不是完成竞态序）
+        // 收集各变体本地 order（VariantMeta.tool_face_prefix，变体环内只
+        // 推本地、不写共享），确定性合并回会话基线；检出真分叉（互异且
+        // 不可 append-only 对齐的尾部）时 generation += 1。锁内合并克隆、
+        // 放锁后写库（advance 失败仅 warn，不阻断）。
+        {
+            let variant_local_orders: Vec<(usize, Vec<String>)> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix.order))
+                })
+                .collect();
+            if !variant_local_orders.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_orders);
             }
         }
 
@@ -1067,6 +1095,10 @@ impl ChatV2Pipeline {
         shared_context: Arc<SharedContext>,
         attachments: Vec<AttachmentInput>,
         user_context_refs: Vec<SendContextRef>,
+        // P1 tools 前缀代际（方案 A）：fan-out 入口统一快照 (g, B_g)。
+        // 变体环内只推进本地 order 克隆、不写共享态；generation 写入口
+        // 代际（变体内不自增），join 收敛点统一合并 + 切代判定。
+        tool_face_baseline: Arc<ToolFaceBaseline>,
     ) -> ChatV2Result<()> {
         // 🔧 2026-07: 变体工具循环上限与单变体路径统一。
         // 之前硬编码 `MAX_TOOL_ROUNDS = 10`，与单变体路径「用户可配 1-100、
@@ -1267,12 +1299,23 @@ impl ChatV2Pipeline {
             HashMap::new();
         let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
-        // P0（DESIGN「tools 会话内冻结」）：tools 顺序基线（append-only
-        // 首见序）从会话级状态载入 —— 同一 session 已发出的 tools 顺序
-        // 跨轮保持，禁止每轮重建字母序。环内 load_skills 刷新全量重建时
-        // 按基线还原顺序，新工具只追加末尾，推进后 append-only 写回。
-        let mut frozen_tool_schema_order: Vec<String> =
-            self.load_session_frozen_tool_schema_order(&session_id);
+        // P0（DESIGN「tools 会话内冻结」）+ P1 代际（方案 A）：tools 顺序
+        // 基线（append-only 首见序）来自 fan-out 入口统一快照的克隆 ——
+        // 同一扇出内所有变体从同一字节基线出发（消除旧「变体内独立 load」
+        // 的轮内竞态）。环内 load_skills 刷新全量重建时按基线还原顺序，
+        // 新工具只追加末尾、只推进本**地**副本；不再中途写回共享态，
+        // 收敛统一在 join 之后的 converge_session_tool_face_prefix。
+        let mut frozen_tool_schema_order: Vec<String> = tool_face_baseline.order.clone();
+        // P0 字节级冻结（与单变体 execute_with_tools 同语义）：本变体工具环
+        // = 一个稳定窗口，已发出工具的 schema 序列化字节窗口内冻结（同名
+        // 变更延迟到下一稳定窗口），新工具只追加末尾。窗口级本地持有，
+        // 不写共享态、不中途写回。
+        let mut frozen_tool_schemas: HashMap<String, Value> = HashMap::new();
+        // 本变体窗口冻结快照 digest：从 fan-out 入口基线 digest 起步，每次
+        // 统一冻结原语返回 Some 时推进；空窗口保持基线值（None 不抹掉已有
+        // digest）。变体结束时随 VariantMeta.tool_face_prefix 交 join 收敛
+        // 点评估，变体内不切代。
+        let mut variant_schema_digest: Option<String> = tool_face_baseline.schema_digest.clone();
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
@@ -1312,15 +1355,17 @@ impl ChatV2Pipeline {
 
                 if !mcp_tool_values.is_empty() {
                     // G6 + P0 冻结：LLM 管线只读 `custom_tools`，写 `tools` 是
-                    // 死键；首轮按名字排序建立基线并冻结，供环内刷新复用。
-                    super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
+                    // 死键；首轮按名字排序建立基线并冻结（统一冻结原语 =
+                    // 名字序 + 字节冻结 + digest），供环内刷新复用。
+                    // P1 代际：只推进本地 order/digest，不中途写回共享态
+                    // （写回统一在 join 收敛点）。
+                    if let Some(digest) = super::tool_loop::freeze_tool_face_for_prompt_cache(
                         &mut mcp_tool_values,
                         &mut frozen_tool_schema_order,
-                    );
-                    self.store_session_frozen_tool_schema_order(
-                        &session_id,
-                        &frozen_tool_schema_order,
-                    );
+                        &mut frozen_tool_schemas,
+                    ) {
+                        variant_schema_digest = Some(digest);
+                    }
                     let injected_count = mcp_tool_values.len();
                     llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
                     log::info!(
@@ -1674,16 +1719,20 @@ impl ChatV2Pipeline {
                                         .collect();
                                     // G6 + P0 冻结：LLM 管线只读 `custom_tools`，
                                     // 写 `tools` 是死键。全量重建后按冻结基线还原
-                                    // 已发出顺序（前缀字节不变），新技能工具只
-                                    // 追加末尾，禁止字母序插入中段。
-                                    super::tool_loop::freeze_tool_schema_order_for_prompt_cache(
-                                        &mut refreshed_tools,
-                                        &mut frozen_tool_schema_order,
-                                    );
-                                    self.store_session_frozen_tool_schema_order(
-                                        &session_id,
-                                        &frozen_tool_schema_order,
-                                    );
+                                    // 已发出顺序（统一冻结原语：名字序 + 已发出
+                                    // schema 字节窗口内回写），新技能工具只追加
+                                    // 末尾，禁止字母序插入中段。
+                                    // P1 代际：只推进本地 order/digest，不中途写
+                                    // 回共享态（写回统一在 join 收敛点）。
+                                    if let Some(digest) =
+                                        super::tool_loop::freeze_tool_face_for_prompt_cache(
+                                            &mut refreshed_tools,
+                                            &mut frozen_tool_schema_order,
+                                            &mut frozen_tool_schemas,
+                                        )
+                                    {
+                                        variant_schema_digest = Some(digest);
+                                    }
                                     llm_context.insert(
                                         "custom_tools".into(),
                                         Value::Array(refreshed_tools),
@@ -1858,6 +1907,22 @@ impl ChatV2Pipeline {
             }
 
             adapter.reset_for_new_round();
+        }
+
+        // P1 tools 前缀代际：变体结束时把本地 (generation_in, order_local,
+        // digest_local) 写入 VariantMeta.tool_face_prefix —— generation 写
+        // 入口代际（变体内不自增，切代判定只属于 join 收敛点），order 是
+        // 该变体当轮实际发出的完整工具面序列（入口快照基线 + 本地
+        // append-only 尾部），digest 是本变体窗口冻结快照摘要（空窗口保持
+        // 入口基线值），供 join 收敛按索引序合并、也供重放逐字节还原。
+        {
+            let mut meta = ctx.get_meta().unwrap_or_default();
+            meta.tool_face_prefix = Some(crate::chat_v2::types::ToolFacePrefixSnapshot {
+                generation: tool_face_baseline.generation,
+                order: frozen_tool_schema_order.clone(),
+                schema_digest: variant_schema_digest.clone(),
+            });
+            ctx.set_meta(meta);
         }
 
         hooks_guard.cleanup().await;
@@ -2707,6 +2772,9 @@ impl ChatV2Pipeline {
         let user_content_arc = Arc::new(user_content.clone());
         let session_id_arc = Arc::new(session_id.clone());
         let attachments_arc = Arc::new(user_attachments.clone());
+        // P1 tools 前缀代际（方案 A）：重试批与主 fan-out 同构 —— spawn
+        // 之前统一快照，join 之后收敛，变体内禁止中途写回共享态。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
 
         let futures: Vec<_> = variant_contexts
             .iter()
@@ -2721,6 +2789,7 @@ impl ChatV2Pipeline {
                 let attachments_clone = Arc::clone(&attachments_arc);
                 let shared_ctx = Arc::clone(&shared_context_arc);
                 let state_clone = chat_v2_state.clone();
+                let tool_face_baseline_clone = Arc::clone(&tool_face_baseline_arc);
 
                 let future = async move {
                     self_ref
@@ -2734,6 +2803,7 @@ impl ChatV2Pipeline {
                             shared_ctx,
                             (*attachments_clone).clone(),
                             Vec::new(),
+                            tool_face_baseline_clone,
                         )
                         .await
                 };
@@ -2775,6 +2845,24 @@ impl ChatV2Pipeline {
                     );
                     ctx.fail(&format!("Task panicked: {}", e));
                 }
+            }
+        }
+
+        // P1 tools 前缀代际：重试批 join 之后按变体索引序收敛（与主
+        // fan-out 同一收敛原语；单变体重试 = 纯扩展不切代由 converge
+        // 的前缀检查构造保证）。
+        {
+            let variant_local_orders: Vec<(usize, Vec<String>)> = variant_contexts
+                .iter()
+                .enumerate()
+                .filter_map(|(variant_index, (ctx, _, _))| {
+                    ctx.get_meta()
+                        .and_then(|meta| meta.tool_face_prefix)
+                        .map(|prefix| (variant_index, prefix.order))
+                })
+                .collect();
+            if !variant_local_orders.is_empty() {
+                self.converge_session_tool_face_prefix(&session_id, &variant_local_orders);
             }
         }
 
@@ -2897,6 +2985,10 @@ impl ChatV2Pipeline {
             Arc::clone(&emitter),
         );
 
+        // P1 tools 前缀代际（方案 A）：单变体重试同样入口统一快照、结束
+        // 后收敛 —— 单变体输入对 converge 是纯前缀扩展，构造上永不切代。
+        let tool_face_baseline_arc = Arc::new(self.load_session_tool_face_prefix(&session_id));
+
         // 执行变体（使用完整工具循环路径，与多变体主流程保持一致）
         // 注意：model_id（原始 config_id）传递给 execute_single_variant_with_config 用于 LLM 调用
         // retry 路径通过 user_attachments 传递图片（旧版兼容），context_refs 为空
@@ -2911,8 +3003,14 @@ impl ChatV2Pipeline {
                 shared_context_arc,
                 user_attachments,
                 Vec::new(),
+                tool_face_baseline_arc,
             )
             .await;
+
+        // P1 tools 前缀代际：变体环结束后收敛（禁止变体内中途 store）。
+        if let Some(prefix) = ctx.get_meta().and_then(|meta| meta.tool_face_prefix) {
+            self.converge_session_tool_face_prefix(&session_id, &[(0, prefix.order)]);
+        }
 
         // 处理结果并更新变体状态
         // 🔧 P0修复：无论成功还是失败，都需要持久化变体状态
