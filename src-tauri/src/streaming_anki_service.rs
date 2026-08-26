@@ -4476,7 +4476,10 @@ mod tests {
     async fn parse_and_save_card_honors_qa_pass_flag_persistence_contract() {
         let (svc, _dir) = make_persisted_test_service();
         let default_enabled = StructuredOutputOptions::from_options_json("{}").qa_pass_enabled();
-        assert!(default_enabled, "QA flag persistence must remain enabled by default");
+        assert!(
+            default_enabled,
+            "QA flag persistence must remain enabled by default"
+        );
 
         for (label, qa_pass_enabled, expect_flags) in [
             ("disabled", false, false),
