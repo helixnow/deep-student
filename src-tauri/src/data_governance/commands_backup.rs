@@ -2290,13 +2290,62 @@ pub async fn data_governance_list_backup_jobs(
 /// - `app`: Tauri AppHandle
 ///
 /// ## 返回
-/// - `Vec<PersistedJob>`: 可恢复的任务列表
+/// - `Vec<ResumableJobResponse>`: 可恢复的任务列表；导入任务同时标注续传是否需要密码
+#[derive(Debug, serde::Serialize)]
+pub struct ResumableJobResponse {
+    #[serde(flatten)]
+    job: PersistedJob,
+    requires_password: bool,
+}
+
+fn resumable_job_requires_password(job: &PersistedJob) -> bool {
+    if job.kind != BackupJobKind::Import {
+        return false;
+    }
+
+    let params: BackupJobParams = match serde_json::from_value(job.params.clone()) {
+        Ok(params) => params,
+        Err(error) => {
+            warn!(
+                "[data_governance] 无法解析可恢复导入任务参数，暂不标记密码要求: job_id={}, error={}",
+                job.job_id, error
+            );
+            return false;
+        }
+    };
+    let Some(zip_path) = params.zip_path else {
+        return false;
+    };
+
+    match super::backup::zip_export::zip_contains_encrypted_secrets(Path::new(&zip_path)) {
+        Ok(requires_password) => requires_password,
+        Err(error) => {
+            // ZIP 缺失或损坏会在实际续传时给出原始错误；不要因一个坏任务隐藏其余任务。
+            warn!(
+                "[data_governance] 无法检查可恢复导入任务是否携带密封载荷: job_id={}, error={}",
+                job.job_id, error
+            );
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn data_governance_list_resumable_jobs(
     backup_job_state: State<'_, BackupJobManagerState>,
-) -> Result<Vec<PersistedJob>, String> {
+) -> Result<Vec<ResumableJobResponse>, String> {
     let job_manager = backup_job_state.get();
-    job_manager.list_resumable_jobs()
+    Ok(job_manager
+        .list_resumable_jobs()?
+        .into_iter()
+        .map(|job| {
+            let requires_password = resumable_job_requires_password(&job);
+            ResumableJobResponse {
+                job,
+                requires_password,
+            }
+        })
+        .collect())
 }
 
 /// 恢复中断的备份任务

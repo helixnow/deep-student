@@ -1085,12 +1085,23 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
       message: 'Job resumed from checkpoint',
     };
 
-    it('passes jobId as camelCase param', async () => {
+    it('passes jobId as camelCase param without requiring a password for portable jobs', async () => {
       mockInvoke.mockResolvedValue(mockResponse);
       await resumeBackupJob('job-failed-1');
 
       expectSingleInvoke('data_governance_resume_backup_job', {
         jobId: 'job-failed-1',
+        password: undefined,
+      });
+    });
+
+    it('passes the password when resuming a sealed import job', async () => {
+      mockInvoke.mockResolvedValue(mockResponse);
+      await resumeBackupJob('job-sealed-import', 'correct horse battery');
+
+      expectSingleInvoke('data_governance_resume_backup_job', {
+        jobId: 'job-sealed-import',
+        password: 'correct horse battery',
       });
     });
 
@@ -1121,6 +1132,7 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
           progress: 30,
           created_at: '2026-02-07T12:00:00Z',
           message: 'Interrupted',
+          requires_password: false,
         },
       ]);
 
@@ -1130,6 +1142,7 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
       expect(result[0]!.job_id).toBe('job-1');
       expect(result[0]!.kind).toBe('export');
       expect(result[0]!.progress).toBe(30);
+      expect(result[0]!.requires_password).toBe(false);
     });
 
     it('normalizes camelCase response items', async () => {
@@ -1140,6 +1153,7 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
           phase: 'extract',
           progress: 60,
           createdAt: '2026-02-07T12:00:00Z',
+          requiresPassword: true,
         },
       ]);
 
@@ -1148,6 +1162,7 @@ describe('DataGovernanceApi Resume Jobs contract', () => {
       expect(result).toHaveLength(1);
       expect(result[0]!.job_id).toBe('job-2');
       expect(result[0]!.created_at).toBe('2026-02-07T12:00:00Z');
+      expect(result[0]!.requires_password).toBe(true);
     });
 
     it('filters out invalid items', async () => {
