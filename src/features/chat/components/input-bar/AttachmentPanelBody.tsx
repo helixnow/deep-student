@@ -180,31 +180,31 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
             <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
           </div>
           <div className="flex items-center gap-2">
-            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onPickFiles}>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onPickFiles}>
               + {t('analysis:input_bar.attachments.add')}
             </DsButton>
             {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
             <DsButton
               variant="outline"
               size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
+              className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
               onClick={onOpenResourceLibrary}
             >
               <FolderOpen size={12} weight="bold" />
               {t('chatV2:inputBar.resourceLibrary')}
             </DsButton>
             {isMobileEnv && (
-              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onOpenCamera}>
+              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onOpenCamera}>
                 <Camera size={12} weight="bold" />
                 {t('chatV2:inputBar.camera')}
               </DsButton>
             )}
             {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClearAttachments}>
+              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onClearAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
               </DsButton>
             )}
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           </div>
@@ -338,12 +338,12 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                       variant="outline"
                       size="sm"
                       onClick={() => { onRetryAttachment(attachment); }}
-                      className="text-info [@media(pointer:coarse)]:!min-h-11"
+                      className="text-info [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                     >
                       {t('common:retry')}
                     </DsButton>
                   )}
-                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onRemoveAttachment(attachment.id)}>
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={() => onRemoveAttachment(attachment.id)}>
                     {t('analysis:input_bar.attachments.remove')}
                   </DsButton>
                 </div>

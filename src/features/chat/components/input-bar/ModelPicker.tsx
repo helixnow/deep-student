@@ -536,7 +536,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 }}
                 disabled={disabled || compareSelected.length === 0}
                 title={t('chatV2:modelMention.retry')}
-                className="[@media(pointer:coarse)]:!min-h-11"
+                className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
               >
                 <ArrowCounterClockwise size={14} />
                 {t('chatV2:modelMention.retry')}
@@ -676,7 +676,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClose();
                       triggerOpenSettingsModels();
                     }}
-                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:!min-h-11"
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                   >
                     {t('chatV2:modelPicker.goToSettings')}
                   </DsButton>
@@ -702,7 +702,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             }}
             disabled={disabled || compareSelected.length === 0}
             title={t('chatV2:modelMention.retry')}
-            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:!min-h-11"
+            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelMention.retry')}

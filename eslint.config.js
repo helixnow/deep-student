@@ -118,7 +118,8 @@ export default tseslint.config(
       // min-h-[var(--touch-target-size)]），拦截业务组件里新增的
       // [@media(pointer:coarse)]:!min-h-11 散点覆盖与裸 after:-inset 扩区。
       // 存量散点较多，先 warn（白名单见 eslint-rules/coarse-touch-target.allowlist.json，
-      // 登记 WRAP-UP/ROUND-81~90 的有意折衷）；清完存量后升 error。
+      // 登记 WRAP-UP/ROUND-81~90 的有意折衷）；按目录逐步放量升 error
+      // （chat 输入条 input-bar 已在下方单独升为 error），清完存量后全局升 error。
       'ds-components/coarse-touch-target': 'warn',
 
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
@@ -163,6 +164,17 @@ export default tseslint.config(
     rules: {
       'ds-components/no-arbitrary-font-size': 'error',
       'ds-components/coarse-touch-target': 'off'
+    }
+  },
+
+  // 放量目录：chat 输入条（input-bar）。移动端触控整改的核心热区，
+  // coarse-touch-target 由全局 warn 升为 error，拦截新增散点覆盖回流；
+  // 全局其余目录仍 warn。注意保持本块位于测试文件 override 之前，
+  // 使 input-bar 下的 *.test.* / __tests__ 仍沿用整体关闭策略。
+  {
+    files: ['src/features/chat/components/input-bar/**/*.{js,jsx,ts,tsx}'],
+    rules: {
+      'ds-components/coarse-touch-target': 'error'
     }
   },
 

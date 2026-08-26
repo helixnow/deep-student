@@ -11,6 +11,7 @@ describe('split input bar mobile contract', () => {
   const inputBarSource = readInputBarSource('InputBarUI.tsx');
   const toolbarSource = readInputBarSource('ComposerToolbar.tsx');
   const panelSource = readInputBarSource('AttachmentPanelBody.tsx');
+  const plusMenuSource = readInputBarSource('ComposerPlusMenu.tsx');
   const helperSource = readInputBarSource('attachmentModeHelpers.ts');
   const chatContainerSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/components/ChatContainer.tsx'),
@@ -49,9 +50,14 @@ describe('split input bar mobile contract', () => {
     );
   });
 
-  it('keeps attachment panel actions at least 44px on coarse pointers', () => {
+  it('keeps attachment and plus-menu actions token-sized on coarse pointers', () => {
     expect(panelSource).toContain('className="!h-11 !min-w-11"');
-    expect(panelSource.match(/\[@media\(pointer:coarse\)\]:!min-h-11/g)?.length).toBeGreaterThanOrEqual(7);
+    expect(
+      panelSource.match(/\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/g)?.length
+    ).toBeGreaterThanOrEqual(8);
+    expect(plusMenuSource).toContain(
+      '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
+    );
   });
 
   it('keeps compact composer hints tappable without changing desktop density', () => {

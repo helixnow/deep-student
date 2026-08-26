@@ -388,7 +388,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               size="sm"
               onClick={handleIgnore}
               disabled={disabled}
-              className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+              className="text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {t('askUser.ignore')}
             </DsButton>
@@ -399,7 +399,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               disabled={disabled || !canSubmit}
               className={cn(
                 'rounded-full px-4',
-                '[@media(pointer:coarse)]:!min-h-11',
+                '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                 'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)]'
               )}
             >
