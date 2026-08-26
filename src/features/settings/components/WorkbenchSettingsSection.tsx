@@ -47,6 +47,9 @@ import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/Wa
 import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
 import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
+// 接缝三 handoff（r5 边界审阅接线）：与 workbenchMode.persistWorkbenchModeEnabled
+// 同一调用点契约——持久化成功后、setEnabled(false)/mode-changed 之前交接焦点窗。
+import { handoffWorkbenchToLegacyShell } from '@/features/workbench/core/legacyNavigationMap';
 import { isWorkbenchDiagnosticsRequested } from '@/features/workbench/core/workbenchDiagnosticsGate';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
@@ -312,7 +315,16 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         setMode(!enabled);
         return;
       }
-      if (!enabled) await closeBrowserForDisabledGate();
+      if (!enabled) {
+        // 焦点上下文交接：窗口尚未卸载（卸壳由下方 mode-changed 触发），
+        // 采集完整；交接失败绝不阻塞停用本身。
+        try {
+          handoffWorkbenchToLegacyShell();
+        } catch (error) {
+          console.warn('[workbench-settings] focus handoff failed:', getErrorMessage(error));
+        }
+        await closeBrowserForDisabledGate();
+      }
       workbenchBus.setEnabled(enabled);
       try {
         dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });

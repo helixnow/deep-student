@@ -148,6 +148,8 @@
   "menubar": {
     "label": "Study status bar",
     "appName": "Study Desktop",
+    "desktopRename": "Rename Desktop…",
+    "desktopNameInputLabel": "Desktop name",
     "flashcardsDue": "{{count}} flashcards due",
     "tasksRunning": "{{count}} card tasks running",
     "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
@@ -391,6 +393,8 @@
     "actionsLabel": "Quick start",
     "actionFiles": "Open Files",
     "actionRestoreSession": "Restore last desktop",
+    "actionRestoreSessionCount_one": "Restore last desktop (1 window)",
+    "actionRestoreSessionCount_other": "Restore last desktop ({{count}} windows)",
     "actionFilesDesc": "Browse notes, textbooks, and all resources",
     "actionApps": "All apps",
     "actionFlashcards": "Flashcards",

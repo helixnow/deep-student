@@ -22,10 +22,20 @@ export interface LocalGraphNodeDatum {
   exists: boolean;
 }
 
+/**
+ * 边的链接类型（对齐 RemNote 图谱分色心智的双类型子集）：
+ * - wikilink：`[[目标]]` 双链
+ * - noteref：`[标签](note://id)` 引用链接
+ * - unknown：仅从入链行（NoteBacklinkDto 不携带 linkType）可见、
+ *   且反向出链信息不可得时的兜底；渲染层按 wikilink 的中性样式处理
+ */
+export type LocalGraphEdgeKind = 'wikilink' | 'noteref' | 'unknown';
+
 export interface LocalGraphEdgeDatum {
   id: string;
   source: string;
   target: string;
+  kind: LocalGraphEdgeKind;
 }
 
 export interface LocalGraphData {
@@ -63,6 +73,14 @@ interface NeighborRef {
   id: string;
   title: string;
   exists: boolean;
+  /** 与展开源之间那条边的链接类型 */
+  kind: LocalGraphEdgeKind;
+}
+
+function edgeKindFromLinkType(linkType: string): LocalGraphEdgeKind {
+  if (linkType === 'noteref') return 'noteref';
+  if (linkType === 'wikilink') return 'wikilink';
+  return 'unknown';
 }
 
 /** 单个节点的邻居列表（入链优先、出链其后、幽灵最后），按预算截断。 */
@@ -85,14 +103,42 @@ function collectNeighbors(
     refs.push(ref);
   };
 
+  // 入链行不带 linkType；双向链接时借用反向出链行的类型标注这条无向边
+  const outgoingKindById = new Map<string, LocalGraphEdgeKind>();
+  for (const row of neighborhood.outgoing) {
+    const id = row.targetId
+      ?? (row.targetTitle.trim() ? ghostNodeId(row.targetTitle) : null);
+    if (!id) continue;
+    const kind = edgeKindFromLinkType(row.linkType);
+    const previous = outgoingKindById.get(id);
+    if (!previous || (previous === 'unknown' && kind !== 'unknown')) {
+      outgoingKindById.set(id, kind);
+    }
+  }
+
   for (const row of neighborhood.backlinks) {
-    push({ id: row.sourceId, title: row.sourceTitle, exists: true });
+    push({
+      id: row.sourceId,
+      title: row.sourceTitle,
+      exists: true,
+      kind: outgoingKindById.get(row.sourceId) ?? 'unknown',
+    });
   }
   for (const row of neighborhood.outgoing) {
     if (row.targetId) {
-      push({ id: row.targetId, title: row.targetTitle, exists: true });
+      push({
+        id: row.targetId,
+        title: row.targetTitle,
+        exists: true,
+        kind: outgoingKindById.get(row.targetId) ?? edgeKindFromLinkType(row.linkType),
+      });
     } else if (includeGhosts && row.targetTitle.trim()) {
-      push({ id: ghostNodeId(row.targetTitle), title: row.targetTitle.trim(), exists: false });
+      push({
+        id: ghostNodeId(row.targetTitle),
+        title: row.targetTitle.trim(),
+        exists: false,
+        kind: edgeKindFromLinkType(row.linkType),
+      });
     }
   }
   return { refs, truncated };
@@ -113,11 +159,16 @@ export async function buildLocalGraph(
 
   nodesById.set(center.id, { id: center.id, title: center.title, degree: 0, exists: true });
 
-  const addEdge = (source: string, target: string) => {
+  const addEdge = (source: string, target: string, kind: LocalGraphEdgeKind) => {
     if (source === target) return;
     const key = undirectedEdgeKey(source, target);
-    if (edgesByKey.has(key)) return;
-    edgesByKey.set(key, { id: `e-${edgesByKey.size}`, source, target });
+    const existing = edgesByKey.get(key);
+    if (existing) {
+      // 同一条无向边先由入链行（类型未知）引入、后被出链行看到时补全类型
+      if (existing.kind === 'unknown' && kind !== 'unknown') existing.kind = kind;
+      return;
+    }
+    edgesByKey.set(key, { id: `e-${edgesByKey.size}`, source, target, kind });
   };
 
   const addNode = (ref: NeighborRef, degree: 1 | 2): boolean => {
@@ -141,7 +192,7 @@ export async function buildLocalGraph(
   );
   truncated = truncated || centerNeighbors.truncated;
   for (const ref of centerNeighbors.refs) {
-    if (addNode(ref, 1)) addEdge(center.id, ref.id);
+    if (addNode(ref, 1)) addEdge(center.id, ref.id, ref.kind);
   }
 
   // ── 第 2 度：展开部分 1 度真实笔记 ────────────────────────────────
@@ -174,7 +225,7 @@ export async function buildLocalGraph(
       for (const neighbor of expansion.refs) {
         // 已在图中的节点只补边；新节点计为 2 度
         if (nodesById.has(neighbor.id) || addNode(neighbor, 2)) {
-          addEdge(ref.id, neighbor.id);
+          addEdge(ref.id, neighbor.id, neighbor.kind);
         }
       }
     }

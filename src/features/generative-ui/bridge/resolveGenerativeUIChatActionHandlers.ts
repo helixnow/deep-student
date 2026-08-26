@@ -40,6 +40,12 @@ import {
   EXPORT_INTENT_ACTION_ID,
   createExportIntentActionHandlers,
 } from '../handlers/exportIntentActionHandlers';
+import {
+  createOpenResourceActionHandlers,
+  parseOpenResourceActionId,
+  type OpenNoteActionInput,
+  type OpenPdfPageActionInput,
+} from '../handlers/openResourceActionHandlers';
 
 /**
  * 未传 labels 时的兜底文案：复用 generativeUi 命名空间既有 key，
@@ -160,6 +166,43 @@ export function resolveGenerativeUIChatActionHandlers(
           copyBlock: fallbackLabel('action.copy_block', '复制该组件'),
         },
       ),
+    );
+  }
+
+  // 只读「打开已有资源」导航：目标从组合 action id 强校验反解。信任面与
+  // Markdown 内联引用 [PDF@id:3] 一致——模型只能点名既有资源，导航本身走
+  // DSTU_OPEN_NOTE / pdf-ref:open 既有只读契约，无 save/create 副作用；
+  // 形状不符的 id 反解为 null，不注册 → 注册表安全模式下按钮不渲染。
+  const openNoteTargets: OpenNoteActionInput[] = [];
+  const openPdfPageTargets: OpenPdfPageActionInput[] = [];
+  for (const id of actionIds) {
+    const parsed = parseOpenResourceActionId(id);
+    if (!parsed) continue;
+    if (parsed.kind === 'note') {
+      openNoteTargets.push({
+        noteId: parsed.noteId,
+        label: fallbackLabel('action.open_note', '打开笔记'),
+      });
+    } else {
+      openPdfPageTargets.push({
+        sourceId: parsed.sourceId,
+        pageNumber: parsed.pageNumber,
+        label: String(
+          i18n.t('generativeUi:action.open_pdf_page', {
+            defaultValue: '打开 PDF 第 {{page}} 页',
+            page: parsed.pageNumber,
+          }),
+        ),
+      });
+    }
+  }
+  if (openNoteTargets.length > 0 || openPdfPageTargets.length > 0) {
+    Object.assign(
+      handlers,
+      createOpenResourceActionHandlers({
+        notes: openNoteTargets,
+        pdfPages: openPdfPageTargets,
+      }),
     );
   }
 

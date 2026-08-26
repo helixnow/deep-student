@@ -207,7 +207,16 @@
   },
   "annotations": {
     "save_failed": "批注保存失败，本次修改可能未生效",
-    "remote_updated": "批注已在其他窗口更新，已加载最新版本，本次修改未保存"
+    "remote_updated": "批注已在其他窗口更新，已加载最新版本，本次修改未保存",
+    "filter_placeholder": "筛选批注内容…",
+    "filter_by_color": "按颜色筛选",
+    "color_chip": "颜色 {{color}}",
+    "no_filter_match": "没有符合筛选条件的批注",
+    "export": "导出为笔记（{{num}}）",
+    "export_hint": "把当前列表的批注按页汇总为一篇笔记，来源行可点击跳回原文",
+    "summary_title": "《{{name}}》批注汇总",
+    "summary_title_fallback": "批注汇总",
+    "locate": "定位到第 {{page}} 页"
   },
   "a11y": {
     "close": "关闭",

@@ -152,6 +152,42 @@
   stroke-width: 1.25;
 }
 
+/* 引用链接（note://）边分色：颜色 + 虚线双通道，色觉障碍下仍可区分
+   （wikilink / unknown 共用上面的中性实线） */
+/* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
+.notes-graph-canvas .react-flow__edge.notes-graph-edge-noteref .react-flow__edge-path {
+  stroke: hsl(var(--info) / 78%);
+  stroke-dasharray: 5 4;
+}
+
+/* 工具栏图例（仅当图中存在 noteref 边时渲染） */
+.notes-graph-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.notes-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-graph-legend-swatch {
+  width: 14px;
+  height: 0;
+  border-top: 1.5px solid hsl(var(--border));
+}
+
+.notes-graph-legend-swatch.is-noteref {
+  border-top-color: hsl(var(--info) / 78%);
+  border-top-style: dashed;
+}
+
 /* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
 .notes-graph-canvas .react-flow__node:focus-visible {
   outline: 2px solid hsl(var(--ring));

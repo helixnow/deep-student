@@ -148,6 +148,8 @@
   "menubar": {
     "label": "学习状态栏",
     "appName": "学习桌面",
+    "desktopRename": "重命名桌面…",
+    "desktopNameInputLabel": "桌面名称",
     "flashcardsDue": "{{count}} 张到期闪卡",
     "tasksRunning": "{{count}} 个制卡任务进行中",
     "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
@@ -391,6 +393,8 @@
     "actionsLabel": "快速开始",
     "actionFiles": "打开资源库",
     "actionRestoreSession": "恢复上次桌面",
+    "actionRestoreSessionCount_one": "恢复上次桌面（{{count}} 个窗口）",
+    "actionRestoreSessionCount_other": "恢复上次桌面（{{count}} 个窗口）",
     "actionFilesDesc": "浏览笔记、教材与全部资源",
     "actionApps": "全部应用",
     "actionFlashcards": "闪卡",

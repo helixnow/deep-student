@@ -914,6 +914,76 @@
 }
 
 /* ============================================================================
+   批注面板（r5：筛选 + 导出为笔记；列表本体沿用 .ds-highlights-list）
+   ============================================================================ */
+
+/* 面板占满批注 tab（桌面侧栏与移动子屏同构：父容器均为纵向 flex） */
+.ds-annotations-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-annotations-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+
+.ds-annotations-filter-input {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.ds-annotations-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ds-annotations-color-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 颜色 chip：未选中半透明，选中描主题色环（颜色本身即语义，不加文字） */
+.ds-annotations-color-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  cursor: pointer;
+  opacity: .45;
+  transition: opacity .15s ease, box-shadow .15s ease;
+}
+
+.ds-annotations-color-chip:hover {
+  opacity: .8;
+}
+
+.ds-annotations-color-chip.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / .65);
+}
+
+.ds-annotations-export {
+  font-size: 12px;
+  margin-left: auto;
+}
+
+/* 移动子屏：工具行与列表 viewport 的左右留白对齐（12px） */
+.ds-pdf__mobile-panel .ds-annotations-toolbar {
+  padding: 8px 12px 0;
+}
+
+/* ============================================================================
    内容区
    ============================================================================ */
 
@@ -990,6 +1060,45 @@
   .ds-pdf__page-wrapper--agent-focus::after {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* r5-S1：批注列表精确定位后的高亮块闪烁（focusHighlight 1.6s 后移除类名）。
+   与 agent-focus 同一套降级策略：reduced-motion 走静态描边，靠 JS 定时移除。 */
+.ds-pdf__highlight-rect--focus {
+  animation: ds-pdf-highlight-focus-pulse 1400ms ease-out forwards;
+}
+
+@keyframes ds-pdf-highlight-focus-pulse {
+  0% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  45% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  100% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0),
+      0 0 16px hsl(var(--primary) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.85);
+  }
+}
+
+@media (forced-colors: active) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
   }
 }
 

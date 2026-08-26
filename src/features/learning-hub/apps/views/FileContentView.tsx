@@ -57,10 +57,8 @@ import { PreviewStatus } from './PreviewStatus';
 import { AudioPlayer, VideoPlayer } from './media';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
-import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import {
   buildSelectionLocator,
-  buildSelectionNoteContent,
   type PdfSelectionPayload,
 } from '@/features/pdf/pdfSelectionActions';
 
@@ -273,21 +271,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       },
     });
   }, [referenceToChat, node.sourceId, node.id, node.name]);
-
-  // 划词「做笔记」：走共享保存流程（先选目录，成功 toast 带「打开笔记」）。
-  // 正文模板保留页码 locator（文档名 + page），标题取摘录首 30 字，兜底 fileName。
-  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'pdf-selection' });
-  const startSaveAsNote = saveAsNoteFlow.start;
-  const handleCreateNote = useCallback((payload: PdfSelectionPayload) => {
-    const compact = payload.text.replace(/\s+/g, ' ').trim();
-    startSaveAsNote({
-      content: buildSelectionNoteContent({
-        text: payload.text,
-        sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
-      }),
-      title: compact.slice(0, 30) || node.name,
-    });
-  }, [startSaveAsNote, node.name, t]);
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -739,7 +722,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             bookmarks={bookmarks}
             onBookmarksChange={handleBookmarksChange}
             onQuoteToChat={handleQuoteToChat}
-            onCreateNote={handleCreateNote}
           />
         );
       }
@@ -881,7 +863,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {renderContent()}
-      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
     </div>
   );
 };

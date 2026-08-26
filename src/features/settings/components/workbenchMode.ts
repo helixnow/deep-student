@@ -18,6 +18,9 @@ import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 // 否则这些入口会绕过逐窗 canClose 直接卸壳（App.tsx 已静态引入同一模块，
 // 不新增首屏体积）。
 import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
+// 接缝三 handoff（r5 边界审阅接线）：停用成功后、卸壳前采集焦点窗
+// descriptor 落独立 key 并对齐经典壳视图；模块已在 App.tsx 静态图中。
+import { handoffWorkbenchToLegacyShell } from '@/features/workbench/core/legacyNavigationMap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -163,7 +166,17 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
     return false;
   }
   setCachedWorkbenchModeEnabled(enabled);
-  if (!enabled) await closeBrowserForDisabledGate();
+  if (!enabled) {
+    // 焦点上下文交接：持久化成功后、setEnabled(false)/mode-changed 之前——
+    // 窗口尚未卸载，采集完整（legacyNavigationMap 头注的调用点契约）。
+    // 交接是尽力而为的增强，失败绝不阻塞停用本身。
+    try {
+      handoffWorkbenchToLegacyShell();
+    } catch (error) {
+      console.warn('[workbenchMode] focus handoff failed:', getErrorMessage(error));
+    }
+    await closeBrowserForDisabledGate();
+  }
   workbenchBus.setEnabled(enabled);
   try {
     dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });

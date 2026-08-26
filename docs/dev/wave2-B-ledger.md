@@ -437,3 +437,34 @@ P3(handoff descriptor)与 P10(SOTA 子集)维持第 5 轮、P9(Exposé)维持第
 7. **提交**:第 5 轮收尾由父代理统一 commit/push;台账员追加「第 5 轮」节。
 
 P9(Exposé)维持第 8 轮、测试对齐(waitFor 化 + 划词契约改写)维持第 7 轮,不提前。
+
+---
+
+## 第 5 轮（跨壳连续性 + Agent 结合 + SOTA 第一批）
+
+### 5.1 执行口径
+
+- 子代理全部 `claude-fable-5-thinking-high`；无 sol/GPT/xhigh；无 computerUse。
+- 未跑编译/门禁/CI/vitest。父代理统一 commit/push。
+
+### 5.2 产品落地
+
+| 项 | 现状（静态） |
+|---|---|
+| P3 handoff descriptor | `handoffDescriptor.ts`：`{appType, resourceId, innerRoute?}` + 独立 key `desktop.workbenchHandoff`；`legacyNavigationMap.handoffWorkbenchToLegacyShell`；边界审阅补丁：mode-off 成功后、卸壳前调用落盘 |
+| 经典壳→Workbench | `App.tsx` 消费 `consumeHandoffDescriptor()`，`workbenchBus.launch` / `openPdfPage`；移动平台不启 Workbench |
+| Agent 结合 | `integrationManifest.ts` + `workbenchBus.openNoteAnchor` / `openPdfPage`；制卡声明只走 `cardAgent.startGeneration` |
+| GenUI 只读入口 | `openResourceActionHandlers` 只派发 `DSTU_OPEN_NOTE` / `pdf-ref:open`，无写 API |
+| SOTA 笔记 | 图谱边 kind 分色；快速切换结果可拖到桌面 |
+| SOTA PDF | 批注精确定位/筛选/导出为笔记；pdfref 回链；拆除 onCreateNote 死链 |
+| SOTA 工作台 | 最小命名桌面（独立 settings key，不进快照） |
+
+### 5.3 已验证 / 未验证
+
+已验证：禁改区文件名未进本轮产品 diff；GenUI 新模块无 save/create；handoff 不混入 snapshot 白名单；finder 未合桶。
+
+未验证：未编译、未跑测试、handoff 真机 round-trip、批注回链/Spaces 重命名未实测。
+
+### 5.4 第 6 轮预告
+
+十名复核员按第 2–5 轮落地面逐 diff 复核（事务/冻结/关标签/保存链/书签/划词/handoff/Agent/SOTA×2），翻案当轮落地。仍禁止编译/实测。

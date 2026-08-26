@@ -40,10 +40,8 @@ import { usePdfFocusListener } from './usePdfFocusListener';
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
-import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import {
   buildSelectionLocator,
-  buildSelectionNoteContent,
   type PdfSelectionPayload,
 } from '@/features/pdf/pdfSelectionActions';
 
@@ -523,21 +521,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     });
   }, [referenceToChat, node.sourceId, node.id, node.name]);
 
-  // 划词「做笔记」：走共享保存流程（先选目录，成功 toast 带「打开笔记」）。
-  // 正文模板保留页码 locator（文档名 + page），标题取摘录首 30 字，兜底 fileName。
-  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'pdf-selection' });
-  const startSaveAsNote = saveAsNoteFlow.start;
-  const handleCreateNoteSync = useCallback((payload: PdfSelectionPayload) => {
-    const compact = payload.text.replace(/\s+/g, ' ').trim();
-    startSaveAsNote({
-      content: buildSelectionNoteContent({
-        text: payload.text,
-        sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
-      }),
-      title: compact.slice(0, 30) || node.name,
-    });
-  }, [startSaveAsNote, node.name, t]);
-
   // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）。
   // 旧控制器 dispose 用的是它创建时的快照；新控制器在 refs 同步 effect
   // 之后创建，此时 ref 已指向新 node 的 metadata。
@@ -842,9 +825,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         bookmarks={bookmarks}
         onBookmarksChange={handleBookmarksChange}
         onQuoteToChat={handleQuoteToChat}
-        onCreateNote={handleCreateNoteSync}
       />
-      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
     </div>
   );
 };

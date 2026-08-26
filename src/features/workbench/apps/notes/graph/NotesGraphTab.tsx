@@ -106,7 +106,13 @@ async function buildClientFallbackGraph(
         degree: 1,
         exists: true,
       });
-      edges.push({ id: `e-${edges.length}`, source: activeNote.id, target: targetId });
+      // 客户端降级只解析 [[..]] 双链正文，边类型恒为 wikilink
+      edges.push({
+        id: `e-${edges.length}`,
+        source: activeNote.id,
+        target: targetId,
+        kind: 'wikilink',
+      });
     }
   }
   for (const unresolved of relationships.unresolved) {
@@ -114,7 +120,7 @@ async function buildClientFallbackGraph(
     const id = ghostNodeId(unresolved.link.target);
     if (nodesById.has(id)) continue;
     nodesById.set(id, { id, title: unresolved.link.target, degree: 1, exists: false });
-    edges.push({ id: `e-${edges.length}`, source: activeNote.id, target: id });
+    edges.push({ id: `e-${edges.length}`, source: activeNote.id, target: id, kind: 'wikilink' });
   }
 
   return { nodes: Array.from(nodesById.values()), edges, truncated: false };
@@ -270,6 +276,10 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
     && loadState.data.nodes.length <= 1
     && loadState.data.edges.length === 0;
 
+  // 纯双链图不出图例；只有真的存在引用链接（note://）时才需要区分两类边
+  const hasNoterefEdges = loadState.status === 'ready'
+    && loadState.data.edges.some((edge) => edge.kind === 'noteref');
+
   return (
     <div className="notes-graph-tab" data-notes-graph-tab>
       <div className="notes-graph-toolbar">
@@ -295,6 +305,23 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
             {t('notesWorkspace.graph.depth2', { defaultValue: '2 度' })}
           </button>
         </div>
+        {hasNoterefEdges && (
+          <div
+            className="notes-graph-legend"
+            data-notes-graph-legend
+            role="note"
+            aria-label={t('notesWorkspace.graph.legendLabel', { defaultValue: '边类型图例' })}
+          >
+            <span className="notes-graph-legend-item">
+              <i className="notes-graph-legend-swatch is-wikilink" aria-hidden="true" />
+              {t('notesWorkspace.graph.legendWikilink', { defaultValue: '双链' })}
+            </span>
+            <span className="notes-graph-legend-item">
+              <i className="notes-graph-legend-swatch is-noteref" aria-hidden="true" />
+              {t('notesWorkspace.graph.legendNoteref', { defaultValue: '引用' })}
+            </span>
+          </div>
+        )}
         <button
           type="button"
           className="notes-backlinks-panel-icon-button"

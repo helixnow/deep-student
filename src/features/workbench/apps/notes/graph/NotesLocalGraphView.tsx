@@ -81,7 +81,8 @@ export const NotesLocalGraphView: React.FC<NotesLocalGraphViewProps> = ({
       target: edge.target,
       type: 'straight',
       focusable: false,
-      className: 'notes-graph-edge',
+      // 按链接类型分色（RemNote 图谱心智）：unknown 与 wikilink 共用中性样式
+      className: `notes-graph-edge notes-graph-edge-${edge.kind}`,
     }));
     return { nodes: flowNodes, edges: flowEdges };
   }, [data]);

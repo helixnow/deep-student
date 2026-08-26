@@ -81,6 +81,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wra
 // viewer 内建的 ds-highlight-menu 只保留高亮选色 + 复制，不再重复这些入口。
 const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
 
+// 侧栏批注面板（筛选/导出为笔记/回链）同样懒加载：它静态依赖 shared/notes
+// 的目录选择流程（FolderPickerDialog），不能随 PDF 主 chunk 打包。
+const PdfAnnotationsPanel = React.lazy(() => import('./PdfAnnotationsPanel'));
+
 /** PDF 目录项 */
 interface OutlineItem {
   title: string;
@@ -166,9 +170,6 @@ export interface EnhancedPdfViewerProps {
    *  （上层视图接 useReferenceToChat：资源引用 + `page:N` locator，Agent 可回读原文）。
    *  缺省时工具条走 PREFILL_CHAT_INPUT 文本注入兜底。 */
   onQuoteToChat?: (payload: PdfSelectionPayload) => void;
-  /** @deprecated 划词「做笔记」已由共享层 SelectionToolbar（PdfSelectionActions）
-   *  统一承载，viewer 内建划词菜单不再消费该回调；保留字段仅为兼容既有调用方。 */
-  onCreateNote?: (payload: PdfSelectionPayload) => void;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
@@ -332,7 +333,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   bookmarks: externalBookmarks,
   onBookmarksChange,
   onQuoteToChat,
-  // onCreateNote：已废弃（见 props 注释），不再解构消费
 }) => {
   const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
@@ -1510,6 +1510,58 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const goToBookmark = useCallback((bookmark: Bookmark) => {
     goToPage(bookmark.page);
   }, [goToPage]);
+
+  // ========== 批注列表精确定位（r5-S1，对标 Zotero「Show on Page」） ==========
+  // 点击批注项不再只 goToPage：跳页后轮询等待目标高亮块渲染
+  // （页面虚拟化 + 高亮层随页挂载，滚动到位前元素不存在），
+  // 找到后把首个矩形滚到视口中部并闪烁（CSS 动画，reduced-motion 有静态降级）。
+  const [focusedHighlightId, setFocusedHighlightId] = useState<string | null>(null);
+  const highlightFocusPollTimerRef = useRef<number | null>(null);
+  const highlightFocusFadeTimerRef = useRef<number | null>(null);
+  const clearHighlightFocusTimers = useCallback(() => {
+    if (highlightFocusPollTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusPollTimerRef.current);
+      highlightFocusPollTimerRef.current = null;
+    }
+    if (highlightFocusFadeTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusFadeTimerRef.current);
+      highlightFocusFadeTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearHighlightFocusTimers, [clearHighlightFocusTimers]);
+
+  const focusHighlight = useCallback((hl: Pick<Highlight, 'id' | 'pageIndex'>) => {
+    clearHighlightFocusTimers();
+    setFocusedHighlightId(null);
+    goToPage(hl.pageIndex);
+    const escapedId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(hl.id)
+        : hl.id.replace(/["\\]/g, '\\$&');
+    const deadline = Date.now() + 3000;
+    const tryLocate = () => {
+      highlightFocusPollTimerRef.current = null;
+      const layer = pageContainerRef.current?.querySelector(
+        `[data-highlight-id="${escapedId}"]`
+      );
+      const rect = layer?.querySelector('.ds-pdf__highlight-rect');
+      if (rect) {
+        // 跳页的虚拟列表平滑滚动已把目标页带近，这里再精确到矩形本身
+        rect.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setFocusedHighlightId(hl.id);
+        highlightFocusFadeTimerRef.current = window.setTimeout(() => {
+          setFocusedHighlightId(null);
+          highlightFocusFadeTimerRef.current = null;
+        }, 1600);
+        return;
+      }
+      if (Date.now() < deadline) {
+        highlightFocusPollTimerRef.current = window.setTimeout(tryLocate, 120);
+      }
+      // 超时静默放弃：goToPage 已完成页级跳转，定位闪烁是增强不是承诺
+    };
+    tryLocate();
+  }, [clearHighlightFocusTimers, goToPage]);
   
   // 开始编辑书签
   const startEditBookmark = useCallback((bookmark: Bookmark) => {
@@ -2847,11 +2899,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 高亮覆盖层 — v2 为 0–1 相对坐标（按百分比渲染，尺寸无关）；
             历史数据（无 coordVersion）按旧逻辑乘以当前 scale 兜底 */}
         {getPageHighlights(pageNum).map(hl => (
-          <div key={hl.id} className="ds-pdf__highlight-layer">
+          // data-highlight-id：批注列表精确定位（focusHighlight）用它找到高亮块
+          <div key={hl.id} className="ds-pdf__highlight-layer" data-highlight-id={hl.id}>
             {hl.rects.map((rect, idx) => (
               <div
                 key={idx}
-                className="ds-pdf__highlight-rect"
+                className={`ds-pdf__highlight-rect${focusedHighlightId === hl.id ? ' ds-pdf__highlight-rect--focus' : ''}`}
                 style={
                   hl.coordVersion === 2
                     ? {
@@ -2912,6 +2965,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     annotationLayerRange,
     currentPage,
     enableStudyControls,
+    focusedHighlightId,
     resolvedEnableTextSelection,
     pdfSettings.enableAnnotationLayerByDefault,
     getPageShimmer,
@@ -3042,45 +3096,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     </CustomScrollArea>
   );
 
-  // 批注 tab 内容（桌面侧栏 / 移动子屏共用）
+  // 批注 tab 内容（桌面侧栏 / 移动子屏共用）——r5 起独立为 PdfAnnotationsPanel
+  // （筛选 + 导出为笔记 + 回链），点击批注项走 focusHighlight 精确定位；
+  // 移动端 onNavigate 关闭子屏后再定位（面板挡着页面时闪烁无意义）。
   const renderHighlightList = (onNavigate?: () => void) => (
-    <CustomScrollArea
-      className="ds-highlights-list"
-      viewportClassName="ds-highlights-list-viewport"
-    >
-      {highlights.length === 0 ? (
-        <div className="ds-bookmarks-empty">
-          <Highlighter size={24} className="ds-bookmarks-empty-icon" />
-          <p>{t('pdf:toolbar.no_highlights')}</p>
-          <p className="ds-bookmarks-empty-hint">{t('pdf:toolbar.no_highlights_hint')}</p>
-        </div>
-      ) : (
-        highlights.map(hl => (
-          <div
-            key={hl.id}
-            className="ds-highlight-item"
-            onClick={() => {
-              goToPage(hl.pageIndex);
-              onNavigate?.();
-            }}
-          >
-            <div
-              className="ds-highlight-color"
-              style={{ backgroundColor: hl.color }}
-            />
-            <div className="ds-highlight-content">
-              <div className="ds-highlight-text">{hl.text}</div>
-              <div className="ds-highlight-meta">
-                {t('pdf:toolbar.page', { page: hl.pageIndex })}
-              </div>
-            </div>
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label={t('pdf:a11y.delete')}>
-              <X size={12} />
-            </DsButton>
-          </div>
-        ))
-      )}
-    </CustomScrollArea>
+    <React.Suspense fallback={null}>
+      <PdfAnnotationsPanel
+        highlights={highlights}
+        fileName={fileName}
+        resourcePath={resourcePath}
+        onSelectHighlight={(hl) => {
+          onNavigate?.();
+          focusHighlight(hl);
+        }}
+        onRemoveHighlight={removeHighlight}
+      />
+    </React.Suspense>
   );
 
   if (!file) {
