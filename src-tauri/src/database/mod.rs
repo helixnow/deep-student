@@ -249,8 +249,8 @@ fn map_anki_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AnkiCard> {
     Ok(AnkiCard {
         id: row.get(0)?,
         task_id: row.get(1)?,
-        front: row.get(2)?,
-        back: row.get(3)?,
+        front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
         text: row.get(4)?,
         tags: tags_json
             .as_deref()
@@ -286,8 +286,8 @@ fn map_anki_library_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Anki
             card: AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags: tags_json
                     .as_deref()
@@ -4879,21 +4879,30 @@ impl Database {
         )?;
 
         let card_iter = stmt.query_map(params![task_id], |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -4931,21 +4940,30 @@ impl Database {
         )?;
 
         let card_iter = stmt.query_map(params![document_id], |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -5039,21 +5057,30 @@ impl Database {
 
         let mut stmt = conn.prepare(&sql)?;
         let card_iter = stmt.query_map(rusqlite::params_from_iter(card_ids), |row| {
-            let tags_json: String = row.get(5)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+            // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+            let tags_json: Option<String> = row.get(5)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let images_json: String = row.get(6)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            let images_json: Option<String> = row.get(6)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
-            let extra_fields_json: String = row.get(11)?;
-            let extra_fields: std::collections::HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(11)?;
+            let extra_fields: std::collections::HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
 
             Ok(AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,
@@ -7477,26 +7504,36 @@ impl Database {
 
         let cards = stmt
             .query_map([limit], |row| {
-                let tags_json: String = row.get(5)?;
-                let images_json: String = row.get(6)?;
+                // 历史/导入/同步的行可能在这些可空列中留下 NULL。
+                let tags_json: Option<String> = row.get(5)?;
+                let images_json: Option<String> = row.get(6)?;
                 // 修复列索引错位：SELECT 共 13 列（索引 0-12），
                 // extra_fields_json 位于索引 11，template_id 位于索引 12。
                 // 旧代码取 12/13 会把 template_id 当 extra_fields 解析并越界读取 template_id。
-                let extra_fields_json: String = row.get(11)?;
+                let extra_fields_json: Option<String> = row.get(11)?;
 
                 Ok(AnkiCard {
                     id: row.get(0)?,
                     task_id: row.get(1)?,
-                    front: row.get(2)?,
-                    back: row.get(3)?,
+                    front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                     text: row.get(4)?,
-                    tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                    images: serde_json::from_str(&images_json).unwrap_or_default(),
+                    tags: tags_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
+                    images: images_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
                     is_error_card: row.get::<_, i32>(7)? != 0,
                     error_content: row.get(8)?,
                     created_at: row.get(9)?,
                     updated_at: row.get(10)?,
-                    extra_fields: serde_json::from_str(&extra_fields_json).unwrap_or_default(),
+                    extra_fields: extra_fields_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
                     template_id: row.get(12)?,
                 })
             })?
@@ -7748,8 +7785,8 @@ impl Database {
             let card = AnkiCard {
                 id: row.get(0)?,
                 task_id: row.get(1)?,
-                front: row.get(2)?,
-                back: row.get(3)?,
+                front: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                back: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 text: row.get(4)?,
                 tags,
                 images,

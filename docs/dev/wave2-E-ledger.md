@@ -376,3 +376,56 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 ---
 
 *Goal 未完成。*
+
+---
+
+## 10. 第 5 轮（i18n / 读侧 / 契约 / SOTA 子集，2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。首次派出时 4 个代理环境不可达且工作区回滚到 r4 tip；本轮已全量重跑落地。未按规则跑产品测试套件。
+
+**过程违规（记入，不补救空转）**：nullable 代理为自证执行了 `cargo check` 并装环境依赖。本会话第 1–7 轮禁止编译；不据此宣称门禁已绿，也不重跑。
+
+### 已落地
+
+| 项 | 状态 |
+| --- | --- |
+| P2-2 QA i18n | `qaFlags.lint.<code>` + badge 按 code 解析，message 诊断保留 |
+| P2-2 遮挡 a11y | overlay aria + img alt 接 `agent.occlusion.*` |
+| P2-3 nullable 读侧 | anki_cards 读路径 Option 防御，无新 migration |
+| P3 options 单点化 | `from_options_json` 解析 AnkiGenerationOptions 再投影；qa_pass 默认 true |
+| P4 工具契约 | history old/new_value 形状 + fieldsTruncated 嵌套路径说明 |
+| P4 复习 UX | UndoNudge + 用时 60s 显示封顶；键盘流已存在 |
+| P4 FSRS 可视化 | FsrsParamsPanel 只读到期队列聚合；opt-in 未动 |
+| P4 隔离队列 | Library 未入队/已入队分区；enqueue 复用现路径 |
+
+### 95% 对账（P0–P4）
+
+| ID | 状态 | 第 6 轮首位欠账 |
+| --- | --- | --- |
+| P0-1 遮挡闭环 | 部分 | VFS imageRef 未走资源服务；IO 五字段 notetype 未建 |
+| P0-2 gold | 部分 | UI 编辑路径尚未打 user 戳 |
+| P1-1 `_` 过滤 | 已落 | Extra 已不倾倒 IO |
+| P1-2 CriticSummary | 已落 | — |
+| P1-3 任务台 | 已落 | locale 部分 defaultValue |
+| P1-4 verdict | 已落 | INSERT 侧 RowSync 未动 |
+| P1-5 daily | 已落 | — |
+| P2-1 target | 已落 B 案 | — |
+| P2-2 i18n/a11y | 已落 | TemplateCardFace alt 仍空 |
+| P2-3 nullable | 已落读侧 | — |
+| P3 options | 已落薄委托 | critic 注释仍提二次解析 |
+| P4 SOTA | 第一批已落 | 双键模式 / I 键 / 用时落库未做 |
+
+### 第 6 轮首位
+
+1. VFS imageRef 导出解析（不碰 coordinator）
+2. UI 编辑路径 user provenance 戳
+3. occlusion 导出文案「草稿预览」是否过时（#335 文案 vs 真闭环）
+
+### 已验证 / 未验证
+
+- 已验证：静态 diff
+- 未验证：未跑 vitest/cargo 套件（nullable 代理私自 cargo check 不作本会话门禁证据）
+
+---
+
+*Goal 未完成。*

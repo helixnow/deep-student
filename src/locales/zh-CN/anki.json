@@ -1143,6 +1143,33 @@
       "maxLength": "长度超过最大限制",
       "allowedValues": "取值不在允许列表中",
       "validationPattern": "内容不匹配校验规则"
+    },
+    "lint": {
+      "front_back_identical": "正面与背面归一化后完全相同",
+      "empty_front": "正面为空或纯空白",
+      "empty_back": "背面为空或纯空白",
+      "cloze_unclosed": "{{n}} 处挖空未正确闭合",
+      "cloze_empty_answer": "{{n}} 处挖空内容为空",
+      "cloze_bad_index": "{{n}} 处挖空序号非法（必须为 c1 及以上）",
+      "cloze_missing": "Text 字段存在但不含任何挖空",
+      "answer_leak": "正面已包含背面的完整答案内容",
+      "multi_concept": "正面疑似同时提问多个独立概念（建议拆分为多张卡）",
+      "front_too_long": "正面长度 {{n}} 超过最小信息原则阈值 {{limit}}（疑似整段粘贴）",
+      "placeholder_residue": "残留模板占位符",
+      "todo_residue": "残留 TODO/FIXME 标记",
+      "xxx_residue": "残留占位 token \"xxx\"",
+      "empty_brackets": "含空括号对（疑似漏填内容）",
+      "tags_empty": "卡片没有任何标签（影响检索与组卡）",
+      "duplicate_in_document": "同文档内已存在内容相同的卡片",
+      "near_duplicate": "与同文档已有卡片高度相似（相似度 {{percent}}%），疑似近重复",
+      "mixed_language": "背面中日韩文字与拉丁字母大量混杂（CJK {{cjk}}% / Latin {{latin}}%），请人工确认",
+      "mcq_too_few_options": "选择题仅 {{n}} 个非空选项（至少需要 2 个）",
+      "mcq_answer_not_in_options": "答案对应的选项缺失或不匹配",
+      "mcq_missing_answer": "选择题缺少答案",
+      "field_rule_min_length": "长度 {{n}} 小于最小长度 {{min}}",
+      "field_rule_max_length": "长度 {{n}} 超过最大长度 {{max}}",
+      "field_rule_allowed_values": "取值不在允许值列表中",
+      "field_rule_pattern": "内容不匹配校验模式"
     }
   }
 }

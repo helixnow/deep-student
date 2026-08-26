@@ -591,9 +591,8 @@ impl StreamingAnkiService {
                 }
             };
 
-        // 协议扩展选项（output_protocol / enable_qa_pass）：对同一份 options JSON
-        // 做 serde-default 二次解析（不能直接加到 AnkiGenerationOptions，
-        // 详见 anki_protocol::StructuredOutputOptions 的设计说明）。
+        // 协议扩展选项（output_protocol / enable_qa_pass）：从同一份 options JSON
+        // 经 AnkiGenerationOptions 单点解析后投影（见 StructuredOutputOptions）。
         let structured_opts =
             StructuredOutputOptions::from_options_json(&task.anki_generation_options_json);
         let capability = anki_protocol::detect_schema_capability(

@@ -1089,14 +1089,15 @@ impl FsrsReviewService {
             .map_err(|error| AppError::database(format!("准备入队卡片正文查询失败: {}", error)))?;
         let mut review_cards = Vec::with_capacity(states.len());
         for state in states {
+            // 前 3 列与第 6/7 列在历史/导入行中可能为 NULL，读成 Option 再兜底。
             let content: Option<(
-                String,
-                String,
-                String,
                 Option<String>,
                 Option<String>,
-                String,
-                String,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
                 i32,
                 Option<String>,
             )> = stmt
@@ -1137,30 +1138,45 @@ impl FsrsReviewService {
                     state.anki_card_id
                 )));
             };
-            let tags = serde_json::from_str::<Vec<String>>(&tags_json).map_err(|error| {
-                AppError::database(format!(
-                    "解析入队卡片标签失败 ({}): {}",
-                    state.anki_card_id, error
-                ))
-            })?;
-            let extra_fields = serde_json::from_str::<HashMap<String, String>>(&extra_fields_json)
+            // NULL 视为空集合；非法 JSON 仍保持原有的硬错误语义。
+            let tags = tags_json
+                .as_deref()
+                .map(serde_json::from_str::<Vec<String>>)
+                .transpose()
+                .map_err(|error| {
+                    AppError::database(format!(
+                        "解析入队卡片标签失败 ({}): {}",
+                        state.anki_card_id, error
+                    ))
+                })?
+                .unwrap_or_default();
+            let extra_fields = extra_fields_json
+                .as_deref()
+                .map(serde_json::from_str::<HashMap<String, String>>)
+                .transpose()
                 .map_err(|error| {
                     AppError::database(format!(
                         "解析入队卡片扩展字段失败 ({}): {}",
                         state.anki_card_id, error
                     ))
-                })?;
-            let images = serde_json::from_str::<Vec<String>>(&images_json).map_err(|error| {
-                AppError::database(format!(
-                    "解析入队卡片图片失败 ({}): {}",
-                    state.anki_card_id, error
-                ))
-            })?;
+                })?
+                .unwrap_or_default();
+            let images = images_json
+                .as_deref()
+                .map(serde_json::from_str::<Vec<String>>)
+                .transpose()
+                .map_err(|error| {
+                    AppError::database(format!(
+                        "解析入队卡片图片失败 ({}): {}",
+                        state.anki_card_id, error
+                    ))
+                })?
+                .unwrap_or_default();
             review_cards.push(FsrsEnqueuedCard {
                 id: state.id.clone(),
                 anki_card_id: state.anki_card_id.clone(),
-                front,
-                back,
+                front: front.unwrap_or_default(),
+                back: back.unwrap_or_default(),
                 tags,
                 text,
                 template_id,
@@ -1481,15 +1497,24 @@ impl FsrsReviewService {
         };
         let map_due_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<FsrsDueCard> {
             let state = Self::map_state_row(row)?;
-            let front: String = row.get(19)?;
-            let back: String = row.get(20)?;
-            let tags_json: String = row.get(21)?;
-            let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-            let extra_fields_json: String = row.get(24)?;
-            let extra_fields: HashMap<String, String> =
-                serde_json::from_str(&extra_fields_json).unwrap_or_default();
-            let images_json: String = row.get(25)?;
-            let images: Vec<String> = serde_json::from_str(&images_json).unwrap_or_default();
+            // 防御历史/导入行的 NULL：SQL 已 COALESCE，这里再兜底一次。
+            let front: String = row.get::<_, Option<String>>(19)?.unwrap_or_default();
+            let back: String = row.get::<_, Option<String>>(20)?.unwrap_or_default();
+            let tags_json: Option<String> = row.get(21)?;
+            let tags: Vec<String> = tags_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let extra_fields_json: Option<String> = row.get(24)?;
+            let extra_fields: HashMap<String, String> = extra_fields_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let images_json: Option<String> = row.get(25)?;
+            let images: Vec<String> = images_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
             Ok(FsrsDueCard {
                 state,
                 front,
@@ -1950,12 +1975,16 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("准备反馈回流查询失败: {}", e)))?;
         let rows = stmt
             .query_map(params![limit], |row| {
-                let tags_json: String = row.get(3)?;
+                // 防御历史/导入行的 NULL：SQL 已 COALESCE，这里再兜底一次。
+                let tags_json: Option<String> = row.get(3)?;
                 Ok(FsrsFeedbackRow {
                     anki_card_id: row.get(0)?,
-                    front: row.get(1)?,
+                    front: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
                     template_id: row.get(2)?,
-                    tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+                    tags: tags_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok())
+                        .unwrap_or_default(),
                     state: row.get(4)?,
                     stability: row.get(5)?,
                     lapses: row.get(6)?,

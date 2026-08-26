@@ -8,6 +8,7 @@
  * 刻意不做的事（首版边界）：不加载图片、不做拖拽编辑、不接管复习调度。
  */
 import React, { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { OcclusionSpec } from './utils/imageOcclusion';
 import {
   normalizeOcclusionSpec,
@@ -55,6 +56,7 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
   onReveal,
   revealAll = false,
 }) => {
+  const { t } = useTranslation('anki');
   // Props 仍是运行时边界：调用方可能绕过 parseOcclusionSpec，渲染前再次收紧。
   const safeSpec = useMemo(() => normalizeOcclusionSpec(spec), [spec]);
   const specKey = useMemo(() => JSON.stringify(safeSpec), [safeSpec]);
@@ -120,7 +122,7 @@ export const ImageOcclusionOverlay: React.FC<ImageOcclusionOverlayProps> = ({
             key={`${box.clozeIndex}-${i}`}
             type="button"
             data-testid="occlusion-box-masked"
-            aria-label={`揭开遮挡区域 ${box.clozeIndex}`}
+            aria-label={t('agent.occlusion.revealBox', { index: box.clozeIndex })}
             style={{ ...maskStyle, ...positionStyle, pointerEvents: 'auto' }}
             onClick={(event) => {
               event.stopPropagation();

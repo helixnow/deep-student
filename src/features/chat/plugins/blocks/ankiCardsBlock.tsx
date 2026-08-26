@@ -533,6 +533,7 @@ const AnkiOcclusionCardPreview: React.FC<{
   spec: OcclusionSpec;
   cardIndex: number;
 }> = ({ spec, cardIndex }) => {
+  const { t } = useTranslation('anki');
   const image = useOcclusionImage(spec.imageRef);
   return (
     <div
@@ -550,7 +551,7 @@ const AnkiOcclusionCardPreview: React.FC<{
           {image.src ? (
             <img
               src={image.src}
-              alt=""
+              alt={t('agent.occlusion.imageAlt')}
               loading="lazy"
               draggable={false}
               data-testid="anki-occlusion-image"
