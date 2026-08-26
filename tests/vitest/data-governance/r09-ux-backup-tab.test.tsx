@@ -3,7 +3,7 @@
  *
  * 覆盖（与既有 BackupTab.zip-password.test.tsx 的密码透传用例不重复）：
  * 1. E2EE 诚实提示：无密码时展示便携归档限制说明，设密码后切换为
- *    加密全保真换机包说明（含密码丢失不可解密警告）；
+ *    敏感材料保护说明（明确业务归档未加密及丢失密码后的真实影响）；
  * 2. 删除备份是危险操作：必须先弹确认框（danger），确认后才回调；
  * 3. 恢复备份必须先弹确认框；部分归档（restorable=false）直接阻止并人话警告；
  * 4. 导出确认描述按是否设密码切换（export_warning_encrypted / export_warning）。
@@ -147,11 +147,11 @@ describe('BackupTab E2EE 诚实提示', () => {
       screen.getByText(/不包含本地加密密钥|portable_zip_honest_note/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/端到端加密的全保真换机包|e2ee_export_note/),
+      screen.queryByText(/敏感材料会被加密保护|e2ee_export_note/),
     ).not.toBeInTheDocument();
   });
 
-  it('设置密码后：切换为加密换机包说明（含密码丢失警告）', () => {
+  it('设置密码后：明确只有敏感材料受保护，业务归档仍为明文', () => {
     render(<BackupTab {...makeProps()} />);
 
     fireEvent.change(screen.getByLabelText(passwordInputLabel), {
@@ -159,9 +159,12 @@ describe('BackupTab E2EE 诚实提示', () => {
     });
 
     expect(
-      screen.getByText(/端到端加密的全保真换机包|e2ee_export_note/),
+      screen.getByText(/敏感材料会被加密保护|e2ee_export_note/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/密码丢失将无法解密/)).toBeInTheDocument();
+    expect(screen.getByText(/归档内容本身未加密/)).toBeInTheDocument();
+    expect(screen.getByText(/丢失密码后业务数据仍可读取/)).toBeInTheDocument();
+    expect(screen.queryByText(/端到端加密/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/密码丢失将无法解密/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/不包含本地加密密钥|portable_zip_honest_note/),
     ).not.toBeInTheDocument();
