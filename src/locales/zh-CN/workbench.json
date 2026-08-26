@@ -541,6 +541,17 @@
     "saveAndClose": "保存并关闭",
     "saveAndCloseFailed": "保存失败，窗口保持打开，请检查后重试"
   },
+  "deactivation": {
+    "cancelled": "已取消停用，学习桌面保持开启。",
+    "dirtyBlocked": "存在未保存的窗口，已取消关闭学习桌面，请先保存或关闭这些窗口。",
+    "exitBlocked": "存在未保存的内容，已取消退出，请先保存后再退出。"
+  },
+  "suspend": {
+    "keptBackground": "该窗口有未保存的内容，已保留在后台运行，未被冻结。"
+  },
+  "hub": {
+    "closeCancelled": "已取消关闭标签页，未保存的内容仍保留。"
+  },
   "mindmap": {
     "loading": "正在加载思维导图…",
     "missingResourceHint": "请从资源库重新打开思维导图，或检查该导图是否仍存在。"

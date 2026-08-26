@@ -195,3 +195,77 @@
 ---
 
 *(第 2 轮及以后在此线下追加)*
+
+## 第 2 轮(缝一/缝二/P4 落地 + 生命周期审阅 + 快照契约书面化)
+
+### 2.1 执行口径
+
+- 10 个子代理全部 `claude-fable-5-thinking-high`;无 sol/GPT/xhigh 模型,无 computerUse。
+- **未跑编译/测试**:禁止 npm/cargo/vitest 全程遵守;3 个新测试文件(`deactivationTransaction.test.ts`、`scheduler.canSuspend.test.ts`、`closeTabGate.test.ts`)均为用例文本,未执行;第 8 轮前不实测。
+- 未 commit/push(父代理统一处置)。第 1 轮的 PDF 改动已随 `73be180a` 入库,当前工作区未提交 diff **全部为第 2 轮产出**:16 个文件 modified(+409/-68,`git diff --stat`),9 个 untracked(4 份 r2 文档 + 3 个测试文本 + 2 个新源文件 `core/deactivationTransaction.ts`、`learning-hub/closeTabGate.ts`);本节为台账第 2 轮追加。
+
+### 2.2 编号勘正(以用户 P1–P10 为准)
+
+本轮起编号统一为用户口径:**P1 卸壳事务、P2 冻结(canSuspend)、P3 handoff(第 5 轮)、P4 Hub close、P5 书签、P6 保存落点(saveTextAsNote)、P7 划词收敛、P8 标签恢复、P9 Exposé、P10 SOTA**。第 1 轮「P3–P10 状态」表的编号与此有错位(该表 P3=saveTextAsNote→现 P6;P6=划词→现 P7;P7=测试对齐、P10=Composer overlay 不在用户 P 编号内,降为附属任务),第 1 轮正文不重写,后续轮次引用一律以本节勘正为准。
+
+### 2.3 产品落地清单(全部静态 grep 证据,行号为撰写时工作区实况)
+
+| # | 落地项 | 证据(现码行号) |
+|---|---|---|
+| P1a | **deactivationTransaction 两阶段**:phase 1 顺序逐窗 `confirmWindowClose` 全预检,任一取消 → `{ok:false}` 零副作用;phase 2(persist/bus/event)全在调用方且仅在 ok 后;模块级 single-flight | `core/deactivationTransaction.ts:42,74-77,110-112`(inFlight/入口);审阅确认取消路径不碰 flushSnapshot(契约 §2.2) |
+| P1b | **三入口接线**:设置页 `handleModeChange` + `persistWorkbenchModeEnabled(false)` 统一前置事务,收口旁路三入口(ModernSidebar:516 / WorkbenchModeSwitchRow:48 / StatusBarBrandMenu:85) | `WorkbenchSettingsSection.tsx:302`、`workbenchMode.ts:150`(事务调用);三旁路入口均经 `persistWorkbenchModeEnabled` 单一写通道 |
+| P1c | **App.tsx 桌面窄窗不再卸壳**:删除 `shellStableSmallScreen` 250ms 迟滞硬切,`workbenchActive = workbenchMode && !isMobilePlatform()`,移动平台护栏保留 | `App.tsx:852`(删除说明注释)、`App.tsx:860`;全库无 `shellStableSmallScreen` 残留引用 |
+| P1d | **beforeunload**:App 侧工作台任一窗脏 → preventDefault + returnValue + 异步补跑 `'app-exit'` 事务;Hub 侧任一标签脏 → preventDefault(补齐笔记之外类型);与 main.tsx:636 等既有监听器不互抢 | `App.tsx:870-890,875,879`;`LearningHubPage.tsx:535-544,538` |
+| P2a | **canSuspend 脏窗不冻不扣预算**:`AppDefinition.canSuspend?/prepareSuspend?` 新字段;调度器 skip 位于 `selected.add` 与 `used -= memoryWeightOf` 之前,脏窗不进 selected/freezeCandidateSince/不扣预算;`canSuspendNow` 不 await,回调抛错按不可冻(fail-closed) | `core/types.ts:476,482`;`scheduler.ts:585`(`if (isWindowDirty(win.id) \|\| !canSuspendNow(win)) continue;`)、`:140`(canSuspendNow) |
+| P2b | **应用侧实现**:内容应用 `canSuspend` 复用 canClose 的 dirty 目标解析;notes `canSuspend: () => !hasUnsavedNotesWorkspaceChanges()` | `createContentApp.tsx:55,89,105`;`apps/notes/register.ts:43` |
+| P2c | **registry 查询扩展**:`isContentDirty / listDirtyContentKeys / hasContentSaveHandler / saveContentNow` | `contentDirtyRegistry.ts:60,82,113,121` |
+| P2d | **essay save handler**(第 1 轮 SOTA 子集 E1 提前消化):essay 注册 dirty checker + save handler,与 checker 同键无漂移 | `EssayGradingWorkbench.tsx:239,614` |
+| P4 | **Learning Hub close gate 十四入口**:新 `closeTabGate.ts`(isTabDirty/confirmTabClose/requestCloseTabs 批量取消不连环弹框);入口 1-8 全走 gate(裸 closeTab 仅剩 gate 后提交步),入口 9 LRU 过滤脏标签、入口 10 keepAlive 豁免脏标签、入口 11 dstu 直删豁免(实体已删)、入口 13 unmount 尽力 flush、入口 14 beforeunload;入口 12(恢复校验)第 3 轮 | `closeTabGate.ts:25,33,63`;`LearningHubPage.tsx:100,274,309-310,329-348,388-405,476,538,552`;十四入口对照表写入 Page 文件头(`:23-33`)与 `wave2-B-r2-hub-close-gate.md` |
+| i18n | **新键 5 个**(workbench ns,双语齐):`deactivation.cancelled/.dirtyBlocked/.exitBlocked`、`suspend.keptBackground`、`hub.closeCancelled`;前两个已被代码引用(`App.tsx:875`、`deactivationTransaction.ts:93`、`WorkbenchSettingsSection.tsx:304`),其余为约定占位;另记录本域疑似死键约 40 个(只记录不删除) | `zh-CN/workbench.json:544-555`、`en-US/workbench.json:544` 起;清单见 `wave2-B-r2-i18n.md` |
+
+生命周期审阅员另打 **2 个补丁**(计入上表 P1b 与设置页):① `workbenchMode.ts` 旁路修复(三入口原先直接 persist→卸壳,逐窗 canClose 一次不问,确定性数据丢失,已前置共享事务);② `WorkbenchSettingsSection.tsx` 移除取消路径双 toast 与 `outcome.reason` 死代码。详见 `wave2-B-r2-lifecycle-review.md` §1.2/§1.3/§8。
+
+### 2.4 四份 r2 文档索引
+
+| 文档 | 角色 | 一句话内容 |
+|---|---|---|
+| `wave2-B-r2-snapshot-contract.md` | 审阅员-快照 | 快照契约三条书面化(只存壳白名单四层防线/停用事务时序分工/冻结不写快照);红线 R1–R5 判别口径;Exposé 后置第 8 轮再确认 |
+| `wave2-B-r2-lifecycle-review.md` | 审阅员-生命周期 | 逐行审两阶段/预检安全/预算记账/LRU-keepalive/beforeunload/窄窗护栏/环依赖,全通过;打 2 补丁;遗留 3 项给后续轮 |
+| `wave2-B-r2-hub-close-gate.md` | 实现员-hub | closeTabGate 设计 + Page 接线 + 十四入口对照 + 验收 grep |
+| `wave2-B-r2-i18n.md` | i18n 员 | 5 新键双语、2 个复用声明(不造重复键)、疑似死键清单(不删) |
+
+### 2.5 已验证 / 未验证(第 2 轮口径)
+
+**已验证(静态证据 = grep 行号 + 逐行读码,见 2.3 表证据列):**
+
+- 两阶段事务取消路径 persist/bus/event/flushSnapshot 均不可达;三旁路入口收口后全库无绕过事务的模式关闭写通道。
+- 调度器 skip(`scheduler.ts:585`)位于预算扣减(`:595`)之前,预算记账正确;fail-closed 方向与 `isContentDirty` 一致。
+- Hub 侧裸 `closeTab(` 仅剩 gate 后提交步与 dstu 直删豁免(验收 grep 见 hub-close-gate 文档 §验收)。
+- 快照契约四层防线本轮 diff 零触及(`pickShellFields/sanitizeWindow/sanitizeSnapshot/WorkbenchSnapshotV1` 未改),红线 R1–R5 无违规;环依赖 DAG 成立。
+- i18n 双语键齐、引用命中(grep);禁改区(coordinator.rs/tool_loop/44px/anki/qbank/finder 分桶)零触碰。
+
+**未验证(如实声明):**
+
+- **未跑测试/未编译**:3 个新测试文件是否通过、`tsc` 是否全绿、事务/gate/调度器改动的运行时行为,全部未经执行验证——第 8 轮前禁止。
+- **beforeunload 未真机验证**:原生「确认离开」对话框行为、多监听器叠加、Tauri 壳内 beforeunload 语义,均为静态推演。
+- **窄窗 compact 未真机验证**:桌面窄窗不卸壳后的实际布局表现(窗口在窄視口内的可用性)未在真机/真浏览器确认;评审员 G7 裁决的「紧凑形态」目标态本轮未实现,只移除了硬切。
+- essay「保存并关闭」后正文仅草稿级持久化(localStorage),依赖重开时草稿优先恢复——第 3 轮恢复校验需覆盖(lifecycle-review §9.3)。
+
+### 2.6 两条 FAIL 缝状态
+
+**缝一(P1 卸壳事务)与缝二(P2 冻结)代码均已落地**:三条卸载路径(设置页/旁路入口/断点切壳——第三条已改为不卸壳)全部收口到停用事务或移除;调度器脏窗保护生效。但**验证全为静态读码 + 测试文本,第 8 轮才实测**(vitest/编译/真机),在此之前两缝状态记为「已落地、未实测」,不得对外宣称已修复闭环。
+
+### 2.7 第 3 轮派遣预告(按用户原计划;P5/P8 属第 3 轮,不回塞第 2 轮)
+
+> 共同禁令沿用:禁止编译/测试/npm/cargo;不碰 coordinator.rs、tool_loop、anki/qbank 服务层、移动 44px、finder 分桶;不 commit/push(父代理做);改码后行号重新对表。
+
+1. **dstu 单次提交 folderId+tags**:后端 note 分支单事务收口(`handlers.rs:800-808` tags `vec![]` 丢弃 + folder 移动一次提交,复用 `note_repo.rs:2220-2241` 现成事务能力),插入点底稿 anchor-notes §6 #1–#6。
+2. **saveTextAsNote 收口**:前端 `saveTextAsNote.ts:80,86-93` 两次 IPC 合一、移动失败不再假 `ok:true`;旧行为钉绿测试 `saveTextAsNote.test.ts:115-125` 同步改文本。
+3. **入口收敛**:四直存入口(anchor-notes 差异表)统一走收口后的保存通道。
+4. **书签协议(P5)**:前端最小切口——`previewPersistence.ts` 进度写不带 bookmarks(mergeBase/翻页写瘦身),`handlers.rs:3561-3775` 只读不改。
+5. **标签恢复(P8)**:`LearningHubPage` persistedTabsCache 回滚修复 + 恢复校验改稳定 resourceId(path 变更重绑不误删),即 hub close gate 十四入口中预留的入口 12。
+6. **审阅**:对 1–5 逐行审(原子性/错误路径/与第 2 轮 gate 的交互),行号对表更新。
+7. **i18n**:新增文案键双语补齐 + 引用命中核对。
+8. **提交**:第 3 轮收尾由父代理统一 commit/push;台账员追加「第 3 轮」节。
+
+P3(handoff descriptor)维持第 5 轮、P7(划词收敛)维持第 4 轮、P9(Exposé)维持第 8 轮、P10(SOTA 子集)维持第 5 轮,均不提前。

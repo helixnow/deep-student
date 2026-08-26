@@ -46,6 +46,7 @@ import {
 import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/WallpaperManagerDialog';
 import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
+import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
 import { isWorkbenchDiagnosticsRequested } from '@/features/workbench/core/workbenchDiagnosticsGate';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
@@ -291,6 +292,20 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
   const handleModeChange = useCallback(
     async (enabled: boolean) => {
+      if (!enabled) {
+        // 停用必须先走共享停用事务（脏窗口确认等）；在事务 ok 之前
+        // 不做任何副作用：不 setMode(false)、不 persist、不动 bus、不派发事件。
+        // 取消路径的用户提示由事务内部统一发出（避免双 toast）；这里只在
+        // 事务 promise 意外 reject（事务内部无提示）时兜底通知。
+        let precheckOk = false;
+        try {
+          precheckOk = (await runWorkbenchDeactivationTransaction('mode-off')).ok;
+        } catch {
+          showGlobalNotification('info', t('workbench:deactivation.cancelled'));
+        }
+        // UI 从未离开 true，无需回滚。
+        if (!precheckOk) return;
+      }
       setMode(enabled);
       const ok = await persist(WORKBENCH_SETTING_KEYS.mode, String(enabled), enabled);
       if (!ok) {
@@ -305,7 +320,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         // noop
       }
     },
-    [persist],
+    [persist, t],
   );
 
   const applyMaterialTier = useCallback(

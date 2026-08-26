@@ -13,6 +13,11 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import i18n from '@/i18n';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+// 停用事务（缝一）：本模块是设置页之外所有模式开关入口（侧边栏快捷开关 /
+// 品牌菜单「退出学习桌面」等）的唯一写通道，停用预检必须在这里收口，
+// 否则这些入口会绕过逐窗 canClose 直接卸壳（App.tsx 已静态引入同一模块，
+// 不新增首屏体积）。
+import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -136,6 +141,18 @@ async function closeBrowserForDisabledGate(): Promise<void> {
  * 持久化总开关并按契约广播；失败时通知并返回 false（调用方负责回滚乐观态）。
  */
 export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boolean> {
+  if (!enabled) {
+    // 停用前先走共享停用事务（逐窗 canClose 预检，可取消；single-flight）。
+    // 事务 ok 之前不产生任何副作用：不 persist、不动 bus、不派发事件——
+    // 取消即返回 false，调用方按「未保存」回滚乐观 UI（事务内部已向用户提示）。
+    let precheckOk = false;
+    try {
+      precheckOk = (await runWorkbenchDeactivationTransaction('mode-off')).ok;
+    } catch {
+      precheckOk = false;
+    }
+    if (!precheckOk) return false;
+  }
   try {
     await tauriInvoke('save_setting', {
       key: WORKBENCH_MODE_SETTING_KEY,

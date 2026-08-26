@@ -44,7 +44,10 @@ import { GradingMain } from './essay-grading/GradingMain';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ESSAY_MAX_CHARS } from './essay-grading/InputPanel';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  registerContentDirtyChecker,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -574,6 +577,44 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       }
     }
   }, [currentSession?.id, initialSession?.id]);
+
+  // 「保存并关闭」挂点（照抄翻译 saveCurrentSessionRef 范式：闭包经 ref 每帧更新，
+  // 注册保持稳定）。作文正文没有轮次之外的落盘 API（正文只随批改轮次持久化，
+  // dstuMode.onSessionSave 也只写元数据，不自造第二套 DSTU 写入），故复用两条
+  // 现有等价落盘路径：
+  //  1) 题目/图片 → 会话上下文 KV（与批改收尾同一路径，restoreFromDstu 可恢复）
+  //  2) 正文/题目 → S-012 草稿同步写入（跳过 debounce；重开时草稿优先于轮次正文恢复）
+  // 正文仅有草稿级持久化，基准只回写已真正落盘的题目/图片；正文继续如实呈 dirty。
+  const saveCurrentContentRef = useRef<() => Promise<void>>(async () => undefined);
+  saveCurrentContentRef.current = async () => {
+    const sessionId = currentSession?.id || initialSession?.id;
+    if (sessionId) {
+      await TauriAPI.saveSetting(
+        essaySessionContextKey(sessionId),
+        serializeSessionContext({ topicText, uploadedImages, topicImages })
+      );
+      patchPersistedBaseline({ topicText, uploadedImages, topicImages });
+    } else if (uploadedImages.length > 0 || topicImages.length > 0) {
+      // 无会话 id 时图片没有任何落盘路径：抛错让 saveContentNow 报失败、窗口保持打开
+      throw new Error('[EssayGrading] cannot persist images without a session id');
+    }
+    // 与 S-012 debounce 写入同一格式/同一键；回看已批改轮次的正文不算未保存编辑。
+    // localStorage 写入失败（配额等）向上抛出：保存失败不放行关闭。
+    const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+    if (!draftInputText && !topicText) {
+      localStorage.removeItem(draftKey);
+    } else {
+      localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
+    }
+  };
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId) return;
+    return registerContentSaveHandler('essay', resourceId, () =>
+      saveCurrentContentRef.current()
+    );
+  }, [dstuMode.resourceId, initialSession?.id]);
 
   // 标记"某段正文已被批改过"：同时更新文本基准与完整快照（内容 + 批改配置）
   const markInputAsGraded = useCallback((text: string) => {

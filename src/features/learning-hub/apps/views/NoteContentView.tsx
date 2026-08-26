@@ -42,7 +42,10 @@ import {
   registerNoteEditor,
   unregisterNoteEditor,
 } from '@/features/workbench/agent/drivers/noteDriver';
-import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  isContentDirty,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 // 顶部 SWR 刷新条依赖 progress-indeterminate 关键帧（设计系统 Progress 样式），
 // 显式引入确保本视图独立加载时关键帧可用
@@ -794,6 +797,24 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       if (registeredApi) unregisterNoteEditor(node.id, registeredApi, hostWindowId);
     }
   }, [hostWindowId, node.id, setMarkdownWindow]);
+
+  // 「保存并关闭」挂点：把编辑器现有 flushPendingSave（自动保存队列冲刷）接到
+  // contentDirtyRegistry；不新增保存路径、不动 OCC/保存队列。flush 后若仍 dirty
+  //（保存被拒/失败，或标题等其他编辑面未落盘——flush 只覆盖正文），
+  // 则抛错让 saveContentNow 报失败、窗口保持打开（fail-closed，不静默丢数据）。
+  useEffect(() => {
+    const noteKey = node.id;
+    return registerContentSaveHandler('note', noteKey, async () => {
+      const editor = editorApiRef.current;
+      if (!editor?.flushPendingSave) {
+        throw new Error('[NoteContentView] editor flush capability unavailable');
+      }
+      await editor.flushPendingSave();
+      if (isContentDirty('note', noteKey)) {
+        throw new Error('[NoteContentView] note still dirty after flush');
+      }
+    });
+  }, [node.id]);
 
   const handleRetryLoadMore = useCallback(() => {
     setLoadMoreError(null);

@@ -13,6 +13,28 @@
  * - ★ 三屏滑动布局：左侧应用入口 ← 中间文件视图 → 右侧应用内容
  * - 手势滑动切换三屏，支持轴向锁定防止与竖直滚动冲突
  * - 打开资源时自动切换到右侧应用视图
+ *
+ * ★ Wave2-B r2（P4）：标签关闭统一走 contentDirtyRegistry 异步 close gate
+ * （gate 本体在 ./closeTabGate.ts）。十四入口对照表（编号沿用
+ * docs/dev/wave2-B-r1-anchor-hub.md §1）：
+ *
+ * | #     | 入口                          | 现落点（本轮后）                                  |
+ * |-------|-------------------------------|---------------------------------------------------|
+ * | 1-4   | TabBar 关钮/中键/键盘/右键关闭 | onClose=closeTabWithSplit → requestCloseTab（gate）|
+ * | 5     | Cmd/Ctrl+W                    | closeTabWithSplit（gate + 分屏清理，不再裸 closeTab）|
+ * | 6     | Finder 工具栏 handleCloseApp   | closeTabWithSplit（同上）                          |
+ * | 7     | 右键「关闭其他」               | closeOtherTabs → requestCloseTabs（脏标签逐个确认，取消后不再弹框且脏标签保留；干净标签互不拖累）|
+ * | 8     | 右键「关闭右侧」               | closeTabsToRight → 同上                            |
+ * | 9     | openTab LRU 淘汰（MAX_TABS）   | 脏标签跳过淘汰（不弹框、不静默丢草稿，可暂超上限） |
+ * | 10    | 保活实例淘汰（Container）      | TabPanelContainer keepAlive 集合豁免脏标签         |
+ * | 11    | dstu deleted/purged 事件       | 豁免 gate（实体已删，保留原直删逻辑）              |
+ * | 12    | 恢复后失效校验                 | 第 3 轮范围，本轮不动（Page 恢复逻辑保持原样）     |
+ * | 13    | 路由切走（Page unmount）       | 无法异步拦截；对注册了 save handler 的脏标签尽力 flush |
+ * | 14    | 窗口关闭（beforeunload）       | 任一脏标签 → preventDefault（补齐非笔记类型）      |
+ *
+ * gate 语义：dirty → 三态确认（保存并关闭 / 丢弃 / 取消）；保存失败或取消
+ * 一律保留标签与草稿（fail-closed）。确认对话框复用 workbench 的
+ * ContentCloseConfirmationHost（本页自行挂载一份，portal 渲染）。
  */
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
@@ -70,6 +92,12 @@ import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import {
+  hasContentSaveHandler,
+  saveContentNow,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { ContentCloseConfirmationHost } from '@/features/workbench/apps/content/ContentCloseConfirmation';
+import { confirmTabClose, isTabDirty, requestCloseTabs } from './closeTabGate';
 import { getCreatableFolderId } from './viewGuards';
 import {
   getQuickAccessTypeFromLauncherType,
@@ -237,11 +265,13 @@ export const LearningHubPage: React.FC = () => {
         return prev.map(t => t.tabId === existing.tabId ? { ...t, openedAt: Date.now() } : t);
       }
       // 2. 超出上限时 LRU 淘汰最旧的非固定、非活跃 tab
+      // ★ P4-3：脏标签跳过淘汰——后台淘汰不弹确认框，也绝不静默丢草稿；
+      // 候选全脏时放弃淘汰，允许暂时超出 MAX_TABS
       let next = [...prev];
       if (next.length >= MAX_TABS) {
         const currentActiveId = activeTabIdRef.current;
         const toEvict = [...next]
-          .filter(t => !t.isPinned && t.tabId !== currentActiveId)
+          .filter(t => !t.isPinned && t.tabId !== currentActiveId && !isTabDirty(t))
           .sort((a, b) => a.openedAt - b.openedAt)[0];
         if (toEvict) {
           next = next.filter(t => t.tabId !== toEvict.tabId);
@@ -276,6 +306,9 @@ export const LearningHubPage: React.FC = () => {
     []
   );
 
+  // 无 gate 的最终提交步：仅供 requestCloseTab 调用（gate 通过后），
+  // 用户可达入口一律经 closeTabWithSplit → requestCloseTab 过 gate。
+  // （dstu deleted/purged 事件通道走自身 setTabs 直删，豁免 gate——实体已删。）
   const closeTab = useCallback((tabId: string) => {
     setTabs(prev => {
       const idx = prev.findIndex(t => t.tabId === tabId);
@@ -290,6 +323,30 @@ export const LearningHubPage: React.FC = () => {
     });
   }, [pickNextActiveTab]);
 
+  // ★ P4-1：单标签关闭的 gate 通道（含分屏清理）。
+  // pendingCloseGateRef 防止同一标签在确认框未决时重复弹框。
+  const pendingCloseGateRef = useRef<Set<string>>(new Set());
+  const requestCloseTab = useCallback(async (tabId: string) => {
+    const tab = tabsRef.current.find(t => t.tabId === tabId);
+    if (!tab || pendingCloseGateRef.current.has(tabId)) return;
+    pendingCloseGateRef.current.add(tabId);
+    try {
+      if (!(await confirmTabClose(tab))) return; // 取消/保存失败 → 保留标签与草稿
+      // gate 通过后先清分屏（关闭的是右侧分屏 tab 时退出分屏），再提交删除，
+      // 避免 splitView.rightTabId 悬空（r1 §1a 入口 5/6 的现象）
+      setSplitView(prev => (prev?.rightTabId === tabId ? null : prev));
+      closeTab(tabId);
+    } finally {
+      pendingCloseGateRef.current.delete(tabId);
+    }
+  }, [closeTab]);
+
+  // 所有单点关闭入口（TabBar onClose、面板 onClose、Cmd+W、Finder 关钮）的
+  // 同步外壳；保持 (tabId) => void 签名
+  const closeTabWithSplit = useCallback((tabId: string) => {
+    void requestCloseTab(tabId);
+  }, [requestCloseTab]);
+
   const updateTabTitle = useCallback((tabId: string, title: string) => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, title } : t));
   }, []);
@@ -299,10 +356,12 @@ export const LearningHubPage: React.FC = () => {
     setTabs(prev => prev.map(t => t.tabId === tabId ? { ...t, isPinned: !t.isPinned } : t));
   }, []);
 
-  // ★ 2026-07-08：批量关闭（固定标签页豁免，与 VS Code 行为一致）
-  const closeOtherTabs = useCallback((tabId: string) => {
+  // 批量关闭的提交步：一次性删除已获准的标签，保留原活跃/分屏修正语义
+  const commitCloseTabs = useCallback((tabIds: string[], preferredActiveId: string) => {
+    const toClose = new Set(tabIds);
+    if (toClose.size === 0) return;
     setTabs(prev => {
-      const next = prev.filter(t => t.tabId === tabId || t.isPinned);
+      const next = prev.filter(t => !toClose.has(t.tabId));
       if (next.length === prev.length) return prev;
       setActiveTabId(currentId => {
         const splitRightId = splitViewRef.current?.rightTabId;
@@ -313,7 +372,7 @@ export const LearningHubPage: React.FC = () => {
         ) {
           return currentId;
         }
-        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
+        return pickNextActiveTab([next.find(t => t.tabId === preferredActiveId)], next);
       });
       setSplitView(prevSplit => {
         if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
@@ -323,30 +382,27 @@ export const LearningHubPage: React.FC = () => {
     });
   }, [pickNextActiveTab]);
 
+  // ★ P4-2：批量关闭走 closeTabGate.requestCloseTabs：脏标签逐个确认，
+  // 用户取消（或保存失败）后不再弹后续确认（脏标签一律保留），
+  // 干净标签互不拖累照常关闭
+  const requestCloseTabsBatch = useCallback(async (targets: OpenTab[], preferredActiveId: string) => {
+    const { approved } = await requestCloseTabs(targets);
+    commitCloseTabs(approved, preferredActiveId);
+  }, [commitCloseTabs]);
+
+  // ★ 2026-07-08：批量关闭（固定标签页豁免，与 VS Code 行为一致）
+  const closeOtherTabs = useCallback((tabId: string) => {
+    const targets = tabsRef.current.filter(t => t.tabId !== tabId && !t.isPinned);
+    void requestCloseTabsBatch(targets, tabId);
+  }, [requestCloseTabsBatch]);
+
   const closeTabsToRight = useCallback((tabId: string) => {
-    setTabs(prev => {
-      const idx = prev.findIndex(t => t.tabId === tabId);
-      if (idx === -1) return prev;
-      const next = prev.filter((t, i) => i <= idx || t.isPinned);
-      if (next.length === prev.length) return prev;
-      setActiveTabId(currentId => {
-        const splitRightId = splitViewRef.current?.rightTabId;
-        if (
-          currentId &&
-          currentId !== splitRightId &&
-          next.some(t => t.tabId === currentId)
-        ) {
-          return currentId;
-        }
-        return pickNextActiveTab([next.find(t => t.tabId === tabId)], next);
-      });
-      setSplitView(prevSplit => {
-        if (prevSplit?.rightTabId && next.some(t => t.tabId === prevSplit.rightTabId)) return prevSplit;
-        return null;
-      });
-      return next;
-    });
-  }, [pickNextActiveTab]);
+    const current = tabsRef.current;
+    const idx = current.findIndex(t => t.tabId === tabId);
+    if (idx === -1) return;
+    const targets = current.filter((t, i) => i > idx && !t.isPinned);
+    void requestCloseTabsBatch(targets, tabId);
+  }, [requestCloseTabsBatch]);
 
   // ★ 标签页切换（同时更新 openedAt 以确保 LRU 正确性）
   const switchTab = useCallback((tabId: string) => {
@@ -416,21 +472,12 @@ export const LearningHubPage: React.FC = () => {
       event.preventDefault();
       const currentId = activeTabIdRef.current;
       if (!currentId) return;
-      closeTab(currentId);
+      // ★ P4-5：走带 gate + 分屏清理的统一通道，不再裸 closeTab
+      closeTabWithSplit(currentId);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isLearningHubViewActive, closeTab]);
-
-  // ★ 关闭 tab 时自动清理分屏状态
-  const closeTabWithSplit = useCallback((tabId: string) => {
-    // 如果关闭的是右侧分屏 tab，先退出分屏
-    setSplitView(prev => {
-      if (prev?.rightTabId === tabId) return null;
-      return prev;
-    });
-    closeTab(tabId);
-  }, [closeTab]);
+  }, [isLearningHubViewActive, closeTabWithSplit]);
 
   useEffect(() => {
     const unwatch = dstu.watch('*', (event) => {
@@ -483,6 +530,30 @@ export const LearningHubPage: React.FC = () => {
       unwatch();
     };
   }, [t]);
+
+  // ★ P4-6 入口 14：窗口关闭前任一打开标签 dirty → 原生确认。
+  // 笔记编辑器自带 beforeunload 只覆盖 note，这里按 registry 补齐所有类型。
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (tabsRef.current.some(isTabDirty)) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // ★ P4-6 入口 13：路由切走（Page unmount）无法弹异步确认，对注册了
+  // save handler 的脏标签尽力 flush 落盘（各编辑器自身的卸载 flush 仍是兜底；
+  // 若子树 cleanup 先运行并已注销 handler，这里自然是 no-op）。
+  useEffect(() => () => {
+    for (const tab of tabsRef.current) {
+      if (isTabDirty(tab) && hasContentSaveHandler(tab.type, tab.resourceId)) {
+        void saveContentNow(tab.type, tab.resourceId);
+      }
+    }
+  }, []);
 
   // ========== 三屏滑动布局状态（移动端） ==========
   // A-8 归一：手势/动画/返回键统一由 MobileSlidingLayout 承载，本页只管理屏幕位置状态
@@ -997,10 +1068,11 @@ export const LearningHubPage: React.FC = () => {
   // ========== 关闭应用（关闭当前活跃标签页） ==========
   const handleCloseApp = useCallback(() => {
     if (activeTabId) {
-      closeTab(activeTabId);
+      // ★ P4-5：Finder 关钮与 Cmd+W 同通道（gate + 分屏清理），不再裸 closeTab
+      closeTabWithSplit(activeTabId);
     }
     // 当所有 tab 关闭后展开侧边栏（由 useEffect[tabs.length] 处理）
-  }, [activeTabId, closeTab]);
+  }, [activeTabId, closeTabWithSplit]);
 
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
@@ -1288,6 +1360,9 @@ export const LearningHubPage: React.FC = () => {
             />
           </div>
         </MobileSlidingLayout>
+        {/* ★ P4：close gate 确认对话框宿主（portal 渲染；workbench 桌面外
+            requestContentCloseDecision 无宿主时恒返回 cancel，故本页自行挂载） */}
+        <ContentCloseConfirmationHost />
       </div>
       </MobileSubviewChromeProvider>
     );
@@ -1385,6 +1460,8 @@ export const LearningHubPage: React.FC = () => {
           )}
         </Panel>
       </PanelGroup>
+      {/* ★ P4：close gate 确认对话框宿主（同移动分支说明） */}
+      <ContentCloseConfirmationHost />
     </div>
   );
 };

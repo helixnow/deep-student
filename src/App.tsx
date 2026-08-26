@@ -159,6 +159,12 @@ import {
 import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
 import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
+// 停用事务（缝一）：模式开关 / 应用退出统一逐窗 canClose 预检；轻依赖，可深路径引入
+import {
+  hasDirtyWorkbenchWindows,
+  runWorkbenchDeactivationTransaction,
+} from '@/features/workbench/core/deactivationTransaction';
+import { flushSnapshot } from '@/features/workbench/core/snapshot';
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
@@ -840,22 +846,48 @@ function App() {
   }, []);
 
   // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）；
-  // 屏宽之外再按平台护栏：宽屏 Android 平板 / iPad 也不进 OS 模式
+  // 平台护栏：宽屏 Android 平板 / iPad 同样不进 OS 模式（isMobilePlatform 永真拦截）。
   //
-  // 迟滞（250ms 宽度稳定确认）：isSmallScreen 在 768 边界即时翻转会整壳硬切，
-  // WorkbenchDesktop 连同所有窗口立刻卸载，绕过 ResourceAppWorkspace 的未保存
-  // 确认与 windowCloseGuard。拖拽窗口宽度瞬间穿越 768 再回来时不应误卸载整棵树。
-  // 仅工作台壳切换用稳定值；页面内布局仍用即时 isSmallScreen，不受影响。
-  const [shellStableSmallScreen, setShellStableSmallScreen] = useState(isSmallScreen);
+  // 桌面窄窗（<768px）不再卸载 Workbench（0824 评审建议 2，本轮裁决落地）：
+  // 此前用 shellStableSmallScreen（250ms 宽度稳定迟滞）在持续窄窗时整壳硬切。
+  // 迟滞只是渲染防抖，不是数据安全措施——250ms 到期后照样绕过逐窗 canClose /
+  // windowCloseGuard 直接卸载所有窗口，未保存草稿静默丢失（快照契约只存壳，
+  // 见 docs/0824-quality-review/workbench-fg.md 接缝一）。窄窗是布局问题而非
+  // 生命周期问题：子应用已按容器宽度支持 compact，桌面平台恒保持 Workbench；
+  // 需要停用工作台的路径（模式开关 / 应用退出）统一走
+  // runWorkbenchDeactivationTransaction 逐窗预检，可取消、可回滚。
+  // 页面内布局仍用即时 isSmallScreen，不受影响。
+  const workbenchActive = workbenchMode && !isMobilePlatform();
+
+  // 应用退出护栏（缝一 · app-exit 路径）：Workbench 激活期间若存在脏窗
+  // （未保存更改），beforeunload 至少 preventDefault 触发系统级「确认离开」
+  // 对话框——浏览器 / WebView 不允许在卸载时刻 await 自定义逐窗确认，事务
+  // 只能异步补跑：用户选择留下后，逐窗保存 / 放弃对话框继续可用。
+  // pagehide 不可取消，仅作快照兜底落盘（退出时 WorkbenchDesktop 的卸载
+  // cleanup 不保证执行）。main.tsx 既有 beforeunload（MCP / ChatV2 紧急保存）
+  // 与本钩子互不冲突，无需改 main.tsx。
   useEffect(() => {
-    if (isSmallScreen === shellStableSmallScreen) return;
-    const timer = window.setTimeout(() => {
-      // 250ms 后仍是新值才提交（期间弹回则本 effect 已被 cleanup 取消）
-      setShellStableSmallScreen(isSmallScreen);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [isSmallScreen, shellStableSmallScreen]);
-  const workbenchActive = workbenchMode && !shellStableSmallScreen && !isMobilePlatform();
+    if (!workbenchActive) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasDirtyWorkbenchWindows()) return;
+      event.preventDefault();
+      // Chromium 系需要 returnValue 非空才可靠弹出原生确认；自定义文案不会被展示
+      event.returnValue = i18n.t('workbench:deactivation.dirtyBlocked', {
+        defaultValue:
+          '有窗口存在未保存的更改，已阻止直接退出 / Unsaved changes in open windows blocked the exit.',
+      });
+      void runWorkbenchDeactivationTransaction('app-exit');
+    };
+    const onPageHide = () => {
+      void flushSnapshot();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [workbenchActive, i18n]);
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回

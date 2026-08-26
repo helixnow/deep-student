@@ -541,6 +541,17 @@
     "saveAndClose": "Save & Close",
     "saveAndCloseFailed": "Save failed; the window stays open. Check the error and retry."
   },
+  "deactivation": {
+    "cancelled": "Deactivation cancelled. Study Desktop stays on.",
+    "dirtyBlocked": "Some windows have unsaved changes, so closing Study Desktop was cancelled. Save or close those windows first.",
+    "exitBlocked": "There is unsaved content, so exiting was cancelled. Save your work before quitting."
+  },
+  "suspend": {
+    "keptBackground": "This window has unsaved changes, so it was kept running in the background instead of being frozen."
+  },
+  "hub": {
+    "closeCancelled": "Closing the tab was cancelled. Your unsaved changes are kept."
+  },
   "mindmap": {
     "loading": "Loading mind map…",
     "missingResourceHint": "Reopen the mind map from Files, or check that it still exists."

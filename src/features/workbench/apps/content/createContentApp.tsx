@@ -52,13 +52,18 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
     })),
   );
 
+  // canClose / canSuspend 共用的 dirty 目标解析：essay/translation 是单窗
+  // workspace（instanceKey 为 null），dirty 挂在当前激活的资源上。
+  const resolveDirtyResourceId = (instanceKey: string | null): string | null =>
+    instanceKey ?? (
+      typeId === 'essay' || typeId === 'translation'
+        ? getResourceWorkspaceActive(typeId)
+        : null
+    );
+
   const canClose = options.confirmUnsavedOnClose
     ? async (instanceKey: string | null): Promise<boolean> => {
-        const dirtyResourceId = instanceKey ?? (
-          typeId === 'essay' || typeId === 'translation'
-            ? getResourceWorkspaceActive(typeId)
-            : null
-        );
+        const dirtyResourceId = resolveDirtyResourceId(instanceKey);
         if (!isContentDirty(typeId, dirtyResourceId)) return true;
         // 有保存挂点时提供「保存并关闭」（translation 等编辑视图注册）
         const offerSave = hasContentSaveHandler(typeId, dirtyResourceId);
@@ -78,6 +83,14 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
       }
     : undefined;
 
+  // suspend 契约：dirty 窗永不 frozen。调度器热路径同步调用本回调，
+  // isContentDirty 是同步查询，返回 false 即告知调度器跳过冻结
+  //（脏窗保持 background，不丢未保存的内存态）。
+  const canSuspend = options.confirmUnsavedOnClose
+    ? (instanceKey: string | null): boolean =>
+        !isContentDirty(typeId, resolveDirtyResourceId(instanceKey))
+    : undefined;
+
   return {
     typeId,
     nameKey: options.nameKey,
@@ -89,6 +102,7 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
     minSize: options.minSize ?? DEFAULT_MIN_SIZE,
     render,
     canClose,
+    canSuspend,
     onActivation: options.onActivation,
   };
 }
