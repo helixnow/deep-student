@@ -81,13 +81,12 @@ fn normalize_prop_filters(options: &DstuListOptions) -> Vec<(String, String)> {
         .map(|filters| {
             filters
                 .iter()
-                .map(|filter| {
-                    (
-                        filter.key.trim().to_lowercase(),
-                        filter.value.trim().to_lowercase(),
-                    )
+                .filter_map(|filter| {
+                    // 键规范化与写侧共用同一模块（trim + 小写；空键丢弃），
+                    // 语法对齐由共享测试向量钉住（vfs::note_props::test_vectors）
+                    crate::vfs::note_props::normalize_prop_key(&filter.key)
+                        .map(|key| (key, filter.value.trim().to_lowercase()))
                 })
-                .filter(|(key, _value)| !key.is_empty())
                 .collect()
         })
         .unwrap_or_default()
@@ -990,6 +989,70 @@ mod tests {
             &note_with_props(None),
             &[("status".to_string(), "done".to_string())]
         ));
+    }
+
+    /// 搜索侧过滤与写侧键语法共用同一组测试向量
+    /// （vfs::note_props::test_vectors；前端镜像见 parseTagQuery.test.ts）。
+    #[test]
+    fn note_prop_filters_agree_with_shared_key_vectors() {
+        use crate::dstu::types::DstuPropFilter;
+        use crate::vfs::note_props::test_vectors;
+
+        // 合法键：存进 props 后，用「原样大小写 + 前后空白」的过滤器都能命中
+        for key in test_vectors::VALID_OPERATOR_KEYS {
+            let note = note_with_props(Some(serde_json::json!({ (*key): "hit" })));
+            let options = DstuListOptions {
+                prop_filters: Some(vec![DstuPropFilter {
+                    key: format!("  {key}  "),
+                    value: "HIT".to_string(),
+                }]),
+                ..Default::default()
+            };
+            let normalized = normalize_prop_filters(&options);
+            assert_eq!(normalized.len(), 1, "合法键 {key:?} 不应被规范化丢弃");
+            assert!(
+                note_matches_prop_filters(&note, &normalized),
+                "合法键 {key:?} 的过滤应命中"
+            );
+        }
+
+        // 「可存不可搜（操作符）」键：后端过滤本身仍可命中——缝隙只在前端
+        // 操作符语法层，这里钉住后端语义不额外收紧
+        for key in test_vectors::STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS {
+            let note = note_with_props(Some(serde_json::json!({ (*key): "hit" })));
+            assert!(
+                note_matches_prop_filters(
+                    &note,
+                    &[(key.trim().to_lowercase(), "hit".to_string())]
+                ),
+                "键 {key:?} 经后端过滤（非操作符语法）仍应命中"
+            );
+        }
+
+        // 非法键中的「空键」会被规范化整体丢弃；其余非法键（保留字等）
+        // 规范化保留但永不命中任何合法笔记（写侧根本存不进去）
+        let options = DstuListOptions {
+            prop_filters: Some(
+                test_vectors::INVALID_KEYS
+                    .iter()
+                    .map(|(key, _tag)| DstuPropFilter {
+                        key: (*key).to_string(),
+                        value: "x".to_string(),
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        let normalized = normalize_prop_filters(&options);
+        let empty_key_count = test_vectors::INVALID_KEYS
+            .iter()
+            .filter(|(_key, tag)| *tag == "empty")
+            .count();
+        assert_eq!(
+            normalized.len(),
+            test_vectors::INVALID_KEYS.len() - empty_key_count,
+            "空键应被丢弃，其余非法键保留（宽松过滤，永不命中）"
+        );
     }
 
     #[test]

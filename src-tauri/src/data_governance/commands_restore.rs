@@ -21,6 +21,31 @@ use super::commands_backup::{
 
 const RESTORE_ACTIVATION_MARKER: &str = ".restore_activation_pending.json";
 
+/// Mirror of the private `backup::asset_requires_explicit_trust` for the slot
+/// orchestrator (G4): assets owned by an UntrustedExecutable domain (agents /
+/// user-skills) must never be written to the candidate slot automatically.
+/// Their DomainRestorePlan isolates them pending an explicit trust decision
+/// (`consume_complete_domains`). Built on the public domain registry so this
+/// file does not need edits in backup/mod.rs.
+fn asset_requires_explicit_trust_for_slot(asset: &super::backup::assets::BackedUpAsset) -> bool {
+    use super::backup::{persistent_domain_registry, RestoreTrustPolicy};
+
+    fn path_is_at_or_below(path: &str, root: &str) -> bool {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    }
+
+    persistent_domain_registry().into_iter().any(|spec| {
+        spec.restore_trust == RestoreTrustPolicy::UntrustedExecutable
+            && (path_is_at_or_below(&asset.relative_path, &spec.archive_root)
+                || (spec.id == "agents"
+                    && path_is_at_or_below(&asset.relative_path, "workspaces/agents"))
+                || path_is_at_or_below(&asset.original_path, &spec.restore_target))
+    })
+}
+
 fn atomic_restore_unavailable_error() -> String {
     format!(
         "[{}] A/B 数据空间管理器不可用，已在写入任何恢复数据前中止；当前数据未改动",
@@ -530,11 +555,26 @@ async fn execute_restore_with_progress(
         .filter(|f| f.path.ends_with(".db") && f.database_id.is_some())
         .collect();
     let total_databases = database_files.len() as u64;
+    // G4：UntrustedExecutable 域（agents / user-skills）的资产不得自动落盘，
+    // 由 DomainRestorePlan 隔离待信任；先从自动恢复的进度总数中剔除。
+    let untrusted_asset_file_count: u64 = manifest
+        .assets
+        .as_ref()
+        .map(|a| {
+            a.files
+                .iter()
+                .filter(|asset| {
+                    !asset.is_directory && asset_requires_explicit_trust_for_slot(asset)
+                })
+                .count() as u64
+        })
+        .unwrap_or(0);
     let asset_file_count: u64 = manifest
         .assets
         .as_ref()
         .map(|a| a.total_files as u64)
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .saturating_sub(untrusted_asset_file_count);
     // total_items = databases + asset files（用于前端显示 "X / Y 项"）
     let workspace_file_count = manifest
         .files
@@ -904,15 +944,32 @@ async fn execute_restore_with_progress(
         let asset_progress_range = 12.0_f32; // 80% → 92%
 
         if let Some(asset_result) = &manifest.assets {
+            // G4 修复：过滤 UntrustedExecutable 域的资产（agents 域打包在
+            // manifest.assets 下，旧代码全量传入导致可执行内容自动落盘）。
+            // 与 restore_non_database_manifest_files 对 manifest.files 的
+            // archive_path_requires_explicit_trust 拦截保持一致；被过滤的
+            // 文件由 consume_complete_domains 按 plan 隔离待信任。
+            let trusted_asset_files: Vec<assets::BackedUpAsset> = asset_result
+                .files
+                .iter()
+                .filter(|asset| !asset_requires_explicit_trust_for_slot(asset))
+                .cloned()
+                .collect();
+            if untrusted_asset_file_count > 0 {
+                info!(
+                    "[data_governance] 已从自动资产恢复中排除 {} 个待信任可执行文件（UntrustedExecutable 域），交由 DomainRestorePlan 隔离",
+                    untrusted_asset_file_count
+                );
+            }
             info!(
                 "[data_governance] 开始恢复资产文件: {} 个",
-                asset_result.total_files
+                asset_file_count
             );
 
             job_ctx.mark_running(
                 BackupJobPhase::Replace,
                 asset_progress_base,
-                Some(format!("正在恢复资产文件: 0/{}", asset_result.total_files)),
+                Some(format!("正在恢复资产文件: 0/{}", asset_file_count)),
                 total_databases,
                 total_items,
             );
@@ -920,7 +977,7 @@ async fn execute_restore_with_progress(
             match assets::restore_assets_with_progress(
                 &backup_subdir,
                 &inactive_dir,
-                &asset_result.files,
+                &trusted_asset_files,
                 |restored, total_asset| {
                     if job_ctx.is_cancelled() {
                         return false;
@@ -1130,6 +1187,103 @@ async fn execute_restore_with_progress(
         inactive_slot.name()
     );
 
+    // ============ 阶段 4b: DomainRestorePlan 消费（audit / persistent / 隔离域） ============
+    // 切槽登记已持久化且维护屏障仍然生效、候选槽要到重启才会激活：此时消费
+    // 剩余计划域——audit（ApplicationData scope，只允许在切槽过了不可回退点
+    // 之后写入应用数据目录）、webview-settings / custom-grading-modes（写入
+    // 候选槽），并把 UntrustedExecutable 域（agents / user-skills）隔离待
+    // 信任，绝不自动落盘可执行内容。crypto 已由上方事务消费，此处不重复。
+    job_ctx.mark_running(
+        BackupJobPhase::Cleanup,
+        95.0,
+        Some("正在恢复辅助域（审计/设置/待信任隔离）...".to_string()),
+        total_items,
+        total_items,
+    );
+    let domain_outcomes =
+        match manager.consume_complete_domains(&manifest, &backup_subdir, &inactive_dir) {
+            Ok(outcomes) => outcomes,
+            Err(error) => {
+                // 密钥与切槽已原子提交：维护屏障保持 fail-close（不回退、
+                // 不删激活标记），由重启侧依据 journal 与租约收敛；任务本身
+                // 按失败上报，绝不带着未消费域宣告成功。
+                job_ctx.fail(format!("消费域恢复计划失败: {}", error));
+                return;
+            }
+        };
+    let failed_domains: Vec<String> = domain_outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome.state,
+                super::backup::DomainRestoreOutcomeState::Failed
+            )
+        })
+        .map(|outcome| {
+            format!(
+                "{}: {}",
+                outcome.domain_id,
+                outcome.detail.clone().unwrap_or_default()
+            )
+        })
+        .collect();
+    if !failed_domains.is_empty() {
+        job_ctx.fail(format!(
+            "域恢复计划执行失败: {}",
+            failed_domains.join("; ")
+        ));
+        return;
+    }
+    // IsolatedPendingTrust 必须对用户可见（details + 稳定码），不得静默
+    // 假装可执行域（agents / user-skills）已恢复。
+    let isolated_domain_summary: Vec<String> = domain_outcomes
+        .iter()
+        .filter(|outcome| {
+            matches!(
+                outcome.state,
+                super::backup::DomainRestoreOutcomeState::IsolatedPendingTrust
+            )
+        })
+        .map(|outcome| match &outcome.code {
+            Some(code) => format!("{}[{}]", outcome.domain_id, code),
+            None => outcome.domain_id.clone(),
+        })
+        .collect();
+    let domain_outcomes_json =
+        serde_json::to_value(&domain_outcomes).unwrap_or(serde_json::Value::Null);
+
+    // 未消费 Complete 域断言：fail-closed。coverage ledger 中每个
+    // status == Complete 的域必须被本编排（核心库 / workspaces / 资产根 /
+    // crypto 事务）或 consume_complete_domains（restored / isolated）之一
+    // 显式消费，否则任务不得 complete 成功。
+    let mut consumed_domain_ids: Vec<String> = databases_restored
+        .iter()
+        .map(|id| format!("database:{}", id))
+        .collect();
+    consumed_domain_ids.push("workspaces-root".to_string());
+    consumed_domain_ids.extend(
+        super::backup::persistent_domain_registry()
+            .into_iter()
+            .filter(|spec| spec.id.starts_with("asset-root:"))
+            .map(|spec| spec.id),
+    );
+    consumed_domain_ids.push("crypto".to_string());
+    consumed_domain_ids.extend(
+        domain_outcomes
+            .iter()
+            .map(|outcome| outcome.domain_id.clone()),
+    );
+    if let Err(error) =
+        super::backup::assert_no_unconsumed_complete_domains(&manifest, &consumed_domain_ids)
+    {
+        job_ctx.fail(format!(
+            "[{}] 存在未被恢复编排消费的 Complete 域: {}",
+            super::backup::RESTORE_DOMAIN_UNCONSUMED_CODE,
+            error
+        ));
+        return;
+    }
+
     job_ctx.mark_running(
         BackupJobPhase::Cleanup,
         97.0,
@@ -1155,6 +1309,12 @@ async fn execute_restore_with_progress(
                 "restored_assets": restored_assets,
                 "databases_restored": databases_restored.clone(),
                 "asset_errors": restore_errors,
+                // 每个计划域的终态（restored / skipped_empty /
+                // isolated_pending_trust / failed），含 audit、
+                // webview-settings、custom-grading-modes、agents、user-skills。
+                "domains": domain_outcomes_json.clone(),
+                "isolated_domains": isolated_domain_summary.clone(),
+                "quarantined_executable_assets": untrusted_asset_file_count,
             })),
         );
     }
@@ -1162,7 +1322,7 @@ async fn execute_restore_with_progress(
     // Every required component and the pending cutover journal is durable here.
     job_ctx.complete(
         Some(format!(
-            "恢复完成，已恢复 {} 个数据库{}{}",
+            "恢复完成，已恢复 {} 个数据库{}{}{}",
             databases_restored.len(),
             if should_restore_assets {
                 format!("，资产文件 {} 个", restored_assets)
@@ -1173,6 +1333,11 @@ async fn execute_restore_with_progress(
                 format!("（{} 个资产恢复失败）", restore_errors.len())
             } else {
                 "".to_string()
+            },
+            if isolated_domain_summary.is_empty() {
+                "".to_string()
+            } else {
+                format!("；隔离待信任: {}", isolated_domain_summary.join(", "))
             }
         )),
         total_items,
@@ -1181,15 +1346,23 @@ async fn execute_restore_with_progress(
             success: true,
             output_path: Some(restore_target_path.clone()),
             resolved_path: Some(restore_target_path.clone()),
-            message: Some(if should_restore_assets {
-                format!(
-                    "已恢复数据库: {}；资产文件: {}",
-                    databases_restored.join(", "),
-                    restored_assets
-                )
-            } else {
-                format!("已恢复数据库: {}", databases_restored.join(", "))
-            }),
+            message: Some(format!(
+                "{}{}",
+                if should_restore_assets {
+                    format!(
+                        "已恢复数据库: {}；资产文件: {}",
+                        databases_restored.join(", "),
+                        restored_assets
+                    )
+                } else {
+                    format!("已恢复数据库: {}", databases_restored.join(", "))
+                },
+                if isolated_domain_summary.is_empty() {
+                    "".to_string()
+                } else {
+                    format!("；隔离待信任: {}", isolated_domain_summary.join(", "))
+                }
+            )),
             error: None,
             duration_ms: Some(duration_ms),
             stats: Some(serde_json::json!({
@@ -1200,6 +1373,11 @@ async fn execute_restore_with_progress(
                 "restored_assets": restored_assets,
                 "restore_target": restore_target_path,
                 "asset_errors": restore_errors,
+                // 每个计划域的终态；user-skills / agents 的
+                // isolated_pending_trust 必须对用户可见，不得假装已恢复。
+                "domains": domain_outcomes_json,
+                "isolated_domains": isolated_domain_summary,
+                "quarantined_executable_assets": untrusted_asset_file_count,
             })),
             // 恢复完成后需要重启以切换到恢复的数据插槽
             requires_restart: true,

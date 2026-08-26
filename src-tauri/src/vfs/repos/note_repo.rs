@@ -15,6 +15,7 @@ use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::note_props;
 use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::resource_repo::VfsResourceRepo;
@@ -395,22 +396,17 @@ impl VfsNoteRepo {
         Ok(())
     }
 
-    /// 自定义属性限额（与前端 NoteCustomPropsEditor 常量一致）
-    pub const MAX_PROPS: usize = 32;
-    pub const MAX_PROP_KEY_CHARS: usize = 64;
-    pub const MAX_PROP_VALUE_CHARS: usize = 512;
+    /// 自定义属性限额（canonical 定义在 vfs::note_props，与前端
+    /// NoteCustomPropsEditor 常量一致；此处保留别名以维持既有 API）
+    pub const MAX_PROPS: usize = note_props::MAX_PROPS;
+    pub const MAX_PROP_KEY_CHARS: usize = note_props::MAX_PROP_KEY_CHARS;
+    pub const MAX_PROP_VALUE_CHARS: usize = note_props::MAX_PROP_VALUE_CHARS;
     /// 与内建元数据/搜索操作符冲突的保留键（小写比较）
-    pub const PROPS_RESERVED_KEYS: [&'static str; 7] = [
-        "tags",
-        "tag",
-        "path",
-        "title",
-        "isfavorite",
-        "snippet",
-        "props",
-    ];
+    pub const PROPS_RESERVED_KEYS: [&'static str; 7] = note_props::PROPS_RESERVED_KEYS;
 
-    /// 校验自定义属性对象：键非空/不保留/长度上限/无控制字符；
+    /// 校验自定义属性对象：键非空/不保留/长度上限/无控制字符
+    /// （单键规则委托给共享键语法模块 [`note_props::validate_prop_key`]，
+    /// 与搜索侧共用同一套测试向量）；跨键约束（重复/数量上限）在此处理；
     /// 值仅允许标量（字符串/数字/布尔），字符串有长度上限。
     fn validate_note_props(props: &serde_json::Map<String, serde_json::Value>) -> VfsResult<()> {
         if props.len() > Self::MAX_PROPS {
@@ -421,35 +417,16 @@ impl VfsNoteRepo {
         }
         let mut normalized_keys = HashSet::with_capacity(props.len());
         for (key, value) in props {
-            let trimmed = key.trim();
-            if trimmed.is_empty() {
-                return Err(VfsError::InvalidArgument {
+            let trimmed = note_props::validate_prop_key(key).map_err(|key_error| {
+                VfsError::InvalidArgument {
                     param: "props".to_string(),
-                    reason: "属性名不能为空".to_string(),
-                });
-            }
-            if trimmed.chars().count() > Self::MAX_PROP_KEY_CHARS {
-                return Err(VfsError::InvalidArgument {
-                    param: "props".to_string(),
-                    reason: format!("属性名过长（最多 {} 个字符）", Self::MAX_PROP_KEY_CHARS),
-                });
-            }
-            if Self::PROPS_RESERVED_KEYS.contains(&trimmed.to_lowercase().as_str()) {
-                return Err(VfsError::InvalidArgument {
-                    param: "props".to_string(),
-                    reason: format!("属性名 {trimmed:?} 为保留字"),
-                });
-            }
+                    reason: key_error.reason(key.trim()),
+                }
+            })?;
             if !normalized_keys.insert(trimmed.to_lowercase()) {
                 return Err(VfsError::InvalidArgument {
                     param: "props".to_string(),
                     reason: format!("属性名 {trimmed:?} 与已有属性重复"),
-                });
-            }
-            if trimmed.chars().any(|c| c.is_control()) {
-                return Err(VfsError::InvalidArgument {
-                    param: "props".to_string(),
-                    reason: "属性名不能包含控制字符".to_string(),
                 });
             }
             match value {
@@ -2175,11 +2152,23 @@ impl VfsNoteRepo {
         // props 按列名读取（而非位置索引）：部分查询在第 8 列放正文
         // （query_note_hits），props 统一追加在列清单末尾；未选出该列的
         // 查询（InvalidColumnName）优雅回退为 None，避免逐查询硬编码索引。
-        let props: Option<serde_json::Value> = row
-            .get::<_, Option<String>>("props")
-            .unwrap_or(None)
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            .filter(|v| v.as_object().map(|m| !m.is_empty()).unwrap_or(false));
+        //
+        // 回退语义分两类，不可混淆：
+        // - InvalidColumnName = 「查询没选这列」，正常投影路径，静默 None；
+        // - 其余取值错误与畸形内容（JSON 解析失败 / 非 object / 空 object）
+        //   = 数据异常，warn + 原子计数后 None（见 vfs::note_props）。
+        let props: Option<serde_json::Value> = match row.get::<_, Option<String>>("props") {
+            Ok(raw) => note_props::parse_props_cell(&note_id, raw.as_deref()),
+            Err(rusqlite::Error::InvalidColumnName(_)) => None,
+            Err(read_error) => {
+                note_props::record_malformed_props(
+                    &note_id,
+                    note_props::MalformedPropsKind::ColumnRead,
+                    &read_error.to_string(),
+                );
+                None
+            }
+        };
 
         Ok(VfsNote {
             id: note_id,
@@ -4197,5 +4186,89 @@ mod tests {
         );
         let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
         assert_eq!(fetched.props, updated.props);
+    }
+
+    /// 畸形 props（旁路写入的坏数据）读取时必须回退 None 且留下观测痕迹
+    /// （warn 日志 + 原子计数），不允许静默丢失。
+    #[test]
+    fn test_row_to_note_malformed_props_fall_back_with_trace() {
+        use crate::vfs::note_props;
+
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "畸形属性宿主", "正文");
+
+        // 绕过写侧校验，直接向 props 列注入畸形数据（模拟旁路写入/损坏）
+        let inject = |raw: &str| {
+            db.get_conn_safe()
+                .unwrap()
+                .execute(
+                    "UPDATE notes SET props = ?1 WHERE id = ?2",
+                    rusqlite::params![raw, note.id],
+                )
+                .unwrap();
+        };
+
+        for raw in ["not-json{", "[1,2]", "\"scalar\"", "{}"] {
+            inject(raw);
+            let before = note_props::malformed_props_total();
+            let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+            assert!(
+                fetched.props.is_none(),
+                "畸形 props {raw:?} 应回退 None"
+            );
+            assert!(
+                note_props::malformed_props_total() > before,
+                "畸形 props {raw:?} 必须计入原子计数（不允许静默）"
+            );
+        }
+
+        // 对照组：合法非空对象正常读出，且不增加畸形计数
+        inject(r#"{"status":"done","priority":2}"#);
+        let before = note_props::malformed_props_total();
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        let props = fetched.props.expect("合法 props 应读出");
+        assert_eq!(props["priority"], serde_json::json!(2), "读侧保留 JSON 类型");
+        assert_eq!(note_props::malformed_props_total(), before);
+    }
+
+    /// 共享键语法向量（vfs::note_props::test_vectors）在写侧的落库口径：
+    /// 合法向量全部可存；非法向量全部被拒。
+    #[test]
+    fn test_note_props_shared_key_vectors_round_trip_write_side() {
+        use crate::vfs::note_props::test_vectors;
+
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "共享向量宿主", "正文");
+
+        let mut valid = serde_json::Map::new();
+        for key in test_vectors::VALID_OPERATOR_KEYS {
+            valid.insert((*key).to_string(), serde_json::json!("v"));
+        }
+        for key in test_vectors::STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS {
+            valid.insert((*key).to_string(), serde_json::json!("v"));
+        }
+        // "status"/"Status" 在向量里同为合法键，但 trim+小写去重会拒绝共存，
+        // 移除大小写变体后整体落库
+        valid.remove("Status");
+        VfsNoteRepo::set_note_props(&db, &note.id, serde_json::Value::Object(valid))
+            .expect("共享向量中的合法键应全部可存");
+
+        for (key, _expected_tag) in test_vectors::INVALID_KEYS {
+            let result = VfsNoteRepo::set_note_props(
+                &db,
+                &note.id,
+                serde_json::json!({ (*key): "v" }),
+            );
+            assert!(result.is_err(), "共享向量中的非法键 {key:?} 应被写侧拒绝");
+        }
+        assert!(
+            VfsNoteRepo::set_note_props(
+                &db,
+                &note.id,
+                serde_json::json!({ (test_vectors::overlong_key()): "v" }),
+            )
+            .is_err(),
+            "超长键应被写侧拒绝"
+        );
     }
 }

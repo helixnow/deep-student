@@ -83,6 +83,28 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
     case 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE':
       return t('cloudStorage:errors.atomicRestoreUnavailable');
   }
+  // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
+  // 后台任务失败消息以 `[E_...] 说明` 形式携带稳定码，没有 CommandError
+  // envelope，因此除 code 外还需子串兜底。
+  const restoreLedgerCode = readCloudStorageErrorCode(error);
+  if (
+    restoreLedgerCode === 'E_RESTORE_DOMAIN_UNCONSUMED' ||
+    raw.includes('E_RESTORE_DOMAIN_UNCONSUMED')
+  ) {
+    return t('cloudStorage:errors.restoreDomainUnconsumed');
+  }
+  if (
+    restoreLedgerCode === 'E_RESTORE_DOMAIN_FAILED' ||
+    raw.includes('E_RESTORE_DOMAIN_FAILED')
+  ) {
+    return t('cloudStorage:errors.restoreDomainFailed');
+  }
+  if (
+    restoreLedgerCode === 'E_RESTORE_UNTRUSTED_ISOLATED' ||
+    raw.includes('E_RESTORE_UNTRUSTED_ISOLATED')
+  ) {
+    return t('cloudStorage:errors.restoreUntrustedIsolated');
+  }
   if (/Missing WebDAV configuration/.test(raw)) {
     return t('cloudStorage:errors.missingWebdavConfig');
   }

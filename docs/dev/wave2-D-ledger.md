@@ -139,3 +139,31 @@
 - publish 与多 IPC 前端原语的 generation 快照挂钩未落（07 文档建议 `expected_generation`）
 - 迁移仍走专用两段写；未改走 publish 原语（09 建议 R6 再议）
 - 一切动态验证仍未跑
+
+## 10. 第 3 轮落地（恢复编排 + 稀疏库 + props）
+
+10×`claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 已落地
+
+- `backup/restore_plan.rs`：Complete 域消费 + 未消费断言；audit 走 `restore_audit_db_from_manifest`；webview_settings/custom_grading_modes 落到 restore_target；agents/user-skills → `.restore_pending_trust`（IsolatedPendingTrust）
+- `commands_restore.rs`：cutover 后、complete 前消费+断言；资产过滤 UntrustedExecutable（G4）
+- 稳定码：`E_RESTORE_DOMAIN_UNCONSUMED` / `E_RESTORE_DOMAIN_FAILED` / `E_RESTORE_UNTRUSTED_ISOLATED` + i18n
+- coordinator **加法**：`apply_vfs_init_missing_schema_objects`（:2457），调用在 table backfill 之后（:2286）。两原加法仍在（定义 :2389 / :2351）
+- 稀疏库测试源码（只跑 table backfill 应被 verifier 拒；两步回填后应过）未执行
+- props：畸形告警+计数；共享键语法向量；设计稿 `wave2-D-note-props.md`
+- 恢复矩阵集成测试源码 `restore_domain_plan_tests.rs` 未执行
+
+### 红线自证（R3 收轮，行号已因加法漂移）
+
+- `apply_vfs_init_missing_tables` 定义 `:2389` 生产 `:2280` 测试仍在
+- `pre_repair_vfs_v20260824_note_props` 定义 `:2351` 调用 `:2337` 测试仍在
+- 新函数是加法，未改两原函数签名
+- 未 merge `2bfe7c31`
+
+### R3 欠账
+
+- `assets.rs` 函数级 trust 过滤未改（生产调用点已过滤）
+- consume 失败发生在 cutover pending 之后，无撤销路径（挂 R6）
+- 越权：`search_helpers.rs` / notes `parseTagQuery.test.ts` 为 P10 共享向量（只读对齐）；Dashboard/localize 为恢复码可见态
+- 未跑任何测试
