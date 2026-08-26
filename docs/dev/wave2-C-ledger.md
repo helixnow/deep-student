@@ -164,6 +164,15 @@
 
 ---
 
+## 第 3 轮已落地（触控目标体系化）
+
+- **机制**：`TouchTarget` + `coarseHit.ts` 共享出口；`buttonPrimitiveContract` 在 `lg:` 后追加 `[@media(pointer:coarse)]:min-h/min-w-[var(--touch-target-size)]`（min 非 !h-11）。
+- **lint**：`ds-components/coarse-touch-target` **warn** + 白名单（审阅后摘除 ComposerToolbar/MiniCalendar 僵尸项）。第 8 轮才升 error。
+- **第一批替换**：ComposerToolbar/水位环去伪元素重叠，改实体盒；附件面板/PlusMenu 行高走 token。视觉 24/28/36 审阅通过。
+- **P4**：布局仍 isMobile；触摸 any-pointer:coarse；相机 `canCapturePhoto`（platform，无 enumerateDevices）。R2 `isWithinComposerTerritory` 未动。
+- **测试只写不跑**：命中 source 契约、规则单测、capabilities 单测。
+- 原文 `docs/dev/wave2-C-r3/`。禁止散点 !min-h-11 全库手修。
+
 ## 第 2 轮已落地（浮层所有权与事件序）
 
 - **P1 短期**：`InputBarUI.tsx` 抽出 `isWithinComposerTerritory`（三 ref + `closest('[data-app-menu-id]')`），外点 pointerdown 与焦点门控共用；bubble 未改 capture。顺手 `hasOpenRadixOverlayBesides` 让行。
