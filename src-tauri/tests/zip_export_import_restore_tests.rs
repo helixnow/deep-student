@@ -26,7 +26,7 @@
 
 #![cfg(feature = "data_governance")]
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use deep_student_lib::data_governance::backup::{
