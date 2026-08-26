@@ -1091,3 +1091,29 @@ docs-only/审计文档类源枝提交本就不在本次清单内。
 `validateOptionalPassword` 导出路径引用完整。四门禁（typecheck /
 vite build / cargo check / check-migrations）留待下一验证步在本 tip
 上复跑；**Goal 不因本步完成**。未合 main，未 push 任何隔离枝。
+
+### Step 23 收口：Step 22 tip 四门禁 + 18 不变量 + Tauri 实机
+
+日期：2026-08-26。基座仍为 `f83e541b`（fetch 后远端未前进）。隔离枝
+`cursor/0824-verify-step22-a875`（#344）在独立 worktree 复跑，**未**
+整支 merge 该枝，本步只把实证记录加法写入官方文档。未改产品代码。
+
+| 门禁（`f83e541b` 隔离复跑） | 结果 |
+| --- | --- |
+| `npm run version:generate && npm run typecheck` | ✅ exit 0（`0.9.44+16403.f83e541b`） |
+| `npx vite build` | ✅ exit 0（1m 20s，仅既有 chunk 警告） |
+| `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning，Rust 1.98，3m 10s） |
+| `node scripts/check-migrations.mjs` | ✅ exit 0（111 个迁移文件） |
+
+18 不变量在同一 tip 只读取证 **18/18 PASS**（进度仓
+`docs/0824-static-audit/51-invariants-step22.md`）。leftover 第六轮
+仍为结论 A：非 `0824-*` 开放 PR 115 个，无未吸收产品增量。
+
+Tauri 实机：隔离 worktree `cargo build --bin deep-student` exit 0 后，
+`DISPLAY=:1` 启动 debug 二进制。debug 带 `--cfg dev`，须先起 Vite
+`:1422`（`tauri dev` 等价路径）；补 Vite 后窗口 1112×773 可交互，
+Study Desktop / Chat Composer / 设置 Model Service / All Apps /
+AI Dashboard 均渲染。未做 production 安装包，未发真实 LLM。
+详见 `docs/dev/0824-verify-step22.md`。
+
+未合 main，未 force-push，未整支 merge #344 / #326 / leftover 族。
