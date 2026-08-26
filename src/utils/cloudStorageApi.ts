@@ -493,7 +493,9 @@ export async function resolveCloudStorageConfig(
   const safe = toSafeCloudStorageConfig(candidate);
   const credentials = credentialsFromLegacyConfig(candidate);
   if (hasCredentials(credentials)) {
-    await saveCredentials(credentials);
+    // 迁移携带的是 v0.9.44 时代已经在用的存量口令：按「新设口令」的最小长度
+    // 拒绝它会让整个 resolveCloudStorageConfig 抛错，云配置直接解析失败。
+    await saveCredentials(credentials, { encryptionPasswordIsPreexisting: true });
   }
   const migrated = await saveCloudConfigSsot(candidate);
   if (!migrated.configured || !migrated.config) {
@@ -951,9 +953,20 @@ export interface CloudStorageCredentialStatus {
  */
 export async function saveCredentials(
   credentials: CloudStorageCredentials,
+  options?: {
+    /**
+     * 声明提交的是存量加密口令（换机/重装重输、legacy 配置迁移）。
+     * 8 字符下限只是新设口令的准入；v0.9.44 从未限制长度，存量口令必须
+     * 放行，否则既有云端密文在产品内永远打不开。
+     */
+    encryptionPasswordIsPreexisting?: boolean;
+  },
 ): Promise<CloudStorageCredentialStatus> {
   // 保留后端 CommandError envelope，调用方需要稳定 code 展示可行动的密钥库提示。
-  return await invoke<CloudStorageCredentialStatus>('secure_save_cloud_credentials', { credentials });
+  return await invoke<CloudStorageCredentialStatus>('secure_save_cloud_credentials', {
+    credentials,
+    encryptionPasswordIsPreexisting: options?.encryptionPasswordIsPreexisting ?? false,
+  });
 }
 
 /**

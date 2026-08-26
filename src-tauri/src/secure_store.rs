@@ -2061,7 +2061,24 @@ impl SecureStore {
         &self,
         update: &CloudStorageCredentials,
     ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
-        if cloud_encryption_password_too_short(update.encryption_password.as_deref()) {
+        self.update_cloud_credentials_with_policy(update, false)
+    }
+
+    /// `update_cloud_credentials`，带口令准入策略。
+    ///
+    /// 8 字符下限只是**新设**加密口令的准入规则。v0.9.44 对口令长度没有任何
+    /// 限制，密文已经存在：换机/重装后重输原口令、legacy localStorage→SSOT
+    /// 迁移携带的存量口令，如果按新设标准拒绝，用户的旧加密备份就变成产品内
+    /// 打不开的黑盒。`encryption_password_is_preexisting = true` 声明提交的是
+    /// 存量口令，放行任意非空长度；新设入口保持 fail-closed。
+    pub fn update_cloud_credentials_with_policy(
+        &self,
+        update: &CloudStorageCredentials,
+        encryption_password_is_preexisting: bool,
+    ) -> Result<CloudStorageCredentialStatus, SecureStoreError> {
+        if !encryption_password_is_preexisting
+            && cloud_encryption_password_too_short(update.encryption_password.as_deref())
+        {
             return Err(SecureStoreError::CloudEncryptionPasswordTooShort(
                 cloud_encryption_password_too_short_message(),
             ));
@@ -2127,15 +2144,23 @@ fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
     SecureStore::new(config)
 }
 
-/// 保存云存储凭据到安全存储
+/// 保存云存储凭据到安全存储。
+///
+/// `encryption_password_is_preexisting`：前端在「重输存量口令」入口（换机/
+/// 重装恢复、legacy 云配置迁移）置 true，跳过新设口令的最小长度准入；
+/// 缺省/false 保持新设口令 fail-closed。
 #[tauri::command]
 pub fn secure_save_cloud_credentials(
     app: tauri::AppHandle,
     credentials: CloudStorageCredentials,
+    encryption_password_is_preexisting: Option<bool>,
 ) -> Result<CloudStorageCredentialStatus, CommandError> {
     let store = get_secure_store(Some(&app));
     store
-        .update_cloud_credentials(&credentials)
+        .update_cloud_credentials_with_policy(
+            &credentials,
+            encryption_password_is_preexisting.unwrap_or(false),
+        )
         .map_err(|e| e.to_command_error("save_cloud_credentials"))
 }
 
@@ -2586,6 +2611,54 @@ mod cloud_hydration_tests {
             })
             .expect("8+ 字符密码应写入");
         assert!(status.encryption_password_configured);
+    }
+
+    /// 升级兼容：v0.9.44 没有口令长度下限。换机/重装重输、legacy 迁移提交的
+    /// 存量短口令必须放行，否则旧加密备份在产品内永远打不开。
+    #[test]
+    fn preexisting_short_encryption_password_is_accepted() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let status = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .expect("存量短口令（v0.9.44 时代）必须放行");
+        assert!(status.encryption_password_configured);
+
+        let stored = store
+            .get_cloud_credentials()
+            .expect("read cloud credentials")
+            .expect("credentials persisted");
+        assert_eq!(stored.encryption_password.as_deref(), Some("short6"));
+    }
+
+    /// preexisting 只放行存量口令入口；默认（新设）入口仍 fail-closed。
+    #[test]
+    fn preexisting_policy_does_not_relax_the_default_entry() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let error = store
+            .update_cloud_credentials_with_policy(
+                &CloudStorageCredentials {
+                    encryption_password: Some("short6".to_string()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .expect_err("新设短口令必须继续拒绝");
+        assert!(
+            matches!(error, SecureStoreError::CloudEncryptionPasswordTooShort(_)),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

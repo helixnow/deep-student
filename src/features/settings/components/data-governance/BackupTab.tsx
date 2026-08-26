@@ -431,10 +431,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     });
   };
 
+  // 导入是对既有密文的解密：故意不做最小长度校验。v0.9.44 允许任意长度的
+  // 备份密码，换机/重装用户必须能用存量短口令解开旧加密 ZIP；口令错误由
+  // 解封层 fail-closed（E_BACKUP_SEALED_DECRYPT_FAILED）。最小长度只约束
+  // 导出（新设口令）路径。
   const handleImportConfirm = () => {
-    if (!validateOptionalPassword(importPassword)) {
-      return;
-    }
     setShowImportPasswordDialog(false);
     onImportZip(importPassword || undefined);
     setImportPassword('');

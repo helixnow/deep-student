@@ -186,6 +186,9 @@ describe('cloud storage backend SSOT DTO', () => {
         ftpPassword: 'ftp-migration-secret',
         encryptionPassword: 'encryption-migration-secret',
       },
+      // 迁移携带的是 v0.9.44 存量口令：必须按存量口令提交，
+      // 否则短口令会让整个云配置解析失败。
+      encryptionPasswordIsPreexisting: true,
     });
     expect(JSON.stringify(invokeMock.mock.calls[2][1])).not.toMatch(
       /ftp-migration-secret|encryption-migration-secret|password/i,
@@ -194,6 +197,42 @@ describe('cloud storage backend SSOT DTO', () => {
     expect(storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY)).not.toMatch(
       /ftp-migration-secret|encryption-migration-secret|password/i,
     );
+    expect(storage.getItem(CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY)).toBe('1');
+  });
+
+  it('migrates a v0.9.44 short encryption password as a preexisting credential', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CLOUD_STORAGE_LEGACY_STORAGE_KEY, JSON.stringify({
+      provider: 'webdav',
+      webdav: {
+        endpoint: 'https://dav.example.test',
+        username: 'student',
+        password: 'webdav-secret',
+      },
+      root: 'coursework',
+      // v0.9.44 从不限制口令长度；6 位存量口令必须原样迁入安全存储。
+      encryptionPassword: 'short6',
+    }));
+    invokeMock
+      .mockResolvedValueOnce({ configured: false })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        configured: true,
+        provider: 'webdav',
+        root: 'coursework',
+        config: {
+          provider: 'webdav',
+          webdav: { endpoint: 'https://dav.example.test', username: 'student' },
+          root: 'coursework',
+        },
+      });
+
+    await expect(resolveCloudStorageConfig(storage)).resolves.not.toBeNull();
+
+    const [command, payload] = invokeMock.mock.calls[1];
+    expect(command).toBe('secure_save_cloud_credentials');
+    expect(payload.credentials.encryptionPassword).toBe('short6');
+    expect(payload.encryptionPasswordIsPreexisting).toBe(true);
     expect(storage.getItem(CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY)).toBe('1');
   });
 

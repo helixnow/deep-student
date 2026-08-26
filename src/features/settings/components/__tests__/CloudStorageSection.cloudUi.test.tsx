@@ -297,6 +297,96 @@ describe('CloudStorageSection cloud UI guarantees', () => {
     expect(zhLocale.download.successRestart).toContain('重启');
   });
 
+  test('a short encryption password asks for preexisting confirmation instead of hard-blocking the save', async () => {
+    vi.mocked(cloudApi.saveCredentials).mockResolvedValue({
+      webdavPasswordConfigured: true,
+      s3SecretAccessKeyConfigured: false,
+      ftpPasswordConfigured: false,
+      encryptionPasswordConfigured: true,
+    });
+    vi.mocked(cloudApi.saveCloudConfigSsot).mockResolvedValue({
+      configured: true,
+      config: {
+        provider: 'webdav',
+        webdav: { endpoint: 'https://dav.example.test', username: 'student' },
+      },
+    } as never);
+    render(<CloudStorageSection />);
+
+    fireEvent.change(
+      await screen.findByPlaceholderText('cloudStorage:webdav.endpointPlaceholder'),
+      { target: { value: 'https://dav.example.test' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:webdav.usernamePlaceholder'),
+      { target: { value: 'student' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:webdav.passwordPlaceholder'),
+      { target: { value: 'webdav-secret' } },
+    );
+    // v0.9.44 时代的 6 位存量口令
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:encryption.placeholderUnset'),
+      { target: { value: 'short6' } },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'cloudStorage:actions.save' }));
+
+    // 不再硬拒绝：先弹「这是旧口令吗」确认框，且尚未提交任何凭据
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('cloudStorage:encryption.preexistingShortConfirm.title');
+    expect(cloudApi.saveCredentials).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'cloudStorage:encryption.preexistingShortConfirm.confirm',
+      }),
+    );
+
+    // 确认后按「存量口令」提交，绕过新设口令的最小长度准入
+    await waitFor(() => {
+      expect(cloudApi.saveCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({ encryptionPassword: 'short6' }),
+        { encryptionPasswordIsPreexisting: true },
+      );
+    });
+    await waitFor(() => {
+      expect(cloudApi.saveCloudConfigSsot).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test('restore decrypt path no longer gates legacy short passwords', () => {
+    // 恢复是对既有密文的解密：v0.9.44 从未限制口令长度，最小长度校验
+    // 只能管「新设」口令。此契约防止换机/重装恢复再次被锁死。
+    const restoreStart = componentSource.indexOf('const performRestore = useCallback');
+    const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
+    expect(restoreStart).toBeGreaterThan(-1);
+    expect(restoreEnd).toBeGreaterThan(restoreStart);
+    const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
+    expect(restoreBlock).not.toContain('isExplicitCloudEncryptionPasswordTooShort');
+    expect(restoreBlock).not.toContain('encryption.tooShort');
+
+    // 上传（新设密文）仍保留最小长度门
+    const uploadStart = componentSource.indexOf('const handleBackupAndUpload = useCallback');
+    const uploadEnd = componentSource.indexOf('const openRestoreConfirm', uploadStart);
+    const uploadBlock = componentSource.slice(uploadStart, uploadEnd);
+    expect(uploadBlock).toContain('isExplicitCloudEncryptionPasswordTooShort');
+
+    // 本地加密 ZIP 导入入口同样放行（解密由解封层 fail-closed）
+    const backupTabSource = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/data-governance/BackupTab.tsx'),
+      'utf-8',
+    );
+    const importStart = backupTabSource.indexOf('const handleImportConfirm');
+    const importEnd = backupTabSource.indexOf('return (', importStart);
+    const importBlock = backupTabSource.slice(importStart, importEnd);
+    expect(importStart).toBeGreaterThan(-1);
+    expect(importBlock).not.toContain('validateOptionalPassword');
+    // 导出（新设密文）仍保留校验
+    expect(backupTabSource).toContain('validateOptionalPassword(encryptionPassword)');
+  });
+
   test('locale copy explains clear consequences and avoids compile-feature jargon', () => {
     // 清除确认文案必须写明：服务器地址/账号密码/加密密码会删、备份不可解密、云端文件保留
     expect(zhLocale.clearConfirm.description).toContain('服务器地址');
