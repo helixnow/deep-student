@@ -303,7 +303,8 @@ impl GenerativeUiExecutor {
         );
     }
 
-    /// researchSessionId 存在时 emit `hpias_event` session_started，并 spawn pipeline orchestrator
+    /// 显式启用 HPIAS 后端时 emit `session_started` 并启动 pipeline。
+    /// 默认禁用态直接返回，让 Chat 只渲染 intent 中的静态研究块。
     fn emit_hpias_session_started_if_needed(
         ctx: &ExecutionContext,
         session_id: &str,
@@ -317,19 +318,21 @@ impl GenerativeUiExecutor {
         let Some(window) = window else {
             return;
         };
-        let emitter = HpiasEventEmitter::new(window.clone());
+        let deps = HpiasResearchDeps {
+            vfs_db: ctx.vfs_db.clone(),
+            vfs_lance_store: ctx.vfs_lance_store.clone(),
+            llm_manager: ctx.llm_manager.clone(),
+        };
+        let Some(backend) = create_research_backend(window.clone(), deps) else {
+            return;
+        };
+        let emitter = HpiasEventEmitter::new(window);
         if let Err(error) = emitter.emit_session_started(session_id, question) {
             log::warn!(
                 "[GenerativeUiExecutor] hpias_event session_started emit failed: {}",
                 error
             );
         }
-        let deps = HpiasResearchDeps {
-            vfs_db: ctx.vfs_db.clone(),
-            vfs_lance_store: ctx.vfs_lance_store.clone(),
-            llm_manager: ctx.llm_manager.clone(),
-        };
-        let backend = create_research_backend(window, deps);
         backend.start_research_session(HpiasResearchSessionRequest {
             session_id,
             question,
