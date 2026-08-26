@@ -213,6 +213,56 @@ pub(crate) fn finalize_restore_activation(active_dir: &Path) -> Result<bool, Str
     Ok(true)
 }
 
+/// 切槽提交后的失败上报（R6 最小止血）：密钥发布与 A/B 切换登记已原子持久
+/// 化，**不存在撤销路径**——重启侧只会依据 journal 与维护租约向前收敛到候选
+/// 槽。因此这里不尝试任何回滚，只保证两件事：
+///
+/// 1. 任务必须以失败终止（绝不带着未消费/失败域宣告成功）；
+/// 2. 失败详情必须诚实：明确告知切槽已提交、重启后将激活候选槽 `target_slot`、
+///    失败的域不会被自动补齐；并把已知的每域终态（`domains`）连同
+///    `cutover_committed: true` 写入审计日志——成功路径记录 domains，
+///    失败路径同样必须留痕，否则事后无法审计哪些域缺失。
+///
+/// 维护屏障保持 fail-close（不解除、不删激活标记），与调用点既有语义一致。
+fn fail_restore_after_committed_cutover(
+    app: &tauri::AppHandle,
+    job_ctx: &BackupJobContext,
+    backup_id: &str,
+    target_slot: &str,
+    error: String,
+    domain_outcomes: Option<&serde_json::Value>,
+) {
+    let honest_error = format!(
+        "{}（切槽与加密密钥已原子提交、不可撤销：重启后将激活候选槽 {}；本任务按失败终止，失败/未消费的域不会自动恢复，请依据审计日志中的 domains 终态处置）",
+        error, target_slot
+    );
+    error!("[data_governance] {}", honest_error);
+    #[cfg(feature = "data_governance")]
+    {
+        try_save_audit_log(
+            app,
+            AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id.to_string(),
+            )
+            .fail(honest_error.clone())
+            .with_details(serde_json::json!({
+                "job_id": job_ctx.job_id.clone(),
+                "cutover_committed": true,
+                "activates_slot_on_restart": target_slot,
+                "domains": domain_outcomes.cloned().unwrap_or(serde_json::Value::Null),
+            })),
+        );
+    }
+    #[cfg(not(feature = "data_governance"))]
+    {
+        let _ = (app, backup_id, domain_outcomes);
+    }
+    job_ctx.fail(honest_error);
+}
+
 fn set_restore_cutover_maintenance(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let state = app
         .try_state::<crate::commands::AppState>()
@@ -1207,10 +1257,21 @@ async fn execute_restore_with_progress(
                 // 密钥与切槽已原子提交：维护屏障保持 fail-close（不回退、
                 // 不删激活标记），由重启侧依据 journal 与租约收敛；任务本身
                 // 按失败上报，绝不带着未消费域宣告成功。
-                job_ctx.fail(format!("消费域恢复计划失败: {}", error));
+                fail_restore_after_committed_cutover(
+                    &app,
+                    &job_ctx,
+                    &backup_id,
+                    inactive_slot.name(),
+                    format!("消费域恢复计划失败: {}", error),
+                    None,
+                );
                 return;
             }
         };
+    // 提前物化每域终态 JSON：后续任何失败上报（域失败 / 未消费断言）都必须
+    // 把它写进审计详情，不能只在成功路径留痕。
+    let domain_outcomes_json =
+        serde_json::to_value(&domain_outcomes).unwrap_or(serde_json::Value::Null);
     let failed_domains: Vec<String> = domain_outcomes
         .iter()
         .filter(|outcome| {
@@ -1228,10 +1289,14 @@ async fn execute_restore_with_progress(
         })
         .collect();
     if !failed_domains.is_empty() {
-        job_ctx.fail(format!(
-            "域恢复计划执行失败: {}",
-            failed_domains.join("; ")
-        ));
+        fail_restore_after_committed_cutover(
+            &app,
+            &job_ctx,
+            &backup_id,
+            inactive_slot.name(),
+            format!("域恢复计划执行失败: {}", failed_domains.join("; ")),
+            Some(&domain_outcomes_json),
+        );
         return;
     }
     // IsolatedPendingTrust 必须对用户可见（details + 稳定码），不得静默
@@ -1249,8 +1314,6 @@ async fn execute_restore_with_progress(
             None => outcome.domain_id.clone(),
         })
         .collect();
-    let domain_outcomes_json =
-        serde_json::to_value(&domain_outcomes).unwrap_or(serde_json::Value::Null);
 
     // 未消费 Complete 域断言：fail-closed。coverage ledger 中每个
     // status == Complete 的域必须被本编排（核心库 / workspaces / 资产根 /
@@ -1276,11 +1339,18 @@ async fn execute_restore_with_progress(
     if let Err(error) =
         super::backup::assert_no_unconsumed_complete_domains(&manifest, &consumed_domain_ids)
     {
-        job_ctx.fail(format!(
-            "[{}] 存在未被恢复编排消费的 Complete 域: {}",
-            super::backup::RESTORE_DOMAIN_UNCONSUMED_CODE,
-            error
-        ));
+        fail_restore_after_committed_cutover(
+            &app,
+            &job_ctx,
+            &backup_id,
+            inactive_slot.name(),
+            format!(
+                "[{}] 存在未被恢复编排消费的 Complete 域: {}",
+                super::backup::RESTORE_DOMAIN_UNCONSUMED_CODE,
+                error
+            ),
+            Some(&domain_outcomes_json),
+        );
         return;
     }
 

@@ -101,31 +101,64 @@ pub fn sync_e2ee_error(code: &'static str, message: impl std::fmt::Display) -> S
     format!("[{code}] {message}")
 }
 
-/// [R4-antidegrade] 下载侧防降级判定（纯函数，供 `cloud_sync_download` 与单测共用）。
+/// [R4-antidegrade][R6-downgrade-optin] 下载侧防降级判定
+/// （纯函数，供 `cloud_sync_download` 与单测共用）。
 ///
 /// - `cloud_marker_present`：云端 `.encryption-marker` 是否存在。上游读取采用
 ///   fail-closed 语义：标记对象存在但内容损坏时同样视为「存在」，宁可多拦一次
 ///   也不放行可疑明文。
+/// - `locally_remembered_encrypted`：[R6] 本机「该云端目录曾经加密」记忆
+///   （`EncryptedRootMemory`，P11 明文上传第二道防线）是否命中。云端标记与
+///   备份对象在攻击者可写的同一云端，标记被删除后仅剩这道本机门；记忆文件
+///   损坏按命中处理（fail-closed，语义在 `was_encrypted` 内部）。
 /// - `object_is_encrypted`：下载对象头 4 字节是否为 DSBK 魔数。
+/// - `plaintext_history_opt_in`：[R6] 用户对**本次下载**显式确认「我知道这是
+///   启用加密前的旧明文版本，仍要恢复」。一次一确认：该值只来自本次命令参数，
+///   不写入任何持久开关；默认 `false`，明文历史不得默认成功。opt-in 只放宽
+///   本判定，不放宽恢复链后续的整槽校验，对 DSBK 密文对象无任何影响。
 ///
-/// 四象限：
-/// - 标记存在 + DSBK：放行，走现有解密路径；
+/// 判定（对象为 DSBK 密文时一律放行走解密链）：
 /// - 标记存在 + 非 DSBK：该 root 的恢复链应当全部为密文，出现明文对象说明
-///   密文被替换或云端被降级篡改，返回 [`SYNC_E2EE_DOWNGRADE_REJECTED_CODE`]；
-/// - 标记不存在 + 非 DSBK：预 E2EE 时代的合法明文备份，保持现行为放行；
+///   密文被替换或云端被降级篡改，无 opt-in 时返回
+///   [`SYNC_E2EE_DOWNGRADE_REJECTED_CODE`]；
+/// - 标记不存在 + 本机记忆命中 + 非 DSBK：[R6 双门] 标记可能已被攻击者删除，
+///   无 opt-in 时同码拒绝，不因删 marker 而回到「合法明文」象限；
+/// - 标记不存在 + 无本机记忆 + 非 DSBK：预 E2EE 时代的合法明文备份，放行；
 /// - 标记不存在 + DSBK：v0.9.44 等旧版加密但未写标记，放行走解密路径。
 pub(crate) fn ensure_download_not_degraded(
     cloud_marker_present: bool,
+    locally_remembered_encrypted: bool,
     object_is_encrypted: bool,
+    plaintext_history_opt_in: bool,
 ) -> Result<()> {
-    if cloud_marker_present && !object_is_encrypted {
+    if object_is_encrypted {
+        return Ok(());
+    }
+    if !cloud_marker_present && !locally_remembered_encrypted {
+        // 预 E2EE 时代的合法明文备份，保持现行为放行。
+        return Ok(());
+    }
+    if plaintext_history_opt_in {
+        tracing::warn!(
+            "[CloudSync][R6-downgrade-optin] 用户显式确认恢复明文历史版本，本次放行\
+             （云端标记存在: {cloud_marker_present}, 本机曾加密记忆: {locally_remembered_encrypted}）。\
+             该确认不持久化，仅对本次下载有效。"
+        );
+        return Ok(());
+    }
+    if cloud_marker_present {
         return Err(AppError::validation(sync_e2ee_error(
             SYNC_E2EE_DOWNGRADE_REJECTED_CODE,
             "云端已登记端到端加密标记，但下载到的备份对象不是 DSBK 密文，疑似密文被明文替换\
              （降级攻击）或云端目录被篡改，已拒绝还原该对象。请人工核查云端目录完整性后重试。",
         )));
     }
-    Ok(())
+    Err(AppError::validation(sync_e2ee_error(
+        SYNC_E2EE_DOWNGRADE_REJECTED_CODE,
+        "云端加密标记已缺失，但本机记忆显示该云端目录曾启用端到端加密，且下载到的备份对象\
+         不是 DSBK 密文——疑似云端目录被降级篡改（加密标记被删除、密文被明文替换），\
+         已拒绝还原该对象。请人工核查云端目录完整性后重试。",
+    )))
 }
 
 use serde::Serialize;
@@ -499,12 +532,19 @@ pub async fn cloud_sync_upload(
 /// 从云端下载备份（带实时进度事件）
 ///
 /// 通过 `cloud-sync-progress` Tauri 事件向前端推送字节级下载进度。
+///
+/// `allow_plaintext_history`：[R6-downgrade-optin] 用户对**本次下载**显式确认
+/// 「恢复启用加密前的旧明文版本」。缺省 / `false` 保持防降级默认拒；`true`
+/// 仅放宽 [`ensure_download_not_degraded`] 这一道判定（恢复链后续整槽校验
+/// 不受影响）。该参数不来自 `CloudStorageConfig`、不写入任何持久开关——
+/// 一次调用一次确认。
 #[tauri::command]
 pub async fn cloud_sync_download(
     app_handle: AppHandle,
     mut config: CloudStorageConfig,
     version_id: Option<String>,
     local_dir: String,
+    allow_plaintext_history: Option<bool>,
 ) -> Result<DownloadResult> {
     crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
     let _operation = crate::backup_common::DataGovernanceOperationGuard::try_acquire(
@@ -514,11 +554,15 @@ pub async fn cloud_sync_download(
     let operation_id = _operation.operation_id().to_string();
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
+    let plaintext_history_opt_in = allow_plaintext_history.unwrap_or(false);
 
     // [R4-antidegrade] 下载前先读取云端加密标记：标记存在的 root 只允许 DSBK
     // 密文进入还原链。读取失败（网络等）直接失败，不猜测标记状态；标记内容
     // 损坏时 `read_encryption_marker` 按存在处理（fail-closed）。
     let cloud_marker_present = manager.read_encryption_marker().await?.is_some();
+    // [R6 双门] 本机「该云端目录曾经加密」记忆：marker 被攻击者删除时仍拒明文
+    // （与明文上传侧 ensure_plaintext_upload_allowed 的第二道防线对称）。
+    let locally_remembered_encrypted = manager.encrypted_root_remembered_locally();
 
     emit_sync_progress(
         &app_handle,
@@ -563,9 +607,10 @@ pub async fn cloud_sync_download(
         )
         .await?;
 
-    // 如果文件被加密（DSBK 魔数）则解密；未加密且云端无加密标记则原样保留
-    // （预 E2EE 明文备份）。云端有加密标记但对象非 DSBK 时按降级攻击拒收，
-    // 见 ensure_download_not_degraded。
+    // 如果文件被加密（DSBK 魔数）则解密；未加密且云端无加密标记（且本机无
+    // 「曾加密」记忆）则原样保留（预 E2EE 明文备份）。云端有加密标记（或
+    // marker 已缺失但本机记忆命中）而对象非 DSBK 时按降级攻击拒收——除非
+    // 本次调用带显式 opt-in，见 ensure_download_not_degraded。
     // 支持"用户上传时加密，下载设备未配置密码"的场景：返回明确错误
     let downloaded_path = std::path::Path::new(&result.local_path);
     let head = {
@@ -586,7 +631,12 @@ pub async fn cloud_sync_download(
         buf
     };
     let is_encrypted = crate::crypto::backup_crypto::is_encrypted_backup(&head);
-    if let Err(error) = ensure_download_not_degraded(cloud_marker_present, is_encrypted) {
+    if let Err(error) = ensure_download_not_degraded(
+        cloud_marker_present,
+        locally_remembered_encrypted,
+        is_encrypted,
+        plaintext_history_opt_in,
+    ) {
         // 疑似被替换的明文对象不留在本地磁盘，避免用户绕过错误误用其内容；
         // 清理失败只记日志，防降级错误本身仍然返回。
         if let Err(remove_error) = std::fs::remove_file(downloaded_path) {
@@ -722,7 +772,7 @@ mod tests {
     /// 错误码，而不是把明文对象「原样保留」当成功。
     #[test]
     fn download_rejected_when_marker_present_but_object_not_dsbk() {
-        let error = ensure_download_not_degraded(true, false)
+        let error = ensure_download_not_degraded(true, false, false, false)
             .expect_err("标记存在而对象非 DSBK 时必须拒收");
         assert!(matches!(error.error_type, AppErrorType::Validation));
         assert!(
@@ -741,19 +791,67 @@ mod tests {
     /// [R4-antidegrade] 标记存在 + DSBK 密文：放行，仍走现有解密路径。
     #[test]
     fn download_allowed_when_marker_present_and_object_is_dsbk() {
-        ensure_download_not_degraded(true, true).expect("标记存在且对象为 DSBK 应放行解密");
+        ensure_download_not_degraded(true, false, true, false)
+            .expect("标记存在且对象为 DSBK 应放行解密");
     }
 
-    /// [R4-antidegrade] 标记不存在 + 非 DSBK：预 E2EE 明文备份，保持现行为。
+    /// [R4-antidegrade] 标记不存在 + 无本机记忆 + 非 DSBK：预 E2EE 明文备份，
+    /// 保持现行为。
     #[test]
     fn download_allowed_for_legacy_plaintext_without_marker() {
-        ensure_download_not_degraded(false, false).expect("无标记的明文备份应保持现行为放行");
+        ensure_download_not_degraded(false, false, false, false)
+            .expect("无标记且无本机记忆的明文备份应保持现行为放行");
     }
 
     /// [R4-antidegrade] 标记不存在 + DSBK：旧版加密未写标记，放行走解密路径。
     #[test]
     fn download_allowed_for_dsbk_without_marker() {
-        ensure_download_not_degraded(false, true).expect("无标记的 DSBK 对象应放行解密");
+        ensure_download_not_degraded(false, false, true, false)
+            .expect("无标记的 DSBK 对象应放行解密");
+    }
+
+    /// [R6 双门] 标记被删但本机「曾加密」记忆命中 + 非 DSBK：同码拒绝，
+    /// 删 marker 不得把明文对象送回「合法明文」象限。
+    #[test]
+    fn download_rejected_when_marker_deleted_but_locally_remembered() {
+        let error = ensure_download_not_degraded(false, true, false, false)
+            .expect_err("marker 缺失但本机记忆命中时必须拒收明文对象");
+        assert!(matches!(error.error_type, AppErrorType::Validation));
+        assert!(
+            error
+                .message
+                .starts_with(&format!("[{SYNC_E2EE_DOWNGRADE_REJECTED_CODE}]")),
+            "双门拒绝必须复用稳定码 {SYNC_E2EE_DOWNGRADE_REJECTED_CODE}，实际: {}",
+            error.message
+        );
+    }
+
+    /// [R6 双门] 本机记忆命中但对象是 DSBK 密文：放行走解密链，记忆门只拦明文。
+    #[test]
+    fn download_allowed_for_dsbk_when_locally_remembered() {
+        ensure_download_not_degraded(false, true, true, false)
+            .expect("本机记忆命中的 DSBK 对象应放行解密");
+    }
+
+    /// [R6-downgrade-optin] 显式 opt-in（一次一确认）放行明文历史版本：
+    /// 标记存在与「标记被删 + 本机记忆」两种拒绝态都可被本次确认覆盖。
+    #[test]
+    fn download_opt_in_allows_plaintext_history_once() {
+        ensure_download_not_degraded(true, false, false, true)
+            .expect("标记存在 + 显式 opt-in 应放行明文历史版本");
+        ensure_download_not_degraded(false, true, false, true)
+            .expect("本机记忆命中 + 显式 opt-in 应放行明文历史版本");
+        ensure_download_not_degraded(true, true, false, true)
+            .expect("双门同时命中 + 显式 opt-in 应放行明文历史版本");
+    }
+
+    /// [R6-downgrade-optin] opt-in 对 DSBK 密文对象无任何影响（不产生其他松动），
+    /// 且缺省（false）时明文历史仍默认拒绝。
+    #[test]
+    fn download_opt_in_has_no_effect_on_ciphertext_and_default_still_rejects() {
+        ensure_download_not_degraded(true, true, true, true).expect("DSBK 对象与 opt-in 无关，放行");
+        ensure_download_not_degraded(true, false, false, false)
+            .expect_err("未 opt-in 时明文历史不得默认成功");
     }
 
     /// [R4-antidegrade] 头 4 字节判定与 backup_crypto 的 DSBK 魔数保持一致：

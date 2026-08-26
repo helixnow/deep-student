@@ -155,8 +155,9 @@ fn ensure_claim_payload_bounded(what: &str, len: usize) -> Result<()> {
     Ok(())
 }
 
-/// 有界读：先 `stat` 核大小（超限拒绝下载、fail-closed），再 `get`。
-/// `stat` 与 `get` 之间对象可被并发替换，以 `get` 结果为准。
+/// 有界读：先 `stat` 核大小（超限拒绝下载、fail-closed，带稳定冲突码），
+/// 再 [`CloudStorage::get_bounded`]（`stat` 与 `get` 之间对象可被并发替换，
+/// 换成超限对象时由传输层预算闸中途断流，以 `get_bounded` 结果为准）。
 async fn read_bounded(storage: &dyn CloudStorage, key: &str) -> Result<Option<Vec<u8>>> {
     if let Some(info) = storage.stat(key).await? {
         if info.size > MAX_E2EE_CLAIM_OBJECT_BYTES {
@@ -167,7 +168,10 @@ async fn read_bounded(storage: &dyn CloudStorage, key: &str) -> Result<Option<Ve
             )));
         }
     }
-    let Some(bytes) = storage.get(key).await? else {
+    let Some(bytes) = storage
+        .get_bounded(key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?
+    else {
         return Ok(None);
     };
     if bytes.len() as u64 > MAX_E2EE_CLAIM_OBJECT_BYTES {
@@ -186,7 +190,11 @@ async fn delete_if_unchanged(
     key: &str,
     expected: &[u8],
 ) -> Result<bool> {
-    let current = storage.get(key).await?;
+    // [R4-get-budget] 合法认领对象恒 ≤ 上限；当前对象超限说明已被畸形对象
+    // 覆盖（必然不是我们的），预算错误让调用方 fail-closed。
+    let current = storage
+        .get_bounded(key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?;
     if current.as_deref() != Some(expected) {
         return Ok(false);
     }
@@ -258,7 +266,12 @@ async fn ensure_no_live_lease(
             return Ok(());
         }
     }
-    let Some(bytes) = storage.get(lease_key).await? else {
+    // [R4-get-budget] stat 预检之后仍走硬预算入口：stat 与 get 之间租约可能
+    // 被并发换成超限对象，届时中途断流、按错误 fail-closed。
+    let Some(bytes) = storage
+        .get_bounded(lease_key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?
+    else {
         return Ok(());
     };
     let parsed = serde_json::from_slice::<EncryptionClaimLease>(&bytes)
@@ -292,7 +305,10 @@ async fn publish_marker_verified(
     data: &[u8],
 ) -> Result<()> {
     storage.put(marker_key, data).await?;
-    match storage.get(marker_key).await? {
+    match storage
+        .get_bounded(marker_key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?
+    {
         Some(ref read_back) if read_back.as_slice() == data => Ok(()),
         Some(_) => Err(AppError::internal(
             "加密标记上传后回读不一致，已停止并不得报成功".to_string(),
@@ -340,7 +356,10 @@ where
             ));
         }
         // 条件创建成功也要回读：半包 / 网关改写与无条件 PUT 同样存在。
-        match storage.get(marker_key).await? {
+        match storage
+            .get_bounded(marker_key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+            .await?
+        {
             Some(ref read_back) if read_back == &data => {}
             Some(_) => {
                 return Err(AppError::internal(
@@ -367,7 +386,10 @@ where
     storage.put(&lease_key, &lease_bytes).await?;
 
     // 第 4 步：回读租约必须逐字节是自己（读 x）。
-    match storage.get(&lease_key).await? {
+    match storage
+        .get_bounded(&lease_key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?
+    {
         Some(ref current) if current == &lease_bytes => {}
         _ => {
             // 租约已是他人的（或消失），不做删除，直接失败。
@@ -423,7 +445,10 @@ where
     // 第 7 步：租约必须仍逐字节是自己（读 x，Lamport「x 仍是我」检查）。
     // 失败时不回滚 marker：留下的是携带真实校验子的完整认领（见模块注释），
     // 本设备按失败返回，重试会按已有标记走校验子验证。
-    match storage.get(&lease_key).await? {
+    match storage
+        .get_bounded(&lease_key, MAX_E2EE_CLAIM_OBJECT_BYTES)
+        .await?
+    {
         Some(ref current) if current == &lease_bytes => {}
         _ => {
             return Err(claim_conflict(

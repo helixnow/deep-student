@@ -12,6 +12,7 @@ import { getErrorMessage } from './errorUtils';
 export const FTP_UNSUPPORTED_ON_ANDROID_CODE = 'E_FTP_UNSUPPORTED_ON_ANDROID';
 export const S3_UNSUPPORTED_IN_BUILD_CODE = 'E_S3_UNSUPPORTED_IN_BUILD';
 export const CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT';
+export const CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE = 'E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK';
 export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE =
   'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
 export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE = 'E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED';
@@ -145,6 +146,7 @@ export type CloudPlatformErrorI18nKey =
 
 export type CloudEncryptionErrorI18nKey =
   | 'cloudStorage:encryption.tooShort'
+  | 'cloudStorage:encryption.tooWeak'
   | 'cloudStorage:encryption.storedPasswordRequired';
 
 /** Platform capability errors are localized exclusively by stable backend code. */
@@ -168,6 +170,8 @@ export function getCloudEncryptionErrorI18nKey(
   switch (getCloudStorageErrorCode(error)) {
     case CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE:
       return 'cloudStorage:encryption.tooShort';
+    case CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE:
+      return 'cloudStorage:encryption.tooWeak';
     case STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE:
       return 'cloudStorage:encryption.storedPasswordRequired';
     default:
@@ -879,17 +883,23 @@ export async function uploadBackup(
  * 从云端下载备份
  * @param versionId 版本 ID（null 表示下载最新版本）
  * @param localDir 本地保存目录
+ * @param allowPlaintextHistory [R6-downgrade-optin] 仅本次下载生效的显式确认：
+ *   「我知道这是启用加密前的旧明文版本，仍要恢复」。缺省 = 拒绝（后端防降级
+ *   默认拒明文，E_SYNC_E2EE_DOWNGRADE_REJECTED）。调用方必须来自用户当次的
+ *   显式勾选 + 二次确认，禁止持久化该值或默认传 true。
  */
 export async function downloadBackup(
   config: CloudStorageConfig,
   versionId: string | null,
-  localDir: string
+  localDir: string,
+  allowPlaintextHistory?: boolean
 ): Promise<DownloadResult> {
   try {
     return await invoke<DownloadResult>('cloud_sync_download', {
       config: toRuntimeCloudStorageConfig(config),
       versionId,
       localDir,
+      allowPlaintextHistory: allowPlaintextHistory === true,
     });
   } catch (error: unknown) {
     throw normalizeCloudStorageError(error);

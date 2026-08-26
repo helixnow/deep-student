@@ -1,7 +1,9 @@
 //! [R4-bad-write] 坏正式对象收敛（bad-write convergence）。
 //!
-//! 消费「先写 `{key}.<uuid>.tmp` → 回读校验 → 发布正式对象 → 回读校验」写入
-//! 协议（见 `sync_manager::save_manifest_at_key`）失败后留下的残局：
+//! 消费「先写暂存键 → 回读校验 → 发布正式对象 → 回读校验」写入协议
+//! （见 `sync_manager::save_manifest_at_key`，现行经 `verified_publish` 原语）
+//! 失败后留下的残局。暂存键命名读侧统一都认（[R6-tmp-naming]）：历史
+//! `{key}.<uuid>.tmp` 与现行 `{key}.tmp-<op>`，见 [`is_tmp_object_key`]。
 //!
 //! - **正式对象损坏、存在能重新通过校验的 `.tmp`** → 先把坏正式对象隔离到
 //!   可审计前缀 [`QUARANTINE_PREFIX`]（附原因记录），再用 `.tmp` 内容收敛
@@ -26,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::traits::{CloudStorage, Result};
+use super::traits::{CloudStorage, Result, MEMORY_GET_DEFAULT_BUDGET_BYTES};
 use crate::models::AppError;
 
 /// 隔离前缀：所有被判定为「坏写」的正式对象副本与原因记录都放在这里，
@@ -42,8 +44,28 @@ pub const BAD_OBJECT_FAIL_CLOSED_CODE: &str = "E_SYNC_BAD_OBJECT_FAIL_CLOSED";
 /// - `backup-v2/`：文件级 / 增量备份仓库对象。
 pub const USER_BACKUP_DATA_PREFIXES: &[&str] = &["backups/", "backup-v2/"];
 
-/// 写入协议使用的临时对象后缀（`{key}.<uuid>.tmp`）。
+/// 历史写入协议使用的临时对象后缀（`{key}.<uuid>.tmp`）。
 const TMP_SUFFIX: &str = ".tmp";
+
+/// 现行 [`super::verified_publish`] 原语的暂存键中缀（`{key}.tmp-<op>`）。
+const TMP_OP_MARKER: &str = ".tmp-";
+
+/// [R6-tmp-naming] 两代写入协议的暂存对象命名，读侧统一都认：
+/// - 历史 `{key}.<uuid>.tmp`（旧 `save_manifest_at_key` 协议）；
+/// - 现行 `{key}.tmp-<op>`（[`super::verified_publish`] 暂存键，`<op>` 为
+///   12 位十六进制操作号）。
+///
+/// `.tmp-<op>` 只在 `<op>` 段整体为字母数字时命中：verified_publish 暂存键
+/// 被隔离后的 `{key}.tmp-<op>.bad-<ts>-<salt>` 含 `.` / `-`，不会被误认。
+fn is_tmp_object_key(key: &str) -> bool {
+    if key.ends_with(TMP_SUFFIX) {
+        return true;
+    }
+    key.rfind(TMP_OP_MARKER).is_some_and(|idx| {
+        let op = &key[idx + TMP_OP_MARKER.len()..];
+        !op.is_empty() && op.bytes().all(|b| b.is_ascii_alphanumeric())
+    })
+}
 
 /// 内容校验器：`Ok(())` 表示字节可信可发布；`Err(reason)` 的 reason 会被
 /// 写进隔离原因记录。校验必须只依赖字节本身（如 JSON 解码 + 业务校验）。
@@ -111,13 +133,20 @@ pub async fn converge_bad_object(
     key: &str,
     validate: ValidateFn<'_>,
 ) -> Result<BadObjectOutcome> {
-    if key.is_empty() || key.starts_with(QUARANTINE_PREFIX) || key.ends_with(TMP_SUFFIX) {
+    if key.is_empty() || key.starts_with(QUARANTINE_PREFIX) || is_tmp_object_key(key) {
         return Err(AppError::validation(format!(
-            "坏写收敛只接受业务正式对象 key（非空、不在隔离前缀下、非 .tmp）: {key:?}"
+            "坏写收敛只接受业务正式对象 key（非空、不在隔离前缀下、非 .tmp / .tmp-<op> 暂存键）: {key:?}"
         )));
     }
 
-    match storage.get(key).await? {
+    // [R4-get-budget] 有界读取。本函数签名没有按对象类型的预算参数（调用方
+    // 如 sync_manager 持有 MANIFEST_OBJECT_MAX_BYTES，但改签名需与调用方协同，
+    // 本轮不在写权限内），先以旧入口兜底预算显式设界：与生产后端 `get()` 等值，
+    // 但让测试假存储 / 纯内存后端也获得预算语义。
+    match storage
+        .get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES)
+        .await?
+    {
         Some(bytes) => match validate(&bytes) {
             Ok(()) => Ok(BadObjectOutcome::AlreadyHealthy),
             Err(reason) => {
@@ -178,7 +207,8 @@ pub async fn converge_bad_object(
     }
 }
 
-/// 在 `{key}.` 前缀下寻找**当场重新通过校验**的最新 `.tmp` 候选。
+/// 在 `{key}.` 前缀下寻找**当场重新通过校验**的最新暂存候选
+/// （[`is_tmp_object_key`]：历史 `.tmp` 后缀与现行 `.tmp-<op>` 都认）。
 ///
 /// 未通过校验的候选跳过并保留（供审计），不删除。依赖 `list` 契约
 /// （递归、按 last_modified 降序），最新的可信候选优先。
@@ -189,10 +219,13 @@ async fn find_verified_tmp(
 ) -> Result<Option<(String, Vec<u8>)>> {
     let candidate_prefix = format!("{key}.");
     for info in storage.list(&candidate_prefix).await? {
-        if !info.key.ends_with(TMP_SUFFIX) {
+        if !is_tmp_object_key(&info.key) {
             continue;
         }
-        let Some(bytes) = storage.get(&info.key).await? else {
+        let Some(bytes) = storage
+            .get_bounded(&info.key, MEMORY_GET_DEFAULT_BUDGET_BYTES)
+            .await?
+        else {
             continue;
         };
         match validate(&bytes) {
@@ -232,7 +265,12 @@ async fn quarantine_bad_object(
     let reason_key = format!("{QUARANTINE_PREFIX}{key}.{stamp}.reason.json");
 
     storage.put(&quarantined_key, bad_bytes).await?;
-    match storage.get(&quarantined_key).await? {
+    // [R4-get-budget] 回读预算 = 刚写入的本地字节数：远端把副本膨胀得更大
+    // 同样是「审计痕迹不可信」，中途断流拒收。
+    match storage
+        .get_bounded(&quarantined_key, bad_bytes.len() as u64)
+        .await?
+    {
         Some(read_back) if read_back.as_slice() == bad_bytes => {}
         _ => {
             return Err(AppError::internal(format!(
@@ -272,7 +310,10 @@ async fn quarantine_bad_object(
     let record_bytes = serde_json::to_vec_pretty(&record)
         .map_err(|error| AppError::internal(format!("序列化隔离原因记录失败: {error}")))?;
     storage.put(&reason_key, &record_bytes).await?;
-    match storage.get(&reason_key).await? {
+    match storage
+        .get_bounded(&reason_key, record_bytes.len() as u64)
+        .await?
+    {
         Some(read_back) if read_back == record_bytes => {}
         _ => {
             return Err(AppError::internal(format!(
@@ -287,7 +328,7 @@ async fn quarantine_bad_object(
 /// 用已校验字节发布正式对象，发布后回读核对；失败即报错（调用方保留 `.tmp`）。
 async fn publish_verified(storage: &dyn CloudStorage, key: &str, data: &[u8]) -> Result<()> {
     storage.put(key, data).await?;
-    match storage.get(key).await? {
+    match storage.get_bounded(key, data.len() as u64).await? {
         Some(read_back) if read_back.as_slice() == data => Ok(()),
         _ => Err(AppError::internal(format!(
             "坏写收敛发布 {key} 后回读校验失败：已保留已校验 .tmp，本次不得报成功"
@@ -603,7 +644,41 @@ mod tests {
         );
     }
 
-    /// 入口 key 卫兵：隔离前缀下的对象与 .tmp 本身不接受收敛。
+    /// [R6-tmp-naming] 现行 verified_publish 暂存键（`{key}.tmp-<op>`，不以
+    /// `.tmp` 结尾）的残留同样可被收敛：坏正式对象进隔离区，正式 key 收敛为
+    /// 暂存内容，被消费的暂存对象删除。
+    #[tokio::test]
+    async fn verified_publish_style_tmp_residue_converges() {
+        let storage = MemoryStorage::default();
+        storage.put(KEY, BAD).await.unwrap();
+        let publish_tmp = format!("{KEY}.tmp-{}", &Uuid::new_v4().simple().to_string()[..12]);
+        storage.put(&publish_tmp, GOOD).await.unwrap();
+
+        let outcome = converge_bad_object(&storage, "device-a", KEY, &json_validate)
+            .await
+            .expect("verified_publish 命名的暂存残留必须同样可收敛");
+        let BadObjectOutcome::RecoveredFromTmp { tmp_key, .. } = outcome else {
+            panic!("期望 RecoveredFromTmp");
+        };
+        assert_eq!(tmp_key, publish_tmp);
+        assert_eq!(storage.bytes(KEY).unwrap(), GOOD);
+        assert!(storage.bytes(&publish_tmp).is_none(), "被消费的暂存对象应删除");
+    }
+
+    /// [R6-tmp-naming] 两代命名都认；隔离产物（`.bad-<ts>-<salt>`）不得被误认。
+    #[test]
+    fn tmp_object_key_recognition_covers_both_generations() {
+        assert!(is_tmp_object_key("manifests/a.json.0123abcd.tmp"), "历史 .tmp 后缀");
+        assert!(is_tmp_object_key("manifests/a.json.tmp-0123abcd4567"), "现行 .tmp-<op>");
+        assert!(!is_tmp_object_key("manifests/a.json"), "正式对象不是暂存键");
+        assert!(
+            !is_tmp_object_key("manifests/a.json.tmp-0123abcd4567.bad-20250101T000000000Z-cafe0123"),
+            "verified_publish 隔离产物不得被误认为暂存键"
+        );
+        assert!(!is_tmp_object_key("manifests/a.json.tmp-"), "空操作号不算暂存键");
+    }
+
+    /// 入口 key 卫兵：隔离前缀下的对象与两代暂存键本身都不接受收敛。
     #[tokio::test]
     async fn rejects_non_final_keys() {
         let storage = MemoryStorage::default();
@@ -611,6 +686,7 @@ mod tests {
             "",
             ".quarantine/manifests/a.json.x.bad",
             "manifests/a.json.123.tmp",
+            "manifests/a.json.tmp-0123abcd4567",
         ] {
             assert!(
                 converge_bad_object(&storage, "device-a", key, &json_validate)

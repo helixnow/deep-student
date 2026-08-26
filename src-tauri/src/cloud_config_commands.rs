@@ -639,6 +639,11 @@ fn secure_store_stable_code(error: &crate::secure_store::SecureStoreError) -> &'
         SecureStoreError::CloudEncryptionPasswordTooShort(_) => {
             crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE
         }
+        // [Wave2-R5] 新设弱口令是用户输入问题，不是密钥库故障：缺这一臂会
+        // 落进 `SECURE_STORE_INTERNAL`，前端据此误报「系统安全存储需要处理」。
+        SecureStoreError::CloudEncryptionPasswordTooWeak(_) => {
+            crate::secure_store::CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK_CODE
+        }
         SecureStoreError::CloudCredentialGenerationConflict(_) => {
             crate::secure_store::CLOUD_CREDENTIALS_GENERATION_CONFLICT_CODE
         }
@@ -847,10 +852,42 @@ pub async fn cloud_config_publish(
         .validate_and_normalize()
         .map_err(CloudConfigSsotError::into_command_error)?;
 
+    // [R6 I3 护栏] 合并后凭据必须含当前 provider 的 secret。否则（草稿空 +
+    // active 也空）staged 合并结果无任何 secret，commit 会删除 active 记录却
+    // 仍把 generation pointer 推到 N+1——发布出「SSOT 已配置 + generation
+    // 指向空凭据记录」的杂交视图。判定镜像 `apply_nonempty_update` 的
+    // trim-非空合并语义：update 非空生效，否则落回 active 现值。
+    let store = cloud_secure_store(&app);
+    let active_credentials = store
+        .get_cloud_credentials()
+        .map_err(|error| secure_store_command_error(error, "get_cloud_credentials"))?
+        .unwrap_or_default();
+    let nonempty = |value: Option<&str>| value.map(str::trim).is_some_and(|v| !v.is_empty());
+    let provider_secret_present = match &config {
+        SafeCloudStorageConfig::Webdav { .. } => {
+            nonempty(credentials.webdav_password.as_deref())
+                || nonempty(active_credentials.webdav_password.as_deref())
+        }
+        SafeCloudStorageConfig::S3 { .. } => {
+            nonempty(credentials.s3_secret_access_key.as_deref())
+                || nonempty(active_credentials.s3_secret_access_key.as_deref())
+        }
+        SafeCloudStorageConfig::Ftp { .. } => {
+            nonempty(credentials.ftp_password.as_deref())
+                || nonempty(active_credentials.ftp_password.as_deref())
+        }
+    };
+    if !provider_secret_present {
+        return Err(CloudConfigSsotError::CredentialsUnavailable(format!(
+            "发布被拒绝：{} 凭据在草稿与已发布记录中均为空，发布后的 generation 将指向空凭据",
+            config.provider_name()
+        ))
+        .into_command_error());
+    }
+
     // (b) 凭据进 staged 槽；active 记录与 generation pointer 不变。返回的
     // staged generation（= active + 1）即 commit/abort 的 expected 句柄，
     // 也是提交成功后的新 active generation。
-    let store = cloud_secure_store(&app);
     let staged_generation = store
         .write_staged_cloud_credentials(
             &credentials,

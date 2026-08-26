@@ -435,8 +435,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     };
   }, [provider, webdavConfig, s3Config, ftpConfig, root, allowInsecure, encryptionPassword]);
 
-  // 当前表单里的凭据快照。空字段不上送：草稿测试时表示「回填已发布凭据
-  // 后试连」，发布时表示「保留已发布值」（合并语义只在 publish 生效）。
+  // 当前表单里的凭据快照。空字段不上送：发布时表示「保留已发布值」
+  // （「空=保留」合并语义只在 publish 生效）；草稿测试后端禁止 hydrate，
+  // 空就是空——缺凭据的草稿会如实报 E_CLOUD_CREDENTIALS_UNAVAILABLE。
   const buildFormCredentials = useCallback((): cloudApi.CloudStorageCredentials => ({
     webdavPassword:
       provider === 'webdav' && webdavConfig.password.trim()
@@ -586,8 +587,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
     } catch (e: unknown) {
       setConnectionStatus('failed');
-      // SECURE_STORE_*（草稿回填已发布凭据时读安全存储失败）优先给可行动
-      // 提示，其余按稳定 code 本地化。
+      // SECURE_STORE_*（后端在测试末尾只读探测 active generation 失败）
+      // 优先给可行动提示，其余按稳定 code 本地化。草稿测试不回填凭据。
       const secureMessage = markSecureStoreIssue(e, 'read');
       showGlobalNotification(
         'error',

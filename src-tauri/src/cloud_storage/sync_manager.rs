@@ -400,7 +400,8 @@ impl CloudSyncManager {
     }
 
     /// [R10-verifier] 本机是否记得该云端目录曾经加密。
-    fn encrypted_root_remembered_locally(&self) -> bool {
+    /// [R6 双门] `pub(crate)`：`cloud_sync_download` 防降级用作 marker 被删时的第二道门。
+    pub(crate) fn encrypted_root_remembered_locally(&self) -> bool {
         self.encryption_memory.as_ref().is_some_and(|memory| {
             memory.was_encrypted(
                 &crate::crypto::backup_crypto::EncryptedRootMemory::fingerprint(

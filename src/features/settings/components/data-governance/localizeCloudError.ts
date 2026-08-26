@@ -15,6 +15,9 @@ import {
 /** 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS` / ZIP `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。 */
 export const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
 
+/** [Wave2-R5] 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS` 对齐（弱口令熵下限）。 */
+export const CLOUD_ENCRYPTION_PASSWORD_MIN_DISTINCT_CHARS = 4;
+
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 function readCloudStorageErrorCode(error: unknown): string | undefined {
@@ -39,6 +42,9 @@ function readCloudEncryptionI18nKey(
   if (raw.includes('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT')) {
     return 'cloudStorage:encryption.tooShort';
   }
+  if (raw.includes('E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK')) {
+    return 'cloudStorage:encryption.tooWeak';
+  }
   if (raw.includes('E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED')) {
     return 'cloudStorage:encryption.storedPasswordRequired';
   }
@@ -50,6 +56,11 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   const encryptionKey = readCloudEncryptionI18nKey(error);
   if (encryptionKey === 'cloudStorage:encryption.tooShort') {
     return t(encryptionKey, { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS });
+  }
+  if (encryptionKey === 'cloudStorage:encryption.tooWeak') {
+    return t(encryptionKey, {
+      minDistinct: CLOUD_ENCRYPTION_PASSWORD_MIN_DISTINCT_CHARS,
+    });
   }
   if (encryptionKey === 'cloudStorage:encryption.storedPasswordRequired') {
     return t(encryptionKey);
@@ -97,6 +108,14 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
       return t('cloudStorage:errors.zipExportTempMissing');
     case 'E_ZIP_EXPORT_COPY_TARGET_FAILED':
       return `${t('cloudStorage:errors.zipExportCopyTargetFailed')}\n(${raw})`;
+    // [R6-i18n] R4 verified_publish.rs 稳定码：发布前/后校验 fail-closed。
+    // 云端对象状态类，附原文（排查需要对象 key、字节数等细节）。
+    case 'E_VERIFIED_PUBLISH_MISMATCH':
+      return `${t('cloudStorage:errors.verifiedPublishMismatch')}\n(${raw})`;
+    case 'E_VERIFIED_PUBLISH_OVERSIZE':
+      return `${t('cloudStorage:errors.verifiedPublishOversize')}\n(${raw})`;
+    case 'E_VERIFIED_PUBLISH_UNCONDITIONAL_WRITE':
+      return `${t('cloudStorage:errors.verifiedPublishUnconditionalWrite')}\n(${raw})`;
   }
   // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
   // 后台任务失败消息以 `[E_...] 说明` 形式携带稳定码，没有 CommandError

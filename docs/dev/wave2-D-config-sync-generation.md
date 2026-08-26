@@ -153,3 +153,90 @@ SSOT 读取 + hydrate 在 `:1567-1589` / `:2741-2769`，permit 在 `:1625` / `:2
 - 未触碰 `coordinator.rs`、前端大文件；本轮零产品代码改动。
 - 只读范围：`backup_common.rs`、`commands_sync.rs`、`cloud_storage/mod.rs`、`secure_store.rs`、
   `cloud_config_commands.rs`、`cloudStorageApi.ts`（引用行号均为本轮核对）。
+
+---
+
+## 7. R6 二检追记：limiter × publish × tombstone × 三把云端租约 × 90s 停滞上限
+
+> 角色：R6「并发窗口」二检。本节为**追加小节**，不改动上文任何结论。
+> 落了一个 14 行最小补丁（§7.2，两文件同形，不改协议语义）；其余为文档结论。
+> 详报：`/tmp/0824-wave2-r6-reports/08-concurrency.md`。
+
+### 7.1 时间常数全景（本轮逐一核对）
+
+| 原语 | 值 | 出处 |
+| --- | --- | --- |
+| `BACKUP_GLOBAL_LIMITER` | 进程内 Semaphore(1) | `backup_common.rs:74` |
+| 记录级同步租约 `sync_lease` TTL | 600s，心跳 = TTL/3 = 200s | `sync_lease.rs:33、:435` |
+| backup-v2 租约 `backup_lease` TTL | 600s，心跳 200s（experimental，零生产调用方） | `backup_lease.rs:46、:452` |
+| E2EE 认领租约 TTL | 60s，**无心跳**（一次性写入） | `e2ee_claim.rs:67` |
+| provider 单块停滞上限 | 90s/块，**总时长不设限**（慢但有进展不超时） | `traits.rs:89`（`MEMORY_GET_STALL_SECS`）、`webdav.rs:979/:1155`、`s3.rs:742` |
+
+锁序（run_sync）：hydrate（`commands_sync.rs:1576-1589`）→ limiter `try_acquire`（`:1625`）→
+format 门（`:1648`）→ sync_target_lease（`:1656`）→ 加密策略（可能触发 60s claim，`:1663`）→
+传输（每块 ≤90s 停滞）→ manifest。无反向取锁点，无死锁面；风险全部是**租约过期窗**。
+
+### 7.2 已修（本轮唯一补丁）：过期回收 × 心跳续租的选主竞争窗
+
+`scan_active_leases`（`sync_lease.rs:236-243`、`backup_lease.rs:249-256` 同形）对过期
+contender 做「内容比对后删除」（`delete_if_unchanged`），但删除失败（= 读取与删除之间
+对象内容已变，典型为**持有者的心跳续租恰好落地**，或本地时钟偏慢误判过期）时原代码
+`let _ =` 丢弃返回值并 `continue`——把一把**刚续租、活着的租约**当作不存在，随后照常
+写入自己的 contender 并选主成功 ⇒ 两台设备同时持有已提交租约，互斥被破。
+
+该窗口不是纯理论：最坏情形下一次心跳续租链 = GET+PUT+回验 GET ≤ 3×90s = 270s，
+心跳间隔 200s，自上一次 `expires_at` 打点起最晚 ~560s 才完成下一次续期，对 600s TTL
+只剩 ~40s 裕量；任何一次额外停滞就会让「已过期但持有者仍在续租」真实出现。
+
+修复（+10/−4，两文件）：`delete_if_unchanged` 返回 `false` 时不再 `continue`，该对象
+按活跃租约 fail-closed 参与选主（后来者拿到既有 `E_SYNC_LEASE_HELD` / `E_BACKUP_LEASE_HELD`）。
+不改对象格式 / key / 错误码 / 回收规则，仅令取锁更保守；持有者已正常释放（对象消失）
+导致的误判是可重试的 spurious failure，符合两模块一贯的 fail-closed 准则。
+既有测试（`sync_r11_lease.rs`、`sync_r12_backup_lease.rs`）用静态内存存储，读取与删除
+之间内容不变，不受影响。本轮未编译未测试（按任务卡），实现轮请补一条「过期对象在
+scan 的两次 GET 之间被续租 ⇒ 取锁失败」的注入式红灯测试。
+
+### 7.3 已记录未修 1：E2EE 认领 TTL 60s < 单步停滞上限 90s（数值倒挂）
+
+`e2ee_claim.rs:66` 的注释「认领只有几个小对象往返，60s 足够」忽略了同一 storage 的
+单块停滞上限是 90s、且慢而有进展的传输**没有总时长上限**：协议第 3→7 步中任何一步都
+可能合法地超过整把租约的寿命。可达序列：A 写租约（TTL 60s）后在第 5/6 步间停滞 ≥60s；
+B 回收 A 的过期租约、完成认领并释放；A 恢复后第 6 步 PUT marker **覆盖 B 已发布的
+marker**，随后 A 在第 7 步 fail-closed 失败——结果是「B 报成功、云端却是 A 的 marker」。
+兜底现状：ZIP 备份路径在发 manifest 前有 `ensure_marker_unchanged_before_publish`
+（`sync_manager.rs:974/:1704`）会拒发并回滚；**记录级路径没有对应复验**——
+`enforce_record_upload_encryption_policy_for_config`（`commands_sync.rs:67`，调用点
+`:1663/:2866/:3929/:3968`）在 claim 成功后即丢弃 marker 期望，后续记录对象与 cursor/
+manifest 上传期间 marker 被换掉无人发现。建议（实现轮，超本轮预算）：
+① `DEFAULT_E2EE_CLAIM_LEASE_TTL` 提到 ≥ 3×90s+裕量（对象内数据字段，回收规则不变，
+兼容旧客户端）；② 记录级路径与 ZIP 路径同样留存 marker 字节并在 manifest 前复验。
+
+### 7.4 已记录未修 2：600s 租约「心跳失败停跳」= 静默失去互斥
+
+`sync_lease.rs:441-452` / `backup_lease.rs:458-469`：心跳任务对**任何**续租失败
+（含一次瞬时网络抖动）一律 `break` 永久停跳，只留一行 error 日志「后续远端写入应尽快
+结束」，但没有任何机制让操作真的结束：守卫不暴露 lease-lost 标志，run_sync 也不在
+manifest 发布前复核租约仍属于自己。停跳后最迟 600s 租约过期，另一台设备合法取锁，
+此后**双写者并发写 manifest / 记录对象**（§7.2 补丁只堵「续租成功却被当过期回收」的
+误判窗，不覆盖「真过期后被合法接管」）。对慢链路上数小时的首次全量上传，这是最现实的
+互斥失效路径。建议（实现轮）：续租失败按错误类别分流——所有权冲突（对象消失 / 被改）
+才停跳，网络错误重试到下个心跳周期；并让守卫暴露 `lease_lost`，manifest 发布前检查。
+backup_lease 同形同患，但 experimental 零接线（sync_r12 源码锁钉死），风险为潜伏级。
+
+### 7.5 现状复核：R2/R4 建议的采纳情况（limiter × publish × tombstone）
+
+- **publish 不拿 limiter**（§3.3 推荐）：已按推荐落地——`cloud_config_publish`
+  （`cloud_config_commands.rs:825-899`）全程不触碰 `BACKUP_GLOBAL_LIMITER`，
+  原子性由 staged generation + commit/abort 承担 ✓。
+- **先拿 permit 再 snapshot**（§3.5 建议 1）：未采纳，run_sync 仍是先 hydrate
+  （`:1576-1589`）后 permit（`:1625`）；G4「每 run 单快照」现状仍成立，属可接受偏差。
+  审计 details（`:1612-1618`）仍未记录 generation id（§3.2 提醒未落）。
+- **tombstone 串行化**：R4 已把两个直接命令纳入 limiter（`:3920/:3959`，permit 先于
+  `create_storage`，覆盖 RMW + 复读闸全程）✓；清单是每设备键
+  （`tombstone.rs:70-72`，`mark_*` 只读写 `self.device_id` 的清单），跨设备同键写不存在，
+  不持 sync_target_lease 是安全的。
+- **`expected_generation` 跨 IPC 校验**（§4.3）：仍未实现。`mark_blob_deleted` /
+  `mark_asset_deleted` 每次 IPC 独立 hydrate 最新 active（`:3914/:3955`），前端逐条循环
+  中途 publish 换 root 时，已写入旧 root 的 tombstone 条目随旧 root 弃用而丢失。
+  删除队列「永不放弃失败条目」只兜住失败重试，不兜「成功写进了错的 root」。
+  维持 §4.3/§4.4 结论：优先把逐条循环下沉为单命令。

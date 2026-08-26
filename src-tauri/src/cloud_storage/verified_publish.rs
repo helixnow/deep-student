@@ -10,6 +10,10 @@
 //! 3. 暂存验证通过后才 PUT 最终键；
 //! 4. 再对最终键做一次同样的有界回读。
 //!
+//! 暂存键命名（[R6-tmp-naming]）：写侧统一为 `<key>.tmp-<op>`（`<op>` 为
+//! 12 位十六进制操作号）；读侧恢复原语 `bad_object::converge_bad_object`
+//! 对本命名与历史 `{key}.<uuid>.tmp` 都认，KeepTmp 残留可被自动收敛。
+//!
 //! 失败恢复策略（[`PublishRecovery`]）：
 //! - [`PublishRecovery::KeepTmp`]：保留 `.tmp-*` 暂存对象供诊断/人工恢复，
 //!   不动坏的最终对象（错误信息里指明两者的键）；
@@ -138,7 +142,10 @@ async fn read_back_and_compare(
             ),
         ));
     }
-    let bytes = storage.get(key).await?.ok_or_else(|| {
+    // [R4-get-budget] 回读走带硬预算的入口：stat 与 get 之间对象被并发换成
+    // 超限对象时中途断流拒收，而不是整包收下再比对。下方实收核对保留为
+    // 测试假存储 / 默认实现的兜底，两道闸互不替代。
+    let bytes = storage.get_bounded(key, max_bytes).await?.ok_or_else(|| {
         publish_error(
             VERIFIED_PUBLISH_MISMATCH_CODE,
             format!("{stage}回读：stat 可见但 get 不到对象：{key}"),
@@ -193,7 +200,7 @@ async fn isolate_bad_object(
             info.size
         ));
     }
-    let bytes = match storage.get(from_key).await {
+    let bytes = match storage.get_bounded(from_key, max_bytes).await {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return Err(format!("坏对象 {from_key} 在隔离期间消失，未做处理")),
         Err(e) => return Err(format!("读取坏对象 {from_key} 失败：{e}，原件保留在原位")),

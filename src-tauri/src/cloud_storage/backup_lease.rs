@@ -248,8 +248,11 @@ async fn scan_active_leases(
             .unwrap_or(fallback_expires_at);
         if expires_at <= now {
             // 缩窄与心跳续租的竞争窗：只有对象内容仍与刚读取的一致才删除。
-            let _ = delete_if_unchanged(storage, &file.key, &bytes).await?;
-            continue;
+            if delete_if_unchanged(storage, &file.key, &bytes).await? {
+                continue;
+            }
+            // 读取与删除之间内容已变：典型为持有者的心跳续租恰好落地（或本地
+            // 时钟偏慢）。无法证明对方已放弃，按活跃租约 fail-closed 参与选主。
         }
         active.push(ActiveLease {
             key: file.key,

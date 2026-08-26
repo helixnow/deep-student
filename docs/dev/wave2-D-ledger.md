@@ -245,3 +245,29 @@
   混口令仓可能被旧口令认领；已在 doc 注释声明）
 - 整文件回退路径的试解产物仍明文落临时盘（仅 v1 / 无能力后端）
 - 未跑任何测试
+
+## 13. 第 6 轮二检翻案落地
+
+10×`claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 当轮补丁
+
+- publish 空凭据护栏（generation 不得指向空）
+- restore 切槽后失败诚实审计（不假装成功，不撤销 cutover）
+- bad_object 认两代 tmp 名；控制对象 get_bounded
+- 下载防降级：本机 EncryptedRootMemory 双门 + `allow_plaintext_history` 休眠 opt-in（默认拒）
+- 弱口令稳定码不再降级为 SECURE_STORE_INTERNAL
+- 租约过期回收 `delete_if_unchanged=false` fail-closed
+- auto-sync start 防重测试源码
+
+### 红线自证
+
+- coordinator 两加法 `:2351/:2389` 未改
+- KDF_MAX / DEFAULT_M_COST / DSBK 未收紧
+- backup-v2 仍零生产接线
+
+### R7 首位
+
+- `restore_assets_with_progress` 函数本体无 trust 过滤（调用方已滤；钉函数本体的测试将红）
+- P9 crypto journal 三点注入矩阵（写源码不跑）
+- E2EE 租约 60s vs 90s 停滞倒挂（文档化未修）
