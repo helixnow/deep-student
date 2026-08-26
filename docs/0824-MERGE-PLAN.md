@@ -1003,3 +1003,91 @@ Composer* 拆分、附件 200/50、G 44px/safe-area/Android back、HPIAS
 | `npx vite build` | ✅ exit 0（仅既有 chunk 警告） |
 | `cargo check --manifest-path src-tauri/Cargo.toml --lib` | ✅ exit 0（28 条既有 warning，Rust 1.98） |
 | `node scripts/check-migrations.mjs` | ✅ exit 0（111 个迁移文件） |
+
+### Step 22 收口：质量评审 10 路修复 + 二检 reviewfix 加法落地
+
+日期：2026-08-26。基座 `2d41ea8b`（Step 21 tip；fetch 后远端未前进，
+无需 reset/fast-forward）。按序 `git cherry-pick -x` 十路质量评审修复
+（fix 枝 + 二检 reviewfix 枝的加法提交，共 27 个源 SHA，零跳过），
+未合并任何隔离枝/reviewfix 枝整枝，未使用 `-X theirs/ours`：
+
+独立面（零冲突）：
+
+- qbank（#332，`fix-qbank-session-a875`，无 reviewfix）：
+  - `aa88dcbc` → `3fcebbb1`：练习进度按视图隔离；
+- provider（#333，`fix-provider-mythos-a875`，无 reviewfix）：
+  - `35706d09` → `55846040`：provider 能力门控与流完成修复；
+- hpias（#331，`fix-hpias-honesty-a875`，同枝双提交，无独立 reviewfix）：
+  - `0a7661e9` → `900fcc19`：默认 HPIAS 研究诚实化；
+  - `5a41f06b` → `05ba27f4`：保留研究引文注释语义；
+- mindmap/pdf/llm（#337，`fix-mindmap-pdf-a875`，无 reviewfix）：
+  - `2387ca1a` → `5ffd4900`：.xmind 图片内联流式化 + 单次导入预算；
+  - `70e7f193` → `1a0a7442`：recite 统计只记实际呈现/作答的空；
+  - `7e6c7a95` → `a25d56e4`：PDF 选区工具栏 documentTitle 用 fileName；
+  - `2c93d0d1` → `daf5b78e`：清理 `<|im_start|>assistant` 续写头。
+
+Anki 面：
+
+- QA（#328 + reviewfix #336）：
+  - `3eb5c03e` → `1a5b6f6a`、`6ee51d64` → `d9a314cb`（#328）；
+  - `b36b8356` → `7077075a`（#336：critic QA flag 持久化按
+    enable_qa_pass 门控）；零冲突；
+- CardAgent（#338 + reviewfix #341）：
+  - `f7c38ca2` → `307449e2`（#338：FSRS 显式 opt-in、协议中立
+    prompt、lossless-only JSON 修复、maxCards 全局配额）。
+    **冲突 1**：`src-tauri/src/streaming_anki_service.rs` 测试区两侧
+    同位新增——HEAD 侧是本步刚落地的 #336 QA 持久化契约测试，
+    incoming 侧是 #338 的截断残卡拒收 + 无损修复两个测试。加法式
+    解决：两侧测试全部保留（先 QA 契约测试收闭括号，再叠加 #338
+    两测试），`rustfmt --check` 该文件通过；
+  - `7a84b781` → `4756e93c`（#341：rustfmt 收口）；
+- APKG/金标（#329 + reviewfix #335）：
+  - `23460c69` → `d8a606c2`（#329：APKG 导入与 gold 溯源加固）；
+  - `b0d52d32` → `08beff7e`（#335：更正 occlusion 导出文案）；零冲突。
+
+备份 / 恢复 / 升级：
+
+- backup（#334 + reviewfix #339）：
+  - `5b90ee55` → `1523c285`：sealed 导入续传必须输入密码；
+  - `3df483f2` → `3a1b79bb`：本地 ZIP 密码保护文案诚实化；
+  - `be36cc95` → `87563bd4`（#339：清除云错误文案/用户指南残留的
+    加密 ZIP 声明）；零冲突；
+- restore（#330 + reviewfix #340）：
+  - `1de660ab` → `2f4e79e9`：密钥随槽位切换一并提交；
+  - `35b71885` → `2bc68277`（#340：crypto key 发布日志化，crash-safe
+    cutover，新增 `crypto_publication.rs`）；零冲突；
+- upgrade（采用 reviewfix #343 序列，比 #342 更完整；另取 #342 独有
+  的测试对齐提交）：
+  - `f577be11` → `5c3cb512`：迁移前 NULL-source anki 卡去重，避免
+    UNIQUE abort（`apply_vfs_init_missing_tables` 等 coordinator 既有
+    加法未触及，已核实仍在）；
+  - `72999575` → `2c56db91`：存量短 E2EE 口令在恢复/导入/重输路径
+    放行。**冲突 2**：`BackupTab.tsx` `handleImportConfirm`——HEAD
+    侧含本步 `5b90ee55` 的 sealed 续传空密码守卫 + 导入最小长度校验，
+    incoming 删除导入路径长度门禁。按第 7 节原则组合：保留 sealed
+    续传非空守卫（0824 已有能力），删除导入路径
+    `validateOptionalPassword` 长度门禁（本路修复；解密路径不设长度
+    下限，口令错误由解封层 fail-closed）；`validateOptionalPassword`
+    仍服务导出/新设口令路径，无 unused；
+  - `5d800c8c` → `de56f37f`：云恢复补齐存量短口令路径；
+  - `a26ab05f` → `31c0ea85`、`2ea25732` → `800f7121`、
+    `2ee4a605` → `bc2a655b`：测试隔离/格式化收口；
+  - `7789f68b` → `23eb0af6`（#342 独有测试对齐，**未 skip**）：核查
+    发现其非冗余——`72999575`/`5d800c8c` 落地后，
+    `BackupTab.zip-password.test.tsx` 的旧断言（导入短口令必须拒收）
+    与 `r09-ux-cloud-storage.test.tsx` 的旧断言（performRestore 必须
+    含 `isExplicitCloudEncryptionPasswordTooShort`）已与组件新行为
+    矛盾，该提交是必需的净新增断言对齐。**冲突 3**（平凡）：
+    `CloudStorageSection.cloudUi.test.tsx` 一行注释——其 mock 重置块
+    已随 `a26ab05f` 落地，仅注释行冲突，采纳注释。
+
+三处冲突均加法式解决，全树无残留冲突标记；零 SHA 跳过（27/27）。
+docs-only/审计文档类源枝提交本就不在本次清单内。
+
+本步**未跑**全量编译/Tauri 打包/cargo test 全量/vitest 全量（按本轮
+硬规则），仅做定向核查：手工解冲突的
+`streaming_anki_service.rs` 过 `rustfmt --check`、
+`apply_vfs_init_missing_tables` 等 VFS coordinator 既有加法确认未回退、
+`validateOptionalPassword` 导出路径引用完整。四门禁（typecheck /
+vite build / cargo check / check-migrations）留待下一验证步在本 tip
+上复跑；**Goal 不因本步完成**。未合 main，未 push 任何隔离枝。
