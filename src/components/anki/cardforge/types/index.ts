@@ -35,7 +35,11 @@ export interface GenerateCardsInput {
   content: string;
   /** 可选，指定使用的模板 ID 列表 */
   templates?: string[];
-  /** 可选，最大卡片数量 */
+  /**
+   * 可选，本次生成的卡片**总数**上限（跨全部分段的全局额度，
+   * 写入后端 max_cards_total，由后端按分段分配）。
+   * 必须是 ≥1 的有限数；0/负数/NaN 非法，非法或缺省时回退默认 50。
+   */
   maxCards?: number;
   /** 高级选项 */
   options?: {
@@ -43,6 +47,14 @@ export interface GenerateCardsInput {
     noteType?: string;
     maxConcurrency?: number;
     customRequirements?: string;
+    /**
+     * 是否将本地 FSRS 复习画像注入制卡 prompt（0824 隐私收口）。
+     * 注入文本会随生成请求发送到所配置的模型端点（远端模型下即离开本机），
+     * 因此默认 **false**；只有调用方显式传 true 才向后端发出授权
+     * （后端同样只认显式 Some(true)，注入内容默认仅匿名聚合统计，
+     * 不含历史卡片原文摘要）。
+     */
+    fsrsFeedback?: boolean;
   };
 }
 

@@ -268,10 +268,79 @@ describe('CardAgent', () => {
       expect(startArgs.documentContent).toBe('划词选中的学习材料');
       expect(startArgs.originalDocumentName).toBe('Selection');
       expect(startArgs.options?.custom_anki_prompt).toBe('system');
+      // maxCards 是"总数上限"：写入 max_cards_total 由后端按分段分配额度，
+      // max_cards_per_mistake 只作单段兜底（0824 评审 #4）
       expect(startArgs.options?.max_cards_per_mistake).toBe(10);
+      expect(startArgs.options?.max_cards_total).toBe(10);
+      // FSRS 画像注入默认不授权（0824 评审 #1）
+      expect(startArgs.options?.fsrs_feedback).toBe(false);
       expect(startArgs.options?.custom_requirements).toBe('优先关键概念');
       expect(startArgs.options?.template_ids).toEqual(['basic']);
       expect(startArgs.options).not.toHaveProperty('system_prompt');
+    });
+
+    const startOptionsOf = async (
+      agent: InstanceType<typeof CardAgent>,
+      input: Parameters<InstanceType<typeof CardAgent>['startGeneration']>[0]
+    ): Promise<Record<string, unknown>> => {
+      vi.mocked(invoke).mockClear();
+      vi.mocked(invoke).mockResolvedValue('doc-x');
+      const result = await agent.startGeneration(input);
+      expect(result.ok).toBe(true);
+      const call = vi
+        .mocked(invoke)
+        .mock.calls.find(([command]) => command === 'start_enhanced_document_processing');
+      return (call?.[1] as { options?: Record<string, unknown> })?.options ?? {};
+    };
+
+    it('validates maxCards explicitly: 0/negative/NaN fall back to the default total of 50', async () => {
+      // 0824 评审 #4：`input.maxCards || 50` 的 falsy 巧合改为显式校验，
+      // 非法值（0/负数/NaN）与缺省一样回退默认，且默认同样写入总额度
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      for (const invalid of [0, -5, Number.NaN]) {
+        const options = await startOptionsOf(agent, { content: '材料', maxCards: invalid });
+        expect(options.max_cards_total).toBe(50);
+        expect(options.max_cards_per_mistake).toBe(50);
+      }
+
+      const omitted = await startOptionsOf(agent, { content: '材料' });
+      expect(omitted.max_cards_total).toBe(50);
+      expect(omitted.max_cards_per_mistake).toBe(50);
+    });
+
+    it('caps per-segment limit at backend maximum while keeping the full total', async () => {
+      // 后端 EnhancedAnkiService 拒绝单段 >100；总额度仍完整传递，
+      // 由 DocumentProcessingService 按分段分配
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      const options = await startOptionsOf(agent, { content: '材料', maxCards: 250 });
+      expect(options.max_cards_total).toBe(250);
+      expect(options.max_cards_per_mistake).toBe(100);
+    });
+
+    it('only forwards FSRS feedback authorization on explicit opt-in', async () => {
+      // 0824 评审 #1：公开输入新增 fsrsFeedback 开关；不显式传 true
+      // 一律以 false 发给后端（后端同样只认显式 true）
+      const agent = new CardAgent();
+      await agent.waitForReady();
+
+      const optedIn = await startOptionsOf(agent, {
+        content: '材料',
+        options: { fsrsFeedback: true },
+      });
+      expect(optedIn.fsrs_feedback).toBe(true);
+
+      const optedOut = await startOptionsOf(agent, {
+        content: '材料',
+        options: { fsrsFeedback: false },
+      });
+      expect(optedOut.fsrs_feedback).toBe(false);
+
+      const unspecified = await startOptionsOf(agent, { content: '材料' });
+      expect(unspecified.fsrs_feedback).toBe(false);
     });
 
     it('rejects empty content without touching the backend', async () => {

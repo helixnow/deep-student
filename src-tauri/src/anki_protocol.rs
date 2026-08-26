@@ -10,8 +10,10 @@
 //! 4. 供应商能力探测 [`detect_schema_capability`] 与默认协议决策
 //!    [`resolve_output_protocol`]：能力允许时优先 json_schema，未知供应商保守回退
 //!    delimiter（不静默假设所有 OpenAI 兼容端点都支持 response_format）；
-//! 5. 轻量 JSON 修复 [`repair_json`]（去尾逗号 / 截断尾部垃圾 / 补闭合括号），
-//!    在 serde 解析失败后由调用方尝试一次；
+//! 5. 轻量 JSON 修复：[`repair_json`] 只做无损修复（去尾逗号 / 截外围垃圾 /
+//!    补已闭合字符串之后的缺失括号），[`repair_json_detailed`] 额外支持
+//!    字符串中途截断的有损修复并显式返回 `truncated_string` 标记，
+//!    在 serde 解析失败后由调用方尝试一次——有损产物绝不能当正常卡入库；
 //! 6. 结构化 wrapper（`{"cards": [...]}`）的流式前缀剥离
 //!    [`strip_wrapper_prefix`] 与整体展开 [`unwrap_cards_array`]，使既有
 //!    brace-depth 切卡状态机在结构化协议下仍能逐卡流式产出。
@@ -661,17 +663,31 @@ pub fn unwrap_cards_array(value: &Value) -> Option<&Vec<Value>> {
 
 // ==================== 轻量 JSON 修复 ====================
 
-/// 轻量 JSON 修复：serde 解析失败后由调用方尝试一次。
+/// [`repair_json_detailed`] 的修复结果。
+///
+/// `truncated_string == true` 表示输入在 JSON 字符串中途被截断，修复补写了
+/// 收尾引号——此时字段内容**已经丢失**，修复产物只是语法合法，绝不能当作
+/// 完整卡片入库（0824 评审 #3：截断残卡必须落错误卡或携带可见 repair 标记）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairedJson {
+    /// 修复后的 JSON 文本（保证可被 serde 解析）。
+    pub text: String,
+    /// 输入是否在字符串中途截断（有损修复）。
+    pub truncated_string: bool,
+}
+
+/// 轻量 JSON 修复（含有损形态检测）：serde 解析失败后由调用方尝试一次。
 ///
 /// 修复策略（保守，只处理流式截断/模型笔误的高频形态）：
 /// 1. 截去已配平的顶层对象之后的尾部垃圾（如结构化收尾残留 `]}`）；
 /// 2. 删除 `}` / `]` 前的尾逗号；
-/// 3. 输入在字符串中途截断时补上收尾引号；
+/// 3. 输入在字符串中途截断时补上收尾引号，并置 `truncated_string = true`
+///    （有损：截断处之后的字段内容已丢失，调用方必须显式处理）；
 /// 4. 依据未闭合的括号栈按序补齐 `}` / `]`。
 ///
 /// 仅当修复结果能被 serde 成功解析时返回 Some；否则返回 None（调用方保留
 /// 原始错误语义，不引入静默数据损坏）。
-pub fn repair_json(raw: &str) -> Option<String> {
+pub fn repair_json_detailed(raw: &str) -> Option<RepairedJson> {
     let trimmed = raw.trim();
     // 定位首个 '{'，丢弃对象前的自然语言前缀
     let start = trimmed.find('{')?;
@@ -721,7 +737,8 @@ pub fn repair_json(raw: &str) -> Option<String> {
         }
     }
 
-    // 字符串中途截断：补收尾引号
+    // 字符串中途截断：补收尾引号（有损，必须向调用方暴露）
+    let truncated_string = in_string;
     if in_string {
         if escape {
             // 悬空反斜杠会让补的引号变成转义引号，先移除
@@ -742,10 +759,24 @@ pub fn repair_json(raw: &str) -> Option<String> {
     }
 
     if serde_json::from_str::<Value>(&out).is_ok() {
-        Some(out)
+        Some(RepairedJson {
+            text: out,
+            truncated_string,
+        })
     } else {
         None
     }
+}
+
+/// 无损 JSON 修复：只处理可证明不损失字段内容的形态
+/// （尾逗号、对象前后的外围垃圾、已闭合字符串之后的缺失括号）。
+///
+/// 字符串中途截断视为**不可无损修复**，返回 None——调用方应将该内容降级为
+/// 错误卡而不是静默补成正常卡（需要区分有损形态时用 [`repair_json_detailed`]）。
+pub fn repair_json(raw: &str) -> Option<String> {
+    repair_json_detailed(raw)
+        .filter(|repair| !repair.truncated_string)
+        .map(|repair| repair.text)
 }
 
 // ==================== 单元测试 ====================
@@ -1098,14 +1129,32 @@ mod tests {
 
     #[test]
     fn repair_closes_missing_brackets() {
+        // 已闭合字符串之后的缺失括号：无损修复，允许自动修复
         let repaired = repair_json("{\"front\": \"Q\", \"tags\": [\"a\"").expect("repairable");
         let value: Value = serde_json::from_str(&repaired).unwrap();
         assert_eq!(value["tags"], json!(["a"]));
+    }
 
-        // 字符串中途截断：补引号再补括号
-        let repaired = repair_json("{\"front\": \"未闭合").expect("repairable");
-        let value: Value = serde_json::from_str(&repaired).unwrap();
+    #[test]
+    fn repair_refuses_silent_fix_for_mid_string_truncation() {
+        // 字符串中途截断：内容已丢失，无损修复接口必须拒绝（0824 评审 #3）
+        assert!(repair_json("{\"front\": \"未闭合").is_none());
+        assert!(repair_json("{\"front\": \"Q\", \"back\": \"答案被截").is_none());
+
+        // detailed 接口仍可修出语法合法的 JSON，但必须携带 truncated_string 标记
+        let detailed = repair_json_detailed("{\"front\": \"未闭合").expect("detailed repairable");
+        assert!(detailed.truncated_string);
+        let value: Value = serde_json::from_str(&detailed.text).unwrap();
         assert_eq!(value["front"], json!("未闭合"));
+
+        // 悬空转义反斜杠同属字符串中途截断
+        let dangling = repair_json_detailed("{\"front\": \"abc\\").expect("dangling escape");
+        assert!(dangling.truncated_string);
+
+        // 无损形态经 detailed 接口不得误标截断
+        let lossless =
+            repair_json_detailed("{\"front\": \"Q\", \"back\": \"A\",}").expect("lossless");
+        assert!(!lossless.truncated_string);
     }
 
     #[test]

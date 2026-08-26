@@ -134,14 +134,26 @@ describe('ChatAnki Round 5 skill params contract', () => {
     }
   });
 
-  it('types the three default-on boolean switches on run and start', () => {
+  it('types the default-on boolean switches on run and start', () => {
     for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
       const props = schemaOf(name).properties;
-      for (const key of ['enableQaPass', 'enableFsrsFeedback', 'enablePreferenceMemory']) {
+      for (const key of ['enableQaPass', 'enablePreferenceMemory']) {
         expect(props[key]?.type, `${name}.${key}`).toBe('boolean');
         // 默认开启的语义必须写进描述，防止 Agent 无理由关闭
         expect(props[key]?.description, `${name}.${key}`).toContain('默认 true');
       }
+    }
+  });
+
+  it('exposes enableFsrsFeedback as a default-off switch requiring explicit user authorization', () => {
+    // 0824 隐私收口：复习画像会随生成请求发送到所配置的模型端点，
+    // 缺省必须关闭；描述必须让 Agent 知道只有用户明确授权才可传 true。
+    for (const name of ['builtin-chatanki_run', 'builtin-chatanki_start']) {
+      const prop = schemaOf(name).properties.enableFsrsFeedback;
+      expect(prop?.type, `${name}.enableFsrsFeedback`).toBe('boolean');
+      expect(prop?.description, `${name}.enableFsrsFeedback`).toContain('默认 false');
+      expect(prop?.description, `${name}.enableFsrsFeedback`).toContain('授权');
+      expect(prop?.description, `${name}.enableFsrsFeedback`).not.toContain('默认 true');
     }
   });
 

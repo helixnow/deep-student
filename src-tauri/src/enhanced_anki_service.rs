@@ -41,6 +41,15 @@ pub struct EnhancedAnkiService {
     streaming_service: StreamingAnkiService,
 }
 
+/// FSRS 复习画像注入是否获得显式授权。
+///
+/// 隐私默认安全（0824 评审 #1）：画像会随生成请求发送到所配置的模型端点
+/// （远端模型下离开本机），因此只有调用方显式传 `Some(true)` 才视为授权；
+/// `None`（未表态）与 `Some(false)` 一律不注入。
+fn fsrs_feedback_authorized(flag: Option<bool>) -> bool {
+    flag == Some(true)
+}
+
 impl EnhancedAnkiService {
     pub fn new(db: Arc<Database>, llm_manager: Arc<LLMManager>) -> Self {
         let doc_processor = DocumentProcessingService::new(db.clone());
@@ -151,10 +160,14 @@ impl EnhancedAnkiService {
             sidekick_model_routing: None,
         });
 
-        // ===== FSRS 复习数据回流（Round 3 #5）=====
-        // 默认开启（fsrs_feedback == None 视为开启），显式 Some(false) 可关。
-        // 全部统计只读本地 SQLite；任何查询失败降级为不注入，绝不阻断制卡。
-        if options.fsrs_feedback.unwrap_or(true) {
+        // ===== FSRS 复习数据回流（Round 3 #5；0824 隐私收口）=====
+        // 画像文本会拼进 custom_requirements 并随生成请求发送到所配置的模型端点，
+        // 远端模型下即离开本机。因此必须显式授权：仅 fsrs_feedback == Some(true)
+        // 才注入，None / Some(false) 一律跳过（旧行为把 None 视为开启，构成
+        // 默认外送历史复习数据的隐私回归）。默认注入内容只含匿名聚合统计，
+        // 不含历史卡片正文摘要（见 FsrsFeedbackConfig::include_card_excerpts）。
+        // 统计查询只读本地 SQLite；任何查询失败降级为不注入，绝不阻断制卡。
+        if fsrs_feedback_authorized(options.fsrs_feedback) {
             // 调用方已显式提供画像时不重复构建；否则从本地 FSRS 库聚合。
             let injected = options
                 .user_review_profile
@@ -1075,6 +1088,15 @@ mod tests {
             }
             Ok(())
         }
+    }
+
+    #[test]
+    fn fsrs_feedback_requires_explicit_opt_in() {
+        // 0824 评审 #1：None（调用方未表态）不得视为授权外送复习画像；
+        // 只有显式 Some(true) 才开启注入。
+        assert!(!fsrs_feedback_authorized(None));
+        assert!(!fsrs_feedback_authorized(Some(false)));
+        assert!(fsrs_feedback_authorized(Some(true)));
     }
 
     #[tokio::test]

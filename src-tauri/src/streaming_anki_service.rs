@@ -101,6 +101,16 @@ fn error_content_is_repairable(content: &str) -> bool {
         .any(|c| c.is_alphanumeric())
 }
 
+/// 流收尾残留展开出的单卡 payload（见 `expand_wrapper_payloads`）。
+///
+/// `truncated == true` 表示该卡只能经有损修复（字符串中途截断补引号）才拼回
+/// 语法合法的 JSON——内容已经丢失，必须落错误卡，不得按正常卡解析入库。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResidualCardPayload {
+    json: String,
+    truncated: bool,
+}
+
 /// 单个任务流式生成的统计结果（仅新增上报口径，不影响既有事件契约）。
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StreamStats {
@@ -1456,7 +1466,31 @@ impl StreamingAnkiService {
                 // （例如整段响应在 flush 阶段才到达）：先尝试展开为逐卡 payload。
                 // 非 wrapper 内容原样作为单个 payload，行为与旧实现一致。
                 let payloads = self.expand_wrapper_payloads(&residual);
-                for payload in payloads {
+                for ResidualCardPayload {
+                    json: payload,
+                    truncated,
+                } in payloads
+                {
+                    // 有损修复标记的卡：内容在字符串中途被截断，绝不静默入库为正常卡，
+                    // 直接落错误卡保留残片供用户检查/重试（0824 评审 #3）。
+                    if truncated {
+                        stats.failed_cards += 1;
+                        warn!(
+                            "[ANKI_CARD_DEBUG] 流收尾 wrapper 的最后一张卡在字符串中途截断，降级为错误卡（{} 字符）",
+                            payload.chars().count()
+                        );
+                        if let Ok(error_card) = self
+                            .create_error_card(
+                                &format!("卡片在流结束时于字符串中途被截断，内容不完整: {}", payload),
+                                task_id,
+                            )
+                            .await
+                        {
+                            self.emit_error_card(error_card, document_id, window).await;
+                        }
+                        continue;
+                    }
+
                     let within_limit = options.max_cards_per_mistake <= 0
                         || (stats.card_count as i32) < options.max_cards_per_mistake;
                     let looks_like_card = payload.contains('{');
@@ -1711,25 +1745,53 @@ impl StreamingAnkiService {
 
     /// 若内容是结构化 wrapper（`{"cards": [...]}`），展开为逐卡 payload；
     /// 否则原样返回单元素列表。解析失败时先尝试一次轻量 JSON 修复。
-    fn expand_wrapper_payloads(&self, raw: &str) -> Vec<String> {
+    ///
+    /// wrapper 只能经**有损修复**（字符串中途截断补引号）才解析成功时，
+    /// 截断只可能发生在输入末尾，因此除最后一张卡外其余卡均完整；
+    /// 最后一张卡标记 `truncated = true`，调用方必须落错误卡，
+    /// 不得静默升级为正常卡（0824 评审 #3）。
+    fn expand_wrapper_payloads(&self, raw: &str) -> Vec<ResidualCardPayload> {
+        let intact = |json: String| ResidualCardPayload {
+            json,
+            truncated: false,
+        };
         if !raw.contains('{') {
-            return vec![raw.to_string()];
+            return vec![intact(raw.to_string())];
         }
         let cleaned = self.clean_json_string(raw);
-        let parsed = serde_json::from_str::<Value>(&cleaned).ok().or_else(|| {
-            anki_protocol::repair_json(&cleaned)
-                .and_then(|repaired| serde_json::from_str::<Value>(&repaired).ok())
-        });
+        let (parsed, lossy) = match serde_json::from_str::<Value>(&cleaned) {
+            Ok(value) => (Some(value), false),
+            Err(_) => match anki_protocol::repair_json_detailed(&cleaned) {
+                Some(repair) => (
+                    serde_json::from_str::<Value>(&repair.text).ok(),
+                    repair.truncated_string,
+                ),
+                None => (None, false),
+            },
+        };
         if let Some(value) = parsed {
             if let Some(cards) = anki_protocol::unwrap_cards_array(&value) {
                 info!(
-                    "[ANKI_PROTOCOL] 收尾残留为结构化 wrapper，展开为 {} 个卡片 payload",
-                    cards.len()
+                    "[ANKI_PROTOCOL] 收尾残留为结构化 wrapper，展开为 {} 个卡片 payload{}",
+                    cards.len(),
+                    if lossy {
+                        "（最后一张受字符串截断影响，将落错误卡）"
+                    } else {
+                        ""
+                    }
                 );
-                return cards.iter().map(|card| card.to_string()).collect();
+                let last_index = cards.len().saturating_sub(1);
+                return cards
+                    .iter()
+                    .enumerate()
+                    .map(|(index, card)| ResidualCardPayload {
+                        json: card.to_string(),
+                        truncated: lossy && index == last_index,
+                    })
+                    .collect();
             }
         }
-        vec![raw.to_string()]
+        vec![intact(raw.to_string())]
     }
 
     /// 解析并保存卡片 - 支持动态字段提取规则
@@ -1759,20 +1821,37 @@ impl StreamingAnkiService {
         // 清理JSON字符串
         let cleaned_json = self.clean_json_string(&stripped);
 
-        // 解析JSON：serde 失败后尝试一次轻量修复（去尾逗号/补括号/截尾垃圾），
-        // 仍失败才降级为错误卡，保留原始错误语义
+        // 解析JSON：serde 失败后只做**无损**轻量修复（去尾逗号/截外围垃圾/
+        // 补已闭合字符串后的缺失括号）。字符串中途截断属有损形态：修复产物
+        // 内容已丢失，必须降级为错误卡，绝不静默升级为正常卡（0824 评审 #3）。
         let json_value: Value = match serde_json::from_str(&cleaned_json) {
             Ok(value) => value,
-            Err(e) => match anki_protocol::repair_json(&cleaned_json)
-                .and_then(|repaired| serde_json::from_str::<Value>(&repaired).ok())
-            {
-                Some(repaired_value) => {
-                    warn!(
-                        "[ANKI_JSON_REPAIR] serde 解析失败（{}），轻量修复后成功解析",
-                        e
-                    );
-                    repaired_value
+            Err(e) => match anki_protocol::repair_json_detailed(&cleaned_json) {
+                Some(repair) if repair.truncated_string => {
+                    error!("[ANKI_PARSE_ERROR] JSON在字符串中途截断，拒绝有损修复入库");
+                    error!("[ANKI_PARSE_ERROR] 错误信息: {}", e);
+                    error!("[ANKI_PARSE_ERROR] 原始内容: {}", card_json);
+                    return Err(AppError::validation(format!(
+                        "JSON在字符串中途截断（{}），残缺内容: {}",
+                        e, cleaned_json
+                    )));
                 }
+                Some(repair) => match serde_json::from_str::<Value>(&repair.text) {
+                    Ok(repaired_value) => {
+                        warn!(
+                            "[ANKI_JSON_REPAIR] serde 解析失败（{}），无损修复后成功解析",
+                            e
+                        );
+                        repaired_value
+                    }
+                    Err(_) => {
+                        error!("[ANKI_PARSE_ERROR] JSON解析失败（修复产物不可解析）");
+                        error!("[ANKI_PARSE_ERROR] 错误信息: {}", e);
+                        error!("[ANKI_PARSE_ERROR] 原始内容: {}", card_json);
+                        error!("[ANKI_PARSE_ERROR] 清理后内容: {}", cleaned_json);
+                        return Err(AppError::validation(format!("JSON解析失败: {}", e)));
+                    }
+                },
                 None => {
                     error!("[ANKI_PARSE_ERROR] JSON解析失败");
                     error!("[ANKI_PARSE_ERROR] 错误信息: {}", e);
@@ -4341,6 +4420,96 @@ mod tests {
     }
 
     #[test]
+    fn cardagent_real_options_full_request_has_single_protocol_source() {
+        // 跨层契约（0824 评审 #2）：用真实 CardAgent options 组装完整请求消息。
+        // fixture 与前端 buildCardGenerationSystemPrompt() 输出逐字一致
+        // （TS 侧钉住：tests/vitest/anki/cardforge/prompts.test.ts），
+        // options 形状与 CardAgent.buildBackendGenerationOptions 的装配一致。
+        // 断言输出协议只由后端单点生成：
+        // - CardAgent 基础 prompt 协议中立（不含 END-only 规则）；
+        // - 后端选 json_schema 时，完整请求（system+user）无任何分隔符指令；
+        // - 后端选 delimiter 时，分隔符指令只出现在后端生成的 user 消息中。
+        const CARDAGENT_SYSTEM_PROMPT: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/cardagent_system_prompt.txt"
+        ));
+        assert!(
+            !CARDAGENT_SYSTEM_PROMPT.contains("ANKI_CARD_JSON_END"),
+            "CardAgent 基础 prompt 必须协议中立，不得携带 END 标记规则"
+        );
+
+        let (svc, _dir) = make_test_service();
+        let options: AnkiGenerationOptions = serde_json::from_value(json!({
+            "deck_name": "Default",
+            "note_type": "Basic",
+            "enable_images": true,
+            "max_cards_per_mistake": 10,
+            "max_cards_total": 10,
+            "template_id": "basic",
+            "template_ids": ["basic"],
+            "template_descriptions": [{
+                "id": "basic",
+                "name": "Basic",
+                "description": "Basic template",
+                "fields": ["front", "back", "tags"]
+            }],
+            "template_fields": ["front", "back", "tags"],
+            "template_fields_by_id": {"basic": ["front", "back", "tags"]},
+            "segment_overlap_size": 200,
+            "enable_llm_boundary_detection": true,
+            "custom_anki_prompt": CARDAGENT_SYSTEM_PROMPT,
+            "fsrs_feedback": false
+        }))
+        .expect("CardAgent 形状的 options 必须可反序列化");
+
+        // 后端能力探测自动升级 json_schema 的路径
+        let structured = svc
+            .build_prompt(
+                "学习材料",
+                &options,
+                crate::anki_protocol::OutputProtocol::JsonSchema,
+            )
+            .expect("structured prompt");
+        let system = structured.system.as_deref().expect("system message");
+        assert!(
+            system.contains("专业的 Anki 记忆卡片制作专家"),
+            "CardAgent prompt 必须进入 system 消息"
+        );
+        for (label, message) in [("system", system), ("user", structured.user.as_str())] {
+            assert!(
+                !message.contains(crate::anki_protocol::CARD_DELIMITER),
+                "json_schema 协议下 {label} 消息不得出现分隔符指令: {message}"
+            );
+        }
+        assert!(
+            structured
+                .user
+                .contains(&format!("\"{}\"", crate::anki_protocol::CARDS_WRAPPER_KEY)),
+            "json_schema 协议的 wrapper 指令必须由后端生成"
+        );
+
+        // 保守回退 delimiter 的路径：协议指令只能来自后端 user 消息
+        let delimiter = svc
+            .build_prompt(
+                "学习材料",
+                &options,
+                crate::anki_protocol::OutputProtocol::Delimiter,
+            )
+            .expect("delimiter prompt");
+        let system = delimiter.system.as_deref().expect("system message");
+        assert!(
+            !system.contains(crate::anki_protocol::CARD_DELIMITER),
+            "system（含 CardAgent prompt）不得包含协议指令，协议由后端单点生成"
+        );
+        assert!(
+            delimiter
+                .user
+                .contains(crate::anki_protocol::CARD_DELIMITER),
+            "delimiter 协议指令必须出现在后端生成的 user 消息中"
+        );
+    }
+
+    #[test]
     fn structured_wrapper_streams_cards_through_existing_cutter() {
         // 结构化协议全链路（流入侧）：wrapper 前缀剥离后，
         // 既有 brace-depth 切卡器能逐卡切出数组内的卡片对象
@@ -4373,26 +4542,51 @@ mod tests {
     fn expand_wrapper_payloads_expands_wrapper_and_repairs_truncation() {
         let (svc, _dir) = make_test_service();
 
-        // 完整 wrapper → 逐卡展开
+        // 完整 wrapper → 逐卡展开，全部完整
         let payloads = svc.expand_wrapper_payloads(
             r#"{"cards": [{"front": "Q1", "back": "A1"}, {"front": "Q2", "back": "A2"}]}"#,
         );
         assert_eq!(payloads.len(), 2);
-        assert!(payloads[0].contains("Q1"));
-        assert!(payloads[1].contains("Q2"));
+        assert!(payloads[0].json.contains("Q1"));
+        assert!(payloads[1].json.contains("Q2"));
+        assert!(payloads.iter().all(|p| !p.truncated));
 
-        // 截断 wrapper（缺 ]}）→ 轻量修复后仍能展开
+        // 截断 wrapper（字符串已闭合，仅缺 ]}）→ 无损修复后仍能展开，不标截断
         let payloads = svc.expand_wrapper_payloads(r#"{"cards": [{"front": "Q1", "back": "A1"}"#);
         assert_eq!(payloads.len(), 1);
-        assert!(payloads[0].contains("Q1"));
+        assert!(payloads[0].json.contains("Q1"));
+        assert!(!payloads[0].truncated);
 
         // 非 wrapper 内容原样返回单元素
         let payloads = svc.expand_wrapper_payloads(r#"{"front": "Q", "back": "A"}"#);
-        assert_eq!(payloads, vec![r#"{"front": "Q", "back": "A"}"#.to_string()]);
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].json, r#"{"front": "Q", "back": "A"}"#);
+        assert!(!payloads[0].truncated);
 
         // 纯文本原样返回
         let payloads = svc.expand_wrapper_payloads("以上就是全部卡片");
-        assert_eq!(payloads, vec!["以上就是全部卡片".to_string()]);
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(payloads[0].json, "以上就是全部卡片");
+        assert!(!payloads[0].truncated);
+    }
+
+    #[test]
+    fn expand_wrapper_payloads_marks_mid_string_truncated_last_card() {
+        // 0824 评审 #3：wrapper 在最后一张卡的字符串正文中途被截断时，
+        // 之前的完整卡照常展开，最后一张必须携带 truncated 标记
+        // （调用方据此落错误卡，不得静默入库为正常卡）。
+        let (svc, _dir) = make_test_service();
+        let payloads = svc.expand_wrapper_payloads(
+            r#"{"cards": [{"front": "Q1", "back": "A1"}, {"front": "Q2", "back": "答案说到一半就断"#,
+        );
+        assert_eq!(payloads.len(), 2);
+        assert!(payloads[0].json.contains("Q1"));
+        assert!(!payloads[0].truncated, "完整卡不得误标截断");
+        assert!(payloads[1].json.contains("Q2"));
+        assert!(
+            payloads[1].truncated,
+            "字符串中途截断的最后一张卡必须标记 truncated"
+        );
     }
 
     #[test]
@@ -4469,6 +4663,68 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    // -------------------- 0824 评审 #3：截断残卡不得静默入库 --------------------
+
+    #[tokio::test]
+    async fn parse_and_save_card_rejects_mid_string_truncation_as_error() {
+        // 字符串正文中途截断（如 token 上限/断连）：修复产物内容已丢失，
+        // 必须返回 Err（上游降级为错误卡），绝不静默保存为正常卡。
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-truncated-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "truncated-task", &document_id, 0);
+
+        let err = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是流式解析？","back":"答案在正文中途被截"#,
+                "truncated-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect_err("字符串中途截断必须报错");
+        assert!(
+            err.message.contains("字符串中途截断"),
+            "错误信息应指明截断: {}",
+            err.message
+        );
+
+        let persisted = svc
+            .db
+            .get_cards_for_task("truncated-task")
+            .expect("query cards");
+        assert!(persisted.is_empty(), "截断残卡不得作为正常卡入库");
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn parse_and_save_card_still_repairs_lossless_damage() {
+        // 无损坏形态（尾逗号 + 缺闭合括号但字符串已闭合）仍允许自动修复入库。
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-lossless-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "lossless-task", &document_id, 0);
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是惯性？","back":"保持原有运动状态的性质","#,
+                "lossless-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect("无损修复应成功")
+            .expect("卡片应入库");
+        assert_eq!(card.front, "什么是惯性？");
+        assert_eq!(card.back, "保持原有运动状态的性质");
+        assert!(!card.is_error_card);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
     }
 
     // -------------------- 收尾 #4：首次入库原文快照 --------------------

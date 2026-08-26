@@ -6,14 +6,20 @@
 //! 2. 对用户历史薄弱的模板/标签生成更小的原子卡；
 //! 3. 对确实相邻易混的知识点生成对比卡。
 //!
-//! ## 隐私
-//! 全部统计只读本地 SQLite（`fsrs_card_states` / `anki_cards`），
-//! 聚合在进程内完成，注入的只是本机 prompt 文本，数据不出本地。
+//! ## 隐私（0824 收口）
+//! 统计查询与聚合只读本地 SQLite（`fsrs_card_states` / `anki_cards`），
+//! 但**注入的画像文本会进入制卡 prompt 并随生成请求发送到所配置的模型端点**——
+//! 配置远端模型时数据会离开本机。因此：
+//! 1. 回流必须显式授权：`AnkiGenerationOptions::fsrs_feedback == Some(true)`
+//!    才注入，`None` / `Some(false)` 一律跳过（见 `EnhancedAnkiService`）；
+//! 2. 默认只注入匿名聚合统计（库规模 / 可提取性 / 模板与标签维度 lapse），
+//!    历史卡片正面摘要与同批次干扰预警属卡片原文，仅在
+//!    [`FsrsFeedbackConfig::include_card_excerpts`] 显式开启时注入；
+//! 3. 渲染文案不得声称“数据不上传”。
 //!
 //! ## 降级
 //! 任何查询失败（表缺失、连接失败、空库）都降级为「无反馈」（返回 `None` /
-//! 空画像），绝不让制卡流程失败。开关位于
-//! `AnkiGenerationOptions::fsrs_feedback`（`None` 视为开启）。
+//! 空画像），绝不让制卡流程失败。
 //!
 //! ## 结构
 //! - SQL 只读行由 [`crate::fsrs_review_service::FsrsReviewService::list_feedback_rows`] 提供；
@@ -54,6 +60,12 @@ pub struct FsrsFeedbackConfig {
     pub max_profile_chars: usize,
     /// 干扰 section 渲染后的最大字符数（超出停止追加条目）
     pub max_interference_chars: usize,
+    /// 是否在注入内容中包含历史卡片正面摘要（高遗忘卡示例、同批次干扰预警）。
+    ///
+    /// 默认 **false**（0824 隐私收口）：注入文本会随生成请求发送到所配置的
+    /// 模型端点，默认只允许匿名聚合统计外送，不允许历史卡片原文外送。
+    #[serde(default)]
+    pub include_card_excerpts: bool,
 }
 
 impl Default for FsrsFeedbackConfig {
@@ -68,6 +80,7 @@ impl Default for FsrsFeedbackConfig {
             front_excerpt_chars: 60,
             max_profile_chars: 1400,
             max_interference_chars: 1600,
+            include_card_excerpts: false,
         }
     }
 }
@@ -312,6 +325,10 @@ pub fn build_profile(
 // ============================================================
 
 /// 渲染「用户复习画像」section；空画像返回 None。
+///
+/// 隐私（0824 收口）：渲染结果会随生成请求发送到所配置的模型端点，
+/// 因此不得声称“数据不上传”；高遗忘卡片正面摘要属历史卡片原文，
+/// 仅在 `cfg.include_card_excerpts` 显式开启时渲染。
 pub fn render_profile_section(
     profile: &UserReviewProfile,
     cfg: &FsrsFeedbackConfig,
@@ -320,7 +337,7 @@ pub fn render_profile_section(
         return None;
     }
     let mut out = String::new();
-    out.push_str("【用户复习画像 · FSRS 本地统计（数据仅本地，不上传）】\n");
+    out.push_str("【用户复习画像 · FSRS 统计】\n");
     out.push_str(&format!(
         "- 复习库规模：{} 张已入队，其中 {} 张已复习，{} 张当前到期\n",
         profile.total_cards, profile.reviewed_cards, profile.due_cards
@@ -349,7 +366,7 @@ pub fn render_profile_section(
             .collect();
         out.push_str(&format!("- 易混淆标签：{}\n", items.join("；")));
     }
-    if !profile.high_lapse_cards.is_empty() {
+    if cfg.include_card_excerpts && !profile.high_lapse_cards.is_empty() {
         out.push_str("- 高遗忘卡片示例：\n");
         for card in &profile.high_lapse_cards {
             out.push_str(&format!(
@@ -476,6 +493,9 @@ pub fn build_interference_hints(
 
 /// 渲染「同批次语义干扰预警」section；无候选返回 None。
 /// 逐条追加并遵守 `max_interference_chars`：超预算即停止追加后续条目。
+///
+/// 隐私（0824 收口）：每条条目都是历史卡片正面摘要（卡片原文），
+/// 编排入口只在 `cfg.include_card_excerpts` 显式开启时调用本函数。
 pub fn render_interference_section(
     hints: &[InterferenceHint],
     cfg: &FsrsFeedbackConfig,
@@ -483,7 +503,7 @@ pub fn render_interference_section(
     if hints.is_empty() {
         return None;
     }
-    let header = "【同批次语义干扰预警 · 库内已有的高遗忘近义卡（数据仅本地）】\n\
+    let header = "【同批次语义干扰预警 · 库内已有的高遗忘近义卡】\n\
          以下卡片与本次材料主题相近且历史遗忘率高：\n\
          - 不要生成与其重复或仅换措辞的卡片；\n\
          - 若新内容与其确实相邻易混，请生成「对比卡」：正面同时呈现两个易混概念并要求区分。\n";
@@ -735,9 +755,13 @@ pub fn build_feedback_injection(
     if let Some(section) = render_profile_section(&profile, cfg) {
         sections.push(section);
     }
-    let hints = build_interference_hints(&rows, document_content, cfg);
-    if let Some(section) = render_interference_section(&hints, cfg) {
-        sections.push(section);
+    // 干扰预警条目全部是历史卡片正面摘要（卡片原文），默认不外送；
+    // 仅在调用方显式开启 include_card_excerpts 时构建并注入。
+    if cfg.include_card_excerpts {
+        let hints = build_interference_hints(&rows, document_content, cfg);
+        if let Some(section) = render_interference_section(&hints, cfg) {
+            sections.push(section);
+        }
     }
     if sections.is_empty() {
         None
@@ -944,6 +968,7 @@ mod tests {
             .collect();
         let mut config = cfg();
         config.max_profile_chars = 200;
+        config.include_card_excerpts = true;
         let profile = build_profile(&rows, 1, &config);
         let section = render_profile_section(&profile, &config).expect("section");
         assert!(
@@ -955,9 +980,51 @@ mod tests {
         // 预算充足时不截断
         let mut wide = cfg();
         wide.max_profile_chars = 100_000;
+        wide.include_card_excerpts = true;
         let full = render_profile_section(&profile, &wide).expect("full");
         assert!(!full.ends_with('…'));
         assert!(full.contains("易混淆标签"));
+    }
+
+    // 6b. 隐私默认（0824 收口）：默认配置不渲染历史卡片正面摘要，
+    //     只有显式开启 include_card_excerpts 才包含；且渲染文案不再声称「不上传」。
+    #[test]
+    fn profile_section_excludes_card_excerpts_by_default() {
+        let rows = vec![make_row(
+            "c1",
+            "线粒体是细胞的能量工厂吗？",
+            Some("basic"),
+            &["生物"],
+            5,
+            6,
+            Some(2.0),
+            0,
+            Some(0),
+        )];
+        let profile = build_profile(&rows, 1, &cfg());
+        assert!(!profile.high_lapse_cards.is_empty(), "画像数据本身仍聚合");
+
+        // 默认：匿名聚合可渲染，但卡片原文摘要不出现
+        let default_cfg = cfg();
+        assert!(!default_cfg.include_card_excerpts, "默认必须不含卡片原文");
+        let section = render_profile_section(&profile, &default_cfg).expect("section");
+        assert!(!section.contains("高遗忘卡片示例"), "{section}");
+        assert!(!section.contains("线粒体"), "{section}");
+        assert!(!section.contains("不上传"), "不得虚假承诺: {section}");
+        assert!(!section.contains("仅本地"), "不得虚假承诺: {section}");
+
+        // 显式开启后才包含摘要
+        let mut opted_in = cfg();
+        opted_in.include_card_excerpts = true;
+        let full = render_profile_section(&profile, &opted_in).expect("full");
+        assert!(full.contains("高遗忘卡片示例"));
+        assert!(full.contains("线粒体"));
+
+        // 干扰预警文案同样不得声称「仅本地」
+        let hints = build_interference_hints(&rows, "线粒体与能量代谢", &opted_in);
+        let interference = render_interference_section(&hints, &opted_in).expect("interference");
+        assert!(!interference.contains("仅本地"), "{interference}");
+        assert!(!interference.contains("不上传"), "{interference}");
     }
 
     // 7. front 摘要多字节安全截断

@@ -115,14 +115,16 @@ export type { ExportableCardLike } from './engines';
 // PromptKit 导出
 // ============================================================================
 // 仅保留仍被引用的 prompt：
-// - buildCardGenerationSystemPrompt：经 options.custom_anki_prompt 送入后端 system 消息
+// - buildCardGenerationSystemPrompt：经 options.custom_anki_prompt 送入后端
+//   system 消息（协议中立：输出协议由后端单点生成，见 prompts/index.ts）
 // - buildContentAnalysisPrompt：analyzeContent 的 LLM 内容预分析
 // 历史上的 buildBoundaryPrompt / buildCardGenerationUserPrompt /
-// buildErrorRepairPrompt / buildQualityAssessmentPrompt 无任何调用方，已删除。
+// buildErrorRepairPrompt / buildQualityAssessmentPrompt 无任何调用方，已删除；
+// CARD_JSON_END 常量已随输出协议后端单点化一并删除
+// （后端唯一定义：anki_protocol::CARD_DELIMITER）。
 
 export {
   PromptKit,
-  CARD_JSON_END,
   buildCardGenerationSystemPrompt,
   buildContentAnalysisPrompt,
 } from './prompts';

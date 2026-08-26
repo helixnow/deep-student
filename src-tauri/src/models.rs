@@ -1314,10 +1314,13 @@ pub struct AnkiGenerationOptions {
     #[serde(default)]
     pub enable_llm_boundary_detection: Option<bool>,
 
-    // ===== FSRS 复习数据回流（Round 3 #5） =====
-    /// 是否将本地 FSRS 复习画像 / 语义干扰预警注入制卡 prompt。
-    /// `None` 视为开启（默认行为）；显式 `Some(false)` 可关闭。
-    /// 所有统计只读本地 SQLite，数据不出本地；查询失败时降级为不注入，绝不阻断制卡。
+    // ===== FSRS 复习数据回流（Round 3 #5；0824 隐私收口） =====
+    /// 是否将本地 FSRS 复习画像注入制卡 prompt。
+    /// 隐私默认安全：`None` 与 `Some(false)` 均视为关闭，仅显式 `Some(true)` 开启。
+    /// 注入文本会随生成请求发送到所配置的模型端点（远端模型下即离开本机），
+    /// 因此默认只注入匿名聚合统计、不含历史卡片正文摘要
+    /// （见 `FsrsFeedbackConfig::include_card_excerpts`）。
+    /// 统计查询只读本地 SQLite；查询失败时降级为不注入，绝不阻断制卡。
     #[serde(default)]
     pub fsrs_feedback: Option<bool>,
     /// 本次生成实际注入的「用户复习画像」section（已渲染文本）。

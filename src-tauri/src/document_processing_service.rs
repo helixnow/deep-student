@@ -1412,4 +1412,63 @@ mod tests {
         let dist = distribute_global_max_cards(103, 7);
         assert_eq!(dist.iter().sum::<i32>(), 103);
     }
+
+    #[tokio::test]
+    async fn max_cards_total_distributes_quota_across_persisted_segments() {
+        // 0824 评审 #4（多分段额度）：CardAgent 形状的 options
+        // （maxCards → max_cards_total）经真实任务创建路径落库后，
+        // 每段任务持久化的额度必须来自总额度分配（总和守恒），
+        // 而不是每段都拿满 max_cards_per_mistake 导致总数放大。
+        let tmp_dir =
+            std::env::temp_dir().join(format!("dstu_quota_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator = MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db = std::sync::Arc::new(
+            crate::database::Database::new(&tmp_dir.join("mistakes.db")).expect("db"),
+        );
+        let dps = DocumentProcessingService::new(db);
+
+        // CardAgent 装配形状：maxCards=10 同时写入总额度与单段兜底上限
+        let mut options = test_options(0);
+        options.max_cards_per_mistake = 10;
+        options.max_cards_total = Some(10);
+
+        // 约 3 万 token 的长文档（默认 1 万 token/段预算）→ 必然多段
+        let paragraph =
+            "细胞呼吸分为糖酵解、丙酮酸氧化脱羧与三羧酸循环三个阶段，各阶段的场所与产物都不相同。"
+                .repeat(25);
+        let document = vec![paragraph; 30].join("\n\n");
+
+        let (_doc_id, tasks) = dps
+            .process_document_and_create_tasks(document, "长文档".to_string(), options)
+            .await
+            .expect("create tasks");
+        assert!(tasks.len() >= 3, "长文档必须切成多段，实际 {} 段", tasks.len());
+
+        let per_segment: Vec<i32> = tasks
+            .iter()
+            .map(|t| {
+                let opts: AnkiGenerationOptions =
+                    serde_json::from_str(&t.anki_generation_options_json)
+                        .expect("任务级 options 必须可反序列化");
+                opts.max_cards_per_mistake
+            })
+            .collect();
+        assert_eq!(
+            per_segment.iter().sum::<i32>(),
+            10,
+            "分段额度总和必须等于 max_cards_total: {per_segment:?}"
+        );
+        assert!(
+            per_segment.iter().all(|limit| *limit < 10),
+            "任何单段都不得独占全部额度（否则退化回旧的每段上限语义）: {per_segment:?}"
+        );
+    }
 }

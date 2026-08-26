@@ -31,9 +31,9 @@ use deep_student_lib::anki_preference_memory::{
     SessionObservation,
 };
 use deep_student_lib::anki_protocol::{
-    build_cards_response_schema, detect_schema_capability, repair_json, resolve_output_protocol,
-    strip_wrapper_prefix, unwrap_cards_array, OutputProtocol, SchemaCapability, CARDS_WRAPPER_KEY,
-    CARD_DELIMITER, TEMPLATE_ID_KEY,
+    build_cards_response_schema, detect_schema_capability, repair_json, repair_json_detailed,
+    resolve_output_protocol, strip_wrapper_prefix, unwrap_cards_array, OutputProtocol,
+    SchemaCapability, CARDS_WRAPPER_KEY, CARD_DELIMITER, TEMPLATE_ID_KEY,
 };
 use deep_student_lib::anki_qa_lint::{
     lint_card, lint_card_with_tracker, merge_flags, should_reject, CardLintInput,
@@ -944,10 +944,14 @@ fn fsrs_suggest_splits_heuristics_cover_enumerated_comparison_and_atomic() {
 }
 
 /// 画像 → 干扰 → 渲染纯函数链：高 lapse 卡进入画像与干扰预警，
-/// 渲染 section 遵守字符预算且声明「数据仅本地」。
+/// 渲染 section 遵守字符预算且不再声称「数据仅本地/不上传」（0824 隐私收口）。
 #[test]
 fn fsrs_profile_and_interference_chain_respects_budgets() {
-    let cfg = FsrsFeedbackConfig::default();
+    // 干扰预警/卡片摘要属历史卡片原文，本测试验证的是预算与过滤链，显式开启外送。
+    let cfg = FsrsFeedbackConfig {
+        include_card_excerpts: true,
+        ..FsrsFeedbackConfig::default()
+    };
     let rows = vec![
         make_row("card-a", "牛顿第二定律的表达式是什么？", 6, &["力学"], None),
         make_row("card-b", "牛顿第二定律的适用条件？", 4, &["力学"], None),
@@ -971,7 +975,10 @@ fn fsrs_profile_and_interference_chain_respects_budgets() {
     );
 
     let section = render_profile_section(&profile, &cfg).expect("非空画像必须渲染");
-    assert!(section.contains("数据仅本地"));
+    assert!(
+        !section.contains("数据仅本地") && !section.contains("不上传"),
+        "注入文本会随请求外送，不得虚假承诺: {section}"
+    );
     assert!(section.chars().count() <= cfg.max_profile_chars);
 
     let hints = build_interference_hints(&rows, "本章讲牛顿第二定律及其应用", &cfg);
@@ -1083,8 +1090,9 @@ fn protocol_multi_template_schema_uses_one_of_with_discriminator() {
     }
 }
 
-/// repair_json：尾逗号 / 字符串截断 / 括号未闭合 / 尾部垃圾四类高频坏形态，
-/// 修复结果必须可被 serde 解析；修不好的返回 None。
+/// repair_json（无损接口）：尾逗号 / 括号未闭合（字符串已闭合）/ 尾部垃圾
+/// 三类高频坏形态可修复；字符串中途截断属有损形态必须拒绝（0824 评审 #3），
+/// 仅 repair_json_detailed 可修出带 truncated_string 标记的产物。
 #[test]
 fn protocol_repair_json_fixes_high_frequency_stream_damage() {
     let trailing_comma = repair_json(r#"{"front":"Q","back":"A",}"#).expect("trailing comma");
@@ -1093,8 +1101,15 @@ fn protocol_repair_json_fixes_high_frequency_stream_damage() {
         json!("A")
     );
 
-    let truncated_string = repair_json(r#"{"front":"什么是 TC"#).expect("truncated string");
-    let value: Value = serde_json::from_str(&truncated_string).unwrap();
+    // 字符串中途截断：无损接口拒绝（调用方应落错误卡）
+    assert!(
+        repair_json(r#"{"front":"什么是 TC"#).is_none(),
+        "字符串中途截断不得被无损接口静默修复"
+    );
+    let detailed =
+        repair_json_detailed(r#"{"front":"什么是 TC"#).expect("detailed 仍可修出合法 JSON");
+    assert!(detailed.truncated_string, "必须携带截断标记");
+    let value: Value = serde_json::from_str(&detailed.text).unwrap();
     assert!(value["front"].as_str().unwrap().starts_with("什么是"));
 
     let unclosed = repair_json(r#"{"front":"Q","tags":["网络""#).expect("unclosed brackets");
