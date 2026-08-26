@@ -92,3 +92,4 @@
 | 文件 | 大区域 | 状态 |
 | --- | --- | --- |
 | `50-leftover-pass6.md` | leftover 第六轮（对照 `f83e541b`） | A：无新增量 |
+| `51-invariants-step22.md` | Step 22 tip 18 不变量再证 | 18/18 PASS |
