@@ -762,8 +762,8 @@
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
       "occlusion": {
-        "badge": "Image occlusion",
-        "draftHint": "Automatically generated occlusion draft; check it before exporting",
+        "badge": "Occlusion draft preview",
+        "draftHint": "In-app preview only; it is not currently exported as a reviewable Anki image-occlusion card",
         "imageAlt": "Image occlusion card",
         "imageUnavailable": "The occlusion image could not be loaded; text content was preserved"
       },

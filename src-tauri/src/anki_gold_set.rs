@@ -33,13 +33,17 @@
 //! - JS 侧：eval harness（`scripts/anki-eval/lib/cardLint.mjs`）的对齐测试
 //!   解析本常量，断言其 Rust-aligned 码全部落在契约内、eval-only 码不与契约冲突。
 
-use crate::anki_qa_lint::{lint_card, CardLintInput, LintConfig, LintSeverity};
+use crate::anki_qa_lint::{lint_card, CardLintInput, LintConfig, LintSeverity, QA_FLAGS_FIELD};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// `extra_fields_json` 中保存"生成时原文快照"的键名（plan §2 P0 方案）。
 pub const ORIGINAL_GENERATION_FIELD: &str = "_original_generation";
+/// critic 自动修订写入 `_qa_flags` 的稳定来源码。
+///
+/// 带该标记的内容不是用户修改，必须从用户金标挖掘中排除。
+pub const CRITIC_REVISED_QA_CODE: &str = "llm_critic_revised";
 
 /// `_original_generation` 值本身的 UTF-8 字节硬上限。
 ///
@@ -140,6 +144,9 @@ pub struct GoldCandidate {
     pub was_error_card: bool,
     /// 当前仍是错误卡。
     pub is_error_card: bool,
+    /// 当前内容由 critic 自动修订，而非用户编辑。
+    #[serde(default)]
+    pub critic_revised: bool,
 }
 
 /// 标注结果（plan §3 label 步骤 + 错误卡修复通道）。
@@ -301,6 +308,22 @@ pub fn extract_original_from_extras(extras: &HashMap<String, String>) -> Option<
     serde_json::from_value::<CardSnapshot>(obj).ok()
 }
 
+/// 判断内存态卡片是否带 critic 自动修订来源标记。
+///
+/// `_qa_flags` 非法或不是数组时保守地视为未命中；只有结构化稳定 code
+/// `llm_critic_revised` 能触发排除。
+pub fn has_critic_revision_marker(extras: &HashMap<String, String>) -> bool {
+    let Some(raw) = extras.get(QA_FLAGS_FIELD) else {
+        return false;
+    };
+    let Ok(Value::Array(flags)) = serde_json::from_str::<Value>(raw) else {
+        return false;
+    };
+    flags
+        .iter()
+        .any(|flag| flag.get("code").and_then(Value::as_str) == Some(CRITIC_REVISED_QA_CODE))
+}
+
 // ============================================================================
 // 编辑距离
 // ============================================================================
@@ -356,12 +379,13 @@ pub fn edit_ratio(original: &CardSnapshot, edited: &CardSnapshot) -> f64 {
 
 /// 对单个候选做确定性标注。决策树：
 ///
-/// 1. 已删除 → 早删且零复习 = `DeletedEarly`，否则 `Unlabeled`（删除动机不明）；
-/// 2. 当前仍是错误卡 → `Unlabeled`（没有可用的"修复后"内容）；
-/// 3. 曾是错误卡且已修好 → `ErrorCardRepaired`（需 original 才能构成修正对）；
-/// 4. 有 original 且内容有变 → 按编辑距离比分 `EditedMinor` / `EditedMajor`；
-/// 5. 内容未变（或无 original 且时间戳未超宽限）→ 复习信号达标 = `KeptUnedited`；
-/// 6. 其余 → `Unlabeled`，reason 说明缺哪路信号。
+/// 1. critic 自动修订 → `Unlabeled`（模型自改不能充当用户金标）；
+/// 2. 已删除 → 早删且零复习 = `DeletedEarly`，否则 `Unlabeled`（删除动机不明）；
+/// 3. 当前仍是错误卡 → `Unlabeled`（没有可用的"修复后"内容）；
+/// 4. 曾是错误卡且已修好 → `ErrorCardRepaired`（需 original 才能构成修正对）；
+/// 5. 有 original 且内容有变 → 按编辑距离比分 `EditedMinor` / `EditedMajor`；
+/// 6. 内容未变（或无 original 且时间戳未超宽限）→ 复习信号达标 = `KeptUnedited`；
+/// 7. 其余 → `Unlabeled`，reason 说明缺哪路信号。
 pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSample {
     let sample = |label, reason: String, pair| GoldSample {
         card_id: c.card_id.clone(),
@@ -370,7 +394,16 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
         repair_pair: pair,
     };
 
-    // 1. 删除通道
+    // 1. 来源通道：critic 自改不能伪装成用户编辑或用户认可的未编辑正例。
+    if c.critic_revised {
+        return sample(
+            GoldLabel::Unlabeled,
+            "带 llm_critic_revised 来源标记，模型自动修订不得进入用户金标".to_string(),
+            None,
+        );
+    }
+
+    // 2. 删除通道
     if let Some(deleted_at) = c.deleted_at_ms {
         let age = deleted_at - c.created_at_ms;
         if c.review_count == 0 && age <= cfg.early_delete_window_ms {
@@ -387,7 +420,7 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
         );
     }
 
-    // 2. 当前仍是错误卡
+    // 3. 当前仍是错误卡
     if c.is_error_card {
         return sample(
             GoldLabel::Unlabeled,
@@ -396,7 +429,7 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
         );
     }
 
-    // 3. 错误卡修复通道
+    // 4. 错误卡修复通道
     if c.was_error_card {
         if c.current.is_blank() {
             return sample(
@@ -426,7 +459,7 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
         };
     }
 
-    // 4. 编辑通道（original 在场时以内容 diff 为准，时间戳仅作后备信号）
+    // 5. 编辑通道（original 在场时以内容 diff 为准，时间戳仅作后备信号）
     if let Some(orig) = &c.original {
         if *orig != c.current {
             let ratio = edit_ratio(orig, &c.current);
@@ -463,7 +496,7 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
         );
     }
 
-    // 5. 未编辑：留存信号定夺
+    // 6. 未编辑：留存信号定夺
     let lapse_rate = if c.review_count == 0 {
         0.0
     } else {
@@ -759,6 +792,7 @@ mod tests {
             again_count: 0,
             was_error_card: false,
             is_error_card: false,
+            critic_revised: false,
         }
     }
 
@@ -920,6 +954,29 @@ mod tests {
         assert!(extract_original_generation(r#"{"_original_generation":"not-json"}"#).is_none());
     }
 
+    #[test]
+    fn critic_revision_marker_requires_structured_stable_code() {
+        let marked = HashMap::from([(
+            QA_FLAGS_FIELD.to_string(),
+            json!([
+                {"code": "answer_leak", "field": "front"},
+                {"code": CRITIC_REVISED_QA_CODE, "field": "card"}
+            ])
+            .to_string(),
+        )]);
+        assert!(has_critic_revision_marker(&marked));
+
+        let unrelated = HashMap::from([(
+            QA_FLAGS_FIELD.to_string(),
+            json!([{"message": CRITIC_REVISED_QA_CODE}]).to_string(),
+        )]);
+        assert!(!has_critic_revision_marker(&unrelated));
+        assert!(!has_critic_revision_marker(&HashMap::from([(
+            QA_FLAGS_FIELD.to_string(),
+            "not-json".to_string(),
+        )])));
+    }
+
     // -------- edit_distance / edit_ratio --------
 
     #[test]
@@ -1010,6 +1067,19 @@ mod tests {
         let s = classify_candidate(&c, &GoldMiningConfig::default());
         assert_eq!(s.label, GoldLabel::EditedMajor);
         assert!(s.repair_pair.expect("pair").distance_ratio >= 0.25);
+    }
+
+    #[test]
+    fn critic_revised_content_is_never_mined_as_user_gold() {
+        let mut c = base_candidate("critic-revised");
+        c.original = Some(snap("模型原问题（答案泄露）", "模型原答案"));
+        c.critic_revised = true;
+        c.review_count = 10;
+
+        let sample = classify_candidate(&c, &GoldMiningConfig::default());
+        assert_eq!(sample.label, GoldLabel::Unlabeled);
+        assert!(sample.repair_pair.is_none());
+        assert!(sample.reason.contains(CRITIC_REVISED_QA_CODE));
     }
 
     #[test]

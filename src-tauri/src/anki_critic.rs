@@ -57,7 +57,7 @@ use tracing::{info, warn};
 /// critic 裁决的 `_qa_flags` 条目 code（flag 裁决留痕）。
 pub const CRITIC_FLAG_CODE: &str = "llm_critic";
 /// revise 裁决写入的审计条目 code（前端 QA 面板可按码过滤）。
-pub const CRITIC_REVISED_CODE: &str = "llm_critic_revised";
+pub const CRITIC_REVISED_CODE: &str = crate::anki_gold_set::CRITIC_REVISED_QA_CODE;
 /// 修订轮硬上限：revise 后的卡不再复审（成本与收敛性约束）。
 pub const MAX_REVISION_ROUNDS_HARD_CAP: u32 = 1;
 /// 模型调用防悬挂超时（秒）：超时按降级处理，不阻塞任务收尾。
@@ -732,6 +732,8 @@ fn timestamp_ms(rfc3339: &str) -> i64 {
 ///
 /// - `exclude_task_id`：当前收尾任务的卡片剔除——它们刚生成、尚无用户编辑
 ///   信号，且正是待评审对象，不能既当裁判参照又当被告；
+/// - 带 `_qa_flags.code = llm_critic_revised` 的模型自动修订卡剔除，禁止把
+///   critic 自己的改写伪装成用户金标再回灌；
 /// - 只有携带 `_original_generation` 快照且被用户实际编辑过的兄弟卡才可能
 ///   产出修正对（挖掘语义完全复用 `anki_gold_set::classify_candidate`）；
 /// - 金标端过 `select_grounded_reference_pairs` 的 lint 门槛（脏金标不注入）。
@@ -748,6 +750,7 @@ pub fn gold_references_from_cards(
     let candidates: Vec<gold::GoldCandidate> = cards
         .iter()
         .filter(|card| card.task_id != exclude_task_id && !card.is_error_card)
+        .filter(|card| !gold::has_critic_revision_marker(&card.extra_fields))
         .filter_map(|card| {
             let original = gold::extract_original_from_extras(&card.extra_fields)?;
             Some(gold::GoldCandidate {
@@ -765,6 +768,7 @@ pub fn gold_references_from_cards(
                 again_count: 0,
                 was_error_card: false,
                 is_error_card: card.is_error_card,
+                critic_revised: false,
             })
         })
         .collect();
@@ -1568,6 +1572,32 @@ mod tests {
         error_card.is_error_card = true;
         let refs = gold_references_from_cards(&[self_card, error_card], "task-current", &cfg);
         assert!(refs.is_empty(), "当前任务卡与错误卡都不得进入参照集");
+    }
+
+    #[test]
+    fn gold_references_exclude_critic_revised_cards() {
+        let cfg = CriticConfig::default();
+        let mut critic_revised = card_with_original(
+            "critic-revised",
+            "task-old",
+            "critic 修订后的问题？",
+            "critic 修订后的答案",
+            "模型原问题（答案泄露）",
+            "模型原答案",
+        );
+        critic_revised.extra_fields.insert(
+            anki_qa_lint::QA_FLAGS_FIELD.to_string(),
+            serde_json::json!([{
+                "code": CRITIC_REVISED_CODE,
+                "field": "card",
+                "message": "LLM critic 修订",
+                "severity": "info"
+            }])
+            .to_string(),
+        );
+
+        let refs = gold_references_from_cards(&[critic_revised], "task-current", &cfg);
+        assert!(refs.is_empty(), "critic 自动修订不得作为用户修正金标回灌");
     }
 
     #[test]

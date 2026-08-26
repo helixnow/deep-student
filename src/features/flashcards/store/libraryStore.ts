@@ -370,10 +370,10 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
         });
         if (!path) return { status: 'canceled' as const };
-        const result = await invoke<{ imported_cards?: number }>('import_apkg_to_library', { path });
+        const result = await invoke<{ importedCards?: number }>('import_apkg_to_library', { path });
         requestFlashcardsDueRefresh();
         await get().refresh();
-        return { status: 'imported' as const, importedCards: result?.imported_cards ?? 0 };
+        return { status: 'imported' as const, importedCards: result?.importedCards ?? 0 };
       } catch (error) {
         const message = getErrorMessage(error) || i18n.t('flashcards:library.import.failed');
         set({ actionError: message });

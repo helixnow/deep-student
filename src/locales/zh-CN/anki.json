@@ -1101,9 +1101,9 @@
       "disabledHint": "本次制卡未参考历史复习数据"
     },
     "occlusion": {
-      "title": "图像遮挡",
-      "previewBadge": "图像遮挡",
-      "draftHint": "这是自动生成的遮挡草稿，请在导出前检查遮挡位置和答案",
+      "title": "图像遮挡草稿预览",
+      "previewBadge": "遮挡草稿预览",
+      "draftHint": "这是应用内草稿预览；当前不会导出为可复习的 Anki 图像遮挡卡",
       "imageAlt": "图像遮挡卡片",
       "imageUnavailable": "无法加载遮挡卡图片，已保留文字内容",
       "invalidSpec": "遮挡数据无效，已按普通卡片显示",

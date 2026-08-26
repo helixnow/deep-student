@@ -46,6 +46,7 @@ pub const MEDIA_SKIP_REASON_MEDIA_DIR_UNAVAILABLE: &str = "media_dir_unavailable
 pub const MEDIA_SKIP_REASON_UNSAFE_FILENAME: &str = "unsafe_filename";
 pub const MEDIA_SKIP_REASON_ENTRY_MISSING: &str = "entry_missing";
 pub const MEDIA_SKIP_REASON_ENTRY_OVERSIZED: &str = "entry_oversized";
+pub const MEDIA_SKIP_REASON_FILENAME_CONFLICT: &str = "filename_conflict";
 pub const MEDIA_SKIP_REASON_IO_ERROR: &str = "io_error";
 pub const MEDIA_SKIP_REASON_ORPHAN_ENTRY: &str = "orphan_entry";
 /// 每个跳过原因在报告中最多列出的文件名数（count 始终是全量计数）。
@@ -117,7 +118,7 @@ pub struct ApkgMediaSkip {
 pub struct ApkgMediaReport {
     /// 包内声明的媒体条目总数（media 清单键 ∪ zip 数字媒体条目，去重）。
     pub declared: usize,
-    /// 成功落盘（或按文件名复用已有文件）的媒体数。
+    /// 成功落盘（或同名且内容逐字节一致而复用）的媒体条目数。
     pub imported: usize,
     /// declared - imported。
     pub skipped: usize,
@@ -653,7 +654,7 @@ fn sanitize_media_filename(raw: &str) -> Option<String> {
 
 /// 把媒体清单声明且包内存在的媒体流式解出到 `media_dir`。
 /// 返回（「清单文件名 → 落盘绝对路径」映射, 成功导入的清单键数）；
-/// 同名文件复用只落盘一次但每个清单键都计入成功。
+/// 同名文件仅在包内条目与既有文件逐字节一致时复用；内容冲突必须跳过。
 /// 所有非致命问题写入 `warnings`，并同步记入结构化 `skip_tracker`（禁止静默丢弃）。
 /// `modern_package` 为 true（anki21b 包）时媒体条目本身通常是 zstd 帧，需先解压。
 #[allow(clippy::too_many_arguments)]
@@ -703,28 +704,8 @@ fn extract_declared_media<R: Read + Seek>(
             skip_tracker.record(MEDIA_SKIP_REASON_UNSAFE_FILENAME, raw_name.clone());
             continue;
         }
-        match std::fs::symlink_metadata(&target) {
-            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-                // `Path::exists` follows links, so a dangling symlink used to
-                // fall through to File::create and create/truncate its target
-                // outside media_dir. Never reuse or follow non-regular entries.
-                warnings.push(format!("媒体目标已存在但不是普通文件，已跳过: {file_name}"));
-                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
-                continue;
-            }
-            Ok(_) => {
-                // Anki 媒体按文件名寻址：既有同名普通文件视为同一媒体，直接复用
-                media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
-                imported_keys += 1;
-                continue;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                warnings.push(format!("检查媒体目标失败，已跳过 {file_name}: {error}"));
-                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
-                continue;
-            }
-        }
+        // 必须先读取包内条目，再考虑复用同名目标。否则清单缺失的条目会因本地
+        // 恰有同名文件而被误报成功。
         let mut entry = match archive.by_name(key) {
             Ok(entry) => entry,
             Err(_) => {
@@ -735,6 +716,74 @@ fn extract_declared_media<R: Read + Seek>(
                 continue;
             }
         };
+        let existing_metadata = match std::fs::symlink_metadata(&target) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                // `Path::exists` follows links, so a dangling symlink used to
+                // fall through to File::create and create/truncate its target
+                // outside media_dir. Never reuse or follow non-regular entries.
+                warnings.push(format!("媒体目标已存在但不是普通文件，已跳过: {file_name}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                continue;
+            }
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                warnings.push(format!("检查媒体目标失败，已跳过 {file_name}: {error}"));
+                skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                continue;
+            }
+        };
+        if existing_metadata.is_some() {
+            // 先把包内（现代包为解压后的）内容写入有界临时文件，再与既有目标
+            // 逐字节比较。只凭文件名复用会让卡片静默链接到旧内容。
+            let mut staged = match NamedTempFile::new() {
+                Ok(file) => file,
+                Err(error) => {
+                    warnings.push(format!(
+                        "创建媒体校验临时文件失败，已跳过 {file_name}: {error}"
+                    ));
+                    skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                    continue;
+                }
+            };
+            let copy_result = copy_media_entry(
+                &mut entry,
+                staged.as_file_mut(),
+                limits.max_entry_bytes,
+                modern_package,
+            );
+            match copy_result {
+                Ok(written) if written > limits.max_entry_bytes => {
+                    warnings.push(format!(
+                        "媒体文件解压后超过 {} 字节上限，已跳过: {file_name}",
+                        limits.max_entry_bytes
+                    ));
+                    skip_tracker.record(MEDIA_SKIP_REASON_ENTRY_OVERSIZED, file_name.clone());
+                }
+                Ok(_) => match media_files_have_equal_contents(staged.path(), &target) {
+                    Ok(true) => {
+                        media_paths.insert(raw_name.clone(), target.to_string_lossy().to_string());
+                        imported_keys += 1;
+                    }
+                    Ok(false) => {
+                        warnings.push(format!(
+                            "媒体目录已有同名但内容不同的文件，已跳过: {file_name}"
+                        ));
+                        skip_tracker.record(MEDIA_SKIP_REASON_FILENAME_CONFLICT, file_name.clone());
+                    }
+                    Err(error) => {
+                        warnings.push(format!("校验同名媒体内容失败，已跳过 {file_name}: {error}"));
+                        skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                    }
+                },
+                Err(error) => {
+                    warnings.push(format!("解压媒体文件失败，已跳过 {file_name}: {error}"));
+                    skip_tracker.record(MEDIA_SKIP_REASON_IO_ERROR, file_name.clone());
+                }
+            }
+            continue;
+        }
+
         // create_new maps to O_CREAT|O_EXCL on Unix and refuses symlinks. This
         // closes the check/create race without ever truncating an existing path.
         let mut output = match OpenOptions::new()
@@ -750,12 +799,12 @@ fn extract_declared_media<R: Read + Seek>(
             }
         };
         // 解压炸弹防护：实际解压量超过单条目上限时中止并删除半成品
-        let copy_result = if modern_package {
-            copy_possibly_zstd_media(&mut entry, &mut output, limits.max_entry_bytes)
-        } else {
-            let mut limited = entry.by_ref().take(limits.max_entry_bytes + 1);
-            std::io::copy(&mut limited, &mut output).map_err(|error| error.to_string())
-        };
+        let copy_result = copy_media_entry(
+            &mut entry,
+            &mut output,
+            limits.max_entry_bytes,
+            modern_package,
+        );
         match copy_result {
             Ok(written) if written > limits.max_entry_bytes => {
                 drop(output);
@@ -779,6 +828,42 @@ fn extract_declared_media<R: Read + Seek>(
         }
     }
     (media_paths, imported_keys)
+}
+
+/// 把单个媒体条目按包版本流式解出，最多读取 `max_bytes + 1` 字节。
+fn copy_media_entry<R: Read>(
+    entry: &mut R,
+    output: &mut File,
+    max_bytes: u64,
+    modern_package: bool,
+) -> Result<u64, String> {
+    if modern_package {
+        copy_possibly_zstd_media(entry, output, max_bytes)
+    } else {
+        let mut limited = entry.take(max_bytes + 1);
+        std::io::copy(&mut limited, output).map_err(|error| error.to_string())
+    }
+}
+
+/// 逐字节比较两个普通文件；长度先行可避免不必要的全量读取。
+fn media_files_have_equal_contents(left: &Path, right: &Path) -> std::io::Result<bool> {
+    if std::fs::metadata(left)?.len() != std::fs::metadata(right)?.len() {
+        return Ok(false);
+    }
+    let mut left = File::open(left)?;
+    let mut right = File::open(right)?;
+    let mut left_buffer = [0u8; 64 * 1024];
+    let mut right_buffer = [0u8; 64 * 1024];
+    loop {
+        let left_read = left.read(&mut left_buffer)?;
+        let right_read = right.read(&mut right_buffer)?;
+        if left_read != right_read || left_buffer[..left_read] != right_buffer[..right_read] {
+            return Ok(false);
+        }
+        if left_read == 0 {
+            return Ok(true);
+        }
+    }
 }
 
 /// 现代 APKG 的媒体条目通常是 zstd 帧：探测 magic 后解压写入；
@@ -3953,16 +4038,16 @@ mod tests {
         assert!(value.get("documentId").is_some());
     }
 
-    /// 同名文件复用：同一文件名声明两次只落盘一次，两个清单键都算导入成功。
+    /// 同名且内容相同可安全复用：同一文件名声明两次只落盘一次。
     #[test]
-    fn media_import_reuses_existing_file_for_duplicate_names() {
+    fn media_import_reuses_duplicate_names_only_when_contents_match() {
         let (db, _dir) = setup_migrated_db();
         let media_dir = tempdir().expect("media dir");
         let apkg = make_apkg(vec![
             ("collection.anki2", make_basic_collection("front")),
             ("media", br#"{"0":"dup.png","1":"dup.png"}"#.to_vec()),
             ("0", b"dup-bytes".to_vec()),
-            ("1", b"other-bytes".to_vec()),
+            ("1", b"dup-bytes".to_vec()),
         ]);
         let result = ApkgImporterService::new(db)
             .with_media_dir(media_dir.path().to_path_buf())
@@ -3971,10 +4056,108 @@ mod tests {
         assert_eq!(result.media_imported, 2);
         assert_eq!(result.media_skipped, 0);
         assert!(result.media_report.skips.is_empty());
-        // 首个来源生效（Anki 按文件名寻址）
         assert_eq!(
             std::fs::read(media_dir.path().join("dup.png")).expect("dup bytes"),
             b"dup-bytes"
+        );
+    }
+
+    #[test]
+    fn media_import_rejects_duplicate_name_with_different_contents() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"dup.png","1":"dup.png"}"#.to_vec()),
+            ("0", b"first-bytes".to_vec()),
+            ("1", b"different-bytes".to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("dup-conflict.apkg"), None)
+            .expect("content conflict must not block card import");
+
+        assert_eq!(result.media_imported, 1);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(result.media_report.skips.len(), 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_FILENAME_CONFLICT
+        );
+        assert_eq!(result.media_report.skips[0].filenames, vec!["dup.png"]);
+        assert_eq!(
+            std::fs::read(media_dir.path().join("dup.png")).expect("first media remains"),
+            b"first-bytes"
+        );
+    }
+
+    #[test]
+    fn media_import_does_not_reuse_preexisting_name_with_different_contents() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        std::fs::write(media_dir.path().join("same-name.png"), b"old-library-bytes")
+            .expect("seed existing media");
+        let collection = make_collection(
+            json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) }),
+            &[(1, 100, "", "front <img src=\"same-name.png\">\u{1f}back")],
+            &[(10, 1, 0)],
+        );
+        let apkg = make_apkg(vec![
+            ("collection.anki2", collection),
+            ("media", br#"{"0":"same-name.png"}"#.to_vec()),
+            ("0", b"new-package-bytes".to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db.clone())
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("existing-conflict.apkg"), None)
+            .expect("content conflict must not block card import");
+
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_FILENAME_CONFLICT
+        );
+        assert_eq!(
+            std::fs::read(media_dir.path().join("same-name.png")).expect("existing media remains"),
+            b"old-library-bytes"
+        );
+        let cards = db
+            .get_cards_for_document(&result.document_id)
+            .expect("imported cards");
+        assert!(
+            cards[0].images.is_empty(),
+            "conflicting local media must not be linked to the imported card"
+        );
+    }
+
+    #[test]
+    fn media_import_does_not_reuse_existing_name_when_archive_entry_is_missing() {
+        let (db, _dir) = setup_migrated_db();
+        let media_dir = tempdir().expect("media dir");
+        std::fs::write(media_dir.path().join("existing.png"), b"old-bytes")
+            .expect("seed existing media");
+        let apkg = make_apkg(vec![
+            ("collection.anki2", make_basic_collection("front")),
+            ("media", br#"{"0":"existing.png"}"#.to_vec()),
+        ]);
+
+        let result = ApkgImporterService::new(db)
+            .with_media_dir(media_dir.path().to_path_buf())
+            .import_bytes(&apkg, Some("missing-existing.apkg"), None)
+            .expect("missing media entry must degrade without blocking cards");
+
+        assert_eq!(result.media_imported, 0);
+        assert_eq!(result.media_skipped, 1);
+        assert_eq!(
+            result.media_report.skips[0].reason,
+            MEDIA_SKIP_REASON_ENTRY_MISSING
+        );
+        assert_eq!(
+            std::fs::read(media_dir.path().join("existing.png")).expect("existing media remains"),
+            b"old-bytes"
         );
     }
 
