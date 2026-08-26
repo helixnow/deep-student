@@ -412,4 +412,32 @@
 - 文档：真机留白 `wave2-C-r9-device-blank.md`、风险 `wave2-C-r9-risks.md`、PR 初稿 `wave2-C-r9-pr-draft.md`；`mobile-uiux-unify` 只追加 Wave2-C 节。
 - 不标 Goal complete。真机四项仍留白。
 
+### 第 9 轮门禁补记（父代理，vite / migrations 不依赖 Rust 1.98）
+
+- `CI=true npx vite build`：退出码 0，约 67s。
+- `node scripts/check-migrations.mjs`：退出码 0，111 个迁移文件。
+- `cargo check --lib`：仍因 rustc 1.83.0 ≠ 1.98.0 停，不装 toolchain。
+
+---
+
+## 第 10 轮终检（归档时点登记，只追加）
+
+- 归档时点：HEAD `fe8ff43c`（r1–r9 已提交）。未提交改动含上方「第 9 轮门禁补记」（vite / migrations 绿、cargo 因 rustc 1.83.0 停），本轮保留该补记不改写；归档期间观察到 r10 并行席位正向工作树落盘（如 `tests/vitest/coarseTouchTargetRule.test.ts` 在途改动），其内容不计入本节。
+- r10 各报告指向（按既有命名约定 `docs/dev/wave2-C-r10-*.md`）：
+  - 已落盘：`wave2-C-r10-pr-final.md`（PR #347 中文描述定稿，自述取证 HEAD `fe8ff43c`）——指向原文，本台账不复述其结论。
+  - 其余席位（lint 升级、真机留白复核、门禁复跑等按第 9 轮欠账推定的方向）：归档时点 `docs/dev/` 与 `/tmp/` 均无对应产出文件——**并行席位产出中，本节不预支任何结论**；落盘后以各报告原文为准，本台账不代写。
+- 截至上一轮的门禁快照（仅引用已归档证据，非 r10 结论）：定向 vitest 见 `wave2-C-r8-vitest-input-bar.md` / `wave2-C-r8-vitest-mobile.md` / `wave2-C-r9-stale-tests.md`；lint/typecheck 见 `wave2-C-r8-redlight.md`；vite build 与 check-migrations 绿见上方第 9 轮门禁补记；cargo 停摆见 `wave2-C-r9-hard-gates.md`。
+- 结转欠账（沿第 9 轮登记，待 r10 报告核销）：全库 `coarse-touch-target` 仍 `warn` 未升 error；真机四项（键盘 inset、厂商 WebView、读屏、44px 实机命中）仍留白；`cargo check --lib` 因 rustc 版本停。
+- 不标 Goal complete。本轮归档未运行测试、未改产品代码、未 commit。
+
+### 第 10 轮终检补记（报告已齐）
+
+- 交叉终审：`wave2-C-r10-review-events.md` / `review-system.md` / `review-a11y.md` / `review-i18n.md`
+- 红线自证：`wave2-C-r10-redlines.md`（禁改区零命中；input-bar 无新增散点 `!min-h-11`）
+- 五条规范终验：`wave2-C-r10-five-norms.md`（Chat/hub/PDF/设置静态 PASS；anki/qbank chrome 仍 3 项静态 FAIL：卡片右上 3 动作、任务台窄屏宽表、标签删除横向热区）
+- 风险续册：`wave2-C-r10-risks.md`；PR 定稿：`wave2-C-r10-pr-final.md`
+- `coarseTouchTargetRule.test.ts` 已补 ESLint 9 flat-config 匹配，席位回报 34/34 绿（覆盖 R9 收集失败 + 配置匹配失败）
+
+
+
 

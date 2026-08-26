@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Linter } from 'eslint';
+import path from 'node:path';
 import rule from '../../eslint-rules/coarse-touch-target.js';
 
 /**
@@ -8,12 +9,16 @@ import rule from '../../eslint-rules/coarse-touch-target.js';
  * 白名单见 eslint-rules/coarse-touch-target.allowlist.json。
  */
 describe('ds-components/coarse-touch-target', () => {
-  const linter = new Linter();
+  // Flat config rejects filenames outside its cwd before applying any config.
+  // Use the filesystem root because the allowlist contract includes an absolute
+  // checkout path as well as paths relative to the repository.
+  const linter = new Linter({ cwd: path.parse(process.cwd()).root });
 
   const lint = (code: string, filename = 'src/features/example/components/Widget.tsx') =>
     linter.verify(
       code,
       {
+        files: ['**/*.tsx'],
         plugins: { 'ds-components': { rules: { 'coarse-touch-target': rule as never } } },
         languageOptions: {
           ecmaVersion: 2022,
