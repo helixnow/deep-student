@@ -1,119 +1,109 @@
-# 生成式 UI / HPIAS / 技能改造质量评审
-
-评审对象：`v0.9.44` → `origin/cursor/0824-cde6 @ 2d41ea8b`。本文只判断这块改造的真实质量：加法式吸收做得是否干净、安全边界是加强还是削弱、哪些是实打实的缺陷。不把"新增了多少文件和测试"当成完成度。
-
-体量参考：`src/features/generative-ui` 为全新目录（114 个文件、约 1.28 万行），Rust 侧新增 `generative_ui_executor.rs`（1055 行）、`src-tauri/src/hpias`（7 个模块约 1200 行）与带真实 Tauri 窗口的 e2e（559 行）；技能侧是约 30 个 builtin-tools 描述瘦身、目录快照机制和管理 UI 打磨。三块在 v0.9.44 中均不存在或仅存残迹（`researchStore` 在旧版只被 mcp-debug 注册，没有任何事件源）。
+# 生成式 UI / HPIAS / 技能 改造质量评审
 
 ## 结论
 
-**分块判定：生成式 UI 本体 PASS（少量收口项）；技能侧 PASS；HPIAS 后端 WARN，不能按"深度研究能力已接入"验收。**
+对照 `v0.9.44` 与 `origin/cursor/0824-cde6 @ 2d41ea8b`。本文不做逐项吸收对账（05 号静态审计已做完），只回答三个问题：加法式吸收的**工程质量**如何、有没有削弱安全边界、还埋着哪些缺陷与优化空间。
 
-生成式 UI 是这次 0824 里少见的、从第一天就按"模型输出不可信"设计的新增面。它没有削弱任何既有安全边界——它为一类原本不存在的能力（模型驱动 UI）建立了本来就该有的边界。HPIAS 则相反：事件协议、多会话切片、面板架子质量不错，但默认后端是一个无标识的演示剧场，真实检索后端锁在普通用户摸不到的环境变量后面，研究结果既不回流对话也不持久化。
+**总判定：WARN。GenUI 渲染协议层与技能接入是本次合成里质量最高的一块，接近可直接背书；但 HPIAS「深度研究」链在默认配置下是一场无标注的表演，且研究结果既不落库也不回流模型——这是产品诚实性问题，不是打磨问题。**
 
-## 加法式吸收评估
+分面：
 
-吸收方式非常克制，接触面小且形状正确：
+- **GenUI 协议层（executor + schema + 渲染 + action 安全）：PASS。** 双侧硬上限、三层会话过滤、HITL 写入链、注册表安全模式全部在位，且相对 #214 tip 是多处收紧（本轮独立复核了关键 diff 方向）。
+- **HPIAS 研究链：FAIL（产品完整性），非安全性 FAIL。** 默认 stub 后端伪造检索计数、子代理进度和综合结论并以真实研究的文案呈现给用户；真实 retrieval 后端只能靠终端用户不可达的环境变量开启；无论哪种后端，研究产出都是易失的、与模型对话断开的。
+- **技能面：PASS。** `generative-ui` 技能走既有注册/门控/本地化机械，目录快照冻结（prompt cache）设计成熟。
 
-- Rust 侧只在执行器注册表追加一项，并在工具名到块类型的映射中加一个分支（`src-tauri/src/chat_v2/pipeline.rs:347,451`；`context.rs:1062`），不碰任何既有执行器语义；
-- 前端通过既有 `blockRegistry` / `eventRegistry` 插件机制注册 `generative_ui` 块（`src/features/chat/plugins/blocks/generativeUI.tsx:155-159`；`plugins/events/generativeUI.ts:67`），不修改 chat 核心；
-- HPIAS 复用了 v0.9.44 遗留的 `useHpiasStore` 而不是另起炉灶，新增 `sessions` 多会话切片时保留顶层字段供旧的全页研究 UI 继续读（`src/stores/hpiasSessionSlice.ts:1-4`），外会话事件只写切片不顶掉活跃会话；
-- 工具本身通过 `generative-ui` 技能的 `embeddedTools` 暴露，不装载技能就不出现在工具面，符合渐进披露架构。
+## 一、加法式吸收的工程质量：这块做得确实好
 
-回放路径也想清楚了：Rust 落库的 `ToolResultInfo.output` 只有 `{"status":"rendered","blockCount":N}`（省 token），重载会话时前端按 `toolOutput.intent → content → toolInput.intent` 三级回退取意图（`src/features/generative-ui/bridge/chatBlockBridge.ts:41-96`），重载后静态块仍可渲染。这是"tool result 给模型的"和"UI 要渲染的"两条通道分离的正确做法。
+### 1. 结构上是真加法，不是「新旧两套并存」
 
-一处例外要点名：`src/features/generative-ui/prompts.ts` + `prompts/fewShotExamples.ts`（合计约 550 行）构建的系统提示只被 Style Lab demo 消费，生产模型的真实指导来自技能正文 `builtin-tools/generative-ui.ts`。两套 prompt 源并存，`registryPromptSync.contract` 只锁 prompts.ts 一侧，技能正文里手写的 18 个 type 列表没有合同测试钉住，存在漂移空间。
+`src/features/generative-ui/` 全部 114 个文件相对 v0.9.44 是纯新增（12771 行插入、0 删除）；Chat 侧接入只通过既有插件注册表完成（`eventRegistry.register` / `blockRegistry.register`，见 `src/features/chat/plugins/events/generativeUI.ts` 与 `plugins/blocks/generativeUI.tsx`），没有侵入 chat core。Rust 侧同样：`GenerativeUiExecutor` 按既有 ToolExecutor 协议注册在 catch-all 之前，`hpias` 是独立新模块。
 
-## 安全边界评估：是加强，不是削弱
+更值得肯定的是状态容器的选择：0824 没有为 HPIAS 新写一个 store，而是复活了 v0.9.44 里已休眠的 `researchStore`（当时仅 `mcp-debug/registerStores.ts` 引用），只加 90 行（多会话切片 + 两处审计修复），并把并发隔离逻辑拆进纯函数模块 `src/stores/hpiasSessionSlice.ts`。这是正确的「吸收进已有体系」而非「旁路再造」。
 
-这一块值得展开，因为它是全仓对"模型输出进 DOM / 触发副作用"防御最完整的实现：
+### 2. 防御栈是双侧、纵深、且被测试钉死的
 
-1. **双端白名单入口。** Rust 在工具执行入口先验：18 种块类型白名单、32 块上限、256k 字符上限、`intent.version` 只认 `"1"/"1.1"`（`generative_ui_executor.rs:19-42,106-131`）。前端 zod 再验一遍整体结构 + 逐块 props schema，`z.object` 默认剥未知键，模型无法经 props 注入 `className`/`style`；布局 class 只从受控 token 表输出，不透传模型字符串（`schema.ts:89-109`）。
+本轮独立复核，以下每层都在树上且相互一致：
 
-2. **动作系统按"注册表 fail-closed"设计。** Chat 块始终传入 handler 注册表，此时未注册的 action id 直接不渲染按钮；确认弹窗展示宿主注册的 trusted label 而非模型 label，阻断"按钮写着查看详情、实际执行删除"的伪装（`components/ActionBarBlock.tsx:30-36,66-71`）；有效风险级取 `max(模型声明, handler 声明)`，模型不能自降风险（`actions.ts:101-109`）；high 走 alert dialog、medium 双击确认；handler 统一包 rate-limit（400ms）+ timeout（15s）+ telemetry；handler 查找用 `Object.hasOwn` 防原型键冒充。`actionBarSecurity.test.tsx` 直接按这个威胁模型写断言，不是覆盖率凑数。
+- **入口双侧对称**：Rust 入口 256k intent / 32 块 / 18 型白名单 / 版本字面量校验（`src-tauri/src/chat_v2/tools/generative_ui_executor.rs:51-132`）；前端 Zod 同限 + 流式 buffer 同 256k 上限（`schema.ts`、`utils/streamBufferGuard.ts`——后者甚至为避免热路径大字符串分配写了不构造副本的预算估算器）。
+- **文本/URL/Markdown 清洗**：控制字符剥离在 `validateBlockProps` 入口统一做；URL scheme allowlist 处理了空白/C0 混淆（`java\tscript:`）、`data:` 仅放行静态位图并明确排除 `svg+xml`、协议相对 `//` 拒绝（`utils/sanitizeGenerativeUrl.ts:24-46`）；Markdown 清洗保留围栏代码、剥 on* / style / srcdoc、重写 href/src/srcset/ping/background，并覆盖 GFM autolink 与引用定义（`utils/sanitizeGenerativeMarkdown.ts`）。
+- **Action 安全模式**：Chat 始终传入 handler 表 → 未注册 action 不渲染不可点；展示 label 以 handler 注册为准（模型 label 仅兜底）；有效风险级取 max(模型声明, handler 声明)，high 走对话框、medium 走两击确认；handler 表用 `Object.create(null)` + `Object.hasOwn` 防原型仿冒；统一套 rate-limit（400ms）/ timeout（15s）/ telemetry / 撤销栈（`actions.ts:77-109`、`ActionBarBlock.tsx:66-71,195-215`）。
+- **Notes 写入 HITL**：noteId 取自用户自己打开的 canvas（`modeState.canvasNoteId`），模型不可指定目标笔记；regex 在 Rust 入口、TS schema、派发口三层禁死；一切写入经 `canvas:ai-edit-request` 建议通道，无直写后端路径。
+- **流式解析器**：块级提交 + last-good + 恶意切片前进不卡死 + id 去重 + 截断告警（`parser.ts`），配 124 个测试文件覆盖 a11y、RTL、contrast、reduced-motion、截断、恢复、隔离等维度。
 
-3. **Notes 写入是真 HITL，不是自我声明。** intent 含 `apply-note-edit` 时 Rust 强制要求 `noteEdit` 参数并白名单化字段、拒绝 `isRegex`、256KiB 上限（`generative_ui_executor.rs:169-230`）；前端 zod 同规格再验（`utils/extractNoteEditPayload.ts`）；`dispatchCanvasAIEditRequest` 在派发前第三次校验，防止绕过提取层的直接调用者把模型控制的正则送进编辑器（`utils/dispatchCanvasAIEditRequest.ts:57-65`）；最终落盘由编辑器的 diff 确认面板承接。工具本身标 `ToolSensitivity::Low` 是对的——执行器纯发事件无副作用，副作用全部在前端 HITL 之后。
+这一层的完成度显著高于「能用」，达到了它自己文档（SOTA_CHECKLIST）声称的水准。
 
-4. **Markdown / URL 消毒有纵深。** markdown 块在进入已挂 rehype-sanitize 的 `MarkdownRenderer` 之前，先做一层同 allowlist 的剥离：script/style/iframe 连内容剥、事件属性和 `style`/`srcdoc` 剥、URL 属性与 markdown 链接/引用定义/autolink 全部过 scheme allowlist、`srcset` 逐项过滤、围栏代码保留原文（`utils/sanitizeGenerativeMarkdown.ts`）。URL 判定处理了空白/C0/C1 混淆（`java\tscript:`）、协议相对 `//`、并把 `data:image/svg+xml` 排除在安全位图之外（`utils/sanitizeGenerativeUrl.ts:10-46`）。文本叶子统一剥控制字符后才进 schema（`schema.ts:237`）。
+### 3. 相对 #214 tip 的取舍方向经得起独立复核
 
-5. **会话 id 与事件桥。** `researchSessionId` 双端同规格消毒（首字符字母数字、128 上限、仅 `._-`），路径穿越和 `javascript:` 形态进不来；hpias 事件桥按 session 过滤时 fail-closed——缺失或非字符串 `session_id` 的事件不再污染请求会话（`bridge/hpiasEventBridge.ts:106-117`，注释明确记录了修掉的旧洞）。
+本轮直接跑了 `git diff origin/Generative-UI-0824 2d41ea8b` 的关键文件：定向桥确认为 fail-closed 收紧版（缺失/非字符串 `session_id` 一律丢弃，#214 tip 会穿透）；`migrateIntentToV11` 确认为深拷贝无损升级（#214 是丢字段白名单重建）；闪卡 `save-to-library` 保存链确认未吸收，闪卡块保持纯展示——入库统一归 `anki_cards` QA 管线。这三处「不吸收/改造后吸收」的裁决都让边界更清楚，不是偷懒。
 
-6. **资源与降级护栏。** 流式缓冲 256k 硬上限双端一致，超限整段拒绝而不是截尾污染 last-good（`utils/streamBufferGuard.ts:20-35`）；解析走"严格 → 恢复（丢非法块、id 去重）→ 部分意图"三级降级，块级校验失败渲染警告块而不是整卡崩溃，外面再包 ErrorBoundary。
+## 二、安全边界：没有削弱，但有两处非对称值得记录
 
-技能管理 UI 侧还有一处主动补强：恢复内置默认从"点击即执行"改为与删除同级的行内确认流（`SkillsManagementPage.tsx` 的 `handleRequestResetToDefault` 链），这是对既有破坏性操作边界的加强。
+结论先行：**未发现任何相对 v0.9.44 或 #214 的边界放宽**。以下两条是新增面自身的非对称，不是回归：
 
-**结论：没有发现任何被削弱的既有边界；新增边界的实现质量高于仓库平均水平。**
+### 1. research-plan 步骤数：前端封顶 12，Rust 后端不封顶
 
-## 主要缺陷与风险
+前端 schema 把 `research-plan.steps` 限制在 1–12（`ResearchPlanBlock.tsx:17`），但 Rust 的 `extract_plan_queries_from_intent` 取**全部** step label 不设上限也不去重（`src-tauri/src/hpias/payloads.rs:57-85`）。256k 的 intent 足以塞进数千个短 step。在默认 stub 模式下这只是多发一串事件；但在 retrieval 模式下，每个 label 触发一次完整的 `VfsUnifiedRetriever::search`（含向量检索链路，`retrieval_backend.rs:108-169`），是模型可控的 N 倍资源放大。retrieval 是 opt-in 环境变量，所以现在是低危；一旦按第五节建议把后端转正，这条必须先补。
 
-### 高 — HPIAS 默认后端向用户展示捏造的研究过程，且无任何演示标识
+### 2. researchSessionId 的所有权在模型手里
 
-后端工厂默认 `stub`（环境变量缺省即 stub，`src-tauri/src/hpias/service.rs:23-39`）。stub 时间线的数字是编的：`fetched = queries.len() * 21`、`selected = queries.len() * 6`、`citations: {"items": []}`、每个子代理固定汇报"子代理 N 已完成检索与摘要"（`payloads.rs:266-306`）。intent 没带 `research-report` 正文时，综合结论回落到一段硬编码的医学影像文案加假引用 `[review-1]`（`payloads.rs:253-258`）——用户问的是别的主题也照发。
+会话 id 由模型自由指定，Rust/TS 双侧只做字符集与长度清洗（`generative_ui_executor.rs:143-153`），不做唯一性约束，也不与 tool call / block 绑定。模型偏好复用相似 id（如 `research-1`）：同一 chat 的两次研究、甚至两个 chat 会话复用同一 id 时，两个块会钉在同一个 store 切片上，后一次的 `session_started` 会清空前一次的切片（`hpiasSessionSlice.ts:106-107`），前一个面板随即显示后一次运行的数据。三层过滤解决的是「不同 id 不串台」，没有解决「同 id 本就不该属于两次运行」。技能正文只说「必须传 researchSessionId」（`builtin-tools/generative-ui.ts:68`），没有唯一性指引。正确做法是执行器用 `block_id` 派生并回写权威 id，模型传入仅作参考。
 
-而技能规则 7 要求模型见到 research 块就必须传 `researchSessionId`，前端见到合法 id 就挂研究面板并用实时事件顶掉静态块。也就是说**默认配置下的正常使用路径必然触发这场剧场**：面板显示"检索 42 / 精选 12 / 子代理完成"，但检索从未发生。真实的 `RetrievalHpiasResearchService`（VFS UnifiedRetriever + LLM synthesis，实现质量尚可）锁在 `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 后面，桌面用户没有入口。
+另有两条既有观察维持原判、不再展开：`guardedListen` 白名单仅 dev 断言（全仓既有设计）；`normalizeHpiasEventPayload` 只校验 `type` 为字符串，在「事件只来自本进程 Rust」的信任模型下可接受。
 
-这不是安全漏洞，是可信性缺陷，性质比一般 bug 重：UI 向用户声称完成了并未发生的工作。收口方向二选一：deps 可用时默认走 retrieval（工厂已有回退逻辑，改默认值即可）；或给 stub 面板打显式 demo 标记并删掉硬编码医学正文。
+## 三、HPIAS 链的核心问题：默认配置是无标注的研究表演
 
-### 高 — 研究结果不回流对话、不持久化，管线是射后不理
+这是本评审最重要的发现，此前的静态审计（05 号）验证了「stub 管线接线正确、事件序列与 Style Lab 对齐」，但没有从产品视角问一句：**用户看到的是什么？**
 
-执行器发完块事件后 spawn 管线立即返回 `{"status":"rendered"}`（`generative_ui_executor.rs:427-458`）。synthesis 与子代理摘要只进 zustand store：模型在后续轮次看不到任何研究产物，无法引用或续写；会话重载后实时面板消失（事件不落库），只剩模型当时自己编的静态 research 块。retrieval 模式下真实检索 + 一次 LLM synthesis 的成本花完，产物在进程内存里蒸发。
+### 事实链
 
-HPIAS 与对话当前是两个不相交的世界。至少应把最终 synthesis 持久化进块（回放可见），更进一步应以后续 tool result 或尾部注入把结论交还模型。
+1. 后端由 `DEEP_STUDENT_HPIAS_BACKEND` 选择，默认与未知值都落 stub（`src-tauri/src/hpias/service.rs:23-39`）。这个环境变量没有任何设置界面，打包桌面应用的终端用户**必然**运行 stub。
+2. 技能主动引导模型触发它：intent 含 research 块时「必须传 researchSessionId」，于是每个默认安装里，模型一做研究类回答就会拉起 stub 管线。
+3. stub 推送的内容（`src-tauri/src/hpias/payloads.rs:236-317`）：
+   - 检索计数是编造的：`fetched = 查询数 × 21`、`selected = 查询数 × 6`（`:266-267`）；
+   - 子代理摘要是固定话术「子代理 N 已完成检索与摘要。」（`:303`）；
+   - 「综合结论」要么把模型自己在 research-report 块里写的正文原样回放（`extract_synthesis_from_intent`，`:88-106`），要么在模型没写报告时回退到一段与用户问题无关的硬编码医学影像文案，还带着假引用 `[review-1]`（`:253-258`）。
+4. 前端把这些渲染成「深度研究进度 / 文献检索 / 入选引用」的仪表盘（`src/locales/zh-CN/generativeUi.json` hpias 节 + `buildHpiasResearchDashboardIntent.ts:78-95`），唯一的标注是通用的「AI 生成内容」徽章。没有任何「演示 / 未执行真实检索」的提示。
 
-### 中高 — 同一 researchSessionId 重复渲染会并发 spawn 管线，无去重、无取消
+合成效果：用户提出研究问题 → 看到一个声称检索了 42 篇文献、筛选了 12 条引用、两个子代理完成调研的进度面板 → 「综合报告」其实是模型闭卷写的那段话被伪装成检索产物回放。这不是打磨欠缺，是**伪造过程证据**。Style Lab 里演示时间线是合理的；把同一条时间线接进真实 Chat 而不改语义标注，是本次合成里最大的判断失误。
 
-`start_research_session` 每次调用无条件 spawn（`retrieval_backend.rs:216-230`；stub 同），hpias 模块里没有任何 in-flight 会话表。技能 few-shot 明确鼓励"research-plan 先出、research-report 后出"的多次渲染节奏，模型复用同一 session id 时：retrieval 模式双倍检索 + 双次 LLM 计费；两条管线事件交错写同一切片，而 `synthesis_updated` 是追加语义（`hpiasSessionSlice.ts:172-177`），正文会重复拼接；executor 每次先 emit `session_started` 又会把切片清零重放。需要 backend 侧按 session id 幂等或先取消旧管线。
+### 即使打开真实后端，链路也没有闭环
 
-### 中 — 契约与实现的三处名不副实
+设 `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 后检索是真的（VFS UnifiedRetriever + LLM synthesis，失败回退确定性拼接，工程上没问题），但两个断点仍在：
 
-1. `contracts/hpiasLifecycleContract.ts:1-6` 声称顺序"必须与 Rust payloads 一致"，且序列把 `retrieval_completed` 排在 subagent 之前；retrieval 后端实际把 `retrieval_completed`/`selection_completed` 发在全部 subagent 之后（`retrieval_backend.rs:171-183`）。断言函数只查覆盖不查顺序，契约文件的承诺比测试强。
-2. stub 子代理引用 `json!([["paper-{}", sub_id]])` 是未插值的字面量——`json!` 不做 format，前端会收到引用 id 为字符串 `"paper-{}"`（`payloads.rs:298-305`）。
-3. synthesis 的 LLM 调用借道 `call_with_config_id_raw_prompt("_hpias_synthesis_", …)`，该 config id 不存在，必然走"未找到，回退 Model2 默认"的 warn 分支，且 usage 遥测被标为 `compaction` 用途（`model2_pipeline.rs:6856-6886`）——HPIAS 的成本在账面上不可见。
+1. **结果不回流模型。** 执行器发完 `emit_end` 就立刻返回 `{"status":"rendered", "blockCount":…}`（`generative_ui_executor.rs:427-458`），管线在后台 spawn，产出只走 `hpias_event` 进 UI。模型永远看不到检索命中与综合结论，它的文字回答不可能引用这些证据——「研究面板」与「助手回答」是两个互不知情的世界。
+2. **结果不落库。** `researchStore` 无持久化（仅 devtools 中间件）；chat 块的 `toolOutput.intent` 在管线运行**之前**就已保存。应用重启后切片消失，前端正确回退渲染静态块（`plugins/blocks/generativeUI.tsx:61-74`，这个降级本身写得对）——但静态 research-report 是模型当初的闭卷稿，真正的检索综合已经蒸发。用户不复制导出就等于白跑。
 
-### 中 — 流式基础设施在聊天主链上闲置
+所以对 HPIAS 链的公允评价是：**事件协议、并发隔离、降级路径都建成了，唯独「研究」这个产品承诺本身还不存在。** 把它当成已交付能力对外描述是不成立的。
 
-后端在工具参数收齐后一次性 `emit_chunk` 完整 JSON（`generative_ui_executor.rs:424-426`），chat 主链上不存在渐进流。前端约 700 行的流式解析、stream registry、`coercePartialIntent`、乱序恢复实际只被 Style Lab demo 和测试驱动。作为前瞻设计可以接受，但它和 prompts.ts 一样制造了"能力已存在"的观感；若要兑现，需要在 tool-call 参数增量阶段就发 chunk，否则应在文档标注 demo-only。
+## 四、确定性缺陷清单（按修复优先级）
 
-### 低 — 若干小项
+1. **`export-plan` 一个 id 两种语义，且标签撒谎。** workbench 基线 handler 里 `export-plan` 的实现是 `workbenchBus.launch({typeId:'learning-hub'})`——一个叫「导出计划」的按钮实际行为是打开 Learning Hub 窗口（`handlers/workbenchLearningHandlers.ts:47-54`）；只有 intent 含研究块时才会被真正的剪贴板导出 handler 覆盖（`bridge/resolveGenerativeUIChatActionHandlers.ts:89-138`）。few-shot 恰好教模型在**非研究**的学习仪表盘里放 `export-plan`（`prompts/fewShotExamples.ts:46-54`），命中的正是「标签说导出、行为是导航」的分支。信任标签体系（trustedLabel 取 handler 注册 label）在这里被 handler 自己击穿了。
+2. **synthesis 长度与 research-report 上限冲突。** store 侧 synthesis 是无上限累加的（`subagent_completed` best-effort 追加小节 + `synthesis_updated` 拼接，`src/stores/researchStore.ts:418-446`），而 `research-report` 块 schema 硬限 12000 字符，`buildHpiasResearchDashboardIntent.ts:138-147` 传入前不裁剪——超限时块级校验失败，报告位置直接变成校验错误告警（copy-report 仍可用，因为它读 store 不读块）。
+3. **研究报告把 Markdown 当纯文本渲染。** synthesis prompt 明确要求输出 `## 综合结论` 起头的 Markdown（`src-tauri/src/hpias/synthesis.rs:45-58`），stub 的硬编码文案也带 `**` 强调；而 `ResearchReportBlock` 用 `whitespace-pre-wrap` 的 span 渲染正文（`ResearchReportBlock.tsx:20-58`），用户看到的是字面 `##` 与 `**`。仓库里现成的 `sanitizeGenerativeMarkdown + MarkdownRenderer` 组合（markdown 块就在用）没有被复用。
+4. **stub 引用格式化 bug。** `json!([["paper-{}", sub_id]])` 忘了 `format!`，产物是字面 `"paper-{}"`（`payloads.rs:304`）——任何渲染 citations 的界面都会显示占位符原文。这个 bug 恰好说明 stub 内容从未被人当真看过。
+5. **HPIAS synthesis 的 LLM 用量记错账。** 传入伪 config id `"_hpias_synthesis_"` 走 `call_with_config_id_raw_prompt`，该方法找不到配置时按设计回退 Model2 默认并打 `[compaction]` warn 日志，用量按 `CallerType::ChatV2` / purpose `"compaction"` 入账（`synthesis.rs:72-77`、`llm_manager/model2_pipeline.rs:6856-6889`）。每次研究综合都伪装成一次压缩调用：日志噪音 + 用量归因失真。
+6. **查询兜底字面量。** 问题为空时 retrieval 后端拿字符串 `"research query"` 去检索用户的 VFS（`retrieval_backend.rs:57-67`），必然返回无关命中并流入 synthesis。应当直接跳过检索走空态。
+7. **`session_failed` 无 id 时误伤活跃会话**（潜在）：该事件 `session_id` 可选，缺失时走顶层分支把当前活跃会话的 running 子代理标记为 failed。当前两个后端都不发这个事件，属休眠缺陷。
 
-- `parse_intent` 先 `serde_json::from_str` 再查长度，超大字符串会先完整进内存（`generative_ui_executor.rs:56-77`）；上游有 LLM 输出长度约束，实害有限。
-- intent 在 chunk、end payload、`ToolResultInfo.input` 三处重复传输与落库，接近上限时单次渲染约 3×256KB。
-- `service.rs` 的 `from_env` 测试在并行测试进程里 set/remove 全局环境变量（`service.rs:119-136`），与同二进制其他用例存在偶发竞态。
-- ActionBar 在无注册表模式下点击 action 即播报成功 live 文案（`ActionBarBlock.tsx:159-160`），即便没有任何 handler 执行；chat 路径恒有注册表，仅影响裸用方。
-- `strip_tool_namespace` 会剥 `mcp_` 前缀，名为 `mcp_render_generative_ui` 的外部 MCP 工具会被内置执行器接管——这是既有模式的共性问题，非本次引入，但新执行器加入后接管面又大了一格。
+## 五、技能面：干净，且有一个值得表扬的设计
 
-## 技能侧评审
+- `generative-ui` 技能是标准加法：定义 + `builtinToolSkills` 注册 + 双语词条 + 本地化契约测试，`allowedTools` 走既有 `builtin-` 门控。技能正文与执行端约束逐条对得上（18 型清单、32 上限、HITL noteEdit 禁 regex、闪卡只读、研究块须带 session id），并有契约测试锁定正文必须引用 `MAX_GENERATIVE_UI_BLOCKS`。模型看到的承诺与后端强制的行为一致——这正是 05 号审计验证过的，本轮无新发现。
+- **available_skills 目录会话级冻结**（`progressiveDisclosure.ts:647-693`）是本区间技能面最有含金量的改动：目录首帧冻结 + `session.metadata` 持久化 + 重启回灌 + 多窗口 first-write-wins，杜绝了「中途装技能 → system 第 0 字节变化 → 整段 prompt cache 失效」。代价（中途安装的技能不进当前会话目录，只能靠 `load_skills` tool result 与瞬态消息表达）在注释里写得清清楚楚，是自觉的取舍而非疏忽。
+- 一个无害但值得知道的事实：`prompts/fewShotExamples.ts` 与 `buildGenerativeUISystemPrompt` **不在生产提示链上**（仅 Style Lab 与契约测试消费），真正面向模型的只有技能正文。这层「假提示词层」被十几个契约测试供养着；不算缺陷，但它教出来的 `export-plan` 用法与第四节第 1 条的语义冲突同源，收敛时应一起处理。
+- `skills-management/index.ts` 的转导出收敛（实现留在历史路径、出口统一）是合理的最小改动策略。
 
-变化分四类，整体是低风险的加法：
+## 六、优化顺序
 
-1. **generative-ui 技能本体**（`builtin-tools/generative-ui.ts`）：正文规则密度高且方向正确——禁 HTML/JSX/inline style、副作用只能经 action-bar 声明、高风险必须带 riskLevel、HITL 与 researchSessionId 的强制条款、flashcard-preview 只读（入库统一交 anki_cards 管线，与 wrap-up 裁决一致）。JSON Schema 对 `noteEdit`/`layout` 用了 `additionalProperties: false` 收紧。缺一个把正文 type 清单钉在 registry 上的合同测试（见上文漂移风险）。
-2. **约 30 个 builtin-tools 描述瘦身**：如 `ask-user.ts` 把"【必填】"等冗词压掉，语义无损的 token 节省，配合 H 冻结按会话代际生效，是干净的改动。
-3. **目录快照机制**（`progressiveDisclosure.ts` 移除 `excludeLoaded` + 会话级 `availableSkillsSnapshot`）：属于 prompt-cache 改造的一部分，其并发首发与长期陈旧问题已在 `prompt-cache.md` 评审详述，此处不重复；从技能视角补一句——目录冻结意味着中途安装的技能对旧会话模型不可见，与技能市场"即装即用"的产品叙事有张力，需要产品层面明确预期。
-4. **管理 UI 与可达性**：reset 确认流（补强边界）、`/` 聚焦搜索带 workbench 窗口焦点门禁、SkillsList 键盘操作（Enter 打开、E 切换启停、Delete 走确认横幅）并配了 `SkillsList.a11y.test`、aria-label 从英文硬编码转 i18n、44px 触控目标、编辑器 Android 返回键加保活可见性守卫防止隐藏层吞键。全部是打磨性加法，未见回归面。键盘 `E` 即时切换启停无任何反馈提示，误触不易察觉，建议补 toast。
+1. **先诚实，再谈能力。** 短期二选一：stub 模式下面板显著标注「演示数据，未执行真实检索」，并去掉编造的检索/入选计数与医学影像兜底文案；或者默认根本不 spawn stub 管线（研究块只渲染静态内容），把 stub 完整保留给 Style Lab。这是发布阻断项。
+2. **会话 id 收归系统。** 执行器以 `block_id` 派生权威 researchSessionId 并写回 `emit_end` payload；模型传入的 id 降级为展示别名。同时消除同 id 串台与复用污染。
+3. **闭环研究产出。** synthesis 完成后把报告写回 chat 块（追加块更新事件并入库），并考虑以第二阶段 tool result 或后续消息把综合结论交还模型引用。做不到闭环之前，「深度研究」不应出现在用户可见的能力描述里。
+4. **Rust 侧补对称上限**：plan queries 封顶 12 并去重（对齐前端）；synthesis 传入 research-report 前裁剪至 12000；顺手修 `format!` 引用 bug。
+5. **`export-plan` 语义拆分**：workbench 导航 action 改名（如 `open-learning-hub`），或非研究 intent 不注册 `export-plan`；few-shot 同步更新。
+6. **研究报告改用 Markdown 渲染**（`sanitizeGenerativeMarkdown` + `MarkdownRenderer`），引用徽章可在渲染后正则替换保留。
+7. **后端开关产品化**：`DEEP_STUDENT_HPIAS_BACKEND` 升级为设置项或按 VFS/LLM 可用性自动选择；HPIAS synthesis 申请独立的 usage caller/purpose。
 
-`docs/research/anki-ai-native/agents/skills/*/SKILL.md` 三个文件是研究文档中的示例技能，不进运行时，不构成风险。
+## 发布判断
 
-## 测试质量判断
+GenUI 协议层、块生态、action 安全与技能接入可以按当前状态背书——这部分的吸收改造展示了这套「加法式 + 双侧契约 + 测试钉死」方法论的上限。但只要默认安装里还存在「无标注的假研究进度」这一条，就不应把 `2d41ea8b` 的 HPIAS 面描述为已完成合成的产品能力；它目前的准确定位是「事件协议与 UI 已就绪、后端为演示桩、产出未闭环」的基础设施。建议以第六节第 1 条为发布门槛，第 2–3 条为转正门槛。
 
-这块的测试不是摆设：前端 124 个测试文件覆盖到消毒（URL 混淆用例）、动作安全（标签伪装、风险上取）、流式降级、i18n/locale、a11y、undo 隔离，另有 registry/prompt/payload/action-handler 四类 contract 测试防漂移；Rust 有入口验证单测和带真实 Tauri 窗口 + 事件捕获的 e2e（含 33 块拒绝、version 2 拒绝、hpias session_started 断言）。
-
-缺口与上文缺陷一一对应：
-
-1. 没有"同一 session id 重复 render"的并发管线测试——正好绕开了最现实的使用节奏；
-2. 生命周期契约只测覆盖不测顺序，测不出 retrieval 后端的顺序分叉；
-3. `hpiasPipelineRuntime.integration` 测的是 stub 时间线，retrieval 后端（真正有价值的那个）没有任何集成测试，可以用 fake retriever 补；
-4. 没有断言"stub 综合结论不含硬编码正文"之类的反剧场用例——因为剧场本身是设计意图；
-5. chat 主链无流式端到端（因为不存在流式），streaming 测试全部在 demo 语境。
-
-## 建议的收口顺序
-
-1. **先处理 HPIAS 可信性。** 默认后端在 deps 可用时切 retrieval，或给 stub 面板加显式 demo 标记并删除硬编码医学正文与假数字公式。
-2. **给管线加 session 幂等/取消。** 同 id in-flight 表，二次请求要么幂等要么先取消。
-3. **让研究产物回流。** 最终 synthesis 持久化进块（回放可见），并设计交还模型的通道。
-4. **补契约。** 顺序断言接到两个后端；技能正文 type 清单与 registry 建合同测试；修 `paper-{}` 插值；synthesis 调用换独立 caller/purpose 标识。
-5. **决断流式与 prompts.ts。** 接通参数增量流，或明确标注 demo-only，避免下一个评审者再花时间确认"它到底流不流"。
-
-## 最终判断
-
-生成式 UI 本体与技能侧是高质量的加法式吸收：接触面小、回放通道分离、双端白名单一致、动作/写入/渲染三条链都按"模型不可信"建边界，测试直指威胁模型。**没有削弱任何安全边界，反而树立了一个可供其他模块参照的范本。**
-
-HPIAS 是短板：架子（事件协议、fail-closed 桥、多会话切片、面板映射）质量不差，但默认交付的是无标识的演示剧场，真实后端不可达，产物不回流、不持久化、无并发治理。按当前状态，它适合被描述为"研究面板的前端基建 + 一个未启用的检索后端原型"，而不是"深度研究已接入"。上面收口清单的前三项做完之前，不建议在产品叙事中宣称 HPIAS 能力。
+本评审为只读静态复核：结论基于源码、双向 git diff（含与 `origin/Generative-UI-0824` tip 的方向核对）与既有测试文本，未运行测试或实机管线。
