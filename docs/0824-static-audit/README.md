@@ -56,3 +56,18 @@
 | `27-invariants-number-errata.md` | 09 数字勘误 | 不翻案 PASS |
 | `28-pr269-coverage.md` | #269 覆盖 | 无缺失产品增量 |
 | `29-step22-candidate.md` | Step 22 候选 | 仅 QA 开关不落盘 |
+
+## 第四波（一份一提交）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `30-qbank-tools.md` | qbank 压缩 + daily_target | 已写 |
+| `31-model-registry.md` | 无 mythos-5/haiku-5 真条目 | 已写 |
+| `32-android-back-44px.md` | G 44px / safe-area / Android back | PASS |
+| `33-governance-abg.md` | 数据治理 A+B+G | 已写 |
+| `34-finder-persist.md` | Step 18 finder persist | PASS |
+| `35-anki-nullable-metadata.md` | Anki 可空 metadata | 已写 |
+| `36-cardagent-start.md` | cardAgent.startGeneration | 已写 |
+| `37-pipeline-hooks.md` | pipeline hooks 四切点 | 已写 |
+| `38-utf8-special-tokens.md` | utf8_stream + special tokens | PASS |
+| `39-leftover-pass4.md` | leftover 第四轮 | A：无新增量 |
