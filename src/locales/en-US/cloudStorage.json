@@ -82,6 +82,11 @@
     "placeholderConfigured": "Password configured: leave blank to keep it, enter a new password to replace it",
     "placeholderUnset": "Not encrypted: enter a password to enable end-to-end encryption",
     "tooShort": "The cloud end-to-end encryption password must be at least {{min}} Unicode characters (code points, not blank). Shorter passwords cannot export an encrypted full-fidelity ZIP and will not be saved.",
+    "preexistingShortConfirm": {
+      "title": "Password is shorter than {{min}} characters",
+      "description": "A newly chosen end-to-end encryption password must be at least {{min}} characters. If this is the original password you set in an older version to encrypt existing cloud backups, you can keep it — decrypting existing backups has no length requirement. For a new password, please choose a longer one.",
+      "confirm": "This is my existing password, continue"
+    },
     "storedPasswordRequired": "Cloud end-to-end encryption is on, but this device has no usable backup password. The export was refused so a portable archive is not treated as a full-fidelity backup. Re-enter the cloud encryption password and try again.",
     "description": "When enabled, full ZIP backups, record-level sync payloads (change records, sync manifests, deletion markers), and file-level objects (workspace databases, VFS blobs, and asset files) are end-to-end encrypted with AES-256-GCM and cannot be read by the cloud provider. Object keys still use the plaintext content hash for deduplication. Legacy plaintext objects uploaded before encryption was enabled are rejected on download; re-sync with the same password to migrate them.",
     "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password.",

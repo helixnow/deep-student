@@ -118,6 +118,11 @@ fn accept_zip_encryption_password(password: String) -> Result<Option<String>, St
 /// 只有外层 ZIP 带 `portable_secrets.dsbk` 时才套用已存云端密码。
 /// 便携包忽略 stored，避免「无需提供备份密码」把旧云端包挡在门外；
 /// 调用方显式输入的密码仍原样返回，交给解封层按既有契约拒绝。
+///
+/// 导入是对既有密文的**解密**，不做最小长度准入：8 字符下限只管新设口令，
+/// 而 v0.9.44 从未限制口令长度。换机/重装用户重输的存量短口令必须能进入
+/// 解封层试解，否则旧加密备份在产品内永远打不开；口令错误由解封层按
+/// `E_BACKUP_SEALED_DECRYPT_FAILED` fail-closed。
 pub fn resolve_import_zip_password(
     explicit_password: Option<String>,
     use_stored_cloud_encryption_password: Option<bool>,
@@ -127,11 +132,16 @@ pub fn resolve_import_zip_password(
     if !zip_has_sealed_secrets {
         return Ok(explicit_password.filter(|password| !password.trim().is_empty()));
     }
-    resolve_zip_encryption_password(
-        explicit_password,
-        use_stored_cloud_encryption_password,
-        stored_password,
-    )
+    if let Some(password) = explicit_password.filter(|password| !password.trim().is_empty()) {
+        return Ok(Some(password));
+    }
+    if use_stored_cloud_encryption_password.unwrap_or(false) {
+        return match stored_password.filter(|password| !password.trim().is_empty()) {
+            Some(password) => Ok(Some(password)),
+            None => Err(STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED.to_string()),
+        };
+    }
+    Ok(None)
 }
 
 /// 从安全存储读取已存云端 E2EE 密码。空串 / 读取失败视为未配置。
@@ -171,13 +181,22 @@ fn resolve_import_zip_password_from_store(
     use_stored_cloud_encryption_password: Option<bool>,
     zip_has_sealed_secrets: bool,
 ) -> Result<Option<String>, String> {
-    if !zip_has_sealed_secrets {
-        return Ok(explicit_password.filter(|password| !password.trim().is_empty()));
-    }
-    resolve_zip_encryption_password_from_store(
-        app,
+    let needs_stored = zip_has_sealed_secrets
+        && use_stored_cloud_encryption_password.unwrap_or(false)
+        && explicit_password
+            .as_deref()
+            .map(|password| password.trim().is_empty())
+            .unwrap_or(true);
+    let stored_password = if needs_stored {
+        stored_cloud_encryption_password(app)
+    } else {
+        None
+    };
+    resolve_import_zip_password(
         explicit_password,
         use_stored_cloud_encryption_password,
+        stored_password,
+        zip_has_sealed_secrets,
     )
 }
 
@@ -2561,13 +2580,28 @@ mod resolve_zip_encryption_password_tests {
         );
     }
 
+    /// 升级兼容：导入是解密路径。v0.9.44 允许任意长度口令，存量短口令必须
+    /// 原样交给解封层试解，而不是被最小长度准入拦在门外。
     #[test]
-    fn sealed_import_short_stored_is_fail_closed() {
-        let error =
-            resolve_import_zip_password(None, Some(true), Some("short".into()), true).unwrap_err();
-        assert!(
-            error.contains(&crate::secure_store::MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS.to_string()),
-            "unexpected error: {error}"
+    fn sealed_import_short_stored_passes_through_to_unseal() {
+        assert_eq!(
+            resolve_import_zip_password(None, Some(true), Some("short".into()), true).unwrap(),
+            Some("short".into())
+        );
+    }
+
+    /// 换机/重装场景：用户显式重输的存量短口令同样放行进解密流程。
+    #[test]
+    fn sealed_import_short_explicit_passes_through_to_unseal() {
+        assert_eq!(
+            resolve_import_zip_password(
+                Some("short".into()),
+                Some(true),
+                Some("stored-passphrase".into()),
+                true
+            )
+            .unwrap(),
+            Some("short".into())
         );
     }
 

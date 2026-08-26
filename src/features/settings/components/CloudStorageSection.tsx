@@ -269,6 +269,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [showInsecureWebdavWarning, setShowInsecureWebdavWarning] = useState(false);
   // 记录当前不安全警告的上下文（保存还是测试连接）
   const [insecureWarningAction, setInsecureWarningAction] = useState<'save' | 'test' | null>(null);
+  // 短口令确认对话框：8 字符下限只管「新设」口令。v0.9.44 没有长度限制，
+  // 换机/重装用户必须能重输存量短口令来解密既有云端备份；用户显式确认
+  // 「这是旧口令」后按存量口令保存，新设短口令仍被拒绝。
+  const [shortPasswordConfirm, setShortPasswordConfirm] = useState<
+    { action: 'save' | 'test'; allowInsecure: boolean } | null
+  >(null);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
@@ -409,12 +415,16 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [provider, webdavConfig, s3Config, ftpConfig, root, allowInsecure, encryptionPassword]);
 
   // 实际执行保存逻辑
-  const doSaveConfig = useCallback(async (allowInsecureOverride = false) => {
-    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
-      showGlobalNotification(
-        'error',
-        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
-      );
+  const doSaveConfig = useCallback(async (
+    allowInsecureOverride = false,
+    acceptPreexistingShortPassword = false,
+  ) => {
+    if (
+      !acceptPreexistingShortPassword
+      && isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)
+    ) {
+      // 不直接拒绝：换机/重装用户重输的 v0.9.44 存量短口令必须有路可走。
+      setShortPasswordConfirm({ action: 'save', allowInsecure: allowInsecureOverride });
       return;
     }
 
@@ -437,7 +447,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             ? ftpConfig.password
             : undefined,
         encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-      });
+      }, { encryptionPasswordIsPreexisting: acceptPreexistingShortPassword });
       setCredentialStatus(storedCredentialStatus);
       setSecureStoreIssue(null);
     } catch (e: unknown) {
@@ -516,12 +526,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   }, [buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
   // 实际执行测试连接逻辑
-  const doTestConnection = useCallback(async (allowInsecureOverride = allowInsecure) => {
-    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
-      showGlobalNotification(
-        'error',
-        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
-      );
+  const doTestConnection = useCallback(async (
+    allowInsecureOverride = allowInsecure,
+    acceptPreexistingShortPassword = false,
+  ) => {
+    if (
+      !acceptPreexistingShortPassword
+      && isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)
+    ) {
+      setShortPasswordConfirm({ action: 'test', allowInsecure: allowInsecureOverride });
       return;
     }
 
@@ -546,7 +559,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               ? ftpConfig.password
               : undefined,
           encryptionPassword: encryptionPassword.trim() ? encryptionPassword : undefined,
-        });
+        }, { encryptionPasswordIsPreexisting: acceptPreexistingShortPassword });
         setCredentialStatus(status);
       } catch (e: unknown) {
         setConnectionStatus('failed');
@@ -1052,14 +1065,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const lastRestoreVersionIdRef = useRef<string | null>(null);
 
   // 从云端恢复（核心执行逻辑，确认框与重试按钮共用）
+  //
+  // 恢复是对既有密文的解密，故意不做口令最小长度校验：v0.9.44 允许任意
+  // 长度口令，换机/重装用户重输的存量短口令必须能进入解密流程；口令错误
+  // 由解封层 fail-closed（E_BACKUP_SEALED_DECRYPT_FAILED）。
   const performRestore = useCallback(async (versionId: string) => {
-    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
-      showGlobalNotification(
-        'error',
-        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
-      );
-      return;
-    }
     const knownVersion = cloudApi.findCloudBackupVersion(
       versionId,
       versions,
@@ -1168,7 +1178,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [
     buildConfig,
-    encryptionPassword,
     enterMaintenanceMode,
     exitMaintenanceMode,
     localizeCloudError,
@@ -2207,6 +2216,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     />
   );
 
+  // 短口令确认对话框：新设口令要求 8 字符起；确认「这是旧口令」则按存量
+  // 口令保存（v0.9.44 无长度限制，解密既有备份不受长度约束）。
+  const shortPasswordConfirmDialog = (
+    <DsAlertDialog
+      open={shortPasswordConfirm !== null}
+      onOpenChange={(open) => { if (!open) setShortPasswordConfirm(null); }}
+      title={t('cloudStorage:encryption.preexistingShortConfirm.title', {
+        min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+      })}
+      description={t('cloudStorage:encryption.preexistingShortConfirm.description', {
+        min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
+      })}
+      confirmText={t('cloudStorage:encryption.preexistingShortConfirm.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="warning"
+      onConfirm={() => {
+        const pending = shortPasswordConfirm;
+        setShortPasswordConfirm(null);
+        if (!pending) return;
+        if (pending.action === 'save') {
+          void doSaveConfig(pending.allowInsecure, true);
+        } else {
+          void doTestConnection(pending.allowInsecure, true);
+        }
+      }}
+    />
+  );
+
   // Dialog 模式下直接渲染内容
   if (isDialog) {
     return (
@@ -2227,6 +2264,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {disableEncryptionConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
+        {shortPasswordConfirmDialog}
       </>
     );
   }
@@ -2252,6 +2290,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {disableEncryptionConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
+      {shortPasswordConfirmDialog}
     </>
   );
 };
