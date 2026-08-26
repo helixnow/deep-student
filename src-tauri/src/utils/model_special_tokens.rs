@@ -1,9 +1,33 @@
 //! Conservative streaming cleanup for protocol tokens leaked by GLM/Qwen.
 //!
-//! This intentionally does not perform a global string replacement. A token is
-//! removed only when it is an outer wrapper, an otherwise-empty logical line,
-//! or the matching close token for a wrapper removed earlier in the stream.
-//! Markdown code spans and fenced code blocks are always passed through.
+//! This intentionally does not perform a global string replacement.
+//!
+//! # What IS removed
+//!
+//! - Leading outer wrappers (`<|im_start|>` / `<|begin_of_box|>` before any
+//!   substantive text) and their matching close tokens later in the stream.
+//! - Logical lines that consist solely of special tokens.
+//! - Continuation headers from stop-token failures: a line-leading
+//!   `<|im_start|>` immediately followed by a known role word
+//!   (`assistant` / `user` / `system`) and end-of-line. The whole line is
+//!   dropped and the wrapper is treated as opened, so the paired `<|im_end|>`
+//!   of the runaway turn is removed as well.
+//! - Close tokens (`<|im_end|>` / `<|end_of_box|>` / `<|endoftext|>`) glued to
+//!   the very end of the stream (only whitespace after them until flush).
+//!
+//! # What is NOT removed (deliberate)
+//!
+//! - Tokens quoted inside prose mid-line with more content after them
+//!   (e.g. "请解释 `<|im_end|>` 的含义" or "… <|im_end|> 后还有字").
+//! - Anything inside Markdown inline code spans or fenced code blocks.
+//!   Inline-code state is reset at each newline (streaming approximation of
+//!   CommonMark) so a single unpaired backtick cannot disable filtering for
+//!   the rest of the stream; a token inside a code span that happens to span
+//!   a soft line break loses that protection, which is the accepted trade-off.
+//! - A close token glued mid-stream to text with more content following
+//!   (unless a stripped continuation header proves it was a failure tail).
+//! - Line-leading `<|im_start|>` followed by a role word plus further content
+//!   on the same line (treated as a literal mention, not a header).
 
 const MODEL_SPECIAL_TOKENS: &[&str] = &[
     "<|begin_of_box|>",
@@ -12,6 +36,14 @@ const MODEL_SPECIAL_TOKENS: &[&str] = &[
     "<|im_end|>",
     "<|endoftext|>",
 ];
+
+/// Role words that follow `<|im_start|>` in ChatML-style templates. Used only
+/// for the narrow continuation-header rule (line-leading opener + role + EOL).
+const CONTINUATION_ROLE_WORDS: &[&str] = &["assistant", "user", "system"];
+
+fn is_continuation_role_word(word: &str) -> bool {
+    CONTINUATION_ROLE_WORDS.contains(&word)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelWrapTokenPolicy {
@@ -114,6 +146,19 @@ pub struct ModelWrapTokenStreamFilter {
     code: Option<MarkdownCode>,
     box_wrapper_open: bool,
     im_wrapper_open: bool,
+    /// Held role-word characters directly following a lone line-leading
+    /// `<|im_start|>` (continuation-header candidate). Invariant: non-empty
+    /// only while `line_is_candidate` and the candidate holds exactly that
+    /// opener. Bounded by the longest role word plus trailing whitespace.
+    role_suffix: String,
+    /// Close tokens (and following whitespace) glued mid-line to text: held
+    /// back because they may be a stop-token failure tail at end of stream.
+    /// Released verbatim as soon as any further substantive content arrives.
+    tail_hold_raw: String,
+    /// Same held span with the token text removed (whitespace only); emitted
+    /// instead of `tail_hold_raw` at flush or after a stripped continuation
+    /// header, when the held tokens are known to be failure artifacts.
+    tail_hold_stripped: String,
 }
 
 impl ModelWrapTokenStreamFilter {
@@ -128,6 +173,9 @@ impl ModelWrapTokenStreamFilter {
             code: None,
             box_wrapper_open: false,
             im_wrapper_open: false,
+            role_suffix: String::new(),
+            tail_hold_raw: String::new(),
+            tail_hold_stripped: String::new(),
         }
     }
 
@@ -145,13 +193,32 @@ impl ModelWrapTokenStreamFilter {
         }
 
         let mut output = self.process_available(true);
+        // Stream ends right on a continuation header (`…\n<|im_start|>assistant`):
+        // drop it, and drop any tail-glued closers held just before it.
+        if self.line_is_candidate && self.is_continuation_role_header() {
+            self.record_stripped_candidate_tokens();
+            self.clear_line_candidate();
+            self.role_suffix.clear();
+            self.drop_tail_hold_tokens();
+        }
+        // Closers glued to the very end of the stream are stop-token failure
+        // artifacts: drop the token text, keep any held whitespace.
+        output.push_str(&self.tail_hold_stripped);
+        self.tail_hold_raw.clear();
+        self.tail_hold_stripped.clear();
         if self.line_is_candidate {
-            if self.line_candidate_tokens.is_empty() || self.code.is_some() {
+            if !self.role_suffix.is_empty() {
+                // Opener + partial role word: cannot confirm a header — emit
+                // literally (conservative).
+                output.push_str(&self.line_candidate);
+                output.push_str(&self.role_suffix);
+            } else if self.line_candidate_tokens.is_empty() || self.code.is_some() {
                 output.push_str(&self.line_candidate);
             } else {
                 self.record_stripped_candidate_tokens();
             }
             self.clear_line_candidate();
+            self.role_suffix.clear();
         }
         output
     }
@@ -167,6 +234,9 @@ impl ModelWrapTokenStreamFilter {
             if self.input.starts_with('<') {
                 if let Some(token) = token_at_start(&self.input) {
                     self.consume_prefix(token.len());
+                    // A token ends any pending role-word hold (the line is no
+                    // longer `opener + role + EOL`).
+                    self.release_role_suffix(&mut output);
                     self.process_token(token, &mut output);
                     continue;
                 }
@@ -182,6 +252,7 @@ impl ModelWrapTokenStreamFilter {
                     break;
                 }
                 self.consume_prefix(width);
+                self.release_role_suffix(&mut output);
                 self.process_marker_run(ch, width, &mut output);
                 continue;
             }
@@ -189,8 +260,20 @@ impl ModelWrapTokenStreamFilter {
             self.consume_prefix(ch.len_utf8());
             if ch == '\n' {
                 self.process_newline(&mut output);
+            } else if !self.role_suffix.is_empty() {
+                self.process_role_suffix_char(ch, &mut output);
             } else if ch.is_whitespace() && self.line_is_candidate {
                 self.line_candidate.push(ch);
+            } else if self.line_is_candidate && self.can_start_role_hold(ch) {
+                self.role_suffix.push(ch);
+            } else if ch.is_whitespace()
+                && !self.line_is_candidate
+                && !self.tail_hold_raw.is_empty()
+            {
+                // Whitespace after a held tail closer: still a possible stream
+                // tail, keep holding.
+                self.tail_hold_raw.push(ch);
+                self.tail_hold_stripped.push(ch);
             } else {
                 self.begin_literal_content(&mut output);
                 output.push(ch);
@@ -205,6 +288,82 @@ impl ModelWrapTokenStreamFilter {
 
     fn consume_prefix(&mut self, byte_len: usize) {
         self.input.drain(..byte_len);
+    }
+
+    /// Line-leading `<|im_start|>` with the role word starting right after it
+    /// (no gap): begin holding characters that may form a continuation header.
+    fn can_start_role_hold(&self, ch: char) -> bool {
+        self.code.is_none()
+            && self.line_candidate_tokens.as_slice() == ["<|im_start|>"]
+            && self.line_candidate.ends_with("<|im_start|>")
+            && CONTINUATION_ROLE_WORDS
+                .iter()
+                .any(|word| word.starts_with(ch))
+    }
+
+    /// Extend or abandon a pending role-word hold with the next character.
+    fn process_role_suffix_char(&mut self, ch: char, output: &mut String) {
+        let trimmed_len = self.role_suffix.trim_end().len();
+        let extend = if ch.is_whitespace() {
+            // Trailing whitespace is only plausible after a complete role word.
+            is_continuation_role_word(self.role_suffix.trim_end())
+        } else if trimmed_len == self.role_suffix.len() {
+            let mut candidate_role = String::with_capacity(trimmed_len + ch.len_utf8());
+            candidate_role.push_str(&self.role_suffix);
+            candidate_role.push(ch);
+            CONTINUATION_ROLE_WORDS
+                .iter()
+                .any(|word| word.starts_with(candidate_role.as_str()))
+        } else {
+            // Non-whitespace after "role " → not a bare header line.
+            false
+        };
+        if extend {
+            self.role_suffix.push(ch);
+        } else {
+            self.release_role_suffix(output);
+            output.push(ch);
+            if !ch.is_whitespace() {
+                self.stream_has_substantive_text = true;
+            }
+        }
+    }
+
+    fn is_continuation_role_header(&self) -> bool {
+        self.code.is_none()
+            && self.line_candidate_tokens.as_slice() == ["<|im_start|>"]
+            && self.line_candidate.ends_with("<|im_start|>")
+            && is_continuation_role_word(self.role_suffix.trim_end())
+    }
+
+    /// Abandon a pending role-word hold: emit the held line prefix and role
+    /// characters through the normal literal path.
+    fn release_role_suffix(&mut self, output: &mut String) {
+        if self.role_suffix.is_empty() {
+            return;
+        }
+        let suffix = std::mem::take(&mut self.role_suffix);
+        self.begin_literal_content(output);
+        output.push_str(&suffix);
+        self.stream_has_substantive_text = true;
+    }
+
+    /// Emit a held tail (closer tokens + whitespace) verbatim: more content
+    /// arrived, so it was a mid-stream literal rather than a stream tail.
+    fn release_tail_hold(&mut self, output: &mut String) {
+        if self.tail_hold_raw.is_empty() {
+            return;
+        }
+        output.push_str(&self.tail_hold_raw);
+        self.tail_hold_raw.clear();
+        self.tail_hold_stripped.clear();
+        self.stream_has_substantive_text = true;
+    }
+
+    /// The held tail is confirmed to be a failure artifact: drop the token
+    /// text but keep the held whitespace (newlines) for later emission.
+    fn drop_tail_hold_tokens(&mut self) {
+        self.tail_hold_raw = self.tail_hold_stripped.clone();
     }
 
     fn process_token(&mut self, token: &'static str, output: &mut String) {
@@ -227,23 +386,64 @@ impl ModelWrapTokenStreamFilter {
             token == "<|endoftext|>" && (self.box_wrapper_open || self.im_wrapper_open);
         if matching_close || wrapped_end_of_text {
             self.record_stripped_token(token);
+        } else if closing_family(token).is_some() || token == "<|endoftext|>" {
+            // Non-matching closer glued mid-line: hold it — if the stream ends
+            // here it is a stop-token failure tail; if more content follows it
+            // is released verbatim as a literal.
+            self.tail_hold_raw.push_str(token);
         } else {
+            self.release_tail_hold(output);
             output.push_str(token);
             self.stream_has_substantive_text = true;
         }
     }
 
     fn process_newline(&mut self, output: &mut String) {
+        // Streaming approximation of CommonMark: an inline code span does not
+        // survive the end of a line here, so a single unpaired backtick cannot
+        // disable filtering for the rest of the stream. Fenced blocks are
+        // unaffected.
+        if matches!(self.code, Some(MarkdownCode::Inline { .. })) {
+            self.code = None;
+        }
+
+        // `<|im_start|>assistant` (role word, end of line) is a stop-token
+        // failure continuation header: drop the whole line including its
+        // newline, and treat the opener as stripped so the paired `<|im_end|>`
+        // of the runaway turn is removed too.
+        if self.line_is_candidate && self.is_continuation_role_header() {
+            self.record_stripped_candidate_tokens();
+            self.clear_line_candidate();
+            self.role_suffix.clear();
+            // A closer glued to the previous line's text belongs to the same
+            // failure artifact: drop the held token text, keep held whitespace.
+            self.drop_tail_hold_tokens();
+            self.line_is_candidate = true;
+            return;
+        }
+
+        // Newline right after a held tail closer: still a possible stream
+        // tail, keep holding (the newline's line-state effect still applies).
+        if !self.line_is_candidate && !self.tail_hold_raw.is_empty() {
+            self.tail_hold_raw.push('\n');
+            self.tail_hold_stripped.push('\n');
+            self.line_is_candidate = true;
+            return;
+        }
+
+        self.release_role_suffix(output);
         if self.line_is_candidate {
             if !self.line_candidate_tokens.is_empty() && self.code.is_none() {
                 // Remove the token-only logical line, including its newline.
                 self.record_stripped_candidate_tokens();
             } else {
+                self.release_tail_hold(output);
                 output.push_str(&self.line_candidate);
                 output.push('\n');
             }
             self.clear_line_candidate();
         } else {
+            self.release_tail_hold(output);
             output.push('\n');
         }
         self.line_is_candidate = true;
@@ -291,6 +491,9 @@ impl ModelWrapTokenStreamFilter {
     }
 
     fn begin_literal_content(&mut self, output: &mut String) {
+        // Substantive content is arriving: anything held as a possible stream
+        // tail was a mid-stream literal after all — emit it first (stream order).
+        self.release_tail_hold(output);
         if !self.line_is_candidate {
             return;
         }
@@ -471,5 +674,122 @@ mod tests {
         let mut output = filter.process("正常回答");
         output.push_str(&filter.flush());
         assert_eq!(output, "正常回答");
+    }
+
+    // ------------------------------------------------------------------
+    // Stop-token failure: continuation header `<|im_start|>assistant`
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn strips_continuation_header_after_substantive_text() {
+        // The canonical runaway-turn shape: glued closer, header line, more prose.
+        assert_eq!(
+            filter_chunks(&["正文<|im_end|>\n", "<|im_start|>assistant\n", "继续的正文"]),
+            "正文\n继续的正文"
+        );
+        // Torn across arbitrary chunk boundaries.
+        let full = "正文<|im_end|>\n<|im_start|>assistant\n继续的正文";
+        let chunks: Vec<String> = full.chars().map(|ch| ch.to_string()).collect();
+        let chunk_refs: Vec<&str> = chunks.iter().map(String::as_str).collect();
+        assert_eq!(filter_chunks(&chunk_refs), "正文\n继续的正文");
+    }
+
+    #[test]
+    fn strips_continuation_header_for_all_known_roles() {
+        for role in ["assistant", "user", "system"] {
+            let input = format!("回答\n<|im_start|>{role}\n多余的续写");
+            assert_eq!(
+                filter_chunks(&[input.as_str()]),
+                "回答\n多余的续写",
+                "role: {role}"
+            );
+        }
+    }
+
+    #[test]
+    fn strips_continuation_header_at_stream_head_and_at_flush() {
+        // At stream head the whole header line disappears (previously the
+        // role word leaked as content).
+        assert_eq!(filter_chunks(&["<|im_start|>assistant\n你好"]), "你好");
+        // Stream ends right on the header (stop finally hit): drop it.
+        assert_eq!(filter_chunks(&["正文\n", "<|im_start|>assistant"]), "正文\n");
+        // Trailing whitespace after the role word is still a header.
+        assert_eq!(
+            filter_chunks(&["正文\n<|im_start|>assistant \n续写"]),
+            "正文\n续写"
+        );
+    }
+
+    #[test]
+    fn stripped_continuation_header_opens_wrapper_for_its_closer() {
+        // The runaway turn's own `<|im_end|>` pairs with the stripped header.
+        assert_eq!(
+            filter_chunks(&["正文\n<|im_start|>assistant\n续写<|im_end|>"]),
+            "正文\n续写"
+        );
+    }
+
+    #[test]
+    fn preserves_role_word_lines_that_are_not_bare_headers() {
+        // Mid-line mention: not line-leading, untouched.
+        let prose = "标记 <|im_start|>assistant 用于协议说明。";
+        assert_eq!(filter_chunks(&["前文\n", prose]), format!("前文\n{prose}"));
+        // Line-leading but with more content after the role word: literal.
+        assert_eq!(
+            filter_chunks(&["前文\n<|im_start|>assistant 是协议头\n后文"]),
+            "前文\n<|im_start|>assistant 是协议头\n后文"
+        );
+        // Role word extended into a longer word: literal.
+        assert_eq!(
+            filter_chunks(&["前文\n<|im_start|>assistants\n后文"]),
+            "前文\n<|im_start|>assistants\n后文"
+        );
+        // Partial role word at end of stream: cannot confirm, emit literally.
+        assert_eq!(filter_chunks(&["前文\n<|im_start|>assi"]), "前文\n<|im_start|>assi");
+    }
+
+    // ------------------------------------------------------------------
+    // Stop-token failure: closer glued to the end of the stream
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn strips_tail_glued_closer_at_flush() {
+        assert_eq!(filter_chunks(&["回答完毕<|im_end|>"]), "回答完毕");
+        assert_eq!(filter_chunks(&["回答完毕<|im_end|>", "<|endoftext|>"]), "回答完毕");
+        // Held whitespace between/after the closers survives; token text does not.
+        assert_eq!(filter_chunks(&["回答完毕<|im_end|>\n"]), "回答完毕\n");
+        assert_eq!(filter_chunks(&["回答完毕<|end_of_box|> "]), "回答完毕 ");
+    }
+
+    #[test]
+    fn preserves_mid_stream_glued_closer_when_content_follows() {
+        // A literal mention followed by more prose must be released verbatim.
+        assert_eq!(
+            filter_chunks(&["字面 <|im_end|> 后还有字"]),
+            "字面 <|im_end|> 后还有字"
+        );
+        assert_eq!(
+            filter_chunks(&["字面<|im_end|>\n下一段正文"]),
+            "字面<|im_end|>\n下一段正文"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Inline-code state resets at end of line
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn unpaired_backtick_does_not_disable_filtering_past_the_line() {
+        // Regression: a lone backtick used to latch Inline state forever,
+        // letting every later token pass as code-span content.
+        assert_eq!(
+            filter_chunks(&["看 `代码\n", "<|im_end|>\n", "尾行"]),
+            "看 `代码\n尾行"
+        );
+        // Same-line inline code still protects its token.
+        assert_eq!(
+            filter_chunks(&["行内 `<|im_end|>` 保留\n<|im_end|>\n尾行"]),
+            "行内 `<|im_end|>` 保留\n尾行"
+        );
     }
 }
