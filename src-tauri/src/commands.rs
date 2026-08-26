@@ -1872,7 +1872,7 @@ fn build_test_provider_request(
             TestProviderAdapter::OpenAi if protocol == "openai_responses" => {
                 Box::new(crate::providers::OpenAIResponsesAdapter::new())
             }
-            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter),
+            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter::new()),
         };
 
     adapter.build_request(api_base, api_key, model, request_body)

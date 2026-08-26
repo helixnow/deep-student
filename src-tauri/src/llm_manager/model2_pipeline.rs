@@ -1333,7 +1333,7 @@ mod tests {
         assert_eq!(blocks.len(), 1);
         assert!(!blocks[0].contains('\u{fffd}'));
 
-        let events = OpenAIAdapter.parse_stream(&blocks[0]);
+        let events = OpenAIAdapter::new().parse_stream(&blocks[0]);
         assert!(events.iter().any(|event| matches!(
             event,
             StreamEvent::ContentChunk(content) if content == "数学题"
@@ -4993,12 +4993,29 @@ impl LLMManager {
                         response_bytes += chunk.len();
                         process_sse_stream_input(&mut sse_buffer, Some(chunk.as_ref()))
                     };
-                    for line in complete_blocks {
+                    let mut parsed_blocks: Vec<(
+                        Option<String>,
+                        Vec<crate::providers::StreamEvent>,
+                    )> = complete_blocks
+                        .into_iter()
+                        .map(|line| {
+                            let events = adapter.parse_stream(&line);
+                            (Some(line), events)
+                        })
+                        .collect();
+                    if upstream_ended {
+                        // Chat Completions gateways sometimes close after a
+                        // finish_reason without sending `[DONE]`. Resolve that
+                        // recorded choice completion only after all buffered
+                        // blocks (including a trailing usage chunk) are parsed.
+                        parsed_blocks.push((None, adapter.finish_stream()));
+                    }
+                    for (line, events) in parsed_blocks {
                         // 使用适配器解析流事件（包括[DONE]标记）
-                        let events = adapter.parse_stream(&line);
-
                         // 检查是否是结束标记（保留为后备机制）
-                        if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
+                        if line.as_deref().is_some_and(
+                            crate::utils::sse_buffer::SseEventBuffer::check_done_marker,
+                        ) {
                             debug!(
                                 "{}检测到SSE结束标记: [DONE]",
                                 chat_timing::format_elapsed_prefix(stream_event)
@@ -6612,7 +6629,7 @@ impl LLMManager {
                 {
                     Box::new(crate::providers::GeminiAdapter::new())
                 } else {
-                    Box::new(crate::providers::OpenAIAdapter)
+                    Box::new(crate::providers::OpenAIAdapter::new())
                 };
             let preq = adapter
                 .build_request(base_url, api_key, &model, &request_body)

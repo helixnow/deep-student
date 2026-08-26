@@ -68,9 +68,34 @@ pub trait ProviderAdapter: Send + Sync {
     }
     /// 解析流式响应行，返回事件列表
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent>;
+    /// Resolve protocol state when the transport reaches EOF. Stateful
+    /// adapters can use this to accept a provider that sent a terminal choice
+    /// but omitted its protocol sentinel without truncating trailing chunks.
+    fn finish_stream(&self) -> Vec<StreamEvent> {
+        Vec::new()
+    }
 }
 
-pub struct OpenAIAdapter;
+pub struct OpenAIAdapter {
+    /// Chat Completions marks the final choice before the optional usage-only
+    /// chunk. Remember that marker, but do not terminate consumers until
+    /// `[DONE]` or transport EOF.
+    saw_finish_reason: std::sync::atomic::AtomicBool,
+}
+
+impl Default for OpenAIAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OpenAIAdapter {
+    pub fn new() -> Self {
+        Self {
+            saw_finish_reason: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
 
 fn openai_endpoint_url(base_url: &str, endpoint: &str) -> String {
     let tail_start = base_url.find(['?', '#']).unwrap_or(base_url.len());
@@ -102,6 +127,13 @@ fn sse_data_payload(block: &str) -> Option<String> {
     crate::utils::sse_buffer::extract_stream_data_payload(block)
 }
 
+fn is_official_openai_api_endpoint(base_url: &str) -> bool {
+    url::Url::parse(base_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| host == "api.openai.com")
+}
+
 impl ProviderAdapter for OpenAIAdapter {
     fn requires_explicit_stream_completion(&self) -> bool {
         true
@@ -118,15 +150,20 @@ impl ProviderAdapter for OpenAIAdapter {
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
         let mut sanitized_body = sanitize_openai_request_body(body);
+        self.saw_finish_reason
+            .store(false, std::sync::atomic::Ordering::Release);
 
         // 流式请求补 stream_options.include_usage=true：OpenAI Chat Completions
         // 默认不在流中返回 usage，缓存命中（prompt_tokens_details.cached_tokens）
-        // 因此不可见。仅补 Chat Completions 端点（Responses 走独立 adapter，
-        // 该字段对 Responses/部分官方端点不合法，不在此发送）。
+        // 因此不可见。该扩展只对已确认支持它的 OpenAI 官方端点自动启用；
+        // 未知兼容网关默认不注入，避免严格网关因未知字段返回 400。
         // 调用方已显式设置 stream_options 时尊重原值。
         if let Some(obj) = sanitized_body.as_object_mut() {
             let is_stream = obj.get("stream").and_then(Value::as_bool).unwrap_or(false);
-            if is_stream && !obj.contains_key("stream_options") {
+            if is_stream
+                && is_official_openai_api_endpoint(base_url)
+                && !obj.contains_key("stream_options")
+            {
                 obj.insert(
                     "stream_options".to_string(),
                     json!({ "include_usage": true }),
@@ -160,6 +197,8 @@ impl ProviderAdapter for OpenAIAdapter {
         // 否则这些流的所有数据行会被静默丢弃（表现为"健康连接但无任何输出"）
         if let Some(data) = sse_data_payload(line) {
             if data.trim() == "[DONE]" {
+                self.saw_finish_reason
+                    .store(false, std::sync::atomic::Ordering::Release);
                 events.push(StreamEvent::Done);
                 return events;
             }
@@ -175,6 +214,8 @@ impl ProviderAdapter for OpenAIAdapter {
                             "reason": "stream_error",
                             "details": error.clone()
                         })));
+                        self.saw_finish_reason
+                            .store(false, std::sync::atomic::Ordering::Release);
                         events.push(StreamEvent::Done);
                         return events;
                     }
@@ -259,17 +300,29 @@ impl ProviderAdapter for OpenAIAdapter {
                 if let Some(usage) = json_data["usage"].as_object() {
                     events.push(StreamEvent::Usage(Value::Object(usage.clone())));
                 }
-                // 部分 OpenAI 兼容网关（one-api/sub2api 等）在最后一个 JSON
-                // 块中只发送 finish_reason，不再发送 `[DONE]`。必须等本块的
-                // content/reasoning/tool/usage 全部入队后再发 Done，避免调用方
-                // 提前退出而丢失同块事件。
+                // `finish_reason` only completes choices. OpenAI may still send
+                // `choices: []` with usage before `[DONE]`, so emitting Done here
+                // would make the requested usage unreachable. Gateways that omit
+                // `[DONE]` are accepted by finish_stream() when transport EOF arrives.
                 if choices_finished {
-                    events.push(StreamEvent::Done);
+                    self.saw_finish_reason
+                        .store(true, std::sync::atomic::Ordering::Release);
                 }
             }
         }
 
         events
+    }
+
+    fn finish_stream(&self) -> Vec<StreamEvent> {
+        if self
+            .saw_finish_reason
+            .swap(false, std::sync::atomic::Ordering::AcqRel)
+        {
+            vec![StreamEvent::Done]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -665,23 +718,31 @@ impl OpenAIResponsesAdapter {
             || host == "api.deepseek.com"
     }
 
-    /// GPT-5.6 起提供显式 `prompt_cache_breakpoint`（断点处精确匹配，不再自动
-    /// 回退到最长未标记前缀）。按模型名解析 gpt 主/次版本：gpt-5.6+ 与更高
-    /// 主版本返回 true；gpt-5.5 及更早、非 gpt 系（DeepSeek/Qwen 等）返回 false。
+    /// GPT-5.6 起提供显式 `prompt_cache_breakpoint`。只解析完整的 GPT 型号段，
+    /// 避免 `not-gpt-6` 或部署别名中偶然出现的子串被当成模型能力。
     pub(crate) fn model_supports_prompt_cache_breakpoint(model: &str) -> bool {
-        let lower = model.to_lowercase();
-        let Some(pos) = lower.find("gpt-") else {
+        let lower = model.trim().to_ascii_lowercase();
+        let model_segment = lower.rsplit('/').next().unwrap_or_default();
+        let Some(rest) = model_segment.strip_prefix("gpt-") else {
             return false;
         };
-        let rest = &lower[pos + 4..];
         let major_digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
         let Ok(major) = major_digits.parse::<u32>() else {
             return false;
         };
-        if major != 5 {
-            return major > 5;
-        }
         let after_major = &rest[major_digits.len()..];
+        if major > 5 {
+            return after_major.is_empty()
+                || after_major.starts_with('-')
+                || after_major.starts_with('_')
+                || after_major
+                    .strip_prefix('.')
+                    .and_then(|minor| minor.chars().next())
+                    .is_some_and(|digit| digit.is_ascii_digit());
+        }
+        if major != 5 {
+            return false;
+        }
         let Some(minor_part) = after_major.strip_prefix('.') else {
             return false;
         };
@@ -689,10 +750,13 @@ impl OpenAIResponsesAdapter {
             .chars()
             .take_while(char::is_ascii_digit)
             .collect();
-        minor_digits
-            .parse::<u32>()
-            .map(|minor| minor >= 6)
-            .unwrap_or(false)
+        let suffix = &minor_part[minor_digits.len()..];
+        minor_digits.parse::<u32>().is_ok_and(|minor| minor >= 6)
+            && (suffix.is_empty() || suffix.starts_with('-') || suffix.starts_with('_'))
+    }
+
+    fn endpoint_supports_prompt_cache_breakpoint(base_url: &str) -> bool {
+        is_official_openai_api_endpoint(base_url)
     }
 
     pub fn new() -> Self {
@@ -1485,8 +1549,9 @@ impl OpenAIResponsesAdapter {
         // prompt_cache_breakpoint，稳定指令改放 input 首位的 developer
         // input_text 并显式打断点（ROUND-02 P2-12）。其他模型（含 DeepSeek
         // Responses，官方无该字段且靠自动前缀缓存）保持顶层 instructions 不变。
-        let instructions_as_developer_breakpoint =
-            !instructions.is_empty() && Self::model_supports_prompt_cache_breakpoint(model);
+        let instructions_as_developer_breakpoint = !instructions.is_empty()
+            && Self::model_supports_prompt_cache_breakpoint(model)
+            && Self::endpoint_supports_prompt_cache_breakpoint(base_url);
         if instructions_as_developer_breakpoint {
             input_blocks.insert(
                 0,
@@ -1495,7 +1560,7 @@ impl OpenAIResponsesAdapter {
                     "content": [{
                         "type": "input_text",
                         "text": instructions.join("\n\n"),
-                        "prompt_cache_breakpoint": true
+                        "prompt_cache_breakpoint": { "mode": "explicit" }
                     }]
                 }),
             );
@@ -3677,7 +3742,7 @@ mod tests {
         // （response.completed / [DONE]+finish_reason），传输层 EOF 不算成功；
         // Anthropic 由 message_stop 驱动 Done，不要求显式完成标记
         assert!(OpenAIResponsesAdapter::new().requires_explicit_stream_completion());
-        assert!(OpenAIAdapter.requires_explicit_stream_completion());
+        assert!(OpenAIAdapter::new().requires_explicit_stream_completion());
         assert!(!AnthropicAdapter::new().requires_explicit_stream_completion());
     }
 
@@ -3697,7 +3762,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_keeps_argument_deltas_and_skips_empty_tool_fragments() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let skipped = adapter.parse_stream(
             r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"","function":{}}]}}]}"#,
@@ -3712,7 +3777,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_preserves_empty_reasoning_content() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events =
             adapter.parse_stream(r#"data: {"choices":[{"delta":{"reasoning_content":""}}]}"#);
@@ -3725,7 +3790,7 @@ mod tests {
     #[test]
     fn openai_adapter_parse_stream_accepts_data_prefix_without_space() {
         // SSE 规范允许 "data:" 后不带空格，部分供应商/中转站省略空格
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter.parse_stream(r#"data:{"choices":[{"delta":{"content":"hi"}}]}"#);
         assert!(matches!(events.first(), Some(StreamEvent::ContentChunk(c)) if c == "hi"));
@@ -3736,7 +3801,8 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_accepts_bare_ndjson() {
-        let events = OpenAIAdapter.parse_stream(r#"{"choices":[{"delta":{"content":"ndjson"}}]}"#);
+        let events =
+            OpenAIAdapter::new().parse_stream(r#"{"choices":[{"delta":{"content":"ndjson"}}]}"#);
 
         assert!(matches!(
             events.first(),
@@ -3745,10 +3811,21 @@ mod tests {
     }
 
     #[test]
-    fn openai_adapter_finish_reason_emits_done_after_same_sse_chunk_events() {
-        let events = OpenAIAdapter.parse_stream(
-            r#"data: {"choices":[{"delta":{"content":"tail","reasoning_content":"thought","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+    fn openai_adapter_emits_usage_before_done_for_official_chunk_sequence() {
+        let adapter = OpenAIAdapter::new();
+        let mut events = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"content":"tail","reasoning_content":"thought","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
         );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamEvent::Done)),
+            "finish_reason completes the choice, not the stream"
+        );
+        events.extend(adapter.parse_stream(
+            r#"data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+        ));
+        events.extend(adapter.parse_stream("data: [DONE]"));
 
         assert_eq!(events.len(), 5);
         assert!(matches!(&events[0], StreamEvent::ContentChunk(content) if content == "tail"));
@@ -3763,16 +3840,24 @@ mod tests {
     }
 
     #[test]
-    fn openai_adapter_bare_ndjson_finish_reason_emits_done_without_done_marker() {
-        let events = OpenAIAdapter.parse_stream(
+    fn openai_adapter_bare_ndjson_finish_reason_completes_at_eof() {
+        let adapter = OpenAIAdapter::new();
+        let events = adapter.parse_stream(
             r#"{"choices":[{"index":0,"delta":{"content":"ndjson tail"},"finish_reason":"stop"}]}"#,
         );
 
-        assert_eq!(events.len(), 2);
+        assert_eq!(events.len(), 1);
         assert!(
             matches!(&events[0], StreamEvent::ContentChunk(content) if content == "ndjson tail")
         );
-        assert!(matches!(&events[1], StreamEvent::Done));
+        assert!(matches!(
+            adapter.finish_stream().first(),
+            Some(StreamEvent::Done)
+        ));
+        assert!(
+            adapter.finish_stream().is_empty(),
+            "EOF completion state must be consumed exactly once"
+        );
     }
 
     #[test]
@@ -3785,7 +3870,7 @@ mod tests {
                     "finish_reason": finish_reason
                 }]
             });
-            let events = OpenAIAdapter.parse_stream(&format!("data: {chunk}"));
+            let events = OpenAIAdapter::new().parse_stream(&format!("data: {chunk}"));
             assert!(
                 !events
                     .iter()
@@ -3794,7 +3879,7 @@ mod tests {
             );
         }
 
-        let partially_finished = OpenAIAdapter.parse_stream(
+        let partially_finished = OpenAIAdapter::new().parse_stream(
             r#"data: {"choices":[{"index":0,"delta":{"content":"first"},"finish_reason":"stop"},{"index":1,"delta":{"content":"second"},"finish_reason":null}]}"#,
         );
         assert!(
@@ -3804,16 +3889,23 @@ mod tests {
             "one finished choice must not terminate other choices in the same chunk"
         );
 
-        let all_finished = OpenAIAdapter.parse_stream(
+        let adapter = OpenAIAdapter::new();
+        let all_finished = adapter.parse_stream(
             r#"data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"},{"index":1,"delta":{},"finish_reason":"length"}]}"#,
         );
-        assert!(matches!(all_finished.last(), Some(StreamEvent::Done)));
+        assert!(!all_finished
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Done)));
+        assert!(matches!(
+            adapter.finish_stream().first(),
+            Some(StreamEvent::Done)
+        ));
     }
 
     #[test]
     fn openai_adapter_parse_stream_handles_content_block_arrays() {
         // Mistral 推理模式：delta.content 为 ThinkChunk/TextChunk 块数组（研报 04 要点 4）
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter.parse_stream(
             r#"data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"let me think"}]},{"type":"text","text":"the answer"}]}}]}"#,
@@ -3840,7 +3932,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_parse_stream_handles_reasoning_field_variants() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         // (c) delta.reasoning 字符串：Together/Groq(parsed)/Cerebras/阶跃
         let reasoning =
@@ -3869,7 +3961,7 @@ mod tests {
     #[test]
     fn openai_adapter_parse_stream_reports_injected_error_objects() {
         // OpenRouter 等平台会在流中注入 {"error":{...}}（研报 09 §1），不能静默忽略
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
 
         let events = adapter
             .parse_stream(r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#);
@@ -3886,7 +3978,7 @@ mod tests {
     #[test]
     fn openai_adapter_build_request_keeps_nested_tool_choice_shape() {
         // CC 协议要求 tool_choice 指定函数时保持嵌套形状（r2 报告 P1-15）
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "hi" }],
@@ -3925,7 +4017,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_do_not_duplicate_complete_endpoint_paths() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/chat/completions/",
                 "test-key",
@@ -3961,7 +4053,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_insert_endpoint_before_query_and_fragment() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/?token=signed#tenant-a",
                 "test-key",
@@ -3990,7 +4082,7 @@ mod tests {
 
     #[test]
     fn openai_adapters_replace_cross_protocol_endpoints_and_preserve_url_tail() {
-        let chat = OpenAIAdapter
+        let chat = OpenAIAdapter::new()
             .build_request(
                 "https://proxy.example.com/v1/responses/?token=signed#tenant-a",
                 "test-key",
@@ -4550,7 +4642,7 @@ mod tests {
 
     #[test]
     fn openai_adapter_build_request_sanitizes_invalid_tools() {
-        let adapter = OpenAIAdapter;
+        let adapter = OpenAIAdapter::new();
         let body = json!({
             "model": "gpt-4o-mini",
             "messages": [{ "role": "user", "content": "hi" }],
@@ -4710,7 +4802,7 @@ mod tests {
 
     #[test]
     fn openai_chat_adapter_accepts_event_and_data_sse_blocks() {
-        let events = OpenAIAdapter.parse_stream(
+        let events = OpenAIAdapter::new().parse_stream(
             "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"framed\"}}]}",
         );
 
@@ -4995,11 +5087,8 @@ mod tests {
         assert!(!input.iter().any(|item| item["id"] == json!("not_a_search")));
     }
 
-    /// P2-12：GPT-5.6+ 稳定指令改放 input 首位的 developer input_text 并打
-    /// prompt_cache_breakpoint（顶层 instructions 打不了断点）；
-    /// 旧代 GPT 与 DeepSeek Responses 保持顶层 instructions 不变。
     #[test]
-    fn openai_responses_adapter_gpt56_moves_instructions_to_developer_breakpoint() {
+    fn openai_responses_prompt_cache_breakpoint_wire_bodies_are_capability_gated() {
         let body = json!({
             "messages": [
                 { "role": "system", "content": "You are helpful." },
@@ -5007,33 +5096,76 @@ mod tests {
             ]
         });
 
-        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.6", &body);
-        assert!(payload.get("instructions").is_none());
-        let input = payload["input"].as_array().expect("input should be array");
-        assert_eq!(input[0]["role"], json!("developer"));
-        assert_eq!(input[0]["content"][0]["type"], json!("input_text"));
-        assert_eq!(input[0]["content"][0]["text"], json!("You are helpful."));
-        assert_eq!(
-            input[0]["content"][0]["prompt_cache_breakpoint"],
-            json!(true)
+        let official = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "gpt-5.6",
+            &body,
+            "https://api.openai.com/v1",
         );
-        assert_eq!(input[1]["role"], json!("user"));
+        assert_eq!(
+            official,
+            json!({
+                "model": "gpt-5.6",
+                "input": [
+                    {
+                        "role": "developer",
+                        "content": [{
+                            "type": "input_text",
+                            "text": "You are helpful.",
+                            "prompt_cache_breakpoint": { "mode": "explicit" }
+                        }]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{ "type": "input_text", "text": "hi" }]
+                    }
+                ],
+                "stream": true,
+                "store": false,
+                "reasoning": { "summary": "auto" },
+                "include": ["reasoning.encrypted_content"]
+            })
+        );
 
-        // 旧代 GPT：保持顶层 instructions
-        let legacy = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
-        assert_eq!(legacy["instructions"], json!("You are helpful."));
-        assert_eq!(legacy["input"][0]["role"], json!("user"));
+        let third_party_same_model =
+            OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+                "gpt-5.6",
+                &body,
+                "https://gateway.example/v1",
+            );
+        assert_eq!(
+            third_party_same_model,
+            json!({
+                "model": "gpt-5.6",
+                "input": [{
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "hi" }]
+                }],
+                "stream": true,
+                "store": false,
+                "instructions": "You are helpful.",
+                "reasoning": { "summary": "auto" },
+                "include": ["reasoning.encrypted_content"]
+            })
+        );
 
-        // DeepSeek Responses：官方无该字段，不得改变请求形状
-        let deepseek =
-            OpenAIResponsesAdapter::convert_to_responses_format("deepseek-v4-flash", &body);
-        assert_eq!(deepseek["instructions"], json!("You are helpful."));
-        assert_eq!(deepseek["input"][0]["role"], json!("user"));
-        assert!(!deepseek["input"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|item| item["role"] == json!("developer")));
+        let accidental_name = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "deployment-not-gpt-6-preview",
+            &body,
+            "https://api.openai.com/v1",
+        );
+        assert_eq!(
+            accidental_name,
+            json!({
+                "model": "deployment-not-gpt-6-preview",
+                "input": [{
+                    "role": "user",
+                    "content": [{ "type": "input_text", "text": "hi" }]
+                }],
+                "stream": true,
+                "store": false,
+                "instructions": "You are helpful."
+            })
+        );
     }
 
     #[test]
@@ -5048,6 +5180,12 @@ mod tests {
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5"));
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.5"));
         assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-4o"));
+        assert!(
+            !OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint(
+                "deployment-not-gpt-6-preview"
+            )
+        );
+        assert!(!OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("not-gpt-5.6"));
         assert!(
             !OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("deepseek-v4-flash")
         );
@@ -5977,8 +6115,8 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
     }
 
     #[test]
-    fn openai_adapter_adds_stream_options_include_usage_for_streaming() {
-        let adapter = OpenAIAdapter;
+    fn openai_adapter_gates_stream_options_include_usage_by_endpoint() {
+        let adapter = OpenAIAdapter::new();
         let body = json!({
             "model": "gpt-4o-mini",
             "stream": true,
@@ -5989,6 +6127,20 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
             .build_request("https://api.openai.com/v1", "key", "gpt-4o-mini", &body)
             .expect("request should build");
         assert_eq!(request.body["stream_options"]["include_usage"], json!(true));
+
+        // 未知兼容端点默认不注入扩展字段，避免严格网关因 unknown field 失败。
+        for base_url in [
+            "https://gateway.example/v1",
+            "https://api.openai.com.evil.example/v1",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert!(
+                request.body.get("stream_options").is_none(),
+                "base_url={base_url}"
+            );
+        }
 
         // 非流式请求不加
         let body = json!({
