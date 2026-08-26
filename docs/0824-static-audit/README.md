@@ -93,3 +93,9 @@
 | --- | --- | --- |
 | `50-leftover-pass6.md` | leftover 第六轮（对照 `f83e541b`） | A：无新增量 |
 | `51-invariants-step22.md` | Step 22 tip 18 不变量再证 | 18/18 PASS |
+
+## Wave2 五路云会话（文档，未开跑）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `52-wave2-five-cloud-sessions.md` | 五路可复制 prompt（通用模板已融合） | 已写；第 1–7 轮全 fable high + 禁跑编译/门禁/CI/测试；第 8 轮起 fable xhigh∶GPT 1:1 才允许实测 |
