@@ -1101,9 +1101,9 @@
       "disabledHint": "This run did not use your review history"
     },
     "occlusion": {
-      "title": "Image occlusion",
-      "previewBadge": "Image occlusion",
-      "draftHint": "This is an automatically generated occlusion draft; check mask placement and answers before exporting",
+      "title": "Image occlusion draft preview",
+      "previewBadge": "Occlusion draft preview",
+      "draftHint": "This is an in-app draft preview; it is not currently exported as a reviewable Anki image-occlusion card",
       "imageAlt": "Image occlusion card",
       "imageUnavailable": "The occlusion image could not be loaded; text content was preserved",
       "invalidSpec": "Invalid occlusion data was ignored and the card is shown normally",

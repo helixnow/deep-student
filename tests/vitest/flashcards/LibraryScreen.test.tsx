@@ -21,30 +21,40 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: unknown) => ({
-      'library.title': '卡片库',
-      'library.loading': '加载中…',
-      'library.total': '卡片总数',
-      'library.refresh': '刷新',
-      'library.searchLabel': '搜索卡片',
-      'library.searchPlaceholder': '搜索正面 / 背面 / 标签',
-      'library.search': '搜索',
-      'library.dismiss': '关闭',
-      'library.retry': '重试',
-      'library.empty': '库中暂无卡片',
-      'library.state.notEnqueued': '未入队',
-      'library.state.new': '新卡',
-      'library.state.review': '复习中',
-      'library.startReview': '复习',
-      'library.enqueue': '入队',
-      'library.resume': '恢复',
-      'library.suspend': '暂停',
-      'library.delete': '删除',
-      'library.previous': '上一页',
-      'library.next': '下一页',
-      'library.confirmDelete': '确定删除这张卡片吗？',
-      'common:cancel': '取消',
-    }[key] ?? (typeof fallback === 'string' ? fallback : key)),
+    t: (key: string, fallback?: unknown) => {
+      if (
+        key === 'library.import.success'
+        && typeof fallback === 'object'
+        && fallback !== null
+        && 'count' in fallback
+      ) {
+        return `成功导入 ${String(fallback.count)} 张卡片`;
+      }
+      return {
+        'library.title': '卡片库',
+        'library.loading': '加载中…',
+        'library.total': '卡片总数',
+        'library.refresh': '刷新',
+        'library.searchLabel': '搜索卡片',
+        'library.searchPlaceholder': '搜索正面 / 背面 / 标签',
+        'library.search': '搜索',
+        'library.dismiss': '关闭',
+        'library.retry': '重试',
+        'library.empty': '库中暂无卡片',
+        'library.state.notEnqueued': '未入队',
+        'library.state.new': '新卡',
+        'library.state.review': '复习中',
+        'library.startReview': '复习',
+        'library.enqueue': '入队',
+        'library.resume': '恢复',
+        'library.suspend': '暂停',
+        'library.delete': '删除',
+        'library.previous': '上一页',
+        'library.next': '下一页',
+        'library.confirmDelete': '确定删除这张卡片吗？',
+        'common:cancel': '取消',
+      }[key] ?? (typeof fallback === 'string' ? fallback : key);
+    },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
@@ -135,7 +145,7 @@ describe('LibraryScreen', () => {
     mocks.suspendCard.mockResolvedValue({ state: {}, changed: true });
     mocks.unsuspendCard.mockResolvedValue({ state: {}, changed: true });
     mocks.pickSingleFile.mockResolvedValue('/tmp/deck.apkg');
-    mocks.invoke.mockResolvedValue({ imported_cards: 12 });
+    mocks.invoke.mockResolvedValue({ importedCards: 12 });
   });
 
   afterEach(() => {
@@ -299,7 +309,7 @@ describe('LibraryScreen', () => {
     expect(mocks.listCards).toHaveBeenCalledTimes(2);
     expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
       'success',
-      'library.import.success',
+      '成功导入 12 张卡片',
     );
   });
 });

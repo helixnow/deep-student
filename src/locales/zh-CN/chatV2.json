@@ -762,8 +762,8 @@
       "synced": "已同步",
       "syncToAnki": "同步到 Anki",
       "occlusion": {
-        "badge": "图像遮挡",
-        "draftHint": "自动遮挡草稿，请在导出前检查",
+        "badge": "遮挡草稿预览",
+        "draftHint": "仅供应用内预览，当前不会导出为可复习的 Anki 图像遮挡卡",
         "imageAlt": "图像遮挡卡片",
         "imageUnavailable": "遮挡图片无法加载，已保留文字内容"
       },

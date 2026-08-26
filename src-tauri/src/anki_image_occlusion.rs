@@ -8,9 +8,9 @@
 //! 1. **校验**：`validate_spec` 把外部（LLM / 前端编辑器）产出的
 //!    [`OcclusionSpec`] 收敛为 [`ValidatedOcclusionSpec`]（越界 / 过度重叠 /
 //!    空盒 / 非法 cloze 序号一律结构化拒绝，绝不静默修剪语义）。
-//! 2. **导出**：`build_card_fields` 生成与既有 APKG 导出器兼容的
-//!    Cloze 字段约定（`Text` 含 `<img>` + `{{cN::label}}`，
-//!    `extra_fields["_occlusion"]` 存归一化 spec JSON 供原生渲染/再编辑）。
+//! 2. **草稿字段**：`build_card_fields` 生成候选 Cloze `Text` 与
+//!    `extra_fields["_occlusion"]` spec，供应用内渲染及后续导出接线使用。
+//!    当前生产入库/导出尚未消费完整字段集合，因此产品只呈现草稿预览语义。
 //! 3. **启发式建议**：`propose_boxes_from_image_desc` 从 VlmFull/VlmLight
 //!    已产出的 `[IMAGE_DESC: ...]` 条目文本中提取标签并按网格布局出候选盒，
 //!    作为「无坐标 VLM → 有坐标遮挡」的零成本首版桥（无图测试不碰模型）。
@@ -19,16 +19,15 @@
 //!
 //! - 模块内一律使用 **归一化坐标**：`x/y/w/h ∈ [0,1]`，原点左上角。
 //!   归一化让 spec 与图片实际分辨率解耦——同一 spec 可套用缩略图与原图。
-//! - 像素换算只发生在渲染/导出边界（`to_pixel_boxes`），带
+//! - 像素换算只发生在渲染/字段构造边界（`to_pixel_boxes`），带
 //!   四舍五入 + 边界收敛 + 最小 1px 保证，有测试锁定。
 //!
-//! ## 与 Anki 的兼容性
+//! ## 当前产品边界
 //!
 //! Anki 23.10+ 原生 Image Occlusion note type 的 `Occlusion` 字段本质是
-//! cloze 语法包裹的矩形描述。本模块首版不引入新 note type，而是复用
-//! 仓库既有 Cloze 导出路径（`apkg_exporter_service` 的 `Text`/`Extra` 字段），
-//! 保证任何 Anki 版本可导入可复习；结构化 spec 以 `_occlusion` extra 字段
-//! 随卡携带，后续版本可无损升级为原生 IO note type（见 round4 文档）。
+//! cloze 语法包裹的矩形描述。本模块只构造草稿字段；生产管线目前没有把候选
+//! `Text`、图片媒体和 `_occlusion` 转换为 APKG/AnkiConnect 可复习 note。
+//! 在该转换与端到端测试接通前，不得宣称与 Anki 图像遮挡导出兼容。
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,7 +40,7 @@ use std::collections::HashMap;
 /// 与 `_qa_flags` 同风格：下划线前缀表示机器协议字段，非用户内容。
 pub const OCCLUSION_FIELD: &str = "_occlusion";
 
-/// 自动生成卡片附带的 tag，前端/导出侧可按此识别遮挡卡。
+/// 自动生成卡片附带的 tag，前端及后续转换侧可按此识别遮挡草稿。
 pub const OCCLUSION_TAG: &str = "image-occlusion";
 
 /// VlmFull → 流式生成之间传递遮挡草稿的内部行协议。
@@ -118,8 +117,7 @@ pub struct OcclusionSpec {
 }
 
 /// 校验通过后的 spec：所有盒都有合法 cloze 序号与非空标签。
-/// 只能通过 [`validate_spec`] 构造，是后续导出/渲染 API 的唯一输入类型，
-/// 用类型系统保证「未校验的 spec 不可能被导出」。
+/// 只能通过 [`validate_spec`] 构造，是后续字段构造/渲染 API 的唯一输入类型。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidatedOcclusionSpec {
@@ -169,7 +167,7 @@ pub struct PixelBox {
     pub cloze_index: u32,
 }
 
-/// 导出字段约定产物：调用方据此填充 `AnkiCard`。
+/// 遮挡草稿字段约定产物；后续接通转换器时可据此填充 `AnkiCard`。
 ///
 /// - `text` → `AnkiCard.text`（Cloze note type 的 `Text` 字段）；
 /// - `extra_fields` → 合并进 `AnkiCard.extra_fields`
@@ -373,7 +371,7 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 }
 
 // ============================================================================
-// 像素换算（渲染/导出边界）
+// 像素换算（渲染/字段构造边界）
 // ============================================================================
 
 /// 把归一化盒换算为像素盒。
@@ -410,10 +408,12 @@ pub fn to_pixel_boxes(spec: &ValidatedOcclusionSpec, img_w: u32, img_h: u32) -> 
 }
 
 // ============================================================================
-// 导出字段约定
+// 草稿字段约定
 // ============================================================================
 
-/// 从校验后的 spec 生成 Cloze 导出字段。
+/// 从校验后的 spec 生成候选 Cloze 字段。
+///
+/// 当前生产入库/导出尚未消费完整返回值；本函数本身不代表导出闭环已接通。
 ///
 /// `Text` 字段形如（`image_file_name` 是 APKG 包内媒体文件名，
 /// 由调用方从 `image_ref` 解析后传入；为 `None` 时省略 `<img>`，
@@ -471,7 +471,7 @@ pub fn build_card_fields(
     }
 }
 
-/// 从 `extra_fields` 解析回遮挡 spec（前端/导出回读路径）。
+/// 从 `extra_fields` 解析回遮挡 spec（前端/后续转换回读路径）。
 /// 返回 `None` 表示无 `_occlusion` 字段或 JSON 不合法。
 pub fn parse_occlusion_field(extra_fields: &HashMap<String, String>) -> Option<OcclusionSpec> {
     let raw = extra_fields.get(OCCLUSION_FIELD)?;
