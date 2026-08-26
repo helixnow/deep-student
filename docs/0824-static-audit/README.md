@@ -86,3 +86,9 @@
 | `47-coordinator-additive.md` | VFS coordinator 加法式 | 已写 |
 | `48-isolation-327.md` | #327 未进官方、勿 merge | 已写 |
 | `49-leftover-pass5.md` | leftover 第五轮 | 已写 |
+
+## 第六波（Step 22 tip 复验）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `50-leftover-pass6.md` | leftover 第六轮（对照 `f83e541b`） | A：无新增量 |
