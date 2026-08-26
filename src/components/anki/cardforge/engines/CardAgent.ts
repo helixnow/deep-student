@@ -159,6 +159,17 @@ interface BackendGenerationOptions {
   enable_images: boolean;
   max_cards_per_mistake: number;
   /**
+   * 全文档卡片总上限。调用方 maxCards 的真实语义（0824 评审 #4）：
+   * 后端 DocumentProcessingService 按分段分配该额度，避免
+   * 「每段 × 分段数」放大导致总数失控。
+   */
+  max_cards_total?: number;
+  /**
+   * FSRS 复习画像注入授权（0824 评审 #1）。后端只认显式 true；
+   * 前端始终显式传布尔值，避免 None 被任何一侧误读为开启。
+   */
+  fsrs_feedback?: boolean;
+  /**
    * @deprecated 使用 template_ids 替代，支持 LLM 多模板自选。
    *
    * 迁移状态（2026-07 核实）：后端 enhanced_anki_service.rs 仍以
@@ -182,6 +193,30 @@ interface BackendGenerationOptions {
   /** 多模板：按模板ID分组的字段提取规则 */
   field_extraction_rules_by_id?: Record<string, Record<string, FieldExtractionRule>>;
 }
+
+/** maxCards 缺省/非法时的默认总额度 */
+const DEFAULT_MAX_CARDS = 50;
+/** 后端 EnhancedAnkiService 对 max_cards_per_mistake 的校验上限 */
+const BACKEND_MAX_CARDS_PER_SEGMENT = 100;
+
+/**
+ * 显式校验调用方 maxCards（0824 评审 #4）：
+ * 只有 ≥1 的有限数才有效（向下取整）；0/负数/NaN/Infinity 非法，
+ * 与缺省一样回退 DEFAULT_MAX_CARDS。旧实现 `input.maxCards || 50`
+ * 依赖 falsy 巧合，负数会被原样透传给后端。
+ */
+const resolveMaxCardsTotal = (maxCards: number | undefined): number => {
+  if (maxCards === undefined || maxCards === null) {
+    return DEFAULT_MAX_CARDS;
+  }
+  if (typeof maxCards !== 'number' || !Number.isFinite(maxCards) || Math.floor(maxCards) < 1) {
+    console.warn(
+      `[CardAgent] 非法 maxCards=${String(maxCards)}（要求 ≥1 的有限数），回退默认 ${DEFAULT_MAX_CARDS}`
+    );
+    return DEFAULT_MAX_CARDS;
+  }
+  return Math.floor(maxCards);
+};
 
 const resolveExportTemplateId = (cards: AnkiCardResult[]): string | undefined => {
   const ids = new Set(
@@ -477,7 +512,9 @@ export class CardAgent {
     }));
 
     // Prompt 装配契约（与后端 streaming_anki_service::build_prompt 对齐）：
-    // - custom_anki_prompt：后端 system 消息的基础提示词，传入角色/输出协议 system prompt
+    // - custom_anki_prompt：后端 system 消息的基础提示词，传入协议中立的
+    //   角色/质量 system prompt（输出协议由后端按供应商能力单点生成，
+    //   本 prompt 不得携带任何 END 标记 / wrapper 规则，见 0824 评审 #2）
     // - 学习材料只经 documentContent 参数由后端注入 user 消息；
     //   历史上的 {{DOCUMENT_CONTENT}} 占位符方案（后端从不替换，占位符原样进入
     //   system 消息）已删除
@@ -502,12 +539,21 @@ export class CardAgent {
     const isMultiTemplate = templates.length > 1;
     const defaultTemplateId = templates[0]?.id;
 
+    // maxCards 语义收口（0824 评审 #4）：调用方给的是"本次生成的总数上限"，
+    // 写入 max_cards_total 由后端按分段分配额度；max_cards_per_mistake 只作
+    // 单段兜底上限（后端校验单段 >100 直接拒绝，故截断到 100）。
+    const maxCardsTotal = resolveMaxCardsTotal(input.maxCards);
+
     return {
       options: {
         deck_name: input.options?.deckName || 'Default',
         note_type: 'Basic',
         enable_images: true,
-        max_cards_per_mistake: input.maxCards || 50,
+        max_cards_per_mistake: Math.min(maxCardsTotal, BACKEND_MAX_CARDS_PER_SEGMENT),
+        max_cards_total: maxCardsTotal,
+        // FSRS 画像注入需显式授权（0824 评审 #1）：默认 false，
+        // 只有调用方显式传 fsrsFeedback: true 才授权外送复习画像
+        fsrs_feedback: input.options?.fsrsFeedback === true,
         // LLM-First: 传递所有模板 ID，由后端 LLM 自动选择最合适的
         template_ids: templates.map((t) => t.id),
         template_descriptions: templateDescriptions,

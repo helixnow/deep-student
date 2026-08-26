@@ -469,7 +469,8 @@ struct ChatAnkiGenerationTuning {
     enable_qa_pass: Option<bool>,
     /// 生成后 LLM critic 开关；None=默认关闭，仅显式 true 时启用。
     enable_critic_pass: Option<bool>,
-    /// FSRS 复习画像回流开关；None=默认开启（与 AnkiGenerationOptions 语义一致）。
+    /// FSRS 复习画像回流开关；None=默认关闭，仅显式 true 才注入
+    /// （0824 隐私收口：画像随生成请求外送，与 AnkiGenerationOptions 语义一致）。
     enable_fsrs_feedback: Option<bool>,
     /// VLM 图片数上限覆盖；None=按路由默认（light 6 / full 12），上限 [`MAX_VLM_IMAGES`]。
     max_images: Option<u32>,
@@ -577,7 +578,7 @@ struct ChatAnkiRunArgs {
     /// 可选：生成后 LLM critic（默认关闭，仅在用户明确要求质检/复审时开启）
     #[serde(alias = "enable_critic_pass")]
     enable_critic_pass: Option<bool>,
-    /// 可选：FSRS 复习画像回流开关（默认开启）
+    /// 可选：FSRS 复习画像回流开关（默认关闭；画像随生成请求外送，需显式 true 授权）
     #[serde(alias = "enable_fsrs_feedback")]
     enable_fsrs_feedback: Option<bool>,
     /// 可选：VLM 图片数上限（1~12；默认 light 6 / full 12）
@@ -677,7 +678,7 @@ struct ChatAnkiStartArgs {
     /// 可选：生成后 LLM critic（默认关闭，仅在用户明确要求质检/复审时开启）
     #[serde(alias = "enable_critic_pass")]
     enable_critic_pass: Option<bool>,
-    /// 可选：FSRS 复习画像回流开关（默认开启）
+    /// 可选：FSRS 复习画像回流开关（默认关闭；画像随生成请求外送，需显式 true 授权）
     #[serde(alias = "enable_fsrs_feedback")]
     enable_fsrs_feedback: Option<bool>,
     /// 可选：历史制卡偏好记忆注入开关（默认开启）
@@ -10997,8 +10998,9 @@ fn build_generation_options(
         template_ids: None,
         template_descriptions: None,
         enable_llm_boundary_detection: Some(true),
-        // FSRS 复习画像回流：None=默认开启，enableFsrsFeedback=false 显式关闭；
-        // 画像注入仍由 EnhancedAnkiService 按此开关执行。
+        // FSRS 复习画像回流（0824 隐私收口）：画像随生成请求外送，
+        // EnhancedAnkiService 只认显式 Some(true)；None / Some(false) 一律不注入，
+        // 即 enableFsrsFeedback 缺省时默认关闭。
         fsrs_feedback: tuning.enable_fsrs_feedback,
         user_review_profile: None,
         // 输出协议/QA 留痕开关：序列化进任务 options JSON 后由

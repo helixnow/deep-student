@@ -131,20 +131,37 @@ fn injection_contains_profile_and_interference_sections() {
     make_lapsed(&db, "card-hi2", 4, 0);
     // card-far 保持 New（无 lapse）
 
+    // 默认配置（0824 隐私收口）：只注入匿名聚合画像，
+    // 不注入历史卡片原文（高遗忘卡示例 / 干扰预警），也不再声称「仅本地/不上传」。
     let cfg = FsrsFeedbackConfig::default();
     let injected = build_feedback_injection(&db, "本章系统讲解牛顿第二定律及其应用", &cfg)
         .expect("should inject");
-
-    // 画像 section
     assert!(injected.contains("用户复习画像"), "{injected}");
-    assert!(injected.contains("数据仅本地"));
     assert!(injected.contains("易混淆标签"));
+    assert!(!injected.contains("数据仅本地"), "虚假承诺必须删除: {injected}");
+    assert!(!injected.contains("不上传"), "虚假承诺必须删除: {injected}");
+    assert!(
+        !injected.contains("同批次语义干扰预警"),
+        "默认不得注入卡片原文: {injected}"
+    );
+    assert!(
+        !injected.contains("牛顿第二定律的表达式是什么？"),
+        "默认不得注入卡片原文: {injected}"
+    );
+
+    // 显式开启 include_card_excerpts 后才注入卡片摘要与干扰预警
+    let opted_in = FsrsFeedbackConfig {
+        include_card_excerpts: true,
+        ..FsrsFeedbackConfig::default()
+    };
+    let full = build_feedback_injection(&db, "本章系统讲解牛顿第二定律及其应用", &opted_in)
+        .expect("should inject");
     // 干扰 section：主题相近的高 lapse 卡入选，不相近的不入选
-    assert!(injected.contains("同批次语义干扰预警"));
-    assert!(injected.contains("牛顿第二定律的表达式是什么？"));
-    assert!(!injected.contains("光合作用"));
+    assert!(full.contains("同批次语义干扰预警"));
+    assert!(full.contains("牛顿第二定律的表达式是什么？"));
+    assert!(!full.contains("光合作用"));
     // 不泄露答案内容（只注入 front 摘要）
-    assert!(!injected.contains("back"));
+    assert!(!full.contains("back"));
 }
 
 #[test]
@@ -171,7 +188,11 @@ fn unrelated_document_still_gets_profile_without_interference() {
     make_lapsed(&db, "card-x", 5, 0);
     make_lapsed(&db, "card-y", 3, 0);
 
-    let cfg = FsrsFeedbackConfig::default();
+    // 显式开启摘要外送，验证的是「无关键词重叠」这一层过滤（而非隐私开关）。
+    let cfg = FsrsFeedbackConfig {
+        include_card_excerpts: true,
+        ..FsrsFeedbackConfig::default()
+    };
     let injected = build_feedback_injection(&db, "French Revolution timeline and causes", &cfg)
         .expect("profile still injected");
     assert!(injected.contains("用户复习画像"));
