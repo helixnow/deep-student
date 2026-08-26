@@ -96,6 +96,12 @@ mod prefix_generation_restore_tests;
 mod llm_content_crash_tests;
 #[cfg(test)]
 mod skill_replay_digest_tests;
+#[cfg(test)]
+mod prefix_generation_fork_finale_tests;
+#[cfg(test)]
+mod skill_replay_edit_delete_tests;
+#[cfg(test)]
+mod llm_content_retry_gap_tests;
 pub(crate) mod stream_filter_core;
 pub mod prompt;
 pub mod retrieval;

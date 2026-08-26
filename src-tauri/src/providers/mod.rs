@@ -3791,6 +3791,11 @@ impl ProviderAdapter for GeminiAdapter {
 }
 
 #[cfg(test)]
+mod wave2_a_prefix_snapshot_tests;
+#[cfg(test)]
+mod wave2_a_anthropic_budget_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{
         build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,

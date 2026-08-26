@@ -21,7 +21,11 @@
 //!   非字母序），generation 0 → 1；重复收敛幂等不再 bump；
 //! - 单写者纯前缀扩展：永不切代，generation 保持 0；
 //! - T+1 轮：全体变体从同一 generation=1 基线出发，字节一致、不再分叉、
-//!   不再切代。
+//!   不再切代；
+//! - T+2 终局（第 7 轮 #1 补强）：从分叉轮 T 起连跑完整时间线，T+2 稳态
+//!   下两变体**同序同代**——generation 恒 1（整条时间线只切一次代）、
+//!   order 与轮 T 收敛基线逐位一致、请求字节跨变体且跨轮（T+1 vs T+2）
+//!   逐字节全等，缓存血统自 T+1 起再无任何漂移。
 //!
 //! ## 契约副本说明
 //!
@@ -277,4 +281,79 @@ fn later_round_both_variants_see_xy_share_generation_1_order() {
         converged_order, converged_baseline,
         "T+1 共享 order 与轮 T 收敛基线逐位一致（无变更应跳过写库）"
     );
+}
+
+// ============================================================================
+// 4. 终局（第 7 轮 #1）：分叉后完整时间线 T → T+1 → T+2，
+//    T+2 稳态两变体同序同代，缓存血统自 T+1 起零漂移
+// ============================================================================
+
+#[test]
+fn t_plus_2_steady_state_after_fork_both_variants_share_order_and_generation() {
+    // ===== 轮 T：真分叉（与测试 1 同构，此处连跑不摆拍）=====
+    // generation = 0，B̂ = [read_file, search]；A 披露 X = quiz_gen，
+    // B 披露 Y = anki_export → 索引序收敛 + 切代。
+    let generation_t0: u64 = 0;
+    let session_baseline = established_baseline();
+    let (fork_a_order, _) = variant_discloses(&session_baseline, &["quiz_gen"]);
+    let (fork_b_order, _) = variant_discloses(&session_baseline, &["anki_export"]);
+    let (bump_t, order_after_t) = converge_orders_by_variant_index(&[fork_a_order, fork_b_order]);
+    let generation_t = generation_t0 + bump_t;
+    assert_eq!(generation_t, 1, "轮 T 真分叉：generation 0 → 1");
+    assert_eq!(
+        order_after_t,
+        vec!["read_file", "search", "quiz_gen", "anki_export"],
+        "轮 T 收敛序 = B̂ + X + Y（变体索引序）"
+    );
+
+    // ===== 轮 T+1：fan-out 统一快照自 (g=1, B_1)，无新增披露 =====
+    let (t1_a_order, t1_a_bytes) = variant_discloses(&order_after_t, &[]);
+    let (t1_b_order, t1_b_bytes) = variant_discloses(&order_after_t, &[]);
+    let (bump_t1, order_after_t1) =
+        converge_orders_by_variant_index(&[t1_a_order, t1_b_order]);
+    let generation_t1 = generation_t + bump_t1;
+    assert_eq!(bump_t1, 0, "T+1 无互异尾部，不切代");
+    assert_eq!(order_after_t1, order_after_t, "T+1 收敛 order 不动");
+    assert_eq!(t1_a_bytes, t1_b_bytes, "T+1 两变体请求字节逐字节一致");
+
+    // ===== 轮 T+2：再次 fan-out，自 T+1 收敛状态出发 =====
+    // expected API（#1 落地后替换）：入口 load ToolFacePrefixSnapshot
+    //   { generation: 1, order: B_1, schema_digest }，join 收敛 advance
+    //   读回原样、跳过写库。
+    let (t2_a_order, t2_a_bytes) = variant_discloses(&order_after_t1, &[]);
+    let (t2_b_order, t2_b_bytes) = variant_discloses(&order_after_t1, &[]);
+    let (bump_t2, order_after_t2) =
+        converge_orders_by_variant_index(&[t2_a_order.clone(), t2_b_order.clone()]);
+    let generation_t2 = generation_t1 + bump_t2;
+
+    // ===== 终局断言：T+2 稳态「同序同代」=====
+    // 同代：整条时间线 T → T+1 → T+2 只在真分叉那一轮切过一次代。
+    assert_eq!(bump_t2, 0, "T+2 不得再切代");
+    assert_eq!(generation_t2, 1, "T+2 稳态 generation 恒为 1（同代）");
+    assert_eq!(
+        generation_t2, generation_t1,
+        "T+1 与 T+2 同代：分叉只发生在轮 T，此后代号封存"
+    );
+
+    // 同序：两变体本地 order 互等，且与轮 T 收敛基线逐位一致——
+    // 稳态 order 是轮 T 收敛结果的不动点。
+    assert_eq!(t2_a_order, t2_b_order, "T+2 两变体本地 order 逐位一致（同序）");
+    assert_eq!(
+        order_after_t2, order_after_t,
+        "T+2 收敛 order 与轮 T 收敛基线逐位一致，稳态不动点"
+    );
+
+    // 字节层零漂移：跨变体逐字节全等，且跨轮（T+1 vs T+2）逐字节全等——
+    // 同 provider/key 变体自 T+1 起互蹭同一条缓存血统，永不再暖新前缀。
+    assert_eq!(t2_a_bytes, t2_b_bytes, "T+2 两变体请求字节逐字节一致");
+    assert_eq!(
+        t1_a_bytes, t2_a_bytes,
+        "T+1 与 T+2 请求字节跨轮全等：稳态后缓存前缀零漂移"
+    );
+
+    // 幂等封底：对稳态结果再收敛一次仍是 no-bump 不动点。
+    let (rerun_bump, rerun_order) =
+        converge_orders_by_variant_index(&[order_after_t2.clone(), order_after_t2.clone()]);
+    assert_eq!(rerun_bump, 0, "稳态重复收敛幂等，不得切代");
+    assert_eq!(rerun_order, order_after_t2);
 }

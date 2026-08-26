@@ -1280,3 +1280,112 @@ digest 持久化链路。
 - 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
 - **不标 Goal complete**：编译/测试验证轮仍未跑，digest 收敛无测试覆盖，
   验证轮任务书待排。
+
+---
+
+# Wave2-A 第 7 轮测试台账（#9，只追加）
+
+- 作者：0824 Wave2-A 第 7 轮子代理 #9「测试台账」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1–6 轮章节一字不动。本席未改任何产品代码、未改任何
+  测试文件、未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/ROUND-07-TASKS.md`（tip `618634a6`，与本席 `git log`
+  复核一致）+ 本席对工作区 `git status` / `git diff` / `wc -l` / grep 的
+  逐文件取证 + 八个测试文件头部自述通读。
+- **取证时点声明**：第 7 轮各席**并行写作**，本席于 17:03–17:13 UTC 间
+  三次快照，`17:12:43Z` 时点八个测试文件（#1–#8 可写面）已全部落盘且
+  3 个 M 文件 diff 自 17:09 起稳定；此后若有席位追加，以父代理收轮时
+  #10 的 `r7-test-inventory.md` 索引为最终口径，本台账为快照口径。
+
+## R7-1. 本轮 diff 形态（测试台账员独立取证，17:12:43Z 快照）
+
+基线枝 tip `618634a6`（第 6 轮已提交）。第 7 轮为**反例测试源码补强轮**
+（只写不跑，禁改产品逻辑），全部改动均在工作区未提交：
+
+- **M（强化既有，`git diff --stat` 合计 3 文件 +791/−6）**：
+  `prefix_generation_fork_tests.rs`（+81/−6）、
+  `skill_replay_digest_tests.rs`（+314）、`llm_content_crash_tests.rs`（+402）。
+- **untracked（新建 5 个测试文件）**：`prefix_generation_fork_finale_tests.rs`、
+  `skill_replay_edit_delete_tests.rs`、`llm_content_retry_gap_tests.rs`
+  （以上 pipeline/ 下）+ `providers/wave2_a_prefix_snapshot_tests.rs`、
+  `providers/wave2_a_anthropic_budget_tests.rs`。
+- untracked 文档：`ROUND-07-TASKS.md` + 本台账追加节（#10 的
+  `r7-test-inventory.md` 于本席快照时点尚未落盘）。
+
+红线自证（本席 status/grep 复核）：产品代码零改动——`pipeline.rs` /
+`providers/mod.rs` / hooks / coordinator / tool_loop / history / helpers /
+multi_variant / repo / types / persistence 全部不在 diff 中；本轮 diff
+只有测试源码与文档。
+
+## R7-2. 测试台账总表（本会话全部只写不跑测试文件）
+
+行数为「基线 → 快照」，测试数同。执行状态：**八个文件全部未执行**（铁律，
+连 cargo check 都未跑）。
+
+| # | 文件 | 性质 | 行数 | 测试数 | 打的对象 | 预期红/绿（静态推演） |
+|---|---|---|---|---|---|---|
+| 1 | `pipeline/prefix_generation_fork_tests.rs` | 强化（终局） | 284→359 | 3→4 | 契约副本（converge/advance，DB-free） | **绿**。新增 `t_plus_2_steady_state_after_fork_both_variants_share_order_and_generation`：分叉轮 T 起连跑 T→T+1→T+2 完整时间线，T+2 两变体同序同代（generation 恒 1、字节跨轮全等）；文件头明示旧行为（变体内各自 load+中途 store）下测试 1/2 会红，方案 A 下全绿 |
+| 2 | `pipeline/prefix_generation_fork_finale_tests.rs` | 新建 | 473 | 4 | 契约副本（同上三副本 + metadata 往返） | **绿**。A/B 后轮同现 X、Y 四稳态：后轮同现（Δg=0、advance 跳写）/ T+1..T+4 多轮+索引洗牌不漂移 / 跨进程重启从 metadata 恢复同现 / 迟到旧快照写回免疫不回退。文件头自带红绿论证（旧竞态行为下 1/2 红） |
+| 3 | `pipeline/skill_replay_digest_tests.rs` | 强化（终局） | 441→745 | 5→7 | 第 1–4 节仍为 r3 契约副本；**新第 5 节改打生产门禁** `rebuild_anchored_skill_messages_gated_with_signal` + `skill_body_digest` | **绿**。两条终局：正文修改（mismatch→skip+去重信号→回退 v1 自愈且不再发信号）、删除（skip 且**永不**发信号，与 mismatch 严格区分；同 id 恢复需字节精确还原）。R3-5 所记「反例段留后续轮收口」就此收口——生产入口直断言，兼容二参入口为既有反例专门保留 |
+| 4 | `pipeline/skill_replay_edit_delete_tests.rs` | 新建 | 479 | 7 | **生产入口**（history 门禁 + 锚点 meta JSON 序列化往返 + 插入层） | **绿**。编辑/删除全生命周期 7 条：编辑→skip+信号 / 编辑回滚自愈无新信号 / 删除→skip 无信号（**反例钉死 r6 #4 观察 1 残余缺口现状，若后续语义扩展该断言应翻转**）/ 删除但 replay 快照携旧正文照常重建 / 混合场景逐锚判定+信号去重 / 旧锚点无 digest 盲取新正文（兼容档代价反例）/ 全 skip 插入层零残留 |
+| 5 | `pipeline/llm_content_crash_tests.rs` | 强化 | 205→607 | 3→13 | 假件（FakeUserBlockRow 等，复刻 repo/persistence/history 语义，不触真实 DB） | **绿**。+10 条：崩溃点细分（早写前无害/早写后发送前锚点）、保存点重建不抹早写（复刻 ON CONFLICT SET 列清单）、编辑重发不复活旧包装、旧库无列静默跳过不阻断发送、legacy 多 CONTENT 块写读同行+首块空串遮蔽现状角落、空白串不视同缺失、多字节逐字节保真、**multi_variant 扇出无早写窗口仍在（记录非修复）** |
+| 6 | `pipeline/llm_content_retry_gap_tests.rs` | 新建 | 454 | 7 | 假件（模拟 retry ctx / sidecar 查找 / history 组装，不触真实管线） | **绿**（全部按快照口径断言可过）。测试 1–4 **固化 R6-6 遗留 1 的现状缺口**：retry 全新 user_message_id 使早写与 save 点双双跳过、陈旧 sidecar 下轮漂移、错失 NULL 回填、retry 轮自身双重包含；测试 5–6 以假件模拟**修复合同**（复用前置 user id → 缺口 1–4 闭合），是修复落地后的目标语义预演；测试 7 空串边界不变量。「只写预期」即此：现状与修复合同并陈，修复落地时 1–4 翻转、5–6 转生产断言 |
+| 7 | `providers/wave2_a_prefix_snapshot_tests.rs` | 新建 | 417 | 6 | **生产适配器**（OpenAIAdapter / OpenAIResponsesAdapter / AnthropicAdapter 转换全路径） | **绿**。三家（+DeepSeek 两形态共 5 路）连续两次请求 post-adapter body 稳定前缀段（tools+system/instructions/developer 断点块）serde_json 字节逐字对比 + 同 body 重转换全字节确定性；依赖 preserve_order（Cargo.toml 已启用，文件头声明）。任何 marker 漂移/字段序抖动在此以字节 diff 暴露 |
+| 8 | `providers/wave2_a_anthropic_budget_tests.rs` | 新建 | 463 | 14 | **生产守卫与转换**（`enforce_anthropic_cache_breakpoint_budget` 直调 + `convert_openai_to_anthropic` 端到端） | **绿**。R5-3 四槽/透传的增量补位：预算常量=4、守卫 no-op/空入参/纯 tools 超载/**剥除跨 tools→system 边界**（R6-6 §6 所记「system 剥除循环零测试覆盖」就此补上）/剥后无 `cache_control: null` 残留/存活 marker 载荷逐字节保真；透传契约（位置保持、嵌 function 不算、丢弃条目 marker 无副作用、全无效 tools 无 tools 键）；守卫×尾部保险断点交互（自动断点参与预算、超载先剥） |
+
+**合计**：本轮新增测试函数 51 个（1+4+2+7+10+7+6+14），新建文件 2286 行 +
+强化 +791 行；连同 1–6 轮存量（`prefix_snapshot_tests.rs` 234/4、
+`prefix_generation_restore_tests.rs` 539/3 及散布各产品文件的 `#[cfg(test)]`
+模块），**全部测试自 r1 起累计零执行**。
+
+## R7-3. mod 接线状态（父代理收轮事项）
+
+本席 grep 复核（快照时点）：
+
+- `pipeline.rs:87-98` 既有 6 个测试 mod 声明在位（parallel_exec /
+  prefix_snapshot / fork / restore / llm_content_crash / skill_replay_digest），
+  **强化的三个文件已在编译面**；
+- 三个新建 pipeline 测试文件（fork_finale / edit_delete / retry_gap）的
+  `#[cfg(test)] mod` 声明**尚未挂**（任务卡明示由父代理加）；
+- `providers/mod.rs` 零 `wave2_a` 命中——两个 providers 测试文件同样待挂。
+  口径差异记录：#8 文件头写「由父代理接线」，#7 文件头写「由集成轮统一
+  接线」，任务卡口径为父代理——以父代理收轮实际动作为准。
+- 未挂 mod 前五个新文件不参与编译，「预期绿」连编译门都未过，纯为源码存在。
+
+## R7-4. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff / wc）
+
+- 本轮 diff 全貌与席位归属（R7-1）——本席三次快照复核，与任务卡
+  #1–#8 可写面一一对应，无越面改动、产品代码零 diff。
+- 八文件的行数/测试数/测试函数名全量清点（R7-2 表）——本席
+  `rg '#\[(tokio::)?test\]'` 逐文件枚举。
+- 八文件头部自述（只写不跑声明、红绿论证、契约副本↔生产项对照表、
+  缺口现状 vs 修复合同的区分）——本席逐文件通读头部。
+- 强化三文件的 diff 增量形态（#1 终局测试、#3 第 5 节转生产断言、
+  #5 十条新场景）——本席逐 hunk 读 diff。
+- mod 接线现状（R7-3）——本席 grep 复核。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**（铁律）：本轮 3077 行测试源码连同 1–6 轮
+  全部存量**未经 cargo check / cargo test / rustfmt**，「预期绿」均为
+  静态推演。风险梯度：#4/#3 第 5 节/#7/#8 直打生产符号（签名/可见性
+  漂移即编译错）＞ #1/#2 契约副本（副本与生产语义漂移则绿得虚假）＞
+  #5/#6 纯假件（假件复刻语义若与生产不符则固化了错误契约）。
+- #7 的字节确定性依赖 serde_json preserve_order 的论证仍是源码推理
+  （R2-6 旧债），无运行时对拍。
+- #6 的修复合同（测试 5–6）对应的产品修复**本轮未做也不许做**——
+  retry 缺口本身仍开（R6-6 遗留 1 状态不变）。
+- 并行快照口径：17:12:43Z 后若有席位追加改动，本表行数/测试数可能
+  过期，以 #10 索引与父代理收轮 diff 为准。
+
+## R7-5. 收轮交接（给父代理）
+
+- 待挂 mod：`pipeline.rs` × 3（fork_finale / edit_delete / retry_gap）+
+  `providers/mod.rs` × 2（wave2_a 两文件），均 `#[cfg(test)]`。
+- 待 add：3 个 M 测试文件 + 5 个新测试文件 + `ROUND-07-TASKS.md` +
+  #10 的 `r7-test-inventory.md`（本席快照后落盘）+ 本台账追加节。
+- 本席未 commit/push/gh（遵嘱）；验证轮（cargo check → cargo test）
+  仍为最高优先级欠账（承接 R6-8），首跑顺序建议：先 check 全仓，
+  再按 R7-4 风险梯度从直打生产符号的四个文件跑起。
