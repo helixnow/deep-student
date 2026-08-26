@@ -256,7 +256,9 @@ describe('BackupTab ZIP import password dialog', () => {
     expect(props.onImportZip).toHaveBeenCalledWith(undefined);
   });
 
-  it('blocks import and warns when the password is too short', () => {
+  it('passes legacy short passwords through on import (decrypt path is not length-gated)', () => {
+    // v0.9.44 备份密码没有 8 字符下限：换机/重装必须能用存量短口令解开旧密文。
+    // 口令错误由后端解封层 fail-closed，前端不做最小长度门禁。
     const props = makeProps();
     render(<BackupTab {...props} />);
 
@@ -269,8 +271,9 @@ describe('BackupTab ZIP import password dialog', () => {
     );
     fireEvent.click(within(dialog).getByRole('button', { name: importButtonName }));
 
-    expect(props.onImportZip).not.toHaveBeenCalled();
-    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+    expect(props.onImportZip).toHaveBeenCalledTimes(1);
+    expect(props.onImportZip).toHaveBeenCalledWith('short');
+    expect(mockShowGlobalNotification).not.toHaveBeenCalledWith(
       'warning',
       'data:governance.e2ee_password_too_short'
     );

@@ -269,10 +269,9 @@ describe('CloudStorageSection E2EE 覆盖文案', () => {
     const restoreStart = componentSource.indexOf('const performRestore = useCallback');
     const restoreEnd = componentSource.indexOf('const handleRestore = useCallback', restoreStart);
     const restoreBlock = componentSource.slice(restoreStart, restoreEnd);
-    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeGreaterThan(-1);
-    expect(restoreBlock.indexOf('isExplicitCloudEncryptionPasswordTooShort')).toBeLessThan(
-      restoreBlock.indexOf('setDownloading(true)'),
-    );
+    // 恢复是对既有密文的解密：v0.9.44 无最小长度下限，换机/重装重输的存量
+    // 短口令必须放行（口令错误由解封层 fail-closed），故这里不允许长度门禁。
+    expect(restoreBlock).not.toContain('isExplicitCloudEncryptionPasswordTooShort');
     expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeGreaterThan(-1);
     expect(restoreBlock.indexOf('isKnownPortableCloudBackup')).toBeLessThan(
       restoreBlock.indexOf('setDownloading(true)'),

@@ -298,6 +298,13 @@ describe('CloudStorageSection cloud UI guarantees', () => {
   });
 
   test('a short encryption password asks for preexisting confirmation instead of hard-blocking the save', async () => {
+    // clearAllMocks 不会还原 mockResolvedValue 的实现，显式回到未配置态
+    vi.mocked(cloudApi.getCredentialStatus).mockResolvedValue({
+      webdavPasswordConfigured: false,
+      s3SecretAccessKeyConfigured: false,
+      ftpPasswordConfigured: false,
+      encryptionPasswordConfigured: false,
+    });
     vi.mocked(cloudApi.saveCredentials).mockResolvedValue({
       webdavPasswordConfigured: true,
       s3SecretAccessKeyConfigured: false,
