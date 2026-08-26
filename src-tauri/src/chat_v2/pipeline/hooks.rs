@@ -10,6 +10,14 @@
 //!
 //! 两个钩子由 [`default_pipeline_hooks`] 默认注册，行为与迁移前的内联实现
 //! 等价；额外钩子可通过 `ChatV2Pipeline::with_pipeline_hook` 追加。
+//!
+//! **顺序敏感：准入必须先于审计。** [`TaskAuditHook::after_tool`] 消费
+//! [`ToolAdmission`] 中由 [`ApprovalGateHook::before_tool`] 写入的字段
+//! （`authority_admission` / `is_external_mcp` /
+//! `trusted_automation_preauthorized`）；若审计钩子先于准入钩子注册，
+//! 这些字段将保持 fail-closed 的初始值（`None` / `false`），external MCP
+//! 安全边界注记与 trusted automation 预授权标记会静默丢失。该顺序由测试
+//! `default_hooks_keep_approval_gate_first` 锁定。
 
 use super::*;
 
@@ -38,7 +46,6 @@ pub struct ToolAdmission {
     // Security evidence is deliberately private. Appended hooks may inspect the
     // admission through hook behavior, but must not forge ApprovalGateHook's
     // decision before ExecutionContext is built.
-    approval_arguments: Value,
     immutable_guard_asks: bool,
     approval_required: bool,
     approval_requirement_satisfied: bool,
@@ -52,9 +59,11 @@ pub struct ToolAdmission {
 }
 
 impl ToolAdmission {
-    pub(super) fn new(arguments: &Value) -> Self {
+    /// P8：曾经的只写字段 `approval_arguments` 已删除（全仓无读点）。
+    /// `_arguments` 参数仅为保持 `tool_loop.rs` 调用点签名兼容而保留，
+    /// 本函数不再持有工具参数的任何拷贝。
+    pub(super) fn new(_arguments: &Value) -> Self {
         Self {
-            approval_arguments: arguments.clone(),
             immutable_guard_asks: false,
             approval_required: false,
             approval_requirement_satisfied: false,
@@ -90,11 +99,16 @@ pub enum ToolGateOutcome {
 
 /// Chat V2 流水线钩子。
 ///
-/// 四个切点均为 `tool_loop.rs` 中的真实调用点：
-/// - `before_turn`：工具环每轮迭代开头、本轮 LLM 调用前；
-/// - `before_tool`：单个工具执行前（可拦截）；
-/// - `after_tool`：executor 成功返回后、结果回喂前（可注记结果）；
-/// - `before_compaction`：环内 compaction 真正执行前。
+/// 四个切点均为 `tool_loop.rs` 中的真实调用点，失败语义各不相同：
+/// - `before_turn`：工具环每轮迭代开头、本轮 LLM 调用前。返回
+///   [`ChatV2Result`]，`Err` 会中断整个回合（错误向上传播给调用方）。
+/// - `before_tool`：单个工具执行前。**不走 `Result`**：拦截通过返回
+///   [`ToolGateOutcome::Block`]（携带完整的失败 `ToolResultInfo` 回喂给
+///   模型），`Proceed` 则放行并把准入证据写入 [`ToolAdmission`]。
+/// - `after_tool`：executor 返回后、结果回喂前。**不可失败**（无返回值），
+///   只能注记结果 / 打审计日志。
+/// - `before_compaction`：环内 compaction 真正执行前。**不可失败**
+///   （无返回值），只能观察 / 打日志，不能阻止 compaction。
 #[async_trait::async_trait]
 pub(crate) trait PipelineHook: Send + Sync {
     fn name(&self) -> &'static str;
@@ -135,7 +149,13 @@ pub(crate) trait PipelineHook: Send + Sync {
     }
 }
 
-/// 默认钩子集：审批准入 + 审计记录（顺序敏感：准入必须先于审计）。
+/// 默认钩子集：审批准入 + 审计记录。
+///
+/// **顺序敏感：准入必须先于审计。** `TaskAuditHook::after_tool` 读取的
+/// `authority_admission` / `is_external_mcp` / `trusted_automation_preauthorized`
+/// 全部由 `ApprovalGateHook::before_tool` 在放行（`Proceed`）时写入；
+/// `ApprovalGateHook` 必须保持链首位（测试
+/// `default_hooks_keep_approval_gate_first` 锁定）。
 pub(crate) fn default_pipeline_hooks() -> Arc<Vec<Arc<dyn PipelineHook>>> {
     Arc::new(vec![
         Arc::new(ApprovalGateHook) as Arc<dyn PipelineHook>,
@@ -934,7 +954,6 @@ impl PipelineHook for ApprovalGateHook {
             }
         }
 
-        admission.approval_arguments = approval_arguments;
         admission.immutable_guard_asks = immutable_guard_asks;
         admission.approval_required = approval_required;
         admission.approval_requirement_satisfied = approval_requirement_satisfied;
@@ -1055,6 +1074,31 @@ impl PipelineHook for TaskAuditHook {
 /// （迁自 tool_loop.rs；语义规格由下方测试锁定。）
 fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
+}
+
+/// 带超时地等待一个 oneshot 响应，并可选地同时监听流取消信号。
+///
+/// 返回值三层语义（与调用点的分支一一对应）：
+/// - `None`：流被取消（cancellation token 触发），等待被放弃；
+/// - `Some(Err(_))`：等待超时；
+/// - `Some(Ok(..))`：在超时前收到了 oneshot 结果（含通道关闭错误）。
+///
+/// 🔧 F7 修复的共享实现：`request_tool_approval` 与 `request_plan_gate`
+/// 两处等待逻辑完全同构，收敛于此；等待之后的
+/// Approved / Rejected / Timeout / Cancelled 业务分支仍留在各自调用点。
+async fn wait_oneshot_with_optional_cancel<F: std::future::Future>(
+    rx: F,
+    timeout_duration: std::time::Duration,
+    cancellation_token: Option<&CancellationToken>,
+) -> Option<Result<F::Output, tokio::time::error::Elapsed>> {
+    if let Some(cancel_token) = cancellation_token {
+        tokio::select! {
+            result = tokio::time::timeout(timeout_duration, rx) => Some(result),
+            _ = cancel_token.cancelled() => None,
+        }
+    } else {
+        Some(tokio::time::timeout(timeout_duration, rx).await)
+    }
 }
 
 impl ChatV2Pipeline {
@@ -1227,14 +1271,8 @@ impl ChatV2Pipeline {
         // 🔧 F7 修复：同时监听流取消信号 —— 用户停止生成时立即清理 pending 审批
         // 并退出等待，不再让审批 sender 残留到 60s 超时
         let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
-        let wait_result = if let Some(cancel_token) = cancellation_token {
-            tokio::select! {
-                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
-                _ = cancel_token.cancelled() => None,
-            }
-        } else {
-            Some(tokio::time::timeout(timeout_duration, rx).await)
-        };
+        let wait_result =
+            wait_oneshot_with_optional_cancel(rx, timeout_duration, cancellation_token).await;
 
         let Some(timeout_result) = wait_result else {
             // 流被取消：清理 pending 审批并通知前端关闭审批卡片
@@ -1377,14 +1415,8 @@ impl ChatV2Pipeline {
         );
 
         let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
-        let wait_result = if let Some(cancel_token) = cancellation_token {
-            tokio::select! {
-                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
-                _ = cancel_token.cancelled() => None,
-            }
-        } else {
-            Some(tokio::time::timeout(timeout_duration, rx).await)
-        };
+        let wait_result =
+            wait_oneshot_with_optional_cancel(rx, timeout_duration, cancellation_token).await;
 
         let Some(timeout_result) = wait_result else {
             log::info!(
@@ -1476,6 +1508,11 @@ impl ChatV2Pipeline {
 mod tests {
     use super::*;
 
+    /// 顺序敏感：`TaskAuditHook::after_tool` 消费 `ApprovalGateHook::before_tool`
+    /// 写入的 `authority_admission` / `is_external_mcp` /
+    /// `trusted_automation_preauthorized`。准入必须先于审计，否则审计读到的
+    /// 是下方 `audit_consumed_admission_fields_start_fail_closed` 锁定的
+    /// fail-closed 初始值，安全注记会静默丢失。
     #[test]
     fn default_hooks_keep_approval_gate_first() {
         let names = default_pipeline_hooks()
@@ -1484,6 +1521,19 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, ["approval_gate", "task_audit"]);
+    }
+
+    /// 强化上面的顺序锁：审计钩子依赖的三个字段在 `ToolAdmission::new`
+    /// 时必须是「未准入」的 fail-closed 值——只有 `ApprovalGateHook` 放行
+    /// 时才会写入真实证据。若本测试失败，说明有人给初始值注入了伪造的
+    /// 准入证据，审计将无法区分「准入钩子未运行」与「准入通过」。
+    #[test]
+    fn audit_consumed_admission_fields_start_fail_closed() {
+        let admission = ToolAdmission::new(&json!({"command": "ls"}));
+
+        assert!(admission.authority_admission().is_none());
+        assert!(!admission.is_external_mcp);
+        assert!(!admission.trusted_automation_preauthorized);
     }
 
     #[test]
