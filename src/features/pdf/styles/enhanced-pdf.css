@@ -735,12 +735,17 @@
   border-color: hsl(var(--foreground) / .55);
 }
 
-/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线 */
+/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线。
+   曾在本文件两处重复定义（此处 align-self/margin 与翻译卡片区块的
+   height/flex-shrink），合并为一处，保留合并前实际生效的全部属性：
+   height 为定高时 align-self: stretch 不参与拉伸，视觉结果与合并前一致 */
 .ds-highlight-menu__divider {
   align-self: stretch;
   width: 1px;
+  height: 18px;
   margin: 2px 2px;
   background: hsl(var(--border));
+  flex-shrink: 0;
 }
 
 /* ============================================================================
@@ -1954,13 +1959,8 @@
    划词翻译卡片（复用聊天 TranslationPopover，viewer 内底部浮层）
    ============================================================================ */
 
-/* 高亮色板与翻译按钮之间的细分隔线 */
-.ds-highlight-menu__divider {
-  width: 1px;
-  height: 18px;
-  background: hsl(var(--border));
-  flex-shrink: 0;
-}
+/* .ds-highlight-menu__divider（色板与动作按钮的分隔线）在上方
+   「划词/高亮浮动菜单」区块统一定义，此处不再重复 */
 
 .ds-pdf__translation-panel {
   position: absolute;

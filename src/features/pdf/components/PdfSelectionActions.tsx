@@ -25,10 +25,19 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
-import { ExplainPopover } from '@/features/chat/components/ExplainPopover';
-import { TranslationPopover } from '@/features/chat/components/TranslationPopover';
-import { generateCardsFromSelection } from '@/features/chat/services/selectionCardGeneration';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+
+// 解释/翻译结果卡片复用聊天组件，但必须懒加载：静态导入会把整条翻译链路
+// 打进 PDF 侧 chunk，抵消 EnhancedPdfViewer 与 selectionStudyActions 的拆包设计。
+// 用户点「解释/翻译」时结果面板才挂载，首帧多一次 chunk 加载可接受。
+const ExplainPopover = React.lazy(() =>
+  import('@/features/chat/components/ExplainPopover').then((m) => ({ default: m.ExplainPopover }))
+);
+const TranslationPopover = React.lazy(() =>
+  import('@/features/chat/components/TranslationPopover').then((m) => ({
+    default: m.TranslationPopover,
+  }))
+);
 
 /**
  * 触屏底部避让高度：阅读器底栏 + 进度细线 + Home Indicator 的经验值。
@@ -103,12 +112,17 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   }, [startSaveAsNote, documentTitle]);
 
   const handleMakeCards = useCallback((text: string) => {
-    void generateCardsFromSelection({
+    // 动态 import：selectionCardGeneration 顶层静态依赖 cardforge 的 cardAgent，
+    // 只在用户真点「制卡」时才载入，避免 cardforge 打进 PDF 侧 chunk
+    const input = {
       selectedText: text,
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       t,
-    });
+    };
+    void import('@/features/chat/services/selectionCardGeneration').then(
+      ({ generateCardsFromSelection }) => generateCardsFromSelection(input)
+    );
   }, [selection.contextBefore, selection.contextAfter, t]);
 
   const handleAddToChat = useCallback((text: string) => {
@@ -160,24 +174,26 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
             </DsButton>
           </div>
           <CustomScrollArea className="ds-pdf__selection-panel-body" fullHeight>
-            {explainText !== null && (
-              <ExplainPopover
-                sourceText={explainText}
-                isVisible
-                onClose={closePanel}
-                onAddToInput={handleAddToChat}
-              />
-            )}
-            {translateState !== null && (
-              <TranslationPopover
-                sourceText={translateState.text}
-                isVisible
-                contextBefore={translateState.contextBefore}
-                contextAfter={translateState.contextAfter}
-                onClose={closePanel}
-                onAddToInput={handleAddToChat}
-              />
-            )}
+            <React.Suspense fallback={null}>
+              {explainText !== null && (
+                <ExplainPopover
+                  sourceText={explainText}
+                  isVisible
+                  onClose={closePanel}
+                  onAddToInput={handleAddToChat}
+                />
+              )}
+              {translateState !== null && (
+                <TranslationPopover
+                  sourceText={translateState.text}
+                  isVisible
+                  contextBefore={translateState.contextBefore}
+                  contextAfter={translateState.contextAfter}
+                  onClose={closePanel}
+                  onAddToInput={handleAddToChat}
+                />
+              )}
+            </React.Suspense>
           </CustomScrollArea>
         </div>
       )}

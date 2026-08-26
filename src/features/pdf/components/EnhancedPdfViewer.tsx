@@ -80,7 +80,6 @@ import {
   resolvePdfAnnotationSaveBaseline,
   subscribePdfAnnotationChanges,
 } from '../pdfAnnotationEvents';
-import { PdfSelectionActions } from './PdfSelectionActions';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
@@ -89,6 +88,11 @@ pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wra
 const SelectionTranslationPopover = React.lazy(
   () => import('@/features/chat/components/TranslationPopover')
 );
+
+// 共享层划词工具条：必须懒加载——它内部依赖 shared/selection、shared/notes
+// 与聊天弹层，若在此静态导入，会把上面 TranslationPopover 的 lazy 全部抵消，
+// 翻译/制卡链路重新被打进 PDF chunk（见 docs/0824-quality-review/pdf-documents.md）
+const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
 
 /**
  * 提取选区在所在页文字层内的前后上下文（用于划词翻译消歧；不参与翻译本身）。
@@ -3276,12 +3280,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           生成卡片 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。
           注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID
           （如 /我的教材/tb_xyz789），不是人类可读的文件名。 */}
-      <PdfSelectionActions
-        containerRef={containerRef}
-        enabled={resolvedEnableTextSelection}
-        isMobileLike={isMobileLike}
-        documentTitle={fileName}
-      />
+      <React.Suspense fallback={null}>
+        <PdfSelectionActions
+          containerRef={containerRef}
+          enabled={resolvedEnableTextSelection}
+          isMobileLike={isMobileLike}
+          documentTitle={fileName}
+        />
+      </React.Suspense>
 
       {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
           移动端改为 viewer 内底部内联色板条
