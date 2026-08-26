@@ -906,3 +906,196 @@ grep 复核（#3 文档 + 本席）：非流式 `.call_unified_model_2(` 全仓�
 - 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
 - **不标 Goal complete**：编译/测试验证轮未跑，缺口 A 未收，#9 审阅缺席，
   前端接线未做，第 5 轮任务书已排。
+
+---
+
+# Wave2-A 第 5 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 5 轮子代理 #10「台账员」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1 轮 P1–P11 编号与内容一字不改，第 2/3/4 轮章节不动。
+  本席未改任何产品代码、未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/ROUND-05-TASKS.md` 与七份 r5 文档
+  （`r5-model2-telemetry.md` #1、`r5-provider-p2.md` #2、
+  `r5-digest-generation-signal.md` #8、`r5-catalog-pending.md` #9、
+  `r5-review-model2.md` #5、`r5-review-providers.md` #6、`r5-review-arch.md` #7）
+  与 #4 产出 `docs/dev/wave2-A-agent-architecture.md`（可写面即架构结论文档，
+  无独立 r5 报告），以及本席对工作区 `git status` / `git diff` / grep 的独立复核。
+
+## R5-1. 本轮 diff 形态（台账员独立取证）
+
+基线枝 tip `2d70b400`（第 4 轮已提交，**含 `r4-review-frontend.md`**——R4-1 所记
+「#9 前端审阅缺席」已在第 4 轮收轮时补齐入库，本席 `git log` 复核该文件随
+`2d70b400` 提交，缺席记录就此关闭）。第 5 轮全部改动均在工作区未提交，
+`git diff --stat` 合计 **12 文件，+1438/−139**：
+
+```
+ scripts/cache-hit-report.py                    | 198 +/− （#3 三级分组）
+ src-tauri/src/chat_v2/pipeline/helpers.rs      |  71 +   （#8 信号记录函数）
+ src-tauri/src/chat_v2/pipeline/history.rs      | 124 +/− （#8 门禁带信号版）
+ src-tauri/src/data_governance/migration/llm_usage.rs | 62 +/−（#1 migration 注册）
+ src-tauri/src/llm_manager/model2_pipeline.rs   | 488 +/− （#1 三件事）
+ src-tauri/src/llm_usage/{collector,database,mod,repo,types}.rs | 142 +/−（#1 写入路径）
+ src-tauri/src/providers/mod.rs                 | 346 +/− （#2 P0/P1/P2）
+ src/features/chat/adapters/TauriAdapter.ts     | 146 +/− （#9 pending 消费）
+```
+
+untracked：`docs/dev/wave2-A-agent-architecture.md`（#4）、`ROUND-05-TASKS.md`、
+上列七份 r5 文档、新 migration `V20260826__add_stream_identity.sql`（#1，
+加法新文件，旧 migration 零触碰）+ 本台账追加节。
+
+红线自证（本席 grep/status 复核 + #5 交叉确认）：coordinator.rs / hooks.rs /
+tool_loop.rs / multi_variant.rs / types.rs / repo.rs 本轮零改动；车道纪律合规
+（#5 逐文件核对 12 个改动文件归属，无跨席交叠）。
+
+## R5-2. #1 model2 三件事（P6 删除 + P7 双落地）
+
+- **P6 retention：已删**。`apply_openai_prompt_cache_retention` /
+  `provider_accepts_prompt_cache_retention` 两个死实现整体删除（本席 grep 复核：
+  全仓仅剩 `model2_pipeline.rs:3584-3593` 的裁决注释，注明「若将来接线：仅官方
+  端点、仅 `ttl:"30m"`、**禁止 24h**、必须快照测试」）。第 1 轮第 7 节预置口径
+  「优先删除」如约执行；#5 复核删除安全（`model_supports_prompt_cache_breakpoint`
+  活调用点不受牵连）。
+- **遥测身份三列（P7）**：`llm_usage_logs` 不再把随机 `stream_event` 当
+  `session_id` 落库——新增 `variant_id` / `run_id` 两列（types.rs:143/:148，
+  migration `V20260826__add_stream_identity.sql` 加法新列 + 变体维度聚合索引），
+  记录点从 `chat_v2_event_{session}_var_{variant}_run_{run}` 形状解析还原真实
+  三元组（解析器与 `tool_loop::build_run_scoped_stream_event` 构造格式对拍，
+  与既有 `chat_v2_session_scope_and_generation` 同口径 `rsplit_once`）。
+- **post-adapter 四段指纹（P7）**：`CHAT_V2_CACHE_DEBUG=1` 指纹从
+  pre-adapter 换到 post-adapter 最终 body（`:4897`），按
+  system / tools / history / current-user 四段取指纹并记录首个分叉段；
+  三个测试源码在位（`:1321/:1342/:1375`，覆盖 OpenAI Chat / Responses /
+  Anthropic 三形态切分与分叉定位，只写不跑）。
+
+## R5-3. #2 provider P2 落地（P10 收口）
+
+- **P2 修复 1——工具 marker 死分支已活**：`convert_tool_definition` 收口处
+  透传调用方 `cache_control`（不再恒 `None`），`:2402` 的 `has_marker` 判定
+  自此可达；#6 确认证据链完整。
+- **P2 修复 2——四槽预算守卫**：新增
+  `enforce_anthropic_cache_breakpoint_budget`（`:2930`，调用点 `:2414`）：
+  `ANTHROPIC_CACHE_BREAKPOINT_BUDGET = 4`，顶层 automatic 恒注入占 1 槽，
+  块级断点（tools + system）预算 3，超额按「tools 先于 system、段内靠前先剥」
+  剥除（留尾剥头，越靠后断点覆盖前缀越长）。
+- 测试源码：P2 三条边界 + P0 三类变体 + P1 事件序列 + stream_options 钉死，
+  只写不跑。其中 P1 事件序列一条被 #6 翻案（见 R5-6）。
+- G-ttl1h 中「四槽无守卫 + 工具 marker 死分支」两项就此关闭（源码层面）；
+  第 1 轮第 5 节 P2「未修」裁决翻页为「已修（未验证）」。
+
+## R5-4. #3 报告脚本三级分组
+
+`scripts/cache-hit-report.py` +198/−：分组身份升级为 session_id / variant_id /
+run_id 三级（多变体 steady-state 按 `(session_id, variant_id)` 聚合，run_id 仅
+用于 per-session 行）；对旧库存量的 `chat_v2_event_` 形状 session_id 一律解析
+还原（与 `chat_v2_session_scope_and_generation` 同口径），修正此前多变体 steady
+统计把每个 stream_event 当独立会话的失真；**缺列降级**——旧库无新列时 NULL
+占位、报表不崩、分组降级为解析还原（无法解析按原值整体分组），输出头部注明
+当前生效分组模式。
+
+## R5-5. #4 架构结论文档定稿（P11 收口）
+
+`docs/dev/wave2-A-agent-architecture.md` 落盘（untracked）：契合度矩阵终稿
+**21 行**（A 部分 14 行承接 r1 #4 矩阵并按 2–4 轮落地更新状态迁移 + B 部分
+缓存工程面扩展），判定口径四档（契合 / 半契合 / 不契合 / **已改造（待验证）**
+——新档位诚实标注 2–4 轮源码落地但零验证的项）。「子代理不复用母前缀是业界
+共识」如任务卡要求写明（Claude Code / Agents SDK / OpenCode 三方同向）。
+#7 审阅确认（见 R5-6）。
+
+## R5-6. #8/#9 遗留收口：digest 切代信号 + pending 前端消费
+
+- **缺口 A 收口（#8）——信号走 catalog pending 通道**：R3-7 缺口 A（digest
+  冲突只 warn+skip、代际层不知情）本轮落地，但**未采用 #8 r3 草案的
+  `GatedRebuild` 返回值形态**，而是：门禁升级为
+  `rebuild_anchored_skill_messages_gated_with_signal`（三消费点 `:164/:333/:365`
+  全部改走，本席 grep 复核），冲突信号聚合到唯一写点
+  `record_skill_digest_prefix_generation_signal`（helpers.rs:1215 起）——
+  复用 R4 #6 的 `availableSkillsSnapshotPendingGeneration` 换代键声明
+  「该换代了」，幂等折叠（已有有效 pending 不重复 +1），持久化失败降级为
+  仅日志、**不阻断发送**。二参兼容包装 `rebuild_anchored_skill_messages`
+  仍在（:843，委托 gated 传 None）；小问题 C（dead_code 告警处置）本席 grep
+  复核仍未做，续留验证轮。
+- **R4 前端接线闭环（#9）**：TauriAdapter.ts +146——loadSession hydrate 时
+  读取 compaction/digest 信号写入的 pending 键记录 `pendingGeneration`
+  （`:194/:218/:233/:3804`）；冻结入口按「pendingGeneration 有效 → 跳过旧冻结
+  字节、按 live registry 重新生成、`generation := pendingGeneration` 兑现并
+  清除 pending」（`:5440-5483`）。first-write-wins 未放松（覆盖仍只能走换代
+  键）；兑现成功前 pending 不清除，重试不丢换代意图。R4-9 所记「#6/#7 前端
+  接线」中 #6 换代标记一侧就此闭环；#7 delta 发送路径接线仍未做。
+
+## R5-7. 审阅结论：主体确认 + 两处翻案
+
+- **#5（model2）**：遥测三列、指纹实现、P6 删除、coordinator 未碰、车道纪律
+  五项全确认。**翻案 R5-M2-1（低危）**：#1 自述与注释宣称「scope key =
+  session::variant 即 provider 端 prompt cache 的真实存活作用域」**过强**——
+  该 key 实际按 assistant 消息/变体轮转，跨 turn 对比不会发生，每个新 turn
+  都记 `baseline`；代码本身正确，宣称需下轮改口。
+- **#6（provider）**：P2 两修复确认（automatic 占 1 槽有官方文档背书，
+  「4−1=3」算术精确正确，顺带纠正 r1 台账「顶层字段非标」的过时定性）；
+  剥除序正确；存量测试兼容。**翻案：P1 新测试
+  `openai_adapter_choice_completion_keeps_event_sequence_until_done_marker`
+  源码有错、一旦执行必挂**——断言 `usage["cached_tokens"]`，但 Chat 适配器
+  透传的原始 usage 对象里该键嵌在 `prompt_tokens_details` 之下、顶层不存在，
+  得 `Value::Null` 与 `json!(8)` 恒不等；应改
+  `usage["prompt_tokens_details"]["cached_tokens"]`（验证轮首跑前必须修）。
+  另记 1 个守卫之外的潜伏缺陷（保险断点先打点后核算的误剥向量，当前流量
+  不可达）与 system 剥除循环零测试覆盖。
+- **#7（架构文档）**：确认、不翻案。判定与统计自洽、证据等级标注诚实、
+  无谎称验证；三处小勘误（diff 体量数字、A1 变化列措辞、免责声明覆盖面）
+  建议父代理或 #4 顺手修正。
+
+## R5-8. 遗留项状态（含 R4 遗留，本席 grep 复核）
+
+| 遗留项 | 状态 |
+|---|---|
+| 缺口 A：digest 冲突换代信号（R3-7/R4-9） | **已收口**（R5-6，走 catalog pending 通道，形态偏离 r3 草案已书面化） |
+| #9 前端审阅缺席（R4-1） | **已关闭**——`r4-review-frontend.md` 随 `2d70b400` 入库 |
+| #6 换代标记前端接线（R4-9） | **已闭环**（R5-6 #9） |
+| #7 delta 发送路径接线 | 仍开（TauriAdapter 本轮 #9 独占面仅 snapshot 段） |
+| qbank_grading 出口挂接（R4-4 越界项） | 仍开 |
+| 小问题 C：二参兼容入口 dead_code | 仍开（history.rs 本轮改动未含处置） |
+| stream_filter_core 文档改口（R4-8） | 仍开（本轮无人接线） |
+| 新增（本轮）：P1 测试键位错误、R5-M2-1 宣称改口、#7 三处勘误、守卫外误剥向量 | 验证轮/第 6 轮处置 |
+
+## R5-9. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff）
+
+- 本轮 diff 全貌与席位归属（R5-1，12 文件 +1438/−139）——本席
+  `git status` / `git diff --stat` 复核，与任务卡独占表及 #5 车道核对一致。
+- P6 两函数全仓零残留（仅裁决注释）、遥测两新列与 migration 文件、四段指纹
+  三测试行号、`enforce_anthropic_cache_breakpoint_budget` 与透传修复、
+  报告脚本三级分组说明、架构文档 21 行矩阵字样、门禁三消费点走
+  `_with_signal`、helpers 信号函数、TauriAdapter pending 四符号——
+  均为本席 grep/读 diff 逐项复核。
+- 红线：coordinator / hooks / tool_loop / multi_variant 本轮零改动——本席
+  `git status` 复核，#5 交叉确认。
+- 两处翻案的证据链（cached_tokens 键位、scope key 轮转）——采信 #6/#5
+  逐行审阅（含代码引文与官方文档链接），与本席对相应源码段的抽查一致。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**：本轮 12 文件 +1438/−139（Rust + TS + Python +
+  SQL migration）**未经 cargo check / cargo test / tsc / python 执行 /
+  rustfmt**；#6 已静态证明 P1 事件序列测试**执行必挂**，验证轮首跑前必须
+  先修键位。migration 在真实旧库上的加列行为、报告脚本对新旧两代库的降级
+  路径均无运行时证据。
+- 四槽守卫在真实 Anthropic 请求上的 400 规避、四段指纹对真实分叉的定位
+  效果、pending 兑现的端到端链路（compaction/digest 信号 → 前端重生成）——
+  均无运行时证据。
+- 父代理口径记录：P6/P7/P10/P11 四个方向至此**审+改约 95% 完成**（余量 =
+  两处翻案的修正 + 验证轮执行），该完成度为静态口径，非验证声明。
+
+## R5-10. 第 6 轮预告
+
+**十面二检**：十个席位对 1–5 轮全部落地面做第二遍交叉检查（含本轮两处
+翻案的修正落地、#7 三处勘误、R5-M2-1 改口、遗留表 R5-8 的开放项清点）。
+仍不执行编译/测试（验证轮另排）。
+
+## R5-11. 收轮交接（给父代理）
+
+- 待 add：12 个产品/脚本文件（工作区 M）+ 10 个 untracked 文件（架构文档、
+  ROUND-05-TASKS、七份 r5 文档、migration SQL）+ 本台账追加节。
+- 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
+- **不标 Goal complete**：编译/测试验证轮未跑，P1 事件序列测试已知必挂
+  待修，两处翻案待改口，第 6 轮十面二检已排。

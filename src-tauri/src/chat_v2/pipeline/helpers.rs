@@ -1190,6 +1190,77 @@ impl ChatV2Pipeline {
         baseline
     }
 
+    /// Wave2-A r5 #8：技能正文 digest mismatch 的「需开新 prefix generation」
+    /// 信号记录点（唯一写点；调用方为 `history::load_chat_history_pass`
+    /// 趟末聚合，`mismatched_skill_ids` 已按 skill_id 去重）。
+    ///
+    /// mismatch 语义：锚点带 digest、当轮正文存在但字节已漂移——门禁已
+    /// skip 重建（绝不伪造历史），历史前缀在这些技能位置**本轮起必然
+    /// 漂移且不可用旧字节修复**（旧正文不存在了）。这正是与 compaction
+    /// R4-#6 同构的低成本换代时机：与其永远背着描述过期技能的冻结目录，
+    /// 不如趁前缀已断声明换代。
+    ///
+    /// 接线选择（为何**不是** `converge_session_tool_face_prefix`）：
+    /// converge 是工具面（tools 槽）代际的唯一切代点，语义是「fan-out
+    /// 变体对 append-only 工具序产生不可对齐的真分叉」；技能 digest
+    /// mismatch 是 history 段漂移，与工具序无关——伪造分叉 order 逼
+    /// converge +1 会破坏冻结矩阵（r2-freeze-matrix）的切代不变量。
+    /// 正确的代际是 **available_skills 目录代**：复用 compaction 已落地的
+    /// `mark_session_available_skills_snapshot_stale_with_conn` 声明
+    /// `availableSkillsSnapshotPendingGeneration`（= 当前代 + 1），由前端
+    /// TauriAdapter（r5 #9）下轮构建 system 时按 live registry 重新生成
+    /// 快照并经 freeze 原语作为新代 first write 兑现换代。
+    ///
+    /// 纪律（与该原语既有语义逐条一致）：
+    /// - 幂等折叠：已有有效 pending 时返回既有值，不重复 +1（外层 while
+    ///   重跑 load pass / 多轮连续 mismatch 在前端消费前折叠为一次换代）；
+    /// - first-write-wins 不回退：freeze 只在见到有效标记时才允许覆盖；
+    /// - 会话从未冻结过快照 → no-op（None）——缺键语义本就是「下次按
+    ///   live 建立」，无需换代，信号降级为结构化日志；
+    /// - 写库失败仅 warn 降级（结构化计数日志仍在），**绝不阻断发送**；
+    /// - 不推进 updated_at（内部缓存状态，同 freeze/mark 原语）。
+    pub(crate) fn record_skill_digest_prefix_generation_signal(
+        &self,
+        session_id: &str,
+        mismatched_skill_ids: &[String],
+    ) {
+        if mismatched_skill_ids.is_empty() {
+            return;
+        }
+        // 结构化计数日志（固定前缀 skill_digest_generation_signal，供日志
+        // 侧按 session / count 聚合统计），无论接线是否成功都先落一条。
+        log::warn!(
+            "[ChatV2::pipeline] skill_digest_generation_signal: session_id={}, mismatch_count={}, skill_ids={:?} — history replay prefix drifted at these skill positions; requesting new available_skills prefix generation",
+            session_id,
+            mismatched_skill_ids.len(),
+            mismatched_skill_ids
+        );
+        let marked = (|| -> ChatV2Result<Option<u64>> {
+            let mut conn = self.db.get_conn_safe()?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let pending =
+                ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(&tx, session_id)?;
+            tx.commit()?;
+            Ok(pending)
+        })();
+        match marked {
+            Ok(Some(pending)) => log::info!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: available_skills catalog pending generation declared: session_id={}, pending_generation={}",
+                session_id,
+                pending
+            ),
+            Ok(None) => log::debug!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: session never froze an available_skills snapshot; nothing to regenerate (signal logged only): session_id={}",
+                session_id
+            ),
+            Err(err) => log::warn!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: failed to persist pending generation marker (signal degraded to log only, send not blocked): session_id={}, error={}",
+                session_id,
+                err
+            ),
+        }
+    }
+
     /// 🆕 P0 tools 会话冻结（薄封装）：读取该会话已发出 tools 的
     /// append-only 首见序基线（单变体路径 tool_loop 仍按名字序消费）。
     ///
