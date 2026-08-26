@@ -765,7 +765,7 @@
     "sortByTime": "By time",
     "sortByCards": "By cards",
     "sortByName": "By name",
-    "recoverStuckHint": "Reset tasks stuck in processing for over 1 hour to pending",
+    "recoverStuckHint": "Mark tasks stuck for over 10 minutes as paused, then resume them",
     "errorCardsFound": "{{count}} error cards",
     "errorReason": "Error",
     "quickExport": "Export",

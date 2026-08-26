@@ -649,3 +649,250 @@ fn crypto_complete_domain_restores_key_material_end_state() {
         key_seed_hex(),
     );
 }
+
+// ===========================================================================
+// R7（0824 Wave2-D 第 7 轮）：恢复中断续传
+//
+// 覆盖两条硬性契约：
+// 1. 恢复在**切槽提交（cutover）之前**被取消/失败：不得留下任何单向状态
+//    （无恢复维护租约、活跃槽不变），用「清槽 + 重跑完整恢复」的既有编排
+//    步骤重试必须成功；
+// 2. 恢复维护租约一旦登记（cutover 已提交）：状态只能向重启激活的方向
+//    收敛——同一 (槽, 备份) 的重试幂等放行，换备份被拒绝，激活前解除
+//    租约被拒绝，绝不能把「已提交未激活」当成功收尾。
+//
+// 「已 cutover 的失败不得宣告成功且审计 details 必须携带
+// cutover_committed」的任务/审计侧由 commands_restore.rs 单测锁定
+// （execute_restore_with_progress / fail_restore_after_committed_cutover
+// 需要 tauri AppHandle，宿主集成测试无法直接驱动，见 R7 报告缺口声明）。
+// 本轮只写测试，不执行。
+// ===========================================================================
+
+use deep_student_lib::data_space::{DataSpaceManager, Slot};
+
+/// R7-1：资产阶段用户取消（进度回调返回 false，与
+/// `execute_restore_with_progress` 对 `is_cancelled` 的处理等价）。
+/// 取消发生在切槽提交之前 → 无租约、活跃槽不变；重试 = 清槽 + 重跑
+/// 完整恢复，必须成功，且成功后才允许登记切槽。
+#[test]
+fn r7_cancelled_restore_before_cutover_leaves_no_lease_and_full_retry_succeeds() {
+    let env = MatrixEnv::build();
+    let space = TempDir::new().unwrap();
+    let data_space = DataSpaceManager::new(space.path().to_path_buf());
+    data_space.ensure_layout().unwrap();
+    let candidate = data_space.slot_dir(Slot::B);
+
+    // 只取普通（非可执行）工作区资产，复现「资产恢复进行中被取消」。
+    let note_assets: Vec<BackedUpAsset> = env
+        .manifest
+        .assets
+        .as_ref()
+        .expect("完整快照必须带资产清单")
+        .files
+        .iter()
+        .filter(|asset| asset.original_path.starts_with("workspaces/notes/"))
+        .cloned()
+        .collect();
+    assert!(
+        !note_assets.is_empty(),
+        "前置条件：必须存在可自动恢复的普通工作区资产"
+    );
+
+    let error = assets::restore_assets_with_progress(
+        &env.backup_subdir(),
+        &candidate,
+        &note_assets,
+        |_, _| false, // 第一个文件落盘后立即取消
+    )
+    .expect_err("进度回调返回 false 必须中断资产恢复");
+    assert!(error.is_cancelled(), "中断必须以取消语义上报: {error}");
+
+    // 取消发生在切槽提交之前：没有恢复维护租约，活跃槽不变。
+    assert!(
+        data_space.restore_cutover_pending().unwrap().is_none(),
+        "未 cutover 的取消不得留下恢复维护租约"
+    );
+    assert_eq!(data_space.active_slot(), Slot::A, "活跃槽必须保持不变");
+
+    // 候选槽允许留下半成品（证明确实中断在写入之后），但重试前必须清场。
+    assert!(
+        fs::read_dir(&candidate).unwrap().next().is_some(),
+        "取消发生在首个文件落盘之后，候选槽应存在半成品"
+    );
+
+    // 重试路径与 execute_restore_with_progress 一致：清槽 + 重跑完整恢复。
+    data_space
+        .clear_slot_for_restore(Slot::B)
+        .expect("未 cutover 的候选槽必须可以被清空以供重试");
+    assert!(
+        fs::read_dir(&candidate).unwrap().next().is_none(),
+        "清槽后候选槽必须为空"
+    );
+    env.manager
+        .restore_with_assets_to_dir(&env.manifest, true, &candidate)
+        .expect("未 cutover 的取消中断后，整槽恢复重试必须成功");
+
+    // 重试产物完整：核心库、普通资产、Data 信任域全部就位。
+    assert_eq!(
+        read_marker(&candidate.join("chat_v2.db")).as_deref(),
+        Some(DB_MARKER),
+        "重试后 chat_v2 数据库必须完整还原"
+    );
+    assert_eq!(
+        fs::read(
+            candidate
+                .join("workspaces")
+                .join("notes")
+                .join("dsr3_readme_7ccb.md")
+        )
+        .expect("重试后普通工作区资产必须完整还原")
+        .as_slice(),
+        NOTE_PAYLOAD,
+    );
+    assert_eq!(
+        fs::read(candidate.join("webview_settings.json"))
+            .expect("重试后 webview-settings 必须落 restore_target")
+            .as_slice(),
+        WEBVIEW_PAYLOAD,
+    );
+
+    // 重试成功之后才允许登记切槽；租约初始为「已提交未激活」。
+    data_space
+        .mark_restore_cutover_pending(Slot::B, &env.manifest.backup_id)
+        .expect("重试成功后登记切槽必须被接受");
+    let lease = data_space
+        .restore_cutover_pending()
+        .unwrap()
+        .expect("登记后必须持有恢复维护租约");
+    assert_eq!(lease.target_slot, Slot::B.name());
+    assert_eq!(lease.backup_id, env.manifest.backup_id);
+    assert!(!lease.activation_committed, "激活承诺只能由重启侧推进");
+}
+
+/// R7-2：恢复中途失败（域消费必然失败的确定性注入）。失败发生在切槽提交
+/// 之前 → 不得宣告成功、无租约、活跃槽不变；清槽移除占位物后重试必须成功。
+#[test]
+fn r7_failed_restore_before_cutover_is_retryable_after_clearing_slot() {
+    let env = MatrixEnv::build();
+    let space = TempDir::new().unwrap();
+    let data_space = DataSpaceManager::new(space.path().to_path_buf());
+    data_space.ensure_layout().unwrap();
+    let candidate = data_space.slot_dir(Slot::B);
+
+    // 确定性失败注入：webview-settings 的 restore_target 被同名目录占位，
+    // 域消费（fs::copy）必然失败——等价于恢复中途的 IO 失败/断电前夕。
+    fs::create_dir_all(candidate.join("webview_settings.json")).unwrap();
+    let error = env
+        .manager
+        .restore_with_assets_to_dir(&env.manifest, true, &candidate)
+        .expect_err("域消费失败的恢复不得宣告成功")
+        .to_string();
+    assert!(
+        error.contains("webview-settings"),
+        "失败必须指明失败域，实际: {error}"
+    );
+
+    // 失败发生在切槽提交之前：无租约、活跃槽不变 → 状态天然可重试。
+    assert!(
+        data_space.restore_cutover_pending().unwrap().is_none(),
+        "未 cutover 的失败不得留下恢复维护租约"
+    );
+    assert_eq!(data_space.active_slot(), Slot::A, "活跃槽必须保持不变");
+
+    // 重试：清槽移除占位物与半成品，重跑必须成功且数据完整。
+    data_space
+        .clear_slot_for_restore(Slot::B)
+        .expect("失败后的候选槽必须可以被清空以供重试");
+    assert!(
+        !candidate.join("webview_settings.json").exists(),
+        "清槽必须移除导致失败的占位物"
+    );
+    env.manager
+        .restore_with_assets_to_dir(&env.manifest, true, &candidate)
+        .expect("未 cutover 的失败中断后，整槽恢复重试必须成功");
+    assert_eq!(
+        fs::read(candidate.join("webview_settings.json"))
+            .expect("重试后 webview-settings 必须落 restore_target")
+            .as_slice(),
+        WEBVIEW_PAYLOAD,
+    );
+    assert_eq!(
+        read_marker(&candidate.join("databases").join("vfs.db")).as_deref(),
+        Some(DB_MARKER),
+        "重试后 vfs 数据库必须完整还原"
+    );
+}
+
+/// R7-3：切槽已提交后的重试语义——同一 (槽, 备份) 的重新登记幂等放行
+/// （post-cutover 失败后重跑同一恢复可收敛），换备份必须被拒绝且不得
+/// 破坏已持久化的租约（已提交的切槽不能被静默偷换）。
+#[test]
+fn r7_committed_cutover_allows_same_backup_retry_but_rejects_different_backup() {
+    let base = TempDir::new().unwrap();
+    let data_space = DataSpaceManager::new(base.path().to_path_buf());
+    data_space.ensure_layout().unwrap();
+    let candidate = data_space.slot_dir(Slot::B);
+    fs::write(candidate.join("candidate.db"), b"restored-r7").unwrap();
+
+    data_space
+        .mark_restore_cutover_pending(Slot::B, "backup-r7-first")
+        .expect("首次登记切槽必须成功");
+
+    // 同一备份的重试：幂等允许（post-cutover 失败后重跑同一恢复的收敛路径）。
+    data_space
+        .mark_restore_cutover_pending(Slot::B, "backup-r7-first")
+        .expect("同一 (槽, 备份) 的切槽登记必须幂等，允许失败后的同备份重试");
+
+    // 换备份：必须被拒绝，且错误信息指明既有租约归属。
+    let err = data_space
+        .mark_restore_cutover_pending(Slot::B, "backup-r7-second")
+        .expect_err("已提交的切槽不得被换成另一个备份");
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+    assert!(
+        err.to_string().contains("backup-r7-first"),
+        "拒绝理由必须指明既有租约的备份，实际: {err}"
+    );
+
+    // 租约原样在场，未被破坏。
+    let lease = data_space
+        .restore_cutover_pending()
+        .unwrap()
+        .expect("被拒绝的换备份尝试不得清除既有租约");
+    assert_eq!(lease.backup_id, "backup-r7-first");
+    assert_eq!(lease.target_slot, Slot::B.name());
+}
+
+/// R7-4：切槽已提交但尚未重启激活时，租约只能向前收敛——激活前解除租约、
+/// 提前提交激活承诺都必须被拒绝；租约与活跃槽保持原状。任何把「已提交
+/// 未激活」直接当成功收尾的路径都会先在这里被挡下。
+#[test]
+fn r7_committed_cutover_lease_is_forward_only_until_activation() {
+    let base = TempDir::new().unwrap();
+    let data_space = DataSpaceManager::new(base.path().to_path_buf());
+    data_space.ensure_layout().unwrap();
+    let candidate = data_space.slot_dir(Slot::B);
+    fs::write(candidate.join("candidate.db"), b"restored-r7").unwrap();
+    data_space
+        .mark_restore_cutover_pending(Slot::B, "backup-r7-committed")
+        .expect("登记切槽必须成功");
+
+    // 激活（重启）之前解除租约必须被拒绝。
+    let release = data_space
+        .complete_restore_cutover(&candidate)
+        .expect_err("激活前解除恢复维护租约必须被拒绝");
+    assert_eq!(release.kind(), std::io::ErrorKind::PermissionDenied);
+
+    // 目标槽尚未激活时，激活承诺同样必须被拒绝。
+    data_space
+        .mark_restore_activation_committed(&candidate, "backup-r7-committed")
+        .expect_err("目标槽尚未激活时不得提交激活承诺");
+
+    // 租约与活跃槽保持原状：状态只能由重启侧向前收敛。
+    let lease = data_space
+        .restore_cutover_pending()
+        .unwrap()
+        .expect("被拒绝的操作不得清除恢复维护租约");
+    assert_eq!(lease.backup_id, "backup-r7-committed");
+    assert!(!lease.activation_committed);
+    assert_eq!(data_space.active_slot(), Slot::A);
+}

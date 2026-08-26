@@ -3245,8 +3245,8 @@ fn build_app_state(
         });
     }
 
-    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务。
-    // 保留时间阈值，避免多实例/后台任务场景下把刚更新过的任务误标为 Failed。
+    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务（阈值 10 分钟，标记为 Paused）。
+    // 保留时间阈值，避免多实例/后台任务场景下把刚更新过的任务误标为 Paused。
     match anki_database.recover_stuck_document_tasks() {
         Ok(count) if count > 0 => {
             tracing::info!("[AppSetup] Recovered {} stuck Anki document tasks", count);

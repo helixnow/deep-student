@@ -6434,6 +6434,285 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // R7 稀疏库矩阵扩展：FTS / 索引 / 视图 缺失组合
+    //
+    // P8 夹具是"全稀疏"（只剩 resources/notes，非表对象全灭）；本矩阵反向
+    // 取样：库从契约完整出发，每个用例只定点摘除一个（或全部三个）非表
+    // 契约对象，构成最小变量组合，锁定 verifier 对每一类对象的独立把关
+    // 粒度，以及 `apply_vfs_init_missing_schema_objects` 在"只缺一个对象"
+    // 时的精确加法回填（不多建、不误伤幸存对象）。
+    //
+    // 统一立证流程（禁止改两个加法函数体，测试只调用）：
+    //   1. 只跑生产链的表回填 `apply_vfs_init_missing_tables`
+    //      （pre_repair_vfs_schema:2280 的同一步骤）——矩阵夹具表本就齐全，
+    //      该函数按设计只抽取 `CREATE TABLE IF NOT EXISTS`（显式排除虚拟
+    //      表），绝不允许顺带救活任何被摘除的非表对象；
+    //   2. 生产 verifier（`verify_migrations`，版本钉在记账值 20260130，
+    //      契约 vfs.rs `V20260130_INIT`）必须 fail-close 拒绝，且拒绝理由
+    //      点名本组合中被摘除的对象；
+    //   3. 再跑生产链紧随其后的对象回填
+    //      `apply_vfs_init_missing_schema_objects`（pre_repair_vfs_schema:2286
+    //      的同一步骤），三个矩阵对象全部物理就位；
+    //   4. 同一 verifier 放行——通过与否始终由同一份契约裁决，无任何绕过。
+    // ------------------------------------------------------------------
+
+    /// R7 矩阵受检对象：`(sqlite_master 类型, 对象名, 定点摘除 DROP 语句)`。
+    ///
+    /// - `idx_folders_parent`（init.sql:308）——契约核心索引清单
+    ///   `VFS_V001_KEY_INDEXES`（vfs.rs:185-223）成员，由 verifier 的
+    ///   索引检查把关（`"Index '...' not found"`）；
+    /// - `questions_fts`（FTS5 虚拟表，init.sql:468）——**不在**
+    ///   expected_tables（vfs.rs:129 注明 25 表不含 FTS 虚拟表），只由
+    ///   smoke query `SELECT 1 FROM questions_fts LIMIT 0`（vfs.rs:177）
+    ///   把关；在 sqlite_master 中 type='table'；
+    /// - `trash_view`（视图，init.sql:768）——同样不在 expected_tables，
+    ///   只由 smoke query `SELECT 1 FROM trash_view LIMIT 0`（vfs.rs:179）
+    ///   把关；type='view'。
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_IDX_FOLDERS_PARENT: (&str, &str, &str) = (
+        "index",
+        "idx_folders_parent",
+        "DROP INDEX idx_folders_parent",
+    );
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_QUESTIONS_FTS: (&str, &str, &str) =
+        ("table", "questions_fts", "DROP TABLE questions_fts");
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_TRASH_VIEW: (&str, &str, &str) =
+        ("view", "trash_view", "DROP VIEW trash_view");
+
+    /// R7 矩阵夹具：整份回放 init.sql 得到契约完整的 V20260130 库，再定点
+    /// 摘除 `dropped` 中的对象，最后按 runner 真实 checksum 记账 V20260130
+    /// （与 P8 夹具同理：避免 repair_refinery_checksums 的 checksum-drift
+    /// fail-close 抢在 verifier 之前触发，污染矩阵立证点）。
+    ///
+    /// 与 `build_sparse_v20260130_recorded_vfs`（全稀疏）互补：这里表全部
+    /// 在场，且除被摘除对象外全部非表对象幸存——夹具自检两个方向的前提
+    /// （摘除的确实没了；没摘除的必须还在），保证单变量对照成立。
+    /// 库文件落在生产路径 `databases/vfs.db`。
+    #[cfg(feature = "data_governance")]
+    fn build_full_v20260130_recorded_vfs_with_dropped_objects(
+        coordinator: &MigrationCoordinator,
+        dropped: &[(&str, &str, &str)],
+    ) -> rusqlite::Connection {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(INIT_SQL).unwrap();
+
+        for &(object_type, name, drop_sql) in dropped {
+            assert!(
+                vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: init.sql must create {object_type} {name} before drop"
+            );
+            conn.execute_batch(drop_sql).unwrap();
+            assert!(
+                !vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: {object_type} {name} must be dropped"
+            );
+        }
+
+        // 对照前提的另一半：未被摘除的矩阵对象必须完好。
+        for (object_type, name, _) in [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ] {
+            if dropped.iter().any(|&(_, dropped_name, _)| dropped_name == name) {
+                continue;
+            }
+            assert!(
+                vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: untouched {object_type} {name} must survive"
+            );
+        }
+
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator.ensure_refinery_history_table(&conn).unwrap();
+        coordinator
+            .mark_migration_complete(&conn, &runner, 20260130)
+            .unwrap();
+        conn
+    }
+
+    /// R7 矩阵统一驱动：只跑表回填 → verifier 必拒（理由点名被摘对象）→
+    /// 跑对象回填 → 三个矩阵对象全部在场 → 同一 verifier 放行。
+    ///
+    /// 拒绝理由断言采用"点名任一被摘对象"（any-of）：
+    /// - 单缺失用例下 any-of 退化为精确点名（组合里只有一个对象）；
+    /// - 三缺失用例下容忍 verifier 内部检查顺序（表 → 列 → 索引 → smoke
+    ///   query，verifier.rs:30-79）未来调整——当前首个拒绝对象是
+    ///   `"Index 'idx_folders_parent' not found"`（索引检查先于 smoke）。
+    #[cfg(feature = "data_governance")]
+    fn assert_sparse_matrix_rejected_then_backfilled(
+        coordinator: &MigrationCoordinator,
+        conn: &rusqlite::Connection,
+        dropped: &[(&str, &str, &str)],
+    ) {
+        // 第一步：只跑 table backfill（生产链内的同一函数，禁止改函数体）。
+        coordinator
+            .apply_vfs_init_missing_tables(conn)
+            .expect("matrix table backfill must succeed on a full-table VFS");
+
+        // 表回填绝不允许顺带救活非表对象——否则本矩阵的病灶就被抹掉了。
+        for &(object_type, name, _) in dropped {
+            assert!(
+                !vfs_schema_object_exists(conn, object_type, name),
+                "table-only backfill must NOT resurrect {object_type} {name}"
+            );
+        }
+
+        // 只跑表回填时，生产 verifier 必须 fail-close。
+        let err = coordinator
+            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect_err(
+                "verifier must fail-close while matrix init objects are missing \
+                 (table backfill alone is not enough)",
+            );
+        match err {
+            MigrationError::VerificationFailed { version, reason } => {
+                assert_eq!(version, 20260130, "rejection must pin the init contract");
+                assert!(
+                    dropped.iter().any(|&(_, name, _)| reason.contains(name)),
+                    "rejection reason must name one of the dropped matrix objects \
+                     {dropped:?}, got: {reason}"
+                );
+            }
+            other => panic!("expected VerificationFailed, got: {other:?}"),
+        }
+
+        // 第二步：跑生产链紧随其后的加法对象回填（同一函数，禁止改函数体）。
+        coordinator
+            .apply_vfs_init_missing_schema_objects(conn)
+            .expect("matrix init object backfill must succeed");
+
+        // 三个矩阵对象（含未被摘除的对照对象）此刻必须全部物理存在。
+        for (object_type, name, _) in [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ] {
+            assert!(
+                vfs_schema_object_exists(conn, object_type, name),
+                "after object backfill, {object_type} {name} must exist"
+            );
+        }
+
+        // 同一生产 verifier 此时必须放行——契约仍是同一份 V20260130_INIT。
+        coordinator
+            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect("verifier must pass once dropped matrix objects are backfilled");
+    }
+
+    /// R7 矩阵之一：只缺契约核心索引 `idx_folders_parent`。
+    ///
+    /// 表、FTS、视图、其余全部索引均在场，verifier 的拒绝只能来自索引
+    /// 检查，理由精确点名 `"Index 'idx_folders_parent' not found"`
+    /// （any-of 断言在单缺失组合下即精确断言）。对象回填后放行。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_idx_folders_parent_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_IDX_FOLDERS_PARENT];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+    }
+
+    /// R7 矩阵之二：只缺 FTS5 虚拟表 `questions_fts`。
+    ///
+    /// `questions_fts` 不在 expected_tables（vfs.rs:129），全部契约索引也
+    /// 都在场——本用例锁定：缺口**只能**被 smoke query
+    /// `SELECT 1 FROM questions_fts LIMIT 0` 捕获，即 verifier 对 FTS 虚拟
+    /// 表有独立于表/索引检查的把关通道。
+    ///
+    /// 额外边界：`DROP TABLE questions_fts` 只带走虚拟表及其 FTS5 影子表，
+    /// 挂在 questions 上的三个配套触发器（trg_questions_fts_insert /
+    /// _update / _delete，init.sql:479-500）幸存为悬空触发器。对象回填按
+    /// init 原文顺序先重建 questions_fts（init.sql:468 先于触发器），随后
+    /// 对已存在的触发器幂等跳过——断言三个触发器各恰好一枚，未被重复创建。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_questions_fts_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_QUESTIONS_FTS];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        // 夹具边界自检：FTS 配套触发器不随 DROP TABLE questions_fts 消失。
+        for trigger in [
+            "trg_questions_fts_insert",
+            "trg_questions_fts_update",
+            "trg_questions_fts_delete",
+        ] {
+            assert!(
+                vfs_schema_object_exists(&conn, "trigger", trigger),
+                "matrix premise: {trigger} must survive dropping questions_fts"
+            );
+        }
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+
+        // 对象回填对已存在触发器必须幂等跳过：每个触发器恰好一枚。
+        for trigger in [
+            "trg_questions_fts_insert",
+            "trg_questions_fts_update",
+            "trg_questions_fts_delete",
+        ] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                    [trigger],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "{trigger} must exist exactly once after backfill");
+        }
+    }
+
+    /// R7 矩阵之三：只缺视图 `trash_view`。
+    ///
+    /// 表、索引、FTS 均在场，首条 smoke query（questions_fts）通过，缺口
+    /// 只能被第二条 smoke query `SELECT 1 FROM trash_view LIMIT 0` 捕获——
+    /// 锁定 verifier 对视图的独立把关通道。对象回填后放行。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_trash_view_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_TRASH_VIEW];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+    }
+
+    /// R7 矩阵之四：索引 + FTS + 视图 三者同缺的组合形态。
+    ///
+    /// 介于单缺失用例与 P8 全稀疏夹具之间：表契约完整、其余索引/触发器
+    /// 幸存，仅三类把关通道的代表对象同时缺失。verifier 按 表 → 列 →
+    /// 索引 → smoke query 顺序，当前首个拒绝对象是
+    /// `"Index 'idx_folders_parent' not found"`（驱动内的 any-of 断言容忍
+    /// 顺序调整，但理由必须点名三者之一）。一次对象回填必须同时补齐三个
+    /// 对象后 verifier 才放行——不存在"补一漏二仍过验"的第三态。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_all_three_objects_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+    }
+
     #[test]
     fn test_verify_migrations_persists_schema_fingerprint() {
         let (coordinator, temp_dir) = create_test_coordinator();

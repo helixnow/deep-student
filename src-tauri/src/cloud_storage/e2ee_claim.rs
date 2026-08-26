@@ -1029,4 +1029,351 @@ mod tests {
         assert!(error.to_string().contains(SYNC_E2EE_CLAIM_CONFLICT_CODE));
         assert!(storage.bytes(MARKER_KEY).is_none());
     }
+
+    // ========================================================================
+    // [0824-W2-R7] 两设备认领全排列
+    //
+    //   初始 marker ∈ { 空仓, 已有 v2 标记, 可升级 v1 }        （3）
+    // × 初始 lease  ∈ { 无, 他人未过期, 他人已过期 }            （3）
+    // × 设备 A 期望 ∈ { Absent（首次认领）, LegacyV1（升级） }  （2）
+    // × 设备 B 期望 ∈ { Absent, LegacyV1 }                      （2）
+    //
+    // 共 36 个排列。设备 A 完整跑完认领协议后设备 B 再跑（顺序两设备——
+    // 协议内每一步的交错互斥已由上方 ForeignLeaseAfterPut / StealLeaseOnMarkerPut
+    // 与下方 RivalClaimsBeforeOurLeasePut 分别钉死，这里钉「任意初始状态组合」
+    // 下的端到端语义）。每个排列断言：
+    //
+    //   1. 每台设备的成败与协议语义 oracle 完全一致（期望匹配当前 marker
+    //      形态、且无活跃他人租约 ⇔ 成功）；
+    //   2. **至多一个成功**；
+    //   3. marker 写入次数 == 成功次数（失败方零写入，杜绝盲 PUT 回归）；
+    //   4. 云端标记终态逐字节等于 oracle 推演值——已有 v2 标记在任何排列下
+    //      都不被覆盖或降级，赢家的标记不被输家改动；
+    //   5. 租约终态：有人成功 → 租约必须被清理干净；无人成功 → 初始租约
+    //      逐字节原样保留（活跃他人租约不得被删，过期租约只有越过第 1 步
+    //      期望校验的设备才允许回收）。
+    // ========================================================================
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(Clone, Copy, Debug)]
+    enum MarkerCase {
+        /// 空仓：无任何标记。
+        Empty,
+        /// 已有 v2 标记（他人已认领完成）。
+        ExistingV2,
+        /// 可升级的 v1 旧标记（无校验子）。
+        LegacyV1,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum LeaseCase {
+        /// 无租约。
+        NoLease,
+        /// 他人租约未过期（活跃）。
+        LiveForeign,
+        /// 他人租约已过期（可回收）。
+        ExpiredForeign,
+    }
+
+    /// 合法 v2 标记字节（认领成功后写入的形态；`version > 1`，升级臂必须拒绝）。
+    fn v2_marker_bytes(device: &str) -> Vec<u8> {
+        serde_json::to_vec_pretty(&EncryptionMarker {
+            version: 2,
+            created_by_device: device.to_string(),
+            created_at: Utc::now(),
+            key_verifier: None,
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn two_device_claim_full_permutation_at_most_one_succeeds() {
+        /// oracle 用的 marker 当前形态（成功认领后恒为 v2）。
+        #[derive(Clone, Copy, Debug, PartialEq)]
+        enum MarkerNow {
+            Empty,
+            V1,
+            V2,
+        }
+        fn expectation_matches(exp: ClaimExpectation, marker: MarkerNow) -> bool {
+            matches!(
+                (exp, marker),
+                (ClaimExpectation::Absent, MarkerNow::Empty)
+                    | (ClaimExpectation::LegacyV1, MarkerNow::V1)
+            )
+        }
+
+        let marker_cases = [
+            MarkerCase::Empty,
+            MarkerCase::ExistingV2,
+            MarkerCase::LegacyV1,
+        ];
+        let lease_cases = [
+            LeaseCase::NoLease,
+            LeaseCase::LiveForeign,
+            LeaseCase::ExpiredForeign,
+        ];
+        let expectations = [ClaimExpectation::Absent, ClaimExpectation::LegacyV1];
+
+        for marker_case in marker_cases {
+            for lease_case in lease_cases {
+                for exp_a in expectations {
+                    for exp_b in expectations {
+                        let ctx = format!(
+                            "[marker={marker_case:?} lease={lease_case:?} A={exp_a:?} B={exp_b:?}]"
+                        );
+                        let storage = Arc::new(MemoryStorage::default());
+
+                        // ---- 初始云端状态 ----
+                        let initial_marker = match marker_case {
+                            MarkerCase::Empty => None,
+                            MarkerCase::ExistingV2 => Some(v2_marker_bytes("device-owner")),
+                            MarkerCase::LegacyV1 => Some(v1_marker_bytes("device-legacy")),
+                        };
+                        if let Some(bytes) = &initial_marker {
+                            CloudStorage::put(&storage, MARKER_KEY, bytes).await.unwrap();
+                        }
+                        let initial_lease = match lease_case {
+                            LeaseCase::NoLease => None,
+                            LeaseCase::LiveForeign => Some(lease_json("device-x", 3600)),
+                            LeaseCase::ExpiredForeign => Some(lease_json("device-x", -5)),
+                        };
+                        if let Some(bytes) = &initial_lease {
+                            CloudStorage::put(&storage, &lease_key(), bytes).await.unwrap();
+                        }
+                        // 初始铺设不计入被测协议的写入统计。
+                        storage.put_log.lock().unwrap().clear();
+
+                        // ---- 顺序跑两台设备，与 oracle 同步推演 ----
+                        let mut marker_now = match marker_case {
+                            MarkerCase::Empty => MarkerNow::Empty,
+                            MarkerCase::ExistingV2 => MarkerNow::V2,
+                            MarkerCase::LegacyV1 => MarkerNow::V1,
+                        };
+                        let mut lease_live = matches!(lease_case, LeaseCase::LiveForeign);
+                        let mut successes = 0usize;
+                        let mut expected_final_marker = initial_marker.clone();
+
+                        for (device, exp) in [("device-a", exp_a), ("device-b", exp_b)] {
+                            let payload = v2_marker_bytes(device);
+                            // 协议语义 oracle：第 1 步期望校验先于第 2 步租约门，
+                            // 期望不匹配 → 失败且不触碰租约；匹配但他人活跃租约
+                            // 在持 → 失败；否则成功（过期租约被回收）。
+                            let should_succeed =
+                                expectation_matches(exp, marker_now) && !lease_live;
+                            let payload_for_build = payload.clone();
+                            let result = claim_encryption_marker(
+                                &storage,
+                                MARKER_KEY,
+                                device,
+                                DEFAULT_E2EE_CLAIM_LEASE_TTL,
+                                exp,
+                                move |_snapshot| Ok(payload_for_build.clone()),
+                            )
+                            .await;
+                            match (result, should_succeed) {
+                                (Ok(published), true) => {
+                                    assert_eq!(
+                                        published, payload,
+                                        "{ctx} {device} 返回的已发布字节必须是自己的 payload"
+                                    );
+                                    successes += 1;
+                                    marker_now = MarkerNow::V2;
+                                    lease_live = false;
+                                    expected_final_marker = Some(payload);
+                                }
+                                (Err(error), false) => {
+                                    assert!(
+                                        error.to_string().contains(SYNC_E2EE_CLAIM_CONFLICT_CODE),
+                                        "{ctx} {device} 的失败必须带稳定冲突码: {error}"
+                                    );
+                                }
+                                (Ok(_), false) => panic!(
+                                    "{ctx} {device} 按协议语义必须失败（期望不匹配当前标记\
+                                     或他人活跃租约在持），却返回了成功——两设备互斥被打破"
+                                ),
+                                (Err(error), true) => panic!(
+                                    "{ctx} {device} 按协议语义必须成功（期望匹配且无活跃\
+                                     他人租约），实际失败: {error}"
+                                ),
+                            }
+                        }
+
+                        // ---- 全排列共同不变式 ----
+                        assert!(
+                            successes <= 1,
+                            "{ctx} 两设备认领至多一个成功，实际 {successes} 个"
+                        );
+                        let marker_put_count = storage
+                            .put_keys()
+                            .iter()
+                            .filter(|key| key.as_str() == MARKER_KEY)
+                            .count();
+                        assert_eq!(
+                            marker_put_count, successes,
+                            "{ctx} marker 写入次数必须等于成功次数（失败方零写入，\
+                             不得存在盲 PUT）"
+                        );
+                        assert_eq!(
+                            storage.bytes(MARKER_KEY),
+                            expected_final_marker,
+                            "{ctx} 云端标记终态必须逐字节等于协议语义推演值：已有标记\
+                             不得被覆盖或降级，赢家的标记不得被输家改动"
+                        );
+                        let expected_final_lease = if successes > 0 {
+                            // 赢家清理自己的租约；过期他人租约在其成功路径上被回收。
+                            None
+                        } else {
+                            // 无人越过第 1/2 步：初始租约（含活跃他人租约）必须
+                            // 逐字节原样保留，不得被失败方删除或改动。
+                            initial_lease.clone()
+                        };
+                        assert_eq!(
+                            storage.bytes(&lease_key()),
+                            expected_final_lease,
+                            "{ctx} 租约终态错误：成功后必须清理干净，无人成功时\
+                             初始租约必须原样保留"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // [0824-W2-R7] 第 5 步深交错排列：本设备读完 marker（第 1 步）、过完
+    // 租约门（第 2 步）、**正要写自己的租约**（第 3 步）时，对手设备完整
+    // 跑完认领协议（含清理租约）。本设备随后写租约、第 4 步回读到自己，
+    // 但第 5 步 marker 复核必然与快照不符 → 必须失败：恰好一个成功。
+    // ========================================================================
+
+    /// 首次 lease PUT 前先让对手在共享底层存储上完整跑一遍认领协议。
+    struct RivalClaimsBeforeOurLeasePut {
+        inner: Arc<MemoryStorage>,
+        rival_expectation: ClaimExpectation,
+        rival_payload: Vec<u8>,
+        triggered: AtomicBool,
+    }
+
+    #[async_trait]
+    impl CloudStorage for RivalClaimsBeforeOurLeasePut {
+        fn provider_name(&self) -> &'static str {
+            "memory-rival-full-claim"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            if key.ends_with(ENCRYPTION_MARKER_LEASE_SUFFIX)
+                && !self.triggered.swap(true, Ordering::SeqCst)
+            {
+                // 对手直接作用在共享底层存储上（不经本包装层），
+                // 等价于另一台设备的完整认领在本设备第 2→3 步之间插入。
+                let payload = self.rival_payload.clone();
+                claim_encryption_marker(
+                    &self.inner,
+                    MARKER_KEY,
+                    "device-rival",
+                    DEFAULT_E2EE_CLAIM_LEASE_TTL,
+                    self.rival_expectation,
+                    move |_snapshot| Ok(payload.clone()),
+                )
+                .await
+                .expect("交错窗口内对手的认领没有争抢，必须成功");
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    /// 排列：{空仓首次认领, v1 升级} ×（初始租约 ∈ {无, 他人过期租约}）= 4。
+    /// 他人**活跃**租约不在此列——那会在第 2 步就把本设备挡下、走不到本
+    /// 交错窗口（该排列已由全排列矩阵与 live_foreign_lease_* 测试钉死）。
+    #[tokio::test]
+    async fn interleaved_rival_full_claim_in_lease_window_exactly_one_wins() {
+        let marker_arms: [(Option<Vec<u8>>, ClaimExpectation, &str); 2] = [
+            (None, ClaimExpectation::Absent, "空仓首次认领"),
+            (
+                Some(v1_marker_bytes("device-legacy")),
+                ClaimExpectation::LegacyV1,
+                "v1 升级",
+            ),
+        ];
+        for (initial_marker, exp, arm_name) in marker_arms {
+            for initial_lease in [None, Some(lease_json("device-x", -5))] {
+                let ctx = format!(
+                    "[{arm_name} lease={}]",
+                    if initial_lease.is_some() {
+                        "他人过期租约"
+                    } else {
+                        "无"
+                    }
+                );
+                let inner = Arc::new(MemoryStorage::default());
+                if let Some(bytes) = &initial_marker {
+                    CloudStorage::put(&inner, MARKER_KEY, bytes).await.unwrap();
+                }
+                if let Some(bytes) = &initial_lease {
+                    CloudStorage::put(&inner, &lease_key(), bytes).await.unwrap();
+                }
+                let rival_payload = v2_marker_bytes("device-rival");
+                let storage = RivalClaimsBeforeOurLeasePut {
+                    inner: Arc::clone(&inner),
+                    rival_expectation: exp,
+                    rival_payload: rival_payload.clone(),
+                    triggered: AtomicBool::new(false),
+                };
+
+                let error = claim_encryption_marker(
+                    &storage,
+                    MARKER_KEY,
+                    "device-ours",
+                    DEFAULT_E2EE_CLAIM_LEASE_TTL,
+                    exp,
+                    build_fixed(b"marker-ours"),
+                )
+                .await
+                .expect_err(&format!(
+                    "{ctx} 对手已在本设备租约窗口内完整认领，本设备必须在第 5 步复核失败"
+                ));
+                assert!(
+                    error.to_string().contains(SYNC_E2EE_CLAIM_CONFLICT_CODE),
+                    "{ctx} 交错落败必须带稳定冲突码: {error}"
+                );
+                assert!(
+                    storage.triggered.load(Ordering::SeqCst),
+                    "{ctx} 交错必须实际发生（本设备必须走到写租约一步）"
+                );
+                assert_eq!(
+                    inner.bytes(MARKER_KEY).as_deref(),
+                    Some(rival_payload.as_slice()),
+                    "{ctx} 恰好一个成功：云端标记必须是对手的认领结果，\
+                     不得被本设备覆盖"
+                );
+                assert!(
+                    inner.bytes(&lease_key()).is_none(),
+                    "{ctx} 第 5 步失败后本设备必须清理自己的租约（对手租约已随其\
+                     成功路径释放），云端不得残留任何租约"
+                );
+            }
+        }
+    }
 }

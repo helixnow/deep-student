@@ -696,4 +696,265 @@ mod tests {
             );
         }
     }
+
+    // ==================== [R7-badwrite-converge] 坏写后下一轮收敛 ====================
+    //
+    // 上方各测试的残局都是手工摆的；本节把两个模块真正串起来：先让
+    // `verified_publish`（KeepTmp 策略）在故障注入后端上**真实**跑出残局，
+    // 坏写当轮结束后故障消失（瞬态半包/网关改写模型），下一轮再由
+    // `converge_bad_object` 在干净后端上收敛。锁的是跨模块契约：
+    // verified_publish 写侧留下的暂存键命名与残局形状，读侧 bad_object
+    // 必须原样认得（[R6-tmp-naming]），且下一轮 / 再下一轮语义诚实。
+
+    use crate::cloud_storage::verified_publish::{
+        verified_publish, PublishRecovery, PublishSpec, VERIFIED_PUBLISH_MISMATCH_CODE,
+    };
+    use std::sync::Arc;
+
+    /// 对命中谓词的 PUT 篡改末字节（同长不同内容），模拟半包/网关改写。
+    /// 包在 `Arc<MemoryStorage>` 外：坏写轮走本包装（故障在场），下一轮收敛
+    /// 直接用干净的内层（故障已消失），正好对应「坏写后下一轮」的时间线。
+    struct CorruptingPutStorage {
+        inner: Arc<MemoryStorage>,
+        corrupt_if: fn(&str) -> bool,
+    }
+
+    #[async_trait]
+    impl CloudStorage for CorruptingPutStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-corrupting"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            let mut stored = data.to_vec();
+            if (self.corrupt_if)(key) {
+                if let Some(last) = stored.last_mut() {
+                    *last ^= 0xFF;
+                }
+            }
+            self.inner.put(key, &stored).await
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            self.inner.get(key).await
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            self.inner.list(prefix).await
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            self.inner.delete(key).await
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            self.inner.stat(key).await
+        }
+    }
+
+    /// 【R7 主线】verified_publish KeepTmp「发布后回读不一致」的真实残局
+    /// （坏正式 + 已验证 `.tmp-<op>`）→ 下一轮 converge_bad_object 收敛：
+    /// 坏字节进隔离区（记录指认 recovered_from_tmp），正式键收敛为发布内容，
+    /// 残局暂存键被消费；再下一轮 AlreadyHealthy 且审计痕迹保留。
+    #[tokio::test]
+    async fn real_keep_tmp_endgame_converges_on_next_round() {
+        let mem = Arc::new(MemoryStorage::default());
+
+        // ---- 坏写轮：只有最终键的 PUT 被网关改写，暂存键完好 ----
+        let bad_round = CorruptingPutStorage {
+            inner: Arc::clone(&mem),
+            corrupt_if: |key| key == KEY,
+        };
+        let spec = PublishSpec::unconditional(KEY, 1024, PublishRecovery::KeepTmp);
+        let err = verified_publish(&bad_round, &spec, GOOD)
+            .await
+            .expect_err("发布后回读不一致必须失败");
+        assert!(err.to_string().contains(VERIFIED_PUBLISH_MISMATCH_CODE));
+
+        // ---- 残局形状：坏正式对象在场且确实过不了校验；恰有一个已验证暂存键 ----
+        let corrupted = mem.bytes(KEY).expect("KeepTmp 不动坏的最终对象");
+        assert_ne!(corrupted, GOOD);
+        assert!(json_validate(&corrupted).is_err(), "坏字节必须过不了当场校验");
+        let residue_tmps: Vec<String> = mem
+            .keys_with_prefix(&format!("{KEY}."))
+            .into_iter()
+            .filter(|key| key.contains(TMP_OP_MARKER))
+            .collect();
+        assert_eq!(residue_tmps.len(), 1, "KeepTmp 残局应恰有一个暂存对象: {residue_tmps:?}");
+        let residue_tmp = residue_tmps[0].clone();
+        assert_eq!(mem.bytes(&residue_tmp).unwrap(), GOOD, "暂存对象持有已验证字节");
+        // [R6-tmp-naming] 跨模块命名契约：写侧运行时生成的暂存键，读侧必须认。
+        assert!(
+            is_tmp_object_key(&residue_tmp),
+            "verified_publish 运行时暂存键必须被 bad_object 认得: {residue_tmp}"
+        );
+
+        // ---- 下一轮：故障消失，直接在干净内层上收敛 ----
+        let outcome = converge_bad_object(&*mem, "device-b", KEY, &json_validate)
+            .await
+            .expect("真实 KeepTmp 残局必须能收敛");
+        let BadObjectOutcome::RecoveredFromTmp {
+            key,
+            tmp_key,
+            quarantine,
+        } = outcome
+        else {
+            panic!("期望 RecoveredFromTmp");
+        };
+        assert_eq!(key, KEY);
+        assert_eq!(tmp_key, residue_tmp, "消费的必须是 verified_publish 留下的暂存键");
+        assert_eq!(mem.bytes(KEY).unwrap(), GOOD, "正式键收敛为当初要发布的内容");
+        assert!(mem.bytes(&residue_tmp).is_none(), "被消费的暂存对象应删除");
+
+        let record = quarantine.expect("坏正式对象在场，必须有隔离记录");
+        assert_eq!(record.bad_sha256, sha256_hex(&corrupted));
+        assert_eq!(record.recovered_from_tmp.as_deref(), Some(residue_tmp.as_str()));
+        assert_eq!(
+            mem.bytes(&record.quarantined_key).unwrap(),
+            corrupted,
+            "隔离区保存的必须是坏写轮的原坏字节"
+        );
+
+        // ---- 再下一轮：幂等，无新写操作，审计痕迹不被清理 ----
+        let again = converge_bad_object(&*mem, "device-b", KEY, &json_validate)
+            .await
+            .unwrap();
+        assert!(matches!(again, BadObjectOutcome::AlreadyHealthy));
+        assert_eq!(
+            mem.bytes(&record.quarantined_key).unwrap(),
+            corrupted,
+            "已收敛后再巡检不得动隔离区审计痕迹"
+        );
+    }
+
+    /// 【R7】verified_publish KeepTmp「暂存阶段就被改写」的真实残局：只剩一个
+    /// **过不了校验**的 `.tmp-<op>`，最终键从未被触碰。下一轮收敛必须诚实返回
+    /// Absent（坏 .tmp 不采信、不冒充成功），且残局保留供审计、隔离区为空。
+    #[tokio::test]
+    async fn real_keep_tmp_staging_endgame_stays_honest_absent() {
+        let mem = Arc::new(MemoryStorage::default());
+        let bad_round = CorruptingPutStorage {
+            inner: Arc::clone(&mem),
+            corrupt_if: |key| key.contains(TMP_OP_MARKER),
+        };
+        let spec = PublishSpec::unconditional(KEY, 1024, PublishRecovery::KeepTmp);
+        let err = verified_publish(&bad_round, &spec, GOOD)
+            .await
+            .expect_err("暂存回读不一致必须失败");
+        assert!(err.to_string().contains(VERIFIED_PUBLISH_MISMATCH_CODE));
+        assert!(mem.bytes(KEY).is_none(), "暂存阶段失败时最终键不得被触碰");
+
+        let outcome = converge_bad_object(&*mem, "device-b", KEY, &json_validate)
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome, BadObjectOutcome::Absent),
+            "坏 .tmp 不得被采信为可收敛残局"
+        );
+        assert!(mem.bytes(KEY).is_none(), "不得用未通过校验的字节冒充正式对象");
+        let retained: Vec<String> = mem
+            .keys_with_prefix(&format!("{KEY}."))
+            .into_iter()
+            .filter(|key| key.contains(TMP_OP_MARKER))
+            .collect();
+        assert_eq!(retained.len(), 1, "坏暂存对象保留供审计，不自动删除");
+        assert!(
+            mem.keys_with_prefix(QUARANTINE_PREFIX).is_empty(),
+            "正式对象缺失时没有坏字节需要隔离"
+        );
+    }
+
+    /// 【R7】只有坏正式（fail-closed 隔离）之后的「下一轮」：坏字节已移入
+    /// 隔离区，再巡检必须诚实返回 Absent，不重复隔离、不冒充成功；且当轮
+    /// fail-closed 错误必须点名隔离副本 key，让运维能顺着错误找到审计痕迹。
+    #[tokio::test]
+    async fn fail_closed_round_then_next_round_is_honest_absent() {
+        let storage = MemoryStorage::default();
+        storage.put(KEY, BAD).await.unwrap();
+
+        let error = converge_bad_object(&storage, "device-a", KEY, &json_validate)
+            .await
+            .expect_err("无可用 .tmp 必须 fail-closed");
+        let message = error.to_string();
+        assert!(message.contains(BAD_OBJECT_FAIL_CLOSED_CODE));
+        let bad_copies: Vec<String> = storage
+            .keys_with_prefix(QUARANTINE_PREFIX)
+            .into_iter()
+            .filter(|key| key.ends_with(".bad"))
+            .collect();
+        assert_eq!(bad_copies.len(), 1);
+        assert!(
+            message.contains(&bad_copies[0]),
+            "fail-closed 错误必须点名隔离副本 key: {message}"
+        );
+
+        let outcome = converge_bad_object(&storage, "device-a", KEY, &json_validate)
+            .await
+            .expect("坏字节已隔离后，下一轮巡检不应再报错");
+        assert!(
+            matches!(outcome, BadObjectOutcome::Absent),
+            "下一轮必须诚实返回 Absent，不冒充成功"
+        );
+        let reason_count = storage
+            .keys_with_prefix(QUARANTINE_PREFIX)
+            .into_iter()
+            .filter(|key| key.ends_with(".reason.json"))
+            .count();
+        assert_eq!(reason_count, 1, "下一轮不得重复隔离、重复写记录");
+    }
+
+    /// 【R7】用户备份数据对象反复 fail-closed：无论巡检多少轮，原对象一个
+    /// 字节都不得被自动删除（删除权永远留给用户）。
+    #[tokio::test]
+    async fn user_backup_bad_object_survives_repeated_rounds() {
+        let storage = MemoryStorage::default();
+        let backup_key = "backup-v2/objects/aa/bb/deadbeef";
+        storage.put(backup_key, BAD).await.unwrap();
+
+        for round in 1..=2 {
+            let error = converge_bad_object(&storage, "device-a", backup_key, &json_validate)
+                .await
+                .expect_err("用户备份坏对象每一轮都必须 fail-closed");
+            assert!(
+                error.to_string().contains(BAD_OBJECT_FAIL_CLOSED_CODE),
+                "第 {round} 轮错误必须携带稳定码"
+            );
+            assert_eq!(
+                storage.bytes(backup_key).unwrap(),
+                BAD,
+                "第 {round} 轮之后原对象必须原样保留"
+            );
+        }
+    }
+
+    /// 【R7】[R6-tmp-naming] 两代残局并存时按 last_modified 取最新可信者：
+    /// 历史 `{key}.<uuid>.tmp`（旧）与现行 `{key}.tmp-<op>`（新）同场，收敛
+    /// 必须消费更新的 verified_publish 暂存键，旧代残留保留。
+    #[tokio::test]
+    async fn cross_generation_residue_newest_verified_tmp_wins() {
+        let storage = MemoryStorage::default();
+        storage.put(KEY, BAD).await.unwrap();
+        let legacy_tmp = tmp_key_for(KEY);
+        storage.put(&legacy_tmp, br#"{"gen":1}"#).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let publish_tmp = format!("{KEY}.tmp-{}", &Uuid::new_v4().simple().to_string()[..12]);
+        storage.put(&publish_tmp, br#"{"gen":2}"#).await.unwrap();
+
+        let outcome = converge_bad_object(&storage, "device-a", KEY, &json_validate)
+            .await
+            .unwrap();
+        let BadObjectOutcome::RecoveredFromTmp { tmp_key, .. } = outcome else {
+            panic!("期望 RecoveredFromTmp");
+        };
+        assert_eq!(tmp_key, publish_tmp, "两代并存时应消费最新的可信暂存键");
+        assert_eq!(storage.bytes(KEY).unwrap(), br#"{"gen":2}"#);
+        assert!(
+            storage.bytes(&legacy_tmp).is_some(),
+            "未被消费的旧代残留保留，交给正常发布路径清理"
+        );
+    }
 }

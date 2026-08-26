@@ -1598,6 +1598,285 @@ mod tests {
             }
         }
     }
+
+    // ========================================================================
+    // R7（0824 Wave2-D 第 7 轮）：恢复中断续传
+    // ========================================================================
+
+    /// R7：切槽登记前的失败/中断不留任何单向状态——同一环境上第二次发布
+    /// 必须能干净重试，并成功登记切槽租约（未 cutover 则可重试）。
+    ///
+    /// 第一段复用既有回滚断言（密钥回原、无租约、journal/rollback 无残留），
+    /// 第二段是本轮新增的重试闭环：重跑 `publish_restore_keys_and_commit_cutover`
+    /// 必须成功、密钥落回应用根、租约为「已提交未激活」，活跃槽保持不变。
+    #[test]
+    fn pre_cutover_interruption_is_retryable_and_second_publish_commits_lease() {
+        let app_data = TempDir::new().unwrap();
+        let data_space = DataSpaceManager::new(app_data.path().to_path_buf());
+        data_space.ensure_layout().unwrap();
+        fs::write(data_space.slot_dir(Slot::A).join("active.db"), b"old-slot").unwrap();
+        fs::write(
+            data_space.slot_dir(Slot::B).join("candidate.db"),
+            b"new-slot",
+        )
+        .unwrap();
+
+        let backup_root = TempDir::new().unwrap();
+        let backup_subdir = backup_root.path().join("snapshot");
+        let backup_secure = backup_subdir.join("crypto/.secure");
+        fs::create_dir_all(&backup_secure).unwrap();
+        fs::write(
+            backup_subdir.join("crypto/.master_key"),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+        .unwrap();
+        let new_seed = "aa".repeat(32);
+        fs::write(backup_secure.join(".key_seed"), &new_seed).unwrap();
+        let manifest = crypto_restore_manifest(&backup_subdir);
+
+        let mut manager = BackupManager::new(backup_root.path().join("manager"));
+        manager.set_app_data_dir(app_data.path().to_path_buf());
+
+        // 第一次尝试：密钥已发布、切槽登记前被中断（取消/失败等价）。
+        let error = publish_restore_keys_and_commit_cutover(
+            &manager,
+            &manifest,
+            &backup_subdir,
+            Slot::B.name(),
+            || Err("simulated mid-restore interruption before cutover".to_string()),
+        )
+        .expect_err("切槽登记失败必须使发布中止");
+        assert!(error.contains("已恢复旧密钥"), "{error}");
+
+        // 未 cutover：无租约、活跃槽不变、密钥回到原状、事务无残留——可重试。
+        assert!(data_space.restore_cutover_pending().unwrap().is_none());
+        assert_eq!(data_space.active_slot(), Slot::A);
+        assert!(!app_data.path().join(".master_key").exists());
+        assert!(!app_data.path().join(".secure").exists());
+        assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+        assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
+
+        // 第二次尝试（重试）：同一环境重新发布并成功登记切槽。
+        let restored = publish_restore_keys_and_commit_cutover(
+            &manager,
+            &manifest,
+            &backup_subdir,
+            Slot::B.name(),
+            || {
+                data_space
+                    .mark_restore_cutover_pending(Slot::B, &manifest.backup_id)
+                    .map_err(|error| error.to_string())
+            },
+        )
+        .expect("未 cutover 的中断后重试必须成功");
+        assert_eq!(restored, 2, "重试必须恢复 .master_key 与 .key_seed");
+
+        assert_eq!(
+            fs::read(app_data.path().join(".master_key")).unwrap(),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        );
+        assert_eq!(
+            fs::read_to_string(app_data.path().join(".secure/.key_seed")).unwrap(),
+            new_seed
+        );
+        let lease = data_space
+            .restore_cutover_pending()
+            .unwrap()
+            .expect("重试成功后必须持有切槽租约");
+        assert_eq!(lease.target_slot, Slot::B.name());
+        assert_eq!(lease.backup_id, manifest.backup_id);
+        assert!(!lease.activation_committed);
+        // 切槽在重启时才生效：任务期内活跃槽保持不变。
+        assert_eq!(data_space.active_slot(), Slot::A);
+        // 成功路径事务已解决：journal 与回滚目录不得残留。
+        assert!(!crate::crypto_publication::journal_path(app_data.path()).exists());
+        assert!(!crate::crypto_publication::rollback_dir(app_data.path()).exists());
+    }
+
+    /// R7：切槽提交后的失败必须以 `cutover_committed: true` 留痕，并经
+    /// job_id 关联收口此前的 Started 行——事后审计不能出现「永远 Started」
+    /// 的恢复，也必须能按 cutover_committed 直接筛选出「已提交但失败」的
+    /// 恢复任务。
+    ///
+    /// 缺口声明：`fail_restore_after_committed_cutover` 需要
+    /// `tauri::AppHandle`（Wry），宿主单测无法直接驱动（mock runtime 的
+    /// `AppHandle<MockRuntime>` 类型不兼容）；本测试以与其**完全一致**的
+    /// 审计载荷锁定持久化、收口与查询契约。若该函数的 details 形状改变，
+    /// 请同步更新本测试（见 R7 报告）。
+    #[test]
+    fn post_cutover_failure_audit_details_carry_cutover_committed_and_close_started_row() {
+        use crate::data_governance::audit::{
+            AuditFilter, AuditLog, AuditOperation, AuditRepository, AuditStatus,
+        };
+
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        AuditRepository::init(&conn).unwrap();
+
+        let backup_id = "backup_r7_cutover";
+        let job_id = "job-r7-resume-0540";
+
+        // 任务启动时（data_governance_restore_backup）写入的 Started 行。
+        AuditRepository::save(
+            &conn,
+            &AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id,
+            )
+            .with_details(serde_json::json!({
+                "job_id": job_id,
+                "restore_assets": true,
+            })),
+        )
+        .unwrap();
+
+        // 切槽提交后的失败行：details 形状与
+        // fail_restore_after_committed_cutover 完全一致。
+        let honest_error = "域恢复计划执行失败: audit: 消费失败（切槽与加密密钥已原子提交、\
+                            不可撤销：重启后将激活候选槽 slotB；本任务按失败终止，失败/未消费的域\
+                            不会自动恢复，请依据审计日志中的 domains 终态处置）"
+            .to_string();
+        AuditRepository::save(
+            &conn,
+            &AuditLog::new(
+                AuditOperation::Restore {
+                    backup_path: backup_id.to_string(),
+                },
+                backup_id,
+            )
+            .fail(honest_error.clone())
+            .with_details(serde_json::json!({
+                "job_id": job_id,
+                "cutover_committed": true,
+                "activates_slot_on_restart": "slotB",
+                "domains": [{"domain_id": "audit", "state": "failed"}],
+            })),
+        )
+        .unwrap();
+
+        // Started 行必须被同 job_id 的失败行收口：只剩一条、状态 Failed。
+        let logs = AuditRepository::query(&conn, AuditFilter::default()).unwrap();
+        assert_eq!(
+            logs.len(),
+            1,
+            "post-cutover 失败必须收口 Started 行，不得残留双行"
+        );
+        let log = &logs[0];
+        assert!(
+            matches!(log.status, AuditStatus::Failed),
+            "已 cutover 的失败绝不能被记成 Completed/Partial"
+        );
+        assert_eq!(
+            log.details.get("cutover_committed"),
+            Some(&serde_json::Value::Bool(true)),
+            "失败详情必须携带 cutover_committed: true"
+        );
+        assert_eq!(
+            log.details
+                .get("activates_slot_on_restart")
+                .and_then(|value| value.as_str()),
+            Some("slotB"),
+            "失败详情必须指明重启后将激活的候选槽"
+        );
+        assert!(
+            log.details
+                .get("domains")
+                .is_some_and(|domains| !domains.is_null()),
+            "失败路径必须与成功路径一样留痕每域终态"
+        );
+        assert_eq!(log.error_message.as_deref(), Some(honest_error.as_str()));
+
+        // 运维查询面：cutover_committed 必须可被 json_extract 直接筛选。
+        let flagged: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __audit_log \
+                 WHERE json_extract(details, '$.cutover_committed') = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(flagged, 1);
+    }
+
+    /// R7：恢复任务一旦以失败/取消终止（含切槽提交后的诚实失败），状态机
+    /// 不允许再翻转为成功——已 cutover 的失败绝不能被后续代码标成完成；
+    /// 中断后的重试语义 = 另起新任务，而不是复活旧任务。
+    #[tokio::test]
+    async fn terminal_restore_job_can_never_flip_to_success() {
+        use crate::backup_job_manager::{
+            BackupJobKind, BackupJobManager, BackupJobPhase, BackupJobResultPayload,
+            BackupJobStatus,
+        };
+
+        let manager = BackupJobManager::new_for_tests();
+        let success_payload = || BackupJobResultPayload {
+            success: true,
+            output_path: None,
+            resolved_path: None,
+            message: Some("attempt to flip terminal job to success".to_string()),
+            error: None,
+            duration_ms: Some(1),
+            stats: None,
+            requires_restart: true,
+            checkpoint_path: None,
+            resumable_job_id: None,
+        };
+
+        // 分支一：切槽提交后的失败（fail_restore_after_committed_cutover 的
+        // job 侧语义：job_ctx.fail 携带诚实错误）。
+        let failed_job = manager.create_job(BackupJobKind::Import);
+        failed_job.mark_running(
+            BackupJobPhase::Cleanup,
+            95.0,
+            Some("正在恢复辅助域（审计/设置/待信任隔离）...".to_string()),
+            9,
+            10,
+        );
+        failed_job.fail(
+            "域恢复计划执行失败（切槽与加密密钥已原子提交、不可撤销：重启后将激活候选槽 slotB）"
+                .to_string(),
+        );
+        let snapshot = manager
+            .get_job(&failed_job.job_id)
+            .expect("失败任务在保留期内必须可查询");
+        assert!(matches!(snapshot.status, BackupJobStatus::Failed));
+        assert!(!snapshot.result.as_ref().unwrap().success);
+
+        // 后续任何 complete 尝试都必须被状态机拒绝（终态单调）。
+        failed_job.complete(Some("bogus success".to_string()), 10, 10, success_payload());
+        let after = manager
+            .get_job(&failed_job.job_id)
+            .expect("终态任务在保留期内必须可查询");
+        assert!(
+            matches!(after.status, BackupJobStatus::Failed),
+            "已 cutover 后失败的恢复任务不得被翻转成成功"
+        );
+        let result = after.result.as_ref().unwrap();
+        assert!(!result.success);
+        assert!(
+            result
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("不可撤销")),
+            "失败结果必须保留切槽已提交的诚实错误"
+        );
+
+        // 分支二：用户取消（未 cutover 的中断）同样是不可翻转的终态。
+        let cancelled_job = manager.create_job(BackupJobKind::Import);
+        cancelled_job.mark_running(BackupJobPhase::Verify, 10.0, None, 0, 10);
+        assert!(manager.request_cancel(&cancelled_job.job_id));
+        assert!(cancelled_job.is_cancelled());
+        cancelled_job.cancelled(Some("用户取消恢复（验证阶段）".to_string()));
+        cancelled_job.complete(None, 10, 10, success_payload());
+        let after_cancel = manager.get_job(&cancelled_job.job_id).unwrap();
+        assert!(matches!(after_cancel.status, BackupJobStatus::Cancelled));
+        assert!(!after_cancel.result.as_ref().unwrap().success);
+
+        // 重试入口保持畅通：新任务不继承旧任务的取消标志。
+        let retry_job = manager.create_job(BackupJobKind::Import);
+        assert!(!retry_job.is_cancelled());
+    }
 }
 
 // ==================== 可恢复的执行函数 ====================
