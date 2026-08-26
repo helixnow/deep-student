@@ -16,15 +16,19 @@
 //! - `keep`：不动；
 //! - `revise`：用模型给出的 `revised` 字段重写卡片，走既有
 //!   `Database::update_anki_card_if_version_for_library` CAS 持久化
-//!   （id/task_id 永不变更；送审后用户有编辑则拒绝覆盖），并写入
-//!   `_qa_flags` 审计条目 `llm_critic_revised`；
+//!   （id/task_id 永不变更；送审后用户有编辑则拒绝覆盖），写入
+//!   `_qa_flags` 审计条目 `llm_critic_revised`，并写入独立的
+//!   `_content_provenance` 溯源戳（actor=llm_critic）——溯源不受
+//!   `enable_qa_pass` 门控剥离，gold 挖掘据此排除模型自改；
 //! - `flag`：仅在 `extra_fields["_qa_flags"]` 追加 `llm_critic` 条目留痕，
 //!   卡片内容不动（与 `anki_qa_lint` 的 Flag 语义一致，绝不丢卡）。
 //!
 //! `enable_qa_pass=false`（"不要 QA 留痕"公开契约）时裁决与统计照常执行，
 //! 但所有 `_qa_flags` 写入（flag 留痕 / revise 审计 / relint）一律不落盘，
 //! 与 `parse_and_save_card` 的入库收口保持同一语义；revise 的内容修订
-//! 仍写回（critic 由 `enable_critic_pass` 单独显式开启）。
+//! 仍写回（critic 由 `enable_critic_pass` 单独显式开启），且随内容一并
+//! 落盘的还有 `_content_provenance` 溯源戳——溯源是事实记录不是 QA 留痕，
+//! 不在门控剥离范围（Wave2-E r1-04 污染路径 A 的收口）。
 //!
 //! ## 设计硬约束
 //!
@@ -594,8 +598,11 @@ fn critic_issue(code: &str, message: String, severity: LintSeverity) -> LintIssu
 /// - `keep` / 无裁决：不产生写入；
 /// - `flag`：仅向 `_qa_flags` 追加 `llm_critic` 条目（Warn）；
 /// - `revise`：套用 `revised` 中的非空字段（id/task_id/created_at 等元数据
-///   一律保持原值），追加 `llm_critic_revised` 审计条目（Info），
-///   并对修订后的内容重跑一遍确定性 lint（revise 也可能引入占位符等问题）。
+///   一律保持原值），追加 `llm_critic_revised` 审计条目（Info），写入
+///   `_content_provenance`（actor=llm_critic, code=llm_critic_revised——
+///   独立于 `_qa_flags` 的溯源事实，**不受** `enable_qa_pass` 门控剥离，
+///   gold 挖掘据此排除模型自改），并对修订后的内容重跑一遍确定性 lint
+///   （revise 也可能引入占位符等问题）。
 ///
 /// 修订轮约束在此不体现——本函数只被每任务的**单轮** critic 调用一次，
 /// 轮数由 [`CriticConfig::effective_revision_rounds`] 在编排器处钳位。
@@ -659,6 +666,13 @@ pub fn plan_updates(cards: &[AnkiCard], verdicts: &[CardVerdict]) -> CriticPlan 
                     LintSeverity::Info,
                 );
                 anki_qa_lint::merge_flags(&mut updated.extra_fields, &[audit]);
+                // 溯源戳与 _qa_flags 审计解耦：qa_pass 关闭时 marker 被剥，
+                // 该字段必须独立存活，否则 critic 自改会洗白成"用户编辑"
+                // 被 gold 挖掘回灌（wave2-E r1-04 污染路径 A）。
+                crate::anki_gold_set::insert_content_provenance(
+                    &mut updated.extra_fields,
+                    &crate::anki_gold_set::ContentProvenance::llm_critic_revision(),
+                );
                 // 修订内容重跑确定性 lint（revise 也可能引入占位符/空字段等问题）
                 let relint = anki_qa_lint::lint_card(
                     &anki_qa_lint::CardLintInput {
@@ -684,8 +698,14 @@ pub fn plan_updates(cards: &[AnkiCard], verdicts: &[CardVerdict]) -> CriticPlan 
 ///
 /// - 所有待写回卡片先剥离 `_qa_flags`（flag 留痕、`llm_critic_revised`
 ///   审计条目、revise 后 relint 条目一律不落盘）；
+/// - **只剥 `QA_FLAGS_FIELD`**：`_content_provenance` 是溯源事实记录而非
+///   QA 留痕，不在剥离范围——这是与 7077075a 门控语义的切分边界
+///   （门控只关"留痕"，不得关"溯源"，否则 critic 修订会洗白成用户编辑
+///   被 gold 挖掘回灌）；
 /// - 剥离后与原卡无内容差异的更新（典型为 flag 裁决）整体丢弃，
-///   避免空写回触发 CAS、递增 local_version 并进入同步链路。
+///   避免空写回触发 CAS、递增 local_version 并进入同步链路。差异判定
+///   同时忽略两侧的 `_content_provenance`：溯源戳自身不构成落盘理由
+///   （内容未变的卡保持既有丢弃行为，不改变 KeptUnedited 等桶的归属）。
 ///
 /// 裁决统计（kept/revised/flagged）不在此改动——critic 观测照常，
 /// 只是不产生持久化 QA 留痕。
@@ -698,13 +718,18 @@ pub fn sanitize_plan_for_disabled_qa_pass(plan: &mut CriticPlan, originals: &[An
         };
         // 对照原卡时同样忽略 _qa_flags：flag-only 更新必须判定为无差异，
         // 不能因原卡带历史留痕而落盘一次"纯留痕删除"写回。
+        // _content_provenance 只在比较副本中忽略（不从 card 本体移除）：
+        // 有实质内容差异的 revise 写回必须携带溯源戳落盘。
+        let mut card_extra = card.extra_fields.clone();
+        card_extra.remove(crate::anki_gold_set::CONTENT_PROVENANCE_FIELD);
         let mut orig_extra = orig.extra_fields.clone();
         orig_extra.remove(anki_qa_lint::QA_FLAGS_FIELD);
+        orig_extra.remove(crate::anki_gold_set::CONTENT_PROVENANCE_FIELD);
         card.front != orig.front
             || card.back != orig.back
             || card.text != orig.text
             || card.tags != orig.tags
-            || card.extra_fields != orig_extra
+            || card_extra != orig_extra
     });
 }
 
@@ -768,8 +793,14 @@ fn timestamp_ms(rfc3339: &str) -> i64 {
 ///   信号，且正是待评审对象，不能既当裁判参照又当被告；
 /// - 带 `_qa_flags.code = llm_critic_revised` 的模型自动修订卡剔除，禁止把
 ///   critic 自己的改写伪装成用户金标再回灌；
-/// - 只有携带 `_original_generation` 快照且被用户实际编辑过的兄弟卡才可能
-///   产出修正对（挖掘语义完全复用 `anki_gold_set::classify_candidate`）；
+/// - `_content_provenance` 第二道闸：actor 存在且 ≠ user 的卡
+///   （critic 修订 / 导入 / 同步 / 未知写入方）直接剔除——marker 在
+///   `enable_qa_pass=false` 下会被剥离，provenance 独立存活，堵住
+///   wave2-E r1-04 的污染路径 A；无 provenance 的旧卡放行到
+///   `classify_candidate` 的"缺编辑者证明"保守闸门（一律 Unlabeled）；
+/// - 只有携带 `_original_generation` 快照且**可证明**被用户编辑过
+///   （provenance actor=user）的兄弟卡才可能产出修正对（挖掘语义完全复用
+///   `anki_gold_set::classify_candidate`）；
 /// - 金标端过 `select_grounded_reference_pairs` 的 lint 门槛（脏金标不注入）。
 ///
 /// 无 FSRS 复习信号可用（此路径不 join 复习日志），`review_count` 置 0——
@@ -785,6 +816,13 @@ pub fn gold_references_from_cards(
         .iter()
         .filter(|card| card.task_id != exclude_task_id && !card.is_error_card)
         .filter(|card| !gold::has_critic_revision_marker(&card.extra_fields))
+        .filter(|card| {
+            // provenance 过滤：有 actor 且非 user → 剔除；无 provenance 放行，
+            // 由 classify_candidate 的编辑者闸门保守兜底（Unlabeled）。
+            gold::parse_content_provenance(&card.extra_fields)
+                .map(|p| p.actor == gold::PROVENANCE_ACTOR_USER)
+                .unwrap_or(true)
+        })
         .filter_map(|card| {
             let original = gold::extract_original_from_extras(&card.extra_fields)?;
             Some(gold::GoldCandidate {
@@ -802,7 +840,11 @@ pub fn gold_references_from_cards(
                 again_count: 0,
                 was_error_card: false,
                 is_error_card: card.is_error_card,
-                critic_revised: false,
+                // 按 marker/provenance 真值计算（不再硬编码 false）：即便上方
+                // filter 顺序被改动，classify_candidate 第 1 通道仍是第二道防线。
+                critic_revised: gold::has_critic_revision_marker(&card.extra_fields)
+                    || gold::is_llm_critic_actor(&card.extra_fields),
+                edit_actor: gold::parse_content_provenance(&card.extra_fields).map(|p| p.actor),
             })
         })
         .collect();
@@ -1634,11 +1676,19 @@ mod tests {
         card
     }
 
+    /// 给卡片盖 actor=user 的 `_content_provenance` 戳（可证明的用户编辑）。
+    fn stamp_user_provenance(card: &mut AnkiCard) {
+        crate::anki_gold_set::insert_content_provenance(
+            &mut card.extra_fields,
+            &crate::anki_gold_set::ContentProvenance::user("test"),
+        );
+    }
+
     #[test]
     fn gold_references_from_cards_mines_sibling_edits() {
         let cfg = CriticConfig::default();
-        // 兄弟任务的卡：用户修掉了答案泄露 → 应产出一对劣化/金标
-        let edited_sibling = card_with_original(
+        // 兄弟任务的卡：用户修掉了答案泄露（带 actor=user 证明）→ 应产出一对劣化/金标
+        let mut edited_sibling = card_with_original(
             "s1",
             "task-old",
             "快速排序的平均时间复杂度是多少？",
@@ -1646,6 +1696,7 @@ mod tests {
             "快速排序的平均时间复杂度是多少？答案是 O(n log n)。",
             "O(n log n)",
         );
+        stamp_user_provenance(&mut edited_sibling);
         // 兄弟任务未编辑的卡（original == current）：无修正对信号
         let untouched_sibling = card_with_original(
             "s2",
@@ -1674,8 +1725,9 @@ mod tests {
     #[test]
     fn gold_references_exclude_current_task_and_error_cards() {
         let cfg = CriticConfig::default();
-        // 当前任务自己的卡即便带编辑痕迹也不能当参照（既当裁判又当被告）
-        let self_card = card_with_original(
+        // 当前任务自己的卡即便带编辑痕迹（含 user 证明）也不能当参照
+        // （既当裁判又当被告）
+        let mut self_card = card_with_original(
             "c1",
             "task-current",
             "修好的问题？",
@@ -1683,6 +1735,7 @@ mod tests {
             "坏问题？答案泄露",
             "泄露",
         );
+        stamp_user_provenance(&mut self_card);
         let mut error_card = card_with_original(
             "c2",
             "task-old",
@@ -1691,6 +1744,7 @@ mod tests {
             "坏问题2",
             "TODO",
         );
+        stamp_user_provenance(&mut error_card);
         error_card.is_error_card = true;
         let refs = gold_references_from_cards(&[self_card, error_card], "task-current", &cfg);
         assert!(refs.is_empty(), "当前任务卡与错误卡都不得进入参照集");
@@ -1725,8 +1779,8 @@ mod tests {
     #[test]
     fn gold_references_reject_dirty_gold_side() {
         let cfg = CriticConfig::default();
-        // 用户"修改后"仍残留占位符 → 金标端 lint 不干净，不得注入
-        let dirty = card_with_original(
+        // 用户"修改后"仍残留占位符 → 即便有 user 证明，金标端 lint 不干净，不得注入
+        let mut dirty = card_with_original(
             "d1",
             "task-old",
             "什么是熵？",
@@ -1734,6 +1788,7 @@ mod tests {
             "熵？？",
             "混乱",
         );
+        stamp_user_provenance(&mut dirty);
         let refs = gold_references_from_cards(&[dirty], "task-current", &cfg);
         assert!(refs.is_empty(), "脏金标必须被 lint 门槛拒绝");
     }
@@ -1746,18 +1801,202 @@ mod tests {
         };
         let cards: Vec<AnkiCard> = (0..4)
             .map(|i| {
-                card_with_original(
+                let mut card = card_with_original(
                     &format!("g{}", i),
                     "task-old",
                     &format!("问题{}是什么？", i),
                     &format!("答案{}", i),
                     &format!("问题{}是什么？答案是答案{}。", i, i),
                     &format!("答案{}", i),
-                )
+                );
+                stamp_user_provenance(&mut card);
+                card
             })
             .collect();
         let refs = gold_references_from_cards(&cards, "task-current", &cfg);
         assert_eq!(refs.len(), 1, "收集层同样遵守 max_reference_pairs 上限");
+    }
+
+    // -------- 内容溯源（wave2-E r2：provenance 第二道闸） --------
+
+    #[test]
+    fn plan_revise_stamps_llm_critic_provenance() {
+        use crate::anki_gold_set as gold;
+        let cards = vec![make_card("c1", "旧问题", "旧答案")];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Revise,
+            reasons: vec!["答案与源材料矛盾".to_string()],
+            revised: Some(RevisedFields {
+                front: Some("新问题？".to_string()),
+                back: Some("新答案".to_string()),
+                text: None,
+            }),
+        }];
+        let plan = plan_updates(&cards, &verdicts);
+        let provenance = gold::parse_content_provenance(&plan.updates[0].extra_fields)
+            .expect("revise 写回必须带 _content_provenance");
+        assert_eq!(provenance.actor, gold::PROVENANCE_ACTOR_LLM_CRITIC);
+        assert_eq!(
+            provenance.code.as_deref(),
+            Some(gold::CRITIC_REVISED_QA_CODE)
+        );
+    }
+
+    #[test]
+    fn plan_flag_does_not_stamp_provenance() {
+        use crate::anki_gold_set as gold;
+        // flag 不改内容 → 不是内容写入，不得覆盖既有溯源
+        let cards = vec![make_card("c1", "Q", "A")];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Flag,
+            reasons: vec!["空泛提问".to_string()],
+            revised: None,
+        }];
+        let plan = plan_updates(&cards, &verdicts);
+        assert!(gold::parse_content_provenance(&plan.updates[0].extra_fields).is_none());
+    }
+
+    #[test]
+    fn disabled_qa_pass_never_strips_content_provenance() {
+        use crate::anki_gold_set as gold;
+        // 7077075a 语义切分回归锁：sanitize 只剥 QA_FLAGS_FIELD，
+        // _content_provenance 必须存活（溯源不受 enable_qa_pass 门控）。
+        let cards = vec![make_card("c1", "旧问题", "旧答案")];
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Revise,
+            reasons: vec![],
+            revised: Some(RevisedFields {
+                front: Some("修订后的问题？".to_string()),
+                ..Default::default()
+            }),
+        }];
+        let mut plan = plan_updates(&cards, &verdicts);
+        sanitize_plan_for_disabled_qa_pass(&mut plan, &cards);
+
+        assert_eq!(plan.updates.len(), 1, "内容修订必须保留写回");
+        let updated = &plan.updates[0];
+        assert!(
+            !updated
+                .extra_fields
+                .contains_key(anki_qa_lint::QA_FLAGS_FIELD),
+            "qa_pass 关闭时 _qa_flags 仍必须剥离（7077075a 不回退）"
+        );
+        let provenance = gold::parse_content_provenance(&updated.extra_fields)
+            .expect("溯源戳不得被 sanitize 剥掉");
+        assert_eq!(provenance.actor, gold::PROVENANCE_ACTOR_LLM_CRITIC);
+    }
+
+    #[test]
+    fn critic_revision_with_disabled_qa_pass_never_reenters_gold_references() {
+        // 污染路径 A 端到端反例：enable_qa_pass=false 下 critic revise 的落库
+        // 形态（内容 ≠ 快照、_qa_flags 已剥、_content_provenance actor=llm_critic
+        // 存活）在后续兄弟任务收尾时不得被挖成"用户修正对"。
+        let cfg = CriticConfig::default();
+        let mut card = card_with_original(
+            "c1",
+            "task-old",
+            "模型原问题（答案泄露）",
+            "模型原答案",
+            "模型原问题（答案泄露）",
+            "模型原答案",
+        );
+        let verdicts = vec![CardVerdict {
+            card_id: "c1".to_string(),
+            verdict: Verdict::Revise,
+            reasons: vec!["答案泄露".to_string()],
+            revised: Some(RevisedFields {
+                front: Some("critic 修订后的问题？".to_string()),
+                back: Some("critic 修订后的答案".to_string()),
+                text: None,
+            }),
+        }];
+        let mut plan = plan_updates(std::slice::from_ref(&card), &verdicts);
+        sanitize_plan_for_disabled_qa_pass(&mut plan, std::slice::from_ref(&card));
+        assert_eq!(plan.updates.len(), 1);
+        card = plan.updates[0].clone();
+        assert!(
+            !card.extra_fields.contains_key(anki_qa_lint::QA_FLAGS_FIELD),
+            "前置：落库形态无 marker（marker 已随 _qa_flags 被剥）"
+        );
+
+        let refs = gold_references_from_cards(&[card], "task-current", &cfg);
+        assert!(
+            refs.is_empty(),
+            "critic 修订卡（marker 已被 qa_pass 门控剥离）不得进 grounded reference"
+        );
+    }
+
+    #[test]
+    fn gold_references_exclude_provenance_critic_cards_without_marker() {
+        use crate::anki_gold_set as gold;
+        let cfg = CriticConfig::default();
+        // 模拟 _qa_flags 被前端整体重建冲掉、但 provenance 存活的 critic 修订卡
+        let mut card = card_with_original(
+            "p1",
+            "task-old",
+            "critic 修订后的问题？",
+            "critic 修订后的答案",
+            "模型原问题（答案泄露）",
+            "模型原答案",
+        );
+        gold::insert_content_provenance(
+            &mut card.extra_fields,
+            &gold::ContentProvenance::llm_critic_revision(),
+        );
+        assert!(!gold::has_critic_revision_marker(&card.extra_fields));
+
+        let refs = gold_references_from_cards(&[card], "task-current", &cfg);
+        assert!(refs.is_empty(), "provenance 第二道闸必须独立于 marker 生效");
+    }
+
+    #[test]
+    fn gold_references_exclude_legacy_edits_without_provenance() {
+        let cfg = CriticConfig::default();
+        // 旧卡：内容 ≠ 快照但无任何 provenance（真实历史用户编辑与路径 A
+        // 已污染卡不可区分）→ 保守不产对
+        let legacy = card_with_original(
+            "l1",
+            "task-old",
+            "快速排序的平均时间复杂度是多少？",
+            "O(n log n)",
+            "快速排序的平均时间复杂度是多少？答案是 O(n log n)。",
+            "O(n log n)",
+        );
+        let refs = gold_references_from_cards(&[legacy], "task-current", &cfg);
+        assert!(refs.is_empty(), "无编辑者证明的旧卡不得进 grounded reference");
+    }
+
+    #[test]
+    fn gold_references_exclude_import_and_sync_actors() {
+        use crate::anki_gold_set as gold;
+        let cfg = CriticConfig::default();
+        for actor in [
+            gold::PROVENANCE_ACTOR_IMPORT,
+            gold::PROVENANCE_ACTOR_SYNC,
+            "future_agent",
+        ] {
+            let mut card = card_with_original(
+                &format!("a-{}", actor),
+                "task-old",
+                "问题是什么？",
+                "答案",
+                "问题是什么？答案是答案。",
+                "答案",
+            );
+            gold::insert_content_provenance(
+                &mut card.extra_fields,
+                &gold::ContentProvenance {
+                    actor: actor.to_string(),
+                    code: None,
+                    at: None,
+                },
+            );
+            let refs = gold_references_from_cards(&[card], "task-current", &cfg);
+            assert!(refs.is_empty(), "非用户 actor={} 不得进参照集", actor);
+        }
     }
 
     #[test]

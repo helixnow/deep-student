@@ -266,4 +266,47 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 
 ---
 
-*（台账到此为第 1 轮内容。后续轮次只追加，不改写。Goal 未完成，不因本台账建立而变更。）*
+*（以上为第 1 轮内容。后续轮次只追加，不改写。）*
+
+---
+
+## 7. 第 2 轮（P0 落地，2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。未跑编译/测试。draft PR #349。
+
+### 已落地
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| P0-1 入库消费 text + images | 已落 | `parse_and_save_card` 空 text 填 fields.text；images 从 imageRef 填 |
+| P0-1 APKG `_` 过滤 + Cloze 转换 + imageRef 补媒体 | 已落 | `is_internal_protocol_field` + `normalize_cards_for_export` |
+| P0-1 AnkiConnect 过滤 + 遮挡 note | 已落 | `build_fields_with_model_names` 跳过 `_` 键 |
+| P0-1 IO 坐标 | 已翻案修正 | `format_anki_io_cloze` 改为 Anki 官方 0–1（`left=.1`），禁止百分数 |
+| P0-1 导入伪造 gold | 已落 | importer 剥离 `_original_generation`/`_content_provenance`/`_qa_flags` |
+| P0-2 `_content_provenance` + classify 三分支 | 已落 | 无 user 证明 → Unlabeled；llm_critic 不进 Edited* |
+| P0-2 sanitize 不剥 provenance | 已落 | 仍只剥 `_qa_flags`（7077075a 不回退） |
+| P0-2 chatanki_update_library_card 打 user 戳 | 已落 | 仅该函数体 |
+| 旧卡兼容 | 无阻断 | r2-09：KeptUnedited 未误杀 |
+| lossless-only | 未放宽 | r2-08 |
+
+### 第 2 轮仍开放（非阻断，记入后轮）
+
+1. APKG 未建 IO 五字段 notetype；曾把 IO 语法写入 Extra（第 3 轮 apkg 负责人去掉 Extra 倾倒，IO 函数保留给后续 notetype）。
+2. 入库提前拼 `<img src=basename>`（契约想延后到导出）；可复习主路径仍成立。
+3. VFS `source_id` 形态 imageRef 导出时未走资源服务解析（测试多用真实路径）。第 6 轮或有资源服务的后续轮处理；本会话不碰 coordinator.rs。
+4. UI 编辑路径尚未打 user 戳（仅 chatanki 工具面）。
+
+### 已验证（静态）
+
+- 真闭环契约文档 + 入库/导出/gold diff 行号级审阅
+- IO 坐标与 Anki to-cloze.ts 对齐（0–1）
+- 兼容审：无 `_occlusion` 旧卡恒等；无 provenance 旧卡不崩
+
+### 未验证
+
+- 任何 cargo test / typecheck / 真实 Anki 导入
+- `occlusion_export_roundtrip` / `gold_provenance_excludes_critic` 只写不跑
+
+---
+
+*Goal 未完成。不因第 2 轮落地而变更。*

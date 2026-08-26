@@ -44,6 +44,21 @@ pub const ORIGINAL_GENERATION_FIELD: &str = "_original_generation";
 ///
 /// 带该标记的内容不是用户修改，必须从用户金标挖掘中排除。
 pub const CRITIC_REVISED_QA_CODE: &str = "llm_critic_revised";
+/// `extra_fields_json` 中保存"最后一次内容写入者"溯源的键名（Wave2-E R2 P0-2）。
+///
+/// 与 `_qa_flags` **刻意解耦**：provenance 是事实记录而非 QA 留痕，不受
+/// `enable_qa_pass` 门控——`anki_critic::sanitize_plan_for_disabled_qa_pass`
+/// 只剥 `QA_FLAGS_FIELD`，本字段必须存活。gold 挖掘据此实施
+/// "无用户证明不进修正对"（[`classify_candidate`] 编辑通道的编辑者闸门）。
+pub const CONTENT_PROVENANCE_FIELD: &str = "_content_provenance";
+/// provenance `actor` 的 wire 值（小写）：用户编辑。
+pub const PROVENANCE_ACTOR_USER: &str = "user";
+/// provenance `actor` 的 wire 值（小写）：LLM critic 自动修订。
+pub const PROVENANCE_ACTOR_LLM_CRITIC: &str = "llm_critic";
+/// provenance `actor` 的 wire 值（小写）：APKG 等外部导入。
+pub const PROVENANCE_ACTOR_IMPORT: &str = "import";
+/// provenance `actor` 的 wire 值（小写）：同步合并写入。
+pub const PROVENANCE_ACTOR_SYNC: &str = "sync";
 
 /// `_original_generation` 值本身的 UTF-8 字节硬上限。
 ///
@@ -147,6 +162,12 @@ pub struct GoldCandidate {
     /// 当前内容由 critic 自动修订，而非用户编辑。
     #[serde(default)]
     pub critic_revised: bool,
+    /// 最后一次内容写入的 actor（来自 `_content_provenance`，见
+    /// `PROVENANCE_ACTOR_*`）。None = 旧数据 / 埋点缺失——编辑通道将保守地
+    /// 视为"缺编辑者证明"，不产出修正对。`#[serde(default)]` 保证旧
+    /// fixture / 离线脚本 JSON 零迁移。
+    #[serde(default)]
+    pub edit_actor: Option<String>,
 }
 
 /// 标注结果（plan §3 label 步骤 + 错误卡修复通道）。
@@ -325,6 +346,95 @@ pub fn has_critic_revision_marker(extras: &HashMap<String, String>) -> bool {
 }
 
 // ============================================================================
+// 内容溯源（_content_provenance，Wave2-E R2）
+// ============================================================================
+
+/// `_content_provenance` 的结构化值：最后一次内容写入的编辑者证明。
+///
+/// wire 形态（camelCase，未知字段忽略——旧/新版本互读不炸）：
+/// `{"actor":"user"|"llm_critic"|"import"|"sync","code":"...","at":"<rfc3339>"}`。
+///
+/// `actor` 用 String 而非 enum：未来新增写入方（未知 actor）在旧版本上
+/// 必须仍可解析，且**保守地不算用户证明**（fail-closed）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentProvenance {
+    /// 写入者（见 `PROVENANCE_ACTOR_*` 常量）。
+    pub actor: String,
+    /// 写入路径 / 来源码（审计用，如 `llm_critic_revised`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// 写入时刻（RFC3339）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+}
+
+impl ContentProvenance {
+    /// 用户编辑戳。`code` 标记写入路径（空串省略）。
+    pub fn user(code: &str) -> Self {
+        Self {
+            actor: PROVENANCE_ACTOR_USER.to_string(),
+            code: Some(code.to_string()).filter(|c| !c.is_empty()),
+            at: Some(chrono::Utc::now().to_rfc3339()),
+        }
+    }
+
+    /// critic 自动修订戳（actor=llm_critic, code=llm_critic_revised）。
+    pub fn llm_critic_revision() -> Self {
+        Self {
+            actor: PROVENANCE_ACTOR_LLM_CRITIC.to_string(),
+            code: Some(CRITIC_REVISED_QA_CODE.to_string()),
+            at: Some(chrono::Utc::now().to_rfc3339()),
+        }
+    }
+}
+
+/// 写入（覆盖）`_content_provenance`。
+///
+/// 与 [`insert_original_generation_once`] 的首写幂等语义相反，provenance 记录
+/// 的是**最后一次**内容写入者，last-writer-wins 是刻意的：critic 修订后用户
+/// 再编辑，戳应变回 user（该卡因 `_qa_flags` marker 或 diff 混入 critic 手笔
+/// 仍会被挖掘侧保守排除，见 `gold_references_from_cards`）。
+pub fn insert_content_provenance(
+    extras: &mut HashMap<String, String>,
+    provenance: &ContentProvenance,
+) {
+    let serialized =
+        serde_json::to_string(provenance).expect("纯字符串字段的 provenance 序列化不会失败");
+    extras.insert(CONTENT_PROVENANCE_FIELD.to_string(), serialized);
+}
+
+/// 从内存态 `extra_fields` 解出 `_content_provenance`。
+/// 键缺失 / JSON 非法 / 形状不符均返回 None（视为无证明，保守方向）。
+pub fn parse_content_provenance(extras: &HashMap<String, String>) -> Option<ContentProvenance> {
+    let raw = extras.get(CONTENT_PROVENANCE_FIELD)?;
+    let value: Value = serde_json::from_str(raw).ok()?;
+    if !value.is_object() {
+        return None;
+    }
+    serde_json::from_value::<ContentProvenance>(value).ok()
+}
+
+/// 卡片是否带**可证明的用户编辑**戳（actor=user）。
+/// 无 provenance / 解析失败 / 其它 actor 一律 false（无证明不进 gold 修正对）。
+pub fn is_user_proven_edit(extras: &HashMap<String, String>) -> bool {
+    parse_content_provenance(extras)
+        .map(|p| p.actor == PROVENANCE_ACTOR_USER)
+        .unwrap_or(false)
+}
+
+/// 卡片最后一次写入是否为 LLM critic（actor=llm_critic）。
+///
+/// 这是 [`has_critic_revision_marker`] 之外的**第二道**排除闸：marker 住在
+/// `_qa_flags`（enable_qa_pass=false 时被剥、前端重建可冲掉），provenance
+/// 独立存活，两者任一命中都必须把卡排除在用户金标之外。
+pub fn is_llm_critic_actor(extras: &HashMap<String, String>) -> bool {
+    parse_content_provenance(extras)
+        .map(|p| p.actor == PROVENANCE_ACTOR_LLM_CRITIC)
+        .unwrap_or(false)
+}
+
+// ============================================================================
 // 编辑距离
 // ============================================================================
 
@@ -379,11 +489,17 @@ pub fn edit_ratio(original: &CardSnapshot, edited: &CardSnapshot) -> f64 {
 
 /// 对单个候选做确定性标注。决策树：
 ///
-/// 1. critic 自动修订 → `Unlabeled`（模型自改不能充当用户金标）；
+/// 1. critic 自动修订（`_qa_flags` marker 派生的 `critic_revised`，**或**
+///    `_content_provenance` actor=llm_critic）→ `Unlabeled`
+///    （模型自改不能充当用户金标；provenance 是 marker 之外的第二道闸，
+///    不依赖 `_qa_flags` 存活）；
 /// 2. 已删除 → 早删且零复习 = `DeletedEarly`，否则 `Unlabeled`（删除动机不明）；
 /// 3. 当前仍是错误卡 → `Unlabeled`（没有可用的"修复后"内容）；
 /// 4. 曾是错误卡且已修好 → `ErrorCardRepaired`（需 original 才能构成修正对）；
-/// 5. 有 original 且内容有变 → 按编辑距离比分 `EditedMinor` / `EditedMajor`；
+/// 5. 有 original 且内容有变 → 先过**编辑者闸门**：只有
+///    `edit_actor == Some("user")`（可证明的用户编辑）才按编辑距离比分
+///    `EditedMinor` / `EditedMajor`；无 actor（旧卡）或非用户 actor →
+///    `Unlabeled`（无证明不进 gold 修正对，宁可漏挖不可污染）；
 /// 6. 内容未变（或无 original 且时间戳未超宽限）→ 复习信号达标 = `KeptUnedited`；
 /// 7. 其余 → `Unlabeled`，reason 说明缺哪路信号。
 pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSample {
@@ -395,7 +511,9 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
     };
 
     // 1. 来源通道：critic 自改不能伪装成用户编辑或用户认可的未编辑正例。
-    if c.critic_revised {
+    //    marker（_qa_flags 派生）与 provenance actor 任一命中即排除——marker
+    //    在 enable_qa_pass=false 下会被剥离，provenance 是独立存活的第二道闸。
+    if c.critic_revised || c.edit_actor.as_deref() == Some(PROVENANCE_ACTOR_LLM_CRITIC) {
         return sample(
             GoldLabel::Unlabeled,
             "带 llm_critic_revised 来源标记，模型自动修订不得进入用户金标".to_string(),
@@ -462,6 +580,17 @@ pub fn classify_candidate(c: &GoldCandidate, cfg: &GoldMiningConfig) -> GoldSamp
     // 5. 编辑通道（original 在场时以内容 diff 为准，时间戳仅作后备信号）
     if let Some(orig) = &c.original {
         if *orig != c.current {
+            // 编辑者闸门：内容相对生成快照有变，但"是谁改的"必须有正向证明。
+            // 旧卡（无 provenance）与非用户写入（import/sync/未知 actor）一律
+            // 保守 Unlabeled——无证明不进 gold 修正对。
+            if c.edit_actor.as_deref() != Some(PROVENANCE_ACTOR_USER) {
+                return sample(
+                    GoldLabel::Unlabeled,
+                    "内容相对生成快照有变但缺编辑者证明（_content_provenance 非 actor=user），保守不进金标修正对"
+                        .to_string(),
+                    None,
+                );
+            }
             let ratio = edit_ratio(orig, &c.current);
             let pair = RepairPair {
                 original: orig.clone(),
@@ -793,6 +922,7 @@ mod tests {
             was_error_card: false,
             is_error_card: false,
             critic_revised: false,
+            edit_actor: None,
         }
     }
 
@@ -1050,6 +1180,7 @@ mod tests {
         let mut c = base_candidate("c5");
         c.original = Some(snap("什么是惯性？？", "物体保持原有运动状态不变的性质"));
         c.updated_at_ms = c.created_at_ms + 10 * 60 * 1000;
+        c.edit_actor = Some(PROVENANCE_ACTOR_USER.to_string());
         let s = classify_candidate(&c, &GoldMiningConfig::default());
         assert_eq!(s.label, GoldLabel::EditedMinor);
         let pair = s.repair_pair.expect("must carry pair");
@@ -1064,6 +1195,7 @@ mod tests {
             "好的，以下是卡片：惯性是什么以及加速度是什么？",
             "TODO",
         ));
+        c.edit_actor = Some(PROVENANCE_ACTOR_USER.to_string());
         let s = classify_candidate(&c, &GoldMiningConfig::default());
         assert_eq!(s.label, GoldLabel::EditedMajor);
         assert!(s.repair_pair.expect("pair").distance_ratio >= 0.25);
@@ -1080,6 +1212,163 @@ mod tests {
         assert_eq!(sample.label, GoldLabel::Unlabeled);
         assert!(sample.repair_pair.is_none());
         assert!(sample.reason.contains(CRITIC_REVISED_QA_CODE));
+    }
+
+    #[test]
+    fn llm_critic_actor_is_excluded_even_without_qa_flags_marker() {
+        // 路径 A 复现（enable_qa_pass=false 剥掉 marker 后的落库形态）：
+        // marker 丢失（critic_revised=false）但 provenance actor=llm_critic 仍在
+        // → 第二道闸必须排除，即便内容相对快照有变、用户 actor 缺席。
+        let mut c = base_candidate("critic-provenance");
+        c.original = Some(snap("模型原问题（答案泄露）", "模型原答案"));
+        c.critic_revised = false;
+        c.edit_actor = Some(PROVENANCE_ACTOR_LLM_CRITIC.to_string());
+        c.review_count = 10;
+
+        let sample = classify_candidate(&c, &GoldMiningConfig::default());
+        assert_eq!(sample.label, GoldLabel::Unlabeled);
+        assert!(sample.repair_pair.is_none());
+        assert!(sample.reason.contains(CRITIC_REVISED_QA_CODE));
+    }
+
+    #[test]
+    fn edited_content_without_actor_proof_is_unlabeled() {
+        // 旧卡：内容 ≠ 快照但无任何 provenance → 保守不进修正对（含路径 A
+        // 已污染卡与真实历史用户编辑，两者不可区分，一律不挖）。
+        let mut c = base_candidate("legacy-edited");
+        c.original = Some(snap("什么是惯性？？", "物体保持原有运动状态不变的性质"));
+        c.edit_actor = None;
+        let s = classify_candidate(&c, &GoldMiningConfig::default());
+        assert_eq!(s.label, GoldLabel::Unlabeled);
+        assert!(s.repair_pair.is_none());
+        assert!(s.reason.contains("缺编辑者证明"), "reason={}", s.reason);
+    }
+
+    #[test]
+    fn non_user_actors_never_enter_edited_buckets() {
+        // import / sync / 未知 actor：有 provenance 但不是用户证明 → Unlabeled
+        for actor in [PROVENANCE_ACTOR_IMPORT, PROVENANCE_ACTOR_SYNC, "future_agent"] {
+            let mut c = base_candidate(&format!("actor-{}", actor));
+            c.original = Some(snap("什么是惯性？？", "物体保持原有运动状态不变的性质"));
+            c.edit_actor = Some(actor.to_string());
+            let s = classify_candidate(&c, &GoldMiningConfig::default());
+            assert_eq!(s.label, GoldLabel::Unlabeled, "actor={}", actor);
+            assert!(s.repair_pair.is_none());
+        }
+    }
+
+    #[test]
+    fn user_actor_proof_keeps_kept_unedited_channel_untouched() {
+        // 编辑者闸门只作用于"内容有变"的编辑通道：original == current 时
+        // KeptUnedited 桶不看 actor（无归因问题），红线回归。
+        let mut c = base_candidate("kept-no-actor");
+        c.original = Some(c.current.clone());
+        c.review_count = 5;
+        c.again_count = 1;
+        assert_eq!(
+            classify_candidate(&c, &GoldMiningConfig::default()).label,
+            GoldLabel::KeptUnedited
+        );
+    }
+
+    #[test]
+    fn gold_candidate_old_json_without_edit_actor_deserializes() {
+        // 旧 fixture / 离线脚本 JSON（无 edit_actor、无 critic_revised 字段）
+        // 必须零迁移反序列化，默认 None / false。
+        let raw = json!({
+            "card_id": "legacy",
+            "current": {"front": "Q", "back": "A"},
+            "original": null,
+            "created_at_ms": 0,
+            "updated_at_ms": 0,
+            "deleted_at_ms": null,
+            "review_count": 0,
+            "again_count": 0,
+            "was_error_card": false,
+            "is_error_card": false
+        });
+        let c: GoldCandidate = serde_json::from_value(raw).expect("旧 JSON 必须兼容");
+        assert!(c.edit_actor.is_none());
+        assert!(!c.critic_revised);
+    }
+
+    // -------- _content_provenance 读写 helper --------
+
+    #[test]
+    fn content_provenance_round_trips_via_extras() {
+        let mut extras = HashMap::new();
+        insert_content_provenance(&mut extras, &ContentProvenance::user("update_library_card"));
+
+        let parsed = parse_content_provenance(&extras).expect("round trip");
+        assert_eq!(parsed.actor, PROVENANCE_ACTOR_USER);
+        assert_eq!(parsed.code.as_deref(), Some("update_library_card"));
+        assert!(parsed.at.is_some(), "写入戳必须带时间");
+        assert!(is_user_proven_edit(&extras));
+        assert!(!is_llm_critic_actor(&extras));
+    }
+
+    #[test]
+    fn content_provenance_is_last_writer_wins() {
+        // 与 _original_generation 的首写幂等相反：provenance 记录最后写入者
+        let mut extras = HashMap::new();
+        insert_content_provenance(&mut extras, &ContentProvenance::llm_critic_revision());
+        assert!(is_llm_critic_actor(&extras));
+
+        insert_content_provenance(&mut extras, &ContentProvenance::user(""));
+        let parsed = parse_content_provenance(&extras).expect("parse");
+        assert_eq!(parsed.actor, PROVENANCE_ACTOR_USER);
+        assert!(parsed.code.is_none(), "空串 code 必须省略");
+        assert!(is_user_proven_edit(&extras));
+        assert!(!is_llm_critic_actor(&extras));
+    }
+
+    #[test]
+    fn content_provenance_uses_camel_case_and_ignores_unknown_fields() {
+        // wire 契约：camelCase 序列化；未知字段（未来版本新增）必须被忽略
+        let raw = serde_json::to_string(&ContentProvenance {
+            actor: PROVENANCE_ACTOR_LLM_CRITIC.to_string(),
+            code: Some(CRITIC_REVISED_QA_CODE.to_string()),
+            at: Some("2026-08-24T00:00:00Z".to_string()),
+        })
+        .unwrap();
+        assert!(raw.contains("\"actor\":\"llm_critic\""));
+        assert!(raw.contains("\"code\":\"llm_critic_revised\""));
+        assert!(raw.contains("\"at\":"));
+
+        let mut extras = HashMap::new();
+        extras.insert(
+            CONTENT_PROVENANCE_FIELD.to_string(),
+            r#"{"actor":"user","code":"x","at":"2026-01-01T00:00:00Z","futureField":123}"#
+                .to_string(),
+        );
+        let parsed = parse_content_provenance(&extras).expect("未知字段必须被忽略");
+        assert_eq!(parsed.actor, PROVENANCE_ACTOR_USER);
+        assert!(is_user_proven_edit(&extras));
+    }
+
+    #[test]
+    fn content_provenance_malformed_values_are_fail_closed() {
+        // 非法 JSON / 非对象 / 缺 actor → None，且不算任何一方的证明
+        for bad in ["not-json", "42", r#"{"code":"x"}"#, r#"["user"]"#] {
+            let extras = HashMap::from([(CONTENT_PROVENANCE_FIELD.to_string(), bad.to_string())]);
+            assert!(parse_content_provenance(&extras).is_none(), "bad={}", bad);
+            assert!(!is_user_proven_edit(&extras));
+            assert!(!is_llm_critic_actor(&extras));
+        }
+        assert!(parse_content_provenance(&HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn provenance_detection_does_not_depend_on_qa_flags() {
+        // provenance 是第二道闸：_qa_flags 完全缺席时 llm_critic actor 仍可识别
+        let mut extras = HashMap::new();
+        insert_content_provenance(&mut extras, &ContentProvenance::llm_critic_revision());
+        assert!(!extras.contains_key(QA_FLAGS_FIELD));
+        assert!(is_llm_critic_actor(&extras));
+        assert!(
+            !has_critic_revision_marker(&extras),
+            "marker 与 provenance 是相互独立的两道闸"
+        );
     }
 
     #[test]
@@ -1154,6 +1443,7 @@ mod tests {
         kept.review_count = 3;
         let mut minor = base_candidate("m");
         minor.original = Some(snap("什么是惯性？？", "物体保持原有运动状态不变的性质"));
+        minor.edit_actor = Some(PROVENANCE_ACTOR_USER.to_string());
         let mut deleted = base_candidate("d");
         deleted.deleted_at_ms = Some(deleted.created_at_ms + 1000);
         let unlabeled = base_candidate("u"); // 零复习未编辑

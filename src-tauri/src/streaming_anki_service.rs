@@ -2003,8 +2003,9 @@ impl StreamingAnkiService {
             }
         }
 
-        // VlmFull 的 IMAGE_DESC 草稿只补机器字段和识别 tag，不改写模型生成的
-        // front/back/text，也不覆盖未来 grounding 路径可能直接产出的字段。
+        // VlmFull 的 IMAGE_DESC 草稿只补机器字段、识别 tag 与缺失的 text 草稿，
+        // 不改写模型生成的 front/back，也不覆盖模型/模板已产出的非空 text
+        // （未来 grounding 路径直接产出的字段同理不被覆盖）。
         if let Some(fields) = occlusion_fields {
             for (key, value) in &fields.extra_fields {
                 cleaned_extra_fields
@@ -2015,6 +2016,14 @@ impl StreamingAnkiService {
                 if !cleaned_tags.iter().any(|existing| existing == tag) {
                     cleaned_tags.push(tag.clone());
                 }
+            }
+            // 遮挡草稿 text（`<img src>` + cloze）仅在模型未产出非空 text 时
+            // 补入，使入库卡直接携带可复习的遮挡正文。
+            let has_model_text = cleaned_extra_fields
+                .get("text")
+                .is_some_and(|t| !t.trim().is_empty());
+            if !has_model_text && !fields.text.trim().is_empty() {
+                cleaned_extra_fields.insert("text".to_string(), fields.text.clone());
             }
         }
 
@@ -2066,6 +2075,18 @@ impl StreamingAnkiService {
             );
         }
 
+        // 遮挡卡把 `_occlusion.imageRef` 写入 images，供渲染/导出侧定位媒体。
+        // 该构造点此前恒为空列表；保持「已有 images 不追加覆盖」的合并语义，
+        // 未来上游若已填充 images 则原样保留。
+        let mut images: Vec<String> = Vec::new();
+        if images.is_empty() {
+            if let Some(image_ref) =
+                crate::anki_image_occlusion::occlusion_image_ref_from_fields(&cleaned_extra_fields)
+            {
+                images.push(image_ref);
+            }
+        }
+
         // 创建卡片
         let now = Utc::now().to_rfc3339();
         let card = AnkiCard {
@@ -2075,7 +2096,7 @@ impl StreamingAnkiService {
             back: cleaned_back,
             text: cleaned_extra_fields.get("text").cloned(), // 从清理后的extra_fields中提取text字段
             tags: cleaned_tags,
-            images: Vec::new(),
+            images,
             is_error_card: false,
             error_content: None,
             created_at: now.clone(),
@@ -5129,6 +5150,108 @@ mod tests {
             .tags
             .iter()
             .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG));
+        // Round 2：模型未产出 text 时，草稿 text（<img> + cloze）被消费入库
+        assert_eq!(
+            card.text.as_deref(),
+            Some(fields.text.as_str()),
+            "occlusion 草稿 text 应写入卡片"
+        );
+        assert!(
+            card.text
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("<img src=\"image-source-1\"><br>"),
+            "text 应含图片 <img src>: {:?}",
+            card.text
+        );
+        assert!(card.text.as_deref().unwrap_or("").contains("{{c1::"));
+        // Round 2：_occlusion.imageRef 被写入 images
+        assert_eq!(card.images, vec!["image-source-1".to_string()]);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn plain_card_without_occlusion_keeps_images_empty() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-plain-images-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "plain-images-task", &document_id, 0);
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是熵？","back":"系统混乱程度的度量"}"#,
+                "plain-images-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        assert!(
+            card.images.is_empty(),
+            "无 _occlusion 的普通卡 images 必须保持为空: {:?}",
+            card.images
+        );
+        assert!(!card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert_eq!(card.text, None, "普通卡不得凭空产生 text");
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn occlusion_draft_does_not_overwrite_model_written_text() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-occlusion-text-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "occlusion-text-task", &document_id, 0);
+        let mut options = minimal_options();
+        options.template_fields = Some(vec!["Text".to_string()]);
+        options.field_extraction_rules = Some(HashMap::from([(
+            "text".to_string(),
+            make_rule(true, FieldType::Text, "text"),
+        )]));
+        let marker = crate::anki_image_occlusion::build_occlusion_draft_marker(
+            "image-source-2",
+            "[IMAGE_DESC: 定子；转子]",
+            &crate::anki_image_occlusion::OcclusionConfig::default(),
+        )
+        .expect("marker");
+        let fields = crate::anki_image_occlusion::extract_occlusion_draft_fields(&marker)
+            .expect("occlusion fields");
+        assert!(fields.text.contains("<img src=\"image-source-2\">"));
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"text":"电动机把电能转化为 {{c1::机械能}}。"}"#,
+                "occlusion-text-task",
+                &document_id,
+                &options,
+                true,
+                Some(&fields),
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        // 模型已产出 text：不得被 occlusion 草稿 text 覆盖
+        assert_eq!(
+            card.text.as_deref(),
+            Some("电动机把电能转化为 {{c1::机械能}}。")
+        );
+        assert!(
+            !card.text.as_deref().unwrap_or("").contains("<img"),
+            "模型 text 不得被草稿 <img> 覆盖: {:?}",
+            card.text
+        );
+        // 机器字段照常合并，images 仍来自 _occlusion.imageRef
+        assert!(card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert_eq!(card.images, vec!["image-source-2".to_string()]);
         crate::anki_qa_lint::release_document_tracker(&document_id);
     }
 }
