@@ -167,3 +167,29 @@
 - consume 失败发生在 cutover pending 之后，无撤销路径（挂 R6）
 - 越权：`search_helpers.rs` / notes `parseTagQuery.test.ts` 为 P10 共享向量（只读对齐）；Dashboard/localize 为恢复码可见态
 - 未跑任何测试
+
+## 11. 第 4 轮落地（云端韧性）
+
+10×`claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 已落地
+
+- `get_bounded` + 三 provider 声明超限/累计超限/无长度 bounded buffer；三类回归源码未执行
+- `verified_publish.rs`：PUT tmp → bounded 回读 → 最终键 → 再回读；无条件写不假装 CAS
+- manifest 发布接线 + 坏对象 `.quarantine` + `.tmp` 收敛桥
+- tombstone 直接命令纳入 `BACKUP_GLOBAL_LIMITER` try_acquire（`E_DG_TOMBSTONE_LIMITER_BUSY`）
+- E2EE 认领改租约协议（`.encryption-marker.lease` TTL 60s）；空仓双口令不得双赢
+- `cloud_sync_download`：marker 在 + 非 DSBK → `E_SYNC_E2EE_DOWNGRADE_REJECTED`
+- 认领竞态 / 防降级测试源码未执行
+
+### 红线自证
+
+- coordinator 本轮零触碰；两加法 + schema_objects 仍在 `:2351/:2389/:2457`
+
+### R4 欠账
+
+- verified_publish 暂存键 `.tmp-<op>` 与 bad_object `.tmp` 后缀不完全统一（有桥）
+- tombstone 云对象读写仍在 `tombstone.rs`，bounded GET 未接到该文件
+- 防降级可能误伤「启用加密后仍列出的明文历史版本」——任务卡要求拒；R6 可加显式 opt-in
+- 控制对象调用方仍有部分走 `get()` 默认 256MiB
+- 未跑任何测试

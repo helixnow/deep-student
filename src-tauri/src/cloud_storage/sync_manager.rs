@@ -9,7 +9,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use uuid::Uuid;
 
+use super::bad_object::{converge_bad_object, BadObjectOutcome};
 use super::traits::{CloudStorage, Result};
+use super::verified_publish::{verified_publish, PublishRecovery, PublishSpec};
 use crate::models::AppError;
 
 /// 云端 Manifest 文件名
@@ -33,6 +35,25 @@ const ENCRYPTION_MARKER_FILE: &str = ".encryption-marker";
 /// [R06-e2ee-verifier] 携带密码校验子的加密标记版本。
 /// `<= 1` 的旧标记没有校验子，允许一次性升级；`>= 2` 却缺校验子按损坏处理（fail-closed）。
 const ENCRYPTION_MARKER_VERSION_WITH_VERIFIER: u32 = 2;
+
+/// [R4-publish-wire] manifest 单对象内存预算（读回 / 发布共用，接
+/// [`super::verified_publish`] 原语的 `max_bytes`）。
+///
+/// per-device manifest 上限 10_000 个版本（`validate_manifest`），每条几百字节，
+/// 正常体积远小于 4MiB；超过预算按损坏 / 敌意对象处理，fail-closed，
+/// 绝不把无界字节整体拉进内存再交给 JSON 解码。
+pub(crate) const MANIFEST_OBJECT_MAX_BYTES: u64 = 4 * 1024 * 1024;
+
+/// [R4-publish-wire] tombstone 控制对象（per-device 清单 / 不可变事件）的内存预算。
+///
+/// tombstone 清单是有界 JSON 列表、事件对象是单条记录，4MiB 同样冗余充足。
+/// tombstone 读写物理上在 `data_governance/sync/tombstone.rs`（本轮文件红线之外）：
+/// 其 `put_tombstone_manifest_and_reread`（写侧）与 `download_*_tombstones` /
+/// `decode_tombstone_file` 前的 `storage.get`（读侧）应接线到
+/// [`super::verified_publish::verified_publish`] / [`bounded_get_object`]
+/// 并使用本预算。
+#[allow(dead_code)] // tombstone.rs 侧的接线在本文件红线之外，预算先就位。
+pub(crate) const TOMBSTONE_OBJECT_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 pub(crate) fn normalize_device_id(device_id: &str) -> String {
     let trimmed = device_id.trim();
@@ -63,6 +84,43 @@ pub fn device_id_short_hash(device_id: &str) -> String {
         .chars()
         .take(DEVICE_ID_SHORT_HASH_LEN)
         .collect()
+}
+
+/// [R4-publish-wire] bounded GET：控制对象（manifest / tombstone 清单 / 事件）的
+/// 内存级读取闸——[`super::verified_publish`] 原语内部有界回读的读侧对应物
+///（该模块未导出独立的 bounded GET，故读侧原语放在这里，pub(crate) 供
+/// tombstone 等其它控制对象读路径接线）。
+///
+/// `get()` 是整体缓冲语义，预算分两道拦：读前按 `stat` 声明大小拒绝超预算对象
+///（不把无界字节拉进内存），读后按实收字节再核一次（对象可能在 stat 与 get
+/// 之间被并发替换，或后端无 stat 能力）。两道任一超限都 fail-closed 并带
+/// key / 字节数供审计。传输层错误原样冒泡，不与预算违规混淆。
+pub(crate) async fn bounded_get_object(
+    storage: &dyn CloudStorage,
+    key: &str,
+    max_bytes: u64,
+    object_kind: &str,
+) -> Result<Option<Vec<u8>>> {
+    if let Some(info) = storage.stat(key).await? {
+        if info.size > max_bytes {
+            return Err(AppError::validation(format!(
+                "{object_kind} 对象 {key} 声明 {} 字节，超过 {max_bytes} 字节预算，已拒绝读取（fail-closed）",
+                info.size
+            )));
+        }
+    }
+    match storage.get(key).await? {
+        Some(data) => {
+            if data.len() as u64 > max_bytes {
+                return Err(AppError::validation(format!(
+                    "{object_kind} 对象 {key} 实收 {} 字节，超过 {max_bytes} 字节预算，已拒绝读取（fail-closed）",
+                    data.len()
+                )));
+            }
+            Ok(Some(data))
+        }
+        None => Ok(None),
+    }
 }
 
 /// [R12-neutral-names] 新备份版本 ID：纯随机，不编码时间或设备。
@@ -254,6 +312,14 @@ pub struct CloudSyncManager {
     /// [R10-verifier] 本机「该云端目录曾经加密」记忆（第二道明文上传门禁）。
     /// `None` = 本机数据目录不可用（如未初始化的测试环境），退化为仅云端标记判定。
     encryption_memory: Option<crate::crypto::backup_crypto::EncryptedRootMemory>,
+    /// [R4-e2ee-cas] 加密标记认领租约 TTL（生产用默认 60s；短 TTL 供协议测试）。
+    e2ee_claim_lease_ttl: std::time::Duration,
+    /// [R4-e2ee-cas] 上传前策略检查确认过的 `.encryption-marker` 原始字节。
+    /// 发布 manifest 前复验云端标记仍逐字节一致（[`Self::ensure_marker_unchanged_before_publish`]），
+    /// 拦截「认领竞态双方都短暂报成功」后的双发布与上传期间的标记篡改。
+    /// `None` = 本实例尚未做过带标记的策略检查（明文路径 / 直调 upload 的旧
+    /// 路径），复验跳过，保持现行为不收紧。
+    publish_marker_expectation: std::sync::Mutex<Option<Vec<u8>>>,
 }
 
 /// [R10-verifier] 默认记忆文件：`<app_data_dir>/.cloud-encrypted-roots.json`
@@ -274,7 +340,15 @@ impl CloudSyncManager {
             device_id: normalize_device_id(&device_id),
             max_versions: DEFAULT_MAX_VERSIONS,
             encryption_memory: default_encryption_root_memory(),
+            e2ee_claim_lease_ttl: super::e2ee_claim::DEFAULT_E2EE_CLAIM_LEASE_TTL,
+            publish_marker_expectation: std::sync::Mutex::new(None),
         }
+    }
+
+    /// [R4-e2ee-cas] 覆盖认领租约 TTL（测试钩子；生产走 [`Self::new`] 默认值）。
+    pub fn with_e2ee_claim_lease_ttl(mut self, ttl: std::time::Duration) -> Self {
+        self.e2ee_claim_lease_ttl = ttl;
+        self
     }
 
     /// 设置最大保留版本数
@@ -430,16 +504,195 @@ impl CloudSyncManager {
         }
     }
 
+    fn decode_manifest(key: &str, data: &[u8]) -> Result<CloudManifest> {
+        let manifest: CloudManifest = serde_json::from_slice(data)
+            .map_err(|e| AppError::internal(format!("manifest {key} 损坏: {e}")))?;
+        Self::validate_manifest(key, &manifest)?;
+        Ok(manifest)
+    }
+
+    /// 读取单个 manifest 对象（bounded GET）；正式对象损坏时走恢复协议。
+    ///
+    /// [R4-publish-wire][P5-①] [`verified_publish`]（KeepTmp）在「发布后回读失败」
+    /// 时保留已校验的暂存对象（`{key}.tmp-<op>`，历史写法为 `{key}.<uuid>.tmp`）；
+    /// 这里是对应的读侧恢复协议：正式对象字节可取但解码 / 校验失败时，改用
+    /// 恢复点收敛或返回（见 [`Self::recover_manifest_from_tmp`]），绝不静默用
+    /// 坏正式对象成功。传输层错误与超预算对象不触发恢复，原样冒泡（前者说明
+    /// 我们并不知道对象坏没坏，后者按敌意对象 fail-closed）。
     async fn read_manifest_key(&self, key: &str) -> Result<Option<CloudManifest>> {
-        match self.storage.get(key).await? {
-            Some(data) => {
-                let manifest: CloudManifest = serde_json::from_slice(&data)
-                    .map_err(|e| AppError::internal(format!("manifest {key} 损坏: {e}")))?;
-                Self::validate_manifest(key, &manifest)?;
-                Ok(Some(manifest))
-            }
-            None => Ok(None),
+        let data = match bounded_get_object(
+            self.storage.as_ref(),
+            key,
+            MANIFEST_OBJECT_MAX_BYTES,
+            "manifest",
+        )
+        .await?
+        {
+            Some(data) => data,
+            None => return Ok(None),
+        };
+        match Self::decode_manifest(key, &data) {
+            Ok(manifest) => Ok(Some(manifest)),
+            Err(corrupt_error) => self
+                .recover_manifest_from_tmp(key, corrupt_error)
+                .await
+                .map(Some),
         }
+    }
+
+    /// [R4-publish-wire][P5-①] 坏正式 manifest 的恢复协议：接
+    /// [`super::bad_object::converge_bad_object`] 原语。
+    ///
+    /// - 正式对象坏 + 存在**当场重新通过完整解码/校验**的 `{key}.<uuid>.tmp`
+    ///   → 原语把坏字节隔离到 `.quarantine/`（附原因记录，可审计），再用
+    ///   `.tmp` 内容收敛正式对象；随后本方法有界重读正式对象返回（自动收敛）。
+    /// - 原语没找到 `.tmp` 后缀候选时，桥接 [`super::verified_publish`] 原语的
+    ///   暂存键命名 `{key}.tmp-<op>`（两个原语的临时键命名不一致，读侧在此
+    ///   兜住，见 [`Self::recover_from_publish_tmp_residue`]）。
+    /// - 两条路都无可用恢复点 → 维持 fail-closed 错误（坏字节已隔离，可审计），
+    ///   绝不静默用坏正式对象成功。
+    async fn recover_manifest_from_tmp(
+        &self,
+        key: &str,
+        corrupt_error: AppError,
+    ) -> Result<CloudManifest> {
+        let validate = |bytes: &[u8]| -> std::result::Result<(), String> {
+            Self::decode_manifest(key, bytes)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        };
+        match converge_bad_object(self.storage.as_ref(), &self.device_id, key, &validate).await {
+            Ok(BadObjectOutcome::RecoveredFromTmp {
+                tmp_key,
+                quarantine,
+                ..
+            }) => {
+                tracing::warn!(
+                    "manifest {} 正式对象损坏（{}），已用已校验恢复点 {} 自动收敛（坏字节隔离记录: {:?}）",
+                    key,
+                    corrupt_error,
+                    tmp_key,
+                    quarantine.as_ref().map(|record| record.quarantined_key.clone())
+                );
+                self.reread_converged_manifest(key, corrupt_error).await
+            }
+            Ok(BadObjectOutcome::AlreadyHealthy) => {
+                // 我们读到坏字节后、收敛前，正式对象已被并发修复：重读一次。
+                self.reread_converged_manifest(key, corrupt_error).await
+            }
+            Ok(BadObjectOutcome::Absent) => {
+                // 正式对象在读取与收敛之间消失且无恢复点：按原损坏错误 fail-closed，
+                // 不把"读到过坏字节"洗成"对象不存在"。
+                Err(corrupt_error)
+            }
+            Err(converge_error) => match self.recover_from_publish_tmp_residue(key).await {
+                Some(manifest) => Ok(manifest),
+                None => Err(converge_error),
+            },
+        }
+    }
+
+    /// 收敛后有界重读正式对象；重读仍失败则维持原损坏错误 fail-closed。
+    async fn reread_converged_manifest(
+        &self,
+        key: &str,
+        corrupt_error: AppError,
+    ) -> Result<CloudManifest> {
+        let data = match bounded_get_object(
+            self.storage.as_ref(),
+            key,
+            MANIFEST_OBJECT_MAX_BYTES,
+            "manifest",
+        )
+        .await
+        {
+            Ok(Some(data)) => data,
+            Ok(None) | Err(_) => return Err(corrupt_error),
+        };
+        Self::decode_manifest(key, &data).map_err(|_| corrupt_error)
+    }
+
+    /// [R4-publish-wire] 命名桥：[`super::verified_publish`] 原语的暂存键是
+    /// `{key}.tmp-<op>`（不以 `.tmp` 结尾），[`converge_bad_object`] 只认
+    /// `{key}.<uuid>.tmp` 后缀候选，两者对不上。发布失败留下的 `.tmp-*`
+    /// 恢复点由本方法兜住：有界读取 + 当场完整解码/校验，最新可信者胜出，
+    /// 并尽力把恢复内容经 verified publish 收敛回正式 key（收敛失败只警告，
+    /// 本次读取仍返回已校验的恢复内容）。全部候选不可用时返回 `None`，
+    /// 由调用方维持 fail-closed 错误。
+    async fn recover_from_publish_tmp_residue(&self, key: &str) -> Option<CloudManifest> {
+        let candidates = match self.storage.list(&format!("{key}.tmp-")).await {
+            Ok(files) => files,
+            Err(error) => {
+                tracing::warn!(
+                    "枚举 manifest {} 的 .tmp-* 发布残留失败（维持 fail-closed）: {}",
+                    key,
+                    error
+                );
+                return None;
+            }
+        };
+        for candidate in candidates {
+            let data = match bounded_get_object(
+                self.storage.as_ref(),
+                &candidate.key,
+                MANIFEST_OBJECT_MAX_BYTES,
+                "manifest",
+            )
+            .await
+            {
+                Ok(Some(data)) => data,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        "读取 manifest 恢复点 {} 失败，尝试下一个候选: {}",
+                        candidate.key,
+                        error
+                    );
+                    continue;
+                }
+            };
+            let recovered = match Self::decode_manifest(&candidate.key, &data) {
+                Ok(manifest) => manifest,
+                Err(error) => {
+                    tracing::warn!(
+                        "manifest 恢复点 {} 未通过校验，跳过并保留（供审计）: {}",
+                        candidate.key,
+                        error
+                    );
+                    continue;
+                }
+            };
+            tracing::warn!(
+                "manifest {} 正式对象损坏，已改用 verified-publish 残留恢复点 {}（自动收敛中）",
+                key,
+                candidate.key
+            );
+            let spec = PublishSpec::unconditional(
+                key,
+                MANIFEST_OBJECT_MAX_BYTES,
+                PublishRecovery::KeepTmp,
+            );
+            match verified_publish(self.storage.as_ref(), &spec, &data).await {
+                Ok(()) => {
+                    if let Err(error) = self.storage.delete(&candidate.key).await {
+                        tracing::warn!(
+                            "自动收敛成功后清理已消费恢复点 {} 失败（无害孤儿）: {}",
+                            candidate.key,
+                            error
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "manifest {} 自动收敛失败（本次读取仍用已校验恢复内容）: {}",
+                        key,
+                        error
+                    );
+                }
+            }
+            return Some(recovered);
+        }
+        None
     }
 
     /// 读取云端 Manifest（合并 per-device manifest，兼容旧 manifest.json）
@@ -535,39 +788,55 @@ impl CloudSyncManager {
         Ok(())
     }
 
+    /// [R4-publish-wire] manifest 发布统一走 [`super::verified_publish`] 原语
+    ///（预算 [`MANIFEST_OBJECT_MAX_BYTES`]）：PUT 暂存键 `{key}.tmp-<op>` →
+    /// 有界回读逐字节比对 → PUT 正式键 → 再有界回读。
+    ///
+    /// 恢复策略取 [`PublishRecovery::KeepTmp`]：发布后回读失败**保留已校验的
+    /// 暂存对象**作恢复点、坏正式对象留在原位——这样读侧
+    /// [`Self::read_manifest_key`] 的恢复协议能发现坏对象并收敛，而不是让
+    /// 正式键悄悄变缺失（IsolateBad 会把坏对象移走，读侧只会看到 None，
+    /// 版本列表静默变空，不可取）。
     async fn save_manifest_at_key(&self, key: &str, manifest: &CloudManifest) -> Result<()> {
         Self::validate_manifest(key, manifest)?;
         let data = serde_json::to_vec_pretty(manifest)
             .map_err(|e| AppError::internal(format!("序列化 manifest 失败: {e}")))?;
+        let spec =
+            PublishSpec::unconditional(key, MANIFEST_OBJECT_MAX_BYTES, PublishRecovery::KeepTmp);
+        verified_publish(self.storage.as_ref(), &spec, &data).await
+    }
 
-        let temp_key = format!("{key}.{}.tmp", Uuid::new_v4());
-
-        self.storage.put(&temp_key, &data).await?;
-
-        let verify = self.storage.get(&temp_key).await?;
-        match verify {
-            Some(ref read_back) if read_back == &data => {}
-            _ => {
-                let _ = self.storage.delete(&temp_key).await;
-                return Err(AppError::internal(
-                    "manifest 临时文件验证失败：写入内容与读回不一致".to_string(),
-                ));
-            }
-        }
-
-        self.storage.put(key, &data).await?;
-        match self.storage.get(key).await? {
-            Some(ref read_back) if read_back == &data => {}
-            _ => {
-                return Err(AppError::internal(
-                    "manifest 发布后回读校验失败，已停止并不得报成功（已保留已校验临时对象）"
-                        .to_string(),
-                ));
-            }
-        }
-        let _ = self.storage.delete(&temp_key).await;
-
-        Ok(())
+    /// [R4-bad-write] 坏写收敛恢复入口（本设备 manifest）。
+    ///
+    /// 消费 [`Self::save_manifest_at_key`] 发布失败留下的残局
+    /// （`manifests/<short-hash>.json` 损坏 / 缺失，但存在已校验的
+    /// `{key}.<uuid>.tmp`）：
+    /// - 坏正式对象先隔离到 `.quarantine/` 并写原因记录（可审计）；
+    /// - 存在能**当场重新通过校验**的 `.tmp` → 用其内容收敛正式对象；
+    /// - 只有坏正式对象、无可用 `.tmp` → fail-closed 返回错误
+    ///   （稳定码 [`super::bad_object::BAD_OBJECT_FAIL_CLOSED_CODE`]）。
+    ///
+    /// 只处理本设备 manifest 元数据对象；`backups/` 用户备份数据对象不在
+    /// 本入口范围内，隔离逻辑本身也绝不自动删除用户备份数据（见
+    /// [`super::bad_object`] 模块文档）。当前零生产接线：由下一轮编排
+    /// （coordinator / 云端巡检）在读 manifest 失败后显式调用。
+    pub async fn recover_device_manifest_bad_write(
+        &self,
+    ) -> Result<super::bad_object::BadObjectOutcome> {
+        let key = self.device_manifest_key();
+        let validate_key = key.clone();
+        let validate = move |bytes: &[u8]| -> std::result::Result<(), String> {
+            let manifest: CloudManifest = serde_json::from_slice(bytes)
+                .map_err(|error| format!("manifest JSON 解析失败: {error}"))?;
+            Self::validate_manifest(&validate_key, &manifest).map_err(|error| error.to_string())
+        };
+        super::bad_object::converge_bad_object(
+            self.storage.as_ref(),
+            &self.device_id,
+            &key,
+            &validate,
+        )
+        .await
     }
 
     /// 获取同步状态
@@ -623,22 +892,43 @@ impl CloudSyncManager {
         Ok(manifest.versions)
     }
 
-    /// 读取云端加密标记的三态结果（内部）。
-    async fn read_encryption_marker_state(&self) -> Result<EncryptionMarkerState> {
+    /// 读取云端加密标记的三态结果与原始字节（内部）。
+    ///
+    /// [R4-e2ee-cas] 有界读：先 `stat` 核大小，超过认领对象上限的标记不下载、
+    /// 按损坏处理（fail-closed）。原始字节供认领协议与发布前复验做逐字节比对。
+    async fn read_encryption_marker_state_with_raw(
+        &self,
+    ) -> Result<(EncryptionMarkerState, Option<Vec<u8>>)> {
+        if let Some(info) = self.storage.stat(ENCRYPTION_MARKER_FILE).await? {
+            if info.size > super::e2ee_claim::MAX_E2EE_CLAIM_OBJECT_BYTES {
+                tracing::warn!(
+                    "云端加密标记 {} 为 {} 字节，超过 {} 字节上限，拒绝下载并按损坏处理",
+                    ENCRYPTION_MARKER_FILE,
+                    info.size,
+                    super::e2ee_claim::MAX_E2EE_CLAIM_OBJECT_BYTES
+                );
+                return Ok((EncryptionMarkerState::Corrupted, None));
+            }
+        }
         match self.storage.get(ENCRYPTION_MARKER_FILE).await? {
             Some(data) => match serde_json::from_slice::<EncryptionMarker>(&data) {
-                Ok(marker) => Ok(EncryptionMarkerState::Present(marker)),
+                Ok(marker) => Ok((EncryptionMarkerState::Present(marker), Some(data))),
                 Err(error) => {
                     tracing::warn!(
                         "云端加密标记 {} 内容无法解析，按存在处理: {}",
                         ENCRYPTION_MARKER_FILE,
                         error
                     );
-                    Ok(EncryptionMarkerState::Corrupted)
+                    Ok((EncryptionMarkerState::Corrupted, Some(data)))
                 }
             },
-            None => Ok(EncryptionMarkerState::Absent),
+            None => Ok((EncryptionMarkerState::Absent, None)),
         }
+    }
+
+    /// 读取云端加密标记的三态结果（内部）。
+    async fn read_encryption_marker_state(&self) -> Result<EncryptionMarkerState> {
+        Ok(self.read_encryption_marker_state_with_raw().await?.0)
     }
 
     /// 读取云端加密标记。
@@ -658,21 +948,84 @@ impl CloudSyncManager {
         })
     }
 
-    /// 序列化并覆盖写入云端加密标记。`put` 成功不等于对象完整落地；
-    /// 短写会把错误校验子当已登记，或让下一台设备把同一 root 当成未加密。
-    async fn write_encryption_marker(&self, marker: &EncryptionMarker) -> Result<()> {
-        let data = serde_json::to_vec_pretty(marker)
-            .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))?;
-        self.storage.put(ENCRYPTION_MARKER_FILE, &data).await?;
-        match self.storage.get(ENCRYPTION_MARKER_FILE).await? {
-            Some(ref read_back) if read_back == &data => Ok(()),
-            Some(_) => Err(AppError::internal(
-                "加密标记上传后回读不一致，已停止并不得报成功".to_string(),
-            )),
-            None => Err(AppError::internal(
-                "加密标记上传后对象不存在，已停止并不得报成功".to_string(),
-            )),
+    /// [R4-e2ee-cas] 记录上传前策略检查确认过的标记原始字节（发布前复验依据）。
+    fn record_publish_marker_expectation(&self, raw: Vec<u8>) {
+        if let Ok(mut slot) = self.publish_marker_expectation.lock() {
+            *slot = Some(raw);
         }
+    }
+
+    /// [R4-e2ee-cas] 发布备份版本前复验云端加密标记与上传前策略检查时逐字节一致。
+    ///
+    /// 认领协议保证「至多一方认领成功」，但成功只覆盖到上传开始前；大对象
+    /// 上传期间标记仍可能被并发升级 / 篡改。策略检查未记录期望（明文上传或
+    /// 直调 upload 的旧路径）时不做复验，保持现行为不收紧。
+    async fn ensure_marker_unchanged_before_publish(&self) -> Result<()> {
+        let expected = match self.publish_marker_expectation.lock() {
+            Ok(slot) => slot.clone(),
+            Err(_) => None,
+        };
+        let Some(expected) = expected else {
+            return Ok(());
+        };
+        let (_, current) = self.read_encryption_marker_state_with_raw().await?;
+        if current.as_deref() == Some(expected.as_slice()) {
+            return Ok(());
+        }
+        Err(AppError::conflict(super::sync_e2ee_error(
+            super::e2ee_claim::SYNC_E2EE_CLAIM_CONFLICT_CODE,
+            "发布备份前复验发现云端加密标记已与上传前校验时不一致（认领竞态或标记被并发\
+             改动），已回滚本次上传、未发布任何版本。请重试上传以重新校验加密密码。",
+        )))
+    }
+
+    /// [R4-e2ee-cas] 经认领协议登记 / 升级带密码校验子的 v2 标记。
+    ///
+    /// 校验子按认领协议**自己的 marker 快照**构造：v1 升级保留快照里的首次
+    /// 写入者与时间（而不是调用方更早一次读取的值），消除快照与写入之间的
+    /// TOCTOU。成功后记录已发布字节，供发布前复验。
+    async fn claim_marker_with_password(
+        &self,
+        password: &str,
+        expectation: super::e2ee_claim::ClaimExpectation,
+    ) -> Result<EncryptionMarker> {
+        let device = device_id_short_hash(&self.device_id);
+        let device_for_build = device.clone();
+        let password = password.to_string();
+        let build = move |snapshot: Option<EncryptionMarker>| -> Result<Vec<u8>> {
+            let verifier = crate::crypto::backup_crypto::create_password_verifier(&password)
+                .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
+            let marker = match snapshot {
+                // v1 升级：保留首次写入者与时间。
+                Some(legacy) => EncryptionMarker {
+                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+                    created_by_device: legacy.created_by_device,
+                    created_at: legacy.created_at,
+                    key_verifier: Some(verifier),
+                },
+                None => EncryptionMarker {
+                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
+                    created_by_device: device_for_build.clone(),
+                    created_at: Utc::now(),
+                    key_verifier: Some(verifier),
+                },
+            };
+            serde_json::to_vec_pretty(&marker)
+                .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))
+        };
+        let published = super::e2ee_claim::claim_encryption_marker(
+            &*self.storage,
+            ENCRYPTION_MARKER_FILE,
+            &device,
+            self.e2ee_claim_lease_ttl,
+            expectation,
+            build,
+        )
+        .await?;
+        let marker: EncryptionMarker = serde_json::from_slice(&published)
+            .map_err(|e| AppError::internal(format!("解析已发布的加密标记失败: {e}")))?;
+        self.record_publish_marker_expectation(published);
+        Ok(marker)
     }
 
     /// 幂等写入云端加密标记：已存在则保持原样（保留首次写入者与时间）。
@@ -681,17 +1034,57 @@ impl CloudSyncManager {
     /// 新建的标记不含密码校验子；ZIP 上传路径改走
     /// [`Self::verify_encryption_password_before_upload`]，无标记时会直接登记
     /// 带校验子的标记，旧标记则被一次性升级。
+    ///
+    /// [R4-e2ee-cas] 首次登记不再盲 PUT：经 `.encryption-marker.lease` 认领
+    /// 协议写入，并发的另一台设备要么看见租约、要么看见已发布的标记而失败，
+    /// 不会用无校验子的 v1 覆盖别人刚认领的 v2。
     pub async fn persist_encryption_marker(&self) -> Result<EncryptionMarker> {
-        if let Some(existing) = self.read_encryption_marker().await? {
-            return Ok(existing);
+        let (state, raw) = self.read_encryption_marker_state_with_raw().await?;
+        match state {
+            EncryptionMarkerState::Present(existing) => {
+                if let Some(raw) = raw {
+                    self.record_publish_marker_expectation(raw);
+                }
+                return Ok(existing);
+            }
+            // 损坏按存在处理（fail-closed），保持既有语义：不覆盖、不掩盖。
+            EncryptionMarkerState::Corrupted => {
+                if let Some(raw) = raw {
+                    self.record_publish_marker_expectation(raw);
+                }
+                return Ok(EncryptionMarker {
+                    version: 0,
+                    created_by_device: "unknown".to_string(),
+                    created_at: Utc::now(),
+                    key_verifier: None,
+                });
+            }
+            EncryptionMarkerState::Absent => {}
         }
-        let marker = EncryptionMarker {
-            version: 1,
-            created_by_device: device_id_short_hash(&self.device_id),
-            created_at: Utc::now(),
-            key_verifier: None,
+        let device = device_id_short_hash(&self.device_id);
+        let device_for_build = device.clone();
+        let build = move |_snapshot: Option<EncryptionMarker>| -> Result<Vec<u8>> {
+            let marker = EncryptionMarker {
+                version: 1,
+                created_by_device: device_for_build.clone(),
+                created_at: Utc::now(),
+                key_verifier: None,
+            };
+            serde_json::to_vec_pretty(&marker)
+                .map_err(|e| AppError::internal(format!("序列化加密标记失败: {e}")))
         };
-        self.write_encryption_marker(&marker).await?;
+        let published = super::e2ee_claim::claim_encryption_marker(
+            &*self.storage,
+            ENCRYPTION_MARKER_FILE,
+            &device,
+            self.e2ee_claim_lease_ttl,
+            super::e2ee_claim::ClaimExpectation::Absent,
+            build,
+        )
+        .await?;
+        let marker: EncryptionMarker = serde_json::from_slice(&published)
+            .map_err(|e| AppError::internal(format!("解析已发布的加密标记失败: {e}")))?;
+        self.record_publish_marker_expectation(published);
         Ok(marker)
     }
 
@@ -710,7 +1103,8 @@ impl CloudSyncManager {
         &self,
         password: &str,
     ) -> Result<EncryptionMarker> {
-        let marker = match self.read_encryption_marker_state().await? {
+        let (state, raw) = self.read_encryption_marker_state_with_raw().await?;
+        let marker = match state {
             EncryptionMarkerState::Absent => {
                 // v0.9.44 already supported DSBK cloud backups but did not write
                 // `.encryption-marker`. Do not let the first upgraded client pin an
@@ -718,18 +1112,19 @@ impl CloudSyncManager {
                 // latest legacy backup is encrypted, prove the password first.
                 // Plain ZIP backups are a legitimate pre-E2EE state and may start a
                 // new encrypted chain with the user-selected password.
+                //
+                // [R4-e2ee-cas] 试解（整包下载 + 全量解密，可能长于租约 TTL）
+                // 在取租约之前完成；随后的首次认领不再盲 PUT——认领协议保证
+                // 并发的另一台设备要么看见我们的租约、要么看见已发布的标记
+                // 而失败，空仓「prove 直接放行」的路径同样先过认领协议。
                 self.prove_password_against_existing_backups(password, true)
                     .await?;
-                let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
-                    .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
-                let marker = EncryptionMarker {
-                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
-                    created_by_device: device_id_short_hash(&self.device_id),
-                    created_at: Utc::now(),
-                    key_verifier: Some(verifier),
-                };
-                self.write_encryption_marker(&marker).await?;
-                return Ok(marker);
+                return self
+                    .claim_marker_with_password(
+                        password,
+                        super::e2ee_claim::ClaimExpectation::Absent,
+                    )
+                    .await;
             }
             EncryptionMarkerState::Corrupted => {
                 return Err(AppError::configuration(super::sync_e2ee_error(
@@ -744,7 +1139,13 @@ impl CloudSyncManager {
         match &marker.key_verifier {
             Some(verifier) => {
                 match crate::crypto::backup_crypto::check_password_verifier(password, verifier) {
-                    Ok(true) => Ok(marker),
+                    Ok(true) => {
+                        // [R4-e2ee-cas] 记录校验时的标记字节，发布前复验未变。
+                        if let Some(raw) = raw {
+                            self.record_publish_marker_expectation(raw);
+                        }
+                        Ok(marker)
+                    }
                     Ok(false) => Err(AppError::configuration(super::sync_e2ee_error(
                         super::SYNC_E2EE_WRONG_PASSWORD_CODE,
                         "加密密码与该云端目录既有加密备份使用的密码不一致，已在上传前中止，\
@@ -765,23 +1166,22 @@ impl CloudSyncManager {
             // 设备的校验基准；试解不通过则保持 v1 标记原样。空仓（只有标记、
             // 没有任何备份）保持旧行为——第一台带密码上传的设备认领该 root。
             // 升级后配错密码的设备即可在上传前被拦截。
+            //
+            // [R4-e2ee-cas] 升级写入不再盲 PUT：经认领协议执行，协议内部会
+            // 重读并逐字节比对 v1 快照（试解期间标记被并发升级 / 改动即失败），
+            // 首次写入者与时间以协议自己的快照为准。
             None if marker.version <= 1 => {
                 self.prove_password_against_existing_backups(password, false)
                     .await?;
-                let verifier = crate::crypto::backup_crypto::create_password_verifier(password)
-                    .map_err(|e| AppError::internal(format!("生成加密标记校验子失败: {e}")))?;
-                let upgraded = EncryptionMarker {
-                    version: ENCRYPTION_MARKER_VERSION_WITH_VERIFIER,
-                    created_by_device: marker.created_by_device,
-                    created_at: marker.created_at,
-                    key_verifier: Some(verifier),
-                };
                 tracing::warn!(
-                    "云端加密标记为旧版（无密码校验子），已用本机加密密码一次性升级到 v{}",
+                    "云端加密标记为旧版（无密码校验子），将经认领协议一次性升级到 v{}",
                     ENCRYPTION_MARKER_VERSION_WITH_VERIFIER
                 );
-                self.write_encryption_marker(&upgraded).await?;
-                Ok(upgraded)
+                self.claim_marker_with_password(
+                    password,
+                    super::e2ee_claim::ClaimExpectation::LegacyV1,
+                )
+                .await
             }
             // version >= 2 却缺校验子：不是合法旧标记，视为被篡改/损坏，fail-closed。
             None => Err(AppError::configuration(super::sync_e2ee_error(
@@ -1100,6 +1500,19 @@ impl CloudSyncManager {
         // 先发布不再引用旧对象的 manifest，再做对象 GC。反过来执行会在 manifest
         // 发布失败或进程崩溃时留下“可见但已不可下载”的恢复点。
         let pruned = self.prune_versions(&mut manifest);
+        // [R4-e2ee-cas] 发布前复验加密标记与上传前策略检查时一致：认领竞态 /
+        // 上传期间标记被并发改动的一方在此被拦下。新对象尚未被任何 manifest
+        // 引用，直接回滚，不留可见的错链恢复点。
+        if let Err(error) = self.ensure_marker_unchanged_before_publish().await {
+            if let Err(cleanup_error) = self.storage.delete(&remote_key).await {
+                tracing::warn!(
+                    "加密标记复验失败后清理未引用对象 {} 失败: {}",
+                    remote_key,
+                    cleanup_error
+                );
+            }
+            return Err(error);
+        }
         if let Err(error) = self.save_manifest(&manifest).await {
             // 新对象尚未被任何已发布 manifest 引用，尽力回滚，避免长期孤儿。
             if let Err(cleanup_error) = self.storage.delete(&remote_key).await {
@@ -2053,6 +2466,343 @@ mod tests {
         );
     }
 
+    fn marker_lease_key() -> String {
+        format!(
+            "{ENCRYPTION_MARKER_FILE}{}",
+            crate::cloud_storage::e2ee_claim::ENCRYPTION_MARKER_LEASE_SUFFIX
+        )
+    }
+
+    fn lease_bytes(device: &str, expires_in_secs: i64) -> Vec<u8> {
+        let now = Utc::now();
+        serde_json::to_vec_pretty(&crate::cloud_storage::e2ee_claim::EncryptionClaimLease {
+            format_version: crate::cloud_storage::e2ee_claim::E2EE_CLAIM_LEASE_FORMAT_VERSION,
+            device_id: device.to_string(),
+            nonce: Uuid::new_v4().to_string(),
+            created_at: now.to_rfc3339(),
+            expires_at: (now + chrono::Duration::seconds(expires_in_secs)).to_rfc3339(),
+        })
+        .unwrap()
+    }
+
+    /// [R4-e2ee-cas] 要求 2（确定性半场）：空仓首次认领时，后到者必须看见
+    /// 他人的活跃租约而失败，不得写入任何标记 / 备份对象。
+    #[tokio::test]
+    async fn first_claim_blocked_by_foreign_live_lease() {
+        let storage = Arc::new(MemoryStorage::default());
+        storage.files.lock().unwrap().insert(
+            marker_lease_key(),
+            (lease_bytes("device-other", 60), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-b");
+        let error = manager
+            .verify_encryption_password_before_upload("pw-b")
+            .await
+            .expect_err("他人租约在持时首次认领必须失败");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::e2ee_claim::SYNC_E2EE_CLAIM_CONFLICT_CODE),
+            "认领冲突必须带稳定 code: {error}"
+        );
+        let files = storage.files.lock().unwrap();
+        assert!(
+            !files.contains_key(ENCRYPTION_MARKER_FILE),
+            "被租约挡下的一方不得写入标记"
+        );
+        assert!(
+            !files.keys().any(|key| key.starts_with(BACKUPS_DIR)),
+            "被租约挡下的一方不得写入任何备份对象"
+        );
+    }
+
+    /// [R4-e2ee-cas] 崩溃残留的过期租约必须可回收，认领继续（不会永久锁死）。
+    #[tokio::test]
+    async fn expired_foreign_lease_reclaimed_then_claim_succeeds() {
+        let storage = Arc::new(MemoryStorage::default());
+        storage.files.lock().unwrap().insert(
+            marker_lease_key(),
+            (lease_bytes("device-crashed", -5), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-b");
+        let marker = manager
+            .verify_encryption_password_before_upload("pw-b")
+            .await
+            .expect("过期租约必须可回收，认领继续");
+        assert_eq!(marker.version, ENCRYPTION_MARKER_VERSION_WITH_VERIFIER);
+        let files = storage.files.lock().unwrap();
+        assert!(files.contains_key(ENCRYPTION_MARKER_FILE));
+        assert!(
+            !files.contains_key(&marker_lease_key()),
+            "认领成功后租约必须被清理"
+        );
+    }
+
+    /// [R4-e2ee-cas] 要求 3 的旁证：空仓 v1 升级（prove 直接放行的路径）同样
+    /// 先过认领协议——他人租约在持时升级失败，v1 标记逐字节保持原样。
+    #[tokio::test]
+    async fn v1_upgrade_blocked_by_foreign_live_lease() {
+        let storage = Arc::new(MemoryStorage::default());
+        let legacy_writer = manager_on(&storage, "device-legacy");
+        legacy_writer.persist_encryption_marker().await.unwrap();
+        let v1_bytes = storage
+            .files
+            .lock()
+            .unwrap()
+            .get(ENCRYPTION_MARKER_FILE)
+            .unwrap()
+            .0
+            .clone();
+
+        storage.files.lock().unwrap().insert(
+            marker_lease_key(),
+            (lease_bytes("device-other", 60), Utc::now()),
+        );
+
+        let manager = manager_on(&storage, "device-b");
+        let error = manager
+            .verify_encryption_password_before_upload("pw-b")
+            .await
+            .expect_err("他人租约在持时 v1 升级必须失败");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::e2ee_claim::SYNC_E2EE_CLAIM_CONFLICT_CODE),
+            "{error}"
+        );
+        assert_eq!(
+            storage
+                .files
+                .lock()
+                .unwrap()
+                .get(ENCRYPTION_MARKER_FILE)
+                .unwrap()
+                .0,
+            v1_bytes,
+            "升级被拦下时 v1 标记必须逐字节保持原样"
+        );
+    }
+
+    /// [R4-e2ee-cas] 发布前复验：上传前策略检查通过后、发布 manifest 前，
+    /// 标记被并发改动（认领竞态的另一台赢家 / 篡改）必须回滚本次上传。
+    #[tokio::test]
+    async fn publish_recheck_rejects_marker_swapped_between_verify_and_publish() {
+        let storage = Arc::new(MemoryStorage::default());
+        let manager = manager_on(&storage, "device-a");
+        manager
+            .enforce_encryption_policy_before_upload_with_password(Some("pw-a"))
+            .await
+            .expect("首次认领应成功");
+
+        // 模拟并发赢家在我们的上传窗口内改写了标记。
+        storage.files.lock().unwrap().insert(
+            ENCRYPTION_MARKER_FILE.to_string(),
+            (b"{\"version\":2,\"createdByDevice\":\"other\"}".to_vec(), Utc::now()),
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let zip = dir.path().join("backup.dsbk");
+        std::fs::write(&zip, b"DSBK pretend-encrypted payload").unwrap();
+        let error = manager
+            .upload(&zip, None, None)
+            .await
+            .expect_err("标记被并发改动后发布必须失败");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::e2ee_claim::SYNC_E2EE_CLAIM_CONFLICT_CODE),
+            "发布前复验失败必须带稳定 code: {error}"
+        );
+        let files = storage.files.lock().unwrap();
+        assert!(
+            !files.keys().any(|key| key.starts_with(BACKUPS_DIR)),
+            "复验失败必须回滚已上传的备份对象"
+        );
+        assert!(
+            !files.keys().any(|key| key.starts_with(MANIFESTS_DIR)),
+            "复验失败不得发布任何 manifest"
+        );
+    }
+
+    /// [R4-e2ee-cas] 有界读：超限 marker 按损坏 fail-closed（加密、明文两路都拦），
+    /// 且不下载对象本体。
+    #[tokio::test]
+    async fn oversized_marker_fails_closed_for_both_upload_paths() {
+        let storage = Arc::new(MemoryStorage::default());
+        let big = vec![
+            b'x';
+            (crate::cloud_storage::e2ee_claim::MAX_E2EE_CLAIM_OBJECT_BYTES + 1) as usize
+        ];
+        storage
+            .files
+            .lock()
+            .unwrap()
+            .insert(ENCRYPTION_MARKER_FILE.to_string(), (big, Utc::now()));
+
+        let manager = manager_on(&storage, "device-a");
+        let error = manager
+            .verify_encryption_password_before_upload("pw")
+            .await
+            .expect_err("超限标记必须按损坏 fail-closed");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::cloud_storage::SYNC_E2EE_MARKER_CORRUPTED_CODE),
+            "{error}"
+        );
+        assert!(
+            manager.ensure_plaintext_upload_allowed().await.is_err(),
+            "超限标记同样必须拦下明文上传"
+        );
+    }
+
+    /// 在每个存储操作前后让出调度点，让两台「设备」的认领步骤真实交错。
+    struct YieldingStorage {
+        inner: Arc<MemoryStorage>,
+    }
+
+    #[async_trait]
+    impl CloudStorage for YieldingStorage {
+        fn provider_name(&self) -> &'static str {
+            "memory-yield"
+        }
+
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+            tokio::task::yield_now().await;
+            let result = CloudStorage::put(&self.inner, key, data).await;
+            tokio::task::yield_now().await;
+            result
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            tokio::task::yield_now().await;
+            let result = CloudStorage::get(&self.inner, key).await;
+            tokio::task::yield_now().await;
+            result
+        }
+
+        async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+            tokio::task::yield_now().await;
+            let result = CloudStorage::list(&self.inner, prefix).await;
+            tokio::task::yield_now().await;
+            result
+        }
+
+        async fn delete(&self, key: &str) -> Result<()> {
+            tokio::task::yield_now().await;
+            let result = CloudStorage::delete(&self.inner, key).await;
+            tokio::task::yield_now().await;
+            result
+        }
+
+        async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
+            tokio::task::yield_now().await;
+            let result = CloudStorage::stat(&self.inner, key).await;
+            tokio::task::yield_now().await;
+            result
+        }
+    }
+
+    /// [R4-e2ee-cas] 要求 2 / 5（真并发半场）：两台设备不同口令并发认领空仓，
+    /// 任意调度交错下都**不得双成功**；若有赢家，云端校验子只绑定赢家口令。
+    /// 双双失败允许（fail-closed，重试收敛）——此时若留下了标记，它也必须是
+    /// 恰好绑定其中一个口令的完整认领对象（协议第 7 步失败不回滚 marker）。
+    ///
+    /// 确定性交错（B 停在写入前）的红灯用例见 `tests/e2ee_claim_race_tests.rs`。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_two_password_claims_never_both_succeed() {
+        for round in 0..3 {
+            let storage = Arc::new(MemoryStorage::default());
+            let spawn_claim = |device: &str, password: &'static str| {
+                let inner = Arc::clone(&storage);
+                let device = device.to_string();
+                tokio::spawn(async move {
+                    let manager =
+                        CloudSyncManager::new(Box::new(YieldingStorage { inner }), device);
+                    manager
+                        .verify_encryption_password_before_upload(password)
+                        .await
+                })
+            };
+            let task_a = spawn_claim("device-a", "pw-alpha-2026");
+            let task_b = spawn_claim("device-b", "pw-beta-2026");
+            let result_a = task_a.await.expect("device-a 任务不得 panic");
+            let result_b = task_b.await.expect("device-b 任务不得 panic");
+
+            assert!(
+                !(result_a.is_ok() && result_b.is_ok()),
+                "第 {round} 轮：两台不同口令设备的并发认领不得双成功: \
+                 a={result_a:?}, b={result_b:?}"
+            );
+
+            let marker_raw = storage
+                .files
+                .lock()
+                .unwrap()
+                .get(ENCRYPTION_MARKER_FILE)
+                .map(|(data, _)| data.clone());
+            if result_a.is_ok() || result_b.is_ok() {
+                let marker: EncryptionMarker = serde_json::from_slice(
+                    marker_raw.as_deref().expect("有赢家时标记必须已发布"),
+                )
+                .expect("已发布标记必须可解析");
+                let verifier = marker.key_verifier.as_ref().expect("认领标记必须带校验子");
+                let winner_password = if result_a.is_ok() {
+                    "pw-alpha-2026"
+                } else {
+                    "pw-beta-2026"
+                };
+                let loser_password = if result_a.is_ok() {
+                    "pw-beta-2026"
+                } else {
+                    "pw-alpha-2026"
+                };
+                assert!(
+                    crate::crypto::backup_crypto::check_password_verifier(
+                        winner_password,
+                        verifier
+                    )
+                    .unwrap(),
+                    "第 {round} 轮：云端校验子必须绑定赢家口令"
+                );
+                assert!(
+                    !crate::crypto::backup_crypto::check_password_verifier(
+                        loser_password,
+                        verifier
+                    )
+                    .unwrap(),
+                    "第 {round} 轮：云端校验子不得同时放行输家口令"
+                );
+            } else if let Some(raw) = marker_raw {
+                // 双双失败但留下了标记（第 7 步失败不回滚）：必须是完整认领，
+                // 恰好绑定两个口令之一。
+                let marker: EncryptionMarker =
+                    serde_json::from_slice(&raw).expect("留下的标记必须可解析");
+                let verifier = marker.key_verifier.as_ref().expect("留下的标记必须带校验子");
+                let alpha = crate::crypto::backup_crypto::check_password_verifier(
+                    "pw-alpha-2026",
+                    verifier,
+                )
+                .unwrap();
+                let beta = crate::crypto::backup_crypto::check_password_verifier(
+                    "pw-beta-2026",
+                    verifier,
+                )
+                .unwrap();
+                assert!(
+                    alpha ^ beta,
+                    "第 {round} 轮：双失败留下的标记必须恰好绑定其中一个口令"
+                );
+            }
+        }
+    }
+
     /// [R06] 标记内容损坏时加密上传也 fail-closed（无法确认密码一致性）。
     #[tokio::test]
     async fn corrupted_marker_blocks_encrypted_upload() {
@@ -2578,8 +3328,8 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("manifest 发布后回读校验失败，已停止并不得报成功"),
-            "拒绝原因必须指向发布后回读，实际: {error}"
+                .contains(super::super::verified_publish::VERIFIED_PUBLISH_MISMATCH_CODE),
+            "拒绝原因必须携带 verified-publish 回读不一致稳定码，实际: {error}"
         );
 
         let files = inner.files.lock().unwrap();
@@ -2590,8 +3340,8 @@ mod tests {
             "清单发布失败必须回滚未引用 ZIP，不得留下可见半包"
         );
         assert!(
-            files.keys().any(|key| key.ends_with(".tmp")),
-            "已校验的临时清单必须保留，供对照损坏的最终对象"
+            files.keys().any(|key| key.contains(".tmp-")),
+            "已校验的暂存清单（KeepTmp）必须保留，供对照损坏的最终对象"
         );
     }
 

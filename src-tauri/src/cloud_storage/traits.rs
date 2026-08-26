@@ -102,6 +102,92 @@ pub(crate) fn ensure_memory_get_matches_declared_len(
     }
 }
 
+/// [R4-get-budget] 内存 GET 预算命中错误的稳定标记子串。
+///
+/// 预算超限是确定性拒绝：同一对象重试仍会超限，重试层（如 FTP 的 `with_retry`）
+/// 据此短路，避免把超预算对象反复下满多遍。改动本常量必须同步检查所有
+/// `contains(MEMORY_GET_BUDGET_EXCEEDED)` 判定点。
+pub(crate) const MEMORY_GET_BUDGET_EXCEEDED: &str = "超出调用方内存预算";
+
+/// [R4-get-budget] `get()`（无预算参数的旧入口）的兜底预算：256 MiB。
+///
+/// 控制对象（manifest / 租约 / tombstone / 变更分片 / delta 元数据 / 写后回读）
+/// 必须改走 [`CloudStorage::get_bounded`] 并由调用方传入更紧的硬预算；本常量只
+/// 防止旧入口彻底无界，取值刻意大于一切合法控制对象，**不作为安全边界使用**。
+/// 数据对象（blob / asset / 备份对象）继续走 `get_file` / 续传路径，与本预算无关。
+pub const MEMORY_GET_DEFAULT_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
+
+/// [R4-get-budget] 声明长度预检：远端声明（HTTP Content-Length / FTP SIZE）
+/// 超出调用方预算时，在读取任何响应体字节之前拒绝。
+/// `None`（chunked 等无声明长度）放行到边收边断的有界缓冲路径，不在这里冒充已核。
+pub(crate) fn ensure_declared_len_within_budget(
+    provider: &str,
+    key: &str,
+    declared: Option<u64>,
+    max_bytes: u64,
+) -> Result<()> {
+    match declared {
+        Some(expected) if expected > max_bytes => Err(AppError::network(format!(
+            "{provider} 内存对象声明长度{MEMORY_GET_BUDGET_EXCEEDED}：{key} 声明 {expected} 字节 > 预算 {max_bytes} 字节，已在读取响应体前拒绝"
+        ))),
+        _ => Ok(()),
+    }
+}
+
+/// [R4-get-budget] 累计字节数预算闸（先判后收）。
+/// 预算命中返回错误而不是截断数据：绝不把前 `max_bytes` 字节冒充完整对象。
+pub(crate) fn ensure_received_within_budget(
+    provider: &str,
+    key: &str,
+    received: u64,
+    max_bytes: u64,
+) -> Result<()> {
+    if received > max_bytes {
+        return Err(AppError::network(format!(
+            "{provider} 内存对象下载{MEMORY_GET_BUDGET_EXCEEDED}：{key} 累计 {received} 字节 > 预算 {max_bytes} 字节，已中断传输"
+        )));
+    }
+    Ok(())
+}
+
+/// [R4-get-budget] 内存 GET 的有界缓冲：`push` 在追加前先判预算，缓冲区占用
+/// 永远不超过 `max_bytes`（无声明长度的 chunked 流也一样）。
+/// 只负责体积；半包/长包与声明长度的一致性仍由
+/// [`ensure_memory_get_matches_declared_len`] 收尾核对，两道闸互不替代。
+pub(crate) struct BoundedMemoryBody {
+    provider: &'static str,
+    key: String,
+    max_bytes: u64,
+    body: Vec<u8>,
+}
+
+impl BoundedMemoryBody {
+    pub(crate) fn new(provider: &'static str, key: &str, max_bytes: u64) -> Self {
+        Self {
+            provider,
+            key: key.to_string(),
+            max_bytes,
+            body: Vec::new(),
+        }
+    }
+
+    /// 追加一块响应体；预算越界时返回错误且**不**追加（缓冲保持在预算内）。
+    pub(crate) fn push(&mut self, chunk: &[u8]) -> Result<()> {
+        let would_be = self.body.len() as u64 + chunk.len() as u64;
+        ensure_received_within_budget(self.provider, &self.key, would_be, self.max_bytes)?;
+        self.body.extend_from_slice(chunk);
+        Ok(())
+    }
+
+    pub(crate) fn len(&self) -> u64 {
+        self.body.len() as u64
+    }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.body
+    }
+}
+
 /// 统一的云存储访问 trait
 ///
 /// 支持 WebDAV 和 S3 兼容存储（如 AWS S3、Cloudflare R2、阿里云 OSS、MinIO）
@@ -126,7 +212,12 @@ pub trait CloudStorage: Send + Sync {
     /// * `data` - 文件内容
     async fn put(&self, key: &str, data: &[u8]) -> Result<()>;
 
-    /// 下载文件
+    /// 下载文件（内存级，无预算参数的旧入口）
+    ///
+    /// [R4-get-budget] 控制对象（manifest / 租约 / tombstone / 变更分片 /
+    /// delta 元数据 / 写后回读）必须改用 [`Self::get_bounded`] 并由调用方传入
+    /// 硬预算；生产后端的本方法仅以 [`MEMORY_GET_DEFAULT_BUDGET_BYTES`] 兜底，
+    /// 防止旧入口完全无界。数据对象走 `get_file` / 续传路径，不走本方法。
     ///
     /// # Arguments
     /// * `key` - 文件路径
@@ -136,6 +227,36 @@ pub trait CloudStorage: Send + Sync {
     /// * `Ok(None)` - 文件不存在
     /// * `Err(e)` - 其他错误
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
+
+    /// [R4-get-budget] 带调用方硬预算的内存级下载（控制对象唯一正当入口）。
+    ///
+    /// 语义契约（生产后端实现必须全部满足）：
+    /// - 远端**声明长度**（Content-Length / SIZE）> `max_bytes` → 在读取任何
+    ///   响应体字节前拒绝；
+    /// - **累计已收字节**将超过 `max_bytes` → 立即中断传输，不再继续收；
+    /// - **无声明长度**（chunked 等）→ 有界缓冲边收边计数，缓冲占用永不超过
+    ///   `max_bytes`，越界即中断；
+    /// - 预算命中返回错误而不是截断数据：绝不把前 `max_bytes` 字节冒充完整对象；
+    /// - 不放松既有闸门：按块停滞超时（90 秒）与
+    ///   [`ensure_memory_get_matches_declared_len`] 半包收尾核对照旧生效。
+    ///
+    /// 默认实现是"整包收下后事后核对"的兜底，仅供测试假存储 / 纯内存后端保持
+    /// 编译闭合与预算语义（超限同样报错，只是无法在传输中途省流量）；
+    /// 真实网络后端（WebDAV / S3 / FTP）必须覆盖为边收边断的实现。
+    async fn get_bounded(&self, key: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
+        match self.get(key).await? {
+            Some(data) => {
+                ensure_received_within_budget(
+                    self.provider_name(),
+                    key,
+                    data.len() as u64,
+                    max_bytes,
+                )?;
+                Ok(Some(data))
+            }
+            None => Ok(None),
+        }
+    }
 
     /// 列出指定前缀下的所有文件。
     ///
@@ -249,6 +370,33 @@ pub trait CloudStorage: Send + Sync {
                 ))
             }
         }
+    }
+
+    /// [R4-e2ee-cas] 本后端是否支持「不存在才创建」的条件写（HTTP
+    /// `If-None-Match: *` / S3 conditional PUT）。
+    ///
+    /// 默认 `false`：多数现网 WebDAV / FTP 网关会**静默忽略**条件头，把条件写
+    /// 当无条件覆盖执行——这无法在运行时可靠探测（服务器返回 2xx 不代表条件
+    /// 生效），因此必须由后端实现经真实服务器验证后显式声明。返回 `true` 的
+    /// 后端必须同时实现 [`Self::put_if_absent`]。
+    fn supports_conditional_put(&self) -> bool {
+        false
+    }
+
+    /// [R4-e2ee-cas] 条件创建：`key` 不存在时原子创建并返回 `Ok(true)`；已存在
+    /// 时返回 `Ok(false)` 且不得改动远端。
+    ///
+    /// 默认实现 fail-closed：未声明能力（`supports_conditional_put` = false）
+    /// 的后端明确报错。**禁止**用「先 stat 再 put」模拟——那正是本方法要消除
+    /// 的 check-then-act 竞态；无法提供原子语义的后端应保持默认，让调用方走
+    /// 租约认领协议（`e2ee_claim`）。
+    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
+        let _ = (key, data);
+        Err(AppError::configuration(format!(
+            "云存储后端 {} 不支持条件写（put_if_absent）；调用方应先检查 \
+             supports_conditional_put，不支持时改走租约认领协议（e2ee_claim）",
+            self.provider_name()
+        )))
     }
 
     /// [R09-restore-ops][P2-2] 本后端是否支持断点续传下载。
@@ -387,7 +535,10 @@ pub trait CloudStorage: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_memory_get_matches_declared_len;
+    use super::{
+        ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len,
+        BoundedMemoryBody, CloudStorage, FileInfo, Result, MEMORY_GET_BUDGET_EXCEEDED,
+    };
 
     #[test]
     fn memory_get_accepts_matching_or_missing_length() {
@@ -405,5 +556,138 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("内存对象下载不完整或对象已变更"));
         assert!(msg.contains("changes/1"));
+    }
+
+    // ============ [R4-get-budget] GET 预算回归（三类形态） ============
+
+    /// 形态一：持续小块灌满超限——服务端用小块把响应体持续灌大，
+    /// 必须在累计越界的那一块被中断，且缓冲占用永远不超过预算。
+    #[test]
+    fn get_budget_small_chunks_flooding_aborts_and_buffer_stays_bounded() {
+        const BUDGET: u64 = 1_000;
+        let mut body = BoundedMemoryBody::new("S3", "manifests/flood.json", BUDGET);
+        let chunk = [0x42u8; 100];
+
+        for i in 0..10 {
+            body.push(&chunk)
+                .unwrap_or_else(|e| panic!("预算内第 {i} 块不得报错: {e}"));
+            assert!(body.len() <= BUDGET, "缓冲占用不得超过预算");
+        }
+        assert_eq!(body.len(), BUDGET, "恰好灌满预算仍属合法");
+
+        let err = body
+            .push(&chunk)
+            .expect_err("累计越界的这一块必须中断，不得继续收");
+        let msg = err.to_string();
+        assert!(msg.contains(MEMORY_GET_BUDGET_EXCEEDED), "错误必须带预算标记: {msg}");
+        assert!(msg.contains("manifests/flood.json"), "错误必须点名对象: {msg}");
+        assert_eq!(
+            body.len(),
+            BUDGET,
+            "越界块不得被追加进缓冲，缓冲保持在预算内"
+        );
+    }
+
+    /// 形态二：超大 Content-Length——声明长度超预算必须在读任何响应体字节前拒绝。
+    #[test]
+    fn get_budget_rejects_oversized_declared_length_before_body() {
+        const BUDGET: u64 = 4_096;
+
+        let err =
+            ensure_declared_len_within_budget("WebDAV", "changes/huge.bin", Some(u64::MAX), BUDGET)
+                .expect_err("声明 u64::MAX 字节必须先拒不读 body");
+        let msg = err.to_string();
+        assert!(msg.contains(MEMORY_GET_BUDGET_EXCEEDED), "错误必须带预算标记: {msg}");
+        assert!(msg.contains("读取响应体前"), "必须表明在读 body 前拒绝: {msg}");
+
+        let err = ensure_declared_len_within_budget("S3", "k", Some(BUDGET + 1), BUDGET)
+            .expect_err("声明刚好越界 1 字节也必须拒");
+        assert!(err.to_string().contains(MEMORY_GET_BUDGET_EXCEEDED));
+
+        assert!(
+            ensure_declared_len_within_budget("S3", "k", Some(BUDGET), BUDGET).is_ok(),
+            "声明恰好等于预算属合法"
+        );
+    }
+
+    /// 形态三：无声明长度的流式超限——chunked 响应无 Content-Length 时预检必须放行，
+    /// 由有界缓冲边收边断，越界即中断。
+    #[test]
+    fn get_budget_unknown_length_stream_aborts_over_budget() {
+        const BUDGET: u64 = 256;
+        assert!(
+            ensure_declared_len_within_budget("WebDAV", "chunked/no-len", None, BUDGET).is_ok(),
+            "无声明长度不得在预检层拒绝（那是有界缓冲的职责）"
+        );
+
+        let mut body = BoundedMemoryBody::new("WebDAV", "chunked/no-len", BUDGET);
+        body.push(&[0u8; 200]).expect("预算内应收下");
+        let err = body
+            .push(&[0u8; 200])
+            .expect_err("无声明长度的流累计越界必须中断");
+        assert!(err.to_string().contains(MEMORY_GET_BUDGET_EXCEEDED));
+        assert!(body.len() <= BUDGET, "越界后缓冲不得超过预算");
+    }
+
+    /// 测试假存储走 trait 默认 `get_bounded`：不改任何 mock 也能获得预算语义
+    /// （整包收下后事后核对，超限报错、预算内放行、not-found 透传）。
+    struct FixedBodyStorage {
+        body: Vec<u8>,
+        exists: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for FixedBodyStorage {
+        fn provider_name(&self) -> &'static str {
+            "fixed-body-test"
+        }
+        async fn check_connection(&self) -> Result<()> {
+            Ok(())
+        }
+        async fn put(&self, _key: &str, _data: &[u8]) -> Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _key: &str) -> Result<Option<Vec<u8>>> {
+            Ok(self.exists.then(|| self.body.clone()))
+        }
+        async fn list(&self, _prefix: &str) -> Result<Vec<FileInfo>> {
+            Ok(Vec::new())
+        }
+        async fn delete(&self, _key: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn stat(&self, _key: &str) -> Result<Option<FileInfo>> {
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn default_get_bounded_enforces_budget_for_test_doubles() {
+        let storage = FixedBodyStorage {
+            body: vec![7u8; 512],
+            exists: true,
+        };
+
+        let data = storage
+            .get_bounded("k", 512)
+            .await
+            .expect("预算内必须成功")
+            .expect("对象存在");
+        assert_eq!(data.len(), 512);
+
+        let err = storage
+            .get_bounded("k", 511)
+            .await
+            .expect_err("超预算必须报错，不得截断冒充完整对象");
+        assert!(err.to_string().contains(MEMORY_GET_BUDGET_EXCEEDED));
+
+        let missing = FixedBodyStorage {
+            body: Vec::new(),
+            exists: false,
+        };
+        assert!(
+            missing.get_bounded("k", 1).await.expect("not-found 不是错误").is_none(),
+            "不存在的对象必须透传 Ok(None)"
+        );
     }
 }

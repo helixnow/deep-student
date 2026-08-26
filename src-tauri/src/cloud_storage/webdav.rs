@@ -20,8 +20,9 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
-    ListOutcome, Result, UploadProgressCallback, MEMORY_GET_STALL_SECS,
+    ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len, BoundedMemoryBody,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -1217,6 +1218,12 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        // [R4-get-budget] 无预算旧入口：仅兜底默认预算，防止彻底无界。
+        // 控制对象请改走 get_bounded 并由调用方传入硬预算。
+        self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES).await
+    }
+
+    async fn get_bounded(&self, key: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
         let res = self.request(Method::GET, key, None).await?;
 
         if res.status() == StatusCode::NOT_FOUND {
@@ -1230,11 +1237,15 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        // get() 用于 manifest/变更文件等内存级对象：按块停滞超时，
+        // get()/get_bounded 用于 manifest/变更文件等内存级对象：按块停滞超时，
         // 防止响应头通过后响应体半挂死。慢但有进展的分片不受总时长限制。
         let declared = res.content_length();
+        // [R4-get-budget] 声明长度超预算：先拒，不读任何响应体字节。
+        ensure_declared_len_within_budget("WebDAV", key, declared, max_bytes)?;
         let mut stream = res.bytes_stream();
-        let mut body = Vec::new();
+        // [R4-get-budget] chunked/无 Content-Length 响应走有界缓冲：
+        // 累计将越界的那一块立即断流，缓冲占用永不超过预算。
+        let mut body = BoundedMemoryBody::new("WebDAV", key, max_bytes);
         loop {
             let next = tokio::time::timeout(
                 std::time::Duration::from_secs(MEMORY_GET_STALL_SECS),
@@ -1248,10 +1259,10 @@ impl CloudStorage for WebDavStorage {
                 break;
             };
             let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
-            body.extend_from_slice(&bytes);
+            body.push(&bytes)?;
         }
-        ensure_memory_get_matches_declared_len("WebDAV", key, body.len() as u64, declared)?;
-        Ok(Some(body))
+        ensure_memory_get_matches_declared_len("WebDAV", key, body.len(), declared)?;
+        Ok(Some(body.into_bytes()))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
@@ -2162,6 +2173,23 @@ mod tests {
         assert!(
             source.contains("WebDAV 内存对象下载停滞超过 90 秒"),
             "WebDAV get() 必须按块停滞超时，不得只靠整段 300 秒总超时"
+        );
+        // [R4-get-budget] 预算三件套：声明预检、有界缓冲、旧入口兜底预算。
+        assert!(
+            source.contains("async fn get_bounded(&self, key: &str, max_bytes: u64)"),
+            "WebDAV 必须实现带调用方硬预算的 get_bounded"
+        );
+        assert!(
+            source.contains("ensure_declared_len_within_budget(\"WebDAV\""),
+            "WebDAV get_bounded 必须在读响应体前按 Content-Length 预检预算"
+        );
+        assert!(
+            source.contains("BoundedMemoryBody::new(\"WebDAV\""),
+            "WebDAV get_bounded 必须用有界缓冲，无声明长度（chunked）也不得无界累积"
+        );
+        assert!(
+            source.contains("self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES)"),
+            "WebDAV get() 旧入口必须走默认兜底预算，不得回到无界路径"
         );
     }
 }
