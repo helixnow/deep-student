@@ -1002,7 +1002,35 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const handleMarkCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
     if (!sessionId) return;
     await markCorrect(questionId, isCorrect);
-  }, [sessionId, markCorrect]);
+
+    // 与 handleSubmitAnswer 对齐：改判成功后同样回写限时/每日练习进度。
+    // action 内部按会话题目成员资格 + 首答幂等门禁：已答题目的改判是空操作，
+    // 「跳过自动判分、直接自评」的主观题由这里首次计入进度。
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
+
+    // mock_exam 对称回写：成绩依赖 results，改判后同步更新判定；
+    // answers 保持不变（改判不改作答内容），且仅对本会话内已作答的题目生效，
+    // 避免制造"有判定无作答"的不一致记录。
+    if (practiceMode === 'mock_exam') {
+      const latestSession = useQuestionBankStore.getState().mockExamSession;
+      if (
+        latestSession &&
+        latestSession.exam_id === sessionId &&
+        !latestSession.is_submitted &&
+        latestSession.question_ids.includes(questionId) &&
+        questionId in latestSession.answers
+      ) {
+        setMockExamSession({
+          ...latestSession,
+          results: { ...latestSession.results, [questionId]: isCorrect },
+        });
+      }
+    }
+
+    // 备注：markCorrect 当前返回 void（内部 submitAnswer 的 SubmitAnswerResult
+    // 不含 daily_progress 字段），无每日进度数据可接；若未来 hook 透出该字段，
+    // 在此处接入 store（见 wave2-E-r4-05-markcorrect.md）。
+  }, [sessionId, markCorrect, practiceMode, setMockExamSession]);
 
   // 🆕 使用 Hook 的 navigate
   const handleNavigate = useCallback((index: number) => {

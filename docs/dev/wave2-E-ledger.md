@@ -344,3 +344,35 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 ---
 
 *Goal 未完成。*
+
+---
+
+## 9. 第 4 轮（qbank 判分统一，2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。未跑编译/测试。
+
+### 已落地
+
+| 项 | 状态 |
+| --- | --- |
+| P1-4 `apply_submission_verdict_in_tx` | 已抽；pipeline AI 路改走原语 |
+| 计数三向 + RowSync local_version | 已落 |
+| daily_progress 挂 SubmitAnswerResult | 已落 |
+| mastery 换判 tombstone+_rN | 已接线到原语 |
+| recordPracticeAnswer 差量修正 | 已落 |
+| handleMarkCorrect 回写 + mock_exam results | 已落 |
+| P2-1 B 案「按当前目标查看」 | 已落 |
+
+### 备注
+
+- r4-09 事务审阅写于落地前提交 tip，所列 B1–B4 已被本轮代码覆盖；以 diff 为准。
+- INSERT 侧 RowSync / device_id 未动（非本轮独占）。
+
+### 已验证 / 未验证
+
+- 已验证：静态签名与调用点
+- 未验证：`qbank_verdict_three_paths` 等只写不跑
+
+---
+
+*Goal 未完成。*
