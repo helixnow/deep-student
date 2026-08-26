@@ -164,6 +164,17 @@
 
 ---
 
+## 第 2 轮已落地（浮层所有权与事件序）
+
+- **P1 短期**：`InputBarUI.tsx` 抽出 `isWithinComposerTerritory`（三 ref + `closest('[data-app-menu-id]')`），外点 pointerdown 与焦点门控共用；bubble 未改 capture。顺手 `hasOpenRadixOverlayBesides` 让行。
+- **长期最小实现**：`overlayOwnership.ts` + OverlayCoordinator 加法 `registerOwnedOverlay` / `isOwnedOverlayTarget`（tooltip API 未改）。本轮零生产接线，供第 3+ 轮替换过宽 closest。
+- **AppMenu**：定位改 visualViewport（主菜单+子菜单），抽 `visualViewport.ts`；未改 ComposerPanelOverlay；打开/关闭/click/portal/back 未动。
+- **back 链**：排序算法未改；注释登记同档 overlay 栈语义。静态核验「菜单→面板」已成立。
+- **测试（只写不跑）**：pointer 三动作全链 + source 契约；back 栈语义 + InputBarUI 集成序列；卡 8 修了两处跨卡假红契约。
+- **桌面通报 B**：宽屏桌面附件面板无「更多」AppMenu（移动分支才有）；共享层修复自动覆盖窄桌面窗口。DockItem 低危留 B。
+- **事件序审阅**：通过（带风险）。R1 closest 过宽不限定 menuId——本轮不改，走 owned overlay。
+- 原文归档 `docs/dev/wave2-C-r2/`。禁改区未动。
+
 ## 第 1 轮已落地
 
 - **legacy: sidebar 缺键双语补齐**——`src/locales/zh-CN/sidebar.json` 与 `src/locales/en-US/sidebar.json` 的 `mobile_drawer` 各增 `section_study`（学习/Study）、`section_manage`（管理/Manage）。归因 **v0.9.44 既有债（P6），不是 0824 回归**：MobileSidebarNavigation.tsx:132-133 自引入分组起即引用该键，两份 locale 同缺，现网 en 用户看到未翻译中文 fallback。两份 JSON 已 python3 json.load 校验语法；`git status` 确认仅此 2 文件改动（+ 本目录文档）。既有键（section_app/section_chat/section_learning）未动。未 commit，待父代理统一提交，建议提交信息注明 `legacy(i18n)` 归因。

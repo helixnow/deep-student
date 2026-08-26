@@ -21,6 +21,7 @@ import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { addVisualViewportChangeListener, getVisualViewportSize } from '../visualViewport';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -331,6 +332,9 @@ export function AppMenuContent({
         width: contentEl.offsetWidth,
         height: contentEl.offsetHeight,
       };
+      // 软键盘感知：用 visualViewport 尺寸做边界（键盘弹出时 innerHeight 不变，
+      // 只有 visualViewport.height 缩小），桌面端两者相等、行为不变。
+      const viewport = getVisualViewportSize();
       const gap = 6;
       let top: number;
       let left: number;
@@ -339,7 +343,7 @@ export function AppMenuContent({
       if (menuMode === 'context') {
         // 默认以点击点为左上角向下展开；下方空间不足时，改用同一点击点
         // 作为左下角向上展开。最后仍走统一边界钳位，处理菜单高于视口等极端情况。
-        const fitsBelow = contextPositionY + contentRect.height <= window.innerHeight - 8;
+        const fitsBelow = contextPositionY + contentRect.height <= viewport.height - 8;
         top = fitsBelow ? contextPositionY : contextPositionY - contentRect.height;
         left = contextPositionX;
         if (!fitsBelow) origin = 'bottom';
@@ -350,14 +354,14 @@ export function AppMenuContent({
         const triggerRect = triggerEl.getBoundingClientRect();
 
         top = triggerRect.bottom + gap;
-        if (top + contentRect.height > window.innerHeight - 8) {
+        if (top + contentRect.height > viewport.height - 8) {
           top = triggerRect.top - gap - contentRect.height;
           origin = 'bottom';
           if (top < 8) {
-            top = Math.max(8, window.innerHeight - contentRect.height - 8);
+            top = Math.max(8, viewport.height - contentRect.height - 8);
           }
         } else {
-          top = Math.min(top, window.innerHeight - contentRect.height - 8);
+          top = Math.min(top, viewport.height - contentRect.height - 8);
         }
 
         if (align === 'start') {
@@ -370,10 +374,10 @@ export function AppMenuContent({
       }
 
       // 边界检测
-      const maxLeft = window.innerWidth - contentRect.width - 8;
+      const maxLeft = viewport.width - contentRect.width - 8;
       left = Math.min(Math.max(8, left), maxLeft < 8 ? 8 : maxLeft);
       
-      const maxTop = window.innerHeight - contentRect.height - 8;
+      const maxTop = viewport.height - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
 
       setPosition((prev) => (
@@ -385,12 +389,16 @@ export function AppMenuContent({
 
     updatePosition();
     const rafId = requestAnimationFrame(updatePosition);
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition, { passive: true });
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    // 软键盘弹出/收起只反映在 visualViewport 上（对照 ComposerPanelOverlay）；
+    // window 监听保留作兜底，桌面无 visualViewport 变化时行为等价。
+    const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      removeVisualViewportListener();
     };
   }, [align, contentRef, contextPositionX, contextPositionY, menuMode, shouldRender, triggerRef]);
 
@@ -883,18 +891,20 @@ export function AppMenuSubContent({
         width: contentEl.offsetWidth,
         height: contentEl.offsetHeight,
       };
+      // 与主菜单一致：边界用 visualViewport 尺寸，感知软键盘
+      const viewport = getVisualViewportSize();
       const viewportPadding = 8;
       const gap = 6;
 
-      const fitsRight = triggerRect.right + gap + contentRect.width <= window.innerWidth - viewportPadding;
+      const fitsRight = triggerRect.right + gap + contentRect.width <= viewport.width - viewportPadding;
       const preferredLeft = fitsRight
         ? triggerRect.right + gap
         : triggerRect.left - gap - contentRect.width;
-      const maxLeft = Math.max(viewportPadding, window.innerWidth - contentRect.width - viewportPadding);
+      const maxLeft = Math.max(viewportPadding, viewport.width - contentRect.width - viewportPadding);
       const left = Math.min(Math.max(viewportPadding, preferredLeft), maxLeft);
 
       const preferredTop = triggerRect.top - 4;
-      const maxTop = Math.max(viewportPadding, window.innerHeight - contentRect.height - viewportPadding);
+      const maxTop = Math.max(viewportPadding, viewport.height - contentRect.height - viewportPadding);
       const top = Math.min(Math.max(viewportPadding, preferredTop), maxTop);
 
       setPosition((prev) => (
@@ -906,13 +916,15 @@ export function AppMenuSubContent({
 
     updatePosition();
     const frame = window.requestAnimationFrame(updatePosition);
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition, { passive: true });
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
+      removeVisualViewportListener();
     };
   }, [subCtx]);
 

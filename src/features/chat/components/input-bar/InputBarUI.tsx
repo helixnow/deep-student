@@ -49,7 +49,7 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
 // ★ 拆分后的子模块：textarea+IME / 底部工具栏 / 附件面板体 / 模式辅助 / 发送可用性
 import { ComposerTextarea } from './ComposerTextarea';
@@ -1046,6 +1046,20 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
 
+  // 🔧 统一谓词：节点是否落在 Composer 领地内 = 输入壳 + 内联面板容器 + 桌面
+  // overlay + AppMenu portal。AppMenu 内容 portal 挂在 body 上（全库都带
+  // data-app-menu-id），三个 ref 的 contains 覆盖不到，需用 closest 兜住。
+  // 焦点门控与外点关闭共用此判定，避免两套逻辑分叉。
+  const isWithinComposerTerritory = useCallback((node: Node | null): boolean => {
+    if (!node) return false;
+    return !!(
+      inputContainerRef.current?.contains(node)
+      || panelContainerRef.current?.contains(node)
+      || composerPanelOverlayRef.current?.contains(node)
+      || (node instanceof Element && node.closest('[data-app-menu-id]'))
+    );
+  }, []);
+
   // ⌨️ P0-2 焦点门控：追踪焦点是否落在 composer 区域内的任一可编辑元素上。
   // 判定范围放宽到输入壳 + 面板容器 + 桌面 overlay，保证在组合面板内的
   // 搜索框打字时 inset 不归零（旧实现要求 activeElement === textarea）。
@@ -1057,15 +1071,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
     const evaluate = () => {
       const active = document.activeElement;
-      const withinComposer = !!active && (
-        inputContainerRef.current?.contains(active)
-        || panelContainerRef.current?.contains(active)
-        || composerPanelOverlayRef.current?.contains(active)
-        // ★ M3 修复：AppMenu 内容 portal 在 body 上（加号菜单 / 推理菜单里的
-        // 模型搜索框），焦点落入其中时同样需要应用键盘 inset
-        || !!(active instanceof Element && active.closest('[data-app-menu-id]'))
-      );
-      setComposerEditableFocused(Boolean(withinComposer && isEditableElement(active)));
+      setComposerEditableFocused(isWithinComposerTerritory(active) && isEditableElement(active));
     };
 
     evaluate();
@@ -1080,7 +1086,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
     };
-  }, [isMobile, sessionSwitchKey]);
+  }, [isMobile, sessionSwitchKey, isWithinComposerTerritory]);
 
   // 最终生效的键盘 inset：仅移动端 + composer 内可编辑元素聚焦时抬升
   const keyboardInsetPx = isMobile && composerEditableFocused ? globalKeyboardInset : 0;
@@ -1388,17 +1394,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     if (!hasAnyPanelOpen) return;
 
     const handleClickOutside = (e: PointerEvent) => {
-      const target = e.target as Node;
-      // 检查点击是否在面板容器内
-      if (panelContainerRef.current?.contains(target)) {
-        return; // 点击在面板内，不关闭
-      }
-      if (composerPanelOverlayRef.current?.contains(target)) {
-        return; // Portal 面板内点击，不关闭
-      }
-      // 检查点击是否在输入栏内（包括按钮）
-      if (inputContainerRef.current?.contains(target)) {
-        return; // 点击在输入栏内，不关闭
+      // 与焦点门控共用同一谓词：输入壳 / 面板容器 / 桌面 overlay / AppMenu
+      // portal 内的点击都不算「外部」（菜单 portal 在 body 上，ref 覆盖不到）
+      if (isWithinComposerTerritory(e.target as Node)) {
+        return;
       }
       // 点击在外部，关闭所有面板
       closeAllPanels();
@@ -1417,7 +1416,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('pointerdown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [hasAnyPanelOpen, closeAllPanels]);
+  }, [hasAnyPanelOpen, closeAllPanels, isWithinComposerTerritory]);
 
   // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
   // 与 Radix 浮层、MobileSlidingLayout 的返回键语义保持一致（A-5 体系补全）。
@@ -1426,6 +1425,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     if (!isMobile || !hasAnyPanelOpen) return;
     return registerBackHandler(() => {
+      // Radix 浮层（dialog/menu 等）叠在面板上方时让行，先关最上层浮层（Settings 同款模式）
+      if (hasOpenRadixOverlayBesides(null)) return false;
       closeAllPanelsRef.current();
       return true;
     }, BACK_PRIORITY.overlay);

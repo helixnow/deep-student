@@ -28,7 +28,18 @@ export type BackHandler = () => boolean;
 
 /** 优先级约定：数值越大越先处理 */
 export const BACK_PRIORITY = {
-  /** 模态层：Dialog/Sheet/抽屉等 */
+  /**
+   * 模态层：Dialog/Sheet/抽屉等。
+   *
+   * 同档共存登记（2026-08 Wave2-C back 链静态核对）：
+   * AppMenu（AppMenu.tsx，菜单打开时注册）与 Chat 组合面板
+   * （InputBarUI.tsx，附件/模型/技能/MCP/对话控制等面板打开时注册）
+   * 都以 overlay 档注册，不靠数值区分先后——同优先级后注册者先执行
+   * （栈语义，见 handleAndroidBack 对 seq 的降序比较）。因此
+   * 「面板开 → 再开菜单 → back 先关菜单（面板仍开）→ 再 back 关面板」
+   * 由注册时序天然保证。新增同档浮层沿用该约定即可，
+   * 不要为个别浮层引入 overlay±1 之类的魔法数值。
+   */
   overlay: 100,
   /** 视图内部导航（如 Learning Hub 内部历史） */
   view: 50,
