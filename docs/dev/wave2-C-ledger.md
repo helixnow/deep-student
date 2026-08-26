@@ -164,6 +164,14 @@
 
 ---
 
+## 第 4 轮已落地（附件动作统一 + 面板 a11y）
+
+- **P2**：`cancelPdfProcessing` 进入 store `removeAttachment`/`clearAttachments`（只看 sourceId）；AttachmentPanelBody UI 只传 id；chip 路径自动继承。发送/流式段未入 diff。
+- **P5**：ComposerInlinePanel closing/closed 走 inert DOM property + aria-hidden；clamp 改为二段下限。Skills/MCP region 改 t()。水位环 role=img 第 3 轮已去。
+- **测试只写不跑**：三路径生命周期、inert/clamp source、焦点顺序（DOM 序=面板→输入→工具栏）。
+- 观察：`pdfProcessingStore.remove` 仍嵌在 resourceId 分支（基线债），未本轮改。
+- 原文 `docs/dev/wave2-C-r4/`。
+
 ## 第 3 轮已落地（触控目标体系化）
 
 - **机制**：`TouchTarget` + `coarseHit.ts` 共享出口；`buttonPrimitiveContract` 在 `lg:` 后追加 `[@media(pointer:coarse)]:min-h/min-w-[var(--touch-target-size)]`（min 非 !h-11）。
