@@ -138,7 +138,10 @@ fn injection_contains_profile_and_interference_sections() {
         .expect("should inject");
     assert!(injected.contains("用户复习画像"), "{injected}");
     assert!(injected.contains("易混淆标签"));
-    assert!(!injected.contains("数据仅本地"), "虚假承诺必须删除: {injected}");
+    assert!(
+        !injected.contains("数据仅本地"),
+        "虚假承诺必须删除: {injected}"
+    );
     assert!(!injected.contains("不上传"), "虚假承诺必须删除: {injected}");
     assert!(
         !injected.contains("同批次语义干扰预警"),

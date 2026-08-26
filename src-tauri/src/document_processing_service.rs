@@ -1419,8 +1419,7 @@ mod tests {
         // （maxCards → max_cards_total）经真实任务创建路径落库后，
         // 每段任务持久化的额度必须来自总额度分配（总和守恒），
         // 而不是每段都拿满 max_cards_per_mistake 导致总数放大。
-        let tmp_dir =
-            std::env::temp_dir().join(format!("dstu_quota_{}", uuid::Uuid::new_v4()));
+        let tmp_dir = std::env::temp_dir().join(format!("dstu_quota_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir).unwrap();
         {
             use crate::data_governance::migration::coordinator::MigrationCoordinator;
@@ -1450,7 +1449,11 @@ mod tests {
             .process_document_and_create_tasks(document, "长文档".to_string(), options)
             .await
             .expect("create tasks");
-        assert!(tasks.len() >= 3, "长文档必须切成多段，实际 {} 段", tasks.len());
+        assert!(
+            tasks.len() >= 3,
+            "长文档必须切成多段，实际 {} 段",
+            tasks.len()
+        );
 
         let per_segment: Vec<i32> = tasks
             .iter()
