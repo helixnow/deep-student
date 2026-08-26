@@ -19,8 +19,11 @@
  *    断言面板未被 pointerdown 关闭 → pointerup + click → 断言对应动作被调用。
  * 2. 合成 portal 节点路径：手动往 document.body 挂 [data-app-menu-id] 节点，
  *    只测外点判定本身（不依赖 AppMenu 在 jsdom 里的完整渲染）。
- * 另附 source 契约：InputBarUI 的 pointerdown 外点关闭源码必须包含
- * closest('[data-app-menu-id]') 豁免。
+ * 另附 source 契约（R9 随机制修订）：豁免字面量已收敛为常量 + 归属注册表——
+ * COMPOSER_OWNED_OVERLAY_SELECTOR = '[data-app-menu-id]'，谓词
+ * isWithinComposerTerritory 走 isOwnedOverlayTarget(ownerId, node) 查询，
+ * 并保留 node.closest(COMPOSER_OWNED_OVERLAY_SELECTOR) 作 fail-open 回退。
+ * 契约认常量与注册表调用，不再锁内联 closest('[data-app-menu-id]') 形态。
  */
 
 import React from 'react';
@@ -269,19 +272,31 @@ describe('InputBarUI outside-click source contract (卡1)', () => {
   });
 
   it('exempts [data-app-menu-id] portal targets inside handleClickOutside', () => {
-    // 卡 1 最终落地形态：外点处理经由统一谓词 isWithinComposerTerritory
-    //（与焦点门控共用），[data-app-menu-id] 豁免收敛在谓词体内。
-    // 契约分两段锁：handler 必须走谓词；谓词必须保留 closest 豁免。
+    // 卡 1 最终落地形态（R9 修订）：外点处理经由统一谓词
+    // isWithinComposerTerritory（与焦点门控共用）；豁免不再是内联
+    // closest('[data-app-menu-id]')，而是常量 COMPOSER_OWNED_OVERLAY_SELECTOR
+    // + OverlayCoordinator 归属查询 isOwnedOverlayTarget，closest(常量) 保留为
+    // fail-open 回退。契约分三段锁：handler 必须走谓词；谓词必须同时保留
+    // 归属查询与 closest 回退；selector 常量必须仍指向 [data-app-menu-id]。
     const handlerMatch = inputBarSource.match(
       /const handleClickOutside[\s\S]*?closeAllPanels\(\);\s*\};/
     );
     expect(handlerMatch).not.toBeNull();
     expect(handlerMatch![0]).toContain('isWithinComposerTerritory(e.target as Node)');
 
+    // 谓词切片：deps 数组内容不锁死（已从 [] 漂移为 [isOwnedOverlayTarget]，
+    // 后续再变也不该让本契约空转失锚）
     const predicateMatch = inputBarSource.match(
-      /const isWithinComposerTerritory[\s\S]*?\},\s*\[\]\);/
+      /const isWithinComposerTerritory[\s\S]*?\},\s*\[[^\]]*\]\);/
     );
     expect(predicateMatch).not.toBeNull();
-    expect(predicateMatch![0]).toMatch(/closest\(\s*['"`]\[data-app-menu-id\]['"`]\s*\)/);
+    const predicateSlice = predicateMatch![0];
+    expect(predicateSlice).toContain('isOwnedOverlayTarget(COMPOSER_OVERLAY_OWNER_ID, node)');
+    expect(predicateSlice).toContain('node.closest(COMPOSER_OWNED_OVERLAY_SELECTOR)');
+
+    // 常量→字面量的最后一跳：selector 改指别处时上两段仍绿，这里兜底
+    expect(inputBarSource).toMatch(
+      /COMPOSER_OWNED_OVERLAY_SELECTOR\s*=\s*['"`]\[data-app-menu-id\]['"`]/
+    );
   });
 });

@@ -39,6 +39,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 /** coarse 变体下的 44px 级强制尺寸覆盖：
  *  !min-h-11 / !min-w-11 / !h-11 / !w-11 / !min-h-[44px] / !min-w-[2.75rem]。
@@ -62,9 +63,28 @@ const BARE_HIT_INSET =
   /(?<![\w-])(?:after|before):-inset(?:-[xy])?-(?:\d|\[)/;
 
 /** 白名单：WRAP-UP / ROUND 文档登记的有意折衷文件（posix 相对路径，理由见 JSON） */
-const allowlist = JSON.parse(
-  readFileSync(new URL('./coarse-touch-target.allowlist.json', import.meta.url), 'utf8')
-);
+const loadAllowlist = () => {
+  try {
+    const moduleUrl = new URL(import.meta.url);
+    const allowlistPath =
+      moduleUrl.protocol === 'file:'
+        ? new URL('./coarse-touch-target.allowlist.json', moduleUrl)
+        : path.join(
+            import.meta.dirname ?? path.join(process.cwd(), 'eslint-rules'),
+            'coarse-touch-target.allowlist.json'
+          );
+
+    return JSON.parse(readFileSync(allowlistPath, 'utf8'));
+  } catch (error) {
+    console.warn(
+      '[ds-components/coarse-touch-target] Failed to load allowlist; continuing with an empty allowlist.',
+      error
+    );
+    return { files: [] };
+  }
+};
+
+const allowlist = loadAllowlist();
 const ALLOWED_FILES = (allowlist.files ?? []).map((entry) => entry.path);
 
 const isAllowedFile = (filename) => {

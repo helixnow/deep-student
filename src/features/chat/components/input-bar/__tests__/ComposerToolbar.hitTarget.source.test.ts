@@ -33,8 +33,22 @@ const readInputBarSource = (file: string) =>
 const toolbarSource = readInputBarSource('ComposerToolbar.tsx');
 const popoverSource = readInputBarSource('ContextUsagePopover.tsx');
 
-const countOccurrences = (haystack: string, needle: string): number =>
-  haystack.split(needle).length - 1;
+/**
+ * 提取源码中的字符串字面量内容（' / " / `），与 R7 补遗
+ * （ComposerToolbar.hitTarget.r7.source.test.ts）同款扫描：
+ * className 只能经字符串字面量进 JSX，注释文本天然被排除——
+ * 机制落地后源码注释里合法地提到「after:-inset」（解释为什么不用它），
+ * 原始子串计数会把注释算进所有者数，必然误红。
+ */
+const extractStringLiterals = (source: string): string[] => {
+  const literalPattern =
+    /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\[\s\S])*`/g;
+  return (source.match(literalPattern) ?? []).map((literal) => literal.slice(1, -1));
+};
+
+/** 只统计出现在字符串字面量里的 needle（每个含 needle 的字面量计 1） */
+const countLiteralOccurrences = (haystack: string, needle: string): number =>
+  extractStringLiterals(haystack).filter((literal) => literal.includes(needle)).length;
 
 /**
  * 收集「初始化式（直接或传递地）包含 after:-inset」的模块级样式常量名。
@@ -109,8 +123,10 @@ describe('ComposerToolbar right-cluster hit-target source contract', () => {
   it('keeps a single hit-area owner for the context usage ring (no double after:-inset)', () => {
     // 基线上环 span 与 popover 触发器各挂一个 -inset-2（合计 2 = 双重扩区）。
     // 目标态：至多一处扩区（允许唯一所有者保留，也允许两处都改为实尺寸方案）。
-    const ringCount = countOccurrences(ringFnSlice, 'after:-inset');
-    const popoverTriggerCount = countOccurrences(popoverTriggerSlice, 'after:-inset');
+    // R9 修订：只数字符串字面量里的 after:-inset——机制落地提交在两处切片
+    // 内留下了「不再用 after:-inset」的说明注释，原始子串计数误伤注释。
+    const ringCount = countLiteralOccurrences(ringFnSlice, 'after:-inset');
+    const popoverTriggerCount = countLiteralOccurrences(popoverTriggerSlice, 'after:-inset');
     expect(ringCount + popoverTriggerCount).toBeLessThanOrEqual(1);
   });
 

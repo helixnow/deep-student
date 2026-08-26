@@ -671,7 +671,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="!h-11 !w-11 text-primary">
+        <DsButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
           <Check size={20} />
         </DsButton>
       );
@@ -688,7 +688,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           }}
           title={t('common:actions.save')}
           aria-label={t('settings:a11y.save')}
-          className="!h-11 !w-11 text-primary"
+          className="text-primary"
         >
           <Check size={20} />
         </DsButton>
@@ -1273,7 +1273,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     type="button"
                     onClick={() => openMobileSection(item.tab)}
                     className={cn(
-                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press [@media(pointer:coarse)]:min-h-11',
+                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1295,7 +1295,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           <nav aria-label={t('settings:title')} className="space-y-5">
             {sidebarNavGroups.map((group, groupIndex) => (
               <section key={`mobile-settings-group-${groupIndex}`}>
-                <h2 className="mb-2 px-2 text-[15px] font-semibold leading-6 text-muted-foreground">
+                <h2 className="mb-2 px-2 text-md font-semibold leading-6 text-muted-foreground">
                   {t(`settings:mobile_groups.${groupIndex}`)}
                 </h2>
                 <div className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
@@ -1310,7 +1310,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                         data-tour-id={item.tourId}
                         onClick={() => openMobileSection(item.value)}
                         className={cn(
-                          '!flex !h-auto !min-h-[72px] !w-full !items-center !justify-start !gap-3 !rounded-none !border-0 !border-b !border-border/35 !px-4 !py-3 text-left last:!border-b-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                          '!flex !h-auto !min-h-[72px] !w-full !items-center !justify-start !gap-3 !rounded-none !border-0 !border-b !border-border/35 !px-4 !py-3 text-left last:!border-b-0 ui-press',
                           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset'
                         )}
                       >
@@ -1318,10 +1318,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                           <Icon className="h-6 w-6" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[16px] font-medium leading-6 text-foreground">
+                          <span className="block truncate text-lg font-medium leading-6 text-foreground">
                             {item.label}
                           </span>
-                          <span className="mt-0.5 block truncate text-[13px] leading-5 text-muted-foreground">
+                          <span className="mt-0.5 block truncate text-ui leading-5 text-muted-foreground">
                             {item.mobileDescription}
                           </span>
                         </span>
@@ -1997,7 +1997,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:actions.close')}
-                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                    className="settings-mobile-sheet-header-action !rounded-full"
                   >
                     <X size={26} weight="regular" />
                   </DsButton>
@@ -2010,7 +2010,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
                     iconOnly
                     onClick={handleSheetBack}
                     aria-label={t('common:mobile_header.back')}
-                    className="settings-mobile-sheet-header-action !rounded-full [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                    className="settings-mobile-sheet-header-action !rounded-full"
                   >
                     <CaretLeft size={26} weight="regular" />
                   </DsButton>

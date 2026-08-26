@@ -663,7 +663,6 @@ export const LearningHubPage: React.FC = () => {
         size="icon"
         onClick={() => handleInjectToChatRef.current()}
         disabled={isInjecting}
-        className="h-11 w-11"
         aria-label={t('learningHub:contextMenu.referenceToChat')}
         title={t('learningHub:contextMenu.referenceToChat')}
       >
@@ -679,7 +678,6 @@ export const LearningHubPage: React.FC = () => {
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-11 w-11"
               aria-label={t('common:more')}
               title={t('common:more')}
             >

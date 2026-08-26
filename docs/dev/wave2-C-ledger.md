@@ -401,3 +401,15 @@
 - lint input-bar：`coarse-touch-target` **0 error**；`version:generate && typecheck` 绿。明细 `wave2-C-r8-redlight.md`。
 - 本补记时点仍未跑：`vite build` / `cargo check --lib` / `check-migrations`。
 
+## 第 9 轮已落地（扫尾，只追加）
+
+- 过期探针：R8 的 7 条 input-bar 测试红已改测试跟上机制（包装函数、literal 扫描、`data-panel-motion`、owned-overlay 常量、注释剥离）。定向 35/35 绿。见 `wave2-C-r9-stale-tests.md`。
+- Hub「保存为笔记」：`SaveAsNoteFolderPicker` inline 外包 `MobileSubviewChromeProvider value={null}`，恢复自绘返回行；F2 `screen:'center'` 未改。见 `wave2-C-r9-hub-save-as-note.md`。
+- 暗色/字号/溢出：顶栏字号走 token；AppMenu 跟 visualViewport 高度 + coarse 下 hover 改 click；数据治理三表 `<md` 卡片化（只展示层）；FolderPicker 树行走 `TouchTarget`。见 `wave2-C-r9-dark-overflow.md`。
+- 死键：chatV2 `inputBar.*` 下 31 个零引用叶子双语删除（legacy）；`actions.more` alias 保留。见 `wave2-C-r9-dead.md`。
+- lint 收集：allowlist 加载不再在非 file: URL 上抛死；RuleTester 在 ESLint 9 下仍有配置匹配失败，见 `wave2-C-r9-lint-loader.md`。
+- 硬门禁：本环境 `rustc 1.83.0` ≠ 1.98.0，cargo 停；vite/migrations 被该席位连带跳过。见 `wave2-C-r9-hard-gates.md`。
+- 文档：真机留白 `wave2-C-r9-device-blank.md`、风险 `wave2-C-r9-risks.md`、PR 初稿 `wave2-C-r9-pr-draft.md`；`mobile-uiux-unify` 只追加 Wave2-C 节。
+- 不标 Goal complete。真机四项仍留白。
+
+

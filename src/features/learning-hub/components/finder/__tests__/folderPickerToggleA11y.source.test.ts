@@ -33,6 +33,14 @@ describe('FolderPickerDialog tree toggle button accessibility', () => {
     expect(source).toContain('aria-expanded={isExpanded}');
   });
 
+  it('routes tree rows through TouchTarget without hand-patched coarse 44px classes', () => {
+    expect(source).toContain("import { TouchTarget } from '@/components/ui/TouchTarget';");
+    expect(source.match(/<TouchTarget asChild>/g)).toHaveLength(2);
+    expect(source).not.toContain('[@media(pointer:coarse)]:min-h-[44px]');
+    expect(source).not.toContain('[@media(pointer:coarse)]:!min-h-[44px]');
+    expect(source).not.toContain('[@media(pointer:coarse)]:!min-h-11');
+  });
+
   it('resolves t inside FolderNode so the label reacts to locale changes', () => {
     const folderNodeBody = source.slice(
       source.indexOf('function FolderNode('),

@@ -10,13 +10,14 @@
  *   (sessionActions.removeAttachment / clearAttachments) 的职责——
  *   chip 里再做一遍就是双重 cancel/revoke，禁止回潮。
  *
- * 【第二组 · 基线 af0be136 预期红，卡 1 落地后转绿】store 层补全取消：
- * - sessionActions 的 removeAttachment / clearAttachments 源码应包含
- *   cancelPdfProcessing（删除处理中的 PDF 附件时通知后端取消，而不是
- *   只清前端状态让后端白跑）。基线上两个 action 只有
- *   usePdfProcessingStore.remove + revokeObjectURL，尚无 cancel 调用，
- *   所以这两条断言在卡 1（sessionActions 删除即取消）落地前是红的——
- *   这是刻意的 TDD 先行，不是测试写错。
+ * 【第二组 · 卡 1 已落地（R9 随机制修订）】store 层删除即取消：
+ * - 落地形态不是当初设想的内联 cancelPdfProcessing 调用，而是收敛为
+ *   模块级包装函数 cancelAttachmentProcessing(attachmentId, sourceId)
+ *   （fire-and-forget + 失败日志），removeAttachment / clearAttachments
+ *   两个 action 各调用一次。契约因此分两段锁：
+ *   a) 两个 action 切片必须调用 cancelAttachmentProcessing；
+ *   b) 包装函数定义体内必须真的调用 cancelPdfProcessing 通知后端——
+ *      防止包装名还在、后端取消被悄悄挖空。
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -53,6 +54,13 @@ const clearAttachmentsSlice = sliceBetween(
   'setPanelState:'
 );
 
+// 包装函数定义体：模块级 function，止于 createSessionActions 工厂声明
+const cancelWrapperSlice = sliceBetween(
+  sessionActionsSource,
+  'function cancelAttachmentProcessing(',
+  'export function createSessionActions('
+);
+
 describe('AttachmentPreviewChips remove-path source contract', () => {
   it('keeps the structural anchors this contract slices on', () => {
     // 防空断言：锚点漂移时直接红，而不是让切片断言空转通过
@@ -60,6 +68,8 @@ describe('AttachmentPreviewChips remove-path source contract', () => {
     expect(removeAttachmentSlice.end).toBeGreaterThan(removeAttachmentSlice.start);
     expect(clearAttachmentsSlice.start).toBeGreaterThan(-1);
     expect(clearAttachmentsSlice.end).toBeGreaterThan(clearAttachmentsSlice.start);
+    expect(cancelWrapperSlice.start).toBeGreaterThan(-1);
+    expect(cancelWrapperSlice.end).toBeGreaterThan(cancelWrapperSlice.start);
   });
 
   describe('chip layer stays thin (green at baseline af0be136)', () => {
@@ -91,15 +101,21 @@ describe('AttachmentPreviewChips remove-path source contract', () => {
     });
   });
 
-  describe('store layer cancels backend processing on remove (RED until card 1 lands)', () => {
-    it('removeAttachment source contains cancelPdfProcessing', () => {
-      // 卡 1 落地后应绿：删除单个处理中附件时通知后端取消
-      expect(removeAttachmentSlice.slice).toContain('cancelPdfProcessing');
+  describe('store layer cancels backend processing on remove (card 1 landed, R9 updated)', () => {
+    it('removeAttachment calls the cancelAttachmentProcessing wrapper', () => {
+      // 删除单个处理中附件时经统一包装通知后端取消
+      expect(removeAttachmentSlice.slice).toContain('cancelAttachmentProcessing(');
     });
 
-    it('clearAttachments source contains cancelPdfProcessing', () => {
-      // 卡 1 落地后应绿：清空附件时批量取消处理中的任务
-      expect(clearAttachmentsSlice.slice).toContain('cancelPdfProcessing');
+    it('clearAttachments calls the cancelAttachmentProcessing wrapper', () => {
+      // 清空附件时逐个经统一包装取消处理中的任务
+      expect(clearAttachmentsSlice.slice).toContain('cancelAttachmentProcessing(');
+    });
+
+    it('the cancelAttachmentProcessing wrapper itself dispatches cancelPdfProcessing', () => {
+      // 契约第二段：包装函数体内必须真调后端取消 API，
+      // 否则「action 调了包装」也可能只是空壳（取消被挖空而两段各自为绿）
+      expect(cancelWrapperSlice.slice).toContain('cancelPdfProcessing(');
     });
 
     it('removeAttachment keeps its existing frontend cleanup (regression guard)', () => {

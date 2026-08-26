@@ -22,6 +22,7 @@ import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { addVisualViewportChangeListener, getVisualViewportSize } from '../visualViewport';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -293,7 +294,12 @@ export function AppMenuContent({
   // 嵌套层级感知：从最近的 <OverlayLayerProvider> 读取基准 z-index 并抬升一档；
   // 没有 Provider 时退化为默认 popover 档（行为与未引入 Provider 前一致）。
   const nestedZ = useNestedOverlayZ();
-  const [position, setPosition] = React.useState<{ top: number; left: number; origin: 'top' | 'bottom' }>({ top: 0, left: 0, origin: 'top' });
+  const [position, setPosition] = React.useState<{
+    top: number;
+    left: number;
+    origin: 'top' | 'bottom';
+    availableHeight: number;
+  }>({ top: 0, left: 0, origin: 'top', availableHeight: 0 });
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = ctx?.contentRef ?? fallbackContentRef;
@@ -433,11 +439,15 @@ export function AppMenuContent({
       
       const maxTop = viewport.height - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
+      const availableHeight = Math.max(0, viewport.height - 16);
 
       setPosition((prev) => (
-        prev.top === top && prev.left === left && prev.origin === origin
+        prev.top === top
+        && prev.left === left
+        && prev.origin === origin
+        && prev.availableHeight === availableHeight
           ? prev
-          : { top, left, origin }
+          : { top, left, origin, availableHeight }
       ));
     };
 
@@ -573,8 +583,11 @@ export function AppMenuContent({
         // 调用方传入的 style.zIndex 优先级最高（兼容显式覆盖）。
         ...(nestedZ !== null ? { zIndex: nestedZ } : {}),
         ...(maxHeight ? { maxHeight, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' } : {}),
+        '--app-menu-available-height': position.availableHeight
+          ? `${position.availableHeight}px`
+          : undefined,
         ...style,
-      }}
+      } as React.CSSProperties}
       onKeyDown={handleContentKeyDown}
       {...rest}
     >
@@ -723,6 +736,8 @@ interface AppMenuSubContextValue {
 const AppMenuSubContext = React.createContext<AppMenuSubContextValue | null>(null);
 
 export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const shouldOpenOnClick = openOnClick || isCoarsePointer;
   const [open, setOpen] = React.useState(false);
   const [keyboardFocusRequest, setKeyboardFocusRequest] = React.useState(0);
   const triggerRef = React.useRef<HTMLDivElement>(null);
@@ -777,14 +792,14 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   }, [claimActive, clearCloseTimer, open, releaseActive]);
 
   const scheduleClose = React.useCallback(() => {
-    if (openOnClick) return;
+    if (shouldOpenOnClick) return;
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
       releaseActive();
       setOpen(false);
       closeTimerRef.current = null;
     }, 120);
-  }, [clearCloseTimer, openOnClick, releaseActive]);
+  }, [clearCloseTimer, releaseActive, shouldOpenOnClick]);
 
   // 同级互斥：另一个同级子菜单成为激活项时，本子菜单立即收合
   const levelActiveSubId = levelCtx?.activeSubId;
@@ -808,7 +823,7 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
       setOpen,
       triggerRef,
       contentRef,
-      openOnClick,
+      openOnClick: shouldOpenOnClick,
       keyboardFocusRequest,
       openSub,
       openSubWithKeyboard,
@@ -818,9 +833,9 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
     }}>
       <div 
         className="app-menu-sub"
-        onMouseEnter={openOnClick ? undefined : openSub}
-        onMouseLeave={openOnClick ? undefined : scheduleClose}
-        onBlur={openOnClick ? undefined : scheduleClose}
+        onMouseEnter={shouldOpenOnClick ? undefined : openSub}
+        onMouseLeave={shouldOpenOnClick ? undefined : scheduleClose}
+        onBlur={shouldOpenOnClick ? undefined : scheduleClose}
       >
         {children}
       </div>
@@ -898,7 +913,11 @@ export function AppMenuSubContent({
 }: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
   const rootMenuCtx = React.useContext(AppMenuContext);
-  const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+  const [position, setPosition] = React.useState<{
+    left: number;
+    top: number;
+    availableHeight: number;
+  } | null>(null);
 
   const getEnabledItems = React.useCallback((): HTMLElement[] => {
     const root = subCtx?.contentRef.current;
@@ -960,11 +979,15 @@ export function AppMenuSubContent({
       const preferredTop = triggerRect.top - 4;
       const maxTop = Math.max(viewportPadding, viewport.height - contentRect.height - viewportPadding);
       const top = Math.min(Math.max(viewportPadding, preferredTop), maxTop);
+      const availableHeight = Math.max(0, viewport.height - viewportPadding * 2);
 
       setPosition((prev) => (
-        prev && prev.left === left && prev.top === top
+        prev
+        && prev.left === left
+        && prev.top === top
+        && prev.availableHeight === availableHeight
           ? prev
-          : { left, top }
+          : { left, top, availableHeight }
       ));
     };
 
@@ -1059,7 +1082,10 @@ export function AppMenuSubContent({
         left: position?.left ?? 8,
         top: position?.top ?? 8,
         visibility: position ? 'visible' : 'hidden',
-      }}
+        '--app-menu-available-height': position?.availableHeight
+          ? `${position.availableHeight}px`
+          : undefined,
+      } as React.CSSProperties}
       {...rest}
     >
       <AppMenuSubLevelProvider>

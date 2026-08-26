@@ -3325,15 +3325,15 @@ export function LearningHubSidebar({
                   aria-label={searchPlaceholder}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
-                  className="h-11 text-[16px] flex-1"
+                  // iOS 保留 16px 地板，同时继续响应界面字号缩放。
+                  className="h-[var(--touch-target-size)] text-[max(16px,var(--font-size-lg))] flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className="h-11 w-11 p-0"
+                  size="icon"
+                  iconOnly
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
@@ -3348,8 +3348,8 @@ export function LearningHubSidebar({
               <>
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className="h-11 w-11 p-0"
+                  size="icon"
+                  iconOnly
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title')}
                   aria-label={t('finder.search.title')}
@@ -3362,8 +3362,8 @@ export function LearningHubSidebar({
                     <DsButton
                       ref={mobileCreateMenuTriggerRef}
                       variant="ghost"
-                      size="sm"
-                      className="h-11 w-11 p-0"
+                      size="icon"
+                      iconOnly
                       title={t('finder.toolbar.new')}
                       aria-label={t('finder.toolbar.new')}
                       disabled={!canCreateInCurrentView}
@@ -3428,8 +3428,9 @@ export function LearningHubSidebar({
                 {isTrashView && (
                   <DsButton
                     variant="ghost"
-                    size="sm"
-                    className="h-11 w-11 p-0 text-destructive hover:text-destructive"
+                    size="icon"
+                    iconOnly
+                    className="text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash')}
                     aria-label={t('finder.actions.emptyTrash')}
@@ -3453,8 +3454,9 @@ export function LearningHubSidebar({
             {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
             <DsButton
               variant="ghost"
-              size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
+              size="icon"
+              iconOnly
+              className={cn('p-0 shrink-0', !isSmallScreen && 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back')}
@@ -3463,8 +3465,9 @@ export function LearningHubSidebar({
             </DsButton>
             <DsButton
               variant="ghost"
-              size="sm"
-              className={cn('p-0 shrink-0', isSmallScreen ? 'h-11 w-11' : 'h-6 w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
+              size="icon"
+              iconOnly
+              className={cn('p-0 shrink-0', !isSmallScreen && 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward')}
@@ -3473,7 +3476,7 @@ export function LearningHubSidebar({
             </DsButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-11 !w-11' : '!h-4 !w-4 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', !isSmallScreen && '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </DsButton>
               {effectivePath.breadcrumbs.map((crumb, index) => (
@@ -3489,8 +3492,8 @@ export function LearningHubSidebar({
                       className={cn(
                         '!h-auto !p-0 truncate text-muted-foreground hover:text-foreground',
                         isSmallScreen
-                          ? '!min-h-11 !px-2'
-                          : '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2',
+                          ? '!px-2'
+                          : '[@media(pointer:coarse)]:!px-2',
                       )}
                     >
                       {crumb.name}
@@ -3521,7 +3524,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-6 text-xs px-1.5 [@media(pointer:coarse)]:!h-11"
+                        className="h-6 text-xs px-1.5"
                         onClick={selectedIds.size === items.length ? handleClearSelection : handleSelectAll}
                         title={selectedIds.size === items.length ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
                       >
@@ -3533,7 +3536,7 @@ export function LearningHubSidebar({
                       <DsButton
                         variant="primary"
                         size="sm"
-                        className="h-6 text-xs px-2 [@media(pointer:coarse)]:!h-11"
+                        className="h-6 text-xs px-2"
                         onClick={handleBatchAddToChat}
                         disabled={isBatchProcessing || isInjecting}
                       >
@@ -3556,10 +3559,11 @@ export function LearningHubSidebar({
               {/* 多选模式切换按钮 */}
               <DsButton
                 variant="ghost"
-                size="sm"
+                size="icon"
+                iconOnly
                 className={cn(
                   'p-0',
-                  isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+                  !isSmallScreen && 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={toggleMultiSelect}
@@ -3571,8 +3575,9 @@ export function LearningHubSidebar({
               {onClose && (
                 <DsButton
                   variant="ghost"
-                  size="sm"
-                  className={cn('p-0', isSmallScreen ? 'h-11 w-11' : 'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11')}
+                  size="icon"
+                  iconOnly
+                  className={cn('p-0', !isSmallScreen && 'h-7 w-7')}
                   onClick={onClose}
                   title={t('common:close')}
                 >
@@ -3731,7 +3736,7 @@ export function LearningHubSidebar({
           ) : (
           <>
           {isSearching && searchMeta?.truncated && (
-            <div className="shrink-0 px-3 py-1.5 text-[12px] text-muted-foreground border-b border-border/40">
+            <div className="shrink-0 px-3 py-1.5 text-caption text-muted-foreground border-b border-border/40">
               {t('finder.search.truncatedHint', { limit: searchMeta.limit })}
             </div>
           )}

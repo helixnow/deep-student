@@ -22,6 +22,10 @@ const utilSource = readFileSync(
   resolve(process.cwd(), 'src/components/ui/visualViewport.ts'),
   'utf-8'
 );
+const appMenuCss = readFileSync(
+  resolve(process.cwd(), 'src/components/ui/app-menu/AppMenu.css'),
+  'utf-8'
+);
 
 describe('AppMenu positioning visualViewport contract', () => {
   it('uses the shared visualViewport util instead of raw window.inner* for bounds', () => {
@@ -66,6 +70,15 @@ describe('AppMenu positioning visualViewport contract', () => {
     expect(utilSource).toContain("vv.addEventListener('scroll', handler, { passive: true })");
     // 不支持 visualViewport 时返回 no-op，桌面端行为不受影响
     expect(utilSource).toContain('if (!vv) return () => {};');
+  });
+
+  it('caps mobile menus to the live visual viewport instead of letting them scroll off-screen', () => {
+    expect(appMenuSource.match(/availableHeight/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(appMenuSource).toContain("'--app-menu-available-height'");
+    expect(appMenuCss).toContain(
+      'max-height: var(--app-menu-available-height, calc(100dvh - 16px));'
+    );
+    expect(appMenuCss).toContain('overscroll-behavior: contain;');
   });
 
   it('does not touch open/close, click timing, portal target, or Android back registration', () => {

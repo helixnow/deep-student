@@ -30,3 +30,7 @@
 ## 视图清单
 
 见 [INVENTORY.md](./INVENTORY.md)。进度见 [PROGRESS.md](./PROGRESS.md)。
+
+## Wave2-C（0824-wave2-mobile-uiux-a875）
+
+上述五条规范不变，仍是 Wave2-C 的验收口径。触控机制载体调整为 `DsButton` primitive 的 coarse 能力下沉、`TouchTarget`、`coarseHit` 逃生舱，以及 ESLint `ds-components/coarse-touch-target`：`input-bar` 已提升为 `error`，全局其余范围保持 `warn`。

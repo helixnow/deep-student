@@ -28,7 +28,11 @@
  * 即视为在屏）。守卫本身的存在由
  * androidBackCoordinator.menuThenPanel.test.ts 的 source 契约锁定。
  *
- * 本轮只写不跑（禁 vitest 执行）；基线 98bbf3f1。
+ * 面板开关探针说明（R9 修订）：InputBarUI 的 useDeferredOpen 在面板关闭后
+ * 仍保留节点 220ms 做退场动画（data-panel-motion="closing"，之后才卸载），
+ * 「节点是否在 DOM」不能当「面板是否打开」——back 关面板后的瞬间节点必然
+ * 还在。探针改看 data-panel-motion：open/opening 为开，closing/closed/已卸载
+ * 为关（与 ComposerInlinePanel.focusOrder.test.tsx 的展开态判定一致）。
  */
 
 import React from 'react';
@@ -144,7 +148,11 @@ function Harness({ handleRef }: { handleRef: React.MutableRefObject<HarnessHandl
 
 function isAttachmentPanelOpen(): boolean {
   const root = screen.getByTestId('input-bar-v2-root');
-  return root.querySelector('[data-composer-panel-inline="attachment"]') !== null;
+  const panel = root.querySelector('[data-composer-panel-inline="attachment"]');
+  if (!panel) return false;
+  // 收起动画期（closing）节点仍在 DOM，但语义上面板已关（见文件头 R9 修订说明）
+  const motion = panel.getAttribute('data-panel-motion');
+  return motion === 'open' || motion === 'opening';
 }
 
 function isMenuOpen(): boolean {

@@ -92,13 +92,28 @@ describe('inputBarCapabilities 触摸/相机语义边界', () => {
     'utf-8'
   );
 
+  /**
+   * 去掉块注释与行注释后再扫描（R9 修订）：模块头 JSDoc 合法地写着
+   * 「刻意不用 enumerateDevices()」解释设计取舍，全文 not.toContain
+   * 会被这段散文误伤。只有注释外的代码（调用/字面量）才算违禁。
+   * 本文件无含 `//` 或 `/*` 的字符串字面量，朴素剥离即可。
+   */
+  const capabilitiesCodeOnly = capabilitiesSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
   it('触摸能力查询是 any-pointer: coarse（不再用 pointer: coarse 兼职）', () => {
     expect(TOUCH_CAPABILITY_MEDIA_QUERY).toBe('(any-pointer: coarse)');
   });
 
   it('能力模块不使用 enumerateDevices（避免权限弹窗）也不使用指针媒体查询判相机', () => {
-    expect(capabilitiesSource).not.toContain('enumerateDevices');
-    expect(capabilitiesSource).not.toContain("'(pointer: coarse)'");
+    expect(capabilitiesCodeOnly).not.toContain('enumerateDevices');
+    expect(capabilitiesCodeOnly).not.toContain("'(pointer: coarse)'");
+  });
+
+  it('注释里仍在散文式提及 enumerateDevices，证明剥离注释的扫描是必要的', () => {
+    // 哪天设计说明注释也删了，这条会提醒维护者可降级回全文 not.toContain
+    expect(capabilitiesSource).toContain('enumerateDevices');
   });
 });
 

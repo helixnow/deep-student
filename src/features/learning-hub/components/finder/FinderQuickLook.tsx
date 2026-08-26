@@ -275,7 +275,6 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             <DsButton
               variant="default"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => onOpen(item)}
             >
               <ArrowSquareOut size={14} className="mr-1.5" />

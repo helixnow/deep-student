@@ -13,10 +13,16 @@
  *   外层套 fixed inset-0 让它脱离宿主气泡/面板的裁剪
  * - Android 返回键先关 picker：inline 形态由 FolderPickerDialog 自己
  *   registerBackHandler(BACK_PRIORITY.overlay) 承接
+ * - inline 分支用 MobileSubviewChromeProvider value={null} 隔离统一顶栏通道：
+ *   fixed 全屏承载脱离了宿主页面布局，即使树上有宿主（learning-hub 移动分支）
+ *   也不能把顶栏推给它——fixed 层会盖住统一顶栏，且 screen:'center' 与
+ *   PDF 划词所在的右屏不匹配。隔离后 FolderPickerDialog 视为无宿主，
+ *   恢复自绘「返回 + 标题」行（Wave2-C R6 08-chrome §A）
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MobileSubviewChromeProvider } from '@/components/layout';
 import { FolderPickerDialog } from '@/features/learning-hub/components/finder/FolderPickerDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { saveTextAsNoteAndNotify, type SaveTextAsNoteResult } from './saveTextAsNote';
@@ -103,6 +109,10 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
  *
  * 窄屏：外层 fixed inset-0 让 FolderPickerDialog 的 inline 子屏铺满视口，
  * 不受宿主（消息气泡 / PDF 面板）的 overflow 裁剪影响。
+ * 同时用 MobileSubviewChromeProvider value={null} 切断统一顶栏通道：
+ * fixed 承载自成一屏，标题/返回必须由 FolderPickerDialog 自绘
+ * （hosted=false），不得推给会被本层盖住的宿主顶栏。
+ * 桌面 Dialog 分支不隔离——中屏「移动到…」等真接管场景不走本壳。
  */
 export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
   open,
@@ -115,15 +125,17 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
 
   if (inline) {
     return (
-      <div className="fixed inset-0 z-[var(--z-modal,1200)]">
-        <FolderPickerDialog
-          open={open}
-          onOpenChange={onOpenChange}
-          onConfirm={onConfirm}
-          title={title}
-          inline
-        />
-      </div>
+      <MobileSubviewChromeProvider value={null}>
+        <div className="fixed inset-0 z-[var(--z-modal,1200)]">
+          <FolderPickerDialog
+            open={open}
+            onOpenChange={onOpenChange}
+            onConfirm={onConfirm}
+            title={title}
+            inline
+          />
+        </div>
+      </MobileSubviewChromeProvider>
     );
   }
 

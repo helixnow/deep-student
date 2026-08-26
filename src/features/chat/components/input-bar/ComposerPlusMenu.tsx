@@ -376,7 +376,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     >
                       {t('chatV2:authority.modes.ask')}
                     </AppMenuSwitchItem>
-                    <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                    <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-caption leading-snug text-muted-foreground">
                       {t('chatV2:authority.permissionPreset.modePriority')}
                     </AppMenuLabel>
                     {PERMISSION_PRESETS.map((preset) => (
@@ -513,7 +513,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   className="w-[min(280px,calc(100vw-24px))]"
                   data-testid="plus-menu-mode-panel"
                 >
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-[12px] leading-snug text-muted-foreground px-2 py-1.5">
+                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-caption leading-snug text-muted-foreground px-2 py-1.5">
                     {modeDescription}
                   </AppMenuLabel>
                   <AppMenuSeparator />
@@ -542,7 +542,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     </span>
                   </AppMenuSwitchItem>
                   <AppMenuSeparator />
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-[11px] leading-snug text-muted-foreground">
+                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal px-2 py-1 text-caption leading-snug text-muted-foreground">
                     {t('chatV2:authority.permissionPreset.modePriority')}
                   </AppMenuLabel>
                   {PERMISSION_PRESETS.map((preset) => (
@@ -585,7 +585,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   className="w-[min(280px,calc(100vw-24px))]"
                   data-testid="plus-menu-knowledge-base-panel"
                 >
-                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-[12px] leading-snug text-muted-foreground px-2 py-1.5">
+                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-caption leading-snug text-muted-foreground px-2 py-1.5">
                     {t('chatV2:inputBar.plusMenu.kbProactiveHint')}
                   </AppMenuLabel>
                   <AppMenuSeparator />
@@ -644,7 +644,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   >
                     {t('chatV2:inputBar.plusMenu.openConnectors')}
                   </AppMenuItem>
-                  <AppMenuFooter className="text-[11px] text-muted-foreground">
+                  <AppMenuFooter className="text-caption text-muted-foreground">
                     {t('chatV2:inputBar.plusMenu.connectorsHint')}
                   </AppMenuFooter>
                 </AppMenuSubContent>
@@ -668,7 +668,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
       {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
         <button
           type="button"
-          className="inline-flex shrink-0 items-center text-[11px] text-warning underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+          className="inline-flex shrink-0 items-center text-caption text-warning underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
@@ -694,7 +694,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
           <span
             className={cn(
               'inline-flex h-6 items-center gap-0.5 rounded-md',
-              'bg-warning/15 px-1.5 text-[10px] font-medium leading-none text-warning',
+              'bg-warning/15 px-1.5 text-caption font-medium leading-none text-warning',
               'group-hover:bg-warning/25 group-focus-visible:ring-1 group-focus-visible:ring-warning/40',
             )}
           >
@@ -721,7 +721,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
           <span
             className={cn(
               'inline-flex h-6 items-center gap-0.5 rounded-md',
-              'bg-destructive px-1.5 text-[10px] font-medium leading-none text-destructive-foreground shadow-sm',
+              'bg-destructive px-1.5 text-caption font-medium leading-none text-destructive-foreground shadow-sm',
               'group-hover:bg-destructive/90 group-focus-visible:ring-1 group-focus-visible:ring-destructive/50',
             )}
           >
