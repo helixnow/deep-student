@@ -27,3 +27,18 @@
 | `10-upgrade-path.md` | 相对 v0.9.44 / main 的升级路径 | PASS |
 
 完整稿必须含：`## 结论`（PASS / WARN / FAIL）、证据路径+行号、是否需要产品修复、明确「本轮不改代码」。
+
+## 第二波（回归归因 / 互审 / 深挖）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `11-mcp-regression.md` | 08 FAIL 对照 v0.9.44 | 既有，非 0824 回归；不纳入本轮隔离枝 |
+| `12-anki-regression.md` | 04 WARN 对照 v0.9.44 | `enableQaPass=false` 仍写 `_qa_flags` 为 0824 引入；另两项既有 |
+| `13-review-chat-cloud-vfs.md` | 互审 01–03 | 已写 |
+| `14-review-anki-genui-finder.md` | 互审 04–06 | 维持 04 WARN / 05 PASS / 06 PASS |
+| `15-review-mobile-settings-upgrade.md` | 互审 07–10 | 维持 08 FAIL；09 的 18/18 方向对，个别数字需校正 |
+| `16-leftover-refetch.md` | 再 fetch leftover | A：无新增量 |
+| `17-e2ee-zip.md` | ZIP / 旧加密口令 / E2EE | PASS |
+| `18-hpias-allowlist.md` | HPIAS 18-block | 已写 |
+| `19-llm-usage-null.md` | `cache_write_tokens` NULL≠0 | PASS |
+| `20-composer-g-overlay.md` | F 拆分 × G 热区 × ABG | PASS |
