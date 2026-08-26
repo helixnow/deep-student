@@ -31,12 +31,38 @@
 //!    文件名」的最小解析约定（取最后一段 `/` 或 `\` 路径分量），语义对齐生产
 //!    侧私有 helper `image_ref_basename`。导出侧 `collect_media_entries`
 //!    接通后应与之兼容。
+//!
+//! ## 0824 Wave2-E 第 7 轮追加（r7-01，只加法）
+//!
+//! **执行约定不变：本文件仍第 8 轮才跑**（`cargo test --test
+//! occlusion_export_roundtrip`），本轮只落盘不执行。既有矩阵 1–7 与三个镜像
+//! helper 一字未动，追加覆盖矩阵 8–11：
+//!
+//! - 矩阵 8：入库 images 接线 —— 直接测已 pub 的生产函数
+//!   `occlusion_image_ref_from_fields`（`streaming_anki_service` 入库点用它
+//!   从 `_occlusion.imageRef` 填充 `AnkiCard.images`），含 camelCase 契约、
+//!   snake_case 旧数据容忍、旧卡（无 `_occlusion`）不填充；
+//! - 矩阵 9：`vlm://pending-image` 占位端到端不入 images ——
+//!   `parse_occlusion_boxes_from_vlm`（产出占位引用）→ draft marker →
+//!   `extract_occlusion_draft_fields` → `occlusion_image_ref_from_fields`
+//!   必须为 `None`（r2 契约 §2.1 / r6-01 补丁回归锁），且 `vlm://` 整个
+//!   scheme 均被过滤、真实 `vfs://` 引用不受影响；
+//! - 矩阵 10：IO 坐标 0–1 白盒 —— 绕过校验直构 `ValidatedOcclusionSpec`，
+//!   锁 `format_anki_io_cloze` 的夹取 [0,1]、4 位小数舍入、去尾零、整数
+//!   0/1 无前导点（深度防御分支仅能直构触达，见矩阵 10 注释）；
+//! - 矩阵 11：draft marker 全链路 —— 生成（marker）→ 模型可见内容剥离
+//!   （`strip_occlusion_draft_markers`）→ 入库字段
+//!   （`extract_occlusion_draft_fields`）→ 坐标回读不漂移 → images 接线 →
+//!   导出 `_` 前缀过滤，一条链走完「生成/入库/导出」三段。
 
 use std::collections::HashMap;
 
 use deep_student_lib::anki_image_occlusion::{
-    build_card_fields, format_anki_io_cloze, parse_occlusion_field, validate_spec, OcclusionBox,
-    OcclusionConfig, OcclusionSpec, OCCLUSION_FIELD, OCCLUSION_TAG,
+    build_card_fields, build_occlusion_draft_marker_from_spec, extract_occlusion_draft_fields,
+    format_anki_io_cloze, occlusion_image_ref_from_fields, parse_occlusion_boxes_from_vlm,
+    parse_occlusion_field, strip_occlusion_draft_markers, validate_spec, OcclusionBox,
+    OcclusionConfig, OcclusionSpec, ValidatedOcclusionSpec, OCCLUSION_BOXES_CLOSE,
+    OCCLUSION_BOXES_OPEN, OCCLUSION_DRAFT_PREFIX, OCCLUSION_FIELD, OCCLUSION_TAG,
 };
 
 // ============================================================================
@@ -411,4 +437,262 @@ fn test_empty_image_ref_and_invalid_spec_do_not_panic() {
     // 非法 spec 被拒后不存在 ValidatedOcclusionSpec，转换链天然短路；
     // 镜像的媒体解析对空引用同样只返回 None（已在矩阵 6 锁定）。
     assert!(media_file_name_from_image_ref_mirror("").is_none());
+}
+
+// ============================================================================
+// 覆盖矩阵 8（r7 追加）：入库 images 接线 —— occlusion_image_ref_from_fields
+// ============================================================================
+
+// 生产接线（streaming_anki_service.rs 入库点）：`card.images` 为空时才用
+// `occlusion_image_ref_from_fields(&extra_fields)` 从 `_occlusion.imageRef`
+// 填充；本测试直接锁该 pub 函数的三种入库形状语义。
+#[test]
+fn test_ingest_images_wiring_populates_from_occlusion_image_ref() {
+    // 1) 生成字段 roundtrip（camelCase 契约）：build_card_fields 产出的
+    //    _occlusion 能解析出完整 vfs:// 引用，喂给 images
+    let validated =
+        validate_spec(&heart_spec(), &OcclusionConfig::default()).expect("fixture 应通过校验");
+    let fields = build_card_fields(&validated, Some("heart-diagram.png"), None);
+
+    let mut images: Vec<String> = Vec::new();
+    // 复刻生产入库点的「images 为空才填充」guard
+    if images.is_empty() {
+        if let Some(image_ref) = occlusion_image_ref_from_fields(&fields.extra_fields) {
+            images.push(image_ref);
+        }
+    }
+    assert_eq!(
+        images,
+        vec!["vfs://images/heart-diagram.png".to_string()],
+        "入库形状：images 应由 _occlusion.imageRef 填充完整引用"
+    );
+
+    // 2) snake_case 旧数据容忍：image_ref 键仍可填充 images；
+    //    但 parse_occlusion_field 走 serde camelCase 契约（缺 imageRef 即
+    //    None）——旧 snake_case 数据只影响 images 填充，不进遮挡转换
+    let mut snake_fields: HashMap<String, String> = HashMap::new();
+    snake_fields.insert(
+        OCCLUSION_FIELD.to_string(),
+        r#"{"image_ref":"legacy-diagram.png","boxes":[]}"#.to_string(),
+    );
+    assert_eq!(
+        occlusion_image_ref_from_fields(&snake_fields).as_deref(),
+        Some("legacy-diagram.png"),
+        "snake_case 旧数据应被容忍（images 仍可填充）"
+    );
+    assert!(
+        parse_occlusion_field(&snake_fields).is_none(),
+        "snake_case 缺 camelCase imageRef，不得进遮挡转换"
+    );
+
+    // 3) 旧卡（无 _occlusion）：不填充 images，也不 panic
+    let mut legacy_fields: HashMap<String, String> = HashMap::new();
+    legacy_fields.insert("Text".to_string(), "{{c1::线粒体}}".to_string());
+    assert!(
+        occlusion_image_ref_from_fields(&legacy_fields).is_none(),
+        "旧卡无 _occlusion，images 不得被填充"
+    );
+    // 引用为空/纯空白：同样 None（与矩阵 6 镜像解析的降级语义一致）
+    let mut blank_ref: HashMap<String, String> = HashMap::new();
+    blank_ref.insert(
+        OCCLUSION_FIELD.to_string(),
+        r#"{"imageRef":"   ","boxes":[]}"#.to_string(),
+    );
+    assert!(occlusion_image_ref_from_fields(&blank_ref).is_none());
+}
+
+// ============================================================================
+// 覆盖矩阵 9（r7 追加）：vlm://pending 占位端到端不入 images
+// ============================================================================
+
+// r2 契约 §2.1 / r6-01 补丁：未被生产接线替换的 `vlm://pending-image` 不是
+// 可解析媒体，不得进 `card.images`；但占位只影响 images，不阻断草稿入库
+// （_occlusion 与 tag 照常携带）。本测试走完整 VLM 端到端链路做回归锁。
+#[test]
+fn test_vlm_pending_placeholder_image_ref_stays_out_of_images_end_to_end() {
+    // 1) VLM 坐标块 → spec：parse_occlusion_boxes_from_vlm 不负责选图，
+    //    产出的 image_ref 必须是占位字面值 vlm://pending-image
+    let vlm_text = format!(
+        "图中标注了两个心腔。\n{}\n```json\n[\n  \
+         {{\"x\":0.125,\"y\":0.25,\"w\":0.25,\"h\":0.25,\"label\":\"左心房\",\"clozeIndex\":1}},\n  \
+         {{\"x\":0.5,\"y\":0.5,\"w\":0.25,\"h\":0.125,\"label\":\"右心室\",\"clozeIndex\":2}}\n]\n```\n{}\n后续讲解。",
+        OCCLUSION_BOXES_OPEN, OCCLUSION_BOXES_CLOSE
+    );
+    let pending_spec =
+        parse_occlusion_boxes_from_vlm(&vlm_text).expect("合法坐标块应解析出 spec");
+    assert_eq!(
+        pending_spec.image_ref, "vlm://pending-image",
+        "VLM 解析产出的必须是占位引用"
+    );
+
+    // 2) 模拟「生产接线未替换占位」的暴露面（模型直出/旧数据/未来未接线
+    //    路径）：占位 spec 直接走 marker → 入库字段
+    let marker = build_occlusion_draft_marker_from_spec(&pending_spec, &OcclusionConfig::default())
+        .expect("占位引用非空，marker 应能构造");
+    let fields = extract_occlusion_draft_fields(&marker).expect("marker 应能还原入库字段");
+
+    // 入库形状照常：_occlusion 携带占位引用、tag 在位、cloze 正文在位
+    let occlusion_json = fields
+        .extra_fields
+        .get(OCCLUSION_FIELD)
+        .expect("占位草稿仍应携带 _occlusion（占位只影响 images，不阻断入库）");
+    assert!(occlusion_json.contains("vlm://pending-image"));
+    assert_eq!(fields.tags, vec![OCCLUSION_TAG.to_string()]);
+    assert!(fields.text.contains("{{c1::左心房}}"));
+    // （占位 text 的 <img src="pending-image"> 残留是 r6-01 记录的遗留项，
+    //  归属后续轮次裁决，此处不锁 text 的 <img> 形态。）
+
+    // 3) 核心断言：占位引用不入 images —— 入库点解析必须返回 None
+    let mut images: Vec<String> = Vec::new();
+    if images.is_empty() {
+        if let Some(image_ref) = occlusion_image_ref_from_fields(&fields.extra_fields) {
+            images.push(image_ref);
+        }
+    }
+    assert!(
+        images.is_empty(),
+        "vlm://pending-image 占位不得进 card.images：{images:?}"
+    );
+
+    // 4) 过滤是 scheme 级的：任意 vlm:// 引用、含前后空白的占位均被拒；
+    //    真实 vfs:// 引用不受影响
+    for pending_json in [
+        r#"{"imageRef":"vlm://pending-image","boxes":[]}"#,
+        r#"{"imageRef":"  vlm://pending-image  ","boxes":[]}"#,
+        r#"{"imageRef":"vlm://other-placeholder","boxes":[]}"#,
+    ] {
+        let mut f: HashMap<String, String> = HashMap::new();
+        f.insert(OCCLUSION_FIELD.to_string(), pending_json.to_string());
+        assert!(
+            occlusion_image_ref_from_fields(&f).is_none(),
+            "vlm:// scheme 必须整体被过滤：{pending_json}"
+        );
+    }
+    let mut real: HashMap<String, String> = HashMap::new();
+    real.insert(
+        OCCLUSION_FIELD.to_string(),
+        r#"{"imageRef":"vfs://images/heart-diagram.png","boxes":[]}"#.to_string(),
+    );
+    assert_eq!(
+        occlusion_image_ref_from_fields(&real).as_deref(),
+        Some("vfs://images/heart-diagram.png"),
+        "真实 vfs:// 引用不得被占位过滤误伤"
+    );
+}
+
+// ============================================================================
+// 覆盖矩阵 10（r7 追加）：IO 坐标 clamp/舍入白盒（0–1 值域深度防御）
+// ============================================================================
+
+// format_anki_io_cloze 的 clamp [0,1] 是深度防御：validate_spec 会拒掉越界
+// spec，正常链路触达不了该分支，只能绕过校验直构 ValidatedOcclusionSpec
+// （字段 pub）做白盒。矩阵 3 锁「合法输入的归一化输出」，本矩阵补锁
+// 「非法输入也绝不产出 [0,1] 之外的坐标（更不会是 ×100 百分数）」。
+#[test]
+fn test_io_cloze_coords_clamped_and_rounded_to_unit_interval() {
+    let spec = ValidatedOcclusionSpec {
+        image_ref: "vfs://images/x.png".to_string(),
+        boxes: vec![
+            // 全越界盒：负值夹到 0，超 1 夹到 1；整数 0/1 无前导点、无小数尾
+            OcclusionBox {
+                x: -0.25,
+                y: 1.5,
+                w: 2.5,
+                h: -1.0,
+                label: "越界盒".to_string(),
+                cloze_index: Some(1),
+            },
+            // 舍入盒：1/3 → .3333（4 位截断），0.6666667 → .6667（进位），
+            // 0.1234567 → .1235（进位），0.25 → .25（去尾零）
+            OcclusionBox {
+                x: 1.0_f32 / 3.0,
+                y: 0.666_666_7,
+                w: 0.123_456_7,
+                h: 0.25,
+                label: "舍入盒".to_string(),
+                cloze_index: Some(2),
+            },
+        ],
+    };
+
+    let rendered = format_anki_io_cloze(&spec);
+    assert_eq!(
+        rendered,
+        "{{c1::image-occlusion:rect:left=0:top=1:width=1:height=0}}\
+         {{c2::image-occlusion:rect:left=.3333:top=.6667:width=.1235:height=.25}}"
+    );
+
+    // 与测试侧公式镜像交叉校验（clamp/舍入分支同样不许失同步）
+    assert_eq!(
+        rendered,
+        format_anki_io_cloze_mirror(&spec.boxes),
+        "clamp/舍入分支：生产函数与测试镜像公式失同步"
+    );
+
+    // 值域自证：输出串里所有坐标 token 均无 ×100 痕迹
+    assert!(
+        !rendered.contains("=150") && !rendered.contains("=250") && !rendered.contains("=-"),
+        "越界输入疑似泄漏出 [0,1] 之外的坐标：{rendered}"
+    );
+}
+
+// ============================================================================
+// 覆盖矩阵 11（r7 追加）：draft marker 全链路（生成 → 入库 → 导出过滤）
+// ============================================================================
+
+#[test]
+fn test_occlusion_draft_marker_pipeline_end_to_end_to_export_filter() {
+    // 1) 生成：真实引用的 spec → 内部草稿 marker（行协议前缀 + JSON + `]`）
+    let marker = build_occlusion_draft_marker_from_spec(&heart_spec(), &OcclusionConfig::default())
+        .expect("合法 spec 应能构造 marker");
+    assert!(marker.starts_with(OCCLUSION_DRAFT_PREFIX) && marker.ends_with(']'));
+
+    // 2) marker 混入分段内容后：模型可见内容剥离 marker，正文行保留
+    let segment = format!("正文第一行\n{marker}\n正文第二行");
+    let model_visible = strip_occlusion_draft_markers(&segment);
+    assert!(
+        !model_visible.contains(OCCLUSION_DRAFT_PREFIX),
+        "marker 不得成为模型可见内容"
+    );
+    assert!(model_visible.contains("正文第一行") && model_visible.contains("正文第二行"));
+
+    // 3) 入库：同一分段还原出生成字段（<img> + cloze + _occlusion + tag）
+    let fields = extract_occlusion_draft_fields(&segment).expect("含 marker 的分段应还原字段");
+    assert!(
+        fields.text.starts_with("<img src=\"heart-diagram.png\"><br>"),
+        "Text 应以 image_ref basename 的 <img> 开头：{}",
+        fields.text
+    );
+    assert!(fields.text.contains("{{c1::左心房}}") && fields.text.contains("{{c2::右心室}}"));
+    assert_eq!(fields.tags, vec![OCCLUSION_TAG.to_string()]);
+
+    // 4) 回读：坐标严格逐位不漂移（fixture 全部二进制可精确表示）
+    let parsed =
+        parse_occlusion_field(&fields.extra_fields).expect("_occlusion 应可回读为 spec");
+    let source = heart_spec();
+    assert_eq!(parsed.image_ref, source.image_ref);
+    assert_eq!(parsed.boxes, source.boxes, "全链路坐标/标签/序号漂移");
+
+    // 5) images 接线：入库点应解析出完整 vfs:// 引用
+    assert_eq!(
+        occlusion_image_ref_from_fields(&fields.extra_fields).as_deref(),
+        Some("vfs://images/heart-diagram.png")
+    );
+
+    // 6) 导出过滤：_occlusion 等 _ 前缀协议字段不出导出产物，用户字段保留
+    let mut note_fields: HashMap<String, String> = fields.extra_fields.clone();
+    note_fields.insert("Text".to_string(), fields.text.clone());
+    let exported: Vec<&String> = note_fields
+        .keys()
+        .filter(|k| !is_internal_protocol_field_mirror(k))
+        .collect();
+    assert!(
+        exported.iter().all(|k| !k.starts_with('_')),
+        "导出产物存在 _ 前缀键：{exported:?}"
+    );
+    assert!(
+        !exported.iter().any(|k| k.as_str() == OCCLUSION_FIELD),
+        "导出产物泄漏 _occlusion"
+    );
+    assert!(exported.iter().any(|k| k.as_str() == "Text"));
 }

@@ -18,7 +18,7 @@
  * AnkiTasksApp.statsOnlyFailure.test.tsx 混合态 describe）。
  */
 import { describe, expect, it } from 'vitest';
-import { classify, type DocumentSession } from '../types';
+import { classify, hasWarnings, type DocumentSession, type SessionGroup } from '../types';
 
 function makeSession(overrides: Partial<DocumentSession> = {}): DocumentSession {
   return {
@@ -76,5 +76,102 @@ describe('classify mixed-state contract (P1-3 round-3 decoupling)', () => {
       makeSession({ documentId: 'doc-mixed', failedTasks: 4, activeTasks: 2, completedTasks: 4 }),
     ];
     expect(sessions.some(s => classify(s) === 'active')).toBe(true);
+  });
+});
+
+/**
+ * 第 7 轮扩展（r7-07）：把逐例断言升级为全真值表 + 分区性质锁定。
+ *
+ * ⚠️ 执行纪律：第 7 轮同样只写不跑，vitest 统一到第 8 轮执行。
+ *
+ * 上方 describe 逐例锁定了代表性混合态；本 describe 补三类系统性契约：
+ * 1. (failed, active, paused) 零/非零 8 组合全覆盖 —— 优先级次序整体钉死，
+ *    任何对 classify 分支顺序的改动都会在这里精确暴露是哪个组合翻了。
+ * 2. hasWarnings 与 classify 的正交性在同一张真值表上成立（徽章从不搬组）。
+ * 3. 分组是全划分（每个会话恰好落一组）—— FilterTab 计数依赖该性质。
+ */
+describe('classify mixed-state contract — r7 extensions (truth table & partition)', () => {
+  /** 与 types.ts 注释中声明的优先级同构的独立预期函数（非照抄实现分支）。 */
+  function expectedGroup(failed: number, active: number, paused: number): SessionGroup {
+    if (active > 0 || paused > 0) return 'active';
+    if (failed > 0) return 'attention';
+    return 'completed';
+  }
+
+  it('locks the full zero/non-zero truth table over (failedTasks, activeTasks, pausedTasks)', () => {
+    // 用互不相同的非零值（2/3/4）避免「恰好 1」掩盖计数被调换的回归。
+    for (const failedTasks of [0, 2]) {
+      for (const activeTasks of [0, 3]) {
+        for (const pausedTasks of [0, 4]) {
+          const label = `failed=${failedTasks} active=${activeTasks} paused=${pausedTasks}`;
+          expect(
+            classify(makeSession({ failedTasks, activeTasks, pausedTasks })),
+            label,
+          ).toBe(expectedGroup(failedTasks, activeTasks, pausedTasks));
+        }
+      }
+    }
+  });
+
+  it('keeps hasWarnings orthogonal on the same truth table — the badge lights up iff failed coexists with running/paused, and never moves the group', () => {
+    for (const failedTasks of [0, 2]) {
+      for (const activeTasks of [0, 3]) {
+        for (const pausedTasks of [0, 4]) {
+          const s = makeSession({ failedTasks, activeTasks, pausedTasks });
+          const label = `failed=${failedTasks} active=${activeTasks} paused=${pausedTasks}`;
+          // 无 optional 警告字段时，点亮条件 = 失败与运行/暂停并存（纯 attention 不点亮）。
+          expect(hasWarnings(s), label).toBe(
+            failedTasks > 0 && (activeTasks > 0 || pausedTasks > 0),
+          );
+          // 正交性：徽章计算不改变分组结论。
+          expect(classify(s), label).toBe(expectedGroup(failedTasks, activeTasks, pausedTasks));
+        }
+      }
+    }
+  });
+
+  it('partitions any session list into exactly one tab group (FilterTab count contract)', () => {
+    const sessions: DocumentSession[] = [
+      makeSession({ documentId: 'd1', activeTasks: 2 }),
+      makeSession({ documentId: 'd2', failedTasks: 1, activeTasks: 1 }),
+      makeSession({ documentId: 'd3', failedTasks: 2, pausedTasks: 1 }),
+      makeSession({ documentId: 'd4', failedTasks: 3, completedTasks: 7 }),
+      makeSession({ documentId: 'd5', completedTasks: 10 }),
+      makeSession({ documentId: 'd6' }),
+    ];
+    const counts: Record<SessionGroup, number> = { active: 0, attention: 0, completed: 0 };
+    for (const s of sessions) counts[classify(s)] += 1;
+    // 三组计数之和 = 会话总数（无遗漏、无重复）——「全部」tab 的口径依赖此性质。
+    expect(counts.active + counts.attention + counts.completed).toBe(sessions.length);
+    expect(counts).toEqual({ active: 3, attention: 1, completed: 2 });
+  });
+
+  it('fast-poll predicate also sees a failed+paused (nothing running) session', () => {
+    // 上方轮询锚点只覆盖了 failed+running；failed+paused 同样必须维持 5s 轮询，
+    // 否则「恢复」入口所在的会话在 30s 降频下状态迟滞。
+    const sessions = [
+      makeSession({ documentId: 'doc-done', completedTasks: 10 }),
+      makeSession({ documentId: 'doc-paused-mixed', failedTasks: 2, pausedTasks: 3 }),
+    ];
+    expect(sessions.some(s => classify(s) === 'active')).toBe(true);
+  });
+
+  it('counter drift beyond totalTasks does not flip the grouping — classify reads only the three state counters', () => {
+    // 后端计数漂移（分段计数与 totalTasks 不一致）不应影响分组：
+    // classify 的契约输入只有 failed/active/paused 三个计数。
+    expect(classify(makeSession({ activeTasks: 5, totalTasks: 3 }))).toBe('active');
+    expect(classify(makeSession({ failedTasks: 11, activeTasks: 1, totalTasks: 10 }))).toBe('active');
+    expect(classify(makeSession({ failedTasks: 11, totalTasks: 10 }))).toBe('attention');
+  });
+
+  it('optional warning fields on a mixed active session light the badge without moving the group', () => {
+    const s = makeSession({
+      failedTasks: 1,
+      activeTasks: 1,
+      warningTasks: 2,
+      completedWithWarnings: true,
+    });
+    expect(classify(s)).toBe('active');
+    expect(hasWarnings(s)).toBe(true);
   });
 });

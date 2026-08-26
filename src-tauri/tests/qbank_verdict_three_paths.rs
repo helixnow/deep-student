@@ -1,6 +1,7 @@
 //! qbank 判分三路（自动判分 A / AI 判分 B / 人工改判 C）计数等价 —— 集成回归
 //!
-//! ⚠️ 执行门禁：本文件为 0824 Wave2-E 第 4 轮「测试源码」产物，**第 8 轮才统一执行**。
+//! ⚠️ 执行门禁：本文件为 0824 Wave2-E 第 4 轮「测试源码」产物（第 7 轮扩展，
+//! 见 docs/dev/wave2-E-r7-04-verdict-tests.md），**第 8 轮才统一执行**。
 //! 第 4 轮只写不跑（与后端 verdict 原语、前端 daily 回写修复并行落地，
 //! 本文件是这批修复的黑盒验收网）。
 //!
@@ -33,11 +34,33 @@
 //! - **B 路（AI 判分管线）**：`run_qbank_grading` 需要 tauri Window
 //!   （QbankGradingEmitter 强依赖）+ mockito SSE，且默认 harness 测试无法建
 //!   tauri App（须在 Cargo.toml 注册 harness=false 目标，属产品文件，本轮禁改）。
+//!   R7 复核维持该结论（QbankGradingEmitter 仍无 trait 抽象、`::new` 仅收
+//!   具体 `tauri::Window`），故 B 路在本文件内仍不可直接驱动。
 //!   B 路首判已由 `tests/qbank_executor_e2e.rs` 覆盖（verdict correct → +1、
 //!   grading_method='ai'）；B 路已于 R4 接入上述原语（pipeline.rs 的
 //!   persist_grading_result，见 wave2-E-r4-02），其换判等价（false→true /
 //!   true→false / mastery 事件）由 pipeline 侧 in-crate 白盒单测锁定。
 //!   **等价意图以本表格文档化；第 8 轮若 e2e 有扩展，应对齐本表格。**
+//!   R7 起本文件另以「B 路落库终态种子」逼近覆盖 B→C 交接
+//!   （见 `ai_decided_verdict_manual_flip_converges_to_manual_method`）：
+//!   因 B/C 共用原语，两路对 submission 行的写入仅 grading_method 字面量不同，
+//!   单列覆写后的库面状态与真实 B 路判分终态一致。B 路各行为的
+//!   auto（自动测试位置）/ manual（人工验证步骤）转移表见
+//!   docs/dev/wave2-E-r7-04-verdict-tests.md §2。
+//!
+//! # grading_method 转移表（R7 补充，文档化 + 本文件锁定）
+//!
+//! submission 行 grading_method 的起点由 submit_answer 的插入分支决定，
+//! 其后仅被原语按调用路改写；同向幂等在原语入口短路、**不改写** grading_method：
+//!
+//! | 事件                                  | grading_method 转移      | 锁定位置 |
+//! |---------------------------------------|--------------------------|----------|
+//! | 客观题提交（自动判分）                | (插入) → `auto`          | 本文件 `grading_method_origin_matrix_matches_documented_table` |
+//! | 主观题提交（待判定，等 AI/人工）      | (插入) → `ai`            | 同上 |
+//! | 带 override 的新作答提交              | (插入) → `manual`        | 同上 |
+//! | A 路待判定去重 / C 路改判（换判生效） | 任意 → `manual`          | 本文件多例 + in-crate 白盒 |
+//! | B 路 AI persist（判定生效）           | 任意 → `ai`              | qbank_executor_e2e（首判）+ pipeline 白盒（换判）|
+//! | 同向幂等重放（任一路）                | 不变（零写入）           | 本文件 `idempotent_regrade_of_auto_verdict_preserves_grading_method_and_rowsync` |
 //!
 //! 同时覆盖（任务面）：
 //! - 改判回写：SubmitAnswerResult.daily_progress 权威快照与 get_daily_practice 同口径；
@@ -111,6 +134,32 @@ fn create_subjective_question(vfs_db: &Arc<VfsDatabase>, exam_id: &str, label: &
         },
     )
     .expect("create subjective question fixture")
+}
+
+/// 客观题（single_choice → submit_answer 自动判分，grading_method='auto'；
+/// 判分只比对 answer 选项键，无需 options 数据）
+fn create_choice_question(vfs_db: &Arc<VfsDatabase>, exam_id: &str, label: &str) -> Question {
+    VfsQuestionRepo::create_question(
+        vfs_db,
+        &CreateQuestionParams {
+            exam_id: exam_id.to_string(),
+            card_id: Some(label.to_string()),
+            question_label: Some(label.to_string()),
+            content: format!("{label}: pick the correct option"),
+            options: None,
+            answer: Some("A".to_string()),
+            explanation: None,
+            question_type: Some(QuestionType::SingleChoice),
+            difficulty: None,
+            tags: Some(vec!["physics".to_string()]),
+            source_type: Some(SourceType::Manual),
+            source_ref: Some("qbank_verdict_three_paths".to_string()),
+            images: None,
+            parent_id: None,
+            structured_data: None,
+        },
+    )
+    .expect("create single-choice question fixture")
 }
 
 fn reload_question(vfs_db: &Arc<VfsDatabase>, question_id: &str) -> Question {
@@ -458,4 +507,310 @@ fn submit_answer_result_without_daily_progress_field_still_deserializes() {
     );
     assert_eq!(revived.submission_id, result.submission_id);
     assert_eq!(revived.is_correct, Some(true));
+}
+
+// ============================================================================
+// R7 扩展：grading_method 起点矩阵（auto / ai / manual 三起点，见头部转移表）
+// ============================================================================
+
+/// 插入时 grading_method 起点矩阵：客观题自动判分 → 'auto'、主观题待判定 →
+/// 'ai'（占位等待 AI/人工）、带 override 的新作答 → 'manual'。
+/// 这是头部「grading_method 转移表」的起点行，防止插入分支的字面量被改动
+/// 后三路收敛断言失去参照系。
+#[test]
+fn grading_method_origin_matrix_matches_documented_table() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "method-origins");
+
+    // 客观题自动判分 → 'auto'（判定即时落定，绝不出现 NULL）
+    let choice = create_choice_question(&vfs_db, &exam_id, "q-origin-auto");
+    let auto = service
+        .submit_answer(&choice.id, "A", None, None)
+        .expect("auto-graded submit");
+    assert_eq!(auto.is_correct, Some(true), "客观题应即时自动判定");
+    assert!(!auto.needs_manual_grading);
+
+    // 主观题待判定 → 'ai'
+    let subjective = create_subjective_question(&vfs_db, &exam_id, "q-origin-ai");
+    let pending = service
+        .submit_answer(&subjective.id, "pending take", None, None)
+        .expect("pending submit");
+    assert_eq!(pending.is_correct, None);
+
+    // 带 override 的新作答（无既有待判定提交可并）→ 'manual'
+    let overridden = create_subjective_question(&vfs_db, &exam_id, "q-origin-manual");
+    let manual = service
+        .submit_answer(&overridden.id, "override take", Some(true), None)
+        .expect("override submit");
+    assert_eq!(manual.is_correct, Some(true));
+
+    let method_of = |question_id: &str| {
+        VfsQuestionRepo::get_submissions(&vfs_db, question_id, 1)
+            .expect("read submission")
+            .remove(0)
+            .grading_method
+    };
+    assert_eq!(method_of(&choice.id), "auto", "客观题自动判分起点应为 auto");
+    assert_eq!(method_of(&subjective.id), "ai", "主观题待判定起点应为 ai");
+    assert_eq!(method_of(&overridden.id), "manual", "override 新作答起点应为 manual");
+}
+
+// ============================================================================
+// R7 扩展：A 路自动判分（'auto' 起点）经 C 路改判的计数等价 + method 转移
+// ============================================================================
+
+/// 自动判分（'auto'）的客观题走 C 路改判，必须与主观题走查同一契约表：
+/// false→true +1 / true→false -1、attempt 恒 1、submission 恒 1 条；
+/// 且换判生效时 grading_method 从 'auto' 收敛为 'manual'。
+#[test]
+fn auto_graded_choice_regrade_transfers_method_and_counts() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "auto-regrade");
+    let question = create_choice_question(&vfs_db, &exam_id, "q-auto");
+
+    // 自动判错（正确答案 A，用户答 B）：即时 Some(false)，无待判定中间态
+    let wrong = service
+        .submit_answer(&question.id, "B", None, None)
+        .expect("auto-graded wrong submit");
+    assert_eq!(wrong.is_correct, Some(false));
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!((q.attempt_count, q.correct_count), (1, 0));
+    assert_eq!(q.status, QuestionStatus::Review);
+
+    // false → true（用户申诉判分错误）：+1、离开 review、method auto→manual
+    service
+        .regrade_submission(&question.id, &wrong.submission_id, true)
+        .expect("regrade auto false→true");
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!(q.correct_count, 1, "auto 起点的 false→true 也必须 +1");
+    assert_eq!(q.status, QuestionStatus::InProgress);
+    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
+        .expect("read submissions");
+    assert_eq!(submissions.len(), 1, "改判不新插作答记录");
+    assert_eq!(submissions[0].grading_method, "manual", "换判生效必须收敛 manual");
+
+    // true → false（再次换回）：-1、回 review、attempt 全程恒 1
+    service
+        .regrade_submission(&question.id, &wrong.submission_id, false)
+        .expect("regrade auto true→false");
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!(q.correct_count, 0, "true→false 必须 -1 且不为负");
+    assert_eq!(q.status, QuestionStatus::Review);
+    assert_eq!(q.attempt_count, 1, "改判永不递增 attempt_count");
+    assert_eq!(submission_count(&vfs_db, &question.id), 1);
+}
+
+/// 同向幂等重放不得改写 grading_method（'auto' 保持 'auto'）、不得推进
+/// RowSync：幂等短路发生在原语入口，任何列都不应被触碰。守护"确认判分"
+/// 类 UI 重放不会把自动判分静默洗成人工判分。
+#[test]
+fn idempotent_regrade_of_auto_verdict_preserves_grading_method_and_rowsync() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "auto-idempotent");
+    let question = create_choice_question(&vfs_db, &exam_id, "q-auto-idem");
+
+    let auto = service
+        .submit_answer(&question.id, "A", None, None)
+        .expect("auto-graded correct submit");
+    assert_eq!(auto.is_correct, Some(true));
+    let baseline_rowsync = submission_rowsync(&vfs_db, &auto.submission_id);
+
+    // 同向改判（true → true）：零写入短路
+    service
+        .regrade_submission(&question.id, &auto.submission_id, true)
+        .expect("idempotent regrade of auto verdict");
+
+    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 1)
+        .expect("read submission");
+    assert_eq!(
+        submissions[0].grading_method, "auto",
+        "同向幂等不得把 auto 洗成 manual"
+    );
+    assert_eq!(
+        submission_rowsync(&vfs_db, &auto.submission_id),
+        baseline_rowsync,
+        "同向幂等不得推进 RowSync 列"
+    );
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!((q.attempt_count, q.correct_count), (1, 1));
+    assert_eq!(q.status, QuestionStatus::InProgress);
+}
+
+// ============================================================================
+// R7 扩展：B→C 交接（AI 已判定的 submission 被人工换判）
+// ============================================================================
+
+/// B 路判定后的人工换判（"AI 判我对，但我其实错了"）必须与 C 路换判同契约：
+/// true→false -1、状态回 review、grading_method 'ai' 收敛 'manual'、
+/// 不新插记录、RowSync 推进。
+///
+/// B 路本体在本文件不可驱动（QbankGradingEmitter 强依赖 tauri Window，
+/// 注册 harness=false 目标须改 Cargo.toml——产品文件，本轮禁改；详见
+/// wave2-E-r7-04 §1）。此处以**落库终态种子**逼近：先经 pub API 走
+/// NULL→true 改判（原语完成全部题目侧写入），再单列覆写 grading_method
+/// 为 'ai'。因 B/C 共用 apply_submission_verdict_in_tx，两路对该行的写入
+/// 仅 grading_method 字面量不同，故种子后的库面状态与真实 B 路
+/// NULL→true 判分终态一致（旁证种子模式与 legacy 测试同源）。
+#[test]
+fn ai_decided_verdict_manual_flip_converges_to_manual_method() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "ai-handoff");
+    let question = create_subjective_question(&vfs_db, &exam_id, "q-ai-handoff");
+
+    let pending = service
+        .submit_answer(&question.id, "ai graded answer", None, None)
+        .expect("pending submit");
+    service
+        .regrade_submission(&question.id, &pending.submission_id, true)
+        .expect("decide NULL→true through the shared primitive");
+
+    // 种子：把判定来源改写为 AI（等价于 B 路 persist 的落库终态，见 doc 注释）
+    {
+        let conn = vfs_db.get_conn_safe().expect("vfs connection");
+        let updated = conn
+            .execute(
+                "UPDATE answer_submissions SET grading_method = 'ai' WHERE id = ?1",
+                rusqlite::params![pending.submission_id],
+            )
+            .expect("seed ai grading_method");
+        assert_eq!(updated, 1);
+    }
+    let (_, version_before) = submission_rowsync(&vfs_db, &pending.submission_id);
+
+    // C 路换判：用户不认可 AI 的"对"，改为"错"
+    let flipped = service
+        .regrade_submission(&question.id, &pending.submission_id, false)
+        .expect("manual flip of ai verdict");
+    assert_eq!(flipped.is_correct, Some(false));
+
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!(q.correct_count, 0, "ai 起点的 true→false 也必须 -1");
+    assert_eq!(q.status, QuestionStatus::Review);
+    assert_eq!(q.attempt_count, 1, "换判不递增 attempt_count");
+    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
+        .expect("read submissions");
+    assert_eq!(submissions.len(), 1, "换判不新插作答记录");
+    assert_eq!(
+        submissions[0].grading_method, "manual",
+        "人工换判必须把 ai 收敛为 manual"
+    );
+    let (updated_at_after, version_after) = submission_rowsync(&vfs_db, &pending.submission_id);
+    assert!(updated_at_after.is_some());
+    assert_eq!(version_after, version_before + 1, "换判必须推进 local_version");
+}
+
+// ============================================================================
+// R7 扩展：MAX(0,·) 防负钳制（计数漂移的存量库）
+// ============================================================================
+
+/// correct_count 与 submission 判定失配的存量库（旧版本双计 bug 残留 / 外部
+/// 导入）上做 true→false 换判，-1 必须被 MAX(0,·) 钳在 0，不得下穿为负。
+/// 纯 pub 流程走不到该分支（判"对"必然先 +1），故用漂移种子构造前置。
+#[test]
+fn true_to_false_regrade_clamps_correct_count_at_zero() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "clamp");
+    let question = create_subjective_question(&vfs_db, &exam_id, "q-clamp");
+
+    let pending = service
+        .submit_answer(&question.id, "clamp answer", None, None)
+        .expect("pending submit");
+    service
+        .regrade_submission(&question.id, &pending.submission_id, true)
+        .expect("regrade NULL→true");
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!(q.correct_count, 1, "前置：正常路径先 +1");
+
+    // 漂移种子：题目级计数被外因清零，submission 仍是 Some(true)
+    {
+        let conn = vfs_db.get_conn_safe().expect("vfs connection");
+        let updated = conn
+            .execute(
+                "UPDATE questions SET correct_count = 0 WHERE id = ?1",
+                rusqlite::params![question.id],
+            )
+            .expect("seed drifted correct_count");
+        assert_eq!(updated, 1);
+    }
+
+    let flipped = service
+        .regrade_submission(&question.id, &pending.submission_id, false)
+        .expect("regrade true→false on drifted counts");
+    assert_eq!(flipped.is_correct, Some(false));
+    let q = reload_question(&vfs_db, &question.id);
+    assert_eq!(q.correct_count, 0, "MAX(0,·) 必须把 -1 钳在 0，不得为负");
+    assert_eq!(q.status, QuestionStatus::Review);
+}
+
+// ============================================================================
+// R7 扩展：C 路守卫（只许改判最近一次提交）的黑盒面
+// ============================================================================
+
+/// pub 入口守卫：改判过期提交 / 不存在的提交 / 零作答题目都必须报错，
+/// 且失败路径不得留下任何计数副作用（守卫在事务内先于原语执行）。
+/// in-crate 白盒已测守卫本身；这里锁 pub API 面的错误口径 + 无副作用。
+#[test]
+fn regrade_guard_rejects_stale_or_unknown_submission_without_side_effects() {
+    let (_tmp, vfs_db) = create_vfs_db();
+    let service = QuestionBankService::new(Arc::clone(&vfs_db));
+    let exam_id = create_exam(&vfs_db, "guard");
+    let question = create_choice_question(&vfs_db, &exam_id, "q-guard");
+
+    // 两次真实作答：第一条提交沉淀为历史（stale）
+    let first = service
+        .submit_answer(&question.id, "A", None, None)
+        .expect("first attempt");
+    let second = service
+        .submit_answer(&question.id, "B", None, None)
+        .expect("second attempt");
+    assert_ne!(first.submission_id, second.submission_id);
+    let q_before = reload_question(&vfs_db, &question.id);
+    assert_eq!((q_before.attempt_count, q_before.correct_count), (2, 1));
+
+    // stale 提交：拒绝改判
+    let stale = service
+        .regrade_submission(&question.id, &first.submission_id, false)
+        .expect_err("stale submission must be rejected");
+    assert!(
+        stale.message.contains("最近一次提交"),
+        "错误信息应指向最近提交守卫，实际: {}",
+        stale.message
+    );
+
+    // 不存在的 submission id：同一守卫拒绝
+    service
+        .regrade_submission(&question.id, "sub-does-not-exist", true)
+        .expect_err("unknown submission must be rejected");
+
+    // 零作答题目：无记录可改判
+    let untouched = create_choice_question(&vfs_db, &exam_id, "q-guard-empty");
+    let empty = service
+        .regrade_submission(&untouched.id, "whatever", true)
+        .expect_err("question without submissions must be rejected");
+    assert!(
+        empty.message.contains("没有作答记录"),
+        "错误信息应说明无作答记录，实际: {}",
+        empty.message
+    );
+
+    // 失败路径零副作用：计数、判定、方法、条数全部保持原样
+    let q_after = reload_question(&vfs_db, &question.id);
+    assert_eq!(
+        (q_after.attempt_count, q_after.correct_count),
+        (q_before.attempt_count, q_before.correct_count),
+        "被拒绝的改判不得留下计数副作用"
+    );
+    let submissions = VfsQuestionRepo::get_submissions(&vfs_db, &question.id, 50)
+        .expect("read submissions");
+    assert_eq!(submissions.len(), 2);
+    // get_submissions 按时间倒序：[0]=最近(B, 错), [1]=历史(A, 对)
+    assert_eq!(submissions[1].id, first.submission_id);
+    assert_eq!(submissions[1].is_correct, Some(true), "stale 提交判定不得被改动");
+    assert_eq!(submissions[1].grading_method, "auto");
+    assert_eq!(submissions[0].is_correct, Some(false));
 }

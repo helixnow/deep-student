@@ -485,3 +485,52 @@ qbank verdict 原语 + daily 口径 + P2-1 B 案 = 第 4 轮；nullable/P3 optio
 ---
 
 *Goal 未完成。*
+
+---
+
+## 13. 第 7 轮（测试落盘，只写不跑，2026-08-26）
+
+模型：全部 `claude-fable-5-thinking-high`。本轮**零产品代码改动、零 commit、
+零测试执行**（例外违规见下）；产出 = 测试源码 + r7-01 ~ r7-07 报告 +
+测试台账 `docs/dev/wave2-E-r7-09-test-ledger.md`（清单/命令/红绿/缺口详见该文件）。
+
+### 测试落盘清单（新建 3 文件 + 扩展 5 文件，新增 42 用例，存量零删改）
+
+| 文件 | 性质 | 新增 | 覆盖 |
+| --- | --- | --- | --- |
+| `tests/occlusion_export_roundtrip.rs` | 扩展 r2 | 4 | 入库 images 接线、`vlm://` 不入 images、IO 0–1 clamp/舍入、生成→导出全链 |
+| `tests/gold_provenance_excludes_critic.rs` | 扩展 r2 | 3 | qa_pass 洗白真管线、update_anki_card user 戳、import/sync actor 产品符号 + 对齐锁 |
+| `tests/qa_pass_critic_combo.rs` | 新建 | 11 | 三 QA 留痕来源 × enable_qa_pass 两态（wire 真开关 + fail-open） |
+| `tests/qbank_verdict_three_paths.rs` | 扩展 r4 | 6 | grading_method 状态机、B→C 交接终态种子、幂等零写入、钳 0、守卫 |
+| `tests/mastery_qbank_correction.rs` | 新建 | 3 | pub 补偿入口破首判锁 / 幂等 / 与产品链互操作 |
+| `tests/anki_nullable_card_reads.rs` | 新建 | 5 | 手建历史 schema × 六条读 API NULL 兜底 |
+| `classify.mixed.test.ts` | 扩展 r3 | 6 | 8 组合真值表、hasWarnings 正交、全划分 |
+| `recordPracticeAnswer.regrade.test.ts` | 扩展 r4 | 4 | 差量×权威覆盖交织时序、apply 字段边界、daily/timed 隔离 |
+
+### 第 8 轮执行（命令 5 条，详见 r7-09 §3）
+
+cargo test 两组（anki 三件套 / qbank+mastery+nullable 三件套）+ vitest 两组
+（anki-tasks+store / chat 块+overlay 存量回归）+ `npm run typecheck`。
+
+### 预期红绿（静态推断，r7-09 §4）
+
+8 文件全绿预期；引用的产品 pub 符号已逐一核对在位。首跑最大风险是编译红
+（六个 Rust 文件中五个从未编译，`anki_nullable_card_reads` 手建 schema
+对列风险最高）；断言红多为契约演进信号（对齐锁、f32 舍入字面值、lint
+阈值、EMA 常数、真值表 vs 注释优先级）。
+
+### 缺口与欠账（r7-09 §5）
+
+B 路 AI 判分仍不可直接集成测（Window + harness=false 需改 Cargo.toml，
+manual/auto 转移表已文档化）；in-crate 欠账三项（map_due_row 双保险、
+load_review_cards_for_states 私有语义、is_error_card）；vlm 占位 text 残留
+未锁（防误红）；前端 r3/r5 存量零扩展仅回归；r7-08 截至台账落盘无产物。
+
+### 过程违规（记录在案，不作门禁证据）
+
+mastery 代理跑了 `cargo check --test mastery_qbank_correction`（与第 5/6 轮
+cargo check 违规同类处理）；其余代理经 `git status` 佐证只落盘未执行。
+
+---
+
+*Goal 未完成。*

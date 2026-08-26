@@ -55,14 +55,34 @@
 //! | classify_content_diff_without_actor_proof_is_unlabeled | 是（标注层闸门） | 红 | 绿 |
 //! | classify_import_actor_never_gets_edited_label | 是（标注层闸门） | 红 | 绿 |
 //! | marker_helper_hits_only_structured_stable_code | 否 | 绿 | 绿 |
+//!
+//! ## 第 7 轮追加（r7-02，见 docs/dev/wave2-E-r7-02-gold-tests.md）
+//!
+//! 编写第 7 轮时 `_content_provenance` 落地已合入（`anki_gold_set` 导出
+//! `CONTENT_PROVENANCE_FIELD` / `PROVENANCE_ACTOR_*` / `ContentProvenance`），
+//! 追加测试**直接引用产品符号**（落地前不编译，不存在"落地前红"状态）；
+//! 第 2 轮既有测试与其本地常量按"已有不要删"纪律原样保留，
+//! 本地常量 ↔ 产品符号的逐字一致由
+//! `import_actor_product_stamp_is_never_user_proof` 内的对齐锁断言兜底。
+//!
+//! | 测试（r7 追加） | 依赖落地员闸门 | 落地后预期 |
+//! | --- | --- | --- |
+//! | qa_pass_whitewash_pipeline_sanitized_revise_yields_zero_references | 否（真管线全链） | 绿 |
+//! | update_anki_card_user_stamp_proves_user_edit_and_yields_reference | 否 | 绿 |
+//! | import_actor_product_stamp_is_never_user_proof | 否 | 绿 |
 
 use serde_json::{json, Value};
 
-use deep_student_lib::anki_critic::{gold_references_from_cards, CriticConfig, ReferenceCard};
+use deep_student_lib::anki_critic::{
+    gold_references_from_cards, parse_critic_response, plan_updates,
+    sanitize_plan_for_disabled_qa_pass, CriticConfig, ReferenceCard,
+};
 use deep_student_lib::anki_gold_set::{
-    classify_candidate, gold_lint_config, has_critic_revision_marker, mine_gold_set,
-    select_grounded_reference_pairs, GoldCandidate, GoldLabel, GoldMiningConfig,
-    CRITIC_REVISED_QA_CODE, ORIGINAL_GENERATION_FIELD,
+    classify_candidate, gold_lint_config, has_critic_revision_marker, insert_content_provenance,
+    is_llm_critic_actor, is_user_proven_edit, mine_gold_set, parse_content_provenance,
+    select_grounded_reference_pairs, ContentProvenance, GoldCandidate, GoldLabel,
+    GoldMiningConfig, CRITIC_REVISED_QA_CODE, ORIGINAL_GENERATION_FIELD, PROVENANCE_ACTOR_IMPORT,
+    PROVENANCE_ACTOR_LLM_CRITIC, PROVENANCE_ACTOR_SYNC, PROVENANCE_ACTOR_USER,
 };
 use deep_student_lib::anki_qa_lint::QA_FLAGS_FIELD;
 use deep_student_lib::models::AnkiCard;
@@ -80,10 +100,9 @@ const CONTENT_PROVENANCE_FIELD: &str = "_content_provenance";
 const ACTOR_USER: &str = "user";
 const ACTOR_LLM_CRITIC: &str = "llm_critic";
 const ACTOR_IMPORT: &str = "import";
-/// 方案里预留的第四个 actor；本矩阵未单列 sync 反例（与 import 同为
-/// 「非 user 即排除」语义），保留常量供第 8 轮扩展。
-/// 待第 8 轮与落地符号对齐。
-#[allow(dead_code)]
+/// 方案里预留的第四个 actor；第 7 轮已补 sync 反例
+/// （`import_actor_product_stamp_is_never_user_proof`，与 import 同为
+/// 「非 user 即排除」语义），并在其中与产品符号 `PROVENANCE_ACTOR_SYNC` 对齐锁死。
 const ACTOR_SYNC: &str = "sync";
 
 // ============================================================================
@@ -475,4 +494,239 @@ fn marker_helper_hits_only_structured_stable_code() {
         !has_critic_revision_marker(&HashMap::new()),
         "无 _qa_flags 不命中（marker 缺失场景交由 provenance 闸门兜底）"
     );
+}
+
+// ============================================================================
+// 第 7 轮追加（r7-02）：真管线洗白路径 / update_anki_card user 戳 / import actor
+// ============================================================================
+
+/// 覆盖 7（r7，洗白路径 A **真管线**版）：既有覆盖 2 只模拟 sanitize 之后的
+/// 落库形态；本测试走完整 pub 管线——模型输出 →
+/// `parse_critic_response` → `plan_updates`（revise 落 marker + 溯源戳）→
+/// `sanitize_plan_for_disabled_qa_pass`（enable_qa_pass=false 收口，剥
+/// `_qa_flags`）→ 产物卡进 `gold_references_from_cards`。
+/// 断言链锁三件事：sanitize 剥 marker 但**不剥**溯源戳（跨人契约 #2）、
+/// 有实质内容差异的 revise 不被 sanitize 丢弃、洗白后的卡 0 条 reference
+/// （同批 user 对照卡正常入选，证明排除来自 provenance 而非管线哑火）。
+#[test]
+fn qa_pass_whitewash_pipeline_sanitized_revise_yields_zero_references() {
+    use std::collections::HashSet;
+
+    // 生成态卡：内容 == _original_generation 快照（首写幂等语义）
+    let generated = card_from_json(
+        "c-pipeline-whitewash",
+        "什么是队列？答案是先进先出。",
+        "先进先出",
+        json!({
+            ORIGINAL_GENERATION_FIELD:
+                original_snapshot("什么是队列？答案是先进先出。", "先进先出"),
+        }),
+    );
+
+    // 模型 revise 裁决（带 markdown 围栏，走真实解析路径）
+    let raw = r#"```json
+{"verdicts":[{"card_id":"c-pipeline-whitewash","verdict":"revise","reasons":["问题面泄漏答案"],"revised":{"front":"什么是队列？","back":"先进先出的线性数据结构"}}]}
+```"#;
+    let allowed: HashSet<String> = HashSet::from(["c-pipeline-whitewash".to_string()]);
+    let parsed = parse_critic_response(raw, &allowed).expect("合法 revise 响应必须解析成功");
+    assert_eq!(parsed.verdicts.len(), 1);
+    assert_eq!(parsed.rejected_unknown_ids, 0);
+
+    let mut plan = plan_updates(std::slice::from_ref(&generated), &parsed.verdicts);
+    assert_eq!(plan.revised, 1, "revise 裁决必须计入 revised");
+    assert_eq!(plan.updates.len(), 1);
+    assert!(
+        has_critic_revision_marker(&plan.updates[0].extra_fields),
+        "sanitize 前 revise 写回必须带 llm_critic_revised marker"
+    );
+
+    // enable_qa_pass=false 收口：剥 _qa_flags（连 marker）
+    sanitize_plan_for_disabled_qa_pass(&mut plan, std::slice::from_ref(&generated));
+    assert_eq!(
+        plan.updates.len(),
+        1,
+        "有实质内容差异的 revise 不得被 sanitize 判为空写回丢弃"
+    );
+    let whitewashed = plan.updates[0].clone();
+    assert!(
+        !whitewashed.extra_fields.contains_key(QA_FLAGS_FIELD),
+        "sanitize 必须剥掉整个 _qa_flags"
+    );
+    assert!(
+        !has_critic_revision_marker(&whitewashed.extra_fields),
+        "洗白前提成立：marker 已不在"
+    );
+    let stamp = parse_content_provenance(&whitewashed.extra_fields)
+        .expect("溯源戳是事实记录，不得被 sanitize 剥掉（跨人契约 #2）");
+    assert_eq!(stamp.actor, PROVENANCE_ACTOR_LLM_CRITIC);
+    assert_eq!(stamp.code.as_deref(), Some(CRITIC_REVISED_QA_CODE));
+    assert!(is_llm_critic_actor(&whitewashed.extra_fields));
+
+    // 同批阳性对照：user 戳的编辑卡
+    let mut user_control = card_from_json(
+        "c-pipeline-control",
+        "什么是惯性？",
+        "物体保持原有运动状态不变的性质",
+        json!({
+            ORIGINAL_GENERATION_FIELD:
+                original_snapshot("什么是惯性？答案是保持运动状态。", "保持运动状态"),
+        }),
+    );
+    insert_content_provenance(
+        &mut user_control.extra_fields,
+        &ContentProvenance::user("update_anki_card"),
+    );
+
+    let refs = mine_references(&[whitewashed, user_control]);
+    assert_eq!(
+        refs.len(),
+        1,
+        "真管线洗白卡必须 0 条 reference、user 对照必须入选，实际 {} 条",
+        refs.len()
+    );
+    assert_eq!(
+        refs[0].front, "什么是惯性？",
+        "入选的必须是 user 对照卡而非 sanitize 洗白卡"
+    );
+}
+
+/// 覆盖 8（r7，update_anki_card user 戳）：`update_anki_card` 在写库前后端
+/// 统一覆盖写入 `ContentProvenance::user("update_anki_card")`（见
+/// enhanced_anki_service.rs；服务本体需 DB + LLMManager，集成测试无法实例化，
+/// 按任务书回退为锁定该 pub 构造子产出的戳 + pub classify 的 actor=user 接纳）。
+/// 同时锁 last-writer-wins：前端 payload 即便自带 llm_critic provenance，
+/// 后端覆盖写入后必须以 user 戳为准（不信任 payload 自带 provenance）。
+#[test]
+fn update_anki_card_user_stamp_proves_user_edit_and_yields_reference() {
+    // 与 update_anki_card 写入的戳逐字同源
+    let stamp = ContentProvenance::user("update_anki_card");
+    assert_eq!(stamp.actor, PROVENANCE_ACTOR_USER);
+    assert_eq!(stamp.code.as_deref(), Some("update_anki_card"));
+    assert!(stamp.at.is_some(), "user 戳必须携带写入时刻");
+
+    let mut card = card_from_json(
+        "c-update-stamp",
+        "什么是惯性？",
+        "物体保持原有运动状态不变的性质",
+        json!({
+            ORIGINAL_GENERATION_FIELD:
+                original_snapshot("什么是惯性？答案是保持运动状态。", "保持运动状态"),
+        }),
+    );
+    // 模拟前端 payload 夹带的陈旧 llm_critic provenance……
+    insert_content_provenance(&mut card.extra_fields, &ContentProvenance::llm_critic_revision());
+    // ……被 update_anki_card 的后端统一戳覆盖（last-writer-wins）
+    insert_content_provenance(&mut card.extra_fields, &stamp);
+
+    assert!(is_user_proven_edit(&card.extra_fields), "覆盖后必须是用户证明");
+    assert!(!is_llm_critic_actor(&card.extra_fields));
+    let parsed = parse_content_provenance(&card.extra_fields).expect("产品构造子的戳必须可解析");
+    assert_eq!(parsed.actor, PROVENANCE_ACTOR_USER);
+    assert_eq!(parsed.code.as_deref(), Some("update_anki_card"));
+
+    // 卡片层：该戳必须被收集器接纳为修正对
+    let refs = mine_references(&[card]);
+    assert_eq!(refs.len(), 1, "update_anki_card user 戳的编辑卡必须入选修正对");
+    assert_eq!(refs[0].front, "什么是惯性？");
+
+    // 标注层：edit_actor 取自同一戳的 actor 值 → EditedMinor + 修正对
+    let candidate =
+        candidate_from_json(edited_candidate_json("cand-update-stamp", Some(parsed.actor.as_str())));
+    let sample = classify_candidate(&candidate, &GoldMiningConfig::default());
+    assert_eq!(
+        sample.label,
+        GoldLabel::EditedMinor,
+        "update_anki_card 戳的 actor 值必须通过标注层编辑者闸门"
+    );
+    assert!(sample.repair_pair.is_some(), "必须携带修正对");
+}
+
+/// 覆盖 9（r7，import actor 产品符号版）：既有覆盖 5 用本地 fixture 常量；
+/// 本测试改用**已落地产品符号**（`PROVENANCE_ACTOR_IMPORT` / `_SYNC` +
+/// `ContentProvenance` 构造）走同一排除链，并顺带锁死：
+/// - 本地 fixture 常量 ↔ 产品常量逐字一致（r2 头部预告的对齐点）；
+/// - sync 与未知 actor 同为"非 user 即排除"（fail-closed），
+///   补齐 r2 预留未单列的 sync 反例；
+/// - 标注层对 sync / 未知 actor 同样不给 `Edited*`。
+#[test]
+fn import_actor_product_stamp_is_never_user_proof() {
+    // 对齐锁：第 2 轮本地常量与落地产品符号不得漂移
+    assert_eq!(ACTOR_USER, PROVENANCE_ACTOR_USER);
+    assert_eq!(ACTOR_LLM_CRITIC, PROVENANCE_ACTOR_LLM_CRITIC);
+    assert_eq!(ACTOR_IMPORT, PROVENANCE_ACTOR_IMPORT);
+    assert_eq!(ACTOR_SYNC, PROVENANCE_ACTOR_SYNC);
+    assert_eq!(
+        CONTENT_PROVENANCE_FIELD,
+        deep_student_lib::anki_gold_set::CONTENT_PROVENANCE_FIELD
+    );
+
+    // import / sync / 未知 actor：一律非用户证明，卡片层 0 条 reference
+    let mut tainted_batch = Vec::new();
+    for (id, actor, code) in [
+        ("c-prod-import", PROVENANCE_ACTOR_IMPORT, Some("apkg_import")),
+        ("c-prod-sync", PROVENANCE_ACTOR_SYNC, Some("sync_merge")),
+        ("c-prod-future", "future_agent", None),
+    ] {
+        let mut card = card_from_json(
+            id,
+            "什么是加速度？",
+            "速度对时间的变化率",
+            json!({
+                ORIGINAL_GENERATION_FIELD:
+                    original_snapshot("什么是加速度？答案是速度变化率。", "速度变化率"),
+            }),
+        );
+        insert_content_provenance(
+            &mut card.extra_fields,
+            &ContentProvenance {
+                actor: actor.to_string(),
+                code: code.map(str::to_string),
+                at: Some("2026-08-26T12:00:00Z".to_string()),
+            },
+        );
+        assert!(
+            !is_user_proven_edit(&card.extra_fields),
+            "actor={} 不得算用户证明（fail-closed）",
+            actor
+        );
+        let refs = mine_references(std::slice::from_ref(&card));
+        assert!(refs.is_empty(), "actor={} 必须 0 条 reference", actor);
+        tainted_batch.push(card);
+    }
+
+    // 同批混入 user 对照：只有对照可入选
+    let mut user_control = card_from_json(
+        "c-prod-user-control",
+        "什么是惯性？",
+        "物体保持原有运动状态不变的性质",
+        json!({
+            ORIGINAL_GENERATION_FIELD:
+                original_snapshot("什么是惯性？答案是保持运动状态。", "保持运动状态"),
+        }),
+    );
+    insert_content_provenance(
+        &mut user_control.extra_fields,
+        &ContentProvenance::user("update_anki_card"),
+    );
+    tainted_batch.push(user_control);
+    let refs = mine_references(&tainted_batch);
+    assert_eq!(refs.len(), 1, "四卡批次只有 user 对照可入选");
+    assert_eq!(refs[0].front, "什么是惯性？");
+
+    // 标注层：sync / 未知 actor 同样不得 Edited*（import 变体见既有覆盖 5b）
+    for (cand_id, actor) in [
+        ("cand-prod-sync", PROVENANCE_ACTOR_SYNC),
+        ("cand-prod-future", "future_agent"),
+    ] {
+        let candidate = candidate_from_json(edited_candidate_json(cand_id, Some(actor)));
+        let sample = classify_candidate(&candidate, &GoldMiningConfig::default());
+        assert_eq!(
+            sample.label,
+            GoldLabel::Unlabeled,
+            "actor={} 必须保守 Unlabeled，实际 {:?}",
+            actor,
+            sample.label
+        );
+        assert!(sample.repair_pair.is_none(), "actor={} 不得产出修正对", actor);
+    }
 }
