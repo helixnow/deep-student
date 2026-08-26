@@ -15,15 +15,15 @@
 
 | 文件 | 大区域 | 状态 |
 | --- | --- | --- |
-| `01-chat-composer.md` | Chat V2 / pipeline / Composer / 流式 | 待写 |
-| `02-cloud-sync.md` | 云同步 / WebDAV / S3 / FTP / E2EE / #177 | 待写 |
-| `03-vfs-governance.md` | VFS / 迁移 / coordinator / 数据治理 | 待写 |
-| `04-anki-flashcards.md` | 制卡任务 / 闪卡只读 / Anki | 待写 |
-| `05-genui-hpias.md` | GenUI / HPIAS / 技能 | 待写 |
-| `06-finder-hub.md` | Finder 分桶 / Learning Hub / 笔记 / F | 待写 |
-| `07-mobile-i18n.md` | 移动端 G / InputBar 拆分 / i18n | 待写 |
-| `08-settings-legal.md` | 设置 / vendor / MCP / NOTICES | 待写 |
-| `09-invariants-leftover.md` | 18 不变量 / leftover PR 吸收 | 待写 |
-| `10-upgrade-path.md` | 相对 v0.9.44 / main 的升级路径 | 待写 |
+| `01-chat-composer.md` | Chat V2 / pipeline / Composer / 流式 | PASS |
+| `02-cloud-sync.md` | 云同步 / WebDAV / S3 / FTP / E2EE / #177 | PASS |
+| `03-vfs-governance.md` | VFS / 迁移 / coordinator / 数据治理 | PASS |
+| `04-anki-flashcards.md` | 制卡任务 / 闪卡只读 / Anki | WARN（QA 开关语义 / 恢复阈值文案 / 死 key） |
+| `05-genui-hpias.md` | GenUI / HPIAS / 技能 | PASS |
+| `06-finder-hub.md` | Finder 分桶 / Learning Hub / 笔记 / F | PASS |
+| `07-mobile-i18n.md` | 移动端 G / InputBar 拆分 / i18n | PASS（记录 v0.9.44 抽屉缺键） |
+| `08-settings-legal.md` | 设置 / vendor / MCP / NOTICES | FAIL（MCP 存储面分叉 + 空策略全放行） |
+| `09-invariants-leftover.md` | 18 不变量 / leftover PR 吸收 | PASS |
+| `10-upgrade-path.md` | 相对 v0.9.44 / main 的升级路径 | PASS |
 
 完整稿必须含：`## 结论`（PASS / WARN / FAIL）、证据路径+行号、是否需要产品修复、明确「本轮不改代码」。
