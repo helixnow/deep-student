@@ -959,7 +959,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   }, [stopListening]);
 
   // 恢复任务
-  const resumeJob = useCallback(async (jobId: string) => {
+  const resumeJob = useCallback(async (jobId: string, password?: string) => {
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
       return;
@@ -971,7 +971,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     enterMaintenanceMode(t('data:governance.maintenance_backup'));
     
     try {
-      const response = await DataGovernanceApi.resumeBackupJob(jobId);
+      const response = await DataGovernanceApi.resumeBackupJob(jobId, password);
       setBackupJobId(response.job_id);
       showGlobalNotification('info', t('data:governance.job_resumed'));
       
@@ -1683,16 +1683,19 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     
     void (async () => {
       try {
-        const maybeUnlisten = await listen<ResumableJob[]>('backup-jobs-resumable', (event) => {
+        const maybeUnlisten = await listen<unknown[]>('backup-jobs-resumable', (event) => {
           // 检查组件是否仍然挂载
           if (!mounted) return;
 
-          setResumableJobs(event.payload);
-          if (event.payload.length > 0) {
+          // 启动事件只负责提示；重新走列表命令，以取得后端根据 ZIP 条目
+          // 实时计算的 requires_password，避免密封导入续传绕过口令对话框。
+          void loadResumableJobs();
+          const count = Array.isArray(event.payload) ? event.payload.length : 0;
+          if (count > 0) {
             showGlobalNotification(
               'info',
               tRef.current('data:governance.resumable_jobs_found', {
-                count: event.payload.length,
+                count,
               })
             );
           }
@@ -1718,7 +1721,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       mounted = false;
       unlisten?.();
     };
-  }, []);
+  }, [loadResumableJobs]);
 
   // 组件挂载时自动重连到正在运行的备份任务
   useEffect(() => {

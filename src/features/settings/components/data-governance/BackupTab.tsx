@@ -93,7 +93,7 @@ export interface BackupTabProps {
   currentJobOperation?: BackupJobOperation | null;
   // 可恢复任务相关
   resumableJobs?: ResumableJob[];
-  onResumeJob?: (jobId: string) => void;
+  onResumeJob?: (jobId: string, password?: string) => void;
   // 恢复完成后重启对话框
   showRestartDialog?: boolean;
   onRestartNow?: () => void;
@@ -337,11 +337,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   const [selectedAssetTypes, setSelectedAssetTypes] = useState<AssetType[]>([]);
   const [compressionLevel, setCompressionLevel] = useState(6);
   const [isActionRunning, setIsActionRunning] = useState(false);
-  // E2EE 备份密码（可选）：非空时导出加密全保真换机包（与后端最小长度约束一致）
+  // 备份密码（可选）：非空时密封凭据等敏感材料，使全保真包可整槽恢复。
+  // 外层业务归档仍为明文，用户可见文案必须明确这一边界。
   const [encryptionPassword, setEncryptionPassword] = useState('');
   // 导入密码对话框
   const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
   const [importPassword, setImportPassword] = useState('');
+  const [resumeImportJobId, setResumeImportJobId] = useState<string | null>(null);
 
   /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS / `chars().count()` 对齐（按 Unicode 标量，不是 UTF-16）。 */
   const MIN_E2EE_PASSWORD_CHARS = 8;
@@ -432,12 +434,34 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   };
 
   const handleImportConfirm = () => {
+    if (resumeImportJobId && importPassword === '') {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.import_sealed_password_required')
+      );
+      return;
+    }
     if (!validateOptionalPassword(importPassword)) {
       return;
     }
     setShowImportPasswordDialog(false);
-    onImportZip(importPassword || undefined);
+    if (resumeImportJobId) {
+      onResumeJob?.(resumeImportJobId, importPassword);
+      setResumeImportJobId(null);
+    } else {
+      onImportZip(importPassword || undefined);
+    }
     setImportPassword('');
+  };
+
+  const handleResumeJob = (job: ResumableJob) => {
+    if (job.kind === 'import' && job.requires_password) {
+      setResumeImportJobId(job.job_id);
+      setImportPassword('');
+      setShowImportPasswordDialog(true);
+      return;
+    }
+    onResumeJob?.(job.job_id);
   };
 
   return (
@@ -454,7 +478,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               <span className="text-muted-foreground">
                 {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
               </span>
-              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onResumeJob?.(job.job_id)}>
+              <DsButton size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => handleResumeJob(job)}>
                 <Play className="h-3 w-3 mr-1" />
                 {t('data:governance.resume')}
               </DsButton>
@@ -542,7 +566,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <p className="text-xs text-emerald-600 dark:text-emerald-400">
               {t('data:governance.e2ee_export_note', {
                 defaultValue:
-                  '已设置备份密码：将导出端到端加密的全保真换机包，在其他设备导入并输入同一密码后可整槽恢复。密码丢失将无法解密。',
+                  '已设置备份密码：API 凭据、密钥等敏感材料会被加密保护，输入同一密码后可整槽恢复；聊天记录、错题、文件等归档内容本身未加密，请勿通过不可信渠道传播。丢失密码后业务数据仍可读取，但凭据和整槽恢复资格将丢失。',
               })}
             </p>
           ) : (
@@ -733,7 +757,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <DsButton
             variant="default"
             size="sm"
-            onClick={() => setShowImportPasswordDialog(true)}
+            onClick={() => {
+              setResumeImportJobId(null);
+              setShowImportPasswordDialog(true);
+            }}
             disabled={loading || isBackupRunning}
             className="h-9 [@media(pointer:coarse)]:!h-11"
           >
@@ -1122,13 +1149,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         disabled={isActionRunning}
       />
 
-      {/* 导入 ZIP：可选备份密码对话框（加密全保真包需输入导出时设置的密码） */}
+      {/* 导入 ZIP：新导入可留空；密封敏感材料包的续传必须重新输入密码 */}
       <DsDialog
         open={showImportPasswordDialog}
         onOpenChange={(open) => {
           if (!open) {
             setShowImportPasswordDialog(false);
             setImportPassword('');
+            setResumeImportJobId(null);
           }
         }}
         maxWidth="max-w-md"
@@ -1136,10 +1164,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5 text-primary" />
-            {t('data:governance.import_password_title')}
+            {t(resumeImportJobId
+              ? 'data:governance.resume_import_password_title'
+              : 'data:governance.import_password_title')}
           </DsDialogTitle>
           <DsDialogDescription>
-            {t('data:governance.import_password_desc')}
+            {t(resumeImportJobId
+              ? 'data:governance.resume_import_password_desc'
+              : 'data:governance.import_password_desc')}
           </DsDialogDescription>
         </DsDialogHeader>
         <DsDialogBody>
@@ -1154,6 +1186,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               className="h-8 text-sm"
               value={importPassword}
               placeholder={t('data:governance.import_password_placeholder')}
+              required={resumeImportJobId !== null}
               onChange={(e) => setImportPassword(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleImportConfirm();
@@ -1168,13 +1201,20 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             onClick={() => {
               setShowImportPasswordDialog(false);
               setImportPassword('');
+              setResumeImportJobId(null);
             }}
           >
             {t('common:actions.cancel')}
           </DsButton>
           <DsButton variant="primary" size="sm" onClick={handleImportConfirm}>
-            <Upload className="h-4 w-4 mr-1.5" />
-            {t('data:governance.import_button')}
+            {resumeImportJobId ? (
+              <Play className="h-4 w-4 mr-1.5" />
+            ) : (
+              <Upload className="h-4 w-4 mr-1.5" />
+            )}
+            {t(resumeImportJobId
+              ? 'data:governance.resume'
+              : 'data:governance.import_button')}
           </DsButton>
         </DsDialogFooter>
       </DsDialog>

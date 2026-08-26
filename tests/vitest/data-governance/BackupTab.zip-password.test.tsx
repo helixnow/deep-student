@@ -9,6 +9,7 @@
  * 5. 导入前弹出密码对话框 → 确认后 onImportZip 收到密码
  * 6. 导入密码留空 → onImportZip(undefined)
  * 7. 导入密码过短 → 阻止并提示警告
+ * 8. 密封 ZIP 续传必须重新输入密码；便携 ZIP 不强制
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -76,6 +77,7 @@ function makeProps() {
     onRestoreBackup: vi.fn(),
     onExportZip: vi.fn(),
     onImportZip: vi.fn(),
+    onResumeJob: vi.fn(),
   };
 }
 
@@ -288,5 +290,79 @@ describe('BackupTab ZIP import password dialog', () => {
     );
 
     expect(props.onImportZip).not.toHaveBeenCalled();
+  });
+});
+
+describe('BackupTab resumable ZIP password contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('requires and passes a password when resuming an import with sealed sensitive material', () => {
+    const props = makeProps();
+    render(
+      <BackupTab
+        {...props}
+        resumableJobs={[{
+          job_id: 'sealed-import-job',
+          kind: 'import',
+          phase: 'extract',
+          progress: 40,
+          created_at: '2026-08-24T12:00:00Z',
+          requires_password: true,
+        }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'data:governance.resume' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByText('data:governance.resume_import_password_title')
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'data:governance.resume' })
+    );
+    expect(props.onResumeJob).not.toHaveBeenCalled();
+    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+      'warning',
+      'data:governance.import_sealed_password_required'
+    );
+
+    fireEvent.change(
+      within(dialog).getByLabelText('data:governance.import_password_label'),
+      { target: { value: VALID_PASSWORD } }
+    );
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'data:governance.resume' })
+    );
+
+    expect(props.onResumeJob).toHaveBeenCalledWith(
+      'sealed-import-job',
+      VALID_PASSWORD
+    );
+  });
+
+  it('resumes a portable import immediately without forcing a password dialog', () => {
+    const props = makeProps();
+    render(
+      <BackupTab
+        {...props}
+        resumableJobs={[{
+          job_id: 'portable-import-job',
+          kind: 'import',
+          phase: 'extract',
+          progress: 40,
+          created_at: '2026-08-24T12:00:00Z',
+          requires_password: false,
+        }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'data:governance.resume' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(props.onResumeJob).toHaveBeenCalledWith('portable-import-job');
   });
 });

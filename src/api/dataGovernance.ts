@@ -580,6 +580,8 @@ export interface ResumableJob {
   created_at: string;
   /** 状态消息 */
   message?: string;
+  /** 导入 ZIP 携带密封敏感载荷，续传时必须重新提供备份密码 */
+  requires_password: boolean;
 }
 
 /**
@@ -589,13 +591,16 @@ export interface ResumableJob {
  * 任务将从中断点继续执行。
  *
  * @param jobId 要恢复的任务 ID
+ * @param password 加密导入任务的备份密码（密码不会持久化到检查点）
  * @returns 任务启动响应
  */
 export async function resumeBackupJob(
   jobId: string,
+  password?: string,
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_resume_backup_job", {
     jobId,
+    password,
   });
 }
 
@@ -618,6 +623,8 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
     const phase = p.phase;
     const progress_raw = p.progress;
     const created_at_raw = p.created_at ?? p.createdAt;
+    const requires_password_raw =
+      p.requires_password ?? p.requiresPassword;
 
     const job_id =
       typeof job_id_raw === "string"
@@ -648,6 +655,7 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
       progress,
       created_at,
       message,
+      requires_password: requires_password_raw === true,
     };
   };
 
