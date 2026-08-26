@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::sync::{Arc, Mutex};
 
 use deep_student_lib::chat_v2::event_types;
@@ -8,6 +9,32 @@ use deep_student_lib::hpias::HPIAS_EVENT_CHANNEL;
 use deep_student_lib::tools::ToolRegistry;
 use serde_json::{json, Value};
 use tauri::Listener;
+
+static HPIAS_BACKEND_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+struct HpiasBackendEnvGuard {
+    previous: Option<OsString>,
+}
+
+impl HpiasBackendEnvGuard {
+    fn set(value: Option<&str>) -> Self {
+        let previous = std::env::var_os("DEEP_STUDENT_HPIAS_BACKEND");
+        match value {
+            Some(value) => std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", value),
+            None => std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND"),
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for HpiasBackendEnvGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", value),
+            None => std::env::remove_var("DEEP_STUDENT_HPIAS_BACKEND"),
+        }
+    }
+}
 
 struct GenerativeUiHarness {
     _app: tauri::App,
@@ -93,8 +120,53 @@ fn hpias_event_channel_matches_frontend_contract() {
 }
 
 #[tokio::test]
+async fn execute_with_default_backend_keeps_research_blocks_static() {
+    let _env_lock = HPIAS_BACKEND_ENV_LOCK.lock().await;
+    let _env = HpiasBackendEnvGuard::set(None);
+    let harness = create_harness();
+    let hpias_events = capture_hpias_events(&harness.window);
+    let executor = GenerativeUiExecutor::new();
+    let intent = json!({
+        "version": "1",
+        "blocks": [{
+            "type": "research-report",
+            "props": {
+                "title": "Static report",
+                "body": "Closed-book content rendered without a fake retrieval timeline."
+            }
+        }]
+    });
+
+    let result = executor
+        .execute(
+            &ToolCall::new(
+                "call-generative-ui-hpias-default".to_string(),
+                "builtin-render_generative_ui".to_string(),
+                json!({
+                    "researchSessionId": "e2e-hpias-default",
+                    "intent": intent
+                }),
+            ),
+            &execution_context(&harness, "block-generative-ui-hpias-default"),
+        )
+        .await
+        .expect("executor returns ToolResultInfo");
+
+    assert!(result.success);
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    let captured = hpias_events
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert!(
+        captured.is_empty(),
+        "default backend must not emit a fake HPIAS timeline: {captured:?}"
+    );
+}
+
+#[tokio::test]
 async fn execute_with_research_session_emits_hpias_session_started() {
-    std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
+    let _env_lock = HPIAS_BACKEND_ENV_LOCK.lock().await;
+    let _env = HpiasBackendEnvGuard::set(Some("stub"));
     let harness = create_harness();
     let hpias_events = capture_hpias_events(&harness.window);
     let executor = GenerativeUiExecutor::new();
@@ -161,7 +233,8 @@ async fn execute_with_research_session_emits_hpias_session_started() {
 
 #[tokio::test]
 async fn execute_hpias_stub_pipeline_emits_plan_generated() {
-    std::env::set_var("DEEP_STUDENT_HPIAS_BACKEND", "stub");
+    let _env_lock = HPIAS_BACKEND_ENV_LOCK.lock().await;
+    let _env = HpiasBackendEnvGuard::set(Some("stub"));
     let harness = create_harness();
     let hpias_events = capture_hpias_events(&harness.window);
     let executor = GenerativeUiExecutor::new();

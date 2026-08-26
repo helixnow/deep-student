@@ -91,4 +91,15 @@ describe('Research generative-ui blocks POC', () => {
     expect(badge).not.toHaveAttribute('tabIndex');
     expect(badge).toHaveAttribute('data-citation', '[paper-1]');
   });
+
+  it('renders research-report Markdown through the shared renderer', () => {
+    const { container } = render(
+      <ResearchReportBlock body={'## 综合结论\n\n证据支持 **多模态融合** [paper-1]。'} />,
+    );
+
+    expect(screen.getByRole('heading', { name: '综合结论' })).toBeInTheDocument();
+    expect(container.querySelector('strong')).toHaveTextContent('多模态融合');
+    expect(container.querySelector('.markdown-content')).toBeTruthy();
+    expect(container.querySelector('[data-citation="[paper-1]"]')).toHaveAttribute('role', 'note');
+  });
 });

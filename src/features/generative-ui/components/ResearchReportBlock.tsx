@@ -2,11 +2,12 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/shad/Badge';
+import { MarkdownRenderer } from '@/features/chat/components/renderers/MarkdownRenderer';
 import {
   parseResearchReportCitations,
   RESEARCH_REPORT_CITATION_PATTERN,
 } from '../utils/parseResearchReportCitations';
+import { sanitizeGenerativeMarkdown } from '../utils/sanitizeGenerativeMarkdown';
 
 export const researchReportPropsSchema = z.object({
   id: z.string().optional(),
@@ -17,51 +18,96 @@ export const researchReportPropsSchema = z.object({
 
 export type ResearchReportBlockProps = z.infer<typeof researchReportPropsSchema>;
 
-function renderBodyWithCitations(body: string, citationAriaLabel: (label: string) => string) {
-  const parts: React.ReactNode[] = [];
+interface MarkdownAstNode {
+  type?: string;
+  value?: string;
+  children?: MarkdownAstNode[];
+}
+
+const CITATION_CLASS =
+  'mx-0.5 inline-flex items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 align-baseline text-xs font-normal text-secondary-foreground';
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] ?? character,
+  );
+}
+
+function replaceResearchCitations(
+  value: string,
+  citationAriaLabel: (label: string) => string,
+): MarkdownAstNode[] {
+  const parts: MarkdownAstNode[] = [];
   let lastIndex = 0;
   const pattern = new RegExp(RESEARCH_REPORT_CITATION_PATTERN.source, 'g');
 
-  for (const match of body.matchAll(pattern)) {
+  for (const match of value.matchAll(pattern)) {
     const start = match.index ?? 0;
     if (start > lastIndex) {
-      parts.push(
-        <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-          {body.slice(lastIndex, start)}
-        </span>,
-      );
+      parts.push({ type: 'text', value: value.slice(lastIndex, start) });
     }
     const fullMatch = match[0];
-    parts.push(
-      <Badge
-        key={`cite-${start}`}
-        variant="secondary"
-        className="mx-0.5 align-baseline text-xs font-normal"
-        role="note"
-        data-citation={fullMatch}
-        aria-label={citationAriaLabel(fullMatch)}
-      >
-        {fullMatch}
-      </Badge>,
-    );
+    parts.push({
+      type: 'html',
+      value: `<span class="${CITATION_CLASS}" role="note" data-citation="${escapeHtml(fullMatch)}" aria-label="${escapeHtml(citationAriaLabel(fullMatch))}">${escapeHtml(fullMatch)}</span>`,
+    });
     lastIndex = start + fullMatch.length;
   }
 
-  if (lastIndex < body.length) {
-    parts.push(
-      <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">
-        {body.slice(lastIndex)}
-      </span>,
-    );
+  if (lastIndex < value.length) {
+    parts.push({ type: 'text', value: value.slice(lastIndex) });
   }
 
   return parts;
+}
+
+function createResearchCitationRemarkPlugin(citationAriaLabel: (label: string) => string) {
+  return function researchCitationAttacher() {
+    return function researchCitationTransformer(tree: MarkdownAstNode) {
+      function visit(node: MarkdownAstNode): void {
+        if (['code', 'inlineCode', 'math', 'inlineMath', 'html'].includes(node.type ?? '')) {
+          return;
+        }
+        if (!node.children) return;
+
+        const nextChildren: MarkdownAstNode[] = [];
+        for (const child of node.children) {
+          if (child.type === 'text' && child.value?.includes('[')) {
+            nextChildren.push(...replaceResearchCitations(child.value, citationAriaLabel));
+          } else {
+            visit(child);
+            nextChildren.push(child);
+          }
+        }
+        node.children = nextChildren;
+      }
+
+      visit(tree);
+    };
+  };
 }
 
 export function ResearchReportBlock({ title, body, density }: ResearchReportBlockProps) {
   const { t } = useTranslation('generativeUi');
   const titleId = React.useId();
   const citationCount = useMemo(() => parseResearchReportCitations(body).length, [body]);
+  const sanitizedBody = useMemo(() => sanitizeGenerativeMarkdown(body.trim()), [body]);
+  const citationRemarkPlugins = useMemo(
+    () => [
+      createResearchCitationRemarkPlugin((label) =>
+        t('research.report.citation_aria', { label }),
+      ),
+    ],
+    [t],
+  );
 
   return (
     <article
@@ -81,7 +127,12 @@ export function ResearchReportBlock({ title, body, density }: ResearchReportBloc
           density === 'compact' ? 'text-xs' : 'text-sm',
         )}
       >
-        {renderBodyWithCitations(body, (label) => t('research.report.citation_aria', { label }))}
+        <MarkdownRenderer
+          content={sanitizedBody}
+          isStreaming={false}
+          className={density === 'compact' ? 'text-xs' : 'text-sm'}
+          extraRemarkPlugins={citationRemarkPlugins}
+        />
       </div>
     </article>
   );

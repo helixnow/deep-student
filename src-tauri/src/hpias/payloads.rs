@@ -2,9 +2,12 @@
 //!
 //! 纯函数便于单测；orchestrator 与 `HpiasEventEmitter` 共用。
 
+use std::collections::HashSet;
+
 use serde_json::{json, Value};
 
 const RESEARCH_BLOCK_TYPES: [&str; 3] = ["research-plan", "research-report", "paper-digest"];
+const MAX_RESEARCH_PLAN_QUERIES: usize = 12;
 
 /// intent 是否含 Research 类块（与前端 `intentHasResearchBlocks` 对齐）
 pub fn intent_has_research_blocks(intent: &Value) -> bool {
@@ -70,12 +73,15 @@ pub fn extract_plan_queries_from_intent(intent: &Value) -> Vec<String> {
         else {
             continue;
         };
+        let mut seen = HashSet::new();
         let queries: Vec<String> = steps
             .iter()
             .filter_map(|step| step.get("label").and_then(Value::as_str))
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
+            .filter(|query| seen.insert(query.clone()))
+            .take(MAX_RESEARCH_PLAN_QUERIES)
             .collect();
         if !queries.is_empty() {
             return queries;
@@ -301,7 +307,7 @@ pub fn build_pipeline_timeline(
             sub_id,
             3,
             &format!("子代理 {} 已完成检索与摘要。", sub_id),
-            json!([["paper-{}", sub_id]]),
+            json!([[format!("paper-{}", sub_id), sub_id]]),
         ));
     }
 
@@ -357,6 +363,25 @@ mod tests {
     }
 
     #[test]
+    fn extract_plan_queries_deduplicates_and_caps_at_frontend_limit() {
+        let steps: Vec<Value> = std::iter::once(json!({ "label": "Query 0" }))
+            .chain(std::iter::once(json!({ "label": "Query 0" })))
+            .chain((1..20).map(|index| json!({ "label": format!("Query {}", index) })))
+            .collect();
+        let intent = json!({
+            "blocks": [{
+                "type": "research-plan",
+                "props": { "steps": steps }
+            }]
+        });
+
+        let queries = extract_plan_queries_from_intent(&intent);
+        assert_eq!(queries.len(), MAX_RESEARCH_PLAN_QUERIES);
+        assert_eq!(queries.first().map(String::as_str), Some("Query 0"));
+        assert_eq!(queries.last().map(String::as_str), Some("Query 11"));
+    }
+
+    #[test]
     fn build_pipeline_timeline_includes_lifecycle_events() {
         let timeline = build_pipeline_timeline("s1", Some("Q?"), None);
         let types: Vec<&str> = timeline
@@ -387,6 +412,24 @@ mod tests {
             synthesis.get("synthesis").and_then(Value::as_str),
             Some("Custom synthesis body")
         );
+    }
+
+    #[test]
+    fn build_pipeline_timeline_formats_stub_citation_ids() {
+        let intent = json!({
+            "blocks": [{
+                "type": "research-plan",
+                "props": { "steps": [{ "label": "Query A" }] }
+            }]
+        });
+        let timeline = build_pipeline_timeline("s1", None, Some(&intent));
+        let completed = timeline
+            .iter()
+            .find(|event| event.get("type") == Some(&json!("subagent_completed")))
+            .expect("subagent_completed event");
+
+        assert_eq!(completed["citations"], json!([["paper-1", 1]]));
+        assert!(!completed.to_string().contains("paper-{}"));
     }
 
     #[test]

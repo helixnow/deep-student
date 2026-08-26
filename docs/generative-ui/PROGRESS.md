@@ -280,6 +280,13 @@ CI `32704302688`（head `af00a73c`）仍 queued，**本轮不 push**。
 - [x] **`generativeUITauriE2E.contract.test.ts`** — Tauri E2E 静态验收
 - [x] SOTA_CHECKLIST 标记 Tauri E2E 完成
 
+## HPIAS honesty fix（2026-08-26）
+
+- [x] Chat 默认禁用 HPIAS 动态 pipeline，研究块只渲染静态 intent；`stub` 仅可显式启用
+- [x] retrieval 依赖不可用时 fail closed，不再静默回退演示 stub
+- [x] Rust plan queries 与前端同样封顶 12 并去重；修复 stub citation id 格式化
+- [x] `research-report` 复用安全的 Chat MarkdownRenderer
+
 ## Round 25（2026-08-24）
 
 - [x] **`hpias/synthesis.rs`** — `generate_synthesis_with_llm`（Model2 Markdown + 90s 超时）
@@ -291,7 +298,7 @@ CI `32704302688`（head `af00a73c`）仍 queued，**本轮不 push**。
 
 - [x] **`hpias/retrieval_backend.rs`** — `RetrievalHpiasResearchService` 经 `VfsUnifiedRetriever` 真实检索
 - [x] `HpiasResearchDeps` — executor 注入 vfs_db / lance_store / llm_manager
-- [x] `DEEP_STUDENT_HPIAS_BACKEND=retrieval` + VFS 不可用时自动回退 stub
+- [x] `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 后端（VFS 不可用时由 Round 26 改为 fail closed）
 - [x] 确定性 `build_synthesis_markdown`（LLM 综合待续）
 - [x] contract / SOTA / ARCHITECTURE 更新
 
@@ -299,7 +306,7 @@ CI `32704302688`（head `af00a73c`）仍 queued，**本轮不 push**。
 
 - [x] **`allBlocksFixture.ts`** + **`generativeUIAllBlocksRuntime.test.tsx`** — 14 块全量运行时渲染 SOTA 验收
 - [x] **`generativeUIChatBlockHpiasRuntime.integration.test.tsx`** — Chat 块 + 真实 `useHpiasEventBridge` + mock Tauri listen 全链路
-- [x] **`HpiasBackendKind`** — `DEEP_STUDENT_HPIAS_BACKEND` 环境变量扩展点（默认 stub）
+- [x] **`HpiasBackendKind`** — `DEEP_STUDENT_HPIAS_BACKEND` 环境变量扩展点（Round 26 改为默认禁用）
 - [x] **`SOTA_CHECKLIST.md`** — 目标态验收清单与剩余项
 - [x] SOTA acceptance 扩展 all-blocks / chat-hpias / checklist 要求
 - [x] vitest 全绿

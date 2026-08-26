@@ -1,7 +1,7 @@
 //! HPIAS retrieval 后端 — VFS UnifiedRetriever 驱动真实检索 pipeline（Round 24）
 //!
 //! `DEEP_STUDENT_HPIAS_BACKEND=retrieval` 且 ExecutionContext 注入 VFS/LLM 时启用；
-//! 否则回退 stub。Round 25：synthesis 优先 LLM 综合，失败回退确定性拼接。
+//! 依赖不可用时 fail closed。Round 25：synthesis 优先 LLM 综合，失败回退确定性拼接。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +16,6 @@ use crate::vfs::retrieval_planner::{FusedRetrievalHit, QueryModality};
 use crate::vfs::{UnifiedRetrievalRequest, VfsUnifiedRetriever};
 
 use super::events::HpiasEventEmitter;
-use super::orchestrator::HpiasPipelineOrchestrator;
 use super::payloads::{
     build_plan_generated_payload, build_retrieval_completed_payload, build_round_started_payload,
     build_selection_completed_payload, build_session_completed_payload,
@@ -270,16 +269,6 @@ pub fn build_synthesis_markdown(
         }
     }
     md
-}
-
-/// retrieval 不可用时回退 stub orchestrator
-pub fn spawn_stub_fallback(
-    window: Window,
-    session_id: &str,
-    question: Option<&str>,
-    intent: &Value,
-) {
-    HpiasPipelineOrchestrator::spawn_from_intent(window, session_id, question, intent);
 }
 
 #[cfg(test)]
