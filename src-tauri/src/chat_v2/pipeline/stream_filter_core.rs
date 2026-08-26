@@ -13,8 +13,9 @@
 //!    `ends_with_potential_think_start|end` 的查找逻辑**移动**（非复制）到本文件；
 //! 2. 两适配器删除各自的 `in_think_tag` / `think_tag_buffer` / `wrap_token_filter`
 //!    三字段，改持一把 `Mutex<StreamFilterCore>`；
-//! 3. 在 `process_reasoning` 挂 reasoning 过滤（当前两侧 `on_reasoning_chunk`
-//!    均为裸转发，这是 R4 的过滤挂点）。
+//! 3. ~~在 `process_reasoning` 挂 reasoning 过滤~~（R4 #1 已完成：本文件
+//!    `process_reasoning` 已填实，两适配器 `on_reasoning_chunk` 也已各自内联挂
+//!    独立 `reasoning_wrap_token_filter`；接线本核心时删除适配器内联实现即可）。
 //!
 //! 红线：迁移时必须保持"最早匹配标签优先"与"不完整前缀保留"语义；
 //! HTML 负例测试（`<table>`/`<td>` 不得误判为 think 标签）随迁不删。
@@ -47,9 +48,13 @@ pub enum RoutedPiece {
 /// - `touch_activity` 空闲计时（清单 #12，重复成本低于抽取成本）；
 /// - LLM 侧 `reasoning_content_observed` 标志（"字段是否出现"语义，非过滤语义）。
 pub struct StreamFilterCore {
-    /// GLM/Qwen 协议包装 token 过滤器（清单 #1）。
+    /// GLM/Qwen 协议包装 token 过滤器（清单 #1，content 路径）。
     /// content chunk 先过 `process()`；结束态 `flush()` 的尾巴回灌 think 缓冲。
     wrap_token_filter: ModelWrapTokenStreamFilter,
+    /// reasoning 路径专用的**独立**包装 token 过滤器（R4 #1）。
+    /// 不与 content 路径共享实例：过滤器持有跨 chunk 的行前缀/围栏状态，
+    /// reasoning 与 content 两路交错到达会互相污染行状态。
+    reasoning_wrap_token_filter: ModelWrapTokenStreamFilter,
     /// 是否当前在 `<think>` 标签内部（清单 #2）。
     in_think_tag: bool,
     /// 跨 chunk 标签边界缓冲区（清单 #2）。
@@ -62,6 +67,7 @@ impl StreamFilterCore {
     pub fn new(policy: ModelWrapTokenPolicy, enable_thinking: bool) -> Self {
         Self {
             wrap_token_filter: ModelWrapTokenStreamFilter::new(policy),
+            reasoning_wrap_token_filter: ModelWrapTokenStreamFilter::new(policy),
             in_think_tag: false,
             think_tag_buffer: String::new(),
             enable_thinking,
@@ -91,15 +97,20 @@ impl StreamFilterCore {
 
     /// 处理一个 reasoning chunk（对应两适配器的 `on_reasoning_chunk`，清单 #5）。
     ///
-    /// 现状：两侧 reasoning 均**裸转发**，不过 wrap 过滤、不做标签清洗。
-    /// 本方法即 R4 "挂 reasoning 过滤"的落点：签名与 `process_content` 对齐，
-    /// 填实函数体后两适配器调用点零改动。
+    /// R4 #1 已填实：过独立的 `reasoning_wrap_token_filter`（不与 content 路径
+    /// 共享行状态），过滤后再产出 `Thinking`；空 chunk / 全被暂扣时返回空，
+    /// 调用方不得建块不得 emit。与两适配器当前的内联实现语义一致
+    /// （适配器仍未接线本核心，接线属第二刀迁移）。
+    /// reasoning 通道不参与 `<think>` 标签状态机，不做标签清洗。
     pub fn process_reasoning(&mut self, chunk: &str) -> Vec<RoutedPiece> {
-        // TODO(R4): 挂 wrap token 过滤 + 必要的 <think> 标签清洗。
         if !self.enable_thinking || chunk.is_empty() {
             return Vec::new();
         }
-        vec![RoutedPiece::Thinking(chunk.to_string())]
+        let filtered = self.reasoning_wrap_token_filter.process(chunk);
+        if filtered.is_empty() {
+            return Vec::new();
+        }
+        vec![RoutedPiece::Thinking(filtered)]
     }
 
     /// 结束态冲刷（对应 `finalize_all_inner` 的前两步，清单 #1 尾巴 + #3）。
@@ -109,23 +120,31 @@ impl StreamFilterCore {
     /// 注意：本方法只产出片段；thinking end → content end 的块结束时序仍由
     /// 适配器负责（前端块状态机的隐式合同，不下沉）。
     pub fn flush(&mut self) -> Vec<RoutedPiece> {
+        let mut pieces = Vec::new();
+
+        // R4 #1：reasoning 独立过滤器的尾巴直接归 Thinking（不回灌 think 缓冲，
+        // reasoning 通道不参与 <think> 标签状态机）
+        let reasoning_tail = self.reasoning_wrap_token_filter.flush();
+        if !reasoning_tail.is_empty() && self.enable_thinking {
+            pieces.push(RoutedPiece::Thinking(reasoning_tail));
+        }
+
         // TODO(R4): 迁移 flush_think_tag_buffer 语义；当前骨架仅冲过滤器尾巴。
         let tail = self.wrap_token_filter.flush();
         self.think_tag_buffer.push_str(&tail);
         let remaining = std::mem::take(&mut self.think_tag_buffer);
         if remaining.is_empty() {
-            return Vec::new();
+            return pieces;
         }
         if self.in_think_tag {
             self.in_think_tag = false;
             if self.enable_thinking {
-                vec![RoutedPiece::Thinking(remaining)]
-            } else {
-                Vec::new()
+                pieces.push(RoutedPiece::Thinking(remaining));
             }
         } else {
-            vec![RoutedPiece::Content(remaining)]
+            pieces.push(RoutedPiece::Content(remaining));
         }
+        pieces
     }
 
     /// 重置过滤状态（清单 #14 的公共重置项）。
@@ -135,6 +154,7 @@ impl StreamFilterCore {
     /// 但对本核心的重置动作相同。
     pub fn reset(&mut self) {
         self.wrap_token_filter.reset();
+        self.reasoning_wrap_token_filter.reset();
         self.in_think_tag = false;
         self.think_tag_buffer.clear();
     }

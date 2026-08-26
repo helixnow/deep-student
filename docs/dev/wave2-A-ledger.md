@@ -637,3 +637,272 @@ stream_filter_core 文档挂载表述勘误（R3-6）。
   本台账追加节。
 - 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
 - **不标 Goal complete**：编译/测试验证轮未跑，缺口 A 未收，第 4 轮任务书已排。
+
+---
+
+# Wave2-A 第 4 轮台账（#10 台账员，只追加）
+
+- 作者：0824 Wave2-A 第 4 轮子代理 #10「台账员」（claude-fable-5-thinking-high）
+- 日期：2026-08-26
+- 性质：只追加章节。第 1 轮 P1–P11 编号与内容一字不改，第 2/3 轮章节不动。
+  本席未改任何产品代码、未执行 cargo/npm/测试、未 commit/push（父代理收轮）。
+- 依据：`docs/dev/wave2-A/ROUND-04-TASKS.md` 与六份 r4 文档
+  （`r4-reasoning-filter.md` #1、`r4-tokens-cursor.md` #2、`r4-export-filter.md` #3、
+  `r4-catalog-atomic.md` #5、`r4-catalog-compaction.md` #6、`r4-catalog-delta.md` #7、
+  `r4-review-filter-philosophy.md` #8），以及本席对工作区
+  `git status` / `git diff` / `git hash-object` / grep 的独立复核。
+
+## R4-1. 本轮 diff 形态（台账员独立取证）
+
+基线枝 tip `6069675e`（第 3 轮已提交）。第 4 轮全部改动均在工作区未提交，
+`git diff --stat` 合计 **13 文件，+897/−95**：
+
+```
+ src-tauri/src/chat_v2/pipeline/compaction.rs       |  21 +   （#6 换代标记调用）
+ src-tauri/src/chat_v2/pipeline/llm_adapter.rs      |  54 +/− （#1 reasoning 过滤）
+ src-tauri/src/chat_v2/pipeline/stream_filter_core.rs |  46 +/−（#1 骨架挂点填实）
+ src-tauri/src/chat_v2/pipeline/variant_adapter.rs  |  51 +/− （#1 reasoning 过滤）
+ src-tauri/src/chat_v2/repo.rs                      | 358 +/− （#6 双键+freeze 扩展+3 测试）
+ src-tauri/src/chat_v2/tools/knowledge_executor.rs  |  17 +/− （#3 非流式清理）
+ src-tauri/src/essay_grading/pipeline.rs            |  27 +/− （#3 流式挂接）
+ src-tauri/src/llm_manager/rag_extension.rs         |  18 +/− （#3 非流式清理）
+ src-tauri/src/streaming_anki_service.rs            |  18 +/− （#2 删本地表改 use 单源）
+ src-tauri/src/translation/pipeline.rs              |  27 +/− （#3 流式挂接）
+ src-tauri/src/utils/model_special_tokens.rs        |  86 +/− （#2 pub(crate)+游标+测试）
+ src/features/chat/adapters/TauriAdapter.ts         | 132 +/− （#5 原子首发）
+ src/features/chat/skills/progressiveDisclosure.ts  | 137 +   （#7 delta 最小落地）
+```
+
+untracked：`ROUND-04-TASKS.md` + 上列六份 r4 文档 + 本台账追加节。
+**席位缺席记录**：任务卡 #9 应产出的 `r4-review-frontend.md`（前端审阅）
+**不存在于工作区**——TauriAdapter.ts / progressiveDisclosure.ts 两处前端改动
+本轮无独立审阅文档，第 5 轮或验证轮应补审。
+
+红线自证（本席 grep/status 复核）：coordinator.rs / hooks.rs / helpers.rs /
+multi_variant.rs / history.rs 本轮零改动；`streaming_anki_service.rs` E 域算法
+函数体零改动（仅常量引用换源）；#122 未碰。
+
+## R4-2. #1 reasoning 独立过滤（P9 推进）
+
+- 两适配器 `on_reasoning_chunk` 从裸转发改为先过 `ModelWrapTokenStreamFilter`：
+  `ChatV2LLMAdapter` 与 `VariantLLMAdapter` 各新增字段
+  `reasoning_wrap_token_filter`，以同一 `wrap_token_policy` **另建实例，
+  与 content 路径 `wrap_token_filter` 零共享**——两路 chunk 流中交错，
+  共用实例会互相污染逻辑行前缀判定（把正文行误判成 token 行或漏放真 token）。
+- 保序纪律：LLM 侧 `touch_activity` → `enable_thinking` 门 →
+  `reasoning_content_observed` 置位（仍在空判之前，「字段是否出现」语义不变）→
+  空 `text` 早退（保留）→ 过滤 → 滤后为空则早退（不建块不 emit）。
+- finalize 冲刷：reasoning 尾巴 `flush()` 后**直接归 thinking**、不回灌
+  `think_tag_buffer`（reasoning 通道不参与 `<think>` 状态机），置于
+  `finalize_thinking()` 之前；`reset_stream_state` / `reset_for_new_round`
+  均同步 `reset()`。
+- content 路径一行未改；非 GLM/Qwen 路由 policy `Disabled` 恒等直通。
+- `stream_filter_core.rs` 的 `process_reasoning` / `flush` / `reset` 顺手按
+  同一设计填实（供第二刀迁移零改调用点），但两适配器仍未改调该核心。
+
+## R4-3. #2 常量表单源 + consume_prefix 游标化（P9 推进）
+
+- `MODEL_SPECIAL_TOKENS` 由模块私有提升为 **`pub(crate) const`**
+  （`model_special_tokens.rs:36`，本席 grep 复核全仓唯一定义、仍为 5 token
+  一字未增删）；`streaming_anki_service.rs` 删除本地重复表改
+  `use` 单源，**E 域三个算法函数体与其全部测试逐字节保持**。
+- `consume_prefix` 从每字符 `input.drain(..)`（每次 memmove 整个尾部，
+  大 chunk O(n²)）改为 **O(1) 游标前进**（新字段 `input_cursor`，恒落 char
+  边界）+ 主循环读取改经 `pending_input()` + 每趟 `process_available` 收尾
+  一次 `compact_input()` 回收——逐字节语义与旧实现等价，纯性能改写，
+  控制流与 hold/early-break 判定未动。
+- 新增大 chunk 回归测试 `large_single_chunk_keeps_semantics_with_cursor_consumption`
+  （`model_special_tokens.rs:839`，2000 行正例+负例混合、char 边界撕半对拍，
+  只写不跑）。
+- `process_newline` 重置 inline-code：复核结论 = Step 22 `daf5b78e` 已修
+  （代码与回归测试均在位），本轮不重复改，仅书面确认。
+
+## R4-4. #3 出口盘点：4 挂接 + 2 豁免 + 1 越界移交
+
+grep 复核（#3 文档 + 本席）：非流式 `.call_unified_model_2(` 全仓仅两个调用点，
+流式 `call_unified_model_2_stream` 仅 tool_loop / multi_variant。七出口裁决：
+
+| 出口 | 裁决 |
+|---|---|
+| 翻译流式 `stream_translate_inner` | **挂接**：局部过滤器，policy `for_provider_model` 门控（管线不走 failover，config 可信），终局 `flush()`，取消/错误路径不冲刷 |
+| 作文流式 `stream_grade` | **挂接**：同构；chunk 双消费（前端展示 + `</score>` 解析）在源头过滤 |
+| 标签生成非流式（`rag_extension.rs`） | **挂接，always-on `GlmOrQwen`**：failover 在 `call_unified_model_2` 内部换模、调用点拿不到最终路由无法门控；出口是机器解析 JSON，合法 JSON 不含会被误删的 token 形态，GLM 裸 `<|begin_of_box|>` 包装则直接打崩 `serde_json::from_str`；对无泄漏输出恒等 |
+| 知识点提取非流式（`knowledge_executor.rs`） | **挂接，always-on**：同上论证 |
+| Chat 主链路流式 | **豁免**：两适配器已有等价过滤（+本轮 #1 补齐 reasoning） |
+| Anki 制卡流式 | **豁免**：E 域独占红线，自有本地处理 |
+| 题库批改流式 `qbank_grading/pipeline.rs` | **发现但越界未改**（不在 #3 独占区）；与作文出口暴露面相同，留后续轮按 #2 同构挂接 |
+
+**#8 缺口即时关闭**：#8 §4 截稿时（16:00 UTC）非流式两处挂接与 #3 盘点文档
+均未落盘，其「应核对」提醒成立于当时；本席取证时点二者均已入工作区
+（diff 引文见上，always-on 论证与 #8 给出的可接受豁免思路同向但更强——
+直接挂接而非豁免）。模式同 R3-4 缺口 B：审阅时点差，非分歧。
+
+## R4-5. #5 目录原子首发（P4 推进，TauriAdapter.ts）
+
+- 「首次无快照」路径从 fire-and-forget 改为 **await 冻结成功后才进入 LLM
+  请求**：新增 `ensureAvailableSkillsSnapshotFrozen()`（`:5350`）替代原
+  `persistAvailableSkillsSnapshot`；`buildSystemPromptWithSkills` /
+  `buildSendOptions` 改 async，8 个 send/retry 入口调用点补 await
+  （sendMessage / executeWakeSession / executeSendMessage / executeRetry /
+  executeEditAndResend / continueMessage / executeRetryVariant /
+  executeRetryAllVariants）——任何产生 LLM 请求的路径都被冻结确认闸住。
+- 模块级状态（适配器重建不丢事实）：`persistedAvailableSkillsSnapshotSessions`
+  Set（`:178`，后端确认写入；loadSession hydrate 回灌直接标记）+
+  `inflightAvailableSkillsSnapshotFreezes` Map（`:179`，并发发送共享同一
+  Promise 防重复 RPC）。本席 grep 复核三符号均在位。
+- **first-write-wins 保持**：await 返回的生效值若与本地字节不同（多窗口竞争
+  败方），以生效值构建本次 system——第一条请求即与持久化权威逐字节一致，
+  回灌晚到窗口关闭。
+- **失败策略 fail-closed 不发**：冻结 RPC 失败抛错沿既有 try/catch 中止发送；
+  内存快照保留原字节可重试。理由：该快照是 system 第 0 字节前缀的持久化
+  权威，降级发送等于重开 P4 防的缓存击穿窗口。
+- 已知边界如实记录：`clearSessionAvailableSkillsSnapshot` 不清 persisted 集合
+  （会话 UUID 不复用，无正确性影响）。
+
+## R4-6. #6 compaction 换代标记（P4 推进；**未重生成目录字符串**）
+
+- **落点**：`persist_prepared_compaction` 同一 `conn.transaction()` 内
+  （`compaction.rs:1114` 调 `mark_session_available_skills_snapshot_stale_with_conn`），
+  标记失败整个 compaction 事务回滚——换代声明与压缩记录原子共存亡。
+- **诚实口径：事务内写的是显式换代标记，不是重生成的目录字符串。**
+  `<available_skills>` 目录的唯一生产者在前端 `progressiveDisclosure.ts`
+  （live registry / 门控求值 / XML 转义全在前端进程内存），后端 `skills.rs`
+  只是 SKILL.md 文件处理器；后端影子实现渲染器意味着两处逐字节对齐的生成器，
+  任何一字节漂移都打碎缓存——故后端只声明「该换代了」，快照本体由前端下轮
+  按 live registry 重生成并经既有 freeze 原语作为新代 first write 冻结。
+- 持久化契约（session.metadata 双键，常量定义于 repo.rs）：
+  `availableSkillsSnapshotGeneration`（缺键=0，普通首冻不写，旧会话字节形态
+  不变）+ `availableSkillsSnapshotPendingGeneration`（仅 compaction 事务写，
+  幂等：有效 pending 不再 +1，多次 compaction 折叠为一次换代）。
+  `freeze_..._with_conn` 语义扩展：**仅存在有效 pending（严格大于当前代）时
+  才允许覆盖已冻结快照**，同时 `generation := pending` 并删 pending 键；
+  其余路径与升级前逐字节等价。first-write-wins 未被静默放松——覆盖只能走
+  换代键，既有测试 `available_skills_snapshot_freeze_is_first_write_wins`
+  一字未动（本席 grep 复核 `repo.rs:4931` 在位）。
+- 缓存经济性：compaction 后 tail 起点前历史全被摘要替换，system+tools 之后
+  字节必变、前缀缓存已报废，此时换目录增量损失仅 system+tools 段——零成本
+  换代时机论证成立。
+- 新增测试 3 个（本席 grep 复核 `repo.rs:5035/:5145/:5203`，只写不跑）：
+  显式换代 bump / 从未冻结 no-op / 空串冻结+标记后允许目录。
+- **与 #7 设计稿两处偏离已书面化**（r4-catalog-compaction.md §「偏离及理由」）：
+  ①事务内不重生成本体（后端不可行）→ 单代号键拆双键表达跨进程中间态；
+  ②不新增独立 refresh API → 扩展既有 freeze 原语（覆盖门闩=有效 pending，
+  普通路径误覆写面为零，前端零新命令）。键名以 #6 文档为准。
+- 前端接线本轮未做（#5 独占 TauriAdapter）：换代标记暂为落库哑数据，
+  **不造成任何行为回退**；接线三步（读 pending → live 重生成 → 调既有
+  freeze 命令回灌）已在 #6 文档写明，无需新增 Tauri 命令。
+
+## R4-7. #7 目录 delta 设计定稿 + 最小落地
+
+- **双通道分工**：`available_skills_delta` 尾部瞬态块为常态通道（每轮请求
+  构建时即时渲染、只拼当前最后一条 user 消息尾部、**不持久化进历史**——
+  尾部本就是每轮新字节区，零缓存成本）；compaction 换代（#6）为收敛点
+  （基线换 live 全量，delta 自然清空，尾部不无限增长）。
+- **基线语义零新键**：基线 = 解析冻结快照字节得到的可用技能 ID 集
+  （`extractCatalogSkillIds`，`available="false"` 门控条目不计入；空串快照
+  = 空基线，恰好修复「空目录冻结会话整会话拿不到技能」场景）。不另存 ID
+  列表，避免「快照是 A 窗口的、ID 表是 B 窗口的」撕裂态。
+- delta 口径与 `generateAvailableSkillsPrompt` 可用段逐条一致再减基线；
+  未冻结返回 null（首轮 system 本就是 live 全量）；门控中新技能不进 delta。
+- **first-write-wins 自查**：delta 路径对快照 Map 只读（刻意不调会产生冻结
+  副作用的 `getSessionAvailableSkillsPrompt`），不调 hydrate / freeze。
+- 最小落地（progressiveDisclosure.ts +137，本席 grep 复核 `:741/:758/:783/:816`
+  四符号在位）：类型 + `extractCatalogSkillIds` + `computeAvailableSkillsDelta`
+  + `generateAvailableSkillsDeltaPrompt` + 私有 `unescapeXmlAttr`（& 最后替换
+  防二次解码）。**发送路径接线未做**（TauriAdapter 归 #5 独占），接线指引
+  已写明：delta 置于瞬态技能指令之后，防模型误读为已加载。
+
+## R4-8. #8 过滤哲学审阅：三案全确认未放宽 + 一处陈述翻案
+
+- 评审依据溯源到原始提交 `b0bf113d` 的「保守三形态」（行首外层包装 / 纯
+  token 行 / 配对闭合）与 Step 22 `daf5b78e` 的四条保留面；放宽判据四条
+  （扩删除形态 / 收窄保留面 / 删弱负例 / 全局替换）。
+- **裁决：#1/#2/#3 产品改动全部通过四判据，零放宽。**#1/#3 属覆盖面扩展
+  （新消费方复用过滤器本体，本体状态机零改动）；#2 属纯性能改写 + 可见性
+  提升；新增测试是加严不是放宽。
+- **blob 指纹闭环（本席独立复核）**：#8 §0 截稿七文件 blob
+  （`c0144ba9/470ae5cf/ce4652e7/5e3d2aa5/75ad640a/fd04ad34/5b0b8ea4`）与
+  本席收口时点 `git hash-object` **逐一相符**——#8 审阅过的七文件截稿后
+  零追加改动，其结论对当前工作区直接有效。#8 未覆盖的六文件
+  （rag_extension / knowledge_executor / repo / compaction / TauriAdapter /
+  progressiveDisclosure）中前两个即 R4-4 所记的截稿后落地项。
+- #8 五分钟复核清单本席逐项执行：负例测试 5（model_special_tokens）+ 2
+  （anki）全在位未改（grep 行号 `:653/:681/:691/:771/:803` 与 `:3535/:3541`）；
+  `MODEL_SPECIAL_TOKENS: &[&str]` 全仓唯一定义；四个新挂点 diff 新增行
+  **零 `replace(` 式清理**（本席 grep 复核）。
+- **翻案项（陈述性，非语义）**：R3 所称「stream_filter_core 骨架未在
+  pipeline.rs 声明 mod、属死代码占位」不实——R3 提交 `6069675e` 自己就加了
+  `pipeline.rs:99` 的 mod 声明，骨架自 R3 起参与编译（本台账 R3-6 当时已
+  勘误过挂载状态，与 #8 结论一致；`r4-reasoning-filter.md:53` 又沿袭了
+  「未声明 mod」半句，同样不实）。处置：R5 接线时统一改口
+  「mod 已于 R3 声明，`#![allow(dead_code)]` 待接线后移除」。
+
+## R4-9. 第 3 轮遗留项状态（本席 grep 复核）
+
+| 遗留项 | 状态 |
+|---|---|
+| 缺口 A：digest 冲突应发换代信号（R3-7） | **仍开**——history.rs 零命中 `digest_conflict`/`GatedRebuild`，本轮无人认领，续留第 5 轮或验证轮 |
+| 小问题 C：二参兼容入口 dead_code 告警 | **仍开**——history.rs 无 `allow(dead_code)`/`cfg_attr` 处理（history.rs 本轮零 diff） |
+| #5 反例段改门禁断言 | 未做（文件冻结状态未变） |
+| multi_variant 扇出路径 llm_content 前移 | 未做（multi_variant.rs 本轮零 diff） |
+| stream_filter_core 文档挂载表述勘误 | **部分完成**：#8 已书面翻案并给处置建议（R4-8），源码头注释与两份文档的改口留 R5 接线时顺手 |
+
+新遗留（本轮产生）：qbank_grading 出口未挂接（R4-4 越界项）、#9 前端审阅
+文档缺席（R4-1）、#6 换代标记的前端接线与 #7 delta 的发送路径接线
+（两者都卡在 TauriAdapter 独占权，天然是同一次接线）。
+
+## R4-10. 已验证（静态）/ 未验证
+
+### 已验证（仅静态证据：读代码 / grep / git diff / git hash-object）
+
+- 本轮 diff 全貌与席位归属（R4-1 清单，13 文件 +897/−95）——本席
+  `git status` / `git diff --stat` 复核，与任务卡独占表一致。
+- #8 截稿七文件 blob 指纹与当前工作区逐一相符（R4-8）——本席逐文件
+  `git hash-object` 复核。
+- 负例测试 7 条全在位、常量表全仓单源 `pub(crate)`、新挂点零 `replace(`、
+  大 chunk 回归测试在 `:839`——本席 grep 复核（#8 清单逐项重跑）。
+- 非流式两处挂接的 diff 引文（always-on 论证注释 + process/flush 形态）、
+  compaction `:1114` 调用点、repo 双键常量与 4 个测试（1 旧 3 新）行号、
+  TauriAdapter 三符号、progressiveDisclosure 四符号——本席 grep/diff 复核。
+- 红线：coordinator / hooks / helpers / multi_variant / history 本轮零改动，
+  E 域算法函数体未动——本席 `git status` + diff 复核。
+- 缺口 A / 小问题 C 仍开——本席 grep 复核（R4-9）。
+
+### 未验证（诚实归因）
+
+- **未跑任何编译 / 测试 / CI**：本轮 13 文件 +897/−95（含 Rust 与 TS 两侧）
+  **未经 cargo check / cargo test / tsc / npm test / rustfmt**；repo.rs 三个
+  新测试与 model_special_tokens 大 chunk 测试均仅为源码存在，不排除低级
+  编译错误。TauriAdapter 的 async 化改造（8 调用点）尤其未经类型检查。
+- 游标化「逐字节等价」、reasoning 独立实例防污染、always-on 过滤对合法
+  JSON 恒等——均为源码推理与审阅确认，无运行时对拍。
+- fail-closed 首发在真实冻结 RPC 失败下的用户体验、compaction 换代标记被
+  前端兑现的端到端链路（前端接线未做）——无任何运行时证据。
+- #9 前端审阅缺席：TauriAdapter / progressiveDisclosure 两处改动只有作者
+  自述文档与本席静态抽查，无独立第二人审阅。
+
+## R4-11. 第 5 轮预告（按用户任务书 + 本轮遗留）
+
+主题五项：
+
+1. **遥测身份（P7）**：`model2_pipeline.rs:5709-5738` 随机 `stream_event`
+   冒充 `session_id` → session_id / variant_id / run_id 分列。
+2. **prefix 指纹（P7）**：`CHAT_V2_CACHE_DEBUG` 指纹改 post-adapter 四段
+   （含 tools），对齐 `scripts/cache-hit-report.py` 消费口径。
+3. **retention 裁决（P6）**：按第 1 轮预置口径执行——优先删除 5.6+ 分支
+   （禁止带 `ttl:"24h"` 接线），旧代分支删或改造后门控接线。
+4. **provider P0/P1/P2（P10）**：快照测试钉死已修项（P0 + P1×2）；补
+   Anthropic 四槽预算 + 工具 marker 死分支（P2，与 G-ttl1h 打包）。
+5. **架构结论文档（P11）**：定稿 `docs/dev/wave2-A-agent-architecture.md`
+   （14 行矩阵收口）。
+
+本轮遗留并入候选：缺口 A 换代信号、qbank 出口挂接、#6/#7 前端接线
+（TauriAdapter 一次做完）、stream_filter_core 文档改口、#9 补审。
+
+## R4-12. 收轮交接（给父代理）
+
+- 待 add：13 个产品文件（工作区 M）+ 8 份 untracked 文档（含 ROUND-04-TASKS）
+  + 本台账追加节。
+- 本席未 commit/push/gh（铁律）；Draft PR #345 更新由父代理执行。
+- **不标 Goal complete**：编译/测试验证轮未跑，缺口 A 未收，#9 审阅缺席，
+  前端接线未做，第 5 轮任务书已排。

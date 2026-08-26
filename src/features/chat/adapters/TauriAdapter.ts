@@ -88,7 +88,6 @@ import {
   AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
   getLoadedSkills,
   getSessionAvailableSkillsPrompt,
-  hasSessionAvailableSkillsSnapshot,
   hydrateSessionAvailableSkillsSnapshot,
 } from '../skills/progressiveDisclosure';
 import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
@@ -159,6 +158,25 @@ const contextTrimThrottle = createContextTrimThrottle();
 const MAX_FULL_RAW_REQUEST_ROUNDS = 10;
 /** 被截断轮次的 body 占位符 */
 const RAW_REQUEST_BODY_TRUNCATED = '[truncated]';
+
+/**
+ * R4 目录原子化：sessionId → available_skills 快照冻结的持久化确认状态。
+ *
+ * 模块级（与 progressiveDisclosure 的内存快照 Map 同生命周期）：适配器重建
+ * （切换会话再回来）不丢「后端已确认写入」这一事实，避免重复冻结 RPC。
+ *
+ * - persistedAvailableSkillsSnapshotSessions：后端已确认持久化。来源有二：
+ *   首次发送时 await 冻结 RPC 成功；或 loadSession 从 session.metadata 回灌
+ *   （回灌值本身就来自持久化权威，无需再冻结）。
+ * - inflightAvailableSkillsSnapshotFreezes：冻结 RPC 进行中。并发发送（多变体
+ *   重试等）共享同一 Promise，避免同 session 重复 RPC —— 后端 first-write-wins
+ *   本身幂等，共享只是省调用。
+ *
+ * 两表都缺键 = 从未触发，或上次冻结失败（fail-closed 已中止那次发送）；
+ * 下次发送会用内存快照的同一字节重试冻结。
+ */
+const persistedAvailableSkillsSnapshotSessions = new Set<string>();
+const inflightAvailableSkillsSnapshotFreezes = new Map<string, Promise<string>>();
 
 /** chat_v2_load_messages_page 响应（messages/blocks 结构与 load_session 一致） */
 interface LoadMessagesPageResponseType {
@@ -2691,7 +2709,7 @@ export class ChatV2TauriAdapter {
       // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
       const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions({
+      const options = await this.buildSendOptions({
         state: sendStateSnapshot,
         pendingContextRefs,
       });
@@ -2862,7 +2880,7 @@ export class ChatV2TauriAdapter {
       const state = this.getCurrentState();
       const activeModelId = state.chatParams.model2OverrideId || state.chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions({ state, pendingContextRefs: [] });
+      const options = await this.buildSendOptions({ state, pendingContextRefs: [] });
       await this.applyRuntimeModelSelection(options);
 
       const returnedAssistantMessageId = await invoke<string>('chat_v2_wake_session', {
@@ -2935,7 +2953,7 @@ export class ChatV2TauriAdapter {
       // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
       const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions({
+      const options = await this.buildSendOptions({
         state: sendStateSnapshot,
         pendingContextRefs,
       });
@@ -3244,7 +3262,7 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
-        this.buildSendOptions(),
+        await this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
       const validIds = await this.getValidChatModelIdSet();
@@ -3433,7 +3451,7 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
-        this.buildSendOptions(),
+        await this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
       await this.applyRuntimeModelSelection(options);
@@ -3574,7 +3592,7 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
-        this.buildSendOptions(),
+        await this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
       await this.applyRuntimeModelSelection(options);
@@ -3718,6 +3736,8 @@ export class ChatV2TauriAdapter {
         response.session?.metadata?.[AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY];
       if (typeof persistedSkillsSnapshot === 'string') {
         hydrateSessionAvailableSkillsSnapshot(this.sessionId, persistedSkillsSnapshot);
+        // 回灌值来自持久化权威，发送前无需再走冻结 RPC。
+        persistedAvailableSkillsSnapshotSessions.add(this.sessionId);
       }
 
       // 使用 Store 的 restoreFromBackend 方法恢复状态
@@ -4183,7 +4203,7 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
-        this.buildSendOptions(),
+        await this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
         variantId,
       );
@@ -4243,7 +4263,7 @@ export class ChatV2TauriAdapter {
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
-        this.buildSendOptions(),
+        await this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
       await this.applyRuntimeModelSelection(options);
@@ -4829,7 +4849,7 @@ export class ChatV2TauriAdapter {
     showGlobalNotification('warning', i18n.t('chatV2:chat.context_truncated', { count: removedCount }));
   }
 
-  private buildSendOptions(snapshot?: BuildSendOptionsSnapshot): SendOptions {
+  private async buildSendOptions(snapshot?: BuildSendOptionsSnapshot): Promise<SendOptions> {
     // 🔧 使用 getCurrentState() 获取最新状态，而非构造时的快照
     // 这确保了 enableThinking 等用户实时修改的参数能正确传递
     const currentState = snapshot?.state ?? this.getCurrentState();
@@ -5043,8 +5063,9 @@ export class ChatV2TauriAdapter {
       // 搜索引擎（从 chatParams 获取选中的引擎）
       searchEngines: chatParams.selectedSearchEngines,
 
-      // 系统提示（注入 Skills 元数据）
-      systemPromptOverride: this.buildSystemPromptWithSkills(systemPromptOverride),
+      // 系统提示（注入 Skills 元数据）。R4 发送等待点：首次快照会在此
+      // await 持久化冻结成功后才放行，失败 fail-closed 中止发送。
+      systemPromptOverride: await this.buildSystemPromptWithSkills(systemPromptOverride),
 
       // ========== 多变体选项 ==========
       // 从 Store 读取待发送的并行模型 ID，2+ 个模型时触发多变体模式
@@ -5284,21 +5305,19 @@ export class ChatV2TauriAdapter {
    * P0 会话快照：目录按 sessionId 冻结首次生成结果，会话中途
    * skill_install 改写 live registry 不会改已发出的 system 目录
    * （与 excludeLoaded 修复同一哲学，新技能由 tool result 表达）。
+   *
+   * R4 目录原子化：首次快照不再 fire-and-forget —— await 持久化冻结成功
+   * （或拿到 first-write-wins 回灌值）后才返回 system，保证第一条 LLM
+   * 请求使用的目录字节与 session.metadata 持久化权威一致。
    */
-  private buildSystemPromptWithSkills(
+  private async buildSystemPromptWithSkills(
     basePrompt: string | undefined
-  ): string | undefined {
+  ): Promise<string | undefined> {
     // The shared generator applies trust/enable visibility before reading any
     // model-facing description or embedded-tool metadata. The per-session
     // snapshot freezes the first generated catalog so mid-session installs
     // never rewrite the already-sent system prefix.
-    const hadSnapshot = hasSessionAvailableSkillsSnapshot(this.sessionId);
-    const skillMetadataPrompt = getSessionAvailableSkillsPrompt(this.sessionId);
-    if (!hadSnapshot) {
-      // 首次生成（loadSession 未能从 metadata 回灌）：异步冻结进
-      // session.metadata，重启后同一 session 逐字节复用，不重算 live 目录。
-      this.persistAvailableSkillsSnapshot(skillMetadataPrompt);
-    }
+    const skillMetadataPrompt = await this.ensureAvailableSkillsSnapshotFrozen();
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-frozen catalog snapshot)');
 
     // 如果没有 skills 元数据，返回原始提示
@@ -5314,30 +5333,59 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * P0 available_skills 快照跨进程：把首次生成的目录快照异步冻结进
-   * session.metadata（后端 `chat_v2_freeze_available_skills_snapshot`，
-   * first-write-wins）。若后端已有更早冻结的快照（多窗口竞争），用返回的
-   * 生效值回灌内存，保持字节与持久化权威一致。失败只打日志（该会话本进程
-   * 内仍用内存快照，下次重启才退回 live 重算的冷缓存语义），不阻断发送。
+   * R4 发送等待点：返回本会话冻结且已确认持久化的 available_skills 目录。
+   *
+   * P0 available_skills 快照跨进程：首次无快照（loadSession 未能从 metadata
+   * 回灌）时，把内存生成的目录冻结进 session.metadata（后端
+   * `chat_v2_freeze_available_skills_snapshot`，first-write-wins），并 await
+   * 到后端确认后才放行发送。多窗口竞争时后端返回更早冻结的生效值，回灌
+   * 内存并以该值构建 system，保证字节与持久化权威一致。
+   *
+   * 失败策略：fail-closed —— 冻结 RPC 失败时抛错中止本次发送，不带未持久化
+   * 的目录发 LLM 请求（否则中途重启会让同一会话的 system 从第 0 字节变，
+   * 打碎整段 prompt cache）。调用链各 send/retry 路径的既有 catch 负责复位
+   * streaming 状态并向用户报错。内存快照保留原字节，下次发送用同一字节
+   * 重试冻结，重试不改变目录内容。
    */
-  private persistAvailableSkillsSnapshot(snapshot: string): void {
+  private async ensureAvailableSkillsSnapshotFrozen(): Promise<string> {
     const sessionId = this.sessionId;
-    void invoke<string>('chat_v2_freeze_available_skills_snapshot', {
-      sessionId,
-      snapshot,
-    })
-      .then((effective) => {
-        if (typeof effective === 'string' && effective !== snapshot) {
-          hydrateSessionAvailableSkillsSnapshot(sessionId, effective);
-        }
-      })
-      .catch((error) => {
-        console.warn(
-          LOG_PREFIX,
-          'Failed to persist available_skills snapshot (in-memory snapshot still active):',
-          getErrorMessage(error)
-        );
+    // 首次调用生成并冻结内存快照；已 hydrate / 已生成时逐字节复用。
+    const snapshot = getSessionAvailableSkillsPrompt(sessionId);
+    if (persistedAvailableSkillsSnapshotSessions.has(sessionId)) {
+      return snapshot;
+    }
+
+    let freeze = inflightAvailableSkillsSnapshotFreezes.get(sessionId);
+    if (!freeze) {
+      freeze = invoke<string>('chat_v2_freeze_available_skills_snapshot', {
+        sessionId,
+        snapshot,
       });
+      inflightAvailableSkillsSnapshotFreezes.set(sessionId, freeze);
+      freeze.finally(() => {
+        // 成功路径已进 persisted 集合；失败路径清掉进行中句柄，
+        // 让下次发送以同一内存字节重试冻结（fail-closed 后可恢复）。
+        inflightAvailableSkillsSnapshotFreezes.delete(sessionId);
+      }).catch(() => {
+        // 错误由下方 await 处向发送方抛出，这里仅防 unhandled rejection。
+      });
+    }
+
+    let effective: string;
+    try {
+      effective = await freeze;
+    } catch (error) {
+      throw new Error(
+        `available_skills catalog freeze failed; message not sent (fail-closed): ${getErrorMessage(error)}`
+      );
+    }
+    persistedAvailableSkillsSnapshotSessions.add(sessionId);
+    if (typeof effective === 'string' && effective !== snapshot) {
+      // 多窗口竞争：后端已有更早冻结的快照，first-write-wins 生效值回灌内存。
+      hydrateSessionAvailableSkillsSnapshot(sessionId, effective);
+      return effective;
+    }
+    return snapshot;
   }
 
   // ========================================================================

@@ -29,7 +29,11 @@
 //! - Line-leading `<|im_start|>` followed by a role word plus further content
 //!   on the same line (treated as a literal mention, not a header).
 
-const MODEL_SPECIAL_TOKENS: &[&str] = &[
+/// Single source of truth for the wrapper tokens known to leak from GLM/Qwen
+/// chat templates. Shared crate-wide (e.g. `streaming_anki_service` reuses it
+/// for its whole-fragment stripping) so the two cleanup layers can never
+/// disagree on the token list.
+pub(crate) const MODEL_SPECIAL_TOKENS: &[&str] = &[
     "<|begin_of_box|>",
     "<|end_of_box|>",
     "<|im_start|>",
@@ -139,6 +143,11 @@ enum MarkdownCode {
 pub struct ModelWrapTokenStreamFilter {
     policy: ModelWrapTokenPolicy,
     input: String,
+    /// Byte offset of the first unconsumed byte in `input`. Always on a char
+    /// boundary (advanced by whole tokens/chars only). Consumed bytes are
+    /// reclaimed once per `process_available` pass instead of on every
+    /// `consume_prefix`, so a large chunk is not re-memmoved per character.
+    input_cursor: usize,
     line_candidate: String,
     line_candidate_tokens: Vec<&'static str>,
     line_is_candidate: bool,
@@ -166,6 +175,7 @@ impl ModelWrapTokenStreamFilter {
         Self {
             policy,
             input: String::new(),
+            input_cursor: 0,
             line_candidate: String::new(),
             line_candidate_tokens: Vec::new(),
             line_is_candidate: true,
@@ -230,9 +240,9 @@ impl ModelWrapTokenStreamFilter {
     fn process_available(&mut self, flushing: bool) -> String {
         let mut output = String::new();
 
-        while !self.input.is_empty() {
-            if self.input.starts_with('<') {
-                if let Some(token) = token_at_start(&self.input) {
+        while !self.pending_input().is_empty() {
+            if self.pending_input().starts_with('<') {
+                if let Some(token) = token_at_start(self.pending_input()) {
                     self.consume_prefix(token.len());
                     // A token ends any pending role-word hold (the line is no
                     // longer `opener + role + EOL`).
@@ -240,15 +250,23 @@ impl ModelWrapTokenStreamFilter {
                     self.process_token(token, &mut output);
                     continue;
                 }
-                if !flushing && is_incomplete_token_prefix(&self.input) {
+                if !flushing && is_incomplete_token_prefix(self.pending_input()) {
                     break;
                 }
             }
 
-            let ch = self.input.chars().next().expect("input is not empty");
+            let ch = self
+                .pending_input()
+                .chars()
+                .next()
+                .expect("input is not empty");
             if ch == '`' || ch == '~' {
-                let width = self.input.chars().take_while(|value| *value == ch).count();
-                if !flushing && width == self.input.chars().count() {
+                let width = self
+                    .pending_input()
+                    .chars()
+                    .take_while(|value| *value == ch)
+                    .count();
+                if !flushing && width == self.pending_input().chars().count() {
                     break;
                 }
                 self.consume_prefix(width);
@@ -283,11 +301,31 @@ impl ModelWrapTokenStreamFilter {
             }
         }
 
+        self.compact_input();
         output
     }
 
+    /// The unconsumed remainder of the buffered input.
+    fn pending_input(&self) -> &str {
+        &self.input[self.input_cursor..]
+    }
+
     fn consume_prefix(&mut self, byte_len: usize) {
-        self.input.drain(..byte_len);
+        // Cursor advance instead of `String::drain(..byte_len)`: draining the
+        // front memmoves the whole tail on every consumed token/char, which is
+        // O(n²) over a large chunk. The consumed prefix is dropped once per
+        // pass in `compact_input`.
+        self.input_cursor += byte_len;
+    }
+
+    /// Reclaim the consumed prefix in one drain at the end of a pass, leaving
+    /// only the held remainder (incomplete token/marker prefix) buffered.
+    fn compact_input(&mut self) {
+        if self.input_cursor == 0 {
+            return;
+        }
+        self.input.drain(..self.input_cursor);
+        self.input_cursor = 0;
     }
 
     /// Line-leading `<|im_start|>` with the role word starting right after it
@@ -791,5 +829,35 @@ mod tests {
             filter_chunks(&["行内 `<|im_end|>` 保留\n<|im_end|>\n尾行"]),
             "行内 `<|im_end|>` 保留\n尾行"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Cursor-based input consumption (large-chunk regression)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn large_single_chunk_keeps_semantics_with_cursor_consumption() {
+        // Regression companion for the cursor-based `consume_prefix`:
+        // front-draining the buffer per consumed char/token was O(n²) on a
+        // large chunk. The rewrite must not change semantics — the leading
+        // wrapper and its matching closer are still stripped, while mid-line
+        // literal tokens followed by more prose still survive verbatim.
+        let mut body = String::new();
+        for index in 0..2_000 {
+            body.push_str("第");
+            body.push_str(&index.to_string());
+            body.push_str("行正文，字面 <|im_end|> 保留。\n");
+        }
+        let input = format!("<|begin_of_box|>{body}<|end_of_box|>");
+
+        assert_eq!(filter_chunks(&[input.as_str()]), body);
+
+        // The same stream torn into two big halves (split kept on a char
+        // boundary) must agree with the single-chunk result: compaction at
+        // the end of a pass may not leak or duplicate held bytes.
+        let mid = (input.len() / 2..)
+            .find(|offset| input.is_char_boundary(*offset))
+            .expect("a char boundary exists in the second half");
+        assert_eq!(filter_chunks(&[&input[..mid], &input[mid..]]), body);
     }
 }
