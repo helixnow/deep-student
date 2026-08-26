@@ -180,6 +180,23 @@ function imagePlaceholderLines(droppedImageCount: number): string[] {
 /** 单张内联图片的体积上限；超过则降级为备注占位（避免文档 JSON 膨胀） */
 export const MAX_INLINE_IMAGE_BYTES = 256 * 1024;
 
+/** 整次导入可内联的图片数量上限；超出的引用直接降级为备注占位 */
+export const MAX_IMPORT_IMAGE_COUNT = 128;
+
+/**
+ * 整次导入的图片累计解压字节预算（瞬时内存防线）：
+ * 高度可压缩的重复内容可以把大量图片装进 16 MiB 压缩包，
+ * 单图 256 KiB 上限乘以节点数上限（10000）理论上仍可达 GiB 级，必须有累计硬顶。
+ * 该预算按「实际解压出的字节」记账（含最终未内联的图片），在流式读取中途硬中断。
+ */
+export const MAX_IMPORT_IMAGE_TOTAL_BYTES = 8 * 1024 * 1024;
+
+/**
+ * 整次导入的内联 data URL 累计字符预算（文档持久化体积防线）：
+ * base64 比原始字节膨胀约 1/3，这里限制的是真正写进文档 JSON 的字符量。
+ */
+export const MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES = 8 * 1024 * 1024;
+
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -212,8 +229,30 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** 尝试把一条图片引用内联进节点；成功返回 true，失败（缺资源/超限/类型不明）返回 false */
-async function tryEmbedImage(zip: JSZip, item: PendingNodeImage): Promise<boolean> {
+/**
+ * 单次导入的图片预算（对整个 resolvePendingImages 调用即整次导入生效）。
+ * 三条独立防线：图片数量、累计解压字节（瞬时内存）、累计内联字符（文档体积）。
+ */
+interface ImageImportBudget {
+  imagesRemaining: number;
+  decompressedBytesRemaining: number;
+  inlineBytesRemaining: number;
+}
+
+function createImageImportBudget(): ImageImportBudget {
+  return {
+    imagesRemaining: MAX_IMPORT_IMAGE_COUNT,
+    decompressedBytesRemaining: MAX_IMPORT_IMAGE_TOTAL_BYTES,
+    inlineBytesRemaining: MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES,
+  };
+}
+
+/** 尝试把一条图片引用内联进节点；成功返回 true，失败（缺资源/超限/超预算/类型不明）返回 false */
+async function tryEmbedImage(
+  zip: JSZip,
+  item: PendingNodeImage,
+  budget: ImageImportBudget,
+): Promise<boolean> {
   const raw = item.src?.trim();
   if (!raw) return false;
   // .xmind 内部引用形如 xap:resources/xxx.png 或 xap:attachments/xxx.png
@@ -223,15 +262,37 @@ async function tryEmbedImage(zip: JSZip, item: PendingNodeImage): Promise<boolea
   if (!mime) return false;
   const entry = zip.file(path);
   if (!entry) return false;
+  if (budget.imagesRemaining <= 0) return false;
+
+  // 解压前前置拒绝：advertised uncompressed size 超过单图上限或剩余累计预算时
+  // 一个字节都不解压。zip 头部字段可伪造，所以这只是省内存的快路径，
+  // 真正的防线是 readZipEntryWithLimit 内的流式累计硬中断。
+  const perImageLimit = Math.min(MAX_INLINE_IMAGE_BYTES, budget.decompressedBytesRemaining);
+  if (perImageLimit <= 0) return false;
+  const advertised = zipEntryAdvertisedSize(entry);
+  if (advertised !== undefined && advertised > perImageLimit) return false;
+
   let bytes: Uint8Array;
   try {
-    bytes = await entry.async('uint8array');
+    bytes = await readZipEntryWithLimit(
+      entry,
+      perImageLimit,
+      `image exceeds inline limit (${perImageLimit} bytes)`,
+    );
   } catch {
     return false;
   }
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_INLINE_IMAGE_BYTES) return false;
+  if (bytes.byteLength === 0) return false;
+  // 解压预算按实际解压字节记账，即使后面因内联预算不足而放弃该图
+  budget.decompressedBytesRemaining -= bytes.byteLength;
+
+  const dataUrl = `data:${mime};base64,${bytesToBase64(bytes)}`;
+  if (dataUrl.length > budget.inlineBytesRemaining) return false;
+  budget.imagesRemaining -= 1;
+  budget.inlineBytesRemaining -= dataUrl.length;
+
   const image: MindMapImage = {
-    src: `data:${mime};base64,${bytesToBase64(bytes)}`,
+    src: dataUrl,
     name: path.split('/').pop(),
     ...(item.width !== undefined ? { width: item.width } : {}),
     ...(item.height !== undefined ? { height: item.height } : {}),
@@ -244,15 +305,17 @@ async function tryEmbedImage(zip: JSZip, item: PendingNodeImage): Promise<boolea
  * 统一解析转换阶段收集的图片引用：
  * 可内联的挂到 node.images（导入报告计 embeddedImages），
  * 其余按节点聚合计入 droppedImages 并在备注追加占位行（保持既有降级行为）。
+ * 整次导入共享一份图片预算（数量/累计解压字节/累计内联字符）。
  */
 async function resolvePendingImages(
   zip: JSZip,
   pending: PendingNodeImage[],
   report?: XmindImportReport,
 ): Promise<void> {
+  const budget = createImageImportBudget();
   const droppedByNode = new Map<MindMapNode, number>();
   for (const item of pending) {
-    if (await tryEmbedImage(zip, item)) {
+    if (await tryEmbedImage(zip, item, budget)) {
       if (report) report.embeddedImages += 1;
     } else {
       droppedByNode.set(item.node, (droppedByNode.get(item.node) ?? 0) + 1);
@@ -487,12 +550,27 @@ interface XmindStreamHelper {
   resume(): XmindStreamHelper;
 }
 
-async function readXmindContent(entry: JSZip.JSZipObject): Promise<string> {
-  const advertisedSize = (entry as unknown as {
+/** JSZip 内部记录的 advertised uncompressed size（zip 头部声明值，可被伪造，仅作前置拒绝） */
+function zipEntryAdvertisedSize(entry: JSZip.JSZipObject): number | undefined {
+  const size = (entry as unknown as {
     _data?: { uncompressedSize?: number };
   })._data?.uncompressedSize;
-  if (typeof advertisedSize === 'number' && advertisedSize > MAX_XMIND_CONTENT_BYTES) {
-    throw new Error(`.xmind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`);
+  return typeof size === 'number' && Number.isFinite(size) && size >= 0 ? size : undefined;
+}
+
+/**
+ * 流式读取 zip entry：先按 advertised size 前置拒绝（省内存快路径），
+ * 再在解压过程中做累计字节数硬中断（pause + reject，不等待整个 entry 解压完成）。
+ * advertised size 可被伪造，流式累计才是真正的防线。
+ */
+async function readZipEntryWithLimit(
+  entry: JSZip.JSZipObject,
+  maxBytes: number,
+  limitErrorMessage: string,
+): Promise<Uint8Array> {
+  const advertisedSize = zipEntryAdvertisedSize(entry);
+  if (advertisedSize !== undefined && advertisedSize > maxBytes) {
+    throw new Error(limitErrorMessage);
   }
 
   const stream = (entry as unknown as {
@@ -501,16 +579,16 @@ async function readXmindContent(entry: JSZip.JSZipObject): Promise<string> {
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
 
-  const bytes = await new Promise<Uint8Array>((resolve, reject) => {
+  return new Promise<Uint8Array>((resolve, reject) => {
     let settled = false;
     stream
       .on('data', (chunk) => {
         if (settled) return;
         totalBytes += chunk.byteLength;
-        if (totalBytes > MAX_XMIND_CONTENT_BYTES) {
+        if (totalBytes > maxBytes) {
           settled = true;
           stream.pause();
-          reject(new Error(`.xmind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`));
+          reject(new Error(limitErrorMessage));
           return;
         }
         chunks.push(chunk);
@@ -533,6 +611,14 @@ async function readXmindContent(entry: JSZip.JSZipObject): Promise<string> {
       })
       .resume();
   });
+}
+
+async function readXmindContent(entry: JSZip.JSZipObject): Promise<string> {
+  const bytes = await readZipEntryWithLimit(
+    entry,
+    MAX_XMIND_CONTENT_BYTES,
+    `.xmind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`,
+  );
   return new TextDecoder().decode(bytes);
 }
 
