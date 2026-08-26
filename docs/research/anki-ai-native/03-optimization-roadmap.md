@@ -36,7 +36,7 @@
 | 17 | 制卡 Playbook 沉淀 | ⬜ 未开始（学科×模板成功配置） |
 | 18 | 制卡质量 eval harness | ✅ Round 3 #9：坏输出回放基线 + lint 契约对照；Round 5 扩容中 |
 | 19 | 迁移划词制卡到 chatanki 后端 | ✅ Round 3 #4：CardForge 死链路清理完成 |
-| 20 | AI 图像遮挡制卡 | ◐ 数据模型/校验/导出约定/渲染层完成（Round 4 #5）；VLM grounding 与管线/预览块接线进行中（Round 5） |
+| 20 | AI 图像遮挡制卡 | ◐ 数据模型/校验/候选字段/草稿预览已接；可复习 Anki 导出、编辑器与完整输入覆盖未接 |
 
 ## Multi-Agent 落地路径
 

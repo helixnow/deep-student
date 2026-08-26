@@ -75,14 +75,14 @@ VlmFull 直接图片路径会把 `[IMAGE_DESC]` 文字标签转换为启发式�
 - 不支持 PDF 页图引用；
 - 不改写 front/back/text；
 - 已接生产预览，但没有遮挡框编辑器；
-- 不创建原生 Anki Image Occlusion note type。
+- 不把候选 Cloze 字段或图片媒体接入 APKG/AnkiConnect 导出。
 
 所以它是可持久化、可预览的草稿协议，不是完整遮挡制卡。
 
 ## 未接线或仍缺
 
 - ChatAnki critic 公开开关、预算和用户可见结果入口。
-- Image Occlusion 的视觉 grounding、PDF 页图、遮挡编辑器和原生 note type 闭环。
+- Image Occlusion 的视觉 grounding、PDF 页图、遮挡编辑器和可复习 Anki 导出闭环。
 - `sidekick_model_routing=single|auto` 的 ChatAnki 公开参数；当前自动模式已工作。
 - transform script 跨平台统一的进程树内存配额。
 - 基于线上学习结果自动回归/提升策略；当前 FSRS 与偏好回流是确定性提示注入，

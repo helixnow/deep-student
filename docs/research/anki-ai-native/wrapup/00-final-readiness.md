@@ -75,7 +75,7 @@ CI 全绿且没有新增 review blocker 后，可转 Ready for review。
 ## 非阻断项
 
 - Image Occlusion 已有启发式草稿和生产预览；PDF 页图、真实视觉 grounding、
-  遮挡编辑器和原生 note type 仍未闭环。
+  遮挡编辑器及 APKG/AnkiConnect 可复习遮挡转换仍未闭环。
 - ChatAnki run/start 已有 `enableCriticPass`，但缺省 `false`；因此 grounded critic
   虽可由用户明确要求触发，默认产品入口仍不会运行。
 - 历史卡和原文快照超过 16 KiB 的卡仍可能没有 grounded 参照，critic 启用时会按设计回退规则 rubric。

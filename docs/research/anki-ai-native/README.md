@@ -70,7 +70,7 @@
 | 启发式路由/分段 | `decide_route` 硬编码 | ✅ 启发式降级为回退路径；brace-depth 切卡器替换分隔符依赖 |
 | 复习数据回流 | 无 | ✅ FSRS 画像 + 语义干扰预警 + 拆卡建议默认注入（可关） |
 | 用户偏好记忆 | 无 | ✅ extraRequirements、成功编辑/批量编辑、删卡观察会 best-effort 写入本地 settings；run/start 检索注入。`enablePreferenceMemory` 当前只控制检索，不关闭学习写入 |
-| 图像遮挡制卡 | 无 | ⚠️ VlmFull 直接图片已接启发式 `_occlusion` 草稿，折叠/展开卡片预览可解析图片并交互揭罩；PDF 页图、真实 grounding、编辑器与原生 note type 未接 |
+| 图像遮挡制卡 | 无 | ⚠️ VlmFull 直接图片已接启发式 `_occlusion` 草稿，折叠/展开卡片预览可解析图片并交互揭罩；PDF 页图、真实 grounding、编辑器与可复习 Anki 导出未接 |
 | Sidekick 角色分槽 | 无 | ✅ Planner / Generator / Vlm 已接生产调用；Critic 可由默认关闭的 `enableCriticPass` 显式触发；失败均回退既有 model2 路径 |
 
 新生成卡会写入 `_original_generation`，后续用户编辑后可形成 grounded 修正对；
@@ -90,8 +90,8 @@
   `_original_generation` 首次入库均已接通。
 - critic 的内核调用点、Critic 角色路由和 run/start `enableCriticPass` 已接；
   该开关缺省 `false`，所以默认用户路径保持关闭。
-- 图像遮挡完整闭环仍未完成：PDF 页图、真实 grounding、编辑器和原生 note type
-  不在本次“遮挡预览已接”的范围内。
+- 图像遮挡完整闭环仍未完成：PDF 页图、真实 grounding、编辑器及
+  APKG/AnkiConnect 可复习遮挡转换不在本次“遮挡预览已接”的范围内。
 - CI 仍是发布门禁；required checks 全绿前，PR 不应视为可发布或可合并。
 - 用户可见主路径、工具数量与限制以 ChatAnki skill 和
   [用户指南](../../user-guide/12-Anki制卡与模板.md) 为准；历史调研中的阶段性设计不作为现行入口说明。

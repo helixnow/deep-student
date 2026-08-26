@@ -29,8 +29,8 @@ VlmFull + direct image ref
 
 以下情况全部返回普通卡，不阻断生成：没有直接图片 ref、VLM 没有有效
 `IMAGE_DESC`、proposal 为空、spec 校验失败、marker 解析失败。当前不会改写
-front/back/text，不会创建原生 Anki Image Occlusion note type，也不会把启发式
-网格宣传成真实图上坐标。
+front/back/text，不会把候选 Cloze 字段和图片媒体接入 APKG/AnkiConnect 导出，
+也不会把启发式网格宣传成真实图上坐标。
 
 ## Preference memory 的诚实口径
 
