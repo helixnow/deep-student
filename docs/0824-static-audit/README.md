@@ -71,3 +71,18 @@
 | `37-pipeline-hooks.md` | pipeline hooks 四切点 | 已写 |
 | `38-utf8-special-tokens.md` | utf8_stream + special tokens | PASS |
 | `39-leftover-pass4.md` | leftover 第四轮 | A：无新增量 |
+
+## 第五波（一份一提交）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `40-h-cache.md` | H cache 冻结 | 已写 |
+| `41-genui-executor.md` | GenerativeUiExecutor 注册 | 已写 |
+| `42-notes-selection.md` | 划词保存笔记 | PASS |
+| `43-todo-surface.md` | Todo 主路径 | 已写 |
+| `44-templates.md` | 模板管理 | 已写 |
+| `45-vendor-keys.md` | vendor key 存储 | 已写 |
+| `46-notices-legal.md` | NOTICES 在 legal/ | PASS |
+| `47-coordinator-additive.md` | VFS coordinator 加法式 | 已写 |
+| `48-isolation-327.md` | #327 未进官方、勿 merge | 已写 |
+| `49-leftover-pass5.md` | leftover 第五轮 | 已写 |
