@@ -19,6 +19,10 @@ const storeState = vi.hoisted(() => ({
 }));
 
 const hookState = vi.hoisted(() => ({
+  practiceSessionOwner: {
+    examId: 'exam-1',
+    viewInstanceId: 'history-test-view',
+  },
   questions: [
     {
       id: 'q_1',

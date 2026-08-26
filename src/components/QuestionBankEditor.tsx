@@ -69,7 +69,11 @@ import type {
   SubmitResult,
 } from '@/api/questionBankApi';
 import { getNextQuestionIndex, parseNumericInput } from '@/api/questionBankApi';
-import { useQuestionBankStore } from '@/stores/questionBankStore';
+import {
+  getPracticeSessionKey,
+  useQuestionBankStore,
+  type PracticeSessionOwner,
+} from '@/stores/questionBankStore';
 import {
   type ExtendedQuestionType,
   type MatchingPair,
@@ -91,6 +95,8 @@ import {
 
 export interface QuestionBankEditorProps {
   sessionId: string;
+  /** 当前保活视图的显式会话归属；由 useQuestionBankSession 生成。 */
+  practiceSessionOwner: PracticeSessionOwner;
   questions: Question[];
   stats?: QuestionBankStats;
   currentIndex?: number;
@@ -470,6 +476,7 @@ OptionButton.displayName = 'OptionButton';
 
 export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   sessionId,
+  practiceSessionOwner,
   questions,
   stats,
   currentIndex = 0,
@@ -600,16 +607,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   
   // 连对计数 & 激励（里程碑提示走 showGlobalNotification 统一通知，不再用本地 z-50 toast）
   // 会话进度提到 questionBankStore：切到错题本 / 统计再回来不清零（仅内存，重启不恢复）
-  const streakCount = useQuestionBankStore((state) => state.practiceSession.streakCount);
-  const totalCorrectCount = useQuestionBankStore((state) => state.practiceSession.totalCorrectCount);
-  const ensurePracticeSession = useQuestionBankStore((state) => state.ensurePracticeSession);
+  const practiceSessionKey = getPracticeSessionKey(practiceSessionOwner);
+  const practiceSession = useQuestionBankStore((state) => (
+    practiceSessionKey ? state.practiceSessions[practiceSessionKey] : undefined
+  ));
+  const streakCount = practiceSession?.streakCount ?? 0;
+  const totalCorrectCount = practiceSession?.totalCorrectCount ?? 0;
   const recordPracticeSessionAnswer = useQuestionBankStore(
     (state) => state.recordPracticeSessionAnswer,
   );
-
-  useEffect(() => {
-    ensurePracticeSession(sessionId);
-  }, [sessionId, ensurePracticeSession]);
   
   // 完成庆祝
   const [showCompletionCelebration, setShowCompletionCelebration] = useState(false);
@@ -1133,7 +1139,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       
       // 连对与已作答集合由 store 统一推进（null = 主观题待判定，不中断连对）；
       // 返回值是同帧快照，里程碑与完成判定都读它，避免 setState 异步导致的错位。
-      const progress = recordPracticeSessionAnswer(currentQuestion.id, result.isCorrect ?? null);
+      const progress = recordPracticeSessionAnswer(
+        practiceSessionOwner,
+        currentQuestion.id,
+        result.isCorrect ?? null,
+      );
+      if (!progress) {
+        // 后端提交已经成功，但归属或题目白名单不匹配时不得写入其他实例。
+        debugLog.warn('[QuestionBankEditor] practice session ownership rejected answer progress');
+        return;
+      }
 
       if (result.isCorrect) {
         // 检查里程碑 (3, 5, 10, 15, 20...)：走统一通知（替代原 z-50 本地 toast）
@@ -1164,7 +1179,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeSessionAnswer, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
+  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, recordPracticeSessionAnswer, practiceSessionOwner, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {

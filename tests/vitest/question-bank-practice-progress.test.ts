@@ -9,7 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-import { useQuestionBankStore } from '@/stores/questionBankStore';
+import {
+  getPracticeSessionKey,
+  useQuestionBankStore,
+  type PracticeSessionOwner,
+} from '@/stores/questionBankStore';
 import {
   normalizeDailyTarget,
   readStoredDailyTarget,
@@ -17,6 +21,59 @@ import {
 } from '@/components/practice/DailyPracticeMode';
 
 const startedAt = '2026-08-24T08:00:00.000Z';
+
+describe('questionBankStore practice-session ownership', () => {
+  const leftOwner: PracticeSessionOwner = {
+    examId: 'exam-shared',
+    viewInstanceId: 'view-left',
+  };
+  const rightOwner: PracticeSessionOwner = {
+    examId: 'exam-shared',
+    viewInstanceId: 'view-right',
+  };
+
+  beforeEach(() => {
+    useQuestionBankStore.setState({ practiceSessions: {} });
+  });
+
+  it('isolates answers between two kept-alive instances of the same exam', () => {
+    const store = useQuestionBankStore.getState();
+    store.ensurePracticeSession(leftOwner, ['q-1', 'q-2']);
+    store.ensurePracticeSession(rightOwner, ['q-1', 'q-2']);
+
+    expect(store.recordPracticeSessionAnswer(leftOwner, 'q-1', true)).toMatchObject({
+      streakCount: 1,
+      totalCorrectCount: 1,
+      answeredIds: ['q-1'],
+    });
+
+    const leftKey = getPracticeSessionKey(leftOwner)!;
+    const rightKey = getPracticeSessionKey(rightOwner)!;
+    expect(useQuestionBankStore.getState().practiceSessions[rightKey]).toMatchObject({
+      streakCount: 0,
+      totalCorrectCount: 0,
+      answeredIds: [],
+    });
+
+    store.recordPracticeSessionAnswer(rightOwner, 'q-2', false);
+    expect(useQuestionBankStore.getState().practiceSessions[leftKey]).toMatchObject({
+      streakCount: 1,
+      totalCorrectCount: 1,
+      answeredIds: ['q-1'],
+    });
+    expect(useQuestionBankStore.getState().practiceSessions[rightKey].answeredIds).toEqual(['q-2']);
+  });
+
+  it('fails closed for missing ownership and questions outside the owned exam', () => {
+    const store = useQuestionBankStore.getState();
+    store.ensurePracticeSession(leftOwner, ['q-left']);
+    const before = useQuestionBankStore.getState().practiceSessions;
+
+    expect(store.recordPracticeSessionAnswer(rightOwner, 'q-left', true)).toBeNull();
+    expect(store.recordPracticeSessionAnswer(leftOwner, 'q-right', true)).toBeNull();
+    expect(useQuestionBankStore.getState().practiceSessions).toBe(before);
+  });
+});
 
 function seedTimedSession(overrides: Record<string, unknown> = {}) {
   useQuestionBankStore.setState({

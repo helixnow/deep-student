@@ -311,6 +311,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // 🆕 2026-01 改造：使用 useQuestionBankSession Hook 管理题目状态
   const {
+    practiceSessionOwner,
     questions,
     currentIndex,
     stats,
@@ -2453,9 +2454,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onBack={handleUploaderBack}
               onManualCreate={handleCreateQuestionEntry}
             />
-          ) : viewMode === 'practice' && hasQuestions ? (
+          ) : viewMode === 'practice' && hasQuestions && practiceSessionOwner ? (
             <QuestionBankEditor
               sessionId={sessionId}
+              practiceSessionOwner={practiceSessionOwner}
               questions={practiceQuestions}
               stats={stats}
               currentIndex={practiceCurrentIndex}

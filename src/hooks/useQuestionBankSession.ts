@@ -13,6 +13,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode, type QuestionStructuredData } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
+import {
+  useQuestionBankStore,
+  type PracticeSessionOwner,
+} from '@/stores/questionBankStore';
 
 // Store 侧类型（snake_case，与 Rust 序列化一致）
 interface StoreQuestion {
@@ -129,6 +133,8 @@ interface UseQuestionBankSessionOptions {
 }
 
 interface UseQuestionBankSessionReturn {
+  /** 本 hook 实例的稳定归属键；同一 examId 的两个保活实例也不会共享进度。 */
+  practiceSessionOwner: PracticeSessionOwner | null;
   questions: Question[];
   currentQuestion: Question | null;
   currentIndex: number;
@@ -183,6 +189,17 @@ function writeLastQuestionId(examId: string, questionId: string | null): void {
 export function useQuestionBankSession({
   examId,
 }: UseQuestionBankSessionOptions): UseQuestionBankSessionReturn {
+  const practiceViewInstanceIdRef = useRef<string | null>(null);
+  if (practiceViewInstanceIdRef.current === null) {
+    practiceViewInstanceIdRef.current = `qbank_view_${generateClientRequestId()}`;
+  }
+  const practiceSessionOwner = useMemo<PracticeSessionOwner | null>(
+    () => examId
+      ? { examId, viewInstanceId: practiceViewInstanceIdRef.current! }
+      : null,
+    [examId],
+  );
+
   // ========== ★ 完全本地化状态 ==========
   const [localQuestions, setLocalQuestions] = useState<Map<string, StoreQuestion>>(new Map());
   const [localOrder, setLocalOrder] = useState<string[]>([]);
@@ -193,6 +210,21 @@ export function useQuestionBankSession({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, hasMore: false });
+  const ensurePracticeSession = useQuestionBankStore((state) => state.ensurePracticeSession);
+  const releasePracticeSession = useQuestionBankStore((state) => state.releasePracticeSession);
+
+  // 全局容器只负责跨「做题 / 错题本 / 统计」子视图保留即时进度。
+  // 归属由当前 hook 实例显式提供，题目白名单随本地题目集刷新。
+  useEffect(() => {
+    if (!practiceSessionOwner) return;
+    ensurePracticeSession(practiceSessionOwner, localOrder);
+  }, [practiceSessionOwner, localOrder, ensurePracticeSession]);
+
+  // 整个题库视图卸载（关闭标签）后释放分片；切换内部子视图不会卸载本 hook。
+  useEffect(() => {
+    if (!practiceSessionOwner) return;
+    return () => releasePracticeSession(practiceSessionOwner);
+  }, [practiceSessionOwner, releasePracticeSession]);
 
   // Refs for concurrent request protection
   const examIdRef = useRef(examId);
@@ -593,6 +625,7 @@ export function useQuestionBankSession({
   const isMigrated = questions.length > 0;
 
   return {
+    practiceSessionOwner,
     questions,
     currentQuestion,
     currentIndex,

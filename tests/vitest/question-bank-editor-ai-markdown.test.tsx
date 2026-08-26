@@ -4,6 +4,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { QuestionBankEditor } from '@/components/QuestionBankEditor';
 import type { Question, SubmitResult } from '@/api/questionBankApi';
+import {
+  useQuestionBankStore,
+  type PracticeSessionOwner,
+} from '@/stores/questionBankStore';
 
 vi.mock('@/hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ isSmallScreen: false }),
@@ -63,10 +67,17 @@ describe('QuestionBankEditor AI markdown rendering', () => {
     };
 
     const onSubmitAnswer = vi.fn(async () => submitResult);
+    const practiceSessionOwner: PracticeSessionOwner = {
+      examId: 'session-1',
+      viewInstanceId: 'markdown-test-view',
+    };
+    useQuestionBankStore.setState({ practiceSessions: {} });
+    useQuestionBankStore.getState().ensurePracticeSession(practiceSessionOwner, ['q1']);
 
     render(
       <QuestionBankEditor
         sessionId="session-1"
+        practiceSessionOwner={practiceSessionOwner}
         questions={[question]}
         onSubmitAnswer={onSubmitAnswer}
       />
