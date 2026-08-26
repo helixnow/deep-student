@@ -42,3 +42,17 @@
 | `18-hpias-allowlist.md` | HPIAS 18-block | 已写 |
 | `19-llm-usage-null.md` | `cache_write_tokens` NULL≠0 | PASS |
 | `20-composer-g-overlay.md` | F 拆分 × G 热区 × ABG | PASS |
+
+## 第三波（写完一份立刻单独提交）
+
+| 文件 | 大区域 | 状态 |
+| --- | --- | --- |
+| `21-leftover-pass3.md` | leftover 第三轮 | A：无新增量 |
+| `22-chat-genui-boundary.md` | Chat/GenUI 升级边界 | 已写 |
+| `23-attachment-limits.md` | 附件 200/50 | PASS |
+| `24-tombstone.md` | tombstone 复读 | 已写 |
+| `25-i18n-autosync.md` | i18n / auto-sync | PASS |
+| `26-webdav-s3-ftp.md` | WebDAV / S3 / FTP | PASS |
+| `27-invariants-number-errata.md` | 09 数字勘误 | 不翻案 PASS |
+| `28-pr269-coverage.md` | #269 覆盖 | 无缺失产品增量 |
+| `29-step22-candidate.md` | Step 22 候选 | 仅 QA 开关不落盘 |
