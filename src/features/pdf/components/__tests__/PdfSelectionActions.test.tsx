@@ -18,7 +18,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, act, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 const generateCardsFromSelection = vi.fn();
 const saveAsNoteStart = vi.fn();
@@ -173,23 +173,23 @@ describe('save as note', () => {
 });
 
 describe('explain / translate results', () => {
-  it('opens the explain panel inline and yields the toolbar to it', () => {
+  it('opens the explain panel inline and yields the toolbar to it', async () => {
     renderActions();
     act(() => {
       fireEvent.click(button('解释'));
     });
 
-    expect(screen.getByTestId('explain-popover').textContent).toBe(SELECTED);
+    expect((await screen.findByTestId('explain-popover')).textContent).toBe(SELECTED);
     expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
   });
 
-  it('passes the surrounding context to the translation popover', () => {
+  it('passes the surrounding context to the translation popover', async () => {
     renderActions();
     act(() => {
       fireEvent.click(button('翻译'));
     });
 
-    const popover = screen.getByTestId('translate-popover');
+    const popover = await screen.findByTestId('translate-popover');
     expect(popover.textContent).toBe(SELECTED);
     expect(popover.getAttribute('data-context-before')).toBe('前文');
   });
@@ -217,11 +217,11 @@ describe('explain / translate results', () => {
 });
 
 describe('cards and chat handoff', () => {
-  it('routes card generation through the shared selection pipeline', () => {
+  it('routes card generation through the shared selection pipeline', async () => {
     renderActions();
     fireEvent.click(button('制卡'));
 
-    expect(generateCardsFromSelection).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(generateCardsFromSelection).toHaveBeenCalledTimes(1));
     const input = generateCardsFromSelection.mock.calls[0][0];
     expect(input.selectedText).toBe(SELECTED);
     expect(input.contextBefore).toBe('前文');
