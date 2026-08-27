@@ -7,9 +7,20 @@ const readSource = (file: string) => {
   return existsSync(absolutePath) ? readFileSync(absolutePath, 'utf8') : '';
 };
 
+/**
+ * className 只能经字符串字面量进 JSX。注释里会合法提到 after:-inset
+ * （解释为什么不用它），全文 not.toMatch 会误伤注释。
+ */
+const extractStringLiterals = (source: string): string[] => {
+  const literalPattern =
+    /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\[\s\S])*`/g;
+  return (source.match(literalPattern) ?? []).map((literal) => literal.slice(1, -1));
+};
+
 describe('TouchTarget coarse touch-target contract', () => {
   const touchTargetSource = readSource('src/components/ui/TouchTarget.tsx');
   const coarseHitSource = readSource('src/components/ui/coarseHit.ts');
+  const touchTargetClassLiterals = extractStringLiterals(touchTargetSource).join('\n');
 
   it('guarantees a >=44px real box under coarse pointers via min-h/min-w on the touch token', () => {
     expect(touchTargetSource).toContain(
@@ -34,11 +45,11 @@ describe('TouchTarget coarse touch-target contract', () => {
   });
 
   it('never uses pseudo-element inset expansion or hard-coded !min-h-11 escapes', () => {
-    expect(touchTargetSource).not.toMatch(/(?:after|before):-inset/u);
-    expect(touchTargetSource).not.toContain('!min-h-11');
-    expect(touchTargetSource).not.toContain('!min-w-11');
-    // 不写死 44px：尺寸只能来自 --touch-target-size token
-    expect(touchTargetSource).not.toMatch(/min-[hw]-\[44px\]/u);
+    expect(touchTargetClassLiterals).not.toMatch(/(?:after|before):-inset/u);
+    expect(touchTargetClassLiterals).not.toContain('!min-h-11');
+    expect(touchTargetClassLiterals).not.toContain('!min-w-11');
+    expect(touchTargetClassLiterals).not.toMatch(/min-[hw]-\[44px\]/u);
+    expect(touchTargetSource).toContain('after:-inset');
   });
 
   it('keeps the pseudo-element escape hatch centralized in coarseHit.ts with coarse gating', () => {

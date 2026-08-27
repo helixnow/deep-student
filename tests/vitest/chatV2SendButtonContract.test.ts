@@ -34,7 +34,9 @@ describe('chat v2 send button contract', () => {
     expect(themeColorsSource).toMatch(/--interactive-selected:\s*color-mix\(/);
     expect(toolbarSource).toContain("const studyUiSendButtonSizeClass =");
     expect(toolbarSource).toContain('h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]');
-    expect(toolbarSource).toContain('[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11');
+    expect(toolbarSource).toContain('[@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]');
+    expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:!h-11');
+    expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:!w-11');
     expect(toolbarSource).toMatch(/studyUiBlackActionButtonClass\s*=\s*['"]!border-black !bg-black hover:!bg-black active:!bg-black !text-white['"]/);
     expect(toolbarSource).toMatch(/studyUiSendButtonEmptyStateClass\s*=\s*['"]!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted\/80 active:!bg-muted\/70['"]/);
     expect(toolbarSource).toContain("const studyUiButtonBaseClassName =");
