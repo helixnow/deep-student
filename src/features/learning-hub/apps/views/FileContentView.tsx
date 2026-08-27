@@ -57,10 +57,8 @@ import { PreviewStatus } from './PreviewStatus';
 import { AudioPlayer, VideoPlayer } from './media';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
-import { dstu } from '@/dstu';
 import {
   buildSelectionLocator,
-  buildSelectionNoteContent,
   type PdfSelectionPayload,
 } from '@/features/pdf/pdfSelectionActions';
 
@@ -273,28 +271,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       },
     });
   }, [referenceToChat, node.sourceId, node.id, node.name]);
-
-  // 划词「做笔记」：创建摘录笔记（引用块 + 来源行）
-  const handleCreateNote = useCallback((payload: PdfSelectionPayload) => {
-    void (async () => {
-      const compact = payload.text.replace(/\s+/g, ' ').trim();
-      const title = compact.slice(0, 30) || t('pdf:selection.note_default_title');
-      const result = await dstu.create('/', {
-        type: 'note',
-        name: title,
-        content: buildSelectionNoteContent({
-          text: payload.text,
-          sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
-        }),
-        metadata: { tags: [] },
-      });
-      if (result.ok) {
-        showGlobalNotification('success', t('pdf:selection.note_saved'));
-      } else {
-        showGlobalNotification('error', t('pdf:selection.note_save_failed'), result.error.toUserMessage());
-      }
-    })();
-  }, [node.name, t]);
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -746,7 +722,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             bookmarks={bookmarks}
             onBookmarksChange={handleBookmarksChange}
             onQuoteToChat={handleQuoteToChat}
-            onCreateNote={handleCreateNote}
           />
         );
       }

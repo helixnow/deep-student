@@ -383,4 +383,224 @@ mod tests {
 
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     }
+
+    // ================= 崩溃矩阵（0824 Wave2-D R7 / P9） =================
+    //
+    // 生产发布顺序（data_governance/backup/mod.rs 的密钥恢复流程）：
+    //   1. write_journal（fsync）
+    //   2. rename 旧 .master_key -> rollback/
+    //   3. rename 旧 .secure    -> rollback/
+    //   4. rename 新 .master_key -> 应用根
+    //   5. rename 新 .secure    -> 应用根
+    //   6. sync + 登记 pending-slot / restore cutover lease（state.json 落盘）
+    //   7. remove_journal + 清理 rollback/
+    //
+    // 三个注入点：P9-1 = 第 1 步之后（journal 写后、rename 未开始）；
+    // P9-2 = 第 2~5 步之间（rename 中）；P9-3 = 第 5 步之后、第 6 步之前
+    // （pending-slot 注册前，lease 尚未持久化）。每个用例按生产顺序用真实
+    // fs::rename 摆出崩溃瞬间的盘面，再走启动侧 recover_crypto_publication，
+    // 断言「活跃槽（slots/state.json）/ 全局密钥 / 审计库（databases/audit.db）
+    // 要么全部保持旧代际，要么收敛到可恢复的一致状态」。
+
+    const OLD_STATE_JSON: &[u8] = br#"{"active":"slotA","pending":null}"#;
+    const OLD_AUDIT_DB: &[u8] = b"old-audit-generation";
+
+    /// 旧代际环境：旧密钥 + 旧审计库 + 活跃槽 slotA（无 lease）。
+    fn seed_old_generation(root: &Path) {
+        fs::write(root.join(".master_key"), b"old-master").unwrap();
+        let old_secure = root.join(".secure");
+        fs::create_dir_all(&old_secure).unwrap();
+        fs::write(old_secure.join(".key_seed"), b"old-seed").unwrap();
+        fs::write(old_secure.join("cred.enc"), b"old-credential").unwrap();
+        fs::create_dir_all(root.join("databases")).unwrap();
+        fs::write(root.join("databases/audit.db"), OLD_AUDIT_DB).unwrap();
+        fs::create_dir_all(root.join("slots")).unwrap();
+        fs::write(root.join("slots/state.json"), OLD_STATE_JSON).unwrap();
+    }
+
+    /// 崩溃恢复不归 crypto_publication 管的域必须原封不动：
+    /// 活跃槽 state 与审计库字节级等于旧代际。
+    fn assert_slot_and_audit_untouched(root: &Path) {
+        assert_eq!(
+            fs::read(root.join("slots/state.json")).unwrap(),
+            OLD_STATE_JSON,
+            "活跃槽 state 不得被密钥崩溃恢复改写"
+        );
+        assert_eq!(
+            fs::read(root.join("databases/audit.db")).unwrap(),
+            OLD_AUDIT_DB,
+            "审计库不得被密钥崩溃恢复改写"
+        );
+    }
+
+    /// 全旧终态：三域全部处于发布前代际，且事务痕迹（journal/rollback）已清空。
+    fn assert_all_old_generation(root: &Path) {
+        assert_eq!(fs::read(root.join(".master_key")).unwrap(), b"old-master");
+        assert_eq!(
+            fs::read(root.join(".secure/.key_seed")).unwrap(),
+            b"old-seed"
+        );
+        assert_eq!(
+            fs::read(root.join(".secure/cred.enc")).unwrap(),
+            b"old-credential"
+        );
+        assert_slot_and_audit_untouched(root);
+        assert!(!journal_path(root).exists());
+        assert!(!rollback_dir(root).exists());
+    }
+
+    /// 恢复必须幂等：收敛后的盘面再走一次启动恢复应为 Clean 且不再改动。
+    fn assert_recovery_idempotent(root: &Path) {
+        assert_eq!(
+            recover_crypto_publication(root, None).unwrap(),
+            CryptoPublicationRecovery::Clean
+        );
+    }
+
+    /// P9-1：journal 写后、任何 rename 开始前崩溃。
+    /// 盘面 = 旧密钥仍在原位 + 空 rollback + journal。期望回滚为空操作，
+    /// 三域全旧。
+    #[test]
+    fn crash_matrix_p1_after_journal_write_keeps_all_domains_old() {
+        let root = TempDir::new().unwrap();
+        seed_old_generation(root.path());
+        fs::create_dir_all(rollback_dir(root.path())).unwrap();
+        write_journal(root.path(), &cutover_journal(true)).unwrap();
+        // —— 注入崩溃：rename 尚未开始，进程死亡 ——
+
+        let outcome = recover_crypto_publication(root.path(), None).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledBack);
+        assert_all_old_generation(root.path());
+        assert_recovery_idempotent(root.path());
+    }
+
+    /// P9-2a：rename 中崩溃——旧 .master_key 已移入 rollback，
+    /// 旧 .secure 未动，新密钥未装。根目录暂时无 master（撕裂窗口）。
+    #[test]
+    fn crash_matrix_p2_midway_old_master_moved_restores_old_generation() {
+        let root = TempDir::new().unwrap();
+        seed_old_generation(root.path());
+        let rollback = rollback_dir(root.path());
+        fs::create_dir_all(&rollback).unwrap();
+        write_journal(root.path(), &cutover_journal(true)).unwrap();
+        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        // —— 注入崩溃：第 2 步之后、第 3 步之前 ——
+        assert!(!root.path().join(".master_key").exists(), "撕裂前提");
+
+        let outcome = recover_crypto_publication(root.path(), None).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledBack);
+        assert_all_old_generation(root.path());
+        assert_recovery_idempotent(root.path());
+    }
+
+    /// P9-2b：rename 中崩溃——旧 master/secure 均已移入 rollback，
+    /// 新 .master_key 已装入，新 .secure 尚未装入。盘面是「半新半空」。
+    #[test]
+    fn crash_matrix_p2_new_master_installed_secure_pending_restores_old() {
+        let root = TempDir::new().unwrap();
+        seed_old_generation(root.path());
+        let rollback = rollback_dir(root.path());
+        fs::create_dir_all(&rollback).unwrap();
+        write_journal(root.path(), &cutover_journal(true)).unwrap();
+        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
+        fs::write(root.path().join(".master_key"), b"new-master").unwrap();
+        // —— 注入崩溃：第 4 步之后、第 5 步之前 ——
+        assert!(!root.path().join(".secure").exists(), "撕裂前提");
+
+        let outcome = recover_crypto_publication(root.path(), None).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledBack);
+        assert_all_old_generation(root.path());
+        assert_recovery_idempotent(root.path());
+    }
+
+    /// P9-2c：首次安装（发布前无旧密钥）在 rename 中崩溃。
+    /// 期望回滚清掉半装的新密钥，回到「无密钥」的发布前状态；
+    /// 活跃槽与审计库不受牵连。
+    #[test]
+    fn crash_matrix_p2_first_install_midway_removes_partial_new_keys() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("databases")).unwrap();
+        fs::write(root.path().join("databases/audit.db"), OLD_AUDIT_DB).unwrap();
+        fs::create_dir_all(root.path().join("slots")).unwrap();
+        fs::write(root.path().join("slots/state.json"), OLD_STATE_JSON).unwrap();
+        fs::create_dir_all(rollback_dir(root.path())).unwrap();
+        write_journal(root.path(), &cutover_journal(false)).unwrap();
+        fs::write(root.path().join(".master_key"), b"new-master").unwrap();
+        // —— 注入崩溃：新 master 已装、新 secure 未装 ——
+
+        let outcome = recover_crypto_publication(root.path(), None).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledBack);
+        assert!(!root.path().join(".master_key").exists());
+        assert!(!root.path().join(".secure").exists());
+        assert_slot_and_audit_untouched(root.path());
+        assert!(!journal_path(root.path()).exists());
+        assert!(!rollback_dir(root.path()).exists());
+        assert_recovery_idempotent(root.path());
+    }
+
+    /// P9-3：全部 rename 完成、pending-slot / cutover lease 注册前崩溃。
+    /// 活跃槽 state 仍是旧代际（lease 缺失），密钥必须回滚与之对齐，
+    /// 不允许「活跃槽仍旧库 + 全局密钥已换」的静默错位。
+    #[test]
+    fn crash_matrix_p3_before_pending_slot_registration_rolls_back_to_old() {
+        let root = TempDir::new().unwrap();
+        seed_old_generation(root.path());
+        let rollback = rollback_dir(root.path());
+        fs::create_dir_all(&rollback).unwrap();
+        write_journal(root.path(), &cutover_journal(true)).unwrap();
+        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
+        fs::write(root.path().join(".master_key"), b"new-master").unwrap();
+        let new_secure = root.path().join(".secure");
+        fs::create_dir_all(&new_secure).unwrap();
+        fs::write(new_secure.join(".key_seed"), b"new-seed").unwrap();
+        // —— 注入崩溃：第 5 步之后、第 6 步（lease 落盘）之前 ——
+        // 启动侧读到的 state 无 lease，故 active_lease = None。
+
+        let outcome = recover_crypto_publication(root.path(), None).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledBack);
+        assert_all_old_generation(root.path());
+        assert_recovery_idempotent(root.path());
+    }
+
+    /// P9-3 对照：lease 已在崩溃前持久化（第 6 步之后、第 7 步之前）。
+    /// 密钥前滚保持新代际，与已登记的切槽一致；审计库仍不受牵连。
+    #[test]
+    fn crash_matrix_p3_after_pending_slot_registration_rolls_forward() {
+        let root = TempDir::new().unwrap();
+        seed_old_generation(root.path());
+        let rollback = rollback_dir(root.path());
+        fs::create_dir_all(&rollback).unwrap();
+        write_journal(root.path(), &cutover_journal(true)).unwrap();
+        fs::rename(root.path().join(".master_key"), rollback.join(".master_key")).unwrap();
+        fs::rename(root.path().join(".secure"), rollback.join(".secure")).unwrap();
+        fs::write(root.path().join(".master_key"), b"new-master").unwrap();
+        let new_secure = root.path().join(".secure");
+        fs::create_dir_all(&new_secure).unwrap();
+        fs::write(new_secure.join(".key_seed"), b"new-seed").unwrap();
+        // —— 注入崩溃：lease 已落盘（journal 与之匹配），清理未执行 ——
+
+        let outcome =
+            recover_crypto_publication(root.path(), Some(("backup-1", "slotB"))).unwrap();
+
+        assert_eq!(outcome, CryptoPublicationRecovery::RolledForward);
+        assert_eq!(fs::read(root.path().join(".master_key")).unwrap(), b"new-master");
+        assert_eq!(
+            fs::read(root.path().join(".secure/.key_seed")).unwrap(),
+            b"new-seed"
+        );
+        assert_eq!(
+            fs::read(root.path().join("databases/audit.db")).unwrap(),
+            OLD_AUDIT_DB
+        );
+        assert!(!journal_path(root.path()).exists());
+        assert!(!rollback_dir(root.path()).exists());
+        assert_recovery_idempotent(root.path());
+    }
 }

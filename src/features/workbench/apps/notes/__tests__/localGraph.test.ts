@@ -15,14 +15,18 @@ function backlink(sourceId: string, sourceTitle = sourceId): NoteBacklinkDto {
   return { sourceId, sourceTitle, heading: null, alias: null, position: 0, sourceUpdatedAt: '2026-08-24T00:00:00Z' };
 }
 
-function outgoing(targetId: string | null, targetTitle: string): NoteOutgoingLinkDto {
+function outgoing(
+  targetId: string | null,
+  targetTitle: string,
+  linkType: NoteOutgoingLinkDto['linkType'] = 'wikilink',
+): NoteOutgoingLinkDto {
   return {
     targetId,
     targetTitle,
     heading: null,
     alias: null,
     position: 0,
-    linkType: 'wikilink',
+    linkType,
     resolved: targetId !== null,
   };
 }
@@ -92,6 +96,44 @@ describe('buildLocalGraph', () => {
     expect(data.nodes).toHaveLength(1 + LOCAL_GRAPH_CENTER_NEIGHBOR_LIMIT);
   });
 
+  it('types edges by link kind: noteref colored, backlink-only unknown, bidirectional borrowed', async () => {
+    const data = await buildLocalGraph({ id: 'center', title: 'C' }, 1, fetcherFromMap({
+      center: {
+        // in-only：入链行不带 linkType → unknown
+        backlinks: [backlink('in-only'), backlink('both')],
+        outgoing: [
+          // both：双向链接，入链行先入队，类型借用反向出链行
+          outgoing('both', 'Both', 'noteref'),
+          outgoing('wiki', 'Wiki', 'wikilink'),
+          outgoing('ref', 'Ref', 'noteref'),
+          outgoing(null, 'Ghost Ref', 'noteref'),
+        ],
+      },
+    }));
+
+    const kindByTarget = new Map(data.edges.map((edge) => [edge.target, edge.kind]));
+    expect(kindByTarget.get('in-only')).toBe('unknown');
+    expect(kindByTarget.get('both')).toBe('noteref');
+    expect(kindByTarget.get('wiki')).toBe('wikilink');
+    expect(kindByTarget.get('ref')).toBe('noteref');
+    expect(kindByTarget.get(ghostNodeId('Ghost Ref'))).toBe('noteref');
+  });
+
+  it('upgrades an unknown backlink edge when depth-2 expansion sees the reverse outgoing row', async () => {
+    const data = await buildLocalGraph({ id: 'center', title: 'C' }, 2, fetcherFromMap({
+      // 深度 1 时 center-mid 只从入链行可见（unknown）
+      center: { backlinks: [backlink('mid', 'Mid')], outgoing: [] },
+      // 展开 mid 后其出链行补全这条无向边的类型
+      mid: { backlinks: [], outgoing: [outgoing('center', 'C', 'noteref')] },
+    }));
+
+    const edge = data.edges.find((candidate) => (
+      (candidate.source === 'center' && candidate.target === 'mid')
+      || (candidate.source === 'mid' && candidate.target === 'center')
+    ));
+    expect(edge?.kind).toBe('noteref');
+  });
+
   it('survives expansion failures of individual neighbors', async () => {
     const data = await buildLocalGraph({ id: 'center', title: 'C' }, 2, async (noteId) => {
       if (noteId === 'bad') throw new Error('note vanished');
@@ -115,9 +157,9 @@ describe('layoutLocalGraph', () => {
         { id: 'z', title: 'Z', degree: 2, exists: true },
       ],
       edges: [
-        { id: 'e-0', source: 'c', target: 'a' },
-        { id: 'e-1', source: 'c', target: 'b' },
-        { id: 'e-2', source: 'a', target: 'z' },
+        { id: 'e-0', source: 'c', target: 'a', kind: 'wikilink' },
+        { id: 'e-1', source: 'c', target: 'b', kind: 'noteref' },
+        { id: 'e-2', source: 'a', target: 'z', kind: 'unknown' },
       ],
       truncated: false,
     };
@@ -143,9 +185,9 @@ describe('layoutLocalGraph', () => {
         { id: 'child', title: 'Child', degree: 2, exists: true },
       ],
       edges: [
-        { id: 'e-0', source: 'c', target: 'p1' },
-        { id: 'e-1', source: 'c', target: 'p2' },
-        { id: 'e-2', source: 'p2', target: 'child' },
+        { id: 'e-0', source: 'c', target: 'p1', kind: 'wikilink' },
+        { id: 'e-1', source: 'c', target: 'p2', kind: 'wikilink' },
+        { id: 'e-2', source: 'p2', target: 'child', kind: 'wikilink' },
       ],
       truncated: false,
     };

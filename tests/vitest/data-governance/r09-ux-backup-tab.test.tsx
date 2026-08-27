@@ -131,6 +131,12 @@ function makeProps(backups: BackupInfoResponse[] = [fullBackup]) {
 const VALID_PASSWORD = 'correct horse battery';
 const passwordInputLabel = 'data:governance.e2ee_password_label';
 
+function clickDuplicatedBackupAction(name: string) {
+  const buttons = screen.getAllByRole('button', { name });
+  expect(buttons).toHaveLength(2);
+  fireEvent.click(buttons[0]!);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -180,9 +186,7 @@ describe('BackupTab 删除备份确认', () => {
     const props = makeProps();
     render(<BackupTab {...props} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'common:actions.delete' }),
-    );
+    clickDuplicatedBackupAction('common:actions.delete');
     expect(props.onDeleteBackup).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('alertdialog');
@@ -207,9 +211,7 @@ describe('BackupTab 恢复备份确认', () => {
     const props = makeProps();
     render(<BackupTab {...props} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.restore' }),
-    );
+    clickDuplicatedBackupAction('data:governance.restore');
     expect(props.onRestoreBackup).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('alertdialog');
@@ -227,9 +229,7 @@ describe('BackupTab 恢复备份确认', () => {
     const props = makeProps([partialArchive]);
     render(<BackupTab {...props} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.restore' }),
-    );
+    clickDuplicatedBackupAction('data:governance.restore');
 
     expect(mockShowGlobalNotification).toHaveBeenCalledWith(
       'warning',
@@ -248,9 +248,7 @@ describe('BackupTab 单项导出确认', () => {
   it('未设密码：导出确认描述为普通 export_warning', () => {
     render(<BackupTab {...makeProps()} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.export_zip' }),
-    );
+    clickDuplicatedBackupAction('data:governance.export_zip');
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('data:governance.export_warning');
@@ -263,9 +261,7 @@ describe('BackupTab 单项导出确认', () => {
     fireEvent.change(screen.getByLabelText(passwordInputLabel), {
       target: { value: VALID_PASSWORD },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.export_zip' }),
-    );
+    clickDuplicatedBackupAction('data:governance.export_zip');
 
     expect(screen.getByRole('alertdialog')).toHaveTextContent(
       'data:governance.export_warning_encrypted',

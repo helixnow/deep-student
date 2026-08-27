@@ -185,8 +185,7 @@ describe('Edge case: empty databases list', () => {
     // 刷新按钮应可用
     expect(screen.getByRole('button', { name: /刷新|common:actions\.refresh/i })).toBeInTheDocument();
 
-    // 空数据库列表应显示"暂无数据"
-    expect(screen.getByText(/暂无数据|data:governance\.no_data/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/暂无数据|data:governance\.no_data/i)).toHaveLength(2);
 
     // Tab 按钮仍然可用
     expect(
@@ -269,9 +268,8 @@ describe('Edge case: large backup list (100 items)', () => {
       expect(mockDataGovernanceApi.getBackupList).toHaveBeenCalled();
     });
 
-    // 验证所有备份条目都被渲染（通过唯一的 size 文本判断）
     for (const backup of backups) {
-      expect(screen.getByText(formatBytes(backup.size))).toBeInTheDocument();
+      expect(screen.getAllByText(formatBytes(backup.size))).toHaveLength(2);
     }
   });
 });
@@ -468,8 +466,7 @@ describe('Edge case: empty audit logs', () => {
       expect(mockDataGovernanceApi.getAuditLogs).toHaveBeenCalled();
     });
 
-    // 应显示"暂无日志"空状态消息
-    expect(screen.getByText(/暂无日志|data:governance\.no_logs/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/暂无日志|data:governance\.no_logs/i)).toHaveLength(2);
   });
 
   it('does not show any log table rows when audit logs are empty', async () => {

@@ -7,6 +7,8 @@
 //! - 支持可配置的压缩级别（0-9）
 //! - 自动生成校验和文件
 //! - 记录压缩统计信息
+//! - 进度回调与协作式取消（[`export_backup_to_zip_with_progress`]）：
+//!   输出先写同目录临时文件、自检通过后才原子发布，取消不会留下半成品 ZIP
 //! - 两种便携模式：
 //!   - **未加密便携 ZIP**（默认）：剥离本地密钥材料、审计库与导出隔离域，
 //!     清单改写为 `key_policy=excluded_portable` + `PartialOverlay`。
@@ -183,11 +185,19 @@ struct SealedSecretsPayload {
 
 /// 构建加密全保真导出的密封载荷：把原始 manifest.json 与全部便携排除文件
 /// 打进一个内层 ZIP，再用备份密码（Argon2id → AES-256-GCM 分块）加密。
+///
+/// `cancel_check` 在敏感数据扫描与内层 ZIP 逐文件写入之间轮询；
+/// 最后的 `encrypt_backup_file` 调用（Argon2id 派生 + AEAD 分块加密）
+/// 一旦开始便运行到完成，期间置位的取消令牌在下一个检查点生效。
 fn build_sealed_secrets_payload(
     backup_dir: &Path,
     password: &str,
+    cancel_check: &dyn Fn() -> bool,
 ) -> Result<SealedSecretsPayload, ZipExportError> {
     validate_encryption_password(password)?;
+    if cancel_check() {
+        return Err(export_cancelled());
+    }
 
     let manifest_path = backup_dir.join("manifest.json");
     let original_manifest = BackupManifest::load_from_file(&manifest_path)
@@ -204,6 +214,9 @@ fn build_sealed_secrets_payload(
     let mut sealed_files: Vec<(PathBuf, String)> = Vec::new();
     let mut sealed_bytes: u64 = 0;
     for entry in WalkDir::new(backup_dir) {
+        if cancel_check() {
+            return Err(export_cancelled());
+        }
         let entry = entry.map_err(|error| {
             ZipExportError::ExportFailed(format!("扫描敏感数据失败: {}", error))
         })?;
@@ -247,6 +260,9 @@ fn build_sealed_secrets_payload(
     inner_writer.start_file("manifest.json", inner_options)?;
     inner_writer.write_all(&original_manifest_bytes)?;
     for (path, normalized) in &sealed_files {
+        if cancel_check() {
+            return Err(export_cancelled());
+        }
         inner_writer.start_file(normalized, inner_options)?;
         let mut file = File::open(path)?;
         std::io::copy(&mut file, &mut inner_writer)?;
@@ -255,7 +271,11 @@ fn build_sealed_secrets_payload(
     finished.sync_all()?;
     drop(finished);
 
-    // 加密内层 ZIP → 密封载荷。
+    // 加密内层 ZIP → 密封载荷。该调用是唯一不可中断的窗口：Argon2id
+    // 派生与 AES-256-GCM 分块加密一旦开始便运行到完成。
+    if cancel_check() {
+        return Err(export_cancelled());
+    }
     let payload_file = tempfile::NamedTempFile::new()?;
     crate::crypto::backup_crypto::encrypt_backup_file(
         inner_zip.path(),
@@ -881,6 +901,49 @@ pub(crate) fn preflight_export_source(
     })
 }
 
+/// ZIP 导出进度信息
+#[derive(Debug, Clone)]
+pub struct ZipExportProgress {
+    /// 当前阶段
+    pub phase: ZipExportPhase,
+    /// 当前进度（0.0 - 100.0）
+    pub progress: f32,
+    /// 已处理的条目数（文件 + 目录 + 生成条目）
+    pub processed_files: usize,
+    /// 总条目数
+    pub total_files: usize,
+    /// 当前处理的文件名
+    pub current_file: Option<String>,
+    /// 消息
+    pub message: String,
+}
+
+/// ZIP 导出阶段
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZipExportPhase {
+    /// 密封敏感数据（仅加密全保真导出）
+    Seal,
+    /// 生成便携清单并预检导出源
+    Scan,
+    /// 压缩写入
+    Compress,
+    /// 自检、原子发布与校验和
+    Finalize,
+    /// 完成
+    Completed,
+}
+
+/// 导出被取消时返回的错误。
+///
+/// 与导入取消保持同一形态（`ErrorKind::Interrupted` + 「用户取消」前缀），
+/// 命令层据此把任务标记为 cancelled 而不是 failed。
+fn export_cancelled() -> ZipExportError {
+    ZipExportError::Io(std::io::Error::new(
+        std::io::ErrorKind::Interrupted,
+        "用户取消导出",
+    ))
+}
+
 /// 将备份目录导出为 ZIP
 ///
 /// ## 参数
@@ -901,6 +964,43 @@ pub fn export_backup_to_zip(
     backup_dir: &Path,
     options: &ZipExportOptions,
 ) -> Result<ZipExportResult, ZipExportError> {
+    export_backup_to_zip_with_progress(backup_dir, options, |_| {}, || false)
+}
+
+/// 将备份目录导出为 ZIP（带进度回调与协作式取消）
+///
+/// 未加密便携与加密全保真两种导出共用本入口：密封敏感数据、便携清单
+/// 改写、导入安全策略预检、逐文件压缩、自检与原子发布全部在此完成，
+/// 调用方不再需要手写第二套逐文件实现。
+///
+/// ## 参数
+///
+/// * `backup_dir` - 备份目录路径
+/// * `options` - 导出选项
+/// * `progress_callback` - 进度回调函数
+/// * `cancel_check` - 取消检查函数，返回 true 时中止导出
+///
+/// ## 取消语义
+///
+/// - 取消令牌在以下检查点轮询：密封敏感数据的扫描/逐文件循环、外层
+///   压缩的逐条目循环、自检之后与原子发布之前。
+/// - 输出始终先写入目标同目录的临时文件、自检通过后才原子持久化，
+///   因此取消（或任何失败）不会留下半成品 ZIP，也不会破坏已有目标文件。
+/// - 唯一不可中断的窗口是加密分支的密封载荷加密调用（Argon2id 派生 +
+///   AES-256-GCM 分块加密一旦开始便运行到完成）；在该窗口内置位的
+///   取消令牌于下一个检查点生效。
+/// - 取消返回 `ZipExportError::Io`（`ErrorKind::Interrupted`，消息为
+///   「用户取消导出」）。
+pub fn export_backup_to_zip_with_progress<F, C>(
+    backup_dir: &Path,
+    options: &ZipExportOptions,
+    mut progress_callback: F,
+    cancel_check: C,
+) -> Result<ZipExportResult, ZipExportError>
+where
+    F: FnMut(ZipExportProgress),
+    C: Fn() -> bool,
+{
     let start = std::time::Instant::now();
 
     // 验证备份目录；不要用 `exists()` 吞掉权限和元数据错误。
@@ -926,12 +1026,40 @@ pub fn export_backup_to_zip(
         ));
     }
 
+    if cancel_check() {
+        return Err(export_cancelled());
+    }
+
     // 加密全保真导出：先密封敏感数据（含原始 manifest），外层清单声明
     // key_policy=included_encrypted 并携带载荷条目。
     let sealed_payload = match options.encryption_password.as_deref() {
-        Some(password) => Some(build_sealed_secrets_payload(backup_dir, password)?),
+        Some(password) => {
+            progress_callback(ZipExportProgress {
+                phase: ZipExportPhase::Seal,
+                progress: 2.0,
+                processed_files: 0,
+                total_files: 0,
+                current_file: None,
+                message: "正在密封敏感数据为加密载荷...".to_string(),
+            });
+            Some(build_sealed_secrets_payload(
+                backup_dir,
+                password,
+                &cancel_check,
+            )?)
+        }
         None => None,
     };
+
+    progress_callback(ZipExportProgress {
+        phase: ZipExportPhase::Scan,
+        progress: 5.0,
+        processed_files: 0,
+        total_files: 0,
+        current_file: None,
+        message: "正在生成便携清单并预检导出源...".to_string(),
+    });
+
     let portable_manifest = match &sealed_payload {
         Some(sealed) => portable_manifest_bytes_with(
             backup_dir,
@@ -953,6 +1081,33 @@ pub fn export_backup_to_zip(
             .checked_add(sealed.manifest_entry.size)
             .ok_or_else(|| ZipExportError::ExportFailed("导出文件总大小溢出".to_string()))?;
         ARCHIVE_POLICY.validate_counts(entries, uncompressed)?;
+    }
+
+    // 进度分母：preflight 统计的条目（含目录与生成的 checksums.sha256）
+    // 加上可选的密封载荷条目。
+    let total_entries = stats
+        .entries
+        .saturating_add(usize::from(sealed_payload.is_some()));
+    let mut processed_entries: usize = 0;
+    // 压缩阶段占 10% - 90%。
+    let compress_progress = |processed: usize| -> f32 {
+        10.0 + (processed as f32 / total_entries.max(1) as f32) * 80.0
+    };
+
+    progress_callback(ZipExportProgress {
+        phase: ZipExportPhase::Scan,
+        progress: 10.0,
+        processed_files: 0,
+        total_files: total_entries,
+        current_file: None,
+        message: format!(
+            "导出预检完成: {} 个条目, {} 字节",
+            total_entries, stats.uncompressed_bytes
+        ),
+    });
+
+    if cancel_check() {
+        return Err(export_cancelled());
     }
 
     // 确定输出路径
@@ -1005,6 +1160,10 @@ pub fn export_backup_to_zip(
                 .strip_prefix(backup_dir)
                 .is_ok_and(|path| !is_portable_excluded_relative_path(path))
     }) {
+        // 协作式取消：临时输出文件随 drop 自动删除，不留半成品。
+        if cancel_check() {
+            return Err(export_cancelled());
+        }
         let entry = entry.map_err(|error| {
             ZipExportError::ExportFailed(format!("遍历备份目录失败: {}", error))
         })?;
@@ -1036,6 +1195,7 @@ pub fn export_backup_to_zip(
             // 添加目录
             debug!("添加目录: {}", relative_path_str);
             zip_writer.add_directory(&relative_path_str, file_options)?;
+            processed_entries = processed_entries.saturating_add(1);
         } else if entry.file_type().is_file() {
             // 添加文件
             debug!("添加文件: {}", relative_path_str);
@@ -1093,6 +1253,18 @@ pub fn export_backup_to_zip(
                     )));
                 }
             }
+            processed_entries = processed_entries.saturating_add(1);
+            progress_callback(ZipExportProgress {
+                phase: ZipExportPhase::Compress,
+                progress: compress_progress(processed_entries),
+                processed_files: processed_entries,
+                total_files: total_entries,
+                current_file: Some(relative_path_str.clone()),
+                message: format!(
+                    "正在压缩: {} ({}/{})",
+                    relative_path_str, processed_entries, total_entries
+                ),
+            });
         } else {
             return Err(ZipExportError::ExportFailed(format!(
                 "导出期间发现非常规条目: {}",
@@ -1103,6 +1275,9 @@ pub fn export_backup_to_zip(
 
     // 写入密封敏感数据载荷（密文不可再压缩，使用存储模式）。
     if let Some(sealed) = &sealed_payload {
+        if cancel_check() {
+            return Err(export_cancelled());
+        }
         let stored_options = FileOptions::default().compression_method(CompressionMethod::Stored);
         zip_writer.start_file(ENCRYPTED_SECRETS_ENTRY, stored_options)?;
         let mut payload = File::open(sealed.payload_file.path())?;
@@ -1125,6 +1300,15 @@ pub fn export_backup_to_zip(
                 sealed.manifest_entry.sha256.clone(),
             ));
         }
+        processed_entries = processed_entries.saturating_add(1);
+        progress_callback(ZipExportProgress {
+            phase: ZipExportPhase::Compress,
+            progress: compress_progress(processed_entries),
+            processed_files: processed_entries,
+            total_files: total_entries,
+            current_file: Some(ENCRYPTED_SECRETS_ENTRY.to_string()),
+            message: "已写入加密敏感数据载荷".to_string(),
+        });
     }
 
     // 如果需要，添加校验和文件
@@ -1138,16 +1322,45 @@ pub fn export_backup_to_zip(
         zip_writer.start_file("checksums.sha256", file_options)?;
         zip_writer.write_all(checksums_content.as_bytes())?;
         file_count += 1;
+        processed_entries = processed_entries.saturating_add(1);
     }
+
+    if cancel_check() {
+        return Err(export_cancelled());
+    }
+
+    progress_callback(ZipExportProgress {
+        phase: ZipExportPhase::Finalize,
+        progress: 90.0,
+        processed_files: processed_entries,
+        total_files: total_entries,
+        current_file: None,
+        message: "正在自检并发布 ZIP 文件...".to_string(),
+    });
 
     // 完成 ZIP 文件
     let finished_file = zip_writer.finish()?;
     finished_file.sync_all()?;
     drop(finished_file);
     validate_archive_path(temp_output.path())?;
+
+    // 原子发布前的最后一个取消检查点：临时文件随 drop 自动删除，
+    // 已有目标 ZIP（如存在）保持原样。
+    if cancel_check() {
+        return Err(export_cancelled());
+    }
     temp_output
         .persist(&zip_path)
         .map_err(|e| ZipExportError::Io(e.error))?;
+
+    progress_callback(ZipExportProgress {
+        phase: ZipExportPhase::Finalize,
+        progress: 95.0,
+        processed_files: processed_entries,
+        total_files: total_entries,
+        current_file: None,
+        message: "正在计算 ZIP 校验和...".to_string(),
+    });
 
     // 获取压缩后的大小
     let compressed_size = std::fs::metadata(&zip_path)?.len();
@@ -1173,6 +1386,15 @@ pub fn export_backup_to_zip(
             warn!("删除原始备份目录失败: {}", e);
         }
     }
+
+    progress_callback(ZipExportProgress {
+        phase: ZipExportPhase::Completed,
+        progress: 100.0,
+        processed_files: processed_entries,
+        total_files: total_entries,
+        current_file: None,
+        message: format!("ZIP 导出完成，共 {} 个文件", file_count),
+    });
 
     Ok(ZipExportResult {
         zip_path,
@@ -1543,6 +1765,7 @@ fn precheck_sealed_payload_password<R: std::io::Read + std::io::Seek>(
     password: Option<&str>,
     resumable: bool,
 ) -> Result<(), ZipExportError> {
+    super::portable_precheck::precheck_explicit_import_password(archive, password, resumable)?; // [0824-W2R5] 显式密码 fail-fast：便携+密码（两种模式）/ 非续传密封+错密码试解密；缺密码方向仍由下方既有分支负责
     if password.is_some()
         || !archive
             .file_names()
@@ -1827,9 +2050,15 @@ where
         };
 
         // 断点续传：跳过已存在且大小匹配的文件（但数据库文件不能跳过，因为大小可能相同但内容不同）
+        // [P11] manifest.json（任意层级、大小写不敏感）同样不可跳过：它是恢复链的
+        // 元数据 SSOT，重新导出后大小可能不变而内容已变，跳过会让旧清单冒充新快照。
         if skip_existing && !file.is_dir() {
             let is_db_file = file_name.to_ascii_lowercase().ends_with(".db");
-            if !is_db_file {
+            let is_manifest = relative_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("manifest.json"));
+            if !is_db_file && !is_manifest {
                 match std::fs::symlink_metadata(&outpath) {
                     Ok(metadata)
                         if !metadata.file_type().is_symlink()
@@ -2408,6 +2637,64 @@ mod tests {
         assert!(target.join("manifest.json").is_file());
     }
 
+    /// [P11] 续传 skip 白名单不得覆盖 manifest.json：同大小不同内容的旧清单
+    /// 必须被归档内容重新覆盖，否则旧清单会冒充新快照进入恢复链。
+    #[test]
+    fn test_resumable_import_never_skips_manifest_json() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("plain.zip");
+        export_backup_to_zip(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+        import_backup_from_zip_resumable(&output_path, &target, |_| {}, || false, None).unwrap();
+
+        // 篡改已落盘的 manifest.json：保持字节数不变但内容不同，
+        // 命中「已存在且大小匹配」的 skip 条件。
+        let manifest_path = target.join("manifest.json");
+        let original = std::fs::read(&manifest_path).unwrap();
+        let tampered = vec![b'x'; original.len()];
+        assert_ne!(original, tampered);
+        std::fs::write(&manifest_path, &tampered).unwrap();
+
+        let mut skipped: Vec<String> = Vec::new();
+        import_backup_from_zip_resumable(
+            &output_path,
+            &target,
+            |progress| {
+                if progress.message.contains("跳过已存在") {
+                    if let Some(file) = progress.current_file.clone() {
+                        skipped.push(file);
+                    }
+                }
+            },
+            || false,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            skipped
+                .iter()
+                .all(|name| !name.to_ascii_lowercase().ends_with("manifest.json")),
+            "manifest.json must never be skipped by resume: {:?}",
+            skipped
+        );
+        let restored = std::fs::read(&manifest_path).unwrap();
+        assert_eq!(
+            restored, original,
+            "manifest.json must be re-extracted from the archive, not skipped"
+        );
+    }
+
     #[test]
     fn test_resumable_import_unencrypted_zip_rejects_password() {
         let backup_dir = create_test_backup_dir();
@@ -2684,6 +2971,144 @@ mod tests {
         manifest.validate_for_slot_restore().unwrap();
     }
 
+    // ================= 导出进度回调与取消 =================
+
+    /// 取消令牌在压缩进行到中途置位时，导出必须停止：返回 Interrupted
+    /// 「用户取消导出」，且不留下任何输出 ZIP（半成品临时文件随 drop 删除）。
+    #[test]
+    fn test_export_cancel_token_set_midway_stops_export() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("cancelled.zip");
+
+        // 进度回调观察到第一个压缩条目后置位取消令牌，模拟用户中途取消。
+        let cancelled = std::cell::Cell::new(false);
+        let saw_compress = std::cell::Cell::new(false);
+        let error = export_backup_to_zip_with_progress(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+            |progress| {
+                if progress.phase == ZipExportPhase::Compress {
+                    saw_compress.set(true);
+                    cancelled.set(true);
+                }
+            },
+            || cancelled.get(),
+        )
+        .unwrap_err();
+
+        assert!(
+            saw_compress.get(),
+            "test must cancel mid-way, after compression has started"
+        );
+        assert!(
+            matches!(
+                &error,
+                ZipExportError::Io(io_error)
+                    if io_error.kind() == std::io::ErrorKind::Interrupted
+            ),
+            "cancellation must surface as Interrupted: {}",
+            error
+        );
+        assert!(
+            error.to_string().contains("用户取消导出"),
+            "cancellation error must keep the 用户取消 prefix contract: {}",
+            error
+        );
+        assert!(
+            !output_path.exists(),
+            "cancelled export must not leave a partial ZIP behind"
+        );
+    }
+
+    /// 加密全保真导出的压缩期同样可取消（密封载荷加密调用本身不可中断，
+    /// 但外层逐条目压缩必须响应取消令牌），且不落任何输出。
+    #[test]
+    fn test_export_encrypted_cancel_token_set_midway_stops_export() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("cancelled-encrypted.zip");
+
+        let cancelled = std::cell::Cell::new(false);
+        let error = export_backup_to_zip_with_progress(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                encryption_password: Some(TEST_BACKUP_PASSWORD.to_string()),
+                ..Default::default()
+            },
+            |progress| {
+                if progress.phase == ZipExportPhase::Compress {
+                    cancelled.set(true);
+                }
+            },
+            || cancelled.get(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("用户取消导出"),
+            "unexpected error: {}",
+            error
+        );
+        assert!(!output_path.exists());
+    }
+
+    /// 未取消时，进度回调必须覆盖 Scan → Compress → Finalize → Completed，
+    /// 且最终 processed == total、进度单调不减。
+    #[test]
+    fn test_export_progress_reports_all_phases_monotonically() {
+        let backup_dir = create_test_backup_dir();
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("progress.zip");
+
+        let mut phases: Vec<ZipExportPhase> = Vec::new();
+        let mut last_progress = 0.0f32;
+        let mut monotonic = true;
+        let mut final_counts = (0usize, 0usize);
+        let result = export_backup_to_zip_with_progress(
+            backup_dir.path(),
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+            |progress| {
+                if progress.progress < last_progress {
+                    monotonic = false;
+                }
+                last_progress = progress.progress;
+                phases.push(progress.phase);
+                final_counts = (progress.processed_files, progress.total_files);
+            },
+            || false,
+        )
+        .unwrap();
+
+        assert!(monotonic, "progress must be monotonically non-decreasing");
+        for phase in [
+            ZipExportPhase::Scan,
+            ZipExportPhase::Compress,
+            ZipExportPhase::Finalize,
+            ZipExportPhase::Completed,
+        ] {
+            assert!(
+                phases.contains(&phase),
+                "missing export phase {:?} in {:?}",
+                phase,
+                phases
+            );
+        }
+        assert_eq!(
+            final_counts.0, final_counts.1,
+            "all entries must be accounted for at completion"
+        );
+        assert!(output_path.exists());
+        assert!(result.file_count > 0);
+    }
+
     #[test]
     fn zip_contains_encrypted_secrets_distinguishes_portable_and_sealed() {
         let backup_dir = create_test_backup_dir();
@@ -2701,5 +3126,314 @@ mod tests {
 
         let (_zip_guard, sealed_zip) = export_encrypted_test_zip(backup_dir.path());
         assert!(zip_contains_encrypted_secrets(&sealed_zip).unwrap());
+    }
+
+    // ================= 导入进度回调与取消（G4） =================
+    //
+    // 导入实现（import_backup_from_zip_impl）共有 4 处 cancel_check：
+    //   C1 Scan 起点（打开归档之前）
+    //   C2 Scan 验证完成后（validate_import_target_root 之前）
+    //   C3 Extract 逐条目循环顶部（每个条目解压之前）
+    //   C4 Verify 起点（unseal_encrypted_secrets / 清单校验之前）
+    // 命令层（commands_zip.rs）用 `to_string().contains("用户取消")` 把取消
+    // 判定为 cancelled 终态而非 failed，以下测试固定这一契约。
+
+    /// 断言取消错误契约：Io(Interrupted) + 「用户取消导入」字样，
+    /// 保证命令层能把它判定为 cancelled 而不是 failed。
+    fn assert_import_cancelled(error: &ZipExportError) {
+        assert!(
+            matches!(
+                error,
+                ZipExportError::Io(io_error)
+                    if io_error.kind() == std::io::ErrorKind::Interrupted
+            ),
+            "import cancellation must surface as Io(Interrupted): {}",
+            error
+        );
+        assert!(
+            error.to_string().contains("用户取消导入"),
+            "cancellation error must keep the 用户取消 marker (cancelled ≠ failed): {}",
+            error
+        );
+    }
+
+    /// 导出未加密便携测试 ZIP，返回 (输出目录守卫, ZIP 路径)。
+    fn export_plain_test_zip(backup_dir: &Path) -> (TempDir, PathBuf) {
+        let output_dir = TempDir::new().unwrap();
+        let output_path = output_dir.path().join("plain.zip");
+        export_backup_to_zip(
+            backup_dir,
+            &ZipExportOptions {
+                output_path: Some(output_path.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        (output_dir, output_path)
+    }
+
+    /// 读取归档全部非目录条目：条目名 → 未压缩大小（半成品检测的对照表）。
+    fn zip_entry_sizes(zip_path: &Path) -> std::collections::HashMap<String, u64> {
+        let mut archive = zip::ZipArchive::new(File::open(zip_path).unwrap()).unwrap();
+        (0..archive.len())
+            .filter_map(|index| {
+                let entry = archive.by_index(index).unwrap();
+                if entry.is_dir() {
+                    None
+                } else {
+                    Some((entry.name().to_string(), entry.size()))
+                }
+            })
+            .collect()
+    }
+
+    /// 枚举目标目录下的普通文件：归档相对路径 → 实际字节数。
+    fn extracted_files(target: &Path) -> std::collections::HashMap<String, u64> {
+        if !target.exists() {
+            return std::collections::HashMap::new();
+        }
+        WalkDir::new(target)
+            .into_iter()
+            .map(|entry| entry.unwrap())
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| {
+                let relative = entry
+                    .path()
+                    .strip_prefix(target)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (relative, entry.metadata().unwrap().len())
+            })
+            .collect()
+    }
+
+    /// C1：取消令牌在导入启动时已置位——第一处 cancel_check 在打开归档、
+    /// 校验目标目录之前就必须停止，目标目录零副作用（连目录都不创建）。
+    #[test]
+    fn test_import_cancelled_before_scan_leaves_target_untouched() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_plain_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+
+        let mut phases: Vec<ZipImportPhase> = Vec::new();
+        let error = import_backup_from_zip_with_progress(
+            &zip_path,
+            &target,
+            |progress| phases.push(progress.phase),
+            || true,
+            None,
+        )
+        .unwrap_err();
+
+        assert_import_cancelled(&error);
+        assert_eq!(
+            phases,
+            vec![ZipImportPhase::Scan],
+            "pre-cancelled import must stop right after the first Scan callback"
+        );
+        assert!(
+            !target.exists(),
+            "pre-cancelled import must not create the target directory"
+        );
+    }
+
+    /// C2：Scan 验证完成（total_files 已知）后置位取消——第二处
+    /// cancel_check 在 validate_import_target_root 之前中止，
+    /// 不进入 Extract 阶段，目标目录仍未被创建。
+    #[test]
+    fn test_import_cancelled_after_scan_validation_extracts_nothing() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_plain_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+
+        let cancel = std::cell::Cell::new(false);
+        let saw_extract = std::cell::Cell::new(false);
+        let error = import_backup_from_zip_with_progress(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.phase == ZipImportPhase::Extract {
+                    saw_extract.set(true);
+                }
+                // 第二次 Scan 回调（验证完成）才带 total_files > 0：
+                // 在这里置位可精确命中第二处 cancel_check。
+                if progress.phase == ZipImportPhase::Scan && progress.total_files > 0 {
+                    cancel.set(true);
+                }
+            },
+            || cancel.get(),
+            None,
+        )
+        .unwrap_err();
+
+        assert_import_cancelled(&error);
+        assert!(
+            !saw_extract.get(),
+            "cancel after scan validation must never reach the Extract phase"
+        );
+        assert!(
+            !target.exists(),
+            "cancel before target validation must not create the target directory"
+        );
+    }
+
+    /// C3（G4 核心）：Extract 中途取消不留半成品。已落盘的条目必须是
+    /// 完整文件（NamedTempFile + 原子 rename 保证要么全有要么全无），
+    /// 目录里不得残留 `.tmp*` 临时文件，且错误标记为取消而非失败。
+    #[test]
+    fn test_import_cancel_midway_extract_leaves_no_partial_files() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_plain_test_zip(backup_dir.path());
+        let entry_sizes = zip_entry_sizes(&zip_path);
+        assert!(
+            entry_sizes.len() >= 2,
+            "test zip must contain multiple entries for a mid-way cancel"
+        );
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+
+        // 观察到第一个 Extract 回调后置位取消：第 1 个条目完整落盘，
+        // 循环顶部的 cancel_check 会在解压第 2 个条目之前中止。
+        let cancel = std::cell::Cell::new(false);
+        let error = import_backup_from_zip_with_progress(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.phase == ZipImportPhase::Extract {
+                    cancel.set(true);
+                }
+            },
+            || cancel.get(),
+            None,
+        )
+        .unwrap_err();
+
+        assert_import_cancelled(&error);
+
+        let files = extracted_files(&target);
+        assert!(
+            !files.is_empty(),
+            "cancel must land mid-extract, after at least one entry was written"
+        );
+        assert!(
+            files.len() < entry_sizes.len(),
+            "cancel must land mid-extract, before all entries were written"
+        );
+        for (relative, actual_size) in &files {
+            let file_name = relative.rsplit('/').next().unwrap();
+            assert!(
+                !file_name.starts_with(".tmp"),
+                "cancelled import must not leave NamedTempFile leftovers: {}",
+                relative
+            );
+            let expected_size = entry_sizes.get(relative).unwrap_or_else(|| {
+                panic!("unexpected file in target after cancel: {}", relative)
+            });
+            assert_eq!(
+                actual_size, expected_size,
+                "every landed file must be byte-complete, never truncated: {}",
+                relative
+            );
+        }
+    }
+
+    /// C4：Verify 起点取消（解封敏感数据之前）。加密全保真导入在
+    /// Extract 全部完成后、unseal 之前响应取消：密封载荷
+    /// portable_secrets.dsbk 保持原样未消费，错误是「用户取消」，
+    /// 不得混入任何密码/解密类稳定失败码（cancelled ≠ failed）。
+    #[test]
+    fn test_import_encrypted_cancelled_before_verify_keeps_sealed_payload() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_encrypted_test_zip(backup_dir.path());
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+
+        let cancel = std::cell::Cell::new(false);
+        let error = import_backup_from_zip_with_progress(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.phase == ZipImportPhase::Verify {
+                    cancel.set(true);
+                }
+            },
+            || cancel.get(),
+            Some(TEST_BACKUP_PASSWORD),
+        )
+        .unwrap_err();
+
+        assert_import_cancelled(&error);
+        let message = error.to_string();
+        assert!(
+            !message.contains(SEALED_BACKUP_PASSWORD_REQUIRED_CODE),
+            "cancellation must not carry the password-required failure code: {}",
+            message
+        );
+        assert!(
+            !message.contains(SEALED_BACKUP_DECRYPT_FAILED_CODE),
+            "cancellation must not carry the decrypt-failed failure code: {}",
+            message
+        );
+        assert!(
+            target.join(ENCRYPTED_SECRETS_ENTRY).is_file(),
+            "cancel before Verify must leave the sealed payload unconsumed for retry"
+        );
+    }
+
+    /// G4 闭环：Extract 中途取消不留半成品 ⇒ 携同一参数用续传模式重试
+    /// 即可完整完成——最终条目数与归档一致、逐文件字节数吻合、
+    /// 清单可正常加载。
+    #[test]
+    fn test_import_cancel_midway_then_resumable_retry_completes() {
+        let backup_dir = create_test_backup_dir();
+        let (_zip_guard, zip_path) = export_plain_test_zip(backup_dir.path());
+        let entry_sizes = zip_entry_sizes(&zip_path);
+
+        let import_dir = TempDir::new().unwrap();
+        let target = import_dir.path().join("restored");
+
+        // 第一遍：Extract 中途取消。
+        let cancel = std::cell::Cell::new(false);
+        let error = import_backup_from_zip_resumable(
+            &zip_path,
+            &target,
+            |progress| {
+                if progress.phase == ZipImportPhase::Extract {
+                    cancel.set(true);
+                }
+            },
+            || cancel.get(),
+            None,
+        )
+        .unwrap_err();
+        assert_import_cancelled(&error);
+        assert!(
+            !extracted_files(&target).is_empty(),
+            "first pass must land at least one entry before cancelling"
+        );
+
+        // 第二遍：同参数、不再取消，续传补齐剩余条目。
+        let file_count =
+            import_backup_from_zip_resumable(&zip_path, &target, |_| {}, || false, None)
+                .unwrap();
+
+        assert_eq!(
+            file_count,
+            entry_sizes.len(),
+            "retry must account for every archive entry (extracted + skipped)"
+        );
+        assert_eq!(
+            extracted_files(&target),
+            entry_sizes,
+            "retry must leave the target byte-complete against the archive"
+        );
+        BackupManifest::load_from_file(&target.join("manifest.json")).unwrap();
     }
 }

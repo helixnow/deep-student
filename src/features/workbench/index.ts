@@ -177,6 +177,17 @@ export {
   useAppsPanelOpen,
 } from './components/appsPanelStore';
 
+// ---- 缝一：Workbench 停用事务（模式开关 / 应用退出统一逐窗预检） ----
+export {
+  runWorkbenchDeactivationTransaction,
+  hasDirtyWorkbenchWindows,
+  isWorkbenchDeactivationInFlight,
+} from './core/deactivationTransaction';
+export type {
+  WorkbenchDeactivationReason,
+  WorkbenchDeactivationResult,
+} from './core/deactivationTransaction';
+
 // ---- ACR：Agent Collaborator Runtime（R0.5 脚手架，见 docs/dev/acr/DESIGN.md） ----
 export * from './agent/types';
 export { stageManager } from './agent/stageManager';

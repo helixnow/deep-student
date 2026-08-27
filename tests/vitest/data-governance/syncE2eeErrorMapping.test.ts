@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   classifySyncE2eeError,
+  SYNC_E2EE_CLAIM_CONFLICT_CODE,
+  SYNC_E2EE_DOWNGRADE_REJECTED_CODE,
   SYNC_E2EE_ERROR_I18N_KEYS,
   SYNC_E2EE_MARKER_CORRUPTED_CODE,
   SYNC_E2EE_PASSWORD_REQUIRED_CODE,
@@ -68,6 +70,16 @@ const MARKER_MISSING_VERIFIER_ERROR =
 const MARKER_UNKNOWN_KDF_ERROR =
   '无法校验云端加密标记的密码校验子（fail-closed，已在上传前中止）：未知的加密标记校验子 KDF: quantum。';
 
+/** cloud_storage/mod.rs `ensure_download_not_degraded`：[R4-antidegrade] 下载防降级拒收 */
+const DOWNGRADE_REJECTED_ERROR =
+  '云端已登记端到端加密标记，但下载到的备份对象不是 DSBK 密文，疑似密文被明文替换' +
+  '（降级攻击）或云端目录被篡改，已拒绝还原该对象。请人工核查云端目录完整性后重试。';
+
+/** sync_manager.rs `ensure_marker_unchanged_before_publish`：[R4-e2ee-cas] 发布前复验冲突 */
+const CLAIM_CONFLICT_PUBLISH_ERROR =
+  '发布备份前复验发现云端加密标记已与上传前校验时不一致（认领竞态或标记被并发' +
+  '改动），已回滚本次上传、未发布任何版本。请重试上传以重新校验加密密码。';
+
 describe('classifySyncE2eeError', () => {
   it('classifies plaintext-legacy rejections (payload / file object / blob / upload)', () => {
     expect(classifySyncE2eeError(PLAINTEXT_PAYLOAD_ERROR)).toBe(
@@ -105,6 +117,18 @@ describe('classifySyncE2eeError', () => {
     );
     expect(classifySyncE2eeError(MARKER_UNKNOWN_KDF_ERROR)).toBe(
       'markerCorrupted',
+    );
+  });
+
+  it('classifies R4 anti-downgrade rejections ahead of the plaintext-legacy bucket', () => {
+    expect(classifySyncE2eeError(DOWNGRADE_REJECTED_ERROR)).toBe(
+      'downgradeRejected',
+    );
+  });
+
+  it('classifies R4 claim-lease conflicts', () => {
+    expect(classifySyncE2eeError(CLAIM_CONFLICT_PUBLISH_ERROR)).toBe(
+      'claimConflict',
     );
   });
 
@@ -150,6 +174,14 @@ describe('classifySyncE2eeError', () => {
         `[${SYNC_E2EE_PASSWORD_REQUIRED_CODE}] rewritten missing password`,
       ),
     ).toBe('passwordRequired');
+    expect(
+      classifySyncE2eeError(
+        `[${SYNC_E2EE_DOWNGRADE_REJECTED_CODE}] rewritten downgrade`,
+      ),
+    ).toBe('downgradeRejected');
+    expect(
+      classifySyncE2eeError(`[${SYNC_E2EE_CLAIM_CONFLICT_CODE}] rewritten claim`),
+    ).toBe('claimConflict');
   });
 
   it('prefers marker-corrupted code when a rewritten message also looks like a password error', () => {
@@ -161,10 +193,14 @@ describe('classifySyncE2eeError', () => {
   });
 });
 
-describe('E2EE 三类稳定 code 跨层契约', () => {
+describe('E2EE 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一组 code', () => {
     const rust = readFileSync(
       resolve(process.cwd(), 'src-tauri/src/cloud_storage/mod.rs'),
+      'utf8',
+    );
+    const rustClaim = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/cloud_storage/e2ee_claim.rs'),
       'utf8',
     );
     const api = readFileSync(
@@ -176,10 +212,13 @@ describe('E2EE 三类稳定 code 跨层契约', () => {
       SYNC_E2EE_WRONG_PASSWORD_CODE,
       SYNC_E2EE_MARKER_CORRUPTED_CODE,
       SYNC_E2EE_PASSWORD_REQUIRED_CODE,
+      SYNC_E2EE_DOWNGRADE_REJECTED_CODE,
     ]) {
       expect(rust).toContain(`"${code}"`);
       expect(api).toContain(`'${code}'`);
     }
+    expect(rustClaim).toContain(`"${SYNC_E2EE_CLAIM_CONFLICT_CODE}"`);
+    expect(api).toContain(`'${SYNC_E2EE_CLAIM_CONFLICT_CODE}'`);
   });
 });
 

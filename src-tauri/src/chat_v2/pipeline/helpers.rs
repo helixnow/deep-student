@@ -3,7 +3,56 @@ use crate::canonical_tools::{
     encode_tool_name_for_api, prepare_external_tool, ApiNameSource, CanonicalExternalToolConfig,
 };
 use crate::chat_v2::tools::types::EXTERNAL_MCP_TOOL_PREFIX;
+use crate::chat_v2::types::ToolFacePrefixSnapshot;
 use std::collections::{HashMap, HashSet};
+
+/// 🆕 P1 tools 前缀代际（方案 A）：pipeline 进程内存中每个会话的权威
+/// 工具面基线 `(g, B_g, digest)`。
+///
+/// 是 `frozen_tool_schema_orders` 共享 map 的值型（单锁不变、不新增
+/// Mutex），与持久化形态 `types::ToolFacePrefixSnapshot` 字段一一对应：
+/// - `generation`：当前代号 `g`，仅 fan-out 收敛点检出真分叉时 +1
+///   （见 `converge_session_tool_face_prefix`）；load 回填与单变体纯
+///   扩展写回**永不** bump；
+/// - `order`：append-only 首见序基线（持久化仍落 `frozenToolSchemaOrder`
+///   键）；
+/// - `schema_digest`：可选 tools schema 冻结字节摘要（`toolSchemaDigest`
+///   键）。load 回填只填空位；唯一推进点是 converge 收敛点的共识采纳
+///   （见 `converge_session_tool_face_prefix` 的 digest 收敛规则），
+///   绝不被 None 抹掉。
+///
+/// 冻结矩阵定位（冻什么 / 不冻什么 / 何时切代）：`order` 会话级冻、
+/// schema 字节窗口级冻（本结构只存 digest 摘要）、`generation` 仅
+/// converge 真分叉时 +1。速查见 `tool_loop.rs` 文件头，完整矩阵见
+/// `docs/dev/wave2-A/r2-freeze-matrix.md`。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ToolFaceBaseline {
+    pub generation: u64,
+    pub order: Vec<String>,
+    pub schema_digest: Option<String>,
+}
+
+impl ToolFaceBaseline {
+    /// 转持久化 / 重放形态（repo advance 与 `VariantMeta.tool_face_prefix`
+    /// 共用 `types::ToolFacePrefixSnapshot`）。
+    pub(crate) fn to_snapshot(&self) -> ToolFacePrefixSnapshot {
+        ToolFacePrefixSnapshot {
+            generation: self.generation,
+            order: self.order.clone(),
+            schema_digest: self.schema_digest.clone(),
+        }
+    }
+}
+
+impl From<ToolFacePrefixSnapshot> for ToolFaceBaseline {
+    fn from(snapshot: ToolFacePrefixSnapshot) -> Self {
+        ToolFaceBaseline {
+            generation: snapshot.generation,
+            order: snapshot.order,
+            schema_digest: snapshot.schema_digest,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct HistoryUnit {
@@ -1006,15 +1055,27 @@ impl ChatV2Pipeline {
         eligible
     }
 
-    /// 🆕 P0 tools 会话冻结：读取该会话已发出 tools 的 append-only 首见序
-    /// 基线（跨 execute_with_tools 调用共享）。
+    /// 🆕 P1 tools 前缀代际：读取该会话的权威工具面基线 `(g, B_g, digest)`
+    /// （跨 execute_with_tools / fan-out 调用共享，方案 A 唯一权威对象）。
     ///
     /// 内存 miss（典型场景：桌面 App 重启后该会话首轮）时从 session.metadata
-    /// 恢复持久化基线并填回内存 —— provider 侧 prompt cache 跨进程存活，
-    /// 必须复用上一进程已发出的 tools 前缀字节序，禁止按字母序重新基线。
-    /// 读取失败降级为空基线（等同会话首轮，由首次 freeze 按字母序建立），
+    /// 恢复持久化快照并填回内存 —— provider 侧 prompt cache 跨进程存活，
+    /// 必须复用上一进程已发出的 tools 前缀字节序与代号，禁止按字母序重新
+    /// 基线、禁止 generation 归零回退。三键全缺 / 读取失败降级为
+    /// `generation=0 + 空 order`（等同会话首轮，由首次 freeze 建立基线），
     /// 只打日志、不阻断发送。
-    pub(crate) fn load_session_frozen_tool_schema_order(&self, session_id: &str) -> Vec<String> {
+    ///
+    /// 锁序（与 microcompact 恢复段同构，防 TOCTOU 双建）：先加锁查内存
+    /// 命中；miss 则**放锁**读库；再加锁 `entry().or_default()` 合并回填。
+    /// 放锁读库期间并行调用可能已建基线，回填只做 append-only merge
+    /// （只补缺失名、绝不覆盖或重排既有内存前缀序），generation 只单调
+    /// 采纳 `max`（并发首建双方都带 0，合并后仍是 0）、digest 只填空位
+    /// —— miss 回填**永不** bump generation。
+    ///
+    /// 冻结矩阵定位：load 是「恢复」不是「推进」—— 三键全部原样采纳，
+    /// 任何 load 路径都不切代、不重排已发出前缀。完整矩阵见
+    /// `docs/dev/wave2-A/r2-freeze-matrix.md`。
+    pub(crate) fn load_session_tool_face_prefix(&self, session_id: &str) -> ToolFaceBaseline {
         if let Some(existing) = self
             .frozen_tool_schema_orders
             .lock()
@@ -1023,38 +1084,237 @@ impl ChatV2Pipeline {
         {
             return existing.clone();
         }
-        let persisted = match ChatV2Repo::get_session_frozen_tool_schema_order(&self.db, session_id)
-        {
-            Ok(baseline) => baseline,
-            Err(err) => {
-                log::warn!(
-                        "[ChatV2::pipeline] Failed to load persisted frozen tool schema order (fallback to fresh baseline): session_id={}, error={}",
+        let persisted: ToolFaceBaseline =
+            match ChatV2Repo::get_session_tool_face_prefix(&self.db, session_id) {
+                Ok(Some(snapshot)) => snapshot.into(),
+                Ok(None) => ToolFaceBaseline::default(),
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to load persisted tool face prefix (fallback to fresh generation-0 baseline): session_id={}, error={}",
                         session_id,
                         err
                     );
-                Vec::new()
-            }
-        };
+                    ToolFaceBaseline::default()
+                }
+            };
         let mut orders = self
             .frozen_tool_schema_orders
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let entry = orders.entry(session_id.to_string()).or_default();
-        // 释放锁读库期间并行变体可能已写入内存基线：append-only 合并持久化
-        // 基线（只补缺失名），绝不覆盖已建立的内存前缀序。
-        super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, &persisted);
+        // 释放锁读库期间并行调用可能已写入内存基线：append-only 合并持久化
+        // 基线（只补缺失名），generation 取 max（不 bump），digest 只填空位。
+        super::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut entry.order,
+            &persisted.order,
+        );
+        entry.generation = entry.generation.max(persisted.generation);
+        if entry.schema_digest.is_none() {
+            entry.schema_digest = persisted.schema_digest;
+        }
         entry.clone()
     }
 
-    /// 🆕 P0 tools 会话冻结：把环内推进后的基线写回会话级状态并持久化。
-    /// append-only 合并（只补缺失名、绝不删除或重排已有基线）：并行变体
-    /// 各自持有局部基线副本，合并写回保证共享基线单调，任一变体已发出的
-    /// tools 前缀不会被其他变体的写回打乱。
+    /// 🆕 P1 tools 前缀代际：fan-out join 收敛点 —— 把各变体的本地工具面
+    /// 快照（`VariantMeta.tool_face_prefix`）按**变体索引序**（不是完成
+    /// 竞态序）确定性合并回会话基线，并判定是否切代。
     ///
-    /// 合并后的基线同步持久化到 session.metadata（repo 侧 merge 单键、
-    /// 无新增时跳过写库），保证桌面 App 重启后同一会话仍复用相同 tools
-    /// 前缀字节。持久化失败只降级打日志（下一进程退回冷基线），绝不让
-    /// 本次发送失败。
+    /// 合并语义（与 prefix_generation_fork_tests.rs 契约一致）：
+    /// - 各变体本地 order 都是「fan-out 入口快照基线 + 本地 append-only
+    ///   尾部」的完整序列。按 `variant_index` 升序逐个 append-only 合并
+    ///   （`merge_frozen_tool_schema_order_baseline`：缺失名按来源顺序
+    ///   追加末尾，绝不删除/重排）——收敛序由索引序唯一确定，与任务
+    ///   完成竞态无关；
+    /// - **真分叉判定**：若存在变体本地 order 不是收敛结果的前缀（≥2
+    ///   变体产生互异、不可 append-only 对齐的尾部，例如 `B̂+[X]` vs
+    ///   `B̂+[Y]`）→ `generation += 1`；所有变体都是同一前缀扩展或完全
+    ///   相等 → 不 bump。单变体输入时收敛结果恒等于其本地 order，前缀
+    ///   检查恒真 → 永不切代（单变体重试 = 纯扩展）。
+    ///
+    /// **digest 收敛（r6 #1 接线修复）**：这里是会话级
+    /// `schema_digest`（持久化键 `toolSchemaDigest`）的唯一推进点 ——
+    /// tool_loop 单变体路径按矩阵纪律只打日志不持久化，变体窗口 digest
+    /// 随快照交本收敛点评估。采纳规则（保守、确定性、绝不造假）：
+    /// 仅当存在「本地 order 恰等于收敛结果」的变体（= 该变体本窗口发出
+    /// 的正是收敛后的完整工具面）且这些变体报告的 digest 全部一致时，
+    /// 才把该 digest 写入基线；真分叉 / digest 互异 / 全体空窗口（None）
+    /// 时保持既有值 —— None 永不抹掉已有 digest（与 repo advance 的
+    /// 「快照无 digest 不抹掉持久化值」契约一致）。入参快照的
+    /// `generation` 字段忽略（变体只回带入口代号，权威代号在会话 entry）。
+    ///
+    /// 锁序（不倒置）：收敛计算在锁外完成，锁内只做 append-only 合并 +
+    /// 条件 bump + digest 采纳 + 克隆快照；**放锁后**才调
+    /// `advance_session_tool_face_prefix` 写库（IMMEDIATE 事务内不回调
+    /// 内存锁）。持久化失败只降级打 warn（内存基线仍权威），不阻断发送。
+    ///
+    /// 冻结矩阵定位：这里是**唯一切代点**。真分叉 → `generation += 1`；
+    /// 纯前缀扩展 / 仅 schema digest 变化 → 不切（digest 只按上述规则
+    /// 采纳，绝不触发 bump）。完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`。
+    pub(crate) fn converge_session_tool_face_prefix(
+        &self,
+        session_id: &str,
+        variant_local_prefixes: &[(usize, ToolFacePrefixSnapshot)],
+    ) -> ToolFaceBaseline {
+        // 按变体索引升序确定性排序（调用方通常已按索引序收集，这里再
+        // 排一次保证与完成竞态序彻底解耦）。
+        let mut ordered: Vec<&(usize, ToolFacePrefixSnapshot)> =
+            variant_local_prefixes.iter().collect();
+        ordered.sort_by_key(|(variant_index, _)| *variant_index);
+
+        // 锁外收敛计算：从空表出发按索引序合并（每个本地 order 自带入口
+        // 快照基线前缀，合并结果 = 基线 + 各变体新尾部按索引序拼接）。
+        let mut converged: Vec<String> = Vec::new();
+        for (_, snapshot) in &ordered {
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(
+                &mut converged,
+                &snapshot.order,
+            );
+        }
+        let true_fork = ordered
+            .iter()
+            .any(|(_, snapshot)| !converged.starts_with(snapshot.order.as_slice()));
+
+        // 锁外 digest 采纳判定：候选 = 「本地 order == 收敛结果」且带
+        // digest 的变体；全体候选一致才采纳（同名同序但字节互异 —— 如
+        // MCP 扇出中途刷新 —— 视为无共识，保持既有值）。
+        let converged_digest: Option<String> = {
+            let mut candidates = ordered
+                .iter()
+                .filter(|(_, snapshot)| snapshot.order == converged)
+                .filter_map(|(_, snapshot)| snapshot.schema_digest.as_ref());
+            match candidates.next() {
+                Some(first) if candidates.all(|digest| digest == first) => Some(first.clone()),
+                _ => None,
+            }
+        };
+
+        // 锁内合并 + 条件切代 + digest 采纳 + 克隆；放锁后再写库。
+        let baseline = {
+            let mut orders = self
+                .frozen_tool_schema_orders
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = orders.entry(session_id.to_string()).or_default();
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(&mut entry.order, &converged);
+            if true_fork {
+                entry.generation += 1;
+                log::info!(
+                    "[ChatV2::pipeline] Tool face prefix fork detected at fan-out convergence: session_id={}, new_generation={}, variants={}",
+                    session_id,
+                    entry.generation,
+                    ordered.len()
+                );
+            }
+            if let Some(digest) = converged_digest {
+                entry.schema_digest = Some(digest);
+            }
+            entry.clone()
+        };
+        if let Err(err) = ChatV2Repo::advance_session_tool_face_prefix(
+            &self.db,
+            session_id,
+            &baseline.to_snapshot(),
+        ) {
+            log::warn!(
+                "[ChatV2::pipeline] Failed to persist converged tool face prefix (in-memory baseline still active): session_id={}, error={}",
+                session_id,
+                err
+            );
+        }
+        baseline
+    }
+
+    /// Wave2-A r5 #8：技能正文 digest mismatch 的「需开新 prefix generation」
+    /// 信号记录点（唯一写点；调用方为 `history::load_chat_history_pass`
+    /// 趟末聚合，`mismatched_skill_ids` 已按 skill_id 去重）。
+    ///
+    /// mismatch 语义：锚点带 digest、当轮正文存在但字节已漂移——门禁已
+    /// skip 重建（绝不伪造历史），历史前缀在这些技能位置**本轮起必然
+    /// 漂移且不可用旧字节修复**（旧正文不存在了）。这正是与 compaction
+    /// R4-#6 同构的低成本换代时机：与其永远背着描述过期技能的冻结目录，
+    /// 不如趁前缀已断声明换代。
+    ///
+    /// 接线选择（为何**不是** `converge_session_tool_face_prefix`）：
+    /// converge 是工具面（tools 槽）代际的唯一切代点，语义是「fan-out
+    /// 变体对 append-only 工具序产生不可对齐的真分叉」；技能 digest
+    /// mismatch 是 history 段漂移，与工具序无关——伪造分叉 order 逼
+    /// converge +1 会破坏冻结矩阵（r2-freeze-matrix）的切代不变量。
+    /// 正确的代际是 **available_skills 目录代**：复用 compaction 已落地的
+    /// `mark_session_available_skills_snapshot_stale_with_conn` 声明
+    /// `availableSkillsSnapshotPendingGeneration`（= 当前代 + 1），由前端
+    /// TauriAdapter（r5 #9）下轮构建 system 时按 live registry 重新生成
+    /// 快照并经 freeze 原语作为新代 first write 兑现换代。
+    ///
+    /// 纪律（与该原语既有语义逐条一致）：
+    /// - 幂等折叠：已有有效 pending 时返回既有值，不重复 +1（外层 while
+    ///   重跑 load pass / 多轮连续 mismatch 在前端消费前折叠为一次换代）；
+    /// - first-write-wins 不回退：freeze 只在见到有效标记时才允许覆盖；
+    /// - 会话从未冻结过快照 → no-op（None）——缺键语义本就是「下次按
+    ///   live 建立」，无需换代，信号降级为结构化日志；
+    /// - 写库失败仅 warn 降级（结构化计数日志仍在），**绝不阻断发送**；
+    /// - 不推进 updated_at（内部缓存状态，同 freeze/mark 原语）。
+    pub(crate) fn record_skill_digest_prefix_generation_signal(
+        &self,
+        session_id: &str,
+        mismatched_skill_ids: &[String],
+    ) {
+        if mismatched_skill_ids.is_empty() {
+            return;
+        }
+        // 结构化计数日志（固定前缀 skill_digest_generation_signal，供日志
+        // 侧按 session / count 聚合统计），无论接线是否成功都先落一条。
+        log::warn!(
+            "[ChatV2::pipeline] skill_digest_generation_signal: session_id={}, mismatch_count={}, skill_ids={:?} — history replay prefix drifted at these skill positions; requesting new available_skills prefix generation",
+            session_id,
+            mismatched_skill_ids.len(),
+            mismatched_skill_ids
+        );
+        let marked = (|| -> ChatV2Result<Option<u64>> {
+            let mut conn = self.db.get_conn_safe()?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let pending =
+                ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(&tx, session_id)?;
+            tx.commit()?;
+            Ok(pending)
+        })();
+        match marked {
+            Ok(Some(pending)) => log::info!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: available_skills catalog pending generation declared: session_id={}, pending_generation={}",
+                session_id,
+                pending
+            ),
+            Ok(None) => log::debug!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: session never froze an available_skills snapshot; nothing to regenerate (signal logged only): session_id={}",
+                session_id
+            ),
+            Err(err) => log::warn!(
+                "[ChatV2::pipeline] skill_digest_generation_signal: failed to persist pending generation marker (signal degraded to log only, send not blocked): session_id={}, error={}",
+                session_id,
+                err
+            ),
+        }
+    }
+
+    /// 🆕 P0 tools 会话冻结（薄封装）：读取该会话已发出 tools 的
+    /// append-only 首见序基线（单变体路径 tool_loop 仍按名字序消费）。
+    ///
+    /// 内部走 `load_session_tool_face_prefix`（含跨进程恢复 + 加锁回填），
+    /// 只取 `.order` —— 语义与旧实现逐条一致，调用方零改动。
+    pub(crate) fn load_session_frozen_tool_schema_order(&self, session_id: &str) -> Vec<String> {
+        self.load_session_tool_face_prefix(session_id).order
+    }
+
+    /// 🆕 P0 tools 会话冻结（薄封装）：单写者路径把环内推进后的基线写回
+    /// 会话级状态并持久化。**纯前缀扩展、不切代**：只 append-only 合并
+    /// order（只补缺失名、绝不删除或重排已有基线），generation 沿用当前
+    /// 值、绝不 bump —— 单写者的新序列必是旧序列的扩展，旧缓存仍是新请求
+    /// 前缀，切代反而有害。
+    ///
+    /// 持久化改走 `advance_session_tool_face_prefix`（IMMEDIATE 事务内
+    /// `toolFacePrefixGeneration` + `frozenToolSchemaOrder` 双键同步落库、
+    /// 无变更跳过写库、不推 updated_at），保持双键一致，避免「序新、代旧」
+    /// 漂移。锁序不变：锁内合并克隆、放锁写库。持久化失败只降级打日志
+    /// （下一进程退回持久化基线），绝不让本次发送失败。
     pub(crate) fn store_session_frozen_tool_schema_order(
         &self,
         session_id: &str,
@@ -1066,12 +1326,14 @@ impl ChatV2Pipeline {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let entry = orders.entry(session_id.to_string()).or_default();
-            super::tool_loop::merge_frozen_tool_schema_order_baseline(entry, baseline);
+            super::tool_loop::merge_frozen_tool_schema_order_baseline(&mut entry.order, baseline);
             entry.clone()
         };
-        if let Err(err) =
-            ChatV2Repo::merge_session_frozen_tool_schema_order(&self.db, session_id, &merged)
-        {
+        if let Err(err) = ChatV2Repo::advance_session_tool_face_prefix(
+            &self.db,
+            session_id,
+            &merged.to_snapshot(),
+        ) {
             log::warn!(
                 "[ChatV2::pipeline] Failed to persist frozen tool schema order (in-memory baseline still active): session_id={}, error={}",
                 session_id,

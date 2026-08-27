@@ -87,31 +87,31 @@ impl OutputProtocol {
     }
 }
 
-/// 从 anki_generation_options JSON 二次解析的协议相关扩展选项。
+/// 协议相关扩展选项（`output_protocol` / `enable_qa_pass`）的薄投影。
 ///
-/// ⚠️ 设计说明（为什么不直接加在 `AnkiGenerationOptions` 上）：
-/// `chatanki_executor.rs`（本轮禁改文件）与 `enhanced_anki_service.rs` 以
-/// **穷举字段的结构体字面量** 构造 `AnkiGenerationOptions`，Rust 字面量必须
-/// 列出全部字段——给该 struct 加任何新字段都会导致禁改文件编译失败。
-/// 因此新增的 wire 字段（`output_protocol` / `enable_qa_pass`）改为对同一份
-/// options JSON 做 serde-default 二次解析：wire 格式与"直接加字段"完全一致，
-/// 未来解除禁改约束后可无缝迁回 `AnkiGenerationOptions`。
-#[derive(Debug, Clone, Default, Deserialize)]
+/// 两个字段的 wire 定义单点收敛在 `models::AnkiGenerationOptions` 上；本结构体
+/// 不再自带 serde 解析，仅由 [`Self::from_options_json`] 从同一份 options JSON
+/// 投影出来，为流式服务提供便捷视图与 `qa_pass_enabled()` 的默认值语义。
+#[derive(Debug, Clone, Default)]
 pub struct StructuredOutputOptions {
     /// 请求的输出协议：`auto` / `delimiter` / `json_object` / `json_schema`。
     /// 缺省（None）等价于 `auto`。
-    #[serde(default)]
     pub output_protocol: Option<String>,
     /// 是否启用字段 QA 校验（`_qa_flags` 留痕）。缺省 true，保持既有行为。
-    #[serde(default)]
     pub enable_qa_pass: Option<bool>,
 }
 
 impl StructuredOutputOptions {
-    /// 从任务的 anki_generation_options JSON 解析；解析失败回退默认值
-    /// （主解析路径已对同一 JSON 做过严格校验，这里只取扩展字段）。
+    /// 从任务的 anki_generation_options JSON 解析：复用
+    /// `AnkiGenerationOptions` 的 serde 定义并只取两个协议字段；
+    /// 解析失败回退默认值（主解析路径已对同一 JSON 做过严格校验）。
     pub fn from_options_json(raw: &str) -> Self {
-        serde_json::from_str(raw).unwrap_or_default()
+        serde_json::from_str::<AnkiGenerationOptions>(raw)
+            .map(|opts| Self {
+                output_protocol: opts.output_protocol,
+                enable_qa_pass: opts.enable_qa_pass,
+            })
+            .unwrap_or_default()
     }
 
     pub fn qa_pass_enabled(&self) -> bool {
@@ -1239,5 +1239,12 @@ mod tests {
         let broken = StructuredOutputOptions::from_options_json("not json");
         assert!(broken.output_protocol.is_none());
         assert!(broken.qa_pass_enabled());
+
+        // 非完整 AnkiGenerationOptions（缺必填字段）同样回退默认：
+        // 解析单点收敛后不再对残缺 JSON 做宽松字段提取。
+        let partial =
+            StructuredOutputOptions::from_options_json(r#"{"output_protocol":"json_schema"}"#);
+        assert!(partial.output_protocol.is_none());
+        assert!(partial.qa_pass_enabled());
     }
 }

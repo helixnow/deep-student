@@ -697,6 +697,143 @@ export function clearSessionAvailableSkillsSnapshot(sessionId: string): void {
 }
 
 // ============================================================================
+// available_skills_delta（目录增量，当前 user 尾部瞬态通道）
+// ============================================================================
+//
+// R4 #7 定稿（见 docs/dev/wave2-A/r4-catalog-delta.md）：冻结目录解决了
+// 「system 前缀字节不变」，代价是会话中途安装的技能对模型完全不可见
+// （load_skills 报 not found 也无从谈起——模型根本不知道它存在）。
+// delta 通道补齐可发现性，且零缓存成本：
+//
+// - 注入位置：仅当前请求最后一条 user 消息尾部（与瞬态技能消息同位），
+//   属于每轮必然的新字节区，不落任何 provider prompt cache 前缀；
+// - 生命周期：请求构建时即时渲染，**不持久化进消息历史**——下一轮该
+//   user 消息进入历史时不携带 delta，历史字节由此保持稳定；
+// - 基线语义：以本会话冻结快照字符串为唯一基线（解析持久化权威字节，
+//   跨重启天然一致），live registry 中新增可加载而基线未以可用状态列出
+//   的技能构成 delta。**只读快照，绝不触发冻结或覆盖**，first-write-wins
+//   语义零影响；
+// - 显式刷新代际（#6 compaction 换代）落地后基线换新目录，delta 自然
+//   收缩为空，两通道无缝衔接。
+
+/** delta 中单个新增技能条目（与冻结目录 <skill> 行同形） */
+export interface AvailableSkillsDeltaEntry {
+  /** Skill ID */
+  id: string;
+  /** 模型可见描述 */
+  description: string;
+  /** 该技能提供的工具数量 */
+  toolCount: number;
+}
+
+/** 相对冻结目录基线的可用技能增量 */
+export interface AvailableSkillsDelta {
+  /** 基线快照中以可用状态列出的技能 ID（available="false" 门控条目不算） */
+  baseSkillIds: string[];
+  /** 基线之外新增可加载的技能（含基线中门控、现已满足 requires 的技能） */
+  added: AvailableSkillsDeltaEntry[];
+}
+
+/**
+ * 反转义 XML 属性值（escapeXmlAttr 的逆操作，用于解析冻结快照）。
+ * &amp; 必须最后替换，避免二次解码。
+ */
+function unescapeXmlAttr(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * 从冻结目录快照字符串中提取「以可用状态列出」的技能 ID 集合。
+ *
+ * 以持久化权威字节为解析源（而非另存一份 ID 列表），重启回灌后基线
+ * 自动一致，无需第二个持久化键。available="false"（requires 门控）
+ * 条目不计入基线——门控技能后续满足 requires 时应重新出现在 delta 中。
+ * 空串快照（安装前发过消息的会话）解析为空基线，同样是合法输入。
+ */
+export function extractCatalogSkillIds(snapshot: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of snapshot.matchAll(/<skill\s+([^>]*?)\/?>/g)) {
+    const attrs = match[1];
+    if (/\bavailable="false"/.test(attrs)) continue;
+    const idMatch = attrs.match(/\bid="([^"]*)"/);
+    if (idMatch && idMatch[1]) {
+      ids.add(unescapeXmlAttr(idMatch[1]));
+    }
+  }
+  return ids;
+}
+
+/**
+ * 计算会话相对冻结目录基线的可用技能增量。
+ *
+ * 只读 sessionAvailableSkillsSnapshots，**绝不调用
+ * getSessionAvailableSkillsPrompt**（那会产生冻结副作用）。会话尚未
+ * 冻结快照时返回 null：此时首轮 system 目录尚未定基线，本轮目录本身
+ * 就是 live 全量，delta 无语义。
+ *
+ * added 的过滤口径与 generateAvailableSkillsPrompt 的可用段一致
+ * （prompt 可见 + 非 disableAutoInvoke + requires 满足），顺序沿用
+ * registry 顺序，保证同一轮内渲染确定。
+ */
+export function computeAvailableSkillsDelta(sessionId: string): AvailableSkillsDelta | null {
+  const snapshot = sessionAvailableSkillsSnapshots.get(sessionId);
+  if (snapshot === undefined) {
+    return null;
+  }
+
+  const baseSkillIds = extractCatalogSkillIds(snapshot);
+  const added = skillRegistry
+    .getAll()
+    .filter(isSkillPromptVisible)
+    .filter((skill) => !skill.disableAutoInvoke)
+    .filter((skill) => isSkillRequiresSatisfied(skill.id))
+    .filter((skill) => !baseSkillIds.has(skill.id))
+    .map((skill) => ({
+      id: skill.id,
+      description: skill.description,
+      toolCount: skill.embeddedTools?.length ?? 0,
+    }));
+
+  return { baseSkillIds: Array.from(baseSkillIds), added };
+}
+
+/**
+ * 渲染 available_skills_delta 尾部瞬态块。
+ *
+ * 调用方约束（接线属 #5/后续轮，本轮不动 TauriAdapter）：
+ * - 只允许拼接在当前请求最后一条 user 消息尾部（瞬态技能消息同位）；
+ * - 禁止写入 system、禁止持久化进消息历史；
+ * - 每轮请求构建时重算——技能继续安装则 delta 增长，显式换代刷新
+ *   （#6）后基线换新，delta 自然清空。
+ *
+ * 无冻结基线或无增量时返回空串（调用方零拼接）。
+ */
+export function generateAvailableSkillsDeltaPrompt(sessionId: string): string {
+  const delta = computeAvailableSkillsDelta(sessionId);
+  if (!delta || delta.added.length === 0) {
+    return '';
+  }
+
+  const lines: string[] = ['<available_skills_delta>'];
+  for (const entry of delta.added) {
+    lines.push(`  <skill id="${escapeXmlAttr(entry.id)}" tools="${entry.toolCount}">`);
+    lines.push(`    ${escapeXmlText(entry.description)}`);
+    lines.push(`  </skill>`);
+  }
+  lines.push('</available_skills_delta>');
+  lines.push('');
+  lines.push(
+    '以上是本会话开始后新增可用的技能（未列入 <available_skills>）。如需使用，同样通过 load_skills 工具加载。'
+  );
+  return lines.join('\n');
+}
+
+// ============================================================================
 // 渐进披露模式配置
 // ============================================================================
 

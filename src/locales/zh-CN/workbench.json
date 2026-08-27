@@ -148,6 +148,8 @@
   "menubar": {
     "label": "学习状态栏",
     "appName": "学习桌面",
+    "desktopRename": "重命名桌面…",
+    "desktopNameInputLabel": "桌面名称",
     "flashcardsDue": "{{count}} 张到期闪卡",
     "tasksRunning": "{{count}} 个制卡任务进行中",
     "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
@@ -391,6 +393,8 @@
     "actionsLabel": "快速开始",
     "actionFiles": "打开资源库",
     "actionRestoreSession": "恢复上次桌面",
+    "actionRestoreSessionCount_one": "恢复上次桌面（{{count}} 个窗口）",
+    "actionRestoreSessionCount_other": "恢复上次桌面（{{count}} 个窗口）",
     "actionFilesDesc": "浏览笔记、教材与全部资源",
     "actionApps": "全部应用",
     "actionFlashcards": "闪卡",
@@ -540,6 +544,17 @@
     "unsavedTitle": "有未保存的更改，确定要离开吗？",
     "saveAndClose": "保存并关闭",
     "saveAndCloseFailed": "保存失败，窗口保持打开，请检查后重试"
+  },
+  "deactivation": {
+    "cancelled": "已取消停用，学习桌面保持开启。",
+    "dirtyBlocked": "存在未保存的窗口，已取消关闭学习桌面，请先保存或关闭这些窗口。",
+    "exitBlocked": "存在未保存的内容，已取消退出，请先保存后再退出。"
+  },
+  "suspend": {
+    "keptBackground": "该窗口有未保存的内容，已保留在后台运行，未被冻结。"
+  },
+  "hub": {
+    "closeCancelled": "已取消关闭标签页，未保存的内容仍保留。"
   },
   "mindmap": {
     "loading": "正在加载思维导图…",
@@ -1048,6 +1063,9 @@
       "depth2": "2 度",
       "depthLabel": "图谱深度",
       "empty": "本篇还没有任何链接，输入 [[ 即可创建双链。",
+      "legendLabel": "边类型图例",
+      "legendNoteref": "引用",
+      "legendWikilink": "双链",
       "loadFailed": "无法加载局部图谱。",
       "loading": "正在构建图谱…",
       "noActiveNote": "选择一篇笔记以查看图谱。",

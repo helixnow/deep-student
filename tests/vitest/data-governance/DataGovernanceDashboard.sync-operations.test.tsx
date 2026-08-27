@@ -1151,13 +1151,9 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
       screen.getByText(/数据库同步状态|data:governance\.database_sync_status/i),
     ).toBeInTheDocument();
 
-    // 验证每个数据库的待同步变更数显示
-    // chat_v2: 8 待同步
-    expect(screen.getByText('8')).toBeInTheDocument();
-    // vfs: 5 待同步
-    expect(screen.getByText('5')).toBeInTheDocument();
-    // mistakes: 2 待同步
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getAllByText('8')).toHaveLength(2);
+    expect(screen.getAllByText('5')).toHaveLength(2);
+    expect(screen.getAllByText('2')).toHaveLength(2);
   });
 
   it('shows empty state when no sync databases are returned', async () => {
@@ -1166,10 +1162,9 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToSyncTab();
 
-    // 应显示"暂无数据"空状态
     expect(
-      screen.getByText(/暂无数据|data:governance\.no_data/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/暂无数据|data:governance\.no_data/i),
+    ).toHaveLength(2);
   });
 
   it('renders correct number of database rows in sync status table', async () => {

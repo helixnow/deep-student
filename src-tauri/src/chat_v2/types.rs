@@ -480,6 +480,45 @@ pub const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY: &str = "availableSkillsSnapsho
 /// 读写只 upsert 该键、绝不覆盖其他键。
 pub const MICROCOMPACT_ANCHOR_METADATA_KEY: &str = "microcompactAnchor";
 
+/// 🆕 P1 tools 前缀代际：session.metadata 中持久化当前代号 `g` 的键名。
+///
+/// 值为非负整数（JSON number）。缺键视为 `0`（旧会话兼容：升级前的会话
+/// 等同第 0 代，order 回退现有 `frozenToolSchemaOrder` 键）。代号仅在
+/// fan-out 收敛点检出真分叉（≥2 变体产生互异且无法 append-only 对齐的
+/// 尾部）时 +1；单变体纯前缀扩展永不切代。该键与 `frozenToolSchemaOrder`
+/// （权威基线 `B_g`）必须在同一 IMMEDIATE 事务内一起推进，避免"代号新、
+/// 序旧"的半提交状态。与 authority/plan 等键共存于同一 metadata 对象，
+/// 读写只 merge 该键、绝不覆盖其他键；写库不推 updated_at。
+pub const TOOL_FACE_PREFIX_GENERATION_METADATA_KEY: &str = "toolFacePrefixGeneration";
+
+/// 🆕 P1 tools schema 字节摘要：session.metadata 中持久化摘要的键名。
+///
+/// 值为字符串（已发出 tools schema 冻结字节的 digest，算法由冻结原语
+/// 决定）。缺键视为无摘要（旧会话 / 尚未启用字节冻结的窗口，解析为
+/// None）。摘要用于检测"同名工具 schema 字节变了"的静默漂移；单变体
+/// digest 变化只记录、不盲目切代（见 tool_loop 冻结原语约定）。与
+/// authority/plan 等键共存于同一 metadata 对象，读写只 merge 该键、
+/// 绝不覆盖其他键；写库不推 updated_at。
+pub const TOOL_SCHEMA_DIGEST_METADATA_KEY: &str = "toolSchemaDigest";
+
+/// 🆕 P1 tools 前缀代际快照：`(g, B_g, digest)` 三元组的统一形态。
+///
+/// - `generation`：当前代号 `g`，持久化缺键时回退 0；
+/// - `order`：该代的权威 append-only 工具名基线 `B_g`（持久化仍落在
+///   `frozenToolSchemaOrder` 键，代际键不重复存序，保持旧读路径兼容）;
+/// - `schema_digest`：可选的 schema 冻结字节摘要（`toolSchemaDigest` 键）。
+///
+/// 兼作 `VariantMeta::tool_face_prefix` 的重放快照：记录该变体当轮实际
+/// 发出的前缀状态，重放时据此逐字节还原 tools 段。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolFacePrefixSnapshot {
+    pub generation: u64,
+    pub order: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_digest: Option<String>,
+}
+
 /// Session-level Ask / Plan / Craft authority mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1113,12 +1152,54 @@ pub struct SkillInjectionAnchors {
     /// 重放时插到对应 tool result 消息之后）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_anchored: Vec<ToolAnchoredSkills>,
+    /// Wave2-A r3 技能版本化：锚定时刻各技能正文的稳定 digest
+    /// （skill_id -> [`skill_body_digest`] 小写 sha256 hex）。
+    ///
+    /// 只存 digest 不存正文——`without_skill_contents` 隐私纪律不变。
+    /// 重放侧用它校验「当轮请求携带的正文」是否仍是锚定时的那份：
+    /// 不一致时不得用新正文伪装旧历史（见 history 侧 #3）。
+    /// 缺字段 = 旧锚点（旧 JSON 反序列化为空 map），重放侧视为
+    /// 「无 digest、保持旧 warn 行为」。
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub skill_content_digests: HashMap<String, String>,
+    /// Wave2-A r3 技能版本化：可选的正文版本世代（单调递增，由写入方
+    /// 决定语义，如 skills 库全局 rev）。缺字段 = 旧锚点 = `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_content_rev: Option<u64>,
 }
 
 impl SkillInjectionAnchors {
+    /// 语义保持 r3 前不变：只看「是否锚定了技能」。digest / rev 是锚点
+    /// 的附属校验数据，没有技能 id 时它们无意义，不参与判空。
     pub fn is_empty(&self) -> bool {
         self.turn_skill_ids.is_empty() && self.tool_anchored.is_empty()
     }
+
+    /// 按 skill_id 查锚定时刻记录的正文 digest；旧锚点（无 digest 字段）
+    /// 恒返回 `None`。
+    pub fn content_digest_for(&self, skill_id: &str) -> Option<&str> {
+        self.skill_content_digests.get(skill_id).map(String::as_str)
+    }
+}
+
+/// 技能正文稳定 digest（Wave2-A r3 #2 API 合同）。
+///
+/// 对 `skill_id` 与正文的 UTF-8 字节做 sha256，输出小写十六进制。
+/// 复用 `tool_schema_digest` / `DoomLoopGuard::fingerprint` 的
+/// `0x1f` 字段分隔 + `0x1e` 记录终止骨架，防止 `(id, body)` 拼接歧义
+/// （如 `("a", "b|c")` 与 `("a|b", "c")` 碰撞）。输入相同则跨进程、
+/// 跨版本恒得同一 digest；不依赖 HashMap 迭代序等不稳定因素。
+///
+/// 正文本身不落库（`without_skill_contents` 纪律不变），锚点只持久化
+/// 本函数的输出。
+pub fn skill_body_digest(skill_id: &str, body: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(skill_id.as_bytes());
+    hasher.update(b"\x1f");
+    hasher.update(body.as_bytes());
+    hasher.update(b"\x1e");
+    format!("{:x}", hasher.finalize())
 }
 
 /// 环内 load_skills 追加的一个技能批次（P1-8）
@@ -1257,6 +1338,11 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+    /// 该变体当轮实际发出的 tools 前缀快照（代际 + append-only 序 +
+    /// 可选 schema 字节摘要）。会话级 metadata 只存收敛后的终态，重放
+    /// 单个变体的真实字节要靠这里逐字节还原。老数据缺字段解析为 None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_face_prefix: Option<ToolFacePrefixSnapshot>,
 }
 
 /// Canonical, persistence-safe message content.
@@ -4321,6 +4407,88 @@ mod tests {
             vec!["dep-a".to_string()]
         );
         assert!(redacted.has_replay_metadata());
+    }
+
+    #[test]
+    fn test_skill_injection_anchors_old_json_without_digest_fields_still_parses() {
+        // 第 2 轮及更早持久化的锚点没有 digest / rev 字段，必须原样可解析。
+        let old_json = r#"{
+            "turnSkillIds": ["manual-a"],
+            "beforeTurnUser": true,
+            "toolAnchored": [{"toolCallId": "call-1", "skillIds": ["loop-b"]}]
+        }"#;
+        let anchors: SkillInjectionAnchors = serde_json::from_str(old_json).unwrap();
+        assert_eq!(anchors.turn_skill_ids, vec!["manual-a".to_string()]);
+        assert!(anchors.before_turn_user);
+        assert_eq!(anchors.tool_anchored.len(), 1);
+        // 缺字段 = 旧锚点：digest 为空 map、rev 为 None，重放侧走旧 warn 行为。
+        assert!(anchors.skill_content_digests.is_empty());
+        assert_eq!(anchors.skill_content_rev, None);
+        assert_eq!(anchors.content_digest_for("manual-a"), None);
+        assert!(!anchors.is_empty());
+    }
+
+    #[test]
+    fn test_skill_injection_anchors_digest_fields_skip_when_empty() {
+        // 无 digest 的锚点序列化后不得出现新字段名（旧读者字节兼容）。
+        let anchors = SkillInjectionAnchors {
+            turn_skill_ids: vec!["manual-a".to_string()],
+            before_turn_user: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&anchors).unwrap();
+        assert!(
+            !json.contains("skillContentDigests"),
+            "empty digest map must be skipped, got: {}",
+            json
+        );
+        assert!(
+            !json.contains("skillContentRev"),
+            "None rev must be skipped, got: {}",
+            json
+        );
+    }
+
+    #[test]
+    fn test_skill_injection_anchors_digest_fields_roundtrip() {
+        let digest = skill_body_digest("manual-a", "private instructions");
+        let anchors = SkillInjectionAnchors {
+            turn_skill_ids: vec!["manual-a".to_string()],
+            before_turn_user: true,
+            skill_content_digests: HashMap::from([("manual-a".to_string(), digest.clone())]),
+            skill_content_rev: Some(7),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&anchors).unwrap();
+        assert!(json.contains("\"skillContentDigests\""));
+        assert!(json.contains("\"skillContentRev\":7"));
+        // 隐私红线：正文绝不进 anchors JSON。
+        assert!(!json.contains("private instructions"));
+
+        let back: SkillInjectionAnchors = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, anchors);
+        assert_eq!(back.content_digest_for("manual-a"), Some(digest.as_str()));
+        assert_eq!(back.content_digest_for("unknown"), None);
+    }
+
+    #[test]
+    fn test_skill_body_digest_stable_and_separator_safe() {
+        // 稳定性：同输入恒同输出（钉死具体值，防止骨架被无意改动）。
+        let d = skill_body_digest("manual-a", "body text");
+        assert_eq!(d, skill_body_digest("manual-a", "body text"));
+        assert_eq!(d.len(), 64);
+        assert!(d.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert_eq!(
+            d,
+            // = sha256("manual-a" || 0x1f || "body text" || 0x1e)
+            "316f875d29c27e04369ccd63e8a575827d71bee69a44c074b322a472f82bd3dc"
+        );
+        // 敏感性：id 或正文任一变化 digest 必变。
+        assert_ne!(d, skill_body_digest("manual-b", "body text"));
+        assert_ne!(d, skill_body_digest("manual-a", "body text!"));
+        // 分隔骨架：拼接歧义不得碰撞。
+        assert_ne!(skill_body_digest("a", "b|c"), skill_body_digest("a|b", "c"));
+        assert_ne!(skill_body_digest("ab", ""), skill_body_digest("a", "b"));
     }
 
     #[test]

@@ -38,6 +38,7 @@ pub mod lance_store;
 #[path = "lance_store_stub.rs"]
 pub mod lance_store;
 pub mod multimodal_service;
+pub mod note_props;
 pub mod ocr_utils;
 pub mod pdf_processing_service;
 pub mod pomodoro_handlers;

@@ -40,10 +40,8 @@ import { usePdfFocusListener } from './usePdfFocusListener';
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
-import { dstu } from '@/dstu';
 import {
   buildSelectionLocator,
-  buildSelectionNoteContent,
   type PdfSelectionPayload,
 } from '@/features/pdf/pdfSelectionActions';
 
@@ -523,29 +521,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     });
   }, [referenceToChat, node.sourceId, node.id, node.name]);
 
-  // 划词「做笔记」：创建摘录笔记（引用块 + 来源行）
-  const handleCreateNote = useCallback(async (payload: PdfSelectionPayload) => {
-    const compact = payload.text.replace(/\s+/g, ' ').trim();
-    const title = compact.slice(0, 30) || t('pdf:selection.note_default_title');
-    const result = await dstu.create('/', {
-      type: 'note',
-      name: title,
-      content: buildSelectionNoteContent({
-        text: payload.text,
-        sourceLabel: t('pdf:selection.note_source', { name: node.name, page: payload.page }),
-      }),
-      metadata: { tags: [] },
-    });
-    if (result.ok) {
-      showGlobalNotification('success', t('pdf:selection.note_saved'));
-    } else {
-      showGlobalNotification('error', t('pdf:selection.note_save_failed'), result.error.toUserMessage());
-    }
-  }, [node.name, t]);
-  const handleCreateNoteSync = useCallback((payload: PdfSelectionPayload) => {
-    void handleCreateNote(payload);
-  }, [handleCreateNote]);
-
   // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）。
   // 旧控制器 dispose 用的是它创建时的快照；新控制器在 refs 同步 effect
   // 之后创建，此时 ref 已指向新 node 的 metadata。
@@ -850,7 +825,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         bookmarks={bookmarks}
         onBookmarksChange={handleBookmarksChange}
         onQuoteToChat={handleQuoteToChat}
-        onCreateNote={handleCreateNoteSync}
       />
     </div>
   );

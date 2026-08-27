@@ -51,7 +51,11 @@ export type MindMapNodeStyle = NodeStyle;
  * 超过大小阈值的图片不内联，仍走备注占位文案；见 importers 中的 resource 提取逻辑。
  */
 export interface MindMapImage {
-  /** data URL（data:image/png;base64,...）或安全的 http(s) 地址 */
+  /**
+   * data URL（data:image/png;base64,...）或 https 地址。
+   * 外部入口（JSON 导入 / 剪贴板结构化载荷）经 utils/imageSanitize 运行时清洗：
+   * data URL 限白名单 MIME + 体积预算，远程地址仅放行 https。
+   */
   src: string;
   /** 原始文件名（可选，悬停提示用） */
   name?: string;

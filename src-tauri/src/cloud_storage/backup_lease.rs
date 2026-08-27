@@ -5,6 +5,9 @@
 //! `sync_r12_backup_lease.rs` 强制该事实）。记录级同步入口继续只使用
 //! [`super::sync_lease`] 与 `E_SYNC_LEASE_HELD`。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 协议与 [`super::sync_lease`] 一致（可只读对照，不共享任何 key）：
 //! [`CloudStorage`] 只提供 dumb-storage 语义，没有 conditional PUT /
 //! compare-and-swap，租约不能安全地反复覆盖一个固定 key。因此采用 Joplin 风格
@@ -245,8 +248,11 @@ async fn scan_active_leases(
             .unwrap_or(fallback_expires_at);
         if expires_at <= now {
             // 缩窄与心跳续租的竞争窗：只有对象内容仍与刚读取的一致才删除。
-            let _ = delete_if_unchanged(storage, &file.key, &bytes).await?;
-            continue;
+            if delete_if_unchanged(storage, &file.key, &bytes).await? {
+                continue;
+            }
+            // 读取与删除之间内容已变：典型为持有者的心跳续租恰好落地（或本地
+            // 时钟偏慢）。无法证明对方已放弃，按活跃租约 fail-closed 参与选主。
         }
         active.push(ActiveLease {
             key: file.key,
@@ -378,6 +384,10 @@ impl Drop for BackupRepoLeaseGuard {
 }
 
 /// 使用默认 TTL（10 分钟）获取 backup-v2 仓库租约。
+///
+/// **[experimental 隔离入口]** 生产代码零调用方（sync_r12 源码锁钉死，仅
+/// 未接线的 delta 积木在其发布 / GC 窗口内使用）；接线须先满足
+/// docs/dev/wave2-D-backup-v2-decision.md 的前置清单。
 pub async fn acquire_backup_repo_lease(
     storage: Arc<dyn CloudStorage>,
     holder_device_id: &str,

@@ -224,6 +224,16 @@ export async function performImageOcr(dataUrl: string): Promise<string> {
   return response.ocr_text.trim();
 }
 
+/**
+ * 「存为笔记」豁免共享 saveTextAsNote 流程（裁决：docs/dev/wave2-B-r3-quick-assistant-exemption.md）。
+ * 1. 本窗是全局快捷键呼出的轻量独立 WebView（main.tsx 按 window=quick-assistant 分流，
+ *    刻意不挂载完整 App）；共享流程两大支柱在此均无宿主：FolderPickerDialog 会把
+ *    learning-hub finder 整链拖进轻量窗，showGlobalNotification 与 DSTU_OPEN_NOTE
+ *    的监听方（WorkbenchEventBridge / useChatPageEvents）都只活在 main 窗。
+ * 2. 产品语义是「系统级剪贴快速落笔记」：与错题/卡片/待办四键并列、一击即存，
+ *    弹目录树会打断捕获流；跨窗打开走既有 openQuickAssistantTarget 桥。
+ *    落点保持根目录 + metadata.source='quick-assistant'，非漏迁。
+ */
 export async function saveAsNote(source: string, answer: string): Promise<string> {
   const title = compactTitle(source, tt('service.note_title'));
   const result = await dstu.create('/', {

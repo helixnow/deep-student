@@ -27,6 +27,7 @@ import {
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { WindowControls } from '@/components/WindowControls';
 import { toggleAppsPanel } from './appsPanelStore';
+import { useDesktopName } from './desktopNameStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
 import { StatusBarAppMenus } from './StatusBarAppMenus';
 import { StatusBarClock } from './StatusBarClock';
@@ -149,6 +150,8 @@ const StatusBarComponent: React.FC = () => {
   const titleId = useId();
   const winChromeInset = isWindows();
   const macChrome = isMacOS();
+  // Spaces 最小命名：品牌钮悬停提示显示用户命名的桌面（未命名回退默认品牌名）
+  const desktopName = useDesktopName();
   useLiquidGlassLens(panelRef, centerOpen, { staticOnly: true });
 
   const dueCount = useSyncExternalStore(
@@ -519,7 +522,7 @@ const StatusBarComponent: React.FC = () => {
           aria-label={t('menubar.brandMenu')}
           aria-haspopup="menu"
           aria-expanded={brandMenuOpen}
-          title={t('menubar.appName')}
+          title={desktopName ?? t('menubar.appName')}
           onClick={toggleBrandMenu}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />

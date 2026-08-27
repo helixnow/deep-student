@@ -187,11 +187,17 @@ impl Default for LintLevel {
 /// `_qa_flags` JSON 数组中；lint 条目以 `code` 键区分来源。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LintIssue {
-    /// 机器可读违规码，snake_case，稳定不变（前端按码分类展示/过滤）。
+    /// 机器可读违规码，snake_case，稳定不变（前端按码分类展示/过滤，
+    /// 并按 `qaFlags.lint.<code>` 查本地化词条渲染用户可见文案）。
     pub code: String,
     /// 违规字段名；卡片级违规（如 duplicate_in_document）用 `"card"`。
     pub field: String,
-    /// 人类可读中文说明。
+    /// 人类可读中文说明。定位是诊断/日志与前端兜底展示（词条缺失时回退），
+    /// 用户可见文案由前端按 `code` 走 i18n。
+    ///
+    /// 软契约：前端会按 message 中数字出现的**顺序**抽取插值参数
+    /// （计数/阈值/百分比，见 `AnkiQaFlagBadge.tsx` 的
+    /// `LINT_NUMERIC_PARAM_NAMES`），调整文案时勿改变数字的顺序语义。
     pub message: String,
     pub severity: LintSeverity,
 }

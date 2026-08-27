@@ -43,10 +43,7 @@ export function registerContentDirtyChecker(
   };
 }
 
-/** 查询某个资源实例是否有未保存修改（未注册 = 视为干净） */
-export function isContentDirty(typeId: string, instanceKey: string | null): boolean {
-  const registered = checkers.get(keyOf(typeId, instanceKey));
-  if (!registered) return false;
+function anyCheckerDirty(registered: Set<() => boolean>): boolean {
   for (const checker of registered) {
     try {
       if (checker()) return true;
@@ -57,6 +54,37 @@ export function isContentDirty(typeId: string, instanceKey: string | null): bool
     }
   }
   return false;
+}
+
+/** 查询某个资源实例是否有未保存修改（未注册 = 视为干净） */
+export function isContentDirty(typeId: string, instanceKey: string | null): boolean {
+  const registered = checkers.get(keyOf(typeId, instanceKey));
+  if (!registered) return false;
+  return anyCheckerDirty(registered);
+}
+
+/**
+ * 是否存在任一注册资源处于 dirty 状态（同步，供 suspend 决策等全局查询）。
+ * 纯查询：不卸载任何视图、不触发保存；checker 抛错沿用 fail-closed 语义计为 dirty。
+ */
+export function isAnyContentDirty(): boolean {
+  for (const registered of checkers.values()) {
+    if (anyCheckerDirty(registered)) return true;
+  }
+  return false;
+}
+
+/**
+ * 列出当前所有 dirty 资源的注册键（同步，供 suspend 决策等全局查询）。
+ * key 格式与内部 keyOf 一致：`${typeId}::${normalizedInstanceKey}`。
+ * 纯查询：不卸载任何视图、不触发保存；checker 抛错的资源计为 dirty 一并列出。
+ */
+export function listDirtyContentKeys(): string[] {
+  const dirtyKeys: string[] = [];
+  for (const [key, registered] of checkers) {
+    if (anyCheckerDirty(registered)) dirtyKeys.push(key);
+  }
+  return dirtyKeys;
 }
 
 /**

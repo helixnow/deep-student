@@ -253,7 +253,10 @@
     "statRated": "已评分",
     "statTime": "用时",
     "statBestStreak": "最长连击",
-    "distribution": "评分分布"
+    "distribution": "评分分布",
+    "undoNudgeRated": "已评：{{rating}}",
+    "undoNudgeGeneric": "已记录复习",
+    "cardTimeCappedTitle": "本卡用时已超过 1 分钟（仅显示封顶，不影响统计）"
   },
   "settings": {
     "title": "闪卡设置",

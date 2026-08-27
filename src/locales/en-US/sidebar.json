@@ -13,7 +13,9 @@
   "mobile_drawer": {
     "section_app": "App",
     "section_chat": "Chats",
-    "section_learning": "Learning Resources"
+    "section_learning": "Learning Resources",
+    "section_study": "Study",
+    "section_manage": "Manage"
   },
   "navigation": {
     "batch": "Batch Analysis",

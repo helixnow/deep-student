@@ -15,6 +15,9 @@ import {
 /** 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_CHARS` / ZIP `MIN_ENCRYPTION_PASSWORD_CHARS` 对齐。 */
 export const CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS = 8;
 
+/** [Wave2-R5] 与后端 `MIN_CLOUD_ENCRYPTION_PASSWORD_DISTINCT_CHARS` 对齐（弱口令熵下限）。 */
+export const CLOUD_ENCRYPTION_PASSWORD_MIN_DISTINCT_CHARS = 4;
+
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 function readCloudStorageErrorCode(error: unknown): string | undefined {
@@ -39,6 +42,9 @@ function readCloudEncryptionI18nKey(
   if (raw.includes('E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT')) {
     return 'cloudStorage:encryption.tooShort';
   }
+  if (raw.includes('E_CLOUD_ENCRYPTION_PASSWORD_TOO_WEAK')) {
+    return 'cloudStorage:encryption.tooWeak';
+  }
   if (raw.includes('E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED')) {
     return 'cloudStorage:encryption.storedPasswordRequired';
   }
@@ -50,6 +56,11 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   const encryptionKey = readCloudEncryptionI18nKey(error);
   if (encryptionKey === 'cloudStorage:encryption.tooShort') {
     return t(encryptionKey, { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS });
+  }
+  if (encryptionKey === 'cloudStorage:encryption.tooWeak') {
+    return t(encryptionKey, {
+      minDistinct: CLOUD_ENCRYPTION_PASSWORD_MIN_DISTINCT_CHARS,
+    });
   }
   if (encryptionKey === 'cloudStorage:encryption.storedPasswordRequired') {
     return t(encryptionKey);
@@ -82,6 +93,51 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
       return t('cloudStorage:errors.sealedBackupDecryptFailed');
     case 'E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE':
       return t('cloudStorage:errors.atomicRestoreUnavailable');
+    // [R5-i18n] R4 新稳定码 + commands_backup / commands_zip 第一批 code-only。
+    // 云端目录/对象状态类附上原文（排查需要对象 key 等细节）；
+    // 本机配置/资源类只给人话，原文进日志即可。
+    case 'E_SYNC_BAD_OBJECT_FAIL_CLOSED':
+      return `${t('cloudStorage:errors.syncBadObjectFailClosed')}\n(${raw})`;
+    case 'E_DG_TOMBSTONE_LIMITER_BUSY':
+      return t('cloudStorage:errors.governanceBusy');
+    case 'E_BACKUP_DIR_MISSING':
+      return t('cloudStorage:errors.backupDirMissing');
+    case 'E_RESTORE_DISK_BUDGET_OVERFLOW':
+      return t('cloudStorage:errors.restoreDiskBudgetOverflow');
+    case 'E_ZIP_EXPORT_TEMP_MISSING':
+      return t('cloudStorage:errors.zipExportTempMissing');
+    case 'E_ZIP_EXPORT_COPY_TARGET_FAILED':
+      return `${t('cloudStorage:errors.zipExportCopyTargetFailed')}\n(${raw})`;
+    // [R6-i18n] R4 verified_publish.rs 稳定码：发布前/后校验 fail-closed。
+    // 云端对象状态类，附原文（排查需要对象 key、字节数等细节）。
+    case 'E_VERIFIED_PUBLISH_MISMATCH':
+      return `${t('cloudStorage:errors.verifiedPublishMismatch')}\n(${raw})`;
+    case 'E_VERIFIED_PUBLISH_OVERSIZE':
+      return `${t('cloudStorage:errors.verifiedPublishOversize')}\n(${raw})`;
+    case 'E_VERIFIED_PUBLISH_UNCONDITIONAL_WRITE':
+      return `${t('cloudStorage:errors.verifiedPublishUnconditionalWrite')}\n(${raw})`;
+  }
+  // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
+  // 后台任务失败消息以 `[E_...] 说明` 形式携带稳定码，没有 CommandError
+  // envelope，因此除 code 外还需子串兜底。
+  const restoreLedgerCode = readCloudStorageErrorCode(error);
+  if (
+    restoreLedgerCode === 'E_RESTORE_DOMAIN_UNCONSUMED' ||
+    raw.includes('E_RESTORE_DOMAIN_UNCONSUMED')
+  ) {
+    return t('cloudStorage:errors.restoreDomainUnconsumed');
+  }
+  if (
+    restoreLedgerCode === 'E_RESTORE_DOMAIN_FAILED' ||
+    raw.includes('E_RESTORE_DOMAIN_FAILED')
+  ) {
+    return t('cloudStorage:errors.restoreDomainFailed');
+  }
+  if (
+    restoreLedgerCode === 'E_RESTORE_UNTRUSTED_ISOLATED' ||
+    raw.includes('E_RESTORE_UNTRUSTED_ISOLATED')
+  ) {
+    return t('cloudStorage:errors.restoreUntrustedIsolated');
   }
   if (/Missing WebDAV configuration/.test(raw)) {
     return t('cloudStorage:errors.missingWebdavConfig');

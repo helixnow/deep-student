@@ -168,7 +168,9 @@
     "openResourceFailed": "打开资源失败",
     "createNotAllowed": "当前视图不支持新建资源",
     "resourceDeletedOrMoved": "资源已删除或已移动，已关闭失效标签页",
-    "resourceNotFound": "找不到对应资源"
+    "resourceNotFound": "找不到对应资源",
+    "bookmarksSaveConflict": "书签保存冲突：此资源的书签已在其他窗口更新，本次修改未生效，请刷新后重试",
+    "restoreDroppedCorrupted": "恢复标签页时丢弃了 {{count}} 条损坏的记录"
   },
   "success": {
     "referenceToChat": "已添加到对话上下文",

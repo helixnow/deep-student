@@ -532,4 +532,42 @@ describe('NotesSearchOverlay', () => {
     await waitFor(() => expect(input).toHaveAttribute('aria-expanded', 'true'));
     expect(input).toHaveAttribute('aria-controls');
   });
+
+  it('makes result rows draggable with the workbench resource payload', () => {
+    const onClose = vi.fn();
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[node()]}
+        onOpenResource={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    const option = screen.getByRole('option', { name: /Algebra/ });
+    expect(option).toHaveAttribute('draggable', 'true');
+
+    const stored = new Map<string, string>();
+    const dataTransfer = {
+      setData: (key: string, value: string) => stored.set(key, value),
+      effectAllowed: 'none',
+      dropEffect: 'none',
+    };
+    fireEvent.dragStart(option, { dataTransfer });
+
+    expect(JSON.parse(stored.get('application/x-deepstudent-resource') ?? 'null')).toEqual({
+      resourceId: 'note_1',
+      resourceType: 'note',
+      title: 'Algebra',
+    });
+    expect(stored.get('text/plain')).toBe('Algebra');
+
+    // 拖拽被取消（dropEffect=none）：面板保持打开
+    fireEvent.dragEnd(option, { dataTransfer: { dropEffect: 'none' } });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // 落点接收后（dropEffect=copy）：资源已在别处打开，面板自动关闭
+    fireEvent.dragEnd(option, { dataTransfer: { dropEffect: 'copy' } });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

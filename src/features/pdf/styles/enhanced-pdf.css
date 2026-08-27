@@ -735,12 +735,17 @@
   border-color: hsl(var(--foreground) / .55);
 }
 
-/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线 */
+/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线。
+   曾在本文件两处重复定义（此处 align-self/margin 与翻译卡片区块的
+   height/flex-shrink），合并为一处，保留合并前实际生效的全部属性：
+   height 为定高时 align-self: stretch 不参与拉伸，视觉结果与合并前一致 */
 .ds-highlight-menu__divider {
   align-self: stretch;
   width: 1px;
+  height: 18px;
   margin: 2px 2px;
   background: hsl(var(--border));
+  flex-shrink: 0;
 }
 
 /* ============================================================================
@@ -909,6 +914,76 @@
 }
 
 /* ============================================================================
+   批注面板（r5：筛选 + 导出为笔记；列表本体沿用 .ds-highlights-list）
+   ============================================================================ */
+
+/* 面板占满批注 tab（桌面侧栏与移动子屏同构：父容器均为纵向 flex） */
+.ds-annotations-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-annotations-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+
+.ds-annotations-filter-input {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.ds-annotations-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ds-annotations-color-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 颜色 chip：未选中半透明，选中描主题色环（颜色本身即语义，不加文字） */
+.ds-annotations-color-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  cursor: pointer;
+  opacity: .45;
+  transition: opacity .15s ease, box-shadow .15s ease;
+}
+
+.ds-annotations-color-chip:hover {
+  opacity: .8;
+}
+
+.ds-annotations-color-chip.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / .65);
+}
+
+.ds-annotations-export {
+  font-size: 12px;
+  margin-left: auto;
+}
+
+/* 移动子屏：工具行与列表 viewport 的左右留白对齐（12px） */
+.ds-pdf__mobile-panel .ds-annotations-toolbar {
+  padding: 8px 12px 0;
+}
+
+/* ============================================================================
    内容区
    ============================================================================ */
 
@@ -985,6 +1060,45 @@
   .ds-pdf__page-wrapper--agent-focus::after {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* r5-S1：批注列表精确定位后的高亮块闪烁（focusHighlight 1.6s 后移除类名）。
+   与 agent-focus 同一套降级策略：reduced-motion 走静态描边，靠 JS 定时移除。 */
+.ds-pdf__highlight-rect--focus {
+  animation: ds-pdf-highlight-focus-pulse 1400ms ease-out forwards;
+}
+
+@keyframes ds-pdf-highlight-focus-pulse {
+  0% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  45% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  100% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0),
+      0 0 16px hsl(var(--primary) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.85);
+  }
+}
+
+@media (forced-colors: active) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
   }
 }
 
@@ -1950,39 +2064,11 @@
   height: 36px;
 }
 
-/* ============================================================================
-   划词翻译卡片（复用聊天 TranslationPopover，viewer 内底部浮层）
-   ============================================================================ */
-
-/* 高亮色板与翻译按钮之间的细分隔线 */
-.ds-highlight-menu__divider {
-  width: 1px;
-  height: 18px;
-  background: hsl(var(--border));
-  flex-shrink: 0;
-}
-
-.ds-pdf__translation-panel {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
-  width: min(600px, calc(100% - 24px));
-  z-index: 140;
-  border-radius: 12px;
-  background: hsl(var(--popover));
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-}
-
-/* 卡片自带 mt-2（消息流内联布局残留），浮层场景抵消掉 */
-.ds-pdf__translation-panel > [data-translation-popover] {
-  margin-top: 0;
-}
-
-/* chrome 隐藏时贴底（保留 safe-area），与高亮操作条同规则 */
-.ds-pdf-viewer.chrome-hidden .ds-pdf__translation-panel {
-  bottom: calc(var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
-}
+/* 已废弃（0824 Wave2-B 第 4 轮划词收敛）：.ds-pdf__translation-panel
+   —— viewer 内建划词菜单的 A 链路翻译浮层，随该链路一并移除；
+   翻译现统一走共享层 SelectionToolbar 的 .ds-pdf__selection-panel（下方区块）。
+   .ds-highlight-menu__divider（色板与动作按钮的分隔线）在上方
+   「划词/高亮浮动菜单」区块统一定义，此处不再重复 */
 
 /* ============================================================================
    划词结果面板（解释 / 翻译）

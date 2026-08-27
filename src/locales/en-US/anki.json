@@ -765,7 +765,7 @@
     "sortByTime": "By time",
     "sortByCards": "By cards",
     "sortByName": "By name",
-    "recoverStuckHint": "Reset tasks stuck in processing for over 1 hour to pending",
+    "recoverStuckHint": "Mark tasks stuck for over 10 minutes as paused, then resume them",
     "errorCardsFound": "{{count}} error cards",
     "errorReason": "Error",
     "quickExport": "Export",
@@ -1093,7 +1093,8 @@
       "revisedFlag": "This card was auto-revised by the AI final review; please double-check",
       "skippedOverBudget": "{{count}} cards were skipped due to the review budget",
       "goldReferences": "This review referenced {{count}} gold-standard card pairs",
-      "degraded": "AI final review was unavailable; this batch was kept as-is without review"
+      "degraded": "AI final review was unavailable; this batch was kept as-is without review",
+      "persistFailures": "{{count}} card revisions from the final review failed to write back; what you see may differ from the saved version"
     },
     "fsrsFeedback": {
       "title": "Review-profile feedback",
@@ -1142,6 +1143,33 @@
       "maxLength": "Exceeds the maximum length",
       "allowedValues": "Value is not in the allowed list",
       "validationPattern": "Content does not match the validation pattern"
+    },
+    "lint": {
+      "front_back_identical": "Front and back are identical after normalization",
+      "empty_front": "Front is empty or whitespace-only",
+      "empty_back": "Back is empty or whitespace-only",
+      "cloze_unclosed": "{{n}} cloze deletion(s) are not properly closed",
+      "cloze_empty_answer": "{{n}} cloze deletion(s) have empty content",
+      "cloze_bad_index": "{{n}} cloze deletion(s) have an invalid index (must be c1 or above)",
+      "cloze_missing": "Text field exists but contains no cloze deletions",
+      "answer_leak": "Front already contains the full answer from the back",
+      "multi_concept": "Front seems to ask about multiple independent concepts (consider splitting into several cards)",
+      "front_too_long": "Front length {{n}} exceeds the minimum-information threshold {{limit}} (looks like a pasted paragraph)",
+      "placeholder_residue": "Leftover template placeholder",
+      "todo_residue": "Leftover TODO/FIXME marker",
+      "xxx_residue": "Leftover placeholder token \"xxx\"",
+      "empty_brackets": "Contains an empty bracket pair (content may be missing)",
+      "tags_empty": "Card has no tags (hurts search and deck building)",
+      "duplicate_in_document": "An identical card already exists in this document",
+      "near_duplicate": "Highly similar to an existing card in this document ({{percent}}% similarity), likely a near duplicate",
+      "mixed_language": "Back heavily mixes CJK and Latin scripts (CJK {{cjk}}% / Latin {{latin}}%), please double-check",
+      "mcq_too_few_options": "Multiple-choice card has only {{n}} non-empty option(s) (at least 2 required)",
+      "mcq_answer_not_in_options": "The answer's option is missing or does not match",
+      "mcq_missing_answer": "Multiple-choice card is missing its answer",
+      "field_rule_min_length": "Length {{n}} is below the minimum length {{min}}",
+      "field_rule_max_length": "Length {{n}} exceeds the maximum length {{max}}",
+      "field_rule_allowed_values": "Value is not in the allowed values list",
+      "field_rule_pattern": "Content does not match the validation pattern"
     }
   }
 }

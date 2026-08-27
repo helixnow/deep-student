@@ -249,6 +249,67 @@ impl ChatV2Pipeline {
         Ok(())
     }
 
+    /// R3-#1 llm_content 前移：编译完成后、首个 provider 网络请求前，
+    /// 轻量补写当前 user CONTENT 块的 `llm_content` sidecar。
+    ///
+    /// ## 崩溃窗口
+    /// `persist_replay_sidecar` 原本只在 save_results / save_intermediate_results
+    /// （流程末 / 工具轮间）执行。若请求已发给 provider 但进程在首个保存点前
+    /// 崩溃，DB 里只有 `save_user_message_immediately` 落的裸 user 行，
+    /// `llm_content` 为空 —— 下一轮 history 只能回退旧重建，跨轮字节漂移。
+    ///
+    /// ## 调用时机（唯一调用点：pipeline.rs execute_internal 阶段 4.5 与 5 之间）
+    /// - `compile_frozen_context` 已完成 → `live_user_llm_content()` 为 Some；
+    /// - `save_user_message_immediately` 已执行 → 用户块行已 INSERT
+    ///   （编辑重发路径行由编辑事务保证存在）；
+    /// - `execute_with_tools`（tool_loop `call_unified_model_2_stream`）尚未
+    ///   发起 → 首个 provider 网络请求之前。
+    ///
+    /// ## 范围与失败语义
+    /// - 只写 user 块 `llm_content` 一列（单条 targeted UPDATE，SQLite 隐式
+    ///   单语句事务），不前移整份 save_results；工具块 `tool_call_id` /
+    ///   `round_text` 仍由原 `persist_replay_sidecar` 在既有保存点落库；
+    /// - 查不到用户 CONTENT 块（即时保存失败、wake/retry 新 id 无行）时跳过，
+    ///   后续 save_results 会兜底补写；
+    /// - 返回 Err 时调用方只 warn，不阻断发送。
+    pub(crate) async fn persist_user_llm_content_early(
+        &self,
+        ctx: &PipelineContext,
+    ) -> ChatV2Result<()> {
+        let Some(llm_content) = ctx.live_user_llm_content() else {
+            log::debug!(
+                "[ChatV2::pipeline] persist_user_llm_content_early: no compiled user message yet, skip (session={})",
+                ctx.session_id
+            );
+            return Ok(());
+        };
+
+        let conn = self.db.get_conn_safe()?;
+        let Some(block_id) = Self::existing_user_content_block_id(&conn, &ctx.user_message_id)
+        else {
+            log::debug!(
+                "[ChatV2::pipeline] persist_user_llm_content_early: user content block not found (message={}), skip — target row missing; later save points may retry if the block exists",
+                ctx.user_message_id
+            );
+            return Ok(());
+        };
+
+        ChatV2Repo::update_block_replay_with_conn(
+            &conn,
+            &block_id,
+            &crate::chat_v2::repo::BlockReplayData {
+                llm_content: Some(llm_content),
+                ..Default::default()
+            },
+        )?;
+        log::debug!(
+            "[ChatV2::pipeline] persist_user_llm_content_early: llm_content persisted before first provider request (message={}, block={})",
+            ctx.user_message_id,
+            block_id
+        );
+        Ok(())
+    }
+
     /// 🆕 P0防闪退：用户消息即时保存
     ///
     /// 在 Pipeline 执行前立即保存用户消息，确保用户输入不会因闪退丢失。

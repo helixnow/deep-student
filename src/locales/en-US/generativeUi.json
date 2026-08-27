@@ -28,7 +28,9 @@
     "undo_empty": "Nothing to undo",
     "copy_intent": "Copy intent",
     "export_markdown": "Export Markdown",
-    "copy_block": "Copy this block"
+    "copy_block": "Copy this block",
+    "open_note": "Open note",
+    "open_pdf_page": "Open PDF page {{page}}"
   },
   "export_markdown": {
     "empty_table": "Empty table",

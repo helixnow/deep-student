@@ -70,6 +70,8 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   const [loading, setLoading] = useState(true);
   // 主加载失败必须与「暂无任务」区分开：空列表是事实，加载失败是未知
   const [loadError, setLoadError] = useState<string | null>(null);
+  // stats-only failure：列表可用时统计区单独降级，不拖垮整页（见 load）
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 会话列表滚动视口：长列表（上限可到数百行）虚拟化，压低常驻 DOM 规模
@@ -212,32 +214,47 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     }
   }, [preventSleep, t]);
 
+  /**
+   * list 与 stats 拆分加载（Wave2-E r3）：此前 Promise.all 快速失败绑死，
+   * get_anki_stats 单独挂掉会把已成功返回的会话列表一并丢进整页错误态。
+   * 现改为 allSettled，两个请求各自结算：
+   * - list 成功 → 列表照常渲染/刷新，loadError 清空；
+   * - stats-only failure → 保留列表，仅点亮 statsError 错误条，统计区
+   *   沿用上一次数据（metrics 对 stats 为 null 也有 ?? 0 兜底）；
+   * - list-only failure → 维持原有 stale banner / 整页错误态语义。
+   */
   const load = useCallback(async () => {
     const generation = ++loadGenerationRef.current;
     let nextHasActive = hasActiveRef.current;
-    try {
-      const [s, st] = await Promise.all([
-        invoke<DocumentSession[]>('list_document_sessions', { limit: DASHBOARD_SESSION_LIMIT }),
-        invoke<AnkiStats>('get_anki_stats'),
-      ]);
-      if (generation !== loadGenerationRef.current) return;
+    // allSettled 永不 reject，无需 try/catch；generation 守卫语义不变
+    const [listResult, statsResult] = await Promise.allSettled([
+      invoke<DocumentSession[]>('list_document_sessions', { limit: DASHBOARD_SESSION_LIMIT }),
+      invoke<AnkiStats>('get_anki_stats'),
+    ]);
+    if (generation !== loadGenerationRef.current) return;
 
+    if (listResult.status === 'fulfilled') {
+      const s = listResult.value;
       nextHasActive = s.some(session => classify(session) === 'active');
       hasActiveRef.current = nextHasActive;
       setSessions(s);
-      setStats(st);
       setLoadError(null);
-    } catch (err: unknown) {
-      debugLog.error('[AnkiTasks] load failed:', err);
-      if (generation !== loadGenerationRef.current) return;
+    } else {
+      debugLog.error('[AnkiTasks] list load failed:', listResult.reason);
       // 不吞错：列表保持上一次已知数据，同时暴露错误态 + 重试
-      setLoadError(getErrorMessage(err));
-    } finally {
-      if (generation === loadGenerationRef.current) {
-        setLoading(false);
-        onLatestLoadSettledRef.current?.(nextHasActive);
-      }
+      setLoadError(getErrorMessage(listResult.reason));
     }
+
+    if (statsResult.status === 'fulfilled') {
+      setStats(statsResult.value);
+      setStatsError(null);
+    } else {
+      debugLog.error('[AnkiTasks] stats load failed:', statsResult.reason);
+      setStatsError(getErrorMessage(statsResult.reason));
+    }
+
+    setLoading(false);
+    onLatestLoadSettledRef.current?.(nextHasActive);
   }, []);
 
   // 智能轮询 —— 有活跃任务 5s，无则 30s；视图不可见时暂停
@@ -661,6 +678,27 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           >
             {t('taskDashboard.openTemplateLib')}
           </DsButton>
+        )}
+
+        {/* stats-only failure：列表不受影响，统计区降级并显式提示（与列表错误不互斥） */}
+        {statsError && (
+          <div
+            role="status"
+            data-testid="anki-tasks-stats-error"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/10 px-3 py-2 text-xs"
+          >
+            <Warning size={14} className="text-[color:hsl(var(--warning))]" />
+            <span className="min-w-0 break-words text-muted-foreground">
+              {t('taskDashboard.statsLoadFailed', {
+                defaultValue: '统计数据加载失败，任务列表不受影响',
+              })}
+            </span>
+            <span className="min-w-0 break-words text-muted-foreground/60">{statsError}</span>
+            <DsButton size="sm" variant="utility" className="ml-auto" onClick={load}>
+              <ArrowsClockwise size={13} />
+              {t('taskDashboard.retry')}
+            </DsButton>
+          </div>
         )}
 
         {/* 刷新失败但仍有上一次数据：标明数据可能已过时，而不是静默沿用 */}

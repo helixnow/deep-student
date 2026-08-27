@@ -16,11 +16,6 @@ import {
 import { collectPageSearchMatches, type SearchItemRange } from '../pdfSearch';
 import { loadPdfViewState, savePdfViewState, type PdfViewState } from '../pdfViewState';
 import {
-  MIN_SELECTION_LENGTH_FOR_QUESTIONS,
-  makeCardsFromSelection,
-  sendSelectionToQuestionGeneration,
-} from '../selectionStudyActions';
-import {
   resolveSelectionMenuFrame,
   type PdfSelectionPayload,
   type SelectionMenuAnchor,
@@ -58,13 +53,8 @@ import {
   Sun,
   ArrowCounterClockwise,
   LockSimple,
-  Translate,
-  Exam,
-  Cards,
   BookOpenText,
-  Copy,
-  ChatCircleText,
-  NotePencil
+  Copy
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -74,46 +64,26 @@ import { PDF_OPTIONS } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerVisibilityGuardedBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   resolvePdfAnnotationSaveBaseline,
   subscribePdfAnnotationChanges,
 } from '../pdfAnnotationEvents';
-import { PdfSelectionActions } from './PdfSelectionActions';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
 
-// 划词翻译卡片（与聊天划词共用组件；懒加载避免把翻译链路打进 PDF chunk）
-const SelectionTranslationPopover = React.lazy(
-  () => import('@/features/chat/components/TranslationPopover')
-);
+// 共享层划词工具条：必须懒加载——它内部依赖 shared/selection、shared/notes
+// 与聊天弹层（解释/翻译 Popover），若在此静态导入，翻译/制卡链路会被
+// 重新打进 PDF chunk（见 docs/0824-quality-review/pdf-documents.md）。
+// 学习动作（做笔记/翻译/出题/制卡/引用到对话）统一由它承载，
+// viewer 内建的 ds-highlight-menu 只保留高亮选色 + 复制，不再重复这些入口。
+const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
 
-/**
- * 提取选区在所在页文字层内的前后上下文（用于划词翻译消歧；不参与翻译本身）。
- * 折叠空白：PDF 文字层由大量 span 组成，原始 textContent 充满换行/重复空格。
- */
-function extractSelectionContext(
-  range: Range,
-  pageWrapper: Element
-): { before: string; after: string } {
-  try {
-    const pageRange = document.createRange();
-    pageRange.selectNodeContents(pageWrapper);
-    const before = pageRange.cloneRange();
-    before.setEnd(range.startContainer, range.startOffset);
-    const after = pageRange.cloneRange();
-    after.setStart(range.endContainer, range.endOffset);
-    return {
-      before: before.toString().replace(/\s+/g, ' ').slice(-200),
-      after: after.toString().replace(/\s+/g, ' ').slice(0, 200),
-    };
-  } catch {
-    // Range 端点跨 shadow/detached 节点等异常场景：放弃上下文，不阻塞翻译
-    return { before: '', after: '' };
-  }
-}
+// 侧栏批注面板（筛选/导出为笔记/回链）同样懒加载：它静态依赖 shared/notes
+// 的目录选择流程（FolderPickerDialog），不能随 PDF 主 chunk 打包。
+const PdfAnnotationsPanel = React.lazy(() => import('./PdfAnnotationsPanel'));
 
 /** PDF 目录项 */
 interface OutlineItem {
@@ -196,10 +166,10 @@ export interface EnhancedPdfViewerProps {
   bookmarks?: Bookmark[];
   /** 书签变更回调 */
   onBookmarksChange?: (bookmarks: Bookmark[]) => void;
-  /** 划词「引用到对话」（selectedText + 页码），缺省时隐藏该入口 */
+  /** 划词「添加到聊天」locator 回调，透传给 PdfSelectionActions
+   *  （上层视图接 useReferenceToChat：资源引用 + `page:N` locator，Agent 可回读原文）。
+   *  缺省时工具条走 PREFILL_CHAT_INPUT 文本注入兜底。 */
   onQuoteToChat?: (payload: PdfSelectionPayload) => void;
-  /** 划词「做笔记」（摘录笔记），缺省时隐藏该入口 */
-  onCreateNote?: (payload: PdfSelectionPayload) => void;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
@@ -363,7 +333,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   bookmarks: externalBookmarks,
   onBookmarksChange,
   onQuoteToChat,
-  onCreateNote,
 }) => {
   const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
@@ -383,8 +352,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const canPersistAnnotations =
     Boolean(resourcePath) || initialHighlights !== undefined || Boolean(onHighlightsChange);
 
-  // 复制 / 翻译 / 生成题目 / 制卡均为 viewer 内建动作，不依赖高亮落盘
-  // 或上层回调；只要文本层可选，划词菜单就应可用。
+  // 复制为 viewer 内建动作，不依赖高亮落盘或上层回调；只要文本层可选，
+  // 划词菜单就应可用。翻译/出题/制卡/做笔记/引用到对话走共享层 SelectionToolbar。
 
   // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
   // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
@@ -538,8 +507,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 划词菜单锚点（选区 rect 的中点与上下边缘，viewport 坐标）；
   // 实际渲染坐标由 useClampedMenuFrame 钳位到视口内（贴顶时翻转到选区下方）
   const [highlightMenuPos, setHighlightMenuPos] = useState<SelectionMenuAnchor>({ x: 0, top: 0, bottom: 0 });
-  const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[]; context: { before: string; after: string } } | null>(null);
-  // 划词翻译卡片（选区工具条「翻译」打开；与聊天划词共用 TranslationPopover）
+  const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[] } | null>(null);
   const [selectionTranslation, setSelectionTranslation] = useState<{
     text: string;
     contextBefore: string;
@@ -1253,17 +1221,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 仅在有浮层打开时注册；桌面端不触发 handleAndroidBack，无行为变化。
   useEffect(() => {
     const hasOverlay =
-      selectionTranslation || showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
+      showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
       sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
-    return registerBackHandler(() => {
-      // 可见性守卫：保活但不可见的实例（ViewLayerRenderer keep-alive 隐藏层 /
-      // 后台标签页）不得吞掉其他页面的返回键。注意 visibility:hidden 不清除
-      // 布局盒（getClientRects 仍有返回值），必须单独查 computed visibility。
-      const el = containerRef.current;
-      if (!el || !el.isConnected) return false;
-      if (el.getClientRects().length === 0) return false;
-      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+    return registerVisibilityGuardedBackHandler(containerRef, () => {
       if (selectionTranslation) {
         setSelectionTranslation(null);
         return true;
@@ -1296,7 +1257,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       return false;
     }, BACK_PRIORITY.overlay);
   }, [
-    selectionTranslation,
     showHighlightMenu,
     activeHighlightId,
     showMoreMenu,
@@ -1341,7 +1301,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const rects: { x: number; y: number; width: number; height: number }[] = [];
     const clientRects = range.getClientRects();
     // 旋转状态下选区 rect 是旋转后的屏幕坐标，持久化后恢复原始角度会
-    // 双重错位；因此只禁用“创建高亮”，复制/引用/翻译/出题等仍可使用。
+    // 双重错位；因此只禁用“创建高亮”，复制仍可使用。
     if (rotation === 0 && pageWrapper) {
       const pageRect = pageWrapper.getBoundingClientRect();
       if (pageRect.width > 0 && pageRect.height > 0) {
@@ -1357,74 +1317,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
     }
     
-    // 上下文消歧：提取选区前后各 ~200 字符（划词翻译用；不参与翻译本身）
-    const context = pageWrapper
-      ? extractSelectionContext(range, pageWrapper)
-      : { before: '', after: '' };
-
-    setPendingHighlight({ text, pageIndex, rects, context });
+    setPendingHighlight({ text, pageIndex, rects });
     setHighlightMenuPos({ x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom });
     setShowHighlightMenu(true);
   }, [currentPage, rotation]);
 
-  // 打开划词翻译卡片（收起高亮菜单、释放选区）
-  const openSelectionTranslation = useCallback(() => {
-    if (!pendingHighlight?.text) return;
-    setSelectionTranslation({
-      text: pendingHighlight.text,
-      contextBefore: pendingHighlight.context.before,
-      contextAfter: pendingHighlight.context.after,
-    });
-    setShowHighlightMenu(false);
-    setPendingHighlight(null);
-    window.getSelection()?.removeAllRanges();
-  }, [pendingHighlight]);
-
-  const closeSelectionTranslation = useCallback(() => {
-    setSelectionTranslation(null);
-  }, []);
-
-  // 划词「生成题目」：切到聊天并预填出题指令（接 Agent qbank-tools 出题流，
-  // 见 ../selectionStudyActions 头部注释）。校验失败（过短）保留选区让用户补选。
-  const openSelectionQuestionGeneration = useCallback(() => {
-    if (!pendingHighlight?.text) return;
-    const result = sendSelectionToQuestionGeneration(
-      {
-        text: pendingHighlight.text,
-        sourceName: fileName,
-        page: pendingHighlight.pageIndex,
-      },
-      t,
-    );
-    if (!result.ok) return;
-    setShowHighlightMenu(false);
-    setPendingHighlight(null);
-    window.getSelection()?.removeAllRanges();
-  }, [pendingHighlight, fileName, t]);
-
-  // 划词「制卡」：复用聊天划词制卡流（CardForge 后台任务 + 任务台通知）。
-  // 过短选区先本地拦截（与制卡服务同阈值），保留选区让用户补选。
-  const openSelectionCardGeneration = useCallback(() => {
-    if (!pendingHighlight?.text) return;
-    if (pendingHighlight.text.trim().length < MIN_SELECTION_LENGTH_FOR_QUESTIONS) {
-      showGlobalNotification(
-        'warning',
-        t('pdf:selection.selectionTooShort', {
-          count: MIN_SELECTION_LENGTH_FOR_QUESTIONS,
-          defaultValue: '选中文本太短，请至少选择 {{count}} 个字符',
-        })
-      );
-      return;
-    }
-    void makeCardsFromSelection({
-      text: pendingHighlight.text,
-      contextBefore: pendingHighlight.context.before,
-      contextAfter: pendingHighlight.context.after,
-    });
-    setShowHighlightMenu(false);
-    setPendingHighlight(null);
-    window.getSelection()?.removeAllRanges();
-  }, [pendingHighlight, t]);
+  // 翻译/出题/制卡等学习动作不在此处：统一由共享层 SelectionToolbar
+  // （PdfSelectionActions）承载，避免与 viewer 内建划词菜单双入口重复。
 
   // 添加高亮
   const addHighlight = useCallback((color: string) => {
@@ -1465,22 +1364,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       );
     });
   }, [pendingHighlight, closeSelectionMenu, t]);
-
-  // 划词：引用到对话（selectedText + 页码，由上层视图接 useReferenceToChat）
-  const handleQuoteSelection = useCallback(() => {
-    if (!pendingHighlight || !onQuoteToChat) return;
-    const payload = { text: pendingHighlight.text, page: pendingHighlight.pageIndex };
-    closeSelectionMenu();
-    onQuoteToChat(payload);
-  }, [pendingHighlight, onQuoteToChat, closeSelectionMenu]);
-
-  // 划词：做笔记（摘录笔记，由上层视图落库）
-  const handleNoteSelection = useCallback(() => {
-    if (!pendingHighlight || !onCreateNote) return;
-    const payload = { text: pendingHighlight.text, page: pendingHighlight.pageIndex };
-    closeSelectionMenu();
-    onCreateNote(payload);
-  }, [pendingHighlight, onCreateNote, closeSelectionMenu]);
 
   const highlightsByPage = useMemo(() => {
     const map = new Map<number, Highlight[]>();
@@ -1629,6 +1512,58 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const goToBookmark = useCallback((bookmark: Bookmark) => {
     goToPage(bookmark.page);
   }, [goToPage]);
+
+  // ========== 批注列表精确定位（r5-S1，对标 Zotero「Show on Page」） ==========
+  // 点击批注项不再只 goToPage：跳页后轮询等待目标高亮块渲染
+  // （页面虚拟化 + 高亮层随页挂载，滚动到位前元素不存在），
+  // 找到后把首个矩形滚到视口中部并闪烁（CSS 动画，reduced-motion 有静态降级）。
+  const [focusedHighlightId, setFocusedHighlightId] = useState<string | null>(null);
+  const highlightFocusPollTimerRef = useRef<number | null>(null);
+  const highlightFocusFadeTimerRef = useRef<number | null>(null);
+  const clearHighlightFocusTimers = useCallback(() => {
+    if (highlightFocusPollTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusPollTimerRef.current);
+      highlightFocusPollTimerRef.current = null;
+    }
+    if (highlightFocusFadeTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusFadeTimerRef.current);
+      highlightFocusFadeTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearHighlightFocusTimers, [clearHighlightFocusTimers]);
+
+  const focusHighlight = useCallback((hl: Pick<Highlight, 'id' | 'pageIndex'>) => {
+    clearHighlightFocusTimers();
+    setFocusedHighlightId(null);
+    goToPage(hl.pageIndex);
+    const escapedId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(hl.id)
+        : hl.id.replace(/["\\]/g, '\\$&');
+    const deadline = Date.now() + 3000;
+    const tryLocate = () => {
+      highlightFocusPollTimerRef.current = null;
+      const layer = pageContainerRef.current?.querySelector(
+        `[data-highlight-id="${escapedId}"]`
+      );
+      const rect = layer?.querySelector('.ds-pdf__highlight-rect');
+      if (rect) {
+        // 跳页的虚拟列表平滑滚动已把目标页带近，这里再精确到矩形本身
+        rect.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setFocusedHighlightId(hl.id);
+        highlightFocusFadeTimerRef.current = window.setTimeout(() => {
+          setFocusedHighlightId(null);
+          highlightFocusFadeTimerRef.current = null;
+        }, 1600);
+        return;
+      }
+      if (Date.now() < deadline) {
+        highlightFocusPollTimerRef.current = window.setTimeout(tryLocate, 120);
+      }
+      // 超时静默放弃：goToPage 已完成页级跳转，定位闪烁是增强不是承诺
+    };
+    tryLocate();
+  }, [clearHighlightFocusTimers, goToPage]);
   
   // 开始编辑书签
   const startEditBookmark = useCallback((bookmark: Bookmark) => {
@@ -2966,11 +2901,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 高亮覆盖层 — v2 为 0–1 相对坐标（按百分比渲染，尺寸无关）；
             历史数据（无 coordVersion）按旧逻辑乘以当前 scale 兜底 */}
         {getPageHighlights(pageNum).map(hl => (
-          <div key={hl.id} className="ds-pdf__highlight-layer">
+          // data-highlight-id：批注列表精确定位（focusHighlight）用它找到高亮块
+          <div key={hl.id} className="ds-pdf__highlight-layer" data-highlight-id={hl.id}>
             {hl.rects.map((rect, idx) => (
               <div
                 key={idx}
-                className="ds-pdf__highlight-rect"
+                className={`ds-pdf__highlight-rect${focusedHighlightId === hl.id ? ' ds-pdf__highlight-rect--focus' : ''}`}
                 style={
                   hl.coordVersion === 2
                     ? {
@@ -3031,6 +2967,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     annotationLayerRange,
     currentPage,
     enableStudyControls,
+    focusedHighlightId,
     resolvedEnableTextSelection,
     pdfSettings.enableAnnotationLayerByDefault,
     getPageShimmer,
@@ -3161,45 +3098,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     </CustomScrollArea>
   );
 
-  // 批注 tab 内容（桌面侧栏 / 移动子屏共用）
+  // 批注 tab 内容（桌面侧栏 / 移动子屏共用）——r5 起独立为 PdfAnnotationsPanel
+  // （筛选 + 导出为笔记 + 回链），点击批注项走 focusHighlight 精确定位；
+  // 移动端 onNavigate 关闭子屏后再定位（面板挡着页面时闪烁无意义）。
   const renderHighlightList = (onNavigate?: () => void) => (
-    <CustomScrollArea
-      className="ds-highlights-list"
-      viewportClassName="ds-highlights-list-viewport"
-    >
-      {highlights.length === 0 ? (
-        <div className="ds-bookmarks-empty">
-          <Highlighter size={24} className="ds-bookmarks-empty-icon" />
-          <p>{t('pdf:toolbar.no_highlights')}</p>
-          <p className="ds-bookmarks-empty-hint">{t('pdf:toolbar.no_highlights_hint')}</p>
-        </div>
-      ) : (
-        highlights.map(hl => (
-          <div
-            key={hl.id}
-            className="ds-highlight-item"
-            onClick={() => {
-              goToPage(hl.pageIndex);
-              onNavigate?.();
-            }}
-          >
-            <div
-              className="ds-highlight-color"
-              style={{ backgroundColor: hl.color }}
-            />
-            <div className="ds-highlight-content">
-              <div className="ds-highlight-text">{hl.text}</div>
-              <div className="ds-highlight-meta">
-                {t('pdf:toolbar.page', { page: hl.pageIndex })}
-              </div>
-            </div>
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label={t('pdf:a11y.delete')}>
-              <X size={12} />
-            </DsButton>
-          </div>
-        ))
-      )}
-    </CustomScrollArea>
+    <React.Suspense fallback={null}>
+      <PdfAnnotationsPanel
+        highlights={highlights}
+        fileName={fileName}
+        resourcePath={resourcePath}
+        onSelectHighlight={(hl) => {
+          onNavigate?.();
+          focusHighlight(hl);
+        }}
+        onRemoveHighlight={removeHighlight}
+      />
+    </React.Suspense>
   );
 
   if (!file) {
@@ -3273,20 +3187,26 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       )}
 
       {/* 阅读划词工具条（共享层 SelectionToolbar）：解释 / 翻译 / 保存为笔记 /
-          生成卡片 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。
+          制卡 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。
           注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID
-          （如 /我的教材/tb_xyz789），不是人类可读的文件名。 */}
-      <PdfSelectionActions
-        containerRef={containerRef}
-        enabled={resolvedEnableTextSelection}
-        isMobileLike={isMobileLike}
-        documentTitle={fileName}
-      />
+          （如 /我的教材/tb_xyz789），不是人类可读的文件名。
+          onQuoteToChat 必须转发：否则「添加到聊天」永远落 PREFILL 文本兜底，
+          丢失资源引用 + page locator 语义。 */}
+      <React.Suspense fallback={null}>
+        <PdfSelectionActions
+          containerRef={containerRef}
+          enabled={resolvedEnableTextSelection}
+          isMobileLike={isMobileLike}
+          documentTitle={fileName}
+          onQuoteToChat={onQuoteToChat}
+        />
+      </React.Suspense>
 
       {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
           移动端改为 viewer 内底部内联色板条
           （absolute bottom，非 fixed body 层，避让底栏与 safe-area）。
-          4 色高亮之外提供 复制/引用到对话/做笔记 动作（对标 MarginNote 划词入口）。 */}
+          只保留 4 色高亮 + 复制；做笔记/翻译/出题/制卡/引用到对话等学习动作
+          由共享层 SelectionToolbar（上方 PdfSelectionActions）统一承载，不再重复。 */}
       {showHighlightMenu && !isMobileLike && (
         <div
           ref={selectionMenu.ref}
@@ -3311,26 +3231,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
             <Copy size={16} />
           </DsButton>
-          {onQuoteToChat && (
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleQuoteSelection} title={t('pdf:selection.quote_to_chat')} aria-label={t('pdf:selection.quote_to_chat')}>
-              <ChatCircleText size={16} />
-            </DsButton>
-          )}
-          {onCreateNote && (
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNoteSelection} title={t('pdf:selection.create_note')} aria-label={t('pdf:selection.create_note')}>
-              <NotePencil size={16} />
-            </DsButton>
-          )}
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={openSelectionTranslation} title={t('pdf:toolbar.translate_selection')} aria-label={t('pdf:toolbar.translate_selection')}>
-            <Translate size={16} />
-          </DsButton>
-          {/* 划词学习闭环：生成题目（聊天 Agent 出题流）/ 制卡（CardForge 后台任务） */}
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={openSelectionQuestionGeneration} title={t('pdf:selection.generateQuestions')} aria-label={t('pdf:selection.generateQuestions')}>
-            <Exam size={16} />
-          </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={openSelectionCardGeneration} title={t('pdf:selection.makeCards')} aria-label={t('pdf:selection.makeCards')}>
-            <Cards size={16} />
-          </DsButton>
         </div>
       )}
 
@@ -3349,49 +3249,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           )}
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
             <Copy size={16} />
-          </DsButton>
-          {onQuoteToChat && (
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleQuoteSelection} title={t('pdf:selection.quote_to_chat')} aria-label={t('pdf:selection.quote_to_chat')}>
-              <ChatCircleText size={16} />
-            </DsButton>
-          )}
-          {onCreateNote && (
-            <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNoteSelection} title={t('pdf:selection.create_note')} aria-label={t('pdf:selection.create_note')}>
-              <NotePencil size={16} />
-            </DsButton>
-          )}
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className="ds-btn ds-btn-sm"
-            onClick={openSelectionTranslation}
-            title={t('pdf:toolbar.translate_selection')}
-            aria-label={t('pdf:toolbar.translate_selection')}
-          >
-            <Translate size={16} />
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className="ds-btn ds-btn-sm"
-            onClick={openSelectionQuestionGeneration}
-            title={t('pdf:selection.generateQuestions')}
-            aria-label={t('pdf:selection.generateQuestions')}
-          >
-            <Exam size={16} />
-          </DsButton>
-          <DsButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            className="ds-btn ds-btn-sm"
-            onClick={openSelectionCardGeneration}
-            title={t('pdf:selection.makeCards')}
-            aria-label={t('pdf:selection.makeCards')}
-          >
-            <Cards size={16} />
           </DsButton>
           <DsButton
             variant="ghost"
@@ -3490,26 +3347,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           >
             <X size={16} />
           </DsButton>
-        </div>
-      )}
-
-      {/* 划词翻译卡片：viewer 内底部浮层，复用聊天划词的 TranslationPopover
-          （自动检测语向 + 上下文消歧 + 流式对照/纯译文） */}
-      {selectionTranslation && (
-        <div
-          className="ds-pdf__translation-panel"
-          role="complementary"
-          aria-label={t('pdf:toolbar.translate_selection')}
-        >
-          <React.Suspense fallback={null}>
-            <SelectionTranslationPopover
-              sourceText={selectionTranslation.text}
-              isVisible
-              contextBefore={selectionTranslation.contextBefore}
-              contextAfter={selectionTranslation.contextAfter}
-              onClose={closeSelectionTranslation}
-            />
-          </React.Suspense>
         </div>
       )}
 

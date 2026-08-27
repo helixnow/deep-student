@@ -1317,13 +1317,30 @@ where
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        // R4 #3：GLM/Qwen 协议包装 token 过滤，与 chat 主链路
+        // （ChatV2LLMAdapter.wrap_token_filter）同源同策略。本函数是作文批改
+        // 唯一的流式内容出口：chunk 既发前端展示（emit_data）又累积供
+        // <score> 等标签解析，泄漏的 <|im_start|> 类 token 两侧都会污染，
+        // 故在源头过滤。非 GLM/Qwen 路由 policy 为 Disabled，恒等直通。
+        let mut wrap_filter = crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::for_provider_model(
+                config.provider_type.as_deref(),
+                config.provider_scope.as_deref(),
+                &config.model,
+            ),
+        );
         let mut handle_sse_block = |block: &str| -> bool {
             if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(block) {
                 return true;
             }
             for event in adapter.parse_stream(block) {
                 match event {
-                    crate::providers::StreamEvent::ContentChunk(content) => on_chunk(content),
+                    crate::providers::StreamEvent::ContentChunk(content) => {
+                        let filtered = wrap_filter.process(&content);
+                        if !filtered.is_empty() {
+                            on_chunk(filtered);
+                        }
+                    }
                     crate::providers::StreamEvent::Done => return true,
                     _ => {}
                 }
@@ -1402,6 +1419,14 @@ where
                     break;
                 }
             }
+        }
+
+        // 结束态冲刷：释放过滤器暂扣的尾部（不完整 token 前缀 / 行首候选），
+        // 粘在流尾的 close token 按停符失败伪影剥除（与 chat 主链路 flush 一致）。
+        // Incomplete 也冲刷：含 </score> 的部分结果会按完成处理并落库。
+        let wrap_tail = wrap_filter.flush();
+        if !wrap_tail.is_empty() {
+            on_chunk(wrap_tail);
         }
 
         // ★ M-064: 区分正常完成和流意外中断

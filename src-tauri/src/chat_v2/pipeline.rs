@@ -88,6 +88,21 @@ mod parallel_exec_tests;
 pub mod persistence;
 #[cfg(test)]
 mod prefix_snapshot_tests;
+#[cfg(test)]
+mod prefix_generation_fork_tests;
+#[cfg(test)]
+mod prefix_generation_restore_tests;
+#[cfg(test)]
+mod llm_content_crash_tests;
+#[cfg(test)]
+mod skill_replay_digest_tests;
+#[cfg(test)]
+mod prefix_generation_fork_finale_tests;
+#[cfg(test)]
+mod skill_replay_edit_delete_tests;
+#[cfg(test)]
+mod llm_content_retry_gap_tests;
+pub(crate) mod stream_filter_core;
 pub mod prompt;
 pub mod retrieval;
 pub mod summary;
@@ -180,16 +195,21 @@ pub struct ChatV2Pipeline {
     /// `eligible_user_turns`（load/store 见 helpers.rs），不再按当前历史
     /// 跳变到 `U - K`。
     microcompact_anchors: Arc<Mutex<HashMap<String, MicrocompactAnchor>>>,
-    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → append-only 首见序
-    /// 工具名基线。同一 session 内已发出的 tools 相对顺序跨轮（跨
-    /// execute_with_tools 调用）保持，新工具只追加末尾 —— 禁止下一稳定
-    /// 窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会从第 0 字节变化，
-    /// 整段 prompt cache 失效）。所有 Pipeline clone 共享；这里是热路径
-    /// 读缓存，真身持久化在 session.metadata（`frozenToolSchemaOrder`）：
+    /// 🆕 P0 tools 会话冻结（会话级状态）：session_id → 权威工具面基线
+    /// `ToolFaceBaseline { generation, order, schema_digest }`（P1 代际
+    /// 升级：值型从裸 `Vec<String>` 扩为带代号的快照，单锁不变）。
+    /// 同一 session 内已发出的 tools 相对顺序（`order`，append-only
+    /// 首见序）跨轮（跨 execute_with_tools 调用）保持，新工具只追加末尾
+    /// —— 禁止下一稳定窗口重建字母序（Anthropic/OpenAI 的 tools 前缀会
+    /// 从第 0 字节变化，整段 prompt cache 失效）。`generation` 仅在多变体
+    /// fan-out 收敛点检出真分叉时 +1（converge 见 helpers.rs），单变体
+    /// 纯扩展与 miss 回填永不 bump。所有 Pipeline clone 共享；这里是热
+    /// 路径读缓存，真身持久化在 session.metadata（`frozenToolSchemaOrder`
+    /// + `toolFacePrefixGeneration` + 可选 `toolSchemaDigest` 三键）：
     /// 桌面 App 重启后 provider 侧 prompt cache 仍可能存活，内存 miss 时
-    /// 从 metadata 恢复同一前缀序（load/store 见 helpers.rs），不再按
-    /// 字母序冷重建。
-    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    /// 从 metadata 恢复同一前缀序与代号（load/store/converge 见
+    /// helpers.rs），不再按字母序冷重建。
+    frozen_tool_schema_orders: Arc<Mutex<HashMap<String, helpers::ToolFaceBaseline>>>,
     /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
     memory_flush_recovery_running: Arc<AtomicBool>,
     /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
@@ -975,6 +995,18 @@ impl ChatV2Pipeline {
         tokio::select! {
             result = self.compile_frozen_context(ctx) => result?,
             _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
+
+        // 阶段 4.6：R3-#1 llm_content 前移 —— 编译已冻结、用户块行已 INSERT
+        // （阶段 5 execute_with_tools 发起首个 provider 请求之前），轻量补写
+        // user CONTENT 块 llm_content sidecar，消除「已发 provider、sidecar
+        // 未保存」的崩溃窗口。失败只 warn 不阻断发送。
+        if let Err(e) = self.persist_user_llm_content_early(ctx).await {
+            log::warn!(
+                "[ChatV2::pipeline] persist_user_llm_content_early failed (non-fatal, later save points may retry when the target block exists): session={}, err={}",
+                ctx.session_id,
+                e
+            );
         }
 
         // 阶段 5：调用 LLM（带工具递归）

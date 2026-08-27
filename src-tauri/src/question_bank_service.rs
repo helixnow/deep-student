@@ -43,6 +43,54 @@ pub struct SubmitAnswerResult {
     pub updated_stats: QuestionBankStats,
     /// 本次作答记录的 ID（用于关联 AI 评判）
     pub submission_id: String,
+    /// 当日权威练习进度（口径同 DailyPracticeResult.completed_count/correct_count：
+    /// 按题去重、当天任一次答对即计 correct）。提交/改判后由后端重算返回，
+    /// 前端应以此回写本地乐观计数。
+    ///
+    /// serde 兼容：新前端读不到时按 None 处理（`default`）；None 时不序列化
+    /// （`skip_serializing_if`），旧前端反序列化不受影响；计算失败不阻塞答题主流程。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daily_progress: Option<DailyProgressSnapshot>,
+}
+
+/// 当日练习进度快照（submit_answer / regrade_submission 返回给前端的权威口径）。
+///
+/// 数据来源为 `query_daily_progress`（与 get_daily_practice / 打卡日历同口径）：
+/// answer_submissions 为主、存量无提交记录的题按 last_attempt_at 兜底，
+/// DATE(…, 'localtime') 对齐本地日界线。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyProgressSnapshot {
+    /// 日期（YYYY-MM-DD，本地时区）
+    pub date: String,
+    /// 题目集 ID
+    pub exam_id: String,
+    /// 今天已作答的题目 ID（按题去重）。前端 hydrate 首答去重集合时以此为准，
+    /// 本地只做乐观增量。
+    pub answered_question_ids: Vec<String>,
+    /// 已完成题数（= answered_question_ids.len()）
+    pub completed_count: u32,
+    /// 正确题数（当天该题任一次答对即计）
+    pub correct_count: u32,
+}
+
+/// `apply_submission_verdict_in_tx` 的落库产物。
+///
+/// 事务内只做"事实写入"；复习计划 / learner profile 回流属事务外副作用，
+/// 由调用方在 commit（或 RELEASE SAVEPOINT）之后按本结构的标记执行。
+#[derive(Debug)]
+pub(crate) struct VerdictApplyOutcome {
+    /// 本次是否发生写入。同向改判（旧判定 == 新判定）幂等短路时为 false，
+    /// 此时 mastery_state 为 None、needs_review_plan 为 false。
+    pub changed: bool,
+    /// 落库后的题目（幂等路径为当前值）
+    pub updated_question: Question,
+    /// 落库后的题目集统计
+    pub updated_stats: QuestionBankStats,
+    /// 事务提交后需回流 sync_learner_profile 的掌握度状态。
+    /// 仅 changed 时为 Some；调用失败会随事务一起回滚。
+    pub mastery_state: Option<crate::mastery::MasteryState>,
+    /// 事务提交后是否需要确保 SM-2 复习计划（判为"错"时为 true）
+    pub needs_review_plan: bool,
 }
 
 /// 批量操作结果
@@ -497,6 +545,7 @@ impl QuestionBankService {
                     Some(false) => "回答错误".to_string(),
                 };
 
+                let daily_progress = self.build_daily_progress_snapshot(&question.exam_id);
                 return Ok(SubmitAnswerResult {
                     is_correct,
                     correct_answer: question.answer.clone(),
@@ -505,6 +554,7 @@ impl QuestionBankService {
                     updated_question,
                     updated_stats,
                     submission_id: existing_submission.id,
+                    daily_progress,
                 });
             }
         }
@@ -647,6 +697,8 @@ impl QuestionBankService {
             question_id, is_correct, submission_id
         );
 
+        let daily_progress = self.build_daily_progress_snapshot(&question.exam_id);
+
         Ok(SubmitAnswerResult {
             is_correct,
             correct_answer: question.answer,
@@ -655,6 +707,7 @@ impl QuestionBankService {
             updated_question,
             updated_stats,
             submission_id,
+            daily_progress,
         })
     }
 
@@ -699,68 +752,108 @@ impl QuestionBankService {
         self.regrade_submission_in_tx(tx, question, latest, is_correct)
     }
 
-    /// 改判落库主体（submit_answer 待判定去重分支与 regrade_submission 共用）。
+    /// 判分/改判统一原语：把"某条既有 submission 的判定变化"原子落库。
+    /// 自动判分待判定去重分支（submit_answer）、人工改判（regrade_submission）
+    /// 与 AI 判分管线（qbank_grading/pipeline.rs 的 persist 段）共用。
     ///
-    /// 语义与 AI 评判管线（qbank_grading/pipeline.rs 的 persist 段）保持一致：
+    /// # 语义（与历史 regrade 口径一致）
     /// - 更新既有 submission 的 is_correct/grading_method，不新插记录；
-    /// - 题目侧不重复递增 attempt_count；correct_count 按前后判定差值增减
-    ///   （未判定→对 +1，对→错 -1，错→对 +1，其余不变）；
-    /// - 状态转换与 submit_answer_with_conn 同口径（错→review，correct_count>=2→mastered）；
-    /// - 同事务内补记 mastery 事件（以 submission_id 为幂等键；换判时该键已存在，
-    ///   事件不会重复插入，但也不回改首判信号——掌握度按事件流只增不改）；
-    /// - 提交后：改判为"错"时确保存在 SM-2 复习计划（与自动判分路径的 I1 修复对称）。
-    fn regrade_submission_in_tx(
+    ///   同时推进该行的 RowSync 列：`updated_at = now`、
+    ///   `local_version = COALESCE(local_version, 0) + 1`（V20260523 已建列，
+    ///   行级 LWW 依赖它们判新旧）；
+    /// - 题目侧不重复递增 attempt_count；correct_count 按 **本 submission 的旧
+    ///   is_correct** 与新判定的差值增减：NULL→true +1、false→true +1、
+    ///   true→false -1（MAX(0,·) 防负）、其余 0；
+    /// - 同向改判（旧判定 == 新判定）幂等短路：不产生任何写入，返回
+    ///   `changed = false`；
+    /// - 状态转换与 submit_answer_with_conn 同一 CASE 口径
+    ///   （错→review，correct_count>=2→mastered，否则 in_progress）；
+    /// - 调 mark_as_modified / update_content_hash（S-030 同步口径）；
+    /// - 同事务内补记 mastery 事件：首判（submission.is_correct IS NULL）走
+    ///   record_qbank_answer_with_conn（幂等键 `me_qbank_{sid}`）；换判
+    ///   （Some(old) != new）走 record_qbank_verdict_correction_with_conn
+    ///   （tombstone 旧信号 + 追加修订事件 `me_qbank_{sid}_r{n}`），信号不再被
+    ///   ON CONFLICT DO NOTHING 锁死在首判方向；同向重放在本函数入口即幂等短路，
+    ///   不产生任何 mastery 写入；
+    /// - 事务内不做副作用：SM-2 复习计划与 learner profile 回流由调用方在
+    ///   commit / RELEASE 之后按返回的 `needs_review_plan` / `mastery_state` 执行。
+    ///
+    /// # 连接形态（pipeline 接入方式）
+    /// `conn` 收 `&rusqlite::Connection`：
+    /// - `Transaction` 经 Deref 直接传 `&tx`（本文件两条调用路径）；
+    /// - pipeline.rs 用的是裸 Connection + 手工 SAVEPOINT（qbank_grading_persist），
+    ///   在 SAVEPOINT 内直接传 `&conn` 即可，无需 with_conn 变体。
+    ///   pipeline 侧调用：`QuestionBankService::new(Arc::clone(&deps.vfs_db))
+    ///   .apply_submission_verdict_in_tx(&conn, &question, &submission, v.is_correct(), "ai", &now)`，
+    ///   替换其 ②③ 段手写 SQL（借此修复 false→true 不 +1、true→false 不 -1
+    ///   以及 AI 路不写 mastery 事件的分叉）。
+    pub(crate) fn apply_submission_verdict_in_tx(
         &self,
-        tx: rusqlite::Transaction<'_>,
-        question: Question,
-        submission: AnswerSubmission,
-        is_correct: bool,
-    ) -> Result<SubmitAnswerResult, AppError> {
-        let question_id = question.id.clone();
+        conn: &rusqlite::Connection,
+        question: &Question,
+        submission: &AnswerSubmission,
+        new_is_correct: bool,
+        grading_method: &str,
+        now_rfc3339: &str,
+    ) -> Result<VerdictApplyOutcome, AppError> {
+        let question_id = question.id.as_str();
 
-        // 同向改判幂等短路：连点两次"我答对了"不产生任何写入
-        if submission.is_correct == Some(is_correct) {
-            let updated_question = VfsQuestionRepo::get_question_with_conn(&tx, &question_id)
+        // 同向改判幂等短路：连点两次"我答对了"/重放同一 AI verdict 不产生任何写入
+        if submission.is_correct == Some(new_is_correct) {
+            let updated_question = VfsQuestionRepo::get_question_with_conn(conn, question_id)
                 .map_err(|e| AppError::database(e.to_string()))?
                 .ok_or_else(|| {
                     AppError::not_found(format!("Question not found: {}", question_id))
                 })?;
-            let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+            let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(conn, &question.exam_id)
                 .map_err(|e| AppError::database(e.to_string()))?;
-            tx.commit().map_err(|e| AppError::database(e.to_string()))?;
-            return Ok(SubmitAnswerResult {
-                is_correct: Some(is_correct),
-                correct_answer: question.answer,
-                needs_manual_grading: false,
-                message: if is_correct {
-                    "回答正确！".to_string()
-                } else {
-                    "回答错误".to_string()
-                },
+            return Ok(VerdictApplyOutcome {
+                changed: false,
                 updated_question,
                 updated_stats,
-                submission_id: submission.id,
+                mastery_state: None,
+                needs_review_plan: false,
             });
         }
 
-        let now = chrono::Utc::now().to_rfc3339();
-        let is_correct_val: i32 = if is_correct { 1 } else { 0 };
-        // correct_count 差值：未判定/错 → 对 +1；对 → 错 -1；其余不变
-        let correct_delta: i64 = match (submission.is_correct, is_correct) {
+        let is_correct_val: i32 = if new_is_correct { 1 } else { 0 };
+        // correct_count 差值以"本 submission 的旧 is_correct"为基准（而非题目级旧值，
+        // 避免评判期间用户又提交新答案时增量方向错乱）：
+        // 未判定/错 → 对 +1；对 → 错 -1；其余不变
+        let correct_delta: i64 = match (submission.is_correct, new_is_correct) {
             (Some(true), false) => -1,
             (None, true) | (Some(false), true) => 1,
             _ => 0,
         };
 
-        tx.execute(
-            "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'manual' \
-             WHERE id = ?2 AND question_id = ?3",
-            rusqlite::params![is_correct_val, submission.id, question_id],
-        )
-        .map_err(|e| AppError::database(e.to_string()))?;
+        // 严格绑定 submission_id + question_id，防止串题写入（与 pipeline 口径一致）。
+        // RowSync：推进 updated_at/local_version，行级 LWW 才能识别本次改判为更新。
+        let submission_updated = conn
+            .execute(
+                "UPDATE answer_submissions SET \
+                     is_correct = ?1, \
+                     grading_method = ?2, \
+                     updated_at = ?3, \
+                     local_version = COALESCE(local_version, 0) + 1 \
+                 WHERE id = ?4 AND question_id = ?5",
+                rusqlite::params![
+                    is_correct_val,
+                    grading_method,
+                    now_rfc3339,
+                    submission.id,
+                    question_id
+                ],
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+        if submission_updated == 0 {
+            return Err(AppError::not_found(format!(
+                "作答记录不存在或不属于该题目: {}",
+                submission.id
+            )));
+        }
 
         // 状态转换与 submit_answer_with_conn / pipeline.rs 保持同一 CASE 口径。
-        tx.execute(
+        conn.execute(
             r#"
             UPDATE questions SET
                 is_correct = ?1,
@@ -773,43 +866,87 @@ impl QuestionBankService {
                 updated_at = ?2
             WHERE id = ?3 AND deleted_at IS NULL
             "#,
-            rusqlite::params![is_correct_val, now, question_id, correct_delta],
+            rusqlite::params![is_correct_val, now_rfc3339, question_id, correct_delta],
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
         // S-030 口径：改判修改了 is_correct/status，需标记同步并重算内容哈希
         crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
-            &tx,
-            &question_id,
+            conn,
+            question_id,
         )
         .map_err(|e| AppError::database(e.to_string()))?;
         crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
-            &tx,
-            &question_id,
+            conn,
+            question_id,
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
-        // 首次判定补记 mastery 事件（submission_id 为幂等键）；换判时该键已存在，
-        // ON CONFLICT DO NOTHING 保证不重复计数
-        let mastery_state = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
-            .record_qbank_answer_with_conn(
-                &tx,
+        // mastery 事件分路（同向重放已在函数入口幂等短路，走不到这里）：
+        // - 首次判定（旧 is_correct IS NULL）：record_qbank_answer_with_conn，
+        //   幂等键 me_qbank_{sid} 保证首判恰好一次；
+        // - 换判（Some(old) != new）：record_qbank_verdict_correction_with_conn，
+        //   tombstone 旧信号并追加修订事件 me_qbank_{sid}_r{n}——不能再走
+        //   record 路，否则 ON CONFLICT DO NOTHING 会把信号锁死在首判方向。
+        let mastery = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db));
+        let mastery_state = match submission.is_correct {
+            None => mastery.record_qbank_answer_with_conn(
+                conn,
                 &submission.id,
-                &question_id,
+                question_id,
                 &question.tags,
-                is_correct,
-            )?;
+                new_is_correct,
+            )?,
+            Some(_) => mastery.record_qbank_verdict_correction_with_conn(
+                conn,
+                &submission.id,
+                question_id,
+                &question.tags,
+                new_is_correct,
+            )?,
+        };
 
-        let updated_question = VfsQuestionRepo::get_question_with_conn(&tx, &question_id)
+        let updated_question = VfsQuestionRepo::get_question_with_conn(conn, question_id)
             .map_err(|e| AppError::database(e.to_string()))?
             .ok_or_else(|| AppError::not_found(format!("Question not found: {}", question_id)))?;
-        let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+        let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(conn, &question.exam_id)
             .map_err(|e| AppError::database(e.to_string()))?;
+
+        Ok(VerdictApplyOutcome {
+            changed: true,
+            updated_question,
+            updated_stats,
+            mastery_state: Some(mastery_state),
+            needs_review_plan: !new_is_correct,
+        })
+    }
+
+    /// 改判落库外壳（submit_answer 待判定去重分支与 regrade_submission 共用）：
+    /// 调 apply_submission_verdict_in_tx（grading_method='manual'）后提交事务，
+    /// 再执行事务外副作用（SM-2 复习计划、learner profile 回流、当日进度快照）。
+    fn regrade_submission_in_tx(
+        &self,
+        tx: rusqlite::Transaction<'_>,
+        question: Question,
+        submission: AnswerSubmission,
+        is_correct: bool,
+    ) -> Result<SubmitAnswerResult, AppError> {
+        let question_id = question.id.clone();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let outcome = self.apply_submission_verdict_in_tx(
+            &tx,
+            &question,
+            &submission,
+            is_correct,
+            "manual",
+            &now,
+        )?;
 
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         // 改判为"错"时接通 SM-2 闭环（失败不阻塞，与 submit_answer 主路径一致）
-        if !is_correct {
+        if outcome.needs_review_plan {
             let review_service =
                 crate::review_plan_service::ReviewPlanService::new(Arc::clone(&self.vfs_db));
             if let Err(e) = review_service.get_or_create_plan(&question_id, &question.exam_id) {
@@ -820,18 +957,24 @@ impl QuestionBankService {
             }
         }
 
-        let mastery = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db));
-        if let Err(e) = mastery.sync_learner_profile(&mastery_state) {
-            warn!(
-                "[QuestionBankService] mastery profile reflux failed for question_id={}: {}",
-                question_id, e
+        if let Some(state) = outcome.mastery_state.as_ref() {
+            let mastery = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db));
+            if let Err(e) = mastery.sync_learner_profile(state) {
+                warn!(
+                    "[QuestionBankService] mastery profile reflux failed for question_id={}: {}",
+                    question_id, e
+                );
+            }
+        }
+
+        if outcome.changed {
+            info!(
+                "[QuestionBankService] Regraded submission id={} for question id={}, {:?} -> {}",
+                submission.id, question_id, submission.is_correct, is_correct
             );
         }
 
-        info!(
-            "[QuestionBankService] Regraded submission id={} for question id={}, {:?} -> {}",
-            submission.id, question_id, submission.is_correct, is_correct
-        );
+        let daily_progress = self.build_daily_progress_snapshot(&question.exam_id);
 
         Ok(SubmitAnswerResult {
             is_correct: Some(is_correct),
@@ -842,9 +985,10 @@ impl QuestionBankService {
             } else {
                 "回答错误".to_string()
             },
-            updated_question,
-            updated_stats,
+            updated_question: outcome.updated_question,
+            updated_stats: outcome.updated_stats,
             submission_id: submission.id,
+            daily_progress,
         })
     }
 
@@ -2715,6 +2859,30 @@ impl QuestionBankService {
         Ok((answered_ids, correct_count))
     }
 
+    /// 提交/改判后重算"今天"的权威进度快照（挂在 SubmitAnswerResult.daily_progress）。
+    ///
+    /// 必须在事务提交之后调用（query_daily_progress 会另取连接）。
+    /// 计算失败只降级为 None，不阻塞答题主流程。
+    fn build_daily_progress_snapshot(&self, exam_id: &str) -> Option<DailyProgressSnapshot> {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        match self.query_daily_progress(exam_id, &today) {
+            Ok((answered_ids, correct_count)) => Some(DailyProgressSnapshot {
+                date: today,
+                exam_id: exam_id.to_string(),
+                completed_count: answered_ids.len() as u32,
+                correct_count,
+                answered_question_ids: answered_ids,
+            }),
+            Err(e) => {
+                warn!(
+                    "[QuestionBankService] daily progress snapshot failed for exam_id={}: {}",
+                    exam_id, e
+                );
+                None
+            }
+        }
+    }
+
     /// 生成试卷
     ///
     /// # Arguments
@@ -4246,6 +4414,205 @@ mod tests {
             err.to_string().contains("最近一次提交"),
             "错误信息应说明只能改判最近一次提交，实际：{err}"
         );
+    }
+
+    /// R4 verdict 原语：直接驱动 apply_submission_verdict_in_tx，
+    /// 校验计数差值口径（NULL→true +1；true→false -1 且 MAX(0)；false→true +1）、
+    /// 同向幂等零写入，answer_submissions 的 RowSync 推进
+    /// （updated_at 落值、local_version 逐次 +1、幂等时不动），
+    /// 以及 mastery 分路：首判写 me_qbank_{sid}，换判走
+    /// record_qbank_verdict_correction_with_conn（tombstone 旧信号 +
+    /// 追加 me_qbank_{sid}_r{n} 修订事件），不再被 ON CONFLICT DO NOTHING
+    /// 锁死在首判方向。
+    #[test]
+    fn apply_submission_verdict_counts_and_rowsync() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (_exam_id, qids) = seed_exam_with_questions(&vfs_db, 1);
+        let qid = &qids[0];
+
+        // 造一条待判定提交（is_correct IS NULL）：清空参考答案后提交 → 需人工批改
+        {
+            let conn = vfs_db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE questions SET answer = NULL WHERE id = ?1",
+                params![qid],
+            )
+            .expect("clear answer");
+        }
+        let pending = qbank
+            .submit_answer(qid, "my essay", None, Some("av-1"))
+            .expect("pending submit");
+        assert_eq!(pending.is_correct, None, "前置：主观题提交待判定");
+
+        // 事务内取最新 submission + question，跑一次原语，返回 (outcome, 行级同步列)
+        let apply = |verdict: bool, method: &str| -> (VerdictApplyOutcome, Option<String>, i64) {
+            let mut conn = vfs_db.get_conn_safe().expect("conn");
+            let tx = conn.transaction().expect("tx");
+            let question = VfsQuestionRepo::get_question_with_conn(&tx, qid)
+                .expect("question")
+                .expect("question exists");
+            let submission = VfsQuestionRepo::get_submissions_with_conn(&tx, qid, 1)
+                .expect("submissions")
+                .into_iter()
+                .next()
+                .expect("latest submission");
+            let now = chrono::Utc::now().to_rfc3339();
+            let outcome = qbank
+                .apply_submission_verdict_in_tx(&tx, &question, &submission, verdict, method, &now)
+                .expect("apply verdict");
+            let (updated_at, local_version): (Option<String>, i64) = tx
+                .query_row(
+                    "SELECT updated_at, COALESCE(local_version, 0) FROM answer_submissions WHERE id = ?1",
+                    params![submission.id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("rowsync columns");
+            tx.commit().expect("commit");
+            (outcome, updated_at, local_version)
+        };
+
+        // 本 submission 的 mastery 事件链快照：
+        // (存活事件 (id, outcome) 按 id 升序, tombstone 数)。
+        // 前缀用 substr 精确匹配（与 mastery 侧口径一致），不吃 LIKE 通配符。
+        let sid = pending.submission_id.clone();
+        let mastery_chain = || -> (Vec<(String, String)>, i64) {
+            let conn = vfs_db.get_conn_safe().expect("conn");
+            let base_id = format!("me_qbank_{sid}");
+            let revision_prefix = format!("{base_id}_r");
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, outcome, deleted_at FROM mastery_events \
+                     WHERE id = ?1 OR substr(id, 1, length(?2)) = ?2 \
+                     ORDER BY id",
+                )
+                .expect("prepare mastery chain query");
+            let rows = stmt
+                .query_map(params![base_id, revision_prefix], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })
+                .expect("query mastery chain");
+            let mut live = Vec::new();
+            let mut tombstones = 0i64;
+            for row in rows {
+                let (id, outcome, deleted_at) = row.expect("chain row");
+                if deleted_at.is_some() {
+                    tombstones += 1;
+                } else {
+                    live.push((id, outcome));
+                }
+            }
+            (live, tombstones)
+        };
+
+        // NULL→true：+1，首判写 mastery，RowSync 落值（INSERT 时 updated_at=NULL/version=0）
+        let (o1, updated_at1, v1) = apply(true, "ai");
+        assert!(o1.changed);
+        assert_eq!(o1.updated_question.correct_count, 1, "NULL→true +1");
+        assert_eq!(o1.updated_question.is_correct, Some(true));
+        assert!(o1.mastery_state.is_some(), "首判应产出 mastery 状态");
+        assert!(!o1.needs_review_plan);
+        assert!(updated_at1.is_some(), "改判必须推进 updated_at");
+        assert_eq!(v1, 1, "local_version 0→1");
+        let (live, tombstones) = mastery_chain();
+        assert_eq!(
+            live,
+            vec![(format!("me_qbank_{sid}"), "correct".to_string())],
+            "首判恰好一条 base 事件"
+        );
+        assert_eq!(tombstones, 0);
+
+        // 同向幂等：零写入，计数与 RowSync 均不动
+        let (o2, updated_at2, v2) = apply(true, "manual");
+        assert!(!o2.changed, "同向改判应幂等短路");
+        assert_eq!(o2.updated_question.correct_count, 1);
+        assert!(o2.mastery_state.is_none());
+        assert_eq!(updated_at2, updated_at1, "幂等路径不得推进 updated_at");
+        assert_eq!(v2, 1, "幂等路径不得推进 local_version");
+
+        // true→false：-1（MAX(0) 防负），状态回 review，需建复习计划；
+        // mastery 走纠正路径——base 被 tombstone，存活信号变为 _r1 wrong，
+        // 而不是 DO NOTHING 之后仍停留在首判 correct
+        let (o3, updated_at3, v3) = apply(false, "manual");
+        assert!(o3.changed);
+        assert_eq!(o3.updated_question.correct_count, 0, "true→false -1");
+        assert_eq!(o3.updated_question.status, QuestionStatus::Review);
+        assert!(o3.needs_review_plan);
+        assert!(updated_at3.is_some());
+        assert_eq!(v3, 2, "local_version 1→2");
+        assert!(o3.mastery_state.is_some(), "换判纠正应产出 mastery 状态");
+        let (live, tombstones) = mastery_chain();
+        assert_eq!(
+            live,
+            vec![(format!("me_qbank_{sid}_r1"), "wrong".to_string())],
+            "换判必须 tombstone 首判并追加 _r1 修订事件（不得 DO NOTHING 锁死首判）"
+        );
+        assert_eq!(tombstones, 1, "首判 base 事件被软删");
+
+        // false→true：+1；纠正链继续推进到 _r2 correct
+        let (o4, _updated_at4, v4) = apply(true, "manual");
+        assert!(o4.changed);
+        assert_eq!(o4.updated_question.correct_count, 1, "false→true +1");
+        assert_eq!(v4, 3, "local_version 2→3");
+        let (live, tombstones) = mastery_chain();
+        assert_eq!(
+            live,
+            vec![(format!("me_qbank_{sid}_r2"), "correct".to_string())]
+        );
+        assert_eq!(tombstones, 2);
+
+        // 再来一次 true→false 后连续 true→false 幂等：correct_count 不会被减成负数
+        let (o5, _, _) = apply(false, "manual");
+        assert_eq!(o5.updated_question.correct_count, 0);
+        let (o6, _, v6) = apply(false, "manual");
+        assert!(!o6.changed);
+        assert_eq!(o6.updated_question.correct_count, 0, "MAX(0,·) 防负 + 幂等");
+        assert_eq!(v6, 4, "第 5 次是幂等短路，version 停在 4");
+        // 同向幂等不追加纠正：存活信号停在 _r3 wrong，链上无新事件
+        let (live, tombstones) = mastery_chain();
+        assert_eq!(
+            live,
+            vec![(format!("me_qbank_{sid}_r3"), "wrong".to_string())],
+            "同向幂等不得追加纠正事件"
+        );
+        assert_eq!(tombstones, 3);
+    }
+
+    /// R4：submit_answer / regrade_submission 返回当日权威进度快照，
+    /// 前端据此回写 completed/correct 计数（按题去重、任一次答对计 correct）。
+    #[test]
+    fn submit_and_regrade_return_daily_progress_snapshot() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let (exam_id, qids) = seed_exam_with_questions(&vfs_db, 2);
+
+        let first = qbank
+            .submit_answer(&qids[0], "x", Some(false), Some("dpv-1"))
+            .expect("submit wrong");
+        let dp = first.daily_progress.expect("daily_progress attached");
+        assert_eq!(dp.exam_id, exam_id);
+        assert_eq!(dp.completed_count, 1);
+        assert_eq!(dp.correct_count, 0);
+        assert_eq!(dp.answered_question_ids, vec![qids[0].clone()]);
+
+        // 改判 错→对：快照跟随权威口径（当天任一次答对即计 correct）
+        let regraded = qbank
+            .regrade_submission(&qids[0], &first.submission_id, true)
+            .expect("regrade to correct");
+        let dp = regraded.daily_progress.expect("daily_progress attached");
+        assert_eq!(dp.completed_count, 1, "改判不新增作答，题数不变");
+        assert_eq!(dp.correct_count, 1, "错→对后 correct 回写为 1");
+
+        // 第二题答对：按题去重累计
+        let second = qbank
+            .submit_answer(&qids[1], "2", Some(true), Some("dpv-2"))
+            .expect("submit correct");
+        let dp = second.daily_progress.expect("daily_progress attached");
+        assert_eq!(dp.completed_count, 2);
+        assert_eq!(dp.correct_count, 2);
+        assert_eq!(dp.answered_question_ids.len(), 2);
     }
 
     /// M-5：题型切换后旧 structured_data 的清空规则

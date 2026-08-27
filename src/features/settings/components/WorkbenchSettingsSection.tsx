@@ -46,6 +46,10 @@ import {
 import { OPEN_WALLPAPER_MANAGER_EVENT } from '@/features/workbench/components/WallpaperManagerDialog';
 import { importWallpaperToLibrary } from './wallpaperLibrary';
 import { resolveWorkbenchModeEnabled } from './workbenchMode';
+import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
+// 接缝三 handoff（r5 边界审阅接线）：与 workbenchMode.persistWorkbenchModeEnabled
+// 同一调用点契约——持久化成功后、setEnabled(false)/mode-changed 之前交接焦点窗。
+import { handoffWorkbenchToLegacyShell } from '@/features/workbench/core/legacyNavigationMap';
 import { isWorkbenchDiagnosticsRequested } from '@/features/workbench/core/workbenchDiagnosticsGate';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
@@ -291,13 +295,36 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
   const handleModeChange = useCallback(
     async (enabled: boolean) => {
+      if (!enabled) {
+        // 停用必须先走共享停用事务（脏窗口确认等）；在事务 ok 之前
+        // 不做任何副作用：不 setMode(false)、不 persist、不动 bus、不派发事件。
+        // 取消路径的用户提示由事务内部统一发出（避免双 toast）；这里只在
+        // 事务 promise 意外 reject（事务内部无提示）时兜底通知。
+        let precheckOk = false;
+        try {
+          precheckOk = (await runWorkbenchDeactivationTransaction('mode-off')).ok;
+        } catch {
+          showGlobalNotification('info', t('workbench:deactivation.cancelled'));
+        }
+        // UI 从未离开 true，无需回滚。
+        if (!precheckOk) return;
+      }
       setMode(enabled);
       const ok = await persist(WORKBENCH_SETTING_KEYS.mode, String(enabled), enabled);
       if (!ok) {
         setMode(!enabled);
         return;
       }
-      if (!enabled) await closeBrowserForDisabledGate();
+      if (!enabled) {
+        // 焦点上下文交接：窗口尚未卸载（卸壳由下方 mode-changed 触发），
+        // 采集完整；交接失败绝不阻塞停用本身。
+        try {
+          handoffWorkbenchToLegacyShell();
+        } catch (error) {
+          console.warn('[workbench-settings] focus handoff failed:', getErrorMessage(error));
+        }
+        await closeBrowserForDisabledGate();
+      }
       workbenchBus.setEnabled(enabled);
       try {
         dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });
@@ -305,7 +332,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         // noop
       }
     },
-    [persist],
+    [persist, t],
   );
 
   const applyMaterialTier = useCallback(
@@ -734,12 +761,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         description={t('workbench:settings.shortcuts.desc')}
       >
         <div className="w-full min-w-0 lg:max-w-[560px]">
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             aria-expanded={shortcutsOpen}
             aria-controls="workbench-shortcuts-list"
             onClick={() => setShortcutsOpen((prev) => !prev)}
-            className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+            className="justify-start gap-1.5 px-1 font-normal"
           >
             <span
               aria-hidden="true"
@@ -750,7 +778,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             {shortcutsOpen
               ? t('workbench:settings.shortcuts.hide')
               : t('workbench:settings.shortcuts.show', { count: workbenchShortcuts.length })}
-          </button>
+          </DsButton>
           {shortcutsOpen && (
             <ul
               id="workbench-shortcuts-list"
@@ -954,15 +982,16 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       </SettingRow>
 
       <div className="px-1">
-        <button
-          type="button"
+        <DsButton
+          variant="ghost"
+          size="sm"
           aria-expanded={browserAdvancedOpen}
           disabled={browserControlsDisabled}
           onClick={() => {
             if (browserControlsDisabled) return;
             setBrowserAdvancedOpen((prev) => !prev);
           }}
-          className="flex items-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="justify-start gap-1.5 px-1 font-normal"
         >
           <span
             aria-hidden="true"
@@ -971,7 +1000,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             ▸
           </span>
           {t('workbench:settings.browserAdvanced')}
-        </button>
+        </DsButton>
         {browserAdvancedOpen && !browserControlsDisabled && (
           <SwitchRow
             title={t('workbench:settings.browserCdpWindows.title')}

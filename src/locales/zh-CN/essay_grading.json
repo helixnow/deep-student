@@ -17,8 +17,7 @@
     "copied": "已复制到剪贴板",
     "copied_feedback": "已复制",
     "exported": "批改结果已导出",
-    "save_as_note": "存为笔记",
-    "saved_as_note": "已存为笔记，可在笔记应用中查看"
+    "save_as_note": "存为笔记"
   },
   "result_empty": {
     "title": "等待批改",

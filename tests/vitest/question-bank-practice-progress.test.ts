@@ -2,7 +2,8 @@
  * 练习会话进度回写（2026-08 修复回归）：
  * - recordPracticeAnswer 是 timedSession / dailyPractice 全局会话对象的唯一
  *   真实写入方（真实答题走 useQuestionBankSession，之前这两个对象恒为 0 进度）。
- * - 会话内每题只计首答；跨题目集 / 非会话题目是空操作。
+ * - 会话内每题 answered/completed 只计首答；correct 按最近判定差量修正
+ *   （改判/重答可减）；跨题目集 / 非会话题目是空操作。
  * - 每日目标按题目集持久化（localStorage），重开恢复。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -117,7 +118,7 @@ describe('questionBankStore.recordPracticeAnswer', () => {
     useQuestionBankStore.setState({ timedSession: null, dailyPractice: null });
   });
 
-  it('increments timed session progress once per question (first answer wins)', () => {
+  it('increments timed session progress once per question (answered first-wins; correct tracks latest verdict)', () => {
     seedTimedSession();
     const record = useQuestionBankStore.getState().recordPracticeAnswer;
 
@@ -126,17 +127,23 @@ describe('questionBankStore.recordPracticeAnswer', () => {
     expect(timed.answered_count).toBe(1);
     expect(timed.correct_count).toBe(1);
 
-    // 同题重复作答不再累计（幂等）
-    record('exam-1', 'q-1', false);
+    // 同判定重复上报是空操作（answered / correct 都不累计）
+    record('exam-1', 'q-1', true);
     timed = useQuestionBankStore.getState().timedSession!;
     expect(timed.answered_count).toBe(1);
     expect(timed.correct_count).toBe(1);
+
+    // 改判/重答：answered 仍只计首答；correct 按 true→false 差量回收
+    record('exam-1', 'q-1', false);
+    timed = useQuestionBankStore.getState().timedSession!;
+    expect(timed.answered_count).toBe(1);
+    expect(timed.correct_count).toBe(0);
 
     // 待人工批改（isCorrect=null）计入已答但不计正确
     record('exam-1', 'q-2', null);
     timed = useQuestionBankStore.getState().timedSession!;
     expect(timed.answered_count).toBe(2);
-    expect(timed.correct_count).toBe(1);
+    expect(timed.correct_count).toBe(0);
   });
 
   it('ignores answers outside the session (other exam, non-member question, finished session)', () => {

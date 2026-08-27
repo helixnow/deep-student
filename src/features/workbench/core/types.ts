@@ -465,6 +465,22 @@ export interface AppDefinition {
   /** 关闭拦截（未保存提示）；返回 false 阻止关闭。缺省 = 直接关 */
   canClose?: (instanceKey: string | null) => boolean | Promise<boolean>;
   /**
+   * suspend 契约（2026-08 Wave2 扩展，新增可选字段）：
+   * 调度器把 background 窗降为 frozen（卸载 React 子树）前询问本回调；
+   * 返回 false = 本窗当前不可冻（典型：有未保存编辑，冻结会丢内存态）。
+   *
+   * 约定：调度器热路径【不 await】——dirty 类查询必须同步返回 boolean
+   * （isContentDirty / isWindowDirty 均为同步）；返回 Promise 时热路径
+   * 视为「可冻」，异步结果仅供非热路径调用方参考。缺省 = 总是可冻。
+   */
+  canSuspend?: (instanceKey: string | null) => boolean | Promise<boolean>;
+  /**
+   * 可选的冻结前保存挂点：返回 true 表示已保存、随后可安全冻结。
+   * 仅供非热路径在「窗口脏但有保存能力、且调用方明确要冻」时使用；
+   * 调度器本身绝不自动调用（默认策略：脏窗保持 background，永不 frozen）。
+   */
+  prepareSuspend?: (instanceKey: string | null) => boolean | Promise<boolean>;
+  /**
    * Ctrl+W is normally owned by the workbench window manager. Tabbed apps can
    * opt in to receive it themselves, for example to close their active tab.
    */

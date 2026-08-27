@@ -140,9 +140,34 @@ export interface QuestionBankStats {
   mastered_count: number;
   review_count: number;
   total_attempts: number;
+  /** 历史累计正确**尝试**数（不按题去重）；全库统计口径，勿与 daily 的按题去重「答对题数」混用。 */
   total_correct: number;
   correct_rate: number;
   updated_at: string;
+}
+
+/**
+ * 当日练习进度的权威快照（后端口径：按题去重 + 当日任一次答对即计对）。
+ * 对应 Rust 侧 question_bank_service::DailyProgressSnapshot，由
+ * submit/regrade 响应回带（`daily_progress`，serde snake_case）；
+ * 存在时用 applyAuthoritativeDailyProgress 覆盖本地乐观增量（权威优先）。
+ */
+export interface DailyProgressSnapshot {
+  /** 后端本地日界线的日期（YYYY-MM-DD）。与本地 dailyPractice.date 不一致时不覆盖。 */
+  date: string;
+  /** 题目集 ID。存在且与本地 dailyPractice.exam_id 不一致时不覆盖。 */
+  exam_id?: string;
+  /**
+   * 今天已作答的题目 ID（按题去重、全量）。存在时覆盖本地首答去重集合
+   * （本地只做乐观增量，以后端为准）。
+   */
+  answered_question_ids?: string[];
+  /** 当日已作答题数（按题去重）。 */
+  completed_count: number;
+  /** 当日答对题数（按题去重 + 任一次答对即计）。 */
+  correct_count: number;
+  /** 后端可直接判定；缺省时前端按 completed_count >= daily_target 推导。 */
+  is_completed?: boolean;
 }
 
 export interface SubmitAnswerResult {
@@ -155,6 +180,16 @@ export interface SubmitAnswerResult {
   updated_stats: QuestionBankStats;
   /** 本次作答记录 ID（用于关联 AI 评判） */
   submission_id: string;
+  /**
+   * 2026-08 R4 加法字段（可选）：后端在 submit/regrade 响应中回带的当日
+   * 权威 daily 进度（Rust 侧 `#[serde(default, skip_serializing_if)]`）。
+   * 存在时覆盖本地乐观增量（applyAuthoritativeDailyProgress）；旧后端
+   * 无此字段时为 undefined，行为不变。
+   * snake_case 为 serde 默认序列化名，camelCase 兼容未来可能的载荷形态。
+   */
+  daily_progress?: DailyProgressSnapshot;
+  /** 同 daily_progress，camelCase 兼容读。 */
+  dailyProgress?: DailyProgressSnapshot;
 }
 
 function generateClientRequestId(): string {
@@ -407,6 +442,13 @@ export interface TimedPracticeSession {
    * 进度永远显示 0。
    */
   answered_question_ids?: string[];
+  /**
+   * 本会话内每题的最近判定（前端补充字段，不回传后端）。
+   * 2026-08 R4 新增：作为改判/重答差量修正的基线——已答题再次上报时按
+   * 旧判定 → 新判定 更新 correct_count（可减）。已答但无基线的题
+   * （旧版会话残留）保持首答锁，等后端全量重算收敛。
+   */
+  answered_results?: Record<string, boolean | null>;
 }
 
 /** 模拟考试配置 */
@@ -480,7 +522,13 @@ export interface DailyPracticeResult {
   exam_id: string;
   question_ids: string[];
   daily_target: number;
+  /** 当日已作答**题**数（按题去重；后端权威，前端只做会话内乐观增量）。 */
   completed_count: number;
+  /**
+   * 当日答对**题**数（题目维度：按题去重 + 当日任一次答对即计对；后端权威）。
+   * 与 PracticeSessionProgress.totalCorrectCount（正确尝试数，尝试维度）
+   * 不是同一口径，勿混用。
+   */
   correct_count: number;
   source_distribution: DailySourceDistribution;
   is_completed: boolean;
@@ -490,6 +538,12 @@ export interface DailyPracticeResult {
    * 该列表只负责会话内实时增量的幂等。
    */
   answered_question_ids?: string[];
+  /**
+   * 本会话内每题的最近判定（前端补充字段，不回传后端）。
+   * 2026-08 R4 新增：改判/重答差量修正的基线，语义同
+   * TimedPracticeSession.answered_results。
+   */
+  answered_results?: Record<string, boolean | null>;
 }
 
 export type QbankPracticeHandoffMode = 'timed' | 'mock_exam' | 'daily';
@@ -803,6 +857,7 @@ export interface CheckInCalendar {
   year: number;
   month: number;
   days: DailyCheckIn[];
+  /** 连续打卡**天**数（天数维度，只看"当日有作答"），勿与「连对」（尝试维度）混淆。 */
   streak_days: number;
   month_check_in_days: number;
   month_total_questions: number;
@@ -826,8 +881,19 @@ export interface PracticeSessionOwner {
 export interface PracticeSessionProgress extends PracticeSessionOwner {
   /** 当前实例允许作答的题目，用于拒绝串入其他题库的题目。 */
   questionIds: string[];
-  /** 连续答对数（明确答错清零；主观题待判定不中断） */
+  /**
+   * 「连对」——连续答对的**尝试**数（尝试维度）：明确答错清零，主观题
+   * 待判定（null）不加也不中断；重做同题答对也续连。
+   * 勿与 CheckInCalendar.streak_days（连续打卡**天**数）混淆。
+   */
   streakCount: number;
+  /**
+   * 正确**尝试**数（尝试维度）：每次判对的提交都 +1，重做同题答对会计多次；
+   * 按题去重的是 answeredIds，两者维度不同——用本字段除以
+   * answeredIds.length 得到的"正确率"重做后可超 100%。
+   * 与 DailyPracticeResult.correct_count（答对**题**数，题目维度）不是同一
+   * 口径。改名/改语义（correctQuestionCount 方案）见 R1-07 §四，本轮只定名。
+   */
   totalCorrectCount: number;
   /** 真实作答过的题目 ID（"访问过"不计入，完成判定以此为准） */
   answeredIds: string[];
@@ -961,13 +1027,34 @@ interface QuestionBankState {
    * 练习会话进度回写：把一次真实作答同步进 timedSession / dailyPractice。
    * 真实答题路径是 useQuestionBankSession（窗口本地），这些全局会话对象
    * 没有其他写入方——不调用本方法练习进度会恒为 0。
-   * 会话内每题只计首答（answered_question_ids 幂等），跨题目集/非会话题目忽略。
+   * 计数规则（2026-08 R4）：
+   * - 首答：completed/answered +1，correct 按判定 +0/+1（answered_question_ids 幂等）；
+   * - 已答题再次上报（改判/重答）：completed 不重复计，correct 按
+   *   旧判定 → 新判定 差量修正（true→false 会 -1，null→true 会 +1）；
+   * - 已答但无判定基线（answered_results 缺项：旧版会话残留，或权威快照
+   *   覆盖 answered_question_ids 引入的会话外题目）：保持首答锁 fail-closed，
+   *   由 submit/regrade 响应的权威快照（applyAuthoritativeDailyProgress）
+   *   或下次 get_daily_practice 全量重算收敛；
+   * - 跨题目集 / 非会话题目忽略。
    */
   recordPracticeAnswer: (
     examId: string,
     questionId: string,
     isCorrect: boolean | null,
   ) => void;
+  /**
+   * 用后端权威 daily 进度覆盖本地乐观增量（权威优先）。
+   * 供 submit/regrade 响应回带 daily_progress/dailyProgress 时调用；
+   * 仅当 dailyPractice 存在、exam 匹配且日期一致时生效（跨零点的旧会话
+   * 不覆盖，避免"昨日题单 + 今日计数"杂交，等下次 getDailyPractice 换发）。
+   * 覆盖 completed_count / correct_count / is_completed，快照带
+   * answered_question_ids 时同步覆盖首答去重集合；不动 question_ids /
+   * answered_results / source_distribution。返回是否实际应用。
+   */
+  applyAuthoritativeDailyProgress: (
+    examId: string,
+    progress: DailyProgressSnapshot,
+  ) => boolean;
   
   /**
    * 做题会话的即时进度（连对 / 已作答集合），按 examId + viewInstanceId 分片。
@@ -1648,13 +1735,23 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             };
           });
           
-          // 练习会话进度同步（限时 + 每日一练），会话内每题只计首答
+          // 练习会话进度同步（限时 + 每日一练）：首答计数 + 改判差量修正
           get().recordPracticeAnswer(
             result.updated_question.exam_id,
             questionId,
             result.is_correct,
           );
-          
+
+          // 权威优先：后端若回带当日进度快照（R4 加法字段，旧后端无此字段
+          // 时为 undefined），用它覆盖上面的本地乐观 daily 增量；timed 不受影响。
+          const authoritativeDaily = result.daily_progress ?? result.dailyProgress;
+          if (authoritativeDaily) {
+            get().applyAuthoritativeDailyProgress(
+              result.updated_question.exam_id,
+              authoritativeDaily,
+            );
+          }
+
           return result;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] submitAnswer failed:', err);
@@ -1915,7 +2012,19 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       // submitAnswer 上，但真实答题路径是 useQuestionBankSession（本地 hook），
       // 该 action 无人调用 → 限时/每日面板进度恒为 0。现在由 ExamContentView
       // 的提交回调统一调用此方法。
+      //
+      // 2026-08 R4（修 R1-07 §三）：首答锁之外增加「已答题差量修正」——
+      // 改判/重答不再被当成重复作答吞掉，correct 按旧判定 → 新判定 差量
+      // 更新（可减）；completed/answered 仍只计首答。差量基线是
+      // answered_results（与 answered_question_ids 同步写入）；已答但缺
+      // 基线的题（旧版会话残留）方向不可知，保持首答锁 fail-closed。
       recordPracticeAnswer: (examId, questionId, isCorrect) => {
+        // 差量口径与后端一致：null（主观题待判定）计 0，与 false 同权重。
+        const correctDelta = (
+          previous: boolean | null | undefined,
+          next: boolean | null,
+        ): number => (next === true ? 1 : 0) - (previous === true ? 1 : 0);
+
         const timed = get().timedSession;
         if (
           timed
@@ -1925,13 +2034,26 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           && timed.question_ids.includes(questionId)
         ) {
           const answeredIds = timed.answered_question_ids ?? [];
+          const results = timed.answered_results ?? {};
           if (!answeredIds.includes(questionId)) {
             set({
               timedSession: {
                 ...timed,
                 answered_question_ids: [...answeredIds, questionId],
+                answered_results: { ...results, [questionId]: isCorrect },
                 answered_count: Math.min(timed.question_count, timed.answered_count + 1),
                 correct_count: timed.correct_count + (isCorrect === true ? 1 : 0),
+              },
+            });
+          } else if (questionId in results && results[questionId] !== isCorrect) {
+            set({
+              timedSession: {
+                ...timed,
+                answered_results: { ...results, [questionId]: isCorrect },
+                correct_count: Math.max(
+                  0,
+                  timed.correct_count + correctDelta(results[questionId], isCorrect),
+                ),
               },
             });
           }
@@ -1944,19 +2066,65 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           && daily.question_ids.includes(questionId)
         ) {
           const answeredIds = daily.answered_question_ids ?? [];
+          const results = daily.answered_results ?? {};
           if (!answeredIds.includes(questionId)) {
             const completed = daily.completed_count + 1;
             set({
               dailyPractice: {
                 ...daily,
                 answered_question_ids: [...answeredIds, questionId],
+                answered_results: { ...results, [questionId]: isCorrect },
                 completed_count: completed,
                 correct_count: daily.correct_count + (isCorrect === true ? 1 : 0),
                 is_completed: completed >= daily.daily_target,
               },
             });
+          } else if (questionId in results && results[questionId] !== isCorrect) {
+            // 改判/重答：completed 与 is_completed 不动（题数没变），
+            // correct 差量修正并下限 0（本地乐观值不为负）。
+            set({
+              dailyPractice: {
+                ...daily,
+                answered_results: { ...results, [questionId]: isCorrect },
+                correct_count: Math.max(
+                  0,
+                  daily.correct_count + correctDelta(results[questionId], isCorrect),
+                ),
+              },
+            });
           }
         }
+      },
+
+      applyAuthoritativeDailyProgress: (examId, progress) => {
+        const daily = get().dailyPractice;
+        if (!daily || daily.exam_id !== examId) return false;
+        if (progress.exam_id != null && progress.exam_id !== examId) return false;
+        // 跨零点：本地会话还是昨天的，覆盖会产生"昨日题单 + 今日计数"的
+        // 杂交对象；跳过，等下次 getDailyPractice 整体换发。
+        if (daily.date && progress.date && daily.date !== progress.date) return false;
+        const completed = practiceInteger(progress.completed_count, 0);
+        const correct = practiceInteger(progress.correct_count, 0);
+        if (completed == null || correct == null) return false;
+        // 首答去重集合以后端全量为准（answered_results 差量基线保留：
+        // 缺基线的题在 recordPracticeAnswer 里 fail-closed，不会算错方向）。
+        const answeredIds = Array.isArray(progress.answered_question_ids)
+          ? progress.answered_question_ids.filter(
+            (id): id is string => typeof id === 'string' && id.length > 0,
+          )
+          : null;
+        set({
+          dailyPractice: {
+            ...daily,
+            ...(answeredIds ? { answered_question_ids: answeredIds } : {}),
+            completed_count: completed,
+            correct_count: correct,
+            is_completed: typeof progress.is_completed === 'boolean'
+              ? progress.is_completed
+              : completed >= daily.daily_target,
+          },
+        });
+        return true;
       },
       hydratePracticeHandoff: (value, expectedExamId) => {
         const validated = validateQbankPracticeHandoff(value, expectedExamId);

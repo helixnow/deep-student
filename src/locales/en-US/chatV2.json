@@ -144,7 +144,8 @@
       "retryDeletingSubsequent": "{{count}} subsequent message(s) removed due to retry",
       "retryConfirmAction": "Retry anyway",
       "saveAsNote": "Save as Note",
-      "saveAsNoteSuccess": "Saved as note: {{title}}",
+      "saveAsNoteSuccessInFolder": "Saved as note: {{title}} (in the chosen folder)",
+      "saveAsNoteSuccessAtRoot": "Saved as note: {{title}} (in the library root)",
       "saveAsNoteFailed": "Failed to save note",
       "exportMarkdown": "Export as Markdown",
       "exportMarkdownSuccess": "Markdown file exported",
@@ -229,7 +230,6 @@
     "processingIndicatorPartial": "Some modes not ready",
     "completedMissingModes": "Completed ({{modes}} not ready)",
     "modesNotReady": "Not ready: {{modes}}",
-    "nonMultimodalImageFallback": "The current model does not support image input. {{count}} attachments were switched to text/OCR mode automatically. Switch to a multimodal model to re-enable image mode.",
     "uploadStage": {
       "reading": "Reading file",
       "uploading": "Uploading",
@@ -237,9 +237,6 @@
     },
     "modeSeparator": ", ",
     "runtimeModelSwitchCurrent": "{{label}}, current: {{current}}",
-    "thinkingEnabled": "Reasoning mode enabled",
-    "thinkingDisabled": "Click to enable reasoning mode",
-    "toggleThinking": "Toggle reasoning mode",
     "thinking": "Reasoning mode",
     "thinkingDepthMenu": "Choose reasoning depth",
     "thinkingDepthTitle": "Reasoning depth",
@@ -250,6 +247,7 @@
     "thinkingUnsupported": "Reasoning unsupported",
     "thinkingUnsupportedDescription": "This model does not support reasoning",
     "thinkingDepth": {
+      "minimal": "Minimal",
       "low": "Low",
       "medium": "Medium",
       "high": "High",
@@ -266,37 +264,6 @@
     "runtimeModelOtherProvider": "Other",
     "runtimeModelNoResults": "No matching models",
     "chooseRuntimeModel": "Choose model",
-    "thinkingDepthExpensive": "Slower",
-    "ankiTools": "Anki cards",
-    "menuGroup": {
-      "context": "Context",
-      "aiSettings": "AI settings",
-      "modes": "Modes",
-      "tools": "Tools"
-    },
-    "imageGen": {
-      "title": "Generate image",
-      "subtitle": "Generate through a built-in tool. Results are saved to VFS.",
-      "configureModel": "Set model",
-      "placeholder": "e.g. a photosynthesis concept diagram with sunlight, water, carbon dioxide, chloroplasts, and glucose clearly labeled",
-      "promptRequired": "Describe the image first",
-      "model": "Model",
-      "autoModel": "Auto select",
-      "openAICompatible": "OpenAI-compatible Image API",
-      "loadingModels": "Loading image models...",
-      "noModelTitle": "No image model configured",
-      "noModelDescription": "Mark and choose a model that supports /images/generations in model settings first.",
-      "aspectRatio": "Ratio",
-      "quality": "Quality",
-      "purposes": {
-        "knowledgeCard": "Knowledge card illustration",
-        "quizImage": "Question illustration",
-        "conceptDiagram": "Concept diagram",
-        "coverImage": "Cover image"
-      },
-      "generate": "Generate"
-    },
-    "nonMultimodalImageFallbackUnavailable": "The current model does not support image input, and {{count}} attachments are not ready for text/OCR mode yet. Switch to a multimodal model or wait for OCR to complete and try again.",
     "stage": {
       "textExtraction": "Extracting text",
       "pageRendering": "Rendering",
@@ -311,7 +278,6 @@
       "pdfProcessing": "Processing PDF",
       "imageProcessing": "Processing image"
     },
-    "toggleModelPanel": "Toggle model panel",
     "voiceInput": {
       "button": "Voice Input",
       "start": "Start voice input",
@@ -381,7 +347,6 @@
       "compactionSkipped": "Compaction skipped",
       "compactionFailed": "Compaction failed, try again"
     },
-    "pasteNotReady": "Initializing, please try again shortly",
     "retryStarted": "Processing restarted",
     "retryFailed": "Retry failed: {{error}}",
     "mediaProcessingFailed": "{{type}} processing failed",

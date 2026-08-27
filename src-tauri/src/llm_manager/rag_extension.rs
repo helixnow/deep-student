@@ -1392,7 +1392,23 @@ impl LLMManager {
                 None,
             )
             .await?;
-        let raw = result.assistant_message.trim();
+        // R4 #3：非流式出口的 GLM 泄漏清理。call_unified_model_2 内部经
+        // failover 可能换模型，调用点拿不到最终路由，无法按
+        // for_provider_model 门控；本出口为机器解析的严格 JSON（下方
+        // serde_json::from_str），泄漏的 <|begin_of_box|>{...}<|end_of_box|>
+        // 包装会直接解析失败，而合法 JSON 不存在被误删的 token 形态
+        // （行首独占 token 行 / 流首尾包装），故始终启用保守过滤。
+        // 对无泄漏输出过滤为恒等。
+        let cleaned = {
+            let mut filter =
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    crate::utils::model_special_tokens::ModelWrapTokenPolicy::GlmOrQwen,
+                );
+            let mut output = filter.process(&result.assistant_message);
+            output.push_str(&filter.flush());
+            output
+        };
+        let raw = cleaned.trim();
 
         // 🔍 调试：记录LLM原始返回
         debug!(

@@ -35,7 +35,9 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
+// P4 能力三分离：相机入口只看平台/捕获能力（不再复用 pointer 媒体查询）
+import { canCapturePhoto as detectCanCapturePhoto } from './inputBarCapabilities';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
@@ -49,7 +51,7 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
 // ★ 拆分后的子模块：textarea+IME / 底部工具栏 / 附件面板体 / 模式辅助 / 发送可用性
 import { ComposerTextarea } from './ComposerTextarea';
@@ -99,6 +101,19 @@ const INITIAL_PLACEHOLDER_HEIGHT = INPUT_BAR_CONFIG.heights.placeholder;
 const HEIGHT_CHANGE_THRESHOLD = INPUT_BAR_CONFIG.heights.changeThreshold;
 const IDLE_DELAY_MS = INPUT_BAR_CONFIG.delays.idle;
 const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
+
+/**
+ * owned-overlay 登记的 ownerId：Composer 面板打开期间，向 OverlayCoordinator
+ * 声明「AppMenu portal 浮层（[data-app-menu-id]）归 Composer 所有」。
+ * 外点关闭 / 焦点门控查询同一 id，见 isWithinComposerTerritory。
+ */
+const COMPOSER_OVERLAY_OWNER_ID = 'input-bar-composer';
+/**
+ * 登记用 selector：全库 AppMenu 内容/子菜单 portal 均带 data-app-menu-id
+ * （值为各菜单实例的 menuId，动态且多实例），Composer 内有多个 AppMenu
+ * （加号菜单/模型菜单等），故登记泛化属性 selector，与原 closest 判定范围一致。
+ */
+const COMPOSER_OWNED_OVERLAY_SELECTOR = '[data-app-menu-id]';
 
 /**
  * 调度 idle 回调的工具函数
@@ -277,7 +292,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   onRemovePdfPageRef,
   onClearPdfPageRefs,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
+  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -316,11 +331,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
-  // 🔧 A-6/P1-6 语义澄清（两个"移动端"判断有意分裂，勿合并）：
-  // - isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的唯一依据
-  //   （内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
-  // - isMobileEnv（pointer: coarse，见下方声明）：仅用于**设备能力**判断
-  //   （是否展示拍照入口等），窄窗口桌面端不该出现相机、宽屏触摸设备应保留相机。
+  // 🔧 A-6/P1-6 → R3 能力三分离（三个判定各答一个问题，勿合并）：
+  // - 布局 = isMobile（MobileLayoutContext，宽度断点驱动）：一切**布局**分支的
+  //   唯一依据（内联面板、底部安全区、44px 触控目标、tooltip 禁用等）。
+  // - 触摸 = any-pointer: coarse（inputBarCapabilities.TOUCH_CAPABILITY_MEDIA_QUERY）：
+  //   JS 侧如需触摸能力布尔统一走该查询；样式侧继续用 CSS 媒体查询类。
+  // - 相机 = canCapturePhoto（平台/捕获能力，见下方声明）：仅控制拍照入口，
+  //   窄窗口桌面端不该出现相机、Android/iOS 宽屏设备应保留相机。
   const isMobile = mobileLayout?.isMobile ?? false;
   // ⌨️ P0-2 键盘统一：订阅全局键盘 inset 单例（iOS overlay 检测 + Android
   // adjustResize 自动归零），不再自管 visualViewport 双轨逻辑
@@ -802,10 +819,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t]);
 
   // ========== 相机拍照处理 ==========
-  // A-6/P1-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
-  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态。
-  // 注意：isMobileEnv 只回答"设备能不能"（能力），布局分支一律用 isMobile（断点）。
-  const isMobileEnv = useMediaQuery('(pointer: coarse)');
+  // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或
+  // input capture 特性 + 移动壳兜底），不再复用 pointer 媒体查询——
+  // 触摸 ≠ 有摄像头（桌面触摸屏误报、外接键鼠的手机/平板漏报）。
+  // 平台检测在会话内不变，挂载时求值一次即可。
+  // 布局分支一律用 isMobile（断点）；触摸能力见 TOUCH_CAPABILITY_MEDIA_QUERY。
+  const canCapturePhoto = useMemo(() => detectCanCapturePhoto(), []);
 
   const handleCameraClick = useCallback(() => {
     if (cameraInputRef.current) {
@@ -1046,6 +1065,38 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
 
+  // 🔗 owned-overlay 归属：面板打开期间向 OverlayCoordinator 登记
+  // 「AppMenu portal 浮层归 Composer 所有」，供下方谓词按 ownerId 查询。
+  // 无 Provider 时 registerOwnedOverlay 为 noop、isOwnedOverlayTarget 恒 false
+  // （fallback 语义见 OverlayCoordinator.tsx），此时靠谓词里保留的 closest
+  // 兜底继续工作，行为与接线前一致。
+  const { registerOwnedOverlay, isOwnedOverlayTarget } = useOverlayCoordinator();
+  useEffect(() => {
+    if (!hasAnyPanelOpen) return;
+    return registerOwnedOverlay({
+      ownerId: COMPOSER_OVERLAY_OWNER_ID,
+      selector: COMPOSER_OWNED_OVERLAY_SELECTOR,
+    });
+  }, [hasAnyPanelOpen, registerOwnedOverlay]);
+
+  // 🔧 统一谓词：节点是否落在 Composer 领地内 = 输入壳 + 内联面板容器 + 桌面
+  // overlay + AppMenu portal。AppMenu 内容 portal 挂在 body 上（全库都带
+  // data-app-menu-id），三个 ref 的 contains 覆盖不到：第四条件走
+  // OverlayCoordinator 的归属查询（有 Provider 且面板打开时命中）；末条
+  // closest 保留为 fail-open 回退——无 Provider / 登记窗口外（面板刚关闭的
+  // 同一事件）时仍按旧行为兜住，两者判定范围一致，不会互相扩大。
+  // 焦点门控与外点关闭共用此判定，避免两套逻辑分叉。
+  const isWithinComposerTerritory = useCallback((node: Node | null): boolean => {
+    if (!node) return false;
+    return !!(
+      inputContainerRef.current?.contains(node)
+      || panelContainerRef.current?.contains(node)
+      || composerPanelOverlayRef.current?.contains(node)
+      || isOwnedOverlayTarget(COMPOSER_OVERLAY_OWNER_ID, node)
+      || (node instanceof Element && node.closest(COMPOSER_OWNED_OVERLAY_SELECTOR))
+    );
+  }, [isOwnedOverlayTarget]);
+
   // ⌨️ P0-2 焦点门控：追踪焦点是否落在 composer 区域内的任一可编辑元素上。
   // 判定范围放宽到输入壳 + 面板容器 + 桌面 overlay，保证在组合面板内的
   // 搜索框打字时 inset 不归零（旧实现要求 activeElement === textarea）。
@@ -1057,15 +1108,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
     const evaluate = () => {
       const active = document.activeElement;
-      const withinComposer = !!active && (
-        inputContainerRef.current?.contains(active)
-        || panelContainerRef.current?.contains(active)
-        || composerPanelOverlayRef.current?.contains(active)
-        // ★ M3 修复：AppMenu 内容 portal 在 body 上（加号菜单 / 推理菜单里的
-        // 模型搜索框），焦点落入其中时同样需要应用键盘 inset
-        || !!(active instanceof Element && active.closest('[data-app-menu-id]'))
-      );
-      setComposerEditableFocused(Boolean(withinComposer && isEditableElement(active)));
+      setComposerEditableFocused(isWithinComposerTerritory(active) && isEditableElement(active));
     };
 
     evaluate();
@@ -1080,7 +1123,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
     };
-  }, [isMobile, sessionSwitchKey]);
+  }, [isMobile, sessionSwitchKey, isWithinComposerTerritory]);
 
   // 最终生效的键盘 inset：仅移动端 + composer 内可编辑元素聚焦时抬升
   const keyboardInsetPx = isMobile && composerEditableFocused ? globalKeyboardInset : 0;
@@ -1388,17 +1431,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     if (!hasAnyPanelOpen) return;
 
     const handleClickOutside = (e: PointerEvent) => {
-      const target = e.target as Node;
-      // 检查点击是否在面板容器内
-      if (panelContainerRef.current?.contains(target)) {
-        return; // 点击在面板内，不关闭
-      }
-      if (composerPanelOverlayRef.current?.contains(target)) {
-        return; // Portal 面板内点击，不关闭
-      }
-      // 检查点击是否在输入栏内（包括按钮）
-      if (inputContainerRef.current?.contains(target)) {
-        return; // 点击在输入栏内，不关闭
+      // 与焦点门控共用同一谓词：输入壳 / 面板容器 / 桌面 overlay / AppMenu
+      // portal 内的点击都不算「外部」（菜单 portal 在 body 上，ref 覆盖不到）
+      if (isWithinComposerTerritory(e.target as Node)) {
+        return;
       }
       // 点击在外部，关闭所有面板
       closeAllPanels();
@@ -1417,7 +1453,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       document.removeEventListener('pointerdown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [hasAnyPanelOpen, closeAllPanels]);
+  }, [hasAnyPanelOpen, closeAllPanels, isWithinComposerTerritory]);
 
   // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
   // 与 Radix 浮层、MobileSlidingLayout 的返回键语义保持一致（A-5 体系补全）。
@@ -1426,6 +1462,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     if (!isMobile || !hasAnyPanelOpen) return;
     return registerBackHandler(() => {
+      // Radix 浮层（dialog/menu 等）叠在面板上方时让行，先关最上层浮层（Settings 同款模式）
+      if (hasOpenRadixOverlayBesides(null)) return false;
       closeAllPanelsRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -2111,7 +2149,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     <AttachmentPanelBody
       attachments={attachments}
       isMobile={isMobile}
-      isMobileEnv={isMobileEnv}
+      // prop 名 isMobileEnv 为下游兼容保留（AttachmentPanelBody 本轮独占锁），
+      // 语义已是「相机捕获能力」：只控制拍照入口
+      isMobileEnv={canCapturePhoto}
       pdfStatusMap={pdfStatusMap}
       formatModeList={formatModeList}
       onPickFiles={handlePickFiles}
@@ -2155,7 +2195,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderMcpPanel ? renderMcpPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 460;
-          inlineAriaLabel = 'MCP';
+          inlineAriaLabel = t('analysis:input_bar.mcp.title');
           break;
         case 'advanced':
           inlineContent = renderAdvancedPanel ? renderAdvancedPanel() : null;
@@ -2168,7 +2208,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           inlineContent = renderSkillPanel ? renderSkillPanel() : null;
           inlineHeightMode = 'available';
           inlineMaxHeight = 480;
-          inlineAriaLabel = 'Skills';
+          inlineAriaLabel = t('skills:title');
           break;
         default:
           break;
@@ -2322,7 +2362,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
@@ -2330,7 +2370,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
@@ -2352,7 +2392,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
@@ -2374,7 +2414,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
@@ -2394,7 +2434,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:!h-11"
+                className="!h-6 shrink-0 !px-2 !text-xs [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}
@@ -2481,7 +2521,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         {/* ★ 拆分：底部工具栏（加号菜单/水位环/推理菜单/发送停止）在 ComposerToolbar.tsx */}
         <ComposerToolbar
           isMobile={isMobile}
-          isMobileEnv={isMobileEnv}
+          // prop 名 isMobileEnv 为下游兼容保留（ComposerToolbar→ComposerPlusMenu
+          // 本轮独占锁），语义已是「相机捕获能力」：只控制拍照入口
+          isMobileEnv={canCapturePhoto}
           isStreaming={isStreaming}
           sessionId={sessionId}
           isPlusMenuOpen={isAttachmentMenuOpen}

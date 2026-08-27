@@ -20,8 +20,9 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    ensure_memory_get_matches_declared_len, CloudStorage, DownloadProgressCallback, FileInfo,
-    ListOutcome, Result, UploadProgressCallback, MEMORY_GET_STALL_SECS,
+    ensure_declared_len_within_budget, ensure_memory_get_matches_declared_len, BoundedMemoryBody,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    MEMORY_GET_DEFAULT_BUDGET_BYTES, MEMORY_GET_STALL_SECS,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -1192,6 +1193,93 @@ impl CloudStorage for WebDavStorage {
         Ok(actual_start)
     }
 
+    fn supports_prefix_read(&self) -> bool {
+        true
+    }
+
+    /// [R5-prove-cost] 基于 HTTP Range 的对象前缀读取（`bytes=0-{prefix_len-1}`）。
+    ///
+    /// 诚实语义：
+    /// - 206 → 校验 `Content-Range` 起点必须为 0（错位 fail-closed，绝不把
+    ///   中段字节冒充前缀）；
+    /// - 200（服务端忽略 Range）→ 从响应流只取前 `prefix_len` 字节后停止消费
+    ///   并丢弃连接，不整包读入内存；
+    /// - 416（对象为空时对 Range 的合法应答）→ 诚实返回空前缀；
+    /// - 404 → `Ok(None)`。
+    async fn get_prefix(&self, key: &str, prefix_len: u64) -> Result<Option<Vec<u8>>> {
+        if prefix_len == 0 {
+            return Ok(Some(Vec::new()));
+        }
+        let url = self.build_url(key)?;
+        let builder = self
+            .http
+            .request(Method::GET, url)
+            .header("Authorization", self.auth_header())
+            .header(
+                reqwest::header::RANGE,
+                format!("bytes=0-{}", prefix_len - 1),
+            );
+        let res = tokio::time::timeout(std::time::Duration::from_secs(120), builder.send())
+            .await
+            .map_err(|_| AppError::network("WebDAV 前缀读取等待响应头超时（120 秒）".to_string()))?
+            .map_err(|e| AppError::network(format!("WebDAV 前缀读取请求失败: {e}")))?;
+
+        match res.status() {
+            StatusCode::NOT_FOUND => return Ok(None),
+            StatusCode::RANGE_NOT_SATISFIABLE => return Ok(Some(Vec::new())),
+            StatusCode::PARTIAL_CONTENT => {
+                // 起点必须是 0：错位前缀比失败更危险（试解结论会失真）。
+                let content_range = res
+                    .headers()
+                    .get(reqwest::header::CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_string);
+                let served_start = content_range
+                    .as_deref()
+                    .and_then(Self::parse_content_range_start);
+                if served_start != Some(0) {
+                    return Err(AppError::network(format!(
+                        "WebDAV 服务端返回的前缀起点不是 0（fail-closed，拒绝错位字节）：\
+                         请求 bytes=0-，Content-Range={content_range:?}"
+                    )));
+                }
+            }
+            // 服务端忽略 Range 返回整对象：下方只消费前 prefix_len 字节后丢弃连接。
+            StatusCode::OK => {}
+            status => {
+                return Err(AppError::network(format!(
+                    "WebDAV 前缀读取失败: {} {}",
+                    status,
+                    status.canonical_reason().unwrap_or("")
+                )));
+            }
+        }
+
+        // 有界缓冲：只收前 prefix_len 字节；预分配封顶 8 MiB，防御异常大的
+        // prefix_len 造成一次性大分配（正常首块试解 ≈ 1 MiB + 60 B）。
+        let mut prefix: Vec<u8> =
+            Vec::with_capacity(usize::try_from(prefix_len.min(8 * 1024 * 1024)).unwrap_or(0));
+        let mut stream = res.bytes_stream();
+        while (prefix.len() as u64) < prefix_len {
+            // 与 get_file 相同的逐块停滞保护：90 秒收不到任何数据视为死连接。
+            let next = tokio::time::timeout(std::time::Duration::from_secs(90), stream.next())
+                .await
+                .map_err(|_| {
+                    AppError::network("WebDAV 前缀读取停滞超过 90 秒，连接可能已断开".to_string())
+                })?;
+            let Some(chunk) = next else {
+                break; // 对象比 prefix_len 短：诚实返回实际前缀
+            };
+            let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
+            let need = usize::try_from(prefix_len - prefix.len() as u64)
+                .unwrap_or(usize::MAX)
+                .min(bytes.len());
+            prefix.extend_from_slice(&bytes[..need]);
+        }
+        // 收满即返回；res/stream 随作用域丢弃，剩余响应体不再消费。
+        Ok(Some(prefix))
+    }
+
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         self.ensure_directory(&self.root).await?;
         // 确保父目录存在
@@ -1217,6 +1305,12 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        // [R4-get-budget] 无预算旧入口：仅兜底默认预算，防止彻底无界。
+        // 控制对象请改走 get_bounded 并由调用方传入硬预算。
+        self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES).await
+    }
+
+    async fn get_bounded(&self, key: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
         let res = self.request(Method::GET, key, None).await?;
 
         if res.status() == StatusCode::NOT_FOUND {
@@ -1230,11 +1324,15 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        // get() 用于 manifest/变更文件等内存级对象：按块停滞超时，
+        // get()/get_bounded 用于 manifest/变更文件等内存级对象：按块停滞超时，
         // 防止响应头通过后响应体半挂死。慢但有进展的分片不受总时长限制。
         let declared = res.content_length();
+        // [R4-get-budget] 声明长度超预算：先拒，不读任何响应体字节。
+        ensure_declared_len_within_budget("WebDAV", key, declared, max_bytes)?;
         let mut stream = res.bytes_stream();
-        let mut body = Vec::new();
+        // [R4-get-budget] chunked/无 Content-Length 响应走有界缓冲：
+        // 累计将越界的那一块立即断流，缓冲占用永不超过预算。
+        let mut body = BoundedMemoryBody::new("WebDAV", key, max_bytes);
         loop {
             let next = tokio::time::timeout(
                 std::time::Duration::from_secs(MEMORY_GET_STALL_SECS),
@@ -1248,10 +1346,10 @@ impl CloudStorage for WebDavStorage {
                 break;
             };
             let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
-            body.extend_from_slice(&bytes);
+            body.push(&bytes)?;
         }
-        ensure_memory_get_matches_declared_len("WebDAV", key, body.len() as u64, declared)?;
-        Ok(Some(body))
+        ensure_memory_get_matches_declared_len("WebDAV", key, body.len(), declared)?;
+        Ok(Some(body.into_bytes()))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
@@ -2162,6 +2260,23 @@ mod tests {
         assert!(
             source.contains("WebDAV 内存对象下载停滞超过 90 秒"),
             "WebDAV get() 必须按块停滞超时，不得只靠整段 300 秒总超时"
+        );
+        // [R4-get-budget] 预算三件套：声明预检、有界缓冲、旧入口兜底预算。
+        assert!(
+            source.contains("async fn get_bounded(&self, key: &str, max_bytes: u64)"),
+            "WebDAV 必须实现带调用方硬预算的 get_bounded"
+        );
+        assert!(
+            source.contains("ensure_declared_len_within_budget(\"WebDAV\""),
+            "WebDAV get_bounded 必须在读响应体前按 Content-Length 预检预算"
+        );
+        assert!(
+            source.contains("BoundedMemoryBody::new(\"WebDAV\""),
+            "WebDAV get_bounded 必须用有界缓冲，无声明长度（chunked）也不得无界累积"
+        );
+        assert!(
+            source.contains("self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES)"),
+            "WebDAV get() 旧入口必须走默认兜底预算，不得回到无界路径"
         );
     }
 }

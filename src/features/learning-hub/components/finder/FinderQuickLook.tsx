@@ -20,7 +20,9 @@ import {
   type QuickLookVisualResult,
 } from './quickLookPreview';
 import { cn } from '@/lib/utils';
+import { coarseHitClassFor36 } from '@/components/ui/coarseHit';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
 import { DsButton } from '@/components/ui/DsButton';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
@@ -92,6 +94,16 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
     ],
     [onClose],
   );
+
+  // 📱 Android 返回键：浮层打开时先关浮层（契约第 4 条）。自绘 portal 无
+  // data-state="open"，androidBackCoordinator 的 Radix 兜底匹配不到，必须
+  // 显式注册（对照 LearningHubContextMenu）。组件仅在打开时挂载，无需 open 门控。
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [onClose]);
 
   const Icon = TYPE_ICONS[item.type] || IllustratedGenericFileIcon;
   const typeLabel = item.type === 'folder'
@@ -189,7 +201,13 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             variant="ghost"
             size="icon"
             iconOnly
-            className="!h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10"
+            // 📱 触屏：视觉保持 40px 防标题栏撑高（实体 44px TouchTarget 会撑高
+            // 这条 py-2 标题栏），伪元素扩区走 coarseHit.ts 共享出口的 -inset-1 档
+            // （coarseHitClassFor36 字面量），40px + 两侧各 4px = 48px ≥44px 命中区
+            className={cn(
+              '!h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+              coarseHitClassFor36
+            )}
             onClick={onClose}
             aria-label={t('common:close')}
           >
@@ -257,7 +275,6 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             <DsButton
               variant="default"
               size="sm"
-              className="[@media(pointer:coarse)]:min-h-11"
               onClick={() => onOpen(item)}
             >
               <ArrowSquareOut size={14} className="mr-1.5" />

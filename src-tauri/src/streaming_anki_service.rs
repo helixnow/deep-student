@@ -38,17 +38,13 @@ const UNREADABLE_FRAGMENT_MSG: &str = "UNREADABLE_CARD_FRAGMENT";
 /// 仅在卡片上留痕供 QA/前端复查，值为 JSON 数组字符串。
 pub const QA_FLAGS_FIELD: &str = "_qa_flags";
 
-/// 已知会泄漏进制卡流的模型包装 token（issue #58 / PR #187）。
-///
-/// 这些值也可能作为协议示例出现在卡片正文中，因此只能丢弃纯 token 残片，
-/// 或剥离完整卡片 JSON 外侧的纯 token 包装，不能做全局字符串替换。
-const MODEL_SPECIAL_TOKENS: &[&str] = &[
-    "<|begin_of_box|>",
-    "<|end_of_box|>",
-    "<|im_start|>",
-    "<|im_end|>",
-    "<|endoftext|>",
-];
+// 已知会泄漏进制卡流的模型包装 token（issue #58 / PR #187）。
+//
+// 这些值也可能作为协议示例出现在卡片正文中，因此只能丢弃纯 token 残片，
+// 或剥离完整卡片 JSON 外侧的纯 token 包装，不能做全局字符串替换。
+//
+// wave2-A r4 #2：本地表删除，改引 utils 单源，避免两处清理层的 token 清单漂移。
+use crate::utils::model_special_tokens::MODEL_SPECIAL_TOKENS;
 
 fn contains_only_model_special_tokens(text: &str) -> bool {
     let mut remaining = text.trim();
@@ -124,6 +120,81 @@ pub struct StreamStats {
     pub dropped_fragments: u32,
     /// 字段校验违规、被标记 `_qa_flags` 但仍入库的卡片数
     pub flagged_cards: u32,
+}
+
+impl StreamStats {
+    /// 本次生成是否留有质量警告（失败卡/丢弃残片/去重/校验标记任一非零）。
+    /// 任务成功收尾时据此在 `TaskCompleted` 事件上打 `completed_with_warnings`。
+    pub fn has_warnings(&self) -> bool {
+        self.failed_cards > 0
+            || self.dropped_fragments > 0
+            || self.duplicate_cards > 0
+            || self.flagged_cards > 0
+    }
+
+    /// 是否携带任何非零计数（失败路径据此决定要不要补发 `GenerationStats`）。
+    pub fn has_any_signal(&self) -> bool {
+        self.card_count > 0 || self.has_warnings()
+    }
+}
+
+/// 构建 `CriticSummary` 事件载荷（纯函数便于单测）。
+///
+/// 不手抄字段：直接对 [`crate::anki_critic::CriticSummary`] 做 serde 序列化，
+/// 再 merge 进 `task_id` / `document_id`。struct 新增字段（如 `gold_references`、
+/// `gold_references_truncated`、`routed_config_id`、`routed_model`、
+/// `routed_degraded`）会自动跟着上 wire，无需再改本函数；旧版前端按 key
+/// 消费未识别字段会被安全忽略。
+fn build_critic_summary_event(
+    task_id: &str,
+    document_id: &str,
+    summary: &crate::anki_critic::CriticSummary,
+) -> Value {
+    let mut inner = serde_json::to_value(summary).unwrap_or_else(|e| {
+        error!("序列化 CriticSummary 失败（降级为空对象）: {}", e);
+        json!({})
+    });
+    if let Some(obj) = inner.as_object_mut() {
+        obj.insert("task_id".to_string(), json!(task_id));
+        obj.insert("document_id".to_string(), json!(document_id));
+    }
+    json!({ "CriticSummary": inner })
+}
+
+/// 构建 `TaskCompleted` 事件载荷（纯函数便于单测）。
+///
+/// 以既有 [`StreamedCardPayload::TaskCompleted`] 序列化结果为基底（保证
+/// `task_id` / `final_status` / `total_cards_generated` / `document_id`
+/// 与旧 wire 格式完全一致），再 merge 进本轮新增的质量统计字段与
+/// `completed_with_warnings` 标记。旧版前端按 key 消费，未识别字段安全忽略。
+fn build_task_completed_event(task_id: &str, document_id: &str, stats: &StreamStats) -> Value {
+    let base = StreamedCardPayload::TaskCompleted {
+        task_id: task_id.to_string(),
+        final_status: TaskStatus::Completed,
+        total_cards_generated: stats.card_count,
+        document_id: Some(document_id.to_string()),
+    };
+    let mut value = serde_json::to_value(&base).unwrap_or_else(|e| {
+        error!("序列化 TaskCompleted 失败（降级为最小载荷）: {}", e);
+        json!({ "TaskCompleted": { "task_id": task_id, "document_id": document_id } })
+    });
+    if let Some(obj) = value
+        .get_mut("TaskCompleted")
+        .and_then(Value::as_object_mut)
+    {
+        obj.insert("failed_cards".to_string(), json!(stats.failed_cards));
+        obj.insert(
+            "dropped_fragments".to_string(),
+            json!(stats.dropped_fragments),
+        );
+        obj.insert("duplicate_cards".to_string(), json!(stats.duplicate_cards));
+        obj.insert("flagged_cards".to_string(), json!(stats.flagged_cards));
+        obj.insert(
+            "completed_with_warnings".to_string(),
+            json!(stats.has_warnings()),
+        );
+    }
+    value
 }
 
 #[derive(Clone)]
@@ -516,9 +587,8 @@ impl StreamingAnkiService {
                 }
             };
 
-        // 协议扩展选项（output_protocol / enable_qa_pass）：对同一份 options JSON
-        // 做 serde-default 二次解析（不能直接加到 AnkiGenerationOptions，
-        // 详见 anki_protocol::StructuredOutputOptions 的设计说明）。
+        // 协议扩展选项（output_protocol / enable_qa_pass）：从同一份 options JSON
+        // 经 AnkiGenerationOptions 单点解析后投影（见 StructuredOutputOptions）。
         let structured_opts =
             StructuredOutputOptions::from_options_json(&task.anki_generation_options_json);
         let capability = anki_protocol::detect_schema_capability(
@@ -603,6 +673,9 @@ impl StreamingAnkiService {
         if let Some(ready_tx) = ready_signal {
             let _ = ready_tx.send(());
         }
+        // 统计口径由调用方持有（out 参数）：流式中途失败时已累计的
+        // 失败卡/丢弃残片/去重/标记计数不随 Err 丢失，失败路径仍可上报。
+        let mut stream_stats = StreamStats::default();
         let mut result = self
             .stream_cards_from_ai(
                 &api_config,
@@ -617,6 +690,7 @@ impl StreamingAnkiService {
                 protocol,
                 structured_opts.qa_pass_enabled(),
                 cancel_rx,
+                &mut stream_stats,
             )
             .await;
 
@@ -635,6 +709,9 @@ impl StreamingAnkiService {
                 protocol = OutputProtocol::Delimiter;
                 match self.build_prompt(&task.content_segment, &options, protocol) {
                     Ok(fallback_prompt) => {
+                        // 首次失败发生在 HTTP 状态检查阶段（任何卡片解析之前），
+                        // 计数理应全零；重置以确保重试统计不叠加。
+                        stream_stats = StreamStats::default();
                         result = self
                             .stream_cards_from_ai(
                                 &api_config,
@@ -649,6 +726,7 @@ impl StreamingAnkiService {
                                 protocol,
                                 structured_opts.qa_pass_enabled(),
                                 cancel_rx_fallback,
+                                &mut stream_stats,
                             )
                             .await;
                     }
@@ -663,9 +741,9 @@ impl StreamingAnkiService {
         }
 
         let outcome: Result<(), AppError> = match result {
-            Ok(stats) => {
+            Ok(()) => {
                 // 先上报本次流式生成的质量统计（新增事件，前端按需消费，旧版前端会安全忽略）
-                self.emit_generation_stats(&task_id, &task.document_id, &stats, &window);
+                self.emit_generation_stats(&task_id, &task.document_id, &stream_stats, &window);
                 // Round 4 #2：生成后 LLM critic pass（opt-in，默认关闭）。
                 // 对本任务已入库卡片做一次批量 grounded 裁决（keep|revise|flag）。
                 // run_critic_pass 永不返回 Err：模型失败/解析失败一律降级为全 keep，
@@ -673,7 +751,7 @@ impl StreamingAnkiService {
                 let critic_opts = crate::anki_critic::CriticOptions::from_options_json(
                     &task.anki_generation_options_json,
                 );
-                if critic_opts.critic_enabled() && stats.card_count > 0 {
+                if critic_opts.critic_enabled() && stream_stats.card_count > 0 {
                     let critic_cfg = critic_opts.to_config();
                     // Round 5 #4：同文档兄弟卡的用户修正记录 → 同源金标参照
                     // （改前劣化/改后金标）。收集失败/无信号返回空列表，
@@ -693,13 +771,8 @@ impl StreamingAnkiService {
                     .await;
                     self.emit_critic_summary(&task_id, &task.document_id, &critic_summary, &window);
                 }
-                self.complete_task_successfully(
-                    &task_id,
-                    stats.card_count,
-                    &task.document_id,
-                    &window,
-                )
-                .await
+                self.complete_task_successfully(&task_id, &stream_stats, &task.document_id, &window)
+                    .await
             }
             Err(e) => {
                 if e.message == CANCELLED_BY_USER_MSG {
@@ -707,6 +780,16 @@ impl StreamingAnkiService {
                     info!("🛑 任务被用户取消，保持暂停态由调度层处理: {}", task_id);
                     Ok(())
                 } else {
+                    // 失败前已累计的统计（部分卡片已入库/已降级为错误卡等）
+                    // 同样补发 GenerationStats，前端据此展示"失败但有部分产出"。
+                    if stream_stats.has_any_signal() {
+                        self.emit_generation_stats(
+                            &task_id,
+                            &task.document_id,
+                            &stream_stats,
+                            &window,
+                        );
+                    }
                     self.handle_task_error(
                         &task_id,
                         &e,
@@ -1054,7 +1137,11 @@ impl StreamingAnkiService {
         protocol: OutputProtocol,
         qa_pass_enabled: bool,
         mut cancel_rx: watch::Receiver<bool>,
-    ) -> Result<StreamStats, AppError> {
+        // 统计累计口径改为调用方持有的 out 参数：任何提前 Err 返回
+        // （取消/超时/网络中断等）都不会丢失已累计的计数，
+        // 失败路径也能上报 GenerationStats。
+        stats: &mut StreamStats,
+    ) -> Result<(), AppError> {
         let mut messages = vec![];
         if let Some(system_message) = &prompt_payload.system {
             messages.push(json!({
@@ -1203,7 +1290,6 @@ impl StreamingAnkiService {
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
-        let mut stats = StreamStats::default();
         let mut _last_activity = std::time::Instant::now(); // Prefixed to silence warning
         const IDLE_TIMEOUT: Duration = Duration::from_secs(180); // 180秒无响应超时
         const LOG_STREAM_CHUNKS: bool = false; // 禁用逐chunk日志
@@ -1587,7 +1673,7 @@ impl StreamingAnkiService {
             );
         }
 
-        Ok(stats)
+        Ok(())
     }
 
     /// 单卡缓冲的硬性安全上限（字节）。
@@ -2003,8 +2089,9 @@ impl StreamingAnkiService {
             }
         }
 
-        // VlmFull 的 IMAGE_DESC 草稿只补机器字段和识别 tag，不改写模型生成的
-        // front/back/text，也不覆盖未来 grounding 路径可能直接产出的字段。
+        // VlmFull 的 IMAGE_DESC 草稿只补机器字段、识别 tag 与缺失的 text 草稿，
+        // 不改写模型生成的 front/back，也不覆盖模型/模板已产出的非空 text
+        // （未来 grounding 路径直接产出的字段同理不被覆盖）。
         if let Some(fields) = occlusion_fields {
             for (key, value) in &fields.extra_fields {
                 cleaned_extra_fields
@@ -2015,6 +2102,14 @@ impl StreamingAnkiService {
                 if !cleaned_tags.iter().any(|existing| existing == tag) {
                     cleaned_tags.push(tag.clone());
                 }
+            }
+            // 遮挡草稿 text（`<img src>` + cloze）仅在模型未产出非空 text 时
+            // 补入，使入库卡直接携带可复习的遮挡正文。
+            let has_model_text = cleaned_extra_fields
+                .get("text")
+                .is_some_and(|t| !t.trim().is_empty());
+            if !has_model_text && !fields.text.trim().is_empty() {
+                cleaned_extra_fields.insert("text".to_string(), fields.text.clone());
             }
         }
 
@@ -2066,6 +2161,19 @@ impl StreamingAnkiService {
             );
         }
 
+        // 遮挡卡把 `_occlusion.imageRef` 写入 images，供渲染/导出侧定位媒体。
+        // helper 内部过滤 `vlm://` 占位引用（r2 契约 §2.1，与导出两侧降级一致）。
+        // 该构造点此前恒为空列表；保持「已有 images 不追加覆盖」的合并语义，
+        // 未来上游若已填充 images 则原样保留。
+        let mut images: Vec<String> = Vec::new();
+        if images.is_empty() {
+            if let Some(image_ref) =
+                crate::anki_image_occlusion::occlusion_image_ref_from_fields(&cleaned_extra_fields)
+            {
+                images.push(image_ref);
+            }
+        }
+
         // 创建卡片
         let now = Utc::now().to_rfc3339();
         let card = AnkiCard {
@@ -2075,7 +2183,7 @@ impl StreamingAnkiService {
             back: cleaned_back,
             text: cleaned_extra_fields.get("text").cloned(), // 从清理后的extra_fields中提取text字段
             tags: cleaned_tags,
-            images: Vec::new(),
+            images,
             is_error_card: false,
             error_content: None,
             created_at: now.clone(),
@@ -3031,6 +3139,8 @@ impl StreamingAnkiService {
 
     /// 发送 critic pass 摘要事件（纯新增：外部标签 `CriticSummary`，旧版前端安全忽略）。
     /// 仅在 critic 启用（opt-in）且任务收尾成功时派发，见 Round 4 #2。
+    /// 载荷 = CriticSummary 全字段序列化 + task_id/document_id（见
+    /// [`build_critic_summary_event`]，不再手抄字段清单）。
     fn emit_critic_summary(
         &self,
         task_id: &str,
@@ -3038,20 +3148,7 @@ impl StreamingAnkiService {
         summary: &crate::anki_critic::CriticSummary,
         window: &Window,
     ) {
-        let payload = json!({
-            "CriticSummary": {
-                "task_id": task_id,
-                "document_id": document_id,
-                "examined": summary.examined,
-                "kept": summary.kept,
-                "revised": summary.revised,
-                "flagged": summary.flagged,
-                "rejected_unknown_ids": summary.rejected_unknown_ids,
-                "skipped_over_budget": summary.skipped_over_budget,
-                "persist_failures": summary.persist_failures,
-                "degraded": summary.degraded,
-            }
-        });
+        let payload = build_critic_summary_event(task_id, document_id, summary);
         if let Err(e) = window.emit("anki_generation_event", &payload) {
             error!("发送 critic 摘要事件失败: {}", e);
         }
@@ -3086,7 +3183,7 @@ impl StreamingAnkiService {
     async fn complete_task_successfully(
         &self,
         task_id: &str,
-        card_count: u32,
+        stats: &StreamStats,
         document_id: &str,
         window: &Window,
     ) -> Result<(), AppError> {
@@ -3102,15 +3199,10 @@ impl StreamingAnkiService {
         )
         .await?;
 
-        // 发送任务完成事件
-        // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
-        let payload = StreamedCardPayload::TaskCompleted {
-            task_id: task_id.to_string(),
-            final_status: TaskStatus::Completed,
-            total_cards_generated: card_count,
-            document_id: Some(document_id.to_string()),
-        };
-
+        // 发送任务完成事件。基底仍是 StreamedCardPayload::TaskCompleted 的
+        // 序列化结果（旧字段 wire 格式不变），叠加质量统计与
+        // completed_with_warnings（"带警告完成"，见 build_task_completed_event）。
+        let payload = build_task_completed_event(task_id, document_id, stats);
         if let Err(e) = window.emit("anki_generation_event", &payload) {
             error!("发送任务完成事件失败: {}", e);
         }
@@ -5129,6 +5221,334 @@ mod tests {
             .tags
             .iter()
             .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG));
+        // Round 2：模型未产出 text 时，草稿 text（<img> + cloze）被消费入库
+        assert_eq!(
+            card.text.as_deref(),
+            Some(fields.text.as_str()),
+            "occlusion 草稿 text 应写入卡片"
+        );
+        assert!(
+            card.text
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("<img src=\"image-source-1\"><br>"),
+            "text 应含图片 <img src>: {:?}",
+            card.text
+        );
+        assert!(card.text.as_deref().unwrap_or("").contains("{{c1::"));
+        // Round 2：_occlusion.imageRef 被写入 images
+        assert_eq!(card.images, vec!["image-source-1".to_string()]);
         crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn plain_card_without_occlusion_keeps_images_empty() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-plain-images-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "plain-images-task", &document_id, 0);
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"什么是熵？","back":"系统混乱程度的度量"}"#,
+                "plain-images-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                None,
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        assert!(
+            card.images.is_empty(),
+            "无 _occlusion 的普通卡 images 必须保持为空: {:?}",
+            card.images
+        );
+        assert!(!card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert_eq!(card.text, None, "普通卡不得凭空产生 text");
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn occlusion_draft_does_not_overwrite_model_written_text() {
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-occlusion-text-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "occlusion-text-task", &document_id, 0);
+        let mut options = minimal_options();
+        options.template_fields = Some(vec!["Text".to_string()]);
+        options.field_extraction_rules = Some(HashMap::from([(
+            "text".to_string(),
+            make_rule(true, FieldType::Text, "text"),
+        )]));
+        let marker = crate::anki_image_occlusion::build_occlusion_draft_marker(
+            "image-source-2",
+            "[IMAGE_DESC: 定子；转子]",
+            &crate::anki_image_occlusion::OcclusionConfig::default(),
+        )
+        .expect("marker");
+        let fields = crate::anki_image_occlusion::extract_occlusion_draft_fields(&marker)
+            .expect("occlusion fields");
+        assert!(fields.text.contains("<img src=\"image-source-2\">"));
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"text":"电动机把电能转化为 {{c1::机械能}}。"}"#,
+                "occlusion-text-task",
+                &document_id,
+                &options,
+                true,
+                Some(&fields),
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        // 模型已产出 text：不得被 occlusion 草稿 text 覆盖
+        assert_eq!(
+            card.text.as_deref(),
+            Some("电动机把电能转化为 {{c1::机械能}}。")
+        );
+        assert!(
+            !card.text.as_deref().unwrap_or("").contains("<img"),
+            "模型 text 不得被草稿 <img> 覆盖: {:?}",
+            card.text
+        );
+        // 机器字段照常合并，images 仍来自 _occlusion.imageRef
+        assert!(card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert_eq!(card.images, vec!["image-source-2".to_string()]);
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    #[tokio::test]
+    async fn occlusion_pending_placeholder_image_ref_stays_out_of_images() {
+        // r2 契约 §2.1 / §9：`vlm://pending-image` 占位（VLM 块不选图、
+        // 生产接线未替换的边缘）不得进入 card.images——导出两侧已过滤，
+        // 入库侧必须对齐，否则渲染/媒体收集会拿到不可解析引用。
+        let (svc, _dir) = make_persisted_test_service();
+        let document_id = format!("doc-occlusion-pending-{}", uuid::Uuid::new_v4());
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+        seed_task(&svc.db, "occlusion-pending-task", &document_id, 0);
+        let marker = crate::anki_image_occlusion::build_occlusion_draft_marker(
+            "vlm://pending-image",
+            "[IMAGE_DESC: 主动脉；肺动脉]",
+            &crate::anki_image_occlusion::OcclusionConfig::default(),
+        )
+        .expect("marker");
+        let fields = crate::anki_image_occlusion::extract_occlusion_draft_fields(&marker)
+            .expect("occlusion fields");
+
+        let card = svc
+            .parse_and_save_card(
+                r#"{"front":"心脏的大血管有哪些？","back":"主动脉和肺动脉"}"#,
+                "occlusion-pending-task",
+                &document_id,
+                &fingerprint_options(),
+                true,
+                Some(&fields),
+            )
+            .await
+            .expect("card parses")
+            .expect("card saved");
+
+        assert!(
+            card.images.is_empty(),
+            "vlm:// 占位引用不得进入 images: {:?}",
+            card.images
+        );
+        // 机器字段与 tag 照常合并（占位只影响 images 过滤，不阻断草稿入库）
+        assert!(card
+            .extra_fields
+            .contains_key(crate::anki_image_occlusion::OCCLUSION_FIELD));
+        assert!(card
+            .tags
+            .iter()
+            .any(|tag| tag == crate::anki_image_occlusion::OCCLUSION_TAG));
+        crate::anki_qa_lint::release_document_tracker(&document_id);
+    }
+
+    // ==========================================================================
+    // Wave2-E Round 3：CriticSummary / TaskCompleted 事件载荷（纯函数，不依赖 Window）
+    // ==========================================================================
+
+    #[test]
+    fn critic_summary_event_contains_gold_and_routing_fields() {
+        let summary = crate::anki_critic::CriticSummary {
+            examined: 5,
+            kept: 3,
+            revised: 1,
+            flagged: 1,
+            rejected_unknown_ids: 0,
+            skipped_over_budget: 2,
+            gold_references: 4,
+            gold_references_truncated: 1,
+            persist_failures: 0,
+            degraded: None,
+            routed_config_id: Some("cfg-critic".to_string()),
+            routed_model: Some("model-x".to_string()),
+            routed_degraded: Some(false),
+        };
+        let event = build_critic_summary_event("task-1", "doc-1", &summary);
+        let inner = event
+            .get("CriticSummary")
+            .and_then(Value::as_object)
+            .expect("外部标签 CriticSummary");
+
+        // merge 进来的路由键
+        assert_eq!(inner.get("task_id").and_then(Value::as_str), Some("task-1"));
+        assert_eq!(
+            inner.get("document_id").and_then(Value::as_str),
+            Some("doc-1")
+        );
+        // struct 序列化字段：金标观测必须在 wire 上（本轮修复的核心断言）
+        assert_eq!(inner.get("gold_references").and_then(Value::as_u64), Some(4));
+        assert_eq!(
+            inner.get("gold_references_truncated").and_then(Value::as_u64),
+            Some(1)
+        );
+        // Sidekick 路由观测字段（Some 时序列化）
+        assert_eq!(
+            inner.get("routed_config_id").and_then(Value::as_str),
+            Some("cfg-critic")
+        );
+        assert_eq!(
+            inner.get("routed_model").and_then(Value::as_str),
+            Some("model-x")
+        );
+        assert_eq!(
+            inner.get("routed_degraded").and_then(Value::as_bool),
+            Some(false)
+        );
+        // 旧字段照常在（序列化基底没有丢字段）
+        assert_eq!(inner.get("examined").and_then(Value::as_u64), Some(5));
+        assert_eq!(
+            inner.get("skipped_over_budget").and_then(Value::as_u64),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn critic_summary_event_omits_routing_when_unrouted() {
+        // 路由未接通（None）时 wire 格式与旧版完全一致：routed_* 键不出现
+        let summary = crate::anki_critic::CriticSummary {
+            examined: 1,
+            kept: 1,
+            ..Default::default()
+        };
+        let event = build_critic_summary_event("task-2", "doc-2", &summary);
+        let inner = event
+            .get("CriticSummary")
+            .and_then(Value::as_object)
+            .expect("外部标签 CriticSummary");
+        assert!(!inner.contains_key("routed_config_id"));
+        assert!(!inner.contains_key("routed_model"));
+        assert!(!inner.contains_key("routed_degraded"));
+        // 金标观测字段即使为 0 也序列化（无 skip 注解）
+        assert_eq!(inner.get("gold_references").and_then(Value::as_u64), Some(0));
+    }
+
+    #[test]
+    fn task_completed_event_flags_warnings_when_dropped() {
+        let stats = StreamStats {
+            card_count: 7,
+            failed_cards: 0,
+            duplicate_cards: 0,
+            dropped_fragments: 2,
+            flagged_cards: 0,
+        };
+        let event = build_task_completed_event("task-3", "doc-3", &stats);
+        let inner = event
+            .get("TaskCompleted")
+            .and_then(Value::as_object)
+            .expect("外部标签 TaskCompleted");
+
+        // 有 dropped 时必须标记"带警告完成"
+        assert_eq!(
+            inner.get("completed_with_warnings").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            inner.get("dropped_fragments").and_then(Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(inner.get("failed_cards").and_then(Value::as_u64), Some(0));
+        assert_eq!(inner.get("duplicate_cards").and_then(Value::as_u64), Some(0));
+        assert_eq!(inner.get("flagged_cards").and_then(Value::as_u64), Some(0));
+        // 旧 wire 字段保持不变
+        assert_eq!(inner.get("task_id").and_then(Value::as_str), Some("task-3"));
+        assert_eq!(
+            inner.get("document_id").and_then(Value::as_str),
+            Some("doc-3")
+        );
+        assert_eq!(
+            inner.get("total_cards_generated").and_then(Value::as_u64),
+            Some(7)
+        );
+        assert_eq!(
+            inner.get("final_status").and_then(Value::as_str),
+            Some("Completed")
+        );
+    }
+
+    #[test]
+    fn task_completed_event_clean_run_has_no_warning_flag() {
+        let stats = StreamStats {
+            card_count: 3,
+            ..Default::default()
+        };
+        let event = build_task_completed_event("task-4", "doc-4", &stats);
+        let inner = event
+            .get("TaskCompleted")
+            .and_then(Value::as_object)
+            .expect("外部标签 TaskCompleted");
+        assert_eq!(
+            inner.get("completed_with_warnings").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            inner.get("total_cards_generated").and_then(Value::as_u64),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn stream_stats_warning_and_signal_predicates() {
+        assert!(!StreamStats::default().has_warnings());
+        assert!(!StreamStats::default().has_any_signal());
+        // 仅有成功卡：无警告，但失败路径仍值得补发 GenerationStats
+        let ok_only = StreamStats {
+            card_count: 2,
+            ..Default::default()
+        };
+        assert!(!ok_only.has_warnings());
+        assert!(ok_only.has_any_signal());
+        // 四类警告任一非零都算警告
+        for stats in [
+            StreamStats {
+                failed_cards: 1,
+                ..Default::default()
+            },
+            StreamStats {
+                duplicate_cards: 1,
+                ..Default::default()
+            },
+            StreamStats {
+                dropped_fragments: 1,
+                ..Default::default()
+            },
+            StreamStats {
+                flagged_cards: 1,
+                ..Default::default()
+            },
+        ] {
+            assert!(stats.has_warnings(), "任一非零计数应判定为带警告: {:?}", stats);
+            assert!(stats.has_any_signal());
+        }
     }
 }

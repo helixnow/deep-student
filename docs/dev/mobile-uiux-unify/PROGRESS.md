@@ -116,3 +116,8 @@
 - Round 2–11：顶栏契约、可达契约、废弃 MobileHeader 禁令；聊天/设置/沙箱/PDF/导图/热力图/Anki/Todo 移动 chrome；死代码 NotesHome / VideoPreview / AudioPreview / PreviewPanel
 - Round 41–90：DEV debug-panel 插件工具栏几乎扫完；`deep-student.css` 6b 合同、死 CSS、640–767 桌面条泄漏已收
 - 契约测试：`tests/vitest/mobile-uiux/*`（非法 viewId allowlist 已清空）
+
+## Wave2-C 进度（0824-wave2-mobile-uiux-a875）
+
+- R1–R8 已做；R9 进行中。
+- 真机验证仍留白。

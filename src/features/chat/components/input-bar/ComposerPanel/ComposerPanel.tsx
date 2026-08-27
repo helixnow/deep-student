@@ -34,6 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 
 // ============================================================================
 // Root —— 通用 flex 容器，统一上下间距
@@ -143,7 +144,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               onClick={onClose}
               aria-label={resolvedCloseAriaLabel}
               title={resolvedCloseAriaLabel}
-              className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="[@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]"
             >
               <X size={16} />
             </DsButton>
@@ -217,7 +218,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
               iconOnly
               onClick={() => onChange('')}
               aria-label={clearAriaLabel ?? t('common.clearSearch')}
-              className="!h-5 !w-5 relative after:absolute after:-inset-3 after:content-['']"
+              className={cn('!h-5 !w-5 relative', coarseHitClassForBadge16)}
             >
               <X size={12} />
             </DsButton>
@@ -277,7 +278,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
         <div
           className={cn(
             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)] [@media(pointer:coarse)]:min-h-11'
+            collapsible && 'cursor-pointer hover:bg-[color:var(--menu-shell-row-hover)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
           )}
           {...(collapsible
             ? {
@@ -443,7 +444,7 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
           'group relative flex w-full items-start gap-2 text-left transition-colors outline-none',
           'rounded-[var(--menu-shell-row-radius)] border border-transparent',
           // 📱 coarse 指针触控保底：行高不低于 44px（桌面 fine 指针不受影响）
-          '[@media(pointer:coarse)]:min-h-11',
+          '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
           density === 'cozy'
             ? 'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]'
             : 'px-2 py-1.5',

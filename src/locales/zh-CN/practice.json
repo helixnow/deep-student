@@ -138,11 +138,13 @@
   "daily": {
     "title": "每日一练",
     "streakDays": "连续打卡天数",
+    "streakHint": "当天做过题即算打卡，与目标是否达成无关",
     "smartRecommend": "智能推荐",
     "recommendMistakes": "优先选择错题，巩固薄弱知识点",
     "recommendNew": "其次选择新题，拓展知识范围",
     "recommendReview": "最后补充复习题，防止遗忘",
-    "targetLabel": "今日目标（题数）",
+    "targetLabel": "每日目标（题数）",
+    "targetHint": "目标只保存当前值，不会按天记录历史；日历达标标记按当前目标判定",
     "todayProgress": "今日进度",
     "completed": "今日目标已完成！",
     "mistakes": "错题",
@@ -152,6 +154,8 @@
     "continue": "继续练习",
     "start": "开始今日练习",
     "calendar": "打卡日历",
+    "viewByCurrentTarget": "按当前目标查看",
+    "calendarTargetHint": "达标标记按当前目标（{{target}} 题）统一判定，不代表当天设置过的目标",
     "yearMonth": "{{year}}年{{month}}月",
     "previousMonth": "上个月",
     "nextMonth": "下个月",
@@ -170,7 +174,7 @@
     "streak": "连续打卡",
     "calendarLoadFailed": "打卡日历加载失败，请重试",
     "startError": "获取每日练习失败",
-    "completedDetail": "答对 {{correct}} / {{total}} 题",
+    "completedDetail": "答对 {{correct}} / {{total}} 题（按题计，同一题重复作答不重复计）",
     "anotherRound": "再练一组"
   },
   "paper": {

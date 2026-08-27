@@ -134,6 +134,31 @@ export {
   createLearningHubActionHandlers,
   learningHubActionHandlers,
 } from './handlers/learningHubActionHandlers';
+export {
+  createOpenResourceActionHandlers,
+  dispatchOpenNoteNavigation,
+  dispatchOpenPdfPageNavigation,
+  openNoteActionId,
+  openPdfPageActionId,
+  parseOpenResourceActionId,
+  isValidOpenResourceId,
+  isValidOpenPdfPageNumber,
+  GENERATIVE_UI_OPEN_NOTE_SOURCE,
+  OPEN_NOTE_ACTION_PREFIX,
+  OPEN_PDF_PAGE_ACTION_PREFIX,
+  MAX_OPEN_RESOURCE_ACTION_ID_LENGTH,
+  MAX_OPEN_PDF_PAGE_NUMBER,
+} from './handlers/openResourceActionHandlers';
+export type {
+  OpenNoteNavigationTarget,
+  OpenPdfPageNavigationTarget,
+  OpenResourceActionTarget,
+  OpenNoteActionInput,
+  OpenPdfPageActionInput,
+  OpenResourceActionHandlersInput,
+} from './handlers/openResourceActionHandlers';
+export { buildOpenResourceEntryBlock } from './utils/buildOpenResourceEntryBlock';
+export type { BuildOpenResourceEntryBlockInput } from './utils/buildOpenResourceEntryBlock';
 export { extractGenerativeUIIntent, GENERATIVE_UI_BLOCK_TYPE } from './bridge/chatBlockBridge';
 export {
   HPIAS_EVENT_CHANNEL,

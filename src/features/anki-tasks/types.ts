@@ -15,6 +15,14 @@ export interface DocumentSession {
   lastUpdated: string;
   createdAt: string;
   totalCards: number;
+  /**
+   * 「带警告完成」前向兼容字段（optional，后端 list_document_sessions 当前
+   * 不下发）：将来后端补充 warning 计数 / completed_with_warnings 口径时，
+   * 前端无需改类型即可点亮非阻断徽章（见 hasWarnings）。缺省按无警告处理。
+   */
+  warningTasks?: number;
+  /** 同上：任务收尾状态为 completed_with_warnings 时的布尔标记。 */
+  completedWithWarnings?: boolean;
 }
 
 export interface AnkiStats {
@@ -37,10 +45,37 @@ export const CARDS_PAGE_SIZE = 20;
 /** 任务列表单次拉取上限（避免旧任务被分页截断） */
 export const DASHBOARD_SESSION_LIMIT = 500;
 
+/**
+ * 会话分组。互斥分类已修（Wave2-E r3）：旧实现 `failedTasks > 0` 无条件
+ * 短路进 attention，failed+running 混合态会丢掉「仍在运行」的事实——
+ * 轮询从 5s 降到 30s、防休眠被提前解除、active tab 看不到、行内
+ * 暂停/取消入口被藏（详见 docs/dev/wave2-E-r1-09-tasks-block.md §1）。
+ *
+ * 修复后的优先级（互斥组只回答「现在处于什么阶段」）：
+ * 1. activeTasks > 0 或 pausedTasks > 0 → 'active'
+ *    —— 只要还有分段在跑或可恢复，就归运行组：5s 轮询、防休眠、
+ *    行内暂停/取消保持可见；失败分段的事实不丢，由 hasWarnings
+ *    以非阻断徽章叠加提示，不改变分组。
+ * 2. 否则 failedTasks > 0 → 'attention'（全部停止且有失败，需要处理）。
+ * 3. 否则 → 'completed'。
+ */
 export function classify(s: DocumentSession): SessionGroup {
-  if (s.failedTasks > 0) return 'attention';
   if (s.activeTasks > 0 || s.pausedTasks > 0) return 'active';
+  if (s.failedTasks > 0) return 'attention';
   return 'completed';
+}
+
+/**
+ * 非阻断警告标记：与 classify 正交，只做 UI 叠加（徽章/提示），
+ * 绝不改变会话所属分组。点亮条件：
+ * - 混合态：会话仍在 active 组（运行/暂停中）但已有失败分段；
+ * - 「带警告完成」：后端将来下发 warningTasks / completedWithWarnings
+ *   （DocumentSession 的 optional 前向兼容字段）时同样点亮。
+ * 纯 attention 会话不点亮——状态标签本身已表达失败，避免双重告警。
+ */
+export function hasWarnings(s: DocumentSession): boolean {
+  if ((s.warningTasks ?? 0) > 0 || s.completedWithWarnings === true) return true;
+  return s.failedTasks > 0 && (s.activeTasks > 0 || s.pausedTasks > 0);
 }
 
 /** i18n 化的相对时间 */

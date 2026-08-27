@@ -3660,6 +3660,13 @@ impl ChatAnkiToolExecutor {
                 "blocks.ankiCards.errors.cardContentRequired".to_string(),
             ));
         }
+        // 金标溯源（wave2-E r2）：库卡更新在后端统一盖 actor=user 的
+        // `_content_provenance` 戳（覆盖调用方 payload 可能自带的值），
+        // 与 CAS 写回同一事务落盘——gold 挖掘只认带此证明的编辑为修正对。
+        crate::anki_gold_set::insert_content_provenance(
+            &mut card.extra_fields,
+            &crate::anki_gold_set::ContentProvenance::user("chatanki_update_library_card"),
+        );
 
         let outcome = match db.update_anki_card_if_version_for_library(
             scope,

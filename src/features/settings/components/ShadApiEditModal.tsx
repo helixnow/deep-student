@@ -47,7 +47,7 @@ import {
   getAllowedApiProtocolsForModelAdapter,
   normalizeApiProtocolForModelAdapter,
 } from './modelConverters';
-import { useKeyboardInset } from '../hooks/useKeyboardInset';
+import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -162,8 +162,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   mobilePanelMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
-  // P2-15 键盘避让：移动端右滑面板中，软键盘弹出时抬升底部操作栏
-  const keyboardInset = useKeyboardInset(mobilePanelMode);
+  // P2-15 键盘避让：移动端右滑面板中，软键盘弹出时抬升底部操作栏。
+  // 走全局 useKeyboardHeight 单例（Android adjustResize 下 inset≈0 避免双重抬升，
+  // iOS overlay 键盘返回被遮挡高度）；是否消费由下方 mobilePanelMode 门控。
+  const keyboardInset = useKeyboardInset();
   const [connectionTest, setConnectionTest] = useState<
     | { state: 'idle' }
     | { state: 'testing' }

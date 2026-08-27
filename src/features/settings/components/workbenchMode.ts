@@ -13,6 +13,14 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import i18n from '@/i18n';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+// 停用事务（缝一）：本模块是设置页之外所有模式开关入口（侧边栏快捷开关 /
+// 品牌菜单「退出学习桌面」等）的唯一写通道，停用预检必须在这里收口，
+// 否则这些入口会绕过逐窗 canClose 直接卸壳（App.tsx 已静态引入同一模块，
+// 不新增首屏体积）。
+import { runWorkbenchDeactivationTransaction } from '@/features/workbench/core/deactivationTransaction';
+// 接缝三 handoff（r5 边界审阅接线）：停用成功后、卸壳前采集焦点窗
+// descriptor 落独立 key 并对齐经典壳视图；模块已在 App.tsx 静态图中。
+import { handoffWorkbenchToLegacyShell } from '@/features/workbench/core/legacyNavigationMap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -136,6 +144,27 @@ async function closeBrowserForDisabledGate(): Promise<void> {
  * 持久化总开关并按契约广播；失败时通知并返回 false（调用方负责回滚乐观态）。
  */
 export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boolean> {
+  if (!enabled) {
+    // 停用前先走共享停用事务（逐窗 canClose 预检，可取消；single-flight）。
+    // 事务 ok 之前不产生任何副作用：不 persist、不动 bus、不派发事件——
+    // 取消即返回 false，调用方按「未保存」回滚乐观 UI（事务内部已向用户提示）。
+    let precheckOk = false;
+    try {
+      precheckOk = (await runWorkbenchDeactivationTransaction('mode-off')).ok;
+    } catch {
+      // 事务内部的取消 toast 只在「窗口拒绝关闭」分支发出；promise 意外
+      // reject（canClose 回调抛错等）时内部无任何提示，这里兜底通知一次，
+      // 与 WorkbenchSettingsSection.handleModeChange 的 catch 对齐——否则
+      // 侧边栏 / 品牌菜单入口只会看到开关静默弹回。两分支互斥，无双 toast。
+      showGlobalNotification(
+        'info',
+        i18n.t('workbench:deactivation.cancelled', {
+          defaultValue: '已取消停用，学习桌面保持开启。',
+        }),
+      );
+    }
+    if (!precheckOk) return false;
+  }
   try {
     await tauriInvoke('save_setting', {
       key: WORKBENCH_MODE_SETTING_KEY,
@@ -146,7 +175,17 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
     return false;
   }
   setCachedWorkbenchModeEnabled(enabled);
-  if (!enabled) await closeBrowserForDisabledGate();
+  if (!enabled) {
+    // 焦点上下文交接：持久化成功后、setEnabled(false)/mode-changed 之前——
+    // 窗口尚未卸载，采集完整（legacyNavigationMap 头注的调用点契约）。
+    // 交接是尽力而为的增强，失败绝不阻塞停用本身。
+    try {
+      handoffWorkbenchToLegacyShell();
+    } catch (error) {
+      console.warn('[workbenchMode] focus handoff failed:', getErrorMessage(error));
+    }
+    await closeBrowserForDisabledGate();
+  }
   workbenchBus.setEnabled(enabled);
   try {
     dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });

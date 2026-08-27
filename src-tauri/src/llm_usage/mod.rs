@@ -180,6 +180,9 @@ pub fn record_llm_usage_ext(
 /// - `cache_write_tokens`: 缓存写入 Token（Anthropic `cache_creation_input_tokens`、
 ///   OpenAI/DeepSeek Responses `input_tokens_details.cache_write_tokens`）。
 ///   None 落库 NULL = 无测量，不等于 0；报表据此计算缓存 write/read 比。
+///
+/// 只携带 session 维度；能解析出 variant / run 维度的调用方（model2 流式
+/// 路径）请使用 [`record_llm_usage_cache_ext_with_identity`]。
 #[allow(clippy::too_many_arguments)]
 pub fn record_llm_usage_cache_ext(
     caller_type: CallerType,
@@ -196,8 +199,69 @@ pub fn record_llm_usage_cache_ext(
     adapter: Option<String>,
     token_source: Option<String>,
 ) {
+    record_llm_usage_cache_ext_with_identity(
+        caller_type,
+        model_id,
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        cached_tokens,
+        cache_write_tokens,
+        UsageStreamIdentity {
+            session_id,
+            variant_id: None,
+            run_id: None,
+        },
+        duration_ms,
+        success,
+        error_message,
+        adapter,
+        token_source,
+    );
+}
+
+/// Chat V2 流式遥测身份（分列 session / variant / run）
+///
+/// 第 5 轮修复：model2 流式路径此前把 run-scoped `stream_event`
+/// （`chat_v2_event_{session}_var_{scope}_run_{run}[__stream_generation__{n}]`）
+/// 整体当 session_id 落库，跨轮 steady-state 缓存统计把每次执行都当成
+/// 独立会话。分列后：
+/// - `session_id`: 真实会话 ID（落库 `session_id` 既有列）；
+/// - `variant_id`: 多变体/流作用域 ID（新列，NULL = 未知）；
+/// - `run_id`: 单次 pipeline 执行的 run key（新列，NULL = 未知）。
+#[derive(Debug, Clone, Default)]
+pub struct UsageStreamIdentity {
+    /// 真实会话 ID；非 chat_v2 流可回退为调用方自定义标识
+    pub session_id: Option<String>,
+    /// 多变体/流作用域 ID（stream_event 的 `_var_` 段）
+    pub variant_id: Option<String>,
+    /// 单次 pipeline 执行的 run key（stream_event 的 `_run_` 段）
+    pub run_id: Option<String>,
+}
+
+/// 记录 LLM 使用量（缓存遥测全量版 + 分列遥测身份）
+///
+/// 与 [`record_llm_usage_cache_ext`] 等价，但以 [`UsageStreamIdentity`]
+/// 携带 session / variant / run 三列身份，避免把 run-scoped 事件名
+/// 误当会话 ID。
+#[allow(clippy::too_many_arguments)]
+pub fn record_llm_usage_cache_ext_with_identity(
+    caller_type: CallerType,
+    model_id: &str,
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    reasoning_tokens: Option<u32>,
+    cached_tokens: Option<u32>,
+    cache_write_tokens: Option<u32>,
+    identity: UsageStreamIdentity,
+    duration_ms: Option<u64>,
+    success: bool,
+    error_message: Option<String>,
+    adapter: Option<String>,
+    token_source: Option<String>,
+) {
     log::debug!(
-        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={:?}, success={}, adapter={:?}, token_source={:?}",
+        "[LLM Usage] 记录使用量: model={}, prompt={}, completion={}, reasoning={:?}, cached={:?}, cache_write={:?}, success={}, adapter={:?}, token_source={:?}, session={:?}, variant={:?}, run={:?}",
         model_id,
         prompt_tokens,
         completion_tokens,
@@ -206,7 +270,10 @@ pub fn record_llm_usage_cache_ext(
         cache_write_tokens,
         success,
         adapter,
-        token_source
+        token_source,
+        identity.session_id,
+        identity.variant_id,
+        identity.run_id
     );
 
     let mut record = UsageRecord::new(
@@ -225,8 +292,14 @@ pub fn record_llm_usage_cache_ext(
     if let Some(tokens) = cache_write_tokens {
         record = record.with_cache_write_tokens(tokens);
     }
-    if let Some(sid) = session_id {
+    if let Some(sid) = identity.session_id {
         record = record.with_caller_id(sid);
+    }
+    if let Some(variant) = identity.variant_id {
+        record = record.with_variant_id(variant);
+    }
+    if let Some(run) = identity.run_id {
+        record = record.with_run_id(run);
     }
     if let Some(duration) = duration_ms {
         record = record.with_duration(duration);
@@ -264,6 +337,8 @@ mod tests {
                 id: UsageRecord::generate_id(),
                 caller_type: CallerType::ChatV2,
                 caller_id: None,
+                variant_id: None,
+                run_id: None,
                 model_id: format!("m-{}", i),
                 config_id: None,
                 provider_id: None,

@@ -81,7 +81,7 @@ body .settings-mobile-sheet-overlay {
 .settings-mobile-sheet-header h1 {
   max-width: 100%;
   overflow: hidden;
-  font-size: 1.125rem;
+  font-size: var(--font-size-xl);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;

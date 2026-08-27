@@ -37,6 +37,10 @@ export const notesAppDefinition: AppDefinition = {
   onActivation: handleNotesActivation,
   agentManifest: createNotesAgentManifest(handleNotesActivation),
   canClose: canCloseNotesWorkspace,
+  // suspend 契约：dirty 窗永不 frozen。同步查询各 Notes host 的未保存
+  // 状态（checker 异常按 dirty 处理），有未保存编辑时调度器跳过冻结，
+  // 窗口保持 background，不丢内存中的编辑内容。
+  canSuspend: () => !hasUnsavedNotesWorkspaceChanges(),
   handlesCloseShortcut: true,
   // Ctrl+Tab / Ctrl+Shift+Tab 循环内部标签（NotesWorkspaceApp onWindowKeyDown
   // 消费；壳层让位协议见 AppDefinition.handlesTabCycleShortcut）

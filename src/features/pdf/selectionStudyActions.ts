@@ -1,5 +1,5 @@
 /**
- * PDF 划词学习闭环 — 生成题目 / 制卡入口。
+ * PDF 划词学习闭环 — 送聊天 / 生成题目 / 制卡入口。
  *
  * 出题接线说明（2026-08 调研结论）：
  * - questionBank 的 `import_question_bank_stream(format='txt')` 是「解析已有题目」
@@ -17,7 +17,7 @@
  */
 
 import type { TFunction } from 'i18next';
-import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { APP_EVENTS, dispatchAppEvent, type PrefillChatInputDetail } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 /** 划词出题最小选中长度（与聊天划词制卡阈值一致） */
@@ -35,6 +35,31 @@ export interface SelectionSourceInfo {
 export type SelectionQuestionResult =
   | { ok: true; prompt: string }
   | { ok: false; reason: 'empty' | 'too_short' };
+
+/**
+ * 划词「添加到聊天」的缺省通道：PREFILL_CHAT_INPUT 包装。
+ *
+ * 不派发裸 CHAT_V2_SET_INPUT——那条通道假定聊天视图已在前台；PREFILL 由
+ * App 壳层先切到聊天视图、再转发为 CHAT_V2_SET_INPUT（App.tsx 的
+ * handlePrefillChatInput），从阅读器出发不会把文本丢进一个看不见的输入框。
+ * detail 在 PrefillChatInputDetail 基础上额外携带 page/sourceName——与链路 A
+ * 「引用到对话」的 locator 语义对齐，供消费方后续升级为资源引用而不必改发起方。
+ *
+ * 有 locator 回调（onQuoteToChat）的宿主应优先走回调（资源引用 + page locator，
+ * Agent 可回读原文）；本函数只是无回调时的兜底文本注入（autoSend=false）。
+ */
+export function sendSelectionToChatInput(input: SelectionSourceInfo): boolean {
+  const text = input.text.trim();
+  if (!text) return false;
+  const detail: PrefillChatInputDetail & Pick<SelectionSourceInfo, 'page' | 'sourceName'> = {
+    content: text,
+    autoSend: false,
+  };
+  if (typeof input.page === 'number') detail.page = input.page;
+  if (input.sourceName) detail.sourceName = input.sourceName;
+  dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, detail);
+  return true;
+}
 
 /**
  * 组装送入聊天的出题指令。材料整体包在指令末尾，来源行帮助 Agent

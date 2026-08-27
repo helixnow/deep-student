@@ -8,6 +8,9 @@
 //! 对象的积木，本轮未接 UI 之前功能不可暴露（源码锁测试
 //! `sync_r12_delta_gc.rs` 强制该事实）。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 首要原则：**宁留垃圾，不删仍被引用的对象**。任何不确定（LIST 截断、
 //! manifest / descriptor 缺失、解析失败、解密失败、加密策略不一致）都
 //! fail-closed 成「本轮零删除、零写 candidate」，绝不猜测。
@@ -455,6 +458,9 @@ fn normalized_holder(holder_device_id: &str) -> Result<String> {
 ///   （`backup-v2/gc/candidates/<uuid>.json`，写后回读核对）；
 /// - 已有 candidate 且其 key 仍未被引用 → 原样保留（`firstSeen` 不刷新），
 ///   grace 从首次观察起算。
+///
+/// **[experimental 隔离入口]** 生产代码零调用方（sync_r12 源码锁钉死）；
+/// 接线须先满足 docs/dev/wave2-D-backup-v2-decision.md 的前置清单。
 pub async fn collect_gc_candidates(
     storage: Arc<dyn CloudStorage>,
     params: GcParams<'_>,
@@ -566,6 +572,9 @@ async fn collect_locked(
 ///   本轮扫描起点时才删除：先删对象、再删 candidate（中途失败最多留垃圾，
 ///   不可能删掉任何保留版本还引用的对象）；
 /// - 本遍**永远不写新 candidate**。
+///
+/// **[experimental 隔离入口]** 生产代码零调用方（sync_r12 源码锁钉死）；
+/// 接线须先满足 docs/dev/wave2-D-backup-v2-decision.md 的前置清单。
 pub async fn sweep_gc_candidates(
     storage: Arc<dyn CloudStorage>,
     params: GcParams<'_>,

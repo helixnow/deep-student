@@ -144,7 +144,8 @@
       "retryDeletingSubsequent": "因重试已移除后续 {{count}} 条消息",
       "retryConfirmAction": "继续重试",
       "saveAsNote": "保存为笔记",
-      "saveAsNoteSuccess": "已保存为笔记：{{title}}",
+      "saveAsNoteSuccessInFolder": "已保存为笔记：{{title}}（已存入所选目录）",
+      "saveAsNoteSuccessAtRoot": "已保存为笔记：{{title}}（位于资源库根目录）",
       "saveAsNoteFailed": "保存笔记失败",
       "exportMarkdown": "导出为 Markdown",
       "exportMarkdownSuccess": "已导出 Markdown 文件",
@@ -229,7 +230,6 @@
     "processingIndicatorPartial": "部分模式未就绪",
     "completedMissingModes": "完成（{{modes}}未就绪）",
     "modesNotReady": "未就绪：{{modes}}",
-    "nonMultimodalImageFallback": "当前模型不支持图片输入，已自动将 {{count}} 个附件切换为文本/OCR 模式。可切换到多模态模型后再启用图片模式。",
     "uploadStage": {
       "reading": "读取文件",
       "uploading": "上传中",
@@ -237,9 +237,6 @@
     },
     "modeSeparator": "、",
     "runtimeModelSwitchCurrent": "{{label}}，当前：{{current}}",
-    "thinkingEnabled": "推理模式已开启",
-    "thinkingDisabled": "点击开启推理模式",
-    "toggleThinking": "切换推理模式",
     "thinking": "推理模式",
     "thinkingDepthMenu": "选择推理深度",
     "thinkingDepthTitle": "推理强度",
@@ -250,6 +247,7 @@
     "thinkingUnsupported": "不支持推理",
     "thinkingUnsupportedDescription": "该模型不支持推理",
     "thinkingDepth": {
+      "minimal": "最低",
       "low": "低",
       "medium": "中",
       "high": "高",
@@ -266,37 +264,6 @@
     "runtimeModelOtherProvider": "其他",
     "runtimeModelNoResults": "未找到匹配模型",
     "chooseRuntimeModel": "选择模型",
-    "thinkingDepthExpensive": "更慢",
-    "ankiTools": "Anki 制卡",
-    "menuGroup": {
-      "context": "上下文",
-      "aiSettings": "AI 增强",
-      "modes": "模式",
-      "tools": "工具"
-    },
-    "imageGen": {
-      "title": "生成图片",
-      "subtitle": "通过内置工具生成图片，结果会保存到 VFS。",
-      "configureModel": "设置模型",
-      "placeholder": "例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖",
-      "promptRequired": "请输入生图描述",
-      "model": "模型",
-      "autoModel": "自动选择",
-      "openAICompatible": "OpenAI 兼容 Image API",
-      "loadingModels": "正在加载生图模型...",
-      "noModelTitle": "未配置生图模型",
-      "noModelDescription": "请先在模型设置中标记并选择一个支持 /images/generations 的模型。",
-      "aspectRatio": "比例",
-      "quality": "质量",
-      "purposes": {
-        "knowledgeCard": "知识卡片插图",
-        "quizImage": "题目配图",
-        "conceptDiagram": "概念图",
-        "coverImage": "封面图"
-      },
-      "generate": "生成"
-    },
-    "nonMultimodalImageFallbackUnavailable": "当前模型不支持图片输入，且有 {{count}} 个附件尚未准备好可用的文本/OCR 模式。请切换到多模态模型，或等待 OCR 完成后重试。",
     "stage": {
       "textExtraction": "提取文本",
       "pageRendering": "渲染",
@@ -311,7 +278,6 @@
       "pdfProcessing": "PDF 处理中",
       "imageProcessing": "图片处理中"
     },
-    "toggleModelPanel": "切换模型选择面板",
     "voiceInput": {
       "button": "语音输入",
       "start": "开始语音输入",
@@ -381,7 +347,6 @@
       "compactionSkipped": "本次未压缩",
       "compactionFailed": "压缩失败，请重试"
     },
-    "pasteNotReady": "正在初始化，请稍后再试",
     "retryStarted": "已重新启动处理",
     "retryFailed": "重试失败: {{error}}",
     "mediaProcessingFailed": "{{type}}处理失败",

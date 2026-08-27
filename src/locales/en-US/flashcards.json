@@ -253,7 +253,10 @@
     "statRated": "Rated",
     "statTime": "Time",
     "statBestStreak": "Best streak",
-    "distribution": "Rating distribution"
+    "distribution": "Rating distribution",
+    "undoNudgeRated": "Rated {{rating}}",
+    "undoNudgeGeneric": "Review recorded",
+    "cardTimeCappedTitle": "Over 1 minute on this card (display capped; stats unaffected)"
   },
   "settings": {
     "title": "Flashcard settings",

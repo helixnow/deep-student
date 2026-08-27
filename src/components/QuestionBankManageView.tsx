@@ -682,8 +682,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       onClick={(e) => e.stopPropagation()}
                       onClickCapture={(e) => { shiftKeyRef.current = e.shiftKey; }}
                     >
+                      {/* coarse 热区由 Checkbox 基元（Checkbox.css ::after）保证，勿再手抄扩区 */}
                       <Checkbox
-                        className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                         checked={selectedIds.has(q.id)}
                         onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
                       />
@@ -809,7 +809,6 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               <TableRow>
                 <TableHead className="w-10">
                   <Checkbox
-                    className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                     checked={allSelected || (someSelected ? 'indeterminate' : false)}
                     onCheckedChange={handleSelectAll}
 />
@@ -840,7 +839,6 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     onClickCapture={(e) => { shiftKeyRef.current = e.shiftKey; }}
                   >
                     <Checkbox
-                      className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
                       checked={selectedIds.has(q.id)}
                       onCheckedChange={(checked) => handleSelectOne(q.id, !!checked, index)}
 />
@@ -1105,6 +1103,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* 吸底条图标钮：<sm 时文案 hidden 不进可访问树、title 触屏不可达，须显式 aria-label 命名 */}
             {onBatchUpdateDifficulty && (
               <DsButton
                 variant="ghost"
@@ -1116,6 +1115,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'difficulty' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'difficulty'}
+                aria-label={t('learningHub:exam.library.batchSetDifficulty')}
                 title={t('learningHub:exam.library.batchSetDifficulty')}
               >
                 <Gauge size={14} />
@@ -1133,6 +1133,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   batchPanel === 'tags' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 aria-expanded={batchPanel === 'tags'}
+                aria-label={t('learningHub:exam.library.batchEditTags')}
                 title={t('learningHub:exam.library.batchEditTags')}
               >
                 <Tag size={14} />
@@ -1140,11 +1141,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               </DsButton>
             )}
             {(onBatchUpdateDifficulty || onBatchUpdateTags) && <div className="w-px h-3 bg-border/60 mx-1" />}
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10" title={t('practice:questionBank.reset')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-primary hover:bg-primary/10" aria-label={t('practice:questionBank.reset')} title={t('practice:questionBank.reset')}>
               <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
             </DsButton>
-            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10" title={t('common:delete')}>
+            <DsButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-destructive hover:bg-destructive/10" aria-label={t('common:delete')} title={t('common:delete')}>
               <Trash size={12} />
               <span className="hidden sm:inline">{t('common:delete')}</span>
             </DsButton>
@@ -1154,6 +1155,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               size="sm"
               onClick={() => { setSelectedIds(new Set()); onSelect?.([]); lastSelectedIndexRef.current = null; setBatchPanel(null); }}
               className="!h-auto !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              aria-label={t('common:cancel')}
               title={t('common:cancel')}
             >
               <X size={12} />

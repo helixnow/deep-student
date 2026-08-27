@@ -16,6 +16,7 @@ import {
   PlusCircle,
   Stack,
   Trash,
+  Tray,
   UploadSimple,
   X,
 } from '@phosphor-icons/react';
@@ -35,7 +36,12 @@ import {
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import type { ReviewEditTemplate } from '../reviewCardEditFields';
 import { LibraryCardRow } from '../library/LibraryCardRow';
-import { matchesStatusFilter, sortLibraryCards } from '../library/libraryView';
+import {
+  countDueCards,
+  matchesStatusFilter,
+  partitionLibraryQueues,
+  sortLibraryCards,
+} from '../library/libraryView';
 import '../library/library.css';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -155,14 +161,21 @@ export const LibraryScreen: React.FC = () => {
 
   const rowBusy = busyCardId !== null || bulkBusy;
 
-  const visibleItems = useMemo(
-    () => sortLibraryCards(
+  // 已生成未入队（inbox）与已入队队列（scheduled）分区渲染，视觉上隔离两条队列。
+  // visibleItems 按「inbox 在前」的渲染顺序拼接，键盘导航 / shift 连选与视觉顺序一致。
+  const { inbox: inboxItems, scheduled: scheduledItems } = useMemo(
+    () => partitionLibraryQueues(sortLibraryCards(
       items.filter((card) => matchesStatusFilter(card, statusFilter)),
       sortKey,
       sortDir,
-    ),
+    )),
     [items, statusFilter, sortKey, sortDir],
   );
+  const visibleItems = useMemo(
+    () => [...inboxItems, ...scheduledItems],
+    [inboxItems, scheduledItems],
+  );
+  const scheduledDueCount = useMemo(() => countDueCards(scheduledItems), [scheduledItems]);
 
   const filterCounts = useMemo(() => {
     const counts = new Map<LibraryStatusFilter, number>();
@@ -333,6 +346,12 @@ export const LibraryScreen: React.FC = () => {
     void bulkEnqueue(enqueueTargets.map((card) => card.id));
   };
 
+  // 收件箱区头的「加入复习」：把当前页所有未入队卡整批入队（复用 bulkEnqueue 链路）。
+  const handleEnqueueInbox = () => {
+    if (inboxItems.length === 0) return;
+    void bulkEnqueue(inboxItems.map((card) => card.id));
+  };
+
   const handleBulkSuspend = () => {
     void bulkSetSuspended(suspendTargets.map((card) => card.id), true);
   };
@@ -401,6 +420,32 @@ export const LibraryScreen: React.FC = () => {
 
   const pageCount = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
   const initialLoading = loading && !loaded;
+
+  // 两个队列分区共用同一行渲染（行为完全一致，仅容器视觉不同）。
+  const renderCardRow = (card: AnkiLibraryCard) => (
+    <LibraryCardRow
+      key={card.id}
+      card={card}
+      busy={rowBusy}
+      deleting={busyCardId === card.id}
+      selected={selectedIds.has(card.id)}
+      expanded={expandedId === card.id}
+      confirmingDelete={deleteCandidateId === card.id}
+      onToggleSelect={handleToggleSelect}
+      onToggleExpand={handleToggleExpand}
+      onStartReview={handleStartReview}
+      onEnqueue={handleEnqueue}
+      onToggleSuspended={handleToggleSuspended}
+      onRequestDelete={handleRequestDelete}
+      onCancelDelete={handleCancelDelete}
+      onConfirmDelete={handleConfirmDelete}
+      onSaveEdit={handleSaveEdit}
+      onUndoReview={handleUndoReview}
+      onResetProgress={handleResetProgress}
+      onRowKeyDown={handleRowKeyDown}
+      rowRef={registerRowRef}
+    />
+  );
 
   return (
     <div className="wb-fc-screen">
@@ -774,32 +819,76 @@ export const LibraryScreen: React.FC = () => {
               <span>{translate('library.selectAll')}</span>
               <span className="fc-lib-kbd-hint">{translate('library.keyboardHint')}</span>
             </div>
-            <ul className="wb-fc-list-ul">
-              {visibleItems.map((card) => (
-                <LibraryCardRow
-                  key={card.id}
-                  card={card}
-                  busy={rowBusy}
-                  deleting={busyCardId === card.id}
-                  selected={selectedIds.has(card.id)}
-                  expanded={expandedId === card.id}
-                  confirmingDelete={deleteCandidateId === card.id}
-                  onToggleSelect={handleToggleSelect}
-                  onToggleExpand={handleToggleExpand}
-                  onStartReview={handleStartReview}
-                  onEnqueue={handleEnqueue}
-                  onToggleSuspended={handleToggleSuspended}
-                  onRequestDelete={handleRequestDelete}
-                  onCancelDelete={handleCancelDelete}
-                  onConfirmDelete={handleConfirmDelete}
-                  onSaveEdit={handleSaveEdit}
-                  onUndoReview={handleUndoReview}
-                  onResetProgress={handleResetProgress}
-                  onRowKeyDown={handleRowKeyDown}
-                  rowRef={registerRowRef}
-                />
-              ))}
-            </ul>
+            {inboxItems.length > 0 ? (
+              <section
+                className="fc-lib-queue-section"
+                data-queue="inbox"
+                aria-label={translate('library.queue.inboxTitle', {
+                  defaultValue: '已生成 · 待入队',
+                })}
+              >
+                <div className="fc-lib-queue-head" data-queue="inbox">
+                  <Tray size={14} weight="duotone" aria-hidden="true" />
+                  <span className="fc-lib-queue-title">
+                    {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
+                  </span>
+                  <span className="fc-lib-queue-count">{inboxItems.length}</span>
+                  <span className="fc-lib-queue-hint">
+                    {translate('library.queue.inboxHint', {
+                      defaultValue: '尚未进入复习计划，不会出现在到期队列',
+                    })}
+                  </span>
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={rowBusy}
+                    onClick={handleEnqueueInbox}
+                    className="fc-lib-queue-cta text-xs [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <PlusCircle size={13} />
+                    {translate('library.queue.enqueueAll', {
+                      count: inboxItems.length,
+                      defaultValue: '加入复习（{{count}}）',
+                    })}
+                  </DsButton>
+                </div>
+                <ul className="wb-fc-list-ul">
+                  {inboxItems.map(renderCardRow)}
+                </ul>
+              </section>
+            ) : null}
+            {scheduledItems.length > 0 ? (
+              <section
+                className="fc-lib-queue-section"
+                data-queue="scheduled"
+                aria-label={translate('library.queue.scheduledTitle', {
+                  defaultValue: '复习队列',
+                })}
+              >
+                {/* 仅当上方存在收件箱时才需要显式的队列区头做视觉分界 */}
+                {inboxItems.length > 0 ? (
+                  <div className="fc-lib-queue-head" data-queue="scheduled">
+                    <Stack size={14} weight="duotone" aria-hidden="true" />
+                    <span className="fc-lib-queue-title">
+                      {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
+                    </span>
+                    <span className="fc-lib-queue-count">{scheduledItems.length}</span>
+                    {scheduledDueCount > 0 ? (
+                      <span className="fc-lib-queue-hint" data-tone="due">
+                        {translate('library.queue.dueCount', {
+                          count: scheduledDueCount,
+                          defaultValue: '{{count}} 张已到期',
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                <ul className="wb-fc-list-ul">
+                  {scheduledItems.map(renderCardRow)}
+                </ul>
+              </section>
+            ) : null}
           </div>
         )}
       </CustomScrollArea>
