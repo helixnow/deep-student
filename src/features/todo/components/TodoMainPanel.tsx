@@ -60,6 +60,7 @@ import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isEffectivelyVisible } from '../utils/domVisibility';
 import { TodoItemRow, SortableTodoItemRow } from './main/TodoItemRow';
 import { TodoRowsList, type TodoRowSpec } from './main/TodoRowsList';
 import { TodoItemDetail } from './main/TodoItemDetail';
@@ -127,10 +128,7 @@ export const MobileDetailOverlay: React.FC<{
     return registerBackHandler(() => {
       // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 离场层里仍保持挂载
       // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
-      // （可见性判定对照 TodoTrashDialog 的 Escape 守卫）
-      const el = containerRef.current;
-      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
-      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      if (!isEffectivelyVisible(containerRef.current)) return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.view);
@@ -366,10 +364,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     return registerBackHandler(() => {
       // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 保活层里仍保持挂载
       // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
-      // （对照 MobileDetailOverlay 的同款守卫）
-      const el = panelRootRef.current;
-      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
-      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      if (!isEffectivelyVisible(panelRootRef.current)) return false;
       exitCheckMode();
       return true;
     }, BACK_PRIORITY.overlay);

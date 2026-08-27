@@ -17,6 +17,7 @@ import type {
   MindMapAssociation, MindMapDocument, MindMapImage, MindMapNode, MindMapSheetMeta,
 } from '../types';
 import { markdownListToNodes } from './pasteMarkdown';
+import { createImageSanitizeBudget, sanitizeNodeImages } from './imageSanitize';
 
 /**
  * 最大导入深度限制，防止恶意数据导致栈溢出
@@ -1172,22 +1173,32 @@ export function importFromJson(jsonContent: string): MindMapDocument {
   // 修复: 验证树的深度和节点数量
   validateTree(doc.root);
 
-  // 确保所有节点都有 ID（带深度限制）
+  // 图片清洗预算整次导入共享一份（与 xmind 导入的 resolvePendingImages 同一原则）
+  const imageBudget = createImageSanitizeBudget();
+
+  // 确保所有节点都有 ID（带深度限制），并对 images 做运行时清洗：
+  // 对象展开会保留任意字段，image.src 未经校验就会直接交给 <img> 渲染——
+  // 这里按白名单重建（data URL MIME/体积 + https allowlist），不合法项删除。
   function ensureIds(node: MindMapNode, depth: number = 0): MindMapNode {
     // 深度限制检查
-    if (depth > MAX_IMPORT_DEPTH) {
-      return {
-        ...node,
-        id: node.id || nanoid(10),
-        children: [],
-      };
+    const result: MindMapNode =
+      depth > MAX_IMPORT_DEPTH
+        ? {
+            ...node,
+            id: node.id || nanoid(10),
+            children: [],
+          }
+        : {
+            ...node,
+            id: node.id || nanoid(10),
+            children: (node.children || []).map(child => ensureIds(child, depth + 1)),
+          };
+    if ('images' in result) {
+      const images = sanitizeNodeImages((node as { images?: unknown }).images, imageBudget);
+      if (images) result.images = images;
+      else delete result.images;
     }
-    
-    return {
-      ...node,
-      id: node.id || nanoid(10),
-      children: (node.children || []).map(child => ensureIds(child, depth + 1)),
-    };
+    return result;
   }
 
   const rawMeta = doc.meta as Record<string, unknown> | undefined;

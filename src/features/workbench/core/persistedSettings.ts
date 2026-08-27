@@ -61,6 +61,31 @@ export function parsePersistedWallpaper(
   return result;
 }
 
+/** 桌面（Space）名称长度上限（按 Unicode 码点计，超出截断） */
+export const DESKTOP_NAME_MAX_LENGTH = 24;
+
+/**
+ * Parse the persisted desktop (space) name — Spaces 最小命名桌面的解析层。
+ *
+ * 返回清洗后的自定义名称；未设置 / 非字符串 / 清洗后为空 → null
+ * （调用方回退默认品牌名 `menubar.appName`）。清洗规则：
+ * 控制字符（含换行）替换为空格 → 连续空白折叠为单空格 → 两端去空 →
+ * 按码点截断到 DESKTOP_NAME_MAX_LENGTH（Array.from 保证不劈开代理对）。
+ */
+export function parsePersistedDesktopName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+  const points = Array.from(cleaned);
+  return points.length > DESKTOP_NAME_MAX_LENGTH
+    ? points.slice(0, DESKTOP_NAME_MAX_LENGTH).join('').trimEnd()
+    : cleaned;
+}
+
 /** Parse and clamp the workbench tiling margin preference field-by-field. */
 export function parsePersistedTileMargins(
   value: unknown,

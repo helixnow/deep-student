@@ -88,12 +88,15 @@ function persistOnboardingDismissed(dismissed: boolean): void {
 export interface EmptyDesktopProps {
   /** 存在可恢复的上次桌面快照时显示次级 CTA（默认 false，不做破坏性默认翻转） */
   restoreAvailable?: boolean;
+  /** 可恢复快照里的窗口数（>0 时 CTA 文案附带数量，帮用户预判恢复规模） */
+  restoreWindowCount?: number;
   /** 「恢复上次桌面」点击回调（由总装提供 hydrate 实现） */
   onRestoreSession?: () => void;
 }
 
 export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   restoreAvailable = false,
+  restoreWindowCount = 0,
   onRestoreSession,
 }) => {
   const { t } = useTranslation();
@@ -189,7 +192,11 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
               onClick={onRestoreSession}
             >
               <ClockCounterClockwise size={18} weight="duotone" aria-hidden="true" />
-              {t('workbench:emptyDesktop.actionRestoreSession')}
+              {restoreWindowCount > 0
+                ? t('workbench:emptyDesktop.actionRestoreSessionCount', {
+                    count: restoreWindowCount,
+                  })
+                : t('workbench:emptyDesktop.actionRestoreSession')}
             </button>
           ) : null}
         </div>

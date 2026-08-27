@@ -17,8 +17,7 @@
     "copied": "Copied to clipboard",
     "copied_feedback": "Copied",
     "exported": "Grading result exported",
-    "save_as_note": "Save as Note",
-    "saved_as_note": "Saved to Notes — open the Notes app to view it"
+    "save_as_note": "Save as Note"
   },
   "result_empty": {
     "title": "Ready to grade",

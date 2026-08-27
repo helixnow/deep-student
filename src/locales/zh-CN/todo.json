@@ -566,6 +566,10 @@
     "everyNYears": "每 {{count}} 年",
     "weeklyOn": "每周{{days}}",
     "everyNWeeksOn": "每 {{count}} 周的周{{days}}",
+    "monthlyOn": "每月{{days}}号",
+    "everyNMonthsOn": "每 {{count}} 个月的{{days}}号",
+    "monthDayJoin": "、",
+    "withUntil": "{{label}}，直到 {{date}}",
     "weekdayJoin": "、",
     "weekdayShort": {
       "0": "日",

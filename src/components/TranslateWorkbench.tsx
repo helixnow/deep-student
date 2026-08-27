@@ -793,6 +793,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
   useEffect(() => {
+    // ★ A6-28 标签页保活：非活跃实例不发起自动翻译。此前仅依赖「状态不变 →
+    // 签名不变」间接不触发，但恢复历史会话时 prompt 异步补签名存在时序窗口
+    // （prompt 加载晚于其它参数变化时签名失配），非活跃保活页也会发起流式翻译。
+    // 守卫必须显式（对齐下方快捷键 effect 的 isActive 守卫），重新激活后
+    // effect 因 isActive 变化重跑，签名失配的待译内容照常触发。
+    if (isActive === false) return;
     if (isAutoTranslate && sourceText.trim() && !isTranslating && !translationError) {
       // ★ A6-06：内容与参数均未变化时不再触发——否则翻译完成 → isTranslating 翻转 →
       // effect 重跑 → 同一文本被无限次重译（持续消耗 API 配额）
@@ -806,7 +812,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate, buildTranslationSig]);
+  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate, buildTranslationSig, isActive]);
 
   // 编辑译文
   const handleEditTranslation = useCallback(() => {

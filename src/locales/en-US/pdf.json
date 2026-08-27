@@ -191,10 +191,7 @@
     "copy_failed": "Copy failed",
     "quote_to_chat": "Quote in chat",
     "create_note": "Create note",
-    "note_default_title": "Excerpt note",
     "note_source": "— Excerpt from \"{{name}}\", page {{page}}",
-    "note_saved": "Saved as note",
-    "note_save_failed": "Failed to save note",
     "generateQuestions": "Generate questions",
     "makeCards": "Make flashcards",
     "selectionEmpty": "Select the text you want questions generated from first",
@@ -207,7 +204,16 @@
   },
   "annotations": {
     "save_failed": "Failed to save annotations. Your latest change may not have been saved",
-    "remote_updated": "Annotations were updated in another window. Loaded the latest version; your change was not saved"
+    "remote_updated": "Annotations were updated in another window. Loaded the latest version; your change was not saved",
+    "filter_placeholder": "Filter annotations…",
+    "filter_by_color": "Filter by color",
+    "color_chip": "Color {{color}}",
+    "no_filter_match": "No annotations match the current filters",
+    "export": "Export as note ({{num}})",
+    "export_hint": "Summarize the listed annotations into one note, grouped by page, with clickable source links back to the PDF",
+    "summary_title": "Annotation summary of \"{{name}}\"",
+    "summary_title_fallback": "Annotation summary",
+    "locate": "Show on page {{page}}"
   },
   "a11y": {
     "close": "Close",

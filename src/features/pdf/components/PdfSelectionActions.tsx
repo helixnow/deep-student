@@ -7,9 +7,15 @@
  *
  * - 解释 / 翻译 → 复用 chat 的 ExplainPopover / TranslationPopover（两者都只吃
  *   sourceText，不依赖聊天 store）
- * - 保存为笔记 → 复用 @/shared/notes 的目录选择 + 「打开笔记」toast
+ * - 保存为笔记 → 复用 @/shared/notes 的目录选择 + 「打开笔记」toast；正文带
+ *   来源行（fileName + page locator，与链路 A 摘录笔记同一落地格式）
  * - 生成卡片   → 复用 chat 的 selectionCardGeneration（内部走既有 CardForge 适配器）
- * - 添加到聊天 → 复用全局 CHAT_V2_SET_INPUT（WorkbenchEventBridge 兜底建窗）
+ * - 添加到聊天 → 优先走宿主注入的 onQuoteToChat locator 回调（与链路 A
+ *   「引用到对话」同形：资源引用 + page locator）；无回调或页码不可得时走
+ *   selectionStudyActions.sendSelectionToChatInput 的 PREFILL_CHAT_INPUT 包装
+ *   （先切聊天视图再注入，payload 带 page/sourceName），不派发裸 CHAT_V2_SET_INPUT
+ *
+ * 边界：高亮选色不在本工具条——色板留在 viewer 内建的 ds-highlight-menu。
  *
  * 定位契约：
  * - 工具条挂在 `.ds-pdf-viewer`（position: relative）内，absolute 定位，随宿主滚动
@@ -25,10 +31,23 @@ import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
-import { ExplainPopover } from '@/features/chat/components/ExplainPopover';
-import { TranslationPopover } from '@/features/chat/components/TranslationPopover';
-import { generateCardsFromSelection } from '@/features/chat/services/selectionCardGeneration';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
+// 静态导入安全：selectionStudyActions 只依赖 @/events 与 UnifiedNotification
+// （均在主 chunk），不会把聊天/cardforge 拉进本组件的懒加载 chunk
+import { sendSelectionToChatInput } from '../selectionStudyActions';
+
+// 解释/翻译结果卡片复用聊天组件，但必须懒加载：静态导入会把整条翻译链路
+// 打进 PDF 侧 chunk，抵消 EnhancedPdfViewer 与 selectionStudyActions 的拆包设计。
+// 用户点「解释/翻译」时结果面板才挂载，首帧多一次 chunk 加载可接受。
+const ExplainPopover = React.lazy(() =>
+  import('@/features/chat/components/ExplainPopover').then((m) => ({ default: m.ExplainPopover }))
+);
+const TranslationPopover = React.lazy(() =>
+  import('@/features/chat/components/TranslationPopover').then((m) => ({
+    default: m.TranslationPopover,
+  }))
+);
 
 /**
  * 触屏底部避让高度：阅读器底栏 + 进度细线 + Home Indicator 的经验值。
@@ -43,8 +62,14 @@ export interface PdfSelectionActionsProps {
   enabled: boolean;
   /** 触屏 / 窄屏形态 */
   isMobileLike: boolean;
-  /** 文档标题，用于笔记标题与卡片上下文 */
+  /** 文档标题（必须是人类可读的 fileName，不是 DSTU 资源 ID），用于笔记来源行与聊天来源标注 */
   documentTitle?: string;
+  /**
+   * 「添加到聊天」locator 回调，与链路 A（viewer 的 onQuoteToChat）同形：
+   * 上层视图接 useReferenceToChat 后注入资源引用 + `page:N` locator，Agent 可回读原文。
+   * 缺省（或选区页码不可得）时走 PREFILL_CHAT_INPUT 文本注入兜底。
+   */
+  onQuoteToChat?: (payload: PdfSelectionPayload) => void;
 }
 
 export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
@@ -52,6 +77,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   enabled,
   isMobileLike,
   documentTitle,
+  onQuoteToChat,
 }) => {
   const { t } = useTranslation(['pdf', 'chatV2', 'common']);
   const selection = useTextSelection(containerRef);
@@ -96,26 +122,78 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     });
   }, [selection.contextBefore, selection.contextAfter]);
 
+  /**
+   * 解析当前选区所在页码（1-based，取自页面包裹层的 data-page-number）。
+   *
+   * 点击时机可靠：SelectionToolbar 对 mousedown preventDefault（防清选区），
+   * 各动作回调触发时 DOM 选区仍在。解析失败（无选区 / 不在页面包裹层内）
+   * 返回 undefined，调用方按无页码降级，不阻断动作本身。
+   */
+  const resolveSelectionPage = useCallback((): number | undefined => {
+    const container = containerRef.current;
+    const domSelection = window.getSelection();
+    if (!container || !domSelection || domSelection.rangeCount === 0) return undefined;
+    const node = domSelection.getRangeAt(0).startContainer;
+    const element = node instanceof Element ? node : node.parentElement;
+    const pageEl = element?.closest('[data-page-number]');
+    if (!pageEl || !container.contains(pageEl)) return undefined;
+    const page = Number.parseInt(pageEl.getAttribute('data-page-number') ?? '', 10);
+    return Number.isInteger(page) && page > 0 ? page : undefined;
+  }, [containerRef]);
+
   const handleSaveAsNote = useCallback((text: string) => {
+    // 有 fileName + 页码时与链路 A 摘录笔记同一落地格式：
+    // 引用块正文 + 来源行「—— 摘自《fileName》第 N 页」（page locator），
+    // 标题取摘录首 30 字。documentTitle 由挂载方保证是 fileName 而非资源 ID。
+    const page = resolveSelectionPage();
+    if (documentTitle && typeof page === 'number') {
+      const compactTitle = text.replace(/\s+/g, ' ').trim().slice(0, 30);
+      startSaveAsNote({
+        content: buildSelectionNoteContent({
+          text,
+          sourceLabel: t('pdf:selection.note_source', { name: documentTitle, page }),
+        }),
+        title: compactTitle || documentTitle,
+      });
+      return;
+    }
+    // 页码不可得时的降级：至少保留文档名做来源
     startSaveAsNote({
       content: documentTitle ? `> ${documentTitle}\n\n${text}` : text,
     });
-  }, [startSaveAsNote, documentTitle]);
+  }, [startSaveAsNote, documentTitle, resolveSelectionPage, t]);
 
   const handleMakeCards = useCallback((text: string) => {
-    void generateCardsFromSelection({
+    // 动态 import：selectionCardGeneration 顶层静态依赖 cardforge 的 cardAgent，
+    // 只在用户真点「制卡」时才载入，避免 cardforge 打进 PDF 侧 chunk
+    const input = {
       selectedText: text,
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       t,
-    });
+    };
+    void import('@/features/chat/services/selectionCardGeneration').then(
+      ({ generateCardsFromSelection }) => generateCardsFromSelection(input)
+    );
   }, [selection.contextBefore, selection.contextAfter, t]);
 
+  // 工具条「添加到聊天」：优先链路 A 同形的 locator 回调（资源引用 + page，
+  // Agent 可回读原文）；无回调或页码不可得时走 PREFILL 包装（先切聊天视图再
+  // 注入文本，payload 带 page/sourceName），不派发裸 CHAT_V2_SET_INPUT
   const handleAddToChat = useCallback((text: string) => {
-    window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
-      detail: { content: text, autoSend: false },
-    }));
-  }, []);
+    const page = resolveSelectionPage();
+    if (onQuoteToChat && typeof page === 'number') {
+      onQuoteToChat({ text, page });
+      return;
+    }
+    sendSelectionToChatInput({ text, sourceName: documentTitle, page });
+  }, [onQuoteToChat, documentTitle, resolveSelectionPage]);
+
+  // 解释/翻译结果面板的「添加到输入框」：内容是 AI 生成文本而非原文选区，
+  // 不适用 locator 引用语义，固定走 PREFILL 文本注入（此时选区已清，无页码）
+  const handleAddDerivedTextToChat = useCallback((text: string) => {
+    sendSelectionToChatInput({ text, sourceName: documentTitle });
+  }, [documentTitle]);
 
   if (!enabled) return null;
 
@@ -160,24 +238,26 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
             </DsButton>
           </div>
           <CustomScrollArea className="ds-pdf__selection-panel-body" fullHeight>
-            {explainText !== null && (
-              <ExplainPopover
-                sourceText={explainText}
-                isVisible
-                onClose={closePanel}
-                onAddToInput={handleAddToChat}
-              />
-            )}
-            {translateState !== null && (
-              <TranslationPopover
-                sourceText={translateState.text}
-                isVisible
-                contextBefore={translateState.contextBefore}
-                contextAfter={translateState.contextAfter}
-                onClose={closePanel}
-                onAddToInput={handleAddToChat}
-              />
-            )}
+            <React.Suspense fallback={null}>
+              {explainText !== null && (
+                <ExplainPopover
+                  sourceText={explainText}
+                  isVisible
+                  onClose={closePanel}
+                  onAddToInput={handleAddDerivedTextToChat}
+                />
+              )}
+              {translateState !== null && (
+                <TranslationPopover
+                  sourceText={translateState.text}
+                  isVisible
+                  contextBefore={translateState.contextBefore}
+                  contextAfter={translateState.contextAfter}
+                  onClose={closePanel}
+                  onAddToInput={handleAddDerivedTextToChat}
+                />
+              )}
+            </React.Suspense>
           </CustomScrollArea>
         </div>
       )}

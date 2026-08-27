@@ -148,6 +148,8 @@
   "menubar": {
     "label": "Study status bar",
     "appName": "Study Desktop",
+    "desktopRename": "Rename Desktop…",
+    "desktopNameInputLabel": "Desktop name",
     "flashcardsDue": "{{count}} flashcards due",
     "tasksRunning": "{{count}} card tasks running",
     "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
@@ -391,6 +393,8 @@
     "actionsLabel": "Quick start",
     "actionFiles": "Open Files",
     "actionRestoreSession": "Restore last desktop",
+    "actionRestoreSessionCount_one": "Restore last desktop (1 window)",
+    "actionRestoreSessionCount_other": "Restore last desktop ({{count}} windows)",
     "actionFilesDesc": "Browse notes, textbooks, and all resources",
     "actionApps": "All apps",
     "actionFlashcards": "Flashcards",
@@ -540,6 +544,17 @@
     "unsavedTitle": "You have unsaved changes. Leave anyway?",
     "saveAndClose": "Save & Close",
     "saveAndCloseFailed": "Save failed; the window stays open. Check the error and retry."
+  },
+  "deactivation": {
+    "cancelled": "Deactivation cancelled. Study Desktop stays on.",
+    "dirtyBlocked": "Some windows have unsaved changes, so closing Study Desktop was cancelled. Save or close those windows first.",
+    "exitBlocked": "There is unsaved content, so exiting was cancelled. Save your work before quitting."
+  },
+  "suspend": {
+    "keptBackground": "This window has unsaved changes, so it was kept running in the background instead of being frozen."
+  },
+  "hub": {
+    "closeCancelled": "Closing the tab was cancelled. Your unsaved changes are kept."
   },
   "mindmap": {
     "loading": "Loading mind map…",
@@ -1048,6 +1063,9 @@
       "depth2": "2 hops",
       "depthLabel": "Graph depth",
       "empty": "No links yet. Type [[ to create a wiki link.",
+      "legendLabel": "Edge types",
+      "legendNoteref": "Reference",
+      "legendWikilink": "Wiki link",
       "loadFailed": "Failed to load the local graph.",
       "loading": "Building graph…",
       "noActiveNote": "Select a note to see its graph.",

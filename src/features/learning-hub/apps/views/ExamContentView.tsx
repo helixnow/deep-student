@@ -491,6 +491,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, []);
 
+  // 视图壳只消费判分侧已有的 dirty 信号；判分侧尚未提供窗口级保存 API，
+  // 故不注册 save handler（不自造保存），关窗确认只提供「放弃/取消」。
   useEffect(() => registerContentDirtyChecker(
     'exam',
     sessionId,

@@ -28,7 +28,9 @@
     "undo_empty": "没有可撤销的操作",
     "copy_intent": "复制意图",
     "export_markdown": "导出 Markdown",
-    "copy_block": "复制该组件"
+    "copy_block": "复制该组件",
+    "open_note": "打开笔记",
+    "open_pdf_page": "打开 PDF 第 {{page}} 页"
   },
   "export_markdown": {
     "empty_table": "空表格",

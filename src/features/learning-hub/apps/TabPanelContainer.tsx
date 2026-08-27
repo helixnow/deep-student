@@ -13,6 +13,7 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import type { OpenTab, SplitViewState } from '../types/tabs';
 import { useTranslation } from 'react-i18next';
+import { isTabDirty } from '../closeTabGate';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('./UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
@@ -142,6 +143,15 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
       .slice(0, MAX_KEEPALIVE_TABS)
       .map(([id]) => id)
   );
+  // ★ Wave2-B r2（P4-4）：脏标签豁免保活淘汰。被逐出即强制 unmount，
+  // 草稿只剩卸载 flush 兜底（失败即丢）。保活集合可临时超上限，
+  // 待保存落盘（不再 dirty）后的下一次渲染自然回收。
+  // 淘汰只发生在重渲染时，因此渲染期同步查询 registry 即完整覆盖。
+  for (const tab of tabs) {
+    if (!keepAliveIds.has(tab.tabId) && isTabDirty(tab)) {
+      keepAliveIds.add(tab.tabId);
+    }
+  }
 
   // 渲染单个 tab 面板内容（保活逻辑，见 TabPanelItem）
   const loadingLabel = t('loading');

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { setWorkbenchDragData } from '../../hooks/useDesktopDrop';
 import { highlightRanges } from './highlightRanges';
 import {
   nodeMatchesProps,
@@ -583,6 +584,32 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Obsidian 1.12「Quick switcher: dragging results」对位：结果行可拖出
+  // 面板（拖到桌面开窗等），负载复用 O19 的 WB_RESOURCE_MIME 协议，
+  // 与 files 列表拖源、桌面落点桥（desktopDragBridge）同构。
+  const onResultDragStart = useCallback((
+    event: React.DragEvent<HTMLButtonElement>,
+    resource: DstuNode,
+  ) => {
+    try {
+      setWorkbenchDragData(event.dataTransfer, {
+        resourceId: resource.id,
+        resourceType: resource.type,
+        title: resource.name,
+      });
+    } catch {
+      // 异常负载（如空标题）：取消本次拖拽，点击打开路径不受影响
+      event.preventDefault();
+    }
+  }, []);
+
+  const onResultDragEnd = useCallback((event: React.DragEvent<HTMLButtonElement>) => {
+    // 落点接收（dropEffect 非 none）说明资源已在别处打开，随手关掉面板；
+    // 拖拽被取消（Esc / 拖回面板）时保持面板打开，用户可继续检索
+    const effect = event.dataTransfer?.dropEffect;
+    if (effect && effect !== 'none') onCloseRef.current();
+  }, []);
+
   // 点击面板外任意位置关闭（无遮罩形态下的轻量 dismiss）
   const onOutsidePointerDown = useCallback((event: Event) => {
     const root = rootRef.current;
@@ -801,6 +828,9 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                     data-active={selected ? 'true' : undefined}
                     data-notes-search-index={index}
                     disabled={isOpening}
+                    draggable={!isOpening}
+                    onDragStart={(event) => onResultDragStart(event, resource)}
+                    onDragEnd={onResultDragEnd}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => void openResult(resource)}
                   >

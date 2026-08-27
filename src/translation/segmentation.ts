@@ -8,16 +8,28 @@
  *   调用方应明示「按句对齐」而非静默错位）。
  */
 
-/** 按段落切分（空行分隔；空白段丢弃） */
+/**
+ * 换行归一：CRLF（\r\n）与孤立 CR（\r）统一为 LF。
+ * Windows 粘贴/文件导入的文本不归一会导致 \r\n\r\n 不被识别为空行分隔。
+ */
+const normalizeNewlines = (text: string): string => text.replace(/\r\n?/g, '\n');
+
+/**
+ * 按段落切分（空行分隔；空白段丢弃）。
+ * 「空行」允许含空格/制表符（如 "\n  \n"）——仅有空白字符的行同样视为段落边界。
+ */
 export const splitParagraphs = (text: string): string[] =>
-  text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  normalizeNewlines(text)
+    .split(/\n(?:[ \t]*\n)+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
 /**
  * 句子级切分：兼顾 CJK（。！？；）与西文（. ! ? ;）终止符，
  * 保留终止符本身，忽略纯空白片段。
  */
 export const splitSentences = (text: string): string[] => {
-  const matches = text.match(/[^。！？；.!?;\n]+[。！？；.!?;]*/g);
+  const matches = normalizeNewlines(text).match(/[^。！？；.!?;\n]+[。！？；.!?;]*/g);
   return (matches ?? []).map((s) => s.trim()).filter(Boolean);
 };
 

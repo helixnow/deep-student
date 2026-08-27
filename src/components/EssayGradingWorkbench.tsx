@@ -33,6 +33,7 @@ import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
+import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -44,7 +45,10 @@ import { GradingMain } from './essay-grading/GradingMain';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { ESSAY_MAX_CHARS } from './essay-grading/InputPanel';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import {
+  registerContentDirtyChecker,
+  registerContentSaveHandler,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -574,6 +578,44 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       }
     }
   }, [currentSession?.id, initialSession?.id]);
+
+  // 「保存并关闭」挂点（照抄翻译 saveCurrentSessionRef 范式：闭包经 ref 每帧更新，
+  // 注册保持稳定）。作文正文没有轮次之外的落盘 API（正文只随批改轮次持久化，
+  // dstuMode.onSessionSave 也只写元数据，不自造第二套 DSTU 写入），故复用两条
+  // 现有等价落盘路径：
+  //  1) 题目/图片 → 会话上下文 KV（与批改收尾同一路径，restoreFromDstu 可恢复）
+  //  2) 正文/题目 → S-012 草稿同步写入（跳过 debounce；重开时草稿优先于轮次正文恢复）
+  // 正文仅有草稿级持久化，基准只回写已真正落盘的题目/图片；正文继续如实呈 dirty。
+  const saveCurrentContentRef = useRef<() => Promise<void>>(async () => undefined);
+  saveCurrentContentRef.current = async () => {
+    const sessionId = currentSession?.id || initialSession?.id;
+    if (sessionId) {
+      await TauriAPI.saveSetting(
+        essaySessionContextKey(sessionId),
+        serializeSessionContext({ topicText, uploadedImages, topicImages })
+      );
+      patchPersistedBaseline({ topicText, uploadedImages, topicImages });
+    } else if (uploadedImages.length > 0 || topicImages.length > 0) {
+      // 无会话 id 时图片没有任何落盘路径：抛错让 saveContentNow 报失败、窗口保持打开
+      throw new Error('[EssayGrading] cannot persist images without a session id');
+    }
+    // 与 S-012 debounce 写入同一格式/同一键；回看已批改轮次的正文不算未保存编辑。
+    // localStorage 写入失败（配额等）向上抛出：保存失败不放行关闭。
+    const draftInputText = inputText === lastGradedInputRef.current ? '' : inputText;
+    if (!draftInputText && !topicText) {
+      localStorage.removeItem(draftKey);
+    } else {
+      localStorage.setItem(draftKey, JSON.stringify({ inputText: draftInputText, topicText }));
+    }
+  };
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId) return;
+    return registerContentSaveHandler('essay', resourceId, () =>
+      saveCurrentContentRef.current()
+    );
+  }, [dstuMode.resourceId, initialSession?.id]);
 
   // 标记"某段正文已被批改过"：同时更新文本基准与完整快照（内容 + 批改配置）
   const markInputAsGraded = useCallback((text: string) => {
@@ -1473,16 +1515,17 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     showGlobalNotification('success', t('essay_grading:toast.suggestion_undone'));
   }, [isGrading, inputText, t]);
 
-  // ★ 批改结果「存为笔记」直达：整理题目/正文/批改结果为 Markdown，写入笔记库
+  // ★ 批改结果「存为笔记」：整理题目/正文/批改结果为 Markdown，改走共享
+  // saveTextAsNote 流程（先选目录，成功 toast 带「打开笔记」动作），与聊天消息 /
+  // PDF 划词的落点行为一致，不再 createNote 直落资源库根目录
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'essay-grading' });
+  const startSaveAsNote = saveAsNoteFlow.start;
   const handleSaveAsNote = useCallback(async () => {
     const safeResult = gradingResult ?? '';
     if (!safeResult) return;
     try {
-      // 动态导入：导出格式化器与笔记适配器都不在批改主路径上
-      const [{ formatGradingResultForExport }, { notesDstuAdapter }] = await Promise.all([
-        import('../essay-grading/exportFormatter'),
-        import('@/dstu/adapters/notesDstuAdapter'),
-      ]);
+      // 动态导入：导出格式化器不在批改主路径上
+      const { formatGradingResultForExport } = await import('../essay-grading/exportFormatter');
       const safeInput = inputText ?? '';
       const baseTitle =
         currentSession?.title?.trim() ||
@@ -1499,17 +1542,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       content += `## ${t('essay_grading:input_section.title')}\n\n${safeInput}\n\n`;
       content += `## ${t('essay_grading:result_section.title')}\n\n`;
       content += formatGradingResultForExport(safeResult, safeInput);
-      const result = await notesDstuAdapter.createNote(title, content);
-      if (result.ok) {
-        showGlobalNotification('success', t('essay_grading:result_section.saved_as_note'));
-      } else {
-        showGlobalNotification('error', result.error.toUserMessage());
-      }
+      // 打开目录选择器；确认后由共享流程写入并弹出结果 toast
+      startSaveAsNote({ content, title });
     } catch (error: unknown) {
       console.error('[EssayGrading] Save as note failed:', error);
       showGlobalNotification('error', t('essay_grading:errors.save_note_failed'));
     }
-  }, [gradingResult, inputText, topicText, currentSession?.title, currentRoundNumber, t]);
+  }, [gradingResult, inputText, topicText, currentSession?.title, currentRoundNumber, startSaveAsNote, t]);
 
   // ★ 生成卡片：把「原文 + 批改结果」交给既有制卡链路（CardForge 批次任务）
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
@@ -1629,6 +1668,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           applyRoundSelection(index);
         }}
       />
+
+      {/* 「存为笔记」目录选择器（窄屏走全屏子屏，见 useSaveAsNoteFlow） */}
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
     </div>
   );
 };

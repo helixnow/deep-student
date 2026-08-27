@@ -1,14 +1,24 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, CaretLeft, CaretRight, Eye, EyeSlash, Fire, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
 
-/** 复习导航后把目标行/节点滚入视野（大纲行有 data-node-id；画布由 focus effect 居中） */
-function scrollNodeRowIntoView(nodeId: string) {
+/**
+ * 复习导航后把目标行/节点滚入视野（大纲行有 data-node-id；画布由 focus effect 居中）。
+ * - 查询限域到本实例容器 scope：分屏/保活多实例下全局查询可能滚动另一棵树
+ *   （与 useMindMapKeyboard 的 containerRef 限域同一原则）；
+ * - nodeId 经 CSS.escape：导入 id 含引号/反斜杠时不再拼出非法 selector。
+ */
+function scrollNodeRowIntoView(nodeId: string, scope: HTMLElement | null) {
   requestAnimationFrame(() => {
-    const row = globalThis.document.querySelector<HTMLElement>(`[data-node-id="${nodeId}"]`);
+    const queryRoot: ParentNode = scope ?? globalThis.document;
+    const escaped =
+      typeof CSS?.escape === 'function'
+        ? CSS.escape(nodeId)
+        : nodeId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const row = queryRoot.querySelector<HTMLElement>(`[data-node-id="${escaped}"]`);
     if (!row) return;
     const prefersReduced =
       !!globalThis.window?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -19,6 +29,8 @@ function scrollNodeRowIntoView(nodeId: string) {
 export const ReciteStatusBar: React.FC = () => {
   const { t } = useTranslation('mindmap');
   const storeApi = useMindMapStoreApi();
+  /** 状态条自身渲染在 .mindmap-container 内，经 closest 反查即为本实例容器 */
+  const barRef = useRef<HTMLDivElement>(null);
   const reciteMode = useMindMapStore(s => s.reciteMode);
   const document = useMindMapStore(s => s.document);
   const revealedBlanks = useMindMapStore(s => s.revealedBlanks);
@@ -39,7 +51,9 @@ export const ReciteStatusBar: React.FC = () => {
   const scrollToCurrentReviewNode = useCallback(() => {
     const { reciteReviewQueue, reciteReviewIndex } = storeApi.getState();
     const item = reciteReviewQueue?.[reciteReviewIndex];
-    if (item) scrollNodeRowIntoView(item.nodeId);
+    if (!item) return;
+    const scope = barRef.current?.closest<HTMLElement>('.mindmap-container') ?? null;
+    scrollNodeRowIntoView(item.nodeId, scope);
   }, [storeApi]);
 
   const handleStartReview = useCallback(() => {
@@ -57,7 +71,7 @@ export const ReciteStatusBar: React.FC = () => {
 
   // 顶部内联占位条：占用文档流（父容器 flex-col），不再作为悬浮层遮挡画布顶部节点
   return (
-    <div className="mm-recite-status-bar shrink-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in">
+    <div ref={barRef} className="mm-recite-status-bar shrink-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in">
       <BookOpen className="w-4 h-4 text-[var(--mm-warning)] shrink-0" />
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 

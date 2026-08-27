@@ -589,6 +589,7 @@ export const WorkbenchDesktop: React.FC = () => {
         {hydrated && orderedWindows.length === 0 && (
           <EmptyDesktop
             restoreAvailable={restorableSnapshot !== null}
+            restoreWindowCount={restorableSnapshot?.windows.length ?? 0}
             onRestoreSession={restoreLastSession}
           />
         )}

@@ -244,6 +244,41 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, activePanel]);
 
+  // ⌘/Ctrl+F → 聚焦模板搜索（legacy 壳 / Anki 内嵌等非 workbench 承载）。
+  // workbench 窗口承载时由 TemplatesAppWindow 的同款 handler 负责（带窗口
+  // 聚焦门禁），这里让位避免双重消费；此前 ⌘F 只覆盖 workbench 窗口，
+  // 独立模板页同一工具栏没有快捷键（评审缺口 #3）。
+  // capture 阶段消费，抢在 WebView 原生查找之前；编辑视图不渲染搜索框
+  // （querySelector 落空）时完全放行。
+  useEffect(() => {
+    if (workbenchWindowId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== 'f') return;
+      const root = rootRef.current;
+      // 保活守卫：本视图在隐藏保活层里仍保持挂载（visibility:hidden），
+      // 不可见时不抢其他视图的 ⌘F（与本文件返回键守卫同款判定）
+      if (!root || !root.isConnected || root.getClientRects().length === 0) return;
+      if (window.getComputedStyle(root).visibility === 'hidden') return;
+      // 兜底聚焦门禁：本组件若经其他宿主（如 Anki 内嵌选择模式）间接落在
+      // workbench 窗壳内，仍要求该窗聚焦且事件发生在窗内（对齐 TemplatesAppWindow）
+      const windowShell = root.closest<HTMLElement>('[data-wb-window]');
+      if (windowShell) {
+        if (!windowShell.hasAttribute('data-focused')) return;
+        const target = e.target as HTMLElement | null;
+        if (!target || !windowShell.contains(target)) return;
+      }
+      const input = root.querySelector<HTMLInputElement>('[data-template-search]');
+      if (!input) return;
+      e.preventDefault();
+      e.stopPropagation();
+      input.focus();
+      input.select();
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [workbenchWindowId]);
+
   const agentTemplatesRef = useRef<CustomAnkiTemplate[]>([]);
   const agentSnapshotRef = useRef<TemplateAgentSnapshot>({
     activeTab: 'browse',

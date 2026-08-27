@@ -797,12 +797,33 @@ pub async fn dstu_create(
                 options.name,
                 note_title
             );
+            // tags 新契约（fail-closed）：metadata.tags 若存在必须是字符串数组，
+            // 形状非法整单拒绝而非静默丢弃——调用方声明了标签就必须完整落库；
+            // 数量/长度/控制字符限额由 note_repo::validate_tags 在创建事务内兜底。
+            let note_tags: Vec<String> = match metadata.get("tags") {
+                None | Some(serde_json::Value::Null) => Vec::new(),
+                Some(serde_json::Value::Array(values)) => {
+                    let mut tags = Vec::with_capacity(values.len());
+                    for value in values {
+                        let Some(tag) = value.as_str() else {
+                            return Err(
+                                "INVALID_ARGUMENT: metadata.tags 必须是字符串数组".to_string()
+                            );
+                        };
+                        tags.push(tag.to_string());
+                    }
+                    tags
+                }
+                Some(_) => {
+                    return Err("INVALID_ARGUMENT: metadata.tags 必须是字符串数组".to_string());
+                }
+            };
             match VfsNoteRepo::create_note_in_folder(
                 &vfs_db,
                 VfsCreateNoteParams {
                     title: note_title,
                     content: content.clone(),
-                    tags: vec![],
+                    tags: note_tags,
                 },
                 folder_id.as_deref(),
             ) {
@@ -3608,15 +3629,47 @@ pub async fn dstu_set_metadata(
                     let bookmarks = bookmarks.as_array().ok_or_else(|| {
                         "INVALID_ARGUMENT: textbook bookmarks must be an array".to_string()
                     })?;
-                    match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
-                        Ok(_) => log::info!(
-                            "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
-                            bookmarks.len(),
-                            id
-                        ),
-                        Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
-                            return Err(e.to_string());
+                    // 书签三态契约（wave2-B r3）：
+                    // 1. 带 expected_updated_at → OCC 原子替换（对齐 highlights）；
+                    // 2. 无版本 + 同请求带 readingProgress → 视为进度更新捎带的陈旧
+                    //    快照，跳过书签写入（修复跨实例翻页清空书签）；
+                    // 3. 无版本 + 纯书签请求 = 显式书签通道，保持旧契约整数组覆盖写
+                    //    （previewPersistence.persistBookmarks 不携带版本，fail-closed
+                    //    会把 textbook/file 的书签保存全部拒绝）。
+                    match expected_updated_at.as_deref() {
+                        Some(expected) => {
+                            match VfsTextbookRepo::replace_bookmarks_if_version(
+                                &vfs_db, &id, bookmarks, expected,
+                            ) {
+                                Ok(_) => log::info!(
+                                    "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={}, id={}",
+                                    bookmarks.len(),
+                                    id
+                                ),
+                                Err(e) => {
+                                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                                    return Err(e.to_string());
+                                }
+                            }
+                        }
+                        None if metadata.get("readingProgress").is_some() => {
+                            log::warn!(
+                                "[DSTU::handlers] dstu_set_metadata: skip versionless bookmarks piggybacked on readingProgress, id={}",
+                                id
+                            );
+                        }
+                        None => {
+                            match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                                Ok(_) => log::info!(
+                                    "[DSTU::handlers] dstu_set_metadata: set textbook bookmarks={} (versionless explicit channel), id={}",
+                                    bookmarks.len(),
+                                    id
+                                ),
+                                Err(e) => {
+                                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook bookmarks error={}", e);
+                                    return Err(e.to_string());
+                                }
+                            }
                         }
                     }
                 }
@@ -3761,15 +3814,44 @@ pub async fn dstu_set_metadata(
                 let bookmarks = bookmarks.as_array().ok_or_else(|| {
                     "INVALID_ARGUMENT: file bookmarks must be an array".to_string()
                 })?;
-                match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
-                        bookmarks.len(),
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
-                        return Err(e.to_string());
+                // 书签三态契约与 textbook 分支一致：带版本 OCC 替换；无版本时
+                // 进度捎带的书签跳过；纯书签请求 = 显式书签通道，保持旧契约
+                // 整数组覆盖写（file 书签只有 setMetadata 一条通道且不带版本，
+                // fail-closed 会让 file 书签保存全挂）。
+                match expected_updated_at.as_deref() {
+                    Some(expected) => {
+                        match VfsTextbookRepo::replace_bookmarks_if_version(
+                            &vfs_db, &id, bookmarks, expected,
+                        ) {
+                            Ok(_) => log::info!(
+                                "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
+                                bookmarks.len(),
+                                id
+                            ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
+                    }
+                    None if metadata.get("readingProgress").is_some() => {
+                        log::warn!(
+                            "[DSTU::handlers] dstu_set_metadata: skip versionless bookmarks piggybacked on readingProgress, id={}",
+                            id
+                        );
+                    }
+                    None => {
+                        match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                            Ok(_) => log::info!(
+                                "[DSTU::handlers] dstu_set_metadata: set file bookmarks={} (versionless explicit channel), id={}",
+                                bookmarks.len(),
+                                id
+                            ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
                     }
                 }
             }

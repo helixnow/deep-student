@@ -31,6 +31,7 @@
 
 import { useEffect, type RefObject } from 'react';
 import { isShortcutGuardedEvent, isMacShortcutPlatform } from '@/features/workbench/core/shortcuts';
+import { isEffectivelyVisible, isHostWindowFocused } from '../utils/domVisibility';
 import { useTodoStore } from '../stores/useTodoStore';
 import { useTodoTrashView } from './TodoTrashDialog';
 import type { TodoViewFilter } from '../types';
@@ -129,26 +130,8 @@ function handleHotkeyKeyDown(e: KeyboardEvent): void {
   e.stopPropagation();
 }
 
-/** display:none（无 rects）与 visibility:hidden（ViewLayerRenderer 离场层）双重判定 */
-function isElementVisible(el: HTMLElement): boolean {
-  if (!el.isConnected) return false;
-  if (el.getClientRects().length === 0) return false;
-  if (typeof window.getComputedStyle === 'function') {
-    const style = window.getComputedStyle(el);
-    if (style.visibility === 'hidden' || style.display === 'none') return false;
-  }
-  return true;
-}
-
-/**
- * workbench 窗口承载时的聚焦门禁：宿主在 data-wb-window 壳内则要求该窗
- * 持有 data-focused（WindowShell 仅给焦点窗写该属性）。legacy 承载
- * （无窗壳祖先）不受影响。
- */
-function isHostWindowFocused(el: HTMLElement): boolean {
-  const windowShell = el.closest<HTMLElement>('[data-wb-window]');
-  return !windowShell || windowShell.hasAttribute('data-focused');
-}
+// 可见性（display:none / visibility:hidden 双重判定）与窗口聚焦门禁
+// 均改用共享 util（utils/domVisibility），语义与旧本地实现完全一致。
 
 /**
  * 注册视图跳转热键宿主。rootRef 指向宿主可见性判定元素
@@ -160,7 +143,7 @@ export function useTodoViewHotkeys(rootRef: RefObject<HTMLElement | null>): void
     const host: HotkeyHost = {
       isEligible: () => {
         const el = rootRef.current;
-        return Boolean(el && isElementVisible(el) && isHostWindowFocused(el));
+        return Boolean(el && isEffectivelyVisible(el) && isHostWindowFocused(el));
       },
     };
     hotkeyHosts.add(host);
