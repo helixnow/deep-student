@@ -2386,13 +2386,8 @@ impl AnthropicAdapter {
                 last["cache_control"] = json!({ "type": "ephemeral" });
             }
         }
-        let system = if system_blocks.is_empty() {
-            None
-        } else {
-            Some(Value::Array(system_blocks))
-        };
 
-        let tools = body
+        let mut tools = body
             .get("tools")
             .and_then(|v| v.as_array())
             .map(|items| {
@@ -2401,7 +2396,9 @@ impl AnthropicAdapter {
                     .filter_map(convert_tool_definition)
                     .collect::<Vec<_>>();
                 // tools 尾保险断点（ROUND-02 P2-11）：tools 序列化在 system 之前，
-                // 单独打点可在 system 变化时仍命中工具定义前缀
+                // 单独打点可在 system 变化时仍命中工具定义前缀。调用方已透传
+                // 块级 marker（convert_tool_definition 保留，ROUND-05 P2）时
+                // 视为断点位置由上游指定，不再追加。
                 let has_marker = converted.iter().any(|tool| tool.cache_control.is_some());
                 if !has_marker {
                     if let Some(last) = converted.last_mut() {
@@ -2411,6 +2408,16 @@ impl AnthropicAdapter {
                 converted
             })
             .filter(|v: &Vec<AnthropicTool>| !v.is_empty());
+
+        // 四槽预算守卫（ROUND-05 P2）：顶层 automatic 占 1 槽，块级断点
+        // （tools + system）合计超出剩余 3 槽时从最靠前的 marker 开始剥除。
+        enforce_anthropic_cache_breakpoint_budget(tools.as_mut(), &mut system_blocks);
+
+        let system = if system_blocks.is_empty() {
+            None
+        } else {
+            Some(Value::Array(system_blocks))
+        };
 
         let stop_sequences = body.get("stop").and_then(|stop| match stop {
             Value::String(s) if !s.is_empty() => Some(vec![s.clone()]),
@@ -2911,6 +2918,58 @@ struct AnthropicTool {
     cache_control: Option<Value>,
 }
 
+/// Anthropic Prompt Caching 硬上限：一个请求最多 4 个 cache_control 断点。
+/// 参考: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+const ANTHROPIC_CACHE_BREAKPOINT_BUDGET: usize = 4;
+
+/// 四槽预算守卫（ROUND-05 P2）：顶层 automatic cache_control 恒注入、占 1 槽，
+/// 块级断点（tools + system；消息块转换不承接 cache_control，无第三来源）
+/// 合计不得超过剩余 3 槽。超载时按 prompt 序（tools 序列化在 system 之前）
+/// 从最靠前的 marker 开始剥除——越靠后的断点覆盖的稳定前缀越长、
+/// 命中价值越高，优先保留尾部标记。
+fn enforce_anthropic_cache_breakpoint_budget(
+    mut tools: Option<&mut Vec<AnthropicTool>>,
+    system_blocks: &mut [Value],
+) {
+    let block_budget = ANTHROPIC_CACHE_BREAKPOINT_BUDGET - 1; // automatic 占 1 槽
+
+    let tool_marker_count = tools.as_deref().map_or(0, |tools| {
+        tools
+            .iter()
+            .filter(|tool| tool.cache_control.is_some())
+            .count()
+    });
+    let system_marker_count = system_blocks
+        .iter()
+        .filter(|block| block.get("cache_control").is_some())
+        .count();
+    let mut overflow = (tool_marker_count + system_marker_count).saturating_sub(block_budget);
+    if overflow == 0 {
+        return;
+    }
+
+    if let Some(tools) = tools.as_deref_mut() {
+        for tool in tools.iter_mut() {
+            if overflow == 0 {
+                break;
+            }
+            if tool.cache_control.take().is_some() {
+                overflow -= 1;
+            }
+        }
+    }
+    for block in system_blocks.iter_mut() {
+        if overflow == 0 {
+            break;
+        }
+        if let Some(map) = block.as_object_mut() {
+            if map.remove("cache_control").is_some() {
+                overflow -= 1;
+            }
+        }
+    }
+}
+
 /// 把 system/developer 消息内容规整为 Anthropic system block 数组，
 /// 保留调用方已打的块级 cache_control 标记（不要剥掉，ROUND-02 P2-11）。
 fn extract_system_text_blocks(message: &Value) -> Vec<Value> {
@@ -3269,11 +3328,15 @@ fn convert_tool_definition(value: &Value) -> Option<AnthropicTool> {
             map.insert("type".to_string(), json!("object"));
         }
     }
+    // ROUND-05 P2：透传调用方在 OpenAI 形状 tools[] 条目上打的块级缓存标记。
+    // 此前恒 None，调用方 marker 被静默丢弃，convert_openai_to_anthropic 的
+    // has_marker 检查是永假死分支，尾部保险断点无条件追加。
+    let cache_control = value.get("cache_control").cloned();
     Some(AnthropicTool {
         name,
         description,
         input_schema,
-        cache_control: None,
+        cache_control,
     })
 }
 
@@ -3728,6 +3791,11 @@ impl ProviderAdapter for GeminiAdapter {
 }
 
 #[cfg(test)]
+mod wave2_a_prefix_snapshot_tests;
+#[cfg(test)]
+mod wave2_a_anthropic_budget_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{
         build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,
@@ -3900,6 +3968,46 @@ mod tests {
             adapter.finish_stream().first(),
             Some(StreamEvent::Done)
         ));
+    }
+
+    /// ROUND-05 P1：choice 完成（finish_reason）≠ 流完成。finish_reason 之后
+    /// 官方序列仍会推送 usage-only 块（include_usage 请求来的缓存命中数据），
+    /// 部分网关还会补发内容块；事件序必须完整保序，Done 只由 [DONE] 触发，
+    /// 且 [DONE] 消费完成状态后 EOF 不再补发 Done。
+    #[test]
+    fn openai_adapter_choice_completion_keeps_event_sequence_until_done_marker() {
+        let adapter = OpenAIAdapter::new();
+        let mut events = adapter.parse_stream(
+            r#"data: {"choices":[{"index":0,"delta":{"content":"early"},"finish_reason":"stop"}]}"#,
+        );
+        // finish_reason 之后仍可能有后续内容块（宽松网关行为）
+        events.extend(
+            adapter.parse_stream(r#"data: {"choices":[{"index":0,"delta":{"content":" late"}}]}"#),
+        );
+        // 官方 include_usage 序列：[DONE] 前的 usage-only 块（choices 为空）
+        events.extend(adapter.parse_stream(
+            r#"data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18,"prompt_tokens_details":{"cached_tokens":8}}}"#,
+        ));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamEvent::Done)),
+            "choice completion must not be treated as stream completion"
+        );
+        events.extend(adapter.parse_stream("data: [DONE]"));
+
+        assert_eq!(events.len(), 4);
+        assert!(matches!(&events[0], StreamEvent::ContentChunk(content) if content == "early"));
+        assert!(matches!(&events[1], StreamEvent::ContentChunk(content) if content == " late"));
+        assert!(matches!(
+            &events[2],
+            StreamEvent::Usage(usage)
+                if usage["total_tokens"] == json!(18)
+                    && usage["prompt_tokens_details"]["cached_tokens"] == json!(8)
+        ));
+        assert!(matches!(&events[3], StreamEvent::Done));
+        // [DONE] 已清空完成状态，EOF 收口不得重复发 Done
+        assert!(adapter.finish_stream().is_empty());
     }
 
     #[test]
@@ -5168,6 +5276,48 @@ mod tests {
         );
     }
 
+    /// ROUND-05 P0 补强：官方端点带 query/fragment 变体仍命中断点门控；
+    /// 遗留无端点包装 convert_to_responses_format 恒不注入（防止未来有人
+    /// 把生产调用误接回无端点包装）。
+    #[test]
+    fn openai_responses_prompt_cache_breakpoint_gate_covers_endpoint_variants() {
+        let body = json!({
+            "messages": [
+                { "role": "system", "content": "You are helpful." },
+                { "role": "user", "content": "hi" }
+            ]
+        });
+
+        let official_variant = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "gpt-5.6",
+            &body,
+            "https://api.openai.com/v1/?token=x#frag",
+        );
+        assert_eq!(
+            official_variant["input"][0]["content"][0]["prompt_cache_breakpoint"],
+            json!({ "mode": "explicit" })
+        );
+
+        // 无端点包装：门控恒 false → 永不注入，system 回落顶层 instructions
+        let endpointless = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.6", &body);
+        assert_eq!(endpointless["instructions"], json!("You are helpful."));
+        let no_breakpoint = endpointless["input"]
+            .as_array()
+            .expect("input array")
+            .iter()
+            .all(|item| {
+                item["content"]
+                    .as_array()
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .all(|block| block.get("prompt_cache_breakpoint").is_none())
+                    })
+                    .unwrap_or(true)
+            });
+        assert!(no_breakpoint);
+    }
+
     #[test]
     fn model_supports_prompt_cache_breakpoint_parses_gpt_versions() {
         assert!(OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint("gpt-5.6"));
@@ -5613,6 +5763,147 @@ mod tests {
         assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
         // 已有块级标记时不再追加尾部断点（易变段不该被缓存锚定）
         assert!(system[1].get("cache_control").is_none());
+    }
+
+    /// ROUND-05 P2：convert_tool_definition 透传调用方 tools[].cache_control，
+    /// has_marker 分支从死分支变为可达——调用方已打 marker 时原样保留、
+    /// 不再无条件追加尾部保险断点。
+    #[test]
+    fn anthropic_tool_cache_control_passthrough_suppresses_tail_breakpoint() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+                },
+                {
+                    "type": "function",
+                    "function": { "name": "beta_tool", "parameters": { "type": "object" } }
+                }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 2);
+        // 调用方 marker 原样透传（此前被静默丢弃）
+        assert_eq!(tools[0]["cache_control"], json!({ "type": "ephemeral" }));
+        // has_marker 命中 → 不再追加尾部保险断点（易变工具不该被缓存锚定）
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    /// ROUND-05 P2：四槽满载（顶层 automatic 1 + tools 尾 1 + system 块级 2）
+    /// 恰好用满预算，不触发剥除，全部保留。
+    #[test]
+    fn anthropic_cache_breakpoint_budget_keeps_full_four_slots() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "stable prefix",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "stable tail",
+                            "cache_control": { "type": "ephemeral" }
+                        }
+                    ]
+                },
+                { "role": "user", "content": "hi" }
+            ],
+            "tools": [{
+                "type": "function",
+                "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+            }]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+
+        // automatic 顶层槽保留
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+        // tools 尾保险断点（调用方无 marker → 自动打点）保留
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert_eq!(tools[0]["cache_control"], json!({ "type": "ephemeral" }));
+        // system 两个块级 marker 均保留（块级合计 3 = 预算上限 4 - automatic 1）
+        let system = request_json["system"].as_array().expect("system array");
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[1]["cache_control"], json!({ "type": "ephemeral" }));
+    }
+
+    /// ROUND-05 P2：超载（automatic 1 + 块级 5 = 6 > 4）时按 prompt 序
+    /// （tools 先于 system、靠前块先剥）从最靠前的 marker 开始剥除；
+    /// 覆盖前缀最长、命中价值最高的尾部 marker 最后保留。
+    #[test]
+    fn anthropic_cache_breakpoint_budget_strips_earliest_markers_on_overflow() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "s1",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "s2",
+                            "cache_control": { "type": "ephemeral" }
+                        },
+                        {
+                            "type": "text",
+                            "text": "s3",
+                            "cache_control": { "type": "ephemeral" }
+                        }
+                    ]
+                },
+                { "role": "user", "content": "hi" }
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "alpha_tool", "parameters": { "type": "object" } }
+                },
+                {
+                    "type": "function",
+                    "cache_control": { "type": "ephemeral" },
+                    "function": { "name": "beta_tool", "parameters": { "type": "object" } }
+                }
+            ]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+
+        // automatic 顶层槽不参与剥除
+        assert_eq!(
+            request_json["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+        // 块级 5 个 marker 超出 3 槽预算，剥除最靠前的 2 个（两个 tools marker）
+        let tools = request_json["tools"].as_array().expect("tools array");
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+        // system 三个 marker 全部保留（恰好用满剩余 3 槽）
+        let system = request_json["system"].as_array().expect("system array");
+        assert_eq!(system[0]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[1]["cache_control"], json!({ "type": "ephemeral" }));
+        assert_eq!(system[2]["cache_control"], json!({ "type": "ephemeral" }));
     }
 
     #[test]
@@ -6166,6 +6457,51 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text
             request.body["stream_options"]["include_usage"],
             json!(false)
         );
+    }
+
+    /// ROUND-05 P1：stream_options 注入门控钉死为官方 host（api.openai.com）——
+    /// 带路径/query/fragment/大小写的官方变体仍注入；子域、连字符伪装、
+    /// 后缀伪装、无 scheme 解析失败一律 fail-safe 不注入。
+    #[test]
+    fn openai_adapter_stream_options_gate_pins_official_host_variants() {
+        let adapter = OpenAIAdapter::new();
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "stream": true,
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+
+        for base_url in [
+            "https://api.openai.com",
+            "https://api.openai.com/v1/",
+            "https://API.OPENAI.COM/v1",
+            "https://api.openai.com/v1?token=x#frag",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert_eq!(
+                request.body["stream_options"]["include_usage"],
+                json!(true),
+                "official variant must inject: base_url={base_url}"
+            );
+        }
+
+        for base_url in [
+            "https://mirror.api.openai.com/v1",
+            "https://api-openai.com/v1",
+            "https://api.openai.com.evil.example/v1",
+            "api.openai.com/v1",
+            "",
+        ] {
+            let request = adapter
+                .build_request(base_url, "key", "gpt-4o-mini", &body)
+                .expect("request should build");
+            assert!(
+                request.body.get("stream_options").is_none(),
+                "non-official endpoint must not inject: base_url={base_url}"
+            );
+        }
     }
 
     #[test]

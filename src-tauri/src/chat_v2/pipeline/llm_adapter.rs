@@ -187,8 +187,13 @@ pub struct ChatV2LLMAdapter {
     in_think_tag: std::sync::Mutex<bool>,
     /// 🔧 <think> 标签解析缓冲区：用于处理跨 chunk 的标签边界
     think_tag_buffer: std::sync::Mutex<String>,
-    /// GLM/Qwen 路由专用的协议包装 token 流式过滤器。
+    /// GLM/Qwen 路由专用的协议包装 token 流式过滤器（content 路径）。
     wrap_token_filter:
+        std::sync::Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
+    /// reasoning 路径专用的**独立**包装 token 过滤器（Wave2-A R4 #1）。
+    /// 不与 content 路径的 `wrap_token_filter` 共享实例：过滤器持有跨 chunk 的
+    /// 行前缀/围栏状态，reasoning 与 content 两路交错到达会互相污染行状态。
+    reasoning_wrap_token_filter:
         std::sync::Mutex<crate::utils::model_special_tokens::ModelWrapTokenStreamFilter>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
@@ -243,6 +248,11 @@ impl ChatV2LLMAdapter {
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
             wrap_token_filter: std::sync::Mutex::new(
+                crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
+                    wrap_token_policy,
+                ),
+            ),
+            reasoning_wrap_token_filter: std::sync::Mutex::new(
                 crate::utils::model_special_tokens::ModelWrapTokenStreamFilter::new(
                     wrap_token_policy,
                 ),
@@ -390,6 +400,27 @@ impl ChatV2LLMAdapter {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .push_str(&filter_tail);
+        }
+
+        // reasoning 路径独立过滤器的尾巴直接归 thinking：reasoning 通道
+        // 不参与 <think> 标签状态机，不得回灌 think_tag_buffer
+        let reasoning_tail = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .flush();
+        if !reasoning_tail.is_empty() && self.enable_thinking {
+            {
+                let mut guard = self
+                    .accumulated_reasoning
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                guard.push_str(&reasoning_tail);
+            }
+            if let Some(block_id) = self.ensure_thinking_started() {
+                self.emitter
+                    .emit_chunk(event_types::THINKING, &block_id, &reasoning_tail, None);
+            }
         }
 
         // 🔧 先处理缓冲区中剩余的内容
@@ -561,6 +592,10 @@ impl ChatV2LLMAdapter {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reset();
+        self.reasoning_wrap_token_filter
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .reset();
@@ -1154,15 +1189,26 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
             return;
         }
 
+        // R4 #1：独立 reasoning 过滤器（不与 content 路径共享行状态）。
+        // 过滤后再累积/emit；被暂扣的片段由 finalize_all_inner 的 flush 尾巴兜底
+        let filtered = self
+            .reasoning_wrap_token_filter
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .process(text);
+        if filtered.is_empty() {
+            return;
+        }
+
         // 累积推理（简化日志：只输出 / 代表接收到 chunk）
         {
             let mut guard = self
                 .accumulated_reasoning
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            guard.push_str(text);
+            guard.push_str(&filtered);
             // 每 500 字符输出一个 / 以减少日志量
-            if guard.len() % 500 < text.len() {
+            if guard.len() % 500 < filtered.len() {
                 print!("/");
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
@@ -1171,7 +1217,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
 
         if let Some(block_id) = self.ensure_thinking_started() {
             self.emitter
-                .emit_chunk(event_types::THINKING, &block_id, text, None);
+                .emit_chunk(event_types::THINKING, &block_id, &filtered, None);
         }
     }
 

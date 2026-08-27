@@ -46,11 +46,12 @@ impl LlmUsageRepo {
                 id, timestamp, provider, model, adapter, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
-                duration_ms, caller_type, session_id, status, error_message, cost_estimate
+                duration_ms, caller_type, session_id, variant_id, run_id,
+                status, error_message, cost_estimate
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                ?14, ?15, ?16, ?17, ?18, ?19
+                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
             )
             "#,
             params![
@@ -70,6 +71,8 @@ impl LlmUsageRepo {
                 record.duration_ms,
                 record.caller_type.to_string(),
                 record.caller_id,
+                record.variant_id,
+                record.run_id,
                 status,
                 record.error_message,
                 record.estimated_cost_usd,
@@ -149,11 +152,12 @@ impl LlmUsageRepo {
                 id, timestamp, provider, model, adapter, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
-                duration_ms, caller_type, session_id, status, error_message, cost_estimate
+                duration_ms, caller_type, session_id, variant_id, run_id,
+                status, error_message, cost_estimate
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6,
                 ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                ?14, ?15, ?16, ?17, ?18, ?19
+                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
             )
             "#,
             params![
@@ -173,6 +177,8 @@ impl LlmUsageRepo {
                 record.duration_ms,
                 record.caller_type.to_string(),
                 record.caller_id,
+                record.variant_id,
+                record.run_id,
                 status,
                 record.error_message,
                 record.estimated_cost_usd,
@@ -452,7 +458,7 @@ impl LlmUsageRepo {
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens,
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate,
-                adapter, token_source, cache_write_tokens
+                adapter, token_source, cache_write_tokens, variant_id, run_id
             FROM llm_usage_logs
             ORDER BY timestamp DESC
             LIMIT ?1 OFFSET ?2
@@ -478,6 +484,8 @@ impl LlmUsageRepo {
                 id: row.get(0)?,
                 caller_type: CallerType::from_str(&caller_type_str),
                 caller_id: row.get(12)?,
+                variant_id: row.get(19)?,
+                run_id: row.get(20)?,
                 model_id: row.get(3)?,
                 config_id: row.get(4)?,
                 provider_id: row.get(2)?,
@@ -675,6 +683,11 @@ mod tests {
         // V20260824：cache_write_tokens 列（insert/read 路径已引用）
         conn.execute_batch(include_str!(
             "../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+        ))
+        .unwrap();
+        // V20260826：variant_id / run_id 遥测身份分列（insert/read 路径已引用）
+        conn.execute_batch(include_str!(
+            "../../migrations/llm_usage/V20260826__add_stream_identity.sql"
         ))
         .unwrap();
         conn

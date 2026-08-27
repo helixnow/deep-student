@@ -1,3 +1,59 @@
+//! 工具环执行（`execute_with_tools`）与 prompt-cache「工具面冻结」原语区。
+//!
+//! # 冻结矩阵速查（完整矩阵见 `docs/dev/wave2-A/r2-freeze-matrix.md`，
+//! 冻/不冻 + 清/不清终稿见 `docs/dev/wave2-A/r9-clear-freeze-matrix.md`）
+//!
+//! **冻什么**（三层，粒度由粗到细）：
+//! - **tools 名字序** —— 会话级、append-only 首见序基线
+//!   （[`freeze_tool_schema_order_for_prompt_cache`] +
+//!   [`merge_frozen_tool_schema_order_baseline`]，经 helpers 的
+//!   `load/store_session_frozen_tool_schema_order` 持久化到
+//!   session.metadata `frozenToolSchemaOrder` 键）：已发出工具的相对
+//!   顺序跨轮、跨进程不变，新工具只按首见轮次追加末尾，禁止字母序
+//!   插入已发出前缀中段（对 Anthropic 那是 tools 第 0 字节起变化）；
+//! - **已发出 schema 字节** —— 窗口级（一次 `execute_with_tools` 工具环
+//!   或一个多变体变体环 = 一个稳定窗口，
+//!   [`freeze_tool_schemas_for_prompt_cache`]）：同名 schema 窗口内变化
+//!   （MCP 刷新 / load_skills 披露不同版本）时继续发送首见冻结字节，
+//!   变更延迟到下一稳定窗口生效；摘要见 [`tool_schema_digest`]
+//!   （持久化键 `toolSchemaDigest`，缺省 None 不构成变更）；
+//! - **generation 代号** —— 会话级单调（`helpers::ToolFaceBaseline`，
+//!   持久化键 `toolFacePrefixGeneration`）：本文件只随基线原样透传，
+//!   任何单变体路径都无权 bump。
+//!
+//! **不冻什么**（明确豁免，勿在本文件加冻结）：
+//! - 技能正文（transient 注入消息体）—— 正文字节仍不落库；本文件只做
+//!   轮内位置锚定（P1-8 `frozen_turn_skill_injection`）并随锚点持久化
+//!   正文摘要（anchors `skill_content_digests` / `skill_content_rev`，
+//!   r3 落地）。重放由 history 侧 digest 门禁把关：mismatch →
+//!   warn+skip+切代信号，绝不用当轮新正文伪装旧历史；删除 / 正文缺失
+//!   同样 warn+skip 但**不进信号**（r5 刻意收窄，反例留档见
+//!   skill_replay_edit_delete_tests）；
+//! - available_skills 目录换代 —— 首写冻结快照（repo
+//!   `freeze_session_available_skills_snapshot`）+ 独立目录代
+//!   `availableSkillsSnapshotGeneration` / 换代声明
+//!   `availableSkillsSnapshotPendingGeneration`（r4–r5 落地）。目录
+//!   换代走目录代，**不走**本文件的 tool-face generation，两套代际
+//!   互不搭线；
+//! - system 前缀内 user_profile 等易变段 —— prompt_builder 侧语义，
+//!   每轮可随记忆库变化，明确不冻。
+//!
+//! **代际何时切**（唯一切代点 = fan-out join 收敛
+//! `helpers::converge_session_tool_face_prefix`）：
+//! - ≥2 变体本地 order 互异、不可 append-only 对齐（存在变体本地
+//!   order 不是收敛结果的前缀）→ 真分叉，`generation += 1`；这仍是
+//!   tool-face generation **唯一** bump 来源；
+//! - 单变体纯前缀扩展 / 窗口 digest 变化 → **不切代**：本文件单变体
+//!   路径只打日志（见 [`freeze_tool_face_for_prompt_cache`] 调用处），
+//!   变更随下一稳定窗口 / 多变体 converge 评估；
+//! - digest 共识采纳（r6 接线）：converge 仅当存在「本地 order ==
+//!   收敛 order」的变体、且这些变体报告的 digest 全部一致，才把该
+//!   digest 写入基线；真分叉 / digest 互异 / 全空（None）保持既有值，
+//!   None 永不抹掉——采纳本身绝不触发 bump；
+//! - 技能 digest mismatch 信号不在这里切代：走 available_skills 目录代
+//!   （`helpers::record_skill_digest_prefix_generation_signal` → pending
+//!   generation 声明），绝不伪造工具面分叉逼 converge +1。
+
 use super::*;
 
 use super::super::context::{DoomLoopGuard, DoomLoopVerdict, DOOM_LOOP_ABORT_THRESHOLD};
@@ -102,6 +158,9 @@ pub(crate) fn merge_frozen_tool_schema_order_baseline(
 /// `frozen_schemas` 由调用方按稳定窗口持有（一次 `execute_with_tools`
 /// 工具环 = 一个稳定窗口）：窗口内字节冻结，跨窗口允许采纳新字节。
 /// 名字序基线（`frozen_names`）仍按会话级持有/持久化，两者分工不同。
+///
+/// digest 计算见 [`tool_schema_digest`]；单变体路径 digest 变化**不切代**
+/// （generation 不 bump），变更随下一稳定窗口 / 多变体 converge 评估。
 pub(crate) fn freeze_tool_schemas_for_prompt_cache(
     tools: &mut [Value],
     frozen_names: &mut Vec<String>,
@@ -129,6 +188,59 @@ pub(crate) fn freeze_tool_schemas_for_prompt_cache(
             }
         }
     }
+}
+
+/// 代际统一冻结原语（Wave2-A r2，供本文件与 #3 统一入口复用）：
+/// 当前稳定窗口字节冻结快照（`frozen_schemas`）的 schema digest。
+///
+/// 算法：按工具**名字序**遍历冻结副本，逐项以
+/// `名字 + 0x1f + schema JSON 序列化字节 + 0x1e` 喂入 sha256
+/// （复用 `DoomLoopGuard::fingerprint` 的 0x1f 分隔骨架；serde_json
+/// preserve_order 下冻结副本的序列化字节窗口内稳定，digest 可靠），
+/// 输出小写十六进制。名字序遍历保证与 HashMap 迭代序无关，同一冻结
+/// 内容恒得同一 digest。
+///
+/// 空窗口（本窗口尚未发出任何工具）返回 `None` —— 与
+/// `ToolFacePrefixSnapshot::schema_digest` 的缺省语义对齐（缺 digest
+/// 不构成变更，不得抹掉已持久化值）。
+pub(crate) fn tool_schema_digest(frozen_schemas: &HashMap<String, Value>) -> Option<String> {
+    if frozen_schemas.is_empty() {
+        return None;
+    }
+    let mut entries: Vec<(&String, &Value)> = frozen_schemas.iter().collect();
+    entries.sort_by_key(|(name, _)| *name);
+    let mut hasher = Sha256::new();
+    for (name, schema) in entries {
+        hasher.update(name.as_bytes());
+        hasher.update(b"\x1f");
+        hasher.update(serde_json::to_string(schema).unwrap_or_default().as_bytes());
+        hasher.update(b"\x1e");
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
+/// 统一冻结原语（Wave2-A r2 #3 门面）：单变体 tool_loop 与多变体
+/// variant 环共用的「名字序冻结 + 字节冻结 + digest」单入口。
+///
+/// 内部即 [`freeze_tool_schemas_for_prompt_cache`]（append-only 首见序
+/// 基线 + 已发出 schema 窗口内字节回写，语义逐字不变），随后返回
+/// [`tool_schema_digest`] 计算的当前窗口冻结快照摘要：
+/// - `Some(digest)`：本窗口已发出至少一个工具，digest 为名字序稳定哈希；
+/// - `None`：空窗口（尚未发出任何工具），与
+///   `ToolFacePrefixSnapshot::schema_digest` 缺省语义对齐 —— 调用方
+///   不得用 None 抹掉已有 digest。
+///
+/// 这是新门面而非替代：[`freeze_tool_schema_order_for_prompt_cache`] /
+/// [`freeze_tool_schemas_for_prompt_cache`] 仍为公开原语（测试与其他
+/// 调用方在用）。digest 变化的处置由调用方决定：单变体只打日志不切代，
+/// 多变体写入 `VariantMeta.tool_face_prefix` 交 join 收敛点评估。
+pub(crate) fn freeze_tool_face_for_prompt_cache(
+    tools: &mut [Value],
+    frozen_names: &mut Vec<String>,
+    frozen_schemas: &mut HashMap<String, Value>,
+) -> Option<String> {
+    freeze_tool_schemas_for_prompt_cache(tools, frozen_names, frozen_schemas);
+    tool_schema_digest(frozen_schemas)
 }
 
 /// Responses reasoning items 工具轮写入：adapter 已按「相邻后继
@@ -322,13 +434,23 @@ impl ChatV2Pipeline {
         // tool_call_id 锚定到对应 tool result 之后，绝不重插到当前 user 之前。
         // ============================================================
         let mut frozen_turn_skill_injection: Option<TransientSkillMessages> = None;
-        // P0（DESIGN「tools 会话内冻结」）：tools 顺序基线（append-only
-        // 首见序）从会话级状态载入 —— 同一 session 内已发出的 tools 顺序
-        // 跨轮（跨 execute_with_tools 调用 / 下一稳定窗口）保持，禁止每轮
-        // 重建字母序。会话首轮基线为空，首次 freeze 按字母序建立；环内
-        // load_skills 新工具只追加末尾，推进后写回会话级状态。
-        let mut frozen_tool_schema_order: Vec<String> =
-            self.load_session_frozen_tool_schema_order(&ctx.session_id);
+        // P0（DESIGN「tools 会话内冻结」）+ P1 代际（方案 A）：会话权威
+        // 工具面基线 `(g, B_g, digest)` 经 load_session_tool_face_prefix
+        // 载入（含跨进程恢复 + 加锁回填）—— 同一 session 内已发出的 tools
+        // 顺序跨轮（跨 execute_with_tools 调用 / 下一稳定窗口）保持，禁止
+        // 每轮重建字母序。会话首轮基线为空，首次 freeze 按字母序建立；
+        // 环内 load_skills 新工具只追加末尾，推进后写回会话级状态。
+        let tool_face_baseline = self.load_session_tool_face_prefix(&ctx.session_id);
+        let mut frozen_tool_schema_order: Vec<String> = tool_face_baseline.order;
+        // 代际纪律（方案 A，fan-out 统一代际）：单变体路径**永不**因纯前缀
+        // 扩展或 schema digest 变化 bump generation；代际切换只发生在多变体
+        // converge（互异不可 append-only 对齐的尾部）。这里只透传会话当前
+        // 代号供日志观测。
+        let prefix_generation: u64 = tool_face_baseline.generation;
+        // 会话基线 digest（对应 ToolFacePrefixSnapshot::schema_digest）：
+        // 从持久化基线起步，本窗口 freeze 后与窗口 digest 对账，变化仅
+        // 打日志（不切代、不中途写回）。
+        let mut baseline_schema_digest: Option<String> = tool_face_baseline.schema_digest;
         // P0 字节级冻结：已发出工具的 schema 序列化字节在本稳定窗口
         // （本次 execute_with_tools 工具环）内不变。同名 schema 中途变化
         // （MCP 刷新 / load_skills 披露不同版本）时本窗口继续发送首见
@@ -600,12 +722,33 @@ impl ChatV2Pipeline {
                 injected_skill_ids.extend(built.audit.injected_skill_ids.iter().cloned());
                 cumulative_skill_audit = built.audit.clone();
                 if !built.audit.injected_skill_ids.is_empty() {
+                    // Wave2-A r3：锚定时刻立刻记录正文 digest。正文来源即上面
+                    // 渲染注入消息所用的同一 `skill_contents`（replay_skill_contents
+                    // 优先、退回 options.skill_contents）——digest 与发出的字节
+                    // 严格同源。正文不可得的 id 不写（重放侧按「旧锚点无 digest」
+                    // 走兼容分支），绝不编造假 digest；anchors 只存 hash 不存正文。
+                    let content_digests: Vec<(String, String)> = built
+                        .audit
+                        .injected_skill_ids
+                        .iter()
+                        .filter_map(|id| {
+                            skill_contents.get(id).map(|body| {
+                                (
+                                    id.clone(),
+                                    crate::chat_v2::types::skill_body_digest(id, body),
+                                )
+                            })
+                        })
+                        .collect();
                     let anchors = ctx
                         .options
                         .skill_injection_anchors
                         .get_or_insert_with(Default::default);
                     anchors.turn_skill_ids = built.audit.injected_skill_ids.clone();
                     anchors.before_turn_user = ctx.options.is_continue != Some(true);
+                    for (id, digest) in content_digests {
+                        anchors.skill_content_digests.insert(id, digest);
+                    }
                 }
                 frozen_turn_skill_injection = Some(built);
             }
@@ -982,13 +1125,34 @@ impl ChatV2Pipeline {
                 .get_mut("custom_tools")
                 .and_then(|v| v.as_array_mut())
             {
-                freeze_tool_schemas_for_prompt_cache(
+                // 代际统一（Wave2-A r2 #3）：统一冻结原语 = 名字序冻结 +
+                // 字节冻结 + 当前窗口冻结快照 digest（名字序稳定哈希，见
+                // tool_schema_digest）。digest 变化 = 窗口内首建或前缀追加
+                // 新工具（已发出条目字节冻结，不可能原地变）—— 单变体
+                // **不 bump generation**，只记日志并把新 digest 写入本地
+                // 快照，变更随下一稳定窗口 / 多变体 converge 评估。
+                let window_schema_digest = freeze_tool_face_for_prompt_cache(
                     custom_tools,
                     &mut frozen_tool_schema_order,
                     &mut frozen_tool_schemas,
                 );
+                if window_schema_digest.is_some() && window_schema_digest != baseline_schema_digest
+                {
+                    log::info!(
+                        "[ChatV2::pipeline] Tool schema digest changed (session_id={}, generation={}, {:?} -> {:?}); \
+                         single-variant path keeps generation unchanged — 变更随下一稳定窗口/多变体 converge 评估",
+                        ctx.session_id,
+                        prefix_generation,
+                        baseline_schema_digest.as_deref().map(|d| &d[..12.min(d.len())]),
+                        window_schema_digest.as_deref().map(|d| &d[..12.min(d.len())]),
+                    );
+                    baseline_schema_digest = window_schema_digest;
+                }
                 // 名字序基线推进后写回会话级状态，下一轮（下一稳定窗口）复用；
-                // 字节冻结（frozen_tool_schemas）保持窗口级，不写回。
+                // 纯前缀扩展**不切代**（generation 不随写回变动，store 沿用
+                // 会话当前代号）；字节冻结（frozen_tool_schemas）保持窗口级
+                // 不写回，窗口 digest 变化只打上方日志、不随 store 持久化
+                // —— digest 推进只发生在多变体 converge 收敛点。
                 self.store_session_frozen_tool_schema_order(
                     &ctx.session_id,
                     &frozen_tool_schema_order,
@@ -1825,6 +1989,28 @@ impl ChatV2Pipeline {
                                             .extend(batch.audit.injected_skill_ids.iter().cloned());
                                         cumulative_skill_audit.estimated_tokens +=
                                             batch.audit.estimated_tokens;
+                                        // Wave2-A r3：环内锚定同样在写锚点时立刻记
+                                        // digest，正文来源即渲染本批消息的同一
+                                        // `batch_contents`（replay_skill_contents 优先、
+                                        // 退回 options.skill_contents）。tool 级与 turn
+                                        // 级共用消息级 skill_content_digests map（按
+                                        // skill_id 键，同轮同 id 必同体）。正文不可得
+                                        // 不写假 digest；不 bump prefix generation。
+                                        let content_digests: Vec<(String, String)> = batch
+                                            .audit
+                                            .injected_skill_ids
+                                            .iter()
+                                            .filter_map(|id| {
+                                                batch_contents.get(id).map(|body| {
+                                                    (
+                                                        id.clone(),
+                                                        crate::chat_v2::types::skill_body_digest(
+                                                            id, body,
+                                                        ),
+                                                    )
+                                                })
+                                            })
+                                            .collect();
                                         let anchors = ctx
                                             .options
                                             .skill_injection_anchors
@@ -1835,6 +2021,9 @@ impl ChatV2Pipeline {
                                                 skill_ids: batch.audit.injected_skill_ids.clone(),
                                             },
                                         );
+                                        for (id, digest) in content_digests {
+                                            anchors.skill_content_digests.insert(id, digest);
+                                        }
                                         log::info!(
                                             "[ChatV2::pipeline] P1-8: anchored {} in-loop skill(s) after load_skills tool_call_id={}",
                                             batch.audit.injected_skill_ids.len(),

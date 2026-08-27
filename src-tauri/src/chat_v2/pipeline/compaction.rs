@@ -1103,6 +1103,27 @@ impl ChatV2Pipeline {
             &prepared.record.session_id,
             &prepared.record.id,
         )?;
+        // 🆕 R4-#6：同一事务内声明 available_skills 目录待换代。compaction
+        // 摘要已打断 system+tools 之后的整段 prompt cache 前缀，是零成本的
+        // 目录换代时机。后端拿不到 live registry 目录字符串（registry 与
+        // XML 渲染在前端），故不在此重生成快照本体，只写显式换代标记
+        // `availableSkillsSnapshotPendingGeneration`；前端下轮构建 system 时
+        // 按 live registry 重新生成并经 freeze 原语作为新代 first write 冻结。
+        // first-write-wins 不被静默破坏：freeze 只在见到有效标记时才覆盖。
+        // 详见 docs/dev/wave2-A/r4-catalog-compaction.md。
+        match ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+            &tx,
+            &prepared.record.session_id,
+        )? {
+            Some(pending_generation) => info!(
+                "[compaction] available_skills catalog marked stale in commit tx: session={} pending_generation={}",
+                prepared.record.session_id, pending_generation
+            ),
+            None => debug!(
+                "[compaction] available_skills snapshot never frozen; no catalog generation bump: session={}",
+                prepared.record.session_id
+            ),
+        }
         for pending in &prepared.memory_flushes {
             let inserted =
                 enqueue_memory_flush_with_conn(&tx, pending, prepared.record.created_at)?;

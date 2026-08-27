@@ -38,17 +38,13 @@ const UNREADABLE_FRAGMENT_MSG: &str = "UNREADABLE_CARD_FRAGMENT";
 /// 仅在卡片上留痕供 QA/前端复查，值为 JSON 数组字符串。
 pub const QA_FLAGS_FIELD: &str = "_qa_flags";
 
-/// 已知会泄漏进制卡流的模型包装 token（issue #58 / PR #187）。
-///
-/// 这些值也可能作为协议示例出现在卡片正文中，因此只能丢弃纯 token 残片，
-/// 或剥离完整卡片 JSON 外侧的纯 token 包装，不能做全局字符串替换。
-const MODEL_SPECIAL_TOKENS: &[&str] = &[
-    "<|begin_of_box|>",
-    "<|end_of_box|>",
-    "<|im_start|>",
-    "<|im_end|>",
-    "<|endoftext|>",
-];
+// 已知会泄漏进制卡流的模型包装 token（issue #58 / PR #187）。
+//
+// 这些值也可能作为协议示例出现在卡片正文中，因此只能丢弃纯 token 残片，
+// 或剥离完整卡片 JSON 外侧的纯 token 包装，不能做全局字符串替换。
+//
+// wave2-A r4 #2：本地表删除，改引 utils 单源，避免两处清理层的 token 清单漂移。
+use crate::utils::model_special_tokens::MODEL_SPECIAL_TOKENS;
 
 fn contains_only_model_special_tokens(text: &str) -> bool {
     let mut remaining = text.trim();

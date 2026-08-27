@@ -262,14 +262,14 @@ impl UsageCollector {
                     id, timestamp, provider, model, adapter, api_config_id,
                     prompt_tokens, completion_tokens, total_tokens,
                     reasoning_tokens, cached_tokens, cache_write_tokens, token_source,
-                    duration_ms, caller_type, session_id,
+                    duration_ms, caller_type, session_id, variant_id, run_id,
                     status, error_message, cost_estimate
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6,
                     ?7, ?8, ?9,
                     ?10, ?11, ?12, ?13,
-                    ?14, ?15, ?16,
-                    ?17, ?18, ?19
+                    ?14, ?15, ?16, ?17, ?18,
+                    ?19, ?20, ?21
                 )
                 "#,
                 rusqlite::params![
@@ -297,6 +297,9 @@ impl UsageCollector {
                     record.duration_ms.map(|d| d as i64),
                     record.caller_type.to_string(),
                     record.caller_id,
+                    // 遥测身份分列（V20260826）：variant / run 维度，未知落 NULL
+                    record.variant_id,
+                    record.run_id,
                     if record.success { "success" } else { "error" },
                     record.error_message,
                     record.estimated_cost_usd,

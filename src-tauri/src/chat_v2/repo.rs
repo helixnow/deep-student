@@ -20,9 +20,10 @@ use super::types::{
     block_types, AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession,
     CompactionRecord, DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta,
     MessageRole, PanelStates, PersistStatus, PlanAuthorityState, SessionAuthorityState,
-    SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
+    SessionGroup, SessionSkillState, SessionState, SharedContext, ToolFacePrefixSnapshot, Variant,
     AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY, FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
-    MICROCOMPACT_ANCHOR_METADATA_KEY,
+    MICROCOMPACT_ANCHOR_METADATA_KEY, TOOL_FACE_PREFIX_GENERATION_METADATA_KEY,
+    TOOL_SCHEMA_DIGEST_METADATA_KEY,
 };
 
 /// 从 session.metadata 解析持久化的 tools 会话冻结基线。
@@ -54,6 +55,48 @@ fn available_skills_snapshot_from_metadata(metadata: Option<&Value>) -> Option<S
         .map(str::to_string)
 }
 
+/// 🆕 R4-#6 available_skills 目录换代：session.metadata 中「当前冻结快照
+/// 所属代号」的键名。
+///
+/// 值为非负整数（JSON number）。缺键视为第 0 代（旧会话兼容：升级前冻结
+/// 的快照等同第 0 代，读路径不报错）。代号只通过显式换代路径推进
+/// （compaction 落盘写待换代标记 → 前端按 live registry 重新生成 → freeze
+/// 作为新代 first write 落盘时 generation := pending 并清除标记）。
+///
+/// 常量定义在 repo 层而非 types.rs：本轮 #6 独占可写面仅 compaction 落盘
+/// 路径与其直接调用的 repo 辅助；前端消费侧（#5/#7 后续轮）对齐字符串
+/// 字面量即可，如需统一可后续迁到 types.rs 并 re-export。
+pub const AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY: &str =
+    "availableSkillsSnapshotGeneration";
+
+/// 🆕 R4-#6 available_skills 目录换代：session.metadata 中「待生效代号」
+/// 的键名。
+///
+/// 由 compaction 落盘事务写入（= 当前代号 + 1），语义为「下一次按 live
+/// registry 生成的目录允许作为新代快照通过 freeze 原语覆盖冻结」。缺键 =
+/// 无待换代（freeze 维持原 first-write-wins，绝不覆盖）。多次 compaction
+/// 在前端消费前折叠为同一个待换代代号（幂等，不重复 +1）。
+pub const AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY: &str =
+    "availableSkillsSnapshotPendingGeneration";
+
+/// 从 session.metadata 解析当前冻结快照所属代号。缺键 / 类型不符视为 0
+/// （旧会话兼容，等同第 0 代）。
+fn available_skills_snapshot_generation_from_metadata(metadata: Option<&Value>) -> u64 {
+    metadata
+        .and_then(|meta| meta.get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY))
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+}
+
+/// 从 session.metadata 解析待生效代号。缺键 / 类型不符返回 None（无待换代）。
+fn available_skills_snapshot_pending_generation_from_metadata(
+    metadata: Option<&Value>,
+) -> Option<u64> {
+    metadata?
+        .get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY)?
+        .as_u64()
+}
+
 /// 从 session.metadata 解析持久化的 microcompact 锚点。
 ///
 /// 缺键 / 字段缺失 / 类型不符一律返回 None（等同进程内首次观察，按当前
@@ -78,6 +121,36 @@ fn microcompact_anchor_to_value(anchor: &MicrocompactAnchor) -> Value {
     serde_json::json!({
         "lineage": anchor.lineage,
         "eligibleUserTurns": anchor.eligible_user_turns,
+    })
+}
+
+/// 从 session.metadata 解析持久化的 tools 前缀代际快照（三键合成）。
+///
+/// 回退语义（旧会话 / 半升级会话兼容，缺什么补什么、绝不报错）：
+/// - 缺 `toolFacePrefixGeneration` 键（或类型不符）→ generation 视为 0；
+/// - order 一律取现有 `frozenToolSchemaOrder` 键（代际键不重复存序，
+///   权威基线仍落旧键，旧读路径 `get_session_frozen_tool_schema_order`
+///   继续可用）；
+/// - 缺 `toolSchemaDigest` 键（或类型不符）→ None。
+///
+/// 三个来源全部缺失（该会话从未冻结过任何 tools 状态）返回 None，
+/// 等同会话首轮语义（由首次 freeze 建立基线）。
+fn tool_face_prefix_from_metadata(metadata: Option<&Value>) -> Option<ToolFacePrefixSnapshot> {
+    let generation = metadata
+        .and_then(|meta| meta.get(TOOL_FACE_PREFIX_GENERATION_METADATA_KEY))
+        .and_then(Value::as_u64);
+    let schema_digest = metadata
+        .and_then(|meta| meta.get(TOOL_SCHEMA_DIGEST_METADATA_KEY))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let order = frozen_tool_schema_order_from_metadata(metadata);
+    if generation.is_none() && schema_digest.is_none() && order.is_empty() {
+        return None;
+    }
+    Some(ToolFacePrefixSnapshot {
+        generation: generation.unwrap_or(0),
+        order,
+        schema_digest,
     })
 }
 
@@ -2760,15 +2833,21 @@ impl ChatV2Repo {
     }
 
     /// 🆕 P0 available_skills 会话快照：把前端首次生成的目录快照冻结进
-    /// session.metadata（IMMEDIATE 事务内读-判-写，first-write-wins）。
+    /// session.metadata（IMMEDIATE 事务内读-判-写，按代 first-write-wins）。
     ///
-    /// - 已存在快照（含空串）→ 保持不变并返回已冻结值（多窗口/竞争时
-    ///   持久化权威胜出，调用方应以返回值回灌内存）；
-    /// - 不存在 → 写入 `snapshot` 并返回它。
+    /// - 已存在快照（含空串）且无待换代标记 → 保持不变并返回已冻结值
+    ///   （多窗口/竞争时持久化权威胜出，调用方应以返回值回灌内存）；
+    /// - 不存在 → 写入 `snapshot` 并返回它（第 0 代 first write，不写代号
+    ///   键，缺键即 0，与升级前字节行为一致）；
+    /// - 🆕 R4-#6 存在待换代标记（compaction 落盘声明，见
+    ///   `mark_session_available_skills_snapshot_stale_with_conn`）→ 本次
+    ///   写入是新代的 first write：覆盖快照、generation := pending 并清除
+    ///   标记。这是唯一允许覆盖已冻结快照的路径（显式换代，非静默覆盖）；
+    ///   新代内的后续竞争写回仍被 first-write-wins 拒绝。
     ///
-    /// 对 metadata 对象只 upsert `availableSkillsSnapshot` 一个键，
-    /// authority/plan/frozenToolSchemaOrder 等其他键原样保留；故意不推进
-    /// updated_at（内部缓存状态，不应扰动会话列表排序）。
+    /// 对 metadata 对象只 upsert 目录快照/代号相关键，authority/plan/
+    /// frozenToolSchemaOrder 等其他键原样保留；故意不推进 updated_at
+    /// （内部缓存状态，不应扰动会话列表排序）。
     pub fn freeze_session_available_skills_snapshot(
         db: &ChatV2Database,
         session_id: &str,
@@ -2790,9 +2869,20 @@ impl ChatV2Repo {
     ) -> ChatV2Result<String> {
         let mut session = Self::get_session_with_conn(conn, session_id)?
             .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let generation =
+            available_skills_snapshot_generation_from_metadata(session.metadata.as_ref());
+        // 待换代代号必须严格大于当前代号才生效；脏数据（pending <= generation）
+        // 按无标记处理，维持 first-write-wins。
+        let effective_pending =
+            available_skills_snapshot_pending_generation_from_metadata(session.metadata.as_ref())
+                .filter(|pending| *pending > generation);
         if let Some(existing) = available_skills_snapshot_from_metadata(session.metadata.as_ref()) {
-            // first-write-wins：已冻结（含空串）绝不覆盖，返回持久化权威值。
-            return Ok(existing);
+            if effective_pending.is_none() {
+                // first-write-wins（代内）：已冻结（含空串）绝不覆盖，返回持久化权威值。
+                return Ok(existing);
+            }
+            // 显式换代：compaction 已在落盘事务里声明待换代，本次写入
+            // 作为新代 first write 覆盖旧快照（唯一合法覆盖路径）。
         }
         let mut metadata = session
             .metadata
@@ -2806,11 +2896,79 @@ impl ChatV2Repo {
                 AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY.to_string(),
                 Value::String(snapshot.to_string()),
             );
+            if let Some(pending) = effective_pending {
+                obj.insert(
+                    AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY.to_string(),
+                    Value::from(pending),
+                );
+                obj.remove(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY);
+            }
         }
         session.metadata = Some(metadata);
         // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
         Self::update_session_with_conn(conn, &session)?;
         Ok(snapshot.to_string())
+    }
+
+    /// 🆕 R4-#6：在 compaction 落盘事务内声明 available_skills 目录待换代。
+    ///
+    /// compaction 是零缓存成本的换代时机：摘要伪消息替换掉被压缩历史后，
+    /// provider prompt cache 中 system+tools 之后的前缀本就全部失效，此时
+    /// 让下一轮 system 目录按 live registry 重新生成，增量损失只剩 system
+    /// 段本身，而不换代则永远背着过期目录。
+    ///
+    /// 后端拿不到 live registry 目录字符串（registry 状态、requires 门控、
+    /// disableAutoInvoke 过滤与 `<available_skills>` XML 渲染都在前端
+    /// progressiveDisclosure.ts / skillRegistry），所以本函数**不重写快照
+    /// 本体**，只写显式换代标记 `availableSkillsSnapshotPendingGeneration`
+    /// （= 当前代号 + 1）。快照本体由前端下一次构建 system 时按 live
+    /// registry 重新生成，并经 `freeze_session_available_skills_snapshot`
+    /// 作为新代 first write 冻结（该原语见到有效标记才允许覆盖）。
+    ///
+    /// - 会话从未冻结过快照 → no-op 返回 None（缺键语义本就是「下次按
+    ///   live 建立」，无需换代）；
+    /// - 已有有效待换代标记 → 幂等返回既有 pending（前端消费前的多次
+    ///   compaction 折叠为一次换代，不重复 +1）；
+    /// - 只 merge 换代标记一个键，其他 metadata 键原样保留；故意不推进
+    ///   updated_at（同 freeze 原语）。
+    ///
+    /// 必须与 compaction 记录同事务提交（调用方传入事务连接），保证
+    /// 「压缩已落盘但目录未声明换代」或反之的半提交状态不可能出现。
+    pub fn mark_session_available_skills_snapshot_stale_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<u64>> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        if available_skills_snapshot_from_metadata(session.metadata.as_ref()).is_none() {
+            return Ok(None);
+        }
+        let generation =
+            available_skills_snapshot_generation_from_metadata(session.metadata.as_ref());
+        if let Some(pending) =
+            available_skills_snapshot_pending_generation_from_metadata(session.metadata.as_ref())
+                .filter(|pending| *pending > generation)
+        {
+            return Ok(Some(pending));
+        }
+        let target = generation.saturating_add(1);
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY.to_string(),
+                Value::from(target),
+            );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（内部缓存状态，同 freeze 原语）。
+        Self::update_session_with_conn(conn, &session)?;
+        Ok(Some(target))
     }
 
     /// 🆕 P0 microcompact 锚点：读取 session.metadata 中持久化的锚点
@@ -2879,6 +3037,120 @@ impl ChatV2Repo {
                 MICROCOMPACT_ANCHOR_METADATA_KEY.to_string(),
                 microcompact_anchor_to_value(anchor),
             );
+        }
+        session.metadata = Some(metadata);
+        // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
+        Self::update_session_with_conn(conn, &session)
+    }
+
+    /// 🆕 P1 tools 前缀代际：读取 session.metadata 中持久化的代际快照
+    /// （`toolFacePrefixGeneration` + `frozenToolSchemaOrder` + 可选
+    /// `toolSchemaDigest` 三键合成，见 `tool_face_prefix_from_metadata`）。
+    ///
+    /// 桌面 App 重启后进程内存基线丢失，pipeline 内存 miss 时从这里恢复
+    /// `(g, B_g, digest)`。缺代际键的旧会话降级为 generation=0、order 回退
+    /// `frozenToolSchemaOrder`、digest None；三键全缺返回 None（会话首轮
+    /// 语义，由首次 freeze 建立基线）。
+    pub fn get_session_tool_face_prefix(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ToolFacePrefixSnapshot>> {
+        let conn = db.get_conn_safe()?;
+        Self::get_session_tool_face_prefix_with_conn(&conn, session_id)
+    }
+
+    /// `get_session_tool_face_prefix` 的 `_with_conn` 版本。
+    pub fn get_session_tool_face_prefix_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<ToolFacePrefixSnapshot>> {
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(tool_face_prefix_from_metadata(session.metadata.as_ref()))
+    }
+
+    /// 🆕 P1 tools 前缀代际：把收敛后的代际快照推进到 session.metadata
+    /// （IMMEDIATE 事务内读-合并-写，防止并发写回互相丢失）。
+    ///
+    /// 同事务原子性：`toolFacePrefixGeneration` 与 `frozenToolSchemaOrder`
+    /// （+ 快照携带 digest 时的 `toolSchemaDigest`）在同一个事务内一起
+    /// 落库——旧读路径 `get_session_frozen_tool_schema_order` 继续看到
+    /// 同步推进的序，绝无"代号新、序旧"的半提交窗口。
+    ///
+    /// 合并语义：
+    /// - order 走 append-only 合并（只按快照顺序追加缺失名，绝不删除
+    ///   或重排已持久化条目，与 `merge_session_frozen_tool_schema_order`
+    ///   同原语）；
+    /// - generation 只前进不回退（并发 advance 竞争时以更大代号为准）；
+    /// - digest 仅在快照携带时更新，快照无 digest 不抹掉已持久化值；
+    /// - 三者皆无变化时跳过写库（发送热路径高频调用，避免无意义行重写）。
+    ///
+    /// 对 metadata 对象只 merge 上述键，authority/plan/branchedFrom/
+    /// microcompactAnchor 等其他键原样保留；故意不推进 updated_at
+    /// （内部缓存状态，不应扰动会话列表排序，同 frozenToolSchemaOrder）。
+    pub fn advance_session_tool_face_prefix(
+        db: &ChatV2Database,
+        session_id: &str,
+        snapshot: &ToolFacePrefixSnapshot,
+    ) -> ChatV2Result<()> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        Self::advance_session_tool_face_prefix_with_conn(&tx, session_id, snapshot)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// `advance_session_tool_face_prefix` 的 `_with_conn` 版本。
+    pub fn advance_session_tool_face_prefix_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        snapshot: &ToolFacePrefixSnapshot,
+    ) -> ChatV2Result<()> {
+        let mut session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let persisted = tool_face_prefix_from_metadata(session.metadata.as_ref());
+        let persisted_generation = persisted.as_ref().map_or(0, |snap| snap.generation);
+        let persisted_digest = persisted
+            .as_ref()
+            .and_then(|snap| snap.schema_digest.clone());
+        let mut merged_order = persisted.map(|snap| snap.order).unwrap_or_default();
+        let merged_len_before = merged_order.len();
+        super::pipeline::tool_loop::merge_frozen_tool_schema_order_baseline(
+            &mut merged_order,
+            &snapshot.order,
+        );
+        let next_generation = persisted_generation.max(snapshot.generation);
+        let next_digest = snapshot.schema_digest.clone().or(persisted_digest.clone());
+        // append-only 合并只会追加：长度不变即 order 无新增；代号与 digest
+        // 也未变时整体跳过写库。
+        if next_generation == persisted_generation
+            && merged_order.len() == merged_len_before
+            && next_digest == persisted_digest
+        {
+            return Ok(());
+        }
+        let mut metadata = session
+            .metadata
+            .take()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+        if !metadata.is_object() {
+            metadata = Value::Object(Default::default());
+        }
+        if let Some(obj) = metadata.as_object_mut() {
+            obj.insert(
+                TOOL_FACE_PREFIX_GENERATION_METADATA_KEY.to_string(),
+                Value::from(next_generation),
+            );
+            obj.insert(
+                FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY.to_string(),
+                Value::Array(merged_order.into_iter().map(Value::String).collect()),
+            );
+            if let Some(digest) = next_digest {
+                obj.insert(
+                    TOOL_SCHEMA_DIGEST_METADATA_KEY.to_string(),
+                    Value::String(digest),
+                );
+            }
         }
         session.metadata = Some(metadata);
         // 故意不推进 updated_at（同 frozenToolSchemaOrder）。
@@ -4458,6 +4730,169 @@ mod tests {
     }
 
     #[test]
+    fn tool_face_prefix_missing_generation_key_falls_back_to_generation_zero() {
+        // 缺键回退（旧会话兼容）：升级前的会话只有 frozenToolSchemaOrder，
+        // 代际键与 digest 键均缺 → generation 视为 0、order 回退旧键、
+        // digest 为 None；三键全缺 → None（首轮语义）。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_face_fallback".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        assert!(
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_fallback")
+                .unwrap()
+                .is_none(),
+            "从未冻结过任何 tools 状态的会话必须返回 None"
+        );
+
+        // 走旧写路径只落 frozenToolSchemaOrder（非字母序，还原全靠持久化）
+        ChatV2Repo::merge_session_frozen_tool_schema_order_with_conn(
+            &conn,
+            "sess_face_fallback",
+            &["zeta_tool".into(), "alpha_tool".into()],
+        )
+        .unwrap();
+        let restored =
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_fallback")
+                .unwrap()
+                .expect("旧键存在即视为第 0 代快照");
+        assert_eq!(restored.generation, 0, "缺代际键必须回退 generation=0");
+        assert_eq!(
+            restored.order,
+            vec!["zeta_tool", "alpha_tool"],
+            "order 必须回退现有 frozenToolSchemaOrder 首见序"
+        );
+        assert!(restored.schema_digest.is_none(), "缺 digest 键必须为 None");
+    }
+
+    #[test]
+    fn tool_face_prefix_advance_does_not_touch_updated_at() {
+        // 纪律回归：代际键属发送热路径内部缓存状态，advance 绝不推
+        // updated_at，否则每次代际切换都会把会话顶到列表首位。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_face_ts".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        let updated_at_before = ChatV2Repo::get_session_with_conn(&conn, "sess_face_ts")
+            .unwrap()
+            .expect("Session should exist")
+            .updated_at;
+
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_ts",
+            &ToolFacePrefixSnapshot {
+                generation: 1,
+                order: vec!["read_file".into(), "search".into()],
+                schema_digest: Some("digest_v1".into()),
+            },
+        )
+        .unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_face_ts")
+            .unwrap()
+            .expect("Session should exist");
+        assert_eq!(
+            reloaded.updated_at, updated_at_before,
+            "advance 写库不得推进 updated_at"
+        );
+        // 写确实发生了（不是因跳过写库而侥幸不动时间戳）
+        assert_eq!(
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_ts")
+                .unwrap()
+                .expect("快照应已持久化")
+                .generation,
+            1
+        );
+    }
+
+    #[test]
+    fn tool_face_prefix_advance_writes_generation_and_order_atomically() {
+        // 双键同事务：advance 之后新读路径（代际快照）与旧读路径
+        // （frozenToolSchemaOrder）必须看到同一 order；其他 metadata 键
+        // 原样共存；order 合并保持 append-only；generation 只前进不回退。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_face_atomic".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({
+            "authorityMode": "plan",
+            "workspace_id": "ws_1",
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_atomic",
+            &ToolFacePrefixSnapshot {
+                generation: 1,
+                order: vec!["zeta_tool".into(), "alpha_tool".into()],
+                schema_digest: Some("digest_v1".into()),
+            },
+        )
+        .unwrap();
+
+        let snapshot =
+            ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_atomic")
+                .unwrap()
+                .expect("快照应已持久化");
+        assert_eq!(snapshot.generation, 1);
+        assert_eq!(snapshot.order, vec!["zeta_tool", "alpha_tool"]);
+        assert_eq!(snapshot.schema_digest.as_deref(), Some("digest_v1"));
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_face_atomic")
+                .unwrap(),
+            snapshot.order,
+            "旧读路径必须与代际快照看到同一同事务落库的 order"
+        );
+
+        // 后续 advance：子集 order 不删条目、新名只追加；更小代号不回退；
+        // 快照无 digest 不抹掉已持久化 digest。
+        ChatV2Repo::advance_session_tool_face_prefix_with_conn(
+            &conn,
+            "sess_face_atomic",
+            &ToolFacePrefixSnapshot {
+                generation: 0,
+                order: vec!["beta_tool".into(), "zeta_tool".into()],
+                schema_digest: None,
+            },
+        )
+        .unwrap();
+        let merged = ChatV2Repo::get_session_tool_face_prefix_with_conn(&conn, "sess_face_atomic")
+            .unwrap()
+            .expect("快照应已持久化");
+        assert_eq!(merged.generation, 1, "generation 只前进不回退");
+        assert_eq!(
+            merged.order,
+            vec!["zeta_tool", "alpha_tool", "beta_tool"],
+            "order 合并必须 append-only：不删除、不重排、新名追加末尾"
+        );
+        assert_eq!(
+            merged.schema_digest.as_deref(),
+            Some("digest_v1"),
+            "快照无 digest 不得抹掉已持久化值"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_frozen_tool_schema_order_with_conn(&conn, "sess_face_atomic")
+                .unwrap(),
+            merged.order
+        );
+
+        // 其他 metadata 键（authority 组）不被三键 merge 覆盖
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_face_atomic")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "authority metadata 不得被代际写入覆盖"
+        );
+        assert_eq!(
+            metadata.get("workspace_id").and_then(Value::as_str),
+            Some("ws_1")
+        );
+    }
+
+    #[test]
     fn available_skills_snapshot_survives_process_restart_via_session_metadata() {
         // 回归（P0 available_skills 快照跨进程）：写快照 → 模拟桌面 App
         // 重启（前端内存 Map 清空，只剩 DB）→ 从 session.metadata 读回
@@ -4593,6 +5028,219 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("catalog")
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_explicit_generation_bump_via_compaction_marker() {
+        // 🆕 R4-#6 显式换代：compaction 落盘事务写待换代标记后，freeze 原语
+        // 允许且仅允许下一次写入作为新代 first write 覆盖旧快照；新代内
+        // first-write-wins 立即恢复生效。
+        let conn = setup_test_db();
+        let mut session = ChatSession::new("sess_skills_gen".to_string(), "chat".to_string());
+        session.metadata = Some(serde_json::json!({ "authorityMode": "plan" }));
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 第 0 代冻结（缺代号键 = 第 0 代，与升级前行为一致）
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_gen",
+            "catalog gen0",
+        )
+        .unwrap();
+        // 无标记时的竞争写回仍被拒绝（负例保持）
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog live (no marker)",
+            )
+            .unwrap(),
+            "catalog gen0"
+        );
+
+        // compaction 落盘声明换代：pending = generation + 1 = 1；幂等不重复 +1
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(1),
+            "前端消费前的多次 compaction 必须折叠为同一待换代代号"
+        );
+
+        // 显式换代路径：下一次 freeze 作为第 1 代 first write 覆盖
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog gen1 (live regenerated)",
+            )
+            .unwrap(),
+            "catalog gen1 (live regenerated)"
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_available_skills_snapshot_with_conn(&conn, "sess_skills_gen")
+                .unwrap()
+                .as_deref(),
+            Some("catalog gen1 (live regenerated)")
+        );
+
+        // 换代完成后：generation 推进、pending 清除、其他键原样保留，
+        // 新代内 first-write-wins 立即恢复。
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_gen")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert_eq!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY)
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY)
+                .is_none(),
+            "换代完成必须清除待换代标记"
+        );
+        assert_eq!(
+            metadata.get("authorityMode").and_then(Value::as_str),
+            Some("plan"),
+            "换代只 merge 目录相关键，其他 metadata 键必须原样保留"
+        );
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_gen",
+                "catalog gen1 competitor",
+            )
+            .unwrap(),
+            "catalog gen1 (live regenerated)",
+            "新代内竞争写回仍被 first-write-wins 拒绝"
+        );
+
+        // 再次 compaction：pending 基于新代号继续推进（= 2）
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_gen",
+            )
+            .unwrap(),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_stale_marker_is_noop_when_never_frozen() {
+        // 🆕 R4-#6：从未冻结过快照的会话（缺键语义 = 下次按 live 建立）
+        // 无需换代标记；随后的首次 freeze 走普通第 0 代 first write，
+        // 字节行为与升级前完全一致（不写代号键）。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_nofrz".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_nofrz",
+            )
+            .unwrap(),
+            None
+        );
+        let metadata_after_mark = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_nofrz")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata;
+        assert!(
+            metadata_after_mark
+                .as_ref()
+                .and_then(|meta| meta.get(AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY))
+                .is_none(),
+            "no-op 路径不得留下待换代标记"
+        );
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_nofrz",
+            "first catalog",
+        )
+        .unwrap();
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_nofrz",
+                "second write",
+            )
+            .unwrap(),
+            "first catalog",
+            "第 0 代 first-write-wins 不受换代机制影响"
+        );
+        let metadata = ChatV2Repo::get_session_with_conn(&conn, "sess_skills_nofrz")
+            .unwrap()
+            .expect("Session should exist")
+            .metadata
+            .expect("metadata should exist");
+        assert!(
+            metadata
+                .get(AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY)
+                .is_none(),
+            "普通首冻不写代号键（缺键即第 0 代，保持升级前字节形态）"
+        );
+    }
+
+    #[test]
+    fn available_skills_snapshot_empty_freeze_then_compaction_marker_allows_catalog() {
+        // 🆕 R4-#6：空串快照（安装前发过消息的会话）在 compaction 换代后
+        // 允许出现目录 —— 与「无标记时安装后不得追加目录」的负例互补，
+        // 证明覆盖只能走显式换代键。
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_skills_empty_gen".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+            &conn,
+            "sess_skills_empty_gen",
+            "",
+        )
+        .unwrap();
+        // 无标记：安装后重算的目录仍被拒（既有负例语义不变）
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+                "catalog appeared after install",
+            )
+            .unwrap(),
+            ""
+        );
+        // compaction 声明换代后，live 目录作为新代 first write 生效
+        assert_eq!(
+            ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+            )
+            .unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            ChatV2Repo::freeze_session_available_skills_snapshot_with_conn(
+                &conn,
+                "sess_skills_empty_gen",
+                "catalog appeared after install",
+            )
+            .unwrap(),
+            "catalog appeared after install"
         );
     }
 

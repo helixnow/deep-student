@@ -1261,6 +1261,184 @@ mod tests {
     }
 
     #[test]
+    fn chat_v2_stream_identity_splits_session_variant_run() {
+        // 完整 run-scoped 事件（含代际后缀）：三列全部还原，代际不入身份
+        let event = format!(
+            "chat_v2_event_sess_123_var_variant_456_run_deadbeef{}73",
+            crate::llm_manager::CHAT_V2_STREAM_GENERATION_MARKER
+        );
+        assert_eq!(
+            chat_v2_stream_identity(&event),
+            Some(ChatV2StreamIdentity {
+                session_id: "sess_123",
+                variant_id: Some("variant_456"),
+                run_id: Some("deadbeef"),
+            })
+        );
+
+        // 无代际后缀
+        assert_eq!(
+            chat_v2_stream_identity("chat_v2_event_sess_1_var_scope_a_run_r9"),
+            Some(ChatV2StreamIdentity {
+                session_id: "sess_1",
+                variant_id: Some("scope_a"),
+                run_id: Some("r9"),
+            })
+        );
+
+        // 旧格式：有 `_var_` 无 `_run_`，run 维度未知
+        assert_eq!(
+            chat_v2_stream_identity("chat_v2_event_sess_1_var_scope_a"),
+            Some(ChatV2StreamIdentity {
+                session_id: "sess_1",
+                variant_id: Some("scope_a"),
+                run_id: None,
+            })
+        );
+
+        // legacy 单会话事件：只有 session 维度
+        assert_eq!(
+            chat_v2_stream_identity("chat_v2_event_legacy_session"),
+            Some(ChatV2StreamIdentity {
+                session_id: "legacy_session",
+                variant_id: None,
+                run_id: None,
+            })
+        );
+
+        // 非 chat_v2 事件（review 等）：整体不解析，由调用方回退旧行为
+        assert!(chat_v2_stream_identity("review_analysis_stream_42").is_none());
+
+        // 代际后缀非数字：不是合法 chat_v2 run scope
+        let bad = format!(
+            "chat_v2_event_s_var_v_run_r{}not_a_number",
+            crate::llm_manager::CHAT_V2_STREAM_GENERATION_MARKER
+        );
+        assert!(chat_v2_stream_identity(&bad).is_none());
+    }
+
+    #[test]
+    fn cache_debug_segments_split_openai_chat_body() {
+        // OpenAI Chat Completions 最终体：system 在 messages 头部
+        let body = json!({
+            "model": "gpt-4o",
+            "messages": [
+                { "role": "system", "content": "you are helpful" },
+                { "role": "user", "content": "turn 1" },
+                { "role": "assistant", "content": "answer 1" },
+                { "role": "user", "content": "turn 2" }
+            ],
+            "tools": [{ "type": "function", "function": { "name": "f" } }]
+        });
+        let [system, tools, history, current_user] = cache_debug_split_body_segments(&body);
+        assert_eq!(system.as_array().map(|s| s.len()), Some(1));
+        assert!(tools.is_array());
+        // history = turn1 + answer1（尾部 user 消息单列 current-user 段）
+        assert_eq!(history.as_array().map(|h| h.len()), Some(2));
+        assert_eq!(current_user["content"], json!("turn 2"));
+    }
+
+    #[test]
+    fn cache_debug_segments_split_responses_and_anthropic_bodies() {
+        // OpenAI Responses 最终体：instructions 顶层 + input 列表
+        let responses_body = json!({
+            "model": "gpt-5.6",
+            "instructions": "sys",
+            "input": [
+                { "role": "user", "content": "turn 1" },
+                { "role": "assistant", "content": "a1" },
+                { "role": "user", "content": "turn 2" }
+            ]
+        });
+        let [system, tools, history, current_user] =
+            cache_debug_split_body_segments(&responses_body);
+        assert_eq!(system.as_array().map(|s| s.len()), Some(1));
+        assert!(tools.is_null());
+        assert_eq!(history.as_array().map(|h| h.len()), Some(2));
+        assert_eq!(current_user["content"], json!("turn 2"));
+
+        // Anthropic 最终体：system 顶层 + messages 列表
+        let anthropic_body = json!({
+            "model": "claude-sonnet",
+            "system": [{ "type": "text", "text": "sys" }],
+            "messages": [
+                { "role": "user", "content": "only turn" }
+            ]
+        });
+        let [system, _, history, current_user] = cache_debug_split_body_segments(&anthropic_body);
+        assert_eq!(system.as_array().map(|s| s.len()), Some(1));
+        assert_eq!(history.as_array().map(|h| h.len()), Some(0));
+        assert_eq!(current_user["content"], json!("only turn"));
+    }
+
+    #[test]
+    fn cache_debug_first_divergent_segment_orders_by_prefix() {
+        let base = json!({
+            "messages": [
+                { "role": "system", "content": "sys" },
+                { "role": "user", "content": "turn 1" }
+            ],
+            "tools": [{ "name": "f" }]
+        });
+        let base_fp = cache_debug_segment_fingerprints(&base);
+
+        // 完全一致：无分叉
+        assert_eq!(
+            cache_debug_first_divergent_segment(&base_fp, &base_fp),
+            None
+        );
+
+        // 只改 current-user：前三段（缓存命中区）不变
+        let new_turn = json!({
+            "messages": [
+                { "role": "system", "content": "sys" },
+                { "role": "user", "content": "turn 2" }
+            ],
+            "tools": [{ "name": "f" }]
+        });
+        assert_eq!(
+            cache_debug_first_divergent_segment(
+                &base_fp,
+                &cache_debug_segment_fingerprints(&new_turn)
+            ),
+            Some("current_user")
+        );
+
+        // system 与 current-user 同时变：报首个分叉段 system（其后全 miss）
+        let system_changed = json!({
+            "messages": [
+                { "role": "system", "content": "sys CHANGED" },
+                { "role": "user", "content": "turn 2" }
+            ],
+            "tools": [{ "name": "f" }]
+        });
+        assert_eq!(
+            cache_debug_first_divergent_segment(
+                &base_fp,
+                &cache_debug_segment_fingerprints(&system_changed)
+            ),
+            Some("system")
+        );
+
+        // 工具面变化在 history 之前判定（tools 段位于前缀更前部）
+        let tools_changed = json!({
+            "messages": [
+                { "role": "system", "content": "sys" },
+                { "role": "assistant", "content": "a1" },
+                { "role": "user", "content": "turn 2" }
+            ],
+            "tools": [{ "name": "g" }]
+        });
+        assert_eq!(
+            cache_debug_first_divergent_segment(
+                &base_fp,
+                &cache_debug_segment_fingerprints(&tools_changed)
+            ),
+            Some("tools")
+        );
+    }
+
+    #[test]
     fn test_sanitize_url_for_log_redacts_query_keys() {
         // Gemini 风格：key 在 query
         let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?alt=sse&key=AIzaSySECRET123";
@@ -2986,6 +3164,227 @@ fn chat_v2_session_scope_and_generation(stream_event: &str) -> Option<(&str, Opt
     Some((session_id, stream_generation))
 }
 
+/// Chat V2 流式遥测身份三元组（R5 #1）。
+///
+/// 从 run-scoped stream_event
+/// （`chat_v2_event_{session}_var_{scope}_run_{run}[__stream_generation__{n}]`，
+/// 见 `chat_v2::pipeline::tool_loop::build_run_scoped_stream_event`）还原：
+/// - `session_id`: 真实会话 ID；
+/// - `variant_id`: 多变体/流作用域 ID（`_var_` 与 `_run_` 之间）；
+/// - `run_id`: 单次 pipeline 执行的 run key（`_run_` 之后）。
+///
+/// 代际后缀（`__stream_generation__N`）只服务于流路由（重连/换代），
+/// run key 本身已按 pipeline 执行唯一，遥测身份不入库代际。
+#[derive(Debug, PartialEq, Eq)]
+struct ChatV2StreamIdentity<'a> {
+    session_id: &'a str,
+    variant_id: Option<&'a str>,
+    run_id: Option<&'a str>,
+}
+
+fn chat_v2_stream_identity(stream_event: &str) -> Option<ChatV2StreamIdentity<'_>> {
+    let raw_scope = stream_event.strip_prefix("chat_v2_event_")?;
+    let scope = match raw_scope.rsplit_once(super::CHAT_V2_STREAM_GENERATION_MARKER) {
+        Some((scope, raw_generation)) => {
+            // 与 chat_v2_session_scope_and_generation 同口径：代际必须是数字，
+            // 否则整个事件名不视为合法 chat_v2 run scope
+            raw_generation.parse::<u64>().ok()?;
+            scope
+        }
+        None => raw_scope,
+    };
+    match scope.rsplit_once("_var_") {
+        Some((session_id, variant_and_run)) => {
+            // 旧格式（无 `_run_` 后缀）只能还原 variant 维度
+            let (variant_id, run_id) = match variant_and_run.rsplit_once("_run_") {
+                Some((variant, run)) => (Some(variant), Some(run)),
+                None => (Some(variant_and_run), None),
+            };
+            Some(ChatV2StreamIdentity {
+                session_id,
+                variant_id,
+                run_id,
+            })
+        }
+        None => Some(ChatV2StreamIdentity {
+            session_id: scope,
+            variant_id: None,
+            run_id: None,
+        }),
+    }
+}
+
+// ============================================================================
+// Prompt-cache 分叉点定位（CHAT_V2_CACHE_DEBUG=1，R5 #1 升级）
+// ============================================================================
+//
+// 旧实现对 pre-adapter 的 `request_body["messages"]` 取单一 SHA256：
+// 1. 适配器（Anthropic/Gemini/Responses）转换后的实际发送体与 pre-adapter
+//    形态不同，指纹与线上缓存前缀脱节；
+// 2. 单一哈希只能回答"变没变"，定位分叉段还要人工逐段 diff。
+//
+// 新实现对 post-adapter 最终请求体（PreparedProviderRequest::body）按缓存
+// 语义切四段取指纹，并与同 session+variant 作用域的上一请求对比，直接
+// 记录首个分叉段——分叉段之前是缓存命中区，之后全部 miss。
+
+/// 四段名称，按 prompt 前缀顺序排列（也是分叉判定顺序）
+const CACHE_DEBUG_SEGMENT_NAMES: [&str; 4] = ["system", "tools", "history", "current_user"];
+
+/// 防止长会话调试期间无界增长；超限整体清空（只影响下一次基线判定）
+const CACHE_DEBUG_MAX_TRACKED_SCOPES: usize = 256;
+
+fn cache_debug_enabled() -> bool {
+    std::env::var("CHAT_V2_CACHE_DEBUG")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+/// 把 post-adapter 最终请求体切成缓存语义上的四段。
+///
+/// 兼容各协议的最终形态：
+/// - 消息列表：OpenAI Chat `messages` / OpenAI Responses `input` /
+///   Gemini `contents`；
+/// - system 载体：Responses `instructions`、Anthropic `system`、
+///   Gemini `systemInstruction`/`system_instruction`，以及消息列表中
+///   role 为 system/developer 的条目；
+/// - tools：顶层 `tools` 字段；
+/// - current-user：消息列表**尾部**的 user 消息（本轮输入）；
+/// - history：其余全部消息（含工具调用/工具结果）。
+fn cache_debug_split_body_segments(body: &Value) -> [Value; 4] {
+    let Some(obj) = body.as_object() else {
+        return [Value::Null, Value::Null, Value::Null, Value::Null];
+    };
+
+    let mut system_parts: Vec<Value> = Vec::new();
+    for key in [
+        "instructions",
+        "system",
+        "systemInstruction",
+        "system_instruction",
+    ] {
+        if let Some(value) = obj.get(key) {
+            system_parts.push(json!({ key: value }));
+        }
+    }
+
+    let message_list = ["messages", "input", "contents"]
+        .iter()
+        .find_map(|key| obj.get(*key).and_then(|v| v.as_array()));
+
+    let mut history: Vec<Value> = Vec::new();
+    let mut current_user = Value::Null;
+    if let Some(items) = message_list {
+        let mut items: Vec<&Value> = items.iter().collect();
+        let tail_is_user = items
+            .last()
+            .and_then(|item| item.get("role"))
+            .and_then(|role| role.as_str())
+            == Some("user");
+        if tail_is_user {
+            if let Some(tail) = items.pop() {
+                current_user = tail.clone();
+            }
+        }
+        for item in items {
+            match item.get("role").and_then(|role| role.as_str()) {
+                Some("system") | Some("developer") => system_parts.push(item.clone()),
+                _ => history.push(item.clone()),
+            }
+        }
+    }
+
+    [
+        Value::Array(system_parts),
+        obj.get("tools").cloned().unwrap_or(Value::Null),
+        Value::Array(history),
+        current_user,
+    ]
+}
+
+/// 四段各取 SHA256 前 16 hex（碰撞概率对日志 diff 场景可忽略）
+fn cache_debug_segment_fingerprints(body: &Value) -> [String; 4] {
+    use sha2::{Digest, Sha256};
+    cache_debug_split_body_segments(body).map(|segment| {
+        let mut hasher = Sha256::new();
+        hasher.update(
+            serde_json::to_string(&segment)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        let digest = format!("{:x}", hasher.finalize());
+        digest[..16].to_string()
+    })
+}
+
+/// 按前缀顺序返回首个分叉段名；完全一致返回 None
+fn cache_debug_first_divergent_segment(
+    previous: &[String; 4],
+    current: &[String; 4],
+) -> Option<&'static str> {
+    CACHE_DEBUG_SEGMENT_NAMES
+        .iter()
+        .zip(previous.iter().zip(current.iter()))
+        .find(|(_, (prev, cur))| prev != cur)
+        .map(|(name, _)| *name)
+}
+
+/// 同作用域上一请求的四段指纹（scope key = session::variant，跨 run 存续，
+/// 这正是 provider 端 prompt cache 的存活作用域）
+fn cache_debug_fingerprint_store(
+) -> &'static std::sync::Mutex<HashMap<String, [String; 4]>> {
+    static STORE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, [String; 4]>>> =
+        std::sync::OnceLock::new();
+    STORE.get_or_init(Default::default)
+}
+
+/// 记录 post-adapter 的 system / tools / history / current-user 四段指纹与首个分叉段。
+///
+/// `scope_key` 为 `session::variant`。单变体路径里的 `variant_id` 实际通常是
+/// assistant 消息 ID，每个 turn 都会新建，因此跨 turn 往往没有同 key 的上一请求，
+/// 常落为 `baseline`；本日志不能解读为「跨 turn 稳态指纹」。
+///
+/// 同一 key 首次出现记 `baseline`；四段全同记 `none`（前缀未变，理应
+/// 高命中）；否则记首个分叉段名——该段之前为缓存命中区，之后全 miss。
+fn cache_debug_log_post_adapter_fingerprint(stream_event: &str, model: &str, body: &Value) {
+    let scope_key = match chat_v2_stream_identity(stream_event) {
+        Some(identity) => format!(
+            "{}::{}",
+            identity.session_id,
+            identity.variant_id.unwrap_or("-")
+        ),
+        None => stream_event.to_string(),
+    };
+    let fingerprints = cache_debug_segment_fingerprints(body);
+
+    let divergence = {
+        let mut store = cache_debug_fingerprint_store()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let label = match store.get(&scope_key) {
+            None => "baseline",
+            Some(previous) => {
+                cache_debug_first_divergent_segment(previous, &fingerprints).unwrap_or("none")
+            }
+        };
+        if !store.contains_key(&scope_key) && store.len() >= CACHE_DEBUG_MAX_TRACKED_SCOPES {
+            store.clear();
+        }
+        store.insert(scope_key.clone(), fingerprints.clone());
+        label
+    };
+
+    debug!(
+        "[PromptCache] post-adapter fingerprint: model={}, scope={}, system={}, tools={}, history={}, current_user={}, first_divergent_segment={}",
+        model,
+        scope_key,
+        fingerprints[0],
+        fingerprints[1],
+        fingerprints[2],
+        fingerprints[3],
+        divergence
+    );
+}
+
 fn rebuild_codex_response(
     status: reqwest::StatusCode,
     version: reqwest::Version,
@@ -3186,32 +3585,18 @@ fn provider_accepts_prompt_cache_key(config: &ApiConfig) -> bool {
         || super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
 }
 
-/// 是否向该配置写 OpenAI 缓存保留参数（`prompt_cache_retention` /
-/// `prompt_cache_options`）。与 `prompt_cache_key` 的口径不同：缓存保留
-/// 参数**只对 OpenAI 官方端点**合法——DeepSeek 官方明确不支持，第三方
-/// OpenAI 兼容网关/反代行为不可知（轻则静默忽略、重则 400），一律不写。
-fn provider_accepts_prompt_cache_retention(config: &ApiConfig) -> bool {
-    !is_official_deepseek_config(config)
-        && super::resolves_to_official_openai(config.provider_type.as_deref(), &config.base_url)
-}
-
-/// P0 缓存：OpenAI 缓存保留代际分叉（延长保留到 24h，跨轮会话不再受
-/// 默认 5-10 分钟滑动窗限制）。
-/// - 旧代模型（gpt-4/gpt-5.5 及更早、o 系）：官方字段 `prompt_cache_retention:"24h"`；
-/// - GPT-5.6+（与 `prompt_cache_breakpoint` 同代引入）：官方等价新形态
-///   `prompt_cache_options:{"ttl":"24h"}`，旧字段在新代模型上不再生效。
-///
-/// 调用方已显式设置任一字段时尊重原值，不覆盖。
-fn apply_openai_prompt_cache_retention(body: &mut serde_json::Map<String, Value>, model: &str) {
-    if body.contains_key("prompt_cache_retention") || body.contains_key("prompt_cache_options") {
-        return;
-    }
-    if crate::providers::OpenAIResponsesAdapter::model_supports_prompt_cache_breakpoint(model) {
-        body.insert("prompt_cache_options".to_string(), json!({ "ttl": "24h" }));
-    } else {
-        body.insert("prompt_cache_retention".to_string(), json!("24h"));
-    }
-}
+// P6 裁决（R5 #1）：`apply_openai_prompt_cache_retention` /
+// `provider_accepts_prompt_cache_retention` 死实现已删除——两者从未被任何
+// 请求路径调用，却声称写入 `prompt_cache_retention:"24h"` /
+// `prompt_cache_options:{"ttl":"24h"}`，属于误导性死代码。
+//
+// 若未来真要接线缓存保留参数，硬约束如下（违反即回退）：
+// 1. 只允许 OpenAI 官方端点（`resolves_to_official_openai`），DeepSeek 官方
+//    与第三方 OpenAI 兼容网关一律不写（轻则静默忽略、重则 400）；
+// 2. GPT-5.6+（`model_supports_prompt_cache_breakpoint` 为 true 的代际）
+//    只允许 `prompt_cache_options:{"ttl":"30m"}`；**禁止 24h**——延长保留
+//    按存储计费，24h 档在多轮会话下成本远超缓存折扣收益；
+// 3. 接线时必须附带请求体快照测试钉死上述两条。
 
 impl LLMManager {
     fn is_openai_codex_oauth(config: &ApiConfig) -> bool {
@@ -4385,28 +4770,9 @@ impl LLMManager {
             .unwrap_or_default()
             .len();
 
-        // 🔧 Prompt-cache 分叉点定位（G7）：CHAT_V2_CACHE_DEBUG=1 时记录
-        // messages 指纹。相邻两次请求若指纹相同则前缀未变（应高命中）；
-        // 指纹不同则按消息条数/长度逐段 diff 定位"第一个分叉点"——分叉点
-        // 之前是缓存命中区，之后全部 miss（下游测量法 §三.2）。
-        if std::env::var("CHAT_V2_CACHE_DEBUG")
-            .map(|v| v == "1")
-            .unwrap_or(false)
-        {
-            use sha2::{Digest, Sha256};
-            if let Some(messages_json) = request_body.get("messages") {
-                let mut hasher = Sha256::new();
-                if let Ok(serialized) = serde_json::to_string(messages_json) {
-                    hasher.update(serialized.as_bytes());
-                    debug!(
-                        "[PromptCache] request fingerprint: model={}, messages={}, sha256={}",
-                        config.model,
-                        messages.len(),
-                        format!("{:x}", hasher.finalize())
-                    );
-                }
-            }
-        }
+        // 🔧 Prompt-cache 分叉点定位已迁移到 post-adapter 请求体（见下方
+        // cache_debug_log_post_adapter_fingerprint 调用）：pre-adapter 的
+        // messages 指纹与 Anthropic/Gemini/Responses 实际发送体脱节。
 
         // 简化：不再在此处估算输入token
 
@@ -4531,6 +4897,15 @@ impl LLMManager {
             )
             .await?;
         let is_codex = preq.is_codex();
+
+        // 🔧 Prompt-cache 分叉点定位（G7 → R5 升级）：CHAT_V2_CACHE_DEBUG=1 时
+        // 对 post-adapter 最终请求体（preq.body，即真实发送内容）按
+        // system / tools / history / current-user 四段取指纹，并与同
+        // session+variant 作用域的上一请求对比，记录首个分叉段——分叉段
+        // 之前是缓存命中区，之后全部 miss（下游测量法 §三.2）。
+        if cache_debug_enabled() {
+            cache_debug_log_post_adapter_fingerprint(stream_event, &config.model, &preq.body);
+        }
 
         // ★ 使用 preq.body（适配器转换后的实际请求体）而非 request_body（转换前），
         // 确保 Anthropic/Gemini 等非 OpenAI 提供商的预览与实际发送内容一致
@@ -5734,7 +6109,24 @@ impl LLMManager {
                 } else {
                     crate::chat_v2::types::TokenSource::Heuristic
                 };
-                crate::llm_usage::record_llm_usage_cache_ext(
+                // R5 遥测身份：不要把 run-scoped stream_event 整体当 session_id
+                // ——每次 pipeline 执行的 run key 都不同，报表会把每个 run 当成
+                // 独立会话，steady-state 缓存统计失真。从事件名分列真实
+                // session / variant / run 三列；非 chat_v2 事件（review 等）
+                // 保留旧行为，事件名整体作为会话作用域标识。
+                let identity = match chat_v2_stream_identity(stream_event) {
+                    Some(parsed) => crate::llm_usage::UsageStreamIdentity {
+                        session_id: Some(parsed.session_id.to_string()),
+                        variant_id: parsed.variant_id.map(str::to_string),
+                        run_id: parsed.run_id.map(str::to_string),
+                    },
+                    None => crate::llm_usage::UsageStreamIdentity {
+                        session_id: Some(stream_event.to_string()),
+                        variant_id: None,
+                        run_id: None,
+                    },
+                };
+                crate::llm_usage::record_llm_usage_cache_ext_with_identity(
                     crate::llm_usage::CallerType::ChatV2,
                     &config.model,
                     actual_prompt_tokens,
@@ -5742,7 +6134,7 @@ impl LLMManager {
                     reasoning_tokens,
                     cached_tokens,
                     cache_write_tokens,
-                    Some(stream_event.to_string()),
+                    identity,
                     Some(dur as u64),
                     !was_cancelled,
                     if was_cancelled {
