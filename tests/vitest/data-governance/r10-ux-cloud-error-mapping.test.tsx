@@ -6,7 +6,7 @@
  *    cloudStorage:errors.s3DisabledInBuild（zh/en 均有键，en 用户可读）；
  * 2. 跨层契约：Rust/TypeScript 的两个 code 常量逐字一致，组件不再含平台文案正则；
  * 3. 回归：FTP-on-Android code 映射；E2EE 分类优先于平台能力映射；
- * 4. 源码契约：SSOT 保存失败通知必须带 localizeCloudError 映射后的原因
+ * 4. 源码契约：配置发布失败通知必须带 localizeCloudError 映射后的原因
  *    （与加载路径对齐，不再吞掉后端拒绝原因）。
  */
 import React from 'react';
@@ -254,13 +254,13 @@ describe('平台能力拒绝的加载路径映射', () => {
 });
 
 // ============================================================================
-// 源码契约：SSOT 保存失败不得吞掉原因
+// 源码契约：配置发布失败不得吞掉原因
 // ============================================================================
 
-describe('SSOT 保存失败通知（源码契约）', () => {
-  it('doSaveConfig 的 SSOT catch 必须带 localizeCloudError 映射后的原因', () => {
+describe('配置发布失败通知（源码契约）', () => {
+  it('doSaveConfig 的 publish catch 必须带 localizeCloudError 映射后的原因', () => {
     expect(componentSource).toMatch(
-      /Failed to save credential-free cloud config SSOT[^]{0,600}configSsotFailed'\)\}: \$\{localizeCloudError\(e\)\}/,
+      /Failed to publish cloud configuration[^]{0,600}configPublishFailed'\)\}: \$\{localizeCloudError\(e\)\}/,
     );
   });
 });
