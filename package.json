@@ -67,6 +67,7 @@
     "lint:components:strict": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: error'",
     "check:bundle-size": "node scripts/check-bundle-size.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:i18n:strict": "node scripts/check-i18n.mjs --strict",
     "check:i18n:missing": "node scripts/check-missing-translations.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "licenses:check": "node scripts/check-license-compliance.mjs",

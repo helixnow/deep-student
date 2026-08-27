@@ -761,12 +761,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         description={t('workbench:settings.shortcuts.desc')}
       >
         <div className="w-full min-w-0 lg:max-w-[560px]">
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             aria-expanded={shortcutsOpen}
             aria-controls="workbench-shortcuts-list"
             onClick={() => setShortcutsOpen((prev) => !prev)}
-            className="flex items-center gap-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+            className="justify-start gap-1.5 px-1 font-normal"
           >
             <span
               aria-hidden="true"
@@ -777,7 +778,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             {shortcutsOpen
               ? t('workbench:settings.shortcuts.hide')
               : t('workbench:settings.shortcuts.show', { count: workbenchShortcuts.length })}
-          </button>
+          </DsButton>
           {shortcutsOpen && (
             <ul
               id="workbench-shortcuts-list"
@@ -981,15 +982,16 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       </SettingRow>
 
       <div className="px-1">
-        <button
-          type="button"
+        <DsButton
+          variant="ghost"
+          size="sm"
           aria-expanded={browserAdvancedOpen}
           disabled={browserControlsDisabled}
           onClick={() => {
             if (browserControlsDisabled) return;
             setBrowserAdvancedOpen((prev) => !prev);
           }}
-          className="flex items-center gap-1.5 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="justify-start gap-1.5 px-1 font-normal"
         >
           <span
             aria-hidden="true"
@@ -998,7 +1000,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             ▸
           </span>
           {t('workbench:settings.browserAdvanced')}
-        </button>
+        </DsButton>
         {browserAdvancedOpen && !browserControlsDisabled && (
           <SwitchRow
             title={t('workbench:settings.browserCdpWindows.title')}

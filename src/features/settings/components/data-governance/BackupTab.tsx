@@ -465,6 +465,90 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     onResumeJob?.(job.job_id);
   };
 
+  // 恢复入口的前置校验：桌面表格行与移动卡片共用
+  const handleRestoreClick = (backup: BackupInfoResponse) => {
+    if (backup.backup_type === 'incremental') {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_incremental_not_supported')
+      );
+      return;
+    }
+    if (!isRestorableBackup(backup)) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.restore_non_full_not_supported')
+      );
+      return;
+    }
+    setSelectedBackup(backup.path);
+    setActionType('restore');
+  };
+
+  // 备份类型徽标：桌面表格与移动卡片共用（仅展示层）
+  const renderBackupTypeBadge = (backup: BackupInfoResponse) => (
+    <Badge
+      variant={
+        backup.backup_type === 'full'
+          ? 'default'
+          : backup.backup_type === 'incremental'
+            ? 'destructive'
+            : 'secondary'
+      }
+      className="rounded-sm font-normal whitespace-nowrap"
+      title={
+        backup.backup_type === 'incremental'
+          ? t('data:governance.incremental_legacy_unsupported')
+          : undefined
+      }
+    >
+      {backup.recovery_kind === 'partial_archive'
+        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
+        : backup.backup_type === 'full'
+        ? t('data:governance.full')
+        : backup.backup_type === 'incremental'
+        ? t('data:governance.incremental_legacy_unsupported')
+        : backup.backup_type === 'partial_overlay'
+        ? t('data:governance.partial_overlay')
+        : t('data:governance.legacy_unknown')}
+    </Badge>
+  );
+
+  // 验证状态徽标：桌面表格与移动卡片共用（仅展示层）
+  const renderVerificationBadge = (backup: BackupInfoResponse) => {
+    const status = verificationStatusMap?.[backup.path];
+    if (status === 'verified') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
+          <CheckCircle size={12} className="shrink-0" />
+          {t('data:governance.verification_verified')}
+        </div>
+      );
+    }
+    if (status === 'failed') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
+          <Warning size={12} className="shrink-0" />
+          {t('data:governance.verification_failed')}
+        </div>
+      );
+    }
+    if (status === 'verifying') {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
+          <CircleNotch size={12} className="shrink-0 animate-spin" />
+          {t('data:governance.verification_verifying')}
+        </div>
+      );
+    }
+    return (
+      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs whitespace-nowrap">
+        <Shield className="h-3 w-3 shrink-0" />
+        {t('data:governance.verification_unverified')}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8">
       {/* 可恢复任务提示 */}
@@ -915,6 +999,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </p>
         </div>
 
+        {/* ≥md：原宽表；<md：下方卡片列表（同 DimensionManagement 的响应式模式，仅展示层） */}
+        <div className="hidden md:block">
         <CustomScrollArea
           orientation="horizontal"
           fullHeight={false}
@@ -938,31 +1024,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     {formatTimestamp(backup.created_at)}
                   </TableCell>
                   <TableCell className="py-3">
-                    <Badge
-                      variant={
-                        backup.backup_type === 'full'
-                          ? 'default'
-                          : backup.backup_type === 'incremental'
-                            ? 'destructive'
-                            : 'secondary'
-                      }
-                      className="rounded-sm font-normal whitespace-nowrap"
-                      title={
-                        backup.backup_type === 'incremental'
-                          ? t('data:governance.incremental_legacy_unsupported')
-                          : undefined
-                      }
-                    >
-                      {backup.recovery_kind === 'partial_archive'
-                        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
-                        : backup.backup_type === 'full'
-                        ? t('data:governance.full')
-                        : backup.backup_type === 'incremental'
-                        ? t('data:governance.incremental_legacy_unsupported')
-                        : backup.backup_type === 'partial_overlay'
-                        ? t('data:governance.partial_overlay')
-                        : t('data:governance.legacy_unknown')}
-                    </Badge>
+                    {renderBackupTypeBadge(backup)}
                   </TableCell>
                   <TableCell className="py-3 font-mono text-xs whitespace-nowrap">{formatBytes(backup.size)}</TableCell>
                   <TableCell className="py-3">
@@ -971,41 +1033,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       {t('data:governance.databases_count')}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3">
-                    {(() => {
-                      const status = verificationStatusMap?.[backup.path];
-                      if (status === 'verified') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
-                            <CheckCircle size={12} className="shrink-0" />
-                            {t('data:governance.verification_verified')}
-                          </div>
-                        );
-                      }
-                      if (status === 'failed') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
-                            <Warning size={12} className="shrink-0" />
-                            {t('data:governance.verification_failed')}
-                          </div>
-                        );
-                      }
-                      if (status === 'verifying') {
-                        return (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
-                            <CircleNotch size={12} className="shrink-0 animate-spin" />
-                            {t('data:governance.verification_verifying')}
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-xs whitespace-nowrap">
-                          <Shield className="h-3 w-3 shrink-0" />
-                          {t('data:governance.verification_unverified')}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
+                  <TableCell className="py-3">{renderVerificationBadge(backup)}</TableCell>
                   <TableCell className="text-right py-3">
                     <div className="flex justify-end gap-1">
                       <DsButton
@@ -1037,24 +1065,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                        onClick={() => {
-                          if (backup.backup_type === 'incremental') {
-                            showGlobalNotification(
-                              'warning',
-                              t('data:governance.restore_incremental_not_supported')
-                            );
-                            return;
-                          }
-                          if (!isRestorableBackup(backup)) {
-                            showGlobalNotification(
-                              'warning',
-                              t('data:governance.restore_non_full_not_supported')
-                            );
-                            return;
-                          }
-                          setSelectedBackup(backup.path);
-                          setActionType('restore');
-                        }}
+                        onClick={() => handleRestoreClick(backup)}
                         disabled={isBackupRunning}
                         title={
                           isRestorableBackup(backup)
@@ -1102,6 +1113,87 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </TableBody>
           </Table>
         </CustomScrollArea>
+        </div>
+
+        {/* <md：卡片列表（信息与动作同上表；动作按钮走 DsButton icon 契约，<lg 天然 44px） */}
+        <div className="space-y-2 md:hidden">
+          {backups.map((backup) => (
+            <div
+              key={backup.path}
+              className="rounded-md border border-border/40 bg-background/50 p-3 space-y-2"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{formatTimestamp(backup.created_at)}</span>
+                {renderBackupTypeBadge(backup)}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="font-mono text-xs text-muted-foreground">{formatBytes(backup.size)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {backup.databases.length} {t('data:governance.databases_count')}
+                </span>
+                {renderVerificationBadge(backup)}
+              </div>
+              <div className="flex items-center gap-1 border-t border-border/40 pt-1.5">
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onVerifyBackup(backup.path)}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.verify')}
+                >
+                  <Shield className="h-4 w-4" />
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setSelectedBackup(backup.path);
+                    setActionType('export');
+                  }}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.export_zip')}
+                >
+                  <FileArrowDown size={16} />
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRestoreClick(backup)}
+                  disabled={isBackupRunning}
+                  aria-label={t('data:governance.restore')}
+                >
+                  <ArrowCounterClockwise size={16} />
+                </DsButton>
+                <div className="flex-1" />
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    setSelectedBackup(backup.path);
+                    setActionType('delete');
+                  }}
+                  disabled={isBackupRunning}
+                  aria-label={t('common:actions.delete')}
+                >
+                  <Trash size={16} />
+                </DsButton>
+              </div>
+            </div>
+          ))}
+          {backups.length === 0 && (
+            <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <CircleNotch size={16} className="animate-spin" />
+                  {t('common:status.loading')}
+                </div>
+              ) : (
+                t('data:governance.no_backups')
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 确认对话框 */}

@@ -10,6 +10,12 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
+function clickDuplicatedBackupAction(name: string) {
+  const buttons = screen.getAllByRole('button', { name });
+  expect(buttons).toHaveLength(2);
+  fireEvent.click(buttons[0]!);
+}
+
 // ============================================================================
 // Mocks（与 r09-ux-backup-tab.test.tsx 同构）
 // ============================================================================
@@ -104,9 +110,7 @@ describe('BackupTab 确认框变体分级', () => {
   it('恢复备份（覆盖当前数据槽）→ warning 确认框', () => {
     render(<BackupTab {...makeProps()} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.restore' }),
-    );
+    clickDuplicatedBackupAction('data:governance.restore');
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('data:governance.confirm_restore');
@@ -116,9 +120,7 @@ describe('BackupTab 确认框变体分级', () => {
   it('删除备份仍是 danger 确认框', () => {
     render(<BackupTab {...makeProps()} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'common:actions.delete' }),
-    );
+    clickDuplicatedBackupAction('common:actions.delete');
 
     expect(screen.getByRole('alertdialog')).toHaveAttribute(
       'data-confirm-variant',
@@ -129,9 +131,7 @@ describe('BackupTab 确认框变体分级', () => {
   it('导出 ZIP（不改动数据）仍是 primary 确认框', () => {
     render(<BackupTab {...makeProps()} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.export_zip' }),
-    );
+    clickDuplicatedBackupAction('data:governance.export_zip');
 
     expect(screen.getByRole('alertdialog')).toHaveAttribute(
       'data-confirm-variant',

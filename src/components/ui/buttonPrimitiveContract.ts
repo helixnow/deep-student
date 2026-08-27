@@ -61,26 +61,34 @@ export const buttonToneClassNames: Record<ButtonPrimitiveVariant, string> = {
     'border-transparent bg-transparent text-[color:var(--button-primary-foreground)] underline-offset-4 hover:underline',
 };
 
+// 尺寸压缩条件只有 lg: 视口断点，宽视口 + 粗指针（iPad 横屏等）会被压到
+// 32px 命中区。这里在 lg:h-* 之后追加 [@media(pointer:coarse)]:min-h-*：
+// 粗指针设备无论视口多宽，命中高度都保底 --touch-target-size（44px）；
+// 细指针宽屏不匹配该媒体查询，仍走 lg 压缩，桌面视觉不变。
+// 用 min-h 而非 !h：视觉高度（h/lg:h）与命中保底（min-h）分离，
+// 调用方局部覆盖 height 时保底依然生效。图标（正方形）尺寸同时追加
+// min-w，保证横向命中区不塌。
 export const buttonSizeClassNames: Record<ButtonPrimitiveSize, string> = {
-  default: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)]',
-  sm: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-xs lg:h-[var(--button-height-sm)]',
-  md: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)]',
-  lg: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-sm lg:h-[var(--button-height-lg)]',
+  default:
+    'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+  sm: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-xs lg:h-[var(--button-height-sm)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+  md: 'h-[var(--touch-target-size)] px-[var(--button-padding-x)] text-ui lg:h-[var(--button-height)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+  lg: 'h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-sm lg:h-[var(--button-height-lg)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
   icon:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
 };
 
 export const buttonIconSizeClassNames: Record<ButtonPrimitiveSize, string> = {
   default:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
   sm:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-sm)] lg:w-[var(--button-height-sm)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-sm)] lg:w-[var(--button-height-sm)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
   md:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
   lg:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-lg)] lg:w-[var(--button-height-lg)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-height-lg)] lg:w-[var(--button-height-lg)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
   icon:
-    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]',
+    'h-[var(--touch-target-size)] w-[var(--touch-target-size)] p-0 lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]',
 };
 
 export const shellNavButtonClassName = cn(shellNavBaseClassName, buttonToneClassNames.nav);

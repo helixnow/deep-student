@@ -11,6 +11,7 @@ describe('split input bar mobile contract', () => {
   const inputBarSource = readInputBarSource('InputBarUI.tsx');
   const toolbarSource = readInputBarSource('ComposerToolbar.tsx');
   const panelSource = readInputBarSource('AttachmentPanelBody.tsx');
+  const plusMenuSource = readInputBarSource('ComposerPlusMenu.tsx');
   const helperSource = readInputBarSource('attachmentModeHelpers.ts');
   const chatContainerSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/components/ChatContainer.tsx'),
@@ -36,23 +37,33 @@ describe('split input bar mobile contract', () => {
 
   it('keeps coarse-pointer toolbar controls and search at mobile-safe sizes', () => {
     expect(toolbarSource).toContain(
-      '[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'
+      '[@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]'
     );
+    // 第一批高频散点已从透明伪元素外扩改为实体 44×44 盒（--touch-target-size），
+    // 伪元素命中区会与相邻控件互相重叠，工具栏内不允许再出现
     expect(toolbarSource).toContain(
-      '[@media(pointer:coarse)]:after:-inset-2'
+      '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
     );
+    expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:after:-inset');
     expect(toolbarSource).toContain(
-      'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base'
+      'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!text-base'
     );
   });
 
-  it('keeps attachment panel actions at least 44px on coarse pointers', () => {
+  it('keeps attachment and plus-menu actions token-sized on coarse pointers', () => {
     expect(panelSource).toContain('className="!h-11 !min-w-11"');
-    expect(panelSource.match(/\[@media\(pointer:coarse\)\]:!min-h-11/g)?.length).toBeGreaterThanOrEqual(7);
+    expect(
+      panelSource.match(/\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/g)?.length
+    ).toBeGreaterThanOrEqual(8);
+    expect(plusMenuSource).toContain(
+      '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
+    );
   });
 
   it('keeps compact composer hints tappable without changing desktop density', () => {
-    expect(inputBarSource.match(/\[@media\(pointer:coarse\)\]:!h-11/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(
+      inputBarSource.match(/\[@media\(pointer:coarse\)\]:min-h-\[var\(--touch-target-size\)\]/g)?.length
+    ).toBeGreaterThanOrEqual(5);
   });
 
   it('keeps localized OCR stage labels in the extracted helper', () => {

@@ -266,7 +266,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+              className="h-8"
             >
               <ArrowClockwise
                 size={14}
@@ -279,7 +279,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={onDetectConflicts}
               disabled={loading}
-              className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+              className="h-8"
             >
               <MagnifyingGlass size={14} className="mr-1.5" />
               {t("data:governance.detect_conflicts")}
@@ -287,12 +287,13 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         </div>
 
-        <CustomScrollArea
-          orientation="horizontal"
-          fullHeight={false}
-          className="rounded-lg border border-border/40"
-        >
-          <Table>
+        <div className="hidden md:block">
+          <CustomScrollArea
+            orientation="horizontal"
+            fullHeight={false}
+            className="rounded-lg border border-border/40"
+          >
+            <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
                 <TableHead className="h-10 whitespace-nowrap min-w-[80px]">
@@ -362,8 +363,59 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 </TableRow>
               )}
             </TableBody>
-          </Table>
-        </CustomScrollArea>
+            </Table>
+          </CustomScrollArea>
+        </div>
+
+        <div className="space-y-2 md:hidden">
+          {syncDatabases.map((db) => (
+            <div key={db.id} className="space-y-3 rounded-md border border-border/40 bg-background/50 p-3">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-sm font-medium">
+                  {getDatabaseDisplayName(db.id, t)}
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-caption text-muted-foreground">
+                  {t("data:governance.change_log")}
+                  {db.has_change_log ? (
+                    <CheckCircle size={16} className="text-emerald-500/70" />
+                  ) : (
+                    <XCircle size={16} className="text-muted-foreground/50" />
+                  )}
+                </span>
+              </div>
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div className="min-w-0">
+                  <dt className="text-caption text-muted-foreground">{t("data:governance.pending")}</dt>
+                  <dd className="mt-1">
+                    {db.pending_changes > 0 ? (
+                      <Badge variant="secondary" className="rounded-sm font-normal">
+                        {db.pending_changes}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground/50">0</span>
+                    )}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-caption text-muted-foreground">{t("data:governance.synced")}</dt>
+                  <dd className="mt-1 text-muted-foreground/70">{db.synced_changes}</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+          {(!syncStatus || syncDatabases.length === 0) && (
+            <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <CircleNotch size={16} className="animate-spin" />
+                  {t("common:status.loading")}
+                </div>
+              ) : (
+                t("data:governance.no_data")
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="border-t border-border/40" />
@@ -386,7 +438,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             variant="ghost"
             size="sm"
             onClick={onToggleCloudSettingsEditor}
-            className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+            className="h-8"
           >
             <Cloud size={14} className="mr-1.5" />
             {t("data:governance.open_cloud_settings")}
@@ -407,7 +459,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
-                className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+                className="bg-background hover:bg-[var(--interactive-hover)]"
               >
                 {t("data:governance.cloud_sync_configure_now")}
               </DsButton>
@@ -486,7 +538,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                className="h-8"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t("data:governance.sync_bidirectional")}
@@ -496,7 +548,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("upload", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 bg-background hover:bg-[var(--interactive-hover)]"
+                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Upload size={14} className="mr-1.5" />
                 {t("data:governance.sync_upload")}
@@ -506,7 +558,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("download", syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11 bg-background hover:bg-[var(--interactive-hover)]"
+                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Download size={14} className="mr-1.5" />
                 {t("data:governance.sync_download")}
@@ -592,7 +644,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             size="sm"
                             onClick={onRetrySync}
                             disabled={syncRunning}
-                            className="h-6 text-xs px-2 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                            className="h-6 text-xs px-2"
                           >
                             <ArrowClockwise size={12} className="mr-1" />
                             {t("common:actions.retry")}
@@ -603,7 +655,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={onViewAuditLog}
-                            className="h-6 text-xs px-2 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                            className="h-6 text-xs px-2"
                           >
                             <FileText size={12} className="mr-1" />
                             {t("data:governance.view_audit_log")}
@@ -661,7 +713,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("keep_local")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_local")}
             </DsButton>
@@ -670,7 +722,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("use_cloud")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.use_cloud")}
             </DsButton>
@@ -679,7 +731,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("keep_latest")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.keep_latest")}
             </DsButton>
@@ -688,7 +740,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => setPendingResolveStrategy("manual")}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t("data:governance.manual")}
             </DsButton>

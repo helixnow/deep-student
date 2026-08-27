@@ -2,8 +2,10 @@
  * MobileSubviewChromeContext - 移动端「页内全屏子屏」的统一顶栏接管通道
  *
  * 场景：learning-hub 右屏 app 内的全屏内联子屏（题库导出向导 / 题目历史 /
- * 原图裁剪等，absolute inset-0 覆盖宿主内容区）。这些子屏此前在小屏上自绘
- * h-12 顶栏 + ArrowLeft，与 App 级 UnifiedMobileHeader 叠成双 chrome。
+ * 原图裁剪等，absolute inset-0 覆盖宿主内容区），以及中屏 finder 的内联子屏
+ * （移动到… FolderPickerDialog inline，经 chrome.screen 标记按屏位匹配接管）。
+ * 这些子屏此前在小屏上自绘 h-12 顶栏 + ArrowLeft，与 App 级
+ * UnifiedMobileHeader 叠成双 chrome。
  *
  * 机制（保持「每个 viewId 单一写者」的注册表契约）：
  * - 拥有统一顶栏 viewId 的宿主页面（当前为 LearningHubPage）通过
@@ -43,6 +45,12 @@ export interface MobileSubviewChrome {
    * 与 MobileHeaderConfig.rightActions 同约束）
    */
   rightActions?: ReactNode;
+  /**
+   * 子屏归属的滑动屏位：宿主只在当前 screenPosition 与之匹配时接管顶栏，
+   * 滑到其他屏位后顶栏立即恢复该屏位原语义（子屏保持打开等待返回）。
+   * 缺省 'right'，兼容既有右屏 app 子屏（题库导出/历史/裁剪等）。
+   */
+  screen?: 'center' | 'right';
 }
 
 interface MobileSubviewChromeHostValue {

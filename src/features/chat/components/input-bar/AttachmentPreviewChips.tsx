@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -307,7 +308,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 size="sm"
                 onClick={() => handleChipClick(attachment)}
                 className={cn(
-                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:!min-h-11',
+                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                   isError
                     ? 'border-destructive/40 hover:border-destructive/60'
                     : 'border-[color:var(--input-shell-border)] hover:border-[color:var(--button-plain-border)]',
@@ -424,7 +425,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   aria-label={t('chatV2:common.retryNamed', { name: attachment.name })}
                   title={t('common:retry')}
                   className={cn(
-                    "relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
+                    'ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none',
+                    coarseHitClassFor24,
                     isError
                       ? 'border-destructive/40 text-destructive hover:bg-destructive/10'
                       : 'border-warning/40 text-warning hover:bg-warning/10'

@@ -825,7 +825,6 @@ export const LearningHubPage: React.FC = () => {
         size="icon"
         onClick={() => handleInjectToChatRef.current()}
         disabled={isInjecting}
-        className="h-11 w-11"
         aria-label={t('learningHub:contextMenu.referenceToChat')}
         title={t('learningHub:contextMenu.referenceToChat')}
       >
@@ -841,7 +840,6 @@ export const LearningHubPage: React.FC = () => {
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-11 w-11"
               aria-label={t('common:more')}
               title={t('common:more')}
             >
@@ -874,42 +872,46 @@ export const LearningHubPage: React.FC = () => {
     t,
   ]);
 
-  // 右屏 app 内的全屏内联子屏（题库导出/历史/裁剪等）接管顶栏：
-  // 子屏通过 useMobileSubviewChrome 推入栈，这里取栈顶并入本视图的
-  // useMobileHeader 配置（保持 'learning-hub' 单一写者）。仅右屏可见时生效，
-  // 滑回中屏/左屏后顶栏立即恢复目录/侧栏语义，子屏仍保持打开等待返回。
+  // 页内全屏内联子屏（右屏：题库导出/历史/裁剪等；中屏：移动到… FolderPicker）
+  // 接管顶栏：子屏通过 useMobileSubviewChrome 推入栈，这里取栈顶并入本视图的
+  // useMobileHeader 配置（保持 'learning-hub' 单一写者）。栈顶 chrome 带屏位标记
+  // （screen，缺省 right），仅当前滑动屏位与之匹配时生效——滑到其他屏位后
+  // 顶栏立即恢复该屏位原语义（面包屑/侧栏），子屏仍保持打开等待返回。
   const { activeSubviewChrome, subviewChromeHost } = useMobileSubviewChromeHost();
-  const rightSubviewChrome = screenPosition === 'right' ? activeSubviewChrome : null;
+  const subviewChrome =
+    activeSubviewChrome && (activeSubviewChrome.screen ?? 'right') === screenPosition
+      ? activeSubviewChrome
+      : null;
 
   // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
-    title: rightSubviewChrome
-      ? rightSubviewChrome.title
+    title: subviewChrome
+      ? subviewChrome.title
       : screenPosition === 'left'
         ? rootTitle
         : screenPosition === 'right' && activeTab
           ? (activeTab.title || t('common:untitled'))
           : undefined,
-    titleNode: screenPosition === 'center' ? (
+    titleNode: !subviewChrome && screenPosition === 'center' ? (
       <MobileBreadcrumb
         rootTitle={centerViewTitle}
         breadcrumbs={finderBreadcrumbs}
         onNavigate={handleBreadcrumbNavigate}
       />
     ) : undefined,
-    showMenu: screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
-    onMenuClick: screenPosition === 'right'
-      ? (rightSubviewChrome
-        ? rightSubviewChrome.onBack
-        : () => setScreenPosition('center'))
-      : screenPosition === 'center' && isInSubfolder
-        ? () => finderGoUp()
-        : screenPosition === 'left'
-          ? () => setScreenPosition('center')
-          : () => setScreenPosition('left'),
-    showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    rightActions: rightSubviewChrome ? rightSubviewChrome.rightActions : mobileHeaderRightActions,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions, rightSubviewChrome]);
+    showMenu: !subviewChrome && screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
+    onMenuClick: subviewChrome
+      ? subviewChrome.onBack
+      : screenPosition === 'right'
+        ? () => setScreenPosition('center')
+        : screenPosition === 'center' && isInSubfolder
+          ? () => finderGoUp()
+          : screenPosition === 'left'
+            ? () => setScreenPosition('center')
+            : () => setScreenPosition('left'),
+    showBackArrow: !!subviewChrome || screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
+    rightActions: subviewChrome ? subviewChrome.rightActions : mobileHeaderRightActions,
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, centerViewTitle, handleBreadcrumbNavigate, mobileHeaderRightActions, subviewChrome]);
 
   // 📱 Android 返回键接入目录层级后退（契约第 4 条）：
   // 中间屏且在子文件夹时，返回键先执行 goUp（与顶栏返回箭头同语义），

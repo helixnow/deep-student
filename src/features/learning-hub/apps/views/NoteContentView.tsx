@@ -22,8 +22,10 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { useMobileSubviewChrome } from '@/components/layout';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import type { CrepeEditorApi } from '@/components/crepe';
@@ -155,6 +157,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isActive, isSmallScreen, mobilePanelOpen]);
+
+  // 📱 小屏 learning-hub 承载：上下文子屏的标题/返回上移 App 级统一顶栏，
+  // 页内不再自绘第二条返回行（同 QuestionBankExportDialog / QuestionHistoryView /
+  // ImageCropDialog 的 subview chrome 通道）。返回箭头与上方系统返回键同语义。
+  // 无宿主（桌面分栏 / workbench 窗口等无统一顶栏的承载）返回 false，保持自绘返回行。
+  // 注意：通道只接管顶栏，不注册返回键——上面的 registerBackHandler 必须保留。
+  const subviewChromeHosted = useMobileSubviewChrome(
+    {
+      title: t('notes:contextPanel.title'),
+      onBack: () => setMobilePanelOpen(false),
+    },
+    [t],
+    isActive && isSmallScreen && mobilePanelOpen,
+  );
 
   const toggleRightPanel = useCallback(() => {
     setRightPanelVisible((visible) => !visible);
@@ -907,11 +923,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         {/* 📱 长错误信息（含路径/ID）在 375px 窄屏必须可换行，避免横向溢出 */}
         <span className="text-destructive text-center break-words max-w-md">{message}</span>
         <div className="flex flex-wrap justify-center gap-2 mt-3">
-          <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => loadNoteContent()}>
+          <DsButton variant="primary" onClick={() => loadNoteContent()}>
             {t('common:retry')}
           </DsButton>
           {onClose && (
-            <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" onClick={onClose}>
               {t('common:close')}
             </DsButton>
           )}
@@ -966,9 +982,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   size="sm"
                   className={cn(
                     'h-7 w-7 text-muted-foreground hover:text-foreground',
-                    // 📱 触屏：视觉尺寸与编辑器工具栏其余 h-7 按钮保持一致，
-                    // 用透明伪元素外扩命中区达到 ≥44px 触控目标（仓库既有约定）
-                    "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
+                    // 📱 编辑器工具栏高度固定，28px 视觉按钮走共享 coarseHit 逃生舱。
+                    coarseHitClassFor28,
                     (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground',
                   )}
                   onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
@@ -993,7 +1008,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
             <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
-            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={toggleRightPanel} aria-label={t('common:close')}>
+            <DsButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
               <X size={13} aria-hidden="true" />
             </DsButton>
           </div>
@@ -1003,24 +1018,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         </aside>
       )}
 
-      {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + 顶部返回 + Android 返回键 */}
+      {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + Android 返回键；
+          标题/返回由 App 级统一顶栏接管（subview chrome 通道），无宿主时回退页内自绘返回行 */}
       {!propertiesPanelDisabled && isSmallScreen && mobilePanelOpen && (
         <div className="absolute inset-0 z-40 flex flex-col bg-background">
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setMobilePanelOpen(false)}
-              aria-label={t('common:back')}
-              className="gap-1 min-h-11 px-2"
-            >
-              <CaretLeft size={16} aria-hidden="true" />
-              {t('common:back')}
-            </DsButton>
-            <span className="text-sm font-medium truncate text-foreground/90">
-              {t('notes:contextPanel.title')}
-            </span>
-          </div>
+          {!subviewChromeHosted && (
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobilePanelOpen(false)}
+                aria-label={t('common:back')}
+                className="gap-1 min-h-11 px-2"
+              >
+                <CaretLeft size={16} aria-hidden="true" />
+                {t('common:back')}
+              </DsButton>
+              <span className="text-sm font-medium truncate text-foreground/90">
+                {t('notes:contextPanel.title')}
+              </span>
+            </div>
+          )}
           <div className="flex-1 min-h-0 overflow-hidden pb-[var(--mobile-safe-area-bottom,0px)]">
             <NotesContextPanel
               noteId={noteId}

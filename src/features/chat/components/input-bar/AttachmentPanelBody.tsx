@@ -30,10 +30,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
-import { getErrorMessage } from '@/utils/errorUtils';
-import { cancelPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { PdfProcessingStatus as StorePdfProcessingStatus } from '@/features/pdf/stores/pdfProcessingStore';
-import { logAttachment } from '../../debug/chatV2Logger';
 import type { AttachmentMeta } from '../../core/types/common';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
@@ -49,10 +46,21 @@ import {
   getStageLabel,
 } from './attachmentModeHelpers';
 
+/**
+ * 行目标体系化：菜单行/列表行在 pointer:coarse 下实体高度 ≥44px，
+ * 统一走 --touch-target-size token（与 AppMenu.css 的 coarse 基线一致），
+ * 不再散写 min-h-[44px] 魔法数。
+ */
+const coarseRowClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
+
 export interface AttachmentPanelBodyProps {
   attachments: AttachmentMeta[];
   isMobile: boolean;
-  /** pointer: coarse 设备能力判断（拍照入口） */
+  /**
+   * 相机捕获能力（拍照入口）。上游传入 inputBarCapabilities.canCapturePhoto()
+   * （平台/capture 特性判定），早已不是 pointer: coarse。prop 名为历史遗留，
+   * 待改名为 canCapturePhoto。
+   */
   isMobileEnv: boolean;
   /** PDF/图片处理进度 Store 快照（key = sourceId/file_id） */
   pdfStatusMap: Map<string, StorePdfProcessingStatus>;
@@ -88,45 +96,8 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
 }) => {
   const { t } = useTranslation(['analysis', 'common', 'chatV2']);
 
-  const handleClearAllAttachments = () => {
-    attachments.forEach(att => {
-      if (att.sourceId) {
-        void cancelPdfProcessing(att.sourceId).catch((error) => {
-          logAttachment('ui', 'cancel_processing_failed', {
-            attachmentId: att.id,
-            sourceId: att.sourceId,
-            error: getErrorMessage(error),
-          }, 'warning');
-        });
-      }
-      if (att.previewUrl?.startsWith('blob:')) {
-        URL.revokeObjectURL(att.previewUrl);
-      }
-    });
-    onClearAttachments();
-  };
-
-  const handleRemoveAttachment = (attachment: AttachmentMeta) => {
-    logAttachment('ui', 'attachment_remove', {
-      attachmentId: attachment.id,
-      sourceId: attachment.sourceId,
-      fileName: attachment.name,
-      status: attachment.status,
-    });
-    if (attachment.sourceId) {
-      void cancelPdfProcessing(attachment.sourceId).catch((error) => {
-        logAttachment('ui', 'cancel_processing_failed', {
-          attachmentId: attachment.id,
-          sourceId: attachment.sourceId,
-          error: getErrorMessage(error),
-        }, 'warning');
-      });
-    }
-    if (attachment.previewUrl?.startsWith('blob:')) {
-      URL.revokeObjectURL(attachment.previewUrl);
-    }
-    onRemoveAttachment(attachment.id);
-  };
+  // remove/clear 语义已收敛进 store（sessionActions）：取消 PDF 处理、
+  // 释放 Blob URL、清理 pdfProcessingStore 均由 store 单点执行，面板只传 id。
 
   return (
     <>
@@ -163,7 +134,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
               </AppMenuTrigger>
               <AppMenuContent align="end" width={200}>
                 <AppMenuItem
-                  className="min-h-[44px]"
+                  className={coarseRowClass}
                   icon={<FolderOpen className="w-4 h-4" weight="bold" />}
                   onClick={onOpenResourceLibrary}
                 >
@@ -171,7 +142,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                 </AppMenuItem>
                 {isMobileEnv && (
                   <AppMenuItem
-                    className="min-h-[44px]"
+                    className={coarseRowClass}
                     icon={<Camera className="w-4 h-4" weight="bold" />}
                     onClick={onOpenCamera}
                   >
@@ -180,10 +151,10 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                 )}
                 {attachments.length > 0 && (
                   <AppMenuItem
-                    className="min-h-[44px]"
+                    className={coarseRowClass}
                     icon={<Trash className="w-4 h-4" weight="bold" />}
                     destructive
-                    onClick={handleClearAllAttachments}
+                    onClick={onClearAttachments}
                   >
                     {t('analysis:input_bar.attachments.clear_all')}
                   </AppMenuItem>
@@ -209,31 +180,31 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
             <span>{t('chatV2:inputBar.plusMenu.attachmentsCount', { count: attachments.length })}</span>
           </div>
           <div className="flex items-center gap-2">
-            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onPickFiles}>
+            <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onPickFiles}>
               + {t('analysis:input_bar.attachments.add')}
             </DsButton>
             {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
             <DsButton
               variant="outline"
               size="sm"
-              className="[@media(pointer:coarse)]:!min-h-11"
+              className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
               onClick={onOpenResourceLibrary}
             >
               <FolderOpen size={12} weight="bold" />
               {t('chatV2:inputBar.resourceLibrary')}
             </DsButton>
             {isMobileEnv && (
-              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onOpenCamera}>
+              <DsButton variant="outline" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onOpenCamera}>
                 <Camera size={12} weight="bold" />
                 {t('chatV2:inputBar.camera')}
               </DsButton>
             )}
             {attachments.length > 0 && (
-              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={handleClearAllAttachments}>
+              <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onClearAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
               </DsButton>
             )}
-            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={onClose}>
               {t('common:actions.close')}
             </DsButton>
           </div>
@@ -315,7 +286,7 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
             const showInjectModeSelector = isImage || isPdf;
 
             return (
-              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
+              <div key={attachment.id} data-wb-blur-surface className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', coarseRowClass, toneClass)}>
                 {/* 第一行：文件名、大小、状态、移除按钮 */}
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
@@ -367,12 +338,12 @@ export const AttachmentPanelBody: React.FC<AttachmentPanelBodyProps> = ({
                       variant="outline"
                       size="sm"
                       onClick={() => { onRetryAttachment(attachment); }}
-                      className="text-info [@media(pointer:coarse)]:!min-h-11"
+                      className="text-info [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                     >
                       {t('common:retry')}
                     </DsButton>
                   )}
-                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => handleRemoveAttachment(attachment)}>
+                  <DsButton variant="danger" size="sm" className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]" onClick={() => onRemoveAttachment(attachment.id)}>
                     {t('analysis:input_bar.attachments.remove')}
                   </DsButton>
                 </div>
