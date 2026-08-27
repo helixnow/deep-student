@@ -381,8 +381,8 @@ describe('BackupTab verification status indicators', () => {
     );
 
     expect(
-      screen.getByText(/已验证|data:governance\.verification_verified/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/已验证|data:governance\.verification_verified/i),
+    ).toHaveLength(2);
   });
 
   it('shows "验证失败" badge for failed backups', () => {
@@ -398,8 +398,8 @@ describe('BackupTab verification status indicators', () => {
     );
 
     expect(
-      screen.getByText(/验证失败|data:governance\.verification_failed/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/验证失败|data:governance\.verification_failed/i),
+    ).toHaveLength(2);
   });
 
   it('shows "验证中" badge with spinner for verifying backups', () => {
@@ -415,8 +415,8 @@ describe('BackupTab verification status indicators', () => {
     );
 
     expect(
-      screen.getByText(/验证中|data:governance\.verification_verifying/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/验证中|data:governance\.verification_verifying/i),
+    ).toHaveLength(2);
   });
 
   it('shows "未验证" badge for unverified backups', () => {
@@ -428,11 +428,10 @@ describe('BackupTab verification status indicators', () => {
       />,
     );
 
-    // Both backups should show "未验证"
     const unverifiedBadges = screen.getAllByText(
       /未验证|data:governance\.verification_unverified/i,
     );
-    expect(unverifiedBadges.length).toBe(2);
+    expect(unverifiedBadges).toHaveLength(4);
   });
 
   it('shows different statuses for different backups simultaneously', () => {
@@ -448,13 +447,12 @@ describe('BackupTab verification status indicators', () => {
       />,
     );
 
-    // 一个 verified，一个 failed
     expect(
-      screen.getByText(/已验证|data:governance\.verification_verified/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/已验证|data:governance\.verification_verified/i),
+    ).toHaveLength(2);
     expect(
-      screen.getByText(/验证失败|data:governance\.verification_failed/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/验证失败|data:governance\.verification_failed/i),
+    ).toHaveLength(2);
   });
 });
 
@@ -478,8 +476,8 @@ describe('BackupTab legacy incremental restore rejection', () => {
     );
 
     expect(
-      screen.getByText('data:governance.incremental_legacy_unsupported'),
-    ).toBeInTheDocument();
+      screen.getAllByText('data:governance.incremental_legacy_unsupported'),
+    ).toHaveLength(2);
 
     const backupTable = screen.getByRole('table');
     const restoreButtons = within(backupTable).getAllByRole('button', {

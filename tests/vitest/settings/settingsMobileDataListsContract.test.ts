@@ -6,6 +6,7 @@ const readSource = (file: string) => readFileSync(resolve(process.cwd(), file), 
 
 describe('settings data-governance mobile lists', () => {
   it.each([
+    'BackupTab.tsx',
     'SyncTab.tsx',
     'AuditTab.tsx',
     'OverviewTab.tsx',
