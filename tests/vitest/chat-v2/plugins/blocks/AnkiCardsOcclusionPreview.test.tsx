@@ -16,14 +16,24 @@ const { mockConvertFileSrc, mockInvoke } = vi.hoisted(() => ({
   mockInvoke: vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined),
 }));
 
+// Mock i18n：occlusion 词条与 zh-CN anki.json 保持一致，支持 {{var}} 插值；
+// 未知 key 回退 defaultValue 或 key 本身。
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
-      if (key === 'blocks.ankiCards.edit') return 'Edit';
-      if (key === 'blocks.ankiCards.addToLibrary') return 'Add to card library';
-      if (key === 'blocks.ankiCards.reviewBatch') return 'Review batch';
-      if (key === 'blocks.ankiCards.moreActions') return 'More card actions';
-      return (options?.defaultValue as string) || key;
+      const dict: Record<string, string> = {
+        'blocks.ankiCards.edit': 'Edit',
+        'blocks.ankiCards.addToLibrary': 'Add to card library',
+        'blocks.ankiCards.reviewBatch': 'Review batch',
+        'blocks.ankiCards.moreActions': 'More card actions',
+        'agent.occlusion.imageAlt': '图像遮挡卡片',
+        'agent.occlusion.revealBox': '揭开遮挡区域 {{index}}',
+      };
+      const template = dict[key];
+      if (!template) return (options?.defaultValue as string) || key;
+      return template.replace(/\{\{(\w+)\}\}/g, (_match, name: string) =>
+        String(options?.[name] ?? ''),
+      );
     },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
@@ -122,7 +132,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
     ]);
 
     expect(screen.getByTestId('anki-occlusion-preview-gallery')).toBeInTheDocument();
-    expect(screen.getByTestId('anki-occlusion-image')).toHaveAttribute('src', DIRECT_IMAGE);
+    expect(screen.getByRole('img', { name: '图像遮挡卡片' })).toHaveAttribute('src', DIRECT_IMAGE);
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(2);
     expect(screen.getAllByTestId('occlusion-box-masked')[0]).toHaveStyle({
       left: '10%',
@@ -176,7 +186,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
     ]))]);
 
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
-    expect(screen.getByLabelText('揭开遮挡区域 3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '揭开遮挡区域 3' })).toBeInTheDocument();
   });
 
   it('resolves a VFS image source to a safe data URL', async () => {
@@ -195,7 +205,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
 
     expect(screen.getByTestId('image-occlusion-overlay')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId('anki-occlusion-image')).toHaveAttribute(
+      expect(screen.getByRole('img', { name: '图像遮挡卡片' })).toHaveAttribute(
         'src',
         'data:image/png;base64,iVBORw0KGgo=',
       );
@@ -226,7 +236,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
   it('reveals a mask without bubbling into the block expand action', () => {
     renderBlock([card('reveal', occlusionJson())]);
 
-    fireEvent.click(screen.getByLabelText('揭开遮挡区域 1'));
+    fireEvent.click(screen.getByRole('button', { name: '揭开遮挡区域 1' }));
 
     expect(screen.getByText('左心房')).toBeInTheDocument();
     expect(screen.getByTestId('occlusion-box-revealed')).toBeInTheDocument();
@@ -240,7 +250,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
       { x: 0.1, y: 0.5, w: 0.2, h: 0.2, label: 'group-b', clozeIndex: 1 },
     ]))]);
 
-    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[1]);
 
     expect(screen.getByText('group-a')).toBeInTheDocument();
     expect(screen.getByText('group-b')).toBeInTheDocument();
@@ -251,7 +261,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
   it('reveals a group with Enter without expanding the collapsed block', () => {
     renderBlock([card('keyboard', occlusionJson())]);
 
-    fireEvent.keyDown(screen.getByLabelText('揭开遮挡区域 1'), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '揭开遮挡区域 1' }), { key: 'Enter' });
 
     expect(screen.getByText('左心房')).toBeInTheDocument();
     expect(screen.getByTestId('anki-occlusion-preview-gallery')).toBeInTheDocument();
@@ -262,7 +272,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
     renderBlock([card('local', occlusionJson('/tmp/diagram.png'))]);
 
     expect(mockConvertFileSrc).toHaveBeenCalledWith('/tmp/diagram.png');
-    expect(screen.getByTestId('anki-occlusion-image')).toHaveAttribute(
+    expect(screen.getByRole('img', { name: '图像遮挡卡片' })).toHaveAttribute(
       'src',
       'asset://localhost//tmp/diagram.png',
     );
@@ -284,7 +294,7 @@ describe('AnkiCardsBlock Image Occlusion preview', () => {
     renderBlock([card('expanded-keyboard', occlusionJson())]);
     fireEvent.click(screen.getByTestId('anki-preview'));
 
-    fireEvent.keyDown(screen.getByLabelText('揭开遮挡区域 1'), { key: ' ' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '揭开遮挡区域 1' }), { key: ' ' });
 
     expect(screen.getByText('左心房')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();

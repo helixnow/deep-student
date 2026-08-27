@@ -1741,6 +1741,85 @@ export class ChatV2TauriAdapter {
       } catch { /* debug only */ }
     };
 
+    // 生成质量观测事件（CriticSummary / GenerationStats）：只 patch toolOutput
+    // 观测字段，不动 status / progress / cards，不参与 retry reconcile。
+    // 类型与归一化契约以 ankiCardsBlockState 的 AnkiCriticSummary / AnkiGenerationStats
+    // 为准（此处经 inline import() 类型引用对齐，避免改动本文件 import 区）。
+    if (type === 'CriticSummary' || type === 'GenerationStats') {
+      if (!dataObj) return;
+      // 兼容 snake_case（后端当前 wire 格式）与 camelCase（防后端序列化策略调整）
+      const pickNum = (snake: string, camel: string): number => {
+        const value = dataObj[snake] ?? dataObj[camel];
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        return 0;
+      };
+      const pickStr = (snake: string, camel: string): string | undefined => {
+        const value = dataObj[snake] ?? dataObj[camel];
+        return typeof value === 'string' && value ? value : undefined;
+      };
+      const receivedAt = new Date().toISOString();
+
+      let statsPatch: Record<string, unknown>;
+      if (type === 'CriticSummary') {
+        const degradedRaw = dataObj.degraded;
+        const routedDegradedRaw = dataObj.routed_degraded ?? dataObj.routedDegraded;
+        const criticSummary: import('../plugins/blocks/components/ankiCardsBlockState').AnkiCriticSummary = {
+          taskId: pickStr('task_id', 'taskId'),
+          documentId: pickStr('document_id', 'documentId'),
+          examined: pickNum('examined', 'examined'),
+          kept: pickNum('kept', 'kept'),
+          revised: pickNum('revised', 'revised'),
+          flagged: pickNum('flagged', 'flagged'),
+          rejectedUnknownIds: pickNum('rejected_unknown_ids', 'rejectedUnknownIds'),
+          skippedOverBudget: pickNum('skipped_over_budget', 'skippedOverBudget'),
+          goldReferences: pickNum('gold_references', 'goldReferences'),
+          goldReferencesTruncated: pickNum('gold_references_truncated', 'goldReferencesTruncated'),
+          persistFailures: pickNum('persist_failures', 'persistFailures'),
+          degraded: typeof degradedRaw === 'string' && degradedRaw ? degradedRaw : null,
+          routedConfigId: pickStr('routed_config_id', 'routedConfigId'),
+          routedModel: pickStr('routed_model', 'routedModel'),
+          routedDegraded: typeof routedDegradedRaw === 'boolean' ? routedDegradedRaw : undefined,
+          receivedAt,
+        };
+        statsPatch = { criticSummary };
+      } else {
+        const generationStats: import('../plugins/blocks/components/ankiCardsBlockState').AnkiGenerationStats = {
+          taskId: pickStr('task_id', 'taskId'),
+          documentId: pickStr('document_id', 'documentId'),
+          cardsGenerated: pickNum('cards_generated', 'cardsGenerated'),
+          failedCards: pickNum('failed_cards', 'failedCards'),
+          duplicateCards: pickNum('duplicate_cards', 'duplicateCards'),
+          droppedFragments: pickNum('dropped_fragments', 'droppedFragments'),
+          flaggedCards: pickNum('flagged_cards', 'flaggedCards'),
+          receivedAt,
+        };
+        statsPatch = { generationStats };
+      }
+
+      try {
+        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
+          level: 'info', phase: 'bridge:event',
+          summary: `${type} → block ${targetBlock.id.slice(0, 8)} | ${JSON.stringify(statsPatch[type === 'CriticSummary' ? 'criticSummary' : 'generationStats']).slice(0, 200)}`,
+          documentId, blockId: targetBlock.id,
+          detail: statsPatch,
+        }}));
+      } catch { /* debug only */ }
+
+      // 终态块（success/error）同样允许 patch —— 这两个事件在任务收尾后到达属正常时序
+      state.updateBlock(targetBlock.id, {
+        toolOutput: {
+          ...currentOutput,
+          ...ensureDocumentId,
+          ...statsPatch,
+        },
+      });
+      return;
+    }
+
     if (type === 'NewCard' || type === 'NewErrorCard') {
       if (!cardData) return;
       const exists = cardData.id ? currentCards.some((c) => c.id === cardData.id) : false;

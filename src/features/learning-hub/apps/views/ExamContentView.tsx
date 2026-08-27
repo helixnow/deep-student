@@ -971,6 +971,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     // 成员资格 + 首答幂等自行门禁，非会话题目是空操作。
     useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, result.isCorrect);
 
+    // 权威优先（R6 补齐）：后端提交响应回带当日 daily 快照时覆盖上面的
+    // 本地乐观增量。顺序必须是先乐观（维护 answered_results 差量基线）、
+    // 后权威覆盖计数；旧后端无此字段时为 undefined，行为不变。timed 不受影响。
+    if (result.dailyProgress) {
+      useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
+    }
+
     // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写。
     // ★ 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
     //   避免连续快速提交时后写覆盖先写、丢失已答记录
@@ -1003,8 +1010,41 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 🆕 使用 Hook 的 markCorrect
   const handleMarkCorrect = useCallback(async (questionId: string, isCorrect: boolean) => {
     if (!sessionId) return;
-    await markCorrect(questionId, isCorrect);
-  }, [sessionId, markCorrect]);
+    const result = await markCorrect(questionId, isCorrect);
+
+    // 与 handleSubmitAnswer 对齐：改判成功后同样回写限时/每日练习进度。
+    // action 内部按「会话题目成员资格 + 首答幂等 + 已答题差量修正」门禁（R4 起）：
+    // 已答且有判定基线的题按旧判定 → 新判定 差量更新 correct（可减）；
+    // 「跳过自动判分、直接自评」的主观题由这里首次计入进度；
+    // 已答但无基线（旧会话残留 / 权威覆盖引入）保持首答锁，由下方权威快照收敛。
+    useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
+
+    // mock_exam 对称回写：成绩依赖 results，改判后同步更新判定；
+    // answers 保持不变（改判不改作答内容），且仅对本会话内已作答的题目生效，
+    // 避免制造"有判定无作答"的不一致记录。
+    if (practiceMode === 'mock_exam') {
+      const latestSession = useQuestionBankStore.getState().mockExamSession;
+      if (
+        latestSession &&
+        latestSession.exam_id === sessionId &&
+        !latestSession.is_submitted &&
+        latestSession.question_ids.includes(questionId) &&
+        questionId in latestSession.answers
+      ) {
+        setMockExamSession({
+          ...latestSession,
+          results: { ...latestSession.results, [questionId]: isCorrect },
+        });
+      }
+    }
+
+    // 权威优先（R6 补齐，闭环 wave2-E-r4-05 的遗留项）：hook 已透出改判响应
+    // 里的当日 daily 快照，用它覆盖本地乐观增量——这是首答锁 fail-closed
+    // 分支（已答但无判定基线）唯一的即时收敛路径；旧后端无此字段时不动。
+    if (result.dailyProgress) {
+      useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
+    }
+  }, [sessionId, markCorrect, practiceMode, setMockExamSession]);
 
   // 🆕 使用 Hook 的 navigate
   const handleNavigate = useCallback((index: number) => {

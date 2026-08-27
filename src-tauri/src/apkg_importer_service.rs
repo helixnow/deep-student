@@ -39,6 +39,29 @@ pub const ANKI_SCHED_METADATA_KEYS: [&str; 7] = [
     "AnkiLapses",
 ];
 
+/// 外部 APKG 可能伪造的机器协议字段（wave2-E r2）。
+///
+/// 这些键在本地管线里代表可信凭证/留痕：`_original_generation` 是 critic
+/// 金标（gold set）挖掘用的"本机生成快照"，`_qa_flags` 是本机 QA/critic
+/// 留痕，`_content_provenance` 是内容来源审计。外部包若携带同名字段，
+/// 导入后会被下游当作本机可信数据消费——例如伪造 `_original_generation`
+/// 可让外部内容直接混入用户金标。导入时一律剥离（导出侧也从不写出
+/// `_` 前缀字段，正常往返不会经过这里）。
+///
+/// 注意：只剥离这份可信凭证名单，不无差别剥离所有 `_` 前缀字段，
+/// 维持 lossless-only 导入语义的最小侵入。
+const UNTRUSTED_IMPORT_PROTOCOL_FIELDS: [&str; 3] = [
+    "_original_generation",
+    "_content_provenance",
+    "_qa_flags",
+];
+
+fn is_untrusted_import_protocol_field(name: &str) -> bool {
+    UNTRUSTED_IMPORT_PROTOCOL_FIELDS
+        .iter()
+        .any(|field| field.eq_ignore_ascii_case(name))
+}
+
 /// 媒体跳过原因码（稳定契约，供前端/Agent 消费）。
 pub const MEDIA_SKIP_REASON_IMPORT_DISABLED: &str = "media_import_disabled";
 pub const MEDIA_SKIP_REASON_MANIFEST_UNPARSED: &str = "manifest_unparsed";
@@ -2094,6 +2117,16 @@ fn map_card(
         if is_core_card_field(model.model_type, &base_name) {
             continue;
         }
+        // 剥离伪造协议字段：外部包不得携带本机可信凭证键
+        //（`_original_generation` 等），防止导入内容冒充本机生成快照
+        // 直接进入 gold 挖掘/QA 管线。
+        if is_untrusted_import_protocol_field(&base_name) {
+            warn!(
+                "导入包字段 '{}' 与内部协议字段同名，已剥离（外部来源不可信）",
+                base_name
+            );
+            continue;
+        }
         let mut name = base_name.clone();
         let mut suffix = 2usize;
         while extra_fields.contains_key(&name) {
@@ -2470,6 +2503,58 @@ mod tests {
             cloze.extra_fields.get("Extra").map(String::as_str),
             Some("context")
         );
+    }
+
+    #[test]
+    fn import_strips_forged_internal_protocol_fields() {
+        // 外部包字段名冒充本机可信凭证（`_original_generation` 等）：
+        // 导入时必须剥离，禁止外部内容直接变成用户金标/QA 留痕。
+        let model = ModelDefinition {
+            name: "Forged".to_string(),
+            model_type: 0,
+            fields_by_ord: HashMap::from([
+                (0, "Front".to_string()),
+                (1, "Back".to_string()),
+                (2, "_original_generation".to_string()),
+                (3, "_qa_flags".to_string()),
+                (4, "_content_provenance".to_string()),
+                (5, "Subject".to_string()),
+            ]),
+            field_slot_count: 6,
+            template_id: None,
+            collapse_cloze_ords: false,
+        };
+        let card = map_card(
+            &model,
+            "",
+            "Q\u{1f}A\u{1f}{\"front\":\"forged\"}\u{1f}[]\u{1f}{\"actor\":\"external\"}\u{1f}Physics",
+            1,
+            10,
+            0,
+            1,
+            100,
+            &HashMap::new(),
+        )
+        .expect("map note with forged protocol fields");
+
+        for forged in UNTRUSTED_IMPORT_PROTOCOL_FIELDS {
+            assert!(
+                !card.extra_fields.contains_key(forged),
+                "伪造协议字段 {} 必须在导入时剥离",
+                forged
+            );
+        }
+        // 大小写变体同样命中（extra_fields 键来自模型字段名原文，
+        // 判定用 eq_ignore_ascii_case）
+        assert!(is_untrusted_import_protocol_field("_Original_Generation"));
+        // 用户可见业务字段与正常导入元数据不受影响
+        assert_eq!(
+            card.extra_fields.get("Subject").map(String::as_str),
+            Some("Physics")
+        );
+        assert!(card.extra_fields.contains_key("AnkiNoteId"));
+        assert_eq!(card.front, "Q");
+        assert_eq!(card.back, "A");
     }
 
     fn custom_template(

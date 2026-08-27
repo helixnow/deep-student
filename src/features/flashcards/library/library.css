@@ -186,6 +186,89 @@
   user-select: none;
 }
 
+/* ---------- 队列分区（已生成待入队收件箱 vs 复习队列） ---------- */
+
+.fc-lib-queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
+.fc-lib-queue-head[data-queue='inbox'] {
+  background: color-mix(in hsl, hsl(var(--warning)) 9%, transparent 91%);
+  border-bottom-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--border)) 70%);
+}
+
+.fc-lib-queue-head[data-queue='scheduled'] {
+  background: color-mix(in hsl, hsl(var(--card)) 94%, hsl(var(--muted)) 6%);
+}
+
+.fc-lib-queue-title {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+}
+
+.fc-lib-queue-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.fc-lib-queue-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-lib-queue-hint[data-tone='due'] {
+  color: hsl(var(--danger));
+  font-weight: 500;
+}
+
+/* 区头 CTA（加入复习）靠右 */
+.fc-lib-queue-cta {
+  margin-left: auto;
+}
+
+/* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
+.fc-lib-queue-section[data-queue='inbox'] {
+  background: color-mix(in hsl, hsl(var(--warning)) 4%, transparent 96%);
+}
+
+/* 收件箱行左缘 2px 暖色标带（伪元素承载，不与行焦点环 box-shadow 冲突） */
+.fc-lib-queue-section[data-queue='inbox'] .fc-lib-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: color-mix(in hsl, hsl(var(--warning)) 55%, transparent 45%);
+  pointer-events: none;
+}
+
+/* 分区之间留出呼吸缝 */
+.fc-lib-queue-section[data-queue='inbox'] + .fc-lib-queue-section[data-queue='scheduled'] {
+  margin-top: 10px;
+}
+
+@media (max-width: 480px) {
+  /* 窄屏：说明文案让位给标题 + CTA */
+  .fc-lib-queue-hint:not([data-tone='due']) {
+    display: none;
+  }
+}
+
 /* ---------- 行 ---------- */
 
 .fc-lib-row {

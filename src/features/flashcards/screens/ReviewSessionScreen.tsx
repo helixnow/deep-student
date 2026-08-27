@@ -44,12 +44,15 @@ import {
 import { RatingBar } from '../review/RatingBar';
 import { ReviewCardSurface } from '../review/ReviewCardSurface';
 import { SessionSummary } from '../review/SessionSummary';
+import { UndoNudge } from '../review/UndoNudge';
 import { formatDuration, useNow } from '../review/useSessionClock';
 
 /** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
 const POINTER_RATE_GUARD_MS = 280;
 const PRESS_FLASH_MS = 240;
 const STREAK_BADGE_THRESHOLD = 3;
+/** 本卡用时的显示封顶：超过后定格为「1:00+」。仅影响 UI，落库用时仍走 store 的 MAX_ANSWER_DURATION_MS */
+const CARD_TIMER_DISPLAY_CAP_MS = 60_000;
 
 function ratingFromKey(event: KeyboardEvent): FsrsRating | null {
   if (event.key === '1' || event.key === '2' || event.key === '3' || event.key === '4') {
@@ -186,6 +189,10 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     }
   }, [sessionDone]);
   const cardElapsedMs = Math.max(0, now - cardShownAt);
+  const cardTimerCapped = cardElapsedMs >= CARD_TIMER_DISPLAY_CAP_MS;
+  const cardTimerText = cardTimerCapped
+    ? `${formatDuration(CARD_TIMER_DISPLAY_CAP_MS)}+`
+    : formatDuration(cardElapsedMs);
   const sessionElapsedMs = sessionStartedAtMs != null
     ? Math.max(0, (doneAt ?? now) - sessionStartedAtMs)
     : null;
@@ -551,12 +558,16 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           </span>
           <span
             className="wb-fc-chip wb-fc-chip--timer"
-            title={sessionElapsedMs != null
-              ? t('review.sessionTimeTitle', { time: formatDuration(sessionElapsedMs) })
-              : t('review.cardTimeTitle')}
+            title={cardTimerCapped
+              ? t('review.cardTimeCappedTitle', {
+                  defaultValue: 'Over 1 minute on this card (display capped; stats unaffected)',
+                })
+              : sessionElapsedMs != null
+                ? t('review.sessionTimeTitle', { time: formatDuration(sessionElapsedMs) })
+                : t('review.cardTimeTitle')}
           >
             <Timer size={11} aria-hidden="true" />
-            {formatDuration(cardElapsedMs)}
+            {cardTimerText}
           </span>
         </div>
       </div>
@@ -718,6 +729,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
       {!editing ? (
         <>
+          <UndoNudge
+            receiptId={lastReview?.logId ?? null}
+            rating={lastReview?.rating ?? null}
+            busy={ratingBusy}
+            onUndo={() => void undoLastReview()}
+          />
           <RatingBar
             flipped={flipped}
             disabled={ratingBusy}

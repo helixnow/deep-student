@@ -248,6 +248,10 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                   {activeCheckInCalendar.streak_days}
                 </div>
                 <div className="text-sm text-muted-foreground">{t('daily.streakDays')}</div>
+                {/* streak 后端只看「当天有无做题」，与目标是否达成无关，文案如实说明 */}
+                <div className="text-[11px] leading-snug text-muted-foreground/80">
+                  {t('daily.streakHint')}
+                </div>
               </div>
               {/* 近 7 天连续火苗点缀：点亮天数 = min(streak, 7) */}
               <div className="ml-2 hidden items-end gap-1 sm:flex" aria-hidden="true">
@@ -326,6 +330,8 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 ))}
               </div>
             </div>
+            {/* P2-1 B 案：目标不按天存历史，达标判定始终用当前值，明说以免误解 */}
+            <p className="text-xs text-muted-foreground">{t('daily.targetHint')}</p>
           </div>
 
           {calendarError && (
@@ -445,7 +451,13 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       <Card className="bg-transparent border-transparent shadow-none">
         <CardHeader className="px-0 pb-2 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base">{t('daily.calendar')}</CardTitle>
+              {/* P2-1 B 案：达标标记按当前目标重算，明确命名，避免被当成历史目标 */}
+              <Badge variant="outline" className="border border-border font-normal text-[10px] text-muted-foreground">
+                {t('daily.viewByCurrentTarget')}
+              </Badge>
+            </div>
             <div className="flex items-center gap-2">
               <DsButton variant="ghost" iconOnly size="sm" className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={handlePrevMonth} aria-label={t('daily.previousMonth')}>
                 <CaretLeft size={16} />
@@ -458,6 +470,9 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               </DsButton>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {t('daily.calendarTargetHint', { target: dailyTarget })}
+          </p>
         </CardHeader>
         <CardContent className="px-0 sm:px-6">
           {/* 星期标题 */}

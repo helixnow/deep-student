@@ -26,6 +26,7 @@ import {
   useReviewActivity,
 } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
+import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
@@ -482,6 +483,8 @@ export const StatisticsScreen: React.FC = () => {
                 />
               </div>
             </section>
+
+            <FsrsParamsPanel />
           </div>
 
           {/* Statistics are the primary content; keep scheduler controls as the

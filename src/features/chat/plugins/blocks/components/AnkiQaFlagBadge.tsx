@@ -7,6 +7,8 @@
  * - AnkiQaFlagsSummaryChip：块级摘要条（N 张卡片带质检标记 + 复查提示）。
  *
  * `_qa_flags` 只在这里以结构化方式展示，绝不拼进 front/back 文本。
+ * lint 条目按稳定 code 走 i18n（qaFlags.lint.<code>），后端中文 message
+ * 仅作诊断与回退，不再直接进入非中文界面。
  */
 
 import React, { useId, useMemo, useState } from 'react';
@@ -28,13 +30,87 @@ const SEVERITY_LABEL_KEYS: Record<QaFlagSeverity, string> = {
   error: 'qaFlags.severity.error',
 };
 
-/** 旧字段规则条目（rule 名）已有 i18n；lint 条目 code 直接展示 message。 */
+/** 旧字段规则条目（rule 名）已有 i18n；lint 条目按稳定 code 查 qaFlags.lint.*。 */
 const LEGACY_RULE_LABEL_KEYS: Record<string, string> = {
   minLength: 'qaFlags.rules.minLength',
   maxLength: 'qaFlags.rules.maxLength',
   allowedValues: 'qaFlags.rules.allowedValues',
   validationPattern: 'qaFlags.rules.validationPattern',
 };
+
+/**
+ * 稳定 lint code → 本地化词条（qaFlags.lint.<code>）。
+ * 与后端 `anki_qa_lint.rs` 的 `codes::ALL` 对齐；`legacy_flags_unparsed`
+ * 故意不在此列——它的 message 就是待展示的原始历史标记内容。
+ * 未收录的（未来新增）code 自动回退展示后端 message。
+ */
+const LINT_LABEL_KEYS: Record<string, string> = Object.fromEntries(
+  [
+    'front_back_identical',
+    'empty_front',
+    'empty_back',
+    'cloze_unclosed',
+    'cloze_empty_answer',
+    'cloze_bad_index',
+    'cloze_missing',
+    'answer_leak',
+    'multi_concept',
+    'front_too_long',
+    'placeholder_residue',
+    'todo_residue',
+    'xxx_residue',
+    'empty_brackets',
+    'tags_empty',
+    'duplicate_in_document',
+    'near_duplicate',
+    'mixed_language',
+    'mcq_too_few_options',
+    'mcq_answer_not_in_options',
+    'mcq_missing_answer',
+    'field_rule_min_length',
+    'field_rule_max_length',
+    'field_rule_allowed_values',
+    'field_rule_pattern',
+  ].map((code) => [code, `qaFlags.lint.${code}`]),
+);
+
+/**
+ * 需要插值数字参数的 lint code → 参数名列表。
+ * 后端 message 是中文诊断文本，其中的数字（计数/阈值/百分比）是唯一
+ * 语言无关的部分：按出现顺序抽取并映射到这里声明的参数名。
+ * 顺序契约见 `anki_qa_lint.rs` 中 `LintIssue::message` 的文档注释。
+ */
+const LINT_NUMERIC_PARAM_NAMES: Record<string, readonly string[]> = {
+  cloze_unclosed: ['n'],
+  cloze_empty_answer: ['n'],
+  cloze_bad_index: ['n'],
+  front_too_long: ['n', 'limit'],
+  near_duplicate: ['percent'],
+  mixed_language: ['cjk', 'latin'],
+  mcq_too_few_options: ['n'],
+  field_rule_min_length: ['n', 'min'],
+  field_rule_max_length: ['n', 'max'],
+};
+
+/**
+ * 从后端 message 中按出现顺序抽取该 code 声明的数字参数。
+ * message 中数字不足（异常数据/未来文案变化）时返回 null，
+ * 调用方回退展示原始 message，避免渲染出带空洞的模板。
+ */
+function resolveLintNumericParams(
+  code: string,
+  message: string,
+): Record<string, string> | null {
+  const names = LINT_NUMERIC_PARAM_NAMES[code];
+  if (!names) return {};
+  const numbers = message.match(/\d+(?:\.\d+)?/g) ?? [];
+  if (numbers.length < names.length) return null;
+  const params: Record<string, string> = {};
+  names.forEach((name, index) => {
+    params[name] = numbers[index];
+  });
+  return params;
+}
 
 /** critic 后端 message 当前为中文；按稳定 code 解析，避免英文界面泄漏未本地化文案。 */
 const CRITIC_FLAG_LABEL_KEYS: Record<string, string> = {
@@ -81,6 +157,13 @@ export const AnkiQaFlagBadge: React.FC<{
   const resolveFlagMessage = (flag: QaFlagEntry): string => {
     const criticKey = CRITIC_FLAG_LABEL_KEYS[flag.code];
     if (criticKey) return t(criticKey);
+    // lint 条目：优先按稳定 code 查本地化词条（后端 message 是中文诊断文本，
+    // 直接展示会泄漏进英文界面），数字参数从 message 中抽取插值。
+    const lintKey = LINT_LABEL_KEYS[flag.code];
+    if (lintKey) {
+      const params = resolveLintNumericParams(flag.code, flag.message);
+      if (params) return t(lintKey, params);
+    }
     if (flag.message) return flag.message;
     const legacyKey = LEGACY_RULE_LABEL_KEYS[flag.code];
     if (legacyKey) return t(legacyKey);

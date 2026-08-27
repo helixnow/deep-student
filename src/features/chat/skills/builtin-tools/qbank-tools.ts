@@ -220,7 +220,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_update_question',
-      description: '更新题目信息（Medium，OCC 反向更新）。支持题干、选项、题型和 structured_data（切换到 matching/ordering/numeric 必须同调用提供对应 structured_data）。必须先调用 qbank_get_question 取得最新 updated_at，并原样作为 expected_updated_at 传入；冲突后重新读取，禁止盲重试。成功返回 bounded question、bounded previous、changed_fields、updated_at、reversible=false、reversibleWithOcc=true 与 undo 提示；两份题目中长字段用 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明截断，previous 的可空字段不保证能自动清空。',
+      description: '更新题目信息（Medium，OCC 反向更新）。支持题干、选项、题型和 structured_data（切换到 matching/ordering/numeric 必须同调用提供对应 structured_data）。必须先调用 qbank_get_question 取得最新 updated_at，并原样作为 expected_updated_at 传入；冲突后重新读取，禁止盲重试。成功返回 bounded question、bounded previous、changed_fields、updated_at、reversible=false、reversibleWithOcc=true 与 undo 提示；两份题目中长字段用 <field>_truncated、options[i].content_truncated 和 fieldsTruncated 标明截断（fieldsTruncated 可含 structured_data 嵌套路径），previous 的可空字段不保证能自动清空。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -598,7 +598,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_get_question_history',
-      description: '读取一道题的字段变更历史（Low，只读），按时间倒序最多 20 条。返回 history（field_name、old/new_value、operator、reason、changed_at）；count 等于 limit 时可能还有更早记录。',
+      description: '读取一道题的字段变更历史（Low，只读），按时间倒序最多 20 条。返回 history（field_name、old/new_value、operator、reason、changed_at）；old_value/new_value 为 {text,truncated}（2000 字符截断）或 null；count 等于 limit 时可能还有更早记录。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

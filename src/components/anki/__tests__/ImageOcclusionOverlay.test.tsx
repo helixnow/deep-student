@@ -5,6 +5,20 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// Mock i18n：词条与 zh-CN anki.json 的 agent.occlusion.revealBox 保持一致，
+// 支持 {{index}} 插值；未知 key 回退 key 本身。
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      if (key === 'agent.occlusion.revealBox') {
+        return `揭开遮挡区域 ${String(options?.index ?? '')}`;
+      }
+      return key;
+    },
+  }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+}));
+
 import { ImageOcclusionOverlay } from '../ImageOcclusionOverlay';
 import type { OcclusionSpec } from '../utils/imageOcclusion';
 
@@ -33,7 +47,7 @@ describe('ImageOcclusionOverlay', () => {
     const onReveal = vi.fn();
     render(<ImageOcclusionOverlay spec={spec} onReveal={onReveal} />);
     // clozeIndex=1 组内有两个盒，共享同一 aria-label，点其一即揭开整组
-    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[0]);
     // clozeIndex=1 的两个盒一起揭开，显示标签
     const revealed = screen.getAllByTestId('occlusion-box-revealed');
     expect(revealed).toHaveLength(2);
@@ -48,7 +62,7 @@ describe('ImageOcclusionOverlay', () => {
     const onReveal = vi.fn();
     render(<ImageOcclusionOverlay spec={spec} onReveal={onReveal} />);
 
-    const mask = screen.getAllByLabelText('揭开遮挡区域 1')[0];
+    const mask = screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[0];
     mask.focus();
     await user.keyboard('{Enter}');
 
@@ -68,7 +82,7 @@ describe('ImageOcclusionOverlay', () => {
       </div>,
     );
 
-    const mask = screen.getByLabelText('揭开遮挡区域 2');
+    const mask = screen.getByRole('button', { name: '揭开遮挡区域 2' });
     mask.focus();
     await user.keyboard(' ');
 
@@ -82,7 +96,7 @@ describe('ImageOcclusionOverlay', () => {
     const onReveal = vi.fn();
     render(<ImageOcclusionOverlay spec={spec} onReveal={onReveal} />);
 
-    fireEvent.keyDown(screen.getByLabelText('揭开遮挡区域 2'), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '揭开遮挡区域 2' }), { key: 'ArrowRight' });
 
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(3);
     expect(onReveal).not.toHaveBeenCalled();
@@ -98,7 +112,7 @@ describe('ImageOcclusionOverlay', () => {
       />,
     );
 
-    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[1]);
     expect(onReveal).toHaveBeenCalledWith(1);
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(3);
 
@@ -123,7 +137,7 @@ describe('ImageOcclusionOverlay', () => {
 
   it('切换 spec 时不会沿用上一张卡的已揭答案', () => {
     const { rerender } = render(<ImageOcclusionOverlay spec={spec} />);
-    fireEvent.click(screen.getAllByLabelText('揭开遮挡区域 1')[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[0]);
     expect(screen.getAllByTestId('occlusion-box-revealed')).toHaveLength(2);
 
     const nextSpec: OcclusionSpec = {
@@ -150,7 +164,7 @@ describe('ImageOcclusionOverlay', () => {
     render(<ImageOcclusionOverlay spec={unsafeSpec} />);
 
     expect(screen.getAllByTestId('occlusion-box-masked')).toHaveLength(1);
-    expect(screen.getByLabelText('揭开遮挡区域 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '揭开遮挡区域 2' })).toBeInTheDocument();
   });
 
   it('根结构非法或属性读取抛错时安全渲染空 overlay', () => {
@@ -180,7 +194,7 @@ describe('ImageOcclusionOverlay', () => {
       </div>,
     );
 
-    const mask = screen.getAllByLabelText('揭开遮挡区域 1')[0];
+    const mask = screen.getAllByRole('button', { name: '揭开遮挡区域 1' })[0];
     fireEvent.keyDown(mask, { key: 'Enter' });
     fireEvent.click(mask);
     expect(onOuterKeyDown).not.toHaveBeenCalled();

@@ -8,9 +8,12 @@
 //! 1. **校验**：`validate_spec` 把外部（LLM / 前端编辑器）产出的
 //!    [`OcclusionSpec`] 收敛为 [`ValidatedOcclusionSpec`]（越界 / 过度重叠 /
 //!    空盒 / 非法 cloze 序号一律结构化拒绝，绝不静默修剪语义）。
-//! 2. **草稿字段**：`build_card_fields` 生成候选 Cloze `Text` 与
-//!    `extra_fields["_occlusion"]` spec，供应用内渲染及后续导出接线使用。
-//!    当前生产入库/导出尚未消费完整字段集合，因此产品只呈现草稿预览语义。
+//! 2. **草稿字段**：`build_card_fields` 生成候选 Cloze `Text`（含
+//!    `<img src>`）与 `extra_fields["_occlusion"]` spec。生产入库
+//!    （`streaming_anki_service::parse_and_save_card`）现已消费该 text
+//!    （仅在模型未产出非空 text 时补入）并把 `_occlusion.imageRef` 写入
+//!    `AnkiCard.images`（`vlm://` 占位引用被过滤，不入 images）；
+//!    导出转换仍未接通。
 //! 3. **启发式建议**：`propose_boxes_from_image_desc` 从 VlmFull/VlmLight
 //!    已产出的 `[IMAGE_DESC: ...]` 条目文本中提取标签并按网格布局出候选盒，
 //!    作为「无坐标 VLM → 有坐标遮挡」的零成本首版桥（无图测试不碰模型）。
@@ -21,13 +24,19 @@
 //!   归一化让 spec 与图片实际分辨率解耦——同一 spec 可套用缩略图与原图。
 //! - 像素换算只发生在渲染/字段构造边界（`to_pixel_boxes`），带
 //!   四舍五入 + 边界收敛 + 最小 1px 保证，有测试锁定。
+//! - Anki 原生 IO cloze 语法（[`format_anki_io_cloze`]）**同样输出 0–1
+//!   归一化小数**，对齐 Anki 官方 `to-cloze.ts` 的文档示例
+//!   `{{c1::image-occlusion:rect:top=.1:left=.23:width=.4:height=.5}}`。
+//!   **禁止再写 ×100 百分数**：百分数会让 Anki 遮罩放大 100 倍。
 //!
 //! ## 当前产品边界
 //!
 //! Anki 23.10+ 原生 Image Occlusion note type 的 `Occlusion` 字段本质是
-//! cloze 语法包裹的矩形描述。本模块只构造草稿字段；生产管线目前没有把候选
-//! `Text`、图片媒体和 `_occlusion` 转换为 APKG/AnkiConnect 可复习 note。
-//! 在该转换与端到端测试接通前，不得宣称与 Anki 图像遮挡导出兼容。
+//! cloze 语法包裹的矩形描述（字符串构造见 [`format_anki_io_cloze`]）。
+//! 生产入库已把草稿 `text`（`<img>` + cloze）与 `_occlusion.imageRef`
+//! 写入卡片的 text / images 字段；但 APKG/AnkiConnect 导出侧尚未把这些
+//! 字段转换为 Anki 官方 IO note。在导出侧接线与端到端测试打通前，
+//! 不得宣称已与 Anki 官方图像遮挡完全兼容。
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -413,7 +422,8 @@ pub fn to_pixel_boxes(spec: &ValidatedOcclusionSpec, img_w: u32, img_h: u32) -> 
 
 /// 从校验后的 spec 生成候选 Cloze 字段。
 ///
-/// 当前生产入库/导出尚未消费完整返回值；本函数本身不代表导出闭环已接通。
+/// 生产入库（`parse_and_save_card`）已消费 `text` / `extra_fields` / `tags`；
+/// 导出转换仍未接通，本函数本身不代表导出闭环已接通。
 ///
 /// `Text` 字段形如（`image_file_name` 是 APKG 包内媒体文件名，
 /// 由调用方从 `image_ref` 解析后传入；为 `None` 时省略 `<img>`，
@@ -476,6 +486,82 @@ pub fn build_card_fields(
 pub fn parse_occlusion_field(extra_fields: &HashMap<String, String>) -> Option<OcclusionSpec> {
     let raw = extra_fields.get(OCCLUSION_FIELD)?;
     serde_json::from_str::<OcclusionSpec>(raw).ok()
+}
+
+/// VLM 坐标块不负责选图时使用的占位引用 scheme（完整占位为
+/// `vlm://pending-image`，见 [`parse_occlusion_boxes_from_vlm`]）。
+/// 与 apkg / AnkiConnect 导出侧的 `vlm://` 无图降级约定一致。
+const VLM_PENDING_IMAGE_SCHEME: &str = "vlm://";
+
+/// 从卡片 `extra_fields` 解析遮挡图片引用（入库侧填充 `AnkiCard.images` 用）。
+///
+/// 读取 `_occlusion` JSON 的 `imageRef`（serde camelCase 契约），并容忍
+/// 手写/旧数据的 `image_ref` snake_case 键。以下情况返回 `None`：
+/// 无 `_occlusion` 字段、JSON 不合法、引用为空/纯空白，以及引用为
+/// `vlm://` 占位（未被生产接线替换的 `vlm://pending-image` 不是可解析
+/// 媒体，r2 契约 §2.1 要求不入 images；导出两侧同样过滤该 scheme）。
+pub fn occlusion_image_ref_from_fields(extra: &HashMap<String, String>) -> Option<String> {
+    let raw = extra.get(OCCLUSION_FIELD)?;
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let image_ref = value
+        .get("imageRef")
+        .or_else(|| value.get("image_ref"))
+        .and_then(serde_json::Value::as_str)?
+        .trim();
+    (!image_ref.is_empty() && !image_ref.starts_with(VLM_PENDING_IMAGE_SCHEME))
+        .then(|| image_ref.to_string())
+}
+
+/// 把校验后的 spec 渲染为 Anki 23.10+ 原生 Image Occlusion 的
+/// `Occlusion` 字段 cloze 语法。每个盒形如：
+///
+/// ```text
+/// {{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.15}}
+/// ```
+///
+/// `left/top/width/height` 为 **0–1 归一化小数**（对齐 Anki 官方
+/// `to-cloze.ts` 文档示例
+/// `{{c1::image-occlusion:rect:top=.1:left=.23:width=.4:height=.5}}`），
+/// 最多保留 4 位小数并去尾零；本实现选用官方示例的**前导点风格**
+/// （`0.125` → `.125`，见 [`format_io_coord`]）。**禁止写 ×100 百分数**：
+/// 百分数会让 Anki 遮罩放大 100 倍。多盒按 Anki 官方编辑器惯例直接拼接
+/// （无分隔符）。本函数只负责字符串构造；导出侧尚未消费该格式
+/// （见模块头「当前产品边界」）。
+pub fn format_anki_io_cloze(spec: &ValidatedOcclusionSpec) -> String {
+    spec.boxes
+        .iter()
+        .map(|b| {
+            format!(
+                "{{{{c{}::image-occlusion:rect:left={}:top={}:width={}:height={}}}}}",
+                b.cloze_index.unwrap_or(1),
+                format_io_coord(b.x),
+                format_io_coord(b.y),
+                format_io_coord(b.w),
+                format_io_coord(b.h),
+            )
+        })
+        .collect::<Vec<_>>()
+        .concat()
+}
+
+/// 归一化坐标 → 0–1 小数字符串：夹取 [0,1]、最多 4 位小数、去尾零，
+/// 并按官方 `to-cloze.ts` 示例采用前导点风格（`0.125` → `.125`；
+/// 整数值 `0` / `1` 原样输出）。
+fn format_io_coord(v: f32) -> String {
+    let norm = f64::from(v).clamp(0.0, 1.0);
+    let s = format!("{norm:.4}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    match s.strip_prefix("0.") {
+        Some(frac) => format!(".{frac}"),
+        None => s.to_string(),
+    }
+}
+
+/// 取图片引用的 basename（剥离 `/` 与 `\` 路径段），供 `<img src>` 使用。
+/// 引用以分隔符结尾（无文件名部分）时返回 `None`，调用方省略 `<img>`。
+fn image_ref_basename(image_ref: &str) -> Option<&str> {
+    let name = image_ref.rsplit(['/', '\\']).next()?.trim();
+    (!name.is_empty()).then_some(name)
 }
 
 /// cloze 标签内 `}}` 会破坏 cloze 语法，`::` 会被 Anki 解析为 hint 分隔符。
@@ -703,6 +789,9 @@ pub fn build_occlusion_draft_marker_from_spec(
 
 /// 从包含内部草稿 marker 的分段内容构建待合并的卡片字段。
 ///
+/// `text` 以 `image_ref` 的 basename（剥离路径后的文件名）构造 `<img src>`
+/// 前缀，使入库卡携带可渲染的图片引用 + cloze 正文。
+///
 /// 解析/校验失败返回 `None`，绝不阻断普通卡生成。调用方只应把返回值合并到
 /// 一张成功卡，避免同一图片草稿被复制到分段内所有卡片。
 pub fn extract_occlusion_draft_fields(content: &str) -> Option<OcclusionCardFields> {
@@ -713,7 +802,8 @@ pub fn extract_occlusion_draft_fields(content: &str) -> Option<OcclusionCardFiel
     })?;
     let spec: OcclusionSpec = serde_json::from_str(raw).ok()?;
     let validated = validate_spec(&spec, &OcclusionConfig::default()).ok()?;
-    Some(build_card_fields(&validated, None, None))
+    let image_file_name = image_ref_basename(&validated.image_ref);
+    Some(build_card_fields(&validated, image_file_name, None))
 }
 
 /// 从送给制卡模型的学习材料中剥离内部草稿 marker。
@@ -1115,6 +1205,101 @@ mod tests {
         assert!(parse_occlusion_field(&fields).is_none());
     }
 
+    #[test]
+    fn test_occlusion_image_ref_from_fields_camel_and_snake_case() {
+        // camelCase：build_card_fields 产出的 _occlusion round-trip
+        let v = validate_spec(
+            &make_spec(vec![make_box(0.1, 0.1, 0.2, 0.2)]),
+            &OcclusionConfig::default(),
+        )
+        .unwrap();
+        let fields = build_card_fields(&v, None, None);
+        assert_eq!(
+            occlusion_image_ref_from_fields(&fields.extra_fields).as_deref(),
+            Some("vfs://images/diagram.png")
+        );
+
+        // snake_case：容忍手写/旧数据
+        let mut snake = HashMap::new();
+        snake.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"image_ref":"legacy.png","boxes":[]}"#.to_string(),
+        );
+        assert_eq!(
+            occlusion_image_ref_from_fields(&snake).as_deref(),
+            Some("legacy.png")
+        );
+    }
+
+    #[test]
+    fn test_occlusion_image_ref_from_fields_missing_or_invalid() {
+        let mut fields: HashMap<String, String> = HashMap::new();
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        fields.insert(OCCLUSION_FIELD.to_string(), "not json".to_string());
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"   ","boxes":[]}"#.to_string(),
+        );
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+    }
+
+    #[test]
+    fn test_occlusion_image_ref_from_fields_rejects_vlm_pending_placeholder() {
+        // r2 契约 §2.1：未被生产接线替换的 vlm:// 占位不入 images。
+        let mut fields: HashMap<String, String> = HashMap::new();
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"vlm://pending-image","boxes":[]}"#.to_string(),
+        );
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        // 前后空白不影响占位判定
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"  vlm://pending-image  ","boxes":[]}"#.to_string(),
+        );
+        assert!(occlusion_image_ref_from_fields(&fields).is_none());
+        // 真实引用（含 vfs:// scheme）不受影响
+        fields.insert(
+            OCCLUSION_FIELD.to_string(),
+            r#"{"imageRef":"vfs://images/diagram.png","boxes":[]}"#.to_string(),
+        );
+        assert_eq!(
+            occlusion_image_ref_from_fields(&fields).as_deref(),
+            Some("vfs://images/diagram.png")
+        );
+    }
+
+    // ---- Anki 原生 IO cloze 语法 ----
+
+    #[test]
+    fn test_format_anki_io_cloze_normalized_coordinates() {
+        let mut b1 = make_box(0.1, 0.2, 0.3, 0.15);
+        b1.cloze_index = Some(1);
+        let mut b2 = make_box(0.5, 0.625, 0.125, 0.25);
+        b2.cloze_index = Some(2);
+        let v = validate_spec(&make_spec(vec![b1, b2]), &OcclusionConfig::default()).unwrap();
+        // 0–1 归一化小数 + 前导点风格（对齐官方 to-cloze.ts），不是 ×100 百分数
+        assert_eq!(
+            format_anki_io_cloze(&v),
+            "{{c1::image-occlusion:rect:left=.1:top=.2:width=.3:height=.15}}\
+             {{c2::image-occlusion:rect:left=.5:top=.625:width=.125:height=.25}}"
+        );
+    }
+
+    #[test]
+    fn test_format_anki_io_cloze_rounds_to_four_decimals_and_trims_zeros() {
+        // 0.3333 → ".3333"（f32 精度经 4 位小数舍入吸收）；0 → "0"；
+        // 0.125/0.0625 二进制精确 → ".125" / ".0625"，无尾零残留
+        let mut b = make_box(0.3333, 0.0, 0.125, 0.0625);
+        b.cloze_index = Some(7);
+        let v = validate_spec(&make_spec(vec![b]), &OcclusionConfig::default()).unwrap();
+        assert_eq!(
+            format_anki_io_cloze(&v),
+            "{{c7::image-occlusion:rect:left=.3333:top=0:width=.125:height=.0625}}"
+        );
+    }
+
     // ---- VLM 归一化坐标 ----
 
     #[test]
@@ -1376,6 +1561,47 @@ mod tests {
         let stripped = strip_occlusion_draft_markers(&content);
         assert_eq!(stripped, "视觉正文\n后续正文");
         assert!(!stripped.contains(OCCLUSION_DRAFT_PREFIX));
+    }
+
+    #[test]
+    fn test_extract_occlusion_draft_fields_uses_image_basename_in_text() {
+        let spec = OcclusionSpec {
+            image_ref: "vfs://images/heart-anatomy.png".to_string(),
+            boxes: vec![make_box(0.1, 0.1, 0.2, 0.2)],
+        };
+        let marker =
+            build_occlusion_draft_marker_from_spec(&spec, &OcclusionConfig::default()).unwrap();
+        let fields = extract_occlusion_draft_fields(&marker).unwrap();
+        assert!(
+            fields.text.starts_with("<img src=\"heart-anatomy.png\"><br>"),
+            "text 应以图片 basename 的 <img> 开头: {}",
+            fields.text
+        );
+        assert!(fields.text.contains("{{c1::测试标签}}"));
+        // _occlusion 里仍保留完整 image_ref（basename 只用于 <img src>）
+        let parsed = parse_occlusion_field(&fields.extra_fields).unwrap();
+        assert_eq!(parsed.image_ref, "vfs://images/heart-anatomy.png");
+    }
+
+    #[test]
+    fn test_extract_occlusion_draft_fields_basename_handles_backslash_and_plain_ref() {
+        for (image_ref, expected) in [
+            (r"C:\pics\diagram.png", "diagram.png"),
+            ("image-source-42", "image-source-42"),
+        ] {
+            let spec = OcclusionSpec {
+                image_ref: image_ref.to_string(),
+                boxes: vec![make_box(0.1, 0.1, 0.2, 0.2)],
+            };
+            let marker =
+                build_occlusion_draft_marker_from_spec(&spec, &OcclusionConfig::default()).unwrap();
+            let fields = extract_occlusion_draft_fields(&marker).unwrap();
+            assert!(
+                fields.text.starts_with(&format!("<img src=\"{expected}\">")),
+                "ref={image_ref} text={}",
+                fields.text
+            );
+        }
     }
 
     #[test]

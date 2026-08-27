@@ -138,11 +138,13 @@
   "daily": {
     "title": "Daily Practice",
     "streakDays": "Streak Days",
+    "streakHint": "Any day you practice counts — the streak doesn't depend on hitting the target",
     "smartRecommend": "Smart Recommendations",
     "recommendMistakes": "Prioritize mistakes to strengthen weak points",
     "recommendNew": "Then add new questions to expand knowledge",
     "recommendReview": "Finally, add review questions to prevent forgetting",
     "targetLabel": "Daily Target (questions)",
+    "targetHint": "Only the current target is saved — no per-day history. Calendar check marks are judged against the current target",
     "todayProgress": "Today's Progress",
     "completed": "Daily target achieved!",
     "mistakes": "Mistakes",
@@ -152,6 +154,8 @@
     "continue": "Continue",
     "start": "Start Today's Practice",
     "calendar": "Check-in Calendar",
+    "viewByCurrentTarget": "Viewed with current target",
+    "calendarTargetHint": "Achieved marks use the current target ({{target}} questions) for every day shown, not the target set on that day",
     "yearMonth": "{{month}}/{{year}}",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
@@ -170,7 +174,7 @@
     "streak": "Streak",
     "calendarLoadFailed": "Failed to load the check-in calendar",
     "startError": "Failed to load daily practice",
-    "completedDetail": "{{correct}} / {{total}} answered correctly",
+    "completedDetail": "{{correct}} / {{total}} questions correct (counted per question, not per attempt)",
     "anotherRound": "Practice Another Round"
   },
   "paper": {

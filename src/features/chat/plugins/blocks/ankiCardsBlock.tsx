@@ -81,6 +81,7 @@ import {
   summarizeQaFlags,
 } from './components/ankiQaFlags';
 import { AnkiQaFlagBadge, AnkiQaFlagsSummaryChip } from './components/AnkiQaFlagBadge';
+import { AnkiCriticSummaryBanner } from './components/AnkiCriticSummaryBanner';
 import { parseAnkiMediaReport } from './components/ankiMediaReport';
 import { ImageOcclusionOverlay } from '@/components/anki/ImageOcclusionOverlay';
 import {
@@ -94,6 +95,8 @@ import {
   getLastDeckNameInput,
   setLastDeckNameInput,
   type AnkiCardEditDraft,
+  type AnkiCriticSummary,
+  type AnkiGenerationStats,
 } from './components/ankiCardsBlockState';
 import { useMultiTemplateLoader } from '../../hooks/useMultiTemplateLoader';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
@@ -185,6 +188,16 @@ export interface AnkiCardsBlockData {
    * 弱类型透传自 tool_output，渲染前经 parseAnkiMediaReport 收紧。
    */
   mediaReport?: unknown;
+  /**
+   * 任务级 critic 摘要（anki_generation_event 的 CriticSummary 标签，
+   * 适配器归一化后 patch 写入；仅 critic opt-in 且收尾成功时存在）。
+   */
+  criticSummary?: AnkiCriticSummary;
+  /**
+   * 流式生成质量统计（anki_generation_event 的 GenerationStats 标签，
+   * 适配器归一化后 patch 写入）。
+   */
+  generationStats?: AnkiGenerationStats;
 }
 
 interface DocumentTaskSummary {
@@ -520,6 +533,7 @@ const AnkiOcclusionCardPreview: React.FC<{
   spec: OcclusionSpec;
   cardIndex: number;
 }> = ({ spec, cardIndex }) => {
+  const { t } = useTranslation('anki');
   const image = useOcclusionImage(spec.imageRef);
   return (
     <div
@@ -537,7 +551,7 @@ const AnkiOcclusionCardPreview: React.FC<{
           {image.src ? (
             <img
               src={image.src}
-              alt=""
+              alt={t('agent.occlusion.imageAlt')}
               loading="lazy"
               draggable={false}
               data-testid="anki-occlusion-image"
@@ -3091,6 +3105,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               onRefreshAnkiConnect={handleRefreshAnkiConnect}
             />
           )}
+
+          {/* AI 质检终审任务级摘要（字段尚未收进 AnkiCardsBlockData，宽松透传；无数据时组件自行不渲染） */}
+          <AnkiCriticSummaryBanner criticSummary={(data as { criticSummary?: unknown } | undefined)?.criticSummary} />
 
           {/* 质检标记块级摘要：折叠/展开态均可见，提示复查后再导出 */}
           {qaFlagsSummary.flaggedCardCount > 0 && (

@@ -38,6 +38,9 @@ vi.mock('react-i18next', () => ({
         'qaFlags.flaggedCards': '{{count}} cards carry QA flags',
         'qaFlags.hint': 'Review flagged cards before exporting',
         'qaFlags.rules.maxLength': 'Exceeds the maximum length',
+        'qaFlags.lint.front_too_long':
+          'Front length {{n}} exceeds the minimum-information threshold {{limit}} (looks like a pasted paragraph)',
+        'qaFlags.lint.empty_back': 'Back is empty or whitespace-only',
         'agent.critic.flaggedFlag': 'This card was flagged by the AI final review; please review it manually',
         'agent.critic.revisedFlag': 'This card was auto-revised by the AI final review; please double-check',
         'blocks.ankiCards.progress.media.summary':
@@ -124,9 +127,15 @@ const FLAGGED_CARD = {
   back: 'A-flagged',
   fields: { Front: 'Q-flagged', Back: 'A-flagged' },
   extra_fields: {
+    // message 是后端中文诊断文本；前端应按稳定 code 走 i18n，只从中抽数字插值
     _qa_flags: JSON.stringify([
-      { code: 'front_too_long', field: 'front', message: 'Front exceeds 200 chars', severity: 'warn' },
-      { code: 'empty_back', field: 'back', message: 'Back looks empty', severity: 'error' },
+      {
+        code: 'front_too_long',
+        field: 'front',
+        message: 'front 长度 250 超过最小信息原则阈值 220（疑似整段粘贴）',
+        severity: 'warn',
+      },
+      { code: 'empty_back', field: 'back', message: 'back 为空或纯空白', severity: 'error' },
     ]),
   },
 } as any;
@@ -177,12 +186,17 @@ describe('AnkiCardsBlock QA flags', () => {
     fireEvent.click(badge);
     expect(badge).toHaveAttribute('aria-expanded', 'true');
     const details = screen.getByTestId('chatanki-qa-flag-details');
-    // 每条：严重度文本 + 字段 + 后端 message
+    // 每条：严重度文本 + 字段 + 按 code 本地化的文案（数字参数从后端 message 抽取插值）
     expect(details).toHaveTextContent('Warning');
     expect(details).toHaveTextContent('Field: front');
-    expect(details).toHaveTextContent('Front exceeds 200 chars');
+    expect(details).toHaveTextContent(
+      'Front length 250 exceeds the minimum-information threshold 220',
+    );
     expect(details).toHaveTextContent('Error');
-    expect(details).toHaveTextContent('Back looks empty');
+    expect(details).toHaveTextContent('Back is empty or whitespace-only');
+    // 后端中文诊断 message 不得泄漏进非中文界面
+    expect(details).not.toHaveTextContent('最小信息原则');
+    expect(details).not.toHaveTextContent('纯空白');
     expect(badge).toHaveAttribute('aria-controls', details.getAttribute('id') as string);
 
     fireEvent.click(badge);
@@ -262,6 +276,38 @@ describe('AnkiCardsBlock QA flags', () => {
     const details = screen.getByTestId('chatanki-qa-flag-details');
     expect(details).toHaveTextContent('Field: Question');
     expect(details).toHaveTextContent('Exceeds the maximum length');
+  });
+
+  it('falls back to the backend message for unknown lint codes or messages missing numeric params', () => {
+    const fallbackCard = {
+      id: 'card-fallback',
+      front: 'Q-fallback',
+      back: 'A-fallback',
+      extra_fields: {
+        _qa_flags: JSON.stringify([
+          // 未收录的未来 code → 直接展示后端 message（前向兼容）
+          {
+            code: 'future_lint_code',
+            field: 'card',
+            message: 'Raw backend diagnostic',
+            severity: 'info',
+          },
+          // 有词条但 message 缺少预期数字参数 → 回退 message，不渲染带空洞的模板
+          { code: 'front_too_long', field: 'front', message: 'threshold exceeded', severity: 'warn' },
+        ]),
+      },
+    } as any;
+    const block = createBlock();
+    const data = createData({ cards: [fallbackCard] });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+    fireEvent.click(screen.getByTestId('anki-preview'));
+    fireEvent.click(screen.getByTestId('chatanki-qa-flag-badge'));
+
+    const details = screen.getByTestId('chatanki-qa-flag-details');
+    expect(details).toHaveTextContent('Raw backend diagnostic');
+    expect(details).toHaveTextContent('threshold exceeded');
+    expect(details).not.toHaveTextContent('minimum-information threshold');
   });
 
   it('renders critic revise/flag audit codes with localized preview messages', () => {
