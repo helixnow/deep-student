@@ -777,7 +777,7 @@
     "sortByTime": "按时间",
     "sortByCards": "按卡片数",
     "sortByName": "按名称",
-    "recoverStuckHint": "重置处理中断超过 1 小时的任务为待处理状态",
+    "recoverStuckHint": "将中断超过 10 分钟的任务标记为已暂停，可点「恢复」继续",
     "errorCardsFound": "{{count}} 张错误卡片",
     "errorReason": "错误原因",
     "quickExport": "导出",

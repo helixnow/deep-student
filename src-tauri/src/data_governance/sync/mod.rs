@@ -3835,6 +3835,24 @@ impl SyncManager {
     ///
     /// 查询 __change_log 表中 sync_version = 0 的所有记录。
     ///
+    /// # 传播契约（迁移写入必须进 change_log）
+    ///
+    /// 本方法是上传路径的唯一变更来源：任何没有落进 `__change_log` 的本地
+    /// 写入对同步永远不可见。schema 迁移中的数据规范化（normalization）
+    /// UPDATE 也不例外——多设备混版本场景下，已升级设备清洗出的干净数据
+    /// 只有经由 change_log 触发器记为 pending 才会传播给其他设备。
+    ///
+    /// 因此对规范化类迁移的硬性要求：**目标表的 trg__change_log_* 触发器
+    /// 必须在规范化 SQL 执行之前的版本就已装配**，且迁移不得以
+    /// DROP TRIGGER / 重建表的方式绕过触发器。
+    ///
+    /// - 合规示例：mistakes V20260824（anki_cards 可选 JSON 规范化）晚于
+    ///   V20260131 的 anki_cards 触发器，规范化 UPDATE 自动进入 change_log；
+    ///   由 tests/sync_r13_migration_change_log_propagation.rs 契约锁定。
+    /// - 历史缺口（勿再新增）：vfs V20260302（folder_items 时间戳规范化）
+    ///   早于 V20260523 的 folder_items 触发器，其修复从未经 change_log
+    ///   传播，只能依赖每台设备各自执行同一迁移完成本地自愈。
+    ///
     /// # 参数
     /// * `conn` - 数据库连接
     /// * `table_filter` - 可选的表名过滤器，为 None 时查询所有表

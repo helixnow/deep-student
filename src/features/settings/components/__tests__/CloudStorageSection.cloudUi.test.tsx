@@ -84,6 +84,8 @@ vi.mock('@/utils/cloudStorageApi', () => ({
   })),
   saveCredentials: vi.fn(),
   saveCloudConfigSsot: vi.fn(),
+  testConnectionDraft: vi.fn(),
+  publishCloudConfig: vi.fn(),
   checkConnection: vi.fn(),
   getSyncStatus: vi.fn(),
   listVersions: vi.fn(),
@@ -305,19 +307,24 @@ describe('CloudStorageSection cloud UI guarantees', () => {
       ftpPasswordConfigured: false,
       encryptionPasswordConfigured: false,
     });
-    vi.mocked(cloudApi.saveCredentials).mockResolvedValue({
-      webdavPasswordConfigured: true,
-      s3SecretAccessKeyConfigured: false,
-      ftpPasswordConfigured: false,
-      encryptionPasswordConfigured: true,
-    });
-    vi.mocked(cloudApi.saveCloudConfigSsot).mockResolvedValue({
-      configured: true,
+    // [R2 配置事务边界] 保存改走 cloud_config_publish 单逻辑提交；
+    // 返回形状与后端 CloudConfigPublishResponse 对齐（无 secret、无旗标，
+    // 凭据存在旗标由前端另行只读刷新）。
+    vi.mocked(cloudApi.publishCloudConfig).mockResolvedValue({
+      ok: true,
+      generation: 1,
+      provider: 'webdav',
       config: {
         provider: 'webdav',
         webdav: { endpoint: 'https://dav.example.test', username: 'student' },
       },
     } as never);
+    // 发布成功后的状态/版本刷新
+    vi.mocked(cloudApi.getSyncStatus).mockResolvedValue({
+      connected: true,
+      cloudVersionCount: 0,
+    } as never);
+    vi.mocked(cloudApi.listVersions).mockResolvedValue([] as never);
     render(<CloudStorageSection />);
 
     fireEvent.change(
@@ -340,9 +347,10 @@ describe('CloudStorageSection cloud UI guarantees', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'cloudStorage:actions.save' }));
 
-    // 不再硬拒绝：先弹「这是旧口令吗」确认框，且尚未提交任何凭据
+    // 不再硬拒绝：先弹「这是旧口令吗」确认框，且尚未提交任何凭据/发布
     const dialog = await screen.findByRole('alertdialog');
     expect(dialog).toHaveTextContent('cloudStorage:encryption.preexistingShortConfirm.title');
+    expect(cloudApi.publishCloudConfig).not.toHaveBeenCalled();
     expect(cloudApi.saveCredentials).not.toHaveBeenCalled();
 
     fireEvent.click(
@@ -351,16 +359,77 @@ describe('CloudStorageSection cloud UI guarantees', () => {
       }),
     );
 
-    // 确认后按「存量口令」提交，绕过新设口令的最小长度准入
+    // 确认后按「存量口令」发布，绕过新设口令的最小长度准入。
+    // 发布是 cloud_config_publish 单逻辑提交：配置+凭据+preexisting 旗标
+    // 一次上送，不再经过旧的两段写（saveCredentials → saveCloudConfigSsot）。
     await waitFor(() => {
-      expect(cloudApi.saveCredentials).toHaveBeenCalledWith(
-        expect.objectContaining({ encryptionPassword: 'short6' }),
+      expect(cloudApi.publishCloudConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'webdav', encryptionPassword: 'short6' }),
+        expect.objectContaining({
+          webdavPassword: 'webdav-secret',
+          encryptionPassword: 'short6',
+        }),
         { encryptionPasswordIsPreexisting: true },
       );
     });
-    await waitFor(() => {
-      expect(cloudApi.saveCloudConfigSsot).toHaveBeenCalledTimes(1);
+    expect(cloudApi.saveCredentials).not.toHaveBeenCalled();
+    expect(cloudApi.saveCloudConfigSsot).not.toHaveBeenCalled();
+  });
+
+  test('testing a connection goes through the draft command and never persists, even on failure', async () => {
+    vi.mocked(cloudApi.getCredentialStatus).mockResolvedValue({
+      webdavPasswordConfigured: false,
+      s3SecretAccessKeyConfigured: false,
+      ftpPasswordConfigured: false,
+      encryptionPasswordConfigured: false,
     });
+    // 草稿试连被后端拒绝（如凭据错误 / 服务器不可达）
+    vi.mocked(cloudApi.testConnectionDraft).mockRejectedValue(new Error('draft refused'));
+    render(<CloudStorageSection />);
+
+    fireEvent.change(
+      await screen.findByPlaceholderText('cloudStorage:webdav.endpointPlaceholder'),
+      { target: { value: 'https://dav.example.test' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:webdav.usernamePlaceholder'),
+      { target: { value: 'student' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:webdav.passwordPlaceholder'),
+      { target: { value: 'webdav-secret' } },
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'cloudStorage:actions.testConnection' }),
+    );
+
+    await waitFor(() => {
+      expect(cloudApi.testConnectionDraft).toHaveBeenCalledTimes(1);
+    });
+    expect(cloudApi.testConnectionDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'webdav' }),
+      expect.objectContaining({ webdavPassword: 'webdav-secret' }),
+      { encryptionPasswordIsPreexisting: false },
+    );
+
+    // 测试失败必须保持「草稿」：不写安全存储、不发布 SSOT、不走旧的
+    // 已发布凭据 hydrate 路径，也不把失败配置写进本地 SSOT 缓存/迁移标记
+    expect(cloudApi.saveCredentials).not.toHaveBeenCalled();
+    expect(cloudApi.saveCloudConfigSsot).not.toHaveBeenCalled();
+    expect(cloudApi.publishCloudConfig).not.toHaveBeenCalled();
+    expect(cloudApi.checkConnection).not.toHaveBeenCalled();
+    expect(localStorage.getItem('cloud_storage_config_v2')).toBeNull();
+    expect(localStorage.getItem('cloud_storage_ssot_migrated')).toBeNull();
+
+    // 表单草稿原样保留，可继续修改后重试
+    expect(
+      screen.getByPlaceholderText('cloudStorage:webdav.endpointPlaceholder'),
+    ).toHaveValue('https://dav.example.test');
+    // 三态徽标进入「草稿测试失败」态，明示已发布配置未受影响
+    expect(screen.getByTestId('cloud-config-phase')).toHaveTextContent(
+      'cloudStorage:phase.draftTestFailed',
+    );
   });
 
   test('restore decrypt path no longer gates legacy short passwords', () => {

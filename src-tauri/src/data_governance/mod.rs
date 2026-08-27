@@ -46,6 +46,7 @@ pub mod file_deletion_queue;
 pub mod init;
 pub mod migration;
 pub mod plugin;
+pub mod restore_codes;
 pub mod schema_registry;
 pub mod sync;
 

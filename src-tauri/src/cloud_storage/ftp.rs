@@ -19,7 +19,9 @@ use uuid::Uuid;
 
 use super::config::FtpConfig;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
+    ensure_declared_len_within_budget, CloudStorage, DownloadProgressCallback, FileInfo,
+    ListOutcome, Result, UploadProgressCallback, MEMORY_GET_BUDGET_EXCEEDED,
+    MEMORY_GET_DEFAULT_BUDGET_BYTES,
 };
 use crate::models::AppError;
 use std::pin::Pin;
@@ -368,15 +370,27 @@ impl FtpStorage {
                     tracing::debug!("[FtpStorage] 创建目录：/{}", current);
                 }
                 Err(e) => {
-                    // 550 表示目录已存在，可以忽略
+                    // 550 表示目录已存在，可以忽略（保持 debug，不制造噪音）
                     let err_str = e.to_string();
-                    if !err_str.contains("550") && !err_str.contains("already exists") {
-                        tracing::debug!("[FtpStorage] MKDIR /{} 失败：{}", current, e);
+                    if err_str.contains("550") || err_str.contains("already exists") {
+                        tracing::debug!("[FtpStorage] MKDIR /{} 已存在（忽略）：{}", current, e);
+                    } else {
+                        // 真实创建失败升为 warn：当前语义仍不在此处返回 Err
+                        //（由后续对该路径的写入操作以带上下文的错误显式失败），
+                        // 但排障日志必须可见。
+                        tracing::warn!("[FtpStorage] MKDIR /{} 失败：{}", current, e);
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// [R4-get-budget] 预算命中是确定性拒绝：同一对象重试仍会超限，
+    /// `with_retry` 据此短路，避免把超预算对象反复下满三遍（重试放大）。
+    /// 判据是 traits.rs 的稳定标记子串，只命中预算错误，不影响其他重试语义。
+    fn is_budget_exceeded_error(error: &AppError) -> bool {
+        error.to_string().contains(MEMORY_GET_BUDGET_EXCEEDED)
     }
 
     /// 带重试的 FTP 操作
@@ -398,6 +412,10 @@ impl FtpStorage {
             match operation().await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
+                    // [R4-get-budget] 预算超限不重试：确定性拒绝，重试只会放大流量。
+                    if Self::is_budget_exceeded_error(&e) {
+                        return Err(e);
+                    }
                     last_error = Some(e);
                     if attempt == max_retries - 1 {
                         break;
@@ -476,6 +494,14 @@ impl FtpClient {
                 .map_err(|e| AppError::file_system(format!("写入临时下载文件失败：{}", e)))?;
             hasher.update(&tmp[..n]);
             downloaded += n as u64;
+            // [R4-get-budget] 超过声明大小立即中断：EOF 之前就能确定这不是
+            // 声明的那个对象（错版本/并发替换/注入），不必把超量字节继续灌满
+            // 磁盘再拒。文案保持"下载不完整"语义，与收尾校验同一失败类别。
+            if downloaded > total_size {
+                return Err(AppError::network(format!(
+                    "FTP 下载不完整或对象已变更：服务端声明 {total_size} 字节，实际已收到 {downloaded} 字节且数据仍在继续，已中断"
+                )));
+            }
             if let Some(cb) = progress {
                 cb(downloaded, total_size);
             }
@@ -841,6 +867,12 @@ impl CloudStorage for FtpStorage {
     }
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        // [R4-get-budget] 无预算旧入口：仅兜底默认预算，防止彻底无界。
+        // 控制对象请改走 get_bounded 并由调用方传入硬预算。
+        self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES).await
+    }
+
+    async fn get_bounded(&self, key: &str, max_bytes: u64) -> Result<Option<Vec<u8>>> {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
@@ -866,6 +898,14 @@ impl CloudStorage for FtpStorage {
                 }
             };
 
+            // [R4-get-budget] SIZE 即声明长度：超出调用方预算先拒，不发 RETR、
+            // 不读任何数据字节。预算错误优先于 quit 结果（quit 失败不得吞掉拒绝）。
+            if let Err(budget_err) = ensure_declared_len_within_budget("FTP", key, Some(size), max_bytes)
+            {
+                let _ = client.quit().await;
+                return Err(budget_err);
+            }
+
             if size == 0 {
                 // 再通过 mdtm 确认
                 match client.mdtm(filename).await {
@@ -880,7 +920,9 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            // 使用临时文件流式下载，避免大文件占用过多内存
+            // 使用临时文件流式下载，避免大文件占用过多内存；
+            // SIZE 已通过预算预检，且 stream_to_file 在超出声明大小时中途断流，
+            // 因此读回内存的字节数不会超过 max_bytes。
             let temp_dir = std::env::temp_dir();
             let temp_file = tempfile::Builder::new()
                 .prefix("ftp-get-")
@@ -1475,6 +1517,28 @@ mod tests {
             !get_body.contains("ensure_directory"),
             "FTP get/stat/list read paths must not create directories"
         );
+
+        // [R4-get-budget] 预算三件套：SIZE 预检、越界断流、旧入口兜底预算。
+        assert!(
+            get_body.contains("async fn get_bounded(&self, key: &str, max_bytes: u64)"),
+            "FTP 必须实现带调用方硬预算的 get_bounded"
+        );
+        assert!(
+            get_body.contains("ensure_declared_len_within_budget(\"FTP\""),
+            "FTP get_bounded 必须在发 RETR 前按 SIZE 预检调用方预算"
+        );
+        assert!(
+            get_body.contains("self.get_bounded(key, MEMORY_GET_DEFAULT_BUDGET_BYTES)"),
+            "FTP get() 旧入口必须走默认兜底预算，不得回到无界路径"
+        );
+        assert!(
+            production_source.contains("if downloaded > total_size"),
+            "FTP stream_to_file 必须在超出声明大小时中途断流，不得收满才拒"
+        );
+        assert!(
+            production_source.contains("is_budget_exceeded_error(&e)"),
+            "FTP with_retry 必须对预算超限错误短路，不得重试放大流量"
+        );
     }
 
     // ============ [R10-download] stream_to_file 半包 fail-closed ============
@@ -1525,6 +1589,84 @@ mod tests {
         assert!(
             error.to_string().contains("下载不完整"),
             "unexpected error: {error}"
+        );
+    }
+
+    // ============ [R4-get-budget] GET 预算回归 ============
+
+    /// 形态一（FTP 侧）：持续小块灌满超限——数据通道持续送来远超 SIZE 声明的
+    /// 字节时，必须在越界后立即中断，而不是把 8 MiB 全部灌满磁盘才在 EOF 后拒绝。
+    #[tokio::test]
+    async fn stream_to_file_aborts_oversized_stream_midway() {
+        let data: Vec<u8> = vec![0x42; 8 * 1024 * 1024];
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("flood.bin");
+
+        let error = FtpClient::stream_to_file(&mut data.as_slice(), &dest, 1_024, None)
+            .await
+            .expect_err("超过声明大小必须中途断流");
+        assert!(
+            error.to_string().contains("下载不完整"),
+            "unexpected error: {error}"
+        );
+
+        // 中途断流的证据：落盘字节数至多为声明大小 + 一个 64 KiB 读块，
+        // 远小于灌入总量 8 MiB。
+        let written = std::fs::metadata(&dest).unwrap().len();
+        assert!(
+            written <= 1_024 + 64 * 1024,
+            "越界后仍在继续写盘：已写 {written} 字节（灌入 8 MiB）"
+        );
+    }
+
+    /// 形态二（FTP 侧）：SIZE（声明长度）超预算的错误必须被归类为预算错误，
+    /// 且 with_retry 对其短路——确定性拒绝不得重试放大（原本会整包重下三遍）。
+    #[tokio::test]
+    async fn with_retry_does_not_retry_budget_exceeded_errors() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let storage = FtpStorage::new(
+            FtpConfig {
+                host: "localhost".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: false,
+            },
+            "deep-student-sync".into(),
+        )
+        .unwrap();
+
+        // 真实预算错误来自共享预检 helper，保证与生产文案一致。
+        let budget_error = || {
+            ensure_declared_len_within_budget("FTP", "changes/huge.bin", Some(u64::MAX), 4_096)
+                .expect_err("声明超预算必须报错")
+        };
+        assert!(
+            FtpStorage::is_budget_exceeded_error(&budget_error()),
+            "预算错误必须被标记判据命中"
+        );
+        assert!(
+            !FtpStorage::is_budget_exceeded_error(&AppError::network(
+                "FTP 下载不完整：服务端声明 10 字节，实际收到 4 字节".to_string()
+            )),
+            "普通网络/半包错误不得被误判为预算错误（它们仍应重试）"
+        );
+
+        let attempts = AtomicUsize::new(0);
+        let result: Result<()> = storage
+            .with_retry(|| async {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                Err(budget_error())
+            })
+            .await;
+
+        let err = result.expect_err("预算错误必须上抛");
+        assert!(err.to_string().contains("超出调用方内存预算"));
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "预算超限是确定性拒绝，必须只尝试一次"
         );
     }
 }

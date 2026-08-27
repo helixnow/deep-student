@@ -35,6 +35,10 @@ pub mod assets;
 
 pub mod delta_inventory;
 
+pub mod portable_precheck;
+
+pub mod restore_plan;
+
 pub mod zip_export;
 
 use rusqlite::backup::Backup;
@@ -67,7 +71,20 @@ pub const ATOMIC_RESTORE_UNAVAILABLE_CODE: &str = "E_BACKUP_ATOMIC_RESTORE_UNAVA
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
 
-pub use zip_export::{export_backup_to_zip, ZipExportError, ZipExportOptions, ZipExportResult};
+pub use zip_export::{
+    export_backup_to_zip, export_backup_to_zip_with_progress, ZipExportError, ZipExportOptions,
+    ZipExportPhase, ZipExportProgress, ZipExportResult,
+};
+
+// 恢复编排的域消费契约（DomainRestorePlan 消费 + 未消费断言）。
+pub use restore_plan::{
+    assert_no_unconsumed_complete_domains, DomainRestoreOutcome, DomainRestoreOutcomeState,
+    DomainRestoreReport, RESTORE_PENDING_TRUST_DIR_NAME,
+};
+// 稳定错误码由 restore_codes 单点定义；此处再导出供恢复编排/前端契约使用。
+pub use super::restore_codes::{
+    RESTORE_DOMAIN_FAILED_CODE, RESTORE_DOMAIN_UNCONSUMED_CODE, RESTORE_UNTRUSTED_ISOLATED_CODE,
+};
 
 // 重新导出资产模块的公共类型
 pub use assets::{
@@ -4309,6 +4326,41 @@ impl BackupManager {
             restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
         }
 
+        // 5.5 DomainRestorePlan 消费与未消费断言：webview-settings /
+        // custom-grading-modes 落 restore_target，agents / user-skills 隔离
+        // 待信任，audit 经 manifest 计划恢复，coverage 中任何 Complete 域
+        // 未被消费即拒绝成功。restore_assets=false 的旧部分恢复路径保持
+        // 既有行为，不参与该契约。
+        if restore_assets && restore_errors.is_empty() {
+            match self.consume_complete_domains(manifest, &backup_subdir, &active_dir_for_ws) {
+                Ok(reports) => {
+                    for report in &reports {
+                        if report.state == DomainRestoreOutcome::Failed {
+                            restore_errors.push(format!(
+                                "{}: {}",
+                                report.domain_id,
+                                report.detail.clone().unwrap_or_default()
+                            ));
+                        }
+                    }
+                    if restore_errors.is_empty() {
+                        let consumed: Vec<String> = reports
+                            .iter()
+                            .map(|report| report.domain_id.clone())
+                            .collect();
+                        if let Err(error) =
+                            assert_no_unconsumed_complete_domains(manifest, &consumed)
+                        {
+                            restore_errors.push(format!("未消费域断言: {}", error));
+                        }
+                    }
+                }
+                Err(error) => {
+                    restore_errors.push(format!("域恢复计划消费: {}", error));
+                }
+            }
+        }
+
         // 6. 检查是否有错误
         if !restore_errors.is_empty() {
             error!("恢复失败，尝试自动回滚到预恢复备份: {:?}", pre_restore_dir);
@@ -4473,6 +4525,40 @@ impl BackupManager {
         if let Err(error) = Self::finalize_vfs_index_restore(manifest, target_dir, restore_assets) {
             error!("恢复后校验 VFS 派生索引失败: {}", error);
             restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
+        }
+
+        // 5.5 DomainRestorePlan 消费与未消费断言（与 restore_with_assets
+        // 一致）：Data 域落候选槽 restore_target，可执行域隔离待信任，
+        // Complete 域未被消费即拒绝成功。crypto 在候选槽路径不触盘——密钥
+        // 由槽编排的事务发布路径在切槽提交时消费。
+        if restore_assets && restore_errors.is_empty() {
+            match self.consume_complete_domains(manifest, &backup_subdir, target_dir) {
+                Ok(reports) => {
+                    for report in &reports {
+                        if report.state == DomainRestoreOutcome::Failed {
+                            restore_errors.push(format!(
+                                "{}: {}",
+                                report.domain_id,
+                                report.detail.clone().unwrap_or_default()
+                            ));
+                        }
+                    }
+                    if restore_errors.is_empty() {
+                        let consumed: Vec<String> = reports
+                            .iter()
+                            .map(|report| report.domain_id.clone())
+                            .collect();
+                        if let Err(error) =
+                            assert_no_unconsumed_complete_domains(manifest, &consumed)
+                        {
+                            restore_errors.push(format!("未消费域断言: {}", error));
+                        }
+                    }
+                }
+                Err(error) => {
+                    restore_errors.push(format!("域恢复计划消费: {}", error));
+                }
+            }
         }
 
         // 6. 检查是否有错误（非活跃插槽恢复失败不回滚，直接报错）
@@ -5558,7 +5644,8 @@ impl BackupManager {
                 continue;
             }
             if archive_path_requires_explicit_trust(&backup_file.path) {
-                // Executable domains are restored only after an explicit UI
+                // Executable domains are never auto-restored here:
+                // `consume_complete_domains` isolates them pending an explicit
                 // trust decision via their DomainRestorePlan.
                 continue;
             }
@@ -5570,8 +5657,13 @@ impl BackupManager {
                     if root == std::ffi::OsStr::new("crypto")
                         || root == std::ffi::OsStr::new("persistent")
             ) {
-                // Explicit restore plans own these domains. Executable user
-                // skills in particular must never be auto-trusted here.
+                // Domain restore plans own these roots, and skipping here
+                // avoids double writes: crypto is published transactionally by
+                // the cutover path, persistent/ domains (webview-settings /
+                // custom-grading-modes / user-skills) are dispatched by
+                // `consume_complete_domains`. The
+                // `assert_no_unconsumed_complete_domains` gate guarantees this
+                // skip can no longer silently swallow a Complete domain.
                 continue;
             }
             let src = resolve_existing_backup_file(backup_dir, rel)?;
@@ -6296,7 +6388,8 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn setup_test_env() -> (BackupManager, TempDir, TempDir) {
+    // 供子模块（restore_plan::tests）复用的标准测试环境。
+    pub(crate) fn setup_test_env() -> (BackupManager, TempDir, TempDir) {
         let backup_dir = TempDir::new().unwrap();
         let app_data_dir = TempDir::new().unwrap();
 

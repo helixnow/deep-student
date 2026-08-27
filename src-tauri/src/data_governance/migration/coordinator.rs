@@ -2278,6 +2278,12 @@ impl MigrationCoordinator {
         //    resources/notes，直接回放 change_log 会报 no such table: main.questions。
         if self.table_exists(conn, "resources")? {
             self.apply_vfs_init_missing_tables(conn)?;
+            // 表契约补齐后立刻补齐非表对象（索引/FTS 虚拟表/视图/触发器）：
+            // verify_migrations 对已记录的 V20260130 仍要求 idx_folders_parent
+            // 等关键索引、questions_fts 与 trash_view 可用，稀疏旧库只补表
+            // 不补对象会在验证阶段 fail-close，永远无法升级。
+            // ⚠️ 必须在表回填之后执行：FTS 配套触发器依赖刚被回填的 questions 表。
+            self.apply_vfs_init_missing_schema_objects(conn)?;
         }
 
         // --- V20260131: __change_log 表修复（通用防御） ---
@@ -2428,6 +2434,261 @@ impl MigrationCoordinator {
                 .map_err(|e| MigrationError::Database(e.to_string()))?;
         }
         apply_result
+    }
+
+    /// 补齐稀疏旧 VFS 中缺失的 V20260130 非表 schema 对象（索引/视图/FTS 虚拟表/触发器）。
+    ///
+    /// `apply_vfs_init_missing_tables` 只重建缺失的业务表；但 V20260130 的 verifier
+    /// 契约（`VFS_V001_KEY_INDEXES` 含 `idx_folders_parent`，smoke queries 要求
+    /// `questions_fts` / `trash_view` 可查询）在 `verify_migrations` 阶段对已记录
+    /// 版本同样生效，稀疏旧库只补表不补对象仍会 fail-close，永远无法升级。
+    ///
+    /// 本函数从 init SQL 原文抽取带 `IF NOT EXISTS` 的非表对象语句按原文顺序
+    /// 幂等回放（`questions_fts` 先于其配套触发器），属纯加法重建：
+    ///
+    /// - 不含 DROP、不重建任何表、不执行全表回填 DML——FTS 内容由 init SQL 自带的
+    ///   触发器随后续写入增量维护，不在此处做全量 rebuild；
+    /// - 目标表不存在则跳过（如 V20260214 已删除 `notes_versions`，表回填不会
+    ///   重建它，其索引同样不回放）；
+    /// - 单条失败仅 warn 降级继续（旧表缺列时个别 CREATE INDEX 可能失败，缺列由
+    ///   后续 pre_repair 步骤补齐）；最终契约仍由 MigrationVerifier fail-close
+    ///   把关——本函数不写迁移记账、不改 checksum、不预标记任何跳过。
+    #[cfg(feature = "data_governance")]
+    fn apply_vfs_init_missing_schema_objects(
+        &self,
+        conn: &rusqlite::Connection,
+    ) -> Result<(), MigrationError> {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+
+        for (master_type, name, target_table, statement) in
+            Self::extract_init_non_table_schema_objects(INIT_SQL)
+        {
+            if let Some(table) = &target_table {
+                if !self.table_exists(conn, table)? {
+                    continue;
+                }
+            }
+            // 触发器体内引用 questions_fts 时，若 FTS 虚拟表缺失（例如上文创建
+            // 被降级跳过），建出触发器会让 questions 的写路径在运行期报错，
+            // 因此一并跳过，缺口交由 verifier 判定。
+            if master_type == "trigger"
+                && statement.to_ascii_uppercase().contains("QUESTIONS_FTS")
+                && !self.table_exists(conn, "questions_fts")?
+            {
+                continue;
+            }
+
+            let already_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = ?1 AND name = ?2)",
+                    rusqlite::params![master_type, name],
+                    |row| row.get(0),
+                )
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            if already_exists {
+                continue;
+            }
+
+            match conn.execute_batch(&statement) {
+                Ok(()) => {
+                    tracing::info!(
+                        "🔧 [PreRepair] VFS: 补齐缺失 init {} {}",
+                        master_type,
+                        name
+                    );
+                }
+                Err(e) => {
+                    // 可降级：语句全部带 IF NOT EXISTS，失败通常意味着旧表缺列，
+                    // 不在此中止迁移；缺口由 MigrationVerifier 契约验证兜底 fail-close。
+                    tracing::warn!(
+                        "⚠️ [PreRepair] VFS: 回放 init 非表对象 {} {} 失败（降级跳过）: {}",
+                        master_type,
+                        name,
+                        e
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 从迁移 SQL 中提取带 `IF NOT EXISTS` 的非表 schema 对象语句。
+    ///
+    /// 返回 `(sqlite_master 类型, 对象名, 目标表, 完整语句)`，按原文顺序排列。
+    /// 普通 `CREATE TABLE IF NOT EXISTS` 由 `extract_create_table_if_not_exists`
+    /// 负责，此处不重复提取；虚拟表在 sqlite_master 中类型为 `table`。
+    #[cfg(feature = "data_governance")]
+    fn extract_init_non_table_schema_objects(
+        sql: &str,
+    ) -> Vec<(&'static str, String, Option<String>, String)> {
+        // (语句前缀, sqlite_master 类型, 语句是否以 END; 结尾的触发器)
+        const MARKERS: &[(&str, &str, bool)] = &[
+            ("CREATE UNIQUE INDEX IF NOT EXISTS", "index", false),
+            ("CREATE INDEX IF NOT EXISTS", "index", false),
+            ("CREATE VIEW IF NOT EXISTS", "view", false),
+            ("CREATE VIRTUAL TABLE IF NOT EXISTS", "table", false),
+            ("CREATE TRIGGER IF NOT EXISTS", "trigger", true),
+        ];
+
+        let sql_upper = sql.to_ascii_uppercase();
+        let mut results = Vec::new();
+        let mut pos = 0;
+
+        while let Some(rel) = sql_upper[pos..].find("CREATE ") {
+            let start = pos + rel;
+            let Some(entry) = MARKERS
+                .iter()
+                .find(|entry| sql_upper[start..].starts_with(entry.0))
+            else {
+                pos = start + "CREATE ".len();
+                continue;
+            };
+            let (marker, master_type, is_trigger): (&str, &'static str, bool) =
+                (entry.0, entry.1, entry.2);
+
+            let after_marker = start + marker.len();
+            let name_start =
+                after_marker + (sql[after_marker..].len() - sql[after_marker..].trim_start().len());
+            let name_len = sql[name_start..]
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(sql.len() - name_start);
+            let name = sql[name_start..name_start + name_len].to_string();
+            if name.is_empty() {
+                pos = after_marker;
+                continue;
+            }
+
+            let scan_from = name_start + name_len;
+            let Some(end) = (if is_trigger {
+                Self::find_trigger_statement_end(sql, scan_from)
+            } else {
+                Self::find_simple_statement_end(sql, scan_from)
+            }) else {
+                break;
+            };
+
+            // 索引/触发器都挂在 ` ON <table>` 上；视图/虚拟表无目标表守卫。
+            let target_table = if master_type == "index" || master_type == "trigger" {
+                Self::extract_on_target_table(sql, &sql_upper, scan_from, end)
+            } else {
+                None
+            };
+            results.push((master_type, name, target_table, sql[start..end].trim().to_string()));
+            pos = end;
+        }
+
+        results
+    }
+
+    /// 在 `[from, end)` 语句片段中解析 ` ON <table>` 的目标表名。
+    #[cfg(feature = "data_governance")]
+    fn extract_on_target_table(
+        sql: &str,
+        sql_upper: &str,
+        from: usize,
+        end: usize,
+    ) -> Option<String> {
+        let rel = sql_upper[from..end].find(" ON ")?;
+        let after_on = from + rel + " ON ".len();
+        let table_start =
+            after_on + (sql[after_on..end].len() - sql[after_on..end].trim_start().len());
+        let len = sql[table_start..end]
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .unwrap_or(end - table_start);
+        if len == 0 {
+            return None;
+        }
+        Some(sql[table_start..table_start + len].to_string())
+    }
+
+    /// 从 `from` 起找到第一个不在字符串/行注释内的 `;`，返回其后的位置。
+    #[cfg(feature = "data_governance")]
+    fn find_simple_statement_end(sql: &str, from: usize) -> Option<usize> {
+        let bytes = sql.as_bytes();
+        let mut i = from;
+        let mut in_single_quote = false;
+
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_single_quote {
+                if c == b'\'' {
+                    if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                        i += 2;
+                        continue;
+                    }
+                    in_single_quote = false;
+                }
+                i += 1;
+                continue;
+            }
+            if c == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            match c {
+                b'\'' => in_single_quote = true,
+                b';' => return Some(i + 1),
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// 触发器语句结束于独立 token `END` 后的 `;`（体内语句同样以 `;` 结尾，
+    /// 不能按首个分号截断）。SQLite 触发器体不支持嵌套 BEGIN/END，取第一个即可。
+    #[cfg(feature = "data_governance")]
+    fn find_trigger_statement_end(sql: &str, from: usize) -> Option<usize> {
+        let bytes = sql.as_bytes();
+        let mut i = from;
+        let mut in_single_quote = false;
+
+        while i < bytes.len() {
+            let c = bytes[i];
+            if in_single_quote {
+                if c == b'\'' {
+                    if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                        i += 2;
+                        continue;
+                    }
+                    in_single_quote = false;
+                }
+                i += 1;
+                continue;
+            }
+            if c == b'-' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            match c {
+                b'\'' => in_single_quote = true,
+                b';' => {
+                    // 回看：跳过空白后，前一个完整标识符 token 须为 END。
+                    let mut word_end = i;
+                    while word_end > from && bytes[word_end - 1].is_ascii_whitespace() {
+                        word_end -= 1;
+                    }
+                    let mut word_start = word_end;
+                    while word_start > from
+                        && (bytes[word_start - 1].is_ascii_alphanumeric()
+                            || bytes[word_start - 1] == b'_')
+                    {
+                        word_start -= 1;
+                    }
+                    if sql[word_start..word_end].eq_ignore_ascii_case("END") {
+                        return Some(i + 1);
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
     }
 
     /// 从迁移 SQL 中提取 `CREATE TABLE IF NOT EXISTS` 语句（不含 VIRTUAL TABLE）。
@@ -5878,6 +6139,578 @@ mod tests {
             coordinator.column_exists(&conn, "notes", "props").unwrap(),
             "a reconstructed notes table must include props when V20260824 is recorded"
         );
+    }
+
+    /// P8 稀疏库夹具：物理库只有 resources/notes 两张业务表，但 refinery
+    /// 历史已按 runner 的真实 name/checksum 把 V20260130（init 全量 schema）记账。
+    ///
+    /// 对应事故形态：init 已记账后库文件被部分重建，只剩最早期的两张表；
+    /// V20260130 契约中的其余表、全部核心索引（vfs.rs `VFS_V001_KEY_INDEXES`）、
+    /// `questions_fts`（FTS5 虚拟表，init.sql:468）与 `trash_view`（视图，
+    /// init.sql:768）全部丢失。稀疏建库手法承接
+    /// `test_pre_repair_vfs_backfills_questions_before_change_log`，但两张表的
+    /// DDL 直接取自 init.sql 本体（经生产抽取器
+    /// `extract_create_table_if_not_exists`）：表形状与记账的 V20260130 契约
+    /// 一致，缺的只有非表对象——这让"只补表 vs 补表+补对象"两个测试构成
+    /// 单变量对照。库文件落在生产路径 `databases/vfs.db`，可直接喂给
+    /// `migrate_single`。
+    #[cfg(feature = "data_governance")]
+    fn build_sparse_v20260130_recorded_vfs(
+        coordinator: &MigrationCoordinator,
+    ) -> rusqlite::Connection {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        let mut created = 0;
+        for (table_name, statement) in
+            MigrationCoordinator::extract_create_table_if_not_exists(INIT_SQL)
+        {
+            if table_name == "resources" || table_name == "notes" {
+                conn.execute_batch(&statement).unwrap();
+                created += 1;
+            }
+        }
+        assert_eq!(created, 2, "init.sql must declare resources and notes");
+
+        // 夹具自检：确实只有 resources/notes 两张业务表，且无任何显式索引/
+        // 视图/虚拟表/触发器（sqlite_autoindex 除外）。
+        let non_table_objects: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type != 'table' AND name NOT LIKE 'sqlite_autoindex%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(non_table_objects, 0, "sparse fixture must not carry objects");
+
+        // 按 runner 真实 checksum 记账，避免 repair_refinery_checksums 的
+        // checksum-drift fail-close 抢在 verifier 之前触发，污染本测试的立证点。
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator.ensure_refinery_history_table(&conn).unwrap();
+        coordinator
+            .mark_migration_complete(&conn, &runner, 20260130)
+            .unwrap();
+        conn
+    }
+
+    /// sqlite_master 级对象探针。注意 FTS5 虚拟表在 sqlite_master 中
+    /// type='table'，视图为 type='view'，索引为 type='index'。
+    #[cfg(feature = "data_governance")]
+    fn vfs_schema_object_exists(
+        conn: &rusqlite::Connection,
+        object_type: &str,
+        name: &str,
+    ) -> bool {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = ?1 AND name = ?2)",
+            rusqlite::params![object_type, name],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// P8 立证（历史 fail-closed 形态）：V20260130 已记账、物理库仅
+    /// resources/notes 的稀疏库，在**只执行表回填、不做任何索引/FTS/视图回填**
+    /// 时，生产 verifier 必须拒绝（fail-closed），绝不能把重建出的半成品库
+    /// 当作满足 V20260130 契约的健康库放行。
+    ///
+    /// 路径与生产一致：
+    /// - 表回填步骤就是 `pre_repair_vfs_schema`（coordinator.rs:2280）调用的
+    ///   `apply_vfs_init_missing_tables` 本体——该函数按设计只抽取
+    ///   `CREATE TABLE IF NOT EXISTS`（显式排除 VIRTUAL TABLE），不补索引/
+    ///   FTS/视图/触发器；
+    /// - verifier 就是 `migrate_database`（coordinator.rs:1256）失败即中止所走的
+    ///   `verify_migrations`，contract 取自 vfs.rs `V20260130_INIT`
+    ///   （expected_tables + expected_indexes + expected_queries），版本钉在
+    ///   记账值 20260130。
+    ///
+    /// 这里刻意**只跑 table backfill、跳过一切 non-table backfill**（即不调用
+    /// 生产链 `pre_repair_vfs_schema` 中紧随其后的加法回填
+    /// `apply_vfs_init_missing_schema_objects`）：本测试锁定"表回填单独存在时
+    /// 缺对象必被拒"的历史 fail-closed 形态，不得删除；加法回填后过 verifier
+    /// 的正向立证见
+    /// `test_sparse_vfs_after_init_object_backfill_passes_verifier`。
+    ///
+    /// 拒绝信息留档（缺哪个对象）：
+    /// - `MigrationVerifier::verify` 按 表 → 列 → 索引 → smoke query 顺序检查
+    ///   （verifier.rs:30-79）。表已被回填补齐，首个被拒对象是
+    ///   `VFS_V001_KEY_INDEXES` 首项（vfs.rs:185-223），即：
+    ///     VerificationFailed { version: 20260130,
+    ///                          reason: "Index 'idx_resources_hash' not found" }
+    ///   同批缺失的还包括 idx_folders_parent（init.sql:308）等全部契约核心索引；
+    /// - 即便索引都被补齐，smoke query 仍会继续拒绝：
+    ///     "Query smoke test failed 'SELECT 1 FROM questions_fts LIMIT 0'"
+    ///       （FTS5 虚拟表 questions_fts，init.sql:468）
+    ///     "Query smoke test failed 'SELECT 1 FROM trash_view LIMIT 0'"
+    ///       （视图 trash_view，init.sql:768）。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_vfs_v20260130_recorded_missing_index_fts_view_is_rejected() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_sparse_v20260130_recorded_vfs(&coordinator);
+
+        // 生产链中的表回填内部步骤（且仅此一步）：不预先补
+        // idx_folders_parent / questions_fts / trash_view，也不做任何
+        // 非表对象回填。禁止绕过 verifier、禁止改本函数体。
+        coordinator
+            .apply_vfs_init_missing_tables(&conn)
+            .expect("sparse VFS table backfill must succeed");
+
+        // 表回填已生效：V20260130 契约表全部就位（抽样断言含 change_log
+        // 依赖的 questions，以及 folders/review_plans）。
+        for table in ["questions", "folders", "review_plans", "files", "blobs"] {
+            assert!(
+                coordinator.table_exists(&conn, table).unwrap(),
+                "table backfill should recreate missing init table {table}"
+            );
+        }
+
+        // 但非表对象仍然缺失——这正是稀疏库的病灶。
+        assert!(
+            !vfs_schema_object_exists(&conn, "index", "idx_folders_parent"),
+            "test premise: idx_folders_parent must NOT be pre-created"
+        );
+        assert!(
+            !vfs_schema_object_exists(&conn, "table", "questions_fts"),
+            "test premise: questions_fts must NOT be pre-created"
+        );
+        assert!(
+            !vfs_schema_object_exists(&conn, "view", "trash_view"),
+            "test premise: trash_view must NOT be pre-created"
+        );
+
+        // 生产同路径 verifier：migrate_database 迁移后走的同一 verify_migrations，
+        // 契约同为 VFS_MIGRATION_SET，版本 = 记账的 20260130。
+        let err = coordinator
+            .verify_migrations(&conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect_err(
+                "verifier must fail-close on a table-only backfilled sparse VFS \
+                 (missing init indexes / questions_fts / trash_view)",
+            );
+
+        match err {
+            MigrationError::VerificationFailed { version, reason } => {
+                assert_eq!(version, 20260130, "rejection must pin the init contract");
+                // 首个拒绝对象当前为 "Index 'idx_resources_hash' not found"；
+                // 容忍索引清单顺序调整，但拒绝理由必须指向 V20260130 契约中
+                // 缺失的非表对象（索引，或 questions_fts / trash_view smoke query）。
+                let names_missing_init_object = (reason.contains("Index '")
+                    && reason.contains("not found"))
+                    || reason.contains("questions_fts")
+                    || reason.contains("trash_view");
+                assert!(
+                    names_missing_init_object,
+                    "rejection reason must name a missing non-table init object, got: {reason}"
+                );
+            }
+            other => panic!("expected VerificationFailed, got: {other:?}"),
+        }
+    }
+
+    /// P8 正向立证：同一稀疏库在表回填之后再执行生产链的加法对象回填
+    /// `apply_vfs_init_missing_schema_objects`（`pre_repair_vfs_schema` 中
+    /// 紧随 `apply_vfs_init_missing_tables` 的同一步骤），V20260130 契约的
+    /// 非表对象（索引 / questions_fts / trash_view / 触发器）被补齐后，
+    /// 生产 verifier（`verify_migrations`，版本钉在记账值 20260130）放行。
+    ///
+    /// 与上一个测试构成单变量对照：夹具、表回填、verifier 完全相同，
+    /// 唯一差异是是否执行了非表对象回填。**没有绕过 verifier**——通过与否
+    /// 仍由同一份 `V20260130_INIT` 契约（vfs.rs:56-223）裁决。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_vfs_after_init_object_backfill_passes_verifier() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let conn = build_sparse_v20260130_recorded_vfs(&coordinator);
+
+        // 与生产 pre_repair_vfs_schema 相同的顺序：先补表，再补非表对象
+        // （FTS 配套触发器依赖刚回填的 questions 表，顺序不可倒置）。
+        coordinator
+            .apply_vfs_init_missing_tables(&conn)
+            .expect("sparse VFS table backfill must succeed");
+        coordinator
+            .apply_vfs_init_missing_schema_objects(&conn)
+            .expect("sparse VFS init object backfill must succeed");
+
+        // 契约对象已物理存在。
+        assert!(
+            vfs_schema_object_exists(&conn, "index", "idx_folders_parent"),
+            "object backfill should recreate idx_folders_parent"
+        );
+        assert!(
+            vfs_schema_object_exists(&conn, "table", "questions_fts"),
+            "object backfill should recreate the questions_fts FTS5 virtual table"
+        );
+        assert!(
+            vfs_schema_object_exists(&conn, "view", "trash_view"),
+            "object backfill should recreate trash_view"
+        );
+
+        // 生产同路径 verifier 此时必须放行：表 + 索引 + smoke query
+        // （questions_fts / trash_view）全部满足 V20260130 契约。
+        coordinator
+            .verify_migrations(&conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect(
+                "verifier must accept the sparse VFS once init tables AND \
+                 non-table objects are additively backfilled",
+            );
+    }
+
+    /// P8 立证（coordinator 完整入口）：同一稀疏库走完整生产初始化/预修复入口
+    /// `migrate_single(DatabaseId::Vfs)`（= migrate_database：ensure_legacy_baseline
+    /// → run_refinery_migrations[cleanup → pre_repair_schema(含
+    /// apply_vfs_init_missing_tables) → checksum/ALTER 修复 → refinery 重放]
+    /// → verify_migrations）。
+    ///
+    /// 不变式：**coordinator 绝不允许在 V20260130 契约对象
+    /// （idx_folders_parent / questions_fts / trash_view）仍缺失时报告成功。**
+    ///
+    /// 两种合法出口，二选一，绝无第三态（"报成功但缺对象"）：
+    /// - Ok：预修复链（表回填 + `apply_vfs_init_missing_schema_objects` 加法
+    ///   对象回填）收敛出契约完整的库，随后 refinery 重放与迁移后
+    ///   verify_migrations 全部通过——断言三类契约对象已物理存在；
+    /// - Err（fail-closed）：对象回填是降级式的（建不出来 warn 跳过，缺口交给
+    ///   verifier 裁决），一旦对象仍缺失，要么 refinery 重放在 V20260610
+    ///   （questions_fts triggers rebuild：
+    ///   `INSERT INTO questions_fts(questions_fts) VALUES('rebuild')`）因
+    ///   "no such table: questions_fts" 中止，要么 verify_migrations 因缺
+    ///   索引/smoke query 拒绝（拒绝对象清单见
+    ///   `test_sparse_vfs_v20260130_recorded_missing_index_fts_view_is_rejected`
+    ///   的注释）。Err 分支还断言：只要对象缺失，生产 verifier 对落盘库依旧
+    ///   拒绝，失败后的库不会被误判为健康。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_vfs_full_migrate_entry_never_reports_success_without_init_objects() {
+        let (mut coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
+        drop(build_sparse_v20260130_recorded_vfs(&coordinator));
+
+        let result = coordinator.migrate_single(DatabaseId::Vfs);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let init_objects_complete = vfs_schema_object_exists(&conn, "index", "idx_folders_parent")
+            && vfs_schema_object_exists(&conn, "table", "questions_fts")
+            && vfs_schema_object_exists(&conn, "view", "trash_view");
+
+        match result {
+            Ok(report) => {
+                assert!(
+                    init_objects_complete,
+                    "coordinator reported success but V20260130 contract objects \
+                     (idx_folders_parent / questions_fts / trash_view) are still missing: {report:?}"
+                );
+                assert!(report.success);
+            }
+            Err(entry_error) => {
+                // fail-closed：入口拒绝。若契约对象仍缺失，生产 verifier 对
+                // 当前落盘状态（无论 refinery 重放推进到了哪个版本）也必须拒绝。
+                if !init_objects_complete {
+                    let recorded_version = coordinator.get_current_version(&conn).unwrap();
+                    let verify_err = coordinator
+                        .verify_migrations(
+                            &conn,
+                            &DatabaseId::Vfs,
+                            &VFS_MIGRATION_SET,
+                            recorded_version,
+                            0,
+                            false,
+                        )
+                        .expect_err(
+                            "verifier must keep rejecting the sparse VFS after a \
+                             failed full-entry migration",
+                        );
+                    assert!(
+                        matches!(verify_err, MigrationError::VerificationFailed { .. }),
+                        "expected VerificationFailed, got: {verify_err:?} \
+                         (entry error was: {entry_error})"
+                    );
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // R7 稀疏库矩阵扩展：FTS / 索引 / 视图 缺失组合
+    //
+    // P8 夹具是"全稀疏"（只剩 resources/notes，非表对象全灭）；本矩阵反向
+    // 取样：库从契约完整出发，每个用例只定点摘除一个（或全部三个）非表
+    // 契约对象，构成最小变量组合，锁定 verifier 对每一类对象的独立把关
+    // 粒度，以及 `apply_vfs_init_missing_schema_objects` 在"只缺一个对象"
+    // 时的精确加法回填（不多建、不误伤幸存对象）。
+    //
+    // 统一立证流程（禁止改两个加法函数体，测试只调用）：
+    //   1. 只跑生产链的表回填 `apply_vfs_init_missing_tables`
+    //      （pre_repair_vfs_schema:2280 的同一步骤）——矩阵夹具表本就齐全，
+    //      该函数按设计只抽取 `CREATE TABLE IF NOT EXISTS`（显式排除虚拟
+    //      表），绝不允许顺带救活任何被摘除的非表对象；
+    //   2. 生产 verifier（`verify_migrations`，版本钉在记账值 20260130，
+    //      契约 vfs.rs `V20260130_INIT`）必须 fail-close 拒绝，且拒绝理由
+    //      点名本组合中被摘除的对象；
+    //   3. 再跑生产链紧随其后的对象回填
+    //      `apply_vfs_init_missing_schema_objects`（pre_repair_vfs_schema:2286
+    //      的同一步骤），三个矩阵对象全部物理就位；
+    //   4. 同一 verifier 放行——通过与否始终由同一份契约裁决，无任何绕过。
+    // ------------------------------------------------------------------
+
+    /// R7 矩阵受检对象：`(sqlite_master 类型, 对象名, 定点摘除 DROP 语句)`。
+    ///
+    /// - `idx_folders_parent`（init.sql:308）——契约核心索引清单
+    ///   `VFS_V001_KEY_INDEXES`（vfs.rs:185-223）成员，由 verifier 的
+    ///   索引检查把关（`"Index '...' not found"`）；
+    /// - `questions_fts`（FTS5 虚拟表，init.sql:468）——**不在**
+    ///   expected_tables（vfs.rs:129 注明 25 表不含 FTS 虚拟表），只由
+    ///   smoke query `SELECT 1 FROM questions_fts LIMIT 0`（vfs.rs:177）
+    ///   把关；在 sqlite_master 中 type='table'；
+    /// - `trash_view`（视图，init.sql:768）——同样不在 expected_tables，
+    ///   只由 smoke query `SELECT 1 FROM trash_view LIMIT 0`（vfs.rs:179）
+    ///   把关；type='view'。
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_IDX_FOLDERS_PARENT: (&str, &str, &str) = (
+        "index",
+        "idx_folders_parent",
+        "DROP INDEX idx_folders_parent",
+    );
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_QUESTIONS_FTS: (&str, &str, &str) =
+        ("table", "questions_fts", "DROP TABLE questions_fts");
+    #[cfg(feature = "data_governance")]
+    const SPARSE_MATRIX_TRASH_VIEW: (&str, &str, &str) =
+        ("view", "trash_view", "DROP VIEW trash_view");
+
+    /// R7 矩阵夹具：整份回放 init.sql 得到契约完整的 V20260130 库，再定点
+    /// 摘除 `dropped` 中的对象，最后按 runner 真实 checksum 记账 V20260130
+    /// （与 P8 夹具同理：避免 repair_refinery_checksums 的 checksum-drift
+    /// fail-close 抢在 verifier 之前触发，污染矩阵立证点）。
+    ///
+    /// 与 `build_sparse_v20260130_recorded_vfs`（全稀疏）互补：这里表全部
+    /// 在场，且除被摘除对象外全部非表对象幸存——夹具自检两个方向的前提
+    /// （摘除的确实没了；没摘除的必须还在），保证单变量对照成立。
+    /// 库文件落在生产路径 `databases/vfs.db`。
+    #[cfg(feature = "data_governance")]
+    fn build_full_v20260130_recorded_vfs_with_dropped_objects(
+        coordinator: &MigrationCoordinator,
+        dropped: &[(&str, &str, &str)],
+    ) -> rusqlite::Connection {
+        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(INIT_SQL).unwrap();
+
+        for &(object_type, name, drop_sql) in dropped {
+            assert!(
+                vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: init.sql must create {object_type} {name} before drop"
+            );
+            conn.execute_batch(drop_sql).unwrap();
+            assert!(
+                !vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: {object_type} {name} must be dropped"
+            );
+        }
+
+        // 对照前提的另一半：未被摘除的矩阵对象必须完好。
+        for (object_type, name, _) in [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ] {
+            if dropped.iter().any(|&(_, dropped_name, _)| dropped_name == name) {
+                continue;
+            }
+            assert!(
+                vfs_schema_object_exists(&conn, object_type, name),
+                "matrix fixture premise: untouched {object_type} {name} must survive"
+            );
+        }
+
+        let runner = coordinator.create_vfs_runner().unwrap();
+        coordinator.ensure_refinery_history_table(&conn).unwrap();
+        coordinator
+            .mark_migration_complete(&conn, &runner, 20260130)
+            .unwrap();
+        conn
+    }
+
+    /// R7 矩阵统一驱动：只跑表回填 → verifier 必拒（理由点名被摘对象）→
+    /// 跑对象回填 → 三个矩阵对象全部在场 → 同一 verifier 放行。
+    ///
+    /// 拒绝理由断言采用"点名任一被摘对象"（any-of）：
+    /// - 单缺失用例下 any-of 退化为精确点名（组合里只有一个对象）；
+    /// - 三缺失用例下容忍 verifier 内部检查顺序（表 → 列 → 索引 → smoke
+    ///   query，verifier.rs:30-79）未来调整——当前首个拒绝对象是
+    ///   `"Index 'idx_folders_parent' not found"`（索引检查先于 smoke）。
+    #[cfg(feature = "data_governance")]
+    fn assert_sparse_matrix_rejected_then_backfilled(
+        coordinator: &MigrationCoordinator,
+        conn: &rusqlite::Connection,
+        dropped: &[(&str, &str, &str)],
+    ) {
+        // 第一步：只跑 table backfill（生产链内的同一函数，禁止改函数体）。
+        coordinator
+            .apply_vfs_init_missing_tables(conn)
+            .expect("matrix table backfill must succeed on a full-table VFS");
+
+        // 表回填绝不允许顺带救活非表对象——否则本矩阵的病灶就被抹掉了。
+        for &(object_type, name, _) in dropped {
+            assert!(
+                !vfs_schema_object_exists(conn, object_type, name),
+                "table-only backfill must NOT resurrect {object_type} {name}"
+            );
+        }
+
+        // 只跑表回填时，生产 verifier 必须 fail-close。
+        let err = coordinator
+            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect_err(
+                "verifier must fail-close while matrix init objects are missing \
+                 (table backfill alone is not enough)",
+            );
+        match err {
+            MigrationError::VerificationFailed { version, reason } => {
+                assert_eq!(version, 20260130, "rejection must pin the init contract");
+                assert!(
+                    dropped.iter().any(|&(_, name, _)| reason.contains(name)),
+                    "rejection reason must name one of the dropped matrix objects \
+                     {dropped:?}, got: {reason}"
+                );
+            }
+            other => panic!("expected VerificationFailed, got: {other:?}"),
+        }
+
+        // 第二步：跑生产链紧随其后的加法对象回填（同一函数，禁止改函数体）。
+        coordinator
+            .apply_vfs_init_missing_schema_objects(conn)
+            .expect("matrix init object backfill must succeed");
+
+        // 三个矩阵对象（含未被摘除的对照对象）此刻必须全部物理存在。
+        for (object_type, name, _) in [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ] {
+            assert!(
+                vfs_schema_object_exists(conn, object_type, name),
+                "after object backfill, {object_type} {name} must exist"
+            );
+        }
+
+        // 同一生产 verifier 此时必须放行——契约仍是同一份 V20260130_INIT。
+        coordinator
+            .verify_migrations(conn, &DatabaseId::Vfs, &VFS_MIGRATION_SET, 20260130, 0, false)
+            .expect("verifier must pass once dropped matrix objects are backfilled");
+    }
+
+    /// R7 矩阵之一：只缺契约核心索引 `idx_folders_parent`。
+    ///
+    /// 表、FTS、视图、其余全部索引均在场，verifier 的拒绝只能来自索引
+    /// 检查，理由精确点名 `"Index 'idx_folders_parent' not found"`
+    /// （any-of 断言在单缺失组合下即精确断言）。对象回填后放行。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_idx_folders_parent_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_IDX_FOLDERS_PARENT];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+    }
+
+    /// R7 矩阵之二：只缺 FTS5 虚拟表 `questions_fts`。
+    ///
+    /// `questions_fts` 不在 expected_tables（vfs.rs:129），全部契约索引也
+    /// 都在场——本用例锁定：缺口**只能**被 smoke query
+    /// `SELECT 1 FROM questions_fts LIMIT 0` 捕获，即 verifier 对 FTS 虚拟
+    /// 表有独立于表/索引检查的把关通道。
+    ///
+    /// 额外边界：`DROP TABLE questions_fts` 只带走虚拟表及其 FTS5 影子表，
+    /// 挂在 questions 上的三个配套触发器（trg_questions_fts_insert /
+    /// _update / _delete，init.sql:479-500）幸存为悬空触发器。对象回填按
+    /// init 原文顺序先重建 questions_fts（init.sql:468 先于触发器），随后
+    /// 对已存在的触发器幂等跳过——断言三个触发器各恰好一枚，未被重复创建。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_questions_fts_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_QUESTIONS_FTS];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        // 夹具边界自检：FTS 配套触发器不随 DROP TABLE questions_fts 消失。
+        for trigger in [
+            "trg_questions_fts_insert",
+            "trg_questions_fts_update",
+            "trg_questions_fts_delete",
+        ] {
+            assert!(
+                vfs_schema_object_exists(&conn, "trigger", trigger),
+                "matrix premise: {trigger} must survive dropping questions_fts"
+            );
+        }
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+
+        // 对象回填对已存在触发器必须幂等跳过：每个触发器恰好一枚。
+        for trigger in [
+            "trg_questions_fts_insert",
+            "trg_questions_fts_update",
+            "trg_questions_fts_delete",
+        ] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                    [trigger],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "{trigger} must exist exactly once after backfill");
+        }
+    }
+
+    /// R7 矩阵之三：只缺视图 `trash_view`。
+    ///
+    /// 表、索引、FTS 均在场，首条 smoke query（questions_fts）通过，缺口
+    /// 只能被第二条 smoke query `SELECT 1 FROM trash_view LIMIT 0` 捕获——
+    /// 锁定 verifier 对视图的独立把关通道。对象回填后放行。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_trash_view_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [SPARSE_MATRIX_TRASH_VIEW];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
+    }
+
+    /// R7 矩阵之四：索引 + FTS + 视图 三者同缺的组合形态。
+    ///
+    /// 介于单缺失用例与 P8 全稀疏夹具之间：表契约完整、其余索引/触发器
+    /// 幸存，仅三类把关通道的代表对象同时缺失。verifier 按 表 → 列 →
+    /// 索引 → smoke query 顺序，当前首个拒绝对象是
+    /// `"Index 'idx_folders_parent' not found"`（驱动内的 any-of 断言容忍
+    /// 顺序调整，但理由必须点名三者之一）。一次对象回填必须同时补齐三个
+    /// 对象后 verifier 才放行——不存在"补一漏二仍过验"的第三态。
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_sparse_matrix_vfs_missing_all_three_objects_rejected_then_backfilled() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let _ = temp_dir;
+        let dropped = [
+            SPARSE_MATRIX_IDX_FOLDERS_PARENT,
+            SPARSE_MATRIX_QUESTIONS_FTS,
+            SPARSE_MATRIX_TRASH_VIEW,
+        ];
+        let conn = build_full_v20260130_recorded_vfs_with_dropped_objects(&coordinator, &dropped);
+
+        assert_sparse_matrix_rejected_then_backfilled(&coordinator, &conn, &dropped);
     }
 
     #[test]

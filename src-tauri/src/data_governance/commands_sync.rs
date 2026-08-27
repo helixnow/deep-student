@@ -3862,6 +3862,36 @@ async fn execute_bidirectional_with_progress_v2(
 
 // ==================== Tombstone API ====================
 
+/// [R4-tombstone-serial] tombstone 直接命令的 limiter busy 稳定码。
+///
+/// tombstone 清单是「下载 → 合并 → 上传」的 read-modify-write：两个直接命令
+/// 交错时，后写者会用自己下载到的旧清单覆盖先写者刚插入的条目（lost update，
+/// 删除记录静默丢失）。因此直接命令必须与同步/备份/恢复共用同一把
+/// `BACKUP_GLOBAL_LIMITER` 做同设备串行化；抢不到锁时以本稳定码立即失败，
+/// 由调用方（VFS 删除队列重试 / 开发者工具）稍后重试，而不是各写各的坏状态。
+pub const TOMBSTONE_LIMITER_BUSY_CODE: &str = "E_DG_TOMBSTONE_LIMITER_BUSY";
+
+/// 在给定 limiter 上为一次 tombstone 直接写入取全局互斥许可。
+///
+/// 与同步命令（P1-4）同语义：`try_acquire` 占用即刻失败，不排队；错误信息
+/// 携带 [`TOMBSTONE_LIMITER_BUSY_CODE`]，供前端/调用方稳定识别后重试。
+/// limiter 拆成参数是为了测试能用独立 semaphore 确定性复现双调用交错，
+/// 不依赖（也不污染）全局静态锁。
+fn try_acquire_tombstone_write_permit_on(
+    limiter: std::sync::Arc<tokio::sync::Semaphore>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+    limiter.try_acquire_owned().map_err(|_| {
+        format!(
+            "[{TOMBSTONE_LIMITER_BUSY_CODE}] 另一个数据治理任务（同步/备份/恢复/删除标记）正在进行中，请稍后再试。"
+        )
+    })
+}
+
+/// 生产入口：tombstone 直接命令与同步/备份/恢复共用 `BACKUP_GLOBAL_LIMITER`。
+fn acquire_tombstone_write_permit() -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+    try_acquire_tombstone_write_permit_on(BACKUP_GLOBAL_LIMITER.clone())
+}
+
 /// 标记一个 blob 已被本地删除。
 ///
 /// 后续同步时 `sync_vfs_blobs_with_tombstones` 会把这条删除记录传播到云端和其他设备。
@@ -3882,6 +3912,13 @@ pub async fn data_governance_mark_blob_deleted(
 ) -> Result<(), String> {
     // [P0-3A] 空白凭据由后端从安全存储补全
     crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    // [R4-tombstone-serial] 与同步相同的同设备全局互斥：tombstone 清单是
+    // download→merge→upload 的 read-modify-write，与另一次直接命令或同步的
+    // tombstone 写交错会互相覆盖。持锁窗口覆盖加密策略检查与 mark_blob_deleted
+    // 全程（含 PUT 后 GET 复读闸）；提前返回由 Drop 释放。
+    let _permit = acquire_tombstone_write_permit()?;
+
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
@@ -3916,6 +3953,11 @@ pub async fn data_governance_mark_asset_deleted(
 ) -> Result<(), String> {
     // [P0-3A] 空白凭据由后端从安全存储补全
     crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
+
+    // [R4-tombstone-serial] 同 data_governance_mark_blob_deleted：直接命令的
+    // read-modify-write 必须与同步/备份/恢复及另一次直接命令串行化。
+    let _permit = acquire_tombstone_write_permit()?;
+
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
@@ -6059,6 +6101,202 @@ mod tests {
 
         let err = validate_sync_registry_drift(temp.path()).unwrap_err();
         assert!(err.contains("vfs.review_history 存在 __change_log 触发器"));
+    }
+}
+
+// ==================== [R4-tombstone-serial] tombstone 直接命令串行化测试 ====================
+//
+// 只写不跑（本轮禁止编译/测试执行）。测试用独立 semaphore 注入
+// `try_acquire_tombstone_write_permit_on`，确定性复现双调用交错，
+// 不触碰全局 `BACKUP_GLOBAL_LIMITER`，与其他测试无共享状态。
+#[cfg(test)]
+mod tombstone_serial_tests {
+    use super::{
+        try_acquire_tombstone_write_permit_on, TOMBSTONE_LIMITER_BUSY_CODE,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::sync::Semaphore;
+
+    /// 最小 mock storage：模拟每设备 tombstone 清单对象。
+    /// 只关心 read-modify-write 的交错语义，不需要完整 CloudStorage trait。
+    #[derive(Default)]
+    struct MockTombstoneStore {
+        manifest: tokio::sync::Mutex<Vec<String>>,
+        write_count: AtomicUsize,
+    }
+
+    impl MockTombstoneStore {
+        /// 对应 `tombstone::download_*_tombstones_for_device`
+        async fn download(&self) -> Vec<String> {
+            self.manifest.lock().await.clone()
+        }
+
+        /// 对应 `tombstone::upload_*_tombstones`（整清单覆盖写）
+        async fn upload(&self, manifest: Vec<String>) {
+            self.write_count.fetch_add(1, Ordering::SeqCst);
+            *self.manifest.lock().await = manifest;
+        }
+
+        fn writes(&self) -> usize {
+            self.write_count.load(Ordering::SeqCst)
+        }
+
+        async fn entries(&self) -> Vec<String> {
+            self.manifest.lock().await.clone()
+        }
+    }
+
+    /// 第一入者在「已下载、未上传」的交错窗口内停住所用的门。
+    type InterleaveGate = (
+        tokio::sync::oneshot::Sender<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    );
+
+    /// 与生产命令同形的守卫流程：先过 limiter，再做
+    /// download → merge → upload（对应 `SyncManager::mark_blob_deleted` /
+    /// `mark_asset_deleted` 的 read-modify-write）。
+    async fn guarded_mark_deleted(
+        limiter: Arc<Semaphore>,
+        store: Arc<MockTombstoneStore>,
+        hash: String,
+        gate: Option<InterleaveGate>,
+    ) -> Result<(), String> {
+        let _permit = try_acquire_tombstone_write_permit_on(limiter)?;
+        let mut manifest = store.download().await;
+        if let Some((entered_tx, release_rx)) = gate {
+            // 通知测试主体：已进入最危险的交错窗口（清单已读、尚未写回）
+            let _ = entered_tx.send(());
+            let _ = release_rx.await;
+        }
+        manifest.push(hash);
+        store.upload(manifest).await;
+        Ok(())
+    }
+
+    /// 双调用交错：第一入者停在 download 与 upload 之间时，第二入者必须
+    /// 拿到 limiter busy 稳定码立即失败且零写入；不得出现「两边各拿旧清单
+    /// 各写各的、后写覆盖先写」的 lost update。busy 方按稳定码重试后，
+    /// 两条 tombstone 必须都在。
+    #[tokio::test]
+    async fn concurrent_direct_tombstone_marks_serialize_or_fail_busy() {
+        let limiter = Arc::new(Semaphore::new(1));
+        let store = Arc::new(MockTombstoneStore::default());
+
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+
+        let first = tokio::spawn(guarded_mark_deleted(
+            Arc::clone(&limiter),
+            Arc::clone(&store),
+            "blob-a".to_string(),
+            Some((entered_tx, release_rx)),
+        ));
+
+        // 等第一入者确实进入交错窗口（持锁、已读旧清单、未写回）
+        entered_rx.await.expect("第一入者应进入交错窗口");
+
+        // 第二入者在窗口内进入：必须立即拿到 busy 稳定码，而不是并行写
+        let second_err = guarded_mark_deleted(
+            Arc::clone(&limiter),
+            Arc::clone(&store),
+            "blob-b".to_string(),
+            None,
+        )
+        .await
+        .expect_err("交错窗口内的第二入者必须被同设备互斥挡下");
+        assert!(
+            second_err.contains(TOMBSTONE_LIMITER_BUSY_CODE),
+            "busy 错误必须携带稳定码 {TOMBSTONE_LIMITER_BUSY_CODE}: {second_err}"
+        );
+        assert_eq!(
+            store.writes(),
+            0,
+            "被挡下的第二入者不得写入任何字节（不得各写各的坏状态）"
+        );
+
+        // 放行第一入者：它写回的清单必须完整包含自己的条目
+        release_tx.send(()).expect("放行第一入者");
+        first
+            .await
+            .expect("第一入者任务不应 panic")
+            .expect("第一入者应成功完成");
+        assert_eq!(store.entries().await, vec!["blob-a".to_string()]);
+        assert_eq!(store.writes(), 1);
+
+        // busy 方释放锁后重试：合并写入，先写者的 tombstone 不丢
+        guarded_mark_deleted(limiter, Arc::clone(&store), "blob-b".to_string(), None)
+            .await
+            .expect("锁释放后的重试应成功");
+        assert_eq!(
+            store.entries().await,
+            vec!["blob-a".to_string(), "blob-b".to_string()],
+            "串行重试后两条 tombstone 都必须在（无 lost update）"
+        );
+    }
+
+    /// busy 稳定码是前端/调用方的重试契约，锁死字面量。
+    #[test]
+    fn tombstone_limiter_busy_code_is_stable() {
+        assert_eq!(TOMBSTONE_LIMITER_BUSY_CODE, "E_DG_TOMBSTONE_LIMITER_BUSY");
+        let limiter = Arc::new(Semaphore::new(1));
+        let _held = limiter.clone().try_acquire_owned().unwrap();
+        let err = try_acquire_tombstone_write_permit_on(limiter).unwrap_err();
+        assert!(err.contains("[E_DG_TOMBSTONE_LIMITER_BUSY]"));
+        assert!(err.contains("正在进行中"), "错误信息应可读并提示稍后重试: {err}");
+    }
+
+    /// 源码契约：两个 tombstone 直接命令都必须先过全局互斥；且（不变量 12）
+    /// 仍必须经 `SyncManager::mark_*` 路由——其内部的 PUT 后 GET 复读闸
+    /// （`tombstone.rs` fail-closed）不许被绕过或放宽，命令层不得出现
+    /// 绕过复读的裸 `storage.put`。
+    #[test]
+    fn tombstone_direct_commands_take_permit_and_keep_readback_invariant() {
+        let source = include_str!("commands_sync.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+        let section_start = production
+            .find("// ==================== Tombstone API ====================")
+            .expect("Tombstone API section exists");
+        let section_end = production
+            .find("// ==================== __sync_conflicts")
+            .expect("Tombstone API section is bounded");
+        let section = &production[section_start..section_end];
+
+        assert_eq!(
+            section
+                .matches("let _permit = acquire_tombstone_write_permit()?;")
+                .count(),
+            2,
+            "mark_blob_deleted 与 mark_asset_deleted 两个直接命令都必须持全局互斥许可"
+        );
+        // 许可必须在创建云存储之前取得，覆盖整个远端写窗口
+        let blob_permit = section
+            .find("let _permit = acquire_tombstone_write_permit()?;")
+            .unwrap();
+        let blob_storage = section
+            .find("let storage = create_storage")
+            .unwrap();
+        assert!(
+            blob_permit < blob_storage,
+            "互斥许可必须先于云存储创建，确保持锁窗口覆盖全部远端读写"
+        );
+
+        // 不变量 12：命令仍经 SyncManager（内部 upload_*_tombstones 走复读闸）
+        assert!(
+            section.contains(".mark_blob_deleted(storage.as_ref()"),
+            "blob tombstone 必须经 SyncManager::mark_blob_deleted（含复读闸）"
+        );
+        assert!(
+            section.contains(".mark_asset_deleted(storage.as_ref()"),
+            "asset tombstone 必须经 SyncManager::mark_asset_deleted（含复读闸）"
+        );
+        assert!(
+            !section.contains("storage.put("),
+            "tombstone 命令层不得绕过复读闸直接写云端对象"
+        );
     }
 }
 

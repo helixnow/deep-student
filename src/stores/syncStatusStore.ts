@@ -504,8 +504,12 @@ function getAutoSyncScheduler(): AutoSyncScheduler {
 /**
  * 确保调度器已启动（幂等；开关关闭时为 no-op）。
  *
- * 由同步相关设置组件挂载时调用——不接入 workbench 壳层，因此"启动后自动
- * 同步"的语义是：持久化开关为开时，任一同步设置面加载后调度器即开始计时。
+ * 启动所有权在 App/服务层：App.tsx 在 useAutoSyncStore persist hydration
+ * 完成后调用本函数（与 initReminderScheduler 同模式），因此"启动后自动
+ * 同步"的语义是：持久化开关为开时，应用启动后调度器即开始计时，无需
+ * 进入任何设置页。设置组件（SyncSettingsSection、SyncTab）挂载时的调用
+ * 仅为兼容性双保险，可留可删——本函数与底层 start() 均防重，重复调用
+ * 不会产生第二个定时器。
  */
 export function ensureAutoSyncSchedulerStarted(): void {
   getAutoSyncScheduler().start();

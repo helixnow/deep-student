@@ -7,6 +7,9 @@
 //! 未齐且未接 UI 之前功能不可暴露（源码锁测试 `sync_r12_delta_restore.rs`
 //! 强制该事实）。
 //!
+//! [Wave2-D R5 裁决] 状态 = **experimental 隔离**；接线前置清单与升级路径见
+//! docs/dev/wave2-D-backup-v2-decision.md。
+//!
 //! 职责边界：
 //!
 //! - 输入是 R12-delta-upload 发布原语写出的 backup-v2 仓库；输出是调用方
@@ -512,6 +515,9 @@ fn write_compatible_zip_file(staging_root: &Path, target: &Path) -> Result<PathB
 ///   之后才原子进入 `dest_staging`；任何失败 `dest_staging` 保持为空；
 /// - 云端零写入（租约除外）、零删除、零 GC；不碰 v1 `backups/` 与
 ///   `manifests/` namespace。
+///
+/// **[experimental 隔离入口]** 生产代码零调用方（sync_r12 源码锁钉死）；
+/// 接线须先满足 docs/dev/wave2-D-backup-v2-decision.md 的前置清单。
 pub async fn restore_snapshot_to_staging(
     storage: Arc<dyn CloudStorage>,
     dest_staging: &Path,

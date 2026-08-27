@@ -596,6 +596,19 @@ function localizeBackupJobError(
   if (message.includes('E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE')) {
     return t('data:governance.restore_atomic_unavailable');
   }
+  // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
+  // 结果 details JSON 里对应字段：`isolation_state`（值 "IsolatedPendingTrust"
+  // → data:governance.restore_isolated_pending_trust）、`unconsumed_domains`、
+  // `failed_domains`。
+  if (message.includes('E_RESTORE_DOMAIN_UNCONSUMED')) {
+    return t('data:governance.restore_domain_unconsumed');
+  }
+  if (message.includes('E_RESTORE_DOMAIN_FAILED')) {
+    return t('data:governance.restore_domain_failed');
+  }
+  if (message.includes('E_RESTORE_UNTRUSTED_ISOLATED')) {
+    return t('data:governance.restore_untrusted_isolated');
+  }
   return message;
 }
 

@@ -2600,4 +2600,415 @@ mod tests {
         assert_eq!(downloaded[0].seq, 1);
         assert_eq!(downloaded[1].seq, 2);
     }
+
+    // ------------------------------------------------------------------
+    // R7 双写交错：upload_* 是「不可变事件（v4）→ 每设备清单（v3）」的双写。
+    // 事件已落、清单未落的撕裂窗口内发生第二次调用（同设备重试 / 追加 /
+    // 另一设备完整双写 / 冲突改写）时，必须满足：
+    // - 同 operation_id 绝不产生第二个事件或新 seq（幂等重绑）；
+    // - 每设备事件流保持无断层连续，追加条目 seq 单调 +1；
+    // - 撕裂窗口内删除意图已对 v4 消费方可见（事件权威）；
+    // - 同 key 不同内容的改写 fail-closed，云端保留原始事件。
+    // ------------------------------------------------------------------
+
+    use crate::models::{AppError, AppErrorType};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// 撕裂双写注入：开关打开时每设备清单 PUT 直接失败，事件路径不受影响。
+    /// 模拟双写第一步（不可变事件）已落、第二步（v3 清单）未落的窗口。
+    struct TornManifestPut {
+        inner: MemoryStorage,
+        fail_manifest_puts: AtomicBool,
+    }
+
+    impl TornManifestPut {
+        fn failing() -> Self {
+            Self {
+                inner: MemoryStorage::default(),
+                fail_manifest_puts: AtomicBool::new(true),
+            }
+        }
+
+        fn heal(&self) {
+            self.fail_manifest_puts.store(false, Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CloudStorage for TornManifestPut {
+        fn provider_name(&self) -> &'static str {
+            "memory-torn-tombstone-manifest"
+        }
+        async fn check_connection(&self) -> StorageResult<()> {
+            Ok(())
+        }
+        async fn put(&self, key: &str, data: &[u8]) -> StorageResult<()> {
+            if key.starts_with("data_governance/tombstones/")
+                && self.fail_manifest_puts.load(Ordering::SeqCst)
+            {
+                return Err(AppError::new(
+                    AppErrorType::Network,
+                    "注入：每设备 tombstone 清单 PUT 失败（撕裂双写窗口）",
+                ));
+            }
+            CloudStorage::put(&self.inner, key, data).await
+        }
+        async fn get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
+            CloudStorage::get(&self.inner, key).await
+        }
+        async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
+            CloudStorage::list(&self.inner, prefix).await
+        }
+        async fn delete(&self, key: &str) -> StorageResult<()> {
+            CloudStorage::delete(&self.inner, key).await
+        }
+        async fn stat(&self, key: &str) -> StorageResult<Option<FileInfo>> {
+            CloudStorage::stat(&self.inner, key).await
+        }
+    }
+
+    #[tokio::test]
+    async fn torn_blob_dual_write_retry_converges_without_duplicate_event() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
+        let storage = TornManifestPut::failing();
+        let device = "r7-tomb-torn-retry-device";
+        let hash = "aa".repeat(32);
+
+        // 第一次调用：事件落地后清单 PUT 失败 → 整体 fail-closed。
+        let error = upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device,
+            sample_blob_tombstones(device),
+        )
+        .await
+        .expect_err("清单 PUT 失败必须让 upload 整体报错");
+        assert!(
+            error.to_string().contains("blob tombstone 清单 上传失败"),
+            "拒绝原因必须指向清单上传，实际: {error}"
+        );
+
+        // 撕裂态：恰有一条事件、无清单。
+        let event_keys = storage
+            .inner
+            .list(&event_device_prefix("blobs", device))
+            .await
+            .unwrap();
+        assert_eq!(event_keys.len(), 1, "撕裂窗口内事件恰一条: {event_keys:?}");
+        assert_eq!(event_seq_from_key(&event_keys[0].key), Some(1));
+        assert!(
+            storage
+                .inner
+                .get(&blob_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .is_none(),
+            "清单不得在撕裂窗口内出现"
+        );
+
+        // 撕裂窗口内 v4 双读消费方已能看到删除意图（事件权威，删除不丢）。
+        let merged = download_blob_tombstones(&storage, &PlainCodec)
+            .await
+            .expect("撕裂态不得让 v4 双读失败");
+        assert!(
+            merged.entries.contains_key(&hash),
+            "事件已落即删除意图可见，清单缺失不得掩盖"
+        );
+
+        // 第二次调用（重试交错）：同 operation_id 幂等重绑，无第二个事件。
+        storage.heal();
+        upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device,
+            sample_blob_tombstones(device),
+        )
+        .await
+        .expect("清单恢复可写后重试必须收敛");
+
+        let event_keys = storage
+            .inner
+            .list(&event_device_prefix("blobs", device))
+            .await
+            .unwrap();
+        assert_eq!(
+            event_keys.len(),
+            1,
+            "同 operation_id 重试不得产生第二个事件: {event_keys:?}"
+        );
+        assert_eq!(event_seq_from_key(&event_keys[0].key), Some(1));
+        assert!(
+            storage
+                .inner
+                .get(&blob_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .is_some(),
+            "重试后清单必须落地"
+        );
+
+        let (merged, advances) = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("收敛后的事件流必须无断层可消费");
+        assert_eq!(merged.entries.len(), 1, "同一删除只出现一次");
+        assert!(
+            advances.iter().any(|advance| {
+                advance.source_device_id == format!("event:{device}")
+                    && advance.last_applied_offset == 1
+            }),
+            "事件水位推进到 seq=1: {advances:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn interleaved_blob_dual_writes_extend_stream_without_gap_or_duplicate() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
+        let storage = TornManifestPut::failing();
+        let device = "r7-tomb-interleave-extend-device";
+        let first_hash = "aa".repeat(32);
+        let second_hash = "bb".repeat(32);
+
+        // 第一次调用 {X}：事件 seq=1 已落，清单失败（撕裂）。
+        upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device,
+            sample_blob_tombstones(device),
+        )
+        .await
+        .expect_err("撕裂注入下第一次调用必须报错");
+
+        // 撕裂窗口内本地又发生一次删除；第二次调用携带 RMW 合并后的 {X, Y}。
+        storage.heal();
+        let mut merged_manifest = sample_blob_tombstones(device);
+        merged_manifest.entries.insert(
+            second_hash.clone(),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-02T00:00:00Z".to_string(),
+                device_id: device.to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        upload_blob_tombstones(&storage, &PlainCodec, device, merged_manifest)
+            .await
+            .expect("交错追加的第二次调用必须成功");
+
+        // X 保持 seq=1（幂等重绑），Y 顺延 seq=2；流无断层、无重复。
+        let events = download_events(&storage.inner, &PlainCodec, "blobs")
+            .await
+            .expect("交错后事件流必须可完整下载");
+        assert_eq!(events.len(), 2, "恰两条事件: {events:?}");
+        assert_eq!(events[0].seq, 1);
+        assert_eq!(events[0].object_id, first_hash);
+        assert_eq!(events[1].seq, 2);
+        assert_eq!(events[1].object_id, second_hash);
+
+        let (merged, advances) = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("交错后的双读必须无断层");
+        assert!(merged.entries.contains_key(&first_hash));
+        assert!(merged.entries.contains_key(&second_hash));
+        assert!(
+            advances.iter().any(|advance| {
+                advance.source_device_id == format!("event:{device}")
+                    && advance.last_applied_offset == 2
+            }),
+            "事件水位推进到 seq=2: {advances:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cross_device_dual_write_interleaving_keeps_streams_independent() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
+        let storage = TornManifestPut::failing();
+        let device_a = "r7-tomb-cross-device-a";
+        let device_b = "r7-tomb-cross-device-b";
+
+        // A 撕裂：事件已落、清单未落。
+        upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device_a,
+            sample_blob_tombstones(device_a),
+        )
+        .await
+        .expect_err("A 的撕裂调用必须报错");
+
+        // B 的完整双写落在 A 的撕裂窗口内。
+        storage.heal();
+        let mut manifest_b = BlobTombstones::default();
+        manifest_b.entries.insert(
+            "bb".repeat(32),
+            BlobTombstoneEntry {
+                deleted_at: "2026-08-02T00:00:00Z".to_string(),
+                device_id: device_b.to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        upload_blob_tombstones(&storage, &PlainCodec, device_b, manifest_b)
+            .await
+            .expect("B 的完整双写不受 A 撕裂影响");
+
+        // A 重试收敛。
+        upload_blob_tombstones(
+            &storage,
+            &PlainCodec,
+            device_a,
+            sample_blob_tombstones(device_a),
+        )
+        .await
+        .expect("A 重试必须收敛");
+
+        // 两台设备各自恰一条事件、seq 均为 1（每设备独立流，互不扰动）。
+        for device in [device_a, device_b] {
+            let keys = storage
+                .inner
+                .list(&event_device_prefix("blobs", device))
+                .await
+                .unwrap();
+            assert_eq!(keys.len(), 1, "设备 {device} 事件恰一条: {keys:?}");
+            assert_eq!(event_seq_from_key(&keys[0].key), Some(1));
+        }
+
+        let (merged, advances) = download_blob_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("跨设备交错后的双读必须无断层");
+        assert!(merged.entries.contains_key(&"aa".repeat(32)));
+        assert!(merged.entries.contains_key(&"bb".repeat(32)));
+        for device in [device_a, device_b] {
+            assert!(
+                advances.iter().any(|advance| {
+                    advance.source_device_id == format!("event:{device}")
+                        && advance.last_applied_offset == 1
+                }),
+                "设备 {device} 事件水位独立推进到 1: {advances:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn torn_asset_dual_write_retry_converges_without_duplicate_event() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
+        let storage = TornManifestPut::failing();
+        let device = "r7-tomb-torn-asset-device";
+        let object = "active/images/r7-torn.png";
+        let mut manifest = AssetTombstones::default();
+        manifest.entries.insert(
+            object.to_string(),
+            AssetTombstoneEntry {
+                deleted_at: "2026-08-01T00:00:00Z".to_string(),
+                device_id: device.to_string(),
+                size: Some(3),
+            },
+        );
+
+        let error = upload_asset_tombstones(&storage, &PlainCodec, device, manifest.clone())
+            .await
+            .expect_err("asset 清单 PUT 失败必须让 upload 整体报错");
+        assert!(
+            error.to_string().contains("asset tombstone 清单 上传失败"),
+            "拒绝原因必须指向 asset 清单上传，实际: {error}"
+        );
+        assert!(
+            storage
+                .inner
+                .get(&asset_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .is_none(),
+            "asset 清单不得在撕裂窗口内出现"
+        );
+
+        storage.heal();
+        upload_asset_tombstones(&storage, &PlainCodec, device, manifest)
+            .await
+            .expect("asset 重试必须收敛");
+
+        let keys = storage
+            .inner
+            .list(&event_device_prefix("assets", device))
+            .await
+            .unwrap();
+        assert_eq!(keys.len(), 1, "asset 事件不得因重试而重复: {keys:?}");
+        assert_eq!(event_seq_from_key(&keys[0].key), Some(1));
+
+        let (merged, advances) = download_asset_tombstones_after(&storage, &PlainCodec, |_| Ok(0))
+            .await
+            .expect("asset 收敛后的双读必须无断层");
+        assert_eq!(merged.entries.len(), 1);
+        assert_eq!(merged.entries[object].size, Some(3));
+        assert!(
+            advances.iter().any(|advance| {
+                advance.source_device_id == format!("event:{device}")
+                    && advance.last_applied_offset == 1
+            }),
+            "asset 事件水位推进到 seq=1: {advances:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn conflicting_same_operation_rewrite_fails_closed_and_keeps_original_event() {
+        let _db_guard = super::super::state::test_write_lock().lock().await;
+        let storage = MemoryStorage::default();
+        let device = "r7-tomb-conflicting-rewrite-device";
+        let hash = "cc".repeat(32);
+        let deleted_at = "2026-08-03T00:00:00Z";
+
+        let mut original = BlobTombstones::default();
+        original.entries.insert(
+            hash.clone(),
+            BlobTombstoneEntry {
+                deleted_at: deleted_at.to_string(),
+                device_id: device.to_string(),
+                size: None,
+                relative_path: None,
+            },
+        );
+        upload_blob_tombstones(&storage, &PlainCodec, device, original)
+            .await
+            .expect("第一次双写必须成功");
+        let manifest_bytes_after_first = storage
+            .get(&blob_device_tombstone_key(device))
+            .await
+            .unwrap()
+            .expect("第一次双写后清单必须存在");
+
+        // 交错的第二次调用改写同一 operation（同 object_id + deleted_at，
+        // 但 size 不同）→ 同 key 内容不同，必须 fail-closed。
+        let mut conflicting = BlobTombstones::default();
+        conflicting.entries.insert(
+            hash.clone(),
+            BlobTombstoneEntry {
+                deleted_at: deleted_at.to_string(),
+                device_id: device.to_string(),
+                size: Some(7),
+                relative_path: None,
+            },
+        );
+        let error = upload_blob_tombstones(&storage, &PlainCodec, device, conflicting)
+            .await
+            .expect_err("同 operation 的冲突改写必须被拒绝");
+        assert!(
+            error.to_string().contains("冲突且内容不同"),
+            "拒绝原因必须指向不可变事件冲突，实际: {error}"
+        );
+
+        // 云端保留原始事件与原始清单（第二次调用在清单写入前已中止）。
+        let events = download_events(&storage, &PlainCodec, "blobs")
+            .await
+            .expect("冲突被拒后事件流仍完整");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].size, None, "原始事件不得被改写");
+        assert_eq!(
+            storage
+                .get(&blob_device_tombstone_key(device))
+                .await
+                .unwrap()
+                .expect("原始清单必须仍在"),
+            manifest_bytes_after_first,
+            "冲突改写不得触碰既有清单"
+        );
+    }
 }

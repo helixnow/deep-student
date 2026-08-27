@@ -171,3 +171,53 @@ describe('nodeMatchesProps', () => {
     expect(nodeMatchesProps(metadata, [])).toBe(true);
   });
 });
+
+/**
+ * 共享键语法测试向量 —— 前端镜像。
+ * canonical 定义：src-tauri/src/vfs/note_props.rs 的 `test_vectors` 模块
+ * （写侧 validate_prop_key 与后端搜索 normalize_prop_filters 共用同一组向量）。
+ * 改动任一侧键语法时必须同步更新两处向量。
+ */
+const SHARED_VALID_OPERATOR_KEYS: readonly string[] = [
+  'status', 'Status', '优先级', 'due_date', 'sprint-42', 'p0', '_internal', 'k',
+];
+
+const SHARED_STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS: readonly string[] = [
+  'my key', // 含空格：操作符按空白分词
+  'a:b', // 含冒号：会被解析成 key=a value=b…
+  'emoji🙂', // 🙂 不属于 \p{L}\p{N}_-
+  '-lead', // 首字符不允许连字符
+  '得 分', // CJK + 空格
+];
+
+describe('shared prop key syntax vectors (mirror of vfs::note_props::test_vectors)', () => {
+  it('parses every valid operator key as a prop filter', () => {
+    for (const key of SHARED_VALID_OPERATOR_KEYS) {
+      const parsed = parseSearchOperators(`${key}:hit`);
+      expect(parsed.props, `合法键 ${key} 应解析为属性过滤器`).toEqual([{ key, value: 'hit' }]);
+      expect(parsed.textQuery).toBe('');
+    }
+  });
+
+  it('cannot express storable-but-unsearchable keys via operator syntax', () => {
+    for (const key of SHARED_STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS) {
+      const parsed = parseSearchOperators(`${key}:hit`);
+      // 这些键写侧可存，但操作符语法无法完整表达该键：
+      // 要么整个 token 落回纯文本，要么被拆解成别的键——绝不会等于原键
+      expect(
+        parsed.props.some((filter) => filter.key === key),
+        `键 ${key} 不应被操作符语法表达`,
+      ).toBe(false);
+    }
+  });
+
+  it('routes reserved operator keys (tag/path) away from prop filters', () => {
+    // 保留键在写侧会被拒绝（NOTE_PROPS_RESERVED_KEYS），搜索侧则有专属语义
+    const parsed = parseSearchOperators('tag:math path:course title:x');
+    expect(parsed.tags).toEqual(['math']);
+    expect(parsed.paths).toEqual(['course']);
+    // title 等保留键仍会进入 props 过滤器，但写侧存不进（永不命中），
+    // 与后端 normalize_prop_filters 的宽松语义一致
+    expect(parsed.props).toEqual([{ key: 'title', value: 'x' }]);
+  });
+});

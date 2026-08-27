@@ -1171,9 +1171,41 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<usize, AssetBackupError
     Ok(count)
 }
 
+/// G1（R7）：`restore_assets_with_progress` 函数本体的信任判定。
+///
+/// UntrustedExecutable 域（agents / user-skills）的资产绝不经该函数写入
+/// 正式目录——即使调用方漏过滤（槽恢复路径曾把 `manifest.assets.files`
+/// 全量传入）。判定口径与 `backup/mod.rs::asset_requires_explicit_trust`、
+/// `commands_restore.rs::asset_requires_explicit_trust_for_slot` 三处一致：
+/// 归档相对路径命中域的 `archive_root` / agents 的 `workspaces/agents`
+/// 前缀，或恢复目标路径命中域的 `restore_target`，任一命中即拒绝自动落盘。
+fn asset_requires_explicit_trust_in_restore(asset: &BackedUpAsset) -> bool {
+    use super::{persistent_domain_registry, RestoreTrustPolicy};
+
+    fn path_is_at_or_below(path: &str, root: &str) -> bool {
+        path == root
+            || path
+                .strip_prefix(root)
+                .is_some_and(|suffix| suffix.starts_with('/'))
+    }
+
+    persistent_domain_registry().into_iter().any(|spec| {
+        spec.restore_trust == RestoreTrustPolicy::UntrustedExecutable
+            && (path_is_at_or_below(&asset.relative_path, &spec.archive_root)
+                || (spec.id == "agents"
+                    && path_is_at_or_below(&asset.relative_path, "workspaces/agents"))
+                || path_is_at_or_below(&asset.original_path, &spec.restore_target))
+    })
+}
+
 /// 带进度回调的资产恢复（基于 manifest.assets 列表）
 ///
 /// `on_progress` 回调参数: (已恢复数, 总数)
+///
+/// G1（R7）：函数本体对 UntrustedExecutable 域（agents / user-skills）
+/// fail-closed——命中的资产被跳过、绝不写入正式目录（它们由
+/// DomainRestorePlan 隔离到 `.restore_pending_trust` 等待显式信任决定），
+/// 普通资产照常恢复；跳过的条目不计入进度总数。
 pub fn restore_assets_with_progress<F>(
     backup_dir: &Path,
     app_data_dir: &Path,
@@ -1190,11 +1222,31 @@ where
         assets.len()
     );
 
-    let total = assets.iter().filter(|a| !a.is_directory).count();
+    let untrusted_skipped = assets
+        .iter()
+        .filter(|a| !a.is_directory && asset_requires_explicit_trust_in_restore(a))
+        .count();
+    if untrusted_skipped > 0 {
+        warn!(
+            "恢复资产(带进度): 跳过 {} 个 UntrustedExecutable 域资产（不自动落盘，待显式信任决定）",
+            untrusted_skipped
+        );
+    }
+
+    let total = assets
+        .iter()
+        .filter(|a| !a.is_directory && !asset_requires_explicit_trust_in_restore(a))
+        .count();
     let mut restored_count = 0;
 
     for asset in assets {
         if asset.is_directory {
+            continue;
+        }
+
+        // G1 fail-closed：可执行域资产在函数本体拦截，跳过且绝不落盘；
+        // 普通资产继续恢复。
+        if asset_requires_explicit_trust_in_restore(asset) {
             continue;
         }
 
@@ -1871,6 +1923,84 @@ mod tests {
         );
 
         assert!(matches!(result, Err(AssetBackupError::Cancelled)));
+    }
+
+    /// G1（R7）：即使调用方漏过滤，函数本体也必须跳过 UntrustedExecutable
+    /// 域（agents）资产——绝不写入正式目录；普通资产照常恢复，且被跳过的
+    /// 条目不计入进度总数。
+    #[test]
+    fn test_restore_assets_with_progress_skips_untrusted_executable_assets() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+
+        create_test_file(
+            backup_dir.path(),
+            "assets/workspaces/agents/hook.sh",
+            b"#!/bin/sh\nrm -rf /",
+        );
+        create_test_file(
+            backup_dir.path(),
+            "assets/workspaces/notes/readme.md",
+            b"plain notes",
+        );
+
+        let agent = BackedUpAsset {
+            asset_type: AssetType::Workspaces,
+            relative_path: "assets/workspaces/agents/hook.sh".to_string(),
+            original_path: "workspaces/agents/hook.sh".to_string(),
+            size: 18,
+            checksum: None,
+            modified_at: None,
+            is_directory: false,
+        };
+        let ordinary = BackedUpAsset {
+            relative_path: "assets/workspaces/notes/readme.md".to_string(),
+            original_path: "workspaces/notes/readme.md".to_string(),
+            size: 11,
+            ..agent.clone()
+        };
+        assert!(asset_requires_explicit_trust_in_restore(&agent));
+        assert!(!asset_requires_explicit_trust_in_restore(&ordinary));
+
+        let progress_calls = std::sync::Mutex::new(Vec::<(usize, usize)>::new());
+        let restored = restore_assets_with_progress(
+            backup_dir.path(),
+            app_data_dir.path(),
+            &[agent, ordinary],
+            |restored, total| {
+                progress_calls.lock().unwrap().push((restored, total));
+                true
+            },
+        )
+        .expect("普通资产必须照常恢复，可执行域资产只跳过不致错");
+
+        assert_eq!(restored, 1, "只有普通资产被恢复");
+        assert!(
+            !app_data_dir
+                .path()
+                .join("workspaces")
+                .join("agents")
+                .join("hook.sh")
+                .exists(),
+            "agents 可执行资产绝不经本函数写入正式目录"
+        );
+        assert_eq!(
+            fs::read(
+                app_data_dir
+                    .path()
+                    .join("workspaces")
+                    .join("notes")
+                    .join("readme.md")
+            )
+            .unwrap(),
+            b"plain notes",
+            "普通资产仍须恢复"
+        );
+        assert_eq!(
+            progress_calls.lock().unwrap().as_slice(),
+            &[(1, 1)],
+            "被跳过的可执行资产不得计入进度总数"
+        );
     }
 
     #[test]

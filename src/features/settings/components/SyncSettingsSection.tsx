@@ -120,7 +120,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     (s) => s.consecutiveFailures
   );
   useEffect(() => {
-    // 幂等：开关持久化为开时，进入本设置区块即恢复调度
+    // 兼容性双保险：主启动点已上移到 App.tsx（hydration 完成后启动），
+    // 此处调用仍幂等，仅兜底 App 挂载链路之外的极端渲染场景
     ensureAutoSyncSchedulerStarted();
   }, []);
 

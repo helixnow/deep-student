@@ -9,7 +9,11 @@
  * - `wrongPassword`：加密密码与云端既有数据不一致
  *   （标记校验子不一致、DSBK AEAD 解密失败）；
  * - `markerCorrupted`：云端 `.encryption-marker` 损坏/异常导致 fail-closed；
- * - `passwordRequired`：云端已加密，但本机未提供 / 未配置解密密码。
+ * - `passwordRequired`：云端已加密，但本机未提供 / 未配置解密密码；
+ * - `downgradeRejected`：[R4-antidegrade] 云端有加密标记但下载对象不是 DSBK
+ *   密文，疑似密文被明文替换（降级攻击），下载侧默认拒收；
+ * - `claimConflict`：[R4-e2ee-cas] 加密标记认领租约被其他设备持有 / 标记被
+ *   并发创建或改动，本次操作已安全中止，重试即可。
  *
  * 匹配片段与 src-tauri 侧错误文案的对应关系由
  * `tests/vitest/data-governance/syncE2eeErrorMapping.test.ts` 用后端原文钉死。
@@ -19,7 +23,9 @@ export type SyncE2eeErrorKind =
   | 'plaintextLegacyRejected'
   | 'wrongPassword'
   | 'markerCorrupted'
-  | 'passwordRequired';
+  | 'passwordRequired'
+  | 'downgradeRejected'
+  | 'claimConflict';
 
 /** 与 `src-tauri/src/cloud_storage/mod.rs` 同名常量对齐。 */
 export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE =
@@ -27,13 +33,18 @@ export const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE =
 export const SYNC_E2EE_WRONG_PASSWORD_CODE = 'E_SYNC_E2EE_WRONG_PASSWORD';
 export const SYNC_E2EE_MARKER_CORRUPTED_CODE = 'E_SYNC_E2EE_MARKER_CORRUPTED';
 export const SYNC_E2EE_PASSWORD_REQUIRED_CODE = 'E_SYNC_E2EE_PASSWORD_REQUIRED';
+export const SYNC_E2EE_DOWNGRADE_REJECTED_CODE = 'E_SYNC_E2EE_DOWNGRADE_REJECTED';
+/** 与 `src-tauri/src/cloud_storage/e2ee_claim.rs` 同名常量对齐。 */
+export const SYNC_E2EE_CLAIM_CONFLICT_CODE = 'E_SYNC_E2EE_CLAIM_CONFLICT';
 
-/** 四类错误对应的 i18n key（zh/en 均在 cloudStorage.json 的 errors 下）。 */
+/** 各类错误对应的 i18n key（zh/en 均在 cloudStorage.json 的 errors 下）。 */
 export const SYNC_E2EE_ERROR_I18N_KEYS = {
   plaintextLegacyRejected: 'cloudStorage:errors.e2eePlaintextLegacyRejected',
   wrongPassword: 'cloudStorage:errors.e2eeWrongPassword',
   markerCorrupted: 'cloudStorage:errors.e2eeMarkerCorrupted',
   passwordRequired: 'cloudStorage:errors.e2eePasswordRequired',
+  downgradeRejected: 'cloudStorage:errors.e2eeDowngradeRejected',
+  claimConflict: 'cloudStorage:errors.e2eeClaimConflict',
 } as const;
 
 const CODE_KINDS: readonly { code: string; kind: SyncE2eeErrorKind }[] = [
@@ -45,6 +56,8 @@ const CODE_KINDS: readonly { code: string; kind: SyncE2eeErrorKind }[] = [
     kind: 'plaintextLegacyRejected',
   },
   { code: SYNC_E2EE_PASSWORD_REQUIRED_CODE, kind: 'passwordRequired' },
+  { code: SYNC_E2EE_DOWNGRADE_REJECTED_CODE, kind: 'downgradeRejected' },
+  { code: SYNC_E2EE_CLAIM_CONFLICT_CODE, kind: 'claimConflict' },
 ];
 
 interface SyncE2eeErrorMatcher {
@@ -66,6 +79,22 @@ const MATCHERS: readonly SyncE2eeErrorMatcher[] = [
       /缺少密码校验子/,
       // sync_manager.rs：“无法校验云端加密标记的密码校验子（fail-closed…”
       /无法校验云端加密标记/,
+    ],
+  },
+  {
+    // 防降级文案含“明文替换”，须先于 plaintextLegacyRejected 判定。
+    kind: 'downgradeRejected',
+    patterns: [
+      // cloud_storage/mod.rs ensure_download_not_degraded：“…疑似密文被明文替换（降级攻击）…”
+      /疑似密文被明文替换/,
+    ],
+  },
+  {
+    kind: 'claimConflict',
+    patterns: [
+      // e2ee_claim.rs claim_conflict 系列 / sync_manager.rs 发布前复验：
+      // “…（认领竞态或标记被并发改动）…”“…认领租约…”“认领对象 … 超过 … 上限”
+      /认领/,
     ],
   },
   {
