@@ -915,7 +915,10 @@ pub async fn cloud_config_publish(
             Some(encoded) => state
                 .database
                 .save_setting(CLOUD_CONFIG_SSOT_SETTING_KEY, encoded),
-            None => state.database.delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY),
+            None => state
+                .database
+                .delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
+                .map(|_| ()),
         };
         if let Err(restore_error) = &restored {
             tracing::warn!(
