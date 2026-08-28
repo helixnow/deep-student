@@ -793,6 +793,10 @@ mod tests {
             "../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
         ))
         .expect("apply cache_write_tokens migration");
+        conn.execute_batch(include_str!(
+            "../../../migrations/llm_usage/V20260826__add_stream_identity.sql"
+        ))
+        .expect("apply stream identity migration");
         conn
     }
 

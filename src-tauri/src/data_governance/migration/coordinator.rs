@@ -9108,7 +9108,10 @@ mod tests {
             .migrate_single(DatabaseId::LlmUsage)
             .expect("dedicated V20260824 repair must avoid duplicate column");
         assert!(report.success);
-        assert_eq!(report.to_version, 20260824);
+        assert_eq!(
+            report.to_version,
+            LLM_USAGE_MIGRATION_SET.latest_version() as u32
+        );
 
         let conn = rusqlite::Connection::open(&db_path).unwrap();
         let history_count: i64 = conn
