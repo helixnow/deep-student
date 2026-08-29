@@ -490,10 +490,10 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
           <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 1 }}>{t('debug_panel.plugin_web_search_desc', '监听外部搜索开启、调用、上下文注入和来源信息')}</div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={copyLogs} title={t('debug_panel.copy_logs', '复制日志')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px', fontSize: 10, background: '#334155', color: '#e2e8f0', borderRadius: 4 }}>
+          <button onClick={copyLogs} title={t('debug_panel.copy_logs', '复制日志')} className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px', fontSize: 10, background: '#334155', color: '#e2e8f0', borderRadius: 4 }}>
             <Copy size={12} /> {t('debug_panel.copy_logs', '复制日志')}
           </button>
-          <button onClick={exportLogs} title={t('common:actions.export')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px', fontSize: 10, background: '#2563eb', color: '#fff', borderRadius: 4 }}>
+          <button onClick={exportLogs} title={t('common:actions.export')} className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px', fontSize: 10, background: '#2563eb', color: '#fff', borderRadius: 4 }}>
             <FloppyDisk size={12} /> {t('common:actions.export')}
           </button>
         </div>
@@ -539,6 +539,7 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
           <select 
             value={kindFilter} 
             onChange={e => setKindFilter(e.target.value as any)}
+            className="[@media(pointer:coarse)]:min-h-11"
             style={{ background: 'transparent', border: 0, outline: 'none', color: '#e2e8f0', fontSize: 10 }}
           >
             <option value="all">全部类型</option>
@@ -552,12 +553,12 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
           </select>
         </div>
         
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
           <Switch size="sm" checked={onlyActive} onCheckedChange={setOnlyActive} /> 
           当前流
         </label>
         
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
+        <label className="[@media(pointer:coarse)]:min-h-11" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
           <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 
           仅错误
         </label>
@@ -567,12 +568,14 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
             value={keyword} 
             onChange={e => setKeyword(e.target.value)} 
             placeholder="关键词搜索..." 
+            className="[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:!text-base"
             style={{ background: 'transparent', border: 0, outline: 'none', color: '#e2e8f0', fontSize: 10, flex: 1 }} 
           />
         </div>
         
         <button 
           onClick={() => setLogs([])} 
+          className="[@media(pointer:coarse)]:min-h-11"
           style={{ fontSize: 10, color: '#94a3b8', background: 'transparent', border: '1px solid #334155', borderRadius: 4, padding: '2px 6px' }}
         >
           清空日志
