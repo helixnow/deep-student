@@ -1332,19 +1332,49 @@ mod tests {
         let protected = writable.path().join(".git");
         fs::create_dir(&protected).unwrap();
         let blocked_file = protected.join("config");
+        // Discriminator: a write outside every granted root must be denied by the
+        // AppContainer default-deny. If this file appears, the process was not
+        // sandboxed at all; if only `blocked_file` appears, the explicit DENY ACE
+        // on the protected directory was bypassed.
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("outside.txt");
         let mut sandbox_policy = policy(writable.path(), writable.path());
-        sandbox_policy.protected_write_roots.push(protected);
-        let payload = WindowsSandboxPayload {
+        sandbox_policy.protected_write_roots.push(protected.clone());
+        let mut payload = WindowsSandboxPayload {
             command: format!(
-                "Set-Content -LiteralPath '{}' -Value blocked",
-                blocked_file.display()
+                "Set-Content -LiteralPath '{}' -Value blocked; Set-Content -LiteralPath '{}' -Value outside",
+                blocked_file.display(),
+                outside_file.display()
             ),
             cwd: writable.path().to_path_buf(),
             policy: sandbox_policy,
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
         };
-        let _ = run_payload(payload, None).unwrap();
+        // DIAGNOSTIC(CI): orchestrate run_payload manually so the protected DACL
+        // can be dumped while the deny ACE is in effect. Root-causing the CI-only
+        // failure where the protected write unexpectedly succeeds.
+        validate_payload(&mut payload).unwrap();
+        let capabilities: Vec<SID_AND_ATTRIBUTES> = Vec::new();
+        let profile = create_profile(&payload.profile_name, &capabilities).unwrap();
+        let changed_paths = grant_policy(&payload.policy, profile.sid).unwrap();
+        let acl_dump_command = format!(
+            "(Get-Acl -LiteralPath '{}').Access | ForEach-Object {{ \"$($_.IdentityReference) | $($_.AccessControlType) | $($_.FileSystemRights) | inherited=$($_.IsInherited)\" }}",
+            protected.display()
+        );
+        let dump = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", acl_dump_command.as_str()])
+            .output()
+            .unwrap();
+        eprintln!(
+            "=== protected DACL while deny is applied ===\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&dump.stdout),
+            String::from_utf8_lossy(&dump.stderr)
+        );
+        let result = run_appcontainer_process(&payload, profile.sid, &capabilities, None);
+        revoke_policy(&changed_paths, profile.sid);
+        result.unwrap();
         assert!(!blocked_file.exists());
+        assert!(!outside_file.exists());
     }
 
     #[test]
