@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import i18n from '@/i18n';
 import { dstu } from '../api';
 import type { DstuNode, DstuListOptions } from '../types';
 import { type VfsError, reportError } from '@/shared/result';
@@ -108,7 +109,7 @@ export function useDstuList(
         setTotal(reset ? result.value.length : offset + result.value.length);
       }
     } else {
-      reportError(result.error, '加载列表');
+      reportError(result.error, i18n.t('stats:dstu.load_list', { defaultValue: '加载列表' }));
       setError(result.error);
     }
 

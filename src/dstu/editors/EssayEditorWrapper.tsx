@@ -177,7 +177,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 [@media(pointer:coarse)]:min-h-11"
             onClick={() => void loadEssay()}
           >
             <ArrowClockwise size={16} />
@@ -185,7 +185,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:min-h-11"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -218,7 +218,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         <div className="flex items-center gap-2">
           {'onClose' in props && props.onClose && (
             <button
-              className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
+              className="px-3 py-1 text-sm [@media(pointer:coarse)]:min-h-11 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={props.onClose}
             >
               {t('common:actions.close')}
@@ -227,7 +227,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           {!isReadOnly && !isViewMode && (
             <button
               className={cn(
-                "inline-flex items-center gap-1.5 px-3 py-1 text-sm rounded-md disabled:opacity-50 disabled:cursor-not-allowed",
+                "inline-flex items-center gap-1.5 px-3 py-1 text-sm [@media(pointer:coarse)]:min-h-11 rounded-md disabled:opacity-50 disabled:cursor-not-allowed",
                 isParseError
                   ? "bg-muted text-muted-foreground cursor-not-allowed"
                   : "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -257,7 +257,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
                 {t('dstu:errors.essayParseErrorDetailDesc')}
               </p>
               <button
-                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
+                className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs [@media(pointer:coarse)]:min-h-11 bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
                 onClick={() => void loadEssay()}
               >
                 <ArrowClockwise size={12} />

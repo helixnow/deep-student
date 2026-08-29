@@ -7,6 +7,8 @@
  * 数据契约来源：21-VFS虚拟文件系统架构设计.md 第四章 4.2
  */
 
+import i18n from '@/i18n';
+
 // ============================================================================
 // 核心类型
 // ============================================================================
@@ -166,6 +168,9 @@ export interface DstuListOptions {
 
   /** 标签过滤（仅笔记类资源） */
   tags?: string[];
+
+  /** notes.props 自定义属性过滤（键不区分大小写，值为包含匹配） */
+  propFilters?: Array<{ key: string; value: string }>;
 
   /** 排序字段 */
   sortBy?: 'name' | 'createdAt' | 'updatedAt';
@@ -455,13 +460,20 @@ export interface DstuEmptyResourceTemplate {
  * 各资源类型的空文件模板
  *
  * 新建资源时使用这些默认值
+ *
+ * 注意：defaultName / content 中可本地化的字段实现为 getter，
+ * 读取时按当前语言经 i18n 求值（模块加载时机早于 locale 就绪，
+ * 普通属性会把中文字面量冻死）。仅复用取值与原文完全相等的已有 key；
+ * 无对应 key 的名称保持字面量，避免改动产品文案。
  */
 export const EMPTY_RESOURCE_TEMPLATES: Record<
   Exclude<DstuNodeType, 'folder' | 'file' | 'image'>,
   DstuEmptyResourceTemplate
 > = {
   note: {
-    defaultName: '无标题笔记',
+    get defaultName() {
+      return i18n.t('learningHub:contextMenu.untitledNote', { defaultValue: '无标题笔记' });
+    },
     content: '',
     metadata: { tags: [] },
     previewType: 'markdown',
@@ -498,23 +510,29 @@ export const EMPTY_RESOURCE_TEMPLATES: Record<
     previewType: 'markdown',
   },
   mindmap: {
-    defaultName: '新思维导图',
-    content: JSON.stringify({
-      version: '1.0',
-      root: {
-        id: 'root',
-        text: '中心主题',
-        children: []
-      },
-      meta: {
-        createdAt: new Date().toISOString()
-      }
-    }),
+    get defaultName() {
+      return i18n.t('mindmap:embed.newMindMap', { defaultValue: '新思维导图' });
+    },
+    get content() {
+      return JSON.stringify({
+        version: '1.0',
+        root: {
+          id: 'root',
+          text: i18n.t('mindmap:placeholder.root', { defaultValue: '中心主题' }),
+          children: []
+        },
+        meta: {
+          createdAt: new Date().toISOString()
+        }
+      });
+    },
     metadata: { theme: 'default', defaultView: 'mindmap' },
     previewType: 'mindmap',
   },
   retrieval: {
-    defaultName: '检索结果',
+    get defaultName() {
+      return i18n.t('enhanced_rag:rag_search.results_title', { defaultValue: '检索结果' });
+    },
     content: '',
     metadata: { type: 'rag_result', query: '' },
     previewType: 'markdown',

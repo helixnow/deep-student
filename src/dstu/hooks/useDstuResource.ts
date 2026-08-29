@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { dstu } from '../api';
 import type { DstuNode, DstuCreateOptions } from '../types';
 import { type VfsError, reportError } from '@/shared/result';
+import i18n from '@/i18n';
 
 // ============================================================================
 // 类型定义
@@ -107,12 +108,12 @@ export function useDstuResource(
             setOriginalContent(null);
           }
         } else {
-          reportError(contentResult.error, 'Get content');
+          reportError(contentResult.error, i18n.t('dstu:resource.getResource', { defaultValue: 'Load resource' }));
           setError(contentResult.error);
         }
       }
     } else {
-      reportError(nodeResult.error, 'Get resource');
+      reportError(nodeResult.error, i18n.t('dstu:resource.getResource', { defaultValue: 'Load resource' }));
       setError(nodeResult.error);
     }
 
@@ -142,7 +143,7 @@ export function useDstuResource(
       setNode(result.value);
       setOriginalContent(content);
     } else {
-      reportError(result.error, 'Save resource');
+      reportError(result.error, i18n.t('common:save', { defaultValue: '保存' }));
       setError(result.error);
       throw result.error;
     }
@@ -163,7 +164,7 @@ export function useDstuResource(
       setContentState(null);
       setOriginalContent(null);
     } else {
-      reportError(result.error, 'Delete resource');
+      reportError(result.error, i18n.t('common:delete', { defaultValue: '删除' }));
       setError(result.error);
       throw result.error;
     }
@@ -221,7 +222,7 @@ export function useDstuCreate(): UseDstuCreateReturn {
       setCreating(false);
       return result.value;
     } else {
-      reportError(result.error, 'Create resource');
+      reportError(result.error, i18n.t('common:create', { defaultValue: '新建' }));
       setError(result.error);
       setCreating(false);
       throw result.error;
@@ -294,7 +295,7 @@ export function useDstuSearch(options: UseDstuSearchOptions = {}): UseDstuSearch
       if (result.ok) {
         setResults(result.value);
       } else {
-        reportError(result.error, 'Search resource');
+        reportError(result.error, i18n.t('common:search', { defaultValue: '搜索' }));
         setError(result.error);
       }
 

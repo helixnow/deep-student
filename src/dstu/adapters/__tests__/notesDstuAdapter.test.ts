@@ -20,6 +20,7 @@ vi.mock('i18next', () => ({
 }));
 
 vi.mock('@/utils/fileManager', () => ({
+  isGenericPlaceholderFileName: (name: string) => name === '文件' || name === 'File',
   isOpaqueDocumentId: (name: string) => {
     // 含冒号且冒号后全是数字
     const colonIdx = name.indexOf(':');
@@ -145,6 +146,23 @@ describe('notesDstuAdapter markdown import', async () => {
 
     await notesDstuAdapter.importMarkdownContent(
       '文件',
+      '没有标题的普通文本',
+    );
+
+    expect(createMock).toHaveBeenCalledWith('/', expect.objectContaining({
+      type: 'note',
+      name: expect.stringMatching(/^导入笔记_/),
+    }));
+  });
+
+  it('generates timestamp title when filename is the English File placeholder', async () => {
+    createMock.mockResolvedValue({
+      ok: true,
+      value: { id: 'note_6', name: '导入笔记_test', type: 'note' },
+    });
+
+    await notesDstuAdapter.importMarkdownContent(
+      'File',
       '没有标题的普通文本',
     );
 

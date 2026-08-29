@@ -6,6 +6,7 @@
  * @see 22-VFS与DSTU访达协议层改造任务分配.md Prompt 10
  */
 
+import i18next from 'i18next';
 import { dstu } from '../api';
 import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuListOptions } from '../types';
@@ -29,12 +30,16 @@ export interface TranslationSession {
   sourceText: string;
   /** 译文 */
   translatedText: string;
-  /** 源语言代码 */
-  srcLang: string;
-  /** 目标语言代码 */
-  tgtLang: string;
-  /** 正式度：formal（正式）、casual（随意）、auto（自动） */
-  formality: 'formal' | 'casual' | 'auto';
+  /**
+   * 源语言代码。
+   * 节点未持久化语向时为 undefined（不注入幽灵 'auto' 默认值），
+   * 由工作台按「会话值 → 用户偏好 → 内建默认」链路回填。
+   */
+  srcLang?: string;
+  /** 目标语言代码（同 srcLang：缺失时不注入幽灵 'zh-CN'） */
+  tgtLang?: string;
+  /** 正式度：formal（正式）、casual（随意）、auto（自动）；缺失时不注入默认 */
+  formality?: 'formal' | 'casual' | 'auto';
   /** 自定义提示词 */
   customPrompt?: string;
   /** 翻译领域 */
@@ -198,6 +203,14 @@ function mergeContentIntoNode(node: DstuNode, parsed: ParsedTranslationContent):
     translatedText: parsed.translated,
   };
   if (parsed.meta) {
+    // v2 正文是会话设置的完整 SSOT。字段缺失表示已清空，必须先移除节点
+    // metadata 中可能残留的旧值；否则清空术语表/恢复默认 Prompt 后重开会复活。
+    // 无 schemaVersion 的历史嵌套 meta 仍按增量覆盖处理，避免破坏旧数据。
+    if ((parsed.meta.schemaVersion ?? 0) >= TRANSLATION_CONTENT_SCHEMA_VERSION) {
+      for (const key of ['srcLang', 'tgtLang', 'formality', 'domain', 'glossary', 'customPrompt']) {
+        delete metadata[key];
+      }
+    }
     if (parsed.meta.srcLang) metadata.srcLang = parsed.meta.srcLang;
     if (parsed.meta.tgtLang) metadata.tgtLang = parsed.meta.tgtLang;
     if (parsed.meta.formality) metadata.formality = parsed.meta.formality;
@@ -231,13 +244,25 @@ function normalizeLangCode(code: string): string {
  */
 export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession {
   const meta = node.metadata || {};
+  // ★ 语向/正式度缺失时保持 undefined：新建空翻译的节点 metadata 没有这些值，
+  // 注入幽灵 'auto'/'zh-CN' 会在工作台挡住用户持久化偏好的恢复
+  const srcLang = typeof meta.srcLang === 'string' && meta.srcLang
+    ? normalizeLangCode(meta.srcLang)
+    : undefined;
+  const tgtLang = typeof meta.tgtLang === 'string' && meta.tgtLang
+    ? normalizeLangCode(meta.tgtLang)
+    : undefined;
+  const formality =
+    meta.formality === 'formal' || meta.formality === 'casual' || meta.formality === 'auto'
+      ? meta.formality
+      : undefined;
   return {
     id: node.id,
     sourceText: (meta.sourceText as string) || '',
     translatedText: (meta.translatedText as string) || '',
-    srcLang: normalizeLangCode((meta.srcLang as string) || 'auto'),
-    tgtLang: normalizeLangCode((meta.tgtLang as string) || 'zh-CN'),
-    formality: (meta.formality as 'formal' | 'casual' | 'auto') || 'auto',
+    srcLang,
+    tgtLang,
+    formality,
     customPrompt: meta.customPrompt as string | undefined,
     domain: meta.domain as string | undefined,
     glossary: meta.glossary as Array<[string, string]> | undefined,
@@ -319,7 +344,10 @@ export const translationDstuAdapter = {
       typeFilter: 'translation',
     });
     if (!result.ok) {
-      reportError(result.error, 'List translation history');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.list_history', { defaultValue: 'List translation history' })
+      );
       return err(result.error);
     }
     // ★ 后端 list 不返回真实 total，此处返回「已见下界」（offset + 本页条数）：
@@ -343,7 +371,10 @@ export const translationDstuAdapter = {
     console.log(LOG_PREFIX, 'getTranslation via DSTU:', path);
     const result = await dstu.get(path);
     if (!result.ok) {
-      reportError(result.error, 'Get translation detail');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.get_detail', { defaultValue: 'Get translation detail' })
+      );
       return result;
     }
     const contentResult = await dstu.getContent(path);
@@ -380,7 +411,10 @@ export const translationDstuAdapter = {
     console.log(LOG_PREFIX, 'deleteTranslation via DSTU:', path);
     const result = await dstu.delete(path);
     if (!result.ok) {
-      reportError(result.error, 'Delete translation');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.delete_translation', { defaultValue: 'Delete translation' })
+      );
     }
     return result;
   },
@@ -404,7 +438,10 @@ export const translationDstuAdapter = {
       // 先获取当前状态
       const getResult = await dstu.get(path);
       if (!getResult.ok) {
-        reportError(getResult.error, 'Get translation');
+        reportError(
+          getResult.error,
+          i18next.t('app_menu:dstu_translation.get_translation', { defaultValue: 'Get translation' })
+        );
         return err(getResult.error);
       }
 
@@ -414,7 +451,10 @@ export const translationDstuAdapter = {
     // 使用统一的 setFavorite API
     const setResult = await dstu.setFavorite(path, newFavorite);
     if (!setResult.ok) {
-      reportError(setResult.error, 'Toggle favorite');
+      reportError(
+        setResult.error,
+        i18next.t('app_menu:dstu_translation.toggle_favorite', { defaultValue: 'Toggle favorite' })
+      );
       return err(setResult.error);
     }
 
@@ -432,7 +472,10 @@ export const translationDstuAdapter = {
 
     const result = await dstu.setFavorite(path, isFavorite);
     if (!result.ok) {
-      reportError(result.error, 'Set favorite');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.set_favorite', { defaultValue: 'Set favorite' })
+      );
     }
     return result;
   },
@@ -475,7 +518,10 @@ export const translationDstuAdapter = {
       },
     });
     if (!result.ok) {
-      reportError(result.error, 'Create translation record');
+      reportError(
+        result.error,
+        i18next.t('app_menu:dstu_translation.create_record', { defaultValue: 'Create translation record' })
+      );
       return result;
     }
 
@@ -486,14 +532,18 @@ export const translationDstuAdapter = {
       'translation'
     );
     if (!bodyResult.ok) {
-      reportError(bodyResult.error, 'Persist translation settings');
+      reportError(
+        bodyResult.error,
+        i18next.t('app_menu:dstu_translation.persist_settings', { defaultValue: 'Persist translation settings' })
+      );
       return ok(node);
     }
-    return ok(mergeContentIntoNode(bodyResult.value, {
-      source: session.sourceText,
-      translated: session.translatedText,
-      meta: null,
-    }));
+    return ok(
+      mergeContentIntoNode(
+        bodyResult.value,
+        parseTranslationContent(buildTranslationContent({ ...session, id: node.id }))
+      )
+    );
   },
 
   /**
@@ -523,13 +573,19 @@ export const translationDstuAdapter = {
       isFavorite: session.isFavorite,
     });
     if (!metaResult.ok) {
-      reportError(metaResult.error, 'Update translation record');
+      reportError(
+        metaResult.error,
+        i18next.t('app_menu:dstu_translation.update_record', { defaultValue: 'Update translation record' })
+      );
       return metaResult;
     }
 
     const bodyResult = await dstu.update(path, buildTranslationContent(session), 'translation');
     if (!bodyResult.ok) {
-      reportError(bodyResult.error, 'Persist translation settings');
+      reportError(
+        bodyResult.error,
+        i18next.t('app_menu:dstu_translation.persist_settings', { defaultValue: 'Persist translation settings' })
+      );
       return err(bodyResult.error);
     }
     return ok(undefined);
