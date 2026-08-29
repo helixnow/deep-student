@@ -672,6 +672,9 @@
     "preventSleepUnsupported": "Keep awake is not supported on this platform",
     "empty": "No card tasks yet",
     "emptyHint": "Start making cards in chat to see task progress here",
+    "loadFailed": "Failed to load the task list",
+    "refreshFailedStale": "Refresh failed — the list below is the last data we loaded",
+    "retry": "Retry",
     "sectionActive": "In Progress",
     "sectionAttention": "Needs Attention",
     "sectionCompleted": "Completed",
@@ -762,7 +765,7 @@
     "sortByTime": "By time",
     "sortByCards": "By cards",
     "sortByName": "By name",
-    "recoverStuckHint": "Reset tasks stuck in processing for over 1 hour to pending",
+    "recoverStuckHint": "Mark tasks stuck for over 10 minutes as paused, then resume them",
     "errorCardsFound": "{{count}} error cards",
     "errorReason": "Error",
     "quickExport": "Export",
@@ -979,6 +982,194 @@
       "missing_front": "Missing front content",
       "missing_back": "Missing back content",
       "missing_field": "Template field {{field}} is empty"
+    }
+  },
+  "agent": {
+    "transform": {
+      "title": "Batch Transform",
+      "modeDryRun": "Dry run (no writes)",
+      "modeApply": "Apply changes",
+      "dryRunSummary": "Dry run: {{changed}}/{{total}} cards would be modified",
+      "applySummary": "Applied {{applied}} changes, skipped {{skipped}}",
+      "diffBefore": "Before",
+      "diffAfter": "After",
+      "opRegexReplace": "Regex replace",
+      "opTagAdd": "Add tags",
+      "opTagRemove": "Remove tags",
+      "wouldBeInvalid": "Transformed content is invalid (front, back and cloze text all empty); apply will reject these cards",
+      "conflict": "Version conflict: the card was modified elsewhere; refresh cards and retry",
+      "expectedVersionsMismatch": "Version map does not match the selection; re-read cards and retry",
+      "invalidPattern": "Regex failed to compile; the whole batch was aborted with no writes",
+      "modeScript": "Sandboxed script transform",
+      "script": {
+        "sandboxUnavailable": "Sandboxed script execution is not supported on this device; use declarative ops (regex replace / tag add-remove) instead",
+        "interpreterUnavailable": "No usable script interpreter (python3/python or node) was found on this machine",
+        "environmentUnavailable": "The current runtime cannot start a sandboxed script; no changes were written",
+        "setupFailed": "The sandboxed script environment failed to initialize; no changes were written",
+        "timedOut": "Script timed out; the process was terminated with no writes",
+        "failed": "Script failed (non-zero exit); no writes were made",
+        "outputMissing": "Script did not write an output file; no writes were made",
+        "outputTooLarge": "Script output exceeded the size limit; no writes were made",
+        "invalidOutput": "Script output does not match the expected contract; no writes were made"
+      },
+      "scriptReject": {
+        "emptyField": "The script emptied this field; the card was rejected",
+        "invalidFieldType": "The script emitted an invalid field type; the card was rejected",
+        "invalidClozeText": "The modified cloze text lacks a valid cloze marker (c1:: syntax); the card was rejected",
+        "fieldGrowthExceeded": "The script expanded a field by an unsafe amount; the card was rejected",
+        "fieldTooLarge": "The script emitted a field over the character limit; the card was rejected",
+        "tagTooLarge": "The script emitted a tag over the character limit; the card was rejected",
+        "tagsLimitExceeded": "The script emitted too many tags; the card was rejected",
+        "unknownOutputField": "The script emitted a field outside the contract; the card was rejected",
+        "unknownCardIds": "The script emitted card IDs outside the snapshot; those entries were ignored"
+      }
+    },
+    "retemplate": {
+      "fillStatusLabel": "Field fill status",
+      "fillStatus": {
+        "filled": "Filled",
+        "partial": "Partially filled",
+        "skipped": "Skipped",
+        "conflict": "Version conflict",
+        "failed": "Fill failed",
+        "notNeeded": "Not needed"
+      },
+      "filledFields": "AI filled fields: {{fields}}",
+      "fillSummary": "AI fill: {{filled}} filled, {{partial}} partial, {{failed}} failed",
+      "fillNotRolledBack": "The template change is already committed; individual fill failures are not rolled back and can be fixed by editing the card"
+    },
+    "analyze": {
+      "routeLabel": "Processing route",
+      "routes": {
+        "simpleText": "Plain text",
+        "vlmLight": "Image-light",
+        "vlmFull": "Image-enhanced"
+      },
+      "routeSourceLabel": "Route decided by",
+      "routeSource": {
+        "llmPlan": "AI plan (confidence {{confidence}})",
+        "heuristic": "Heuristic rules",
+        "forced": "Manually specified"
+      },
+      "glossaryMode": "Glossary mode",
+      "recommendedParams": "Recommended parameters"
+    },
+    "preferenceMemory": {
+      "label": "Card-making preference memory",
+      "appliedHint": "Injected {{count}} preferences learned from your past card-making sessions",
+      "conflictHint": "When this request conflicts with remembered preferences, this request wins",
+      "savedHint": "Learned {{added}} new preferences and reinforced {{reinforced}} existing preferences from this session",
+      "saveFailed": "Preferences from this session could not be saved, but the card operation completed",
+      "invalidStore": "Invalid stored card-making preferences were safely ignored",
+      "disabledHint": "Preference memory was neither read nor written for this run"
+    },
+    "generation": {
+      "title": "Generation tuning",
+      "outputProtocolLabel": "Output protocol",
+      "outputProtocol": {
+        "auto": "Auto (by model capability)",
+        "delimiter": "Delimiter",
+        "jsonObject": "JSON object",
+        "jsonSchema": "JSON Schema (strict)"
+      },
+      "contentFormatLabel": "Content format",
+      "contentFormat": {
+        "auto": "Auto-detect",
+        "glossary": "Glossary / term list",
+        "prose": "Prose"
+      },
+      "visualHintLabel": "Visual focus hint",
+      "maxImagesLabel": "Max images per call",
+      "qaPassLabel": "QA flagging",
+      "fsrsFeedbackLabel": "Review-profile feedback",
+      "preferenceMemoryLabel": "Preference memory injection",
+      "enabled": "On",
+      "disabled": "Off"
+    },
+    "critic": {
+      "title": "AI final review",
+      "summary": "Reviewed {{examined}} cards: {{kept}} kept, {{revised}} revised, {{flagged}} flagged",
+      "flaggedFlag": "This card was flagged by the AI final review; please review it manually",
+      "revisedFlag": "This card was auto-revised by the AI final review; please double-check",
+      "skippedOverBudget": "{{count}} cards were skipped due to the review budget",
+      "goldReferences": "This review referenced {{count}} gold-standard card pairs",
+      "degraded": "AI final review was unavailable; this batch was kept as-is without review",
+      "persistFailures": "{{count}} card revisions from the final review failed to write back; what you see may differ from the saved version"
+    },
+    "fsrsFeedback": {
+      "title": "Review-profile feedback",
+      "appliedHint": "Generation was tuned using your review history (avoiding overlap with high-lapse cards, splitting complex points)",
+      "disabledHint": "This run did not use your review history"
+    },
+    "occlusion": {
+      "title": "Image occlusion draft preview",
+      "previewBadge": "Occlusion draft preview",
+      "draftHint": "This is an in-app draft preview; it is not currently exported as a reviewable Anki image-occlusion card",
+      "imageAlt": "Image occlusion card",
+      "imageUnavailable": "The occlusion image could not be loaded; text content was preserved",
+      "invalidSpec": "Invalid occlusion data was ignored and the card is shown normally",
+      "revealBox": "Reveal occluded area {{index}}",
+      "revealedBox": "Occluded area {{index}} revealed: {{label}}",
+      "revealAll": "Reveal all",
+      "hideAll": "Hide all",
+      "issue": {
+        "emptyImageRef": "Image reference is empty",
+        "emptyBoxes": "The occlusion box list is empty",
+        "tooManyBoxes": "Too many occlusion boxes",
+        "boxOutOfBounds": "An occlusion box lies outside the image bounds",
+        "boxTooSmall": "An occlusion box is too small",
+        "boxNotFinite": "An occlusion box has non-finite coordinates",
+        "excessiveOverlap": "Occlusion boxes overlap too much",
+        "clozeIndexZero": "Cloze indexes must start at 1"
+      }
+    }
+  },
+  "qaFlags": {
+    "label": "QA flags",
+    "flaggedCards": "{{count}} cards carry QA flags",
+    "hint": "Field validation found out-of-bound values. The cards were kept; review them before exporting",
+    "fieldLabel": "Field",
+    "cardBadge": "QA {{count}}",
+    "showDetails": "Show QA flag details",
+    "hideDetails": "Hide QA flag details",
+    "cardFlagsAria": "Card {{index}} has {{count}} QA flags, highest severity: {{severity}}",
+    "severity": {
+      "info": "Info",
+      "warn": "Warning",
+      "error": "Error"
+    },
+    "rules": {
+      "minLength": "Shorter than the minimum length",
+      "maxLength": "Exceeds the maximum length",
+      "allowedValues": "Value is not in the allowed list",
+      "validationPattern": "Content does not match the validation pattern"
+    },
+    "lint": {
+      "front_back_identical": "Front and back are identical after normalization",
+      "empty_front": "Front is empty or whitespace-only",
+      "empty_back": "Back is empty or whitespace-only",
+      "cloze_unclosed": "{{n}} cloze deletion(s) are not properly closed",
+      "cloze_empty_answer": "{{n}} cloze deletion(s) have empty content",
+      "cloze_bad_index": "{{n}} cloze deletion(s) have an invalid index (must be c1 or above)",
+      "cloze_missing": "Text field exists but contains no cloze deletions",
+      "answer_leak": "Front already contains the full answer from the back",
+      "multi_concept": "Front seems to ask about multiple independent concepts (consider splitting into several cards)",
+      "front_too_long": "Front length {{n}} exceeds the minimum-information threshold {{limit}} (looks like a pasted paragraph)",
+      "placeholder_residue": "Leftover template placeholder",
+      "todo_residue": "Leftover TODO/FIXME marker",
+      "xxx_residue": "Leftover placeholder token \"xxx\"",
+      "empty_brackets": "Contains an empty bracket pair (content may be missing)",
+      "tags_empty": "Card has no tags (hurts search and deck building)",
+      "duplicate_in_document": "An identical card already exists in this document",
+      "near_duplicate": "Highly similar to an existing card in this document ({{percent}}% similarity), likely a near duplicate",
+      "mixed_language": "Back heavily mixes CJK and Latin scripts (CJK {{cjk}}% / Latin {{latin}}%), please double-check",
+      "mcq_too_few_options": "Multiple-choice card has only {{n}} non-empty option(s) (at least 2 required)",
+      "mcq_answer_not_in_options": "The answer's option is missing or does not match",
+      "mcq_missing_answer": "Multiple-choice card is missing its answer",
+      "field_rule_min_length": "Length {{n}} is below the minimum length {{min}}",
+      "field_rule_max_length": "Length {{n}} exceeds the maximum length {{max}}",
+      "field_rule_allowed_values": "Value is not in the allowed values list",
+      "field_rule_pattern": "Content does not match the validation pattern"
     }
   }
 }

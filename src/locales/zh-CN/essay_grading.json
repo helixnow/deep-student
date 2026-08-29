@@ -16,11 +16,24 @@
     "export": "导出",
     "copied": "已复制到剪贴板",
     "copied_feedback": "已复制",
-    "exported": "批改结果已导出"
+    "exported": "批改结果已导出",
+    "save_as_note": "存为笔记"
   },
   "result_empty": {
     "title": "等待批改",
     "description": "在输入区输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
+  },
+  "make_cards": {
+    "label": "生成卡片",
+    "running": "正在提交制卡…",
+    "disabled_grading": "批改完成后才能生成卡片",
+    "disabled_no_result": "还没有批改结果，无法提炼错点",
+    "deck_name": "作文批改卡片",
+    "requirements": "根据批改结果中的批注与修改建议生成记忆卡片，重点覆盖被指出的问题与更好的表达，不要把整篇原文做成一张卡。",
+    "too_short": "批改结果太短，无法生成有效卡片",
+    "started": "已开始制卡，可在制卡任务台查看进度",
+    "failed": "制卡启动失败",
+    "open_task_dashboard": "打开任务台"
   },
   "confirm": {
     "clear": "确认清空？",
@@ -62,14 +75,15 @@
     "previous": "上一轮",
     "next": "下一轮",
     "new": "提交下一轮",
-    "total": "共 {{count}} 轮"
+    "total": "共 {{count}} 轮",
+    "switch_confirm_title": "切换轮次",
+    "switch_unsaved_confirm": "当前正文有未保存的修改，切换轮次将用所选轮次的正文覆盖它们。确定继续吗？"
   },
   "actions": {
     "grade": "开始批改",
     "grading": "批改中...",
     "cancel": "取消",
     "clear": "清空",
-    "next_round": "提交修改稿",
     "view_history": "查看历史轮次",
     "retry": "重试",
     "cancel_confirm_title": "取消批改",
@@ -134,7 +148,8 @@
     "export_failed": "导出失败，请重试",
     "api_key_missing": "未配置 API 密钥，请前往设置添加",
     "model_not_found": "所选模型不可用，请重新选择",
-    "network_error": "网络连接失败，请检查网络后重试"
+    "network_error": "网络连接失败，请检查网络后重试",
+    "save_note_failed": "存为笔记失败，请重试"
   },
   "toast": {
     "grading_success": "批改完成",
@@ -146,6 +161,8 @@
     "saved": "已保存",
     "deleted": "已删除",
     "ocr_processing": "正在识别图片...",
+    "ocr_processing_multi": "正在识别 {{count}} 张图片，识别结果将按上传顺序回填...",
+    "ocr_placeholder": "〔图片识别中 第 {{current}}/{{total}} 张 · {{fileName}}〕",
     "ocr_success": "OCR 识别成功",
     "ocr_success_multi": "成功识别 {{count}} 张图片",
     "ocr_empty": "OCR 未识别到文字",
@@ -160,7 +177,9 @@
     "clear_blocked_grading": "批改进行中，无法清空",
     "suggestion_applied": "已应用修改建议",
     "suggestion_not_found": "未在正文中找到对应原文，可能已被修改",
-    "suggestion_blocked_grading": "批改进行中，暂不能应用建议"
+    "suggestion_blocked_grading": "批改进行中，暂不能应用建议",
+    "suggestion_undone": "已撤销该修改",
+    "suggestion_undo_failed": "未能定位已应用的修改，正文可能已被手动改动"
   },
   "round_navigation": {
     "title": "轮次导航",
@@ -212,6 +231,8 @@
   },
   "markers": {
     "apply": "应用修改",
+    "applied": "已采纳",
+    "undo": "撤销",
     "delete": "建议删除",
     "insert": "建议增加",
     "replace": "建议替换",
@@ -279,10 +300,8 @@
     "ocr_hint": "导入图片识别",
     "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张"
   },
-  "next_round_confirm": {
-    "title": "开始新一轮批改",
-    "message": "将清空输入区域，准备接收修改后的作文。当前内容已保存在上一轮批改记录中。",
-    "confirm": "开始新一轮"
+  "notes": {
+    "note_title": "作文批改：{{title}}（第 {{round}} 轮）"
   },
   "clear_confirm": {
     "title": "清空内容",

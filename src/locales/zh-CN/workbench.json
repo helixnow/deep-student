@@ -148,6 +148,8 @@
   "menubar": {
     "label": "学习状态栏",
     "appName": "学习桌面",
+    "desktopRename": "重命名桌面…",
+    "desktopNameInputLabel": "桌面名称",
     "flashcardsDue": "{{count}} 张到期闪卡",
     "tasksRunning": "{{count}} 个制卡任务进行中",
     "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
@@ -160,6 +162,9 @@
     "automationsRelativeHours": "{{count}} 小时后",
     "automationsRelativeDays": "{{count}} 天后",
     "pomodoroFocus": "专注剩余 {{time}}",
+    "pomodoroBreakRemaining": "休息剩余 {{time}}",
+    "pomodoroFocusElapsed": "已专注 {{time}}",
+    "pomodoroPaused": "已暂停 {{time}}",
     "pomodoroIdle": "未开始",
     "pomodoroWork": "专注中",
     "pomodoroBreak": "休息中",
@@ -206,6 +211,10 @@
       "loading": "正在加载会话…",
       "sessionNav": "会话导航"
     },
+    "chatSession": {
+      "name": "会话窗口",
+      "missingSession": "该窗口未绑定会话，请从会话列表打开"
+    },
     "system": {
       "todoNav": "待办导航",
       "settingsNav": "设置导航",
@@ -233,7 +242,11 @@
     "settings": "设置",
     "sandbox": "沙箱工作台",
     "pomodoro": "番茄钟",
-    "browser": "浏览器"
+    "browser": "浏览器",
+    "aiDashboard": "AI 仪表盘"
+  },
+  "legacyFallback": {
+    "desktopOnly": "「{{name}}」仅在桌面端可用"
   },
   "dock": {
     "label": "程序坞",
@@ -327,11 +340,17 @@
     "unknownApp": "未知应用类型：{{typeId}}",
     "crashTitle": "此窗口的应用出错了",
     "crashUnknown": "未知错误",
-    "reload": "重新加载"
+    "reload": "重新加载",
+    "reloadCooldown": "{{seconds}} 秒后可重试",
+    "crashLoopHint": "应用连续崩溃，已暂缓重载以避免循环",
+    "dozeTitle": "后台窗口",
+    "dozeHint": "内容已停止绘制，选中即恢复"
   },
   "tile": {
     "left": "平铺到左半屏",
     "right": "平铺到右半屏",
+    "top": "平铺到上半屏",
+    "bottom": "平铺到下半屏",
     "topLeft": "平铺到左上角",
     "topRight": "平铺到右上角",
     "bottomLeft": "平铺到左下角",
@@ -343,6 +362,8 @@
     "zone": {
       "left": "左半屏",
       "right": "右半屏",
+      "top": "上半屏",
+      "bottom": "下半屏",
       "topLeft": "左上",
       "topRight": "右上",
       "bottomLeft": "左下",
@@ -358,6 +379,9 @@
     "emptyHint": "按 Esc 或点击任意处返回桌面",
     "emptyApp": "该应用没有可俯瞰的窗口"
   },
+  "snap": {
+    "altBadge": "热区已扩大"
+  },
   "switcher": {
     "title": "窗口切换器",
     "hint": "按住 Ctrl 循环选择，松开切换",
@@ -368,6 +392,9 @@
     "hint": "从下方 Dock 打开应用开始工作——窗口可以自由摆放、平铺与并排对比。",
     "actionsLabel": "快速开始",
     "actionFiles": "打开资源库",
+    "actionRestoreSession": "恢复上次桌面",
+    "actionRestoreSessionCount_one": "恢复上次桌面（{{count}} 个窗口）",
+    "actionRestoreSessionCount_other": "恢复上次桌面（{{count}} 个窗口）",
     "actionFilesDesc": "浏览笔记、教材与全部资源",
     "actionApps": "全部应用",
     "actionFlashcards": "闪卡",
@@ -438,19 +465,41 @@
     "materialTier": "视觉材质",
     "showDesktop": "显示桌面",
     "restoreWindows": "恢复窗口",
+    "showWidgets": "显示桌面组件",
+    "shortcuts": "键盘快捷键",
+    "replayTour": "重新查看引导",
     "settings": "桌面设置…"
+  },
+  "immersive": {
+    "hint": "已进入沉浸模式，按 Esc 退出",
+    "hintTouch": "已进入沉浸模式，点「退出沉浸」或窗口标题栏绿灯退出",
+    "exit": "退出沉浸"
   },
   "cheatsheet": {
     "title": "键盘快捷键",
     "close": "关闭",
     "hint": "按 ? 或 Esc 关闭 · 长按 Ctrl+Alt 随时查看",
     "hintMac": "按 ? 或 Esc 关闭 · 长按 ⌘⌥ 随时查看",
+    "replayTour": "重新播放快速上手",
     "groups": {
       "layout": "平铺与布局",
       "movement": "移动与贴边",
       "navigation": "切换与导航",
       "management": "窗口管理",
       "help": "帮助"
+    },
+    "tricks": {
+      "title": "修饰键技巧",
+      "drag": "拖拽窗口：扩大贴边/角热区；拖到顶缘变为上半屏",
+      "dragGesture": "拖拽",
+      "tileMenu": "绿灯悬停菜单：中列变为上半屏 / 填满 / 下半屏",
+      "tileMenuGesture": "悬停绿灯",
+      "zoom": "传统缩放：填满桌面 / 还原",
+      "zoomGesture": "点按绿灯",
+      "closeAll": "关闭该应用的全部窗口",
+      "closeAllGesture": "点按红灯",
+      "minimizeAll": "最小化该应用的全部窗口",
+      "minimizeAllGesture": "点按黄灯"
     }
   },
   "wallpaper": {
@@ -492,7 +541,20 @@
     "missingResource": "缺少资源标识，无法打开该窗口",
     "missingResourceHint": "请从资源库重新打开，或检查该资源是否仍存在。",
     "confirmCloseUnsaved": "当前内容有未保存的修改，确定要关闭窗口吗？",
-    "unsavedTitle": "有未保存的更改，确定要离开吗？"
+    "unsavedTitle": "有未保存的更改，确定要离开吗？",
+    "saveAndClose": "保存并关闭",
+    "saveAndCloseFailed": "保存失败，窗口保持打开，请检查后重试"
+  },
+  "deactivation": {
+    "cancelled": "已取消停用，学习桌面保持开启。",
+    "dirtyBlocked": "存在未保存的窗口，已取消关闭学习桌面，请先保存或关闭这些窗口。",
+    "exitBlocked": "存在未保存的内容，已取消退出，请先保存后再退出。"
+  },
+  "suspend": {
+    "keptBackground": "该窗口有未保存的内容，已保留在后台运行，未被冻结。"
+  },
+  "hub": {
+    "closeCancelled": "已取消关闭标签页，未保存的内容仍保留。"
   },
   "mindmap": {
     "loading": "正在加载思维导图…",
@@ -533,6 +595,7 @@
     "restored": "{{title}} 已恢复",
     "exposeOpened": "俯瞰已打开，共 {{count}} 个窗口",
     "exposeClosed": "俯瞰已关闭",
+    "exposeSelected": "已选中 {{title}}",
     "dropOpened": "已打开 {{title}}",
     "appCrashed": "{{name}} 出现错误，可重新加载",
     "showDesktop": "已显示桌面",
@@ -550,6 +613,8 @@
     "title": "快捷键",
     "tileLeft": "平铺到左半屏",
     "tileRight": "平铺到右半屏",
+    "tileTop": "平铺到上半屏",
+    "tileBottom": "平铺到下半屏",
     "tileTopLeft": "平铺到左上角",
     "tileTopRight": "平铺到右上角",
     "tileBottomLeft": "平铺到左下角",
@@ -621,8 +686,18 @@
       "desc": "不使用时 Dock 自动收起，指针移到屏幕底部时滑出。"
     },
     "restoreSession": {
-      "title": "启动时恢复上次桌面",
-      "desc": "下次启动学习桌面时恢复上次打开的窗口与布局。默认关闭以加快冷启动；关闭时仍会保存桌面状态，便于日后开启。"
+      "title": "启动时自动恢复上次桌面",
+      "desc": "开启后每次启动都会自动重开上次的全部窗口。默认关闭以加快冷启动——关闭时桌面状态照常保存，空桌面上的「恢复上次桌面」按钮可按需恢复一次。"
+    },
+    "desktopWidgets": {
+      "title": "显示桌面组件",
+      "desc": "在桌面上显示日历与今日日程组件。关闭后窄窗口/小屏幕可用宽度更大（桌面右键菜单也可切换）。"
+    },
+    "shortcuts": {
+      "title": "键盘快捷键",
+      "desc": "学习桌面的窗口管理快捷键清单；桌面上按 ? 或从桌面右键菜单也可随时打开速查表。",
+      "show": "查看全部 {{count}} 项",
+      "hide": "收起列表"
     },
     "menubarAutohide": {
       "title": "自动隐藏菜单栏",
@@ -771,7 +846,8 @@
       "refresh": "刷新",
       "open": "打开文件浏览器",
       "close": "关闭文件浏览器",
-      "closeFiles": "关闭文件面板"
+      "closeFiles": "关闭文件面板",
+      "moreActions": "更多操作"
     },
     "navHistory": {
       "aria": "导航历史",
@@ -828,10 +904,13 @@
       "activeTags": "已选标签",
       "removeTag": "移除标签 {{tag}}",
       "emptyQuickOpenHint": "试试「搜索内容」进行全文匹配。",
-      "tagHint": "tag:名称 按标签筛选",
+      "tagHint": "可用 tag:标签 path:路径 key:value 过滤结果",
       "resultCount": "{{count}} 条结果",
       "recentGroup": "最近打开",
-      "allGroup": "全部文件"
+      "allGroup": "全部文件",
+      "loadMore": "加载更多结果",
+      "loadingMore": "正在加载…",
+      "resultCountMore": "{{count}}+ 条结果"
     },
     "backlinks": {
       "title": "链接",
@@ -863,7 +942,15 @@
       "mentionsFailed": "无法扫描未链接提及。",
       "mentionsLimited": "仅扫描最近 {{count}} 篇候选笔记。",
       "noMentions": "没有找到未链接的提及",
-      "convertMention": "在「{{title}}」中转为链接"
+      "convertMention": "在「{{title}}」中转为链接",
+      "convertDirty": "「{{title}}」有未保存的修改，请先保存再转为链接。",
+      "convertMissing": "「{{title}}」内容已变化，未找到该提及。",
+      "convertFailed": "无法转为链接。",
+      "tabGraph": "图谱"
+    },
+    "renameSync": {
+      "updated": "已同步更新 {{count}} 篇笔记中的双链",
+      "incomplete": "{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查"
     },
     "tree": {
       "aria": "文件树",
@@ -879,7 +966,8 @@
       "empty": "知识库中还没有文件",
       "showAll": "显示全部文件",
       "dragLink": "拖动链接到笔记",
-      "moreActions": "更多操作"
+      "moreActions": "更多操作",
+      "truncated": "文件数量超过 {{max}} 上限，文件树仅显示部分内容"
     },
     "tabs": {
       "aria": "打开的文件",
@@ -967,6 +1055,45 @@
       "confirmPurgeTitle": "彻底删除？",
       "confirmPurgeDesc": "「{{name}}」将被永久删除，此操作不可撤销。",
       "confirmPurgeAction": "彻底删除"
+    },
+    "graph": {
+      "canvasAria": "「{{title}}」的局部链接图",
+      "clientFallback": "图谱服务不可用，仅显示当前笔记的出链。",
+      "depth1": "1 度",
+      "depth2": "2 度",
+      "depthLabel": "图谱深度",
+      "empty": "本篇还没有任何链接，输入 [[ 即可创建双链。",
+      "legendLabel": "边类型图例",
+      "legendNoteref": "引用",
+      "legendWikilink": "双链",
+      "loadFailed": "无法加载局部图谱。",
+      "loading": "正在构建图谱…",
+      "noActiveNote": "选择一篇笔记以查看图谱。",
+      "refresh": "刷新图谱",
+      "truncated": "连接较多，仅显示部分节点。"
+    },
+    "props": {
+      "title": "属性",
+      "add": "添加属性",
+      "confirmAdd": "添加属性",
+      "cancelAdd": "取消添加",
+      "confirmEdit": "保存属性值",
+      "cancelEdit": "取消编辑",
+      "editAria": "编辑属性 {{key}}",
+      "editValueAria": "编辑属性 {{key}} 的值",
+      "removeAria": "删除属性 {{key}}",
+      "keyPlaceholder": "属性名",
+      "valuePlaceholder": "值",
+      "emptyHint": "为笔记添加任意键值属性，可用 key:value 搜索。",
+      "emptyReadOnly": "暂无属性。",
+      "emptyKey": "请输入属性名。",
+      "reservedKey": "该属性名为保留字，请换一个。",
+      "duplicateKey": "同名属性已存在。",
+      "keyTooLong": "属性名最多 {{max}} 个字符。",
+      "valueTooLong": "属性值最多 {{max}} 个字符。",
+      "invalidChars": "属性不能包含控制字符。",
+      "tooMany": "最多添加 {{max}} 个属性。",
+      "saveFailed": "无法保存属性。"
     }
   },
   "sandbox": {
@@ -1021,7 +1148,10 @@
     "printUnsupported": "该文件类型不支持在预览内打印，可使用系统应用打开后打印",
     "searchUnavailable": "该文件类型不支持文本搜索",
     "moreActions": "更多操作",
-    "closeSearch": "关闭搜索"
+    "closeSearch": "关闭搜索",
+    "quickLook": "快速预览",
+    "quickLookHint": "空格或 Esc 关闭",
+    "quickLookClose": "关闭快速预览"
   },
   "pomodoro": {
     "modes": {
@@ -1048,6 +1178,7 @@
     },
     "settingsTitle": "番茄钟设置",
     "statsTitle": "专注趋势",
+    "breakReview": "去复习 {{count}} 张",
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "today": {
       "label": "今日",

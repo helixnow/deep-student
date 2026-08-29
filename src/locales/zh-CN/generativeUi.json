@@ -1,0 +1,391 @@
+{
+  "parse_error_title": "无法解析 AI 界面意图",
+  "parse_error_invalid": "格式无效",
+  "unknown_block_title": "未知组件：{{type}}",
+  "unknown_block_desc": "已跳过，请检查组件注册表",
+  "validation_failed_title": "{{type}} 参数校验失败",
+  "chrome": {
+    "streaming": "生成中…",
+    "stream_done": "界面已生成完毕",
+    "accept": "接受",
+    "regenerate": "重新生成",
+    "dismiss": "忽略"
+  },
+  "action": {
+    "confirm_title": "确认：{{label}}",
+    "confirm_inline": "确认：{{label}}",
+    "confirm_desc": "此操作可能产生不可逆影响，请确认后继续。",
+    "confirm_execute": "确认执行",
+    "unregistered_hint": "该操作未注册，无法执行",
+    "unregistered_label": "未注册操作",
+    "live_ok": "{{label}} 已完成",
+    "live_error": "{{label}} 失败",
+    "live_undo": "已撤销上一操作",
+    "live_undo_error": "撤销失败",
+    "live_timeout": "{{label}} 已超时",
+    "live_rate_limit": "{{label}} 操作过快，请稍后再试",
+    "undo": "撤销",
+    "undo_empty": "没有可撤销的操作",
+    "copy_intent": "复制意图",
+    "export_markdown": "导出 Markdown",
+    "copy_block": "复制该组件",
+    "open_note": "打开笔记",
+    "open_pdf_page": "打开 PDF 第 {{page}} 页"
+  },
+  "export_markdown": {
+    "empty_table": "空表格",
+    "chart_kind": "图表类型",
+    "chart_unit": "单位",
+    "chart_categories": "类别",
+    "chart_series": "系列",
+    "stat": "指标",
+    "flashcard_deck": "牌组",
+    "flashcard_front": "正面",
+    "flashcard_back": "背面",
+    "flashcard_tags": "标签",
+    "review_day": "日期",
+    "review_due": "待复习",
+    "review_done": "已完成",
+    "mistake_error_rate": "错误率",
+    "mistake_count": "错题数",
+    "research_plan": "研究计划",
+    "queries": "检索问题",
+    "retrieval": "检索结果",
+    "retrieved": "已检索",
+    "selected": "已入选",
+    "report": "研究报告"
+  },
+  "flashcard": {
+    "preview_title": "闪卡预览",
+    "front": "正面",
+    "back": "背面",
+    "preview_meta_title": "AI 闪卡预览"
+  },
+  "review_calendar": {
+    "default_title": "复习日历",
+    "due": "待复习 {{count}}",
+    "completed": "已完成 {{count}}"
+  },
+  "mistake": {
+    "error_rate": "错误率 {{rate}}%",
+    "count": "（{{count}} 道）"
+  },
+  "panel": {
+    "empty": "暂无 AI 界面内容",
+    "no_intent": "无 UI 意图数据"
+  },
+  "overflow": {
+    "truncated": "组件数量超过上限，仅显示前 {{max}} 个",
+    "unregistered_actions": "有操作未注册，对应按钮已禁用"
+  },
+  "a11y": {
+    "region_label": "AI 生成界面",
+    "action_bar_label": "操作栏",
+    "list_label": "列表",
+    "text_label": "文本",
+    "progress_label": "进度",
+    "key_value_label": "键值信息",
+    "flashcard_front": "闪卡正面",
+    "flashcard_back": "闪卡背面",
+    "mindmap_label": "思维导图",
+    "research_report_label": "研究报告",
+    "review_day": "{{date}}，待复习 {{due}} 项",
+    "step_pending": "未开始",
+    "step_active": "进行中",
+    "step_done": "已完成",
+    "step_error": "失败",
+    "step_skipped": "已跳过",
+    "markdown_label": "Markdown 正文",
+    "chart_label": "{{title}} {{kind}} 图表",
+    "chart_empty": "暂无图表数据",
+    "steps_label": "步骤",
+    "table_label": "表格",
+    "table_caption": "数据表",
+    "block_error": "组件渲染失败",
+    "retry": "重试",
+    "skip_to_actions": "跳到操作栏"
+  },
+  "blocks": {
+    "list": {
+      "empty": "暂无条目"
+    },
+    "table": {
+      "empty": "暂无数据"
+    },
+    "steps": {
+      "status_pending": "待开始",
+      "status_active": "进行中",
+      "status_done": "已完成",
+      "status_error": "失败",
+      "status_skipped": "已跳过"
+    },
+    "chart": {
+      "empty": "暂无图表数据",
+      "a11y_label": "{{title}} {{kind}} 图表"
+    },
+    "markdown": {
+      "empty": "暂无正文",
+      "error": "正文渲染失败"
+    }
+  },
+  "notes": {
+    "summary_title": "AI 笔记摘要",
+    "summary_default_title": "笔记摘要",
+    "summary_updated_prefix": "更新于",
+    "summary_heading_stat": "章节数",
+    "summary_overview_title": "概览",
+    "summary_char_count": "字符数",
+    "summary_tags": "标签",
+    "summary_tags_empty": "—",
+    "summary_headings_title": "主要章节",
+    "summary_updated_at": "更新时间",
+    "summary_empty_note_title": "笔记尚无正文",
+    "summary_empty_note_description": "写一些内容后即可生成章节摘要",
+    "summary_empty_headings": "暂无章节标题",
+    "summary_markdown_title": "笔记概览",
+    "edit_suggestion_title": "笔记编辑建议",
+    "edit_suggestion_description": "确认后将打开 diff 面板，由你在编辑器中接受或拒绝",
+    "edit_operation_key": "操作类型",
+    "edit_preview_title": "变更预览",
+    "edit_apply": "应用到笔记",
+    "edit_dismiss": "忽略建议",
+    "edit_suggestion_markdown_title": "建议说明",
+    "edit_dispatch_no_panel": "当前环境没有可用的建议面板",
+    "edit_dispatch_invalid": "笔记编辑建议无效或内容过大",
+    "edit_dispatch_unclaimed": "没有匹配的笔记编辑器认领建议"
+  },
+  "exam": {
+    "briefing_label": "AI 题库简报",
+    "briefing": {
+      "total_title": "题目总数",
+      "mastery_trend": "掌握率 {{percent}}%",
+      "empty_trend": "暂无题目",
+      "progress_title": "掌握进度",
+      "mastered_row": "已掌握 {{count}} 题",
+      "review_row": "待复习",
+      "correct_rate_row": "正确率",
+      "start_review": "复习错题",
+      "open_practice": "开始练习",
+      "empty_bank_title": "题库为空",
+      "empty_bank_description": "先导入或创建题目，再开始练习",
+      "mistake_suggestion": "优先复习错题，巩固薄弱知识点",
+      "status_list_title": "题目状态",
+      "in_progress_row": "练习中",
+      "new_count_row": "未学习",
+      "status_empty": "暂无题目状态",
+      "table_title": "掌握与正确率",
+      "table_metric_column": "指标",
+      "table_value_column": "数值",
+      "chart_title": "题目分布",
+      "chart_series": "题数",
+      "mastered_category": "掌握"
+    }
+  },
+  "translation": {
+    "briefing_label": "AI 翻译简报",
+    "briefing": {
+      "source_stat_title": "原文字数",
+      "translated_stat_title": "译文字数",
+      "empty_trend": "暂无原文",
+      "progress_title": "翻译进度",
+      "streaming_progress_title": "翻译进行中",
+      "translated_row": "已译 {{count}} 字",
+      "language_pair_row": "语向",
+      "formality_row": "语气",
+      "domain_row": "领域",
+      "glossary_row": "术语表",
+      "open_settings": "翻译设置",
+      "copy_translation": "复制译文",
+      "empty_source_title": "暂无原文",
+      "empty_source_description": "输入原文后即可跟踪翻译进度",
+      "segments_title": "最近句段",
+      "segments_empty": "暂无句段",
+      "count_chart_title": "原文与译文计数",
+      "count_chart_series": "字数"
+    }
+  },
+  "indexStatus": {
+    "briefing_label": "AI 索引简报",
+    "briefing": {
+      "total_title": "资源总数",
+      "progress_title": "索引进度",
+      "indexed_row": "已索引 {{count}}",
+      "pending_row": "待索引",
+      "failed_row": "失败",
+      "indexing_row": "索引中",
+      "trend_all_indexed": "全部就绪",
+      "trend_needs_attention": "有待处理项",
+      "batch_index": "一键索引",
+      "refresh": "刷新状态",
+      "failed_alert_title": "索引异常",
+      "failed_alert_description": "部分资源索引失败，可重试待处理项",
+      "empty_index_title": "尚未发现资源",
+      "empty_index_description": "当前没有可索引的资源",
+      "scan_progress_title": "扫描进度",
+      "scan_progress_label": "正在索引 {{count}}",
+      "failed_markdown_title": "索引失败",
+      "failed_markdown_body": "有 **{{count}}** 项索引失败，可重试待处理资源。",
+      "status_table_title": "索引状态",
+      "status_col_name": "状态",
+      "status_col_count": "数量",
+      "indexed_label": "已索引"
+    }
+  },
+  "memory": {
+    "briefing_label": "AI 记忆简报",
+    "briefing": {
+      "count_title": "记忆条目",
+      "trend_active": "持续积累",
+      "trend_empty": "暂无记忆",
+      "overview_title": "概览",
+      "root_folder_row": "根目录",
+      "auto_extract_row": "自动提取",
+      "freq_off": "关闭",
+      "freq_balanced": "均衡",
+      "freq_aggressive": "积极",
+      "refresh": "刷新",
+      "create_memory": "新建记忆",
+      "recent_list_title": "最近条目",
+      "recent_empty": "暂无记忆条目",
+      "open_memory": "打开记忆",
+      "empty_guide_title": "开始记录记忆",
+      "empty_guide_body": "新建一条记忆，或打开已有条目后刷新列表。",
+      "steps_title": "记忆操作",
+      "step_create": "新建记忆",
+      "step_open": "打开记忆",
+      "step_refresh": "刷新列表",
+      "recent_col_title": "标题",
+      "recent_col_detail": "说明"
+    }
+  },
+  "workbench": {
+    "briefing_label": "AI 学习简报",
+    "briefing": {
+      "due_flashcards_title": "到期闪卡",
+      "due_trend_due": "待复习",
+      "due_trend_none": "暂无到期",
+      "progress_title": "待办进度",
+      "overdue_label": "{{count}} 项逾期",
+      "pending_label": "{{count}} 项待办",
+      "start_review": "开始复习",
+      "open_qbank": "打开题库"
+    },
+    "dashboard": {
+      "title": "AI 学习仪表盘",
+      "anki_tasks_title": "进行中制卡",
+      "anki_tasks_trend_active": "后台运行",
+      "anki_tasks_trend_idle": "暂无任务",
+      "open_task_dashboard": "打开制卡任务",
+      "review_calendar_title": "复习日历",
+      "review_empty_title": "待复习",
+      "review_empty": "今日暂无到期复习",
+      "idle_alert_title": "学习节奏空闲",
+      "idle_alert_description": "当前没有到期闪卡、待办或制卡任务",
+      "workload_chart_title": "到期与待办",
+      "chart_pending": "待办",
+      "chart_overdue": "逾期",
+      "workload_chart_series": "数量"
+    }
+  },
+  "learningHub": {
+    "briefing_label": "AI 资源简报",
+    "briefing": {
+      "default_folder": "资源库",
+      "stat_title": "可见资源",
+      "trend_active": "可继续探索",
+      "trend_empty": "目录为空",
+      "start_review": "开始复习",
+      "open_qbank": "打开题库",
+      "due_review_title": "待复习",
+      "due_review_trend": "有到期项",
+      "review_calendar_title": "复习日历",
+      "recent_list_title": "最近资源",
+      "recent_empty": "当前目录没有可见资源",
+      "empty_alert_title": "目录为空",
+      "empty_alert_description": "添加笔记或资料后即可生成简报",
+      "path_steps_title": "学习路径",
+      "step_review": "开始复习",
+      "step_qbank": "打开题库",
+      "chart_title": "复习负荷",
+      "chart_due": "待复习",
+      "chart_series": "条目"
+    }
+  },
+  "research": {
+    "paper_digest": {
+      "meta_title": "论文摘要",
+      "findings_stat": "要点数",
+      "key_findings": "关键发现",
+      "citations": "引用 {{count}} 处"
+    },
+    "plan": {
+      "meta_title": "研究计划",
+      "round_label": "第",
+      "round": "第 {{round}} 轮",
+      "progress": "已完成 {{done}} / {{total}} 步"
+    },
+    "report": {
+      "meta_title": "研究报告",
+      "citation_stat": "引用数",
+      "citation_aria": "引用 {{label}}"
+    },
+    "hpias": {
+      "meta_title": "深度研究进度",
+      "plan_title": "研究任务",
+      "step_plan": "制定检索计划",
+      "step_retrieval": "文献检索",
+      "step_selection": "引用筛选",
+      "step_subagents": "子代理调研",
+      "step_synthesis": "综合报告",
+      "subagent_fallback": "子任务 {{id}}",
+      "retrieval_stat": "检索文献",
+      "selected_stat": "入选引用",
+      "steps_list_title": "研究子步骤",
+      "step_status_pending": "待开始",
+      "step_status_active": "进行中",
+      "step_status_done": "已完成",
+      "digest_fallback_title": "研究摘要",
+      "empty_steps": "暂无子步骤",
+      "steps_block_title": "研究流程"
+    },
+    "actions": {
+      "copy_report": "复制报告",
+      "export_plan": "导出计划",
+      "export_intent": "导出全部意图"
+    }
+  },
+  "demo": {
+    "recipes": {
+      "learning_dashboard": {
+        "title": "学习仪表盘",
+        "description": "图表 + 表格 + 步骤"
+      },
+      "research_briefing": {
+        "title": "研究简报",
+        "description": "Markdown + 研究计划"
+      },
+      "translation_chart": {
+        "title": "翻译吞吐",
+        "description": "图表"
+      },
+      "mistake_table": {
+        "title": "错题诊断",
+        "description": "表格 + 错题分析"
+      },
+      "empty_markdown": {
+        "title": "空态说明",
+        "description": "Markdown"
+      },
+      "v11_grid_two_col": {
+        "title": "v1.1 两列",
+        "description": "两列栅格布局"
+      }
+    },
+    "lint_title": "意图诊断",
+    "lint_ok": "未发现问题",
+    "lint_count": "{{count}} 个问题",
+    "diff_title": "与上一快照差异",
+    "diff_none": "无变更",
+    "diff_summary": "新增 {{added}} · 删除 {{removed}} · 变更 {{changed}}"
+  }
+}

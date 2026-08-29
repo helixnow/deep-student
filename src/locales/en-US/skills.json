@@ -205,6 +205,10 @@
     "reset_to_original": "Reset to Original",
     "reset_success": "Reset to default successfully",
     "reset_failed": "Failed to reset to default",
+    "reset_confirm_title": "Reset to built-in defaults?",
+    "reset_confirm_desc": "All customizations of \"{{name}}\" (content, tools, priority, etc.) will be discarded and the built-in version restored. This cannot be undone.",
+    "reset_confirm_action": "Reset to Default",
+    "resetting": "Resetting…",
     "active": "Active",
     "active_count": "{{count}} skills active",
     "active_count_one": "{{count}} skill active",
@@ -388,6 +392,7 @@
     "academic-search": "Academic Search",
     "template-designer": "Template Designer",
     "workbench-tools": "Learning Desktop",
+    "generative-ui": "Generative UI",
     "automation-tools": "Automation Management",
     "browser-tools": "Browser Controls",
     "media-tools": "Media Transcription",
@@ -442,6 +447,7 @@
     "academic-search": "Search academic papers, literature, and research resources.",
     "template-designer": "Design and manage reusable document templates.",
     "workbench-tools": "Workbench window control: list windows, open/focus apps, send window commands, close windows, and query state. Use domain tools for data edits.",
+    "generative-ui": "Emit structured generative UI intents (cards, progress, action bars) rendered by the component registry. No HTML/JS.",
     "media-tools": "Transcribe managed audio through the configured external ASR provider and write an auditable transcript artifact.",
     "office-fidelity-tools": "Inspect managed DOCX, XLSX, PPTX, and PDF files for fidelity risks without executing macros, decrypting files, or claiming unsupported preservation."
   },
@@ -536,5 +542,10 @@
     "description_required": "Please enter a description",
     "description_too_long": "Description cannot exceed 1024 characters",
     "description_too_short": "Description should be at least 50 characters for better LLM discovery"
+  },
+
+  "storage": {
+    "save_requires_tauri": "Cannot save customization outside the Tauri runtime",
+    "reset_requires_tauri": "Cannot reset customization outside the Tauri runtime"
   }
 }

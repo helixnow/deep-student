@@ -34,10 +34,12 @@
     "statNew": "新卡",
     "statLearning": "学习中",
     "streak": "连续学习 {{count}} 天",
-    "streakHint": "由每张卡最近一次复习估算的连续天数",
+    "streakHint": "按本地日历日的复习活动计算；后端日志不可用时回退到最近复习记录估算",
     "libSummary": "卡片库共 {{count}} 张",
     "allDone": "今日复习全部完成",
     "emptyHint": "去卡片库入队新卡，或在聊天里生成一批闪卡，保持每天的复习节奏。",
+    "libraryEmpty": "卡片库还是空的",
+    "libraryEmptyHint": "先在聊天中根据学习材料生成卡片，复习队列才会开始积累。",
     "goStats": "查看统计",
     "upNext": "接下来",
     "upNextCount": "{{count}} 张"
@@ -140,7 +142,30 @@
       "review": "复习中",
       "relearning": "重新学习",
       "enqueued": "已入队"
-    }
+    },
+    "create": {
+      "new": "新建卡片",
+      "cancel": "收起新建",
+      "frontLabel": "卡片正面",
+      "backLabel": "卡片背面",
+      "frontPlaceholder": "正面：要提问的内容",
+      "backPlaceholder": "背面：答案",
+      "save": "保存并入队",
+      "saving": "保存中…",
+      "hint": "保存后自动加入复习队列，可在行内继续编辑。",
+      "incomplete": "正面与背面都需要填写",
+      "success": "已新建卡片并加入复习队列",
+      "failed": "新建卡片失败"
+    },
+    "import": {
+      "apkg": "导入 .apkg",
+      "pickTitle": "选择 Anki 牌组（.apkg）",
+      "running": "导入中…",
+      "hint": "选择本地 .apkg 文件导入卡片库",
+      "success": "导入完成：共 {{count}} 张卡片",
+      "failed": "Anki 牌组导入失败"
+    },
+    "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。"
   },
   "session": {
     "loading": "准备复习队列…",
@@ -228,7 +253,10 @@
     "statRated": "已评分",
     "statTime": "用时",
     "statBestStreak": "最长连击",
-    "distribution": "评分分布"
+    "distribution": "评分分布",
+    "undoNudgeRated": "已评：{{rating}}",
+    "undoNudgeGeneric": "已记录复习",
+    "cardTimeCappedTitle": "本卡用时已超过 1 分钟（仅显示封顶，不影响统计）"
   },
   "settings": {
     "title": "闪卡设置",

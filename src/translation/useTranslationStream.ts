@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { getErrorMessage } from '../utils/errorUtils';
+import { useTranslationStreamBridge, type TranslationStreamPhase } from './translationStreamBridge';
 
 // 翻译空闲超时时间（毫秒）- 2分钟无任何事件视为超时
 const TRANSLATION_TIMEOUT_MS = 120000;
@@ -87,6 +88,10 @@ interface TranslationStreamEvent {
 // 模块级会话计数器：与时间戳、随机后缀共同保证多实例/同毫秒不冲突
 let translationSessionCounter = 0;
 
+// 流桥所有权 token 计数器：每个 hook 实例一个稳定 token，
+// 同 key 双实例（分屏同一资源）时先卸载的一方不清掉后发布者的快照
+let streamBridgeOwnerCounter = 0;
+
 function createTranslationSessionId(): string {
   translationSessionCounter += 1;
   const rand =
@@ -111,7 +116,13 @@ const INITIAL_STATE: TranslationStreamState = {
 /**
  * 翻译流式管理 Hook
  */
-export function useTranslationStream() {
+export interface UseTranslationStreamOptions {
+  /** DSTU resourceId — 发布快照供 TranslationGenerativeBriefing 订阅 */
+  publishKey?: string | null;
+}
+
+export function useTranslationStream(options?: UseTranslationStreamOptions) {
+  const publishKey = options?.publishKey ?? null;
   const { t } = useTranslation(['translation']);
   const [state, setState] = useState<TranslationStreamState>(INITIAL_STATE);
 
@@ -541,6 +552,47 @@ export function useTranslationStream() {
       currentSessionIdRef.current = null;
     };
   }, [finishSession]);
+
+  // 流桥所有权 token（实例级、惰性初始化，整个生命周期稳定）
+  const bridgeOwnerTokenRef = useRef<string | null>(null);
+  if (bridgeOwnerTokenRef.current === null) {
+    streamBridgeOwnerCounter += 1;
+    bridgeOwnerTokenRef.current = `translation_stream_owner_${streamBridgeOwnerCounter}`;
+  }
+
+  useEffect(() => {
+    if (!publishKey) return;
+    // 阶段语义：error 终态 > 流式中 > 有结果的终态 > 初始空闲
+    const phase: TranslationStreamPhase = state.error
+      ? 'error'
+      : state.isTranslating
+        ? 'streaming'
+        : state.translatedText || state.currentTranslationId
+          ? 'done'
+          : 'idle';
+    useTranslationStreamBridge.getState().actions.publish(
+      publishKey,
+      {
+        isTranslating: state.isTranslating,
+        translatedText: state.translatedText,
+        charCount: state.charCount,
+        wordCount: state.wordCount,
+        detectedLang: state.detectedLang,
+        isPartialResult: state.isPartialResult,
+        phase,
+      },
+      bridgeOwnerTokenRef.current ?? undefined,
+    );
+  }, [publishKey, state]);
+
+  useEffect(() => {
+    if (!publishKey) return;
+    const ownerToken = bridgeOwnerTokenRef.current ?? undefined;
+    return () => {
+      // 带所有权清理：同 key 的另一实例已后发布（接管所有权）时此清理为 no-op
+      useTranslationStreamBridge.getState().actions.clear(publishKey, ownerToken);
+    };
+  }, [publishKey]);
 
   return {
     ...state,

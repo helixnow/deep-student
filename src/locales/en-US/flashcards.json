@@ -34,10 +34,12 @@
     "statNew": "New",
     "statLearning": "Learning",
     "streak": "{{count}}-day streak",
-    "streakHint": "Streak estimated from each card's latest review",
+    "streakHint": "Calculated by local calendar day; falls back to latest-review estimates when review logs are unavailable",
     "libSummary": "{{count}} cards in library",
     "allDone": "All reviews done for today",
     "emptyHint": "Enqueue new cards from the library, or generate a batch in chat, to keep your daily rhythm.",
+    "libraryEmpty": "Your card library is empty",
+    "libraryEmptyHint": "Generate cards from learning material in chat first — the review queue builds up from there.",
     "goStats": "View statistics",
     "upNext": "Up next",
     "upNextCount": "{{count}} cards"
@@ -140,7 +142,30 @@
       "review": "Review",
       "relearning": "Relearning",
       "enqueued": "Enqueued"
-    }
+    },
+    "create": {
+      "new": "New card",
+      "cancel": "Close composer",
+      "frontLabel": "Card front",
+      "backLabel": "Card back",
+      "frontPlaceholder": "Front: what to ask",
+      "backPlaceholder": "Back: the answer",
+      "save": "Save and enqueue",
+      "saving": "Saving…",
+      "hint": "Saved cards join the review queue right away and stay editable inline.",
+      "incomplete": "Both front and back are required",
+      "success": "Card created and added to the review queue",
+      "failed": "Failed to create the card"
+    },
+    "import": {
+      "apkg": "Import .apkg",
+      "pickTitle": "Choose an Anki deck (.apkg)",
+      "running": "Importing…",
+      "hint": "Pick a local .apkg file to import into the library",
+      "success": "Import finished: {{count}} cards",
+      "failed": "Failed to import the Anki deck"
+    },
+    "emptyHint": "Create a card by hand, or import a local Anki deck (.apkg)."
   },
   "session": {
     "loading": "Preparing review queue…",
@@ -228,7 +253,10 @@
     "statRated": "Rated",
     "statTime": "Time",
     "statBestStreak": "Best streak",
-    "distribution": "Rating distribution"
+    "distribution": "Rating distribution",
+    "undoNudgeRated": "Rated {{rating}}",
+    "undoNudgeGeneric": "Review recorded",
+    "cardTimeCappedTitle": "Over 1 minute on this card (display capped; stats unaffected)"
   },
   "settings": {
     "title": "Flashcard settings",

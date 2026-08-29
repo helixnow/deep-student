@@ -205,6 +205,10 @@
     "reset_to_original": "恢复原始设置",
     "reset_success": "已恢复默认设置",
     "reset_failed": "恢复默认失败",
+    "reset_confirm_title": "恢复内置默认？",
+    "reset_confirm_desc": "「{{name}}」的全部自定义修改（内容、工具、优先级等）将被丢弃，恢复为内置版本。此操作不可撤销。",
+    "reset_confirm_action": "恢复默认",
+    "resetting": "恢复中…",
     "active": "激活",
     "active_count": "{{count}} 个技能已激活",
     "active_count_one": "{{count}} 个技能已激活",
@@ -388,6 +392,7 @@
     "academic-search": "学术搜索",
     "template-designer": "模板设计",
     "workbench-tools": "学习桌面",
+    "generative-ui": "生成式界面",
     "automation-tools": "自动化管理",
     "browser-tools": "浏览器操作",
     "media-tools": "媒体转写",
@@ -442,6 +447,7 @@
     "academic-search": "搜索学术论文、文献和研究资源。",
     "template-designer": "设计和管理可复用的文档模板。",
     "workbench-tools": "学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口与查询状态。数据修改请用领域工具。",
+    "generative-ui": "输出结构化生成式界面意图（卡片、进度、操作栏等），由组件注册表渲染，禁止 HTML/JS。",
     "media-tools": "通过已配置的外部 ASR 提供商转写受管音频，并写入可审计的转写产物。",
     "office-fidelity-tools": "只读检查受管 DOCX、XLSX、PPTX 与 PDF 的保真风险，不执行宏、不解密，也不声称保留未支持特性。"
   },
@@ -536,5 +542,10 @@
     "description_required": "请输入技能描述",
     "description_too_long": "描述不能超过 1024 个字符",
     "description_too_short": "建议描述至少 50 字符，以便 LLM 更好地理解何时使用此技能"
+  },
+
+  "storage": {
+    "save_requires_tauri": "非 Tauri 环境，无法保存自定义",
+    "reset_requires_tauri": "非 Tauri 环境，无法重置自定义"
   }
 }

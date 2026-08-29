@@ -74,7 +74,29 @@
     "operation_set": "设置内容",
     "accept": "接受",
     "reject": "拒绝",
-    "no_changes": "未检测到变更"
+    "no_changes": "未检测到变更",
+    "errors": {
+      "output_too_large": "建议后的笔记超过 {{maxBytes}} 字节上限",
+      "append_empty": "追加内容为空",
+      "search_empty": "搜索模式为空",
+      "invalid_regex": "无效的正则表达式: {{message}}",
+      "regex_syntax_error": "语法错误",
+      "replace_not_found": "未找到要替换的内容",
+      "unknown_operation": "未知的操作类型: {{operation}}",
+      "section_not_found": "未找到章节: {{section}}",
+      "user_rejected": "用户拒绝修改"
+    },
+    "summary": {
+      "meta_title": "变更摘要",
+      "meta_description": "基于 diff 统计的确定性预览",
+      "stat_title": "变更行数",
+      "no_change_trend": "无实质变更",
+      "added": "新增",
+      "removed": "删除",
+      "operation": "操作",
+      "no_diff_title": "无可见差异",
+      "no_diff_description": "AI 建议与当前正文一致，接受后将不会产生变更。"
+    }
   },
   "aiCheckpoint": {
     "applied": "AI 编辑已应用",
@@ -325,6 +347,7 @@
     "quote": "引用",
     "horizontalRule": "分隔线",
     "codeBlock": "代码块",
+    "generateCards": "生成卡片",
     "link": "链接",
     "image": "图片",
     "table": "表格",
@@ -436,7 +459,7 @@
       "paste_failed": "粘贴图片处理失败：{{error}}",
       "command_failed": "Slash 指令插入图片失败：{{error}}",
       "success": "图片已插入",
-      "too_large": "图片超过 10MB 限制",
+      "too_large": "图片超过 50MB 限制",
       "placeholder": "点击或拖拽上传图片",
       "placeholder_touch": "点击上传图片",
       "upload_button": "上传图片",
@@ -1287,7 +1310,16 @@
     "taskList": "任务列表",
     "image": "图片",
     "undo": "撤销",
-    "redo": "重做"
+    "redo": "重做",
+    "generateCards": "生成卡片"
+  },
+  "generateCards": {
+    "deckName": "笔记制卡",
+    "requirements": "基于这篇笔记的要点出卡，保留原文的术语与表述，跳过纯格式化内容。",
+    "tooShort": "笔记内容太短，先写点内容再生成卡片",
+    "started": "已开始根据笔记生成卡片",
+    "failed": "生成卡片失败",
+    "openTaskDashboard": "查看任务"
   },
   "versions": {
     "title": "版本历史",

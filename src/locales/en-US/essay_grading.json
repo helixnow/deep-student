@@ -16,11 +16,24 @@
     "export": "Export",
     "copied": "Copied to clipboard",
     "copied_feedback": "Copied",
-    "exported": "Grading result exported"
+    "exported": "Grading result exported",
+    "save_as_note": "Save as Note"
   },
   "result_empty": {
     "title": "Ready to grade",
     "description": "Enter or paste an essay in the input area, then click \"Start Grading\" to see annotated results here in real time"
+  },
+  "make_cards": {
+    "label": "Generate cards",
+    "running": "Submitting…",
+    "disabled_grading": "Available once grading finishes",
+    "disabled_no_result": "No grading result yet, so there is nothing to turn into cards",
+    "deck_name": "Essay feedback",
+    "requirements": "Build memory cards from the annotations and rewrite suggestions in the feedback. Focus on the issues that were flagged and the better phrasing, and never turn the whole essay into a single card.",
+    "too_short": "The grading result is too short to make useful cards",
+    "started": "Card generation started. Track progress in the task dashboard.",
+    "failed": "Failed to start card generation",
+    "open_task_dashboard": "Open task dashboard"
   },
   "confirm": {
     "clear": "Clear?",
@@ -62,14 +75,15 @@
     "previous": "Previous",
     "next": "Next",
     "new": "Submit Next Round",
-    "total": "{{count}} rounds total"
+    "total": "{{count}} rounds total",
+    "switch_confirm_title": "Switch Round",
+    "switch_unsaved_confirm": "You have unsaved changes to the essay text. Switching rounds will overwrite them with the selected round's text. Continue?"
   },
   "actions": {
     "grade": "Start Grading",
     "grading": "Grading...",
     "cancel": "Cancel",
     "clear": "Clear",
-    "next_round": "Submit Revision",
     "view_history": "View History",
     "retry": "Retry",
     "cancel_confirm_title": "Cancel Grading",
@@ -134,7 +148,8 @@
     "export_failed": "Export failed. Please try again.",
     "api_key_missing": "No API key configured. Please add one in Settings.",
     "model_not_found": "The selected model is unavailable. Please choose another.",
-    "network_error": "Network connection failed. Please check your network and retry."
+    "network_error": "Network connection failed. Please check your network and retry.",
+    "save_note_failed": "Failed to save as note. Please try again."
   },
   "toast": {
     "grading_success": "Grading completed",
@@ -146,6 +161,8 @@
     "saved": "Saved",
     "deleted": "Deleted",
     "ocr_processing": "Recognizing image...",
+    "ocr_processing_multi": "Recognizing {{count}} images; results will backfill in upload order...",
+    "ocr_placeholder": "[Recognizing image {{current}}/{{total}} · {{fileName}}]",
     "ocr_success": "OCR recognition successful",
     "ocr_success_multi": "Successfully recognized {{count}} images",
     "ocr_empty": "No text recognized by OCR",
@@ -160,7 +177,9 @@
     "clear_blocked_grading": "Cannot clear while grading is in progress",
     "suggestion_applied": "Suggestion applied",
     "suggestion_not_found": "Original text not found in the essay; it may have been edited",
-    "suggestion_blocked_grading": "Cannot apply suggestions while grading is in progress"
+    "suggestion_blocked_grading": "Cannot apply suggestions while grading is in progress",
+    "suggestion_undone": "Change reverted",
+    "suggestion_undo_failed": "Could not locate the applied change; the text may have been edited"
   },
   "round_navigation": {
     "title": "Round Navigation",
@@ -212,6 +231,8 @@
   },
   "markers": {
     "apply": "Apply",
+    "applied": "Applied",
+    "undo": "Undo",
     "delete": "Suggest deletion",
     "insert": "Suggest insertion",
     "replace": "Suggest replacement",
@@ -279,10 +300,8 @@
     "ocr_hint": "Import images",
     "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images"
   },
-  "next_round_confirm": {
-    "title": "Start New Round",
-    "message": "This will clear the input area for your revised essay. Current content is saved in the previous round.",
-    "confirm": "Start New Round"
+  "notes": {
+    "note_title": "Essay Grading: {{title}} (Round {{round}})"
   },
   "clear_confirm": {
     "title": "Clear Content",

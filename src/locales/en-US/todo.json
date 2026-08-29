@@ -566,6 +566,10 @@
     "everyNYears": "Every {{count}} years",
     "weeklyOn": "Weekly on {{days}}",
     "everyNWeeksOn": "Every {{count}} weeks on {{days}}",
+    "monthlyOn": "Monthly on day {{days}}",
+    "everyNMonthsOn": "Every {{count}} months on day {{days}}",
+    "monthDayJoin": ", ",
+    "withUntil": "{{label}}, until {{date}}",
     "weekdayJoin": ", ",
     "weekdayShort": {
       "0": "Sun",
@@ -819,5 +823,18 @@
   },
   "quickAdd": {
     "removeToken": "Remove"
+  },
+  "agent": {
+    "list_not_activated": "Target list was not activated",
+    "undo_list_not_restored": "Undo failed: the original list was not restored",
+    "undo_failed": "Undo failed: {{error}}",
+    "pause_check_failed": "Pause check failed: {{error}}",
+    "pacing_failed": "Pacing control failed: {{error}}",
+    "op_missing_list_id": "{{label}} (missing listId)",
+    "op_failed": "{{label}} (failed: {{error}})",
+    "unsupported_hint": "Use the user_todo domain tool to modify todo data; this driver only supports navigation ops (todo_show_list)",
+    "nav_aborted": "Todo navigation aborted",
+    "run_not_found": "Todo run does not exist or has already finished",
+    "run_ended": "Run already finished"
   }
 }

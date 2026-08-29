@@ -70,5 +70,13 @@
   "virtual_list": {
     "scroll_to_bottom": "滚动到底部",
     "new_messages": "有新消息"
+  },
+  "vfs_inject": {
+    "resource_not_found": "资源 {{sourceId}} 未找到",
+    "network_error": "网络错误，无法获取资源引用",
+    "permission_denied": "权限不足，无法访问资源",
+    "capacity_exceeded": "资源数量超限：当前 {{count}}，最大 {{maxCount}}",
+    "batch_query_failed": "批量查询资源失败",
+    "network_retry": "网络错误，请重试"
   }
 }

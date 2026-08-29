@@ -83,6 +83,7 @@
     "add": "添加",
     "show": "显示",
     "hide": "隐藏",
+    "more": "更多",
     "expand": "展开",
     "analyze": "分析",
     "remove": "移除",
@@ -3555,7 +3556,7 @@
     "cannotOpenLink": "无法打开链接，请复制后手动打开: {{url}}"
   },
   "imageUpload": {
-    "tooLarge": "图片超过10MB限制"
+    "tooLarge": "图片超过50MB限制"
   },
   "persistFailed": "保存更改失败",
   "aria": {
@@ -3659,7 +3660,7 @@
         },
         "cloudSync": {
           "title": "云同步（可选）",
-          "content": "您可以选择将数据同步到自行配置的 WebDAV 或 S3 兼容存储服务。此功能默认关闭，仅在您主动配置并触发时才会传输数据。"
+          "content": "您可以选择将数据同步到自行配置的云存储。Android 仅支持 WebDAV；桌面端还可使用 S3 兼容存储与实验性 FTP。此功能默认关闭，仅在您主动配置并触发时才会传输数据。数据不会发到 Deep Student 的服务器。"
         },
         "noTracking": {
           "title": "无行为追踪",
@@ -3705,7 +3706,7 @@
         "llmData": "AI 请求数据",
         "llmDataDesc": "使用 AI 功能时，对话内容发送至您配置的 LLM API 服务商",
         "syncData": "同步数据（可选）",
-        "syncDataDesc": "如启用云同步，数据发送至您配置的 WebDAV/S3 服务",
+        "syncDataDesc": "如启用云同步，数据只发到您自己配置的存储（Android 仅 WebDAV；桌面另有 S3 兼容存储与实验性 FTP），不是 Deep Student 的服务器",
         "sentryData": "错误报告（可选）",
         "sentryDataDesc": "如启用，匿名崩溃信息发送至错误报告服务",
         "crossBorderNote": "跨境传输提示",
@@ -3741,6 +3742,7 @@
     "title": "应用遇到严重错误",
     "description": "应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。",
     "refresh": "刷新页面",
+    "retry": "重试",
     "show_details": "查看错误详情",
     "hide_details": "隐藏详情",
     "copy_error": "复制错误日志",

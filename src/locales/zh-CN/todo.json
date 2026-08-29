@@ -566,6 +566,10 @@
     "everyNYears": "每 {{count}} 年",
     "weeklyOn": "每周{{days}}",
     "everyNWeeksOn": "每 {{count}} 周的周{{days}}",
+    "monthlyOn": "每月{{days}}号",
+    "everyNMonthsOn": "每 {{count}} 个月的{{days}}号",
+    "monthDayJoin": "、",
+    "withUntil": "{{label}}，直到 {{date}}",
     "weekdayJoin": "、",
     "weekdayShort": {
       "0": "日",
@@ -819,5 +823,18 @@
   },
   "quickAdd": {
     "removeToken": "移除"
+  },
+  "agent": {
+    "list_not_activated": "目标清单未激活",
+    "undo_list_not_restored": "撤销失败：原清单未恢复",
+    "undo_failed": "撤销失败：{{error}}",
+    "pause_check_failed": "暂停检查失败：{{error}}",
+    "pacing_failed": "节奏控制失败：{{error}}",
+    "op_missing_list_id": "{{label}}（缺少 listId）",
+    "op_failed": "{{label}}（失败: {{error}}）",
+    "unsupported_hint": "请用 user_todo 领域工具修改待办数据；本驱动仅支持导航类 op（todo_show_list）",
+    "nav_aborted": "todo 导航已中止",
+    "run_not_found": "todo run 不存在或已结束",
+    "run_ended": "run 已结束"
   }
 }
