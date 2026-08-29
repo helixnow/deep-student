@@ -15,6 +15,7 @@ use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::note_props;
 use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::resource_repo::VfsResourceRepo;
@@ -34,6 +35,19 @@ fn next_updated_at(current: &str) -> String {
 
 /// VFS 笔记表 Repo
 pub struct VfsNoteRepo;
+
+/// 一次性更新 notes 行上的用户元数据。
+///
+/// `None` 表示保留原值；`props: Some({})` 表示清空并规范化为 SQL NULL。
+/// 所有字段在同一条 CAS UPDATE 中提交，避免 DSTU 多字段写入部分成功。
+#[derive(Debug, Clone, Default)]
+pub struct VfsNoteMetadataUpdate {
+    pub title: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub is_favorite: Option<bool>,
+    pub props: Option<serde_json::Value>,
+    pub expected_updated_at: Option<String>,
+}
 
 // ============================================================================
 // 笔记链接图（note_links，见迁移 V20260725__note_links.sql）
@@ -382,6 +396,69 @@ impl VfsNoteRepo {
         Ok(())
     }
 
+    /// 自定义属性限额（canonical 定义在 vfs::note_props，与前端
+    /// NoteCustomPropsEditor 常量一致；此处保留别名以维持既有 API）
+    pub const MAX_PROPS: usize = note_props::MAX_PROPS;
+    pub const MAX_PROP_KEY_CHARS: usize = note_props::MAX_PROP_KEY_CHARS;
+    pub const MAX_PROP_VALUE_CHARS: usize = note_props::MAX_PROP_VALUE_CHARS;
+    /// 与内建元数据/搜索操作符冲突的保留键（小写比较）
+    pub const PROPS_RESERVED_KEYS: [&'static str; 7] = note_props::PROPS_RESERVED_KEYS;
+
+    /// 校验自定义属性对象：键非空/不保留/长度上限/无控制字符
+    /// （单键规则委托给共享键语法模块 [`note_props::validate_prop_key`]，
+    /// 与搜索侧共用同一套测试向量）；跨键约束（重复/数量上限）在此处理；
+    /// 值仅允许标量（字符串/数字/布尔），字符串有长度上限。
+    fn validate_note_props(props: &serde_json::Map<String, serde_json::Value>) -> VfsResult<()> {
+        if props.len() > Self::MAX_PROPS {
+            return Err(VfsError::InvalidArgument {
+                param: "props".to_string(),
+                reason: format!("属性数量超出上限（最多 {} 个）", Self::MAX_PROPS),
+            });
+        }
+        let mut normalized_keys = HashSet::with_capacity(props.len());
+        for (key, value) in props {
+            let trimmed = note_props::validate_prop_key(key).map_err(|key_error| {
+                VfsError::InvalidArgument {
+                    param: "props".to_string(),
+                    reason: key_error.reason(key.trim()),
+                }
+            })?;
+            if !normalized_keys.insert(trimmed.to_lowercase()) {
+                return Err(VfsError::InvalidArgument {
+                    param: "props".to_string(),
+                    reason: format!("属性名 {trimmed:?} 与已有属性重复"),
+                });
+            }
+            match value {
+                serde_json::Value::String(s) => {
+                    if s.chars().count() > Self::MAX_PROP_VALUE_CHARS {
+                        return Err(VfsError::InvalidArgument {
+                            param: "props".to_string(),
+                            reason: format!(
+                                "属性值过长（最多 {} 个字符）",
+                                Self::MAX_PROP_VALUE_CHARS
+                            ),
+                        });
+                    }
+                    if s.chars().any(|c| c.is_control()) {
+                        return Err(VfsError::InvalidArgument {
+                            param: "props".to_string(),
+                            reason: "属性值不能包含控制字符".to_string(),
+                        });
+                    }
+                }
+                serde_json::Value::Number(_) | serde_json::Value::Bool(_) => {}
+                _ => {
+                    return Err(VfsError::InvalidArgument {
+                        param: "props".to_string(),
+                        reason: "属性值只支持字符串、数字或布尔".to_string(),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     // ========================================================================
     // 创建笔记
     // ========================================================================
@@ -485,6 +562,7 @@ impl VfsNoteRepo {
                 created_at: now.clone(),
                 updated_at: now,
                 deleted_at: None,
+                props: None,
             })
         })();
 
@@ -729,6 +807,7 @@ impl VfsNoteRepo {
                 created_at: current_note.created_at,
                 updated_at: now,
                 deleted_at: None,
+                props: current_note.props,
             })
         })();
 
@@ -770,7 +849,7 @@ impl VfsNoteRepo {
     pub fn get_note_with_conn(conn: &Connection, note_id: &str) -> VfsResult<Option<VfsNote>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at, props
             FROM notes
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
@@ -803,7 +882,7 @@ impl VfsNoteRepo {
     ) -> VfsResult<Option<VfsNote>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at, props
             FROM notes
             WHERE id = ?1
             "#,
@@ -955,7 +1034,7 @@ impl VfsNoteRepo {
 
         let mut stmt = conn.prepare(
             r#"
-            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at
+            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at, n.props
             FROM notes_fts
             JOIN notes n ON n.rowid = notes_fts.rowid
             WHERE notes_fts MATCH ?1 AND n.deleted_at IS NULL
@@ -1049,7 +1128,7 @@ impl VfsNoteRepo {
             let fts_sql = r#"
                 SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite,
                        n.created_at, n.updated_at, n.deleted_at,
-                       COALESCE(r.data, '')
+                       COALESCE(r.data, ''), n.props
                 FROM notes_fts
                 JOIN notes n ON n.rowid = notes_fts.rowid
                 LEFT JOIN resources r ON r.id = n.resource_id
@@ -1078,7 +1157,7 @@ impl VfsNoteRepo {
         let like_sql = r#"
             SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite,
                    n.created_at, n.updated_at, n.deleted_at,
-                   COALESCE(r.data, '')
+                   COALESCE(r.data, ''), n.props
             FROM notes n
             LEFT JOIN resources r ON r.id = n.resource_id
             WHERE n.deleted_at IS NULL
@@ -1156,7 +1235,7 @@ impl VfsNoteRepo {
 
         let mut sql = String::from(
             r#"
-            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at
+            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at, n.props
             FROM notes n
             WHERE n.deleted_at IS NULL
             "#,
@@ -1779,6 +1858,181 @@ impl VfsNoteRepo {
         Ok(())
     }
 
+    fn normalize_note_props(
+        props: serde_json::Value,
+    ) -> VfsResult<(Option<String>, Option<serde_json::Value>)> {
+        let map = props.as_object().ok_or_else(|| VfsError::InvalidArgument {
+            param: "props".to_string(),
+            reason: "props 必须是键值对象".to_string(),
+        })?;
+        Self::validate_note_props(map)?;
+
+        // 键统一去两侧空白；validate_note_props 已按 trim + 小写拒绝歧义重复键。
+        let normalized: serde_json::Map<String, serde_json::Value> = map
+            .iter()
+            .map(|(key, value)| (key.trim().to_string(), value.clone()))
+            .collect();
+        if normalized.is_empty() {
+            return Ok((None, None));
+        }
+
+        let value = serde_json::Value::Object(normalized);
+        let raw = serde_json::to_string(&value)
+            .map_err(|error| VfsError::Serialization(error.to_string()))?;
+        Ok((Some(raw), Some(value)))
+    }
+
+    /// 原子更新笔记元数据（title/tags/is_favorite/props）。
+    pub fn update_note_metadata(
+        db: &VfsDatabase,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        let conn = db.get_conn_safe()?;
+        Self::update_note_metadata_with_conn(&conn, note_id, update)
+    }
+
+    /// 原子更新笔记元数据（使用现有连接）。
+    ///
+    /// 所有校验先于写入完成，最终只发出一条 UPDATE；若提供
+    /// `expected_updated_at`，同一条 UPDATE 同时执行 CAS。
+    pub fn update_note_metadata_with_conn(
+        conn: &Connection,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        let VfsNoteMetadataUpdate {
+            title,
+            tags,
+            is_favorite,
+            props,
+            expected_updated_at,
+        } = update;
+
+        if let Some(ref title) = title {
+            Self::validate_title(title)?;
+        }
+        if let Some(ref tags) = tags {
+            Self::validate_tags(tags)?;
+        }
+        let normalized_props = props.map(Self::normalize_note_props).transpose()?;
+
+        let current =
+            Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Note".to_string(),
+                id: note_id.to_string(),
+            })?;
+        let expected = expected_updated_at
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if let Some(ref expected) = expected {
+            if expected.as_str() != current.updated_at.as_str() {
+                return Err(VfsError::Conflict {
+                    key: "notes.conflict".to_string(),
+                    message: "The note has been updated elsewhere, please refresh.".to_string(),
+                });
+            }
+        }
+
+        if title.is_none() && tags.is_none() && is_favorite.is_none() && normalized_props.is_none()
+        {
+            return Ok(current);
+        }
+
+        let now = next_updated_at(&current.updated_at);
+        let mut assignments = Vec::new();
+        let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut push_assignment = |column: &str, value: Box<dyn rusqlite::ToSql>| {
+            assignments.push(format!("{column} = ?{}", values.len() + 1));
+            values.push(value);
+        };
+        if let Some(title) = title {
+            push_assignment("title", Box::new(title));
+        }
+        if let Some(tags) = tags {
+            let tags_json = serde_json::to_string(&tags)
+                .map_err(|error| VfsError::Serialization(error.to_string()))?;
+            push_assignment("tags", Box::new(tags_json));
+        }
+        if let Some(is_favorite) = is_favorite {
+            push_assignment("is_favorite", Box::new(is_favorite as i32));
+        }
+        if let Some((props_json, _normalized_value)) = normalized_props {
+            // None binds SQL NULL, which is the canonical representation for
+            // both an absent property object and an explicitly empty object.
+            push_assignment("props", Box::new(props_json));
+        }
+        push_assignment("updated_at", Box::new(now));
+        drop(push_assignment);
+
+        let id_param = values.len() + 1;
+        values.push(Box::new(note_id.to_string()));
+        let mut sql = format!(
+            "UPDATE notes SET {} WHERE id = ?{} AND deleted_at IS NULL",
+            assignments.join(", "),
+            id_param
+        );
+        if let Some(expected) = expected.as_ref() {
+            let expected_param = values.len() + 1;
+            values.push(Box::new(expected.clone()));
+            sql.push_str(&format!(" AND updated_at = ?{expected_param}"));
+        }
+        let value_refs: Vec<&dyn rusqlite::ToSql> =
+            values.iter().map(|value| value.as_ref()).collect();
+        let updated_rows = conn.execute(&sql, value_refs.as_slice())?;
+        if updated_rows == 0 {
+            return Err(if expected.is_some() {
+                VfsError::Conflict {
+                    key: "notes.conflict".to_string(),
+                    message: "The note has been updated elsewhere, please refresh.".to_string(),
+                }
+            } else {
+                VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                }
+            });
+        }
+
+        info!("[VFS::NoteRepo] Updated note metadata: {}", note_id);
+        Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "Note".to_string(),
+            id: note_id.to_string(),
+        })
+    }
+
+    /// 整对象替换笔记自定义属性（notes.props，见 V20260824__note_props.sql）。
+    ///
+    /// - `props` 必须是 JSON 对象；键去两侧空白后写入；空对象落库为 NULL。
+    /// - 校验规则见 [`Self::validate_note_props`]（与前端编辑器一致）。
+    /// - 与 tags 替换同语义：调用方（属性页编辑器）持有完整对象。
+    pub fn set_note_props(
+        db: &VfsDatabase,
+        note_id: &str,
+        props: serde_json::Value,
+    ) -> VfsResult<VfsNote> {
+        let conn = db.get_conn_safe()?;
+        Self::set_note_props_with_conn(&conn, note_id, props)
+    }
+
+    /// 整对象替换笔记自定义属性（使用现有连接）
+    pub fn set_note_props_with_conn(
+        conn: &Connection,
+        note_id: &str,
+        props: serde_json::Value,
+    ) -> VfsResult<VfsNote> {
+        Self::update_note_metadata_with_conn(
+            conn,
+            note_id,
+            VfsNoteMetadataUpdate {
+                props: Some(props),
+                ..Default::default()
+            },
+        )
+    }
+
     /// 列出已删除的笔记（回收站）
     ///
     pub fn list_deleted_notes(
@@ -1798,7 +2052,7 @@ impl VfsNoteRepo {
     ) -> VfsResult<Vec<VfsNote>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at, props
             FROM notes
             WHERE deleted_at IS NOT NULL
             ORDER BY deleted_at DESC
@@ -1882,7 +2136,8 @@ impl VfsNoteRepo {
 
     /// 从行数据构建 VfsNote
     ///
-    /// 列顺序：id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at
+    /// 列顺序（位置索引 0-7）：id, resource_id, title, tags, is_favorite,
+    /// created_at, updated_at, deleted_at；props 按列名读取（可缺省）
     fn row_to_note(row: &rusqlite::Row) -> rusqlite::Result<VfsNote> {
         let tags_json: String = row.get(3)?;
         let note_id: String = row.get(0)?;
@@ -1894,6 +2149,27 @@ impl VfsNoteRepo {
             Vec::new()
         });
 
+        // props 按列名读取（而非位置索引）：部分查询在第 8 列放正文
+        // （query_note_hits），props 统一追加在列清单末尾；未选出该列的
+        // 查询（InvalidColumnName）优雅回退为 None，避免逐查询硬编码索引。
+        //
+        // 回退语义分两类，不可混淆：
+        // - InvalidColumnName = 「查询没选这列」，正常投影路径，静默 None；
+        // - 其余取值错误与畸形内容（JSON 解析失败 / 非 object / 空 object）
+        //   = 数据异常，warn + 原子计数后 None（见 vfs::note_props）。
+        let props: Option<serde_json::Value> = match row.get::<_, Option<String>>("props") {
+            Ok(raw) => note_props::parse_props_cell(&note_id, raw.as_deref()),
+            Err(rusqlite::Error::InvalidColumnName(_)) => None,
+            Err(read_error) => {
+                note_props::record_malformed_props(
+                    &note_id,
+                    note_props::MalformedPropsKind::ColumnRead,
+                    &read_error.to_string(),
+                );
+                None
+            }
+        };
+
         Ok(VfsNote {
             id: note_id,
             resource_id: row.get(1)?,
@@ -1903,6 +2179,7 @@ impl VfsNoteRepo {
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
             deleted_at: row.get(7)?,
+            props,
         })
     }
 
@@ -2098,7 +2375,7 @@ impl VfsNoteRepo {
         offset: u32,
     ) -> VfsResult<Vec<VfsNote>> {
         let sql = r#"
-            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at
+            SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at, n.props
             FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
             WHERE fi.folder_id IS ?1 AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
@@ -2219,7 +2496,7 @@ impl VfsNoteRepo {
             r#"
             SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite,
                    n.created_at, n.updated_at, n.deleted_at,
-                   COALESCE(r.data, '')
+                   COALESCE(r.data, ''), n.props
             FROM notes n
             JOIN note_tags nt ON nt.note_id = n.id
             LEFT JOIN resources r ON r.id = n.resource_id
@@ -2351,7 +2628,7 @@ impl VfsNoteRepo {
 
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at
+            SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at, props
             FROM notes
             WHERE deleted_at IS NULL AND title LIKE ?1 ESCAPE '\'
             ORDER BY CASE WHEN title LIKE ?2 ESCAPE '\' THEN 0 ELSE 1 END,
@@ -3689,5 +3966,307 @@ mod tests {
         let hits = VfsNoteRepo::search_note_titles(&db, "线性代数", 10).unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].title, "线性代数", "前缀（此处为全等）命中应排最前");
+    }
+
+    // ========================================================================
+    // 自定义属性（notes.props，V20260824）
+    // ========================================================================
+
+    #[test]
+    fn test_set_note_props_roundtrip_and_updated_at() {
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "属性宿主", "正文");
+        assert!(note.props.is_none(), "新建笔记不应有自定义属性");
+
+        let updated = VfsNoteRepo::set_note_props(
+            &db,
+            &note.id,
+            serde_json::json!({ " status ": "in progress", "priority": 2, "pinned": true }),
+        )
+        .expect("Set props should succeed");
+
+        // 键去两侧空白；标量值原样保留
+        let props = updated.props.as_ref().expect("Props should be stored");
+        assert_eq!(props["status"], serde_json::json!("in progress"));
+        assert_eq!(props["priority"], serde_json::json!(2));
+        assert_eq!(props["pinned"], serde_json::json!(true));
+        assert!(
+            updated.updated_at > note.updated_at,
+            "写属性应推进 updated_at（{} -> {}）",
+            note.updated_at,
+            updated.updated_at
+        );
+
+        // 重新读出（含各查询路径的 row_to_note 列名读取）
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        assert_eq!(fetched.props, updated.props);
+        let listed = VfsNoteRepo::list_notes(&db, None, 10, 0).unwrap();
+        assert_eq!(listed[0].props, updated.props);
+
+        // 整对象替换语义：删除键 = 写回不含该键的对象
+        let replaced =
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "status": "done" }))
+                .unwrap();
+        let props = replaced.props.as_ref().unwrap();
+        assert!(props.get("priority").is_none());
+
+        // 空对象落库为 NULL（props 回到 None）
+        let cleared = VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({})).unwrap();
+        assert!(cleared.props.is_none());
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        assert!(fetched.props.is_none());
+    }
+
+    #[test]
+    fn test_set_note_props_validation() {
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "属性校验", "正文");
+
+        // 非对象
+        assert!(VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!([1, 2])).is_err());
+        // 保留键（大小写不敏感）
+        assert!(
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "Tags": "x" })).is_err()
+        );
+        // 空键
+        assert!(
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "  ": "x" })).is_err()
+        );
+        // 嵌套值（只允许标量）
+        assert!(VfsNoteRepo::set_note_props(
+            &db,
+            &note.id,
+            serde_json::json!({ "meta": { "nested": true } })
+        )
+        .is_err());
+        // trim + 大小写后重复的键会导致搜索命中不确定，必须拒绝而非静默覆盖
+        assert!(VfsNoteRepo::set_note_props(
+            &db,
+            &note.id,
+            serde_json::json!({ " Status ": "draft", "status": "done" })
+        )
+        .is_err());
+        // 值超长
+        let long_value = "v".repeat(VfsNoteRepo::MAX_PROP_VALUE_CHARS + 1);
+        assert!(VfsNoteRepo::set_note_props(
+            &db,
+            &note.id,
+            serde_json::json!({ "key": long_value })
+        )
+        .is_err());
+        // 数量超限
+        let mut too_many = serde_json::Map::new();
+        for index in 0..=VfsNoteRepo::MAX_PROPS {
+            too_many.insert(format!("k{index}"), serde_json::json!("v"));
+        }
+        assert!(
+            VfsNoteRepo::set_note_props(&db, &note.id, serde_json::Value::Object(too_many))
+                .is_err()
+        );
+
+        // 校验失败不落库
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        assert!(fetched.props.is_none());
+    }
+
+    #[test]
+    fn test_update_note_metadata_is_atomic_and_honors_occ() {
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "原标题", "正文");
+
+        let updated = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("新标题".to_string()),
+                tags: Some(vec!["math".to_string()]),
+                is_favorite: Some(true),
+                props: Some(serde_json::json!({ "status": "done" })),
+                expected_updated_at: Some(note.updated_at.clone()),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.title, "新标题");
+        assert_eq!(updated.tags, vec!["math"]);
+        assert!(updated.is_favorite);
+        assert_eq!(
+            updated.props.as_ref().and_then(|value| value.get("status")),
+            Some(&serde_json::json!("done"))
+        );
+
+        let stale = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("不应写入".to_string()),
+                expected_updated_at: Some(note.updated_at),
+                ..Default::default()
+            },
+        );
+        assert!(matches!(stale, Err(VfsError::Conflict { .. })));
+        assert_eq!(
+            VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap().title,
+            "新标题"
+        );
+
+        // 任一字段校验失败时，其他字段也不能部分落库。
+        let invalid = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("半成品标题".to_string()),
+                props: Some(serde_json::json!({ "nested": { "bad": true } })),
+                ..Default::default()
+            },
+        );
+        assert!(invalid.is_err());
+        assert_eq!(
+            VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap().title,
+            "新标题"
+        );
+
+        // 未提供的列不能出现在 UPDATE 的赋值清单中。除了避免无谓触发
+        // note_tags/change-log trigger，这也保证无 OCC 的部分更新不会把读取
+        // current 之后由另一连接写入的字段覆盖回旧快照。
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_unprovided_note_metadata
+             BEFORE UPDATE OF tags, is_favorite, props ON notes
+             WHEN OLD.id = '{}'
+             BEGIN
+               SELECT RAISE(ABORT, 'omitted metadata column was assigned');
+             END;",
+            note.id.replace('\'', "''")
+        ))
+        .unwrap();
+        drop(conn);
+        let title_only = VfsNoteRepo::update_note_metadata(
+            &db,
+            &note.id,
+            VfsNoteMetadataUpdate {
+                title: Some("仅标题更新".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("partial update must not assign omitted metadata columns");
+        assert_eq!(title_only.title, "仅标题更新");
+        assert_eq!(title_only.tags, vec!["math"]);
+        assert!(title_only.is_favorite);
+        assert_eq!(
+            title_only
+                .props
+                .as_ref()
+                .and_then(|value| value.get("status")),
+            Some(&serde_json::json!("done"))
+        );
+    }
+
+    #[test]
+    fn test_props_survive_metadata_and_content_updates() {
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "属性保持", "旧内容");
+        VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ "status": "done" }))
+            .unwrap();
+
+        // update_note（改标题 + 内容）不应清掉 props
+        let updated = VfsNoteRepo::update_note(
+            &db,
+            &note.id,
+            VfsUpdateNoteParams {
+                content: Some("新内容".to_string()),
+                title: Some("新标题".to_string()),
+                tags: Some(vec!["t".to_string()]),
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            updated.props.as_ref().and_then(|p| p.get("status")),
+            Some(&serde_json::json!("done"))
+        );
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        assert_eq!(fetched.props, updated.props);
+    }
+
+    /// 畸形 props（旁路写入的坏数据）读取时必须回退 None 且留下观测痕迹
+    /// （warn 日志 + 原子计数），不允许静默丢失。
+    #[test]
+    fn test_row_to_note_malformed_props_fall_back_with_trace() {
+        use crate::vfs::note_props;
+
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "畸形属性宿主", "正文");
+
+        // 绕过写侧校验，直接向 props 列注入畸形数据（模拟旁路写入/损坏）
+        let inject = |raw: &str| {
+            db.get_conn_safe()
+                .unwrap()
+                .execute(
+                    "UPDATE notes SET props = ?1 WHERE id = ?2",
+                    rusqlite::params![raw, note.id],
+                )
+                .unwrap();
+        };
+
+        for raw in ["not-json{", "[1,2]", "\"scalar\"", "{}"] {
+            inject(raw);
+            let before = note_props::malformed_props_total();
+            let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+            assert!(fetched.props.is_none(), "畸形 props {raw:?} 应回退 None");
+            assert!(
+                note_props::malformed_props_total() > before,
+                "畸形 props {raw:?} 必须计入原子计数（不允许静默）"
+            );
+        }
+
+        // 对照组：合法非空对象正常读出，且不增加畸形计数
+        inject(r#"{"status":"done","priority":2}"#);
+        let before = note_props::malformed_props_total();
+        let fetched = VfsNoteRepo::get_note(&db, &note.id).unwrap().unwrap();
+        let props = fetched.props.expect("合法 props 应读出");
+        assert_eq!(
+            props["priority"],
+            serde_json::json!(2),
+            "读侧保留 JSON 类型"
+        );
+        assert_eq!(note_props::malformed_props_total(), before);
+    }
+
+    /// 共享键语法向量（vfs::note_props::test_vectors）在写侧的落库口径：
+    /// 合法向量全部可存；非法向量全部被拒。
+    #[test]
+    fn test_note_props_shared_key_vectors_round_trip_write_side() {
+        use crate::vfs::note_props::test_vectors;
+
+        let (_temp_dir, db) = setup_test_db();
+        let note = create_simple_note(&db, "共享向量宿主", "正文");
+
+        let mut valid = serde_json::Map::new();
+        for key in test_vectors::VALID_OPERATOR_KEYS {
+            valid.insert((*key).to_string(), serde_json::json!("v"));
+        }
+        for key in test_vectors::STORABLE_BUT_NOT_OPERATOR_SEARCHABLE_KEYS {
+            valid.insert((*key).to_string(), serde_json::json!("v"));
+        }
+        // "status"/"Status" 在向量里同为合法键，但 trim+小写去重会拒绝共存，
+        // 移除大小写变体后整体落库
+        valid.remove("Status");
+        VfsNoteRepo::set_note_props(&db, &note.id, serde_json::Value::Object(valid))
+            .expect("共享向量中的合法键应全部可存");
+
+        for (key, _expected_tag) in test_vectors::INVALID_KEYS {
+            let result =
+                VfsNoteRepo::set_note_props(&db, &note.id, serde_json::json!({ (*key): "v" }));
+            assert!(result.is_err(), "共享向量中的非法键 {key:?} 应被写侧拒绝");
+        }
+        assert!(
+            VfsNoteRepo::set_note_props(
+                &db,
+                &note.id,
+                serde_json::json!({ (test_vectors::overlong_key()): "v" }),
+            )
+            .is_err(),
+            "超长键应被写侧拒绝"
+        );
     }
 }

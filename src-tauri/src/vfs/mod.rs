@@ -30,8 +30,15 @@ pub mod handlers;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
+#[cfg(feature = "lance")]
+pub mod lance_store;
+// lance feature 未启用时（如 mobile-slim），提供同名 API 的 no-op stub，
+// 保持 ~30 个消费方（unified_retriever / indexing / handlers 等）无需逐一门控。
+#[cfg(not(feature = "lance"))]
+#[path = "lance_store_stub.rs"]
 pub mod lance_store;
 pub mod multimodal_service;
+pub mod note_props;
 pub mod ocr_utils;
 pub mod pdf_processing_service;
 pub mod pomodoro_handlers;
@@ -72,8 +79,8 @@ pub use repos::{
 };
 pub use repos::{
     VfsAttachmentRepo, VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsMindMapRepo, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo, VfsTextbookRepo, VfsTodoRepo,
-    VfsTranslationRepo,
+    VfsMindMapRepo, VfsNoteMetadataUpdate, VfsNoteRepo, VfsPomodoroRepo, VfsResourceRepo,
+    VfsTextbookRepo, VfsTodoRepo, VfsTranslationRepo,
 };
 pub use retrieval_planner::{
     fuse_route_results, plan_generation, plan_retrieval, ActiveGenerationModel, CapabilityKind,
