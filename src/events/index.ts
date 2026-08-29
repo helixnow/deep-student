@@ -24,6 +24,7 @@ export {
   type ChatV2SetInputDetail,
   type NavigateToSessionDetail,
   type MobileAppNavigateDetail,
+  type WbPreviewQuickLookDetail,
 } from './app';
 
 export { useAppEvent } from './useAppEvent';

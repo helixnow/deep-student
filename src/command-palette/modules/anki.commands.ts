@@ -14,11 +14,11 @@ import type { Command } from '../registry/types';
 
 /** 后端 import_apkg_to_library 返回结构（字段与 Rust ApkgImportResult serde 输出一致） */
 interface ApkgImportResult {
-  document_id: string;
-  imported_cards: number;
-  imported_templates: number;
-  media_skipped: number;
-  media_imported: number;
+  documentId: string;
+  importedCards: number;
+  importedTemplates: number;
+  mediaSkipped: number;
+  mediaImported: number;
   warnings?: string[];
 }
 
@@ -49,7 +49,7 @@ export const ankiCommands: Command[] = [
         deps.showNotification(
           'success',
           i18next.t('command_palette:notifications.apkg_import_success', {
-            cards: result.imported_cards,
+            cards: result.importedCards,
             defaultValue: 'Anki deck imported: {{cards}} cards',
           }),
         );

@@ -139,3 +139,23 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .qa-menu-copy small { display: none; }
   .qa-status-grid strong { font-size: var(--font-size-md); }
 }
+
+/* 触屏设备：交互控件命中区提升到 ≥44px，桌面端保持紧凑密度。 */
+@media (pointer: coarse) {
+  /* 标题栏行高从 34px 提到 44px，否则 44px 图标按钮会溢出固定网格行。 */
+  .qa-shell { grid-template-rows: 44px minmax(0, 1fr) 22px; }
+  .qa-icon-button { width: 44px; height: 44px; }
+  /* 末列跟随 44px 清除按钮加宽，避免按钮溢出 20px 网格轨道。 */
+  .qa-capture-chip { grid-template-columns: 18px minmax(0, 1fr) auto 44px; }
+  .qa-capture-clear { width: 44px; height: 44px; }
+  .qa-menu-item { min-height: 44px; }
+  .qa-back { min-height: 44px; min-width: 44px; }
+  .qa-save-row button { height: auto; min-height: 44px; min-width: 44px; }
+  .qa-input { height: 44px; min-height: 44px; }
+
+  /* 问题引用是可点的展开/收起按钮：单行内容时基线仅 ~27px */
+  .qa-asked { min-height: 44px; }
+  .qa-primary-button { min-height: 44px; }
+  .qa-rating-row button { height: auto; min-height: 44px; }
+  .qa-result { min-height: 44px; }
+}

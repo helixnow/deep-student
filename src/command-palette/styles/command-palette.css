@@ -278,8 +278,16 @@
 }
 
 .command-palette-item:hover .command-palette-item-favorite,
-.command-palette-item-selected .command-palette-item-favorite {
+.command-palette-item-selected .command-palette-item-favorite,
+/* Tab 现在可以走到收藏按钮：聚焦时必须显形，
+   否则是「不可见但可聚焦」的键盘陷阱 */
+.command-palette-item-favorite:focus-visible {
   opacity: 1;
+}
+
+.command-palette-item-favorite:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
 }
 
 .command-palette-item-favorite:hover {
@@ -456,6 +464,19 @@
   .command-palette-item-description {
     max-width: 100%;
   }
+
+  /* ★ 移动视口触控规范（不依赖 pointer: coarse——390px 宽的桌面窗口 / 设备模拟器
+     指针仍是 fine，但布局已经是全屏子屏形态）：结果行触控高度 ≥44px。 */
+  .command-palette-item {
+    min-height: 44px;
+  }
+
+  /* 窄屏没有 hover 可依赖：收藏按钮常显并放大触控区 */
+  .command-palette-item-favorite {
+    opacity: 1;
+    width: 40px;
+    height: 40px;
+  }
 }
 
 @keyframes command-palette-page-in {
@@ -503,6 +524,16 @@
   .command-palette-mode-btn {
     border-radius: 9999px;
     color: hsl(var(--shell-navigation-muted, var(--muted-foreground)));
+  }
+
+  /* 顶栏触控目标 ≥44px：与 (pointer: coarse) 分支互补，覆盖
+     「窄视口 + fine 指针」这一档（桌面窄窗 / 设备模拟器）。
+     390px 宽下关闭 / 返回入口必须点得到。 */
+  .command-palette-back-btn,
+  .command-palette-close-btn,
+  .command-palette-mode-btn {
+    width: 44px;
+    height: 44px;
   }
 
   .command-palette-mode-btn-active,
