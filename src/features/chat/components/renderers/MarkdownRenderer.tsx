@@ -65,6 +65,11 @@ const markdownSanitizeSchema = {
       ...(defaultSchema.attributes?.span || []),
       'className',
       'class',
+      // Generative UI research citations carry pre-computed i18n aria labels;
+      // keep them so the React fallback below doesn't have to reconstruct text.
+      // role is restricted to the non-interactive "note" landmark only.
+      ['role', 'note'],
+      'ariaLabel',
       // rehype-sanitize 使用 HAST property 名称（camelCase）
       'dataCitation',
       'dataCitationType',
@@ -840,6 +845,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           span: ({ children, node: _node, ...props }: any) => {
             // Generative UI research reports mark non-interactive source labels with their
             // literal citation id. Re-apply note semantics after rehype-sanitize strips `role`.
+            // Prefer the pre-computed i18n aria-label when sanitize let it through.
             const researchCitationLabel = props['data-citation'];
             if (
               typeof researchCitationLabel === 'string' &&
@@ -849,7 +855,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                 <span
                   {...props}
                   role="note"
-                  aria-label={researchCitationLabel}
+                  aria-label={props['aria-label'] ?? researchCitationLabel}
                 >
                   {children}
                 </span>

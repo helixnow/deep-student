@@ -181,7 +181,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_update_item',
-      description: '更新待办项属性（Medium）。先 list_items 取 updatedAt 传为 expected_updated_at；冲突返回 TODO_CONFLICT 与 current，需重新读取。',
+      description: '更新待办项属性（Medium）。先 list_items 取 updatedAt 传为 expected_updated_at；冲突返回 TODO_CONFLICT 与 current（含 currentUpdatedAt），需重新读取。',
       inputSchema: {
         type: 'object',
         properties: {

@@ -530,7 +530,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-learner_profile_get',
-      description: '读取学习者画像（结构化 JSON 与 Markdown）。画像已随会话自动注入，仅更新前核对时调用。',
+      description: '读取学习者画像（结构化 JSON 与 Markdown）。画像已随会话自动注入 system prompt，仅更新前核对时调用。',
       inputSchema: {
         type: 'object',
         properties: {},

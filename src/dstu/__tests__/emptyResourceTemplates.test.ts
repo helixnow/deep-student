@@ -79,8 +79,11 @@ describe('factory.ts 未被改动（本地化对 factory 透明）', () => {
   // vitest 以项目根为 cwd 运行
   const factorySource = readFileSync(resolve(process.cwd(), 'src/dstu/factory.ts'), 'utf-8');
 
-  it('factory.ts 不引入 i18n，仍直接读 template.defaultName', () => {
-    expect(factorySource).not.toMatch(/i18n/);
+  it('factory.ts 直接读 template.defaultName，默认名不经 i18n 包装', () => {
+    // 默认资源名是规范标识，本地化会导致不同 locale 下重复创建同名资源；
+    // 错误消息允许本地化（stats:dstu.*），但 defaultName 必须原样使用。
     expect(factorySource).toContain('template.defaultName');
+    expect(factorySource).not.toMatch(/i18n\.t\([^)]*defaultName/);
+    expect(factorySource).not.toMatch(/defaultName\s*[:=]\s*i18n/);
   });
 });

@@ -13,7 +13,7 @@ import {
   saveReciteStats,
   smoothedErrorRate,
   type ReciteStats,
-} from '@/features/mindmap/utils/reciteSrs';
+} from '@/features/mindmap/utils/reciteStats';
 import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
 import type { MindMapDocument, MindMapNode } from '@/features/mindmap/types';
 
@@ -61,7 +61,11 @@ describe('commitReciteSession', () => {
   const doc = createDoc();
 
   it('increments attempts for every blank in scope and misses only for revealed', () => {
-    const next = commitReciteSession({}, doc.root, { n_hard: { 0: true } }, 1000);
+    const next = commitReciteSession({}, doc.root, {
+      n_hard: { 0: { presented: true, missed: true } },
+      n_easy: { 0: { presented: true } },
+      n_deep: { 0: { presented: true } },
+    }, 1000);
     expect(next.n_hard[0]).toEqual({ attempts: 1, misses: 1, lastReviewedAt: 1000 });
     // 会话内保持遮盖 = 背出来了：attempts+1，misses 不变
     expect(next.n_easy[0]).toEqual({ attempts: 1, misses: 0, lastReviewedAt: 1000 });
@@ -74,11 +78,13 @@ describe('commitReciteSession', () => {
     const stats: ReciteStats = { n_easy: { 0: { attempts: 3, misses: 1 } } };
     expect(commitReciteSession(stats, doc.root, {})).toBe(stats);
     expect(commitReciteSession(stats, doc.root, { n_easy: { 0: false } })).toBe(stats);
+    // 「显示全部」亮出的空不是作答样本
+    expect(commitReciteSession(stats, doc.root, { n_easy: { 0: { presented: true, bulkRevealed: true } } })).toBe(stats);
   });
 
   it('accumulates across sessions without mutating the input', () => {
-    const first = commitReciteSession({}, doc.root, { n_hard: { 0: true } }, 1);
-    const second = commitReciteSession(first, doc.root, { n_hard: { 0: true } }, 2);
+    const first = commitReciteSession({}, doc.root, { n_hard: { 0: { presented: true, missed: true } } }, 1);
+    const second = commitReciteSession(first, doc.root, { n_hard: { 0: { presented: true, missed: true } } }, 2);
     expect(second.n_hard[0]).toEqual({ attempts: 2, misses: 2, lastReviewedAt: 2 });
     expect(first.n_hard[0].attempts).toBe(1);
   });
@@ -143,6 +149,8 @@ describe('store integration', () => {
   it('exiting recite mode commits revealed blanks into persisted stats', () => {
     const store = useMindMapStore.getState();
     store.setReciteMode(true);
+    // 新语义：只统计实际呈现/作答的空。n_easy 呈现且背出，n_hard 翻开=miss。
+    useMindMapStore.getState().markBlanksPresented('n_easy', [0]);
     useMindMapStore.getState().revealBlank('n_hard', 0);
     useMindMapStore.getState().setReciteMode(false);
 
