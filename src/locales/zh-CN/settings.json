@@ -171,7 +171,7 @@
       "subtitle": "配置您的AI模型接口连接与基础信息",
       "protocol_label": "OpenAI 协议",
       "protocol_hint": "这里明确选择 OpenAI Chat 还是 OpenAI Responses；供应商仅提供默认值。",
-      "responses_unavailable": "当前供应商或模型暂不支持 OpenAI Responses（如 DeepSeek V4-Pro 正式版发布前仅 V4-Flash 支持）。",
+      "responses_unavailable": "当前供应商或模型暂不支持 OpenAI Responses（如 DeepSeek 仅官方端点的 V4 列名型号支持：v4-flash / v4-pro / v4-flash-vision-exp；V3.x 与反代/中转端点会回落 OpenAI Chat）。",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
@@ -1019,6 +1019,9 @@
   "sidebar": {
     "search_placeholder": "搜索设置...",
     "no_results": "未找到匹配的设置",
+    "no_results_hint": "换个关键词试试，或直接浏览左侧分类",
+    "search_empty_prompt": "输入关键词以搜索设置",
+    "clear_search": "清空搜索",
     "expand": "展开",
     "collapse": "收起",
     "back_to_home": "返回首页",
@@ -1093,7 +1096,7 @@
     "start_test": "开始测试",
     "engines_count": "个引擎",
     "upload_hint": "点击或拖拽上传图片",
-    "upload_formats": "支持 JPG、PNG、WebP，最大 10MB",
+    "upload_formats": "支持 JPG、PNG、WebP，最大 50MB",
     "test_results": "测试结果对比",
     "free": "免费",
     "chars": "字符",
@@ -1133,7 +1136,7 @@
     "switch_failed": "切换失败",
     "refreshed": "已刷新",
     "select_image_warning": "请选择图片文件",
-    "image_too_large": "图片大小不能超过 10MB",
+    "image_too_large": "图片大小不能超过 50MB",
     "select_image_first": "请先选择一张图片",
     "no_available_engines": "没有可用的 OCR 引擎，请先配置",
     "test_complete": "测试完成，共测试 {{count}} 个引擎",

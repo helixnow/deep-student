@@ -13,7 +13,9 @@
   "mobile_drawer": {
     "section_app": "应用",
     "section_chat": "会话",
-    "section_learning": "学习资源"
+    "section_learning": "学习资源",
+    "section_study": "学习",
+    "section_manage": "管理"
   },
   "navigation": {
     "batch": "批量分析",
@@ -72,6 +74,10 @@
   },
   "delete": {
     "confirm_hint": "永久删除？不可恢复"
+  },
+  "notes_import": {
+    "markdown": "导入 Markdown 笔记",
+    "markdown_batch": "批量导入 Markdown 笔记"
   },
   "search": {
     "placeholder": "搜索会话...",

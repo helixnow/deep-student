@@ -369,5 +369,8 @@
       "not_found": "Cannot find a mistake with ID {{id}}",
       "load_failed": "Failed to load: {{message}}"
     }
+  },
+  "recovery_fab": {
+    "aria_label": "Dev recovery menu (draggable)"
   }
 }

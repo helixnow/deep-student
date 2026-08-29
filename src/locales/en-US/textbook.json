@@ -47,6 +47,12 @@
     "tooltip": "Page {{page}}",
     "tooltip_with_name": "{{name}} · Page {{page}}"
   },
+  "image_preview": {
+    "zoom_not_ready": "Image has not finished loading; zoom is unavailable",
+    "zoom_out_of_range": "zoom percent must be between {{min}}–{{max}}, or pass 'fit'",
+    "rotate_not_ready": "Image has not finished loading; rotate is unavailable",
+    "rotate_invalid_degrees": "rotate only supports degrees of 90/180/270 (clockwise)"
+  },
   "bookmarkSaveFailed": "Failed to save bookmark",
   "export_no_pdf_file": "No PDF file available for export",
   "export_render_failed": "Unable to render selected pages"

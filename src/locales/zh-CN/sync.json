@@ -20,8 +20,29 @@
   "confirm": "确认",
   "cancel": "取消",
   "confirmConflictResolveTitle": "确认解决冲突",
-  "confirmConflictResolveDescription": "将{{strategy}}，这会覆盖另一版本且无法撤销。",
+  "confirmConflictResolveDescription": "将应用「{{strategy}}」策略，这会覆盖另一版本的数据且无法撤销。建议先创建本地备份再继续。",
   "confirmConflictBatchResolveDescription": "将对 {{count}} 个冲突应用“{{strategy}}”。这会覆盖另一版本且无法撤销。",
+  "experimentalBadgeTooltip": "实验性功能，建议先备份数据再使用。",
+  "autoSync": {
+    "label": "自动同步",
+    "description": "默认关闭。开启后按所选间隔自动执行双向同步（保留最新策略）；失败按指数退避重试。云端未配置、缺少密码或同步租约被其他设备占用时会静默跳过本轮，不会弹出错误打扰。",
+    "intervalLabel": "同步间隔",
+    "interval": {
+      "15m": "每 15 分钟",
+      "1h": "每小时",
+      "6h": "每 6 小时"
+    },
+    "lastRun": "上次自动同步",
+    "neverRan": "尚未运行",
+    "outcome": {
+      "success": "成功",
+      "failure": "失败（将按退避间隔重试）",
+      "skippedUnconfigured": "已跳过：云端未配置或缺少密码",
+      "skippedBusy": "已跳过：另一个同步正在进行",
+      "skippedLeaseHeld": "已跳过：同步租约被其他设备占用"
+    },
+    "consecutiveFailures": "连续失败 {{count}} 次"
+  },
   "severity_low": "低",
   "severity_medium": "中",
   "severity_high": "高",
@@ -100,6 +121,10 @@
   "resource": {
     "create_resource_failed": "创建资源失败: {{error}}"
   },
+  "record_conflict_panel": {
+    "title": "记录级冲突（{{count}}）",
+    "undoable_hint": "放心操作：批量解决和库级策略覆盖执行前，系统都会先在本机自动快照受影响的记录（不上云）。误操作后可在下方「自动快照」区一键回退。"
+  },
   "conflict_type": {
     "schema_mismatch": "Schema 版本不匹配",
     "schema_mismatch_desc": "本地和云端的数据库结构版本不同，需要进行迁移",
@@ -128,6 +153,54 @@
     "data_version": "数据版本:",
     "update_time": "更新时间:",
     "checksum": "Checksum:"
+  },
+  "errors": {
+    "legacyPlaintextRejected": "云端目录里还留有启用加密之前上传的未加密旧数据。为防止端到端加密被绕过，本次同步已停止，不会读取这部分数据。处理办法：先在云同步设置中暂时清除加密密码，执行一次下载同步把云端数据合并到本地；然后清空该云端目录（或改用新目录），重新设置密码后再做一次完整上传。",
+    "encryptionPasswordMissing": "云端数据是端到端加密的，但本机还没有填写加密密码。请到云同步设置中填入首次启用加密时设置的密码，然后重试。",
+    "wrongEncryptionPassword": "无法解密云端数据：加密密码不正确（或云端数据已损坏）。请到云同步设置中改成与其他设备一致的密码后重试；连接同一云端目录的所有设备必须使用同一个加密密码。",
+    "leaseHeld": "另一台设备正在同步到同一云端目录。为避免并发写入损坏同步状态，本轮已安全停止。请等待对方完成后重试；若对方已异常退出，租约会在超时后自动回收，请稍后再试，不要手工覆盖云端同步文件。",
+    "technicalDetail": "技术详情："
+  },
+  "unsynced": {
+    "title": "未同步文件（{{count}}）",
+    "description": "对照云端清单与本地文件的只读体检：列出云端有、但本设备上还没有的对象，并说明原因与处理办法。不会写入或删除任何数据。",
+    "checkNow": "重新检查",
+    "notConfigured": "尚未配置云端同步，暂无可对照的云端清单。",
+    "empty": "云端清单中的文件都已同步到本设备。",
+    "loadFailed": "获取未同步清单失败：{{error}}",
+    "truncated": "条目过多，仅显示前 {{shown}} 条（共 {{total}} 条未同步）。",
+    "retrySync": "重试下载同步",
+    "technicalDetail": "技术详情",
+    "counterpart": "冲突对方：{{key}}",
+    "scopeBlob": "附件",
+    "scopeAsset": "资产",
+    "kind": {
+      "downloadPending": {
+        "label": "尚未下载成功",
+        "reason": "这些文件在云端存在，但还没有成功下载到本设备——可能是上次下载失败，也可能是还没有执行过下载同步。",
+        "suggestion": "处理办法：在上方云端同步区域点击「下载」重试拉取；若反复失败，请检查网络与云端凭据后再试。"
+      },
+      "legacyPlaintext": {
+        "label": "明文遗留（已拒收）",
+        "reason": "这些是启用加密之前上传的未加密旧文件。本设备已启用端到端加密，为防止加密被绕过，已拒绝下载它们。",
+        "suggestion": "处理办法：在仍保存着这些文件的设备上配置同一加密密码并执行一次上传同步，文件会被自动重新加密上传；之后本设备即可正常下载。"
+      },
+      "caseConflict": {
+        "label": "文件名大小写冲突（已跳过）",
+        "reason": "这些文件与另一个文件仅文件名大小写不同。在不区分大小写的系统（Windows/macOS 默认）上两者会互相覆盖，因此已跳过下载。",
+        "suggestion": "处理办法：在源设备上把其中一个文件改成明显不同的名字，然后重新同步。"
+      },
+      "sanitizedNameConflict": {
+        "label": "旧版文件名映射冲突（已跳过）",
+        "reason": "这些云端条目来自不同代际的文件名映射，解析后占用同一本地路径且内容不同。新版映射可无损还原名称，但不能替旧版条目猜测原名，因此已跳过下载以免覆盖。",
+        "suggestion": "处理办法：在仍保留原文件的源设备上重命名其中一个文件并重新同步；文件内容更新后会迁移到新版可逆名称。"
+      },
+      "invalidKey": {
+        "label": "路径非法（已拒收）",
+        "reason": "这些条目登记的云端路径结构非法或包含越界成分，为安全起见已拒绝落地到本地。",
+        "suggestion": "处理办法：在源设备上把文件移动 / 重命名到正常目录后重新同步；若持续出现，可能是云端数据被第三方工具改动过。"
+      }
+    }
   },
   "notifications": {
     "conflictResolveFailed": "解决冲突失败: {{error}}",

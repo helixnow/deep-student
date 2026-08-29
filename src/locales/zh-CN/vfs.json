@@ -16,5 +16,18 @@
     "resolveFailed": "解析资源引用失败",
     "pathFailed": "获取资源路径失败",
     "cacheFailed": "更新路径缓存失败"
+  },
+  "canvas_edit": {
+    "apply_rejected": "编辑器拒绝应用建议",
+    "restore_rejected": "编辑器拒绝恢复建议前内容",
+    "apply_failed": "应用编辑建议失败",
+    "rollback_rejected": "编辑器拒绝回滚检查点",
+    "editor_readonly": "编辑器不可写，修改未应用",
+    "doc_changed_while_pending": "文档在等待确认期间已被修改，建议无法应用：{{error}}",
+    "suggestion_pending": "已有一条笔记编辑建议等待确认",
+    "suggestion_pending_detail": "已有一条笔记编辑建议等待确认，请先接受或拒绝当前建议",
+    "editor_not_ready": "编辑器未就绪",
+    "invalid_suggestion": "建议内容无效",
+    "editor_closed": "编辑器已关闭，修改未应用"
   }
 }

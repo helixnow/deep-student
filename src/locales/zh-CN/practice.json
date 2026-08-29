@@ -68,7 +68,11 @@
     "confirmMessage": "确定要结束本次限时练习吗？",
     "confirmWarning": "还有 {{count}} 道题未作答，确定要交卷吗？",
     "cancel": "取消",
-    "confirmSubmit": "确认交卷"
+    "confirmSubmit": "确认交卷",
+    "lastResultTitle": "上次练习结果",
+    "lastResultTimeout": "超时自动交卷",
+    "lastResultSummary": "已答 {{answered}} / {{total}} 题 · 答对 {{correct}} 题 · 正确率 {{rate}}%",
+    "anotherRound": "再来一轮"
   },
   "questionType": {
     "single_choice": "单选题",
@@ -134,11 +138,13 @@
   "daily": {
     "title": "每日一练",
     "streakDays": "连续打卡天数",
+    "streakHint": "当天做过题即算打卡，与目标是否达成无关",
     "smartRecommend": "智能推荐",
     "recommendMistakes": "优先选择错题，巩固薄弱知识点",
     "recommendNew": "其次选择新题，拓展知识范围",
     "recommendReview": "最后补充复习题，防止遗忘",
-    "targetLabel": "今日目标（题数）",
+    "targetLabel": "每日目标（题数）",
+    "targetHint": "目标只保存当前值，不会按天记录历史；日历达标标记按当前目标判定",
     "todayProgress": "今日进度",
     "completed": "今日目标已完成！",
     "mistakes": "错题",
@@ -148,7 +154,11 @@
     "continue": "继续练习",
     "start": "开始今日练习",
     "calendar": "打卡日历",
+    "viewByCurrentTarget": "按当前目标查看",
+    "calendarTargetHint": "达标标记按当前目标（{{target}} 题）统一判定，不代表当天设置过的目标",
     "yearMonth": "{{year}}年{{month}}月",
+    "previousMonth": "上个月",
+    "nextMonth": "下个月",
     "weekdays": {
       "sun": "日",
       "mon": "一",
@@ -164,7 +174,8 @@
     "streak": "连续打卡",
     "calendarLoadFailed": "打卡日历加载失败，请重试",
     "startError": "获取每日练习失败",
-    "completedDetail": "答对 {{correct}} / {{total}} 题"
+    "completedDetail": "答对 {{correct}} / {{total}} 题（按题计，同一题重复作答不重复计）",
+    "anotherRound": "再练一组"
   },
   "paper": {
     "title": "组卷生成器",
@@ -197,7 +208,8 @@
     "exportComingSoon": "PDF / Word 导出即将推出，可先用 Markdown 导出或预览",
     "exportTitle": "导出试卷",
     "exportSuccess": "试卷已导出",
-    "exportFailed": "导出失败，请重试"
+    "exportFailed": "导出失败，请重试",
+    "comingSoonBadge": "即将推出"
   },
   "tagNav": {
     "knowledgePoints": "知识点",
@@ -531,5 +543,11 @@
   "stepper": {
     "decrease": "减少「{{label}}」数量",
     "increase": "增加「{{label}}」数量"
+  },
+  "preview_persist": {
+    "save_progress": "保存阅读进度",
+    "save_bookmarks": "保存书签",
+    "save_bookmarks_failed": "保存书签失败",
+    "flush_unsaved": "保存未持久化的阅读进度/书签"
   }
 }

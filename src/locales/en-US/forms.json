@@ -3,6 +3,24 @@
     "configured": "Configured",
     "not_configured": "Not configured",
     "to_be_configured": "Pending configuration"
+  },
+  "system_validation": {
+    "language": "Language must be zh-CN or en-US",
+    "markdown_renderer_mode": "Markdown renderer mode must be legacy or enhanced",
+    "max_chat_history": "Max chat history must be between 10 and 1000",
+    "theme": "Theme must be light, dark, or auto"
+  },
+  "note_driver": {
+    "empty_search_pattern": "Search pattern is empty",
+    "replacement_not_found": "No matching content found to replace",
+    "invalid_regex": "Invalid regular expression: {{message}}",
+    "regex_syntax_error": "syntax error",
+    "unsupported_destructive_op": "Unsupported destructive op: {{kind}}",
+    "windowed_offset_unsupported": "Windowed long notes do not support ProseMirror offset anchors; use end or afterHeading instead",
+    "after_heading_missing_title": "afterHeading anchor is missing a heading",
+    "heading_not_found": "Heading \"{{heading}}\" not found"
+  },
+  "ocr": {
+    "system_engine_description": "Uses the operating system built-in OCR engine"
   }
 }
-

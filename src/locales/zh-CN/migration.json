@@ -64,5 +64,28 @@
     "rollbackCompleted": "回滚完成",
     "rollbackFailed": "回滚失败",
     "checkFailed": "检查状态失败"
+  },
+  "style_lab": {
+    "status": {
+      "converged": "已收口",
+      "in_progress": "进行中",
+      "needs_push": "需推进",
+      "not_started": "待启动"
+    },
+    "metrics": {
+      "overall_rate": "总体迁移率",
+      "source_files": "源码文件",
+      "important": "!important",
+      "hardcoded_colors": "硬编码颜色",
+      "files_count": "{{count}} 文件"
+    },
+    "sections": {
+      "component_progress": "组件族迁移进度",
+      "css_quality": "CSS 质量指标"
+    },
+    "footer": {
+      "scan_meta": "扫描于 {{time}} · 耗时 {{duration}}ms · 运行",
+      "refresh_suffix": "刷新"
+    }
   }
 }

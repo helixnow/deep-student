@@ -74,5 +74,27 @@
         "dark_light": "Dark/Light theme adaptive"
       }
     }
+  },
+  "dstu_essay": {
+    "list_sessions": "List essay grading sessions",
+    "get_session_detail": "Get essay session detail",
+    "delete_session": "Delete essay session",
+    "get_session": "Get essay session",
+    "toggle_favorite": "Toggle favorite",
+    "set_favorite": "Set favorite",
+    "get_full_session": "Get full essay session",
+    "create_session": "Create essay session",
+    "update_session_metadata": "Update session metadata"
+  },
+  "dstu_translation": {
+    "list_history": "List translation history",
+    "get_detail": "Get translation detail",
+    "delete_translation": "Delete translation",
+    "get_translation": "Get translation",
+    "toggle_favorite": "Toggle favorite",
+    "set_favorite": "Set favorite",
+    "create_record": "Create translation record",
+    "persist_settings": "Persist translation settings",
+    "update_record": "Update translation record"
   }
 }

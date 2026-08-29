@@ -79,6 +79,7 @@
     "add": "Add",
     "show": "Show",
     "hide": "Hide",
+    "more": "More",
     "expand": "Expand",
     "analyze": "Analyze",
     "remove": "Remove",
@@ -3612,7 +3613,7 @@
     "cannotOpenLink": "Cannot open link, please copy and open manually: {{url}}"
   },
   "imageUpload": {
-    "tooLarge": "Image exceeds 10MB limit"
+    "tooLarge": "Image exceeds 50MB limit"
   },
   "persistFailed": "Failed to save changes",
   "aria": {
@@ -3716,7 +3717,7 @@
         },
         "cloudSync": {
           "title": "Cloud Sync (Optional)",
-          "content": "You can choose to sync data to your own configured WebDAV or S3-compatible storage service. This feature is disabled by default and only transmits data when you explicitly configure and trigger it."
+          "content": "You can choose to sync data to your own configured cloud storage. Android supports WebDAV only; desktop builds also support S3-compatible storage and experimental FTP. This feature is disabled by default and only transmits data when you explicitly configure and trigger it. Data is not sent to Deep Student servers."
         },
         "noTracking": {
           "title": "No Behavior Tracking",
@@ -3762,7 +3763,7 @@
         "llmData": "AI Request Data",
         "llmDataDesc": "When using AI features, conversation content is sent to your configured LLM API provider",
         "syncData": "Sync Data (Optional)",
-        "syncDataDesc": "If cloud sync is enabled, data is sent to your configured WebDAV/S3 service",
+        "syncDataDesc": "If cloud sync is enabled, data goes only to storage you configured (WebDAV on Android; desktop also supports S3-compatible storage and experimental FTP), not to Deep Student servers",
         "sentryData": "Error Reports (Optional)",
         "sentryDataDesc": "If enabled, anonymous crash information is sent to the error reporting service",
         "crossBorderNote": "Cross-Border Transfer Notice",
@@ -3798,6 +3799,7 @@
     "title": "Application encountered a critical error",
     "description": "An unrecoverable error occurred. Please try refreshing the page. Contact support if the issue persists.",
     "refresh": "Refresh Page",
+    "retry": "Try again",
     "show_details": "Show Error Details",
     "hide_details": "Hide Details",
     "copy_error": "Copy Error Log",

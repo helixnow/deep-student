@@ -684,6 +684,9 @@
     "preventSleepUnsupported": "当前平台暂不支持防休眠",
     "empty": "暂无制卡任务",
     "emptyHint": "在聊天中发起制卡即可在此查看任务进度",
+    "loadFailed": "任务列表加载失败",
+    "refreshFailedStale": "刷新失败，下面显示的是上一次加载到的数据",
+    "retry": "重试",
     "sectionActive": "进行中",
     "sectionAttention": "需要注意",
     "sectionCompleted": "已完成",
@@ -774,7 +777,7 @@
     "sortByTime": "按时间",
     "sortByCards": "按卡片数",
     "sortByName": "按名称",
-    "recoverStuckHint": "重置处理中断超过 1 小时的任务为待处理状态",
+    "recoverStuckHint": "将中断超过 10 分钟的任务标记为已暂停，可点「恢复」继续",
     "errorCardsFound": "{{count}} 张错误卡片",
     "errorReason": "错误原因",
     "quickExport": "导出",
@@ -979,6 +982,194 @@
       "missing_front": "缺少正面内容",
       "missing_back": "缺少背面内容",
       "missing_field": "模板字段 {{field}} 为空"
+    }
+  },
+  "agent": {
+    "transform": {
+      "title": "批量变换",
+      "modeDryRun": "试运行（不写库）",
+      "modeApply": "应用变更",
+      "dryRunSummary": "试运行：{{changed}}/{{total}} 张卡将被修改",
+      "applySummary": "已应用 {{applied}} 张修改，跳过 {{skipped}} 张",
+      "diffBefore": "变换前",
+      "diffAfter": "变换后",
+      "opRegexReplace": "正则替换",
+      "opTagAdd": "添加标签",
+      "opTagRemove": "移除标签",
+      "wouldBeInvalid": "变换后内容不合法（正反面与填空文本均为空），应用时将逐卡拒绝",
+      "conflict": "版本冲突：该卡已被其他操作修改，请刷新卡片后重试",
+      "expectedVersionsMismatch": "版本映射与选择集不一致，请重新读取卡片后重试",
+      "invalidPattern": "正则表达式无法编译，整批未执行、未写库",
+      "modeScript": "沙箱脚本变换",
+      "script": {
+        "sandboxUnavailable": "当前设备不支持沙箱脚本执行，请改用声明式操作（正则替换 / 标签增删）",
+        "interpreterUnavailable": "未在本机找到可用的脚本解释器（python3/python 或 node）",
+        "environmentUnavailable": "当前运行环境无法启动沙箱脚本，未写库",
+        "setupFailed": "沙箱脚本运行环境初始化失败，未写库",
+        "timedOut": "脚本执行超时，进程已终止，未写库",
+        "failed": "脚本执行失败（非零退出），未写库",
+        "outputMissing": "脚本未写出结果文件，未写库",
+        "outputTooLarge": "脚本输出超出大小上限，未写库",
+        "invalidOutput": "脚本输出不符合约定格式，未写库"
+      },
+      "scriptReject": {
+        "emptyField": "脚本把该字段改成了空内容，此卡被拒绝",
+        "invalidFieldType": "脚本输出的字段类型不合法，此卡被拒绝",
+        "invalidClozeText": "脚本修改后的挖空文本缺少合法的挖空标记（c1:: 语法），此卡被拒绝",
+        "fieldGrowthExceeded": "脚本导致字段内容异常膨胀，此卡被拒绝",
+        "fieldTooLarge": "脚本输出的字段超过字符数上限，此卡被拒绝",
+        "tagTooLarge": "脚本输出的单个标签超过字符数上限，此卡被拒绝",
+        "tagsLimitExceeded": "脚本输出的标签数量超过上限，此卡被拒绝",
+        "unknownOutputField": "脚本输出了约定之外的字段，此卡被拒绝",
+        "unknownCardIds": "脚本输出了快照之外的卡片 ID，这些条目已被忽略"
+      }
+    },
+    "retemplate": {
+      "fillStatusLabel": "字段补齐状态",
+      "fillStatus": {
+        "filled": "已补齐",
+        "partial": "部分补齐",
+        "skipped": "已跳过",
+        "conflict": "版本冲突",
+        "failed": "补齐失败",
+        "notNeeded": "无需补齐"
+      },
+      "filledFields": "AI 已补齐字段：{{fields}}",
+      "fillSummary": "AI 补齐：{{filled}} 张成功、{{partial}} 张部分、{{failed}} 张失败",
+      "fillNotRolledBack": "换模板已生效；个别字段补齐失败不会回滚，可在卡片上手动补齐"
+    },
+    "analyze": {
+      "routeLabel": "处理路线",
+      "routes": {
+        "simpleText": "纯文本",
+        "vlmLight": "图文轻量",
+        "vlmFull": "图文增强"
+      },
+      "routeSourceLabel": "路由依据",
+      "routeSource": {
+        "llmPlan": "AI 规划（置信度 {{confidence}}）",
+        "heuristic": "启发式规则",
+        "forced": "手动指定"
+      },
+      "glossaryMode": "词汇表模式",
+      "recommendedParams": "推荐参数"
+    },
+    "preferenceMemory": {
+      "label": "制卡偏好记忆",
+      "appliedHint": "已根据你过往的制卡习惯注入 {{count}} 条偏好",
+      "conflictHint": "本次要求与历史偏好冲突时，以本次要求为准",
+      "savedHint": "本次制卡已记住 {{added}} 条新偏好，并强化 {{reinforced}} 条已有偏好",
+      "saveFailed": "本次偏好未能保存，但卡片操作已正常完成",
+      "invalidStore": "历史制卡偏好数据无效，已安全忽略",
+      "disabledHint": "本次制卡未读取或写入偏好记忆"
+    },
+    "generation": {
+      "title": "生成调优",
+      "outputProtocolLabel": "输出协议",
+      "outputProtocol": {
+        "auto": "自动（按模型能力选择）",
+        "delimiter": "分隔符",
+        "jsonObject": "JSON 对象",
+        "jsonSchema": "JSON Schema（严格）"
+      },
+      "contentFormatLabel": "材料形态",
+      "contentFormat": {
+        "auto": "自动判定",
+        "glossary": "词汇表 / 术语清单",
+        "prose": "叙述性文章"
+      },
+      "visualHintLabel": "视觉重点提示",
+      "maxImagesLabel": "单次图片数上限",
+      "qaPassLabel": "质检留痕",
+      "fsrsFeedbackLabel": "复习画像回流",
+      "preferenceMemoryLabel": "偏好记忆注入",
+      "enabled": "开启",
+      "disabled": "关闭"
+    },
+    "critic": {
+      "title": "AI 质检终审",
+      "summary": "已评审 {{examined}} 张：保留 {{kept}}、修订 {{revised}}、标记 {{flagged}}",
+      "flaggedFlag": "该卡被 AI 终审标记，建议人工复查",
+      "revisedFlag": "该卡由 AI 终审自动修订，建议复查",
+      "skippedOverBudget": "{{count}} 张卡因预算限制未评审",
+      "goldReferences": "本次评审参照了 {{count}} 组金标卡对",
+      "degraded": "AI 终审不可用，本批卡片未经终审直接保留",
+      "persistFailures": "{{count}} 张卡的终审修订写回失败，展示内容可能与已保存版本不一致"
+    },
+    "fsrsFeedback": {
+      "title": "复习画像回流",
+      "appliedHint": "已根据你的复习记录调整生成策略（避开高遗忘重复、倾向拆分复杂知识点）",
+      "disabledHint": "本次制卡未参考历史复习数据"
+    },
+    "occlusion": {
+      "title": "图像遮挡草稿预览",
+      "previewBadge": "遮挡草稿预览",
+      "draftHint": "这是应用内草稿预览；当前不会导出为可复习的 Anki 图像遮挡卡",
+      "imageAlt": "图像遮挡卡片",
+      "imageUnavailable": "无法加载遮挡卡图片，已保留文字内容",
+      "invalidSpec": "遮挡数据无效，已按普通卡片显示",
+      "revealBox": "揭开遮挡区域 {{index}}",
+      "revealedBox": "已揭开遮挡区域 {{index}}：{{label}}",
+      "revealAll": "全部揭开",
+      "hideAll": "全部遮住",
+      "issue": {
+        "emptyImageRef": "图片引用为空",
+        "emptyBoxes": "遮挡区域列表为空",
+        "tooManyBoxes": "遮挡区域数量超过上限",
+        "boxOutOfBounds": "遮挡区域超出图片边界",
+        "boxTooSmall": "遮挡区域过小",
+        "boxNotFinite": "遮挡区域坐标不是有效数值",
+        "excessiveOverlap": "遮挡区域之间重叠过多",
+        "clozeIndexZero": "挖空序号必须从 1 开始"
+      }
+    }
+  },
+  "qaFlags": {
+    "label": "质检标记",
+    "flaggedCards": "{{count}} 张卡片带质检标记",
+    "hint": "字段校验发现越界项。卡片已保留入库，建议人工复查后再导出",
+    "fieldLabel": "字段",
+    "cardBadge": "质检 {{count}}",
+    "showDetails": "展开质检详情",
+    "hideDetails": "收起质检详情",
+    "cardFlagsAria": "第 {{index}} 张卡片有 {{count}} 条质检标记，最高严重度：{{severity}}",
+    "severity": {
+      "info": "提示",
+      "warn": "警告",
+      "error": "错误"
+    },
+    "rules": {
+      "minLength": "长度低于最小要求",
+      "maxLength": "长度超过最大限制",
+      "allowedValues": "取值不在允许列表中",
+      "validationPattern": "内容不匹配校验规则"
+    },
+    "lint": {
+      "front_back_identical": "正面与背面归一化后完全相同",
+      "empty_front": "正面为空或纯空白",
+      "empty_back": "背面为空或纯空白",
+      "cloze_unclosed": "{{n}} 处挖空未正确闭合",
+      "cloze_empty_answer": "{{n}} 处挖空内容为空",
+      "cloze_bad_index": "{{n}} 处挖空序号非法（必须为 c1 及以上）",
+      "cloze_missing": "Text 字段存在但不含任何挖空",
+      "answer_leak": "正面已包含背面的完整答案内容",
+      "multi_concept": "正面疑似同时提问多个独立概念（建议拆分为多张卡）",
+      "front_too_long": "正面长度 {{n}} 超过最小信息原则阈值 {{limit}}（疑似整段粘贴）",
+      "placeholder_residue": "残留模板占位符",
+      "todo_residue": "残留 TODO/FIXME 标记",
+      "xxx_residue": "残留占位 token \"xxx\"",
+      "empty_brackets": "含空括号对（疑似漏填内容）",
+      "tags_empty": "卡片没有任何标签（影响检索与组卡）",
+      "duplicate_in_document": "同文档内已存在内容相同的卡片",
+      "near_duplicate": "与同文档已有卡片高度相似（相似度 {{percent}}%），疑似近重复",
+      "mixed_language": "背面中日韩文字与拉丁字母大量混杂（CJK {{cjk}}% / Latin {{latin}}%），请人工确认",
+      "mcq_too_few_options": "选择题仅 {{n}} 个非空选项（至少需要 2 个）",
+      "mcq_answer_not_in_options": "答案对应的选项缺失或不匹配",
+      "mcq_missing_answer": "选择题缺少答案",
+      "field_rule_min_length": "长度 {{n}} 小于最小长度 {{min}}",
+      "field_rule_max_length": "长度 {{n}} 超过最大长度 {{max}}",
+      "field_rule_allowed_values": "取值不在允许值列表中",
+      "field_rule_pattern": "内容不匹配校验模式"
     }
   }
 }

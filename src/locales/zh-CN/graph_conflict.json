@@ -2,5 +2,8 @@
   "title": "冲突检测",
   "conflict": "冲突",
   "resolve": "解决",
-  "ignore": "忽略"
+  "ignore": "忽略",
+  "wikilink": {
+    "create_failed": "创建笔记「{{title}}」失败"
+  }
 }

@@ -42,9 +42,18 @@
     "import_change_file": "Change file",
     "import_clear_file": "Remove file",
     "import_no_file": "No file selected",
+    "import_error_read_file": "Could not read the selected file. Make sure it has not been moved or locked, then try again.",
+    "import_error_invalid_json": "The selected file is not valid JSON and cannot be parsed. Make sure it is a .json file produced by \"Export templates\".",
+    "import_error_not_template": "The JSON does not match the template export format (required fields missing). Use a file produced by this app's \"Export templates\".",
+    "import_error_permission": "File access was denied by the system. Check system permissions and try again.",
+    "import_error_detail": "Technical detail: {{detail}}",
     "export_panel_title": "Export templates",
     "export_selected_count": "{{count}} selected",
     "panel_close": "Close panel"
+  },
+  "preview_ref": {
+    "get_node": "Fetch referenced node",
+    "get_content": "Fetch referenced content"
   },
   "manager_title": "Card Template Manager",
   "manager_subtitle": "Manage templates, create new ones or let AI generate",

@@ -171,7 +171,7 @@
       "subtitle": "Configure your AI model endpoints and base settings",
       "protocol_label": "OpenAI Protocol",
       "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
-      "responses_unavailable": "OpenAI Responses is not available for this provider or model (e.g. only DeepSeek V4-Flash supports it before the V4-Pro GA).",
+      "responses_unavailable": "OpenAI Responses is not available for this provider or model (e.g. DeepSeek only supports it for the official endpoint's listed V4 models: v4-flash / v4-pro / v4-flash-vision-exp; V3.x and reverse-proxy endpoints fall back to OpenAI Chat).",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
@@ -1019,6 +1019,9 @@
   "sidebar": {
     "search_placeholder": "Search settings...",
     "no_results": "No matching settings found",
+    "no_results_hint": "Try a different keyword, or browse the categories on the left",
+    "search_empty_prompt": "Type a keyword to search settings",
+    "clear_search": "Clear search",
     "expand": "Expand",
     "collapse": "Collapse",
     "back_to_home": "Back to Home",
@@ -1093,7 +1096,7 @@
     "start_test": "Start Test",
     "engines_count": "engines",
     "upload_hint": "Click or drag to upload image",
-    "upload_formats": "Supports JPG, PNG, WebP, max 10MB",
+    "upload_formats": "Supports JPG, PNG, WebP, max 50MB",
     "test_results": "Test Results Comparison",
     "free": "Free",
     "chars": "characters",
@@ -1133,7 +1136,7 @@
     "switch_failed": "Switch failed",
     "refreshed": "Refreshed",
     "select_image_warning": "Please select an image file",
-    "image_too_large": "Image size cannot exceed 10MB",
+    "image_too_large": "Image size cannot exceed 50MB",
     "select_image_first": "Please select an image first",
     "no_available_engines": "No available OCR engines, please configure first",
     "test_complete": "Test complete, tested {{count}} engines",

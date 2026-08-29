@@ -1,4 +1,16 @@
 {
-  "processing_failed": "控制台处理失败：{{error}}"
+  "processing_failed": "控制台处理失败：{{error}}",
+  "agent": {
+    "set_mode_unsupported": "Sandbox 渲染面固定为安全预览（safe-preview），不存在可切换的运行模式；能力已从清单撤除",
+    "set_mode_undone": "{{label}} — {{reason}}",
+    "pause_check_failed": "暂停检查失败：{{error}}",
+    "pacing_failed": "节奏控制失败：{{error}}",
+    "no_active_session": "{{label}}（无活动会话）",
+    "viewport_invalid": "{{label}}（viewport 无效）",
+    "open_invalid": "{{label}}（open 无效）",
+    "unsupported_op": "{{label}}（不支持的 sandbox op）",
+    "op_aborted": "sandbox 操作已中止",
+    "run_ended": "run 已结束",
+    "run_not_found": "sandbox run 不存在或已结束"
+  }
 }
-

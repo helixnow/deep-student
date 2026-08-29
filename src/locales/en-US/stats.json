@@ -133,5 +133,10 @@
     "loadMore": "Load more",
     "recordCount": "{{count}} records",
     "noFilterResult": "No records match this filter"
+  },
+  "dstu": {
+    "load_list": "Load list",
+    "create_empty": "Create empty resource",
+    "unknown_resource_type": "Unknown resource type: {{type}}"
   }
 }

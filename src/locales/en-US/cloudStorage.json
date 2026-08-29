@@ -1,6 +1,6 @@
 {
   "title": "Cloud Storage",
-  "description": "Configure cloud backup storage, supporting WebDAV and S3-compatible storage",
+  "description": "Configure storage for cloud backups and record-level sync. Android supports WebDAV only; desktop builds also support S3-compatible storage and experimental FTP/FTPS.",
   
   "provider": {
     "label": "Storage Type",
@@ -8,10 +8,11 @@
     "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
     "s3": "S3 Compatible",
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
-    "s3Disabled": "Not enabled (requires S3 feature at compile time)",
+    "s3Disabled": "S3 is not available on this platform or in this build. Use WebDAV instead, or export a ZIP backup on a desktop device and import it here.",
     "ftp": "FTP/FTPS",
     "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support",
-    "ftpDescExperimental": "Experimental backend with known data-risk issues"
+    "ftpDescExperimental": "Experimental backend with known data-risk issues",
+    "ftpDisabledMobile": "FTP/FTPS is not available on Android. Use WebDAV instead, or sync via FTP on a desktop device."
   },
   
   "webdav": {
@@ -42,9 +43,9 @@
     "secretAccessKeyPlaceholder": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "region": "Region (Optional)",
     "regionPlaceholder": "us-east-1",
-    "regionHint": "Some S3-compatible services may not require this",
+    "regionHint": "For AWS S3 this must match the bucket's actual region; some S3-compatible services may not require this",
     "pathStyle": "Use Path Style",
-    "pathStyleHint": "Required for self-hosted services like MinIO",
+    "pathStyleHint": "Required for self-hosted services like MinIO; do not enable for Alibaba Cloud OSS",
     "insecureWarning": {
       "title": "Insecure S3 Connection",
       "description": "You are using plaintext HTTP (http://) to connect to the S3 service. Your Access Key, Secret Key, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use HTTPS (https://) for encrypted connections.",
@@ -76,9 +77,30 @@
 
   "encryption": {
     "title": "End-to-end encryption password (optional, recommended)",
-    "placeholder": "Leave blank for no encryption; only your devices can decrypt encrypted backups",
-    "description": "When enabled, uploaded ZIP backups use AES-256-GCM encryption and cannot be read by the cloud provider.",
-    "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password."
+    "statusConfigured": "End-to-end encryption configured",
+    "statusNotConfigured": "Not encrypted",
+    "placeholderConfigured": "Password configured: leave blank to keep it, enter a new password to replace it",
+    "placeholderUnset": "Not encrypted: enter a password to enable end-to-end encryption",
+    "tooShort": "The cloud end-to-end encryption password must be at least {{min}} Unicode characters (code points, not blank). Shorter passwords cannot export an encrypted full-fidelity ZIP and will not be saved.",
+    "tooWeak": "The cloud end-to-end encryption password is too common or too repetitive (it is on the common weak-password list, or uses fewer than {{minDistinct}} distinct characters) and was not saved. Choose a harder-to-guess password. This check applies to newly set passwords only; reusing an existing password to decrypt existing backups is not affected.",
+    "preexistingShortConfirm": {
+      "title": "Password is shorter than {{min}} characters",
+      "description": "A newly chosen end-to-end encryption password must be at least {{min}} characters. If this is the original password you set in an older version to encrypt existing cloud backups, you can keep it — decrypting existing backups has no length requirement. For a new password, please choose a longer one.",
+      "confirm": "This is my existing password, continue"
+    },
+    "storedPasswordRequired": "Cloud end-to-end encryption is on, but this device has no usable backup password. The export was refused so a portable archive is not treated as a full-fidelity backup. Re-enter the cloud encryption password and try again.",
+    "description": "When enabled, full ZIP backups, record-level sync payloads (change records, sync manifests, deletion markers), and file-level objects (workspace databases, VFS blobs, and asset files) are end-to-end encrypted with AES-256-GCM and cannot be read by the cloud provider. Object keys still use the plaintext content hash for deduplication. Legacy plaintext objects uploaded before encryption was enabled are rejected on download; re-sync with the same password to migrate them.",
+    "warning": "The password is stored only on this device in encrypted form (AES-256-GCM) and is never uploaded. If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password.",
+    "disableAction": "Disable end-to-end encryption",
+    "disabledNotice": "End-to-end encryption disabled. If the cloud root directory has an encryption marker, new backups will be rejected instead of uploaded unencrypted",
+    "disableFailed": "Failed to disable end-to-end encryption; the encryption password was not removed",
+    "disableConfirm": {
+      "title": "Disable end-to-end encryption?",
+      "description": "This removes the end-to-end encryption password from this device. WebDAV/S3/FTP login credentials are not affected.",
+      "existingBackupsWarning": "If you have not saved this password elsewhere, encrypted cloud backups will be permanently undecryptable.",
+      "futureUploadsPlaintext": "If encrypted backups were ever uploaded to this cloud root directory (an encryption marker exists in the cloud), new backups will not be uploaded in plaintext — uploads will be rejected until you re-enter the password or switch to a different root directory. Roots that never held encrypted backups will receive unencrypted uploads.",
+      "confirm": "Disable Encryption"
+    }
   },
 
   "progress": {
@@ -88,7 +110,9 @@
     "refreshStatus": "Refreshing status...",
     "downloadCloud": "Downloading from cloud...",
     "importZip": "Importing ZIP...",
-    "restoreDatabase": "Restoring database..."
+    "restoreDatabase": "Restoring database...",
+    "maintenanceBackup": "Backing up and uploading to the cloud. Do not edit study data or close the app.",
+    "maintenanceRestore": "Restoring from the cloud. Do not edit study data or close the app."
   },
   
   "actions": {
@@ -98,10 +122,27 @@
     "saving": "Saving...",
     "uploadNow": "Backup to Cloud Now",
     "uploading": "Uploading...",
+    "fullZipHint": "Each backup packs the current data into a full ZIP and uploads it as a single object. Unchanged files are not skipped. There is no incremental transfer, content deduplication, or CDC. Restoring, checking, or syncing a large file is resumable on WebDAV and desktop S3; FTP still restarts the whole object. Android has WebDAV only. Without a cloud end-to-end encryption password the cloud package remains a portable archive; when one is configured, Backup to Cloud Now exports an encrypted full-fidelity ZIP that should restore the full slot after unwrap. If the password is marked configured but cannot be read, export is refused instead of silently writing a portable archive. Cloud packages uploaded before this wiring may still be portable; restore will not apply the stored password to those.",
     "downloadLatest": "Restore Latest from Cloud",
     "downloading": "Downloading...",
     "viewHistory": "View History",
     "clearConfig": "Clear Configuration"
+  },
+
+  "phase": {
+    "draftUntested": "Draft not tested: the current form content is not published and does not affect the published configuration",
+    "draftTested": "Draft tested successfully but not published yet — click Save Configuration to make it effective",
+    "draftTestFailed": "Draft test failed. Nothing was published; the published configuration is unchanged",
+    "testing": "Testing the draft connection...",
+    "published": "Configuration published"
+  },
+
+  "clearConfirm": {
+    "title": "Clear cloud storage configuration?",
+    "description": "This removes the saved server address, account credentials, and the end-to-end encryption password from this device.",
+    "encryptionWarning": "If you have not saved the end-to-end encryption password elsewhere, encrypted cloud backups will be permanently undecryptable.",
+    "cloudFilesKept": "Backup files already uploaded to the cloud will not be deleted.",
+    "confirm": "Clear Configuration"
   },
   
   "status": {
@@ -113,7 +154,8 @@
     "cloudVersions": "Cloud Versions",
     "latestVersion": "Latest Version",
     "deviceId": "Device ID",
-    "never": "Never synced"
+    "never": "Never synced",
+    "encryptionMemoryPersistFailed": "Failed to persist the local encrypted-folder memory. The local second-line plaintext guard is temporarily degraded (the cloud encryption marker still applies). Check disk space and write permissions for the data directory."
   },
   
   "history": {
@@ -126,6 +168,9 @@
     "checksum": "Checksum",
     "note": "Note",
     "restore": "Restore this version",
+    "portableArchive": "Portable archive, cannot replace the data slot",
+    "fullFidelity": "Encrypted full-fidelity, can replace the data slot",
+    "portableArchiveNotRestorable": "This cloud package is a portable archive and cannot replace the current data slot. Your current data was not changed.",
     "delete": "Delete",
     "deleteConfirm": "Are you sure you want to delete this version? This action cannot be undone.",
     "current": "Current device"
@@ -139,22 +184,29 @@
     "confirm": "Start Backup",
     "success": "Backup Successful",
     "successDetail": "Version {{version}} has been uploaded to cloud",
+    "portableArchiveUploaded": "This upload is a portable archive. A slot restore on another device will be refused. To get a cloud package that can replace the data slot, configure the same cloud end-to-end encryption password on both devices and run Backup to Cloud Now again.",
     "pruned": "Automatically cleaned up {{count}} old version(s)"
   },
   
   "download": {
     "title": "Restore from Cloud",
-    "description": "Download cloud backup and restore data",
-    "warning": "Warning: Restore will overwrite local data!",
-    "warningDetail": "Recommend exporting current data as backup first",
+    "description": "Download a cloud backup and attempt a slot restore. Without a cloud end-to-end encryption password, the default cloud package remains a portable archive and slot validation refuses. When a password is configured, unwrap should allow a full slot restore. Portable cloud packages uploaded before this wiring can still be imported; restore will not apply the stored password to those.",
+    "warning": "Warning: Local data is overwritten only after slot-restore validation succeeds.",
+    "warningDetail": "Make a local full backup first. Do not treat this cloud package as your only copy.",
+    "partialArchiveNotice": "If no cloud end-to-end encryption password is configured, Backup to Cloud Now still exports a portable archive that strips local keys and audit data; slot-restore validation refuses and current data is left unchanged. When a cloud end-to-end encryption password is configured, Backup to Cloud Now exports an encrypted full-fidelity ZIP (the outer DSBK wrap and the inner backup password use the same stored password) that should restore the full A/B slot after unwrap. If the password is marked configured but cannot be read, export is refused instead of silently writing a portable archive. Cloud packages uploaded before this wiring may still be portable; restore will not apply the stored password to those. Use the same password on both devices, or Export Backup with its own backup password and import that ZIP on the new device.",
     "selectVersion": "Select version to restore",
     "latest": "Latest version",
     "confirm": "Start Restore",
     "confirmTitle": "Confirm Restore",
+    "confirmVersion": "This will restore cloud version {{version}}.",
+    "confirmKnownPortable": "This cloud package is marked as a portable archive. Slot restore will be refused and your current data will not be changed.",
+    "confirmKnownFull": "This cloud package is marked as encrypted full-fidelity. Local data is overwritten only after slot-restore validation succeeds.",
+    "confirmUnknownKind": "This cloud package has no restore-kind marker (usually uploaded before this wiring). Import still checks whether it can replace the slot; a portable or partial archive is refused and current data is left unchanged.",
     "cancel": "Cancel",
     "success": "Restore Successful",
     "successDetail": "Version {{version}} has been downloaded",
-    "successRestart": "Data restored successfully!",
+    "successRestart": "Data restored successfully! The app will restart now.",
+    "restartNotice": "The app restarts only after slot-restore validation succeeds. A rejected portable/partial archive does not overwrite current data.",
     "restartWhenReady": "Please restart the app to apply the restored data.",
     "checksumFailed": "Checksum mismatch, file may be corrupted"
   },
@@ -170,15 +222,82 @@
     "permissionDenied": "Permission denied",
     "notFound": "File not found",
     "noBackupAvailable": "No backup file available",
+    "ftpDisabledAndroid": "FTP/FTPS storage is not available on Android. Use WebDAV instead, or sync via FTP on a desktop device.",
+    "s3DisabledInBuild": "S3-compatible storage is not included in this build. Use WebDAV instead, or export a ZIP backup on a desktop device and import it here.",
+    "e2eePlaintextLegacyRejected": "The cloud folder contains unencrypted data left over from before encryption was enabled. It was rejected to prevent a silent end-to-end encryption downgrade; your local data was not touched. To fix this: on a device that still holds this data, enter the same encryption password and run an upload sync (the legacy data is re-encrypted automatically), or temporarily clear the local encryption password to fetch the legacy data, then set the password again and run a full upload.",
+    "e2eeWrongPassword": "The encryption password does not match the encrypted data already in this cloud folder. The operation stopped safely before writing anything; neither local nor cloud data was changed. Enter the same end-to-end encryption password used by your other devices and retry, or switch to a new cloud folder if you really intend to change the password.",
+    "e2eeMarkerCorrupted": "The cloud encryption marker (.encryption-marker) is corrupted or invalid, so password consistency could not be verified and the operation stopped safely (fail-closed). Inspect the cloud folder manually as described in the \"Data Management & Cloud Sync\" user guide (delete or rewrite the marker file if necessary), then retry.",
+    "e2eePasswordRequired": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. The operation stopped safely; neither local nor cloud data was changed. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
+    "e2eeDowngradeRejected": "This cloud folder is registered as end-to-end encrypted, but the downloaded backup object is not ciphertext — the ciphertext may have been replaced with plaintext (a downgrade attack) or the cloud folder tampered with. The restore was refused and the suspicious download was not kept on this device. Your local data was not changed. If this is an old plaintext version uploaded before encryption was enabled, run Backup to Cloud Now with the same password on a device that still holds the data, then restore that new version; otherwise inspect the cloud folder integrity manually.",
+    "e2eeClaimConflict": "Another device is claiming, or has just changed, the encryption marker of this cloud folder. To prevent two devices from diverging with different passwords, this operation stopped safely and no backup object was written. Wait about a minute and retry; if it keeps failing, confirm every device uses the same encryption password.",
+    "syncBadObjectFailClosed": "A corrupt control object exists in the cloud and no verified staged copy is available to recover it automatically, so the operation stopped safely (fail-closed). The bad object was copied into the cloud .quarantine/ folder for auditing. Run a cloud backup again from the device that last uploaded successfully, then retry; if it keeps failing, follow the \"Data Management & Cloud Sync\" user guide.",
+    "governanceBusy": "Another data-governance task (sync / backup / restore / deletion marker) is in progress, so this operation did not run. Wait for it to finish and try again.",
+    "backupDirMissing": "The backup directory does not exist. Check the backup directory configuration under Settings > Data Governance > Backup.",
+    "restoreDiskBudgetOverflow": "The total size declared by this backup manifest exceeds the computable range, so sufficient disk space cannot be proven and the restore stopped safely before writing any data. Your current data was not changed; the backup manifest may be corrupted.",
+    "zipExportTempMissing": "The exported temporary ZIP disappeared before it could be written to the target location (possibly cleaned up by the system or a disk error), so the export did not complete. Export again.",
+    "zipExportCopyTargetFailed": "The ZIP was packaged, but copying it to your chosen target location failed (target not writable or out of space). The temporary file was cleaned up. Pick another location or free up space, then export again.",
+    "verifiedPublishMismatch": "Read-back verification after the cloud write found the content differs from the local data (it may have been rewritten by a gateway, truncated in transit, or concurrently overwritten by another device). The publish stopped safely and the unverified object is not treated as valid data. Retry; if it keeps failing, check whether your cloud storage service rewrites uploaded content.",
+    "verifiedPublishOversize": "A cloud object exceeds the size limit of publish verification, so the read-back check refused to download it and the publish stopped safely. Check whether the cloud folder was modified unexpectedly, then retry.",
+    "verifiedPublishUnconditionalWrite": "The current cloud storage backend does not support the conditional write this publish requires, so the operation stopped safely before writing anything; cloud data was not changed. This usually means an internal sync constraint was not met — retrying is unlikely to help; please report this issue.",
+    "partialArchiveNotSlotable": "This backup is a portable or partial archive and cannot replace the current data slot. Your current data was not changed. If this is a cloud package uploaded without a cloud end-to-end encryption password, configure the same password on both devices and run Backup to Cloud Now again; or use Export Backup with a backup password to get a full-fidelity ZIP with protected sensitive material that can restore the slot.",
+    "sealedBackupPasswordRequired": "This cloud backup contains an encrypted full-fidelity ZIP. Enter the backup password used during export and try again; your current data was not changed.",
+    "sealedBackupDecryptFailed": "The encrypted full-fidelity ZIP could not be unsealed: the backup password is wrong or the sealed payload is corrupted. Your current data was not changed.",
+    "atomicRestoreUnavailable": "The A/B data-space manager is unavailable, so restore stopped safely before writing any data. Your current data was not changed. Restart the app and try again.",
+    "restoreDomainUnconsumed": "Restore domain check failed: some data domains declared in the backup were never consumed by any restorer (unconsumed assertion). To avoid silent data loss, the cutover stopped safely before commit. Your current data was not changed.",
+    "restoreDomainFailed": "Some data domains failed to restore, so the cutover stopped safely before commit. Your current data was not changed. Check the failed domain list in the details and try again.",
+    "restoreUntrustedIsolated": "This backup's source is not trusted yet. The restored payload was fully placed in isolation and did not enter the current data slot. Activate it after confirming the source is trusted. Your current data was not changed.",
     "backupDatabaseFailed": "Database backup failed: {{error}}",
     "packageZipFailed": "ZIP packaging failed: {{error}}",
     "uploadFileFailed": "File upload failed: {{error}}",
     "downloadBackupFailed": "Backup download failed: {{error}}",
     "importZipFailed": "ZIP import failed: {{error}}",
     "restoreDatabaseFailed": "Database restore failed: {{error}}",
+    "restoreInsufficientSpace": "Not enough disk space: {{required}} GB needed, {{available}} GB available. Your current data was not changed. Free up space and try again.",
+    "missingWebdavConfig": "WebDAV configuration is missing",
+    "missingS3Config": "S3 configuration is missing",
+    "missingFtpConfig": "FTP configuration is missing",
     "unknown": "Unknown error"
   },
   
+  "repoCheck": {
+    "title": "Cloud Repository Check",
+    "description": "Read-only inspection: downloads every backup object referenced by the cloud manifests and verifies existence, SHA256 checksum and the end-to-end encryption header, then reports orphaned and missing objects. Checking the same object is resumable on WebDAV and desktop S3; FTP still restarts the whole download. The check never modifies or deletes any cloud data; it downloads roughly the total repository size.",
+    "run": "Run check",
+    "running": "Checking...",
+    "failed": "Repository check failed",
+    "checkedAt": "Checked at",
+    "summary": "Verified {{versions}} referenced version(s) / fully checked {{objects}} object(s) ({{bytes}})",
+    "statusOk": "All good: every referenced object exists, checksums match, no orphans",
+    "statusProblems": "{{count}} problem(s) found",
+    "statusIncomplete": "Check incomplete: must not be treated as all-green",
+    "truncatedNotice": "The cloud file listing was truncated, so this check is incomplete — even with no problems found, the repository cannot be assumed healthy. Retry later, or reduce the number of cloud objects and check again.",
+    "encryptedRepo": "This cloud folder has end-to-end encryption enabled (marker present); the check verified the DSBK encryption header of every object.",
+    "orphanCount": "Orphaned objects: {{count}}",
+    "problemsTitle": "Problem list",
+    "problemsTruncated": "Too many problems; showing the first {{count}} only",
+    "problemKind": {
+      "missingObject": "Missing object",
+      "checksumMismatch": "SHA256 mismatch",
+      "undecodableDsbkHeader": "Undecodable encryption header (DSBK)",
+      "plaintextInEncryptedRepo": "Plaintext object in encrypted repository",
+      "encryptedWithoutMarker": "Encrypted object without encryption marker",
+      "orphanObject": "Orphaned object",
+      "tempLeftover": "Leftover temporary file",
+      "corruptManifest": "Corrupt manifest",
+      "conflictingManifestEntry": "Conflicting manifest entries",
+      "corruptEncryptionMarker": "Corrupt encryption marker",
+      "objectReadFailed": "Object read failed"
+    },
+    "guidance": {
+      "title": "What to do about bad objects",
+      "readOnly": "The check is read-only and changed nothing in the cloud; every action below is up to you.",
+      "badObject": "\"Missing object / SHA256 mismatch / undecodable encryption header / plaintext object\" means that version can no longer be fully restored: do not delete the versions that are still healthy. First run \"Back up to cloud now\" on a device whose data is intact to create a fresh complete version, confirm it works, and only then delete the bad version from \"Version history\".",
+      "orphan": "Orphaned objects never affect any restore; they only waste space. Once confirmed, delete the files manually with your storage provider's own tools (web UI / console) — the check will never delete them for you.",
+      "manifest": "For \"corrupt manifest / conflicting entries / corrupt encryption marker\", first run a cloud backup again from the device that uploaded most recently (this rewrites that device's manifest), then re-run the check. If the problem persists, follow the repository-check section of the \"Data Management & Cloud Sync\" user guide.",
+      "incomplete": "\"Check incomplete\" (truncated listing or failed object reads) is usually caused by the network or server-side paging limits: retry. Until the result turns all-green, do not rely on this cloud folder as your disaster-recovery copy."
+    }
+  },
+
   "messages": {
     "connectionSuccess": "Connection successful!",
     "configSaved": "Configuration saved",
@@ -187,6 +306,7 @@
     "secureStoreReadFailed": "Saved credentials could not be read. Restore access to your system secure storage, then reopen this panel. Existing credentials were not changed.",
     "secureStoreWriteFailed": "Credentials were not saved. Restore access to your system secure storage, then click Save again.",
     "configSsotFailed": "Configuration was not saved because the backend sync configuration could not be persisted",
+    "configPublishFailed": "Configuration was not published: neither the credentials nor the configuration took effect, and the previously published configuration is unchanged",
     "configCleared": "Configuration cleared",
     "configClearPartial": "The configuration was removed from this view, but some backend data could not be cleared",
     "versionDeleted": "Version deleted"

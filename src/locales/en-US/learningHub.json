@@ -70,7 +70,10 @@
     "favoriteError": "Unable to favorite: resource path not found",
     "favoriteSuccess": "Added to favorites",
     "renameError": "Unable to rename: resource path not found",
-    "unfavoriteSuccess": "Removed from favorites"
+    "unfavoriteSuccess": "Removed from favorites",
+    "duplicate": "Duplicate",
+    "paste": "Paste",
+    "pasteCount": "Paste {{count}} Items"
   },
   "toolbar": {
     "search": "Search resources...",
@@ -165,7 +168,9 @@
     "openResourceFailed": "Failed to open resource",
     "createNotAllowed": "The current view does not support creating resources",
     "resourceDeletedOrMoved": "The resource was deleted or moved. The invalid tab has been closed.",
-    "resourceNotFound": "The requested resource was not found"
+    "resourceNotFound": "The requested resource was not found",
+    "bookmarksSaveConflict": "Bookmark save conflict: bookmarks for this resource were updated in another window. Your change was not applied — refresh and try again.",
+    "restoreDroppedCorrupted": "Dropped {{count}} corrupted record(s) while restoring tabs"
   },
   "success": {
     "referenceToChat": "Added to chat context",
@@ -525,7 +530,8 @@
       "viewGrid": "Grid View",
       "viewList": "List View",
       "hideSidebar": "Hide Sidebar",
-      "showSidebar": "Show Sidebar"
+      "showSidebar": "Show Sidebar",
+      "more": "More actions"
     },
     "create": {
       "folderTitle": "New Folder",
@@ -592,13 +598,30 @@
       "noCreateHintTouch": "You can’t create items here",
       "trashHint": "Deleted items stay here until restored or permanently deleted",
       "rightClick": "Right-click",
-      "contextMenuHint": "Create new file"
+      "contextMenuHint": "Create new file",
+      "searchNoResults": "No results for \"{{query}}\"",
+      "searchHint": "Try a different keyword, or clear the search to go back",
+      "clearSearch": "Clear Search"
     },
     "undo": "Undo",
     "movedToTrash": "Moved to Trash",
     "movedToTrashWithRefs": "Moved to Trash (referenced by {{count}} chat(s))",
     "batchMovedToTrash": "Moved {{count}} item(s) to Trash",
     "restored": "Restored",
+    "undoRenameSuccess": "Rename undone: {{name}}",
+    "undoMoveSuccess": "Move undone ({{count}} item(s))",
+    "undoMovePartial": "Undo partially failed ({{failed}} item(s) not moved back)",
+    "undoFailed": "Undo failed",
+    "quickLook": {
+      "title": "Quick Look",
+      "folder": "Folder",
+      "sizeLabel": "Size",
+      "updatedLabel": "Modified",
+      "pathLabel": "Where",
+      "closeHint": "Space / Esc to close",
+      "open": "Open",
+      "pdfFirstPage": "Page 1 preview"
+    },
     "error": {
       "title": "Failed to load",
       "retry": "Reload"
@@ -649,7 +672,8 @@
       "noChatSession": "Please open a chat first",
       "addToChatSuccess": "Added {{count}} items to chat",
       "addToChatPartial": "Added {{succeeded}} items, {{failed}} failed",
-      "addToChatFailed": "Failed to add"
+      "addToChatFailed": "Failed to add",
+      "openAllLimited": "Opened the first {{count}} of {{total}} selected items"
     },
     "batch": {
       "selectAll": "Select All",
@@ -687,7 +711,7 @@
     "statusBar": {
       "itemCount": "{{count}} items",
       "selectedCount": "{{count}} selected",
-      "selectedOfTotal": "{{selected}} selected of {{total}}"
+      "selectedOfTotal": "{{total}} items / {{selected}} selected"
     },
     "viewMode": {
       "grid": "Grid view",
@@ -714,6 +738,12 @@
       "selectHint": "Click to select files",
       "selected": "{{count}} selected",
       "multiSelect": "Multi-select"
+    },
+    "clipboard": {
+      "copied": "Copied {{count}} item(s)",
+      "pasteSuccess": "Pasted {{count}} item(s)",
+      "duplicateSuccess": "Duplicated {{count}} item(s)",
+      "copyPartial": "Copy finished: {{succeeded}} succeeded, {{failed}} failed"
     }
   },
   "quickCreate": {
@@ -1397,5 +1427,16 @@
     "lanceHasPageIndex": "has pageIndex",
     "lanceSampleMetadata": "Sample metadata",
     "lanceRows": "rows"
+  },
+  "agent": {
+    "unsupported_hint": "Use the resource/DSTU domain tools to modify file data; this driver only supports navigation ops (openFolder)",
+    "pause_check_failed": "Pause check failed: {{error}}",
+    "pacing_failed": "Pacing control failed: {{error}}",
+    "op_missing_folder_id": "{{label}} (missing folderId)",
+    "op_failed": "{{label}} (failed: {{error}})",
+    "open_folder_label": "Open folder {{folderId}}",
+    "nav_aborted": "Files navigation aborted",
+    "run_not_found": "Files run does not exist or has already finished",
+    "run_ended": "Run already finished"
   }
 }

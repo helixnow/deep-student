@@ -93,5 +93,10 @@
   "error": {
     "loadFailed": "Failed to load statistics",
     "cleanupFailed": "Failed to cleanup data"
+  },
+  "dstu_path": {
+    "emptyId": "Resource ID cannot be empty",
+    "idLengthExceeded": "Resource ID length exceeded: {{length}} characters (max {{max}})",
+    "invalidPrefix": "Invalid resource ID format: missing valid prefix"
   }
 }

@@ -44,6 +44,13 @@
   "mapping_success": "Mapped successfully",
   "mapping_created": "Newly created",
   "mapping_failed": "Mapping failed",
-  "processing_time": "Processing time"
+  "processing_time": "Processing time",
+  "textbook": {
+    "list": "Listing textbooks",
+    "get_detail": "Getting textbook details",
+    "delete": "Deleting textbook",
+    "set_favorite": "Setting favorite status",
+    "add": "Adding textbooks"
+  }
 }
 

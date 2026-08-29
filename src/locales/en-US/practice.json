@@ -68,7 +68,11 @@
     "confirmMessage": "Are you sure you want to finish this timed practice?",
     "confirmWarning": "You have {{count}} unanswered questions. Are you sure you want to submit?",
     "cancel": "Cancel",
-    "confirmSubmit": "Confirm Submit"
+    "confirmSubmit": "Confirm Submit",
+    "lastResultTitle": "Last Session Result",
+    "lastResultTimeout": "Auto-submitted on timeout",
+    "lastResultSummary": "Answered {{answered}} / {{total}} · {{correct}} correct · {{rate}}% accuracy",
+    "anotherRound": "One More Round"
   },
   "questionType": {
     "single_choice": "Single Choice",
@@ -134,11 +138,13 @@
   "daily": {
     "title": "Daily Practice",
     "streakDays": "Streak Days",
+    "streakHint": "Any day you practice counts — the streak doesn't depend on hitting the target",
     "smartRecommend": "Smart Recommendations",
     "recommendMistakes": "Prioritize mistakes to strengthen weak points",
     "recommendNew": "Then add new questions to expand knowledge",
     "recommendReview": "Finally, add review questions to prevent forgetting",
     "targetLabel": "Daily Target (questions)",
+    "targetHint": "Only the current target is saved — no per-day history. Calendar check marks are judged against the current target",
     "todayProgress": "Today's Progress",
     "completed": "Daily target achieved!",
     "mistakes": "Mistakes",
@@ -148,7 +154,11 @@
     "continue": "Continue",
     "start": "Start Today's Practice",
     "calendar": "Check-in Calendar",
+    "viewByCurrentTarget": "Viewed with current target",
+    "calendarTargetHint": "Achieved marks use the current target ({{target}} questions) for every day shown, not the target set on that day",
     "yearMonth": "{{month}}/{{year}}",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -164,7 +174,8 @@
     "streak": "Streak",
     "calendarLoadFailed": "Failed to load the check-in calendar",
     "startError": "Failed to load daily practice",
-    "completedDetail": "{{correct}} / {{total}} answered correctly"
+    "completedDetail": "{{correct}} / {{total}} questions correct (counted per question, not per attempt)",
+    "anotherRound": "Practice Another Round"
   },
   "paper": {
     "title": "Paper Generator",
@@ -197,7 +208,8 @@
     "exportComingSoon": "PDF / Word export is coming soon. Use Markdown export or preview for now.",
     "exportTitle": "Export Paper",
     "exportSuccess": "Paper exported",
-    "exportFailed": "Export failed. Please try again."
+    "exportFailed": "Export failed. Please try again.",
+    "comingSoonBadge": "Coming Soon"
   },
   "tagNav": {
     "knowledgePoints": "Knowledge Points",
@@ -531,5 +543,11 @@
   "stepper": {
     "decrease": "Decrease {{label}} count",
     "increase": "Increase {{label}} count"
+  },
+  "preview_persist": {
+    "save_progress": "Save reading progress",
+    "save_bookmarks": "Save bookmarks",
+    "save_bookmarks_failed": "Failed to save bookmarks",
+    "flush_unsaved": "Save unpersisted reading progress/bookmarks"
   }
 }
