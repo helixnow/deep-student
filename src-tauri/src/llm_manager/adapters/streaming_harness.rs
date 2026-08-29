@@ -50,7 +50,7 @@ fn parser_for(adapter: &dyn RequestAdapter) -> Box<dyn ProviderAdapter> {
     match adapter.id() {
         "anthropic" | "claude" => Box::new(AnthropicParser::new()),
         "google" | "gemini" => Box::new(GeminiParser::new()),
-        _ => Box::new(OpenAIAdapter),
+        _ => Box::new(OpenAIAdapter::new()),
     }
 }
 
@@ -652,7 +652,7 @@ fn streaming_tool_call_gemini() {
 /// OpenAI 兼容流：完整跑下来必须有 Usage 事件 & Done 事件
 #[test]
 fn openai_compatible_emits_usage_and_done() {
-    let parser = OpenAIAdapter;
+    let parser = OpenAIAdapter::new();
     let events = drive_parser(&parser, OPENAI_TEXT_FIXTURE);
 
     let has_usage = events.iter().any(|e| matches!(e, StreamEvent::Usage(_)));
@@ -714,7 +714,7 @@ data: this-is-not-json
 data: {\"choices\":[{\"delta\":{\"content\":\"survived\"}}]}
 ";
     // OpenAI parser
-    let openai = OpenAIAdapter;
+    let openai = OpenAIAdapter::new();
     let events = drive_parser(&openai, garbage);
     let combined = collect_content(&events);
     assert_eq!(

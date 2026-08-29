@@ -378,7 +378,12 @@ mod tests {
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.6"));
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.7-code"));
         assert!(MoonshotAdapter::is_k25_or_later("kimi-k2.10"));
-        assert!(MoonshotAdapter::is_k25_or_later("kimi-k3"));
+
+        // K3+ 走独立路径（is_k3_or_later），不属于 K2.x 新代际
+        assert!(!MoonshotAdapter::is_k25_or_later("kimi-k3"));
+        assert!(MoonshotAdapter::is_k3_or_later("kimi-k3"));
+        assert!(MoonshotAdapter::is_k3_or_later("kimi-k3-0905-preview"));
+        assert!(!MoonshotAdapter::is_k3_or_later("kimi-k2.7-code"));
 
         // 旧代际不命中
         assert!(!MoonshotAdapter::is_k25_or_later("kimi-k2"));
@@ -580,6 +585,42 @@ mod tests {
             assert_eq!(
                 adapter.get_passback_policy(&config),
                 PassbackPolicy::DeepSeekStyle,
+                "model: {}",
+                model
+            );
+        }
+    }
+
+    // ========== K3+ 测试用例 ==========
+
+    #[test]
+    fn test_k3_forces_reasoning_effort_max() {
+        let adapter = MoonshotAdapter;
+        for model in [
+            "kimi-k3",
+            "kimi-k3-0905-preview",
+            "moonshotai/Kimi-K3-Instruct",
+        ] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+            body.insert("thinking".to_string(), json!({"type": "enabled"}));
+            body.insert("enable_thinking".to_string(), json!(false));
+            body.insert("thinking_budget".to_string(), json!(8192));
+
+            // 即使外部尝试禁用，K3 推理也不可关闭（与前端 canDisable=false 对齐）
+            let handled = adapter.apply_reasoning_config(&mut body, &config, Some(false));
+
+            assert!(handled, "model: {}", model);
+            // 服务端拒绝 K2.x thinking 对象，必须整体移除
+            assert!(!body.contains_key("thinking"), "model: {}", model);
+            assert!(!body.contains_key("enable_thinking"), "model: {}", model);
+            assert!(!body.contains_key("thinking_budget"), "model: {}", model);
+            assert_eq!(
+                body.get("reasoning_effort"),
+                Some(&json!("max")),
                 "model: {}",
                 model
             );

@@ -64,10 +64,13 @@ impl GeminiAdapter {
     /// Gemini 3.x Flash: 支持 "minimal", "low", "medium", "high"
     fn default_thinking_level(model: &str, is_flash: bool) -> &'static str {
         let lower = model.to_lowercase();
-        if lower.contains("gemini-3.5-flash") {
-            "medium"
-        } else if lower.contains("gemini-3.1-flash-lite") {
+        // flash-lite 必须先于 gemini-3.5-flash 匹配：
+        // "gemini-3.5-flash-lite" 包含子串 "gemini-3.5-flash"，
+        // 若顺序颠倒会被误判为 Flash 默认 "medium"
+        if lower.contains("flash-lite") {
             "minimal"
+        } else if lower.contains("gemini-3.5-flash") {
+            "medium"
         } else if lower.contains("gemini-3-flash") {
             "high"
         } else if is_flash {
@@ -425,6 +428,9 @@ mod tests {
     fn test_gemini_3_model_specific_default_levels() {
         for (model, expected) in [
             ("gemini-3.5-flash", "medium"),
+            // flash-lite 包含 "gemini-3.5-flash" 子串，需先匹配，默认 "minimal"
+            ("gemini-3.5-flash-lite", "minimal"),
+            ("gemini-3.5-flash-lite-preview-08-2026", "minimal"),
             ("gemini-3.1-flash-lite", "minimal"),
             ("gemini-3-flash-preview", "high"),
             ("gemini-3.1-pro-preview", "high"),

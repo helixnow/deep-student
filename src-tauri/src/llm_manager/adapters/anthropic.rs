@@ -3,7 +3,8 @@
 //! ## thinking 请求形态按代际分叉（2026-07，研报 02）
 //! - **旧代际（manual extended thinking）**：Haiku 4.5、Sonnet 4.5、Opus 4.5 及更早——
 //!   发送 `thinking: {type:"enabled", budget_tokens:N}`，N >= 1024 且 < max_tokens。
-//! - **新代际（adaptive thinking）**：Opus/Sonnet 4.6+、Sonnet 5、Fable 5、Mythos 5 及未来默认——
+//! - **新代际（adaptive thinking）**：Opus/Sonnet 4.6+、Opus/Sonnet 5、Fable 5、
+//!   限量开放的 Mythos 5 及未来默认——
 //!   发送 `thinking: {type:"adaptive"}`（可选 `display`）+ `output_config: {effort}`；
 //!   传 `enabled` 会直接 **400**。
 //!
@@ -44,7 +45,7 @@ const DEFAULT_BUDGET_TOKENS: i32 = 10240;
 pub enum ClaudeGeneration {
     /// 2026 新代际：thinking 只接受 `{type:"adaptive"}` + `output_config.effort`，
     /// 对非默认 temperature/top_p/top_k 一律 400。
-    /// 覆盖：Opus 4.7/4.8、Sonnet 5、Fable 5、Mythos 5 及未来更高版本（默认按新代际处理）。
+    /// 覆盖：Opus 4.7/4.8、Opus/Sonnet 5、Fable/Mythos 5 及未来更高版本。
     Adaptive,
     /// 旧代际 manual extended thinking：`{type:"enabled", budget_tokens}`。
     /// 覆盖：Opus/Sonnet 4 ~ 4.5、Haiku 4.x、Sonnet 3.7。
@@ -56,7 +57,7 @@ pub enum ClaudeGeneration {
 /// 解析 Claude 模型 ID 中的（家族, 主版本, 次版本）
 ///
 /// 兼容的 ID 形态：
-/// - `claude-opus-4-8` / `claude-sonnet-5` / `claude-fable-5`（4.6 代起无日期后缀）
+/// - `claude-opus-4-8` / `claude-sonnet-5` / `claude-fable-5` / `claude-mythos-5`
 /// - `claude-sonnet-4-5-20250929` / `claude-haiku-4-5-20251001`（日期快照）
 /// - `claude-opus-4.5` / `claude-4.5-sonnet`（点号 / 版本前置变体）
 /// - `claude-3-7-sonnet`（版本前置）
@@ -110,7 +111,7 @@ pub fn claude_generation(model: &str) -> ClaudeGeneration {
         return ClaudeGeneration::Unsupported;
     };
     match family {
-        // Fable / Mythos 全系 adaptive（且 always-on）
+        // Fable / restricted Mythos 全系 adaptive（且 always-on）
         "fable" | "mythos" => ClaudeGeneration::Adaptive,
         "opus" => match (major, minor) {
             (0, _) => ClaudeGeneration::Unsupported,
@@ -130,7 +131,6 @@ pub fn claude_generation(model: &str) -> ClaudeGeneration {
         },
         "haiku" => match (major, minor) {
             (0, _) => ClaudeGeneration::Unsupported,
-            (m, _) if m >= 5 => ClaudeGeneration::Adaptive,
             (4, _) => ClaudeGeneration::Manual,
             _ => ClaudeGeneration::Unsupported,
         },
@@ -138,7 +138,7 @@ pub fn claude_generation(model: &str) -> ClaudeGeneration {
     }
 }
 
-/// Fable 5 / Mythos 5 的 thinking 为 always-on，不接受 `{type:"disabled"}`
+/// Fable 5 / restricted Mythos 5 的 thinking 为 always-on，不接受 `{type:"disabled"}`
 pub fn claude_thinking_always_on(model: &str) -> bool {
     matches!(parse_claude_model(model), Some(("fable" | "mythos", _, _)))
 }
@@ -247,7 +247,7 @@ impl AnthropicAdapter {
     /// - 无条件剥离 temperature/top_p/top_k（非默认值一律 400，与 thinking 开关无关）
     /// - thinking 开启：`thinking:{type:"adaptive"[, display]}` + `output_config.effort`
     /// - thinking 关闭：显式 `thinking:{type:"disabled"}`（Sonnet 5 默认开启，需显式关闭；
-    ///   Fable/Mythos always-on 不发送 disabled）
+    ///   Fable always-on 不发送 disabled）
     fn apply_adaptive_generation(
         &self,
         body: &mut Map<String, Value>,
@@ -518,10 +518,6 @@ mod tests {
             claude_generation("claude-sonnet-5-1"),
             ClaudeGeneration::Adaptive
         );
-        assert_eq!(
-            claude_generation("claude-haiku-5"),
-            ClaudeGeneration::Adaptive
-        );
         // 第三方渠道 ID 形态
         assert_eq!(
             claude_generation("anthropic.claude-opus-4-8"),
@@ -756,6 +752,35 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert!(!body.contains_key("thinking"));
+    }
+
+    #[test]
+    fn test_restricted_mythos_5_uses_always_on_adaptive_thinking() {
+        let adapter = AnthropicAdapter;
+        let enabled = ApiConfig {
+            thinking_enabled: true,
+            reasoning_effort: Some("xhigh".to_string()),
+            model: "claude-mythos-5".to_string(),
+            ..Default::default()
+        };
+        let mut enabled_body = Map::new();
+        enabled_body.insert("temperature".to_string(), json!(0.7));
+
+        assert!(adapter.apply_reasoning_config(&mut enabled_body, &enabled, None));
+        assert_eq!(enabled_body["thinking"], json!({ "type": "adaptive" }));
+        assert_eq!(enabled_body["effort"], json!("xhigh"));
+        assert!(!enabled_body.contains_key("temperature"));
+
+        // Mythos is restricted but real and always-on. A local "off" setting
+        // must never be translated into the unsupported `{type:"disabled"}`.
+        let disabled = ApiConfig {
+            thinking_enabled: false,
+            model: "claude-mythos-5".to_string(),
+            ..Default::default()
+        };
+        let mut disabled_body = Map::new();
+        assert!(adapter.apply_reasoning_config(&mut disabled_body, &disabled, None));
+        assert!(!disabled_body.contains_key("thinking"));
     }
 
     #[test]
