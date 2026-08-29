@@ -26,8 +26,9 @@ use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile,
 };
 use windows_sys::Win32::Security::{
-    DeriveCapabilitySidsFromName, FreeSid, ACL, DACL_SECURITY_INFORMATION, PSID,
-    SECURITY_CAPABILITIES, SID_AND_ATTRIBUTES, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+    AddAccessDeniedAceEx, AddAce, DeriveCapabilitySidsFromName, FreeSid, GetAce, GetLengthSid,
+    InitializeAcl, ACL, ACL_REVISION, ACCESS_DENIED_ACE, ACE_HEADER, DACL_SECURITY_INFORMATION,
+    PSID, SECURITY_CAPABILITIES, SID_AND_ATTRIBUTES, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_DELETE_CHILD, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
@@ -560,7 +561,124 @@ fn trustee(sid: PSID) -> TRUSTEE_W {
     }
 }
 
+/// Apply a deny ACE with canonical DACL ordering.
+///
+/// SetEntriesInAclW merges a new deny ACE into an existing DACL without
+/// guaranteeing canonical order. On directories whose DACL carries broad
+/// inherited allow entries (hosted CI runners grant write access on %TEMP%
+/// to ALL APPLICATION PACKAGES), the merged deny can land *after* an
+/// inherited allow, and AccessCheck stops at the first matching ACE — the
+/// sandboxed process then keeps write access to "protected" roots. Build
+/// the replacement DACL explicitly instead: our deny ACE first, then every
+/// ACE from the old DACL in its original order.
+fn change_path_acl_deny(path: &Path, sid: PSID, rights: u32) -> Result<(), String> {
+    let mut path_wide = wide_os(path.as_os_str());
+    let mut old_acl: *mut ACL = null_mut();
+    let mut security_descriptor: *mut c_void = null_mut();
+    let get_result = unsafe {
+        GetNamedSecurityInfoW(
+            path_wide.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut old_acl,
+            null_mut(),
+            &mut security_descriptor,
+        )
+    };
+    if get_result != 0 {
+        return Err(format!(
+            "Failed to read ACL for '{}': Win32 error {get_result}",
+            path.display()
+        ));
+    }
+
+    let result = (|| {
+        let sid_len = unsafe { GetLengthSid(sid) } as usize;
+        let deny_ace_len = size_of::<ACCESS_DENIED_ACE>() - size_of::<u32>() + sid_len;
+        let old_len = if old_acl.is_null() {
+            0
+        } else {
+            unsafe { (*old_acl).AclSize as usize }
+        };
+        // usize storage keeps the buffer DWORD-aligned; slack covers ACE padding.
+        let new_len = old_len + deny_ace_len + 64;
+        let mut storage = vec![0usize; new_len.div_ceil(size_of::<usize>())];
+        let new_acl = storage.as_mut_ptr() as *mut ACL;
+        if unsafe { InitializeAcl(new_acl, new_len as u32, ACL_REVISION) } == 0 {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to initialize ACL for '{}': {error}",
+                path.display()
+            ));
+        }
+        if unsafe {
+            AddAccessDeniedAceEx(
+                new_acl,
+                ACL_REVISION,
+                SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+                rights,
+                sid,
+            )
+        } == 0
+        {
+            let error = std::io::Error::last_os_error();
+            return Err(format!(
+                "Failed to add deny ACE for '{}': {error}",
+                path.display()
+            ));
+        }
+        if !old_acl.is_null() {
+            let ace_count = unsafe { (*old_acl).AceCount } as u32;
+            for index in 0..ace_count {
+                let mut ace: *mut c_void = null_mut();
+                if unsafe { GetAce(old_acl, index, &mut ace) } == 0 {
+                    let error = std::io::Error::last_os_error();
+                    return Err(format!(
+                        "Failed to read existing ACE {index} for '{}': {error}",
+                        path.display()
+                    ));
+                }
+                let ace_len = unsafe { (*(ace as *const ACE_HEADER)).AceSize } as u32;
+                if unsafe { AddAce(new_acl, ACL_REVISION, u32::MAX, ace, ace_len) } == 0 {
+                    let error = std::io::Error::last_os_error();
+                    return Err(format!(
+                        "Failed to copy existing ACE {index} for '{}': {error}",
+                        path.display()
+                    ));
+                }
+            }
+        }
+        let set_result = unsafe {
+            SetNamedSecurityInfoW(
+                path_wide.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                new_acl,
+                null_mut(),
+            )
+        };
+        if set_result != 0 {
+            return Err(format!(
+                "Failed to apply ACL for '{}': Win32 error {set_result}",
+                path.display()
+            ));
+        }
+        Ok(())
+    })();
+    unsafe {
+        LocalFree(security_descriptor);
+    }
+    result
+}
+
 fn change_path_acl(path: &Path, sid: PSID, mode: i32, rights: u32) -> Result<(), String> {
+    if mode == DENY_ACCESS {
+        return change_path_acl_deny(path, sid, rights);
+    }
     let mut path_wide = wide_os(path.as_os_str());
     let mut old_acl: *mut ACL = null_mut();
     let mut security_descriptor: *mut c_void = null_mut();
@@ -1357,16 +1475,12 @@ mod tests {
         let capabilities: Vec<SID_AND_ATTRIBUTES> = Vec::new();
         let profile = create_profile(&payload.profile_name, &capabilities).unwrap();
         let changed_paths = grant_policy(&payload.policy, profile.sid).unwrap();
-        let acl_dump_command = format!(
-            "(Get-Acl -LiteralPath '{}').Access | ForEach-Object {{ \"$($_.IdentityReference) | $($_.AccessControlType) | $($_.FileSystemRights) | inherited=$($_.IsInherited)\" }}",
-            protected.display()
-        );
-        let dump = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-Command", acl_dump_command.as_str()])
+        let dump = std::process::Command::new("icacls")
+            .arg(protected.as_os_str())
             .output()
             .unwrap();
         eprintln!(
-            "=== protected DACL while deny is applied ===\nstdout:\n{}\nstderr:\n{}",
+            "=== protected DACL while deny is applied (icacls) ===\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&dump.stdout),
             String::from_utf8_lossy(&dump.stderr)
         );
