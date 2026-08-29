@@ -69,6 +69,7 @@ import {
 } from './components/TemplateInlinePanels';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import {
+  classifyTemplateImportError,
   filterAndSortTemplates,
   hasActiveFilters,
   persistViewMode,
@@ -116,7 +117,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   onTemplateSelected,
   onCancel,
   onBackToAnki,
-  onOpenJsonPreview: _onOpenJsonPreview,
+  onOpenJsonPreview,
   onDesktopShellBackVisibilityChange,
   refreshToken = 0,
   workbenchWindowId,
@@ -131,6 +132,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const setSidebarOpen = useCallback((open: boolean) => setScreenPosition(open ? 'left' : 'center'), []);
   const [editorPortalTarget, setEditorPortalTarget] = useState<HTMLDivElement | null>(null);
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
+
+  // 保活可见性守卫锚点：本视图在 ViewLayerRenderer 隐藏保活层里仍保持挂载
+  // （visibility:hidden），返回键 handler 须先确认根节点可见才消费事件
+  // （对照 EnhancedPdfViewer / TodoMainPanel 的同款守卫）
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // 离开编辑器的脏检查守卫（在下方编辑器状态就绪后赋值；面包屑点击时经 ref 调用，
   // 避免 useMemo 工厂在渲染期引用尚未声明的回调触发 TDZ）
@@ -156,7 +162,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             if (!leaveEditorGuardRef.current()) return;
             onBackToAnki?.();
           }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary [@media(pointer:coarse)]:!min-h-11"
         >
           {tAnki('page_title')}
         </DsButton>
@@ -228,10 +234,50 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   useEffect(() => {
     if (!isSmallScreen || !activePanel) return;
     return registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中的导入/导出面板不吞其他视图的返回键。
+      // visibility:hidden 不清除布局盒（getClientRects 仍有返回值），须单独查 computed visibility。
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
       setActivePanel(null);
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, activePanel]);
+
+  // ⌘/Ctrl+F → 聚焦模板搜索（legacy 壳 / Anki 内嵌等非 workbench 承载）。
+  // workbench 窗口承载时由 TemplatesAppWindow 的同款 handler 负责（带窗口
+  // 聚焦门禁），这里让位避免双重消费；此前 ⌘F 只覆盖 workbench 窗口，
+  // 独立模板页同一工具栏没有快捷键（评审缺口 #3）。
+  // capture 阶段消费，抢在 WebView 原生查找之前；编辑视图不渲染搜索框
+  // （querySelector 落空）时完全放行。
+  useEffect(() => {
+    if (workbenchWindowId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== 'f') return;
+      const root = rootRef.current;
+      // 保活守卫：本视图在隐藏保活层里仍保持挂载（visibility:hidden），
+      // 不可见时不抢其他视图的 ⌘F（与本文件返回键守卫同款判定）
+      if (!root || !root.isConnected || root.getClientRects().length === 0) return;
+      if (window.getComputedStyle(root).visibility === 'hidden') return;
+      // 兜底聚焦门禁：本组件若经其他宿主（如 Anki 内嵌选择模式）间接落在
+      // workbench 窗壳内，仍要求该窗聚焦且事件发生在窗内（对齐 TemplatesAppWindow）
+      const windowShell = root.closest<HTMLElement>('[data-wb-window]');
+      if (windowShell) {
+        if (!windowShell.hasAttribute('data-focused')) return;
+        const target = e.target as HTMLElement | null;
+        if (!target || !windowShell.contains(target)) return;
+      }
+      const input = root.querySelector<HTMLInputElement>('[data-template-search]');
+      if (!input) return;
+      e.preventDefault();
+      e.stopPropagation();
+      input.focus();
+      input.select();
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [workbenchWindowId]);
 
   const agentTemplatesRef = useRef<CustomAnkiTemplate[]>([]);
   const agentSnapshotRef = useRef<TemplateAgentSnapshot>({
@@ -475,20 +521,50 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }
   };
 
+  // 导入失败可读化：按信号词归类 → 「怎么办」级主文案 + 原始报错降级为技术细节附注
+  const buildImportFailureMessage = useCallback((error: unknown): string => {
+    const raw = getErrorMessage(error);
+    const kind = classifyTemplateImportError(raw);
+    if (kind === 'unknown') {
+      return formatErrorMessage(t('import_external_failed'), error);
+    }
+    return `${t(`templateMgmt.import_error_${kind}`)}\n${t('templateMgmt.import_error_detail', { detail: raw })}`;
+  }, [t]);
+
   const handleConfirmImportExternal = async () => {
     if (!selectedImportFile) return;
     setIsImporting(true);
     setImportResult(null);
+
+    let text: string;
     try {
-      const text = await selectedImportFile.text();
-      let strictBuiltin = true;
-      try {
-        const parsed = JSON.parse(text);
-        const items = Array.isArray(parsed) ? parsed : [parsed];
-        strictBuiltin = items.every(item => item && typeof item === 'object' && ('fields_json' in item || 'field_extraction_rules_json' in item));
-      } catch {
-        strictBuiltin = false;
-      }
+      text = await selectedImportFile.text();
+    } catch (err: unknown) {
+      logError(t('import_external_failed'), err);
+      setImportResult({
+        ok: false,
+        message: `${t('templateMgmt.import_error_read_file')}\n${t('templateMgmt.import_error_detail', { detail: getErrorMessage(err) })}`,
+      });
+      setIsImporting(false);
+      return;
+    }
+
+    // JSON 语法错误在前端即可确定：直接给可读错误，不再把坏文件送去后端
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err: unknown) {
+      setImportResult({
+        ok: false,
+        message: `${t('templateMgmt.import_error_invalid_json')}\n${t('templateMgmt.import_error_detail', { detail: getErrorMessage(err) })}`,
+      });
+      setIsImporting(false);
+      return;
+    }
+
+    try {
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const strictBuiltin = items.every(item => item && typeof item === 'object' && ('fields_json' in item || 'field_extraction_rules_json' in item));
       // 后端签名为 request: TemplateBulkImportRequest，必须包一层 request
       const result = await invoke<string>('import_custom_templates_bulk', {
         request: {
@@ -502,7 +578,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       await loadTemplates();
     } catch (err: unknown) {
       logError(t('import_external_failed'), err);
-      setImportResult({ ok: false, message: formatErrorMessage(t('import_external_failed'), err) });
+      setImportResult({ ok: false, message: buildImportFailureMessage(err) });
     } finally {
       setIsImporting(false);
     }
@@ -657,43 +733,88 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     backToBrowse();
   }, [confirmDiscardEditorChanges, backToBrowse]);
 
+  // 编辑态返回统一语义（顶栏返回箭头与 Android 系统返回共用）：
+  // 停留在左/右屏时先回中屏，已在中屏才走脏检查退出编辑。
+  const handleEditorBack = useCallback(() => {
+    if (screenPosition !== 'center') {
+      setScreenPosition('center');
+      return;
+    }
+    handleCancelEdit();
+  }, [screenPosition, handleCancelEdit]);
+
+  // 选择模式小屏顶栏直接作为「返回制卡」出口（有 onCancel 才启用）
+  const selectingHeaderBack = isSelectingMode && Boolean(onCancel);
+
   // 浏览态保留面包屑 + 菜单；编辑态切换为明确返回，并在右侧保留编辑器导航入口。
   useMobileHeader('template-management', {
     title: isEditingMode
       ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
       : undefined,
     titleNode: isEditingMode ? undefined : BreadcrumbNav,
-    showMenu: !isEditingMode,
-    showBackArrow: isEditingMode,
+    showMenu: !isEditingMode && !selectingHeaderBack,
+    showBackArrow: isEditingMode || selectingHeaderBack,
     onMenuClick: isEditingMode
-      ? handleCancelEdit
-      : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+      ? handleEditorBack
+      : selectingHeaderBack
+        ? onCancel
+        : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
     rightActions: isEditingMode ? (
-      <DsButton
-        variant="ghost"
-        size="sm"
-        iconOnly
-        aria-label={t('manager_title')}
-        title={t('manager_title')}
-        onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
-      >
-        <Gear size={18} />
-      </DsButton>
+      <>
+        {isCodeMode && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label={t('template_code')}
+            title={t('template_code')}
+            aria-pressed={screenPosition === 'right'}
+            onClick={() => setScreenPosition(prev => (prev === 'right' ? 'center' : 'right'))}
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          >
+            <Code size={18} />
+          </DsButton>
+        )}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          aria-label={t('manager_title')}
+          title={t('manager_title')}
+          onClick={() => setScreenPosition(prev => prev === 'left' ? 'center' : 'left')}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        >
+          <Gear size={18} />
+        </DsButton>
+      </>
     ) : undefined,
-  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleCancelEdit, t]);
+  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t]);
 
-  // Android 返回优先收起编辑器抽屉，其次走与顶栏相同的脏检查返回路径。
+  // Android 返回优先收起编辑器左右屏，其次走与顶栏相同的脏检查返回路径。
   useEffect(() => {
     if (!isSmallScreen || !isEditingMode) return;
     return registerBackHandler(() => {
-      if (screenPosition !== 'center') {
-        setScreenPosition('center');
-        return true;
-      }
-      handleCancelEdit();
+      // 保活守卫：隐藏保活层中滞留的编辑态不吞返回键，也不为不可见编辑器弹脏检查
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      handleEditorBack();
       return true;
     }, BACK_PRIORITY.view);
-  }, [isSmallScreen, isEditingMode, screenPosition, handleCancelEdit]);
+  }, [isSmallScreen, isEditingMode, handleEditorBack]);
+
+  // 选择模式小屏：Android 系统返回与顶栏返回箭头一致，直接取消选择返回制卡。
+  useEffect(() => {
+    if (!isSmallScreen || !isSelectingMode || !onCancel) return;
+    return registerBackHandler(() => {
+      // 保活守卫：隐藏保活层中滞留的选择模式不消费返回键，交还当前活跃视图
+      const el = rootRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      onCancel();
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen, isSelectingMode, onCancel]);
 
   // 面包屑「Anki 制卡」离开守卫与取消编辑共用同一脏检查
   leaveEditorGuardRef.current = confirmDiscardEditorChanges;
@@ -771,6 +892,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               description={t('total_templates', { count: filteredTemplates.length })}
               className={templateSidebarRowClassName(activeTab === 'browse')}
             />
+            {!isSelectingMode && onOpenJsonPreview && (
+              <UnifiedSidebarItem
+                id="json-preview"
+                isSelected={false}
+                onClick={onOpenJsonPreview}
+                icon={Code}
+                title={t('json_preview.open_button')}
+                description={t('json_preview.open_button_hint')}
+                className={templateSidebarRowClassName()}
+              />
+            )}
           </div>
         )}
 
@@ -834,7 +966,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             onClick={() => {
               onCancel();
             }}
-            className="w-full justify-start gap-2"
+            className="w-full justify-start gap-2 [@media(pointer:coarse)]:!min-h-11"
           >
             <ArrowLeft size={16} />
             {t('back_button')}
@@ -849,7 +981,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     <nav className="wb-tm-nav" aria-label={t('manager_title')}>
       {isEditingMode && !isSelectingMode ? (
         <>
-          <button type="button" className="wb-tm-tab" onClick={handleCancelEdit}>
+          <button type="button" className="wb-tm-tab [@media(pointer:coarse)]:min-h-11" onClick={handleCancelEdit}>
             <ArrowLeft size={16} weight="bold" />
             {t('back_to_browse')}
           </button>
@@ -857,7 +989,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <button
               key={id}
               type="button"
-              className="wb-tm-tab"
+              className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
               data-active={selected ? 'true' : undefined}
               aria-current={selected ? 'page' : undefined}
               onClick={() => setEditorTab(id)}
@@ -870,7 +1002,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       ) : (
         <button
           type="button"
-          className="wb-tm-tab"
+          className="wb-tm-tab [@media(pointer:coarse)]:min-h-11"
           data-active="true"
           aria-current="page"
         >
@@ -886,17 +1018,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <Plus size={14} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={t('refresh')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
               </DsButton>
             </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
+              <DsButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
                 <Download size={14} />
               </DsButton>
             </CommonTooltip>
@@ -909,7 +1041,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('import_external_templates')}
                 aria-pressed={activePanel === 'import'}
                 data-active={activePanel === 'import' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <Upload size={14} />
               </DsButton>
@@ -923,15 +1055,34 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('export_templates_sidebar')}
                 aria-pressed={activePanel === 'export'}
                 data-active={activePanel === 'export' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               >
                 <Download size={14} weight="bold" />
               </DsButton>
             </CommonTooltip>
+            {onOpenJsonPreview && (
+              <CommonTooltip content={t('json_preview.open_button_hint')}>
+                <DsButton
+                  variant="utility"
+                  size="icon"
+                  iconOnly
+                  onClick={onOpenJsonPreview}
+                  aria-label={t('json_preview.open_button')}
+                  className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                >
+                  <Code size={14} />
+                </DsButton>
+              </CommonTooltip>
+            )}
           </>
         )}
         {isSelectingMode && onCancel && (
-          <DsButton variant="default" size="sm" onClick={onCancel} className="h-7">
+          <DsButton
+            variant="default"
+            size="sm"
+            onClick={onCancel}
+            className="h-7 [@media(pointer:coarse)]:!min-h-11"
+          >
             <ArrowLeft size={14} />
             {t('back_button')}
           </DsButton>
@@ -1018,7 +1169,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <Warning size={16} className="flex-shrink-0" />
             <span className="truncate">{error}</span>
           </span>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current" aria-label={t('common:a11y.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-current hover:text-current [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:a11y.close')}>
             <X size={14} />
           </DsButton>
         </div>
@@ -1126,7 +1277,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           iconOnly
           onClick={loadTemplates}
           disabled={isLoading}
-          className="shrink-0"
+          className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           title={t('refresh')}
           aria-label={t('refresh')}
         >
@@ -1139,7 +1290,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={t('search_placeholder')}
-            className="sidebar-shell-search h-9 w-full pl-9 text-sm"
+            className="sidebar-shell-search h-9 w-full pl-9 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
         {!isSelectingMode && (
@@ -1151,7 +1302,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               startCreateTemplate();
               closeMobileDrawer();
             }}
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title={t('tab_create')}
             aria-label={t('tab_create')}
           >
@@ -1174,7 +1325,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           {editorNavItems.map(({ id, icon, label, selected }) =>
             renderMobileDrawerRow(`editor-${id}`, icon, label, () => {
               setEditorTab(id);
-              closeMobileDrawer();
+              // 代码编辑在小屏由右屏全屏承载，选中「模板代码」直接滑到右屏
+              if (id === 'templates') {
+                setScreenPosition('right');
+              } else {
+                closeMobileDrawer();
+              }
             }, selected),
           )}
         </>
@@ -1185,6 +1341,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             setActiveTab('browse');
             closeMobileDrawer();
           }, activeTab === 'browse')}
+          {!isSelectingMode && onOpenJsonPreview && renderMobileDrawerRow('json-preview', Code, t('json_preview.open_button'), () => {
+            onOpenJsonPreview();
+            closeMobileDrawer();
+          })}
           {!isSelectingMode && (
             <>
               <span className={mobileDrawerSectionLabelClassName}>{t('import_section')}</span>
@@ -1215,7 +1375,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   if (isSmallScreen) {
     // ===== 移动端布局：MobileSlidingLayout =====
     layout = (
-      <div className="wb-tm-root overflow-hidden">
+      <div ref={rootRef} className="wb-tm-root overflow-hidden">
         <MobileSlidingLayout
           sidebar={mobileDrawerContent}
           rightPanel={
@@ -1243,7 +1403,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     layout = (
       <>
         {sidebarPortal}
-        <div className="wb-tm-root overflow-hidden">
+        <div ref={rootRef} className="wb-tm-root overflow-hidden">
           <div className="wb-tm-body flex-row">
             {mainContent}
           </div>
@@ -1253,7 +1413,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   } else {
     // ===== workbench 窗口 / 无壳侧栏：顶部标签导航 =====
     layout = (
-      <div className="wb-tm-root overflow-hidden">
+      <div ref={rootRef} className="wb-tm-root overflow-hidden">
         {workbenchNav}
         <div className="wb-tm-body">
           {mainContent}

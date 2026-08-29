@@ -13,6 +13,9 @@ import { WindowControls } from '@/components/WindowControls';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
+import { getMobileShellCssVars } from '@/app/shell/mobileShell';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { isMobilePlatform } from '@/utils/platform';
 import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import { exportStartupRecoveryReport, retryRecoveryStartup } from './dataRecoveryApi';
 
@@ -31,14 +34,27 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
   const affected = components.filter((component) => component.status !== 'healthy');
   const healthy = components.filter((component) => component.status === 'healthy');
   const [exportError, setExportError] = useState<string | null>(null);
+  // 对齐 App.tsx 标题栏契约：窗口控制与拖拽区仅在桌面平台且非小屏渲染，
+  // 移动端顶栏只保留标题并避让系统安全区。
+  const { isSmallScreen } = useBreakpoint();
+  const showDesktopWindowChrome = !isMobilePlatform() && !isSmallScreen;
+  const dragRegion = showDesktopWindowChrome ? true : undefined;
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div
+      className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
+      // 恢复壳挂载在 App shell 之外，--mobile-safe-area-* 需在本树根部自行定义
+      style={getMobileShellCssVars() as React.CSSProperties}
+    >
       <header
-        data-tauri-drag-region
-        className="flex h-12 shrink-0 items-center border-b border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel)] px-4"
+        data-tauri-drag-region={dragRegion}
+        className="flex shrink-0 items-center border-b border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel)] px-4"
+        style={{
+          paddingTop: 'var(--mobile-safe-area-top, env(safe-area-inset-top, 0px))',
+          height: 'calc(3rem + var(--mobile-safe-area-top, env(safe-area-inset-top, 0px)))',
+        }}
       >
-        <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold">
+        <div data-tauri-drag-region={dragRegion} className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold">
           <span>{t('data:recovery.shell_title')}</span>
           {debugPreview && (
             <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
@@ -47,11 +63,11 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
           )}
         </div>
         {debugPreview && (
-          <DsButton className="mr-2" size="sm" variant="ghost" onClick={onDebugExit}>
+          <DsButton className="mr-2 [@media(pointer:coarse)]:!min-h-11" size="sm" variant="ghost" onClick={onDebugExit}>
             {t('data:recovery.debug_exit_preview')}
           </DsButton>
         )}
-        <WindowControls />
+        {showDesktopWindowChrome && <WindowControls />}
       </header>
 
       <CustomScrollArea className="min-h-0 flex-1">
@@ -126,6 +142,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <DsButton
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         onClick={() => {
                           if (debugPreview) {
                             onDebugExit?.();
@@ -138,6 +155,7 @@ export const ComponentRecoveryShell: React.FC<ComponentRecoveryShellProps> = ({
                         {t('data:recovery.retry_startup')}
                       </DsButton>
                       {!debugPreview && <DsButton
+                        className="[@media(pointer:coarse)]:!min-h-11"
                         variant="secondary"
                         onClick={() => {
                           setExportError(null);

@@ -79,8 +79,8 @@ const ExtendChips: React.FC<{
           title={t('pomodoro.controls.extendTitle', { count: minutes })}
           aria-label={t('pomodoro.controls.extendTitle', { count: minutes })}
           className={cn(
-            'gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard',
-            touch ? 'h-11 flex-shrink-0 !px-3 text-xs' : 'h-6',
+            'gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
+            touch ? 'h-11 flex-shrink-0 !px-3 text-xs' : 'h-6 [@media(pointer:coarse)]:!h-11',
             className,
           )}
         >
@@ -226,7 +226,7 @@ const SettingsToggleRow: React.FC<{
 }> = ({ label, checked, onChange, size = 'sm' }) => (
   <label
     className={cn(
-      'flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-shell-control)]',
+      'flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-shell-control)] [@media(pointer:coarse)]:min-h-11',
       size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1',
     )}
   >
@@ -368,7 +368,7 @@ export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ 
               noiseEngine.setType(type);
             }}
             className="w-full"
-            itemClassName="min-w-0 flex-1 px-1"
+            itemClassName="min-w-0 flex-1 px-1 [@media(pointer:coarse)]:!min-h-11"
             options={NOISE_TYPES.map((type) => ({
               value: type,
               label: (
@@ -804,7 +804,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 onClick={() => setInlinePanel(null)}
                 title={t('close', { ns: 'common' })}
                 aria-label={t('close', { ns: 'common' })}
-                className="ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard"
+                // 视觉保持 24px；coarse 触屏用伪元素 -inset-2.5 扩成 44px 触控目标（24 + 2×10）
+                className="relative ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard after:absolute after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
               >
                 <X size={14} />
               </DsButton>
@@ -865,7 +866,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             aria-label={abandonLabel}
             className={cn(
               '!px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard',
-              touch ? 'h-11 flex-shrink-0' : 'h-6',
+              touch ? 'h-11 flex-shrink-0' : 'h-6 [@media(pointer:coarse)]:!h-11',
             )}
           >
             {abandonLabel}
@@ -878,7 +879,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             aria-label={keepGoingLabel}
             className={cn(
               '!px-2 text-xs transition-colors duration-150 ease-standard',
-              touch ? 'h-11 flex-shrink-0' : 'h-6',
+              touch ? 'h-11 flex-shrink-0' : 'h-6 [@media(pointer:coarse)]:!h-11',
             )}
           >
             {keepGoingLabel}
@@ -894,7 +895,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         onClick={handleStop}
         title={t('pomodoro.controls.stop')}
         aria-label={t('pomodoro.controls.stop')}
-        className={touch ? mobileIconBtnClass : '!h-7 !w-7 transition-colors duration-150 ease-standard'}
+        className={touch ? mobileIconBtnClass : '!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'}
       >
         <Square size={touch ? 16 : 14} />
       </DsButton>
@@ -926,8 +927,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             })}
             aria-pressed={workMinutes === minutes}
             className={cn(
-              'gap-0 !px-2 text-xs tabular-nums transition-colors duration-150 ease-standard',
-              touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6',
+              'gap-0 !px-2 text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
+              touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6 [@media(pointer:coarse)]:!h-11',
               workMinutes === minutes
                 ? 'font-semibold text-primary'
                 : 'text-muted-foreground hover:text-foreground',
@@ -969,7 +970,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             size="compact"
             value={settings.noiseType}
             onValueChange={(type) => updateSettings({ noiseType: type })}
-            itemClassName="min-w-0 px-2"
+            itemClassName="min-w-0 px-2 [@media(pointer:coarse)]:!min-h-11"
             options={NOISE_TYPES.map((type) => ({
               value: type,
               label: <span className="min-w-0 truncate text-xs">{t(`pomodoro.noise.${type}`)}</span>,
@@ -1254,7 +1255,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={() => completeCurrentSession()}
               title={t('pomodoro.controls.finish')}
               aria-label={t('pomodoro.controls.finish')}
-              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard"
+              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11"
             >
               <CheckCircle size={14} />
               <span>{t('pomodoro.controls.finish')}</span>
@@ -1269,7 +1270,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={handleTogglePlay}
               title={isRunning ? t('pomodoro.controls.pauseSpace') : mode === 'idle' ? t('pomodoro.controls.startSpace') : t('pomodoro.controls.resumeSpace', '继续 (Space)')}
               aria-label={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
-              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard"
+              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11"
             >
               <IconSwap
                 active={isRunning}
@@ -1286,7 +1287,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   type="button"
                   onClick={() => setShowStrictHint((v) => !v)}
                   aria-expanded={showStrictHint}
-                  className="px-1.5 text-xs text-muted-foreground/60"
+                  className="px-1.5 text-xs text-muted-foreground/60 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
                 >
                   {t('pomodoro.strictBadge')}
                 </button>
@@ -1301,7 +1302,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={() => skipBreak()}
               title={t('pomodoro.controls.skipBreakKey')}
               aria-label={t('pomodoro.controls.skipBreakKey')}
-              className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+              className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <SkipForward size={14} />
             </DsButton>
@@ -1319,7 +1320,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             title={noiseEnabled ? t('pomodoro.controls.noiseOffKey') : t('pomodoro.controls.noiseOnKey')}
             aria-label={noiseEnabled ? t('pomodoro.controls.noiseOffKey') : t('pomodoro.controls.noiseOnKey')}
             className={cn(
-              'relative !h-7 !w-7 transition-colors duration-150 ease-standard',
+              'relative !h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
               noiseEnabled && 'text-primary',
             )}
           >
@@ -1339,15 +1340,15 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={() => setImmersive(true)}
               title={t('pomodoro.controls.enterImmersive')}
               aria-label={t('pomodoro.controls.enterImmersive')}
-              className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+              className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             >
               <ArrowsOut size={14} />
             </DsButton>
           )}
 
           {/* 统计趋势 / 设置（移动端交给宿主页 inline 子屏，桌面端切换面板内联展开区） */}
-          {renderStatsControl('!h-7 !w-7 transition-colors duration-150 ease-standard', 14)}
-          {renderSettingsControl('!h-7 !w-7 transition-colors duration-150 ease-standard', 14)}
+          {renderStatsControl('!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', 14)}
+          {renderSettingsControl('!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', 14)}
         </div>
       </div>
       )}

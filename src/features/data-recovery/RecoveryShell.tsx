@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { WindowControls } from '@/components/WindowControls';
 import { DsButton } from '@/components/ui/DsButton';
+import { getMobileShellCssVars } from '@/app/shell/mobileShell';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { isMobilePlatform } from '@/utils/platform';
 import type { StartupRecoveryStatus } from './dataRecoveryApi';
 import { RecoveryCenter } from './RecoveryCenter';
 
@@ -20,18 +23,31 @@ export const RecoveryShell: React.FC<RecoveryShellProps> = ({
   onDebugExit,
 }) => {
   const { t } = useTranslation(['data']);
+  // 对齐 App.tsx 标题栏契约：窗口控制与拖拽区仅在桌面平台且非小屏渲染，
+  // 移动端顶栏只保留标题并避让系统安全区。
+  const { isSmallScreen } = useBreakpoint();
+  const showDesktopWindowChrome = !isMobilePlatform() && !isSmallScreen;
+  const dragRegion = showDesktopWindowChrome ? true : undefined;
 
   return (
-    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div
+      className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground"
+      // 恢复壳挂载在 App shell 之外，--mobile-safe-area-* 需在本树根部自行定义
+      style={getMobileShellCssVars() as React.CSSProperties}
+    >
       <header
-        data-tauri-drag-region
-        className="flex h-12 shrink-0 items-center border-b border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel)] px-4"
+        data-tauri-drag-region={dragRegion}
+        className="flex shrink-0 items-center border-b border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel)] px-4"
+        style={{
+          paddingTop: 'var(--mobile-safe-area-top, env(safe-area-inset-top, 0px))',
+          height: 'calc(3rem + var(--mobile-safe-area-top, env(safe-area-inset-top, 0px)))',
+        }}
       >
-        <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2.5">
+        <div data-tauri-drag-region={dragRegion} className="flex min-w-0 flex-1 items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-shell-control)] bg-primary/10 text-primary">
             <ShieldChevron size={16} weight="fill" />
           </div>
-          <div data-tauri-drag-region className="truncate text-sm font-semibold">
+          <div data-tauri-drag-region={dragRegion} className="truncate text-sm font-semibold">
             {t('data:recovery.shell_title')}
           </div>
           {debugPreview && (
@@ -41,11 +57,11 @@ export const RecoveryShell: React.FC<RecoveryShellProps> = ({
           )}
         </div>
         {debugPreview && (
-          <DsButton className="mr-2" size="sm" variant="ghost" onClick={onDebugExit}>
+          <DsButton className="mr-2 [@media(pointer:coarse)]:!min-h-11" size="sm" variant="ghost" onClick={onDebugExit}>
             {t('data:recovery.debug_exit_preview')}
           </DsButton>
         )}
-        <WindowControls />
+        {showDesktopWindowChrome && <WindowControls />}
       </header>
 
       <CustomScrollArea className="min-h-0 flex-1">

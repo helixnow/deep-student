@@ -60,6 +60,7 @@ import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isEffectivelyVisible } from '../utils/domVisibility';
 import { TodoItemRow, SortableTodoItemRow } from './main/TodoItemRow';
 import { TodoRowsList, type TodoRowSpec } from './main/TodoRowsList';
 import { TodoItemDetail } from './main/TodoItemDetail';
@@ -118,18 +119,22 @@ export const MobileDetailOverlay: React.FC<{
     return () => window.clearTimeout(timer);
   }, [open]);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 离场层里仍保持挂载
+      // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
+      if (!isEffectivelyVisible(containerRef.current)) return false;
       onCloseRef.current();
       return true;
     }, BACK_PRIORITY.view);
   }, [open]);
 
   // ===== 左边缘右滑返回（触屏；pointer events + 轴锁定，内联实现） =====
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const [edgeDragX, setEdgeDragX] = useState(0);
   const edgeDragXRef = useRef(0);
   const edgeGestureRef = useRef<{
@@ -325,6 +330,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   // 虚拟化滚动容器（CustomScrollArea 的 viewport）
   const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null);
 
+  // 面板根节点：快捷键门禁用它判定承载环境（legacy 页面 vs workbench 窗口）
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
+
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 
@@ -354,6 +362,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   useEffect(() => {
     if (!checkMode) return;
     return registerBackHandler(() => {
+      // 保活守卫：todo 视图在被隐藏的 ViewLayerRenderer 保活层里仍保持挂载
+      // （visibility:hidden），此时不消费返回键，交还给当前活跃视图
+      if (!isEffectivelyVisible(panelRootRef.current)) return false;
       exitCheckMode();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -541,7 +552,11 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       ?.scrollIntoView({ block: 'nearest' });
   }, [focusedItemId]);
 
-  // 键盘快捷键（仅 Todo 页面、非输入态生效）
+  // 键盘快捷键（非输入态生效）。作用域门禁分两种承载环境：
+  // - legacy 页面：currentView === 'todo'；
+  // - workbench 窗口（祖先带 data-wb-sys-app="todo"，见 TodoAppWindow）：
+  //   legacy currentView 恒不为 'todo'，改为要求事件发生在本面板所在的
+  //   聚焦窗口内（窗壳 data-focused 仅聚焦时存在，见 WindowShell）。
   useEffect(() => {
     const moveFocus = (delta: number) => {
       const ids = visibleRowIdsRef.current;
@@ -559,8 +574,16 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (useViewStore.getState().currentView !== 'todo') return;
       const target = e.target as HTMLElement | null;
+      const wbHost = panelRootRef.current?.closest<HTMLElement>('[data-wb-sys-app="todo"]');
+      if (wbHost) {
+        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+        const scope = windowShell ?? wbHost;
+        if (!target || !scope.contains(target)) return;
+      } else if (useViewStore.getState().currentView !== 'todo') {
+        return;
+      }
       if (
         target &&
         (target.tagName === 'INPUT' ||
@@ -628,7 +651,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   }, [clearChecked]);
 
   // 触屏友好：TouchSensor 长按 250ms 激活 + 8px 容差，避免竖向滚动被拖拽排序劫持（R2-07）；
-  // 与 NotesTabsBar/DndFileTree/FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
+  // 与 FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
   const sensors = useTouchFriendlyDndSensors();
 
   const handleDragEnd = useCallback(
@@ -825,7 +848,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   return (
     // h-full：MobileSlidingLayout 的内容窗格是普通块级容器（非 flex），flex-1 在其中不生效，
     // 高度会塌缩成内容高度，导致移动端详情覆盖层（absolute inset-0）跟着变矮
-    <div className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
+    <div ref={panelRootRef} className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部工具栏 */}
@@ -900,7 +923,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56"
+                  className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56 [@media(pointer:coarse)]:h-11"
                 />
               </div>
             )}
@@ -934,7 +957,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               disabled={filter.view === 'completed'}
               data-selected={filter.showCompleted}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 filter.showCompleted &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -953,7 +976,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               aria-label={t('todo:bulk.selectMode', '选择')}
               title={t('todo:bulk.selectMode', '选择')}
               className={cn(
-                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
+                'h-8 gap-1.5 !px-2.5 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:min-w-[2.75rem]',
                 checkMode &&
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
@@ -981,7 +1004,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   }}
                   placeholder={t('todo:actions.search')}
                   data-todo-search
-                  className="h-10 w-full pl-9 pr-3 text-sm"
+                  className="h-10 w-full pl-9 pr-3 text-sm [@media(pointer:coarse)]:h-11"
                 />
               </div>
               <DsButton
@@ -993,7 +1016,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   setMobileSearchOpen(false);
                 }}
                 aria-label={t('common:actions.close', '关闭')}
-                className="!h-10 !w-10 flex-shrink-0"
+                className="!h-11 !w-11 flex-shrink-0"
               >
                 <X size={16} />
               </DsButton>
@@ -1123,7 +1146,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           type="button"
                           onClick={() => toggleBucketCollapsed(group.bucket)}
                           aria-expanded={!collapsed}
-                          className="group/header -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
+                          className="group/header relative -mx-1 flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-3 [@media(pointer:coarse)]:after:content-['']"
                         >
                           <CaretDown
                             size={11}
@@ -1152,7 +1175,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                             disabled={reschedulingOverdue}
                             onClick={() => void handleRescheduleOverdueToToday(group.items)}
                             title={t('todo:reschedule.allToTodayHint')}
-                            className="ml-auto h-6 gap-1 !px-2 text-xs"
+                            className="ml-auto h-6 gap-1 !px-2 text-xs [@media(pointer:coarse)]:!h-11"
                           >
                             <CalendarPlus size={12} />
                             {t('todo:reschedule.allToToday')}

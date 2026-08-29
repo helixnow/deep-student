@@ -11,7 +11,9 @@
  *   时间：HH:MM / N点(半|一刻|三刻|N分) / 上午|下午|晚上N点 / 3pm / 3:30pm
  *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）/ p1~p4（p1=urgent，p4=low）
  *   重复：每天 / 每周 / 每周X / 每周一三五 / 每N天 / 每月 / 每年 / 每个工作日 /
- *         daily / weekly / every 2 weeks ...
+ *         每月1号和15号 / daily / weekly / every 2 weeks / every 1st and 15th ...
+ *         结束边界（须紧跟重复 token 所在输入）：直到|截止到 X / until X
+ *         （byMonthDay/until 仅前端解析+展示，后端滚动暂不消费，见 types.ts）
  *   提醒：提醒我 / !remind / remind me（结合解析出的日期时间，输出 YYYY-MM-DDTHH:MM，
  *         无时间 token 时默认 09:00，无日期 token 时默认今天）
  *   标签：#标签名
@@ -232,6 +234,25 @@ function nearestOfWeekdays(base: Date, weekdays: number[]): Date {
     if (!best || candidate < best) best = candidate;
   }
   return best ?? base;
+}
+
+/**
+ * 多个锚定月内日中最近的一个（今天命中则取今天）。
+ * 逐月扫描跳过不存在的日（如 2 月 30 日），最多看 12 个月。
+ */
+function nearestOfMonthDays(base: Date, monthDays: number[]): Date {
+  const todayStr = formatLocalDate(base);
+  for (let offset = 0; offset <= 12; offset++) {
+    const anchor = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+    let best: Date | null = null;
+    for (const day of monthDays) {
+      const d = makeValidDate(anchor.getFullYear(), anchor.getMonth(), day);
+      if (d && formatLocalDate(d) >= todayStr && (!best || d < best)) best = d;
+    }
+    // 同月内找到的最小值即全局最近，无需再看后续月份
+    if (best) return best;
+  }
+  return base;
 }
 
 // ============================================================================
@@ -557,6 +578,26 @@ interface RepeatMatch extends Span {
  * 避免部分匹配吃掉更长的 token。
  */
 function matchRepeat(text: string): RepeatMatch | null {
+  // 每月1号和15号 / 每月1、15号（多选月内日，2 个及以上；单日「每月5号」
+  // 维持既有行为：「每月」+ 日期解析锚定 dueDate，不产生 byMonthDay）。
+  // ★ byMonthDay 当前仅前端解析 + 展示，后端滚动降级为普通每月（见 types.ts 注释）
+  const monthDaysRe = /每\s*个?\s*月\s*((?:\d{1,2}\s*[号日]\s*(?:[、，,和及]|\s)*){2,})/;
+  const mdm = monthDaysRe.exec(text);
+  if (mdm) {
+    const dayMatches = mdm[1].match(/\d{1,2}/g) ?? [];
+    const byMonthDay = [...new Set(
+      dayMatches.map((d) => parseInt(d, 10)).filter((d) => d >= 1 && d <= 31),
+    )].sort((a, b) => a - b);
+    if (byMonthDay.length >= 2) {
+      const fullLen = mdm[0].replace(/[、，,和及\s]+$/, '').length;
+      return {
+        start: mdm.index,
+        end: mdm.index + fullLen,
+        rule: { freq: 'monthly', interval: 1, byMonthDay },
+      };
+    }
+  }
+
   const weekdaysRe = /每\s*个?\s*工作日/;
   const wm = weekdaysRe.exec(text);
   if (wm) {
@@ -640,6 +681,25 @@ function matchRepeat(text: string): RepeatMatch | null {
     }
   }
 
+  // every 1st and 15th / every 1st, 15th（英文多选月内日，2 个及以上；
+  // 要求序数后缀 st/nd/rd/th，与「every 2 weeks」的裸数字+单位天然互斥）
+  const enMonthDaysRe =
+    /\bevery\s+(\d{1,2})(?:st|nd|rd|th)((?:\s*(?:,|and)\s*\d{1,2}(?:st|nd|rd|th))+)\b/i;
+  const emd = enMonthDaysRe.exec(text);
+  if (emd) {
+    const rest = emd[2].match(/\d{1,2}/g) ?? [];
+    const byMonthDay = [...new Set(
+      [emd[1], ...rest].map((d) => parseInt(d, 10)).filter((d) => d >= 1 && d <= 31),
+    )].sort((a, b) => a - b);
+    if (byMonthDay.length >= 2) {
+      return {
+        start: emd.index,
+        end: emd.index + emd[0].length,
+        rule: { freq: 'monthly', interval: 1, byMonthDay },
+      };
+    }
+  }
+
   // every 2 weeks / every 3 days（带间隔的英文重复）。
   // ★ 英文规则统一用 i 标志在原文上匹配——不能在 toLowerCase() 副本上取 index：
   // 个别字符（如 İ）小写后 UTF-16 长度变化，偏移会与原文/掩码文本错位
@@ -671,6 +731,70 @@ function matchRepeat(text: string): RepeatMatch | null {
     const m = re.exec(text);
     if (m) {
       return { start: m.index, end: m.index + m[0].length, rule: { freq, interval: 1 } };
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
+// 重复结束日期（直到 X / until X）——仅在已命中重复规则时匹配
+// ============================================================================
+
+interface UntilMatch extends Span {
+  /** YYYY-MM-DD */
+  until: string;
+}
+
+/**
+ * 重复结束日期匹配（保守子集，标记词必须紧邻日期表达式）：
+ *   中文：直到|截止到 + (ISO 日期 | N月N日/号)
+ *   英文：until + (ISO 日期 | jul 30 / july 30th)
+ * 月日无年份时取「今天或之后」最近的有效年份（与 matchDate 同口径）。
+ * ★ until 当前仅前端解析 + 展示，后端滚动暂不消费（见 types.ts 注释）。
+ */
+function matchRepeatUntil(text: string, now: Date): UntilMatch | null {
+  const today = formatLocalDate(now);
+
+  // ISO：直到2026-09-30 / until 2026-09-30
+  const isoRe = /(?:直到|截止到|\buntil\s)\s*(\d{4})-(\d{2})-(\d{2})(?![\d-])/i;
+  const iso = isoRe.exec(text);
+  if (iso) {
+    const d = makeValidDate(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
+    if (d) {
+      return { start: iso.index, end: iso.index + iso[0].length, until: formatLocalDate(d) };
+    }
+  }
+
+  // 中文月日：直到12月31日 / 截止到9月30号
+  const zhRe = /(?:直到|截止到)\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/;
+  const zh = zhRe.exec(text);
+  if (zh) {
+    const month = parseInt(zh[1], 10);
+    const day = parseInt(zh[2], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      for (let y = now.getFullYear(); y <= now.getFullYear() + 4; y++) {
+        const d = makeValidDate(y, month - 1, day);
+        if (d && formatLocalDate(d) >= today) {
+          return { start: zh.index, end: zh.index + zh[0].length, until: formatLocalDate(d) };
+        }
+      }
+    }
+  }
+
+  // 英文月日：until dec 31 / until december 31st
+  const enRe = new RegExp(`\\buntil\\s+${EN_MONTH_RE_PART}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+  const en = enRe.exec(text);
+  if (en) {
+    const month = EN_MONTH_MAP[en[1].toLowerCase()];
+    const day = parseInt(en[2], 10);
+    if (month && day >= 1 && day <= 31) {
+      for (let y = now.getFullYear(); y <= now.getFullYear() + 4; y++) {
+        const d = makeValidDate(y, month - 1, day);
+        if (d && formatLocalDate(d) >= today) {
+          return { start: en.index, end: en.index + en[0].length, until: formatLocalDate(d) };
+        }
+      }
     }
   }
 
@@ -986,8 +1110,19 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
     if (rmatch.rule.byWeekday && rmatch.rule.byWeekday.length > 0) {
       // 多选星期：锚定到最近的选中星期（今天命中则今天）
       dueDate = formatLocalDate(nearestOfWeekdays(now, rmatch.rule.byWeekday));
+    } else if (rmatch.rule.byMonthDay && rmatch.rule.byMonthDay.length > 0) {
+      // 多选月内日：锚定到最近的选中日（今天命中则今天）
+      dueDate = formatLocalDate(nearestOfMonthDays(now, rmatch.rule.byMonthDay));
     } else if (rmatch.anchorWeekday !== undefined) {
       dueDate = formatLocalDate(nearestWeekday(now, rmatch.anchorWeekday));
+    }
+
+    // 结束日期必须先于日期匹配剥离：「每天直到12月31日」的 12月31日
+    // 属于 until 表达式，不能被 matchDate 抢走当成到期日
+    const umatch = matchRepeatUntil(work, now);
+    if (umatch) {
+      repeat = { ...repeat, until: umatch.until };
+      consume('repeat', umatch);
     }
   }
 

@@ -454,6 +454,12 @@
   color: hsl(var(--destructive));
 }
 
+/* 增量搜索扫描进度（命中实时展示，此处只标注扫描位置） */
+.ds-search-progress {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
 /* ============================================================================
    主容器（侧边栏 + 内容）
    ============================================================================ */
@@ -495,10 +501,64 @@
     border-right-color: var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
   }
 
-  .ds-pdf__outline,
-  .ds-pdf__thumbnails-panel {
+  .ds-pdf__sidebar-inner {
     width: 200px;
   }
+}
+
+/* 侧栏内层：tab 头 + 当前面板（固定宽度，开合过渡中内容不挤压重排） */
+.ds-pdf__sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 侧栏 tab 头：目录/缩略图/书签/批注同域互斥切换（原独立浮层合并至此） */
+.ds-pdf__sidebar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 8px 7px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* tab 走 DsButton（规范），双类名选择器压过其基础 utility（高度/边距/圆角/配色） */
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  width: auto;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__sidebar-tabs .ds-pdf__sidebar-tab.active {
+  background: var(--interactive-selected, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__sidebar-tab-count {
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-pdf__sidebar-close {
+  margin-left: auto;
 }
 
 /* 大纲跳转失败的轻提示 */
@@ -511,11 +571,12 @@
 }
 
 
-/* 目录样式 */
+/* 目录样式（侧栏 tab 头下方的当前面板，占满剩余高度） */
 .ds-pdf__outline {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .ds-outline-header {
@@ -567,11 +628,12 @@
   background: var(--interactive-selected, hsl(var(--accent)));
 }
 
-/* 缩略图面板 */
+/* 缩略图面板（同为侧栏 tab 面板） */
 .ds-pdf__thumbnails-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .ds-thumbnails-content {
@@ -668,6 +730,24 @@
   border-color: hsl(var(--foreground) / .3);
 }
 
+/* 高亮操作层中标记当前颜色 */
+.ds-highlight-color--current {
+  border-color: hsl(var(--foreground) / .55);
+}
+
+/* 划词/高亮浮动菜单内：色板与动作按钮之间的分隔线。
+   曾在本文件两处重复定义（此处 align-self/margin 与翻译卡片区块的
+   height/flex-shrink），合并为一处，保留合并前实际生效的全部属性：
+   height 为定高时 align-self: stretch 不参与拉伸，视觉结果与合并前一致 */
+.ds-highlight-menu__divider {
+  align-self: stretch;
+  width: 1px;
+  height: 18px;
+  margin: 2px 2px;
+  background: hsl(var(--border));
+  flex-shrink: 0;
+}
+
 /* ============================================================================
    阅读进度条
    ============================================================================ */
@@ -694,6 +774,12 @@
 
 .ds-pdf__progress-bar.scrubbing .ds-pdf__progress-fill {
   transition: none;
+}
+
+/* 键盘可达（role=slider）：细线自身高度不足以呈现 outline，外扩 2px */
+.ds-pdf__progress-bar:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
 
 .ds-pdf__progress-fill {
@@ -745,23 +831,7 @@
   opacity: 0.5;
 }
 
-/* 批注列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
-.ds-pdf__highlights-panel {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
-  width: 280px;
-  max-height: 400px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
+/* 批注列表（原右下浮动面板已并入侧栏批注 tab，占满剩余高度） */
 .ds-highlights-list {
   flex: 1;
   min-height: 0;
@@ -844,6 +914,76 @@
 }
 
 /* ============================================================================
+   批注面板（r5：筛选 + 导出为笔记；列表本体沿用 .ds-highlights-list）
+   ============================================================================ */
+
+/* 面板占满批注 tab（桌面侧栏与移动子屏同构：父容器均为纵向 flex） */
+.ds-annotations-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-annotations-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+
+.ds-annotations-filter-input {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.ds-annotations-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ds-annotations-color-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 颜色 chip：未选中半透明，选中描主题色环（颜色本身即语义，不加文字） */
+.ds-annotations-color-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  cursor: pointer;
+  opacity: .45;
+  transition: opacity .15s ease, box-shadow .15s ease;
+}
+
+.ds-annotations-color-chip:hover {
+  opacity: .8;
+}
+
+.ds-annotations-color-chip.active {
+  opacity: 1;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / .65);
+}
+
+.ds-annotations-export {
+  font-size: 12px;
+  margin-left: auto;
+}
+
+/* 移动子屏：工具行与列表 viewport 的左右留白对齐（12px） */
+.ds-pdf__mobile-panel .ds-annotations-toolbar {
+  padding: 8px 12px 0;
+}
+
+/* ============================================================================
    内容区
    ============================================================================ */
 
@@ -920,6 +1060,45 @@
   .ds-pdf__page-wrapper--agent-focus::after {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* r5-S1：批注列表精确定位后的高亮块闪烁（focusHighlight 1.6s 后移除类名）。
+   与 agent-focus 同一套降级策略：reduced-motion 走静态描边，靠 JS 定时移除。 */
+.ds-pdf__highlight-rect--focus {
+  animation: ds-pdf-highlight-focus-pulse 1400ms ease-out forwards;
+}
+
+@keyframes ds-pdf-highlight-focus-pulse {
+  0% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  45% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.85),
+      0 0 16px hsl(var(--primary) / 0.35);
+  }
+  100% {
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0),
+      0 0 16px hsl(var(--primary) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.85);
+  }
+}
+
+@media (forced-colors: active) {
+  .ds-pdf__highlight-rect--focus {
+    animation: none;
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
   }
 }
 
@@ -1348,23 +1527,7 @@
   margin-left: 2px;
 }
 
-/* 书签列表面板（避让距离由底栏高度/进度线/safe-area 派生） */
-.ds-pdf__bookmarks-panel {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 12px);
-  width: 300px;
-  max-height: 450px;
-  background: hsl(var(--popover));
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  box-shadow: 0 8px 24px hsl(var(--ring) / 0.15);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
+/* 书签列表（原右下浮动面板已并入侧栏书签 tab，占满剩余高度） */
 .ds-bookmarks-list {
   flex: 1;
   min-height: 0;
@@ -1517,25 +1680,14 @@
    ============================================================================ */
 
 @media (max-width: 767.98px) {
-  /* 浮动面板（640–767.98 区间仍使用）：收窄并贴边；
-     底部避让已由基础规则从 --ds-pdf-toolbar-h / safe-area 派生；
-     dvh 跟随移动端动态视口（地址栏/键盘收放） */
-  .ds-pdf__highlights-panel,
-  .ds-pdf__bookmarks-panel {
-    right: 8px;
-    width: calc(100vw - 16px);
-    max-width: 320px;
-    max-height: 50dvh;
-  }
-
-  /* 目录/缩略图侧栏：640–767.98 区间加宽（≤640 已改为全屏内联子屏）。
-     宽度规则只作用于打开态，避免覆盖收起态的 width: 0。 */
+  /* 侧栏（含目录/缩略图/书签/批注 tab）：640–767.98 区间加宽
+     （≤640 已改为全屏内联子屏）。宽度规则只作用于打开态，
+     避免覆盖收起态的 width: 0。 */
   .ds-pdf__sidebar--open {
     width: min(280px, 82vw);
   }
 
-  .ds-pdf__sidebar--open .ds-pdf__outline,
-  .ds-pdf__sidebar--open .ds-pdf__thumbnails-panel {
+  .ds-pdf__sidebar--open .ds-pdf__sidebar-inner {
     width: min(280px, 82vw);
   }
 }
@@ -1554,8 +1706,8 @@
   }
 
   .ds-btn-sm {
-    min-width: 40px;
-    height: 40px;
+    min-width: 44px;
+    height: 44px;
   }
 
   /* 底栏高度变量提升到根：工具栏自身与浮层避让共用同一来源 */
@@ -1576,7 +1728,7 @@
 
   .ds-input {
     width: 50px;
-    height: 40px;
+    height: 44px;
     /* iOS 聚焦输入框 <16px 会触发页面自动放大 */
     font-size: 16px;
   }
@@ -1587,37 +1739,70 @@
     font-size: 16px;
   }
 
+  /* 菜单/目录行挂在 DsButton 上：lg 断点后 DsButton 压回 30px 固定高度
+     （border-box 下 padding 无法撑高），宽屏触屏平板需 min-height 兜底 ≥44px
+     （对照 library.css .fc-lib-row-actions 同范式） */
   .ds-zoom-option,
   .ds-more-item {
+    min-height: 44px;
     padding-top: 11px;
     padding-bottom: 11px;
   }
 
+  /* 基础层 display:block 在 min-height 撑高后文字会贴顶，coarse 下改 flex 垂直居中 */
+  .ds-zoom-option {
+    display: flex;
+    align-items: center;
+  }
+
+  /* 目录行保留 block（flex 容器上 text-overflow 失效）：
+     15px 内边距 + 14px 行高 = 44px，文字自然垂直居中 */
   .ds-outline-item {
-    padding-top: 11px;
-    padding-bottom: 11px;
+    min-height: 44px;
+    padding-top: 15px;
+    padding-bottom: 15px;
   }
 
-  /* 高亮颜色选择器放大 */
+  /* 高亮颜色选择器放大（视觉 32px），浮动菜单内用伪元素扩命中到 44px
+     （32 + 2×6，与导图色板同范式）；gap 同步加大到 12px 使相邻命中区恰好
+     相接不重叠。底部 .ds-pdf__highlight-bar 内已有各自的伪元素覆盖，
+     列表/状态条中的色点为非交互元素，均不在此扩展 */
   .ds-highlight-color {
     width: 32px;
     height: 32px;
   }
 
-  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥40px） */
+  .ds-highlight-menu {
+    gap: 12px;
+  }
+
+  .ds-highlight-menu .ds-highlight-color {
+    position: relative;
+  }
+
+  .ds-highlight-menu .ds-highlight-color::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+
+  /* hover-only 操作在触屏上永远不可见 → 常显（行内按钮 ≥44px） */
   .ds-highlight-delete {
     opacity: 1;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .ds-bookmark-actions {
     opacity: 1;
+    /* 两个 44px 按钮并排：负 margin 抵消放大量
+       （上下 -10px 对齐行内边距使行高不膨胀，右 -8px 借用行内边距的宽度） */
+    margin: -10px -8px -10px 0;
   }
 
   .ds-bookmark-action-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   /* 「选择此页」按钮依赖 hover 显现，触屏常显 */
@@ -1737,16 +1922,23 @@
   gap: 4px;
   padding: 3px;
   margin: 0 auto;
-  max-width: 260px;
+  /* 4 个分段（目录/缩略图/书签/批注）需要比原双分段更宽的可用空间 */
+  max-width: 340px;
+  min-width: 0;
   border-radius: 10px;
   background: hsl(var(--muted) / 0.5);
 }
 
-.ds-pdf__mobile-panel-tab {
+/* tab 走 DsButton（规范），双类名选择器压过其基础 utility（触屏 44px 高度等） */
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab {
   flex: 1;
+  min-width: 0;
+  height: auto;
   min-height: 34px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -1756,7 +1948,12 @@
   white-space: nowrap;
 }
 
-.ds-pdf__mobile-panel-tab.active {
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab:hover {
+  background: transparent;
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__mobile-panel-tabs .ds-pdf__mobile-panel-tab.active {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   box-shadow: 0 1px 3px hsl(var(--ring) / 0.12);
@@ -1867,6 +2064,58 @@
   height: 36px;
 }
 
+/* 已废弃（0824 Wave2-B 第 4 轮划词收敛）：.ds-pdf__translation-panel
+   —— viewer 内建划词菜单的 A 链路翻译浮层，随该链路一并移除；
+   翻译现统一走共享层 SelectionToolbar 的 .ds-pdf__selection-panel（下方区块）。
+   .ds-highlight-menu__divider（色板与动作按钮的分隔线）在上方
+   「划词/高亮浮动菜单」区块统一定义，此处不再重复 */
+
+/* ============================================================================
+   划词结果面板（解释 / 翻译）
+   —— 内联在阅读器内的底部面板，不是 Dialog：窄屏不会溢出，
+      底部避让底栏 + 进度细线 + Home Indicator。
+   ============================================================================ */
+
+.ds-pdf__selection-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  max-height: 55%;
+  min-height: 0;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 8px 24px hsl(var(--ring) / 0.12);
+}
+
+.ds-pdf-viewer.chrome-hidden .ds-pdf__selection-panel {
+  bottom: calc(var(--ds-pdf-safe-bottom) + 10px);
+}
+
+.ds-pdf__selection-panel-close {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.ds-pdf__selection-panel-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 桌面端限宽靠右，避免遮住整页正文 */
+@media (min-width: 768px) {
+  .ds-pdf__selection-panel {
+    left: auto;
+    width: min(460px, 46%);
+  }
+}
+
 /* ============================================================================
    Reduced motion（置于文件末尾，覆盖上方所有 media 块内的过渡声明）
    ============================================================================ */
@@ -1876,6 +2125,7 @@
   .ds-pdf__progress-fill,
   .ds-thumbnail-item,
   .ds-outline-item,
+  .ds-pdf__sidebar-tab,
   .ds-pdf__mobile-panel-tab {
     transition: none;
   }

@@ -12,15 +12,19 @@ import {
   MagnifyingGlass,
   Pause,
   Play,
+  Plus,
   PlusCircle,
   Stack,
   Trash,
+  Tray,
+  UploadSimple,
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import {
@@ -32,7 +36,12 @@ import {
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import type { ReviewEditTemplate } from '../reviewCardEditFields';
 import { LibraryCardRow } from '../library/LibraryCardRow';
-import { matchesStatusFilter, sortLibraryCards } from '../library/libraryView';
+import {
+  countDueCards,
+  matchesStatusFilter,
+  partitionLibraryQueues,
+  sortLibraryCards,
+} from '../library/libraryView';
 import '../library/library.css';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -98,12 +107,20 @@ export const LibraryScreen: React.FC = () => {
   const bulkEnqueue = useFlashcardsLibraryStore((state) => state.bulkEnqueue);
   const bulkSetSuspended = useFlashcardsLibraryStore((state) => state.bulkSetSuspended);
   const bulkDelete = useFlashcardsLibraryStore((state) => state.bulkDelete);
+  const creating = useFlashcardsLibraryStore((state) => state.creating);
+  const importing = useFlashcardsLibraryStore((state) => state.importing);
+  const createCard = useFlashcardsLibraryStore((state) => state.createCard);
+  const importApkg = useFlashcardsLibraryStore((state) => state.importApkg);
 
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [lastAnchorId, setLastAnchorId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
+  // 手动新建：内联展开的正/背面输入（与行内编辑同口径，无弹窗）
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [draftFront, setDraftFront] = useState('');
+  const [draftBack, setDraftBack] = useState('');
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
 
@@ -144,14 +161,21 @@ export const LibraryScreen: React.FC = () => {
 
   const rowBusy = busyCardId !== null || bulkBusy;
 
-  const visibleItems = useMemo(
-    () => sortLibraryCards(
+  // 已生成未入队（inbox）与已入队队列（scheduled）分区渲染，视觉上隔离两条队列。
+  // visibleItems 按「inbox 在前」的渲染顺序拼接，键盘导航 / shift 连选与视觉顺序一致。
+  const { inbox: inboxItems, scheduled: scheduledItems } = useMemo(
+    () => partitionLibraryQueues(sortLibraryCards(
       items.filter((card) => matchesStatusFilter(card, statusFilter)),
       sortKey,
       sortDir,
-    ),
+    )),
     [items, statusFilter, sortKey, sortDir],
   );
+  const visibleItems = useMemo(
+    () => [...inboxItems, ...scheduledItems],
+    [inboxItems, scheduledItems],
+  );
+  const scheduledDueCount = useMemo(() => countDueCards(scheduledItems), [scheduledItems]);
 
   const filterCounts = useMemo(() => {
     const counts = new Map<LibraryStatusFilter, number>();
@@ -322,6 +346,12 @@ export const LibraryScreen: React.FC = () => {
     void bulkEnqueue(enqueueTargets.map((card) => card.id));
   };
 
+  // 收件箱区头的「加入复习」：把当前页所有未入队卡整批入队（复用 bulkEnqueue 链路）。
+  const handleEnqueueInbox = () => {
+    if (inboxItems.length === 0) return;
+    void bulkEnqueue(inboxItems.map((card) => card.id));
+  };
+
   const handleBulkSuspend = () => {
     void bulkSetSuspended(suspendTargets.map((card) => card.id), true);
   };
@@ -361,8 +391,61 @@ export const LibraryScreen: React.FC = () => {
     if (query) void submitSearch('');
   };
 
+  // ---------- 新建 / 导入 ----------
+  const draftValid = draftFront.trim().length > 0 && draftBack.trim().length > 0;
+
+  const handleSubmitDraft = useCallback(() => {
+    if (!draftValid || creating) return;
+    void createCard({ front: draftFront, back: draftBack }).then((ok) => {
+      if (!ok) return;
+      setDraftFront('');
+      setDraftBack('');
+      setComposerOpen(false);
+      showGlobalNotification('success', translate('library.create.success'));
+    });
+  }, [draftValid, creating, createCard, draftFront, draftBack, translate]);
+
+  const handleImportApkg = useCallback(() => {
+    if (importing) return;
+    void importApkg().then((outcome) => {
+      if (outcome.status === 'imported') {
+        showGlobalNotification(
+          'success',
+          translate('library.import.success', { count: outcome.importedCards }),
+        );
+      }
+      // canceled 静默；failed 已写入 actionError 由页内错误条呈现
+    });
+  }, [importing, importApkg, translate]);
+
   const pageCount = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
   const initialLoading = loading && !loaded;
+
+  // 两个队列分区共用同一行渲染（行为完全一致，仅容器视觉不同）。
+  const renderCardRow = (card: AnkiLibraryCard) => (
+    <LibraryCardRow
+      key={card.id}
+      card={card}
+      busy={rowBusy}
+      deleting={busyCardId === card.id}
+      selected={selectedIds.has(card.id)}
+      expanded={expandedId === card.id}
+      confirmingDelete={deleteCandidateId === card.id}
+      onToggleSelect={handleToggleSelect}
+      onToggleExpand={handleToggleExpand}
+      onStartReview={handleStartReview}
+      onEnqueue={handleEnqueue}
+      onToggleSuspended={handleToggleSuspended}
+      onRequestDelete={handleRequestDelete}
+      onCancelDelete={handleCancelDelete}
+      onConfirmDelete={handleConfirmDelete}
+      onSaveEdit={handleSaveEdit}
+      onUndoReview={handleUndoReview}
+      onResetProgress={handleResetProgress}
+      onRowKeyDown={handleRowKeyDown}
+      rowRef={registerRowRef}
+    />
+  );
 
   return (
     <div className="wb-fc-screen">
@@ -383,7 +466,7 @@ export const LibraryScreen: React.FC = () => {
           size="sm"
           disabled={loading}
           onClick={() => void refresh()}
-          className="shrink-0 text-sm"
+          className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
           {t('library.refresh')}
@@ -405,13 +488,69 @@ export const LibraryScreen: React.FC = () => {
               if (event.key === 'Enter') handleSearchNow();
             }}
             placeholder={t('library.searchPlaceholder')}
-            className="h-9 pl-8 text-sm"
+            className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
-        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm">
+        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
           {t('library.search')}
         </DsButton>
       </div>
+
+      <div className="fc-lib-create">
+        <DsButton
+          type="button"
+          variant={composerOpen ? 'default' : 'primary'}
+          onClick={() => setComposerOpen((open) => !open)}
+          aria-expanded={composerOpen}
+          className="fc-lib-create-cta text-sm"
+        >
+          <Plus size={15} />
+          {composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="default"
+          disabled={importing}
+          onClick={handleImportApkg}
+          title={translate('library.import.hint')}
+          className="fc-lib-create-cta text-sm"
+        >
+          <UploadSimple size={15} />
+          {importing ? translate('library.import.running') : translate('library.import.apkg')}
+        </DsButton>
+      </div>
+
+      {composerOpen ? (
+        <div className="fc-lib-composer">
+          <Input
+            aria-label={translate('library.create.frontLabel')}
+            value={draftFront}
+            onChange={(event) => setDraftFront(event.target.value)}
+            placeholder={translate('library.create.frontPlaceholder')}
+            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
+          />
+          <Input
+            aria-label={translate('library.create.backLabel')}
+            value={draftBack}
+            onChange={(event) => setDraftBack(event.target.value)}
+            placeholder={translate('library.create.backPlaceholder')}
+            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
+          />
+          <div className="fc-lib-composer-actions">
+            <DsButton
+              type="button"
+              variant="primary"
+              disabled={!draftValid || creating}
+              onClick={handleSubmitDraft}
+              title={draftValid ? undefined : translate('library.create.incomplete')}
+              className="fc-lib-create-cta text-sm"
+            >
+              {creating ? translate('library.create.saving') : translate('library.create.save')}
+            </DsButton>
+            <p className="fc-lib-composer-hint">{translate('library.create.hint')}</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="fc-lib-filters">
         <div
@@ -497,7 +636,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkReview}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} weight="fill" />
               {translate('library.bulkReview', { count: reviewTargets.length })}
@@ -510,7 +649,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkEnqueue}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <PlusCircle size={13} />
               {translate('library.bulkEnqueue', { count: enqueueTargets.length })}
@@ -523,7 +662,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkSuspend}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Pause size={13} />
               {translate('library.bulkSuspend', { count: suspendTargets.length })}
@@ -536,7 +675,7 @@ export const LibraryScreen: React.FC = () => {
               size="sm"
               disabled={rowBusy}
               onClick={handleBulkResume}
-              className="text-xs"
+              className="text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               <Play size={13} />
               {translate('library.bulkResume', { count: resumeTargets.length })}
@@ -548,7 +687,11 @@ export const LibraryScreen: React.FC = () => {
             size="sm"
             disabled={rowBusy}
             onClick={handleBulkDelete}
-            className={bulkDeleteArmed ? 'fc-lib-armed text-xs' : 'text-xs'}
+            className={
+              bulkDeleteArmed
+                ? 'fc-lib-armed text-xs [@media(pointer:coarse)]:!min-h-11'
+                : 'text-xs [@media(pointer:coarse)]:!min-h-11'
+            }
           >
             <Trash size={13} />
             {bulkDeleteArmed
@@ -561,7 +704,7 @@ export const LibraryScreen: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={clearSelection}
-            className="text-xs"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
           >
             <X size={13} />
             {translate('library.clearSelection')}
@@ -572,7 +715,13 @@ export const LibraryScreen: React.FC = () => {
       {actionError ? (
         <div role="alert" className="wb-fc-banner flex items-center justify-between gap-3 text-destructive">
           <span className="min-w-0 break-words">{actionError}</span>
-          <DsButton type="button" variant="ghost" size="sm" onClick={clearActionError}>
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={clearActionError}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
             {t('library.dismiss')}
           </DsButton>
         </div>
@@ -582,7 +731,13 @@ export const LibraryScreen: React.FC = () => {
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={() => void refresh()}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {t('library.retry')}
             </DsButton>
           </div>
@@ -600,16 +755,55 @@ export const LibraryScreen: React.FC = () => {
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{query ? translate('library.noMatches') : t('library.empty')}</p>
             {query ? (
-              <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearFilters}
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
                 {translate('library.clearFilters')}
               </DsButton>
-            ) : null}
+            ) : (
+              <>
+                <p className="max-w-md text-xs text-muted-foreground">
+                  {translate('library.emptyHint')}
+                </p>
+                <div className="fc-lib-empty-actions">
+                  <DsButton
+                    type="button"
+                    variant="primary"
+                    onClick={() => setComposerOpen(true)}
+                    className="fc-lib-create-cta text-sm"
+                  >
+                    <Plus size={15} />
+                    {translate('library.create.new')}
+                  </DsButton>
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    disabled={importing}
+                    onClick={handleImportApkg}
+                    className="fc-lib-create-cta text-sm"
+                  >
+                    <UploadSimple size={15} />
+                    {importing ? translate('library.import.running') : translate('library.import.apkg')}
+                  </DsButton>
+                </div>
+              </>
+            )}
           </div>
         ) : visibleItems.length === 0 ? (
           <div className="wb-fc-empty">
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>{translate('library.noMatches')}</p>
-            <DsButton type="button" variant="ghost" size="sm" onClick={handleClearFilters}>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {translate('library.clearFilters')}
             </DsButton>
           </div>
@@ -625,32 +819,76 @@ export const LibraryScreen: React.FC = () => {
               <span>{translate('library.selectAll')}</span>
               <span className="fc-lib-kbd-hint">{translate('library.keyboardHint')}</span>
             </div>
-            <ul className="wb-fc-list-ul">
-              {visibleItems.map((card) => (
-                <LibraryCardRow
-                  key={card.id}
-                  card={card}
-                  busy={rowBusy}
-                  deleting={busyCardId === card.id}
-                  selected={selectedIds.has(card.id)}
-                  expanded={expandedId === card.id}
-                  confirmingDelete={deleteCandidateId === card.id}
-                  onToggleSelect={handleToggleSelect}
-                  onToggleExpand={handleToggleExpand}
-                  onStartReview={handleStartReview}
-                  onEnqueue={handleEnqueue}
-                  onToggleSuspended={handleToggleSuspended}
-                  onRequestDelete={handleRequestDelete}
-                  onCancelDelete={handleCancelDelete}
-                  onConfirmDelete={handleConfirmDelete}
-                  onSaveEdit={handleSaveEdit}
-                  onUndoReview={handleUndoReview}
-                  onResetProgress={handleResetProgress}
-                  onRowKeyDown={handleRowKeyDown}
-                  rowRef={registerRowRef}
-                />
-              ))}
-            </ul>
+            {inboxItems.length > 0 ? (
+              <section
+                className="fc-lib-queue-section"
+                data-queue="inbox"
+                aria-label={translate('library.queue.inboxTitle', {
+                  defaultValue: '已生成 · 待入队',
+                })}
+              >
+                <div className="fc-lib-queue-head" data-queue="inbox">
+                  <Tray size={14} weight="duotone" aria-hidden="true" />
+                  <span className="fc-lib-queue-title">
+                    {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
+                  </span>
+                  <span className="fc-lib-queue-count">{inboxItems.length}</span>
+                  <span className="fc-lib-queue-hint">
+                    {translate('library.queue.inboxHint', {
+                      defaultValue: '尚未进入复习计划，不会出现在到期队列',
+                    })}
+                  </span>
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={rowBusy}
+                    onClick={handleEnqueueInbox}
+                    className="fc-lib-queue-cta text-xs [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <PlusCircle size={13} />
+                    {translate('library.queue.enqueueAll', {
+                      count: inboxItems.length,
+                      defaultValue: '加入复习（{{count}}）',
+                    })}
+                  </DsButton>
+                </div>
+                <ul className="wb-fc-list-ul">
+                  {inboxItems.map(renderCardRow)}
+                </ul>
+              </section>
+            ) : null}
+            {scheduledItems.length > 0 ? (
+              <section
+                className="fc-lib-queue-section"
+                data-queue="scheduled"
+                aria-label={translate('library.queue.scheduledTitle', {
+                  defaultValue: '复习队列',
+                })}
+              >
+                {/* 仅当上方存在收件箱时才需要显式的队列区头做视觉分界 */}
+                {inboxItems.length > 0 ? (
+                  <div className="fc-lib-queue-head" data-queue="scheduled">
+                    <Stack size={14} weight="duotone" aria-hidden="true" />
+                    <span className="fc-lib-queue-title">
+                      {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
+                    </span>
+                    <span className="fc-lib-queue-count">{scheduledItems.length}</span>
+                    {scheduledDueCount > 0 ? (
+                      <span className="fc-lib-queue-hint" data-tone="due">
+                        {translate('library.queue.dueCount', {
+                          count: scheduledDueCount,
+                          defaultValue: '{{count}} 张已到期',
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                <ul className="wb-fc-list-ul">
+                  {scheduledItems.map(renderCardRow)}
+                </ul>
+              </section>
+            ) : null}
           </div>
         )}
       </CustomScrollArea>
@@ -665,6 +903,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page <= 1}
             onClick={() => void goToPage(page - 1)}
             aria-label={t('library.previous')}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             <CaretLeft size={14} />
             {t('library.previous')}
@@ -676,6 +915,7 @@ export const LibraryScreen: React.FC = () => {
             disabled={loading || page >= pageCount}
             onClick={() => void goToPage(page + 1)}
             aria-label={t('library.next')}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
             {t('library.next')}
             <CaretRight size={14} />

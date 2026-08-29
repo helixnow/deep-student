@@ -1287,7 +1287,8 @@
 
   .wb-tm-sort-select {
     height: 44px;
-    font-size: 13px;
+    /* iOS 聚焦 <16px 的 select 会触发页面自动放大 */
+    font-size: 16px;
   }
 
   .wb-tm-view-toggle-btn {
@@ -1306,7 +1307,8 @@
   }
 
   .wb-tm-toolbar-search-input {
-    font-size: 13px;
+    /* iOS 聚焦 <16px 的输入框会触发页面自动放大 */
+    font-size: 16px;
   }
 
   .wb-tm-toolbar-search-clear {

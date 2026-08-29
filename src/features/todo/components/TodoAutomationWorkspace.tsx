@@ -232,7 +232,17 @@ const StatCardSkeleton: React.FC = () => (
   </div>
 );
 
-export const TodoAutomationWorkspace: React.FC = () => {
+interface TodoAutomationWorkspaceProps {
+  /**
+   * 隐藏页内标题栏（图标 + 标题/副标题 + 刷新/新建动作条）。
+   * 移动壳（<768 独立视图）由 TodoContentView 传入：标题与动作已上移
+   * 统一顶栏（useMobileHeader 的 title / rightActions），页内不再自绘
+   * 第二条顶栏。桌面端与 Workbench 窗口承载（无统一顶栏）保持默认 false。
+   */
+  hideHeader?: boolean;
+}
+
+export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = ({ hideHeader = false }) => {
   const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
 
@@ -565,8 +575,12 @@ export const TodoAutomationWorkspace: React.FC = () => {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
-      <header className="study-shell-toolbar flex min-h-12 shrink-0 items-center justify-end border-b border-border px-4 sm:min-h-14 sm:justify-between sm:px-6">
-        <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+      {/* 页内标题栏：移动/桌面分界由 TodoContentView 按 isSmallScreen(<768)
+          经 hideHeader 决定，不再用 sm(640) 断点自行分界（640–767 曾与
+          统一顶栏叠出双标题，<640 残留纯动作条）。渲染时标题块恒显示。 */}
+      {hideHeader ? null : (
+      <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2.5">
           <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-foreground">
@@ -577,11 +591,12 @@ export const TodoAutomationWorkspace: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           <DsButton
             variant="ghost"
             size="icon"
             iconOnly
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             aria-label={t('common:actions.refresh')}
             title={t('common:actions.refresh')}
             disabled={refreshing}
@@ -595,6 +610,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
               ref={newTaskButtonRef}
               variant="primary"
               size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
               aria-expanded={createOpen}
               aria-controls={CREATE_PANEL_ID}
               disabled={capacityFull && !createOpen}
@@ -606,6 +622,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
           </span>
         </div>
       </header>
+      )}
 
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
@@ -619,7 +636,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
               <DsButton
                 variant="ghost"
                 size="sm"
-                className="shrink-0 text-destructive"
+                className="shrink-0 text-destructive [@media(pointer:coarse)]:!min-h-11"
                 onClick={handleRefresh}
               >
                 <ArrowsClockwise size={14} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
@@ -763,6 +780,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       iconOnly
+                      className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       disabled={creating}
                       aria-label={t('common:actions.close')}
                       title={t('common:actions.close')}
@@ -809,7 +827,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       <DsButton
                         variant="secondary"
                         size="sm"
-                        className="w-full shrink-0 sm:w-auto"
+                        className="w-full shrink-0 sm:w-auto [@media(pointer:coarse)]:!min-h-11"
                         disabled={!nlResult || creating}
                         onClick={applyNlResult}
                       >
@@ -867,7 +885,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       aria-controls={TEMPLATES_PANEL_ID}
                       disabled={creating}
                       onClick={() => setTemplatesOpen((value) => !value)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                      className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
                       <Sparkle size={13} />
                       {t('todo:automation.createPanel.templatesToggle')}
@@ -918,6 +936,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       <SegmentedControl
                         ariaLabel={t('todo:automation.action')}
                         size="compact"
+                        itemClassName="[@media(pointer:coarse)]:!min-h-11"
                         value={draft.actionType}
                         onValueChange={(value) => setField('actionType', value)}
                         // 提交中锁定未选中项（保留选中项以维持滑块显示），避免中途改动作类型
@@ -989,6 +1008,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                           <SegmentedControl
                             ariaLabel={t('todo:automation.sessionMode')}
                             size="compact"
+                            itemClassName="[@media(pointer:coarse)]:!min-h-11"
                             value={draft.sessionMode}
                             onValueChange={(value) => setField('sessionMode', value)}
                             options={[
@@ -1036,7 +1056,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       aria-expanded={advancedOpen}
                       aria-controls={ADVANCED_PANEL_ID}
                       onClick={() => setAdvancedOpen((value) => !value)}
-                      className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                      className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
                     >
                       {t('todo:automation.advanced')}
                       <CaretDown
@@ -1168,8 +1188,8 @@ export const TodoAutomationWorkspace: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-end gap-2">
-                      <DsButton variant="ghost" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
-                      <DsButton variant="primary" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
+                      <DsButton variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
+                      <DsButton variant="primary" className="[@media(pointer:coarse)]:!min-h-11" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
                         {creating
                           ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
                           : <CalendarBlank size={15} />}
@@ -1194,6 +1214,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                 <DsButton
                   variant="primary"
                   size="sm"
+                  className="[@media(pointer:coarse)]:!min-h-11"
                   onClick={() => {
                     setTemplatesOpen(true);
                     openCreate();
@@ -1202,7 +1223,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                   <Sparkle size={15} />
                   {t('todo:automation.emptyTemplate')}
                 </DsButton>
-                <DsButton variant="ghost" size="sm" onClick={openCreate}>
+                <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={openCreate}>
                   <Plus size={15} />
                   {t('todo:automation.new')}
                 </DsButton>
@@ -1223,7 +1244,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                 aria-controls={HISTORY_PANEL_ID}
                 aria-label={t('todo:automation.history.toggleAria', { count: runs.length })}
                 onClick={() => setHistoryOpen((value) => !value)}
-                className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+                className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11"
               >
                 {runs.length}
                 <CaretDown

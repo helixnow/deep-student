@@ -52,6 +52,9 @@ interface FlashcardsLibraryState {
   loadError: string | null;
   actionError: string | null;
   busyCardId: string | null;
+  /** 手动新建 / APKG 导入进行中（工具栏与空态 CTA 共用） */
+  creating: boolean;
+  importing: boolean;
   /** 批量操作进行中（与单卡 busyCardId 互斥使用）。 */
   bulkBusy: boolean;
   loaded: boolean;
@@ -83,8 +86,25 @@ interface FlashcardsLibraryState {
   bulkEnqueue: (cardIds: string[]) => Promise<boolean>;
   bulkSetSuspended: (cardIds: string[], suspended: boolean) => Promise<boolean>;
   bulkDelete: (cardIds: string[]) => Promise<boolean>;
+  /** 手动新建一张卡片（走后端 save_anki_cards，可选立即入队 FSRS）。 */
+  createCard: (input: NewLibraryCardInput) => Promise<boolean>;
+  /** 选择本地 .apkg 并导入卡片库（后端 import_apkg_to_library，与命令面板同一条链路）。 */
+  importApkg: () => Promise<ApkgImportOutcome>;
   reset: () => void;
 }
+
+export interface NewLibraryCardInput {
+  front: string;
+  back: string;
+  tags?: string[];
+  /** 建完立刻进入复习队列（默认 true，否则新卡不会出现在到期队列里） */
+  enqueue?: boolean;
+}
+
+export type ApkgImportOutcome =
+  | { status: 'imported'; importedCards: number }
+  | { status: 'canceled' }
+  | { status: 'failed'; error: string };
 
 const initialState = {
   items: [] as AnkiLibraryCard[],
@@ -97,6 +117,8 @@ const initialState = {
   loadError: null as string | null,
   actionError: null as string | null,
   busyCardId: null as string | null,
+  creating: false,
+  importing: false,
   bulkBusy: false,
   loaded: false,
   statusFilter: 'all' as LibraryStatusFilter,
@@ -298,6 +320,68 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     }),
 
     bulkDelete: (cardIds) => runBulkMutation(cardIds, (card) => deleteAnkiCard(card.id)),
+
+    createCard: async ({ front, back, tags = [], enqueue = true }) => {
+      const trimmedFront = front.trim();
+      const trimmedBack = back.trim();
+      if (!trimmedFront || !trimmedBack) {
+        set({ actionError: i18n.t('flashcards:library.create.incomplete') });
+        return false;
+      }
+      set({ creating: true, actionError: null });
+      try {
+        const { ankiApiAdapter } = await import('@/services/ankiApiAdapter');
+        const response = await ankiApiAdapter.saveAnkiCards({
+          cards: [{ front: trimmedFront, back: trimmedBack, tags, images: [] }],
+        });
+        const savedId = response.savedIds?.[0]
+          ?? response.cardIdMappings?.[0]?.persistedId
+          ?? null;
+        if (!savedId) {
+          const failure = response.failed?.[0]?.error;
+          throw new Error(failure || i18n.t('flashcards:library.create.failed'));
+        }
+        if (enqueue) {
+          // 入队失败不吞：卡已落库，但用户需要知道它还没进复习队列
+          await enqueueAnkiLibraryCard(savedId);
+        }
+        requestFlashcardsDueRefresh();
+        await get().refresh();
+        return true;
+      } catch (error) {
+        set({
+          actionError: getErrorMessage(error) || i18n.t('flashcards:library.create.failed'),
+        });
+        return false;
+      } finally {
+        set({ creating: false });
+      }
+    },
+
+    importApkg: async () => {
+      set({ importing: true, actionError: null });
+      try {
+        const [{ fileManager }, { invoke }] = await Promise.all([
+          import('@/utils/fileManager'),
+          import('@tauri-apps/api/core'),
+        ]);
+        const path = await fileManager.pickSingleFile({
+          title: i18n.t('flashcards:library.import.pickTitle'),
+          filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
+        });
+        if (!path) return { status: 'canceled' as const };
+        const result = await invoke<{ importedCards?: number }>('import_apkg_to_library', { path });
+        requestFlashcardsDueRefresh();
+        await get().refresh();
+        return { status: 'imported' as const, importedCards: result?.importedCards ?? 0 };
+      } catch (error) {
+        const message = getErrorMessage(error) || i18n.t('flashcards:library.import.failed');
+        set({ actionError: message });
+        return { status: 'failed' as const, error: message };
+      } finally {
+        set({ importing: false });
+      }
+    },
 
     reset: () => {
       requestId += 1;
