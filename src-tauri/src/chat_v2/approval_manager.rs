@@ -452,6 +452,7 @@ impl ApprovalManager {
             .remove(&pending_key)
             .unwrap_or(true);
 
+        let mut tool_name_spoofed = false;
         if let Some(original_tool_name) = original_tool_name_opt {
             if original_tool_name != response.tool_name {
                 log::warn!(
@@ -462,7 +463,21 @@ impl ApprovalManager {
                     original_tool_name
                 );
                 response.tool_name = original_tool_name;
+                tool_name_spoofed = true;
             }
+        }
+
+        // 伪造的 tool_name 不得携带 remember 语义：校正后降级为单次批准，
+        // 防止客户端借伪造名把 shell/精确作用域审批沉淀为持久化或会话级许可。
+        if tool_name_spoofed && (response.remember || response.remember_session) {
+            log::warn!(
+                "[ApprovalManager] Dropping remember flags for spoofed response (session={}, tool_call_id={}, tool={})",
+                response.session_id,
+                response.tool_call_id,
+                response.tool_name
+            );
+            response.remember = false;
+            response.remember_session = false;
         }
 
         // ADR-B2：权限类工具（skill_install / mcp_server_propose / runtime_root_request）
@@ -556,6 +571,7 @@ impl ApprovalManager {
         // 即使 handler 层的 tool_name 判断被伪造的前端响应绕过也 fail-closed。
         let setting_key_for_persistence = if remember_disabled
             || session_only
+            || tool_name_spoofed
             || approval_scope::never_remember_approval(&response.tool_name)
         {
             None

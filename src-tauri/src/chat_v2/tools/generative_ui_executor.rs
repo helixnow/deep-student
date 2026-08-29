@@ -820,7 +820,8 @@ mod tests {
             "noteEdit": { "operation": "append", "content": huge }
         });
         let error = GenerativeUiExecutor::parse_note_edit(&args).expect_err("size");
-        assert!(error.contains("256"));
+        // 限制值 256 * 1024 = 262144 字节
+        assert!(error.contains("262144"));
     }
 
     #[test]

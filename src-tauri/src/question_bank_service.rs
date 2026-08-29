@@ -3941,7 +3941,7 @@ mod tests {
     fn test_numeric_tolerance_and_lenient_input() {
         let sd = |t: f64, mode: &str| {
             serde_json::json!({
-                "answer_value": 3.125,
+                "answer_value": 3.14,
                 "tolerance": t,
                 "unit": "m",
                 "tolerance_mode": mode

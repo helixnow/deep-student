@@ -2161,7 +2161,7 @@ pub struct MessageBlock {
 
     // ========== 后端专用字段 ==========
     /// 块顺序（前端通过 message.blockIds 顺序确定，不序列化到前端）
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default)]
     pub block_index: u32,
 }
 

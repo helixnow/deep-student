@@ -1664,7 +1664,9 @@ mod tests {
             metadata: Some(json!({
                 "sourceType": "text_search",
                 "resourceType": "note",
-                "resourceId": "res_kb",
+                // citation_identity 以 resourceId 为一等身份：不同文档必须取不同值，
+                // 否则编号会按「同一资源的不同 chunk」复用。
+                "resourceId": format!("res_kb_{}", title),
                 "sourceId": format!("note_{}", title),
             })),
         }

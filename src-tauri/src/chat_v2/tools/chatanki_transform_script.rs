@@ -1936,7 +1936,9 @@ mod tests {
         };
         let input = json!({ "documentId": "doc-1", "cards": [] });
         let job = prepare_transform_job(temp.path(), &script, &input).unwrap();
-        assert!(job.job_dir.starts_with(temp.path()));
+        // job_dir 会被 canonicalize（macOS /var → /private/var），比较前对齐
+        let canonical_temp = temp.path().canonicalize().unwrap_or_else(|_| temp.path().to_path_buf());
+        assert!(job.job_dir.starts_with(&canonical_temp));
         assert!(job
             .job_ref
             .starts_with("runtime-root://temp/chatanki_transform/job-"));

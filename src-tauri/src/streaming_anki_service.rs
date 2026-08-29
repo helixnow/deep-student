@@ -509,6 +509,36 @@ fn validate_field_against_rule(
     violations
 }
 
+/// 判断 JSON 片段是否自身配平（括号栈空且不落在字符串中）。
+/// 用于 clean_json_string 区分「完整对象 + 尾部垃圾」与「未闭合的截断输入」。
+fn json_fragment_balanced(fragment: &str) -> bool {
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape = false;
+    for c in fragment.chars() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return false;
+        }
+    }
+    depth == 0 && !in_string
+}
+
 impl StreamingAnkiService {
     pub fn new(db: Arc<Database>, llm_manager: Arc<LLMManager>) -> Self {
         // 生产路径不 panic：带超时配置构建失败时（极罕见，TLS 初始化异常等）
@@ -2239,7 +2269,12 @@ impl StreamingAnkiService {
         let trimmed = s.trim();
         if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
             if end > start {
-                return trimmed[start..=end].to_string();
+                let candidate = &trimmed[start..=end];
+                // 仅当截取结果自身配平时才截取（去除尾部自然语言垃圾）；
+                // 截断输入的最后一个 '}' 只是内层闭合，截取会让 repair 丢失尾部卡片。
+                if json_fragment_balanced(candidate) {
+                    return candidate.to_string();
+                }
             }
         }
 

@@ -729,17 +729,48 @@ impl MigrationCoordinator {
         // P1-3 修复：备份完成后验证目标数据库完整性
         // 使用 quick_check 而非 integrity_check：跳过索引验证，速度快 5-10x，
         // 仍能检测 B-tree 结构损坏和行格式错误。对启动时间影响更小。
-        let integrity: String = dst_conn
-            .query_row("PRAGMA quick_check", [], |row| row.get(0))
-            .map_err(|e| {
+        //
+        // quick_check 逐行返回违规详情（干净时仅一行 "ok"）。其中
+        // "NULL value in <table>.<column>" 属数据级约束违规而非结构损坏：
+        // 早期运行期建表遗留的 NOT NULL 声明与 NULL 数据共存（如
+        // anki_cards.source_type），备份副本忠实保留现场，后续迁移
+        // （如 V20260824 归一化）负责修复。若因此中止备份，迁移永远无法
+        // 执行，用户被困在不可启动状态。故仅对结构性违规 fail-close。
+        let findings: Vec<String> = {
+            let mut stmt = dst_conn.prepare("PRAGMA quick_check").map_err(|e| {
                 MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
             })?;
-        if integrity != "ok" {
+            let rows = stmt
+                .query_map([], |row| row.get(0))
+                .map_err(|e| {
+                    MigrationError::Database(format!(
+                        "备份完整性检查失败 {}: {}",
+                        dst.display(),
+                        e
+                    ))
+                })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
+                MigrationError::Database(format!("备份完整性检查失败 {}: {}", dst.display(), e))
+            })?
+        };
+        let structural: Vec<&str> = findings
+            .iter()
+            .map(|finding| finding.as_str())
+            .filter(|finding| *finding != "ok" && !finding.starts_with("NULL value in "))
+            .collect();
+        if !structural.is_empty() {
             return Err(MigrationError::Database(format!(
                 "备份完整性校验不通过 {}: {}",
                 dst.display(),
-                integrity
+                structural.join("; ")
             )));
+        }
+        if findings.iter().any(|finding| finding != "ok") {
+            tracing::warn!(
+                "[MigrationCoordinator] 备份存在数据级约束违规（将由后续迁移修复） {}: {}",
+                dst.display(),
+                findings.join("; ")
+            );
         }
 
         Ok(())
@@ -2095,28 +2126,36 @@ impl MigrationCoordinator {
 
                 let mut reason = "baseline_alignment";
                 if !is_baseline {
-                    let allowlisted =
-                        LEGACY_CHECKSUM_DRIFT_ALLOWLIST.contains(&(id.as_str(), version));
-                    if !allowlisted {
-                        // 未知 checksum 漂移：可能是脚本被篡改、部分应用或分叉
-                        // 版本，静默对齐会掩盖真实的 schema 分歧，必须中止。
+                    // 同名漂移（含历史记录被篡改/损坏）：先证明 schema 已收敛——
+                    // 该版本的迁移契约（表/列/索引/语义烟测）验证通过才允许对齐；
+                    // 验证失败说明真实 schema 分歧，以 ChecksumMismatch fail-close
+                    // 中止（保留漂移的原始语义，验证详情写入错误链供诊断）。
+                    let migration_set = self.get_migration_set(id);
+                    let definition = migration_set.get(version).ok_or_else(|| {
+                        MigrationError::Database(format!(
+                            "V{} 缺少迁移契约定义，无法验证收敛，拒绝对齐 checksum",
+                            version
+                        ))
+                    })?;
+                    if let Err(verify_error) = MigrationVerifier::verify(conn, definition) {
+                        tracing::warn!(
+                            database = id.as_str(),
+                            version = version,
+                            error = %verify_error,
+                            "同名 checksum 漂移的 schema 收敛验证未通过，fail-close 中止迁移"
+                        );
                         return Err(MigrationError::ChecksumMismatch {
                             version: version as u32,
                             expected: checksum.clone(),
                             actual: db_checksum.clone(),
                         });
                     }
-                    // allowlist 只放行"已知草稿版本"，还必须证明 schema 已收敛：
-                    // 该版本的迁移契约（表/列/索引/语义烟测）验证通过才允许对齐。
-                    let migration_set = self.get_migration_set(id);
-                    let definition = migration_set.get(version).ok_or_else(|| {
-                        MigrationError::Database(format!(
-                            "allowlist 中的 V{} 缺少迁移契约定义，无法验证收敛，拒绝对齐 checksum",
-                            version
-                        ))
-                    })?;
-                    MigrationVerifier::verify(conn, definition)?;
-                    reason = "allowlisted_legacy_drift";
+                    reason = if LEGACY_CHECKSUM_DRIFT_ALLOWLIST.contains(&(id.as_str(), version))
+                    {
+                        "allowlisted_legacy_drift"
+                    } else {
+                        "verified_schema_convergence"
+                    };
                 }
 
                 conn.execute(
@@ -2460,9 +2499,34 @@ impl MigrationCoordinator {
     ) -> Result<(), MigrationError> {
         const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
 
+        // init.sql 时代创建、但被后续迁移有意退役的对象：
+        // - V20260202 重建 vfs_index_segments（DROP 旧表连带索引）后只重建
+        //   idx_segments_modality / idx_segments_lance_row_id 等替代索引，
+        //   这两个旧索引不在重建清单里即属有意退役；
+        // - V20260523 显式 DROP idx_folder_items_unique_v2（被部分唯一索引
+        //   idx_folder_items_unique 取代）。
+        // 旧库若已记录退役迁移，回放 init 对象时不得将其复活（否则
+        // fixture→HEAD 比 fresh→HEAD 多出冗余索引，语义 schema 漂移）。
+        // 注意：idx_vfs_index_segments_unique / idx_vfs_index_segments_unit 虽
+        // 同在 V20260202 表重建中消失，但由 V20260202/V20260206 重建，fresh
+        // 库仍持有，不属于退役对象。
+        const RETIRED_INIT_OBJECTS: &[(&str, &str, i32)] = &[
+            ("index", "idx_vfs_index_segments_modality_dim", 20260202),
+            ("index", "idx_vfs_index_segments_lance", 20260202),
+            ("index", "idx_folder_items_unique_v2", 20260523),
+        ];
+
         for (master_type, name, target_table, statement) in
             Self::extract_init_non_table_schema_objects(INIT_SQL)
         {
+            if let Some((_, _, retired_by)) = RETIRED_INIT_OBJECTS
+                .iter()
+                .find(|(kind, object_name, _)| *kind == master_type && *object_name == name)
+            {
+                if self.is_migration_recorded(conn, *retired_by)? {
+                    continue;
+                }
+            }
             if let Some(table) = &target_table {
                 if !self.table_exists(conn, table)? {
                     continue;
@@ -3940,6 +4004,11 @@ END;",
             ("anki_cards", "source_id", "TEXT NOT NULL DEFAULT ''"),
             ("anki_cards", "updated_at", "TEXT"),
             ("anki_cards", "text", "TEXT"),
+            // V20260824 normalize 迁移直接 UPDATE 这三列；稀疏旧库的 anki_cards
+            // 由 CREATE TABLE IF NOT EXISTS 跳过建表，永远不会获得它们。
+            ("anki_cards", "tags_json", "TEXT DEFAULT '[]'"),
+            ("anki_cards", "images_json", "TEXT DEFAULT '[]'"),
+            ("anki_cards", "extra_fields_json", "TEXT DEFAULT '{}'"),
             ("review_analyses", "updated_at", "TEXT"),
             (
                 "custom_anki_templates",

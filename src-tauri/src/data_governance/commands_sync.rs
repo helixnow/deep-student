@@ -5428,6 +5428,41 @@ fn unsynced_classify_blobs(
 ///
 /// 本地存在性按净化 key 与原始 key 两个候选路径探测（本地文件可能仍保留净化前
 /// 的原名）；探测不到时如实归入缺席分类。
+/// 大小写敏感的存在性探测。`Path::exists` 在大小写不敏感文件系统（macOS/
+/// Windows 默认配置）上会把 `photo.png` 匹配到 `Photo.PNG`，使本地存在性探测
+/// 把 CaseConflict 误判为"已存在"而漏报。这里自根向下逐段比对父目录的真实
+/// 条目名，只有每一级都完全同名（含大小写）才算存在。
+fn unsynced_path_exists_exact(path: &std::path::Path) -> bool {
+    use std::path::Component;
+
+    // 不存在（含大小写变体也不存在）时直接短路，避免无谓的目录枚举。
+    if !path.exists() {
+        return false;
+    }
+    let mut current = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => current.push(component.as_os_str()),
+            Component::Normal(name) => {
+                let found = std::fs::read_dir(&current)
+                    .map(|entries| {
+                        entries
+                            .filter_map(std::result::Result::ok)
+                            .any(|entry| entry.file_name() == name)
+                    })
+                    .unwrap_or(false);
+                if !found {
+                    return false;
+                }
+                current.push(name);
+            }
+            // 已校验的 key 路径不会含 `.`/`..`；防御性拒绝。
+            _ => return false,
+        }
+    }
+    true
+}
+
 fn unsynced_classify_assets(
     manifest: &crate::data_governance::sync::AssetDirsManifest,
     active_dir: &std::path::Path,
@@ -5499,7 +5534,7 @@ fn unsynced_classify_assets(
             if let Some(path) =
                 unsynced_asset_local_path_from_key(active_dir, app_data_dir, candidate)
             {
-                if path.exists() {
+                if unsynced_path_exists_exact(&path) {
                     exists = true;
                     break;
                 }
@@ -6398,15 +6433,20 @@ mod unsynced_items_tests {
             "active/images/photo.png".to_string(),
             asset_entry("sha-other", Some("c2")),
         );
-        // 净化后重名且内容不同：`report?.md` 净化为 `report_.md`，与既有净化 key 撞名
+        // 净化后重名且内容不同：`report?.md` 的可逆编码结果与清单里另一个
+        // 已编码形态的 key 撞名（R11 起 `?` 不再净化为 `_`，而是全宽 `？` 编码）。
+        let encoded_report =
+            crate::data_governance::sync::asset_filenames::encode_asset_key_segments(
+                "active",
+                "documents",
+                &["report?.md"],
+            )
+            .expect("encode report?.md");
         manifest.entries.insert(
             "active/documents/report?.md".to_string(),
             asset_entry("sha-a", Some("c3")),
         );
-        manifest.entries.insert(
-            "active/documents/report_.md".to_string(),
-            asset_entry("sha-b", Some("c4")),
-        );
+        manifest.entries.insert(encoded_report, asset_entry("sha-b", Some("c4")));
         // 结构非法：只有两段
         manifest.entries.insert(
             "active/only-two".to_string(),

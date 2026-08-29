@@ -274,6 +274,14 @@
       "dangers": []
     },
     {
+      "database": "llm_usage",
+      "version": 20260826,
+      "name": "add_stream_identity",
+      "path": "llm_usage/V20260826__add_stream_identity.sql",
+      "sha256": "b3d1239a6e664a140c772afb2fc6d211c5a91c89b1689dfb42798e417d781f81",
+      "dangers": []
+    },
+    {
       "database": "mistakes",
       "version": 20260130,
       "name": "init",
@@ -414,11 +422,8 @@
       "version": 20260720,
       "name": "fsrs_mastery_outbox",
       "path": "mistakes/V20260720__fsrs_mastery_outbox.sql",
-      "sha256": "94cdb64f3bcd22548cc318f4c85cd88d63c3ee8ab561b39694fd58c57bfd8556",
-      "dangers": [
-        "add_column_backfill",
-        "add_not_null_column"
-      ]
+      "sha256": "c5d83995c1602c5f623a4260726a572dd5654e66e6115654c5228a6e7097c30a",
+      "dangers": []
     },
     {
       "database": "mistakes",

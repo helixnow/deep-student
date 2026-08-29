@@ -1524,7 +1524,13 @@ mod tests {
             .unwrap();
 
             if old_keys_exist {
-                fs::write(app_data.path().join(".master_key"), b"old-master").unwrap();
+                // 旧主密钥必须是合法 Base64（解码 32 字节）：恢复前的当前密钥
+                // 快照会走 backup_crypto_keys 的校验，非法密钥将被 fail-close 拒绝。
+                fs::write(
+                    app_data.path().join(".master_key"),
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE=",
+                )
+                .unwrap();
                 let old_secure = app_data.path().join(".secure");
                 fs::create_dir_all(&old_secure).unwrap();
                 fs::write(old_secure.join(".key_seed"), b"old-seed").unwrap();
@@ -1582,7 +1588,7 @@ mod tests {
             if old_keys_exist {
                 assert_eq!(
                     fs::read(app_data.path().join(".master_key")).unwrap(),
-                    b"old-master"
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE="
                 );
                 assert_eq!(
                     fs::read(app_data.path().join(".secure/.key_seed")).unwrap(),

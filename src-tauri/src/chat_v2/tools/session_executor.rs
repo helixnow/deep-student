@@ -2096,6 +2096,12 @@ fn remap_imported_session(
         }
     });
 
+    // block_index 不随导出序列化（前端以 blockIds 顺序为准），反序列化后全为 0；
+    // 按导出数组顺序（message_id, block_index 升序聚簇）重建，保证分组排序稳定。
+    for (index, block) in blocks.iter_mut().enumerate() {
+        block.block_index = index as u32;
+    }
+
     let mut missing_block_refs = 0usize;
     for message in &mut messages {
         if let Some(new_id) = message_id_map.get(&message.id) {

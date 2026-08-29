@@ -6802,7 +6802,12 @@ mod tests {
              DROP INDEX IF EXISTS idx_fsrs_review_logs_sync_updated_at;
              DROP INDEX IF EXISTS idx_fsrs_review_logs_device_version;
              DROP INDEX IF EXISTS idx_fsrs_review_logs_updated_not_deleted;
-             DROP INDEX IF EXISTS idx_fsrs_logs_state_active;",
+             DROP INDEX IF EXISTS idx_fsrs_logs_state_active;
+             -- V20260720 的 mastery 索引 WHERE 引用 deleted_at；history 删除
+             -- 范围包含 V20260720，对象需一并清理，否则 DROP COLUMN 被拒绝。
+             DROP INDEX IF EXISTS idx_fsrs_review_logs_mastery_pending;
+             -- V20260722 的 review_ms 索引同样 WHERE deleted_at IS NULL。
+             DROP INDEX IF EXISTS idx_fsrs_logs_review_ms;",
         )
         .expect("remove V20260711 history and runtime objects");
     }
@@ -7009,7 +7014,17 @@ mod tests {
                     |row| row.get(0),
                 )
                 .expect("count migration backfill change");
-            assert_eq!(pending, 1, "missing or duplicate backfill for {record_id}");
+            // fsrs_review_logs 额外携带 V20260720 mastery 回填 UPDATE 触发器
+            // 登记的 1 条 pending（mastery_synced_at 初始同步是有意的）。
+            let expected = if table_name == "fsrs_review_logs" {
+                2
+            } else {
+                1
+            };
+            assert_eq!(
+                pending, expected,
+                "missing or duplicate backfill for {record_id}"
+            );
         }
         drop(conn);
 
@@ -7046,7 +7061,14 @@ mod tests {
                     |row| row.get(0),
                 )
                 .expect("count repeated migration backfill change");
-            assert_eq!(pending, 1, "replay duplicated change for {record_id}");
+            // 与首次恢复一致：review_logs 为 backfill INSERT + mastery UPDATE 两条，
+            // 重放不得新增（V20260711 NOT EXISTS 去重 + V20260720 WHERE 幂等）。
+            let expected = if table_name == "fsrs_review_logs" {
+                2
+            } else {
+                1
+            };
+            assert_eq!(pending, expected, "replay duplicated change for {record_id}");
         }
     }
 
