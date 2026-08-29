@@ -342,12 +342,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        <CustomScrollArea
-          orientation="horizontal"
-          fullHeight={false}
-          className="rounded-lg border border-border/40"
-        >
-          <Table>
+        <div className="hidden md:block">
+          <CustomScrollArea
+            orientation="horizontal"
+            fullHeight={false}
+            className="rounded-lg border border-border/40"
+          >
+            <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
                 <TableHead className="h-10 whitespace-nowrap min-w-[80px]">{t('data:governance.database')}</TableHead>
@@ -436,8 +437,94 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </TableRow>
               )}
             </TableBody>
-          </Table>
-        </CustomScrollArea>
+            </Table>
+          </CustomScrollArea>
+        </div>
+
+        <div className="space-y-2 md:hidden">
+          {healthCheckDatabases.map((db) => (
+            <div key={db.id} className="space-y-3 rounded-md border border-border/40 bg-background/50 p-3">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-medium">
+                  {getDatabaseDisplayName(db.id, t)}
+                </span>
+                {db.is_healthy ? (
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
+                    <CheckCircle className="h-3 w-3 shrink-0" />
+                    {t('data:governance.healthy')}
+                  </div>
+                ) : db.pending_count > 0 ? (
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">
+                    <Warning className="h-3 w-3 shrink-0" />
+                    {t('data:governance.pending_migration_status')}
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+                    <XCircle className="h-3 w-3 shrink-0" />
+                    {t('data:governance.unhealthy')}
+                  </div>
+                )}
+              </div>
+
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div className="min-w-0">
+                  <dt className="text-caption text-muted-foreground">{t('data:governance.version')}</dt>
+                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+                    <span className="whitespace-nowrap rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                      v{db.schema_version}
+                    </span>
+                    {db.pending_count > 0 && (
+                      <>
+                        <span className="text-xs text-muted-foreground">→</span>
+                        <span className="whitespace-nowrap rounded bg-warning/15 px-1.5 py-0.5 font-mono text-xs text-warning">
+                          v{db.target_version}
+                        </span>
+                        <span className="text-xs text-warning">
+                          ({db.pending_count}{t('data:governance.pending_count_unit')})
+                        </span>
+                      </>
+                    )}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-caption text-muted-foreground">{t('data:governance.dependencies')}</dt>
+                  <dd className="mt-1">
+                    {db.dependencies_met ? (
+                      <CheckCircle className="h-4 w-4 text-success/70" />
+                    ) : (
+                      <Warning className="h-4 w-4 text-warning/70" />
+                    )}
+                  </dd>
+                </div>
+              </dl>
+
+              {(db.issues?.length ?? 0) > 0 && (
+                <div className="border-t border-border/40 pt-2">
+                  <p className="mb-1 text-caption text-muted-foreground">{t('data:governance.issues')}</p>
+                  <div className="space-y-0.5">
+                    {db.issues?.map((issue, idx) => (
+                      <p key={idx} className="break-words text-xs text-destructive">
+                        {issue}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {(!healthCheck || healthCheckDatabases.length === 0) && (
+            <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Spinner className="h-4 w-4 animate-spin" />
+                  {t('common:status.loading')}
+                </div>
+              ) : (
+                t('data:governance.no_data')
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 依赖检查结果 */}

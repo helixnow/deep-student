@@ -78,7 +78,7 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
         <div className="space-y-1 min-w-0 flex-1">
           <h2 className="text-xl font-semibold text-foreground md:text-lg">{title}</h2>
           {description && (
-            <p className="text-[15px] leading-relaxed text-muted-foreground md:text-sm">{description}</p>
+            <p className="text-md leading-relaxed text-muted-foreground md:text-sm">{description}</p>
           )}
         </div>
         {rightSlot && <div className="ml-0 md:ml-4 flex-shrink-0">{rightSlot}</div>}
@@ -139,7 +139,7 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange })
     role="switch"
     aria-checked={checked}
     onClick={() => onChange(!checked)}
-    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 bg-[hsl(var(--muted-foreground))] border-2 border-[hsl(var(--border))] hover:bg-[hsl(var(--neutral))] aria-checked:bg-[hsl(var(--primary))] aria-checked:border-transparent aria-checked:hover:bg-[hsl(var(--primary)/0.9)]"
+    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 bg-[hsl(var(--muted-foreground))] border-2 border-[hsl(var(--border))] hover:bg-[hsl(var(--neutral))] aria-checked:bg-[hsl(var(--primary))] aria-checked:border-transparent aria-checked:hover:bg-[hsl(var(--primary)/0.9)] [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:-inset-y-2.5"
   >
     <span
       className={`inline-block h-4 w-4 transform rounded-full bg-background shadow-[0_2px_6px_hsl(var(--foreground)/0.15)] transition duration-300 ease-in-out ${

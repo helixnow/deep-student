@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   convertApiConfigToProfile,
   convertProfileToApiConfig,
+  defaultApiProtocolForProvider,
   getAllowedApiProtocolsForModelAdapter,
   inferProviderTypeFromBaseUrl,
   normalizeApiProtocolForModelAdapter,
+  normalizeApiProtocolForProviderType,
 } from '../modelConverters';
 import type { ApiConfig, ModelProfile, VendorConfig } from '@/types';
 
@@ -43,7 +45,8 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const api = convertProfileToApiConfig(baseProfile, baseVendor);
 
     expect(api.modelAdapter).toBe('deepseek');
-    expect(api.apiProtocol).toBe('openai_chat_completions');
+    // v4-pro 已被官方 Responses 文档列名，默认协议为 responses
+    expect(api.apiProtocol).toBe('openai_responses');
     expect(api.providerScope).toBe('deepseek');
     expect(api.reasoningEffort).toBe('high');
     expect(api.supportsReasoning).toBe(true);
@@ -74,9 +77,9 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(api.reasoningEffort).toBeUndefined();
   });
 
-  it('keeps DeepSeek V4 semantics while rejecting an unsupported responses protocol', () => {
+  it('keeps DeepSeek V3 semantics while rejecting an unsupported responses protocol', () => {
     const api: ApiConfig = {
-      ...convertProfileToApiConfig(baseProfile, baseVendor),
+      ...convertProfileToApiConfig({ ...baseProfile, model: 'deepseek-v3.2' }, baseVendor),
       modelAdapter: 'openai',
       apiProtocol: 'openai_responses',
     };
@@ -345,8 +348,14 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(profile.contextWindow).toBe(1_000_000);
   });
 
-  it('defaults official DeepSeek V4-Flash models to Responses (2026-08 V4-Flash GA)', () => {
-    for (const model of ['deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner']) {
+  it('defaults official DeepSeek documented models to Responses (2026-08-23 docs: flash/pro/vision-exp)', () => {
+    for (const model of [
+      'deepseek-v4-flash',
+      'deepseek-v4-pro',
+      'deepseek-v4-flash-vision-exp',
+      'deepseek-chat',
+      'deepseek-reasoner',
+    ]) {
       const profile: ModelProfile = { ...baseProfile, model };
 
       const api = convertProfileToApiConfig(profile, baseVendor);
@@ -354,18 +363,20 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       expect(api.apiProtocol, model).toBe('openai_responses');
     }
 
-    // legacy 别名映射到 flash：显式 responses 也能保留
-    const flashProfile: ModelProfile = {
-      ...baseProfile,
-      model: 'deepseek-v4-flash',
-      apiProtocol: 'openai_responses',
-    };
-    const flashApi = convertProfileToApiConfig(flashProfile, baseVendor);
-    expect(flashApi.apiProtocol).toBe('openai_responses');
+    // 列名型号显式 responses 也能保留
+    for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+      const profile: ModelProfile = {
+        ...baseProfile,
+        model,
+        apiProtocol: 'openai_responses',
+      };
+      const api = convertProfileToApiConfig(profile, baseVendor);
+      expect(api.apiProtocol, model).toBe('openai_responses');
+    }
   });
 
-  it('keeps official DeepSeek V4-Pro and V3.x on chat completions even when responses is requested', () => {
-    for (const model of ['deepseek-v4-pro', 'deepseek-v3.2', 'deepseek-v3.1']) {
+  it('keeps official DeepSeek V3.x on chat completions even when responses is requested', () => {
+    for (const model of ['deepseek-v3.2', 'deepseek-v3.1']) {
       const profile: ModelProfile = {
         ...baseProfile,
         model,
@@ -379,21 +390,23 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       expect(roundTripped.apiProtocol, model).toBe('openai_chat_completions');
     }
 
-    // 协议可选项：flash 解锁 responses，pro 不可选
-    const flashAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
-      providerType: 'deepseek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-flash',
-    });
-    expect(flashAllowed).toContain('openai_responses');
+    // 协议可选项：flash/pro 解锁 responses，V3.x 不可选
+    for (const model of ['deepseek-v4-flash', 'deepseek-v4-pro']) {
+      const allowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+        providerType: 'deepseek',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model,
+      });
+      expect(allowed, model).toContain('openai_responses');
+    }
 
-    const proAllowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
+    const v3Allowed = getAllowedApiProtocolsForModelAdapter('deepseek', {
       providerType: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v3.2',
     });
-    expect(proAllowed).not.toContain('openai_responses');
-    expect(proAllowed).toContain('openai_chat_completions');
+    expect(v3Allowed).not.toContain('openai_responses');
+    expect(v3Allowed).toContain('openai_chat_completions');
 
     // 空模型（供应商级上下文）不降级
     const vendorLevel = getAllowedApiProtocolsForModelAdapter('deepseek', {
@@ -401,6 +414,95 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
       baseUrl: 'https://api.deepseek.com/v1',
     });
     expect(vendorLevel).toContain('openai_responses');
+  });
+});
+
+describe('settings modelConverters official native-host protocol override', () => {
+  const officialHosts = [
+    { baseUrl: 'https://api.anthropic.com', native: 'anthropic_messages' as const, adapter: 'anthropic' as const },
+    {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      native: 'google_generate_content' as const,
+      adapter: 'google' as const,
+    },
+  ];
+
+  it('keeps official Anthropic/Gemini hosts on native protocols despite mislabeled providerType', () => {
+    // providerType 误配为 custom/openai 时 allowed 只含 OpenAI 兼容协议，
+    // 不得把 resolvePreferredProtocol 选出的官方原生协议钳回 openai_chat_completions。
+    for (const { baseUrl, native } of officialHosts) {
+      for (const providerType of ['custom', 'openai']) {
+        expect(
+          defaultApiProtocolForProvider(providerType, { baseUrl }),
+          `default ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+        expect(
+          normalizeApiProtocolForProviderType(undefined, providerType, { baseUrl }),
+          `normalize ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+        // 旧版被钳制后持久化的显式 openai_chat_completions 也按官方 host 纠正。
+        expect(
+          normalizeApiProtocolForProviderType('openai_chat_completions', providerType, { baseUrl }),
+          `normalize explicit ${providerType} + ${baseUrl}`,
+        ).toBe(native);
+      }
+    }
+  });
+
+  it('exposes only the native protocol option for official hosts under a mislabeled providerType', () => {
+    for (const { baseUrl, native, adapter } of officialHosts) {
+      expect(getAllowedApiProtocolsForModelAdapter(adapter, { providerType: 'custom', baseUrl })).toEqual([native]);
+      expect(
+        normalizeApiProtocolForModelAdapter('openai_chat_completions', adapter, 'custom', { baseUrl }),
+      ).toBe(native);
+    }
+  });
+
+  it('round-trips official-host profiles to native protocols despite providerType=custom', () => {
+    for (const { baseUrl, native, adapter } of officialHosts) {
+      const vendor: VendorConfig = {
+        ...baseVendor,
+        id: `vendor-official-${adapter}`,
+        providerType: 'custom',
+        baseUrl,
+        apiProtocol: undefined,
+      };
+      const profile: ModelProfile = {
+        ...baseProfile,
+        vendorId: vendor.id,
+        model: adapter === 'anthropic' ? 'claude-sonnet-4-6' : 'gemini-3.1-pro-preview',
+        providerScope: 'custom',
+        modelAdapter: adapter,
+        apiProtocol: undefined,
+      };
+
+      const api = convertProfileToApiConfig(profile, vendor);
+      expect(api.apiProtocol, baseUrl).toBe(native);
+      expect(convertApiConfigToProfile(api, vendor.id).apiProtocol, baseUrl).toBe(native);
+    }
+  });
+
+  it('keeps non-official and relay hosts on OpenAI-compatible protocols', () => {
+    const relayBaseUrls = [
+      'https://proxy.example.com/v1',
+      // path 携带官方域名与子域伪造都不得命中官方 host 特例。
+      'https://myproxy.com/api.anthropic.com/v1',
+      'https://api.anthropic.com.evil.example/v1',
+      'https://myproxy.com/generativelanguage.googleapis.com/v1beta',
+      'https://generativelanguage.googleapis.com.evil.example/v1beta',
+    ];
+    for (const baseUrl of relayBaseUrls) {
+      expect(defaultApiProtocolForProvider('custom', { baseUrl }), baseUrl).toBe('openai_chat_completions');
+      expect(
+        normalizeApiProtocolForProviderType('openai_chat_completions', 'custom', { baseUrl }),
+        baseUrl,
+      ).toBe('openai_chat_completions');
+      for (const adapter of ['anthropic', 'google'] as const) {
+        expect(getAllowedApiProtocolsForModelAdapter(adapter, { providerType: 'custom', baseUrl }), baseUrl).toEqual([
+          'openai_chat_completions',
+        ]);
+      }
+    }
   });
 });
 

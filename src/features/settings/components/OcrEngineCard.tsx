@@ -59,7 +59,7 @@ interface OcrEngineCardProps {
 }
 
 export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConfigs, toUnifiedModelInfo, getAllEnabledApis }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common', 'forms']);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -233,7 +233,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
             size="sm"
             onClick={handleRefresh}
             disabled={loading}
-            className="h-6 px-2 text-muted-foreground/60 hover:text-foreground text-xs"
+            className="h-6 px-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-muted-foreground/60 hover:text-foreground text-xs"
             title={t('common:refresh')}
           >
             {t('common:refresh')}
@@ -310,7 +310,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                   
                   <p className="text-2xs text-muted-foreground/50 leading-relaxed line-clamp-1">
                     {engine.engineType === 'system_ocr'
-                      ? (engine.description || '调用操作系统内置 OCR 引擎')
+                      ? (engine.description || t('forms:ocr.system_engine_description'))
                       : engine.engineType === 'generic_vlm'
                         ? engine.model
                         : (engine.description || engine.model)}
@@ -319,15 +319,15 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
 
                 {/* 操作按钮(触屏常显) */}
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity shrink-0">
-                  {/* 触屏下放大到 ≥40px 触控目标，避免 20px 排序/删除按钮误触 */}
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveUp(index)} disabled={index === 0 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_up')} aria-label="move up">
+                  {/* 触屏下放大到 ≥44px 触控目标，避免 20px 排序/删除按钮误触 */}
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveUp(index)} disabled={index === 0 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_up')} aria-label={t('settings:ocr.move_up')}>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3L9 7H3L6 3Z" fill="currentColor"/></svg>
                   </DsButton>
-                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveDown(index)} disabled={index === engines.length - 1 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_down')} aria-label="move down">
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveDown(index)} disabled={index === engines.length - 1 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_down')} aria-label={t('settings:ocr.move_down')}>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </DsButton>
                   {engine.engineType !== 'system_ocr' && (
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </DsButton>
                   )}
@@ -400,7 +400,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           <div className="mx-1 mt-1 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium">{t('settings:ocr.select_multimodal_model')}</span>
-              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
                 ✕
               </DsButton>
             </div>

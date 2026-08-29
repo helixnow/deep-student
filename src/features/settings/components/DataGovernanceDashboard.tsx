@@ -39,6 +39,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
+import { localizeCloudStorageError } from './data-governance/localizeCloudError';
 
 import {
   DataGovernanceApi,
@@ -90,6 +91,15 @@ import {
 } from '@/features/data-recovery/debugRecoveryScenarios';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+/**
+ * Debug 页签是否可见。
+ *
+ * 生产构建里该页签的每个控件都被 `disabled={!import.meta.env.DEV}` 灰掉，
+ * 页签本身却照常渲染 —— 用户（移动端更只看得到一个虫子图标）点进去
+ * 只会看到一屏无法操作的按钮。实现保留，入口只在开发构建暴露。
+ */
+const isDebugTabEnabled = (): boolean => import.meta.env.DEV;
 
 // ==================== 调试面板（DEV only） ====================
 
@@ -569,6 +579,36 @@ function localizeBackupJobError(
   if (message === INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE) {
     return t('data:governance.restore_incremental_not_supported');
   }
+  if (
+    message.includes('E_BACKUP_PARTIAL_ARCHIVE_NOT_SLOTABLE') ||
+    /备份不能用于完整恢复|不是可替换数据槽的完整快照|partial archive 不能替换数据槽/.test(
+      message,
+    )
+  ) {
+    return t('data:governance.restore_partial_archive_refused');
+  }
+  if (message.includes('E_BACKUP_SEALED_PASSWORD_REQUIRED')) {
+    return t('data:governance.import_sealed_password_required');
+  }
+  if (message.includes('E_BACKUP_SEALED_DECRYPT_FAILED')) {
+    return t('data:governance.import_sealed_decrypt_failed');
+  }
+  if (message.includes('E_BACKUP_ATOMIC_RESTORE_UNAVAILABLE')) {
+    return t('data:governance.restore_atomic_unavailable');
+  }
+  // 恢复域账本稳定码（src-tauri/src/data_governance/restore_codes.rs）。
+  // 结果 details JSON 里对应字段：`isolation_state`（值 "IsolatedPendingTrust"
+  // → data:governance.restore_isolated_pending_trust）、`unconsumed_domains`、
+  // `failed_domains`。
+  if (message.includes('E_RESTORE_DOMAIN_UNCONSUMED')) {
+    return t('data:governance.restore_domain_unconsumed');
+  }
+  if (message.includes('E_RESTORE_DOMAIN_FAILED')) {
+    return t('data:governance.restore_domain_failed');
+  }
+  if (message.includes('E_RESTORE_UNTRUSTED_ISOLATED')) {
+    return t('data:governance.restore_untrusted_isolated');
+  }
   return message;
 }
 
@@ -589,6 +629,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   tabTarget = null,
 }) => {
   const { t } = useTranslation(['data', 'common']);
+  /**
+   * `t` 的身份不保证跨渲染稳定。
+   *
+   * 「按 activeTab 拉数据」的 effect 依赖各个 loader，只要有一个 loader 把 `t` 放进
+   * useCallback 依赖，它就每渲染换一次身份 → effect 每渲染重跑 → loader 里的
+   * setState 又触发下一次渲染，构成自激循环（jsdom 下会一路吃到堆溢出）。
+   * 这些地方只在报错分支用文案，从 ref 读即可，不需要参与依赖。
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -597,11 +647,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }))
   );
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const debugTabEnabled = isDebugTabEnabled();
 
   useEffect(() => {
     if (!tabTarget) return;
+    // 生产构建没有 debug 页签，外部深链不能把面板切到一个不存在的页签
+    if (tabTarget.tab === 'debug' && !debugTabEnabled) return;
     setActiveTab(tabTarget.tab);
-  }, [tabTarget]);
+  }, [tabTarget, debugTabEnabled]);
 
   const [loadingState, setLoadingState] = useState({
     overview: 0,
@@ -770,10 +823,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('加载可恢复任务失败:', error);
       showGlobalNotification(
         'warning',
-        t('data:governance.resumable_jobs_load_failed')
+        tRef.current('data:governance.resumable_jobs_load_failed')
       );
     }
-  }, [t]);
+  }, []);
 
   /**
    * 以后端聚合状态为真相收敛前端维护横幅。
@@ -845,9 +898,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         const backupId = stats && typeof stats === 'object'
           ? (stats as Record<string, unknown>).backup_id as string | undefined
           : undefined;
-        if (backupId && resultSuccess) {
+        const importedArchiveIsRestorable = cloudApi.isImportedArchiveSlotRestorable(stats);
+        if (backupId && resultSuccess && importedArchiveIsRestorable) {
           setImportedBackupId(backupId);
           setShowRestorePromptDialog(true);
+        } else if (resultSuccess && !importedArchiveIsRestorable) {
+          // Portable/partial archives import successfully for inspection/export,
+          // but must never be offered as an immediate full-slot restore.
+          setImportedBackupId(null);
+          setShowRestorePromptDialog(false);
         }
       } else if (op === 'restore') {
         showGlobalNotification(
@@ -913,7 +972,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   }, [stopListening]);
 
   // 恢复任务
-  const resumeJob = useCallback(async (jobId: string) => {
+  const resumeJob = useCallback(async (jobId: string, password?: string) => {
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
       return;
@@ -925,7 +984,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     enterMaintenanceMode(t('data:governance.maintenance_backup'));
     
     try {
-      const response = await DataGovernanceApi.resumeBackupJob(jobId);
+      const response = await DataGovernanceApi.resumeBackupJob(jobId, password);
       setBackupJobId(response.job_id);
       showGlobalNotification('info', t('data:governance.job_resumed'));
       
@@ -1053,6 +1112,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     tiers?: string[];
     includeAssets?: boolean;
     assetTypes?: string[];
+    /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
+    encryptionPassword?: string;
   }) => {
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1084,6 +1145,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         options.tiers as any,
         options.includeAssets,
         options.assetTypes as any,
+        options.encryptionPassword,
       );
 
       setBackupJobId(response.job_id);
@@ -1091,7 +1153,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('备份并导出 ZIP 失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1118,8 +1180,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [backupJobId, t]);
 
-  // 导出为 ZIP（异步）
-  const exportZip = useCallback(async (backupId: string, compressionLevel: number) => {
+  // 导出为 ZIP（异步）；encryptionPassword 非空时执行加密全保真导出
+  const exportZip = useCallback(async (backupId: string, compressionLevel: number, encryptionPassword?: string) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1149,7 +1211,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         backupId,
         savePath,
         compressionLevel,
-        true // includeChecksums
+        true, // includeChecksums
+        encryptionPassword,
       );
       setBackupJobId(response.job_id);
 
@@ -1159,7 +1222,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导出失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1167,8 +1230,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
-  // 从 ZIP 导入（异步）
-  const importZip = useCallback(async () => {
+  // 从 ZIP 导入（异步）；password 为加密全保真包导出时设置的 E2EE 备份密码
+  const importZip = useCallback(async (password?: string) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1210,8 +1273,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setJobOperation('zip_import');
       enterMaintenanceMode(t('data:governance.maintenance_import'));
 
-      // 启动后台 ZIP 导入任务
-      const response = await DataGovernanceApi.importZip(zipPath);
+      // 启动后台 ZIP 导入任务（password 非空时用于解封加密全保真包）
+      const response = await DataGovernanceApi.importZip(zipPath, undefined, password);
       setBackupJobId(response.job_id);
 
       showGlobalNotification('info', t('data:governance.import_started'));
@@ -1220,7 +1283,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导入失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1633,16 +1696,19 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     
     void (async () => {
       try {
-        const maybeUnlisten = await listen<ResumableJob[]>('backup-jobs-resumable', (event) => {
+        const maybeUnlisten = await listen<unknown[]>('backup-jobs-resumable', (event) => {
           // 检查组件是否仍然挂载
           if (!mounted) return;
 
-          setResumableJobs(event.payload);
-          if (event.payload.length > 0) {
+          // 启动事件只负责提示；重新走列表命令，以取得后端根据 ZIP 条目
+          // 实时计算的 requires_password，避免密封导入续传绕过口令对话框。
+          void loadResumableJobs();
+          const count = Array.isArray(event.payload) ? event.payload.length : 0;
+          if (count > 0) {
             showGlobalNotification(
               'info',
-              t('data:governance.resumable_jobs_found', {
-                count: event.payload.length,
+              tRef.current('data:governance.resumable_jobs_found', {
+                count,
               })
             );
           }
@@ -1668,7 +1734,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       mounted = false;
       unlisten?.();
     };
-  }, [t]);
+  }, [loadResumableJobs]);
 
   // 组件挂载时自动重连到正在运行的备份任务
   useEffect(() => {
@@ -1752,39 +1818,49 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      <TabsList className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
-        <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+      {/* 页签文字在 <640px 被 `hidden sm:inline` 收掉，只剩图标。
+          每个 trigger 必须带 aria-label，否则移动端读屏（VoiceOver / TalkBack）
+          只会念「按钮」，8 个页签互相无法区分。 */}
+      <TabsList
+        aria-label={t('data:governance.tabs_nav_label')}
+        className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto"
+      >
+        <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
-        <TabsTrigger value="recovery" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="recovery" aria-label={t('data:governance.tab_recovery')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <ShieldCheck className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_recovery')}</span>
         </TabsTrigger>
-        <TabsTrigger value="archive" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="archive" aria-label={t('data:governance.tab_archive')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Archive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
         </TabsTrigger>
-        <TabsTrigger value="backup" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="backup" aria-label={t('data:governance.tab_backup')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <HardDrive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
         </TabsTrigger>
-        <TabsTrigger value="sync" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Cloud className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_sync')}</span>
         </TabsTrigger>
-        <TabsTrigger value="audit" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_audit')}</span>
         </TabsTrigger>
-        <TabsTrigger value="cache" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
+        <TabsTrigger value="cache" aria-label={t('data:governance.tab_cache')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <Image className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
         </TabsTrigger>
-        <TabsTrigger value="debug" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0">
-          <Bug className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
-        </TabsTrigger>
+        {/* Debug 页签只在开发构建出现：生产里它的控件全部 disabled，
+            对用户是一个「点得到但什么都不能做」的死页签，移动端尤其误导。 */}
+        {debugTabEnabled && (
+          <TabsTrigger value="debug" aria-label={t('data:governance.debug_tab_title')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+            <Bug className="h-4 w-4" />
+            <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
+          </TabsTrigger>
+        )}
       </TabsList>
 
       <TabsContent value="overview">
@@ -1910,9 +1986,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         </div>
       </TabsContent>
 
-      <TabsContent value="debug">
-        <DebugTab />
-      </TabsContent>
+      {debugTabEnabled && (
+        <TabsContent value="debug">
+          <DebugTab />
+        </TabsContent>
+      )}
     </Tabs>
   );
 

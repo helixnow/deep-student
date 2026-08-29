@@ -7,6 +7,7 @@ import { ModelProfile, VendorConfig, ApiConfig, type ApiProtocol, type ModelAdap
 import {
   getAllowedProtocolsForProviderType,
   providerSupportsOpenAiResponses,
+  resolveOfficialNativeProtocol,
   resolvePreferredProtocol,
 } from '@/utils/providerProtocolRegistry';
 
@@ -14,10 +15,11 @@ const OPENAI_COMPATIBLE_PROTOCOLS: ApiProtocol[] = ['openai_chat_completions', '
 
 /**
  * DeepSeek 官方 Responses API 模型级门控（与后端 deepseek_model_supports_openai_responses
- * 保持一致，2026-08 调研：Responses 端点 2026-07-31 随 V4-Flash 正式版公测）：
- * - 当前仅 `deepseek-v4-flash` 与 legacy 别名（deepseek-chat/deepseek-reasoner，
+ * 保持一致，2026-08-23 官方文档列名 flash / pro / flash-vision-exp）：
+ * - `deepseek-v4-flash` 系列（contains 匹配，含 deepseek-v4-flash-vision-exp）、
+ *   `deepseek-v4-pro` 系列，以及 legacy 别名（deepseek-chat/deepseek-reasoner，
  *   映射到 flash 的非思考/思考模式）支持；
- * - V4-Pro 正式版发布前与 V3.x 系列走 Responses 会 404，必须回落 chat_completions；
+ * - V3.x 等未列名型号走 Responses 会 404，必须回落 chat_completions；
  * - 空模型名（供应商级上下文）视为可支持，避免把已解锁的供应商默认误降级。
  */
 export const deepseekModelSupportsResponses = (model?: string | null): boolean => {
@@ -25,6 +27,7 @@ export const deepseekModelSupportsResponses = (model?: string | null): boolean =
   if (!normalized) return true;
   return (
     normalized.includes('deepseek-v4-flash') ||
+    normalized.includes('deepseek-v4-pro') ||
     normalized === 'deepseek-chat' ||
     normalized === 'deepseek-reasoner'
   );
@@ -71,6 +74,13 @@ export const defaultApiProtocolForProvider = (
   if (allowed.includes(preferred)) {
     return preferred;
   }
+  // 官方 Anthropic/Gemini host 只说原生协议：providerType 误配为 custom/openai 时
+  // allowed 只含 OpenAI 兼容协议，不得据此把 resolvePreferredProtocol 已选出的官方
+  // 原生协议钳回 allowed[0]（openai_chat_completions）。中转/代理 host 不会命中
+  // resolveOfficialNativeProtocol，仍按 allowed 兜底。
+  if (preferred === resolveOfficialNativeProtocol(options?.baseUrl)) {
+    return preferred;
+  }
   return allowed[0] ?? 'openai_chat_completions';
 };
 
@@ -79,6 +89,12 @@ export const normalizeApiProtocolForProviderType = (
   providerType?: string | null,
   options?: { model?: string | null; baseUrl?: string | null; adapter?: string | null; supportsOpenAIResponses?: boolean | null }
 ): ApiProtocol => {
+  // 官方 Anthropic/Gemini host 无条件走原生协议（与 resolvePreferredProtocol 对齐）：
+  // 显式协议可能是旧版钳制后持久化的 openai_chat_completions，按官方 host 纠正。
+  const officialNativeProtocol = resolveOfficialNativeProtocol(options?.baseUrl);
+  if (officialNativeProtocol) {
+    return officialNativeProtocol;
+  }
   const allowed = getAllowedApiProtocolsForProviderType(providerType);
   if (explicitProtocol && allowed.includes(explicitProtocol)) {
     return explicitProtocol;
@@ -109,6 +125,14 @@ export const getAllowedApiProtocolsForModelAdapter = (
     return nativeProtocol ? [nativeProtocol, ...OPENAI_COMPATIBLE_PROTOCOLS] : OPENAI_COMPATIBLE_PROTOCOLS;
   }
 
+  // 官方 Anthropic/Gemini host 只说原生协议：即使 providerType 误配为 custom/openai
+  // （其 allowed 只含 OpenAI 兼容协议），可选项也只暴露原生协议，保证 normalize/
+  // default 不会把官方端点钳回 OpenAI 兼容路由；代理/中转 host 不受影响。
+  const officialNativeProtocol = resolveOfficialNativeProtocol(options.baseUrl);
+  if (officialNativeProtocol) {
+    return [officialNativeProtocol];
+  }
+
   const providerProtocols = getAllowedApiProtocolsForProviderType(options.providerType);
   if (nativeProtocol && providerProtocols.includes(nativeProtocol)) {
     return [nativeProtocol];
@@ -129,8 +153,8 @@ export const getAllowedApiProtocolsForModelAdapter = (
     (options.providerType ?? '').toLowerCase() === 'deepseek' &&
     !deepseekModelSupportsResponses(options.model)
   ) {
-    // DeepSeek 官方 Responses API 仅对 V4-Flash 系列开放：非 flash 模型（V3.x/
-    // V4-Pro 正式版前）即使供应商已解锁 responses 也不可选，避免选中即 404。
+    // DeepSeek 官方 Responses API 按模型列名开放（flash / pro / flash-vision-exp）：
+    // V3.x 等未列名型号即使供应商已解锁 responses 也不可选，避免选中即 404。
     openAiProtocols = openAiProtocols.filter(protocol => protocol !== 'openai_responses');
   }
   return openAiProtocols;

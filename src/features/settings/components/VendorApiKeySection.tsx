@@ -253,7 +253,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           : saveStatus === 'dirty'
             ? t('settings:vendor_panel.api_key_unsaved')
             : showApiKey && viewingStoredKey
-              ? t('settings:vendor_panel.api_key_revealed_temporarily')
+              ? t('settings:vendor_panel.hide_api_key')
               : hasConfiguredApiKey && !apiKey.trim()
               ? t('settings:vendor_panel.api_key_securely_stored')
               : t('settings:vendor_panel.api_key_manual_save_hint');
@@ -311,6 +311,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <DsButton
           variant="primary"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={() => {
             void handleSaveApiKey();
           }}
@@ -323,6 +324,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         <DsButton
           variant="danger"
           size="sm"
+          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={handleClearApiKey}
           disabled={!canClearStoredKey}
           title={t('settings:vendor_panel.clear_api_key_title')}
