@@ -30,9 +30,14 @@ const TABS: Array<{
 
 export interface FlashcardsAppProps {
   launchPayload?: unknown;
+  /** 工作台窗口/标签页是否处于前台；缺省保持独立宿主兼容。 */
+  isActive?: boolean;
 }
 
-export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) => {
+export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
+  launchPayload,
+  isActive = true,
+}) => {
   const { t } = useTranslation('flashcards');
   const screen = useFsrsReviewStore((s) => s.screen);
   const setScreen = useFsrsReviewStore((s) => s.setScreen);
@@ -47,7 +52,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
     return (
       <div className="wb-fc-root flex flex-col" data-flashcards-app>
         <div key="session" className="wb-fcx-screen-anim flex min-h-0 flex-1 flex-col">
-          <ReviewSessionScreen />
+          <ReviewSessionScreen isActive={isActive} />
         </div>
       </div>
     );

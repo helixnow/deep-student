@@ -1,10 +1,27 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Document, Page, Thumbnail, pdfjs, PasswordResponses } from 'react-pdf';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { usePdfSettingsStore, type PdfFitMode } from '../stores/pdfSettingsStore';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import {
+  canNavigateNext,
+  canNavigatePrev,
+  getNextNavigationPage,
+  getPrevNavigationPage,
+  resolvePageScrollKeyAction,
+} from '../pdfPageNavigation';
+import { collectPageSearchMatches, type SearchItemRange } from '../pdfSearch';
+import { loadPdfViewState, savePdfViewState, type PdfViewState } from '../pdfViewState';
+import {
+  resolveSelectionMenuFrame,
+  type PdfSelectionPayload,
+  type SelectionMenuAnchor,
+  type SelectionMenuFrame,
+} from '../pdfSelectionActions';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { dstu } from '@/dstu';
 import {
   CaretLeft,
@@ -35,7 +52,9 @@ import {
   Moon,
   Sun,
   ArrowCounterClockwise,
-  LockSimple
+  LockSimple,
+  BookOpenText,
+  Copy
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -45,7 +64,7 @@ import { PDF_OPTIONS } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { registerVisibilityGuardedBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   resolvePdfAnnotationSaveBaseline,
@@ -54,6 +73,17 @@ import {
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
+
+// 共享层划词工具条：必须懒加载——它内部依赖 shared/selection、shared/notes
+// 与聊天弹层（解释/翻译 Popover），若在此静态导入，翻译/制卡链路会被
+// 重新打进 PDF chunk（见 docs/0824-quality-review/pdf-documents.md）。
+// 学习动作（做笔记/翻译/出题/制卡/引用到对话）统一由它承载，
+// viewer 内建的 ds-highlight-menu 只保留高亮选色 + 复制，不再重复这些入口。
+const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
+
+// 侧栏批注面板（筛选/导出为笔记/回链）同样懒加载：它静态依赖 shared/notes
+// 的目录选择流程（FolderPickerDialog），不能随 PDF 主 chunk 打包。
+const PdfAnnotationsPanel = React.lazy(() => import('./PdfAnnotationsPanel'));
 
 /** PDF 目录项 */
 interface OutlineItem {
@@ -68,17 +98,7 @@ interface SearchMatch {
   matchIndex: number;
 }
 
-/** 搜索命中落在某个文本 item 内的子区间（用于 customTextRenderer 页内高亮） */
-interface SearchItemRange {
-  /** item.str 内的起始偏移 */
-  start: number;
-  /** item.str 内的结束偏移（不含） */
-  end: number;
-  /** 该命中在本页内的序号（对应 SearchMatch.matchIndex） */
-  matchOrdinal: number;
-}
-
-/** pageNumber -> itemIndex -> 高亮区间列表 */
+/** pageNumber -> itemIndex -> 高亮区间列表（SearchItemRange 见 ../pdfSearch） */
 type SearchRangesByPage = Map<number, Map<number, SearchItemRange[]>>;
 
 /** 视图模式 */
@@ -87,8 +107,8 @@ type ViewMode = 'single' | 'dual';
 /** 缩放模式：custom 为手动百分比；其余为自适应档位（resize 时自动重算） */
 type ZoomMode = PdfFitMode;
 
-/** 侧边栏模式 */
-type SidebarMode = 'none' | 'outline' | 'thumbnails';
+/** 侧边栏模式（桌面端目录/缩略图/书签/批注合并为同一侧栏的 tab） */
+type SidebarMode = 'none' | 'outline' | 'thumbnails' | 'bookmarks' | 'highlights';
 
 /** 高亮批注
  *
@@ -146,6 +166,10 @@ export interface EnhancedPdfViewerProps {
   bookmarks?: Bookmark[];
   /** 书签变更回调 */
   onBookmarksChange?: (bookmarks: Bookmark[]) => void;
+  /** 划词「添加到聊天」locator 回调，透传给 PdfSelectionActions
+   *  （上层视图接 useReferenceToChat：资源引用 + `page:N` locator，Agent 可回读原文）。
+   *  缺省时工具条走 PREFILL_CHAT_INPUT 文本注入兜底。 */
+  onQuoteToChat?: (payload: PdfSelectionPayload) => void;
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
@@ -205,7 +229,9 @@ const PdfPasswordPrompt: React.FC<{
       <Input
         ref={inputRef}
         type="password"
-        className="ds-pdf__password-input"
+        // 触屏：32px → 44px 触控高度；16px 防 iOS 聚焦自动缩放（同 .ds-search-input coarse 规则，
+        // CSS coarse 块漏掉了该输入框；!important 对冲 .ds-pdf__password-input 的 height/font-size）
+        className="ds-pdf__password-input [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-base"
         placeholder={t('pdf:password.placeholder')}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -220,10 +246,10 @@ const PdfPasswordPrompt: React.FC<{
         </div>
       )}
       <div className="ds-pdf__password-actions">
-        <DsButton variant="ghost" size="sm" onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={onCancel}>
           {t('pdf:password.cancel')}
         </DsButton>
-        <DsButton variant="primary" size="sm" onClick={submit} disabled={!password.trim()}>
+        <DsButton variant="primary" size="sm" className="[@media(pointer:coarse)]:!min-h-11" onClick={submit} disabled={!password.trim()}>
           {t('pdf:password.submit')}
         </DsButton>
       </div>
@@ -242,9 +268,52 @@ const HIGHLIGHT_COLORS = {
 
 const MemoPage = React.memo(Page);
 
+/**
+ * 浮动菜单视口钳位：挂载后测量真实尺寸，经 resolveSelectionMenuFrame
+ * 计算钳位坐标。frame 为 null 期间调用方应隐藏菜单（visibility: hidden），
+ * 避免未钳位坐标闪现。
+ */
+function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [frame, setFrame] = useState<SelectionMenuFrame | null>(null);
+  const updateFrame = useCallback(() => {
+    const el = ref.current;
+    if (!anchor || !el) return;
+    const rect = el.getBoundingClientRect();
+    setFrame(
+      resolveSelectionMenuFrame(
+        anchor,
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight }
+      )
+    );
+  }, [anchor]);
+  useEventRegistry(
+    anchor ? [{ target: 'window', type: 'resize', listener: updateFrame }] : [],
+    [anchor, updateFrame],
+  );
+  useLayoutEffect(() => {
+    if (!anchor) {
+      setFrame(null);
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    updateFrame();
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateFrame);
+    resizeObserver?.observe(el);
+    return () => {
+      resizeObserver?.disconnect();
+    };
+  }, [anchor, updateFrame]);
+  return { ref, frame };
+}
+
 const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   data,
   url,
+  fileName,
   defaultScale,
   initialPage = 0,
   style,
@@ -263,6 +332,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   onHighlightsChange,
   bookmarks: externalBookmarks,
   onBookmarksChange,
+  onQuoteToChat,
 }) => {
   const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
@@ -281,6 +351,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 无法构造 DSTU resourcePath —— 此时隐藏高亮入口，避免"创建后静默丢失"。
   const canPersistAnnotations =
     Boolean(resourcePath) || initialHighlights !== undefined || Boolean(onHighlightsChange);
+
+  // 复制为 viewer 内建动作，不依赖高亮落盘或上层回调；只要文本层可选，
+  // 划词菜单就应可用。翻译/出题/制卡/做笔记/引用到对话走共享层 SelectionToolbar。
 
   // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
   // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
@@ -311,8 +384,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const chromeToggleTimerRef = useRef<number | null>(null);
   // 捏合预览 transform 的目标元素（.ds-pdf__pages-container）
   const pagesTransformRef = useRef<HTMLDivElement>(null);
-  // 旋转状态下划词提示的节流时间戳
-  const rotationTipAtRef = useRef<number>(0);
   // 进度条拖动预览页码
   const [scrubPage, setScrubPage] = useState<number | null>(null);
   const scrubbingRef = useRef(false);
@@ -321,12 +392,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(initialPage + 1);
 
   // ========== 缩放模式解析 ==========
-  // props.defaultScale 优先（'PageFit'|'PageWidth'|'ActualSize'|number），
-  // 否则读设置 defaultFitMode / defaultScale。
+  // 优先级：每文档持久化视图状态（localStorage，按 resourcePath）→ props.defaultScale
+  // （'PageFit'|'PageWidth'|'ActualSize'|number）→ 设置 defaultFitMode / defaultScale。
   // 注意渲染模型：pageWidth = containerWidth * scale，即 scale=1.0 恒等于「适应宽度」。
+  const persistedViewStateRef = useRef<PdfViewState | null>(null);
+  if (persistedViewStateRef.current === null) {
+    persistedViewStateRef.current = loadPdfViewState(resourcePath);
+  }
   const initialZoomRef = useRef<{ mode: ZoomMode; scale: number } | null>(null);
   if (initialZoomRef.current === null) {
+    const persisted = persistedViewStateRef.current;
     const pref: EnhancedPdfViewerProps['defaultScale'] | PdfFitMode =
+      persisted.zoomMode ??
       defaultScale ??
       (pdfSettings.defaultFitMode !== 'custom' ? pdfSettings.defaultFitMode : pdfSettings.defaultScale);
     switch (pref) {
@@ -341,6 +418,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       case 'ActualSize':
       case 'actualSize':
         initialZoomRef.current = { mode: 'actualSize', scale: 1.0 };
+        break;
+      case 'custom':
+        initialZoomRef.current = {
+          mode: 'custom',
+          scale: clampScale(persisted.scale ?? pdfSettings.defaultScale),
+        };
         break;
       default:
         initialZoomRef.current = {
@@ -379,7 +462,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 新增功能状态
   const [rotation, setRotation] = useState<number>(0); // 0, 90, 180, 270
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<ViewMode>(resolvedViewMode);
+  // 视图模式：每文档持久化值优先，其次全局默认设置
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    persistedViewStateRef.current?.viewMode ?? resolvedViewMode
+  );
+  // 双页封面偏移：第 1 页单独成页（书籍类 PDF 的真实对页是 [2,3] [4,5] …）
+  const [coverOffset, setCoverOffset] = useState<boolean>(
+    persistedViewStateRef.current?.coverOffset ?? false
+  );
   // 暗色阅读模式（invert 渲染，全局偏好持久化）
   const [isDarkReading, setIsDarkReading] = useState<boolean>(() => {
     try {
@@ -402,6 +492,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [searchRangesByPage, setSearchRangesByPage] = useState<SearchRangesByPage>(() => new Map());
   const [currentSearchIndex, setCurrentSearchIndex] = useState<number>(0);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  // 增量搜索扫描进度（大文档不再"转圈到全部扫完才出结果"）
+  const [searchProgress, setSearchProgress] = useState<{ scanned: number; total: number } | null>(null);
   const [isScrolling, setIsScrolling] = useState<boolean>(false);
   // 密码 PDF：onPassword 回调驱动的内联解锁表单
   const [passwordState, setPasswordState] = useState<'none' | 'required' | 'incorrect'>('none');
@@ -412,15 +504,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 批注状态
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [showHighlightMenu, setShowHighlightMenu] = useState<boolean>(false);
-  const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // 划词菜单锚点（选区 rect 的中点与上下边缘，viewport 坐标）；
+  // 实际渲染坐标由 useClampedMenuFrame 钳位到视口内（贴顶时翻转到选区下方）
+  const [highlightMenuPos, setHighlightMenuPos] = useState<SelectionMenuAnchor>({ x: 0, top: 0, bottom: 0 });
   const [pendingHighlight, setPendingHighlight] = useState<{ text: string; pageIndex: number; rects: { x: number; y: number; width: number; height: number }[] } | null>(null);
-  const [showHighlightList, setShowHighlightList] = useState<boolean>(false);
-  // 触屏点击页面内高亮块后弹出的轻量操作条（title tooltip 在触屏不可达）
+  const [selectionTranslation, setSelectionTranslation] = useState<{
+    text: string;
+    contextBefore: string;
+    contextAfter: string;
+  } | null>(null);
+  // 点击页面内高亮块后的操作入口：
+  // 触屏 → 底部轻量操作条；桌面 → 锚定高亮块的改色/删除浮层（anchor 非空时）
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
-  
-  // 书签状态
+  const [activeHighlightAnchor, setActiveHighlightAnchor] = useState<SelectionMenuAnchor | null>(null);
+
+  // 书签状态（书签/批注列表已并入侧栏 tab，见 sidebarMode）
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(externalBookmarks ?? []);
-  const [showBookmarkList, setShowBookmarkList] = useState<boolean>(false);
   const [editingBookmarkId, setEditingBookmarkId] = useState<string | null>(null);
   const [editingBookmarkTitle, setEditingBookmarkTitle] = useState<string>('');
 
@@ -535,12 +634,66 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const numPagesRef = useRef(numPages);
   const onPageChangeRef = useRef(onPageChange);
   const currentPageRef = useRef(currentPage);
+  const viewModeRef = useRef(viewMode);
+  const coverOffsetRef = useRef(coverOffset);
 
   useEffect(() => {
     numPagesRef.current = numPages;
     onPageChangeRef.current = onPageChange;
     currentPageRef.current = currentPage;
+    viewModeRef.current = viewMode;
+    coverOffsetRef.current = coverOffset;
   });
+
+  // ========== 每文档视图状态持久化（zoom / fitMode / viewMode / 封面偏移） ==========
+  // 窄屏/触屏会把双页自动收回单页（见下方效果），该自动降级不覆盖持久化的
+  // 双页偏好：payload 里的 viewMode 只跟随「双页入口可用时」的用户选择。
+  const viewModeForPersistRef = useRef<ViewMode>(
+    persistedViewStateRef.current?.viewMode ?? viewMode
+  );
+  const lastSavedViewStateRef = useRef<string | null>(null);
+  // 同一挂载实例切换文档（resourcePath 变化）：重新加载新文档的视图状态
+  const prevResourcePathRef = useRef(resourcePath);
+  useEffect(() => {
+    if (prevResourcePathRef.current === resourcePath) return;
+    prevResourcePathRef.current = resourcePath;
+    lastSavedViewStateRef.current = null;
+    const next = loadPdfViewState(resourcePath);
+    persistedViewStateRef.current = next;
+    if (next.zoomMode) {
+      setZoomMode(next.zoomMode);
+      if (next.zoomMode === 'custom' && typeof next.scale === 'number') {
+        setScale(next.scale);
+      }
+    }
+    if (next.viewMode) {
+      setViewMode(next.viewMode);
+      viewModeForPersistRef.current = next.viewMode;
+    }
+    setCoverOffset(next.coverOffset ?? false);
+  }, [resourcePath]);
+
+  // 视图状态变化即落盘（scale 仅在 custom 模式持久化，fit 模式随窗口重算不算变化）。
+  // 首次运行只建立基线，避免每次打开文档都把默认值写进 localStorage。
+  useEffect(() => {
+    if (!resourcePath) return;
+    const dualAvailable = !isSmallViewport && !isCoarsePointer;
+    if (dualAvailable) viewModeForPersistRef.current = viewMode;
+    const payload: PdfViewState = {
+      zoomMode,
+      ...(zoomMode === 'custom' ? { scale } : {}),
+      viewMode: viewModeForPersistRef.current,
+      coverOffset,
+    };
+    const json = JSON.stringify(payload);
+    if (lastSavedViewStateRef.current === null) {
+      lastSavedViewStateRef.current = json;
+      return;
+    }
+    if (json === lastSavedViewStateRef.current) return;
+    lastSavedViewStateRef.current = json;
+    savePdfViewState(resourcePath, payload);
+  }, [resourcePath, zoomMode, scale, viewMode, coverOffset, isSmallViewport, isCoarsePointer]);
 
   // ACR 4.0（A7）：agent/引用 gotoPage 跳页成功后给目标页一次高亮渐隐演出。
   // 只动 opacity；prefers-reduced-motion 下 CSS 关闭动画、走静态短高亮（定时移除）。
@@ -863,11 +1016,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
   }, [cancelIdle]);
 
-  // 搜索功能
-  // ★ 文本拼接保留 item 边界：items 直接连接（hasEOL 处补换行），
-  // 不再用 join(' ')——pdf.js 常把一个词拆进多个 item，旧做法插入空格导致
-  // "im"+"portant" 搜 "important" 永远搜不到。同时记录每个 item 的偏移，
-  // 把命中区间映射回 item 内子区间，供 customTextRenderer 做页内高亮。
+  // 搜索功能（增量展示）
+  // ★ 页内匹配逻辑抽到 ../pdfSearch（保留 item 边界拼接语义，见该模块注释）。
+  // ★ 增量发布：每扫完一个分块就把已有命中发布出去——首个命中立即跳转、
+  // 计数实时增长，大文档不再"只转圈到全部扫完才出结果"。
+  // rangesByPage 外层 Map 浅克隆即可发布：每页只在自己所属分块内被写入一次，
+  // 已发布页的内层 Map 之后不会再被修改。
   const handleSearch = useCallback(() => {
     const query = searchQuery.trim().toLowerCase();
     abortSearchTask();
@@ -876,16 +1030,38 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       setSearchRangesByPage(new Map());
       setCurrentSearchIndex(0);
       setIsSearching(false);
+      setSearchProgress(null);
       return;
     }
 
     const task = { id: Date.now(), cancelled: false };
     searchTaskRef.current = task;
     setIsSearching(true);
+    setSearchResults([]);
+    setSearchRangesByPage(new Map());
+    setCurrentSearchIndex(0);
+    setSearchProgress({ scanned: 0, total: numPages });
     const results: SearchMatch[] = [];
     const rangesByPage: SearchRangesByPage = new Map();
     let pageIndex = 1;
+    let publishedCount = 0;
+    let jumpedToFirst = false;
     const chunkSize = 2;
+
+    const publishPartial = () => {
+      setSearchProgress({ scanned: Math.min(pageIndex - 1, numPages), total: numPages });
+      if (results.length === publishedCount) return;
+      publishedCount = results.length;
+      setSearchResults(results.slice());
+      setSearchRangesByPage(new Map(rangesByPage));
+      if (!jumpedToFirst && results.length > 0) {
+        jumpedToFirst = true;
+        const firstResult = results[0];
+        setCurrentPage(firstResult.pageIndex);
+        onPageChange?.(firstResult.pageIndex - 1);
+        scrollToPageRef.current?.(firstResult.pageIndex);
+      }
+    };
 
     const runChunk = async () => {
       if (!pdfDocRef.current || task.cancelled) return;
@@ -896,57 +1072,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           if (task.cancelled || !pdfDocRef.current) return;
           const page = await pdfDocRef.current.getPage(pageIndex);
           const textContent = await page.getTextContent();
-
-          // 拼接页面文本并记录每个 item 的偏移
-          const itemOffsets: { itemIndex: number; start: number; length: number }[] = [];
-          let pageText = '';
-          (textContent.items as Array<{ str?: string; hasEOL?: boolean }>).forEach((item, itemIdx) => {
-            const str = typeof item.str === 'string' ? item.str : '';
-            itemOffsets.push({ itemIndex: itemIdx, start: pageText.length, length: str.length });
-            pageText += str;
-            if (item.hasEOL) pageText += '\n';
-          });
-          // 换行折算为空格（等长替换，偏移不变）：让含空格的短语
-          // 也能命中跨行文本（"foo bar" vs "foo\nbar"）
-          const lowerText = pageText.toLowerCase().replace(/\n/g, ' ');
-
-          let matchOrdinal = 0;
-          let pos = lowerText.indexOf(query);
-          while (pos !== -1) {
-            results.push({ pageIndex, matchIndex: matchOrdinal });
-
-            // 命中区间 [pos, pos+len) 映射到覆盖的各 item
-            const matchEnd = pos + query.length;
-            for (const info of itemOffsets) {
-              if (info.start >= matchEnd) break;
-              const overlapStart = Math.max(pos, info.start);
-              const overlapEnd = Math.min(matchEnd, info.start + info.length);
-              if (overlapEnd <= overlapStart) continue;
-              let pageMap = rangesByPage.get(pageIndex);
-              if (!pageMap) {
-                pageMap = new Map();
-                rangesByPage.set(pageIndex, pageMap);
-              }
-              let itemRanges = pageMap.get(info.itemIndex);
-              if (!itemRanges) {
-                itemRanges = [];
-                pageMap.set(info.itemIndex, itemRanges);
-              }
-              itemRanges.push({
-                start: overlapStart - info.start,
-                end: overlapEnd - info.start,
-                matchOrdinal,
-              });
+          const { matchCount, itemRanges } = collectPageSearchMatches(
+            textContent.items as Array<{ str?: string; hasEOL?: boolean }>,
+            query,
+          );
+          if (matchCount > 0) {
+            rangesByPage.set(pageIndex, itemRanges);
+            for (let ordinal = 0; ordinal < matchCount; ordinal++) {
+              results.push({ pageIndex, matchIndex: ordinal });
             }
-
-            matchOrdinal++;
-            pos = lowerText.indexOf(query, pos + 1);
           }
         }
       } catch (err) {
         if (!task.cancelled) {
           console.error('Search failed:', err);
           setIsSearching(false);
+          setSearchProgress(null);
         }
         return;
       }
@@ -954,23 +1095,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       if (task.cancelled) return;
 
       if (pageIndex <= numPages) {
+        publishPartial();
         searchIdleHandleRef.current = scheduleIdle(() => {
           void runChunk();
         });
         return;
       }
 
-      setSearchResults(results);
-      setSearchRangesByPage(rangesByPage);
-      setCurrentSearchIndex(0);
+      publishPartial();
       setIsSearching(false);
-
-      if (results.length > 0) {
-        const firstResult = results[0];
-        setCurrentPage(firstResult.pageIndex);
-        onPageChange?.(firstResult.pageIndex - 1);
-        scrollToPageRef.current?.(firstResult.pageIndex);
-      }
+      setSearchProgress(null);
     };
 
     void runChunk();
@@ -987,6 +1121,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       setSearchRangesByPage(new Map());
       setCurrentSearchIndex(0);
       setIsSearching(false);
+      setSearchProgress(null);
       return;
     }
     searchDebounceRef.current = window.setTimeout(() => {
@@ -1030,6 +1165,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setSearchRangesByPage(new Map());
     setCurrentSearchIndex(0);
     setIsSearching(false);
+    setSearchProgress(null);
   }, [abortSearchTask]);
 
   // 页内搜索高亮：把命中子区间包成 <mark>，当前命中加强调样式。
@@ -1080,21 +1216,26 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [showSearch, currentSearchMatch, currentSearchIndex]);
 
   // ★ 2026-07-08（移动端审计 D-4）：Android 系统返回键先关闭查看器内的浮层
-  // （高亮菜单/更多菜单/缩放菜单/书签列表/批注列表/目录缩略图侧栏/搜索栏），
+  // （高亮菜单/更多菜单/缩放菜单/侧栏[目录·缩略图·书签·批注]/搜索栏），
   // 而不是直接退出视图。轻量菜单优先关闭（视觉上位于最上层）。
   // 仅在有浮层打开时注册；桌面端不触发 handleAndroidBack，无行为变化。
   useEffect(() => {
     const hasOverlay =
       showHighlightMenu || activeHighlightId !== null || showMoreMenu || showZoomMenu ||
-      showBookmarkList || showHighlightList || sidebarMode !== 'none' || showSearch;
+      sidebarMode !== 'none' || showSearch;
     if (!hasOverlay) return;
-    return registerBackHandler(() => {
+    return registerVisibilityGuardedBackHandler(containerRef, () => {
+      if (selectionTranslation) {
+        setSelectionTranslation(null);
+        return true;
+      }
       if (showHighlightMenu) {
         setShowHighlightMenu(false);
         return true;
       }
       if (activeHighlightId !== null) {
         setActiveHighlightId(null);
+        setActiveHighlightAnchor(null);
         return true;
       }
       if (showMoreMenu) {
@@ -1103,14 +1244,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
       if (showZoomMenu) {
         setShowZoomMenu(false);
-        return true;
-      }
-      if (showBookmarkList) {
-        setShowBookmarkList(false);
-        return true;
-      }
-      if (showHighlightList) {
-        setShowHighlightList(false);
         return true;
       }
       if (sidebarMode !== 'none') {
@@ -1128,18 +1261,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     activeHighlightId,
     showMoreMenu,
     showZoomMenu,
-    showBookmarkList,
-    showHighlightList,
     sidebarMode,
     showSearch,
     handleCloseSearch,
   ]);
 
-  // 文本选择处理（用于高亮批注）
+  // 文本选择处理（用于高亮批注 / 划词动作）
   const handleTextSelection = useCallback(() => {
-    // 无落盘通道时不提供高亮入口（选择/复制文本仍可用）
-    if (!canPersistAnnotations) return;
-
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
       setShowHighlightMenu(false);
@@ -1155,24 +1283,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     
     const text = selection.toString().trim();
     if (!text) return;
-
-    // ★ 旋转状态下选区 rect 是旋转后的屏幕坐标，恢复原始角度后会双重错位，
-    // 暂不支持旋转时创建高亮（比错位持久化更可接受）。
-    // 给出轻提示（8s 节流，避免连续划词刷屏）而非静默失败。
-    if (rotation !== 0) {
-      setShowHighlightMenu(false);
-      const now = Date.now();
-      if (now - rotationTipAtRef.current > 8000) {
-        rotationTipAtRef.current = now;
-        showGlobalNotification(
-          'info',
-          t('pdf:toolbar.highlight_rotation_disabled', {
-            defaultValue: '旋转视图下暂不支持划词高亮，请恢复原始方向后再试',
-          })
-        );
-      }
-      return;
-    }
 
     // 获取选区位置
     const range = selection.getRangeAt(0);
@@ -1190,7 +1300,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     // 窗口缩放/侧边栏开合/单双页切换后已存高亮全部错位。
     const rects: { x: number; y: number; width: number; height: number }[] = [];
     const clientRects = range.getClientRects();
-    if (pageWrapper) {
+    // 旋转状态下选区 rect 是旋转后的屏幕坐标，持久化后恢复原始角度会
+    // 双重错位；因此只禁用“创建高亮”，复制仍可使用。
+    if (rotation === 0 && pageWrapper) {
       const pageRect = pageWrapper.getBoundingClientRect();
       if (pageRect.width > 0 && pageRect.height > 0) {
         for (let i = 0; i < clientRects.length; i++) {
@@ -1206,9 +1318,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
     
     setPendingHighlight({ text, pageIndex, rects });
-    setHighlightMenuPos({ x: rect.left + rect.width / 2, y: rect.top - 10 });
+    setHighlightMenuPos({ x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom });
     setShowHighlightMenu(true);
-  }, [canPersistAnnotations, currentPage, rotation, t]);
+  }, [currentPage, rotation]);
+
+  // 翻译/出题/制卡等学习动作不在此处：统一由共享层 SelectionToolbar
+  // （PdfSelectionActions）承载，避免与 viewer 内建划词菜单双入口重复。
 
   // 添加高亮
   const addHighlight = useCallback((color: string) => {
@@ -1229,6 +1344,26 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setPendingHighlight(null);
     window.getSelection()?.removeAllRanges();
   }, [pendingHighlight]);
+
+  // 划词动作统一收尾：关菜单 + 清选区
+  const closeSelectionMenu = useCallback(() => {
+    setShowHighlightMenu(false);
+    setPendingHighlight(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  // 划词：复制原文
+  const handleCopySelection = useCallback(() => {
+    if (!pendingHighlight) return;
+    const text = pendingHighlight.text;
+    closeSelectionMenu();
+    void copyTextToClipboard(text).then((ok) => {
+      showGlobalNotification(
+        ok ? 'success' : 'error',
+        ok ? t('pdf:selection.copied') : t('pdf:selection.copy_failed')
+      );
+    });
+  }, [pendingHighlight, closeSelectionMenu, t]);
 
   const highlightsByPage = useMemo(() => {
     const map = new Map<number, Highlight[]>();
@@ -1252,6 +1387,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const removeHighlight = useCallback((id: string) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
     setActiveHighlightId(prev => (prev === id ? null : prev));
+    setActiveHighlightAnchor(null);
+  }, []);
+
+  // 修改已存在高亮的颜色（点击高亮块弹出的操作层入口）
+  const updateHighlightColor = useCallback((id: string, color: string) => {
+    setHighlights(prev => prev.map(h => (h.id === id ? { ...h, color } : h)));
   }, []);
 
   const activeHighlight = useMemo(
@@ -1259,13 +1400,22 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     [activeHighlightId, highlights]
   );
 
-  // 点按其他区域关闭高亮操作条（操作条自身与高亮块内不关闭）
+  // 两个浮动菜单的视口钳位（贴顶时翻转到锚点下方，水平方向夹在视口内）
+  const selectionMenu = useClampedMenuFrame(
+    showHighlightMenu && !isMobileLike ? highlightMenuPos : null
+  );
+  const highlightActionMenu = useClampedMenuFrame(
+    activeHighlight && activeHighlightAnchor ? activeHighlightAnchor : null
+  );
+
+  // 点按其他区域关闭高亮操作条/浮层（操作条自身与高亮块内不关闭）
   useEffect(() => {
     if (!activeHighlightId) return;
     const handlePointerDown = (e: PointerEvent) => {
       const target = e.target as Element | null;
-      if (target?.closest('.ds-pdf__highlight-bar, .ds-pdf__highlight-rect')) return;
+      if (target?.closest('.ds-pdf__highlight-bar, .ds-pdf__highlight-rect, .ds-highlight-menu')) return;
       setActiveHighlightId(null);
+      setActiveHighlightAnchor(null);
     };
     const timer = window.setTimeout(
       () => document.addEventListener('pointerdown', handlePointerDown),
@@ -1296,14 +1446,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return [...bookmarks].sort((a, b) => a.page - b.page);
   }, [bookmarks]);
   
-  // 添加书签
+  // 添加书签（编辑入口在侧栏书签 tab 内）
   const addBookmark = useCallback(() => {
     // 检查当前页是否已有书签
     if (currentPageBookmark) {
       // 已有书签，跳转到编辑模式
       setEditingBookmarkId(currentPageBookmark.id);
       setEditingBookmarkTitle(currentPageBookmark.title);
-      setShowBookmarkList(true);
+      setSidebarMode('bookmarks');
       return;
     }
     
@@ -1321,7 +1471,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     // 自动进入编辑模式
     setEditingBookmarkId(newBookmark.id);
     setEditingBookmarkTitle(newBookmark.title);
-    setShowBookmarkList(true);
+    setSidebarMode('bookmarks');
   }, [currentPage, currentPageBookmark, bookmarks, onBookmarksChange, t]);
   
   // 删除书签
@@ -1358,11 +1508,62 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
   }, [numPages, currentPage, onPageChange]);
   
-  // 跳转到书签页面
+  // 跳转到书签页面（桌面侧栏保持打开便于连续跳转；移动端由调用处关闭子屏）
   const goToBookmark = useCallback((bookmark: Bookmark) => {
     goToPage(bookmark.page);
-    setShowBookmarkList(false);
   }, [goToPage]);
+
+  // ========== 批注列表精确定位（r5-S1，对标 Zotero「Show on Page」） ==========
+  // 点击批注项不再只 goToPage：跳页后轮询等待目标高亮块渲染
+  // （页面虚拟化 + 高亮层随页挂载，滚动到位前元素不存在），
+  // 找到后把首个矩形滚到视口中部并闪烁（CSS 动画，reduced-motion 有静态降级）。
+  const [focusedHighlightId, setFocusedHighlightId] = useState<string | null>(null);
+  const highlightFocusPollTimerRef = useRef<number | null>(null);
+  const highlightFocusFadeTimerRef = useRef<number | null>(null);
+  const clearHighlightFocusTimers = useCallback(() => {
+    if (highlightFocusPollTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusPollTimerRef.current);
+      highlightFocusPollTimerRef.current = null;
+    }
+    if (highlightFocusFadeTimerRef.current !== null) {
+      window.clearTimeout(highlightFocusFadeTimerRef.current);
+      highlightFocusFadeTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearHighlightFocusTimers, [clearHighlightFocusTimers]);
+
+  const focusHighlight = useCallback((hl: Pick<Highlight, 'id' | 'pageIndex'>) => {
+    clearHighlightFocusTimers();
+    setFocusedHighlightId(null);
+    goToPage(hl.pageIndex);
+    const escapedId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(hl.id)
+        : hl.id.replace(/["\\]/g, '\\$&');
+    const deadline = Date.now() + 3000;
+    const tryLocate = () => {
+      highlightFocusPollTimerRef.current = null;
+      const layer = pageContainerRef.current?.querySelector(
+        `[data-highlight-id="${escapedId}"]`
+      );
+      const rect = layer?.querySelector('.ds-pdf__highlight-rect');
+      if (rect) {
+        // 跳页的虚拟列表平滑滚动已把目标页带近，这里再精确到矩形本身
+        rect.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setFocusedHighlightId(hl.id);
+        highlightFocusFadeTimerRef.current = window.setTimeout(() => {
+          setFocusedHighlightId(null);
+          highlightFocusFadeTimerRef.current = null;
+        }, 1600);
+        return;
+      }
+      if (Date.now() < deadline) {
+        highlightFocusPollTimerRef.current = window.setTimeout(tryLocate, 120);
+      }
+      // 超时静默放弃：goToPage 已完成页级跳转，定位闪烁是增强不是承诺
+    };
+    tryLocate();
+  }, [clearHighlightFocusTimers, goToPage]);
   
   // 开始编辑书签
   const startEditBookmark = useCallback((bookmark: Bookmark) => {
@@ -1543,6 +1744,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         const getResult = await dstu.get(resourcePath);
         if (!getResult.ok) {
           console.warn('[EnhancedPdfViewer] 获取资源元数据失败，跳过保存高亮:', getResult.error);
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           return;
         }
         
@@ -1556,6 +1758,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         );
         if (baseline.status === 'missing_revision') {
           console.warn('[EnhancedPdfViewer] 缺少批注版本，重新加载后再保存');
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           return;
         }
         if (baseline.status === 'reload') {
@@ -1563,6 +1766,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           lastSavedHighlightsRef.current = JSON.stringify(baseline.highlights);
           annotationRevisionRef.current = baseline.revision;
           console.warn('[EnhancedPdfViewer] 批注已在其他窗口更新，已加载最新版本');
+          // 本地修改被服务端版本覆盖 —— 必须让用户知道，而不是静默回滚
+          showGlobalNotification('warning', t('pdf:annotations.remote_updated'));
           return;
         }
         const expectedRevision = baseline.expectedRevision;
@@ -1587,6 +1792,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           // OCC conflicts and failed writes must not leave an unsaved local
           // view masquerading as committed state. Reload the authoritative
           // annotations and revision so the next user edit has a valid base.
+          // 回滚对用户必须可见：弹错误提示而非静默丢弃本地修改。
+          showGlobalNotification('error', t('pdf:annotations.save_failed'));
           const current = await dstu.get(resourcePath);
           if (current.ok) {
             const serverHighlights = current.value.metadata?.highlights;
@@ -1604,6 +1811,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         }
       } catch (err) {
         console.error('[EnhancedPdfViewer] 保存高亮批注异常:', err);
+        showGlobalNotification('error', t('pdf:annotations.save_failed'));
         const current = await dstu.get(resourcePath);
         if (current.ok) {
           const serverHighlights = current.value.metadata?.highlights;
@@ -1629,7 +1837,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         highlightsSaveTimerRef.current = null;
       }
     };
-  }, [highlights, resourcePath, onHighlightsChange]);
+  }, [highlights, resourcePath, onHighlightsChange, t]);
   
   // 组件卸载时清理定时器并刷新待保存高亮
   useEffect(() => {
@@ -1707,8 +1915,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setDocumentRetryKey((k) => k + 1);
   }, []);
 
-  const handlePrevPage = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
-  const handleNextPage = useCallback(() => goToPage(currentPage + 1), [currentPage, goToPage]);
+  // 翻页步进：单页 ±1；双页按 spread ±2（对齐行首，避免同 spread 内空翻；
+  // 封面偏移下 [1] [2,3] [4,5] … 以偶数页为行首）
+  const handlePrevPage = useCallback(
+    () => goToPage(getPrevNavigationPage(currentPage, viewMode, numPages, coverOffset)),
+    [currentPage, viewMode, numPages, coverOffset, goToPage],
+  );
+  const handleNextPage = useCallback(
+    () => goToPage(getNextNavigationPage(currentPage, viewMode, numPages, coverOffset)),
+    [currentPage, viewMode, numPages, coverOffset, goToPage],
+  );
 
   const handlePageInputSubmit = useCallback(() => {
     const pageNum = parseInt(pageInputValue, 10);
@@ -2128,12 +2344,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           setSearchRangesByPage(new Map());
           setCurrentSearchIndex(0);
           setIsSearching(false);
+          setSearchProgress(null);
         }
         if (showHighlightMenu) setShowHighlightMenu(false);
         return;
       }
       
       if (isInputFocused) return;
+
+      // 进度条（role=slider）持有焦点时，翻页类按键交给它自己的 onKeyDown
+      // 处理（本监听是容器上的原生监听，先于 React 合成事件触发，
+      // 不做豁免会双跳一页）。
+      const sliderFocused = Boolean(
+        (e.target as HTMLElement | null)?.closest?.('.ds-pdf__progress-bar')
+      );
 
       // 空格：按标准阅读器行为滚动一屏（Shift+空格向上），不再抢占为翻页。
       // 焦点在按钮/链接等可激活控件上时不拦截（空格应触发该控件）。
@@ -2150,17 +2374,41 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         return;
       }
 
-      // 翻页快捷键
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      // 翻页快捷键（双页模式按 spread ±2；封面偏移下首行为 [1] 单独成页）
+      if (!sliderFocused && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
-        goToPage(currentPageRef.current - 1);
-      } else if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        goToPage(
+          e.key === 'ArrowLeft'
+            ? getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current, coverOffsetRef.current)
+            : getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current, coverOffsetRef.current)
+        );
+      } else if (!sliderFocused && (e.key === 'PageUp' || e.key === 'PageDown')) {
+        // ★ 明确语义：页面放大到一屏放不下时 PageUp/Down 滚一屏
+        // （避免跳页略过当前页未读部分）；页面完整可见时按 spread/页翻页。
         e.preventDefault();
-        goToPage(currentPageRef.current + 1);
-      } else if (e.key === 'Home') {
+        const viewport = pageContainerRef.current;
+        const pageEl = viewport?.querySelector(
+          `[data-page-number="${currentPageRef.current}"]`
+        );
+        const action = resolvePageScrollKeyAction(
+          pageEl?.getBoundingClientRect().height ?? 0,
+          viewport?.clientHeight ?? 0
+        );
+        if (action === 'scroll' && viewport) {
+          const delta = viewport.clientHeight * 0.88 * (e.key === 'PageUp' ? -1 : 1);
+          const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          viewport.scrollBy({ top: delta, behavior: reduceMotion ? 'auto' : 'smooth' });
+        } else {
+          goToPage(
+            e.key === 'PageUp'
+              ? getPrevNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current, coverOffsetRef.current)
+              : getNextNavigationPage(currentPageRef.current, viewModeRef.current, numPagesRef.current, coverOffsetRef.current)
+          );
+        }
+      } else if (!sliderFocused && e.key === 'Home') {
         e.preventDefault();
         goToPage(1);
-      } else if (e.key === 'End') {
+      } else if (!sliderFocused && e.key === 'End') {
         e.preventDefault();
         goToPage(numPagesRef.current);
       }
@@ -2194,6 +2442,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     container.addEventListener('keydown', handleKeyDown);
     return () => container.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, showHighlightMenu, goToPage, abortSearchTask, handleRotate, handleRotateCcw, handleZoomIn, handleZoomOut, handleZoomModeSelect]);
+
+  // ========== 壳层搜索转发 ==========
+  // 文件预览窗（FilePreviewAppWindow）的 Cmd/Ctrl+F 通过自定义事件转发到
+  // 本组件的全文搜索，与 EPUB 的 epub-preview-open-search 同构。
+  // 依赖 file：无文档时根节点走空态分支、containerRef 为 null，文档就绪后再绑。
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const openSearch = () => {
+      setShowSearch(true);
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+    container.addEventListener('pdf-preview-open-search', openSearch);
+    return () => container.removeEventListener('pdf-preview-open-search', openSearch);
+  }, [file]);
 
   // ========== 键盘焦点保障 ==========
   // 快捷键监听挂在容器上，需要容器持有焦点。文档就绪后自动 focus 容器
@@ -2293,18 +2556,67 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setScrubPage(null);
   }, []);
 
-  const pageRowCount = useMemo(() => (
-    viewMode === 'dual' ? Math.ceil(numPages / 2) : numPages
-  ), [viewMode, numPages]);
+  // role=slider 键盘操作（WAI-ARIA slider pattern）：
+  // ←/↓ 上一页、→/↑ 下一页（双页按 spread 步进）、PageUp/Down ±10 页、Home/End 首末页。
+  // 容器级快捷键监听对 slider 焦点已豁免这些按键，此处不会双跳。
+  const handleProgressKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (numPages <= 0) return;
+    let target: number;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        target = getNextNavigationPage(currentPage, viewMode, numPages, coverOffset);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        target = getPrevNavigationPage(currentPage, viewMode, numPages, coverOffset);
+        break;
+      case 'PageUp':
+        target = Math.max(1, currentPage - 10);
+        break;
+      case 'PageDown':
+        target = Math.min(numPages, currentPage + 10);
+        break;
+      case 'Home':
+        target = 1;
+        break;
+      case 'End':
+        target = numPages;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    goToPage(target);
+  }, [numPages, currentPage, viewMode, coverOffset, goToPage]);
+
+  // 双页行映射：标准配对 [1,2] [3,4] …；封面偏移 [1] [2,3] [4,5] …
+  // （封面行独占 rowIndex 0，其余行以偶数页为行首，与 pdfPageNavigation 语义一致）
+  const pageRowCount = useMemo(() => {
+    if (viewMode !== 'dual') return numPages;
+    if (coverOffset) return numPages > 0 ? 1 + Math.ceil((numPages - 1) / 2) : 0;
+    return Math.ceil(numPages / 2);
+  }, [viewMode, numPages, coverOffset]);
 
   const getRowPages = useCallback((rowIndex: number) => {
     if (viewMode === 'dual') {
-      const first = rowIndex * 2 + 1;
-      const second = first + 1;
-      return [first, second].filter(pageNum => pageNum <= numPages);
+      let first: number;
+      if (coverOffset) {
+        if (rowIndex === 0) return numPages >= 1 ? [1] : [];
+        first = rowIndex * 2;
+      } else {
+        first = rowIndex * 2 + 1;
+      }
+      return [first, first + 1].filter(pageNum => pageNum <= numPages);
     }
     return [rowIndex + 1];
-  }, [viewMode, numPages]);
+  }, [viewMode, numPages, coverOffset]);
+
+  // 页码 → 虚拟行索引（getRowPages 的逆映射）
+  const getRowIndexForPage = useCallback((pageNum: number) => {
+    if (viewMode !== 'dual') return pageNum - 1;
+    return coverOffset ? Math.floor(pageNum / 2) : Math.floor((pageNum - 1) / 2);
+  }, [viewMode, coverOffset]);
 
   // ========== 虚拟行高估算 ==========
   // 使用缓存的每页真实宽高比（首页来自 viewport，其余页在渲染成功时记录），
@@ -2377,18 +2689,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const rafId = requestAnimationFrame(() => pageVirtualizer.measure());
     return () => cancelAnimationFrame(rafId);
     // rotation 影响页面布局高度（90°/270° 时宽高互换），需触发重新测量；
-    // basePageSize 到位后行高估算基准变化，同样需要重估
-  }, [pageRowCount, pageVirtualizer, pageWidth, viewMode, rotation, basePageSize]);
+    // basePageSize 到位后行高估算基准变化，同样需要重估；
+    // coverOffset 改变行配对（奇偶互换），行数不变时也要重排
+  }, [pageRowCount, pageVirtualizer, pageWidth, viewMode, rotation, basePageSize, coverOffset]);
 
   useEffect(() => {
     scrollToPageRef.current = (pageNum: number) => {
       if (!pageContainerRef.current || pageRowCount === 0) return;
-      const rowIndex = viewMode === 'dual'
-        ? Math.floor((pageNum - 1) / 2)
-        : pageNum - 1;
-      pageVirtualizer.scrollToIndex(rowIndex, { align: 'start', behavior: 'smooth' });
+      pageVirtualizer.scrollToIndex(getRowIndexForPage(pageNum), { align: 'start', behavior: 'smooth' });
     };
-  }, [pageRowCount, pageVirtualizer, viewMode]);
+  }, [pageRowCount, pageVirtualizer, getRowIndexForPage]);
 
   // ★ 2026-06-12（代理 3 审阅 H3）：恢复初始页（阅读进度）。
   // 旧实现 initialPage 只初始化 currentPage 状态，从不滚动视口：
@@ -2401,14 +2711,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     initialScrollDoneRef.current = true;
     if (initialPage > 0) {
       const targetPage = Math.min(initialPage + 1, numPages);
-      const rowIndex = viewMode === 'dual'
-        ? Math.floor((targetPage - 1) / 2)
-        : targetPage - 1;
+      const rowIndex = getRowIndexForPage(targetPage);
       requestAnimationFrame(() => {
         pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
       });
     }
-  }, [numPages, pageRowCount, initialPage, viewMode, pageVirtualizer]);
+  }, [numPages, pageRowCount, initialPage, getRowIndexForPage, pageVirtualizer]);
 
   // 滚动监听：使用虚拟列表数据更新当前页码，避免频繁 DOM 查询
   useEffect(() => {
@@ -2593,11 +2901,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 高亮覆盖层 — v2 为 0–1 相对坐标（按百分比渲染，尺寸无关）；
             历史数据（无 coordVersion）按旧逻辑乘以当前 scale 兜底 */}
         {getPageHighlights(pageNum).map(hl => (
-          <div key={hl.id} className="ds-pdf__highlight-layer">
+          // data-highlight-id：批注列表精确定位（focusHighlight）用它找到高亮块
+          <div key={hl.id} className="ds-pdf__highlight-layer" data-highlight-id={hl.id}>
             {hl.rects.map((rect, idx) => (
               <div
                 key={idx}
-                className="ds-pdf__highlight-rect"
+                className={`ds-pdf__highlight-rect${focusedHighlightId === hl.id ? ' ds-pdf__highlight-rect--focus' : ''}`}
                 style={
                   hl.coordVersion === 2
                     ? {
@@ -2616,11 +2925,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       }
                 }
                 title={hl.text}
-                // 触屏 hover tooltip 不可达：点按高亮块弹出底部轻量操作条
-                onClick={isCoarsePointer ? (e) => {
+                // 触屏 → 底部轻量操作条；桌面 → 锚定高亮块的改色/删除浮层
+                onClick={(e) => {
                   e.stopPropagation();
+                  if (isCoarsePointer) {
+                    setActiveHighlightAnchor(null);
+                  } else {
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setActiveHighlightAnchor({ x: r.left + r.width / 2, top: r.top, bottom: r.bottom });
+                  }
                   setActiveHighlightId(prev => (prev === hl.id ? null : hl.id));
-                } : undefined}
+                }}
               />
             ))}
           </div>
@@ -2630,7 +2945,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <div className="ds-pdf__page-overlay">
             <button
               type="button"
-              className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`}
+              className={`ds-pdf__select-btn [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 [@media(pointer:coarse)]:justify-center ${isSelected ? 'selected' : ''}`}
               onClick={() => handleTogglePageSelect(pageNum)}
               aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
@@ -2652,6 +2967,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     annotationLayerRange,
     currentPage,
     enableStudyControls,
+    focusedHighlightId,
     resolvedEnableTextSelection,
     pdfSettings.enableAnnotationLayerByDefault,
     getPageShimmer,
@@ -2704,6 +3020,102 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     );
   }, [currentPage, goToPage, effectiveThumbnailWidth, thumbnailDpr]);
 
+  // 侧栏 tab 标签（桌面 tabs 与移动子屏分段共用）
+  const sidebarTabLabels: Record<Exclude<SidebarMode, 'none'>, string> = {
+    outline: t('pdf:toolbar.outline'),
+    thumbnails: t('pdf:toolbar.thumbnails'),
+    bookmarks: t('pdf:bookmark.bookmarkList'),
+    highlights: t('pdf:toolbar.highlights'),
+  };
+
+  // 书签 tab 内容（桌面侧栏 / 移动子屏共用）。
+  // onNavigate：移动端点击条目跳页后关闭子屏；桌面保持打开便于连续跳转。
+  const renderBookmarkList = (onNavigate?: () => void) => (
+    <CustomScrollArea
+      className="ds-bookmarks-list"
+      viewportClassName="ds-bookmarks-list-viewport"
+    >
+      {sortedBookmarks.length === 0 ? (
+        <div className="ds-bookmarks-empty">
+          <Bookmark size={24} className="ds-bookmarks-empty-icon" />
+          <p>{t('pdf:bookmark.noBookmarks')}</p>
+          <p className="ds-bookmarks-empty-hint">{t('pdf:bookmark.addHint')}</p>
+        </div>
+      ) : (
+        sortedBookmarks.map(bm => (
+          <div
+            key={bm.id}
+            className={`ds-bookmark-item ${bm.page === currentPage ? 'current' : ''} ${editingBookmarkId === bm.id ? 'editing' : ''}`}
+            onClick={() => {
+              if (editingBookmarkId === bm.id) return;
+              goToBookmark(bm);
+              onNavigate?.();
+            }}
+          >
+            <div className="ds-bookmark-icon">
+              <Bookmark size={14} />
+            </div>
+            <div className="ds-bookmark-content">
+              {editingBookmarkId === bm.id ? (
+                <input
+                  type="text"
+                  className="ds-bookmark-title-input [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!text-[16px]"
+                  value={editingBookmarkTitle}
+                  onChange={(e) => setEditingBookmarkTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      updateBookmarkTitle(bm.id, editingBookmarkTitle);
+                    } else if (e.key === 'Escape') {
+                      cancelEditBookmark();
+                    }
+                  }}
+                  onBlur={() => updateBookmarkTitle(bm.id, editingBookmarkTitle)}
+                  onClick={(e) => e.stopPropagation()}
+                  autoFocus
+                />
+              ) : (
+                <>
+                  <div className="ds-bookmark-title">{bm.title}</div>
+                  <div className="ds-bookmark-meta">
+                    {t('pdf:toolbar.page', { page: bm.page })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="ds-bookmark-actions">
+              {editingBookmarkId !== bm.id && (
+                <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle')} aria-label={t('pdf:a11y.edit')}>
+                  <Pencil size={12} />
+                </DsButton>
+              )}
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark')} aria-label={t('pdf:a11y.delete')}>
+                <Trash size={12} />
+              </DsButton>
+            </div>
+          </div>
+        ))
+      )}
+    </CustomScrollArea>
+  );
+
+  // 批注 tab 内容（桌面侧栏 / 移动子屏共用）——r5 起独立为 PdfAnnotationsPanel
+  // （筛选 + 导出为笔记 + 回链），点击批注项走 focusHighlight 精确定位；
+  // 移动端 onNavigate 关闭子屏后再定位（面板挡着页面时闪烁无意义）。
+  const renderHighlightList = (onNavigate?: () => void) => (
+    <React.Suspense fallback={null}>
+      <PdfAnnotationsPanel
+        highlights={highlights}
+        fileName={fileName}
+        resourcePath={resourcePath}
+        onSelectHighlight={(hl) => {
+          onNavigate?.();
+          focusHighlight(hl);
+        }}
+        onRemoveHighlight={removeHighlight}
+      />
+    </React.Suspense>
+  );
+
   if (!file) {
     return (
       <div className={`ds-pdf-viewer ${themeClass} ${className || ''}`} style={style}>
@@ -2720,6 +3132,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', ...style }}
       ref={containerRef}
       tabIndex={0}
+      data-pdf-preview
       onPointerDown={handleRootPointerDown}
     >
       {/* 搜索栏 */}
@@ -2745,6 +3158,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   })}
             </span>
           )}
+          {/* 增量扫描进度：命中已实时展示，此处标注还在扫（大文档不再只有转圈） */}
+          {isSearching && searchProgress && searchProgress.total > 0 && (
+            <span className="ds-search-info ds-search-progress" role="status">
+              {isSmallViewport
+                ? `${searchProgress.scanned}/${searchProgress.total}…`
+                : t('pdf:toolbar.search_progress', {
+                    scanned: searchProgress.scanned,
+                    total: searchProgress.total,
+                  })}
+            </span>
+          )}
           {searchQuery && searchResults.length === 0 && !isSearching && (
             <span className="ds-search-info ds-search-no-results">
               {t('pdf:toolbar.no_results')}
@@ -2762,32 +3186,70 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
-      {/* 高亮菜单：桌面为选区上方浮动菜单；移动端改为 viewer 内底部内联色板条
-          （absolute bottom，非 fixed body 层，避让底栏与 safe-area） */}
+      {/* 阅读划词工具条（共享层 SelectionToolbar）：解释 / 翻译 / 保存为笔记 /
+          制卡 / 添加到聊天。挂在选区下方，与上方的高亮选色菜单错开。
+          注意：documentTitle 必须用 fileName——DSTU resourcePath 的末段是资源 ID
+          （如 /我的教材/tb_xyz789），不是人类可读的文件名。
+          onQuoteToChat 必须转发：否则「添加到聊天」永远落 PREFILL 文本兜底，
+          丢失资源引用 + page locator 语义。 */}
+      <React.Suspense fallback={null}>
+        <PdfSelectionActions
+          containerRef={containerRef}
+          enabled={resolvedEnableTextSelection}
+          isMobileLike={isMobileLike}
+          documentTitle={fileName}
+          onQuoteToChat={onQuoteToChat}
+        />
+      </React.Suspense>
+
+      {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
+          移动端改为 viewer 内底部内联色板条
+          （absolute bottom，非 fixed body 层，避让底栏与 safe-area）。
+          只保留 4 色高亮 + 复制；做笔记/翻译/出题/制卡/引用到对话等学习动作
+          由共享层 SelectionToolbar（上方 PdfSelectionActions）统一承载，不再重复。 */}
       {showHighlightMenu && !isMobileLike && (
         <div
+          ref={selectionMenu.ref}
           className="ds-highlight-menu"
-          style={{
-            position: 'fixed',
-            left: highlightMenuPos.x,
-            top: highlightMenuPos.y,
-            transform: 'translate(-50%, -100%)',
-          }}
+          role="toolbar"
+          aria-label={t('pdf:selection.menu_label')}
+          style={
+            selectionMenu.frame
+              ? { position: 'fixed', left: selectionMenu.frame.left, top: selectionMenu.frame.top }
+              : { position: 'fixed', left: highlightMenuPos.x, top: highlightMenuPos.top, visibility: 'hidden' }
+          }
         >
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          {canPersistAnnotations && rotation === 0 && (
+            <>
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+              <span className="ds-highlight-menu__divider" aria-hidden="true" />
+            </>
+          )}
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
+            <Copy size={16} />
+          </DsButton>
         </div>
       )}
 
       {showHighlightMenu && isMobileLike && (
-        <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlight')}>
+        <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:selection.menu_label')}>
           <span className="ds-pdf__highlight-bar-label">{t('pdf:toolbar.highlight')}</span>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+          {canPersistAnnotations && rotation === 0 && (
+            <>
+              {/* 色板 36px（bar 内 CSS 特异性高于 coarse 全局 32px）：伪元素扩命中区到 44px
+                  （36 + 2×4；bar gap 10px，相邻命中区不重叠），视觉尺寸不变 */}
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label={t('pdf:toolbar.highlight_yellow')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label={t('pdf:toolbar.highlight_green')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label={t('pdf:toolbar.highlight_blue')} />
+              <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-color relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label={t('pdf:toolbar.highlight_red')} />
+            </>
+          )}
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCopySelection} title={t('pdf:selection.copy')} aria-label={t('pdf:selection.copy')}>
+            <Copy size={16} />
+          </DsButton>
           <DsButton
             variant="ghost"
             size="icon"
@@ -2804,14 +3266,65 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
-      {/* 触屏点按页面内高亮块后的轻量操作条（复用底部选色条样式） */}
-      {activeHighlight && !showHighlightMenu && (
+      {/* 桌面端点按高亮块后的浮动操作层：改色 + 删除（锚定高亮块，钳位到视口内） */}
+      {activeHighlight && activeHighlightAnchor && !showHighlightMenu && (
+        <div
+          ref={highlightActionMenu.ref}
+          className="ds-highlight-menu"
+          role="toolbar"
+          aria-label={t('pdf:toolbar.highlights')}
+          style={
+            highlightActionMenu.frame
+              ? { position: 'fixed', left: highlightActionMenu.frame.left, top: highlightActionMenu.frame.top }
+              : { position: 'fixed', left: activeHighlightAnchor.x, top: activeHighlightAnchor.top, visibility: 'hidden' }
+          }
+        >
+          {(Object.entries(HIGHLIGHT_COLORS) as [keyof typeof HIGHLIGHT_COLORS, string][]).map(([name, color]) => (
+            <DsButton
+              key={name}
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={`ds-highlight-color ${activeHighlight.color === color ? 'ds-highlight-color--current' : ''}`}
+              style={{ background: color }}
+              onClick={() => updateHighlightColor(activeHighlight.id, color)}
+              title={t(`pdf:toolbar.highlight_${name}`)}
+              aria-label={t(`pdf:toolbar.highlight_${name}`)}
+              aria-pressed={activeHighlight.color === color}
+            />
+          ))}
+          <span className="ds-highlight-menu__divider" aria-hidden="true" />
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="ds-btn ds-btn-sm"
+            onClick={() => removeHighlight(activeHighlight.id)}
+            title={t('pdf:toolbar.delete_highlight')}
+            aria-label={t('pdf:a11y.delete')}
+          >
+            <Trash size={16} />
+          </DsButton>
+        </div>
+      )}
+
+      {/* 触屏点按页面内高亮块后的轻量操作条（复用底部选色条样式）：改色 + 删除 */}
+      {activeHighlight && !activeHighlightAnchor && !showHighlightMenu && (
         <div className="ds-pdf__highlight-bar ui-rise-in" role="toolbar" aria-label={t('pdf:toolbar.highlights')}>
-          <span
-            className="ds-highlight-color"
-            style={{ backgroundColor: activeHighlight.color, cursor: 'default' }}
-            aria-hidden="true"
-          />
+          {(Object.entries(HIGHLIGHT_COLORS) as [keyof typeof HIGHLIGHT_COLORS, string][]).map(([name, color]) => (
+            <DsButton
+              key={name}
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={`ds-highlight-color ${activeHighlight.color === color ? 'ds-highlight-color--current' : ''}`}
+              style={{ background: color }}
+              onClick={() => updateHighlightColor(activeHighlight.id, color)}
+              title={t(`pdf:toolbar.highlight_${name}`)}
+              aria-label={t(`pdf:toolbar.highlight_${name}`)}
+              aria-pressed={activeHighlight.color === color}
+            />
+          ))}
           <span className="ds-pdf__highlight-bar-text">{activeHighlight.text}</span>
           <DsButton
             variant="ghost"
@@ -2840,69 +3353,125 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {/* 主体区域（侧边栏 + 内容） */}
       <div className="ds-pdf__main">
         {/* 侧边栏（>640 并排面板；≤640 改为下方的全屏内联子屏，不再侧滑 overlay）
-            ★ 桌面端常挂容器：开合走 width 过渡（--open 修饰类），内容按需挂载。 */}
+            ★ 桌面端常挂容器：开合走 width 过渡（--open 修饰类），内容按需挂载。
+            ★ 目录/缩略图/书签/批注合并为同一侧栏的 tab（原书签/批注为独立浮动
+            面板，与侧栏互相遮挡；合并后同域互斥切换，浮层只剩菜单类）。 */}
         {!isSmallViewport && (
           <div
             className={`ds-pdf__sidebar ${sidebarMode !== 'none' ? 'ds-pdf__sidebar--open' : ''}`}
             aria-hidden={sidebarMode === 'none'}
           >
-            {/* 目录 */}
-            {sidebarMode === 'outline' && outline && (
-              <div className="ds-pdf__outline">
-                <div className="ds-outline-header">
-                  <span>{t('pdf:toolbar.outline')}</span>
-                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
-                    <X size={14} />
-                  </DsButton>
-                </div>
-                {outlineTip && (
-                  <div className="ds-outline-tip ui-fade-in" role="status">{outlineTip}</div>
-                )}
-                <CustomScrollArea className="ds-outline-content" viewportClassName="ds-outline-content-viewport">
-                  {outline.map((item, idx) => renderOutlineItem(item, 0, String(idx)))}
-                </CustomScrollArea>
-              </div>
-            )}
-            
-            {/* 缩略图 */}
-            {sidebarMode === 'thumbnails' && (
-              <div className="ds-pdf__thumbnails-panel">
-                <div className="ds-outline-header">
-                  <span>{t('pdf:toolbar.thumbnails')}</span>
-                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
-                    <X size={14} />
-                  </DsButton>
-                </div>
-                <CustomScrollArea className="ds-thumbnails-content" viewportRef={thumbnailsContainerRef} viewportClassName="ds-thumbnails-content-viewport">
-                  <div
-                    className="ds-thumbnails-virtualizer"
-                    style={{
-                      height: `${thumbnailVirtualizer.getTotalSize()}px`,
-                      width: '100%',
-                      position: 'relative',
-                    }}
+            {sidebarMode !== 'none' && (
+              <div className="ds-pdf__sidebar-inner">
+                <div className="ds-pdf__sidebar-tabs" role="tablist" aria-label={t('pdf:toolbar.sidebar')}>
+                  {outline && outline.length > 0 && (
+                    <DsButton
+                      variant="ghost"
+                      role="tab"
+                      aria-selected={sidebarMode === 'outline'}
+                      className={`ds-pdf__sidebar-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
+                      onClick={() => setSidebarMode('outline')}
+                      title={sidebarTabLabels.outline}
+                      aria-label={sidebarTabLabels.outline}
+                    >
+                      <List size={15} />
+                    </DsButton>
+                  )}
+                  <DsButton
+                    variant="ghost"
+                    role="tab"
+                    aria-selected={sidebarMode === 'thumbnails'}
+                    className={`ds-pdf__sidebar-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+                    onClick={() => setSidebarMode('thumbnails')}
+                    title={sidebarTabLabels.thumbnails}
+                    aria-label={sidebarTabLabels.thumbnails}
                   >
-                    {thumbnailItems.map((virtualItem) => {
-                      const pageNum = virtualItem.index + 1;
-                      return (
-                        <div
-                          key={virtualItem.key}
-                          data-index={virtualItem.index}
-                          ref={thumbnailVirtualizer.measureElement}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualItem.start}px)`,
-                          }}
-                        >
-                          {renderThumbnail(pageNum)}
-                        </div>
-                      );
-                    })}
+                    <GridFour size={15} />
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    role="tab"
+                    aria-selected={sidebarMode === 'bookmarks'}
+                    className={`ds-pdf__sidebar-tab ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
+                    onClick={() => setSidebarMode('bookmarks')}
+                    title={sidebarTabLabels.bookmarks}
+                    aria-label={sidebarTabLabels.bookmarks}
+                  >
+                    <BookmarkSimple size={15} />
+                    {bookmarks.length > 0 && <span className="ds-pdf__sidebar-tab-count">{bookmarks.length}</span>}
+                  </DsButton>
+                  {(canPersistAnnotations || highlights.length > 0) && (
+                    <DsButton
+                      variant="ghost"
+                      role="tab"
+                      aria-selected={sidebarMode === 'highlights'}
+                      className={`ds-pdf__sidebar-tab ${sidebarMode === 'highlights' ? 'active' : ''}`}
+                      onClick={() => setSidebarMode('highlights')}
+                      title={sidebarTabLabels.highlights}
+                      aria-label={sidebarTabLabels.highlights}
+                    >
+                      <Highlighter size={15} />
+                      {highlights.length > 0 && <span className="ds-pdf__sidebar-tab-count">{highlights.length}</span>}
+                    </DsButton>
+                  )}
+                  <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm ds-pdf__sidebar-close" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
+                    <X size={14} />
+                  </DsButton>
+                </div>
+
+                {/* 目录 */}
+                {sidebarMode === 'outline' && outline && (
+                  <div className="ds-pdf__outline">
+                    {outlineTip && (
+                      <div className="ds-outline-tip ui-fade-in" role="status">{outlineTip}</div>
+                    )}
+                    <CustomScrollArea className="ds-outline-content" viewportClassName="ds-outline-content-viewport">
+                      {outline.map((item, idx) => renderOutlineItem(item, 0, String(idx)))}
+                    </CustomScrollArea>
                   </div>
-                </CustomScrollArea>
+                )}
+
+                {/* 缩略图 */}
+                {sidebarMode === 'thumbnails' && (
+                  <div className="ds-pdf__thumbnails-panel">
+                    <CustomScrollArea className="ds-thumbnails-content" viewportRef={thumbnailsContainerRef} viewportClassName="ds-thumbnails-content-viewport">
+                      <div
+                        className="ds-thumbnails-virtualizer"
+                        style={{
+                          height: `${thumbnailVirtualizer.getTotalSize()}px`,
+                          width: '100%',
+                          position: 'relative',
+                        }}
+                      >
+                        {thumbnailItems.map((virtualItem) => {
+                          const pageNum = virtualItem.index + 1;
+                          return (
+                            <div
+                              key={virtualItem.key}
+                              data-index={virtualItem.index}
+                              ref={thumbnailVirtualizer.measureElement}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualItem.start}px)`,
+                              }}
+                            >
+                              {renderThumbnail(pageNum)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CustomScrollArea>
+                  </div>
+                )}
+
+                {/* 书签 */}
+                {sidebarMode === 'bookmarks' && renderBookmarkList()}
+
+                {/* 批注 */}
+                {sidebarMode === 'highlights' && renderHighlightList()}
               </div>
             )}
           </div>
@@ -2923,7 +3492,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   {loadErrorHint}
                 </p>
               )}
-              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
+              <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2 [@media(pointer:coarse)]:!min-h-11">
                 <ArrowClockwise size={14} />
                 {t('common:retry')}
               </DsButton>
@@ -3039,34 +3608,54 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </CustomScrollArea>
       </div>
 
-      {/* ≤640：目录/缩略图全屏内联子屏（顶栏分段 + 返回；替代侧滑 overlay） */}
+      {/* ≤640：目录/缩略图/书签/批注全屏内联子屏（顶栏分段 + 返回；替代侧滑 overlay） */}
       {isSmallViewport && sidebarMode !== 'none' && (
-        <div className="ds-pdf__mobile-panel" role="region" aria-label={sidebarMode === 'outline' ? t('pdf:toolbar.outline') : t('pdf:toolbar.thumbnails')}>
+        <div className="ds-pdf__mobile-panel" role="region" aria-label={sidebarTabLabels[sidebarMode]}>
           <div className="ds-pdf__mobile-panel-header">
             <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setSidebarMode('none')} aria-label={t('common:back')}>
               <CaretLeft size={18} />
             </DsButton>
             <div className="ds-pdf__mobile-panel-tabs" role="tablist">
               {outline && outline.length > 0 && (
-                <button
-                  type="button"
+                <DsButton
+                  variant="ghost"
                   role="tab"
                   aria-selected={sidebarMode === 'outline'}
-                  className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'outline' ? 'active' : ''}`}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'outline' ? 'active' : ''}`}
                   onClick={() => setSidebarMode('outline')}
                 >
                   {t('pdf:toolbar.outline')}
-                </button>
+                </DsButton>
               )}
-              <button
-                type="button"
+              <DsButton
+                variant="ghost"
                 role="tab"
                 aria-selected={sidebarMode === 'thumbnails'}
-                className={`ds-pdf__mobile-panel-tab ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'thumbnails' ? 'active' : ''}`}
                 onClick={() => setSidebarMode('thumbnails')}
               >
                 {t('pdf:toolbar.thumbnails')}
-              </button>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                role="tab"
+                aria-selected={sidebarMode === 'bookmarks'}
+                className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'bookmarks' ? 'active' : ''}`}
+                onClick={() => setSidebarMode('bookmarks')}
+              >
+                {t('pdf:bookmark.tabLabel')}
+              </DsButton>
+              {(canPersistAnnotations || highlights.length > 0) && (
+                <DsButton
+                  variant="ghost"
+                  role="tab"
+                  aria-selected={sidebarMode === 'highlights'}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'highlights' ? 'active' : ''}`}
+                  onClick={() => setSidebarMode('highlights')}
+                >
+                  {t('pdf:toolbar.highlight_tab')}
+                </DsButton>
+              )}
             </div>
             <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
           </div>
@@ -3126,6 +3715,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </div>
             </CustomScrollArea>
           )}
+
+          {sidebarMode === 'bookmarks' && renderBookmarkList(() => setSidebarMode('none'))}
+
+          {sidebarMode === 'highlights' && renderHighlightList(() => setSidebarMode('none'))}
         </div>
       )}
 
@@ -3155,7 +3748,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </DsButton>
             
             {bookmarks.length > 0 && (
-              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showBookmarkList ? 'active' : ''}`} onClick={() => setShowBookmarkList(!showBookmarkList)} title={t('pdf:bookmark.showBookmarks')} aria-label={t('pdf:bookmark.showBookmarks')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'bookmarks' ? 'active' : ''}`} onClick={() => toggleSidebar('bookmarks')} title={t('pdf:bookmark.showBookmarks')} aria-label={t('pdf:bookmark.showBookmarks')}>
                 <Bookmark size={16} />
                 <span className="ds-bookmark-count">{bookmarks.length}</span>
               </DsButton>
@@ -3168,9 +3761,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </DsButton>
             )}
 
-            {/* 批注列表（原右下角 FAB 收入底栏） */}
+            {/* 批注列表（并入侧栏批注 tab） */}
             {highlights.length > 0 && (
-              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showHighlightList ? 'active' : ''}`} onClick={() => setShowHighlightList(!showHighlightList)} title={t('pdf:toolbar.show_highlights')} aria-label={t('pdf:toolbar.show_highlights')}>
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'highlights' ? 'active' : ''}`} onClick={() => toggleSidebar('highlights')} title={t('pdf:toolbar.show_highlights')} aria-label={t('pdf:toolbar.show_highlights')}>
                 <Highlighter size={16} weight="fill" />
                 <span className="ds-bookmark-count">{highlights.length}</span>
               </DsButton>
@@ -3226,7 +3819,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
           <div className="ds-toolbar-divider" />
 
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={currentPage <= 1} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={!canNavigatePrev(currentPage, viewMode, coverOffset)} title={`${t('pdf:actions.previous_page')} (←)`} aria-label={t('pdf:actions.previous_page')}>
             <CaretLeft size={16} />
           </DsButton>
 
@@ -3251,7 +3844,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             <span className="ds-page-total">/ {numPages || 0}</span>
           </div>
 
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={currentPage >= numPages} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={!canNavigateNext(currentPage, viewMode, numPages, coverOffset)} title={`${t('pdf:actions.next_page')} (→)`} aria-label={t('pdf:actions.next_page')}>
             <CaretRight size={16} />
           </DsButton>
         </div>
@@ -3278,6 +3871,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             {dualPageAvailable && (
               <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')} aria-label={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}>
                 {viewMode === 'single' ? <Book size={16} /> : <BookOpen size={16} />}
+              </DsButton>
+            )}
+
+            {/* 封面偏移：仅双页模式下出现（第 1 页单独成页，对页变为 [2,3] [4,5] …） */}
+            {dualPageAvailable && viewMode === 'dual' && (
+              <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${coverOffset ? 'active' : ''}`} onClick={() => setCoverOffset(prev => !prev)} title={t('pdf:toolbar.cover_offset')} aria-label={t('pdf:toolbar.cover_offset')} aria-pressed={coverOffset}>
+                <BookOpenText size={16} />
               </DsButton>
             )}
 
@@ -3321,7 +3921,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     : t('pdf:bookmark.addBookmark')}</span>
                 </DsButton>
                 {bookmarks.length > 0 && (
-                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${showBookmarkList ? 'active' : ''}`} onClick={() => { setShowBookmarkList(!showBookmarkList); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'bookmarks' ? 'active' : ''}`} onClick={() => { toggleSidebar('bookmarks'); setShowMoreMenu(false); }}>
                     <Bookmark size={14} />
                     <span>{t('pdf:bookmark.showBookmarks')} ({bookmarks.length})</span>
                   </DsButton>
@@ -3333,7 +3933,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   </DsButton>
                 )}
                 {highlights.length > 0 && (
-                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${showHighlightList ? 'active' : ''}`} onClick={() => { setShowHighlightList(!showHighlightList); setShowMoreMenu(false); }}>
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'highlights' ? 'active' : ''}`} onClick={() => { toggleSidebar('highlights'); setShowMoreMenu(false); }}>
                     <Highlighter size={14} weight="fill" />
                     <span>{t('pdf:toolbar.show_highlights')} ({highlights.length})</span>
                   </DsButton>
@@ -3359,6 +3959,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}</span>
                   </DsButton>
                 )}
+                {dualPageAvailable && viewMode === 'dual' && (
+                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${coverOffset ? 'active' : ''}`} onClick={() => { setCoverOffset(prev => !prev); setShowMoreMenu(false); }}>
+                    <BookOpenText size={14} />
+                    <span>{t('pdf:toolbar.cover_offset')}</span>
+                  </DsButton>
+                )}
                 {fullscreenSupported && (
                   <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}>
                     {isFullscreen ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
@@ -3377,14 +3983,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         <div
           className={`ds-pdf__progress-bar ${scrubPage !== null ? 'scrubbing' : ''}`}
           role="slider"
+          tabIndex={0}
+          aria-orientation="horizontal"
           aria-valuemin={1}
           aria-valuemax={numPages}
           aria-valuenow={scrubPage ?? currentPage}
+          aria-valuetext={t('pdf:page_info', { current: scrubPage ?? currentPage, total: numPages })}
           aria-label={t('pdf:page_info', { current: scrubPage ?? currentPage, total: numPages })}
           onPointerDown={handleProgressPointerDown}
           onPointerMove={handleProgressPointerMove}
           onPointerUp={handleProgressPointerUp}
           onPointerCancel={handleProgressPointerCancel}
+          onKeyDown={handleProgressKeyDown}
         >
           <div
             className="ds-pdf__progress-fill"
@@ -3398,139 +4008,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       )}
 
-      {/* 批注列表：>640 浮动面板；≤640 全屏内联子屏（入口在底栏/更多菜单） */}
-      {highlights.length > 0 && showHighlightList && (
-        <div className={isSmallViewport ? 'ds-pdf__mobile-panel' : 'ds-pdf__highlights-panel'}>
-          {isSmallViewport ? (
-            <div className="ds-pdf__mobile-panel-header">
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowHighlightList(false)} aria-label={t('common:back')}>
-                <CaretLeft size={18} />
-              </DsButton>
-              <span className="ds-pdf__mobile-panel-title">{t('pdf:toolbar.highlights')}</span>
-              <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
-            </div>
-          ) : (
-            <div className="ds-outline-header">
-              <span>{t('pdf:toolbar.highlights')}</span>
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowHighlightList(false)} aria-label={t('pdf:a11y.close')}>
-                <X size={14} />
-              </DsButton>
-            </div>
-          )}
-          <CustomScrollArea
-            className="ds-highlights-list"
-            viewportClassName="ds-highlights-list-viewport"
-          >
-            {highlights.map(hl => (
-              <div
-                key={hl.id}
-                className="ds-highlight-item"
-                onClick={() => {
-                  goToPage(hl.pageIndex);
-                  setShowHighlightList(false);
-                }}
-              >
-                <div
-                  className="ds-highlight-color"
-                  style={{ backgroundColor: hl.color }}
-                />
-                <div className="ds-highlight-content">
-                  <div className="ds-highlight-text">{hl.text}</div>
-                  <div className="ds-highlight-meta">
-                    {t('pdf:toolbar.page', { page: hl.pageIndex })}
-                  </div>
-                </div>
-                <DsButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label={t('pdf:a11y.delete')}>
-                  <X size={12} />
-                </DsButton>
-              </div>
-            ))}
-          </CustomScrollArea>
-        </div>
-      )}
-
-      {/* 书签列表：>640 浮动面板；≤640 全屏内联子屏 */}
-      {showBookmarkList && (
-        <div className={isSmallViewport ? 'ds-pdf__mobile-panel' : 'ds-pdf__bookmarks-panel'}>
-          {isSmallViewport ? (
-            <div className="ds-pdf__mobile-panel-header">
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => setShowBookmarkList(false)} aria-label={t('common:back')}>
-                <CaretLeft size={18} />
-              </DsButton>
-              <span className="ds-pdf__mobile-panel-title">{t('pdf:bookmark.bookmarkList')}</span>
-              <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
-            </div>
-          ) : (
-            <div className="ds-outline-header">
-              <span>{t('pdf:bookmark.bookmarkList')}</span>
-              <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowBookmarkList(false)} aria-label={t('pdf:a11y.close')}>
-                <X size={14} />
-              </DsButton>
-            </div>
-          )}
-          <CustomScrollArea
-            className="ds-bookmarks-list"
-            viewportClassName="ds-bookmarks-list-viewport"
-          >
-            {sortedBookmarks.length === 0 ? (
-              <div className="ds-bookmarks-empty">
-                <Bookmark size={24} className="ds-bookmarks-empty-icon" />
-                <p>{t('pdf:bookmark.noBookmarks')}</p>
-                <p className="ds-bookmarks-empty-hint">{t('pdf:bookmark.addHint')}</p>
-              </div>
-            ) : (
-              sortedBookmarks.map(bm => (
-                <div
-                  key={bm.id}
-                  className={`ds-bookmark-item ${bm.page === currentPage ? 'current' : ''} ${editingBookmarkId === bm.id ? 'editing' : ''}`}
-                  onClick={() => editingBookmarkId !== bm.id && goToBookmark(bm)}
-                >
-                  <div className="ds-bookmark-icon">
-                    <Bookmark size={14} />
-                  </div>
-                  <div className="ds-bookmark-content">
-                    {editingBookmarkId === bm.id ? (
-                      <input
-                        type="text"
-                        className="ds-bookmark-title-input"
-                        value={editingBookmarkTitle}
-                        onChange={(e) => setEditingBookmarkTitle(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            updateBookmarkTitle(bm.id, editingBookmarkTitle);
-                          } else if (e.key === 'Escape') {
-                            cancelEditBookmark();
-                          }
-                        }}
-                        onBlur={() => updateBookmarkTitle(bm.id, editingBookmarkTitle)}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                      />
-                    ) : (
-                      <>
-                        <div className="ds-bookmark-title">{bm.title}</div>
-                        <div className="ds-bookmark-meta">
-                          {t('pdf:toolbar.page', { page: bm.page })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div className="ds-bookmark-actions">
-                    {editingBookmarkId !== bm.id && (
-                      <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle')} aria-label={t('pdf:a11y.edit')}>
-                        <Pencil size={12} />
-                      </DsButton>
-                    )}
-                    <DsButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark')} aria-label={t('pdf:a11y.delete')}>
-                      <Trash size={12} />
-                    </DsButton>
-                  </div>
-                </div>
-              ))
-            )}
-          </CustomScrollArea>
-        </div>
-      )}
     </div>
   );
 };

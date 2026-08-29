@@ -8,17 +8,30 @@
  *
  * 热键层：⌘/Ctrl+1..6 = 智能视图（收件箱/今日/即将到期/四象限/已过期/已完成），
  * ⌘/Ctrl+7 = 定时任务，⌘/Ctrl+8 = 回收站；9 暂未分配。
- * - 仅当存在可见的注册宿主（TodoSidebar / TodoIconRail 挂载且未被
- *   display:none / visibility:hidden 隐藏）时才消费按键；
+ * - 仅当存在「有资格」的注册宿主时才消费按键。资格分承载环境：
+ *   - legacy 页面（TodoSidebar 由 App 壳渲染）：宿主可见即有资格
+ *     （display:none / visibility:hidden 双重判定）；
+ *   - workbench 窗口（宿主祖先带 data-wb-window，见 WindowShell）：可见
+ *     之外还要求**窗口处于聚焦态**（data-focused 仅焦点窗持有）——
+ *     桌面上仅仅开着一扇待办窗不足以让 ⌘1..8 全局改写视图；
  * - 复用 workbench 的 isShortcutGuardedEvent：焦点在输入框 / IME 组合中不触发；
  * - 多实例共存（Shell 侧栏 + workbench 窗口）时只执行一次（模块级单监听）。
  *
- * 冲突排查（2026-07）：workbench 快捷键表（shortcuts.ts）与 Tauri 原生菜单
- * （src-tauri/src/menu.rs）均未占用 ⌘/Ctrl+数字，无冲突。
+ * 冲突说明（2026-08 复核）：
+ * - workbench 快捷键表（shortcuts.ts）与 Tauri 原生菜单（src-tauri/src/menu.rs）
+ *   均未占用 ⌘/Ctrl+数字，无冲突；
+ * - 命令面板把 mod+1（跳转智能对话）/ mod+2（技能管理）/ mod+5（仪表盘）等
+ *   注册为**全局导航热键**（navigation.commands.ts，document 冒泡阶段消费）。
+ *   本模块在 window 捕获阶段先行判定：待办宿主有资格（legacy 待办页可见，
+ *   或 workbench 待办窗聚焦）时消费并 preventDefault + stopPropagation，
+ *   命令面板收不到该事件——语义为「待办上下文内数字键属于待办视图切换」；
+ *   宿主无资格时完全放行，mod+数字仍是命令面板的全局导航。该优先级为
+ *   有意设计（上下文就近优先），并有测试锁定（todoShellNav.test.ts）。
  */
 
 import { useEffect, type RefObject } from 'react';
 import { isShortcutGuardedEvent, isMacShortcutPlatform } from '@/features/workbench/core/shortcuts';
+import { isEffectivelyVisible, isHostWindowFocused } from '../utils/domVisibility';
 import { useTodoStore } from '../stores/useTodoStore';
 import { useTodoTrashView } from './TodoTrashDialog';
 import type { TodoViewFilter } from '../types';
@@ -117,27 +130,20 @@ function handleHotkeyKeyDown(e: KeyboardEvent): void {
   e.stopPropagation();
 }
 
-/** display:none（无 rects）与 visibility:hidden（ViewLayerRenderer 离场层）双重判定 */
-function isElementVisible(el: HTMLElement): boolean {
-  if (!el.isConnected) return false;
-  if (el.getClientRects().length === 0) return false;
-  if (typeof window.getComputedStyle === 'function') {
-    const style = window.getComputedStyle(el);
-    if (style.visibility === 'hidden' || style.display === 'none') return false;
-  }
-  return true;
-}
+// 可见性（display:none / visibility:hidden 双重判定）与窗口聚焦门禁
+// 均改用共享 util（utils/domVisibility），语义与旧本地实现完全一致。
 
 /**
  * 注册视图跳转热键宿主。rootRef 指向宿主可见性判定元素
- * （TodoSidebar 的 aside / TodoIconRail 的根）；宿主全部不可见时热键不消费。
+ * （TodoSidebar 的 aside / TodoIconRail 的根）；宿主全部不可见时热键不消费；
+ * workbench 窗口内的宿主还需所在窗口聚焦（⌘1..8 不跨窗生效）。
  */
 export function useTodoViewHotkeys(rootRef: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const host: HotkeyHost = {
       isEligible: () => {
         const el = rootRef.current;
-        return Boolean(el && isElementVisible(el));
+        return Boolean(el && isEffectivelyVisible(el) && isHostWindowFocused(el));
       },
     };
     hotkeyHosts.add(host);
