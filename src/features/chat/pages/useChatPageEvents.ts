@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { extractMessageContentFromBlocks } from '../components/message/messageItemUtils';
 import { pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { sessionManager } from '../core/session/sessionManager';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
@@ -18,6 +20,10 @@ import {
   shouldChatHandleOpenNote,
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
+import {
+  invalidatePendingChatNavigation,
+  markChatPageReady,
+} from '../navigation/pendingChatNavigation';
 import { isHiddenDraftSession } from './draftSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -32,7 +38,6 @@ export interface UseChatPageEventsDeps {
   createAnalysisSession: () => Promise<void>;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
-  loadUngroupedCount: () => Promise<void>;
   canvasSidebarOpen: boolean;
   toggleCanvasSidebar: () => void;
   setPendingOpenResource: React.Dispatch<React.SetStateAction<ResourceListItem | null>>;
@@ -50,12 +55,17 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   const {
     notesContext, t, loadSessions, isInitialLoading, currentSessionId,
     createSession, createAnalysisSession,
-    setSessions, setCurrentSessionId, loadUngroupedCount,
+    setSessions, setCurrentSessionId,
     canvasSidebarOpen, toggleCanvasSidebar, setPendingOpenResource,
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
   } = deps;
+  // 导航事件监听器保持稳定，ready effect 重放事件时读取本次 render 的加载态。
+  // 若把 isInitialLoading 放进监听器依赖，React 会先移除旧监听器，再由前面的
+  // ready effect 派发，导致重放落在无监听器的间隙。
+  const isInitialLoadingRef = useRef(isInitialLoading);
+  isInitialLoadingRef.current = isInitialLoading;
 
   useEffect(() => {
     const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
@@ -85,6 +95,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     };
   }, [notesContext, t]);
 
+  // 导航握手：初始加载完成（loadSessions 已选定启动会话，不会再覆盖导航）后
+  // 进入就绪态并消费挂起的 navigate-to-session / CHAT_NEW_SESSION 意图。
+  // 卸载或重新进入加载态时解除就绪。
+  useEffect(() => {
+    if (isInitialLoading) return;
+    return markChatPageReady();
+  }, [isInitialLoading]);
+
   // 只在挂载时加载一次：loadSessions 的身份会随语言切换（t）变化，
   // 若直接依赖会导致切换语言时重新加载并把当前会话重置回启动 draft
   const hasLoadedSessionsRef = useRef(false);
@@ -108,27 +126,6 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     }
   }, [isInitialLoading, currentSessionId, createSession]);
 
-  // ★ 会话分支：监听 CHAT_V2_BRANCH_SESSION 事件，插入新会话并切换
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const session = (e as CustomEvent)?.detail?.session as ChatSession | undefined;
-      if (!session?.id) return;
-      console.log('[ChatV2Page] CHAT_V2_BRANCH_SESSION:', session.id);
-      // 插入新会话到列表顶部（去重）
-      setSessions((prev) => {
-        if (prev.some((s) => s.id === session.id)) return prev;
-        return [session, ...prev];
-      });
-      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-      // 切换到新会话
-      setCurrentSessionId(session.id);
-      // 刷新未分组计数
-      loadUngroupedCount();
-    };
-    window.addEventListener('CHAT_V2_BRANCH_SESSION', handler);
-    return () => window.removeEventListener('CHAT_V2_BRANCH_SESSION', handler);
-  }, [setCurrentSessionId, loadUngroupedCount, setSessions]);
-
   // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
   useEffect(() => {
     const handler = (e: Event) => {
@@ -144,8 +141,12 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
   const handleNavigateToSession = useCallback(async (e: Event) => {
     const sid = (e as CustomEvent<{ sessionId?: string }>)?.detail?.sessionId;
-    if (!sid) return;
+    // 未就绪时，标准事件只供 WorkbenchEventBridge 开窗；导航意图仍保留在
+    // pendingChatNavigation，待 loadSessions 完成后重放，避免被启动 draft 覆盖。
+    if (!sid || isInitialLoadingRef.current) return;
 
+    // 本次事件已被直接消费：作废更早挂起的导航意图（最新意图生效）
+    invalidatePendingChatNavigation();
     setCurrentSessionId(sid);
 
     try {
@@ -269,12 +270,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
       if (!resource) {
         console.warn('[ChatV2Page] Resource not found:', resourceId);
+        showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
         return;
       }
 
       const sourceId = resource.sourceId;
       if (!sourceId) {
         console.warn('[ChatV2Page] Resource has no sourceId:', resourceId);
+        showGlobalNotification('warning', t('contextRef.previewFailedDesc'), t('contextRef.previewFailedTitle'));
         return;
       }
 
@@ -292,8 +295,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       console.log('[ChatV2Page] context-ref:preview -> opened in right panel:', { typeId, sourceId });
     } catch (error) {
       console.error('[ChatV2Page] Failed to handle context-ref:preview:', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error), t('contextRef.previewFailedTitle'));
     }
-  }, []);
+  }, [t]);
 
   useEventRegistry([
     {
@@ -495,6 +499,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         dispatchFocus(800);
       } catch (error) {
         console.error('[ChatV2Page] Failed to handle pdf-ref:open:', getErrorMessage(error));
+        showGlobalNotification('error', getErrorMessage(error), t('pdfRef.openFailedTitle'));
       }
     };
 
@@ -530,6 +535,10 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       // 新建会话
       [COMMAND_EVENTS.CHAT_NEW_SESSION]: () => {
         console.log('[ChatV2Page] CHAT_NEW_SESSION triggered');
+        // 冷启动早到事件只用于壳层开窗；ready 后由导航握手重放并创建一次。
+        if (isInitialLoadingRef.current) return;
+        // 事件已被直接消费：清掉握手挂起意图，避免就绪后重复创建
+        invalidatePendingChatNavigation();
         createSession(getCurrentSessionGroupId());
       },
       // P1-06: 新建分析会话
@@ -620,6 +629,66 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           } catch (error) {
             console.error('[ChatV2Page] Failed to bookmark session:', getErrorMessage(error));
           }
+        }
+      },
+      // 复制最后一条 AI 回复（幽灵命令补活：chat.copy-last-response）
+      [COMMAND_EVENTS.CHAT_COPY_LAST_RESPONSE]: async () => {
+        console.log('[ChatV2Page] CHAT_COPY_LAST_RESPONSE triggered');
+        const store = getCurrentStore();
+        if (!store) return;
+        const state = store.getState();
+        const lastAssistantId = [...state.messageOrder]
+          .reverse()
+          .find((id) => state.messageMap.get(id)?.role === 'assistant');
+        if (!lastAssistantId) {
+          showGlobalNotification('info', t('commands.copyLastEmpty'));
+          return;
+        }
+        // 与消息级复制一致：取显示中的变体块，content 优先、thinking/mcp_tool 兜底
+        const blocks = state
+          .getDisplayBlockIds(lastAssistantId)
+          .map((blockId) => state.blocks.get(blockId))
+          .filter((block): block is NonNullable<typeof block> => Boolean(block));
+        const text = extractMessageContentFromBlocks(blocks);
+        if (!text) {
+          showGlobalNotification('info', t('commands.copyLastEmpty'));
+          return;
+        }
+        try {
+          await copyTextToClipboard(text);
+          showGlobalNotification('success', t('messageItem.actions.copySuccess'));
+        } catch (error) {
+          console.error('[ChatV2Page] Copy last response failed:', getErrorMessage(error));
+          showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
+        }
+      },
+      // AI 继续（幽灵命令补活：chat.ai-continue）——继续最后一条 AI 回复，
+      // 复用消息级 continueMessage（后端同消息继续，失败自动 fallback sendMessage）
+      [COMMAND_EVENTS.CHAT_AI_CONTINUE]: async () => {
+        console.log('[ChatV2Page] CHAT_AI_CONTINUE triggered');
+        const store = getCurrentStore();
+        if (!store) return;
+        const state = store.getState();
+        const isLocked = state.sessionStatus === 'sending'
+          || state.sessionStatus === 'streaming'
+          || state.sessionStatus === 'aborting'
+          || state.activeBlockIds.size > 0;
+        if (isLocked) {
+          showGlobalNotification('info', t('commands.continueBusy'));
+          return;
+        }
+        const lastAssistantId = [...state.messageOrder]
+          .reverse()
+          .find((id) => state.messageMap.get(id)?.role === 'assistant');
+        if (!lastAssistantId) {
+          showGlobalNotification('info', t('commands.continueEmpty'));
+          return;
+        }
+        try {
+          await state.continueMessage(lastAssistantId);
+        } catch (error) {
+          console.error('[ChatV2Page] AI continue failed:', getErrorMessage(error));
+          showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.continueFailed'));
         }
       },
     },

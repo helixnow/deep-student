@@ -102,7 +102,7 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
       disabled={disabled || processingNotReady}
       title={processingNotReady ? `${label}...` : title}
       className={cn(
-        '!h-auto !px-1.5 !py-0.5 text-2xs !rounded',
+        '!h-auto !px-1.5 !py-0.5 text-2xs !rounded [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
         'border',
         processingNotReady
           ? 'bg-info/10 text-info/70 border-info/40 cursor-wait'

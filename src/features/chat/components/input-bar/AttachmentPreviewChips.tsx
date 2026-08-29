@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -271,6 +272,11 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
           const chipStatus = computeChipStatus(attachment, normalizedStoreStatus);
           const isBusy = chipStatus.lifecycle === 'uploading' || chipStatus.lifecycle === 'processing';
           const isError = chipStatus.lifecycle === 'error';
+          // ★ #64：partial（如「未就绪：OCR 文本」）同样提供重试入口。
+          // 后端 retry() 本就接受 completed_with_issues，此前只有 error 态
+          // 露出重试按钮，OCR 一次失败后用户没有任何恢复途径（重新上传
+          // 会被内容去重命中同一条失败记录），只能永远看着「未就绪」。
+          const isPartial = chipStatus.lifecycle === 'partial';
           const truncationLikely = !isError && willLikelyTruncate(attachment);
           const modeSummary = chipStatus.selectedModes.length > 0
             ? formatModeSummary(chipStatus.selectedModes)
@@ -302,7 +308,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 size="sm"
                 onClick={() => handleChipClick(attachment)}
                 className={cn(
-                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none',
+                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                   isError
                     ? 'border-destructive/40 hover:border-destructive/60'
                     : 'border-[color:var(--input-shell-border)] hover:border-[color:var(--button-plain-border)]',
@@ -408,8 +414,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   />
                 )}
               </DsButton>
-              {/* 错误态内联重试（chip 外侧尾随，44px 触控命中区） */}
-              {isError && onRetry && attachment.sourceId && !disabled && (
+              {/* 错误态/部分未就绪态内联重试（chip 外侧尾随，44px 触控命中区） */}
+              {(isError || isPartial) && onRetry && attachment.sourceId && !disabled && (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -418,7 +424,13 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   }}
                   aria-label={t('chatV2:common.retryNamed', { name: attachment.name })}
                   title={t('common:retry')}
-                  className="relative ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-destructive/40 text-destructive transition-colors hover:bg-destructive/10 motion-reduce:transition-none [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                  className={cn(
+                    'ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors motion-reduce:transition-none',
+                    coarseHitClassFor24,
+                    isError
+                      ? 'border-destructive/40 text-destructive hover:bg-destructive/10'
+                      : 'border-warning/40 text-warning hover:bg-warning/10'
+                  )}
                 >
                   <ArrowClockwise size={12} weight="bold" aria-hidden="true" />
                 </button>

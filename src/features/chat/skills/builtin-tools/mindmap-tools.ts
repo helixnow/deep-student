@@ -278,28 +278,28 @@ export const mindmapToolsSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-mindmap_create',
-      description: '【必须调用】创建知识导图。当用户要求创建思维导图/知识导图/脑图时调用，不要用文本画图。必须提供 title（标题）和 content（内容）两个参数。创建成功后，工具返回 versionId（mv_xxx 格式），在回复中使用 [思维导图:返回的versionId:标题] 格式让用户可点击查看。',
+      description: '创建知识导图（不要用文本画图）。返回 versionId（mv_xxx），回复中用 [思维导图:versionId:标题] 引用。',
       inputSchema: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '【必填】导图标题，不可为空' },
-          description: { type: 'string', description: '导图描述（可选）' },
+          title: { type: 'string', description: '导图标题' },
+          description: { type: 'string', description: '导图描述' },
           content: {
             type: 'object',
             description: 'MindMapDocument 对象',
             properties: {
-              version: { type: 'string', description: '版本号，固定为 "1.0"' },
+              version: { type: 'string', description: '固定 "1.0"' },
               root: {
                 type: 'object',
                 description: '根节点',
                 properties: {
-                  id: { type: 'string', description: '节点ID，根节点使用 "root"' },
-                  text: { type: 'string', description: '【必填】节点显示文本' },
-                  note: { type: 'string', description: '节点备注（可选）' },
-                  completed: { type: 'boolean', description: '是否标记完成（可选）' },
+                  id: { type: 'string', description: '根节点用 "root"' },
+                  text: { type: 'string', description: '节点文本' },
+                  note: { type: 'string', description: '节点备注' },
+                  completed: { type: 'boolean', description: '标记完成' },
                   style: {
                     type: 'object',
-                    description: '节点样式（可选）',
+                    description: '节点样式',
                     properties: {
                       bgColor: { type: 'string', description: '背景色/高亮色（hex）' },
                       textColor: { type: 'string', description: '文字颜色（hex）' },
@@ -313,25 +313,25 @@ export const mindmapToolsSkill: SkillDefinition = {
                   },
                   blankedRanges: {
                     type: 'array',
-                    description: '背诵挖空区间（可选）',
+                    description: '背诵挖空区间',
                     items: {
                       type: 'object',
                       properties: {
-                        start: { type: 'number', description: '起始位置（包含）' },
-                        end: { type: 'number', description: '结束位置（不包含）' },
+                        start: { type: 'number', description: '起始（含）' },
+                        end: { type: 'number', description: '结束（不含）' },
                       },
                       required: ['start', 'end'],
                     },
                   },
                   refs: {
                     type: 'array',
-                    description: '关联的 VFS 资源引用列表（可选）。先用 resource_list/resource_search 获取资源信息。',
+                    description: '关联的 VFS 资源引用（用 resource_list/search 获取）',
                     items: {
                       type: 'object',
                       properties: {
-                        sourceId: { type: 'string', description: '资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等）' },
-                        type: { type: 'string', description: '资源类型（note / file / mindmap / table 等）' },
-                        name: { type: 'string', description: '显示名称（快照，用于离线显示）' },
+                        sourceId: { type: 'string', description: '资源业务 ID' },
+                        type: { type: 'string', description: '资源类型（note/file/mindmap 等）' },
+                        name: { type: 'string', description: '显示名称（快照）' },
                       },
                       required: ['sourceId', 'type', 'name'],
                     },
@@ -342,13 +342,13 @@ export const mindmapToolsSkill: SkillDefinition = {
                     items: {
                       type: 'object',
                       properties: {
-                        id: { type: 'string', description: '唯一ID，如 n1, n2, n2-1' },
-                        text: { type: 'string', description: '【必填】节点显示文本' },
-                        note: { type: 'string', description: '节点备注（可选）' },
-                        completed: { type: 'boolean', description: '是否标记完成（可选）' },
+                        id: { type: 'string', description: '唯一 ID' },
+                        text: { type: 'string', description: '节点文本' },
+                        note: { type: 'string', description: '节点备注' },
+                        completed: { type: 'boolean', description: '标记完成' },
                         style: {
                           type: 'object',
-                          description: '节点样式（可选）',
+                          description: '节点样式',
                           properties: {
                             bgColor: { type: 'string', description: '背景色/高亮色（hex）' },
                             textColor: { type: 'string', description: '文字颜色（hex）' },
@@ -362,19 +362,19 @@ export const mindmapToolsSkill: SkillDefinition = {
                         },
                         blankedRanges: {
                           type: 'array',
-                          description: '背诵挖空区间（可选）',
+                          description: '背诵挖空区间',
                           items: {
                             type: 'object',
                             properties: {
-                              start: { type: 'number', description: '起始位置（包含）' },
-                              end: { type: 'number', description: '结束位置（不包含）' },
+                              start: { type: 'number', description: '起始（含）' },
+                              end: { type: 'number', description: '结束（不含）' },
                             },
                             required: ['start', 'end'],
                           },
                         },
                         refs: {
                           type: 'array',
-                          description: '关联的 VFS 资源引用列表（可选）',
+                          description: '关联的 VFS 资源引用',
                           items: {
                             type: 'object',
                             properties: {
@@ -402,14 +402,14 @@ export const mindmapToolsSkill: SkillDefinition = {
               },
               associations: {
                 type: 'array',
-                description: '跨分支关联线列表（可选）。每条连线连接两个已存在的节点；指向不存在节点的连线会被后端过滤。',
+                description: '跨分支关联线；非法端点连线会被过滤',
                 items: {
                   type: 'object',
                   properties: {
-                    id: { type: 'string', description: '连线 ID（可选，缺省自动生成）' },
-                    source: { type: 'string', description: '【必填】源节点 ID' },
-                    target: { type: 'string', description: '【必填】目标节点 ID' },
-                    label: { type: 'string', description: '连线标签（可选）' },
+                    id: { type: 'string', description: '缺省自动生成' },
+                    source: { type: 'string', description: '源节点 ID' },
+                    target: { type: 'string', description: '目标节点 ID' },
+                    label: { type: 'string', description: '连线标签' },
                   },
                   required: ['source', 'target'],
                 },
@@ -417,29 +417,29 @@ export const mindmapToolsSkill: SkillDefinition = {
             },
             required: ['version', 'root'],
           },
-          folder_id: { type: 'string', description: '存放文件夹 ID（可选）' },
+          folder_id: { type: 'string', description: '存放文件夹 ID' },
         },
         required: ['title', 'content'],
       },
     },
     {
       name: 'builtin-mindmap_update',
-      description: '更新已有知识导图。需先用 resource_read 获取当前内容，修改后传入完整的新 content。',
+      description: '整体替换更新导图。先用 resource_read 读取，修改后传完整新 content。',
       inputSchema: {
         type: 'object',
         properties: {
-          mindmap_id: { type: 'string', description: '【必填】导图 ID（mm_xxx 格式）' },
-          title: { type: 'string', description: '新标题（可选）' },
-          description: { type: 'string', description: '新描述（可选）' },
+          mindmap_id: { type: 'string', description: '导图 ID（mm_xxx）' },
+          title: { type: 'string', description: '新标题' },
+          description: { type: 'string', description: '新描述' },
           content: {
             oneOf: [
-              { type: 'string', description: '思维导图内容（JSON 字符串格式）' },
+              { type: 'string', description: 'JSON 字符串' },
               {
                 type: 'object',
-                description: '思维导图内容（对象格式，含 root/theme/settings）',
+                description: '对象格式',
               },
             ],
-            description: '新的完整 MindMapDocument 内容（可选，支持 JSON 字符串或对象）',
+            description: '完整 MindMapDocument（字符串或对象）',
           },
         },
         required: ['mindmap_id'],
@@ -447,13 +447,13 @@ export const mindmapToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-mindmap_delete',
-      description: '删除指定的思维导图。此操作会软删除导图及其关联资源。',
+      description: '软删除指定思维导图及其关联资源。',
       inputSchema: {
         type: 'object',
         properties: {
           mindmap_id: {
             type: 'string',
-            description: '【必填】要删除的思维导图 ID（mm_xxx 格式）',
+            description: '要删除的导图 ID（mm_xxx）',
           },
         },
         required: ['mindmap_id'],
@@ -462,17 +462,17 @@ export const mindmapToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mindmap_edit_nodes',
       description:
-        '细粒度编辑思维导图节点。支持批量操作：修改节点颜色/高亮/加粗/备注/挖空/完成状态，添加/删除/移动节点。无需传完整 JSON，比 mindmap_update 更高效。需先用 resource_read 获取导图了解节点 ID。',
+        '细粒度批量编辑导图节点：改属性、增删移节点，无需传完整 JSON。先用 resource_read 了解节点 ID。',
       inputSchema: {
         type: 'object',
         properties: {
           mindmap_id: {
             type: 'string',
-            description: '【必填】导图 ID（mm_xxx 格式）',
+            description: '导图 ID（mm_xxx）',
           },
           operations: {
             type: 'array',
-            description: '批量节点操作列表，按顺序执行',
+            description: '批量操作，按顺序执行',
             items: {
               type: 'object',
               properties: {
@@ -483,7 +483,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                 },
                 node_id: {
                   type: 'string',
-                  description: '目标节点 ID（update_node/delete_node/move_node 必需）',
+                  description: '目标节点 ID（update/delete/move 必需）',
                 },
                 parent_id: {
                   type: 'string',
@@ -495,7 +495,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                 },
                 index: {
                   type: 'number',
-                  description: '插入位置索引（可选，默认追加到末尾）',
+                  description: '插入位置（默认末尾）',
                 },
                 patch: {
                   type: 'object',
@@ -504,44 +504,43 @@ export const mindmapToolsSkill: SkillDefinition = {
                     text: { type: 'string', description: '节点文本' },
                     note: {
                       type: 'string',
-                      description: '节点备注。传空字符串 "" 可清除备注',
+                      description: '节点备注；传 "" 清除',
                     },
                     completed: { type: 'boolean', description: '是否标记完成' },
                     collapsed: { type: 'boolean', description: '是否折叠' },
                     style: {
                       type: 'object',
-                      description: '节点样式（与现有 style 合并，不会覆盖未指定的属性）',
+                      description: '节点样式（与现有合并）',
                       properties: {
                         bgColor: {
                           type: 'string',
-                          description:
-                            '背景色/高亮色（hex 如 "#ffeb3b"），传 null 清除',
+                          description: '背景色（hex），传 null 清除',
                         },
                         textColor: {
                           type: 'string',
-                          description: '文字颜色（hex 如 "#ff0000"），传 null 清除',
+                          description: '文字颜色（hex），传 null 清除',
                         },
                         fontSize: { type: 'number', description: '字体大小' },
                         fontWeight: {
                           type: 'string',
                           enum: ['normal', 'bold'],
-                          description: '字重：加粗用 "bold"',
+                          description: '字重',
                         },
                       },
                     },
                     blankedRanges: {
                       type: 'array',
-                      description: '背诵挖空区间。传 [] 可清除所有挖空',
+                      description: '背诵挖空区间；传 [] 清除',
                       items: {
                         type: 'object',
                         properties: {
                           start: {
                             type: 'number',
-                            description: '起始字符位置（包含）',
+                            description: '起始（含）',
                           },
                           end: {
                             type: 'number',
-                            description: '结束字符位置（不包含）',
+                            description: '结束（不含）',
                           },
                         },
                         required: ['start', 'end'],
@@ -549,13 +548,13 @@ export const mindmapToolsSkill: SkillDefinition = {
                     },
                     refs: {
                       type: 'array',
-                      description: '关联的 VFS 资源引用列表。先用 resource_list/resource_search 获取资源信息。传 [] 可清除所有关联。',
+                      description: '关联的 VFS 资源引用；传 [] 清除',
                       items: {
                         type: 'object',
                         properties: {
-                          sourceId: { type: 'string', description: '资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等）' },
-                          type: { type: 'string', description: '资源类型（note / file / mindmap / table 等）' },
-                          name: { type: 'string', description: '显示名称（快照，用于离线显示）' },
+                          sourceId: { type: 'string', description: '资源业务 ID' },
+                          type: { type: 'string', description: '资源类型（note/file/mindmap 等）' },
+                          name: { type: 'string', description: '显示名称（快照）' },
                         },
                         required: ['sourceId', 'type', 'name'],
                       },
@@ -566,7 +565,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                   type: 'object',
                   description: '新节点数据（add_node 使用）',
                   properties: {
-                    text: { type: 'string', description: '【必填】节点文本' },
+                    text: { type: 'string', description: '节点文本' },
                     note: { type: 'string', description: '节点备注' },
                     completed: { type: 'boolean', description: '是否标记完成' },
                     style: {
@@ -597,7 +596,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                     },
                     refs: {
                       type: 'array',
-                      description: '关联的 VFS 资源引用列表（可选）',
+                      description: '关联的 VFS 资源引用',
                       items: {
                         type: 'object',
                         properties: {
@@ -610,7 +609,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                     },
                     children: {
                       type: 'array',
-                      description: '子节点数组（可选，支持嵌套创建）',
+                      description: '子节点数组（支持嵌套）',
                       items: { type: 'object' },
                     },
                   },
@@ -622,14 +621,14 @@ export const mindmapToolsSkill: SkillDefinition = {
           associations: {
             type: 'array',
             description:
-              '可选：整体替换导图的跨分支关联线列表。传 [] 清除所有关联线；不传则保持现状。端点必须是导图中已存在的节点 ID，非法连线会被过滤。',
+              '整体替换跨分支关联线：传 [] 清除，不传保持现状',
             items: {
               type: 'object',
               properties: {
-                id: { type: 'string', description: '连线 ID（可选，缺省自动生成）' },
-                source: { type: 'string', description: '【必填】源节点 ID' },
-                target: { type: 'string', description: '【必填】目标节点 ID' },
-                label: { type: 'string', description: '连线标签（可选）' },
+                id: { type: 'string', description: '缺省自动生成' },
+                source: { type: 'string', description: '源节点 ID' },
+                target: { type: 'string', description: '目标节点 ID' },
+                label: { type: 'string', description: '连线标签' },
               },
               required: ['source', 'target'],
             },
@@ -641,23 +640,22 @@ export const mindmapToolsSkill: SkillDefinition = {
     {
       name: 'builtin-mindmap_import',
       description:
-        '把当前会话上传的思维导图附件导入为知识导图。支持格式：.xmind（content.json / content.xml）、.opml、.mm、.mmap、Markdown 大纲（.md）、纯文本缩进大纲（.txt）、本应用 JSON（.json）。解析标题/备注/层级/关联线；样式与图片会被丢弃并在返回的 importStats 中报告。返回 mindmap id、versionId 与导入统计。',
+        '导入会话上传的导图附件（.xmind/.opml/.mm/.mmap/.md/.txt/.json）为知识导图；解析标题/备注/层级/关联线，样式与图片丢弃并在 importStats 报告。返回 id、versionId 与统计。',
       inputSchema: {
         type: 'object',
         properties: {
           resourceId: {
             type: 'string',
             minLength: 1,
-            description:
-              '【必填】当前会话可访问的思维导图文件资源 ID；支持 file_、att_ 以及映射到文件的 res_。',
+            description: '会话可访问的导图文件资源 ID（file_/att_/res_）',
           },
           title: {
             type: 'string',
-            description: '导图标题（可选，缺省取文件内根主题或文件名）',
+            description: '导图标题（缺省取根主题或文件名）',
           },
           targetFolderId: {
             type: 'string',
-            description: '存放文件夹 ID（可选，缺省放在根目录）',
+            description: '存放文件夹 ID（缺省根目录）',
           },
         },
         required: ['resourceId'],
@@ -665,18 +663,17 @@ export const mindmapToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-mindmap_versions',
-      description:
-        '列出指定思维导图的历史版本。用于让用户查看/对比不同版本并在回复中引用 `mv_*` 版本 ID。',
+      description: '列出思维导图历史版本，用于查看/对比并在回复中引用 mv_* 版本 ID。',
       inputSchema: {
         type: 'object',
         properties: {
           mindmap_id: {
             type: 'string',
-            description: '【必填】导图 ID（mm_xxx 格式）',
+            description: '导图 ID（mm_xxx）',
           },
           limit: {
             type: 'number',
-            description: '返回版本条数（可选，默认 20）',
+            description: '返回条数（默认 20）',
           },
         },
         required: ['mindmap_id'],
@@ -684,26 +681,25 @@ export const mindmapToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-mindmap_diff_versions',
-      description:
-        '比较思维导图两个版本（或历史版本 vs 当前版本）的结构差异，返回增删改移动节点统计与明细。',
+      description: '比较导图两个版本（或历史版本 vs 当前）的结构差异，返回增删改移统计与明细。',
       inputSchema: {
         type: 'object',
         properties: {
           mindmap_id: {
             type: 'string',
-            description: '【必填】导图 ID（mm_xxx 格式）',
+            description: '导图 ID（mm_xxx）',
           },
           from_version_id: {
             type: 'string',
-            description: '起始版本 ID（mv_xxx，可选，默认使用最新历史版本）',
+            description: '起始版本（默认最新历史）',
           },
           to_version_id: {
             type: 'string',
-            description: '目标版本 ID（mv_xxx 或 current，可选，默认 current）',
+            description: '目标版本（mv_xxx/current，默认 current）',
           },
           detail_limit: {
             type: 'number',
-            description: '明细条数上限（可选，默认 20，最大 100）',
+            description: '明细上限（默认 20，最大 100）',
           },
         },
         required: ['mindmap_id'],

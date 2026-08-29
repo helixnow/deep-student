@@ -86,12 +86,19 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
   return (
     <AppMenu open={open} onOpenChange={handleOpenChange}>
       <AppMenuTrigger asChild>
-        <span
-          className="inline-flex cursor-pointer rounded-md"
+        {/* 实体触控目标：coarse pointer 下按钮本体撑到 ≥44×44（--touch-target-size），
+            不再用透明 after:-inset 伪元素外扩命中区（会与相邻控件命中区重叠）。
+            AppMenuTrigger(asChild) 会把 aria-haspopup/aria-expanded 与点击、
+            键盘处理合并到这个 button 上，替代旧版 role=img+tabIndex 的水位环语义。 */}
+        <button
+          type="button"
+          aria-label={t('chatV2:tokenUsage.contextWindow')}
+          title={t('chatV2:tokenUsage.contextWindow')}
+          className="relative inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]"
           data-testid="context-usage-popover-trigger"
         >
           {children}
-        </span>
+        </button>
       </AppMenuTrigger>
       <AppMenuContent
         align="end"
@@ -175,7 +182,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
               <DsButton
                 variant="secondary"
                 size="sm"
-                className="w-full justify-center gap-1.5"
+                className="w-full justify-center gap-1.5 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                 onClick={handleCompact}
                 disabled={compactDisabled || isCompactingContext}
                 title={

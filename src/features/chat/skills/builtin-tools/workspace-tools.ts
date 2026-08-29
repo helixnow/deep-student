@@ -173,7 +173,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_create',
       description:
-        '创建一个新的多 Agent 协作工作区。当用户需要多个 Agent 协作完成复杂任务时使用。工作区创建后，可以在其中注册多个 Worker Agent 分工协作。',
+        '创建多 Agent 协作工作区（仅高级协作路径需要；subagent_call 缺省时会自动创建）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -184,18 +184,18 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_create_agent',
       description:
-        '在工作区中创建一个新的 Agent。必须先创建工作区（workspace_create）。提供 initial_task 时由后端运行时直接派发任务（返回 status:"dispatched"），不依赖前端启动；不提供 initial_task 则 Worker 保持空闲状态，不会处理后续消息。',
+        '在已创建的工作区中注册 Agent。提供 initial_task 时由后端直接派发（返回 status:"dispatched"）；不提供则 Worker 保持空闲，不处理后续消息。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
           role: {
             type: 'string',
             enum: ['coordinator', 'worker'],
             description: 'Agent 角色：worker（执行者，默认）',
           },
-          skill_id: { type: 'string', description: '技能 ID，指定 Worker 使用的预置技能（可选）' },
-          initial_task: { type: 'string', description: '【推荐】初始任务描述。提供此参数后 Worker 会立即自动启动执行任务并返回结果，不提供则 Worker 保持空闲' },
+          skill_id: { type: 'string', description: '可选：Worker 预置技能 ID' },
+          initial_task: { type: 'string', description: '【推荐】初始任务；提供后 Worker 立即执行并返回结果，否则保持空闲' },
         },
         required: ['workspace_id'],
       },
@@ -206,7 +206,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
       // an unconsumed Rust schema beside the executor.
       name: 'builtin-subagent_call',
       description:
-        '单 Task 委托工具：即时创建并派发一个子代理执行 task。默认 wait=true 阻塞直到子代理完成，返回值的 output 字段直接携带最终输出——单个委托任务不需要预先 workspace_create，也不需要之后 coordinator_sleep。不传 workspace_id 时后端自动创建工作区并把当前会话注册为 coordinator（返回 auto_created_workspace=true）。并行多任务时用 wait=false 派发多个子代理拿到 ids，再调用一次 coordinator_sleep 统一等待。profile 选择：worker（默认）适合纯执行任务；explorer 拥有只读检索工具面（unified_search/rag_search/web_search/web_fetch/resource_list/resource_read/resource_search/folder_list/memory_read/memory_list），适合需要检索或读资料的调研任务；也支持用户自定义 profile（见 profile 参数说明）。对同一子代理追问/迭代时传 resume_agent_session_id 续跑，返回值携带 resumed 标记。终态返回值含 token_usage（可能为 null），反映子代理本次运行的 token 消耗。不要对同一任务同时调用 workspace_create_agent 和 subagent_call。',
+        '单 Task 委托：即时创建并派发一个子代理。默认 wait=true 阻塞返回，output 字段即最终输出，无需预先 workspace_create 或事后 coordinator_sleep；缺省 workspace_id 时自动创建工作区（auto_created_workspace=true）。并行 fan-out 用 wait=false 拿 ids 后调一次 coordinator_sleep；追问同一子代理传 resume_agent_session_id 续跑。委托路径与 profile 选择见技能说明；终态含 token_usage（可能为 null）。不要对同一任务同时调用 workspace_create_agent。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -215,30 +215,30 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'string',
             minLength: 1,
             maxLength: 20000,
-            description: '【必填】交给子代理执行的具体任务',
+            description: '交给子代理执行的具体任务',
           },
           workspace_id: {
             type: 'string',
             minLength: 1,
             description:
-              '可选。已创建的工作区 ID；缺省时后端自动创建工作区并把当前会话注册为 coordinator，返回值带 auto_created_workspace=true',
+              '可选；缺省时自动创建工作区并把当前会话注册为 coordinator（auto_created_workspace=true）',
           },
           profile: {
             type: 'string',
             description:
-              '可选。子代理配置档案：内建三型 worker=纯执行（默认）、explorer=只读检索工具面（适合调研/读资料任务）、default=完整默认工具面；也可以填用户自定义 profile 的 name。自定义 profile 是放在 {appData}/workspaces/agents/ 目录下的 markdown 文件：YAML frontmatter 里 name 必填（小写字母/数字/连字符，不得与 default/worker/explorer 冲突），可选 description、base（缺省 worker）、model、tools（只能是 headless 只读白名单 + workspace 协作工具的子集，越界项会被剔除），正文即 instructions——用户想要新档案时可以引导其创建这样的文件。传未知 profile 时后端报错并列出全部可用 profile',
+              '可选。内建：worker=纯执行（默认）、explorer=只读检索工具面（调研/读资料）、default=完整默认工具面；也可填用户自定义 profile 的 name（定义方式见技能说明「自定义 profile」）。未知 profile 报错并列出可用项',
           },
           resume_agent_session_id: {
             type: 'string',
             minLength: 1,
             description:
-              '可选。续跑：传入首次 subagent_call 返回的 agent_session_id，后端跳过创建、复用已持久化 profile，把本次 task 作为追问投给同一个子代理会话。使用时 workspace_id 必填，并省略 profile、skill_id、model；返回值中 resumed=true',
+              '可选。续跑：传首次返回的 agent_session_id，复用已持久化 profile，把本次 task 作为追问投给同一会话；须带 workspace_id 并省略 profile/skill_id/model，返回 resumed=true',
           },
           skill_id: {
             type: 'string',
             minLength: 1,
             description:
-              '可选（legacy 别名，通常优先用 profile）。真实技能 ID，例如 subagent-worker、academic-search、document-processing；不要填写不存在的技能名',
+              '可选（legacy，优先用 profile）。真实技能 ID，如 subagent-worker、academic-search；不要填不存在的技能名',
           },
           model: {
             type: 'string',
@@ -251,7 +251,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: true,
             description:
-              '可选，默认 true：阻塞等待子代理完成（内部预算 750s），返回值直接携带 output；超预算返回 status:"running" 与各项 ids。设为 false 立即返回 ids（后台异步/并行 fan-out 场景）：若要原地等待用 coordinator_sleep；若自己还有活要干就继续干，期间可用 workspace_query(query_type="tasks") 查状态，干完直接结束回合——子代理完成后系统会自动唤醒你',
+              '默认 true：阻塞等待完成（预算 750s），返回 output，超预算返回 status:"running" 与 ids。false 立即返回 ids：本回合汇总用 coordinator_sleep 等待；否则继续自己的工作（可用 workspace_query(query_type="tasks") 查状态），子代理完成后系统自动唤醒',
           },
         },
         required: ['task'],
@@ -260,13 +260,13 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_send',
       description:
-        '向工作区中的 Agent 发送消息。必须已创建工作区并存在目标 Agent。注意：消息内容使用 content 参数（不是 message）。注意：对已结束/空闲的子代理，消息只入队不会触发执行；需要它继续处理时，请用 subagent_call 传 resume_agent_session_id 续跑（会一并消费积压消息）。',
+        '向工作区中的 Agent 发送消息。对已结束/空闲的子代理消息只入队不触发执行；要它继续处理请用 subagent_call 续跑（会一并消费积压消息）。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          content: { type: 'string', description: '【必填】消息内容文本，注意参数名是 content 不是 message' },
-          target_session_id: { type: 'string', description: '目标 Agent 的会话 ID（可选，不指定则广播给所有 Agent）' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          content: { type: 'string', description: '消息内容文本（参数名是 content 不是 message）' },
+          target_session_id: { type: 'string', description: '目标 Agent 会话 ID（省略则广播）' },
           message_type: {
             type: 'string',
             enum: ['task', 'progress', 'result', 'query', 'correction', 'broadcast'],
@@ -278,57 +278,55 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     },
     {
       name: 'builtin-workspace_query',
-      description: '查询工作区信息，包括 Agent 列表、消息记录、文档等。必须已创建工作区。',
+      description: '查询工作区信息：Agent 列表、消息记录、文档、后台任务等。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
           query_type: {
             type: 'string',
             enum: ['agents', 'messages', 'documents', 'context', 'tasks', 'all'],
-            description: '查询类型；tasks=后台子代理任务状态（wait=false 派发后轮询用，含 status/result_summary）',
+            description: '查询类型；tasks=后台子代理任务状态（含 status/result_summary）',
           },
-          limit: { type: 'integer', description: '返回结果数量限制，默认 50', default: 50, minimum: 1, maximum: 200 },
+          limit: { type: 'integer', description: '返回数量限制', default: 50, minimum: 1, maximum: 200 },
         },
         required: ['workspace_id'],
       },
     },
     {
       name: 'builtin-workspace_set_context',
-      description:
-        '设置工作区共享上下文变量。必须已创建工作区。所有 Agent 都可以读取和修改共享上下文，用于协作时共享状态。',
+      description: '设置工作区共享上下文变量；所有 Agent 可读写，用于协作共享状态。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          key: { type: 'string', description: '【必填】上下文键名' },
-          value: { description: '【必填】上下文值（任意 JSON 值）' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          key: { type: 'string', description: '上下文键名' },
+          value: { description: '上下文值（任意 JSON 值）' },
         },
         required: ['workspace_id', 'key', 'value'],
       },
     },
     {
       name: 'builtin-workspace_get_context',
-      description: '获取工作区共享上下文变量。必须已创建工作区。注意：必须同时提供 workspace_id 和 key 两个参数。',
+      description: '获取工作区共享上下文变量。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          key: { type: 'string', description: '【必填】上下文键名，如 "messages"、"state" 等' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          key: { type: 'string', description: '上下文键名，如 "messages"、"state" 等' },
         },
         required: ['workspace_id', 'key'],
       },
     },
     {
       name: 'builtin-workspace_update_document',
-      description:
-        '在工作区中创建或更新文档。必须已创建工作区。文档可以是计划、研究笔记、产出物等，所有 Agent 都可以访问。',
+      description: '在工作区中创建或更新文档（计划、研究笔记、产出物等），所有 Agent 可访问。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          title: { type: 'string', description: '【必填】文档标题' },
-          content: { type: 'string', description: '【必填】文档内容' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          title: { type: 'string', description: '文档标题' },
+          content: { type: 'string', description: '文档内容' },
           doc_type: {
             type: 'string',
             enum: ['plan', 'research', 'artifact', 'notes'],
@@ -340,12 +338,12 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     },
     {
       name: 'builtin-workspace_read_document',
-      description: '读取工作区中的文档。必须已创建工作区且文档存在。',
+      description: '读取工作区中的文档。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          document_id: { type: 'string', description: '【必填】文档 ID' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          document_id: { type: 'string', description: '文档 ID' },
         },
         required: ['workspace_id', 'document_id'],
       },
@@ -353,13 +351,13 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_file_list',
       description:
-        '列出授权 runtime root 或当前 Skill package root 下的文件。root_id 可选 workspace、artifacts、temp、Settings > 工具权限里显示的 authorized_* 目录 id，或当前已加载 Skill 的 skill:<skillId> 只读包目录。path 必须是相对路径。',
+        '列出授权 runtime root 或当前 Skill package root 下的文件；path 必须是相对路径。',
       inputSchema: {
         type: 'object',
         properties: {
           root_id: {
             type: 'string',
-            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp、authorized_* 授权目录 id，或当前已加载 Skill 的 skill:<skillId> 包目录',
+            description: 'Runtime root id，默认 workspace；可填 artifacts、temp、authorized_* 或 skill:<skillId> 只读包目录',
           },
           path: {
             type: 'string',
@@ -384,7 +382,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
         properties: {
           root_id: {
             type: 'string',
-            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp、authorized_* 授权目录 id，或当前已加载 Skill 的 skill:<skillId> 包目录',
+            description: 'Runtime root id，默认 workspace；可填 artifacts、temp、authorized_* 或 skill:<skillId> 只读包目录',
           },
           path: {
             type: 'string',
@@ -404,7 +402,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_artifact_write',
       description:
-        '将 UTF-8 文本写入当前会话的产物目录，并返回 FileChangeSummary 供审计和任务面板 Changes 展示。',
+        '将 UTF-8 文本写入会话产物目录，返回 FileChangeSummary 供审计与 Changes 面板展示。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -428,7 +426,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_file_write',
       description:
-        '在用户显式授权为读写的 workspace 中创建或原子覆盖 UTF-8 文本文件，并返回可审计、可回滚的 mutation_receipt。修改已有文件前应先调用 workspace_file_read 获取 sha256，并作为 expected_current_hash 传入，防止覆盖并发修改。',
+        '在显式授权读写的 workspace 中创建或原子覆盖 UTF-8 文本文件，返回可回滚的 mutation_receipt。修改已有文件须先 workspace_file_read 取 sha256 作为 expected_current_hash。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -436,7 +434,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           content: { type: 'string', description: '要写入的 UTF-8 文本内容' },
           expected_current_hash: {
             type: 'string',
-            description: '修改已有文件时必传：最近一次 workspace_file_read 返回的 sha256；创建新文件时省略',
+            description: '修改已有文件时必传：最近 workspace_file_read 返回的 sha256；新建时省略',
           },
         },
         required: ['path', 'content'],
@@ -445,7 +443,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_file_move',
       description:
-        '在读写 workspace 内移动单个常规文件。必须携带源文件最近一次读取所得的 sha256，目标已存在时拒绝执行。返回可回滚的 mutation_receipt。',
+        '在读写 workspace 内移动单个常规文件；须携带源文件最近读取的 sha256，目标已存在则拒绝。返回可回滚 mutation_receipt。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -459,7 +457,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_file_delete',
       description:
-        '从读写 workspace 删除单个常规文件。必须携带最近一次读取所得的 sha256；删除前会创建受保护的检查点并返回可回滚的 mutation_receipt。',
+        '从读写 workspace 删除单个常规文件；须携带最近读取的 sha256。删除前创建受保护检查点，返回可回滚 mutation_receipt。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -472,7 +470,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_change_revert',
       description:
-        '回滚 workspace 文件工具或 local_shell_execute 产生的变更。单文件使用原样 mutation_receipt，多文件使用原样 change_set；如果目标在变更后又被修改，回滚会拒绝执行。',
+        '回滚 workspace 文件工具或 local_shell_execute 产生的变更：单文件传原样 mutation_receipt，多文件传原样 change_set；目标在变更后又被修改则拒绝。',
       inputSchema: {
         type: 'object',
         oneOf: [{ required: ['receipt'] }, { required: ['change_set'] }],
@@ -525,21 +523,21 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-attachment_stage',
       description:
-        '把聊天附件的原始字节物化到当前会话 temp runtime root 的 attachments/ 子目录，返回 { root_id: "temp", relative_path, size, sha256, original_name, staged: "staged"|"already_staged", hint }。适用于二进制或大文件（xlsx/zip/图片等）：物化后把返回的 root_id + relative_path 交给 builtin-workspace_file_read，或在 builtin-local_shell_execute 中以 temp 为 root_id 访问该文件。同内容（sha256 相同）重复物化会直接复用既有路径；同名不同内容会自动加序号后缀。附件定位参数与 builtin-attachment_read 一致（message_id + attachment_id；attachment_id 来自消息上下文的 source_id 或 builtin-attachment_list）。',
+        '把聊天附件原始字节物化到会话 temp root 的 attachments/ 子目录，返回 { root_id: "temp", relative_path, size, sha256, staged }。二进制/大文件（xlsx/zip/图片等）先物化，再交给 workspace 文件工具或 local_shell_execute（root_id=temp）处理。同内容重复物化复用既有路径，同名不同内容自动加序号；定位参数同 attachment_read。',
       inputSchema: {
         type: 'object',
         properties: {
           message_id: {
             type: 'string',
-            description: '【必填】附件所属的消息 ID，可通过 builtin-attachment_list 获取',
+            description: '附件所属的消息 ID（可经 builtin-attachment_list 获取）',
           },
           attachment_id: {
             type: 'string',
-            description: '【必填】附件 ID（或消息 context ref 的资源 ID），可通过 builtin-attachment_list 获取',
+            description: '附件 ID（或消息 context ref 的资源 ID）',
           },
           filename: {
             type: 'string',
-            description: '可选。覆盖物化目标文件名（仅文件名，不含目录；非法字符会被清洗，同名冲突自动加序号）',
+            description: '可选。覆盖物化目标文件名（仅文件名；非法字符会被清洗）',
           },
         },
         required: ['message_id', 'attachment_id'],
@@ -548,7 +546,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_preflight',
       description:
-        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险等级和审批信息。此工具只返回结构化分析，不会执行命令、启动进程或写入文件。预检未标记 blocked 时应直接提交 local_shell_execute；后端会按当前会话档位静默执行或展示审批 UI，不要在正文中自行索要确认。',
+        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险与审批信息；只返回分析，不执行命令。未标记 blocked 时直接提交 local_shell_execute，不要在正文自行索要确认。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -558,27 +556,27 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           root_id: {
             type: 'string',
-            description: 'Runtime root id。项目命令使用 workspace；无项目关联的系统查询使用 temp；交付文件使用 artifacts。temp/artifacts 会自动初始化，禁止写占位文件创建目录。也可填 authorized_* 授权目录 id。skill:<skillId> 包目录不能作为 cwd；运行包内脚本请使用 skill_root_id。',
+            description: 'Runtime root id：项目命令用 workspace，系统查询用 temp，交付文件用 artifacts（选择规则见技能说明）；也可填 authorized_* 目录 id。skill:<skillId> 不能作 cwd。',
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。禁止绝对路径和 .. 逃逸。',
+            description: '所选 root 内的相对工作目录，默认 root 本身；禁止绝对路径和 .. 逃逸。',
           },
           skill_root_id: {
             type: 'string',
             description:
-              '可选。当前已加载 Skill 的包根 id（skill:<skillId>）。预检输出会标注执行时将注入的 SKILL_DIR 环境变量及其指向；skill 包根仍不能作为 cwd。',
+              '可选。已加载 Skill 的包根 id（skill:<skillId>）；预检会标注将注入的 SKILL_DIR 指向。',
           },
           timeout_ms: {
             type: 'integer',
             minimum: 1000,
             maximum: 120000,
             default: 30000,
-            description: '未来执行时建议使用的超时时间；当前仅用于预检展示。',
+            description: '建议超时时间；仅用于预检展示。',
           },
           purpose: {
             type: 'string',
-            description: '命令用途说明，便于后续审批 UI 展示。',
+            description: '命令用途说明，便于审批 UI 展示。',
           },
         },
         required: ['command'],
@@ -587,26 +585,26 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '提交非交互本地 shell 命令，由后端按当前会话档位静默执行或展示审批 UI。不要在调用前用正文自行索要确认。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止，联网命令须显式传 allow_network=true。',
+        '提交非交互本地 shell 命令，由后端按会话档位静默执行或展示审批 UI，不要在正文自行索要确认。平台 shell 合同与沙箱见技能说明；无 PTY/stdin/持久 session。执行前重新校验 root 和 cwd，强制 timeout，截断 stdout/stderr 并保存审计；网络默认禁止，联网命令须显式传 allow_network=true。',
       inputSchema: {
         type: 'object',
         properties: {
           command: {
             type: 'string',
-            description: '要执行的命令字符串。此工具会真实执行命令；直接提交调用，由后端统一处理所需审批。',
+            description: '要执行的命令字符串；直接提交，审批由后端统一处理。',
           },
           root_id: {
             type: 'string',
-            description: 'Runtime root id，必须与通过的 preflight 一致。项目命令使用 workspace；无项目关联的系统查询使用 temp；交付文件使用 artifacts。也可填 Settings > 工具权限里显示的 authorized_* 目录 id。当前不支持直接在 skill:<skillId> 包目录内执行；要运行 Skill 包内脚本请改用 skill_root_id + SKILL_DIR。',
+            description: 'Runtime root id，须与通过的 preflight 一致（选择规则见技能说明）；也可填 authorized_* 目录 id。skill:<skillId> 不能直接执行，包内脚本用 skill_root_id + SKILL_DIR。',
           },
           cwd: {
             type: 'string',
-            description: '所选 root 内的相对工作目录，默认为 root 本身。禁止绝对路径和 .. 逃逸。',
+            description: '所选 root 内的相对工作目录，默认 root 本身；禁止绝对路径和 .. 逃逸。',
           },
           skill_root_id: {
             type: 'string',
             description:
-              '可选。当前已加载 Skill 的包根 id（skill:<skillId>）。提供后会向子进程注入 SKILL_DIR 环境变量（指向该 Skill 包根绝对路径），用于运行 Skill 自带脚本，例如 Windows PowerShell 中 python "$env:SKILL_DIR/scripts/x.py"。skill 包根仍不能作为 cwd；带 skill_root_id 的执行使用独立审批 scope。',
+              '可选。已加载 Skill 的包根 id（skill:<skillId>）；提供后注入 SKILL_DIR 环境变量用于运行包内脚本（用法见技能说明）。包根不能作 cwd；使用独立审批 scope。',
           },
           timeout_ms: {
             type: 'integer',
@@ -619,36 +617,36 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: false,
             description:
-              'Whether to inherit a sanitized allowlist of parent-process environment variables. Defaults to false. Sensitive and execution-control variables are always blocked; inherited key names are shown in the approval scope.',
+              'Inherit a sanitized allowlist of parent env vars; sensitive/execution-control vars always blocked, inherited names shown in approval scope.',
           },
           allow_network: {
             type: 'boolean',
             default: false,
             description:
-              'Whether this command is allowed to use network-capable command prefixes such as curl, wget, ssh, git fetch/pull/push, or package installs. Network-enabled approval uses a separate scope.',
+              'Allow network-capable command prefixes (curl, wget, ssh, git fetch/pull/push, package installs); uses a separate approval scope.',
           },
           track_file_changes: {
             type: 'boolean',
             default: true,
             description:
-              'Whether to collect a bounded before/after metadata snapshot of cwd and return file_change_summary for audit. Required for workspace-mutating commands. Large/generated directories are skipped.',
+              'Collect a bounded before/after snapshot of cwd and return file_change_summary; required for workspace-mutating commands.',
           },
           env_allowlist: {
             type: 'array',
             items: { type: 'string' },
             description:
-              'Optional parent environment allowlist. When present, only these names plus platform-minimal variables are inherited.',
+              'Optional parent env allowlist; only these names plus platform-minimal vars are inherited.',
           },
           env_denylist: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Optional parent environment variables to remove before executing the command.',
+            description: 'Parent env vars to remove before executing.',
           },
           env: {
             type: 'object',
             additionalProperties: true,
             description:
-              'Optional explicit non-sensitive environment variables. Results audit variable names only, never values.',
+              'Explicit non-sensitive env vars; audit records names only, never values.',
           },
           max_output_bytes: {
             type: 'integer',
@@ -668,24 +666,24 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-coordinator_sleep',
       description:
-        '等待以 wait=false 派发的子代理完成：睡眠期间 pipeline 挂起，收到子代理结果后自动唤醒继续执行，避免轮询浪费。并行 fan-out 时在全部派发完成后调用一次即可。默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要调用本工具。',
+        '等待以 wait=false 派发的子代理完成：睡眠期间 pipeline 挂起，收到结果后自动唤醒。并行 fan-out 全部派发完后调用一次即可；默认 wait=true 的 subagent_call 不需要本工具。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
           awaiting_agents: {
             type: 'array',
             items: { type: 'string' },
-            description: '等待的子代理 session_id 列表（可选，不指定则等待所有子代理）',
+            description: '等待的子代理 session_id 列表（省略则等待全部）',
           },
           wake_condition: {
             type: 'string',
             enum: ['any_message', 'result_message', 'all_completed'],
-            description: '唤醒条件：result_message=收到结果消息（默认），any_message=任意消息，all_completed=全部完成',
+            description: '唤醒条件：result_message=结果消息（默认），any_message=任意消息，all_completed=全部完成',
           },
           timeout_ms: {
             type: 'integer',
-            description: '超时时间（毫秒），超时后自动唤醒。可选，默认无超时',
+            description: '超时毫秒数，超时自动唤醒（默认无超时）',
           },
         },
         required: ['workspace_id'],
@@ -694,7 +692,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-skill_scan',
       description:
-        'Scan a skill package zip without installing. Accepts https URL or a path under temp/artifacts runtime root. Returns skill_id, package_sha256, risk_level, risk_signals, and counts — pass the exact skill_id and expected_sha256 to skill_install after user confirmation.',
+        'Scan a skill package zip without installing (https URL or temp/artifacts path). Returns skill_id, package_sha256, risk_level, risk_signals; pass exact skill_id and expected_sha256 to skill_install after user confirmation.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -722,7 +720,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-skill_install',
       description:
-        'Install a scanned skill package to ~/.deep-student/skills after user approval. Re-fetches source, verifies expected_sha256 matches scan, re-scans risk, writes provenance, default untrusted — next call skill_trust_request (inspect then grant); Skills management is only a backup.',
+        'Install a scanned skill package to ~/.deep-student/skills after user approval. Re-fetches source, verifies expected_sha256, re-scans risk, writes provenance; installed skill is untrusted — next call skill_trust_request (inspect then grant).',
       inputSchema: {
         type: 'object',
         properties: {

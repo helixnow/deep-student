@@ -8,6 +8,7 @@ import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { cancelPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { modeRegistry } from '../../registry';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -16,6 +17,7 @@ import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import { isStoreSubagentSession } from '../subagentSession';
+import { rememberPermissionPreset } from '../session/permissionPresetDefaults';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -70,6 +72,20 @@ function blockingInteractionPatch(interaction: BlockingInteraction | null): {
     return { pendingBlockingInteraction: interaction, pendingApprovalRequest: legacy };
   }
   return { pendingBlockingInteraction: interaction, pendingApprovalRequest: null };
+}
+
+/**
+ * remove/clear 语义收敛（SSOT）：取消后端 PDF 处理属于"移除附件"动作本身，
+ * 由 store 统一 fire-and-forget，UI 只负责传 id，不再各自补偿取消/释放逻辑。
+ */
+function cancelAttachmentProcessing(attachmentId: string, sourceId: string): void {
+  void cancelPdfProcessing(sourceId).catch((error) => {
+    logAttachment('store', 'cancel_processing_failed', {
+      attachmentId,
+      sourceId,
+      error: getErrorMessage(error),
+    }, 'warning');
+  });
 }
 
 export function createSessionActions(
@@ -214,6 +230,22 @@ export function createSessionActions(
             status: attachment?.status,
           });
 
+          // ★ remove 语义收敛：取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
+          if (attachment?.sourceId) {
+            cancelAttachmentProcessing(attachmentId, attachment.sourceId);
+
+            // ★ P0 修复：清理 pdfProcessingStore 中的状态，防止内存泄漏和状态污染。
+            // 键是 sourceId（与后端事件一致），与 cancel 并列在 sourceId 门控下，
+            // 不受 resourceId 门控 —— 仅有 sourceId 的中间态附件（尚未入库）同样要清理。
+            usePdfProcessingStore.getState().remove(attachment.sourceId);
+            // ★ 调试日志：记录 Store 清理
+            logAttachment('store', 'processing_store_cleanup', {
+              sourceId: attachment.sourceId,
+              attachmentId,
+            });
+            console.log('[ChatStore] removeAttachment: Removed pdfProcessingStore status for sourceId', attachment.sourceId);
+          }
+
           set((s) => ({
             attachments: s.attachments.filter((a) => a.id !== attachmentId),
           }));
@@ -222,18 +254,6 @@ export function createSessionActions(
           if (attachment?.resourceId) {
             state.removeContextRef(attachment.resourceId);
             console.log('[ChatStore] removeAttachment: Removed ContextRef for', attachment.resourceId);
-            
-            // ★ P0 修复：清理 pdfProcessingStore 中的状态，防止内存泄漏和状态污染
-            // ★ P0 修复：使用 sourceId 作为 key（与后端事件一致）
-            if (attachment.sourceId) {
-              usePdfProcessingStore.getState().remove(attachment.sourceId);
-              // ★ 调试日志：记录 Store 清理
-              logAttachment('store', 'processing_store_cleanup', {
-                sourceId: attachment.sourceId,
-                attachmentId,
-              });
-              console.log('[ChatStore] removeAttachment: Removed pdfProcessingStore status for sourceId', attachment.sourceId);
-            }
           }
 
           // 🔧 P1-25: 释放 Blob URL，避免内存泄漏
@@ -258,6 +278,13 @@ export function createSessionActions(
             count: attachmentCount,
             attachments: attachmentInfo,
           });
+
+          // ★ clear 语义收敛：逐个取消后端 PDF 处理（fire-and-forget），不再由 UI 负责
+          for (const att of state.attachments) {
+            if (att.sourceId) {
+              cancelAttachmentProcessing(att.id, att.sourceId);
+            }
+          }
 
           // 🔧 P1-25: 释放所有 Blob URLs，避免内存泄漏
           const blobUrls = state.attachments
@@ -380,6 +407,8 @@ export function createSessionActions(
           const sessionId = getState().sessionId;
           if (!sessionId) return;
           await invoke('chat_v2_set_permission_preset', { sessionId, preset });
+          // 记住上次选择的安全档作为新会话默认（高权限档不记忆，见模块注释）
+          rememberPermissionPreset(preset);
           const prevMeta = getState().sessionMetadata ?? {};
           set({
             permissionPreset: preset,

@@ -29,6 +29,10 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  coarseHitClassFor28,
+  coarseHitClassForBadge16,
+} from '@/components/ui/coarseHit';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -473,7 +477,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
                 // 触屏无 hover：保持常显，否则"设为默认"入口不可达
                 '[@media(pointer:coarse)]:opacity-100',
-                'relative after:absolute after:-inset-2 after:content-[\'\']',
+                // 20px 视觉尺寸保持不变；触屏命中区统一走共享 badge 档位
+                'relative',
+                coarseHitClassForBadge16,
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
@@ -535,6 +541,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 }}
                 disabled={disabled || compareSelected.length === 0}
                 title={t('chatV2:modelMention.retry')}
+                className="[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
               >
                 <ArrowCounterClockwise size={14} />
                 {t('chatV2:modelMention.retry')}
@@ -546,7 +553,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               iconOnly
               onClick={onClose}
               // P1-3: 28px 视觉尺寸保留，触屏用伪元素把命中区扩到 ≥44px
-              className="relative h-7 w-7 rounded-[var(--menu-shell-row-radius)] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
+              className={cn(
+                'h-7 w-7 rounded-[var(--menu-shell-row-radius)]',
+                coarseHitClassFor28
+              )}
               aria-label={t('common:actions.cancel')}
               title={t('common:actions.cancel')}
             >
@@ -625,6 +635,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClick={() => toggleVendorCollapse(group.vendorId)}
                       className={cn(
                         'flex w-full select-none items-center gap-2 rounded-[var(--menu-shell-row-radius)] px-[var(--menu-shell-row-padding-x)] py-1 text-left transition-colors',
+                        '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
                         'hover:bg-[color:var(--menu-shell-row-hover)]'
                       )}
                     >
@@ -673,7 +684,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       onClose();
                       triggerOpenSettingsModels();
                     }}
-                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                   >
                     {t('chatV2:modelPicker.goToSettings')}
                   </DsButton>
@@ -699,7 +710,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             }}
             disabled={disabled || compareSelected.length === 0}
             title={t('chatV2:modelMention.retry')}
-            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px] [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelMention.retry')}
@@ -733,7 +744,7 @@ const CompareToggle: React.FC<CompareToggleProps> = ({ checked, onChange, label,
       className={cn(
         'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-2xs font-medium transition-colors',
         // 📱 触控目标：coarse 指针下放大到 ≥44px 高 + 12px 字号（视觉 pill 随之变高，桌面不受影响）
-        '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[12px]',
+        '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:text-[12px]',
         checked
           ? 'border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] text-[color:var(--menu-shell-foreground)]'
           : 'border-[color:var(--menu-shell-border)] bg-transparent text-[color:var(--menu-shell-muted-foreground)] hover:bg-[color:var(--menu-shell-row-hover)]',

@@ -121,40 +121,39 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
     {
       name: 'builtin-arxiv_search',
       description:
-        '搜索 arXiv 预印本论文。直接调用 arXiv API，适合查找 STEM 领域最新研究。返回论文 ID、标题、作者、摘要、分类、PDF 链接等。支持 arXiv 查询语法（引号精确匹配、ti:/au:/abs: 字段限定、AND/OR/ANDNOT 布尔操作）。',
+        '搜索 arXiv 预印本（STEM 最新研究），返回论文 ID、标题、作者、摘要、分类、PDF 链接。',
       inputSchema: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description:
-              '【必填】搜索查询。支持 arXiv 查询语法：引号精确匹配（如 "transformer"）、字段限定（ti: 标题、au: 作者、abs: 摘要）、布尔操作（AND、OR、ANDNOT）。',
+              '搜索查询。支持 arXiv 语法：引号精确匹配、ti:/au:/abs: 字段限定、AND/OR/ANDNOT。',
           },
           max_results: {
             type: 'integer',
-            description: '最大返回结果数，默认 10，最大 50',
+            description: '最大返回结果数',
             default: 10,
             minimum: 1,
             maximum: 50,
           },
           date_from: {
             type: 'string',
-            description: '起始日期（YYYY-MM-DD 格式），用于筛选提交日期。注意：此参数是日期字符串，不同于 scholar_search 的 year_from（年份整数）。',
+            description: '提交起始日期 YYYY-MM-DD（区别于 scholar_search 的年份整数）。',
           },
           date_to: {
             type: 'string',
-            description: '截止日期（YYYY-MM-DD 格式），用于筛选提交日期。注意：此参数是日期字符串，不同于 scholar_search 的 year_to（年份整数）。',
+            description: '提交截止日期 YYYY-MM-DD。',
           },
           categories: {
             type: 'array',
             items: { type: 'string' },
-            description:
-              'arXiv 分类列表，如 ["cs.AI", "cs.LG"]。强烈建议指定以提高相关性。',
+            description: 'arXiv 分类列表（如 ["cs.AI"]），建议指定以提高相关性。',
           },
           sort_by: {
             type: 'string',
             enum: ['relevance', 'date'],
-            description: '排序方式："relevance"（相关性，默认）或 "date"（最新优先）',
+            description: '排序：relevance=相关性，date=最新优先',
             default: 'relevance',
           },
         },
@@ -164,43 +163,43 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
     {
       name: 'builtin-scholar_search',
       description:
-        '搜索学术论文（基于 OpenAlex 开放学术数据库，覆盖 2.4 亿+ 篇论文，含 Crossref、PubMed、arXiv 等来源，国内可直连）。返回论文标题、作者、摘要、年份、引用数、PDF 链接、DOI 等。适合查找高引论文、跨学科文献。',
+        '基于 OpenAlex（2.4 亿+ 论文，国内可直连）搜索跨学科文献，返回标题、作者、摘要、年份、引用数、PDF 链接、DOI，适合找高引论文。',
       inputSchema: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: '【必填】搜索查询文本，使用英文效果最佳',
+            description: '搜索查询文本，英文效果最佳',
           },
           max_results: {
             type: 'integer',
-            description: '最大返回结果数，默认 10，最大 50',
+            description: '最大返回结果数',
             default: 10,
             minimum: 1,
             maximum: 50,
           },
           year_from: {
             type: 'integer',
-            description: '起始发表年份（如 2020）。注意：此参数是年份整数，不同于 arxiv_search 的 date_from（YYYY-MM-DD 日期字符串）。',
+            description: '起始发表年份，整数（区别于 arxiv_search 的日期字符串）。',
           },
           year_to: {
             type: 'integer',
-            description: '截止发表年份（如 2024）。注意：此参数是年份整数，不同于 arxiv_search 的 date_to（YYYY-MM-DD 日期字符串）。',
+            description: '截止发表年份，整数。',
           },
           sort_by: {
             type: 'string',
             enum: ['relevance', 'date', 'citations'],
-            description: '排序方式："relevance"（相关性，默认）、"date"（最新优先）、"citations"（引用数最高优先）',
+            description: '排序：relevance=相关性，date=最新，citations=引用数',
             default: 'relevance',
           },
           min_citation_count: {
             type: 'integer',
-            description: '最低引用数过滤，用于筛选高影响力论文',
+            description: '最低引用数过滤',
             minimum: 0,
           },
           open_access_only: {
             type: 'boolean',
-            description: '是否只返回开放获取论文（有免费 PDF），默认 false',
+            description: '只返回开放获取论文（有免费 PDF）',
             default: false,
           },
         },
@@ -210,31 +209,27 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
     {
       name: 'builtin-paper_save',
       description:
-        '下载学术论文 PDF 并保存到用户资料库（VFS）。支持批量下载（最多 5 篇）。支持三种输入方式：直接 PDF URL、arXiv ID、DOI（自动通过 Unpaywall 解析开放获取 PDF）。保存后可用 resource_read 按页阅读、unified_search RAG 检索。自动 SHA256 去重，已存在的论文直接返回文件 ID。',
+        '批量下载论文 PDF 存入资料库（VFS）。来源可为 PDF URL、arXiv ID 或 DOI（经 Unpaywall 解析开放获取 PDF）；SHA256 自动去重。保存后可 resource_read 阅读、unified_search 检索。',
       inputSchema: {
         type: 'object',
         properties: {
           papers: {
             type: 'array',
-            description:
-              '【必填】论文列表（最多 5 篇）。每篇论文必须提供 title，并至少提供 url/doi/arxiv_id 之一作为下载来源。',
+            description: '论文列表；每篇须有 title，且 url/doi/arxiv_id 至少一项。',
             items: {
               type: 'object',
               properties: {
                 url: {
                   type: 'string',
-                  description:
-                    'PDF 下载地址（优先使用，来自搜索结果的 pdfUrl 字段）',
+                  description: 'PDF 下载地址（优先，来自搜索结果 pdfUrl）',
                 },
                 doi: {
                   type: 'string',
-                  description:
-                    '论文 DOI（如 "10.xxxx/xxxxx"），系统会通过 Unpaywall 自动查找开放获取 PDF',
+                  description: 'DOI，经 Unpaywall 自动查找开放获取 PDF',
                 },
                 arxiv_id: {
                   type: 'string',
-                  description:
-                    'arXiv 论文 ID（如 "2401.12345"），自动转换为 PDF 下载链接',
+                  description: 'arXiv ID，自动转换为 PDF 链接',
                 },
                 title: {
                   type: 'string',
@@ -248,7 +243,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
           },
           folder_id: {
             type: 'string',
-            description: '保存到指定 VFS 文件夹 ID（可选，默认保存到根目录）',
+            description: '保存目标 VFS 文件夹 ID，缺省为根目录',
           },
         },
         required: ['papers'],
@@ -256,14 +251,13 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
     },
     {
       name: 'builtin-cite_format',
-      description:
-        '将论文元数据格式化为标准学术引用格式。支持 BibTeX、GB/T 7714（中国国标）、APA 三种格式。输入论文的标题、作者、年份、DOI、期刊等信息，输出格式化的引用文本。',
+      description: '将论文元数据格式化为标准引用文本。',
       inputSchema: {
         type: 'object',
         properties: {
           papers: {
             type: 'array',
-            description: '【必填】论文元数据列表',
+            description: '论文元数据列表',
             items: {
               type: 'object',
               properties: {
@@ -274,7 +268,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
                 authors: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: '作者列表（如 ["张三", "李四"]）',
+                  description: '作者列表',
                 },
                 year: {
                   type: 'integer',
@@ -286,7 +280,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
                 },
                 venue: {
                   type: 'string',
-                  description: '发表期刊或会议名称',
+                  description: '期刊或会议名称',
                 },
               },
               required: ['title'],
@@ -295,8 +289,7 @@ cite_format(papers=[{title: "...", authors: ["..."], year: 2024, doi: "...", ven
           format: {
             type: 'string',
             enum: ['bibtex', 'gbt7714', 'apa'],
-            description:
-              '引用格式："bibtex"（BibTeX，默认）、"gbt7714"（GB/T 7714 中国国标）、"apa"（APA 格式）',
+            description: 'bibtex=BibTeX，gbt7714=GB/T 7714 国标，apa=APA',
             default: 'bibtex',
           },
         },

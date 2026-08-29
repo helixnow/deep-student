@@ -222,6 +222,14 @@
   text-align: right;
 }
 
+/* 触屏：轨道命中区兜底 ≥44px（计算高度 28×1.18+8 ≈ 41px，差 3px）。
+   只判定 pointer:coarse，不叠加 hover:none——iPad 外接触控板时两者并存会失效。 */
+@media (pointer: coarse) {
+  .tds-track {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tds-root .tds-fill,
   .tds-root[data-dragging] .tds-fill,

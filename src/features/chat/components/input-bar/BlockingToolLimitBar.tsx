@@ -47,7 +47,7 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
           size="sm"
           onClick={handleContinue}
           disabled={isContinuing}
-          className="flex-shrink-0 bg-warning hover:bg-warning/90 text-warning-foreground"
+          className="flex-shrink-0 bg-warning hover:bg-warning/90 text-warning-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
         >
           {isContinuing ? (
             <>

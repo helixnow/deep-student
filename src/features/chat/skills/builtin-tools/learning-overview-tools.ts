@@ -12,7 +12,7 @@ const paginationProperties = {
     minimum: 1,
     maximum: 20,
     default: 20,
-    description: '单页天数，最多 20。',
+    description: '单页天数。',
   },
 } as const;
 
@@ -60,7 +60,7 @@ export const learningOverviewToolsSkill: SkillDefinition = {
     {
       name: 'builtin-learning_overview',
       description:
-        '只读聚合学习热力图与番茄钟区间统计，并附题库、FSRS、SM-2 的调用时当前快照。默认最近 7 天；自定义范围最多 90 天。返回区间 activity/focus 汇总、分页 daily、partial 和 sourceErrors。',
+        '只读聚合学习热力图与番茄钟区间统计，附题库、FSRS、SM-2 当前快照。默认最近 7 天，自定义最多 90 天；数据边界见技能说明。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -68,12 +68,12 @@ export const learningOverviewToolsSkill: SkillDefinition = {
           start_date: {
             type: 'string',
             pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: '开始日期，严格 YYYY-MM-DD；必须与 end_date 同时提供。',
+            description: '开始日期 YYYY-MM-DD；须与 end_date 同时提供。',
           },
           end_date: {
             type: 'string',
             pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: '结束日期，严格 YYYY-MM-DD，不得晚于本地今天；必须与 start_date 同时提供。',
+            description: '结束日期 YYYY-MM-DD，不得晚于本地今天；须与 start_date 同时提供。',
           },
           ...paginationProperties,
         },
@@ -90,15 +90,14 @@ export const learningOverviewToolsSkill: SkillDefinition = {
             additionalProperties: false,
             required: ['start_date', 'end_date'],
             properties: {
+              // 校验结构同顶层 start_date/end_date，省略重复的 description 注释
               start_date: {
                 type: 'string',
                 pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-                description: '开始日期，严格 YYYY-MM-DD。',
               },
               end_date: {
                 type: 'string',
                 pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-                description: '结束日期，严格 YYYY-MM-DD，不得晚于本地今天。',
               },
               ...paginationProperties,
             },
@@ -108,8 +107,7 @@ export const learningOverviewToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-pomodoro_today_stats',
-      description:
-        '读取本地今天的番茄钟统计（Low）：完成工作番茄数、专注秒数和中断次数。无参数。',
+      description: '读取本地今天的番茄钟统计（Low）：完成番茄数、专注秒数、中断次数。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -118,8 +116,7 @@ export const learningOverviewToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-pomodoro_daily_stats',
-      description:
-        '读取包含本地今天在内的最近 N 天番茄钟日统计（Low），升序返回，汇总覆盖全部 N 天，daily 单页最多 20 条。',
+      description: '读取含今天的最近 N 天番茄钟日统计（Low），升序返回；汇总覆盖全部 N 天。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -129,7 +126,7 @@ export const learningOverviewToolsSkill: SkillDefinition = {
             minimum: 1,
             maximum: 90,
             default: 7,
-            description: '包含今天在内的天数，1 到 90。',
+            description: '包含今天在内的天数。',
           },
           ...paginationProperties,
         },

@@ -95,17 +95,14 @@ alignment 可选值：left / center / right / justify
     {
       name: 'builtin-docx_read_structured',
       description:
-        '结构化读取 DOCX 文档，输出富 Markdown 格式。保留标题层级、表格（Markdown 表格）、' +
-        '有序/无序列表、超链接、粗体/斜体/删除线格式、图片占位符。' +
-        '比普通的 resource_read 提供更丰富的文档结构信息。' +
-        '当用户需要深入分析 Word 文档内容、理解文档结构时使用。',
+        '结构化读取 DOCX，输出富 Markdown：保留标题层级、表格、列表、超链接、粗体/斜体/删除线、图片占位符，' +
+        '比 resource_read 更完整，用于深入分析文档结构。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】DOCX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'DOCX 资源 ID，可经 resource_list 或 attachment_list 获取。',
           },
         },
         required: ['resource_id'],
@@ -113,17 +110,13 @@ alignment 可选值：left / center / right / justify
     },
     {
       name: 'builtin-docx_extract_tables',
-      description:
-        '专门提取 DOCX 文档中的所有表格，返回结构化 JSON 数组。' +
-        '每个表格是一个二维字符串数组（行×列）。' +
-        '当用户需要分析文档中的表格数据、将表格导出为其他格式时使用。',
+      description: '提取 DOCX 中所有表格为 JSON 数组，每个表格是二维字符串数组（行×列）。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】DOCX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'DOCX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -131,16 +124,13 @@ alignment 可选值：left / center / right / justify
     },
     {
       name: 'builtin-docx_get_metadata',
-      description:
-        '读取 DOCX 文档的属性信息：标题、主题、作者、描述、最后修改者、创建时间、修改时间。' +
-        '当用户询问"这份文档谁写的"、"文档什么时候创建的"时使用。',
+      description: '读取 DOCX 属性：标题、主题、作者、描述、最后修改者、创建/修改时间。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】DOCX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'DOCX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -149,16 +139,13 @@ alignment 可选值：left / center / right / justify
     {
       name: 'builtin-docx_to_spec',
       description:
-        '将已有 DOCX 文档转换为 JSON spec 格式（与 docx_create 互逆）。' +
-        '返回的 spec 可被 LLM 修改后传给 docx_create 生成新文件，实现 round-trip 编辑闭环。' +
-        '当用户要求"修改这个 Word 文件"、"基于模板生成"时，先用此工具读取结构。',
+        '将已有 DOCX 转为 JSON spec（与 docx_create 互逆）；修改 spec 后再 docx_create 即完成 round-trip 编辑，也适用于"基于模板生成"。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】DOCX 文件的资源 ID（如 file_xxx）。可通过 resource_list 或 attachment_list 获取。',
+            description: 'DOCX 资源 ID。',
           },
         },
         required: ['resource_id'],
@@ -166,44 +153,40 @@ alignment 可选值：left / center / right / justify
     },
     {
       name: 'builtin-docx_replace_text',
-      description:
-        '在已有 DOCX 文档中执行批量文本查找替换，保存为新文件。' +
-        '支持多组替换对，同时替换标题、正文段落和表格中的文本。' +
-        '当用户要求"把文档里的 XXX 替换为 YYY"时使用。',
+      description: '批量查找替换文本（标题、正文与表格）并保存为新文件。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
-            description:
-              '【必填】源 DOCX 文件的资源 ID。',
+            description: '源 DOCX 资源 ID。',
           },
           replacements: {
             type: 'array',
             items: {
               type: 'object',
               properties: {
-                find: { type: 'string', description: '要查找的文本' },
-                replace: { type: 'string', description: '替换为的文本' },
+                find: { type: 'string', description: '查找文本' },
+                replace: { type: 'string', description: '替换文本' },
               },
               required: ['find', 'replace'],
             },
-            description: '【必填】替换对数组，每项包含 find 和 replace 字段。',
+            description: '替换对数组。',
           },
           file_name: {
             type: 'string',
-            description: '替换后的文件名（含 .docx 后缀），默认 "edited.docx"',
+            description: '输出文件名（含 .docx 后缀）',
             default: 'edited.docx',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
@@ -213,37 +196,34 @@ alignment 可选值：left / center / right / justify
     {
       name: 'builtin-docx_create',
       description:
-        '从 JSON spec 生成格式化 DOCX；默认保存到学习资源，也可安全写入已授权 workspace。' +
-        '支持标题（6级）、段落（粗体/斜体/对齐）、表格、有序/无序列表、代码块、分页符。' +
-        '当用户要求"生成 Word 文件"、"导出为 Word"、"写一份报告"时使用。' +
-        '返回 TaskObjectHandle；workspace 输出同时返回可撤销的 mutation receipt/change set。',
+        '从 JSON spec 生成格式化 DOCX（标题 6 级、段落粗体/斜体/对齐、表格、列表、代码块、分页符），默认存学习资源，也可写入已授权 workspace。' +
+        '返回 TaskObjectHandle；workspace 输出附带可撤销的 mutation receipt/change set。',
       inputSchema: {
         type: 'object',
         properties: {
           spec: {
             type: 'object',
             description:
-              '【必填】文档规格 JSON，包含 title（可选）和 blocks 数组。' +
-              'blocks 支持类型：heading/paragraph/table/list/code/pagebreak。',
+              '文档规格 JSON：title（可选）+ blocks 数组，block 类型 heading/paragraph/table/list/code/pagebreak。',
           },
           file_name: {
             type: 'string',
-            description: '生成的文件名（含 .docx 后缀），默认 "generated.docx"',
+            description: '生成文件名（含 .docx 后缀）',
             default: 'generated.docx',
           },
           folder_id: {
             type: 'string',
-            description: '可选：保存到的文件夹 ID。不指定则保存到根目录。',
+            description: '保存目标文件夹 ID，缺省为根目录。',
           },
           output_target: {
             type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
-            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+            description: 'vfs=学习资源；workspace=已授权读写工作区。',
           },
-          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
-          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时必填。' },
+          relative_path: { type: 'string', description: 'workspace 内相对路径，禁止绝对路径与 ..。' },
           overwrite_policy: {
             type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
-            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+            description: '覆盖已有文件须用 replace_if_match。',
           },
           expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },

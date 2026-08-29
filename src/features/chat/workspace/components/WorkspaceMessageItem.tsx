@@ -229,7 +229,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                 setIsSubagentCollapsed(!isSubagentCollapsed);
               }
             }}
-            className="flex w-full items-center gap-2 p-2 text-left cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+            className="flex w-full items-center gap-2 p-2 [@media(pointer:coarse)]:!min-h-11 text-left cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
           >
             {isSubagentCollapsed ? (
               <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
@@ -256,7 +256,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                     e.stopPropagation();
                     setIsSubagentFullHeight(!isSubagentFullHeight);
                   }}
-                  className="!h-8 !w-8 lg:!h-6 lg:!w-6"
+                  className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                   aria-label={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                   title={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                 >
@@ -275,7 +275,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                       e.stopPropagation();
                       onViewFullSession(subagentSessionId);
                     }}
-                    className="!h-8 !w-8 lg:!h-6 lg:!w-6"
+                    className="!h-8 !w-8 lg:!h-6 lg:!w-6 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                     aria-label={t('subagent.viewFull')}
                     title={t('subagent.viewFull')}
                   >

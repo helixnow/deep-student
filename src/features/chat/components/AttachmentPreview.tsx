@@ -266,6 +266,8 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           className={cn(
             'absolute inset-0 flex items-center justify-center',
             'bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity',
+            // 触屏无 hover：放大入口半透明常显（与本组件删除按钮的 coarse 豁免同理）
+            '[@media(pointer:coarse)]:opacity-60',
             'cursor-pointer z-10'
           )}
           onClick={onPreviewClick}
@@ -287,6 +289,9 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
             'bg-black/40 hover:bg-destructive text-white',
             'backdrop-blur-sm',
             'transition-all duration-200',
+            // 触屏保底 44px：lg 断点会把 icon 按钮缩到 32px（--button-icon-size），
+            // iPad 横屏等 coarse + 宽屏场景需强制最小触控尺寸
+            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
             isTouchPrimary
               ? 'opacity-100 scale-100'
               : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transform scale-90 group-hover:scale-100',

@@ -9,7 +9,7 @@
  * 约束：
  * 1. 使用 invoke 调用后端命令
  * 2. 所有命令前缀 resources_（指向 resources.db）
- * 3. 大文件限制：图片 < 10MB，文件 < 50MB
+ * 3. 大文件限制：见 types.ts 的 IMAGE_SIZE_LIMIT / FILE_SIZE_LIMIT（#62：文件上限已是 200MB）
  * 4. 错误处理使用 getErrorMessage
  */
 

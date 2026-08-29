@@ -105,7 +105,7 @@ interface AdvancedPanelProps {
 // ============================================================================
 
 export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, sidebarMode = false }) => {
-  const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
+  const { t } = useTranslation(['chat_host', 'common', 'chatV2', 'enhanced_rag']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
 
@@ -331,8 +331,8 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               variant="ghost"
               size="sm"
               className={cn(
-                // 触控目标保底：移动/平板 min-h-8，桌面 lg 起恢复紧凑
-                'ml-auto !h-auto min-h-8 lg:min-h-0 !px-1.5 !py-0.5 text-2xs',
+                // 触控目标保底：移动/平板 min-h-8，桌面 lg 起恢复紧凑；触屏保证 ≥44px
+                'ml-auto !h-auto min-h-8 lg:min-h-0 [@media(pointer:coarse)]:!min-h-11 !px-1.5 !py-0.5 text-2xs',
                 isStreaming && 'pointer-events-none opacity-60'
               )}
               onClick={() => {
@@ -565,7 +565,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   <div className="mt-2 border-t border-border/50 pt-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-foreground">
-                        {t('chatV2:ragPanel.multimodalRerankLabel')}
+                        {t('enhanced_rag:enable_reranking')}
                       </span>
                       <Switch
                         size="sm"
@@ -576,7 +576,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                       />
                     </div>
                     <p className="mt-1 text-2xs leading-3 text-muted-foreground">
-                      {t('chatV2:ragPanel.multimodalRerankHelper')}
+                      {t('chat_host:rag.panel.rerank_helper')}
                     </p>
                   </div>
                 </div>

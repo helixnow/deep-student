@@ -74,16 +74,16 @@ export const subagentWorkerSkill: SkillDefinition = {
     {
       name: 'builtin-workspace_send',
       description:
-        '向工作区发送协作消息。仅用于汇报中间进度（progress）、向主代理提问（query）或共享中间数据；最终结果由运行时自动交付给主代理，不需要用此工具发送。',
+        '发送协作消息：仅用于中间进度（progress）、向主代理提问（query）或共享中间数据；最终结果由运行时自动交付，勿用此工具发送。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID（从任务消息中获取）' },
-          content: { type: 'string', description: '【必填】消息内容文本' },
+          workspace_id: { type: 'string', description: '工作区 ID（来自任务消息）' },
+          content: { type: 'string', description: '消息内容文本' },
           message_type: {
             type: 'string',
             enum: ['result', 'progress', 'query'],
-            description: '【必填】消息类型。中间进度用 "progress"，提问用 "query"',
+            description: '中间进度用 progress，提问用 query',
           },
         },
         required: ['workspace_id', 'content', 'message_type'],
@@ -91,15 +91,15 @@ export const subagentWorkerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-workspace_query',
-      description: '查询工作区信息，包括共享上下文、文档等。',
+      description: '查询工作区信息（共享上下文、文档等）。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
           query_type: {
             type: 'string',
             enum: ['agents', 'messages', 'documents', 'context', 'tasks', 'all'],
-            description: '查询类型；tasks=后台子代理任务状态（Worker 通常不需要，但后端支持）',
+            description: '查询类型；tasks=后台子代理任务状态',
           },
         },
         required: ['workspace_id'],
@@ -107,12 +107,12 @@ export const subagentWorkerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-workspace_get_context',
-      description: '从工作区读取一个共享上下文值。主代理可通过 workspace_set_context 预先存储数据，子代理用此工具读取。',
+      description: '读取主代理经 workspace_set_context 预存的共享上下文值。',
       inputSchema: {
         type: 'object',
         properties: {
-          workspace_id: { type: 'string', description: '【必填】工作区 ID' },
-          key: { type: 'string', description: '【必填】上下文键名' },
+          workspace_id: { type: 'string', description: '工作区 ID' },
+          key: { type: 'string', description: '上下文键名' },
         },
         required: ['workspace_id', 'key'],
       },

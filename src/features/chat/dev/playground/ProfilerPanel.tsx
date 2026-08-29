@@ -225,7 +225,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
           type="button"
           onClick={handleTogglePause}
           className={cn(
-            'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors',
+            'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors [@media(pointer:coarse)]:!min-h-11',
             enabled
               ? 'bg-muted hover:bg-warning/10 hover:text-warning'
               : 'bg-success/10 text-success hover:bg-success/20',
@@ -238,7 +238,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
         <button
           type="button"
           onClick={handleReset}
-          className="px-2 py-1 text-[11px] rounded bg-muted hover:bg-muted/80 transition-colors flex items-center gap-1"
+          className="px-2 py-1 text-[11px] rounded bg-muted hover:bg-muted/80 transition-colors flex items-center gap-1 [@media(pointer:coarse)]:!min-h-11"
           title="清空采集事件"
         >
           <ArrowCounterClockwise size={12} />
@@ -249,7 +249,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
           onClick={handleExport}
           disabled={metrics.eventCount === 0}
           className={cn(
-            'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors',
+            'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors [@media(pointer:coarse)]:!min-h-11',
             metrics.eventCount === 0
               ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
               : 'bg-muted hover:bg-primary/10 hover:text-primary',
@@ -277,7 +277,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
             type="button"
             onClick={() => setTab(id)}
             className={cn(
-              'px-3 py-1.5 transition-colors',
+              'px-3 py-1.5 transition-colors [@media(pointer:coarse)]:!min-h-11',
               tab === id
                 ? 'text-foreground border-b-2 border-primary -mb-px font-medium'
                 : 'text-muted-foreground hover:text-foreground',

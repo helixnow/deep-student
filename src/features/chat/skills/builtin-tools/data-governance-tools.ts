@@ -60,7 +60,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-backup_status',
       description:
-        '分页读取本机备份目录（Low）。返回 backup_id/created_at/size_bytes/backup_type/databases 及 total/has_more，scope=local_backup_catalog；不探测云端。注意：只有查看能力，恢复备份没有对应工具（有意设计）——用户要恢复时引导其到 设置→数据治理 页面操作。',
+        '分页读取本机备份目录（Low），返回 backup_id/created_at/size_bytes/backup_type/databases 及 total/has_more；不探测云端。恢复备份无对应工具（有意设计），引导用户到 设置→数据治理 操作。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -73,7 +73,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-backup_create',
       description:
-        '启动一个 full 后台备份（High）。立即且仅返回 status=queued/job_id，必须随后用 backup_job_status 轮询终态；queued 不代表成功。可选择是否包含资产及严格资产类型。',
+        '启动 full 后台备份（High），仅返回 status=queued/job_id；须用 backup_job_status 轮询终态，queued 不代表成功。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -81,7 +81,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
           include_assets: {
             type: 'boolean',
             default: false,
-            description: '是否包含资产文件；默认 false（仅备份数据库和设置）',
+            description: '是否包含资产文件；false 时仅备份数据库和设置',
           },
           asset_types: {
             type: 'array',
@@ -96,7 +96,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-backup_job_status',
       description:
-        '查询 backup_create 返回的后台任务（Low）。lookup=found 时返回真实 status/phase/progress/terminal/result；expired 表示 Agent 创建过但已超出保留窗口，not_found 表示未知 ID。终态以 result.success 为准。',
+        '查询备份后台任务（Low）。found 返回 status/phase/progress/terminal/result；expired=超出保留窗口，not_found=未知 ID。终态以 result.success 为准。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -114,7 +114,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-sync_status',
       description:
-        '读取本地同步 change-log 统计与 cloud_configured（Low）。固定 observation_scope=local_change_logs_only、cloud_probed=false；不能据此判断云端可达、已连接或两端一致。无参数。',
+        '读取本地同步 change-log 统计与 cloud_configured（Low）；cloud_probed=false，不能据此判断云端可达或两端一致。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -124,7 +124,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-sync_run',
       description:
-        '使用 Settings 已保存的后端安全配置执行真实同步（High）。只接受 direction/strategy，绝不接受 cloud_config、endpoint、用户名、密码、token 或密钥。partial/skipped_changes 表示未完全成功。',
+        '用 Settings 已保存的安全配置执行真实同步（High）。只接受 direction/strategy，绝不接受 endpoint、凭据或密钥。partial/skipped_changes 表示未完全成功。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -139,7 +139,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
             type: 'string',
             enum: ['keep_local', 'use_cloud', 'keep_latest'],
             default: 'keep_latest',
-            description: '冲突策略；默认 keep_latest，不开放需要人工逐条处理的 manual',
+            description: '冲突策略；不开放需人工逐条处理的 manual',
           },
         },
       },

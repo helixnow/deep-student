@@ -1,5 +1,4 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { AnimatedMarkdown } from '@nvq/flowtoken';
 // 本地修补版样式：原版含 [class*="language-"] * 宽键失效集选择器（性能坑），
 // 见 flowtoken-patched.css 头部注释。
 import '../../styles/flowtoken-patched.css';
@@ -12,6 +11,22 @@ interface FlowTokenMarkdownRendererProps {
   onLinkClick?: (url: string) => void;
   blockId?: string;
   messageId?: string;
+}
+
+type AnimatedMarkdownComponent = typeof import('@nvq/flowtoken')['AnimatedMarkdown'];
+
+// ★ 依赖收敛（optimization0824 R4）：@nvq/flowtoken 连带 react-syntax-highlighter /
+// @tabler/icons-react / 独立 react-markdown@9，体积可观且仅流式渲染需要。
+// 动态 import 切出独立 chunk；模块级缓存保证加载完成后的渲染保持同步（无 Suspense 抖动）。
+let cachedAnimatedMarkdown: AnimatedMarkdownComponent | null = null;
+let flowtokenLoadPromise: Promise<AnimatedMarkdownComponent> | null = null;
+
+export function preloadFlowToken(): Promise<AnimatedMarkdownComponent> {
+  flowtokenLoadPromise ??= import('@nvq/flowtoken').then((mod) => {
+    cachedAnimatedMarkdown = mod.AnimatedMarkdown;
+    return mod.AnimatedMarkdown;
+  });
+  return flowtokenLoadPromise;
 }
 
 const FLOWTOKEN_ANIMATION = 'fadeIn';
@@ -78,16 +93,36 @@ export const FlowTokenMarkdownRenderer: React.FC<FlowTokenMarkdownRendererProps>
   const safeContent = useMemo(() => escapeHtmlTagsForFlowToken(content), [content]);
   const prefersReducedMotion = usePrefersReducedMotion();
 
+  const [AnimatedMarkdown, setAnimatedMarkdown] = useState<AnimatedMarkdownComponent | null>(
+    () => cachedAnimatedMarkdown,
+  );
+
+  useEffect(() => {
+    if (AnimatedMarkdown) return;
+    let cancelled = false;
+    void preloadFlowToken().then((component) => {
+      if (!cancelled) setAnimatedMarkdown(() => component);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [AnimatedMarkdown]);
+
   return (
     <div className="markdown-content flowtoken-markdown" onClick={handleClick}>
-      <AnimatedMarkdown
-        content={safeContent}
-        animation={isStreaming && !prefersReducedMotion ? FLOWTOKEN_ANIMATION : null}
-        animationDuration={FLOWTOKEN_DURATION}
-        animationTimingFunction={FLOWTOKEN_TIMING}
-        sep="diff"
-        isStreaming={isStreaming}
-      />
+      {AnimatedMarkdown ? (
+        <AnimatedMarkdown
+          content={safeContent}
+          animation={isStreaming && !prefersReducedMotion ? FLOWTOKEN_ANIMATION : null}
+          animationDuration={FLOWTOKEN_DURATION}
+          animationTimingFunction={FLOWTOKEN_TIMING}
+          sep="diff"
+          isStreaming={isStreaming}
+        />
+      ) : (
+        // chunk 加载期间（通常仅首个流式块的头几十毫秒）先按纯文本展示，避免内容空窗
+        <div style={{ whiteSpace: 'pre-wrap' }}>{safeContent}</div>
+      )}
     </div>
   );
 });

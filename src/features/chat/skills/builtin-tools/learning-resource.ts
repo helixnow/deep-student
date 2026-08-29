@@ -108,70 +108,71 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
   embeddedTools: [
     {
       name: 'builtin-resource_list',
-      description: '列出用户的学习资源。可按类型（笔记、教材、整卷、作文、翻译、知识导图）和文件夹筛选。当需要了解用户有哪些学习材料、浏览用户的笔记或教材列表时使用。',
+      description: '列出用户学习资源，可按类型、文件夹、关键词、收藏筛选，用于浏览用户的学习材料。',
       inputSchema: {
         type: 'object',
         properties: {
-          type: { type: 'string', description: '资源类型（可选，默认 "all" 返回所有类型）', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'all'], default: 'all' },
-          folder_id: { type: 'string', description: '可选：文件夹 ID，只列出该文件夹下的资源' },
-          search: { type: 'string', description: '可选：搜索关键词，按标题/名称过滤' },
-          limit: { type: 'integer', description: '返回数量限制（可选，默认 20，最多 100）。注意：此参数名为 limit，不是 max_results 或 top_k。', default: 20, minimum: 1, maximum: 100 },
-          favorites_only: { type: 'boolean', description: '可选：是否只返回收藏的资源' },
+          type: { type: 'string', description: '资源类型', enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap', 'all'], default: 'all' },
+          folder_id: { type: 'string', description: '只列出该文件夹下的资源' },
+          search: { type: 'string', description: '按标题/名称过滤的关键词' },
+          limit: { type: 'integer', description: '返回数量限制。参数名是 limit，不是 max_results/top_k。', default: 20, minimum: 1, maximum: 100 },
+          favorites_only: { type: 'boolean', description: '只返回收藏的资源' },
         },
       },
     },
     {
       name: 'builtin-resource_read',
-      description: '读取指定学习资源的内容。支持笔记、教材页面、整卷题目、作文批改、翻译结果、知识导图。对于 PDF/教材类多页文档，支持通过 page_start/page_end 按页读取，避免一次加载全部内容。首次读取时不指定页码可获取全文和总页数（totalPages），后续可按需读取特定页。',
+      description:
+        '读取资源内容（笔记/教材/整卷/作文/翻译/导图）。多页文档可用 page_start/page_end 按页读取；首次不指定页码返回全文与 totalPages，之后按需读页节省 token。',
       inputSchema: {
         type: 'object',
         properties: {
-          resource_id: { type: 'string', description: '【必填】资源 ID（DSTU 格式，如 note_xxx, tb_xxx, exam_xxx, mm_xxx, file_xxx）。获取方式：从 resource_list/resource_search 返回的 id 字段，或从 unified_search 返回的 readResourceId（优先）/sourceId 字段。注意：不要传 VFS UUID（res_xxx 格式），应传 DSTU 格式 ID。' },
-          include_metadata: { type: 'boolean', description: '是否包含元数据（标题、创建时间等），默认true' },
-          page_start: { type: 'integer', description: '可选：起始页码（1-based），仅对 PDF/教材/文件类型有效。指定后只返回该页范围的内容。', minimum: 1 },
-          page_end: { type: 'integer', description: '可选：结束页码（1-based，包含），仅对 PDF/教材/文件类型有效。未指定时默认等于 page_start（只读单页）。', minimum: 1 },
+          resource_id: { type: 'string', description: '资源 ID（DSTU 格式，如 note_xxx/tb_xxx/exam_xxx）；来自 resource_list/resource_search 的 id 或 unified_search 的 readResourceId（优先）/sourceId。不要传 VFS UUID（res_xxx）。' },
+          include_metadata: { type: 'boolean', description: '包含元数据（标题、创建时间等），默认 true' },
+          page_start: { type: 'integer', description: '起始页码（1-based），仅 PDF/教材/文件类型有效', minimum: 1 },
+          page_end: { type: 'integer', description: '结束页码（1-based，含），未指定时等于 page_start', minimum: 1 },
         },
         required: ['resource_id'],
       },
     },
     {
       name: 'builtin-resource_search',
-      description: '在学习资源中全文搜索。当用户询问特定知识点、想查找某个主题的笔记、或寻找相关学习材料时使用。返回匹配的资源列表和相关片段。',
+      description: '在学习资源中全文搜索，返回匹配资源列表与相关片段。',
       inputSchema: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: '【必填】搜索关键词，支持标题和内容搜索' },
+          query: { type: 'string', description: '搜索关键词（标题与内容）' },
           types: {
             type: 'array',
             items: {
               type: 'string',
               enum: ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap'],
             },
-            description: '可选：限制搜索的资源类型',
+            description: '限制搜索的资源类型',
           },
-          folder_id: { type: 'string', description: '可选：限制搜索范围到指定文件夹' },
-          top_k: { type: 'integer', description: '返回结果数量（可选，默认 10，最多 50）。注意：此参数名为 top_k，不是 limit 或 max_results。', default: 10, minimum: 1, maximum: 50 },
+          folder_id: { type: 'string', description: '限制搜索到指定文件夹' },
+          top_k: { type: 'integer', description: '返回结果数量。参数名是 top_k，不是 limit/max_results。', default: 10, minimum: 1, maximum: 50 },
         },
         required: ['query'],
       },
     },
     {
       name: 'builtin-folder_list',
-      description: '列出用户的文件夹结构。当需要了解资源的组织方式、查看有哪些文件夹、或者用户问"我的文件夹有哪些"时使用。',
+      description: '列出用户的文件夹结构，了解资源组织方式。',
       inputSchema: {
         type: 'object',
         properties: {
           parent_id: { 
             type: 'string', 
-            description: '父文件夹 ID，为空或 "root" 时列出根目录下的文件夹' 
+            description: '父文件夹 ID，空或 "root" 时列根目录' 
           },
           include_count: { 
             type: 'boolean', 
-            description: '是否包含每个文件夹的资源数量统计，默认 true' 
+            description: '附带各文件夹资源数量统计，默认 true' 
           },
           recursive: {
             type: 'boolean',
-            description: '是否递归列出子文件夹，默认 false（只列出直接子文件夹）',
+            description: '递归列出子文件夹，默认 false',
           },
         },
       },

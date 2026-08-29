@@ -56,6 +56,10 @@ import type {
 } from './translationTypes';
 import { createNdjsonParser, parseAlignedFallback } from './translationNdjsonParser';
 import { buildCacheKey, readCache, writeCache } from './translationCache';
+import {
+  SOURCE_TRANSLATION_LANGUAGES,
+  TRANSLATION_LANGUAGES,
+} from '@/translation/languages';
 
 // ============================================================================
 // 类型
@@ -83,23 +87,9 @@ export interface TranslationPopoverProps {
 /** 流式兜底超时：超过该时长没有收到任何新 chunk 视为失败 */
 const STREAM_STALL_TIMEOUT_MS = 90_000;
 
-const SOURCE_LANGUAGES = [
-  { code: 'auto', label: 'translation:languages.auto' },
-  { code: 'zh-CN', label: 'translation:languages.zh-CN' },
-  { code: 'en', label: 'translation:languages.en' },
-  { code: 'ja', label: 'translation:languages.ja' },
-  { code: 'ko', label: 'translation:languages.ko' },
-  { code: 'fr', label: 'translation:languages.fr' },
-  { code: 'de', label: 'translation:languages.de' },
-  { code: 'es', label: 'translation:languages.es' },
-  { code: 'ru', label: 'translation:languages.ru' },
-  { code: 'pt', label: 'translation:languages.pt' },
-  { code: 'it', label: 'translation:languages.it' },
-  { code: 'vi', label: 'translation:languages.vi' },
-  { code: 'th', label: 'translation:languages.th' },
-];
-
-const TARGET_LANGUAGES = SOURCE_LANGUAGES.filter((l) => l.code !== 'auto');
+// 语言列表与翻译工作台共享（src/translation/languages.ts），保持两处可选语言一致
+const SOURCE_LANGUAGES = SOURCE_TRANSLATION_LANGUAGES;
+const TARGET_LANGUAGES = TRANSLATION_LANGUAGES;
 
 const HIGHLIGHT_ACTIVE = { bg: 'bg-primary/10', text: 'text-primary' };
 
@@ -736,8 +726,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     setCollapsed((prev) => !prev);
   }, []);
 
-  const srcOptions = SOURCE_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
-  const tgtOptions = TARGET_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
+  const srcOptions = SOURCE_LANGUAGES.map((l) => ({ value: l.code, label: t(l.labelKey) }));
+  const tgtOptions = TARGET_LANGUAGES.map((l) => ({ value: l.code, label: t(l.labelKey) }));
 
   const hasContent =
     settings.mode === 'aligned' ? segments !== null && segments.length > 0 : streamingText.length > 0;
@@ -785,7 +775,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 ? t('translation:chat_popover.swap_languages')
                 : t('translation:chat_popover.cannot_swap_auto')
             }
-            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
           >
             <ArrowsLeftRight size={12} />
           </DsButton>
@@ -859,7 +849,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleRetry}
                   aria-label={t('common:actions.retry')}
                   title={t('common:actions.retry')}
-                  className="!h-6 !w-6 shrink-0"
+                  className="!h-6 !w-6 shrink-0 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
                 >
                   <ArrowsClockwise size={14} />
                 </DsButton>
@@ -949,7 +939,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopySource}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 <IconSwap
                   active={copiedSource}
@@ -968,7 +958,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 onClick={handleCopyTranslation}
                 disabled={isLoading}
                 title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                className="gap-1.5 !px-2 text-xs"
+                className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               >
                 <IconSwap
                   active={copiedTranslation}
@@ -988,7 +978,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   onClick={handleAddToInput}
                   disabled={isLoading}
                   title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs"
+                  className="gap-1.5 !px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ChatDots size={13} />
                   <span>{t('chatV2:selectionToolbar.addToChat')}</span>

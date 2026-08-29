@@ -125,25 +125,25 @@ export const templateDesignerSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-template_list',
-      description: '列出模板库中的模板摘要。支持按关键词搜索、仅活跃模板、仅内置模板筛选。',
+      description: '列出模板库摘要，支持关键词搜索、仅激活/仅内置筛选。',
       inputSchema: {
         type: 'object',
         properties: {
           activeOnly: {
             type: 'boolean',
-            description: '是否只返回激活模板，默认 true',
+            description: '只返回激活模板，默认 true',
           },
           builtinOnly: {
             type: 'boolean',
-            description: '是否只返回内置模板',
+            description: '只返回内置模板',
           },
           query: {
             type: 'string',
-            description: '可选：按关键词搜索模板（在 name/description 中模糊匹配）',
+            description: '关键词，模糊匹配 name/description',
           },
           limit: {
             type: 'integer',
-            description: '返回最大数量，默认 50，最大 200',
+            description: '返回最大数量',
             default: 50,
             minimum: 1,
             maximum: 200,
@@ -153,7 +153,7 @@ export const templateDesignerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-template_get',
-      description: '获取指定模板的完整信息（包含所有字段定义、提取规则、模板代码等）。',
+      description: '获取模板完整信息（字段定义、提取规则、模板代码）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -168,14 +168,13 @@ export const templateDesignerSkill: SkillDefinition = {
     {
       name: 'builtin-template_validate',
       description:
-        '校验模板定义是否合法。检查字段与提取规则一致性、front/back/generation_prompt 非空等。返回错误和警告列表，错误会附带下一步建议。',
+        '校验模板定义合法性（字段与提取规则一致、front/back/generationPrompt 非空等），返回错误/警告及修复建议。',
       inputSchema: {
         type: 'object',
         properties: {
           template: {
             type: 'object',
-            description:
-              '要校验的模板对象，结构与创建模板参数一致（包含 name, fields, frontTemplate, backTemplate, generationPrompt, fieldExtractionRules 等）',
+            description: '待校验模板对象，结构同 template_create 的 template。',
           },
         },
         required: ['template'],
@@ -183,14 +182,13 @@ export const templateDesignerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-template_create',
-      description: '校验并创建新模板。模板会自动写入模板库。',
+      description: '校验并创建新模板，自动写入模板库。',
       inputSchema: {
         type: 'object',
         properties: {
           template: {
             type: 'object',
-            description:
-              '模板定义对象（包含 name, description, noteType, fields, frontTemplate, backTemplate, cssStyle, generationPrompt, fieldExtractionRules, previewFront, previewBack 等）',
+            description: '模板定义对象，字段构成见技能说明「模板结构说明」。',
           },
         },
         required: ['template'],
@@ -198,8 +196,7 @@ export const templateDesignerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-template_update',
-      description:
-        '更新已有模板。必须提供 expectedVersion 做乐观锁检查，否则失败并提示刷新。支持局部更新。',
+      description: '局部更新已有模板；expectedVersion 乐观锁不匹配时失败并提示刷新。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -209,63 +206,60 @@ export const templateDesignerSkill: SkillDefinition = {
           },
           patch: {
             type: 'object',
-            description:
-              '要更新的字段（包含 expectedVersion 必需字段，以及 name, description, fields, frontTemplate, backTemplate 等可选字段）',
+            description: '要更新的字段集合',
             properties: {
               expectedVersion: {
                 type: 'string',
-                description:
-                  '【必填】版本号字符串，必须先通过 template_get 获取（如 "1.0.0"）',
+                description: '版本号字符串，须先经 template_get 获取（如 "1.0.0"）',
               },
               name: {
                 type: 'string',
-                description: '可选：新模板名称',
+                description: '模板名称',
               },
               description: {
                 type: 'string',
-                description: '可选：新模板描述',
+                description: '模板描述',
               },
               fields: {
                 type: 'array',
                 items: { type: 'string' },
-                description: '可选：字段名数组',
+                description: '字段名数组',
               },
               frontTemplate: {
                 type: 'string',
-                description: '可选：正面模板 HTML',
+                description: '正面模板 HTML',
               },
               backTemplate: {
                 type: 'string',
-                description: '可选：背面模板 HTML',
+                description: '背面模板 HTML',
               },
               cssStyle: {
                 type: 'string',
-                description: '可选：样式',
+                description: '样式',
               },
               generationPrompt: {
                 type: 'string',
-                description: '可选：生成提示词',
+                description: '生成提示词',
               },
               noteType: {
                 type: 'string',
-                description: '可选：Anki 笔记类型（如 Basic, Cloze）；Cloze 要求正面模板含 {{cloze:字段}}',
+                description: 'Anki 笔记类型；Cloze 要求正面模板含 {{cloze:字段}}',
               },
               previewFront: {
                 type: 'string',
-                description: '可选：模板列表展示用的正面示例文案',
+                description: '正面示例文案',
               },
               previewBack: {
                 type: 'string',
-                description: '可选：模板列表展示用的背面示例文案',
+                description: '背面示例文案',
               },
               previewDataJson: {
                 type: 'string',
-                description: '可选：预览示例数据 JSON 字符串（key 对应字段名），多字段模板建议同步更新',
+                description: '预览示例数据 JSON 字符串（key 对应字段名）',
               },
               fieldExtractionRules: {
                 type: 'object',
-                description:
-                  '可选：字段提取规则映射（key 为字段名，value 含 field_type/is_required/description 等）；更新 fields 时必须与之一一对应',
+                description: '字段提取规则映射（key 为字段名）；更新 fields 时必须与之一一对应',
               },
             },
             required: ['expectedVersion'],
@@ -277,7 +271,7 @@ export const templateDesignerSkill: SkillDefinition = {
     {
       name: 'builtin-template_fork',
       description:
-        '从已有模板（通常是内置模板）复制一份新模板。新模板 is_built_in=false，可自由修改。sourceTemplateId 必须来自 template_list 返回结果。',
+        '复制已有模板为可编辑副本（is_built_in=false）。sourceTemplateId 必须来自 template_list。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -287,15 +281,15 @@ export const templateDesignerSkill: SkillDefinition = {
           },
           name: {
             type: 'string',
-            description: '可选：新模板名称（默认在源名称后加 " (副本)"）',
+            description: '新模板名称，默认源名称加 " (副本)"',
           },
           description: {
             type: 'string',
-            description: '可选：新模板描述',
+            description: '新模板描述',
           },
           setActive: {
             type: 'boolean',
-            description: '是否将新模板设为激活状态，默认 true',
+            description: '是否设为激活，默认 true',
           },
         },
         required: ['sourceTemplateId'],
@@ -304,35 +298,34 @@ export const templateDesignerSkill: SkillDefinition = {
     {
       name: 'builtin-template_preview',
       description:
-        '预览模板渲染效果。可基于已有模板 ID 或传入模板草稿，做占位符替换生成正面/背面预览。未提供 sampleData 时自动使用模板库存的 previewDataJson 示例数据。',
+        '按模板 ID 或草稿做占位符替换，生成正/背面预览；缺 sampleData 时用库存 previewDataJson。',
       inputSchema: {
         type: 'object',
         properties: {
           templateId: {
             type: 'string',
-            description: '可选：基于已有模板 ID 预览',
+            description: '基于已有模板 ID 预览',
           },
           template: {
             type: 'object',
-            description: '可选：传入模板草稿对象预览（优先级低于 templateId）',
+            description: '模板草稿对象（优先级低于 templateId）',
           },
           sampleData: {
             type: 'object',
-            description: '可选：预览用的示例数据（key-value 对应字段名和值）',
+            description: '示例数据（key 对应字段名）',
           },
         },
       },
     },
     {
       name: 'builtin-template_delete',
-      description:
-        '删除用户自定义模板。⚠️ 此操作不可撤销。内置模板不可删除，请先 fork 再删除副本。删除前请确认用户意图。',
+      description: '删除用户自定义模板，不可撤销；内置模板不可删除。删除前确认用户意图。',
       inputSchema: {
         type: 'object',
         properties: {
           templateId: {
             type: 'string',
-            description: '【必填】要删除的模板 ID',
+            description: '要删除的模板 ID',
           },
         },
         required: ['templateId'],
@@ -340,14 +333,13 @@ export const templateDesignerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-template_set_default',
-      description:
-        '将指定模板设为默认制卡模板（影响后续制卡的默认模板选择）。模板必须存在且处于激活状态；templateId 必须来自 template_list 返回结果。',
+      description: '设为默认制卡模板。模板须处于激活状态；templateId 必须来自 template_list。',
       inputSchema: {
         type: 'object',
         properties: {
           templateId: {
             type: 'string',
-            description: '【必填】要设为默认的模板 ID',
+            description: '要设为默认的模板 ID',
           },
         },
         required: ['templateId'],
