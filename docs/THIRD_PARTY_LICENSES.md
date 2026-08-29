@@ -1,10 +1,10 @@
 # Third-Party Licenses | 第三方许可证
 
-本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/generate-third-party-notices.mjs` 生成到 `public/legal/THIRD_PARTY_NOTICES.txt`。
+本文件说明 DeepStudent 的第三方许可证策略和重点依赖。随发行包交付的完整组件清单、版权声明与许可证全文由 `scripts/generate-third-party-notices.mjs` 生成到 `legal/THIRD_PARTY_NOTICES.txt`（唯一权威路径，经 Tauri `bundle.resources` 进入安装包 `resources/licenses/`）。
 
-This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `public/legal/THIRD_PARTY_NOTICES.txt`.
+This file describes DeepStudent's third-party licensing policy and notable dependencies. The complete component inventory, copyright notices, and license texts distributed with releases are generated at `legal/THIRD_PARTY_NOTICES.txt` (single authoritative path, bundled into `resources/licenses/` via Tauri `bundle.resources`).
 
-> 生成时间 / Generated: 2026-07-14
+> 更新时间 / Updated: 2026-08-24
 
 ---
 
@@ -53,7 +53,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
 | 许可证 | 代表性依赖 | 选择/说明 |
 |--------|-----------|-----------|
 | MIT | react, zustand, framer-motion, mermaid, ExcelJS | 保留各包的版权与 MIT 文本 |
-| Apache-2.0 | pdfjs-dist, docx-preview, @hello-pangea/dnd | 保留 Apache-2.0 文本和 NOTICE（如有） |
+| Apache-2.0 | pdfjs-dist, docx-preview | 保留 Apache-2.0 文本和 NOTICE（如有） |
 | MIT OR GPL-3.0-or-later | jszip | 采用 MIT 选项 |
 | MPL-2.0 OR Apache-2.0 | dompurify | 采用 Apache-2.0 选项 |
 | MIT AND Zlib | pako | 同时保留 MIT 与 Zlib 声明 |
@@ -95,7 +95,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
   - 源代码获取：Chromium 仓库 https://pdfium.googlesource.com/pdfium/
   - 法律材料：下载脚本保留上游 `LICENSE` 和完整 `licenses/`，涵盖 FreeType、ICU、OpenJPEG、libjpeg-turbo、libpng、zlib、Abseil 等组件
 
-- **PDF.js Worker**：`public/pdf.worker.min.mjs`、`public/pdf.worker.min.js`
+- **PDF.js Worker**：构建时从 `node_modules/pdfjs-dist/build/pdf.worker.min.mjs` 复制到 dist 根（经 `public/pdf.worker.wrapper.mjs` 加载；`public/` 不保留 worker 副本）
   - 上游来源：[Mozilla PDF.js](https://mozilla.github.io/pdf.js/)
   - 许可证：Apache-2.0
 
