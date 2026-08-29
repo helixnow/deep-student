@@ -1578,15 +1578,15 @@ mod tests {
         let protected = writable.path().join(".git");
         fs::create_dir(&protected).unwrap();
         let blocked_file = protected.join("config");
-        // Discriminator: a write outside every granted root must be denied by the
-        // AppContainer default-deny. If this file appears, the process was not
-        // sandboxed at all; if only `blocked_file` appears, the explicit DENY ACE
-        // on the protected directory was bypassed.
+        // Discriminator: a write outside every granted root must be denied by
+        // the AppContainer default-deny. If this file appears, the process was
+        // not sandboxed at all; if only `blocked_file` appears, the protected
+        // root was not sealed out of the sandbox SID's granted namespace.
         let outside = tempfile::tempdir().unwrap();
         let outside_file = outside.path().join("outside.txt");
         let mut sandbox_policy = policy(writable.path(), writable.path());
-        sandbox_policy.protected_write_roots.push(protected.clone());
-        let mut payload = WindowsSandboxPayload {
+        sandbox_policy.protected_write_roots.push(protected);
+        let payload = WindowsSandboxPayload {
             command: format!(
                 "Set-Content -LiteralPath '{}' -Value blocked; Set-Content -LiteralPath '{}' -Value outside",
                 blocked_file.display(),
@@ -1596,25 +1596,7 @@ mod tests {
             policy: sandbox_policy,
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
         };
-        // DIAGNOSTIC(CI): orchestrate run_payload manually so the protected DACL
-        // can be dumped while protection is in effect. Root-causing the CI-only
-        // failure where the protected write unexpectedly succeeds.
-        validate_payload(&mut payload).unwrap();
-        let capabilities: Vec<SID_AND_ATTRIBUTES> = Vec::new();
-        let profile = create_profile(&payload.profile_name, &capabilities).unwrap();
-        let (granted_paths, protected_paths) = grant_policy(&payload.policy, profile.sid).unwrap();
-        let dump = std::process::Command::new("icacls")
-            .arg(protected.as_os_str())
-            .output()
-            .unwrap();
-        eprintln!(
-            "=== protected DACL while protection is applied (icacls) ===\nstdout:\n{}\nstderr:\n{}",
-            String::from_utf8_lossy(&dump.stdout),
-            String::from_utf8_lossy(&dump.stderr)
-        );
-        let result = run_appcontainer_process(&payload, profile.sid, &capabilities, None);
-        revoke_policy(&granted_paths, &protected_paths, profile.sid);
-        result.unwrap();
+        let _ = run_payload(payload, None).unwrap();
         assert!(!blocked_file.exists());
         assert!(!outside_file.exists());
     }
