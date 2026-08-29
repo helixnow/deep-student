@@ -520,7 +520,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               size="sm"
               onClick={() => setIsScopeExpanded((prev) => !prev)}
               aria-expanded={isScopeExpanded}
-              className="flex items-center gap-0.5 text-[11px] text-primary"
+              className="flex items-center gap-0.5 text-[11px] text-primary [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {isScopeExpanded ? (
                 <>
@@ -594,7 +594,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               variant="ghost"
               size="sm"
               onClick={() => setIsArgsExpanded((prev) => !prev)}
-              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline"
+              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {isArgsExpanded ? (
                 <>
@@ -633,7 +633,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={() => setIsReasonOpen((prev) => !prev)}
             disabled={disabled}
-            className="text-destructive hover:text-destructive/80"
+            className="text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             {t('approval.reject')}
           </DsButton>
@@ -645,7 +645,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               size="sm"
               onClick={() => handleResponse('allow_session')}
               disabled={disabled}
-              className="text-success hover:text-success/80"
+              className="text-success hover:text-success/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             >
               {shellScope
                 ? t('approval.allowScope')
@@ -659,7 +659,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             onClick={() => handleResponse('approve')}
             disabled={disabled}
             autoFocus
-            className="bg-success text-success-foreground"
+            className="bg-success text-success-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             {t('approval.approve')}
           </DsButton>
@@ -701,7 +701,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={handleRejectImmediately}
             disabled={disabled}
-            className="shrink-0 text-xs text-muted-foreground hover:text-destructive"
+            className="shrink-0 text-xs text-muted-foreground hover:text-destructive [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             {t('approval.rejectDirectly')}
           </DsButton>
@@ -710,7 +710,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={handleRejectWithReason}
             disabled={disabled}
-            className="shrink-0 text-xs text-destructive hover:text-destructive/80"
+            className="shrink-0 text-xs text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             {t('approval.rejectSend')}
           </DsButton>

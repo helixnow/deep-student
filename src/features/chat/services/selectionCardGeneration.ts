@@ -1,12 +1,19 @@
 /**
- * 聊天划词制卡 — 将选中文本送入 CardForge 生成 Anki 卡片。
+ * 聊天划词制卡 — 将选中文本送入后端制卡管线生成 Anki 卡片。
  *
- * Phase A MVP：最短链路 SelectionToolbar → ChatV2AnkiAdapter.generateCards。
+ * 生产路径（Round 3 迁移）：SelectionToolbar → cardAgent.startGeneration →
+ * 后端 tauri command `start_enhanced_document_processing`
+ * （EnhancedAnkiService::start_document_processing——与 ChatAnki
+ * chatanki_start 管线共用的同一后端入口）。启动即返回 documentId，
+ * 不在前端阻塞等待生成完成；进度与结果由任务台（anki-tasks）跟踪。
+ *
+ * 历史版本经 ChatV2AnkiAdapter.generateCards 阻塞收集全部卡片后才提示
+ * “已开始”，该适配器已随 Chat V2 工具桥退役删除。
  */
 
 import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ChatV2AnkiAdapter, cardAgent } from '@/components/anki/cardforge';
+import { cardAgent } from '@/components/anki/cardforge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -109,15 +116,18 @@ export async function generateCardsFromSelection(
   const maxCards = input.maxCards ?? DEFAULT_SELECTION_MAX_CARDS;
 
   try {
-    await cardAgent.waitForReady();
-
-    const result = await ChatV2AnkiAdapter.generateCards(content, {
+    // 非阻塞直启后端制卡管线（与 chatanki_start 等价的后端入口），
+    // 启动成功即返回；不依赖 CardAgent 的事件监听初始化。
+    const result = await cardAgent.startGeneration({
+      content,
       maxCards,
-      deckName: t('selectionToolbar.makeCardsDeckName'),
-      customRequirements: t(
-        'selectionToolbar.makeCardsRequirements',
-        '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
-      ),
+      options: {
+        deckName: t('selectionToolbar.makeCardsDeckName'),
+        customRequirements: t(
+          'selectionToolbar.makeCardsRequirements',
+          '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
+        ),
+      },
     });
 
     if (!result.ok) {

@@ -236,7 +236,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onPresetChange(p)}
                 title={getStreamingPresetHint(p)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
+                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:!min-h-11 text-2xs rounded transition-colors',
                   preset === p
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -262,7 +262,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 onClick={() => onRenderModeChange(m)}
                 title={getRenderModeHint(m)}
                 className={cn(
-                  'flex-1 px-1 py-0.5 text-2xs rounded transition-colors',
+                  'flex-1 px-1 py-0.5 [@media(pointer:coarse)]:!min-h-11 text-2xs rounded transition-colors',
                   renderMode === m
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
@@ -290,7 +290,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             type="button"
             onClick={() => setActiveTab(id)}
             className={cn(
-              'flex-1 px-2 py-1.5 transition-colors flex items-center justify-center gap-1',
+              'flex-1 px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 transition-colors flex items-center justify-center gap-1',
               activeTab === id
                 ? 'text-foreground border-b-2 border-primary -mb-px font-medium'
                 : 'text-muted-foreground hover:text-foreground',
@@ -309,7 +309,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           <div className="flex-shrink-0 px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
             <button
               onClick={handleClear}
-              className="px-2.5 py-1.5 min-h-7 text-[11px] rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
+              className="px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded bg-muted hover:bg-destructive/10 hover:text-destructive transition-colors flex items-center gap-1"
             >
               <Trash size={12} />
               清空
@@ -318,7 +318,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               onClick={handleAbort}
               disabled={sessionStatus === 'idle'}
               className={cn(
-                'px-2.5 py-1.5 min-h-7 text-[11px] rounded flex items-center gap-1 transition-colors',
+                'px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded flex items-center gap-1 transition-colors',
                 sessionStatus === 'idle'
                   ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
                   : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
@@ -329,7 +329,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
             </button>
             <button
               onClick={handleInjectAll}
-              className="px-2.5 py-1.5 min-h-7 text-[11px] rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
+              className="px-2.5 py-1.5 min-h-7 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-1"
             >
               <Stack size={12} />
               注入全部
@@ -348,7 +348,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     key={status}
                     onClick={() => setSelectedStatus(status)}
                     className={cn(
-                      'flex-1 px-2 py-1 text-[11px] rounded flex items-center justify-center gap-1 transition-colors',
+                      'flex-1 px-2 py-1 [@media(pointer:coarse)]:!min-h-11 text-[11px] rounded flex items-center justify-center gap-1 transition-colors',
                       selectedStatus === status
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted hover:bg-muted/80 text-muted-foreground'
@@ -367,7 +367,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
               <select
                 value={scenarioRhythmId}
                 onChange={(e) => handleScenarioRhythmChange(e.target.value)}
-                className="w-full text-[11px] px-2 py-1 rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full text-[11px] px-2 py-1 [@media(pointer:coarse)]:!min-h-11 rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {RHYTHM_PRESETS.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -393,7 +393,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     onClick={() => handleTriggerScenario(scenario.id)}
                     disabled={isExecuting || sessionStatus === 'streaming'}
                     className={cn(
-                      'w-full text-left px-2 py-1.5 rounded text-[11px] transition-colors',
+                      'w-full text-left px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 rounded text-[11px] transition-colors',
                       'hover:bg-muted/80 group',
                       (isExecuting || sessionStatus === 'streaming') && 'opacity-50 cursor-not-allowed'
                     )}
@@ -422,7 +422,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   <button
                     key={`${template.type}-${index}`}
                     onClick={() => handleInjectBlock(index)}
-                    className="w-full text-left px-2 py-1.5 rounded text-[11px] hover:bg-muted/80 transition-colors group"
+                    className="w-full text-left px-2 py-1.5 [@media(pointer:coarse)]:!min-h-11 rounded text-[11px] hover:bg-muted/80 transition-colors group"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
@@ -456,7 +456,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingAskUser}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `ask_user`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -466,7 +466,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingApproval}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_approval`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -476,7 +476,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectBlockingToolLimit}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">真实 `tool_limit`</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -497,7 +497,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleInjectTodoSample}
-                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                  className="w-full text-left rounded px-2 py-2 [@media(pointer:coarse)]:!min-h-11 text-[11px] transition-colors hover:bg-muted/80"
                 >
                   <div className="font-medium">Todo sample 数据</div>
                   <div className="mt-0.5 text-2xs text-muted-foreground">
@@ -549,7 +549,7 @@ const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   <div className="border-b border-border">
     <button
       onClick={onToggle}
-      className="w-full px-3 py-2 flex items-center justify-between hover:bg-muted/30 transition-colors"
+      className="w-full px-3 py-2 [@media(pointer:coarse)]:!min-h-11 flex items-center justify-between hover:bg-muted/30 transition-colors"
     >
       <div className="flex items-center gap-1.5 text-xs font-medium">
       {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}

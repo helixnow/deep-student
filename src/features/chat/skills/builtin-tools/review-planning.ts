@@ -109,36 +109,36 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_get_due',
       description:
-        '查询到期的复习项（默认今天，含题目内容预览与 plan_id）。用于"今天该复习什么"。拿到清单后逐题考察用户，作答后用 review_submit 提交评分。',
+        '查询到期复习项（默认今天，含题目预览与 plan_id）。拿到清单后逐题考察用户，作答后用 review_submit 提交评分。',
       inputSchema: {
         type: 'object',
         properties: {
-          exam_id: { type: 'string', description: '题目集 ID（可选，不传查所有题目集）' },
-          until_date: { type: 'string', description: '截止日期 YYYY-MM-DD（可选，默认今天；查未来几天可传未来日期）' },
+          exam_id: { type: 'string', description: '题目集 ID，不传查所有题目集' },
+          until_date: { type: 'string', description: '截止日期 YYYY-MM-DD，默认今天' },
           status: {
             type: 'array',
             items: { type: 'string' },
-            description: '状态筛选（可选）：new/learning/reviewing/graduated/suspended',
+            description: '状态筛选：new/learning/reviewing/graduated/suspended',
           },
-          difficult_only: { type: 'boolean', description: '只看困难题（连续失败 3 次以上标记为困难）' },
+          difficult_only: { type: 'boolean', description: '只看困难题（连续失败 ≥3 次）' },
           limit: { type: 'integer', default: 20, minimum: 1, maximum: 100, description: '返回数量上限' },
-          offset: { type: 'integer', default: 0, minimum: 0, description: '偏移量（分页）' },
+          offset: { type: 'integer', default: 0, minimum: 0, description: '分页偏移量' },
         },
       },
     },
     {
       name: 'builtin-review_schedule',
       description:
-        '为指定题目批量创建复习计划（SM-2 排期，首次复习为次日）。question_ids 与 card_ids 至少传一项；card_ids 用 qbank_batch_import 返回的 new_card_ids。已有计划的题目自动跳过。错题入库后应立即调用本工具形成复习闭环。',
+        '为指定题目批量创建复习计划（SM-2，首次复习次日）。question_ids 与 card_ids 至少传一项；已有计划的题目自动跳过。错题入库后应立即调用形成复习闭环。',
       inputSchema: {
         type: 'object',
         properties: {
-          exam_id: { type: 'string', description: '【必填】题目集 ID（即 qbank 工具返回的 session_id）' },
-          question_ids: { type: 'array', items: { type: 'string' }, description: '题目 ID 列表（与 card_ids 二选一或并用）' },
+          exam_id: { type: 'string', description: '题目集 ID（即 qbank 返回的 session_id）' },
+          question_ids: { type: 'array', items: { type: 'string' }, description: '题目 ID 列表' },
           card_ids: {
             type: 'array',
             items: { type: 'string' },
-            description: '题目卡片 ID 列表（qbank_batch_import 返回的 new_card_ids 可直接使用）',
+            description: '卡片 ID 列表（qbank_batch_import 返回的 new_card_ids）',
           },
         },
         required: ['exam_id'],
@@ -147,11 +147,11 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_plan_generate',
       description:
-        '为整个题目集的所有题目一键生成复习计划（阶段复习计划）。适合"帮我把这套题安排上复习"的场景；已有计划的题目自动跳过。返回创建统计与今日到期数。',
+        '为整个题目集一键生成阶段复习计划；已有计划的题目自动跳过。返回创建统计与今日到期数。',
       inputSchema: {
         type: 'object',
         properties: {
-          exam_id: { type: 'string', description: '【必填】题目集 ID（即 qbank 工具返回的 session_id）' },
+          exam_id: { type: 'string', description: '题目集 ID（即 qbank 返回的 session_id）' },
         },
         required: ['exam_id'],
       },
@@ -159,25 +159,25 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_submit',
       description:
-        '提交一次复习结果（quality 0-5 评分），SM-2 自动计算下次复习日期。必须先从 review_get_due 等读取计划，并携带返回的 updatedAt 作为 expected_updated_at；plan_id 与 question_id 二选一。',
+        '提交一次复习结果，SM-2 自动计算下次复习日期。先读取计划并携带其 updatedAt 作 expected_updated_at；plan_id 与 question_id 二选一。',
       inputSchema: {
         type: 'object',
         properties: {
-          plan_id: { type: 'string', description: '复习计划 ID（优先，来自 review_get_due 返回）' },
-          question_id: { type: 'string', description: '题目 ID（无 plan_id 时自动解析其复习计划）' },
+          plan_id: { type: 'string', description: '复习计划 ID（优先，来自 review_get_due）' },
+          question_id: { type: 'string', description: '题目 ID（无 plan_id 时自动解析）' },
           quality: {
             type: 'integer',
             minimum: 0,
             maximum: 5,
-            description: '【必填】0-5 评分：0=完全不记得, 1-2=错误, 3=勉强正确, 4=良好, 5=完美回忆',
+            description: '评分：0=完全不记得, 1-2=错误, 3=勉强正确, 4=良好, 5=完美回忆',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】计划读取结果中的 updatedAt；用于防止覆盖并发更新',
+            description: '计划读取结果中的 updatedAt，防止覆盖并发更新',
           },
-          user_answer: { type: 'string', description: '用户本次作答内容（可选，记入复习历史）' },
-          time_spent_seconds: { type: 'integer', minimum: 0, description: '本次复习耗时秒数（可选）' },
+          user_answer: { type: 'string', description: '本次作答内容，记入复习历史' },
+          time_spent_seconds: { type: 'integer', minimum: 0, description: '本次复习耗时秒数' },
         },
         required: ['quality', 'expected_updated_at'],
       },
@@ -185,27 +185,27 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_stats',
       description:
-        '获取复习统计概览：各状态计划数、今日到期/逾期数、困难题数、正确率、平均易度因子；include_calendar=true 时附带按日复习量日历热力图（记忆曲线概览）。',
+        '复习统计概览：各状态计划数、今日到期/逾期、困难题数、正确率、平均易度因子；include_calendar=true 附带按日日历热力图。',
       inputSchema: {
         type: 'object',
         properties: {
-          exam_id: { type: 'string', description: '题目集 ID（可选，不传返回全局统计）' },
+          exam_id: { type: 'string', description: '题目集 ID，不传返回全局统计' },
           include_calendar: { type: 'boolean', default: false, description: '是否附带日历热力图数据' },
-          start_date: { type: 'string', description: '日历起始日期 YYYY-MM-DD（可选）' },
-          end_date: { type: 'string', description: '日历结束日期 YYYY-MM-DD（可选）' },
+          start_date: { type: 'string', description: '日历起始日期 YYYY-MM-DD' },
+          end_date: { type: 'string', description: '日历结束日期 YYYY-MM-DD' },
         },
       },
     },
     {
       name: 'builtin-review_suspend',
       description:
-        '暂停一个复习计划（Medium）。plan_id 和 expected_updated_at 必须来自刚读取的计划；暂停后该计划不再进入到期队列。返回暂停后的计划状态，可用 review_resume 恢复。',
+        '暂停复习计划（Medium），之后不再进入到期队列，可用 review_resume 恢复。参数须来自刚读取的计划。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          plan_id: { type: 'string', minLength: 1, description: '【必填】复习计划 ID（来自 review_get_due）' },
-          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+          plan_id: { type: 'string', minLength: 1, description: '复习计划 ID（来自 review_get_due）' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '读取计划时返回的 updatedAt' },
         },
         required: ['plan_id', 'expected_updated_at'],
       },
@@ -213,13 +213,13 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_resume',
       description:
-        '恢复一个已暂停的复习计划（Medium）。恢复后会重新排到今天；plan_id 和 expected_updated_at 必须来自此前 suspend/get_due 返回的准确值。',
+        '恢复已暂停的复习计划（Medium）并重新排到今天；参数须用 suspend/get_due 返回的准确值。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          plan_id: { type: 'string', minLength: 1, description: '【必填】已暂停的复习计划 ID' },
-          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+          plan_id: { type: 'string', minLength: 1, description: '已暂停的复习计划 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '读取计划时返回的 updatedAt' },
         },
         required: ['plan_id', 'expected_updated_at'],
       },
@@ -227,13 +227,13 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_delete',
       description:
-        '永久删除一个复习计划（High，不可恢复）。调用前必须加载 ask-user 技能并用 builtin-ask_user 向用户列明目标、取得明确确认；还必须携带读取计划时的 updatedAt，避免删除已变化的计划。',
+        '永久删除复习计划（High，不可恢复）。调用前必须经 builtin-ask_user 取得明确确认，并携带读取计划时的 updatedAt。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          plan_id: { type: 'string', minLength: 1, description: '【必填】要永久删除的复习计划 ID' },
-          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+          plan_id: { type: 'string', minLength: 1, description: '要永久删除的复习计划 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '读取计划时返回的 updatedAt' },
         },
         required: ['plan_id', 'expected_updated_at'],
       },

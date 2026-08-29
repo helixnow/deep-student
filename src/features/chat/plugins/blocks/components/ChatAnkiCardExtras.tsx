@@ -57,7 +57,7 @@ export const AnkiInlineUndoBar: React.FC<{
       size="sm"
       variant="ghost"
       onClick={onUndo}
-      className="min-h-8 flex-shrink-0 text-xs"
+      className="min-h-8 flex-shrink-0 text-xs [@media(pointer:coarse)]:!min-h-11"
     >
       <ArrowCounterClockwise size={13} />
       {undoLabel}
@@ -102,7 +102,7 @@ export const AnkiCompletionSummary: React.FC<{
         size="sm"
         variant="ghost"
         onClick={onOpenTaskCenter}
-        className="min-h-8 text-xs"
+        className="min-h-8 text-xs [@media(pointer:coarse)]:!min-h-11"
       >
         <ListChecks size={13} />
         {taskCenterLabel}
@@ -114,7 +114,7 @@ export const AnkiCompletionSummary: React.FC<{
         onClick={onExport}
         disabled={exportPending}
         aria-busy={exportPending}
-        className="min-h-8 text-xs"
+        className="min-h-8 text-xs [@media(pointer:coarse)]:!min-h-11"
       >
         {exportPending ? (
           <CircleNotch size={13} className="animate-spin" />

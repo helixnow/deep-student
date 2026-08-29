@@ -21,6 +21,10 @@ import {
   ArrowCounterClockwise,
   Columns,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { AgentTaskPanel } from '../../components/AgentTaskPanel';
 import { MessageList } from '../../components/MessageList';
 import { InputBarV2 } from '../../components/input-bar';
@@ -44,13 +48,15 @@ import {
 const ALL_PRESETS: StreamingSmoothingPreset[] = ['natural', 'realtime', 'balanced', 'silky', 'fluid'];
 
 export const LLMOutputPlayground: React.FC = () => {
+  const { isSmallScreen } = useBreakpoint();
+
   // 主 store
   const storeA = useMemo(() => createPlaygroundStore(), []);
   // Compare 模式才使用的副 store
   const storeB = useMemo(() => createPlaygroundStore(), []);
 
-  // UI 状态
-  const [showPanel, setShowPanel] = useState(true);
+  // UI 状态（小屏控制面板默认收起，避免和聊天区并排挤压）
+  const [showPanel, setShowPanel] = useState(() => !isSmallScreen);
   const [compareMode, setCompareMode] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() =>
     document.documentElement.classList.contains('dark'),
@@ -76,6 +82,32 @@ export const LLMOutputPlayground: React.FC = () => {
     clearAllMessages(storeA);
     clearAllMessages(storeB);
   }, [storeA, storeB]);
+
+  // 本页无 onBack prop（App.tsx 直挂），返回统一走全局导航事件回 chat-v2
+  const handleBackToChat = useCallback(() => {
+    dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view: 'chat-v2' });
+  }, []);
+
+  // 移动端统一顶栏：标题 + 返回箭头（回 chat-v2）；右侧仅控制面板开关（≤2 动作约定）
+  useMobileHeader('llm-playground', {
+    title: 'LLM 输出调试台',
+    showBackArrow: true,
+    onMenuClick: handleBackToChat,
+    rightActions: (
+      <DsButton
+        variant="ghost"
+        size="icon"
+        aria-label={showPanel ? '收起控制面板' : '打开控制面板'}
+        onClick={() => setShowPanel((v) => !v)}
+        className={cn(
+          '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+          showPanel && '!text-primary',
+        )}
+      >
+        <SidebarSimple size={18} />
+      </DsButton>
+    ),
+  }, [handleBackToChat, showPanel]);
 
   // 在 Compare 模式下手动同步触发同一场景到两边
   const handleCompareTrigger = useCallback(
@@ -114,7 +146,8 @@ export const LLMOutputPlayground: React.FC = () => {
 
   return (
     <div className="chat-v2 flex flex-col h-full bg-background">
-      {/* 顶部工具栏 */}
+      {/* 顶部工具栏（移动端由统一顶栏承载，自绘 header 仅桌面渲染） */}
+      {!isSmallScreen && (
       <header className="flex-shrink-0 h-10 border-b border-border bg-card/80 backdrop-blur-sm flex items-center justify-between px-3 z-10">
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-semibold">LLM 输出调试台</h1>
@@ -144,7 +177,7 @@ export const LLMOutputPlayground: React.FC = () => {
           <button
             onClick={() => setCompareMode((v) => !v)}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
               compareMode
                 ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
                 : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -155,14 +188,14 @@ export const LLMOutputPlayground: React.FC = () => {
           </button>
           <button
             onClick={handleReset}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title="重置 (Ctrl+Shift+R)"
           >
             <ArrowCounterClockwise size={14} />
           </button>
           <button
             onClick={handleToggleDarkMode}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             title="切换主题 (Ctrl+Shift+D)"
           >
             {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
@@ -170,7 +203,7 @@ export const LLMOutputPlayground: React.FC = () => {
           <button
             onClick={() => setShowPanel((v) => !v)}
             className={cn(
-              'p-1.5 rounded transition-colors',
+              'p-1.5 rounded transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
               showPanel
                 ? 'bg-primary/10 text-primary'
                 : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -181,9 +214,10 @@ export const LLMOutputPlayground: React.FC = () => {
           </button>
         </div>
       </header>
+      )}
 
       {/* 主内容区 */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* 聊天区域（普通 / Compare） */}
         <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--shell-workspace-panel)]">
           {compareMode ? (
@@ -218,9 +252,15 @@ export const LLMOutputPlayground: React.FC = () => {
           )}
         </div>
 
-        {/* 控制面板（窄屏允许收缩，避免固定宽度溢出） */}
+        {/* 控制面板：桌面并排；小屏改为覆盖式抽屉，不与聊天区并排挤压 */}
         {showPanel && (
-          <div className="w-[340px] max-w-full flex-shrink">
+          <div
+            className={cn(
+              isSmallScreen
+                ? 'absolute inset-y-0 right-0 z-20 w-full max-w-[340px] bg-background shadow-xl'
+                : 'w-[340px] max-w-full flex-shrink',
+            )}
+          >
             <PlaygroundControlPanel
               store={storeA}
               preset={presetA}
@@ -273,7 +313,7 @@ const CompareView: React.FC<CompareViewProps> = ({
             key={s.id}
             type="button"
             onClick={() => onTrigger(s.id)}
-            className="px-2 py-0.5 rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors"
+            className="px-2 py-0.5 rounded bg-muted hover:bg-primary/10 hover:text-primary transition-colors [@media(pointer:coarse)]:!min-h-11"
           >
             {s.label}
           </button>
@@ -328,7 +368,7 @@ const ComparePane: React.FC<ComparePaneProps> = ({
               onClick={() => onPresetChange(p)}
               title={getStreamingPresetHint(p)}
               className={cn(
-                'px-1.5 py-0.5 text-2xs rounded transition-colors',
+                'px-1.5 py-0.5 text-2xs rounded transition-colors [@media(pointer:coarse)]:!min-h-11',
                 preset === p
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted hover:bg-muted/80 text-muted-foreground',

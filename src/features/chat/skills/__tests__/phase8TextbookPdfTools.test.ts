@@ -53,11 +53,13 @@ describe('phase 8 textbook/PDF tool contracts', () => {
   });
 
   it('keeps PDF page images read-only, zero-based and strictly identified', () => {
-    const schema = tool('builtin-pdf_page_image').inputSchema;
+    const pageImageTool = tool('builtin-pdf_page_image');
+    const schema = pageImageTool.inputSchema;
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toEqual(['resource_id', 'page_index']);
     expect(schema.properties.resource_id.pattern).toBe('^res_[A-Za-z0-9_-]+$');
     expect(schema.properties.page_index.minimum).toBe(0);
-    expect(tool('builtin-pdf_page_image').description).toContain('1500000 bytes');
+    expect(pageImageTool.description).toContain('最长边 2048');
+    expect(pageImageTool.description).toContain('绝不返回截断 base64');
   });
 });

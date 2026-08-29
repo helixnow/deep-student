@@ -12,6 +12,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { SkillDefinition, SkillMetadata } from './types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import i18n from '@/i18n';
 
 // ============================================================================
 // 常量
@@ -140,7 +141,7 @@ export async function saveBuiltinSkillCustomization(
   customization: BuiltinSkillCustomization
 ): Promise<void> {
   if (!isTauriRuntime()) {
-    throw new Error('非 Tauri 环境，无法保存自定义');
+    throw new Error(i18n.t('skills:storage.save_requires_tauri', { defaultValue: '非 Tauri 环境，无法保存自定义' }));
   }
 
   try {
@@ -168,7 +169,7 @@ export async function resetBuiltinSkillCustomization(
   skillId: string
 ): Promise<void> {
   if (!isTauriRuntime()) {
-    throw new Error('非 Tauri 环境，无法重置自定义');
+    throw new Error(i18n.t('skills:storage.reset_requires_tauri', { defaultValue: '非 Tauri 环境，无法重置自定义' }));
   }
 
   try {

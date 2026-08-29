@@ -45,7 +45,10 @@ import { ThreadContentShell } from './ui/ThreadContentShell';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
-import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { branchSessionFromMessage } from './message/branchFromMessage';
+import { useSessionBranchTargets } from '../core/session/sessionBranchIndex';
+import { requestChatSessionNavigation } from '../navigation/pendingChatNavigation';
+import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { useTextSelection } from '../hooks/useTextSelection';
@@ -201,6 +204,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 子代理会话只读：触发指令等消息可看不可改（编辑/重发会绕过 workspace 运行时）
   const storeSessionId = useStore(store, (s) => s.sessionId);
+  // 「已从此处分支」角标：其他会话 metadata.branchedFrom 指向本消息时展示
+  const branchTargets = useSessionBranchTargets(storeSessionId, messageId);
   const storeMode = useStore(store, (s) => s.mode);
   const storeSessionMetadata = useStore(store, (s) => s.sessionMetadata);
   const isReadOnlySession = isStoreSubagentSession({
@@ -454,7 +459,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      showGlobalNotification('error', t('common:copy_failed'), t('messageItem.actions.copyFailed'));
       // 🔧 修复：向上抛出，让调用方（MessageActions 等）不要展示"已复制"的成功对勾
       throw error;
     }
@@ -757,7 +762,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [isReadOnlySession, isLocked, store, messageId, activeVariant?.id, t]);
 
-  // 🆕 保存为 VFS 笔记
+  // 🆕 保存为 VFS 笔记：先让用户选目录（复用 Finder 的 FolderPickerDialog），
+  // 写入成功后 toast 带「打开笔记」动作，不再是只给个 toast 的无落点保存
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'chat-message' });
+  const startSaveAsNote = saveAsNoteFlow.start;
   const handleSaveAsNote = useCallback(async () => {
     if (!message) return;
     const text = extractMessageContent();
@@ -765,37 +773,21 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
       return;
     }
-    const title = extractNoteTitle(text);
-    try {
-      const result = await notesDstuAdapter.createNote(title, text);
-      if (result.ok) {
-        showGlobalNotification('success', t('messageItem.actions.saveAsNoteSuccess', { title }));
-      } else {
-        showGlobalNotification('error', result.error.toUserMessage(), t('messageItem.actions.saveAsNoteFailed'));
-      }
-    } catch (error: unknown) {
-      console.error('[MessageItem] Save as note failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.saveAsNoteFailed'));
-    }
-  }, [message, extractMessageContent, extractNoteTitle, t]);
+    startSaveAsNote({ content: text, title: extractNoteTitle(text) });
+  }, [message, extractMessageContent, extractNoteTitle, startSaveAsNote, t]);
 
-  // 🆕 会话分支：从此消息处创建新会话
+  // 划词「保存为笔记」：走同一套目录选择 + 打开笔记
+  const handleSelectionSaveAsNote = useCallback((text: string) => {
+    startSaveAsNote({ content: text });
+  }, [startSaveAsNote]);
+
+  // 🆕 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
     if (isBranchingRef.current || isReadOnlySession || isLocked || !message) return;
     isBranchingRef.current = true;
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const sessionId = store.getState().sessionId;
-      if (!sessionId) throw new Error('No active session');
-      const newSession = await invoke('chat_v2_branch_session', {
-        sourceSessionId: sessionId,
-        upToMessageId: messageId,
-      });
-      // 通知 ChatV2Page 插入新会话并切换
-      window.dispatchEvent(new CustomEvent('CHAT_V2_BRANCH_SESSION', {
-        detail: { session: newSession },
-      }));
+      await branchSessionFromMessage(store, messageId);
       showGlobalNotification('success', t('messageItem.actions.branchSuccess'));
     } catch (error: unknown) {
       console.error('[MessageItem] Branch session failed:', error);
@@ -1187,7 +1179,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={handleRetryFromFailureBar}
                   disabled={isReadOnlySession || isLocked || isRetryingFailure}
-                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
@@ -1210,7 +1202,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
               </span>
               <div className="ml-auto flex items-center gap-1">
-                <DsButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRetryConfirmCancel}
+                  className="[@media(pointer:coarse)]:!min-h-11"
+                >
                   {t('common:actions.cancel')}
                 </DsButton>
                 <DsButton
@@ -1218,7 +1215,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   size="sm"
                   onClick={performRetry}
                   disabled={isReadOnlySession || isLocked}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
                 >
                   <ArrowCounterClockwise className="w-3.5 h-3.5" />
                   {t('messageItem.actions.retryConfirmAction')}
@@ -1269,6 +1266,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         disabled={isReadOnlySession || isLocked}
                         className={cn(
                           '!h-auto !px-1.5 !py-0.5 mr-1',
+                          '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3',
                           'text-[11px] text-muted-foreground/70',
                           'hover:text-foreground'
                         )}
@@ -1303,6 +1301,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           size="icon"
                           iconOnly
                           onClick={handleMultiVariantCopy}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('messageItem.actions.copy')}
                           title={t('messageItem.actions.copy')}
                         >
@@ -1314,6 +1313,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleBranch}
                           disabled={isReadOnlySession || isLocked}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('messageItem.actions.branch')}
                           title={t('messageItem.actions.branch')}
                         >
@@ -1325,6 +1325,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleRetryAllVariantsInline}
                           disabled={isReadOnlySession || isLocked || isRetryingAllVariants}
+                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
@@ -1336,7 +1337,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           iconOnly
                           onClick={handleDeleteMultiMessageInline}
                           disabled={!canDelete || isDeletingMultiMessage}
-                          className={cn(!canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive')}
+                          className={cn(
+                            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                            !canDelete || isDeletingMultiMessage ? '' : 'hover:text-destructive'
+                          )}
                           aria-label={t('messageItem.actions.delete')}
                           title={t('messageItem.actions.delete')}
                         >
@@ -1406,6 +1410,40 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {/* 「已从此处分支」可导航角标：点击切换到分支会话 */}
+          {branchTargets.length > 0 && !isInlineEditing && (
+            <div
+              className={cn('mt-1.5 flex flex-wrap items-center gap-1.5', isUser && 'justify-end')}
+              data-slot="message-branch-badges"
+            >
+              {branchTargets.map((target) => (
+                <button
+                  key={target.sessionId}
+                  type="button"
+                  onClick={() => requestChatSessionNavigation(target.sessionId)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40',
+                    'px-2 py-1 text-[11px] leading-none text-muted-foreground transition-colors',
+                    'hover:border-border hover:bg-muted/70 hover:text-foreground',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                  )}
+                  title={target.title || t('messageItem.branchedFromHere')}
+                  aria-label={
+                    target.title
+                      ? `${t('messageItem.branchedFromHere')} · ${target.title}`
+                      : t('messageItem.branchedFromHere')
+                  }
+                >
+                  <GitBranch className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="max-w-[180px] truncate">
+                    {t('messageItem.branchedFromHere')}
+                    {target.title ? ` · ${target.title}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* 开发者调试：显示请求体（仅助手消息且设置开启时显示） */}
           {showRawRequest && !isUser && (message._meta?.rawRequests?.length || message._meta?.rawRequest) && (
             <RawRequestPreview
@@ -1448,7 +1486,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
         onMakeCards={handleSelectionMakeCards}
+        onSaveAsNote={handleSelectionSaveAsNote}
       />
+
+      {/* 保存为笔记的目录选择器（窄屏走全屏子屏，Android 返回键先关它） */}
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
 
       {/* 🆕 翻译/解释内联卡片（P0-3: DOM 流内展开在消息下方，与消息列对齐） */}
       {(translationPopoverState.isVisible || explainPopoverState.isVisible) && (

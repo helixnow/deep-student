@@ -5,7 +5,14 @@ import type { SkillDefinition } from '../types';
 const dateProperty = {
   type: 'string' as const,
   pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-  description: '真实日历日期，格式 YYYY-MM-DD',
+  description: '真实日历日期 YYYY-MM-DD',
+};
+
+// oneOf 分支复用的日期约束：校验结构与顶层 dateProperty 一致，
+// 仅省略 description 注释以避免 schema 序列化后重复计费（token 预算）
+const dateBranchProperty = {
+  type: 'string' as const,
+  pattern: '^\\d{4}-\\d{2}-\\d{2}$',
 };
 
 const offsetProperty = {
@@ -47,7 +54,7 @@ export const llmUsageToolsSkill: SkillDefinition = {
     {
       name: 'builtin-llm_usage_query',
       description:
-        '查询本地 LLM 用量（Low）。支持 summary/trends/by_model/by_caller/recent 严格子操作。成本仅为 estimated；cost.priceCoverage 描述定价覆盖，缺定价时 estimatedUsd 可为 null，不等于免费。分页 limit 最大 20。',
+        '查询本地 LLM 用量（Low），action 与参数严格配对（见 oneOf）。成本仅为 estimated；缺定价时 estimatedUsd 可为 null，不等于免费。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -70,8 +77,8 @@ export const llmUsageToolsSkill: SkillDefinition = {
             required: ['action', 'start_date', 'end_date'],
             properties: {
               action: { type: 'string', enum: ['summary'] },
-              start_date: dateProperty,
-              end_date: dateProperty,
+              start_date: dateBranchProperty,
+              end_date: dateBranchProperty,
             },
           },
           {
@@ -92,8 +99,8 @@ export const llmUsageToolsSkill: SkillDefinition = {
             required: ['action', 'start_date', 'end_date'],
             properties: {
               action: { type: 'string' as const, enum: [action] },
-              start_date: dateProperty,
-              end_date: dateProperty,
+              start_date: dateBranchProperty,
+              end_date: dateBranchProperty,
               offset: offsetProperty,
               limit: limitProperty,
             },

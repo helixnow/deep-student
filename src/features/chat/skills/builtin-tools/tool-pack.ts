@@ -81,9 +81,7 @@ export const toolPackSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-tool_pack',
-      description:
-        'Runs multiple existing built-in tools in parallel through the Rust backend executor. ' +
-        'The frontend only exposes this schema and does not orchestrate tool execution.',
+      description: 'Runs multiple built-in tools in parallel through the Rust backend executor.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -94,22 +92,22 @@ export const toolPackSkill: SkillDefinition = {
               properties: {
                 name: {
                   type: 'string',
-                  description: 'Name of the built-in tool to execute, for example builtin-rag_search or builtin-web_fetch',
+                  description: 'Built-in tool name, e.g. builtin-rag_search',
                 },
                 args: {
                   type: 'object',
-                  description: 'Required arguments object for the sub-tool. Use {} when the tool has no arguments.',
+                  description: 'Arguments object; use {} when the sub-tool has none.',
                 },
               },
               required: ['name', 'args'],
             },
-            description: 'Array of built-in tool calls to execute in parallel',
+            description: 'Tool calls to execute in parallel',
             minItems: 1,
             maxItems: 20,
           },
           timeout: {
             type: 'integer',
-            description: 'Optional pack-level timeout in seconds. Defaults to 300.',
+            description: 'Pack-level timeout in seconds (default 300).',
             minimum: 1,
             maximum: 600,
           },

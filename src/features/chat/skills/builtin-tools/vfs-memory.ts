@@ -12,7 +12,7 @@ export const vfsMemorySkill: SkillDefinition = {
   id: 'vfs-memory',
   name: 'vfs-memory',
   description: 'VFS 记忆管理能力组，包含记忆读取、写入、列表、更新、删除等工具。你应主动使用这些工具：回答前检索相关记忆以个性化回复，发现用户偏好/背景/目标时主动保存，用户纠正信息时更新旧记忆。',
-  version: '2.2.0',
+  version: '2.3.0',
   author: 'Deep Student',
   priority: 3,
   location: 'builtin',
@@ -95,6 +95,10 @@ export const vfsMemorySkill: SkillDefinition = {
 普通记忆是可检索的事实库。发现**反复出现**的错误模式、明确的偏好/目标变化时才更新画像；
 单次做题流水不要写画像（系统会自动记入每日学习日志，可用 builtin-memory_search 检索"学习日志"）。
 
+**注意画像的覆盖范围**：自动注入的画像只含薄弱知识点/学习偏好/学习目标/近期状态，
+**不含**学习阶段/年级/专业方向等身份事实（它们存于"偏好/个人背景"的 fact 记忆）。
+回答知识/概念问题前应检索这些阶段事实来校准讲解深度，不要因为"画像已注入"就跳过检索。
+
 ## 记忆分类
 
 记忆按文件夹分类存储：
@@ -152,17 +156,17 @@ export const vfsMemorySkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-memory_search',
-      description: '仅在记忆库内做语义 + 关键词混合检索（含时间衰减加权）。当只需要检索用户记忆/学习日志而不需要知识库结果时使用；跨库检索请用 builtin-unified_search。',
+      description: '记忆库内语义+关键词混合检索（含时间衰减）。跨库检索用 builtin-unified_search。',
       inputSchema: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: '【必填】检索关键词或自然语言描述，如"数学 弱项"、"学习日志 昨天"',
+            description: '检索关键词或自然语言描述',
           },
           top_k: {
             type: 'integer',
-            description: '返回条数，默认 5',
+            description: '返回条数',
             default: 5,
             minimum: 1,
             maximum: 20,
@@ -173,13 +177,13 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_read',
-      description: '读取指定记忆的完整内容与真实当前位置、标签、双向关联 ID、updated_at。当 unified_search 返回记忆摘要不够详细，或关系/标签/移动写入需要 OCC 基线时使用；note_id 从 unified_search 或 memory_list 获取。',
+      description: '读取记忆完整内容、位置、标签、关联 ID 与 updated_at；写操作前获取 OCC 基线。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
-            description: '【必填】记忆笔记 ID（从 unified_search 的记忆结果或 memory_list 中获取）',
+            description: '记忆笔记 ID',
           },
         },
         required: ['note_id'],
@@ -187,7 +191,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write',
-      description: '创建或更新用户记忆（仅用于 fact 类型）。记忆只存储关于用户的原子事实（≤50字的短句），禁止存入学科知识/题目分析/文档摘要。study/note 类型请用 memory_write_smart。',
+      description: '创建或更新 fact 记忆（≤50 字用户原子事实，禁止学科知识）。study/note 用 memory_write_smart。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -197,19 +201,19 @@ export const vfsMemorySkill: SkillDefinition = {
           },
           folder: {
             type: 'string',
-            description: '记忆分类文件夹路径，如 "偏好"、"偏好/个人背景"、"经历"、"经历/时间节点"、"经历/学科状态"。留空表示存储在记忆根目录。',
+            description: '分类文件夹路径（见技能说明「记忆分类」）；留空存根目录',
           },
           title: {
             type: 'string',
-            description: '【必填】记忆标题（事实的关键词概括，如"数学弱项"、"高考日期"、"格式偏好-表格"）',
+            description: '记忆标题（事实关键词概括）',
           },
           content: {
             type: 'string',
-            description: '【必填】一个关于用户的简短陈述句，≤50字。示例："高三理科生" / "数学是弱项科目" / "偏好表格形式的总结"。禁止写入学科知识、解题过程、知识点总结。',
+            description: '用户简短陈述句（≤50字）；禁止学科知识',
           },
           mode: {
             type: 'string',
-            description: '写入模式：create=新建, update=替换同名记忆, append=追加',
+            description: '写入模式：create=新建, update=替换同名, append=追加',
             enum: ['create', 'update', 'append'],
           },
         },
@@ -218,18 +222,18 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_update_by_id',
-      description: '按 note_id 精确更新记忆。必须先用 builtin-unified_search 查出 note_id，再调用此工具。严禁未查询 ID 直接更新。用于用户纠正信息、偏好变化、补充已有记忆等场景。',
+      description: '按 note_id 精确更新记忆（先查出 ID，严禁盲更新）。用于纠正信息、偏好变化、补充记忆。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
-            description: '【必填】记忆笔记 ID（从 unified_search 的记忆结果或 memory_list 获取）',
+            description: '记忆笔记 ID',
           },
-          title: { type: 'string', description: '可选：新的记忆标题' },
+          title: { type: 'string', description: '新的记忆标题' },
           content: {
             type: 'string',
-            description: '可选：新的记忆内容（Markdown 格式）',
+            description: '新的记忆内容（Markdown）',
           },
         },
         required: ['note_id'],
@@ -238,13 +242,13 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_delete',
-      description: '删除指定记忆（软删除）。当用户明确要求"忘掉"、"不要记"、"删除这条记忆"时立即执行。',
+      description: '删除指定记忆（软删除）。用户明确要求"忘掉/不要记/删除"时立即执行。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
-            description: '【必填】记忆笔记 ID（从 unified_search 的记忆结果或 memory_list 获取）',
+            description: '记忆笔记 ID',
           },
         },
         required: ['note_id'],
@@ -252,35 +256,35 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_smart',
-      description: '智能写入记忆（推荐首选）。支持三种类型：fact（默认，用户事实）、study（用户明确要求保存的学习内容）和 note（用户明确要求保存的经验/方法论/技巧）。fact 类型自动去重；study/note 走显式保存路径。',
+      description: '智能写入记忆（推荐首选），自动判断新增/更新/追加。fact 默认自动去重；study/note 仅用户明确要求时用（见技能说明）。',
       inputSchema: {
         type: 'object',
         properties: {
           folder: {
             type: 'string',
-            description: '记忆分类文件夹路径。fact: "偏好/..."、"经历/..."；study: "知识/..."；note: "经验/..."。留空表示存储在记忆根目录。',
+            description: '分类文件夹路径（见技能说明「记忆分类」）；留空存根目录',
           },
           title: {
             type: 'string',
-            description: '【必填】记忆标题（fact: 事实关键词；study: 知识点/词汇名；note: 方法论概括）',
+            description: '记忆标题',
           },
           content: {
             type: 'string',
-            description: '【必填】记忆内容。fact：关于用户的简短陈述句。study：用户要求保存的学习内容。note：用户要求保存的经验、方法论、技巧。',
+            description: '记忆内容',
           },
           memory_type: {
             type: 'string',
             enum: ['fact', 'study', 'note'],
-            description: '记忆类型。fact（默认）：关于用户的原子事实。study：用户明确要求保存的学习内容（词汇/知识点/错题要点）。note：用户明确要求保存的经验笔记/方法论/学习技巧。',
+            description: '记忆类型（默认 fact；study/note 须用户明确要求）',
           },
           memory_purpose: {
             type: 'string',
             enum: ['internalized', 'memorized', 'supplementary', 'systemic'],
-            description: '记忆目的。internalized：用户需要理解并内化的核心内容（最高优先级）。memorized（默认）：需要单独记忆的事实。supplementary：辅助理解的补充知识。systemic：系统用于理解用户的元信息。',
+            description: '记忆目的：internalized 内化；memorized（默认）记忆；supplementary 补充；systemic 系统元信息',
           },
           idempotency_key: {
             type: 'string',
-            description: '可选：幂等键。重试同一次写入时复用该键，避免重复写入。',
+            description: '幂等键：重试时复用避免重复',
           },
         },
         required: ['title', 'content'],
@@ -288,28 +292,28 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_batch',
-      description: '批量写入记忆。适合用户明确要求一次性保存多条词汇/知识点/要点。默认 memory_type=study。',
+      description: '批量写入记忆。适合用户明确要求一次性保存多条词汇/知识点/要点，默认 memory_type=study。',
       inputSchema: {
         type: 'object',
         properties: {
           folder: {
             type: 'string',
-            description: '默认文件夹路径，单条 item 未指定时使用。',
+            description: '默认文件夹路径，item 未指定时使用',
           },
           memory_type: {
             type: 'string',
             enum: ['fact', 'study', 'note'],
-            description: '默认记忆类型；批量保存学习内容时建议用 study。',
+            description: '默认记忆类型',
             default: 'study',
           },
           memory_purpose: {
             type: 'string',
             enum: ['internalized', 'memorized', 'supplementary', 'systemic'],
-            description: '默认记忆目的。',
+            description: '默认记忆目的',
           },
           items: {
             type: 'array',
-            description: '要保存的记忆项列表。',
+            description: '要保存的记忆项列表',
             items: {
               type: 'object',
               properties: {
@@ -334,25 +338,25 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_list',
-      description: '分页列出记忆目录结构和笔记列表。当需要了解用户已有哪些记忆、或浏览特定分类下的记忆时使用。返回 items、count、limit、offset、has_more 与 next_offset；需要正文时再用 memory_read。',
+      description: '分页列出记忆目录结构和笔记列表，返回 items/count/limit/offset/has_more/next_offset；需要正文再用 memory_read。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
           folder: {
             type: 'string',
-            description: '相对于记忆根目录的文件夹路径，留空表示根目录',
+            description: '相对记忆根目录的文件夹路径，留空为根目录',
           },
           limit: {
             type: 'integer',
-            description: '返回数量限制，默认及最多20条',
+            description: '返回数量',
             default: 20,
             minimum: 1,
             maximum: 20,
           },
           offset: {
             type: 'integer',
-            description: '分页偏移量，默认0',
+            description: '分页偏移量',
             default: 0,
             minimum: 0,
           },
@@ -361,7 +365,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_batch_move',
-      description: '批量移动 1–20 条记忆到记忆根目录内的目标文件夹（Medium）。逐条执行并返回真实成功/失败结果；每条都必须提供 memory_read/list 返回的 updated_at OCC 基线。成功项返回新版本与可执行的逐项撤销调用。',
+      description: '批量移动 1–20 条记忆（Medium，逐条 OCC）。返回逐条结果、新版本与撤销调用。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -371,18 +375,18 @@ export const vfsMemorySkill: SkillDefinition = {
             maxItems: 20,
             uniqueItems: true,
             items: { type: 'string', minLength: 1 },
-            description: '【必填】要移动的记忆 ID，最多 20 条且不得重复',
+            description: '要移动的记忆 ID',
           },
           target_folder_path: {
             type: 'string',
             maxLength: 1000,
-            description: '【必填】相对于记忆根目录的目标路径；空字符串表示记忆根目录',
+            description: '相对记忆根目录的目标路径；空字符串为根目录',
           },
           expected_updated_at_by_id: {
             type: 'object',
             minProperties: 1,
             additionalProperties: { type: 'string', minLength: 1 },
-            description: '【必填】以 note_id 为键、最新 updated_at 为值的完整 OCC 映射，键必须与 note_ids 完全一致',
+            description: 'note_id 到最新 updated_at 的完整 OCC 映射，键与 note_ids 完全一致',
           },
         },
         required: ['note_ids', 'target_folder_path', 'expected_updated_at_by_id'],
@@ -391,29 +395,29 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_add_relation',
-      description: '原子添加两条记忆的双向关联（Medium）。必须先读取 A、B 当前 updated_at；成功返回两端真实关联列表、新版本及 remove_relation 撤销调用。',
+      description: '原子添加双向关联（Medium，双端 OCC）。返回两端关联、新版本及撤销调用。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id_a: {
             type: 'string',
             minLength: 1,
-            description: '【必填】关联端点 A 的记忆 ID',
+            description: '端点 A 的记忆 ID',
           },
           note_id_b: {
             type: 'string',
             minLength: 1,
-            description: '【必填】关联端点 B 的记忆 ID，必须与 A 不同',
+            description: '端点 B 的记忆 ID，须与 A 不同',
           },
           expected_updated_at_a: {
             type: 'string',
             minLength: 1,
-            description: '【必填】A 最新的 updated_at OCC 基线',
+            description: 'A 最新的 updated_at OCC 基线',
           },
           expected_updated_at_b: {
             type: 'string',
             minLength: 1,
-            description: '【必填】B 最新的 updated_at OCC 基线',
+            description: 'B 最新的 updated_at OCC 基线',
           },
         },
         required: ['note_id_a', 'note_id_b', 'expected_updated_at_a', 'expected_updated_at_b'],
@@ -422,29 +426,29 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_remove_relation',
-      description: '原子移除两条记忆的双向关联（Medium）。必须先读取 A、B 当前 updated_at；成功返回两端真实关联列表、新版本及 add_relation 撤销调用。',
+      description: '原子移除双向关联（Medium，双端 OCC）。返回两端关联、新版本及撤销调用。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id_a: {
             type: 'string',
             minLength: 1,
-            description: '【必填】关联端点 A 的记忆 ID',
+            description: '端点 A 的记忆 ID',
           },
           note_id_b: {
             type: 'string',
             minLength: 1,
-            description: '【必填】关联端点 B 的记忆 ID，必须与 A 不同',
+            description: '端点 B 的记忆 ID，须与 A 不同',
           },
           expected_updated_at_a: {
             type: 'string',
             minLength: 1,
-            description: '【必填】A 最新的 updated_at OCC 基线',
+            description: 'A 最新的 updated_at OCC 基线',
           },
           expected_updated_at_b: {
             type: 'string',
             minLength: 1,
-            description: '【必填】B 最新的 updated_at OCC 基线',
+            description: 'B 最新的 updated_at OCC 基线',
           },
         },
         required: ['note_id_a', 'note_id_b', 'expected_updated_at_a', 'expected_updated_at_b'],
@@ -453,31 +457,31 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_update_tags',
-      description: '替换一条记忆的用户标签（Medium），以下划线开头的系统标签始终保留且不能由 Agent 注入。唯一例外：remove_stale=true 时会同时移除 _stale 过时标记——当用户表示某记忆仍然有效、需要救回被误判衰亡的记忆时使用。必须传最新 updated_at；返回实际写后标签、新版本及撤销调用。',
+      description: '替换记忆的用户标签（Medium，OCC）；系统标签保留且不可注入。返回写后标签、新版本及撤销调用。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
             minLength: 1,
-            description: '【必填】记忆 ID',
+            description: '记忆 ID',
           },
           tags: {
             type: 'array',
             maxItems: 50,
             uniqueItems: true,
             items: { type: 'string', minLength: 1, maxLength: 200 },
-            description: '【必填】完整用户标签列表；空数组表示清除所有用户标签，系统标签不受影响',
+            description: '完整用户标签列表；空数组清除全部用户标签，系统标签不受影响',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】memory_read/list 返回的最新 updated_at OCC 基线',
+            description: 'memory_read/list 返回的最新 updated_at OCC 基线',
           },
           remove_stale: {
             type: 'boolean',
             default: false,
-            description: '可选：为 true 时移除该记忆的 _stale 过时标记（仅 _stale，其余系统标签仍保留）。用户表示某记忆仍然有效时使用。',
+            description: 'true 时移除 _stale 过时标记（用户表示记忆仍有效时用）',
           },
         },
         required: ['note_id', 'tags', 'expected_updated_at'],
@@ -486,7 +490,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_log_activity',
-      description: '把一条"今天做了什么"的学习活动记入每日学习日志（Medium 写操作）。用于学习活动流水：做题、复习、背单词、上课等，如"做了 5 道二次函数题，错 2 道"。日志按天聚合，供系统蒸馏进学习者画像；同日重复条目自动跳过。不要用它保存用户事实/偏好（用 memory_write_smart）。',
+      description: '记一条学习活动到每日学习日志（Medium）。按天聚合供画像蒸馏，同日重复自动跳过。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -494,7 +498,7 @@ export const vfsMemorySkill: SkillDefinition = {
             type: 'string',
             minLength: 1,
             maxLength: 80,
-            description: '【必填】一句话概括的学习活动（≤80 字），如"做了 5 道二次函数题，错 2 道，均为符号错误"',
+            description: '一句话学习活动（≤80 字）',
           },
         },
         required: ['activity'],
@@ -503,7 +507,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_export_all',
-      description: '分页导出用户全部记忆（High，涉及大规模隐私读取，必须逐次审批）。每页最多 20 条，返回标题、内容、路径、标签、类型、目的和 updated_at；单条内容最多返回 2000 字符并用 content_truncated 标记。',
+      description: '分页导出全部记忆（High，逐次审批）。每页 ≤20 条；超长内容以 content_truncated 标记。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -511,14 +515,14 @@ export const vfsMemorySkill: SkillDefinition = {
             type: 'integer',
             minimum: 1,
             default: 1,
-            description: '页码，从 1 开始',
+            description: '页码',
           },
           page_size: {
             type: 'integer',
             minimum: 1,
             maximum: 20,
             default: 20,
-            description: '每页数量，最大 20',
+            description: '每页数量',
           },
         },
         additionalProperties: false,
@@ -526,7 +530,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-learner_profile_get',
-      description: '读取学习者画像（长期策展层）：薄弱知识点（科目/知识点/错误模式/证据计数）、学习偏好、学习目标、近期状态。返回结构化 JSON 与渲染后的 Markdown。画像已随会话自动注入 system prompt，仅在需要完整结构（如更新前核对）时调用。',
+      description: '读取学习者画像（结构化 JSON 与 Markdown）。画像已随会话自动注入 system prompt，仅更新前核对时调用。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -534,7 +538,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-learner_profile_update',
-      description: '结构化增量更新学习者画像（merge 语义，非整体覆盖）。仅在发现反复出现的错误模式、明确的偏好/目标变化时使用；单次做题流水不要写入画像。画像总量硬上限 4000 字符，超限会被拒绝并要求精炼。',
+      description: '结构化增量更新画像（merge 语义）。仅反复错误模式或明确偏好/目标变化时用；总量上限 4000 字符。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -544,23 +548,23 @@ export const vfsMemorySkill: SkillDefinition = {
             items: {
               type: 'object',
               properties: {
-                subject: { type: 'string', description: '科目，如"数学"' },
+                subject: { type: 'string', description: '科目' },
                 knowledge_point: {
                   type: 'string',
-                  description: '知识点，如"二次函数"',
+                  description: '知识点',
                 },
                 error_pattern: {
                   type: 'string',
-                  description: '错误模式一句话概括，如"配方时符号处理错误"',
+                  description: '错误模式一句话概括',
                 },
                 evidence_count: {
                   type: 'integer',
-                  description: '本次观察到的证据次数（默认 1）',
+                  description: '本次证据次数（默认 1）',
                   minimum: 1,
                 },
                 last_seen: {
                   type: 'string',
-                  description: '最近观察日期 YYYY-MM-DD（可选）',
+                  description: '最近观察日期 YYYY-MM-DD',
                 },
               },
               required: ['subject', 'knowledge_point', 'error_pattern'],
@@ -584,7 +588,7 @@ export const vfsMemorySkill: SkillDefinition = {
             properties: {
               explanation_style: {
                 type: 'string',
-                description: '讲解风格，如"先结论后推导"',
+                description: '讲解风格',
               },
               language: { type: 'string', description: '语言偏好' },
               pace: { type: 'string', description: '学习节奏' },
@@ -608,11 +612,11 @@ export const vfsMemorySkill: SkillDefinition = {
               properties: {
                 goal: {
                   type: 'string',
-                  description: '目标描述，如"高考数学 130+"',
+                  description: '目标描述',
                 },
                 deadline: {
                   type: 'string',
-                  description: '期限 YYYY-MM-DD（可选）',
+                  description: '期限 YYYY-MM-DD',
                 },
               },
               required: ['goal'],
@@ -625,7 +629,7 @@ export const vfsMemorySkill: SkillDefinition = {
           },
           recent_status: {
             type: 'string',
-            description: '覆盖近期状态摘要（1-2 句话，可选）',
+            description: '覆盖近期状态摘要（1-2 句话）',
           },
         },
       },

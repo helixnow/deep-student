@@ -293,7 +293,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         role="button"
         tabIndex={0}
         aria-expanded={isExpanded}
-        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex items-center justify-between px-3 py-2 [@media(pointer:coarse)]:!min-h-11 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
@@ -315,12 +315,12 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         <div className="flex items-center gap-1">
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
               {debugCopied ? <Check size={14} className="text-success" /> : <Bug size={14} />}
             </DsButton>
           )}
           {/* 复制日志按钮 */}
-          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
             {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
           </DsButton>
           {isExpanded ? (

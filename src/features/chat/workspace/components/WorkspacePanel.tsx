@@ -165,7 +165,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           variant="outline"
           size="sm"
           onClick={() => handleRefresh()}
-          className="mt-2"
+          className="mt-2 [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={12} className="mr-1" />
           {t('chatV2:workspace.retry')}
@@ -247,7 +247,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs"
+              className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
               onClick={() => handleRefresh()}
               disabled={isRefreshing}
             >
@@ -298,7 +298,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            className="h-6 px-2 text-xs"
+            className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
             aria-expanded={showCreateAgent}
             onClick={() => setShowCreateAgent((prev) => !prev)}
           >
@@ -349,7 +349,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="mt-1.5 h-6 px-2 text-xs text-primary"
+                  className="mt-1.5 h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-11 text-primary"
                   onClick={() => setShowCreateAgent(true)}
                 >
                   <Plus size={12} className="mr-1" />

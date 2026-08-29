@@ -40,7 +40,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         }
       }}
       className={cn(
-        'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer',
+        'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
         'bg-neutral-100 dark:bg-neutral-800/80 border border-transparent',
         'transition-colors duration-200',
         'ui-rise-in',
@@ -72,7 +72,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onSteer(); }}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:justify-center"
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)] [@media(pointer:coarse)]:justify-center"
           aria-label={t('chatV2:queue.bubble.steer')}
         >
           <ArrowCircleRight size={14} weight="regular" />
@@ -82,7 +82,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="p-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center"
+        className="p-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)] [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center"
         aria-label={t('chatV2:queue.bubble.delete')}
       >
         <Trash size={14} className="text-muted-foreground" weight="regular" />

@@ -126,7 +126,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
             size="sm"
             onClick={handleContinue}
             disabled={isDisabled}
-            className="bg-warning hover:bg-warning/90 text-white"
+            className="bg-warning hover:bg-warning/90 text-white [@media(pointer:coarse)]:!min-h-11"
           >
             {isDisabled ? (
               <>

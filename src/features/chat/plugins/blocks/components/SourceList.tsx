@@ -141,7 +141,7 @@ export const SourceList: React.FC<SourceListProps> = ({
           onClick={toggleExpanded}
           aria-expanded={isExpanded}
           aria-controls={collapsibleId}
-          className="w-full !justify-center text-muted-foreground hover:text-foreground"
+          className="w-full !justify-center [@media(pointer:coarse)]:!min-h-11 text-muted-foreground hover:text-foreground"
         >
           <CaretDown
             size={16}

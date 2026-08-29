@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { X, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 
 // ============================================================================
@@ -102,7 +103,7 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
           <span className="opacity-60">·</span>
           <span className="whitespace-nowrap">{label}</span>
           {!disabled && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className={cn('-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative', coarseHitClassForBadge16)} aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
               <X size={10} weight="bold" />
             </DsButton>
           )}

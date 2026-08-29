@@ -64,7 +64,7 @@ describe('SessionGroupActions', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const quickAction = source.match(/const quickAction = \([\s\S]*?\n\s*\);/m)?.[0] ?? '';
 
-    expect(quickAction).toContain('className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
+    expect(quickAction).toContain('className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 [@media(pointer:coarse)]:opacity-100 data-[menu-open=true]:opacity-100"');
   });
 
   it('uses the study compose icon for grouped new session quick actions', () => {

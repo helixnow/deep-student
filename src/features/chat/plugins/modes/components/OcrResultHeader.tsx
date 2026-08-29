@@ -96,7 +96,7 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg"
+        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg [@media(pointer:coarse)]:!min-h-11"
       >
         {/* 展开/折叠图标 */}
         {isExpanded ? (
@@ -124,7 +124,7 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
         ) : (
           <div className="flex items-center gap-2 ml-auto">
             <WarningCircle size={16} className="text-destructive" />
-            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10">
+            <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
               <ArrowClockwise size={12} />
               {t('analysis.ocrResult.retry')}
             </DsButton>

@@ -247,6 +247,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         onClick={handleOpenSkillMarket}
         aria-label={t('skills:selector.installMore')}
         title={t('skills:selector.installMore')}
+        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
       >
         <Storefront size={16} />
       </DsButton>
@@ -259,7 +260,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           disabled={isRefreshing}
           aria-label={t('skills:selector.refresh')}
           title={t('skills:selector.refresh')}
-          className={cn(isRefreshing && 'animate-spin')}
+          className={cn('[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', isRefreshing && 'animate-spin')}
         >
           <ArrowClockwise size={16} />
         </DsButton>
@@ -307,7 +308,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 disabled={disabled}
                 title={bundle.skillIds.join(', ')}
                 aria-label={t('skills:bundles.activate', { name: bundle.name })}
-                className="inline-flex items-center gap-1 text-foreground hover:opacity-80 disabled:opacity-50"
+                className="inline-flex items-center gap-1 [@media(pointer:coarse)]:min-h-11 text-foreground hover:opacity-80 disabled:opacity-50"
               >
                 <Stack size={11} />
                 {bundle.name}
@@ -319,7 +320,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 onClick={() => deleteBundle(bundle.id)}
                 aria-label={t('skills:bundles.delete', { name: bundle.name })}
                 title={t('skills:bundles.delete', { name: bundle.name })}
-                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-['']"
+                // coarse 下 -inset-[15px]：14px 按钮（10px 图标 + p-0.5）+ 2×15px = 44px 触控目标
+                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-[15px]"
               >
                 <X size={10} />
               </button>
@@ -332,7 +334,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               <button
                 type="button"
                 onClick={() => setBundleNameInput('')}
-                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 [@media(pointer:coarse)]:min-h-11 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 <Stack size={11} />
                 {t('skills:bundles.save_current', { count: activeSkillIds.length })}
@@ -349,7 +351,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }}
                   placeholder={t('skills:bundles.name_placeholder')}
                   aria-label={t('skills:bundles.name_placeholder')}
-                  className="h-6 max-lg:h-8 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
+                  className="h-6 max-lg:h-8 [@media(pointer:coarse)]:!h-11 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] [@media(pointer:coarse)]:text-base outline-none focus:border-[color:var(--button-primary-border)]"
                 />
                 {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
                 <button
@@ -357,7 +359,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   onClick={handleSaveBundle}
                   disabled={!(bundleNameInput ?? '').trim()}
                   aria-label={t('common:actions.confirm')}
-                  className="relative rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40 after:absolute after:-inset-2 after:content-['']"
+                  className="relative rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40 after:absolute after:-inset-2 [@media(pointer:coarse)]:after:-inset-3 after:content-['']"
                 >
                   <Check size={12} weight="bold" />
                 </button>
@@ -463,7 +465,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           }
                           className={cn(
                             'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
-                            'relative after:absolute after:-inset-2.5 after:content-[\'\']',
+                            // coarse 下 -inset-[13px]：18px 复选框 + 2×13px = 44px 触控目标
+                            'relative after:absolute after:-inset-2.5 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-[13px]',
                             isActiveSkill
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                               : 'border-[color:var(--composer-panel-control-border)] text-transparent',
@@ -501,8 +504,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               : t('skills:favorite.add')
                           }
                           className={cn(
-                            // 视觉 20px，透明伪元素扩大触控命中区（移动端契约 ≥44px 方向靠拢）
-                            '!h-5 !w-5 relative after:absolute after:-inset-2 after:content-[\'\']',
+                            // 视觉 20px，透明伪元素扩大触控命中区至 44px（移动端契约 ≥44px）
+                            '!h-5 !w-5 relative after:absolute after:-inset-3 after:content-[\'\']',
                             isFavorite(skill.id)
                               ? 'text-warning hover:text-warning'
                               : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'
@@ -586,7 +589,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedSkillId(null)}
-                  className="mb-2 shrink-0"
+                  className="mb-2 shrink-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   <CaretLeft size={14} />
                   <span>{t('common:actions.back')}</span>
@@ -683,7 +686,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEnableSkill(selectedSkill.id)}
-                      className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
+                      className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                     >
                       {t('skills:selector.enable')}
                     </DsButton>
@@ -707,7 +710,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               variant="ghost"
                               size="sm"
                               onClick={() => handleTrustOverride(selectedSkill.id, 'trusted')}
-                              className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
+                              className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                             >
                               {t('skills:package.trust_enable')}
                             </DsButton>
@@ -731,7 +734,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           size="sm"
                           onClick={() => handleTrustOverride(selectedSkill.id, 'untrusted')}
                           title={t('skills:package.trust_effect_untrusted')}
-                          className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline"
+                          className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                         >
                           {t('skills:package.trust_revoke')}
                         </DsButton>
@@ -799,7 +802,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       onClick={() => toggleDefault(selectedSkill.id)}
                       title={t('skills:default.hint')}
                       className={cn(
-                        '!h-auto !px-2 !py-1 text-xs',
+                        '!h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
                         isDefault(selectedSkill.id)
                           ? 'text-success'
                           : 'text-[color:var(--composer-panel-muted-foreground)]'
@@ -816,7 +819,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleEnableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-primary"
+                        className="!h-auto !px-2 !py-1 text-xs text-primary [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       >
                         {t('skills:selector.enable')}
                       </DsButton>
@@ -826,7 +829,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         size="sm"
                         onClick={() => handleDisableSkill(selectedSkill.id)}
                         title={t('skills:package.disabled_hint')}
-                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive"
+                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
                       >
                         {t('skills:selector.disable')}
                       </DsButton>
@@ -847,7 +850,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       ? t('skills:selector.disabled_hint')
                       : undefined
                   }
-                  className="w-full"
+                  className="w-full [@media(pointer:coarse)]:!min-h-11"
                 >
                   {isSkillActive(selectedSkill.id) ? (
                     <>
@@ -892,7 +895,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 size="sm"
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="gap-1.5"
+                className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
               >
                 <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
                 <span>{t('skills:selector.refresh')}</span>
@@ -902,14 +905,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleOpenSkillMarket}
-              className="gap-1.5"
+              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
             >
               <Storefront size={14} />
               <span>{t('skills:selector.installMore')}</span>
             </DsButton>
           </span>
           {onClose ? (
-            <DsButton variant="ghost" size="sm" onClick={onClose}>
+            <DsButton variant="ghost" size="sm" onClick={onClose} className="[@media(pointer:coarse)]:!min-h-11">
               {t('common:actions.close')}
             </DsButton>
           ) : null}

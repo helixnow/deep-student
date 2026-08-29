@@ -231,7 +231,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                   onClick={handleRetry}
                   aria-label={t('common:actions.retry')}
                   title={t('common:actions.retry')}
-                  className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"
+                  className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-['']"
                 >
                   <ArrowsClockwise size={14} />
                 </button>
@@ -290,6 +290,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({ onClick, icon, label }) => 
     onClick={onClick}
     className={cn(
       'flex items-center gap-1.5 px-2 py-1 rounded-md',
+      '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
       'text-xs text-muted-foreground',
       'hover:bg-accent/60 hover:text-foreground',
       'transition-colors duration-100',

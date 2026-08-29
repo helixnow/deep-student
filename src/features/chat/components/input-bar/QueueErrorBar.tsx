@@ -31,21 +31,21 @@ export const QueueErrorBar: React.FC<Props> = React.memo(({
       <button
         type="button"
         onClick={onRetry}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
       >
         {t('chatV2:queue.error.retry')}
       </button>
       <button
         type="button"
         onClick={onSkip}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
       >
         {t('chatV2:queue.error.skip')}
       </button>
       <button
         type="button"
         onClick={onClearAll}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
       >
         {t('chatV2:queue.error.clearAll')}
       </button>

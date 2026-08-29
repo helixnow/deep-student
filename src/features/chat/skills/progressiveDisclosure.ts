@@ -563,25 +563,19 @@ function formatRequiresMissingReason(skillId: string): string {
  * - `disableAutoInvoke` 技能不出现
  * - requires 未满足的技能标注为不可用（不要加载）
  *
- * @param excludeLoaded 是否排除已加载的 Skills
- * @param sessionId 会话 ID（用于检查已加载状态）
+ * 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
+ * 目录在会话内必须恒定——不按已加载状态收缩。技能加载后目录缩水会让
+ * system 前缀从第 0 字节变化，导致整段历史的 prompt cache 失效。
+ * 已加载状态由 load_skills 的 tool result（loaded_skill_ids 等）和
+ * 尾部瞬态技能消息表达，不从 system 目录中剔除。
  */
-export function generateAvailableSkillsPrompt(
-  excludeLoaded = false,
-  sessionId?: string
-): string {
+export function generateAvailableSkillsPrompt(): string {
   const skills = skillRegistry.getAll().filter(isSkillPromptVisible);
 
   // 过滤掉 disableAutoInvoke 的 Skills
-  let filteredSkills = skills.filter(s => !s.disableAutoInvoke);
+  const filteredSkills = skills.filter(s => !s.disableAutoInvoke);
 
   // 允许无 embeddedTools 的模式型 Skills（如 research-mode），工具数量为 0
-
-  // 如果需要排除已加载的
-  if (excludeLoaded && sessionId) {
-    const loadedIds = new Set(getLoadedSkills(sessionId).map(s => s.id));
-    filteredSkills = filteredSkills.filter(s => !loadedIds.has(s.id));
-  }
 
   // 加载期 requires 门控：与 registry.generateMetadataPrompt 保持同一语义
   const availableSkills = filteredSkills.filter((skill) =>
@@ -626,6 +620,216 @@ export function generateAvailableSkillsPrompt(
   lines.push('【重要】所有技能组中包含的工具必须通过正常的工具调用方式使用，不要直接输出 JSON 文本。调用时请严格遵循技能文档中的参数格式示例。');
   lines.push('</tool_calling_rules>');
 
+  return lines.join('\n');
+}
+
+// ============================================================================
+// available_skills 会话快照（P0 prompt cache）
+// ============================================================================
+
+/**
+ * session_id → 首次生成的 available_skills 目录快照。
+ *
+ * 缓存前缀约束（P0，与 excludeLoaded 修复同一哲学）：目录直接拼进 system，
+ * 而 system 是整段请求的第 0 字节前缀。会话中途 skill_install 改写 live
+ * registry 后若继续读 live 目录，下一轮 system 就从目录处变字节，整段
+ * 历史 prompt cache 失效。因此每个 session 首次生成后冻结快照，中途安装
+ * 的技能不进入已发出的 system 目录 —— 新技能由 load_skills 的 tool result
+ * 与瞬态技能消息表达。空目录同样冻结（安装前发过消息的会话保持无目录）。
+ *
+ * 模块级 Map：TauriAdapter 重建（切换会话再回来）不丢快照。这里是热路径
+ * 读缓存，真身持久化在 session.metadata（`availableSkillsSnapshot`，见
+ * AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY）：应用重启后 provider 侧 prompt
+ * cache 仍可能存活，session 加载时用 hydrateSessionAvailableSkillsSnapshot
+ * 从 metadata 回灌同一字节，禁止按当时 live registry 重算（重启前中途装过
+ * 技能会让 system 从第 0 字节变）。从未冻结过的新 session 才按 live 建立。
+ */
+const sessionAvailableSkillsSnapshots = new Map<string, string>();
+
+/**
+ * session.metadata 中持久化目录快照的键名（与后端
+ * `AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY` 常量对应）。
+ */
+export const AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY = 'availableSkillsSnapshot';
+
+/**
+ * 按 sessionId 返回冻结的 available_skills 目录。
+ * 首次调用生成并快照；后续调用（包括 skill_install 之后）逐字节复用。
+ */
+export function getSessionAvailableSkillsPrompt(sessionId: string): string {
+  const cached = sessionAvailableSkillsSnapshots.get(sessionId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const catalog = generateAvailableSkillsPrompt();
+  sessionAvailableSkillsSnapshots.set(sessionId, catalog);
+  return catalog;
+}
+
+/**
+ * 会话是否已有内存目录快照（用于判断本次 getSessionAvailableSkillsPrompt
+ * 是否为首次生成，首次生成后调用方负责持久化到 session.metadata）。
+ */
+export function hasSessionAvailableSkillsSnapshot(sessionId: string): boolean {
+  return sessionAvailableSkillsSnapshots.has(sessionId);
+}
+
+/**
+ * 用 session.metadata 中持久化的目录快照回灌内存（session 加载路径调用）。
+ *
+ * 持久化值是该会话首次生成后冻结的字节权威：应用重启后（内存 Map 清空）
+ * 必须先 hydrate 再构建 system，禁止按当时 live registry 重算；多窗口竞争
+ * 时后端 first-write-wins 返回的生效值也走这里回灌，保证内存与持久化一致。
+ * 空串是合法快照（安装前发过消息的会话冻结为无目录）。
+ */
+export function hydrateSessionAvailableSkillsSnapshot(
+  sessionId: string,
+  snapshot: string
+): void {
+  sessionAvailableSkillsSnapshots.set(sessionId, snapshot);
+}
+
+/**
+ * 清除会话目录快照（测试与会话删除用）。
+ */
+export function clearSessionAvailableSkillsSnapshot(sessionId: string): void {
+  sessionAvailableSkillsSnapshots.delete(sessionId);
+}
+
+// ============================================================================
+// available_skills_delta（目录增量，当前 user 尾部瞬态通道）
+// ============================================================================
+//
+// R4 #7 定稿（见 docs/dev/wave2-A/r4-catalog-delta.md）：冻结目录解决了
+// 「system 前缀字节不变」，代价是会话中途安装的技能对模型完全不可见
+// （load_skills 报 not found 也无从谈起——模型根本不知道它存在）。
+// delta 通道补齐可发现性，且零缓存成本：
+//
+// - 注入位置：仅当前请求最后一条 user 消息尾部（与瞬态技能消息同位），
+//   属于每轮必然的新字节区，不落任何 provider prompt cache 前缀；
+// - 生命周期：请求构建时即时渲染，**不持久化进消息历史**——下一轮该
+//   user 消息进入历史时不携带 delta，历史字节由此保持稳定；
+// - 基线语义：以本会话冻结快照字符串为唯一基线（解析持久化权威字节，
+//   跨重启天然一致），live registry 中新增可加载而基线未以可用状态列出
+//   的技能构成 delta。**只读快照，绝不触发冻结或覆盖**，first-write-wins
+//   语义零影响；
+// - 显式刷新代际（#6 compaction 换代）落地后基线换新目录，delta 自然
+//   收缩为空，两通道无缝衔接。
+
+/** delta 中单个新增技能条目（与冻结目录 <skill> 行同形） */
+export interface AvailableSkillsDeltaEntry {
+  /** Skill ID */
+  id: string;
+  /** 模型可见描述 */
+  description: string;
+  /** 该技能提供的工具数量 */
+  toolCount: number;
+}
+
+/** 相对冻结目录基线的可用技能增量 */
+export interface AvailableSkillsDelta {
+  /** 基线快照中以可用状态列出的技能 ID（available="false" 门控条目不算） */
+  baseSkillIds: string[];
+  /** 基线之外新增可加载的技能（含基线中门控、现已满足 requires 的技能） */
+  added: AvailableSkillsDeltaEntry[];
+}
+
+/**
+ * 反转义 XML 属性值（escapeXmlAttr 的逆操作，用于解析冻结快照）。
+ * &amp; 必须最后替换，避免二次解码。
+ */
+function unescapeXmlAttr(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * 从冻结目录快照字符串中提取「以可用状态列出」的技能 ID 集合。
+ *
+ * 以持久化权威字节为解析源（而非另存一份 ID 列表），重启回灌后基线
+ * 自动一致，无需第二个持久化键。available="false"（requires 门控）
+ * 条目不计入基线——门控技能后续满足 requires 时应重新出现在 delta 中。
+ * 空串快照（安装前发过消息的会话）解析为空基线，同样是合法输入。
+ */
+export function extractCatalogSkillIds(snapshot: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of snapshot.matchAll(/<skill\s+([^>]*?)\/?>/g)) {
+    const attrs = match[1];
+    if (/\bavailable="false"/.test(attrs)) continue;
+    const idMatch = attrs.match(/\bid="([^"]*)"/);
+    if (idMatch && idMatch[1]) {
+      ids.add(unescapeXmlAttr(idMatch[1]));
+    }
+  }
+  return ids;
+}
+
+/**
+ * 计算会话相对冻结目录基线的可用技能增量。
+ *
+ * 只读 sessionAvailableSkillsSnapshots，**绝不调用
+ * getSessionAvailableSkillsPrompt**（那会产生冻结副作用）。会话尚未
+ * 冻结快照时返回 null：此时首轮 system 目录尚未定基线，本轮目录本身
+ * 就是 live 全量，delta 无语义。
+ *
+ * added 的过滤口径与 generateAvailableSkillsPrompt 的可用段一致
+ * （prompt 可见 + 非 disableAutoInvoke + requires 满足），顺序沿用
+ * registry 顺序，保证同一轮内渲染确定。
+ */
+export function computeAvailableSkillsDelta(sessionId: string): AvailableSkillsDelta | null {
+  const snapshot = sessionAvailableSkillsSnapshots.get(sessionId);
+  if (snapshot === undefined) {
+    return null;
+  }
+
+  const baseSkillIds = extractCatalogSkillIds(snapshot);
+  const added = skillRegistry
+    .getAll()
+    .filter(isSkillPromptVisible)
+    .filter((skill) => !skill.disableAutoInvoke)
+    .filter((skill) => isSkillRequiresSatisfied(skill.id))
+    .filter((skill) => !baseSkillIds.has(skill.id))
+    .map((skill) => ({
+      id: skill.id,
+      description: skill.description,
+      toolCount: skill.embeddedTools?.length ?? 0,
+    }));
+
+  return { baseSkillIds: Array.from(baseSkillIds), added };
+}
+
+/**
+ * 渲染 available_skills_delta 尾部瞬态块。
+ *
+ * 调用方约束（接线属 #5/后续轮，本轮不动 TauriAdapter）：
+ * - 只允许拼接在当前请求最后一条 user 消息尾部（瞬态技能消息同位）；
+ * - 禁止写入 system、禁止持久化进消息历史；
+ * - 每轮请求构建时重算——技能继续安装则 delta 增长，显式换代刷新
+ *   （#6）后基线换新，delta 自然清空。
+ *
+ * 无冻结基线或无增量时返回空串（调用方零拼接）。
+ */
+export function generateAvailableSkillsDeltaPrompt(sessionId: string): string {
+  const delta = computeAvailableSkillsDelta(sessionId);
+  if (!delta || delta.added.length === 0) {
+    return '';
+  }
+
+  const lines: string[] = ['<available_skills_delta>'];
+  for (const entry of delta.added) {
+    lines.push(`  <skill id="${escapeXmlAttr(entry.id)}" tools="${entry.toolCount}">`);
+    lines.push(`    ${escapeXmlText(entry.description)}`);
+    lines.push(`  </skill>`);
+  }
+  lines.push('</available_skills_delta>');
+  lines.push('');
+  lines.push(
+    '以上是本会话开始后新增可用的技能（未列入 <available_skills>）。如需使用，同样通过 load_skills 工具加载。'
+  );
   return lines.join('\n');
 }
 

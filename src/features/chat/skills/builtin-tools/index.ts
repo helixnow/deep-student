@@ -32,6 +32,7 @@ export { xlsxToolsSkill } from './xlsx-tools';
 export { sessionManagerSkill } from './session-manager';
 export { userTodoToolsSkill } from './user-todo-tools';
 export { imageGenerationSkill } from './image-generation';
+export { generativeUiSkill } from './generative-ui';
 export { toolPackSkill } from './tool-pack';
 export { selfServiceToolsSkill } from './self-service-tools';
 export { automationToolsSkill } from './automation-tools';
@@ -76,6 +77,7 @@ import { xlsxToolsSkill } from './xlsx-tools';
 import { sessionManagerSkill } from './session-manager';
 import { userTodoToolsSkill } from './user-todo-tools';
 import { imageGenerationSkill } from './image-generation';
+import { generativeUiSkill } from './generative-ui';
 import { toolPackSkill } from './tool-pack';
 import { selfServiceToolsSkill } from './self-service-tools';
 import { automationToolsSkill } from './automation-tools';
@@ -139,6 +141,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   sessionManagerSkill,
   userTodoToolsSkill,
   imageGenerationSkill,
+  generativeUiSkill,
   toolPackSkill,
   selfServiceToolsSkill,
   automationToolsSkill,

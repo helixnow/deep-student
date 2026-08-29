@@ -16,6 +16,8 @@ export interface ThreadEmptyStateShellProps extends Omit<React.HTMLAttributes<HT
   hint?: React.ReactNode;
   titleClassName?: string;
   contentClassName?: string;
+  /** 标题 h2 的稳定 id；缺省用 React.useId 生成，section 通过 aria-labelledby 指向它 */
+  titleId?: string;
 }
 
 /**
@@ -36,15 +38,20 @@ export const ThreadEmptyStateShell: React.FC<ThreadEmptyStateShellProps> = ({
   className,
   titleClassName,
   contentClassName,
+  titleId,
   children,
   ...props
 }) => {
+  // a11y：section 必须以内部 h2 命名（aria-labelledby），读屏用户才能拿到区域名称
+  const generatedTitleId = React.useId();
+  const headingId = titleId ?? generatedTitleId;
   return (
     <ThreadContentShell className={cn('flex min-h-full items-center', className)}>
       <section
         data-slot="thread-empty-state"
         className={cn('flex w-full flex-col items-center justify-center gap-4 text-center', contentClassName)}
         {...props}
+        aria-labelledby={headingId}
       >
         {brandIcon ? (
           <div
@@ -59,6 +66,7 @@ export const ThreadEmptyStateShell: React.FC<ThreadEmptyStateShellProps> = ({
           </div>
         ) : null}
         <h2
+          id={headingId}
           data-slot="thread-empty-primary-action"
           className={cn('text-balance text-2xl font-medium text-foreground', titleClassName)}
         >

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { PencilSimple, Check, X, CircleNotch, PushPin, PushPinSlash, Archive, DotsThree, Trash, FolderSimple, Folder, Export, FileText, BracketsCurly } from '@phosphor-icons/react';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSwipeGesture } from '@/hooks/mobile/useSwipeGesture';
-import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
+import { type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core';
 import {
   AppMenu,
   AppMenuContent,
@@ -35,9 +35,17 @@ import type { TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+/**
+ * dnd-kit 拖拽行状态（由 SessionSidebarContent 的 DraggableSessionRow 注入）。
+ * 拖拽预览由 DragOverlay 渲染，源行只接收 setNodeRef/属性/监听器与拖拽中样式。
+ */
 export type SessionDragState = {
-  provided: DraggableProvided;
-  snapshot: DraggableStateSnapshot;
+  setNodeRef: (node: HTMLElement | null) => void;
+  attributes: DraggableAttributes;
+  listeners: DraggableSyntheticListeners;
+  isDragging: boolean;
+  /** 拖拽中源行内联样式（如降透明度占位） */
+  style?: React.CSSProperties;
 };
 
 export interface UseSessionItemRendererDeps {
@@ -77,11 +85,6 @@ export interface UseSessionItemRendererDeps {
    */
   onSessionActivated?: () => void;
 }
-
-export const resolveDragStyle = (
-  style: React.CSSProperties | undefined,
-  isDragging: boolean
-) => (isDragging && style ? { ...style, left: 'auto', top: 'auto' } : style);
 
 // ============================================================================
 // P1-12: 会话行左滑操作（触屏）——行内 translateX 露出「置顶/删除」色块按钮。
@@ -331,10 +334,10 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     if (pendingDeleteSessionId === session.id) {
       return (
         <div
-          ref={drag?.provided.innerRef}
-          {...drag?.provided.draggableProps}
-          {...drag?.provided.dragHandleProps}
-          style={resolveDragStyle(drag?.provided.draggableProps.style, !!drag?.snapshot.isDragging)}
+          ref={drag?.setNodeRef}
+          {...drag?.attributes}
+          {...drag?.listeners}
+          style={drag?.style}
           className={getSidebarStudyRowClassName({
             variant: 'session',
             selected: false,
@@ -351,7 +354,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             <DsButton
               variant="danger"
               size="sm"
-              className="!h-9 lg:!h-7 !px-2 text-[12px]"
+              className="!h-9 lg:!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-[12px]"
               onClick={(e) => {
                 e.stopPropagation();
                 resetDeleteConfirmation();
@@ -365,7 +368,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-9 !w-9 lg:!h-7 lg:!w-7"
+              className="!h-9 !w-9 lg:!h-7 lg:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
               aria-label={t('page.cancelEdit')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -383,7 +386,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
       <SwipeableSessionRow
         // 触屏才渲染滑动容器；编辑/拖拽中仅禁手势，DOM 保持稳定（dnd 拖拽不 remount）
         enabled={isTouchPrimary}
-        gestureEnabled={editingSessionId !== session.id && !drag?.snapshot.isDragging}
+        gestureEnabled={editingSessionId !== session.id && !drag?.isDragging}
         pinned={pinned}
         pinLabel={pinned ? t('page.unpinSession') : t('page.pinSession')}
         deleteLabel={t('page.deleteSession')}
@@ -393,10 +396,10 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
       <AppMenu mode="context">
         <AppMenuTrigger asChild>
           <div
-            ref={drag?.provided.innerRef}
-            {...drag?.provided.draggableProps}
-            {...drag?.provided.dragHandleProps}
-            style={resolveDragStyle(drag?.provided.draggableProps.style, !!drag?.snapshot.isDragging)}
+            ref={drag?.setNodeRef}
+            {...drag?.attributes}
+            {...drag?.listeners}
+            style={drag?.style}
             onClick={() => {
               if (editingSessionId !== session.id) {
                 resetDeleteConfirmation();
@@ -412,7 +415,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               variant: 'session',
               selected: currentSessionId === session.id,
               draggable: !!drag,
-              dragging: !!drag?.snapshot.isDragging,
+              dragging: !!drag?.isDragging,
               className: cn(
                 editingSessionId === session.id && 'ring-1 ring-primary/60 bg-[var(--sidebar-study-selected)]'
               ),
@@ -446,6 +449,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="ghost"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   cancelEditSession();
@@ -459,6 +463,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <DsButton
                 variant="primary"
                 size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
                 onClick={(e) => {
                   e.stopPropagation();
                   saveSessionTitle(session.id);

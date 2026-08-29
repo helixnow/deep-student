@@ -15,6 +15,7 @@ import { Sparkle, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -71,6 +72,18 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, suggestions.length);
   }, [suggestions.length]);
+
+  // 📱 Android 系统返回键：补全弹窗打开时先关弹窗，避免返回键穿透到底层导航
+  //（overlay 级，模式与 InputBarUI 组合面板 / DsDialog 的注册一致；ref 保持注册稳定）
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
 
   useEffect(() => {
     if (closeTimeoutRef.current !== null) {

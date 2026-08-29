@@ -64,7 +64,7 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
           aria-expanded={expanded}
-          className="flex-1 !justify-start gap-1.5 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground"
+          className="flex-1 !justify-start gap-1.5 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
         >
           <CaretDown
             size={12}
@@ -77,7 +77,8 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
           size="icon"
           iconOnly
           onClick={handleCopy}
-          className="!h-6 !w-6 mr-1 text-muted-foreground hover:text-foreground"
+          // coarse 指针下伪元素 -inset-2.5 使 24px 钮命中区达 44px（24+10×2），视觉尺寸不变
+          className="!h-6 !w-6 mr-1 text-muted-foreground hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
           aria-label={t('blocks.generic.copy')}
           title={t('blocks.generic.copy')}
         >

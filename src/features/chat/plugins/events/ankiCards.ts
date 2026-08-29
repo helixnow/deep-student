@@ -227,6 +227,42 @@ function mergeCardsUnique(currentCards: AnkiCard[], incomingCards: AnkiCard[]): 
   return result;
 }
 
+/**
+ * 收尾快照通常与流式卡片同 ID。默认保留前端当前值，避免旧快照覆盖用户编辑；
+ * 但 critic 的 CAS 写回会递增 `updated_at`，此时必须采用较新的后端卡片，
+ * 才能把 revise 后的正文及 `_qa_flags` 审计条目带进预览块。
+ */
+function mergeFinalCardsWithCurrent(
+  finalCards: AnkiCard[],
+  currentCards: AnkiCard[],
+): AnkiCard[] {
+  const currentById = new Map(
+    currentCards
+      .filter((card): card is AnkiCard & { id: string } => Boolean(card.id))
+      .map((card) => [card.id, card]),
+  );
+  const finalIds = new Set(finalCards.map((card) => card.id).filter(Boolean));
+  const resolvedFinalCards = finalCards.map((finalCard) => {
+    const currentCard = finalCard.id ? currentById.get(finalCard.id) : undefined;
+    if (!currentCard) return finalCard;
+
+    const finalUpdatedAt = finalCard.updated_at ? Date.parse(finalCard.updated_at) : Number.NaN;
+    const currentUpdatedAt = currentCard.updated_at
+      ? Date.parse(currentCard.updated_at)
+      : Number.NaN;
+    if (
+      Number.isFinite(finalUpdatedAt) &&
+      Number.isFinite(currentUpdatedAt) &&
+      finalUpdatedAt > currentUpdatedAt
+    ) {
+      return finalCard;
+    }
+    return currentCard;
+  });
+  const currentOnlyCards = currentCards.filter((card) => !card.id || !finalIds.has(card.id));
+  return mergeCardsUnique(resolvedFinalCards, currentOnlyCards);
+}
+
 function isTerminalBlockStatus(status?: string): boolean {
   return status === 'success' || status === 'error';
 }
@@ -376,8 +412,12 @@ const ankiCardsEventHandler: EventHandler = {
       const existing = store.blocks.get(backendBlockId);
       const existingData = existing?.toolOutput as AnkiCardsBlockData | undefined;
       const terminal = isTerminalBlockStatus(existing?.status);
+      // 展开 existingData 保留全部既有字段（documentId/progress/ankiConnect/
+      // finalStatus/finalError/warnings/mediaReport/deletedCardIds 等），
+      // 避免重放 start 事件丢弃后端已投递的状态。
       store.updateBlock(backendBlockId, {
         toolOutput: {
+          ...existingData,
           cards: existingData?.cards || [],
           templateId: payload?.templateId ?? existingData?.templateId ?? null,
           templateIds: payload?.templateIds ?? existingData?.templateIds,
@@ -386,12 +426,6 @@ const ankiCardsEventHandler: EventHandler = {
           businessSessionId: existingData?.businessSessionId ?? store.sessionId,
           messageStableId: existingData?.messageStableId ?? messageId,
           options: (payload?.options as AnkiCardsBlockData['options']) ?? existingData?.options,
-          documentId: existingData?.documentId,
-          progress: existingData?.progress,
-          ankiConnect: existingData?.ankiConnect,
-          finalStatus: existingData?.finalStatus,
-          finalError: existingData?.finalError,
-          warnings: existingData?.warnings,
         },
         ...(terminal ? {} : { status: 'running' }),
       });
@@ -421,8 +455,10 @@ const ankiCardsEventHandler: EventHandler = {
       const existing = store.blocks.get(runningAnkiBlockId);
       const existingData = existing?.toolOutput as AnkiCardsBlockData | undefined;
       const terminal = isTerminalBlockStatus(existing?.status);
+      // 同上：展开 existingData，重放 start 不丢 mediaReport 等既有字段
       store.updateBlock(runningAnkiBlockId, {
         toolOutput: {
+          ...existingData,
           cards: existingData?.cards || [],
           templateId: payload?.templateId ?? existingData?.templateId ?? null,
           templateIds: payload?.templateIds ?? existingData?.templateIds,
@@ -431,12 +467,6 @@ const ankiCardsEventHandler: EventHandler = {
           businessSessionId: existingData?.businessSessionId ?? store.sessionId,
           messageStableId: existingData?.messageStableId ?? messageId,
           options: (payload?.options as AnkiCardsBlockData['options']) ?? existingData?.options,
-          documentId: existingData?.documentId,
-          progress: existingData?.progress,
-          ankiConnect: existingData?.ankiConnect,
-          finalStatus: existingData?.finalStatus,
-          finalError: existingData?.finalError,
-          warnings: existingData?.warnings,
         },
         ...(terminal ? {} : { status: 'running' }),
       });
@@ -520,12 +550,29 @@ const ankiCardsEventHandler: EventHandler = {
     const terminal = isTerminalBlockStatus(block.status);
     const isCardMutation = parsed.kind === 'patch' && parsed.patch.cardMutation !== undefined;
     if (terminal && !isCardMutation) {
+      // mediaReport 可能由 APKG 导入清理阶段晚于终态到达。它是只读诊断数据，
+      // 可安全补入既有 toolOutput，但绝不重开块或接受迟到的卡片/状态覆盖。
+      const terminalMediaReport =
+        parsed.kind === 'patch' && parsed.patch.mediaReport !== undefined
+          ? parsed.patch.mediaReport
+          : undefined;
+      if (terminalMediaReport !== undefined) {
+        store.updateBlock(blockId, {
+          toolOutput: {
+            ...currentData,
+            cards: currentCards,
+            mediaReport: terminalMediaReport,
+          } as AnkiCardsBlockData,
+        });
+      }
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', {
           detail: {
-            level: 'warn',
+            level: terminalMediaReport !== undefined ? 'debug' : 'warn',
             phase: 'bridge:event',
-            summary: `anki_cards chunk ignored on terminal block=${blockId.slice(0, 8)} status=${block.status}`,
+            summary: terminalMediaReport !== undefined
+              ? `anki_cards terminal media report merged block=${blockId.slice(0, 8)} status=${block.status}`
+              : `anki_cards chunk ignored on terminal block=${blockId.slice(0, 8)} status=${block.status}`,
             detail: { blockId, blockStatus: block.status, cardsBefore: currentCards.length },
           },
         }));
@@ -630,6 +677,20 @@ const ankiCardsEventHandler: EventHandler = {
     const hasPartialCompletion =
       signalsCompletedWithErrors(currentData) || signalsCompletedWithErrors(result);
     if (block.status === 'error' && !hasPartialCompletion) {
+      // 错误终态不可被迟到 end 降级，但最终媒体诊断仍应保留，便于解释导入失败。
+      const resultRecord =
+        result && typeof result === 'object' && !Array.isArray(result)
+          ? (result as Record<string, unknown>)
+          : undefined;
+      if (resultRecord?.mediaReport !== undefined) {
+        store.updateBlock(blockId, {
+          toolOutput: {
+            ...currentData,
+            cards: currentCards,
+            mediaReport: resultRecord.mediaReport,
+          } as AnkiCardsBlockData,
+        });
+      }
       recordCardsSourceSnapshot(
         blockId,
         'end-ignored-error-terminal',
@@ -649,15 +710,14 @@ const ankiCardsEventHandler: EventHandler = {
       const resultObj = result as Record<string, unknown>;
       const resultCards = Array.isArray(resultObj.cards) ? (resultObj.cards as AnkiCard[]) : undefined;
       // 🔧 修复：onEnd 中 result.cards 的处理策略
-      // - 如果后端返回了卡片列表，以 resultCards 为基础，但用 currentCards 覆盖同 ID 卡片
-      //   这样用户在流式过程中对卡片的编辑不会被后端原始数据覆盖
+      // - 如果后端返回了卡片列表，默认用 currentCards 覆盖同 ID 卡片；
+      //   若后端 `updated_at` 更新（critic CAS revise/flag），采用较新的后端版本
       // - 如果后端未返回卡片（null/undefined），保留前端流式累积的卡片
-      // mergeCardsUnique(base, overlay): overlay 中同 ID 的卡片会覆盖 base 中的
       const filteredResultCards = resultCards?.filter(
         (card) => !card.id || !deletedCardIds.has(card.id),
       );
       const finalCards = filteredResultCards
-        ? mergeCardsUnique(filteredResultCards, currentCards)
+        ? mergeFinalCardsWithCurrent(filteredResultCards, currentCards)
         : mergeCardsUnique([], currentCards);
 
       const { cards: _cardsIgnored, status, error, ...rest } = resultObj;

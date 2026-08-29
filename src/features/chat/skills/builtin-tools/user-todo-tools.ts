@@ -78,39 +78,39 @@ export const userTodoToolsSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-user_todo_list_lists',
-      description: '[用户待办] 分页列出用户的个人待办清单（每页最多 20 条）。返回 lists、total、page、page_size、has_more 与 truncated；每个清单含 id、title、updatedAt 等信息。',
+      description: '分页列出个人待办清单。返回 lists/total/page/page_size/has_more/truncated；每条含 id、title、updatedAt。',
       inputSchema: {
         type: 'object',
         properties: {
-          page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
-          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量，最大 20' },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量' },
         },
         additionalProperties: false,
       },
     },
     {
       name: 'builtin-user_todo_create_item',
-      description: '[用户待办] 在用户的个人待办列表中创建新的待办项（Medium，持久化写入）。如果不指定 list_id，将使用默认收件箱。支持提醒、重复规则和父子任务。',
+      description: '创建待办项（Medium，持久化）。缺省 list_id 用默认收件箱；支持提醒、重复规则和父子任务。',
       inputSchema: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '【必填】待办项标题' },
-          description: { type: 'string', description: '详细描述（可选）' },
+          title: { type: 'string', description: '待办项标题' },
+          description: { type: 'string', description: '详细描述' },
           priority: {
             type: 'string',
             enum: ['none', 'low', 'medium', 'high', 'urgent'],
             description: '优先级，默认 none',
           },
-          due_date: { type: 'string', description: '截止日期，格式 YYYY-MM-DD（可选）' },
-          due_time: { type: 'string', description: '截止时间，格式 HH:MM（可选）' },
-          reminder: { type: 'string', description: '提醒时间，格式 YYYY-MM-DDTHH:MM（可选）' },
-          list_id: { type: 'string', description: '目标待办列表ID（可选，默认使用收件箱）' },
+          due_date: { type: 'string', description: '截止日期 YYYY-MM-DD' },
+          due_time: { type: 'string', description: '截止时间 HH:MM' },
+          reminder: { type: 'string', description: '提醒时间 YYYY-MM-DDTHH:MM' },
+          list_id: { type: 'string', description: '目标清单 ID（默认收件箱）' },
           tags: {
             type: 'array',
             items: { type: 'string' },
-            description: '标签列表（可选）',
+            description: '标签列表',
           },
-          parent_id: { type: 'string', description: '父待办项 ID（可选，用于创建子任务）' },
+          parent_id: { type: 'string', description: '父待办项 ID（创建子任务用）' },
           repeat: {
             type: 'object',
             additionalProperties: false,
@@ -124,11 +124,11 @@ export const userTodoToolsSkill: SkillDefinition = {
               byWeekday: {
                 type: 'array',
                 items: { type: 'integer', minimum: 0, maximum: 6 },
-                description: '仅 weekly：0=周日，1=周一，...，6=周六',
+                description: '仅 weekly：0=周日…6=周六',
               },
             },
             required: ['freq'],
-            description: '重复规则（可选）',
+            description: '重复规则',
           },
         },
         required: ['title'],
@@ -137,15 +137,15 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_complete_item',
-      description: '[用户待办] 将待办项标记为已完成（Medium）。必须先 list_items 获取 updatedAt，并作为 expected_updated_at 传入。',
+      description: '标记待办项完成（Medium）。先 list_items 取 updatedAt 传为 expected_updated_at。',
       inputSchema: {
         type: 'object',
         properties: {
-          item_id: { type: 'string', description: '【必填】待办项ID' },
+          item_id: { type: 'string', description: '待办项 ID' },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_items 返回的 updatedAt OCC 基线',
+            description: 'list_items 返回的 updatedAt（OCC 基线）',
           },
         },
         required: ['item_id', 'expected_updated_at'],
@@ -154,26 +154,26 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_list_items',
-      description: '[用户待办] 分页列出用户的待办项（每页最多 20 条）。每项返回 updatedAt，complete/update 必须原样传入该版本基线；返回 items、total、page、page_size、has_more 与 truncated。支持按列表 ID 或今日/逾期/即将到期视图筛选。',
+      description: '分页列出待办项，支持按清单 ID 或视图筛选。每项返回 updatedAt 作为 complete/update 的 OCC 基线；返回 items/total/has_more/truncated。',
       inputSchema: {
         type: 'object',
         properties: {
-          list_id: { type: 'string', description: '待办列表ID（可选）' },
+          list_id: { type: 'string', description: '待办列表 ID' },
           view: {
             type: 'string',
             enum: ['all', 'today', 'overdue', 'upcoming', 'completed'],
             description: '视图过滤，默认 all',
           },
-          include_completed: { type: 'boolean', description: '是否包含已完成项，默认 false' },
-          page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
-          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量，最大 20' },
+          include_completed: { type: 'boolean', description: '是否含已完成项' },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量' },
         },
         additionalProperties: false,
       },
     },
     {
       name: 'builtin-user_todo_get_summary',
-      description: '[用户待办] 获取用户待办事项的总览摘要，包括今日待办、逾期项、统计数据等。',
+      description: '获取待办总览摘要（今日、逾期、统计）。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -181,27 +181,27 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_update_item',
-      description: '[用户待办] 更新待办项属性（Medium）。必须先 list_items 获取 updatedAt，并作为 expected_updated_at 传入；冲突返回 TODO_CONFLICT、current 与 currentUpdatedAt，之后重新读取。',
+      description: '更新待办项属性（Medium）。先 list_items 取 updatedAt 传为 expected_updated_at；冲突返回 TODO_CONFLICT 与 current（含 currentUpdatedAt），需重新读取。',
       inputSchema: {
         type: 'object',
         properties: {
-          item_id: { type: 'string', description: '【必填】待办项ID' },
-          title: { type: 'string', description: '新标题（可选）' },
-          description: { type: 'string', description: '新描述（可选）' },
+          item_id: { type: 'string', description: '待办项 ID' },
+          title: { type: 'string', description: '新标题' },
+          description: { type: 'string', description: '新描述' },
           priority: {
             type: 'string',
             enum: ['none', 'low', 'medium', 'high', 'urgent'],
-            description: '新优先级（可选）',
+            description: '新优先级',
           },
-          due_date: { type: 'string', description: '新截止日期 YYYY-MM-DD（可选）' },
-          due_time: { type: 'string', description: '新截止时间 HH:MM（可选）' },
+          due_date: { type: 'string', description: '新截止日期 YYYY-MM-DD' },
+          due_time: { type: 'string', description: '新截止时间 HH:MM' },
           reminder: {
             type: 'string',
             description: '新提醒时间 YYYY-MM-DDTHH:MM；省略保持不变',
           },
           clear_reminder: {
             type: 'boolean',
-            description: '设为 true 清空提醒；不可与 reminder 同时提供',
+            description: 'true 清空提醒；与 reminder 互斥',
           },
           tags: {
             type: 'array',
@@ -214,7 +214,7 @@ export const userTodoToolsSkill: SkillDefinition = {
           },
           clear_parent: {
             type: 'boolean',
-            description: '设为 true 移到顶层；不可与 parent_id 同时提供',
+            description: 'true 移到顶层；与 parent_id 互斥',
           },
           repeat: {
             type: 'object',
@@ -235,12 +235,12 @@ export const userTodoToolsSkill: SkillDefinition = {
           },
           clear_repeat: {
             type: 'boolean',
-            description: '设为 true 清空重复规则；不可与 repeat 同时提供',
+            description: 'true 清空重复规则；与 repeat 互斥',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_items 返回的 updatedAt OCC 基线',
+            description: 'list_items 返回的 updatedAt（OCC 基线）',
           },
         },
         required: ['item_id', 'expected_updated_at'],
@@ -249,19 +249,19 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_delete_item',
-      description: '[用户待办] 将一个待办项软删除到回收站（Medium，可恢复）。必须先 list_items/search 取得 updatedAt 并传入 expected_updated_at；成功返回 success、itemId、listId、softDeleted 和 restoreWith。',
+      description: '软删除待办项到回收站（Medium，可恢复）。先 list_items/search 取 updatedAt 传为 expected_updated_at。',
       inputSchema: {
         type: 'object',
         properties: {
           item_id: {
             type: 'string',
             minLength: 1,
-            description: '【必填】要移入回收站的待办项 ID',
+            description: '要移入回收站的待办项 ID',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_items/search 返回的 updatedAt OCC 基线',
+            description: 'list_items/search 返回的 updatedAt（OCC 基线）',
           },
         },
         required: ['item_id', 'expected_updated_at'],
@@ -270,7 +270,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_create_list',
-      description: '[用户待办] 创建一个持久化待办清单（Medium，仅前台对话）。成功返回 success 与 list（含 id、title、updatedAt）。',
+      description: '创建待办清单（Medium，仅前台对话）。返回 list（含 id、title、updatedAt）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -278,11 +278,11 @@ export const userTodoToolsSkill: SkillDefinition = {
             type: 'string',
             minLength: 1,
             maxLength: 200,
-            description: '【必填】清单标题',
+            description: '清单标题',
           },
-          description: { type: 'string', maxLength: 2000, description: '清单说明（可选）' },
-          icon: { type: 'string', maxLength: 64, description: '图标名或单个 emoji（可选）' },
-          color: { type: 'string', maxLength: 32, description: '颜色值（可选）' },
+          description: { type: 'string', maxLength: 2000, description: '清单说明' },
+          icon: { type: 'string', maxLength: 64, description: '图标名或 emoji' },
+          color: { type: 'string', maxLength: 32, description: '颜色值' },
         },
         required: ['title'],
         additionalProperties: false,
@@ -290,7 +290,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_update_list',
-      description: '[用户待办] 更新待办清单的标题、说明、图标或颜色（Medium，仅前台对话）。必须先 list_lists 取得 updatedAt 并传入 expected_updated_at；成功返回 success 与更新后的 list（含 updatedAt）。',
+      description: '更新清单标题/说明/图标/颜色（Medium，仅前台对话）。先 list_lists 取 updatedAt 传为 expected_updated_at。',
       inputSchema: {
         type: 'object',
         anyOf: [
@@ -300,15 +300,15 @@ export const userTodoToolsSkill: SkillDefinition = {
           { required: ['color'] },
         ],
         properties: {
-          list_id: { type: 'string', minLength: 1, description: '【必填】待办清单 ID' },
-          title: { type: 'string', minLength: 1, maxLength: 200, description: '新标题（可选）' },
-          description: { type: 'string', maxLength: 2000, description: '新说明（可选）' },
-          icon: { type: 'string', maxLength: 64, description: '新图标（可选）' },
-          color: { type: 'string', maxLength: 32, description: '新颜色（可选）' },
+          list_id: { type: 'string', minLength: 1, description: '待办清单 ID' },
+          title: { type: 'string', minLength: 1, maxLength: 200, description: '新标题' },
+          description: { type: 'string', maxLength: 2000, description: '新说明' },
+          icon: { type: 'string', maxLength: 64, description: '新图标' },
+          color: { type: 'string', maxLength: 32, description: '新颜色' },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_lists 返回的 updatedAt OCC 基线',
+            description: 'list_lists 返回的 updatedAt（OCC 基线）',
           },
         },
         required: ['list_id', 'expected_updated_at'],
@@ -317,19 +317,19 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_delete_list',
-      description: '[用户待办] 将一个待办清单及其所有待办项软删除到回收站（High，可恢复）。必须传入 list_lists 返回的 expected_updated_at；每次调用前必须加载 ask-user 技能，用 builtin-ask_user 列明清单和影响范围并取得明确确认；不得记住授权。成功返回 success、listId、softDeleted 和 restoreWith。',
+      description: '软删除清单及其待办项到回收站（High，可恢复）。传 list_lists 的 updatedAt 为 expected_updated_at；每次调用前必须用 builtin-ask_user 列明清单与影响范围并取得明确确认，不得记住授权。',
       inputSchema: {
         type: 'object',
         properties: {
           list_id: {
             type: 'string',
             minLength: 1,
-            description: '【必填】要移入回收站的非默认待办清单 ID',
+            description: '要移入回收站的非默认清单 ID',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_lists 返回的 updatedAt OCC 基线',
+            description: 'list_lists 返回的 updatedAt（OCC 基线）',
           },
         },
         required: ['list_id', 'expected_updated_at'],
@@ -338,7 +338,7 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_search',
-      description: '[用户待办] 按关键词跨清单分页搜索未删除的待办项（Low，每页最多 20 条）。返回 success、items、total、page、page_size、has_more 和 truncated；每项含 updatedAt，可作为后续 update/complete/delete 的 OCC 基线。',
+      description: '按关键词跨清单分页搜索未删除待办项（Low）。每项含 updatedAt，可作后续 update/complete/delete 的 OCC 基线。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -346,10 +346,10 @@ export const userTodoToolsSkill: SkillDefinition = {
             type: 'string',
             minLength: 1,
             maxLength: 200,
-            description: '【必填】搜索关键词',
+            description: '搜索关键词',
           },
-          page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
-          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量，最大 20' },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20, description: '每页数量' },
         },
         required: ['query'],
         additionalProperties: false,
@@ -357,16 +357,16 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_restore',
-      description: '[用户待办] 从回收站恢复一个软删除的待办项或待办清单（Medium）。恢复清单时会一并恢复其软删除的待办项。返回 success、entityType 与恢复后的 entity。',
+      description: '从回收站恢复待办项或清单（Medium）。恢复清单时一并恢复其软删除的待办项。',
       inputSchema: {
         type: 'object',
         properties: {
           entity_type: {
             type: 'string',
             enum: ['item', 'list'],
-            description: '【必填】恢复目标类型',
+            description: '恢复目标类型',
           },
-          entity_id: { type: 'string', minLength: 1, description: '【必填】回收站中的待办项或清单 ID' },
+          entity_id: { type: 'string', minLength: 1, description: '回收站中的待办项或清单 ID' },
         },
         required: ['entity_type', 'entity_id'],
         additionalProperties: false,
@@ -374,22 +374,22 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_list_trash',
-      description: '[用户待办] 分页列出待办回收站中的软删除项（Low），用于在 restore 前发现准确 ID。返回 success、items（每项含 entityType）、total、page、page_size、has_more 和 truncated；单页最多 20 项。',
+      description: '分页列出待办回收站（Low），用于 restore 前发现目标 ID。每项含 entityType。',
       inputSchema: {
         type: 'object',
         properties: {
           entity_type: {
             type: 'string',
             enum: ['item', 'list'],
-            description: '【必填】要查看的回收站实体类型',
+            description: '回收站实体类型',
           },
-          page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },
+          page: { type: 'integer', minimum: 1, default: 1, description: '页码' },
           page_size: {
             type: 'integer',
             minimum: 1,
             maximum: 20,
             default: 20,
-            description: '每页数量，默认且最大 20',
+            description: '每页数量',
           },
         },
         required: ['entity_type'],
@@ -398,22 +398,22 @@ export const userTodoToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-user_todo_reorder',
-      description: '[用户待办] 按 item_ids 给定的完整顺序重排某个清单中的待办项（Medium）。必须传入 list_lists 返回的 expected_updated_at；返回 success、listId、reorderedCount、previous 与 restoreWith。',
+      description: '按 item_ids 完整顺序重排清单待办项（Medium）。传 list_lists 的 updatedAt 为 expected_updated_at。',
       inputSchema: {
         type: 'object',
         properties: {
-          list_id: { type: 'string', minLength: 1, description: '【必填】待办清单 ID' },
+          list_id: { type: 'string', minLength: 1, description: '待办清单 ID' },
           item_ids: {
             type: 'array',
             minItems: 1,
             maxItems: 500,
             items: { type: 'string', minLength: 1 },
-            description: '【必填】按目标顺序排列的待办项 ID',
+            description: '按目标顺序排列的待办项 ID',
           },
           expected_updated_at: {
             type: 'string',
             minLength: 1,
-            description: '【必填】list_lists 返回的清单 updatedAt OCC 基线',
+            description: 'list_lists 返回的清单 updatedAt（OCC 基线）',
           },
         },
         required: ['list_id', 'item_ids', 'expected_updated_at'],

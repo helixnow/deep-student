@@ -231,7 +231,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setIsArgsExpanded((prev) => !prev)}
-              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline"
+              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline [@media(pointer:coarse)]:!min-h-11"
             >
               {isArgsExpanded ? (
                 <>
@@ -258,7 +258,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
           disabled={busy || timedOut}
           onClick={() => void respond(false)}
           aria-label={t('authority.planGate.reject')}
-          className="text-destructive hover:text-destructive/80"
+          className="text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:!min-h-11"
         >
           <XCircle size={14} className="mr-1" aria-hidden="true" />
           {t('authority.planGate.reject')}
@@ -268,7 +268,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
           disabled={busy || timedOut}
           onClick={() => void respond(true)}
           aria-label={t('authority.planGate.approve')}
-          className="bg-success text-success-foreground"
+          className="bg-success text-success-foreground [@media(pointer:coarse)]:!min-h-11"
         >
           {busy && !timedOut ? (
             <CircleNotch size={14} className="mr-1 animate-spin" aria-hidden="true" />

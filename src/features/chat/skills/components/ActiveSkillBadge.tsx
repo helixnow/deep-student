@@ -84,6 +84,8 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         'bg-muted/80 text-primary',
         'transition-all duration-200',
         !disabled && onClick && 'cursor-pointer hover:bg-[var(--interactive-hover)]',
+        // 触控目标：可点徽章（md 28px / sm 20px）触屏抬到 ≥44px
+        onClick && '[@media(pointer:coarse)]:min-h-11',
         disabled && 'opacity-50 cursor-not-allowed',
         sizeClasses[size],
         className
@@ -103,7 +105,7 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         {getLocalizedSkillName(skill.id, skill.name, t)}
       </span>
       {showCloseButton && onClose && (
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10" aria-label={t('skills:deactivate')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} disabled={disabled} className="!h-4 !w-4 !p-0 ml-0.5 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('skills:deactivate')}>
           <X size={iconSize - 2} />
         </DsButton>
       )}
@@ -254,6 +256,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
         'bg-muted text-muted-foreground border border-border',
         'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground hover:border-primary/30',
         sizeClasses[size],
+        '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5',
         className
       )}
       aria-label={t('skills:selectSkill')}

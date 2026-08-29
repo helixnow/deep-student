@@ -190,7 +190,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
         variant="ghost"
         size="sm"
         onClick={onToggle}
-        className="w-full !justify-start gap-2 !px-3 !py-2 text-left"
+        className="w-full !justify-start gap-2 !px-3 !py-2 text-left [@media(pointer:coarse)]:!min-h-11"
       >
         {isCollapsed ? (
           <CaretRight size={14} className="text-muted-foreground" />
@@ -221,7 +221,8 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
                 setIsFullHeight(!isFullHeight);
               }
             }}
-            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-['']"
+            // 触屏：本体 ~26px（icon 14 + p-1.5 12，DsButton leading-none 无 strut），-inset-2.5 → 46px 命中
+            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-[''] [@media(pointer:coarse)]:after:-inset-2.5"
             aria-label={t('sleep.toggleSize')}
           >
             {isFullHeight ? (
@@ -529,7 +530,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
       {/* 紧凑头部：状态 + 子代理数 + 唤醒按钮 */}
       <div
         className={cn(
-          "flex items-center gap-2 px-3 py-2 cursor-pointer",
+          "flex items-center gap-2 px-3 py-2 cursor-pointer [@media(pointer:coarse)]:min-h-11",
           status === 'sleeping' ? statusConfig.bgColor : 'bg-transparent'
         )}
         onClick={() => setIsExpanded(!isExpanded)}
@@ -559,7 +560,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
               handleManualWake();
             }}
             disabled={isWaking}
-            className="bg-white dark:bg-gray-800"
+            className="bg-white dark:bg-gray-800 [@media(pointer:coarse)]:!min-h-11"
           >
             {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
           </DsButton>

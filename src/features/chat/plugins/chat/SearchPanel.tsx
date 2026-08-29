@@ -128,7 +128,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
             </span>
           )}
         </div>
-        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
           <X size={16} />
         </DsButton>
       </div>
@@ -159,7 +159,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
                 onClick={() => handleToggleEngine(engine.id)}
                 disabled={!ready || isStreaming}
                 className={cn(
-                  'w-full !justify-start gap-3 !rounded-lg border !p-3 text-left',
+                  'w-full !justify-start gap-3 !rounded-lg border !p-3 text-left [@media(pointer:coarse)]:!min-h-11',
                   isSelected
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/50 hover:bg-[var(--interactive-hover)]',
@@ -191,7 +191,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
       {/* 底部操作 */}
       {availableSearchEngines.length > 0 && (
         <div className="flex items-center justify-between">
-          <DsButton variant="ghost" size="sm" onClick={handleToggleAll} disabled={!ready || isStreaming} className="text-muted-foreground hover:underline">
+          <DsButton variant="ghost" size="sm" onClick={handleToggleAll} disabled={!ready || isStreaming} className="text-muted-foreground hover:underline [@media(pointer:coarse)]:!min-h-11">
             {allSelected ? t('common:deselect_all') : t('common:select_all')}
           </DsButton>
         </div>

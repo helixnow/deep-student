@@ -36,7 +36,7 @@ export const mediaToolsSkill: SkillDefinition = {
     {
       name: 'builtin-media_transcribe',
       description:
-        '把 VFS 附件（source.resourceId）或 attachment_stage / 授权 runtime 文件发送到 capability 指明的外部 ASR 提供商，并写入 Markdown transcript artifact。仅接受签名确认的 MP3/WAV/OGG/FLAC/M4A/AAC；缺少 ASR 配置、收到视频容器或 WMA 时返回明确的 unavailable/unsupported 原因。',
+        '把 VFS 附件或 stage/授权文件送外部 ASR 转写，写入 Markdown transcript artifact。仅接受签名确认的 MP3/WAV/OGG/FLAC/M4A/AAC；缺 ASR 配置、视频容器或 WMA 返回明确 unavailable/unsupported 原因。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -45,10 +45,10 @@ export const mediaToolsSkill: SkillDefinition = {
           source: {
             type: 'object',
             description:
-              '三选一：{ "resourceId": "file_xxx" }（会话附件/资源库音频的 VFS 附件 ID）；TaskObjectHandle；或包含 objectHandle/object_handle 的 attachment_stage 结果。',
+              '三选一：{ "resourceId": "file_xxx" }、TaskObjectHandle、或含 objectHandle 的 attachment_stage 结果。',
           },
-          language: { type: 'string', description: '可选语言提示。' },
-          prompt: { type: 'string', description: '可选 ASR 上下文提示。' },
+          language: { type: 'string', description: '语言提示。' },
+          prompt: { type: 'string', description: 'ASR 上下文提示。' },
         },
       },
     },

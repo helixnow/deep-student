@@ -624,6 +624,8 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             aria-controls={hasContent ? contentId : undefined}
             className={cn(
               'thinking-summary-trigger activity-timeline-thinking-trigger activity-timeline-summary w-full !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 rounded-[var(--radius-shell-control)] transition-colors group',
+              // coarse 指针：视觉保持 28px 行高，伪元素纵向扩到 44px 命中区
+              "[@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:content-['']",
               'text-muted-foreground hover:text-foreground',
               'focus-visible:text-foreground',
               hasContent && 'hover:text-foreground cursor-pointer',
@@ -1000,6 +1002,8 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           aria-controls={hasDetails ? contentId : undefined}
           className={cn(
             'activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 max-w-full hover:!bg-transparent',
+            // coarse 指针：视觉保持 28px 行高，伪元素纵向扩到 44px 命中区
+            "[@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:content-['']",
             isShellCommand ? 'w-full min-w-0' : 'w-fit min-w-0',
             'text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
@@ -1219,7 +1223,7 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
         onClick={() => setIsExpanded((value) => !value)}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 text-muted-foreground hover:!bg-transparent hover:text-foreground"
+        className="activity-timeline-tool-trigger activity-timeline-summary !h-7 !min-h-0 !justify-start !gap-1.5 !px-0 !py-0 !leading-7 text-muted-foreground hover:!bg-transparent hover:text-foreground [@media(pointer:coarse)]:relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:inset-x-0 [@media(pointer:coarse)]:after:-inset-y-2 [@media(pointer:coarse)]:after:content-['']"
       >
         <ToolActivitySweep active={isActive} className="activity-timeline-tool-name min-w-0">
           <span className="activity-timeline-tool-name truncate">{summary}</span>
@@ -1381,7 +1385,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
             size="sm"
             onClick={handleContinue}
             disabled={isContinuing}
-            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30"
+            className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30 [@media(pointer:coarse)]:!min-h-11"
           >
             {isContinuing ? (
               <CircleNotch size={14} className="flex-shrink-0 animate-spin" />

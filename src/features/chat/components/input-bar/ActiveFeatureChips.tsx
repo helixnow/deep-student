@@ -9,6 +9,7 @@ import React from 'react';
 import { X, Brain, StackSimple, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { coarseHitClassForBadge16 } from '@/components/ui/coarseHit';
 import { useTranslation } from 'react-i18next';
 
 // ============================================================================
@@ -75,7 +76,7 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
       {/* ★ M5：16px 关闭按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
-      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={t('chatV2:common.closeNamed', { name: feature.label })}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className={cn('!w-4 !h-4 !p-0 hover:bg-foreground/10 relative', coarseHitClassForBadge16)} aria-label={t('chatV2:common.closeNamed', { name: feature.label })}>
         <X size={10} weight="bold" />
       </DsButton>
     </div>

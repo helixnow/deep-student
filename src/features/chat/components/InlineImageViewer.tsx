@@ -574,27 +574,27 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
                 color: 'var(--text-secondary)',
               }}
             >
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1 / 1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1 / 1.2)} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
                 <MagnifyingGlassMinus size={16} />
               </DsButton>
               <span className="min-w-[44px] px-2 py-1 text-center text-[11px] font-medium tracking-[0.02em] text-[color:var(--text-secondary)]">
                 {Math.round(scale * 100)}%
               </span>
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1.2)} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
                 <MagnifyingGlassPlus size={16} />
               </DsButton>
               <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setRotation((prev) => (prev + 90) % 360)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setRotation((prev) => (prev + 90) % 360)} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
                 <ArrowClockwise size={16} />
               </DsButton>
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleResetView} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleResetView} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
                 <House size={16} />
               </DsButton>
               <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleDownload} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleDownload} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
                 <Download size={16} />
               </DsButton>
-              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleOpenInNewTab} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleOpenInNewTab} className="h-9 w-9 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
                 <ArrowSquareOut size={16} />
               </DsButton>
             </div>

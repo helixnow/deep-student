@@ -321,7 +321,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               <span
                 key={item.id}
                 className={cn(
-                  'inline-flex items-center gap-1.5 h-6 px-2 max-w-[260px]',
+                  // ★ 触控目标：本身不可点，但与可点 chip 同排（撤销后可点→不可点），触屏同步加高避免行高跳变
+                  'inline-flex items-center gap-1.5 h-6 [@media(pointer:coarse)]:min-h-11 px-2 max-w-[260px]',
                   'rounded-full border',
                   isDestructive
                     ? 'border-[color:hsl(var(--destructive)/0.35)]'
@@ -341,7 +342,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             <span
               key={item.id}
               className={cn(
-                'inline-flex items-center h-6 max-w-[280px]',
+                // ★ 触控目标：内部按钮均为 h-full，容器触屏加高即整体达标 ≥44px
+                'inline-flex items-center h-6 [@media(pointer:coarse)]:min-h-11 max-w-[280px]',
                 'rounded-full border',
                 isDestructive
                   ? 'border-[color:hsl(var(--destructive)/0.35)]'

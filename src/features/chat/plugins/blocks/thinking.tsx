@@ -82,7 +82,7 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="think-header"
+        className="think-header [@media(pointer:coarse)]:min-h-11"
       >
         <Brain size={15} className="think-header-icon" weight="duotone" />
         <span className="think-header-title">{t('blocks.thinking.title')}</span>

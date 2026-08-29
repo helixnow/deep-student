@@ -10,7 +10,7 @@
 import type { SkillDefinition } from '../types';
 
 const PREFER_FETCH =
-  'Prefer builtin-web_fetch for read-only public/static pages; use this only when interaction or JS-rendered UI is required.';
+  'Prefer builtin-web_fetch for static read-only pages.';
 
 export const browserToolsSkill: SkillDefinition = {
   id: 'browser-tools',
@@ -72,7 +72,7 @@ export const browserToolsSkill: SkillDefinition = {
         additionalProperties: false,
         required: ['url'],
         properties: {
-          url: { type: 'string', description: '【必填】http(s) URL' },
+          url: { type: 'string', description: 'http(s) URL' },
           new_context: {
             type: 'boolean',
             default: false,
@@ -89,7 +89,7 @@ export const browserToolsSkill: SkillDefinition = {
         additionalProperties: false,
         required: ['url'],
         properties: {
-          url: { type: 'string', description: '【必填】目标 http(s) URL' },
+          url: { type: 'string', description: '目标 http(s) URL' },
         },
       },
     },
@@ -124,7 +124,7 @@ export const browserToolsSkill: SkillDefinition = {
     {
       name: 'builtin-browser_screenshot',
       description:
-        '请求捕获当前可见 WebView 的真实像素截图。若当前 Tauri/Wry 平台没有截图 API，会明确返回 available=false、reasonCode=PLATFORM_API_UNAVAILABLE，且绝不伪造文件或用 accessibility snapshot 代替。',
+        '捕获当前 WebView 真实像素截图。平台无截图 API 时返回 available=false 与 reasonCode，绝不伪造或用 accessibility snapshot 代替。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -142,11 +142,11 @@ export const browserToolsSkill: SkillDefinition = {
           ref: {
             type: 'string',
             pattern: '^e[0-9]+$',
-            description: '【必填】snapshot 中的 ref，如 e5',
+            description: 'snapshot 中的 ref，如 e5',
           },
           element: {
             type: 'string',
-            description: '【必填】人类可读目标描述（审批/日志用），例如「下一页按钮」',
+            description: '人类可读目标描述（审批/日志用）',
           },
           include_snapshot: {
             type: 'boolean',
@@ -165,8 +165,8 @@ export const browserToolsSkill: SkillDefinition = {
         required: ['ref', 'element', 'text'],
         properties: {
           ref: { type: 'string', pattern: '^e[0-9]+$' },
-          element: { type: 'string', description: '【必填】人类可读目标描述' },
-          text: { type: 'string', description: '【必填】要输入的文本' },
+          element: { type: 'string', description: '人类可读目标描述' },
+          text: { type: 'string', description: '要输入的文本' },
           submit: { type: 'boolean', default: false },
           slowly: {
             type: 'boolean',
@@ -187,7 +187,7 @@ export const browserToolsSkill: SkillDefinition = {
         required: ['ref', 'element', 'files'],
         properties: {
           ref: { type: 'string', pattern: '^e[0-9]+$' },
-          element: { type: 'string', description: '【必填】文件输入框的人类可读描述' },
+          element: { type: 'string', description: '文件输入框的人类可读描述' },
           files: {
             type: 'array',
             minItems: 1,

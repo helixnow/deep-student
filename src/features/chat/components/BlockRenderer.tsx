@@ -138,7 +138,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
-        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
+        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10 [@media(pointer:coarse)]:!min-h-11">
           <ArrowCounterClockwise size={12} />
           {t('error.retry')}
         </DsButton>
@@ -149,7 +149,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
       {/* 显示块的原始内容（如果有） */}
       {block.content && (
         <details className="mt-2">
-          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground [@media(pointer:coarse)]:min-h-11">
             {t('error.showContent')}
           </summary>
           <CustomScrollArea fullHeight={false} className="mt-1 max-h-32 rounded" viewportClassName="max-h-32">

@@ -303,13 +303,13 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
             isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
           )}
         >
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7'}>
             <PencilSimple size={isTouchPrimary ? 16 : 14} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession')} title={t('browser.exportSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession')} title={t('browser.exportSession')} className={isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7'}>
             {exporting ? <CircleNotch size={isTouchPrimary ? 16 : 14} className="animate-spin" /> : <DownloadSimple size={isTouchPrimary ? 16 : 14} />}
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-11 !w-11' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
             {confirmingDelete ? <Trash size={isTouchPrimary ? 16 : 14} /> : <X size={isTouchPrimary ? 16 : 14} />}
           </DsButton>
         </div>
@@ -335,14 +335,14 @@ const SessionCard: React.FC<SessionCardProps> = React.memo(({
                 }
               }}
               autoFocus
-              // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大
-              className="flex-1 h-8 [@media(pointer:coarse)]:text-[16px]"
+              // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大 + 44px 触控高度
+              className="flex-1 h-8 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
               <Check size={16} />
             </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
               <X size={16} />
             </DsButton>
           </div>
@@ -668,7 +668,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 分组模式滑块切换 */}
             {(
-              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+              <div className="relative flex items-center h-8 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
                 <button
                   onClick={() => setGroupMode('time')}
                   className={cn(
@@ -713,7 +713,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
-                className={cn('shrink-0', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                className={cn('shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
               >
                 <Tag size={14} />
                 {sessionTags.selectedFilterTags.size > 0 && (
@@ -724,7 +724,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 桌面端搜索框 + 模式切换 */}
             <div className="hidden sm:flex items-center gap-1">
-              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
+              <div className="relative flex items-center h-8 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
                 <button
                   onClick={() => setSearchMode('title')}
                   className={cn(
@@ -755,13 +755,14 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                  className="w-full h-9 pl-9 pr-3"
+                  // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大 + 44px 触控高度
+                  className="w-full h-9 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
                 />
               </div>
             </div>
 
             {/* 新建按钮 */}
-            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
+            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <Plus size={16} />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
             </DsButton>
@@ -786,15 +787,15 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大
-                className="w-full h-10 pl-9 pr-3 [@media(pointer:coarse)]:text-[16px]"
+                // 📱 16px 输入契约：coarse 指针下防 iOS 聚焦自动放大；44px 触控高度
+                className="w-full h-10 pl-9 pr-3 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-[16px]"
               />
             </div>
             {/* 标题/内容搜索模式切换（补齐移动端与桌面的功能对等） */}
             <button
               onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
               className={cn(
-                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center',
+                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11',
                 searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
               )}
               title={searchMode === 'content' ? t('search.contentMode') : t('search.titleMode')}
@@ -809,7 +810,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
-                className={cn('shrink-0 !h-10 min-w-10', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                className={cn('shrink-0 !h-10 min-w-10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
                 aria-label={t('tags.filterTitle')}
                 title={t('tags.filterTitle')}
               >
@@ -820,8 +821,8 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               </DsButton>
             )}
           </div>
-          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度，图标+文字标签 */}
-          <div className="relative flex items-stretch h-10 rounded-lg bg-muted/50 p-0.5">
+          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度（coarse 指针下 44px），图标+文字标签 */}
+          <div className="relative flex items-stretch h-10 [@media(pointer:coarse)]:h-11 rounded-lg bg-muted/50 p-0.5">
             <button
               onClick={() => setGroupMode('time')}
               className={cn(
@@ -914,7 +915,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     : t('page.selectOrCreate')}
                 </span>
                 {!hasActiveFilter && (
-                  <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
+                  <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline [@media(pointer:coarse)]:!min-h-11">
                     {t('page.createFirst')}
                   </DsButton>
                 )}
@@ -1031,7 +1032,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               return (
                 <div key={sessionGroup.id}>
                   <div
-                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    className="mb-4 flex items-center gap-2 [@media(pointer:coarse)]:min-h-11 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse(sessionGroup.id)}
                   >
                     <CaretDown size={14} className={cn(
@@ -1083,7 +1084,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               return (
                 <div>
                   <div
-                    className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
+                    className="mb-4 flex items-center gap-2 [@media(pointer:coarse)]:min-h-11 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse('__ungrouped__')}
                   >
                     <CaretDown className={cn(

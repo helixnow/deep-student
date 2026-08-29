@@ -1,6 +1,16 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
+import {
+  DndContext,
+  DragOverlay,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import {
   Archive,
   CaretRight,
@@ -91,9 +101,56 @@ export interface UseSessionSidebarContentDeps {
   createSession: (groupId?: string) => Promise<void>;
   loadMoreSessions: () => Promise<void>;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
-  /** 会话拖入分组：提供后启用 hello-pangea DnD（droppableId: session-group:<id> / session-ungrouped） */
-  onSessionDragEnd?: (result: DropResult) => void;
+  /** 会话拖入分组：提供后启用 dnd-kit DnD（droppable id: session-group:<id> / session-ungrouped） */
+  onSessionDragEnd?: (event: DragEndEvent) => void;
 }
+
+/** 会话行拖拽包装（dnd-kit useDraggable）：仅跨容器移动会话到分组，不做组内排序 */
+const DraggableSessionRow: React.FC<{
+  session: ChatSession;
+  /** 所在容器的 droppable id：拖回原容器时 handleDragEnd 据此忽略 */
+  sourceDroppableId: string;
+  renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
+}> = ({ session, sourceDroppableId, renderSessionItem }) => {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `session:${session.id}`,
+    data: { sourceDroppableId },
+  });
+
+  return (
+    <>
+      {renderSessionItem(session, {
+        setNodeRef,
+        attributes,
+        listeners,
+        isDragging,
+        // 源行降透明度作占位；拖拽预览由 DragOverlay 渲染
+        // （折叠容器 overflow-hidden 会裁剪 transform 位移的源行，故不在源行上做位移）
+        style: isDragging ? { opacity: 0.4 } : undefined,
+      })}
+    </>
+  );
+};
+
+/** 分组会话列表放置区（dnd-kit useDroppable）：拖入高亮与迁移前 isDraggingOver 一致 */
+const SessionDropZone: React.FC<{
+  droppableId: string;
+  children: React.ReactNode;
+}> = ({ droppableId, children }) => {
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'space-y-0.5 rounded-2xl transition-colors duration-150',
+        isOver && 'bg-[color:var(--interactive-hover)] ring-1 ring-primary/25'
+      )}
+    >
+      {children}
+    </div>
+  );
+};
 
 export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const {
@@ -139,6 +196,31 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       clearTimeout(archiveConfirmTimeoutRef.current);
     }
   }, []);
+
+  // ===== 会话拖入分组（dnd-kit）=====
+  // DND-1 统一传感器：鼠标 8px 起拖（保留行点击）、触屏长按 250ms、键盘可访问拖放
+  const sessionDndSensors = useTouchFriendlyDndSensors();
+  const [activeDragSessionId, setActiveDragSessionId] = React.useState<string | null>(null);
+  const activeDragSession = React.useMemo(
+    () => (activeDragSessionId
+      ? sessions.find((session) => session.id === activeDragSessionId) ?? null
+      : null),
+    [activeDragSessionId, sessions]
+  );
+
+  const handleSessionDragStart = React.useCallback((event: DragStartEvent) => {
+    setActiveDragSessionId(String(event.active.id).replace(/^session:/, ''));
+  }, []);
+
+  const handleSessionDragCancel = React.useCallback(() => {
+    setActiveDragSessionId(null);
+  }, []);
+
+  const handleSessionDragEnd = React.useCallback((event: DragEndEvent) => {
+    setActiveDragSessionId(null);
+    clearArchiveConfirm();
+    onSessionDragEnd?.(event);
+  }, [clearArchiveConfirm, onSessionDragEnd]);
 
   const handleSearchChange = React.useCallback((value: string) => {
     // 开始输入时复位待确认的删除/归档，避免过滤后确认条挂在错误的行上
@@ -354,6 +436,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       : t('page.newSessionInGroup', {groupName: label});
     // 触屏无 hover：常显「…」菜单承载分组的新建会话/重命名/编辑/归档（与桌面 ModernSidebar 分组操作对齐）
     const hasGroupMenu = !!group && editableGroupIds.has(group.id);
+    // droppable id 契约与迁移前一致：useSessionEdit.handleDragEnd 据此识别目标分组
+    const droppableId = id === 'ungrouped' ? 'session-ungrouped' : `session-group:${id}`;
 
     return (
       <section key={id} className="space-y-1">
@@ -397,7 +481,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+              className="relative !h-10 !w-10 !p-0 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
               aria-label={createSessionLabel}
               title={createSessionLabel}
               onClick={() => handleCreateSessionInFolder(id)}
@@ -411,7 +495,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    className="!h-10 !w-10 !p-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="relative !h-10 !w-10 !p-0 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-0.5 [@media(pointer:coarse)]:after:content-[''] text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
                     aria-label={t('page.groupActions')}
                     title={t('page.groupActions')}
                   >
@@ -467,7 +551,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               <DsButton
                 variant="warning"
                 size="sm"
-                className="!h-9 lg:!h-7 !px-2 text-[12px]"
+                className="!h-9 lg:!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-[12px]"
                 onClick={() => {
                   clearArchiveConfirm();
                   onArchiveGroup(group);
@@ -479,7 +563,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-9 !w-9 lg:!h-7 lg:!w-7"
+                className="!h-9 !w-9 lg:!h-7 lg:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                 aria-label={t('common:cancel')}
                 onClick={clearArchiveConfirm}
               >
@@ -497,34 +581,16 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         >
           <div className={cn('space-y-0.5 overflow-hidden pl-4', !isExpanded && 'pointer-events-none')}>
             {onSessionDragEnd ? (
-              <Droppable
-                droppableId={id === 'ungrouped' ? 'session-ungrouped' : `session-group:${id}`}
-                type="SESSION"
-              >
-                {(dropProvided, dropSnapshot) => (
-                  <div
-                    ref={dropProvided.innerRef}
-                    {...dropProvided.droppableProps}
-                    className={cn(
-                      'space-y-0.5 rounded-2xl transition-colors duration-150',
-                      dropSnapshot.isDraggingOver && 'bg-[color:var(--interactive-hover)] ring-1 ring-primary/25'
-                    )}
-                  >
-                    {nonPinnedSessions.map((session, index) => (
-                      <Draggable
-                        key={`session:${session.id}`}
-                        draggableId={`session:${session.id}`}
-                        index={index}
-                      >
-                        {(dragProvided, dragSnapshot) =>
-                          renderSessionItem(session, { provided: dragProvided, snapshot: dragSnapshot })
-                        }
-                      </Draggable>
-                    ))}
-                    {dropProvided.placeholder}
-                  </div>
-                )}
-              </Droppable>
+              <SessionDropZone droppableId={droppableId}>
+                {nonPinnedSessions.map((session) => (
+                  <DraggableSessionRow
+                    key={`session:${session.id}`}
+                    session={session}
+                    sourceDroppableId={droppableId}
+                    renderSessionItem={renderSessionItem}
+                  />
+                ))}
+              </SessionDropZone>
             ) : (
               <AnimatePresence initial={false} mode="popLayout">
                 {nonPinnedSessions.map(renderAnimatedSessionRow)}
@@ -596,7 +662,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               onClick={onCreateGroup}
               aria-label={t('page.createGroup')}
               title={t('page.createGroup')}
-              className="!h-10 !w-10 -my-2 shrink-0 text-muted-foreground/80"
+              className="!h-10 !w-10 -my-2 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2.5 shrink-0 text-muted-foreground/80"
             >
               <Plus size={15} />
             </DsButton>
@@ -649,7 +715,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     size="sm"
                     onClick={() => { void loadMoreSessions(); }}
                     disabled={isLoadingMore}
-                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)] [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
                     <span>{t('page.loadMore')}</span>
@@ -714,7 +780,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2"
+          className="absolute right-4 top-1/2 !h-8 !w-8 -translate-y-1/2 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1.5 [@media(pointer:coarse)]:after:content-['']"
           aria-label={t('page.clearSearch')}
           onClick={() => handleSearchChange('')}
         >
@@ -737,7 +803,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           variant="ghost"
           size="icon"
           iconOnly
-          className="shell-icon-button !h-10 !w-10 !rounded-full shrink-0 text-muted-foreground"
+          className="shell-icon-button !h-10 !w-10 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 !rounded-full shrink-0 text-muted-foreground"
           onClick={() => setSessionSheetOpen(false)}
           aria-label={t('common:close')}
         >
@@ -780,14 +846,30 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     );
 
     return onSessionDragEnd ? (
-      <DragDropContext
-        onDragEnd={(result) => {
-          clearArchiveConfirm();
-          onSessionDragEnd(result);
-        }}
+      <DndContext
+        sensors={sessionDndSensors}
+        autoScroll={SHELL_SAFE_AUTO_SCROLL}
+        collisionDetection={pointerWithin}
+        onDragStart={handleSessionDragStart}
+        onDragEnd={handleSessionDragEnd}
+        onDragCancel={handleSessionDragCancel}
       >
         {body}
-      </DragDropContext>
+        {/* 拖拽预览渲染到 body：避免移动抽屉 transform 祖先使 fixed 定位错位，
+            也不受折叠容器 overflow-hidden / 滚动区裁剪 */}
+        {createPortal(
+          <DragOverlay
+            dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}
+          >
+            {activeDragSession ? (
+              <div className="pointer-events-none">
+                {renderSessionItem(activeDragSession)}
+              </div>
+            ) : null}
+          </DragOverlay>,
+          document.body
+        )}
+      </DndContext>
     ) : body;
   };
 

@@ -44,7 +44,6 @@ import {
   clearStreamReconnectMetaPatch,
 } from '../tauri/streamLifecycle';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
-import { formatStreamReconnectMessage } from '../streamReconnectNotification';
 
 function createStreamingStore() {
   let state: any = {
@@ -152,14 +151,9 @@ describe('ChatV2TauriAdapter stream_reconnect behavior', () => {
       retryMax: 5,
     });
 
-    // Inline meta only — no toast path (notifyStreamReconnect / formatStreamReconnectMessage).
+    // Inline meta only — the reconnect toast path was removed
+    // (streamReconnectNotification.ts deleted as dead code).
     expect(showGlobalNotification).not.toHaveBeenCalled();
-    expect(showGlobalNotification).not.toHaveBeenCalledWith(
-      'info',
-      formatStreamReconnectMessage({ retryAttempt: 2, retryMax: 5 }),
-      undefined,
-      expect.anything(),
-    );
   });
 
   it.each([

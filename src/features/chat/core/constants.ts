@@ -127,8 +127,9 @@ export const GRAPH_TOPK_MAX = 50;
 
 // ==================== 文件配置 ====================
 
-/** 文件大小限制（50MB） */
-export const FILE_SIZE_LIMIT = 50 * 1024 * 1024;
+// ★ #62/ATT-09：此处曾有 FILE_SIZE_LIMIT = 50MB 的残留副本（与实际上限不符且无人引用，已删除）。
+// 附件上传上限统一使用下方 ATTACHMENT_MAX_SIZE（200MB）；
+// 资源库层上限见 features/chat/resources/types.ts 的 FILE_SIZE_LIMIT / IMAGE_SIZE_LIMIT。
 
 /** 文本文件最大长度（100KB） */
 export const TEXT_FILE_MAX_LENGTH = 100 * 1024;
@@ -177,6 +178,17 @@ export const MAX_SCAN_LENGTH = 1000;
  *   document_parser::MAX_DOCUMENT_SIZE (200MB)、attachment_repo::MAX_FILE_BYTES 对齐
  */
 export const ATTACHMENT_MAX_SIZE = 200 * 1024 * 1024;
+
+/**
+ * 单个图片附件最大大小 (50MB)
+ * 必须与 resources/types.ts IMAGE_SIZE_LIMIT、VFS Image、
+ * attachment_repo::MAX_IMAGE_BYTES 保持一致；通用文件仍走 200MB。
+ */
+export const ATTACHMENT_IMAGE_MAX_SIZE = 50 * 1024 * 1024;
+
+export function getAttachmentSizeLimit(isImage: boolean): number {
+  return isImage ? ATTACHMENT_IMAGE_MAX_SIZE : ATTACHMENT_MAX_SIZE;
+}
 
 /** 单次会话最大附件数量 */
 export const ATTACHMENT_MAX_COUNT = 20;
@@ -341,6 +353,20 @@ export const ATTACHMENT_ALLOWED_EXTENSIONS = [
   ...ATTACHMENT_ARCHIVE_EXTENSIONS,
   ...ATTACHMENT_MINDMAP_EXTENSIONS,
 ];
+
+export function isAttachmentImageName(fileName: string): boolean {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  return ATTACHMENT_IMAGE_EXTENSIONS.includes(ext);
+}
+
+export function getAttachmentSizeLimitForFile(
+  fileName: string,
+  maxFileSize: number = ATTACHMENT_MAX_SIZE,
+): number {
+  return isAttachmentImageName(fileName)
+    ? Math.min(maxFileSize, ATTACHMENT_IMAGE_MAX_SIZE)
+    : maxFileSize;
+}
 
 // ==================== 格式化工具 ====================
 

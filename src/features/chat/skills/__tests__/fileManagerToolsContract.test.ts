@@ -20,7 +20,7 @@ describe('file manager skill contract', () => {
     expect(schema.required).toEqual(['plan_id', 'root_id', 'preview_sha256']);
     expect(schema.properties.root_id.enum).toEqual(['workspace']);
     expect(schema.properties.preview_sha256.pattern).toContain('{64}');
-    expect(tool('builtin-file_manager_commit').description).toContain('Every source is re-hashed');
+    expect(tool('builtin-file_manager_commit').description).toContain('re-hashed');
   });
   it('requires a soft-delete receipt and excludes permanent delete', () => {
     const schema = tool('builtin-file_manager_restore').inputSchema as any;

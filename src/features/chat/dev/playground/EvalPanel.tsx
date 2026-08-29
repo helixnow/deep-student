@@ -150,7 +150,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
               <button
                 type="button"
                 onClick={() => setSelectedCases(new Set(EVAL_CASES.map((c) => c.id)))}
-                className="text-2xs text-muted-foreground hover:text-foreground"
+                className="text-2xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 全选
               </button>
@@ -158,7 +158,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
               <button
                 type="button"
                 onClick={() => setSelectedCases(new Set())}
-                className="text-2xs text-muted-foreground hover:text-foreground"
+                className="text-2xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
               >
                 清空
               </button>
@@ -173,7 +173,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                   type="button"
                   onClick={() => toggleCase(c.id)}
                   className={cn(
-                    'flex items-center gap-1 px-1.5 py-1 rounded text-2xs text-left transition-colors',
+                    'flex items-center gap-1 px-1.5 py-1 rounded text-2xs text-left transition-colors [@media(pointer:coarse)]:!min-h-11',
                     sel
                       ? 'bg-primary/10 text-primary'
                       : 'bg-muted/50 hover:bg-muted text-muted-foreground',
@@ -203,7 +203,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                   onClick={() => togglePreset(p)}
                   title={getStreamingPresetHint(p)}
                   className={cn(
-                    'flex-1 px-1.5 py-1 rounded text-2xs transition-colors',
+                    'flex-1 px-1.5 py-1 rounded text-2xs transition-colors [@media(pointer:coarse)]:!min-h-11',
                     sel
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/50 hover:bg-muted text-muted-foreground',
@@ -224,7 +224,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
           <select
             value={rhythmId}
             onChange={(e) => setRhythmId(e.target.value)}
-            className="w-full text-[11px] px-2 py-1 rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full text-[11px] px-2 py-1 rounded bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary [@media(pointer:coarse)]:!min-h-11"
             disabled={running}
           >
             {RHYTHM_PRESETS.map((r) => (
@@ -243,7 +243,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
               onClick={handleRun}
               disabled={selectedCases.size === 0 || selectedPresets.size === 0}
               className={cn(
-                'flex-1 px-2 py-1.5 text-[11px] rounded flex items-center justify-center gap-1 transition-colors',
+                'flex-1 px-2 py-1.5 text-[11px] rounded flex items-center justify-center gap-1 transition-colors [@media(pointer:coarse)]:!min-h-11',
                 selectedCases.size === 0 || selectedPresets.size === 0
                   ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
                   : 'bg-primary text-primary-foreground hover:bg-primary/90',
@@ -256,7 +256,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
             <button
               type="button"
               onClick={handleCancel}
-              className="flex-1 px-2 py-1.5 text-[11px] rounded bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center gap-1"
+              className="flex-1 px-2 py-1.5 text-[11px] rounded bg-destructive/10 text-destructive hover:bg-destructive/20 flex items-center justify-center gap-1 [@media(pointer:coarse)]:!min-h-11"
             >
               <Stop size={12} weight="fill" />
               取消
@@ -267,7 +267,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
             onClick={handleExport}
             disabled={!report}
             className={cn(
-              'px-2 py-1.5 text-[11px] rounded flex items-center justify-center gap-1 transition-colors',
+              'px-2 py-1.5 text-[11px] rounded flex items-center justify-center gap-1 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
               !report
                 ? 'bg-muted text-muted-foreground/50 cursor-not-allowed'
                 : 'bg-muted hover:bg-primary/10 hover:text-primary',
@@ -377,7 +377,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                                     setExpandedKey(expandedKey === key ? null : key)
                                   }
                                   className={cn(
-                                    'w-full px-1 py-1 rounded text-center font-mono font-semibold tabular-nums transition-all',
+                                    'w-full px-1 py-1 rounded text-center font-mono font-semibold tabular-nums transition-all [@media(pointer:coarse)]:!min-h-11',
                                     expandedKey === key && 'ring-2 ring-primary',
                                     r.failed && 'opacity-50',
                                   )}

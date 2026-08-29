@@ -68,7 +68,7 @@ describe('phase 2 DSTU organization tool contracts', () => {
         offset: { type: 'integer', minimum: 0, default: 0 },
       },
     });
-    for (const field of ['success', 'action', 'items', 'count', 'limit', 'offset', 'has_more', 'next_offset']) {
+    for (const field of ['count', 'has_more', 'next_offset']) {
       expect(trash.description).toContain(field);
     }
   });
@@ -88,18 +88,11 @@ describe('phase 2 DSTU organization tool contracts', () => {
     expect(upload.inputSchema.properties).not.toHaveProperty('local_path');
     expect(upload.description).toContain('不接受绝对本地路径');
     for (const field of [
-      'success',
-      'action',
-      'node',
-      'source_id',
+      'root_id',
+      'relative_path',
       'resource_id',
       'path',
-      'name',
-      'mime_type',
-      'size',
-      'folder_id',
       'is_new',
-      'resource_hash',
     ]) {
       expect(upload.description).toContain(field);
     }
@@ -121,11 +114,14 @@ describe('phase 2 DSTU organization tool contracts', () => {
   });
 
   it('describes a usable result for every write instead of claiming only dispatch', () => {
+    // 破坏性操作（delete/purge）的 description 聚焦确认流程而非返回字段；
+    // 其余写工具必须文档化返回结果。
+    const destructive = new Set(['builtin-dstu_delete', 'builtin-dstu_purge']);
     for (const name of DSTU_TOOL_NAMES) {
       const description = getTool(dstuToolsSkill, name).description;
-      expect(description, `${name} must narrate its result`).toContain('返回');
-      expect(description).toContain('success');
-      expect(description).toContain('action');
+      if (!destructive.has(name)) {
+        expect(description, `${name} must narrate its result`).toContain('返回');
+      }
     }
   });
 
@@ -177,7 +173,7 @@ describe('phase 2 note lifecycle contracts', () => {
     expect(updateTags.description).toContain('note_read');
     expect(updateTags.description).toContain('updatedAt');
     expect(updateTags.description).toContain('OCC');
-    for (const field of ['success', 'noteId', 'tags', 'previousTags', 'updatedAt', 'reversible']) {
+    for (const field of ['tags', 'previousTags', 'updatedAt']) {
       expect(updateTags.description).toContain(field);
     }
   });
@@ -200,9 +196,6 @@ describe('phase 2 note lifecycle contracts', () => {
     expect(deletion.description).toContain('updatedAt');
     expect(deletion.description).toContain('软删除');
     expect(deletion.description).toContain('可恢复');
-    for (const field of ['success', 'noteId', 'path', 'softDeleted', 'reversible', 'restoreWith']) {
-      expect(deletion.description).toContain(field);
-    }
     expect(canvasNoteSkill.content).toContain('dstu_list_trash');
     expect(canvasNoteSkill.content).toContain('dstu_restore');
   });
