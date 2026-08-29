@@ -237,7 +237,7 @@ html.is-android-webview [contenteditable="true"] {
   min-height: 22px !important;
 }
 
-/* h-[24px] - NoteTagsEditor 等 */
+/* h-[24px] - QuestionBankManageView 等 */
 .h-\[24px\] {
   min-height: 24px !important;
   flex-shrink: 0 !important;
@@ -251,6 +251,25 @@ html.is-android-webview [contenteditable="true"] {
 .h-\[25px\] {
   min-height: 25px !important;
   flex-shrink: 0 !important;
+}
+
+/* ---- 6b. coarse 触控契约恢复（必须置于上方全部小尺寸基线之后） ---- */
+
+/*
+ * 第 3/4/6 节的小尺寸基线（.w-5.h-5 / .w-6.h-6 特异性 (0,2,0)；.size-5 /
+ * .h-[20px] 等 (0,1,0) 但源序晚于 Tailwind utilities）会压过
+ * [@media(pointer:coarse)]:!min-h-11（(0,1,0)），令同时携带尺寸类与
+ * coarse !min 的可点元素在触屏塌回 20–24px。这里用三重类名把 coarse
+ * 契约抬到 (0,3,0)，保证 !min-h-11 / !min-w-11 在 coarse 指针下恒 ≥44px。
+ */
+@media (pointer: coarse) {
+  .\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11.\[\@media\(pointer\:coarse\)\]\:\!min-h-11 {
+    min-height: 2.75rem !important;
+  }
+
+  .\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11.\[\@media\(pointer\:coarse\)\]\:\!min-w-11 {
+    min-width: 2.75rem !important;
+  }
 }
 
 /* ---- 7. backdrop-filter 兼容性 fallback ---- */
@@ -404,8 +423,6 @@ html.is-android .android-safe-top {
   [data-panel-id="notes-sidebar"],
   [data-panel-id="notes-context"],
   [data-panel-group-id] > [data-resize-handle],
-  .notes-home-container [data-radix-popper-content-wrapper],
-  .notes-home-container .notes-header-wrapper,
   .notes-editor-toolbar,
   .milkdown-toolbar,
   .milkdown-block-handle,

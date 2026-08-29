@@ -1,9 +1,9 @@
 /**
  * useLongPress — 触控长按 hook（长按呼出上下文菜单 / 进入多选等）。
  *
- * 目标：收敛 TreeNode（src/features/notes/DndFileTree/TreeNode.tsx）与
- * TreeRow（src/features/workbench/apps/notes/tree/TreeRow.tsx）里两份
- * 复制粘贴的 setTimeout 长按实现（本轮只提供基建，后续轮次再接线）。
+ * 目标：收敛 TreeRow（src/features/workbench/apps/notes/tree/TreeRow.tsx）等处
+ * 手写的 setTimeout 长按实现（本轮只提供基建，后续轮次再接线；
+ * 历史第二份实现位于 notes/DndFileTree/TreeNode.tsx，该组件已于 2026-08 零挂载删除）。
  *
  * 行为：
  * - 按下后 `delay`（默认 450ms）触发 `onLongPress`，携带按下坐标；

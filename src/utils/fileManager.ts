@@ -1,5 +1,6 @@
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
+import i18next from 'i18next';
 import { TauriAPI } from './tauriApi';
 import { getErrorMessage } from './errorUtils';
 
@@ -26,14 +27,19 @@ export function extractFileName(path: string): string {
 /**
  * 提取用户友好的文件名用于 UI 展示。
  * 对 Android 不透明 document ID（如 `document:1000019790`、`msf:62`、纯数字 `446`）
- * 返回通用占位名称 "文件"，避免在界面上显示无意义的 ID。
+ * 返回通用占位名称（走 common:file），避免在界面上显示无意义的 ID。
  */
 export function extractDisplayFileName(path: string): string {
   const name = extractFileName(path);
   if (isOpaqueDocumentId(name)) {
-    return '文件';
+    return i18next.t('common:file');
   }
   return name;
+}
+
+/** 已落库的中英占位名，以及当前语言的 common:file */
+export function isGenericPlaceholderFileName(name: string): boolean {
+  return name === '文件' || name === 'File' || name === i18next.t('common:file');
 }
 
 /** 判断提取出的名称是否为 Android 不透明 document ID 而非真实文件名 */

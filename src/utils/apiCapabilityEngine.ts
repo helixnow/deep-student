@@ -21,6 +21,14 @@ export interface ApiModelDescriptor {
   providerScope?: string;
 }
 
+/**
+ * 上下文窗口的推断来源：
+ * - 'registry'：模型注册表（model-capability-registry.json）确认的 max_context_tokens
+ * - 'rule'：CONTEXT_WINDOW_RULES 或内置硬规则（如 DeepSeek V4）命中
+ * - 'default'：未命中任何规则，返回 DEFAULT_CONTEXT_WINDOW 兜底值
+ */
+export type ContextWindowSource = 'registry' | 'rule' | 'default';
+
 export interface InferredApiCapabilities {
   reasoning: boolean;
   vision: boolean;
@@ -33,8 +41,10 @@ export interface InferredApiCapabilities {
   supportsReasoningEffort: boolean;
   supportsThinkingTokens: boolean;
   supportsHybridReasoning: boolean;
-  /** 推断的上下文窗口大小（tokens），基于模型 ID/名称的启发式匹配 */
+  /** 推断的上下文窗口大小（tokens），基于注册表记录或模型 ID/名称的启发式匹配 */
   contextWindow: number;
+  /** contextWindow 的来源；'default' 表示未命中任何注册表记录或规则 */
+  contextWindowSource: ContextWindowSource;
 }
 
 const toLower = (value: string | undefined | null): string => (value ?? '').toLowerCase();
@@ -113,7 +123,6 @@ const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // Claude 2026 系列：opus-4-7/4-8 已被 'claude-opus-4' 前缀覆盖；Sonnet 5 / Fable 5 需显式列出
   'claude-sonnet-5',
   'claude-fable-5',
-  'claude-haiku-5',
   'vision',
   // 智谱仅 V 系列支持视觉，避免把 glm-4.7/4.6/5 等纯文本模型误判为多模态
   /glm-(?:4(?:\.\d+)?|5(?:\.\d+)?)v/i,
@@ -233,8 +242,8 @@ const WEB_SEARCH_WHITELIST_REGEXES: RegExp[] = [
   // Gemini 2.x/3.x 系列（排除 image/tts 专用模型）
   /gemini-(?:2|3)(?:\.\d)?(?!.*(?:image|tts))[\w.-]*$/i,
   /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i,
-  // DeepSeek V4-Flash 官方 Responses API 原生支持服务端 web_search
-  // （2026-07-31 正式版公测，仅 v4-flash 系列及 legacy 别名）
+  // DeepSeek 官方 Responses API 原生支持服务端 web_search：当前仅确认
+  // v4-flash 系列及 legacy 别名（v4-pro 已支持 Responses，但 web_search 未列名）
   /deepseek-v4-flash/i,
   /^deepseek-(?:chat|reasoner)$/i,
 ];
@@ -273,7 +282,6 @@ const CLAUDE_THINKING_PATTERNS = [
   // 注意：这些模型需 adaptive thinking + output_config.effort（type:"enabled" 会 400，见 r4 P0-#1）
   'claude-sonnet-5',
   'claude-fable-5',
-  'claude-haiku-5',
 ];
 
 const DOUBAO_THINKING_REGEXES: RegExp[] = [
@@ -339,7 +347,7 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   // GPT-5.6：1.05M tokens
   { pattern: /gpt-5\.6/i, window: 1_050_000 },
   // Claude 2026 主线与 Kimi K3：1M tokens
-  { pattern: /claude-(?:fable-5|sonnet-5|opus-4[-.](?:7|8))/i, window: 1_000_000 },
+  { pattern: /claude-(?:fable-5|sonnet-5|opus-5|opus-4[-.](?:7|8))/i, window: 1_000_000 },
   { pattern: /kimi-k3/i, window: 1_000_000 },
   // MiniMax M2.7 与 Doubao Evolving：1M tokens
   { pattern: /minimax-m2\.7|doubao-seed-evolving/i, window: 1_000_000 },
@@ -444,15 +452,15 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
  * 使用 first-match-wins 策略，具体模式优先于通用模式。
  *
  * @param fingerprint - 小写的 "id name" 拼接字符串
- * @returns 推断的上下文窗口大小（tokens）
+ * @returns 命中规则时返回窗口大小（tokens），未命中返回 null
  */
-function inferContextWindow(fingerprint: string): number {
+function inferContextWindow(fingerprint: string): number | null {
   for (const rule of CONTEXT_WINDOW_RULES) {
     if (rule.pattern.test(fingerprint)) {
       return rule.window;
     }
   }
-  return DEFAULT_CONTEXT_WINDOW;
+  return null;
 }
 
 const matchesPatternList = (value: string, patterns: (string | RegExp)[]): boolean => {
@@ -686,15 +694,32 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     !imageModel &&
     (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isMimoHybridReasoning || isRegistryHybridReasoning);
 
-  // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
-  const inferredWindow = inferContextWindow(`${id} ${name}`);
-  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
-  const contextWindow =
-    shouldUseDeepSeekV4Context
-      ? 1_000_000
-      : modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
+  // 上下文窗口推断：注册表确认值 > 规则命中 > 默认兜底。
+  // 命中来源通过 contextWindowSource 回传，调用方（如 inferModelContextWindow）
+  // 据此判断"是否命中"，而不是用数值大小去猜——注册表确认的小上下文
+  // （如 qwen3.5-32b=32768、glm-4.5v=64000）同样是有效命中。
+  const ruleWindow = inferContextWindow(`${id} ${name}`);
+  const registryWindow =
+    modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
       ? modelCapabilities.max_context_tokens
-      : inferredWindow;
+      : null;
+  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
+
+  let contextWindow: number;
+  let contextWindowSource: ContextWindowSource;
+  if (shouldUseDeepSeekV4Context) {
+    contextWindow = 1_000_000;
+    contextWindowSource = 'rule';
+  } else if (registryWindow !== null) {
+    contextWindow = registryWindow;
+    contextWindowSource = 'registry';
+  } else if (ruleWindow !== null) {
+    contextWindow = ruleWindow;
+    contextWindowSource = 'rule';
+  } else {
+    contextWindow = DEFAULT_CONTEXT_WINDOW;
+    contextWindowSource = 'default';
+  }
 
   return {
     reasoning,
@@ -709,5 +734,6 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     supportsThinkingTokens,
     supportsHybridReasoning,
     contextWindow,
+    contextWindowSource,
   };
 }

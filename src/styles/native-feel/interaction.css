@@ -114,7 +114,7 @@
  *      elements only — container :hover backgrounds stick on
  *      touch and create visual confusion.
  */
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
 
   /*
    * No hover scale on touch — but ONLY the scale component.

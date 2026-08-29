@@ -7,6 +7,7 @@
  * - Android/iOS 走应用商店，不使用此机制
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
+import i18n from '@/i18n';
 import { isMobilePlatform } from '../utils/platform';
 import { openLink } from '../utils/urlOpener';
 
@@ -449,7 +450,7 @@ export function useAppUpdater(): AppUpdaterController {
       }
 
       if (!update) {
-        setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: '更新已不可用，请稍后重试' } }));
+        setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: i18n.t('settings:about.update.error.unavailable') } }));
         return;
       }
       pendingUpdateRef.current = null;
@@ -493,7 +494,7 @@ export function useAppUpdater(): AppUpdaterController {
           progress: 100,
           error: {
             phase: 'relaunch',
-            message: '更新已安装，请手动重启应用以完成更新',
+            message: i18n.t('settings:about.update.error.relaunch'),
           },
         }));
       }
@@ -512,7 +513,7 @@ export function useAppUpdater(): AppUpdaterController {
             downloading: false,
             error: {
               phase: 'relaunch',
-              message: '更新已安装，请手动重启应用以完成更新',
+              message: i18n.t('settings:about.update.error.relaunch'),
             },
           };
         }

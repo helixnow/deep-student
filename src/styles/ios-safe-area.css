@@ -22,6 +22,12 @@
   --safe-area-inset-right: env(safe-area-inset-right, 0px);
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  /* App shell 外的恢复页也会消费 mobile shell 契约；保留全局兜底，
+     壳内 getMobileShellCssVars() 可继续按局部树覆盖。 */
+  --mobile-safe-area-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
+  --mobile-safe-area-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
+  --mobile-safe-area-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  --mobile-safe-area-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
 }
 
 /*

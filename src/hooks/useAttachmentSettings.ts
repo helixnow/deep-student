@@ -34,7 +34,7 @@ export interface AttachmentSettings {
  * - 大小限制：与 ATTACHMENT_MAX_SIZE (200MB，#62) 一致
  */
 const DEFAULT_SETTINGS: AttachmentSettings = {
-  maxImageSize: 10 * 1024 * 1024, // 10MB
+  maxImageSize: 50 * 1024 * 1024, // 50MB - 与后端 MAX_IMAGE_BYTES（attachment_repo.rs）保持一致
   maxFileSize: ATTACHMENT_MAX_SIZE, // 200MB - 与 constants.ts 和后端 VFS 保持一致（#62）
   maxAttachments: ATTACHMENT_MAX_COUNT,
   allowedImageTypes: ATTACHMENT_IMAGE_TYPES,
@@ -69,6 +69,12 @@ export function useAttachmentSettings(): UseAttachmentSettingsReturn {
             const LEGACY_DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024;
             if (parsed?.maxFileSize === LEGACY_DEFAULT_MAX_FILE_SIZE) {
               delete parsed.maxFileSize;
+            }
+            // 同理：图片旧默认 10MB 曾被持久化；视为旧默认，升级到新默认 50MB
+            // （后端 MAX_IMAGE_BYTES 已放宽到 50MB，用户显式设置的其他值不受影响）
+            const LEGACY_DEFAULT_MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+            if (parsed?.maxImageSize === LEGACY_DEFAULT_MAX_IMAGE_SIZE) {
+              delete parsed.maxImageSize;
             }
             setSettings({ ...DEFAULT_SETTINGS, ...parsed });
           } catch {

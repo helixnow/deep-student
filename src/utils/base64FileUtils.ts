@@ -38,8 +38,12 @@ export function cleanBase64String(base64: string): string {
 
 /**
  * 将 base64 字符串转换为 Uint8Array
+ *
+ * 返回类型交给推断：TS 5.7+ 会推出 `Uint8Array<ArrayBuffer> | null`
+ * （满足 BlobPart 对 ArrayBuffer 背书视图的要求），TS 5.6 下仍为
+ * `Uint8Array | null`。显式注解裸 `Uint8Array` 会在 5.7+/tsgo 触发 TS2322。
  */
-export function base64ToUint8Array(base64: string): Uint8Array | null {
+export function base64ToUint8Array(base64: string) {
   try {
     const cleanedBase64 = cleanBase64String(base64);
     if (!cleanedBase64) return null;

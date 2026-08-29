@@ -26,6 +26,9 @@ describe('DeepSeek runtime reasoning controls', () => {
     ['gpt-oss-120b', 'openai-compatible', ['low', 'medium', 'high'], false],
     ['gpt-5.1', 'openai', ['low', 'medium', 'high'], true],
     ['gpt-5.5', 'openai_codex', ['low', 'medium', 'high', 'xhigh'], false],
+    ['gpt-5.6', 'openai', ['low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['gpt-5.6-sol', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
+    ['gpt-5.6-terra', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
     ['codex-mini-latest', 'openai_codex', ['low', 'medium', 'high'], false],
     ['gpt-5', 'openai_codex', ['minimal', 'low', 'medium', 'high'], false],
   ] as const)('crops OpenAI/Codex effort levels for %s', (model, providerType, values, canDisable) => {
@@ -144,6 +147,9 @@ describe('DeepSeek runtime reasoning controls', () => {
 
   it.each([
     ['gemini-3.5-flash', 'medium'],
+    // flash-lite 包含 "gemini-3.5-flash" 子串，需先匹配，默认 "minimal"（与后端 gemini.rs 一致）
+    ['gemini-3.5-flash-lite', 'minimal'],
+    ['gemini-3.5-flash-lite-preview-08-2026', 'minimal'],
     ['gemini-3.1-flash-lite', 'minimal'],
     ['gemini-3-flash-preview', 'high'],
     ['gemini-3.1-pro-preview', 'high'],
@@ -173,6 +179,7 @@ describe('DeepSeek runtime reasoning controls', () => {
   it.each([
     'gpt-5.3-codex',
     'gemini-2.5-pro',
+    'kimi-k3',
     'kimi-k2.7-code',
     'kimi-k2-thinking',
     'kimi-thinking-preview',
@@ -200,6 +207,33 @@ describe('DeepSeek runtime reasoning controls', () => {
     'kimi-k2.6',
     'MiniMax-M3',
   ])('keeps modern adaptive thinking models disableable: %s', (model) => {
+    expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
+  });
+
+  // 后端 moonshot 适配器对 K3+ 固定发送 reasoning_effort=max 且推理不可关闭；
+  // 前端必须 forced（canDisable=false），且不发明后端不接受的档位选项。
+  it.each([
+    'kimi-k3',
+    'kimi-k3-0905-preview',
+    'moonshotai/Kimi-K3-Instruct',
+    'kimi-k3.1',
+  ])('aligns Kimi K3+ with the backend forced reasoning_effort=max contract: %s', (model) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(control.kind).toBe('toggle-only');
+    expect(control.options).toEqual([]);
+    expect(control.canDisable).toBe(false);
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({ control, enableThinking: false })
+    ).toEqual({ enableThinking: true, reasoningEffort: undefined, thinkingBudget: undefined });
+  });
+
+  it.each([
+    'kimi-k2.6',
+    'kimi-k2-0905-preview',
+    'kimi-latest',
+    'moonshot-v1-128k',
+  ])('does not misclassify non-K3 Kimi/Moonshot models as forced K3: %s', (model) => {
     expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
   });
 
@@ -234,6 +268,26 @@ describe('DeepSeek runtime reasoning controls', () => {
         thinkingBudget: 32768,
       })
     ).toEqual({ enableThinking: true, reasoningEffort: 'xhigh', thinkingBudget: undefined });
+  });
+
+  it('keeps the max runtime depth for GPT-5.6 instead of falling back', () => {
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.6', providerType: 'openai' }),
+        enableThinking: true,
+        reasoningEffort: 'max',
+        thinkingBudget: 32768,
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'max', thinkingBudget: undefined });
+
+    // 非 5.6 的 GPT-5 系列不认识 max，仍回退到 medium
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.5', providerType: 'openai' }),
+        enableThinking: true,
+        reasoningEffort: 'max',
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'medium', thinkingBudget: undefined });
   });
 
   it('clears versioned runtime depth fields for toggle-only models', () => {
