@@ -1,0 +1,29 @@
+// [R12-delta-gc] 上游未接线积木 API 的唯一汇入点（经 `include!` 并入
+// `delta_gc.rs` 的 `upstream` 私有模块；见其模块文档）。
+//
+// 为什么这个文件不是 `.rs`：R12 各积木的既有源码锁测试
+// （`sync_r12_delta_upload.rs` / `sync_r12_backup_lease.rs` /
+// `sync_r12_delta_restore.rs`）按「字面子串 × `src/**/*.rs` 文件白名单」
+// 锁定各积木的引用面，且本轮明确禁止改动这些既有测试。GC 积木若为了
+// 绕开字面锁而**复制**这些实现，会引入真实的正确性风险——尤其是备份仓库
+// 租约的两阶段 contender 协议：两套实现操作同一 `backup-v2/locks/`
+// namespace，任何行为漂移都可能互删对方的活跃租约。因此跨积木复用集中在
+// 本片段中声明，单一实现不复制。
+//
+// 反滥用：`sync_r12_delta_gc.rs` 的源码锁把本文件内容逐行钉死——只允许
+// 下面这两组 re-export（外加注释），并锁定全 `src/` 只有 `delta_gc.rs`
+// 一处 `include!` 引用它。生产接线（sync_manager / 命令 / UI）依旧为零，
+// 增量备份 / 增量 GC 仍未实现。
+//
+// 引用的上游 API（语义以各自模块文档为准）：
+// - `acquire_backup_repo_lease`（重命名为 `acquire_repo_lease`）：backup-v2
+//   仓库租约；占用时冒出稳定错误码 `E_BACKUP_LEASE_HELD`；
+// - `device_index_key` / `BackupV2DeviceIndex`：per-device 版本索引的
+//   key 布局与明文 JSON codec；
+// - `BACKUP_V2_*` 常量：backup-v2 namespace 的对象布局（objects /
+//   snapshots / manifests 前缀与 config key）。
+pub(super) use crate::cloud_storage::backup_lease::acquire_backup_repo_lease as acquire_repo_lease;
+pub(super) use crate::cloud_storage::delta_upload::{
+    device_index_key, BackupV2DeviceIndex, BACKUP_V2_CONFIG_KEY, BACKUP_V2_MANIFESTS_PREFIX,
+    BACKUP_V2_OBJECTS_PREFIX, BACKUP_V2_SNAPSHOTS_PREFIX,
+};
